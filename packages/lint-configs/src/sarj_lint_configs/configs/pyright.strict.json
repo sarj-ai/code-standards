@@ -52,9 +52,10 @@
   // implicit concatenation here — the two cannot both be satisfied. ruff's ISC001
   // still catches the dangerous single-line "missing comma" accident.
   "reportImplicitStringConcatenation": "none",
-  // (reportShadowedImports / reportInvalidExceptionType are pyright-only keys that
-  //  basedpyright — the checker this repo standardizes on — rejects as unrecognized,
-  //  so they're omitted to keep basedpyright output clean.)
+  // (reportShadowedImports was removed from pyright upstream — pyright 1.1.411
+  //  AND basedpyright both reject it as unrecognized; basedpyright likewise
+  //  rejects reportInvalidExceptionType — so both are omitted to keep every
+  //  checker's output clean.)
   "reportMissingSuperCall": "error",
   "reportUninitializedInstanceVariable": "error",
   "reportInconsistentConstructor": "error",

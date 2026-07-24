@@ -226,9 +226,11 @@ const config = [
       "@typescript-eslint/no-shadow": "error",
 
       // Full @sarj/eslint-plugin@2.7.0 strict ruleset. Tiers mirror the plugin's
-      // own `configs.strict`: error for most, warn for the stylistic/high-volume
-      // rules (enforce-file-structure, prefer-semantic-colors,
-      // prefer-string-literal-union, no-unsafe-cast, no-hardcoded-ui-text).
+      // own `configs.strict` — error for most, warn for the stylistic/high-volume
+      // rules (prefer-semantic-colors, prefer-string-literal-union,
+      // no-unsafe-cast) — with one deliberate deviation: enforce-file-structure
+      // is warn here while the plugin's own strict has it at error (structural
+      // moves are high-churn for existing consumers, so it stays advisory).
       // no-enum / no-fat-try-blocks / no-raw-env are the single owners of the
       // enum / oversized-try / process.env concerns (the native no-restricted-*
       // equivalents were removed above).
@@ -263,7 +265,11 @@ const config = [
       "@sarj/prefer-string-literal-union": "warn",
       // High-volume/stylistic — warn until rollout proves FP rate.
       "@sarj/no-unsafe-cast": "warn",
-      "@sarj/no-hardcoded-ui-text": "warn",
+      // ADOPTION PARKED (2026-07 audit): no target repo has an i18n framework,
+      // so every no-hardcoded-ui-text finding is unactionable — there is no
+      // t() to move copy behind. The rule ships in the plugin; turning it on
+      // is gated on an i18n framework decision.
+      "@sarj/no-hardcoded-ui-text": "off",
     },
   },
 
