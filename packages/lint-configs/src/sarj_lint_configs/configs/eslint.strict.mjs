@@ -225,12 +225,13 @@ const config = [
       "no-shadow": "off",
       "@typescript-eslint/no-shadow": "error",
 
-      // Full @sarj/eslint-plugin@2.4.0 strict ruleset. Tiers mirror the plugin's
-      // own `configs.strict`: error for most, warn for the three stylistic/
-      // high-volume rules (enforce-file-structure, prefer-semantic-colors,
-      // prefer-string-literal-union). no-enum / no-fat-try-blocks / no-raw-env
-      // are the single owners of the enum / oversized-try / process.env concerns
-      // (the native no-restricted-* equivalents were removed above).
+      // Full @sarj/eslint-plugin@2.7.0 strict ruleset. Tiers mirror the plugin's
+      // own `configs.strict`: error for most, warn for the stylistic/high-volume
+      // rules (enforce-file-structure, prefer-semantic-colors,
+      // prefer-string-literal-union, no-unsafe-cast, no-hardcoded-ui-text).
+      // no-enum / no-fat-try-blocks / no-raw-env are the single owners of the
+      // enum / oversized-try / process.env concerns (the native no-restricted-*
+      // equivalents were removed above).
       "@sarj/zod-naming-convention": "error",
       "@sarj/require-assert-never": "error",
       "@sarj/require-zod-form-validation": "error",
@@ -253,9 +254,16 @@ const config = [
       "@sarj/no-cors-wildcard-with-credentials": "error",
       "@sarj/no-secret-in-log": "error",
       "@sarj/single-public-export": "error",
+      // Mined from 2y of PR review feedback + 5-repo code-smell audit (2026-07).
+      "@sarj/require-fetch-timeout": "error",
+      "@sarj/no-silent-promise-catch": "error",
+      "@sarj/require-schema-validate-search": "error",
       "@sarj/enforce-file-structure": "warn",
       "@sarj/prefer-semantic-colors": "warn",
       "@sarj/prefer-string-literal-union": "warn",
+      // High-volume/stylistic — warn until rollout proves FP rate.
+      "@sarj/no-unsafe-cast": "warn",
+      "@sarj/no-hardcoded-ui-text": "warn",
     },
   },
 
