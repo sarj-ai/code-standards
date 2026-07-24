@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from sarj_python_lint.rules.httpx_client_requires_timeout import (
+    HttpxClientRequiresTimeout,
+)
 from sarj_python_lint.rules.inefficient_string_concat_in_loop import (
     InefficientStringConcatInLoop,
 )
+from sarj_python_lint.rules.kwonly_same_type_params import KwonlySameTypeParams
 from sarj_python_lint.rules.no_aggregation_in_store_query import (
     NoAggregationInStoreQuery,
 )
@@ -14,9 +18,11 @@ from sarj_python_lint.rules.no_cors_wildcard_with_credentials import (
 )
 from sarj_python_lint.rules.no_fat_try_blocks import NoFatTryBlocks
 from sarj_python_lint.rules.no_fstring_in_log import NoFstringInLog
+from sarj_python_lint.rules.no_import_time_settings import NoImportTimeSettings
 from sarj_python_lint.rules.no_isinstance_union_chain import NoIsinstanceUnionChain
 from sarj_python_lint.rules.no_offset_pagination import NoOffsetPagination
 from sarj_python_lint.rules.no_query_with_many_joins import NoQueryWithManyJoins
+from sarj_python_lint.rules.no_raw_sql_in_tests import NoRawSqlInTests
 from sarj_python_lint.rules.no_repeated_string_literal import NoRepeatedStringLiteral
 from sarj_python_lint.rules.no_secret_in_log import NoSecretInLog
 from sarj_python_lint.rules.no_select_star import NoSelectStar
@@ -30,6 +36,7 @@ from sarj_python_lint.rules.prefer_class_row import PreferClassRow
 from sarj_python_lint.rules.prefer_constant_time_secret_compare import (
     PreferConstantTimeSecretCompare,
 )
+from sarj_python_lint.rules.prefer_match_assert_never import PreferMatchAssertNever
 from sarj_python_lint.rules.prefer_namedtuple_over_tuple_return import (
     PreferNamedtupleOverTupleReturn,
 )
@@ -79,6 +86,11 @@ REGISTRY: dict[str, type[Rule]] = {
     SinglePublicExport.id: SinglePublicExport,
     Stepdown.id: Stepdown,
     NoRepeatedStringLiteral.id: NoRepeatedStringLiteral,
+    PreferMatchAssertNever.id: PreferMatchAssertNever,
+    HttpxClientRequiresTimeout.id: HttpxClientRequiresTimeout,
+    KwonlySameTypeParams.id: KwonlySameTypeParams,
+    NoImportTimeSettings.id: NoImportTimeSettings,
+    NoRawSqlInTests.id: NoRawSqlInTests,
 }
 
 __all__ = ["REGISTRY"]

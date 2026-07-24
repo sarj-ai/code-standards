@@ -64,6 +64,36 @@
   language: python
   types: [python]
 
+- id: sarj-prefer-match-assert-never
+  name: 'sarj-lint: silent fallthrough on closed-set dispatch — use assert_never'
+  entry: sarj-python-lint check --rule prefer-match-assert-never
+  language: python
+  types: [python]
+
+- id: sarj-httpx-client-requires-timeout
+  name: 'sarj-lint: httpx client/call without an explicit timeout='
+  entry: sarj-python-lint check --rule httpx-client-requires-timeout
+  language: python
+  types: [python]
+
+- id: sarj-kwonly-same-type-params
+  name: 'sarj-lint: multiple positional params of one primitive type — insert `*`'
+  entry: sarj-python-lint check --rule kwonly-same-type-params
+  language: python
+  types: [python]
+
+- id: sarj-no-import-time-settings
+  name: 'sarj-lint: module-level Settings() construction — use a cached factory'
+  entry: sarj-python-lint check --rule no-import-time-settings
+  language: python
+  types: [python]
+
+- id: sarj-no-raw-sql-in-tests
+  name: 'sarj-lint: raw SQL literal executed in a test — use store/service methods'
+  entry: sarj-python-lint check --rule no-raw-sql-in-tests
+  language: python
+  types: [python]
+
 - id: sarj-enforce-timestamptz
   name: 'sarj-lint(sql): TIMESTAMP must use WITH TIME ZONE (TIMESTAMPTZ)'
   entry: sarj-sql-lint check --rule enforce-timestamptz

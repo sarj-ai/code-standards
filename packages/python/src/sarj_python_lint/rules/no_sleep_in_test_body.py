@@ -36,6 +36,7 @@ import ast
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
@@ -43,14 +44,6 @@ if TYPE_CHECKING:
 
 
 _SLEEP_RECEIVERS = frozenset({"asyncio", "time"})
-_FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
-
-
-def _is_test_path(path: Path) -> bool:
-    name = path.name
-    if name == "conftest.py" or name.startswith("test_") or name.endswith("_test.py"):
-        return True
-    return any(part in {"tests", "test"} for part in path.parts)
 
 
 def _is_nonzero_numeric_literal(node: ast.expr) -> bool:
@@ -83,7 +76,7 @@ class NoSleepInTestBody(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if not _is_test_path(path):
+        if not is_test_path(path):
             return []
         tree = parse_or_none(path, source)
         if tree is None:
