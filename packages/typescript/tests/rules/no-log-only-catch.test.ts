@@ -77,6 +77,11 @@ ruleTester.run("no-log-only-catch", rule, {
       code: "try { f(); } catch (e) { console.log(e); }",
       filename: "/repo/src/__tests__/foo.ts",
     },
+    // FP-1: an UNDECLARED free function is not assumed to be a logger, so a
+    // catch that calls one is still doing real work and is left alone.
+    {
+      code: "try { f(); } catch (e) { logEvent('f.failed', { error: String(e) }); }",
+    },
   ],
   invalid: [
     // Empty catch with a binding — distinct, accurate `emptyCatch` message.
@@ -128,6 +133,19 @@ ruleTester.run("no-log-only-catch", rule, {
     {
       code: "try { f(); } catch (e) { console.error(e); }",
       filename: "/repo/src/handler.ts",
+      errors: [{ messageId: "noLogOnlyCatch" }],
+    },
+    // FP-1 false-negative closure: once the project DECLARES its structured
+    // logger, a catch that only calls it is a log-only catch like any other.
+    {
+      code: "try { f(); } catch (e) { logEvent('f.failed', { error: String(e) }); }",
+      options: [{ logFunctions: ["logEvent"] }],
+      errors: [{ messageId: "noLogOnlyCatch" }],
+    },
+    // A declared logger RECEIVER name behaves like `logger` / `console`.
+    {
+      code: "try { f(); } catch (e) { obs.error(e); }",
+      options: [{ loggerNames: ["obs"] }],
       errors: [{ messageId: "noLogOnlyCatch" }],
     },
   ],

@@ -23,28 +23,30 @@
  * Test files opt out by default (filenames containing `.test.`, `.spec.`, or a
  * `__tests__/` path segment) since swallow-and-log is common and acceptable in
  * test scaffolding.
+ *
+ * A logging call is recognised by the shared `_logging` matcher: a log method on
+ * a logger receiver, plus any project-declared free logging function named in
+ * the `logFunctions` option (`logEvent("x", { err })`). Structured loggers are
+ * usually free functions, so without that option a catch that only calls one was
+ * silently under-reported here — declaring it makes the shape visible.
  */
 
 import { ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
 
-import { isLoggingCall } from "./_logging.js";
+import {
+  createLogMatcher,
+  LOGGING_OPTION_PROPERTIES,
+  type LoggingOptions,
+} from "./_logging.js";
 
 type MessageIds = "noLogOnlyCatch" | "emptyCatch";
-type Options = readonly [];
+type Options = readonly [LoggingOptions?];
 
 const DEFAULT_IGNORE_PATTERNS: readonly RegExp[] = [
   /\.test\./,
   /\.spec\./,
   /[\\/]__tests__[\\/]/,
 ];
-
-/** True when a statement is exactly a bare logging call, e.g. `console.error(err);` or `logger.warn(err);`. */
-function isLoggingCallStatement(statement: TSESTree.Statement): boolean {
-  if (statement.type !== "ExpressionStatement") {
-    return false;
-  }
-  return isLoggingCall(statement.expression);
-}
 
 export default ESLintUtils.RuleCreator(
   (name) =>
@@ -57,7 +59,13 @@ export default ESLintUtils.RuleCreator(
       description:
         "Disallow `catch` clauses that only log (or silently do nothing) and then swallow the error; rethrow or handle it instead.",
     },
-    schema: [],
+    schema: [
+      {
+        type: "object",
+        additionalProperties: false,
+        properties: { ...LOGGING_OPTION_PROPERTIES },
+      },
+    ],
     messages: {
       noLogOnlyCatch:
         "Logging then swallowing the error hides failures. Rethrow the error or handle it for real.",
@@ -65,9 +73,18 @@ export default ESLintUtils.RuleCreator(
         "Empty catch silently swallows the error. Rethrow it, handle it, or add a comment explaining why it is safe to ignore.",
     },
   },
-  defaultOptions: [],
-  create(context) {
+  defaultOptions: [{}],
+  create(context, [loggingOptions]) {
+    const matcher = createLogMatcher(loggingOptions);
     const filename = context.filename;
+
+    /** True when a statement is exactly a bare logging call, e.g. `console.error(err);`. */
+    function isLoggingCallStatement(statement: TSESTree.Statement): boolean {
+      if (statement.type !== "ExpressionStatement") {
+        return false;
+      }
+      return matcher.isLoggingCall(statement.expression);
+    }
 
     const isIgnoredByDefault = DEFAULT_IGNORE_PATTERNS.some((re) =>
       re.test(filename),

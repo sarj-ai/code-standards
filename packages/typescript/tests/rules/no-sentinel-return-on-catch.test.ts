@@ -220,6 +220,83 @@ ruleTester.run("no-sentinel-return-on-catch", rule, {
         }
       `,
     },
+    // FP-1: a structured logger is a FREE FUNCTION taking a meta object, and the
+    // caught binding is nested inside it behind a conditional. The error IS
+    // logged; \`null\` is a deliberate degraded return.
+    {
+      code: `
+        async function scan(repo) {
+          try { return await github.listOpenPullRequests(repo); }
+          catch (err) {
+            logEvent('pr_scan.list_failed', { repo, error: err instanceof Error ? err.message : String(err) });
+            return null;
+          }
+        }
+      `,
+    },
+    // FP-1: same shape via the \`logFunctions\` option, for a logger whose name
+    // does not itself read as a reporting call.
+    {
+      code: `
+        async function scan(repo) {
+          try { return await github.listOpenPullRequests(repo); }
+          catch (err) {
+            emit('pr_scan.list_failed', { repo, cause: String(err) });
+            return null;
+          }
+        }
+      `,
+      options: [{ logFunctions: ["emit"] }],
+    },
+    // FP-1: a project-declared logger RECEIVER name.
+    {
+      code: `
+        function load() {
+          try { return read(); }
+          catch (e) { obs.warn("load failed", e); return null; }
+        }
+      `,
+      options: [{ loggerNames: ["obs"] }],
+    },
+    // FP-2: \`new URL\` is consumed by a comparison, so the returned expression is
+    // a BinaryExpression — the try still hinges on a throwing parse.
+    {
+      code: `
+        function isHttpsUrl(s: string): boolean {
+          try { return new URL(s).protocol === 'https:'; }
+          catch { return false; }
+        }
+      `,
+    },
+    // FP-2: \`await request.json()\` — the await wrapper plus a body-decoding
+    // method that throws on malformed input.
+    {
+      code: `
+        async function readBody(request) {
+          try { return await request.json(); }
+          catch { return null; }
+        }
+      `,
+    },
+    // FP-2: a DECLARED \`: boolean\` predicate. A boolean cannot carry error
+    // information, so the sentinel is the entire contract.
+    {
+      code: `
+        function canReach(host: string): boolean {
+          try { return probe(host); }
+          catch { return false; }
+        }
+      `,
+    },
+    // FP-2: same, through \`Promise<boolean>\`.
+    {
+      code: `
+        async function canReach(host: string): Promise<boolean> {
+          try { return await probe(host); }
+          catch { return false; }
+        }
+      `,
+    },
   ],
   invalid: [
     // return null — bare swallow, function otherwise returns real data.
@@ -281,6 +358,45 @@ ruleTester.run("no-sentinel-return-on-catch", rule, {
             cleanup();
             return [];
           }
+        }
+      `,
+      errors: [{ messageId: "noSentinelReturn" }],
+    },
+    // FP-1 must not over-suppress: declaring \`emit\` as a logger does not excuse
+    // a DIFFERENT call that neither logs nor mentions the caught binding.
+    {
+      code: `
+        async function scan(repo) {
+          try { return await list(repo); }
+          catch (err) {
+            track('pr_scan.started', { repo });
+            return null;
+          }
+        }
+      `,
+      options: [{ logFunctions: ["emit"] }],
+      errors: [{ messageId: "noSentinelReturn" }],
+    },
+    // FP-2 must not over-suppress: a body decode preceded by real I/O. The catch
+    // swallows the network failure too, so \`.json()\` does not excuse it.
+    {
+      code: `
+        async function load(url) {
+          try {
+            const res = await fetch(url);
+            return await res.json();
+          } catch { return null; }
+        }
+      `,
+      errors: [{ messageId: "noSentinelReturn" }],
+    },
+    // FP-2 must not over-suppress: a declared \`T | null\` return is exactly the
+    // shape this rule exists for — nullable accessors hide failures.
+    {
+      code: `
+        async function fetchThing(id: string): Promise<Thing | null> {
+          try { return await load(id); }
+          catch { return null; }
         }
       `,
       errors: [{ messageId: "noSentinelReturn" }],

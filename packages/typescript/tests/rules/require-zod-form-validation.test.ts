@@ -49,6 +49,24 @@ ruleTester.run("require-zod-form-validation", rule, {
     {
       code: "async function f(req) { const fd = await req.formData(); return ZUser.parse({ name: fd.get('name') }); }",
     },
+    // FP-6: validation happens ONE HOP later, through a binding. Walking up from
+    // the `.get()` call cannot see it; tracking the binding through scope can.
+    {
+      code: "const tokenRaw = formData.get('t');\nconst parsedForm = SubmitFormDataSchema.safeParse({ t: typeof tokenRaw === 'string' ? tokenRaw : undefined });",
+    },
+    // FP-6: several statements later, and via the `Z`-prefix convention.
+    {
+      code: "const emailRaw = formData.get('email');\ntrace('submit', { present: emailRaw !== null });\nconst parsed = ZSignup.parse({ email: emailRaw });",
+    },
+    // FP-6: a file upload narrowed by `instanceof File` — Zod has nothing
+    // useful to say about a `File`, and `instanceof` IS the validation.
+    {
+      code: "const file = formData.get('file');\nif (!(file instanceof File)) { throw new Error('bad'); }\nawait upload(file);",
+    },
+    // FP-6: the same narrowing written inline.
+    {
+      code: "if (formData.get('file') instanceof File) { ok(); }",
+    },
   ],
   invalid: [
     // Bare formData.get() with no Zod validation
@@ -83,6 +101,17 @@ ruleTester.run("require-zod-form-validation", rule, {
         { messageId: "missingZodValidation" },
         { messageId: "missingZodValidation" },
       ],
+    },
+    // FP-6 must not over-suppress: a binding that is USED but never validated
+    // is still an unvalidated read.
+    {
+      code: "const tokenRaw = formData.get('t');\nawait redeem(tokenRaw);",
+      errors: [{ messageId: "missingZodValidation" }],
+    },
+    // FP-6 must not over-suppress: `JSON.parse` on the binding is not Zod.
+    {
+      code: "const raw = formData.get('payload');\nconst data = JSON.parse(String(raw));",
+      errors: [{ messageId: "missingZodValidation" }],
     },
   ],
 });

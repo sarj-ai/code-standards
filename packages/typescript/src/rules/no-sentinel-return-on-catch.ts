@@ -15,14 +15,24 @@
  *     expressions, non-empty literals),
  *   - `return 0` / `return ""`, which are often legitimate results,
  *   - catches that LOG or REPORT the caught error before the sentinel return —
- *     a `console.*`/logger call, or an error-reporting call that takes the
- *     caught binding (`onUnexpectedError(err)`). Here the sentinel is a
- *     deliberate degraded return, not a silent swallow.
- *   - the typed-optional / safe-parse / predicate shape: the try body returns a
- *     parse-style call that throws on bad input (`JSON.parse(x)`, `new RegExp`),
- *     or the enclosing function returns the same sentinel kind on a normal path
- *     (a boolean predicate, a `T | undefined` accessor). Here the sentinel is
- *     the declared contract.
+ *     a `console.*`/logger call, a project-declared free logging function (the
+ *     shared `logFunctions` option), or an error-reporting call that mentions
+ *     the caught binding ANYWHERE in its arguments. The binding search walks the
+ *     whole argument subtree, because structured loggers take a meta object:
+ *     `logEvent("x", { error: err instanceof Error ? err.message : String(err) })`
+ *     reports the error just as surely as `report(err)` does. Here the sentinel
+ *     is a deliberate degraded return, not a silent swallow.
+ *   - the typed-optional / safe-parse / predicate shape: the try body returns an
+ *     expression whose subtree contains a parse-style call that throws on bad
+ *     input (`JSON.parse(x)`, `new URL(s).protocol === "https:"`, or a lone
+ *     `await request.json()`), or the enclosing function is a declared predicate
+ *     (`: boolean`) or returns the same sentinel kind on a normal path. Here the
+ *     sentinel is the declared contract.
+ *
+ * The predicate exemption is deliberately limited to a declared `boolean` return
+ * type. A declared `T | null` / `T | undefined` return does NOT exempt: hiding a
+ * failure behind a nullable accessor is the exact true positive this rule
+ * exists for, and exempting it would gut the rule.
  */
 
 import {
@@ -32,13 +42,15 @@ import {
 } from "@typescript-eslint/utils";
 
 import {
-  isLoggingCall,
+  createLogMatcher,
   calleeName,
+  LOGGING_OPTION_PROPERTIES,
+  type LoggingOptions,
   REPORT_NAME_RE,
 } from "./_logging.js";
 
 type MessageIds = "noSentinelReturn";
-type Options = readonly [];
+type Options = readonly [LoggingOptions?];
 
 type SentinelKind = "nullish" | "boolean" | "array" | "object" | "string";
 
@@ -164,7 +176,46 @@ function containsThrow(node: TSESTree.Node): boolean {
   );
 }
 
-/** Are any of a call's arguments exactly the caught-error binding identifier? */
+/** Does `node`'s subtree read the identifier `name`? */
+function subtreeReadsName(node: TSESTree.Node, name: string): boolean {
+  let found = false;
+
+  const recurse = (current: TSESTree.Node): void => {
+    if (found) {
+      return;
+    }
+    if (current.type === AST_NODE_TYPES.Identifier && current.name === name) {
+      found = true;
+      return;
+    }
+    for (const key of Object.keys(current)) {
+      if (key === "parent") {
+        continue;
+      }
+      const value = (current as unknown as Record<string, unknown>)[key];
+      if (Array.isArray(value)) {
+        for (const child of value) {
+          if (isNode(child)) {
+            recurse(child);
+          }
+        }
+      } else if (isNode(value)) {
+        recurse(value);
+      }
+    }
+  };
+
+  recurse(node);
+  return found;
+}
+
+/**
+ * Does the caught-error binding appear ANYWHERE in a call's arguments? The whole
+ * argument subtree is searched, not just top-level positional args: a structured
+ * logger takes the error nested in a meta object or behind a conditional
+ * (`logEvent("x", { error: err instanceof Error ? err.message : String(err) })`),
+ * and that reports the error exactly as `report(err)` does.
+ */
 function argsIncludeBinding(
   args: readonly TSESTree.CallExpressionArgument[],
   caughtName: string | null,
@@ -172,35 +223,7 @@ function argsIncludeBinding(
   if (caughtName === null) {
     return false;
   }
-  return args.some(
-    (arg) => arg.type === AST_NODE_TYPES.Identifier && arg.name === caughtName,
-  );
-}
-
-/**
- * Does the catch body log or report the caught error before the sentinel
- * return? Either a logging call (`console.*` / logger receiver), or an
- * error-reporting call whose name matches `REPORT_NAME_RE` and that takes the
- * caught binding (`onUnexpectedError(err)`).
- */
-function logsOrReportsError(
-  catchBody: TSESTree.BlockStatement,
-  caughtName: string | null,
-): boolean {
-  return walkWithinScope(catchBody, (current) => {
-    if (current.type !== AST_NODE_TYPES.CallExpression) {
-      return false;
-    }
-    if (isLoggingCall(current)) {
-      return true;
-    }
-    const name = calleeName(current.callee);
-    return (
-      name !== null &&
-      REPORT_NAME_RE.test(name) &&
-      argsIncludeBinding(current.arguments, caughtName)
-    );
-  });
+  return args.some((arg) => subtreeReadsName(arg, caughtName));
 }
 
 /** The try block guarded by this catch. */
@@ -208,41 +231,132 @@ function tryBlockOf(catchNode: TSESTree.CatchClause): TSESTree.BlockStatement {
   return catchNode.parent.block;
 }
 
+/** Constructors that throw on malformed input. */
+const SAFE_PARSE_CONSTRUCTORS: ReadonlySet<string> = new Set([
+  "RegExp",
+  "URL",
+  "URLPattern",
+]);
+
 /**
- * True when a return argument is a parse-style call that throws on bad input,
- * so returning a sentinel on failure is the declared "safe-parse" contract:
- * `JSON.parse(x)`, `YAML.parse(x)`, `new RegExp(x)`, `new URL(x)`.
+ * A parse-style call that throws on bad input: `JSON.parse(x)`, `YAML.parse(x)`,
+ * `new RegExp(x)`, `new URL(x)`.
  */
-function isSafeParseExpression(arg: TSESTree.Expression | null): boolean {
-  if (arg === null) {
-    return false;
+function isParseShapedNode(node: TSESTree.Node): boolean {
+  if (
+    node.type === AST_NODE_TYPES.CallExpression &&
+    node.callee.type === AST_NODE_TYPES.MemberExpression &&
+    !node.callee.computed &&
+    node.callee.property.type === AST_NODE_TYPES.Identifier
+  ) {
+    return node.callee.property.name === "parse";
   }
   if (
-    arg.type === AST_NODE_TYPES.CallExpression &&
-    arg.callee.type === AST_NODE_TYPES.MemberExpression &&
-    !arg.callee.computed &&
-    arg.callee.property.type === AST_NODE_TYPES.Identifier &&
-    arg.callee.property.name === "parse"
+    node.type === AST_NODE_TYPES.NewExpression &&
+    node.callee.type === AST_NODE_TYPES.Identifier
   ) {
-    return true;
-  }
-  if (
-    arg.type === AST_NODE_TYPES.NewExpression &&
-    arg.callee.type === AST_NODE_TYPES.Identifier
-  ) {
-    return arg.callee.name === "RegExp" || arg.callee.name === "URL";
+    return SAFE_PARSE_CONSTRUCTORS.has(node.callee.name);
   }
   return false;
 }
 
-/** Does the try body return a safe-parse-style expression? */
-function tryReturnsSafeParse(catchNode: TSESTree.CatchClause): boolean {
-  return walkWithinScope(
-    tryBlockOf(catchNode),
-    (current) =>
-      current.type === AST_NODE_TYPES.ReturnStatement &&
-      isSafeParseExpression(current.argument),
+/** Body-decoding methods of a `Request` / `Response` — they throw on bad input. */
+const BODY_DECODE_METHODS: ReadonlySet<string> = new Set([
+  "json",
+  "text",
+  "arrayBuffer",
+]);
+
+function isBodyDecodeNode(node: TSESTree.Node): boolean {
+  return (
+    node.type === AST_NODE_TYPES.CallExpression &&
+    node.callee.type === AST_NODE_TYPES.MemberExpression &&
+    !node.callee.computed &&
+    node.callee.property.type === AST_NODE_TYPES.Identifier &&
+    BODY_DECODE_METHODS.has(node.callee.property.name)
   );
+}
+
+/**
+ * True when a return statement's argument SUBTREE contains a match. The whole
+ * subtree is searched rather than the top node alone, because the parse is
+ * usually consumed in place: `return new URL(s).protocol === "https:"` is a
+ * `BinaryExpression`, not a `NewExpression`, and `return await request.json()`
+ * is an `AwaitExpression`. Nested function scopes are not searched — a parse
+ * inside a callback does not run when the `try` does.
+ */
+function returnsMatching(
+  stmt: TSESTree.Node,
+  predicate: (node: TSESTree.Node) => boolean,
+): boolean {
+  return (
+    stmt.type === AST_NODE_TYPES.ReturnStatement &&
+    stmt.argument !== null &&
+    walkWithinScope(stmt.argument, predicate)
+  );
+}
+
+/** The declared return type annotation of the nearest enclosing function, or null. */
+function enclosingReturnTypeNode(
+  node: TSESTree.Node,
+): TSESTree.TypeNode | null {
+  let current: TSESTree.Node | undefined | null = node.parent;
+  while (current !== undefined && current !== null) {
+    if (isFunctionNode(current) && "returnType" in current) {
+      return current.returnType?.typeAnnotation ?? null;
+    }
+    current = current.parent;
+  }
+  return null;
+}
+
+/**
+ * True when the enclosing function is a DECLARED predicate — annotated
+ * `: boolean` (or `: Promise<boolean>`) — and the catch returns `false`. A
+ * boolean return type cannot carry error information at all, so "return a typed
+ * Result" is not advice that applies; the sentinel IS the whole contract. Only
+ * `boolean` qualifies: a declared `T | null` return is the shape this rule
+ * exists to flag and must keep firing.
+ */
+function isDeclaredBooleanPredicate(
+  catchNode: TSESTree.CatchClause,
+  kind: SentinelKind,
+): boolean {
+  if (kind !== "boolean") {
+    return false;
+  }
+  let declared = enclosingReturnTypeNode(catchNode);
+  if (
+    declared?.type === AST_NODE_TYPES.TSTypeReference &&
+    declared.typeName.type === AST_NODE_TYPES.Identifier &&
+    declared.typeName.name === "Promise"
+  ) {
+    declared = declared.typeArguments?.params[0] ?? null;
+  }
+  return declared?.type === AST_NODE_TYPES.TSBooleanKeyword;
+}
+
+/**
+ * Does the try body return a safe-parse-style expression?
+ *
+ * `JSON.parse` / `new RegExp` / `new URL` count from anywhere in the try body —
+ * a read-then-parse (`const t = read(p); return JSON.parse(t)`) is still the
+ * safe-parse contract. A body-decoding method (`.json()`) counts ONLY when it is
+ * the try's sole statement, so `try { return await request.json() }` is exempt
+ * while `try { const res = await fetch(url); return await res.json() }` is not:
+ * there the catch also swallows the network failure, which is the true positive.
+ */
+function tryReturnsSafeParse(catchNode: TSESTree.CatchClause): boolean {
+  const tryBlock = tryBlockOf(catchNode);
+  if (
+    walkWithinScope(tryBlock, (current) =>
+      returnsMatching(current, isParseShapedNode),
+    )
+  ) {
+    return true;
+  }
+  const only = tryBlock.body.length === 1 ? tryBlock.body[0] : undefined;
+  return only !== undefined && returnsMatching(only, isBodyDecodeNode);
 }
 
 /** The nearest enclosing function body, or null. */
@@ -312,14 +426,48 @@ export default ESLintUtils.RuleCreator(
       description:
         "Disallow swallowing a caught error by returning an empty sentinel (`null`, `undefined`, `false`, `[]`, `{}`) as the final statement of a `catch` block, unless the error is logged/reported or the sentinel is the declared safe-parse/predicate contract.",
     },
-    schema: [],
+    schema: [
+      {
+        type: "object",
+        additionalProperties: false,
+        properties: { ...LOGGING_OPTION_PROPERTIES },
+      },
+    ],
     messages: {
       noSentinelReturn:
         "This `catch` block swallows the error by returning an empty sentinel without logging it. Rethrow it, log/report it, or return a typed Result.",
     },
   },
-  defaultOptions: [],
-  create(context) {
+  defaultOptions: [{}],
+  create(context, [loggingOptions]) {
+    const matcher = createLogMatcher(loggingOptions);
+
+    /**
+     * Does the catch body log or report the caught error before the sentinel
+     * return? Either a logging call (logger receiver or a declared
+     * `logFunctions` free function), or an error-reporting call whose name
+     * matches `REPORT_NAME_RE` and whose arguments mention the caught binding.
+     */
+    function logsOrReportsError(
+      catchBody: TSESTree.BlockStatement,
+      caughtName: string | null,
+    ): boolean {
+      return walkWithinScope(catchBody, (current) => {
+        if (current.type !== AST_NODE_TYPES.CallExpression) {
+          return false;
+        }
+        if (matcher.isLoggingCall(current)) {
+          return true;
+        }
+        const name = calleeName(current.callee);
+        return (
+          name !== null &&
+          REPORT_NAME_RE.test(name) &&
+          argsIncludeBinding(current.arguments, caughtName)
+        );
+      });
+    }
+
     return {
       CatchClause(node: TSESTree.CatchClause): void {
         const body = node.body.body;
@@ -354,6 +502,10 @@ export default ESLintUtils.RuleCreator(
         }
 
         const kind = sentinelKind(last.argument);
+        if (kind !== null && isDeclaredBooleanPredicate(node, kind)) {
+          return;
+        }
+
         if (
           kind !== null &&
           functionReturnsSameSentinelKindElsewhere(node, kind)

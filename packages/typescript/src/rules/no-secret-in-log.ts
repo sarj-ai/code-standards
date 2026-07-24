@@ -10,6 +10,12 @@
  * an object argument (`logger.error("msg", { token, apiKey })`) or as a bare
  * secret-named positional identifier (`logger.info("x", password)`).
  *
+ * Log recognition is shared with the catch rules via `_logging`, so the
+ * `logFunctions` option applies here too. That matters: a structured logger is
+ * usually a free function with no logger receiver, and `logEvent("slack.auth",
+ * { botToken })` was previously never even examined by this rule. Declaring the
+ * project's logger closes that hole.
+ *
  * The secret-name predicate matches a secret word only as a WHOLE token (after
  * snake_case / camelCase splitting) and disqualifies identifiers whose trailing
  * token is a counter / row-id / flag marker (`tokenCount`, `apiKeyId`,
@@ -22,34 +28,14 @@
 
 import { ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
 
+import {
+  createLogMatcher,
+  LOGGING_OPTION_PROPERTIES,
+  type LoggingOptions,
+} from "./_logging.js";
+
 type MessageIds = "noSecretInLog";
-type Options = readonly [];
-
-const LOG_METHODS: ReadonlySet<string> = new Set([
-  "debug",
-  "info",
-  "warn",
-  "warning",
-  "error",
-  "exception",
-  "critical",
-  "trace",
-  "log",
-  "fatal",
-  "success",
-]);
-
-const LOGGER_NAMES: ReadonlySet<string> = new Set([
-  "logger",
-  "log",
-  "logging",
-  "loguru",
-  "console",
-  "_logger",
-  "_log",
-]);
-
-const LOGGER_FACTORIES: ReadonlySet<string> = new Set(["getlogger", "get_logger"]);
+type Options = readonly [LoggingOptions?];
 
 const SECRET_WORDS: ReadonlySet<string> = new Set([
   "token",
@@ -196,45 +182,6 @@ function isSecretKeyword(name: string): boolean {
 }
 
 /**
- * True if `expr` evaluates to a logger. Resolves the whole receiver chain so
- * adapter/builder/factory calls are caught: `logger.bind(...).info(...)`,
- * `logging.getLogger(name).info(...)`, `this.logger.error(...)`.
- */
-function isLoggerExpr(expr: TSESTree.Expression | TSESTree.PrivateIdentifier): boolean {
-  switch (expr.type) {
-    case "Identifier":
-      return LOGGER_NAMES.has(expr.name.toLowerCase());
-    case "MemberExpression": {
-      const { property, object } = expr;
-      if (!expr.computed && property.type === "Identifier") {
-        const lowered = property.name.toLowerCase();
-        if (LOGGER_NAMES.has(lowered) || LOGGER_FACTORIES.has(lowered)) {
-          return true;
-        }
-      }
-      return isLoggerExpr(object);
-    }
-    case "CallExpression": {
-      const callee = expr.callee;
-      if (
-        callee.type === "MemberExpression" &&
-        !callee.computed &&
-        callee.property.type === "Identifier" &&
-        LOGGER_FACTORIES.has(callee.property.name.toLowerCase())
-      ) {
-        return true;
-      }
-      if (callee.type !== "Super") {
-        return isLoggerExpr(callee);
-      }
-      return false;
-    }
-    default:
-      return false;
-  }
-}
-
-/**
  * True if `prop`'s value is the raw secret rather than a redacted/derived form.
  * Shorthand (`{ token }`), a bare identifier (`{ apiKey: theKey }`), or a plain
  * member access (`{ apiKey: config.apiKey }`) all carry the secret verbatim. A
@@ -273,26 +220,25 @@ export default ESLintUtils.RuleCreator(
       description:
         "Disallow passing a secret-named value to a logging call; it leaks to log sinks. Redact or omit it.",
     },
-    schema: [],
+    schema: [
+      {
+        type: "object",
+        additionalProperties: false,
+        properties: { ...LOGGING_OPTION_PROPERTIES },
+      },
+    ],
     messages: {
       noSecretInLog:
         "Secret `{{name}}` passed to a logging call leaks it to log sinks. Redact (e.g. `{{name}}Prefix: {{name}}.slice(0, 6)`) or omit it.",
     },
   },
-  defaultOptions: [],
-  create(context) {
+  defaultOptions: [{}],
+  create(context, [loggingOptions]) {
+    const matcher = createLogMatcher(loggingOptions);
+
     return {
       CallExpression(node: TSESTree.CallExpression): void {
-        const callee = node.callee;
-        if (
-          callee.type !== "MemberExpression" ||
-          callee.computed ||
-          callee.property.type !== "Identifier" ||
-          !LOG_METHODS.has(callee.property.name)
-        ) {
-          return;
-        }
-        if (!isLoggerExpr(callee.object)) {
+        if (!matcher.isLoggingCall(node)) {
           return;
         }
 

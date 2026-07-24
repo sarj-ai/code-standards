@@ -1,14 +1,36 @@
+/**
+ * @fileoverview Require Zod validation on values read out of a `FormData`.
+ * `formData.get(k)` returns `FormDataEntryValue | null` — an unvalidated,
+ * attacker-controlled value. Pipe it through a schema before use.
+ *
+ * Validation is recognised two ways:
+ *   - INLINE: the `.get(...)` call sits inside a Zod `.parse(...)` /
+ *     `.safeParse(...)` — found by walking up the parent chain.
+ *   - VIA A BINDING: the value is bound and validated one or more statements
+ *     later, which is how a real handler reads. Tracked through the scope
+ *     manager (the same approach `prefer-schema-for-api-payload` uses for
+ *     `response.json()`), so this is not reported:
+ *       const tokenRaw = formData.get("t");
+ *       const parsed = ZForm.safeParse({ t: typeof tokenRaw === "string" ? tokenRaw : undefined });
+ *
+ * A binding narrowed by `instanceof File` / `instanceof Blob` is also exempt: a
+ * Zod schema has nothing useful to say about a `File`, and `instanceof` IS the
+ * validation for that branch.
+ *
+ * A Zod receiver is recognised by name — `Schema`-suffixed (`userSchema`), the
+ * `Z<Capital>` house form (`ZUser`), or the bare `z` builder — matching
+ * `zod-naming-convention`, which accepts both conventions.
+ */
+
 import { ESLintUtils, type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
 import type { RuleContext, Scope } from "@typescript-eslint/utils/ts-eslint";
+
+import { ZOD_SCHEMA_NAME_RE } from "./_zod.js";
 
 type MessageIds = "missingZodValidation";
 type Options = readonly [];
 
 type Ctx = Readonly<RuleContext<MessageIds, Options>>;
-
-// A receiver name that looks like a Zod schema: ends in `Schema`, or uses the
-// `Z<Capital>` house convention (e.g. `ZUser`), or the bare `z` builder.
-const ZOD_SCHEMA_NAME_RE = /Schema$|^Z[A-Z]/;
 
 /**
  * Walk down a (possibly chained) receiver expression and decide whether it
@@ -128,18 +150,67 @@ export default ESLintUtils.RuleCreator(
       return isFormSourceIdentifier(callee.object);
     };
 
+    // Walk up from `node` looking for a surrounding Zod `.parse(...)` /
+    // `.safeParse(...)` call. `.parent` is `null` at the Program root, so we
+    // must guard for both null and undefined.
+    const hasZodParseAncestor = (node: TSESTree.Node): boolean => {
+      let parent: TSESTree.Node | null | undefined = node.parent;
+      while (parent !== null && parent !== undefined) {
+        if (isZodParseCall(parent)) return true;
+        parent = parent.parent;
+      }
+      return false;
+    };
+
+    // `x instanceof File` / `x instanceof Blob` — a Zod schema adds nothing over
+    // the `instanceof` narrowing for a binary upload.
+    const isInstanceofNarrowing = (node: TSESTree.Node): boolean => {
+      const parent: TSESTree.Node | null | undefined = node.parent;
+      return (
+        parent !== null &&
+        parent !== undefined &&
+        parent.type === AST_NODE_TYPES.BinaryExpression &&
+        parent.operator === "instanceof" &&
+        parent.left === node
+      );
+    };
+
+    /** The identifier this `.get(...)` call is bound to, or null. */
+    const boundDeclarator = (
+      node: TSESTree.CallExpression,
+    ): TSESTree.VariableDeclarator | null => {
+      const parent = node.parent;
+      if (
+        parent.type === AST_NODE_TYPES.VariableDeclarator &&
+        parent.init === node &&
+        parent.id.type === AST_NODE_TYPES.Identifier
+      ) {
+        return parent;
+      }
+      return null;
+    };
+
+    /** Is any read of this binding validated (Zod parse, or `instanceof File`)? */
+    const bindingIsValidated = (
+      declarator: TSESTree.VariableDeclarator,
+    ): boolean => {
+      const variable = context.sourceCode.getDeclaredVariables(declarator)[0];
+      if (variable === undefined) return false;
+      return variable.references.some(
+        (ref) =>
+          hasZodParseAncestor(ref.identifier) ||
+          isInstanceofNarrowing(ref.identifier),
+      );
+    };
+
     return {
       CallExpression(node: TSESTree.CallExpression): void {
         if (!isFormDataGetCall(node)) return;
 
-        // Walk up the parent chain to find a surrounding Zod `.parse(...)` /
-        // `.safeParse(...)` call. `.parent` is `null` at the Program root, so we
-        // must guard for both null and undefined.
-        let parent: TSESTree.Node | null | undefined = node.parent;
-        while (parent !== null && parent !== undefined) {
-          if (isZodParseCall(parent)) return;
-          parent = parent.parent;
-        }
+        if (hasZodParseAncestor(node) || isInstanceofNarrowing(node)) return;
+
+        const declarator = boundDeclarator(node);
+        if (declarator !== null && bindingIsValidated(declarator)) return;
 
         context.report({
           node,

@@ -7,6 +7,17 @@
  * substring-corroboration heuristic was too false-positive-prone on real code).
  * JSDoc (`/** ... *\/`) is never flagged, and directive comments (`eslint-`,
  * `@ts-`, `prettier-`, `biome-`, `c8`, `<reference`, `TODO`, `FIXME`) are ignored.
+ *
+ * `fileHeaderPreamble` requires the preamble to contain NO prose sentence. The
+ * original "4+ consecutive `//` lines before the first code" test penalised
+ * syntax rather than content: on a real 42k-LOC codebase, 11 of 15 hits were the
+ * repo's BEST documentation — module headers explaining a stateless idempotency
+ * substrate, one citing RFC 9562 §5.7 — which is precisely the "brief doc
+ * comment for the why" this rule's own message asks for. Exactly one hit was
+ * genuine (an ASCII banner, already covered by `sectionBanner`). What survives
+ * is the content-free preamble: a stack of bare labels/fragments with nothing
+ * explained. A prose header should be a JSDoc block for tooling reasons, but
+ * that is a formatting preference, not cruft, and this rule does not litigate it.
  */
 
 import { ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
@@ -191,12 +202,12 @@ export default ESLintUtils.RuleCreator(
       }
       const first = leading[0];
       if (first === undefined || leading.length < LEADING_PREAMBLE_MIN) return;
-      const isLicense = leading.some((c) =>
-        LICENSE_RE.test(stripCommentMarker(c.value)),
-      );
-      if (!isLicense) {
-        context.report({ node: first, messageId: "fileHeaderPreamble" });
-      }
+      const bodies = leading.map((c) => stripCommentMarker(c.value));
+      if (bodies.some((body) => LICENSE_RE.test(body))) return;
+      // A preamble carrying at least one prose sentence is documentation — the
+      // "why" the rule wants — regardless of which comment syntax carries it.
+      if (bodies.some((body) => isProse(body))) return;
+      context.report({ node: first, messageId: "fileHeaderPreamble" });
     }
 
     return {

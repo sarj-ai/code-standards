@@ -95,6 +95,13 @@ ruleTester.run("no-secret-in-log", rule, {
     { code: 'logger.info("auth", { apiKey: "***" });' },
     { code: 'logger.info("auth", { token: `${token.slice(0, 4)}...` });' },
     { code: 'logger.info("auth", { credentials: hasCreds ? "set" : "unset" });' },
+    // An UNDECLARED free function is not assumed to be a log sink.
+    { code: 'logEvent("slack.auth", { botToken });' },
+    // A declared logger still respects the innocuous-name and redaction rules.
+    {
+      code: 'logEvent("slack.auth", { tokenPrefix });',
+      options: [{ logFunctions: ["logEvent"] }],
+    },
   ],
   invalid: [
     // Object property: shorthand secret names.
@@ -183,6 +190,19 @@ ruleTester.run("no-secret-in-log", rule, {
     },
     {
       code: 'logger.warn("auth", this.jwt);',
+      errors: [{ messageId: "noSecretInLog" }],
+    },
+    // FP-1 security hole: a structured logger is a FREE FUNCTION, so this call
+    // was never even examined before. Declaring it closes the hole.
+    {
+      code: 'logEvent("slack.auth", { botToken });',
+      options: [{ logFunctions: ["logEvent"] }],
+      errors: [{ messageId: "noSecretInLog" }],
+    },
+    // A declared logger RECEIVER name resolves like `logger` / `console`.
+    {
+      code: 'obs.error("auth", { apiKey });',
+      options: [{ loggerNames: ["obs"] }],
       errors: [{ messageId: "noSecretInLog" }],
     },
   ],

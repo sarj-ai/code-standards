@@ -24,6 +24,17 @@
  *   (c) the await is a timer yield — `await new Promise((r) => setTimeout(r))`;
  *   (d) the iterable's name/derivation signals ordering — `*Sorted*`,
  *       `.reverse()`, lifecycle `hooks`, pipeline `stages`, etc.
+ *   (e) a `while` / `do-while` whose CONTINUATION depends on state the body
+ *       computes — cursor pagination:
+ *       `do { const page = await list(cursor); cursor = page.nextCursor } while (cursor)`.
+ *       The next request's input is the previous response's output, so the
+ *       iteration count is unknowable up front and there is nothing to collect
+ *       into a `Promise.all`. Guard (b) misses this because the cursor is
+ *       assigned from a property of the awaited value, not from the await
+ *       itself; guard (a) misses it because the `while` test IS the exit.
+ *       Deliberately narrow: only a plain `=` assignment to a test-read
+ *       variable counts, so a hand-rolled counter loop (`while (i < n) { i++;
+ *       await g(i) }`) still fires.
  * The genuinely parallelizable shape — independent awaits whose results are
  * collected or discarded without a cross-iteration dependency or early exit —
  * still fires.
@@ -244,6 +255,45 @@ function isThreadedAccumulator(node: TSESTree.AwaitExpression): boolean {
   return referencesName(node.argument, target);
 }
 
+/** Every identifier name read by a loop's test expression. */
+function namesReadBy(test: TSESTree.Node): Set<string> {
+  const names = new Set<string>();
+  visitScope(test, (node) => {
+    if (node.type === "Identifier") {
+      names.add(node.name);
+    }
+  });
+  return names;
+}
+
+/**
+ * Guard (e): a `while` / `do-while` whose continuation condition is recomputed
+ * by its own body — the cursor-pagination shape. True when the body plainly
+ * assigns (`=`) to a variable the test reads. `++` / `+=` are excluded so a
+ * hand-rolled counter loop, which IS parallelizable, keeps firing.
+ */
+function testStateIsAssignedInBody(
+  test: TSESTree.Node,
+  body: TSESTree.Node,
+): boolean {
+  const testNames = namesReadBy(test);
+  if (testNames.size === 0) {
+    return false;
+  }
+  let found = false;
+  visitScope(body, (node) => {
+    if (
+      node.type === "AssignmentExpression" &&
+      node.operator === "=" &&
+      node.left.type === "Identifier" &&
+      testNames.has(node.left.name)
+    ) {
+      found = true;
+    }
+  });
+  return found;
+}
+
 /**
  * Decides whether a set of awaits owned by a loop/callback is worth reporting.
  * Suppressed when the loop short-circuits (a) or iterates an ordered sequence
@@ -319,6 +369,13 @@ export default ESLintUtils.RuleCreator(
     }
 
     function checkLoop(node: LoopNode): void {
+      if (
+        (node.type === "WhileStatement" || node.type === "DoWhileStatement") &&
+        testStateIsAssignedInBody(node.test, node.body)
+      ) {
+        return;
+      }
+
       const awaits: TSESTree.AwaitExpression[] = [];
       let earlyExit = false;
       for (const part of loopParts(node)) {
