@@ -33,51 +33,19 @@ import {
   LOGGING_OPTION_PROPERTIES,
   type LoggingOptions,
 } from "./_logging.js";
+import { INNOCUOUS_WORDS, isSecretName, tokenize } from "./_secret_names.js";
 
 type MessageIds = "noSecretInLog";
 type Options = readonly [LoggingOptions?];
 
-const SECRET_WORDS: ReadonlySet<string> = new Set([
-  "token",
-  "secret",
-  "password",
-  "passwd",
-  "jwt",
-  "secrets",
-  "passwords",
-  "credential",
-  "credentials",
-  "authorization",
-  "signature",
-  "hmac",
-  "digest",
-  "hash",
-  "apikey",
-]);
-
-const INNOCUOUS_WORDS: ReadonlySet<string> = new Set([
-  "count",
-  "counts",
-  "budget",
-  "limit",
-  "limits",
-  "id",
-  "ids",
-  "enabled",
-  "disabled",
-  "flag",
-  "flags",
-  "present",
-  "set",
-  "unset",
-  "configured",
-  "missing",
-  "required",
-  "valid",
-  "invalid",
-  "exists",
-  "type",
-  "types",
+/**
+ * The shared metadata set plus the log-specific extras. Logging a secret's
+ * label, expiry, ARN, URL, scope, or the DI component that holds it is metadata
+ * ABOUT the credential, never the credential bytes, so it must not fire here —
+ * `prefer-constant-time-secret-compare` uses the narrower shared set.
+ */
+const LOG_INNOCUOUS_WORDS: ReadonlySet<string> = new Set([
+  ...INNOCUOUS_WORDS,
   "name",
   "names",
   "label",
@@ -125,51 +93,6 @@ const INNOCUOUS_WORDS: ReadonlySet<string> = new Set([
 const REDACTION_RE = /prefix|suffix|redact|mask|hash|hint|_len|length/i;
 const WHOLE_TOKEN_REDACTION_MARKERS: ReadonlySet<string> = new Set(["tag"]);
 
-const CAMEL_RE = /[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|\d+/g;
-const SEGMENT_RE = /[^A-Za-z0-9]+/;
-
-/**
- * Ordered lowercase tokens from snake_case + camelCase decomposition. Also
- * yields each whole snake/kebab segment lowercased, so a pathological mixed-case
- * word still surfaces its intended form.
- */
-function tokenize(identifier: string): string[] {
-  const tokens: string[] = [];
-  for (const segment of identifier.split(SEGMENT_RE)) {
-    if (!segment) {
-      continue;
-    }
-    tokens.push(segment.toLowerCase());
-    for (const part of segment.match(CAMEL_RE) ?? []) {
-      tokens.push(part.toLowerCase());
-    }
-  }
-  return tokens;
-}
-
-/** True if `api` is immediately followed by `key` (the split form of `api_key`). */
-function hasApiKey(tokens: readonly string[]): boolean {
-  for (let i = 0; i + 1 < tokens.length; i++) {
-    if (tokens[i] === "api" && tokens[i + 1] === "key") {
-      return true;
-    }
-  }
-  return false;
-}
-
-/** True if `identifier` names raw secret material (a credential, not metadata). */
-function isSecretName(identifier: string): boolean {
-  const tokens = tokenize(identifier);
-  const last = tokens.at(-1);
-  if (last !== undefined && INNOCUOUS_WORDS.has(last)) {
-    return false;
-  }
-  if (tokens.some((tok) => SECRET_WORDS.has(tok))) {
-    return true;
-  }
-  return hasApiKey(tokens);
-}
-
 /** True if the name names a raw secret and is not a redacted derivative. */
 function isSecretKeyword(name: string): boolean {
   if (REDACTION_RE.test(name)) {
@@ -178,7 +101,7 @@ function isSecretKeyword(name: string): boolean {
   if (tokenize(name).some((tok) => WHOLE_TOKEN_REDACTION_MARKERS.has(tok))) {
     return false;
   }
-  return isSecretName(name);
+  return isSecretName(name, LOG_INNOCUOUS_WORDS);
 }
 
 /**

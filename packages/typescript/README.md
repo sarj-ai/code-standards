@@ -12,7 +12,7 @@ import sarj from "@sarj/eslint-plugin";
 export default [...sarj.configs.recommended];
 ```
 
-Each rule's source under `lib/rules/` carries its own `meta.docs.description` + `meta.messages` — read the file for full rationale.
+Each rule's source under `src/rules/` carries its own `@fileoverview` rationale plus `meta.docs.description` + `meta.messages` — read the file for the full reasoning, including the false positives it deliberately does not fire on.
 
 Presets: `recommended` (warn-first), `strict` (every rule at error), `style-guide` (formatting/naming subset).
 
@@ -67,3 +67,27 @@ would be wrong, not better:
 ### `no-enum`: `ignoreFiles`
 
 Glob patterns whose files opt out (generated code already opts out by default).
+Presets: `recommended` (warn-first), `strict` (every rule at error, except the few noted in `src/index.ts` as style-adjacent).
+
+## Ported from `sarj_python_lint`
+
+Several rules are ports of the Python linter's SARJ rules, retuned for TypeScript. The false-positive tuning documented in the Python docstrings is ported with them — that tuning is the valuable part.
+
+| TypeScript rule | Python | What it prevents |
+| --- | --- | --- |
+| `prefer-constant-time-secret-compare` | SARJ011 | Byte-by-byte secret recovery through the timing of a short-circuiting `===` on a token / signature / HMAC. On Workers the fix is `crypto.subtle.timingSafeEqual` over equal-length digests. |
+| `no-secret-in-log` | SARJ012 | Credentials persisted into log sinks. |
+| `store-insert-requires-on-conflict` | SARJ018 | Duplicate rows — or unique-constraint failures that re-trigger the handler — when a cron re-runs or a queue message is redelivered. |
+| `no-select-star` | SARJ021 | An implicit row contract that changes silently when a column is added or reordered. |
+| `no-offset-pagination` | SARJ025 | O(N)-per-page scans, and rows repeated or skipped when the offset window shifts under concurrent inserts. |
+| `no-repeated-string-literal` | SARJ024 | Copies of a structured literal (SQL, column lists, prompt templates) drifting apart when only one is edited. |
+| `no-positional-tuple-return` | SARJ026 | Call sites re-inventing — and disagreeing on — the field names of a positional tuple return. |
+| `no-sleep-in-test-body` | SARJ031 | Tests that assert on wall-clock time and flake under CI load. |
+| `no-fat-try-blocks` | SARJ007 | Over-broad `catch` handlers swallowing unrelated failures. |
+| `no-cors-wildcard-with-credentials` | SARJ008 | Credentialed cross-origin requests from any origin. |
+| `single-public-export` | SARJ022 | Modules with no single obvious entry point. |
+| `prefer-string-literal-union` | SARJ006 | An open `string` where a closed set is intended. |
+
+Shared helpers live in `src/rules/_*.ts` (`_secret_names.ts`, `_sql.ts`, `_logging.ts`, `_paths.ts`, `_tailwind.ts`) so related rules cannot diverge on what counts as a secret, a SQL statement, a logging call, or a test file.
+
+Deliberately **not** ported: `no-unreachable-after-terminal` (SARJ010) is already covered by `allowUnreachableCode: false` in `@sarj/tsconfig` plus ESLint core `no-unreachable`; `no-aggregation-in-store-query` (SARJ020) assumes a Postgres-OLTP / columnar-mirror split that D1 does not have; `no-query-with-many-joins` (SARJ019), `stepdown` (SARJ023), `prefer-class-row`, `prefer-struct-over-namedtuple`, `prefer-timedelta-for-durations`, and `no-fstring-in-log` have no TypeScript defect class or target API; `prefer-str-enum` is covered by `prefer-string-literal-union` + `no-enum`.

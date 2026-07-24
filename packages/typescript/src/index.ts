@@ -27,6 +27,13 @@ import noSecretInLog from "./rules/no-secret-in-log.js";
 import noUnsafeCast from "./rules/no-unsafe-cast.js";
 import preferStringLiteralUnion from "./rules/prefer-string-literal-union.js";
 import singlePublicExport from "./rules/single-public-export.js";
+import noOffsetPagination from "./rules/no-offset-pagination.js";
+import noPositionalTupleReturn from "./rules/no-positional-tuple-return.js";
+import noRepeatedStringLiteral from "./rules/no-repeated-string-literal.js";
+import noSelectStar from "./rules/no-select-star.js";
+import noSleepInTestBody from "./rules/no-sleep-in-test-body.js";
+import preferConstantTimeSecretCompare from "./rules/prefer-constant-time-secret-compare.js";
+import storeInsertRequiresOnConflict from "./rules/store-insert-requires-on-conflict.js";
 
 const rules = {
   "enforce-file-structure": enforceFileStructure,
@@ -58,6 +65,13 @@ const rules = {
   "no-silent-promise-catch": noSilentPromiseCatch,
   "require-fetch-timeout": requireFetchTimeout,
   "require-schema-validate-search": requireSchemaValidateSearch,
+  "no-offset-pagination": noOffsetPagination,
+  "no-positional-tuple-return": noPositionalTupleReturn,
+  "no-repeated-string-literal": noRepeatedStringLiteral,
+  "no-select-star": noSelectStar,
+  "no-sleep-in-test-body": noSleepInTestBody,
+  "prefer-constant-time-secret-compare": preferConstantTimeSecretCompare,
+  "store-insert-requires-on-conflict": storeInsertRequiresOnConflict,
 };
 
 const plugin = {
@@ -100,6 +114,17 @@ const plugin = {
         "@sarj/require-fetch-timeout": "warn",
         "@sarj/no-silent-promise-catch": "warn",
         "@sarj/require-schema-validate-search": "warn",
+        // Second SARJ port wave — the TS/Python parity gap. Each targets a
+        // defect class seen in production Workers code: timing-leaky secret
+        // compares, non-idempotent store writes under queue redelivery,
+        // O(N) pagination, implicit row contracts, flaky timed tests.
+        "@sarj/prefer-constant-time-secret-compare": "error",
+        "@sarj/store-insert-requires-on-conflict": "warn",
+        "@sarj/no-offset-pagination": "warn",
+        "@sarj/no-select-star": "warn",
+        "@sarj/no-sleep-in-test-body": "warn",
+        "@sarj/no-repeated-string-literal": "warn",
+        "@sarj/no-positional-tuple-return": "warn",
       },
     },
     strict: {
@@ -140,6 +165,17 @@ const plugin = {
         "@sarj/require-fetch-timeout": "error",
         "@sarj/no-silent-promise-catch": "error",
         "@sarj/require-schema-validate-search": "error",
+        // Second SARJ port wave — the TS/Python parity gap.
+        "@sarj/prefer-constant-time-secret-compare": "error",
+        "@sarj/store-insert-requires-on-conflict": "error",
+        "@sarj/no-offset-pagination": "error",
+        "@sarj/no-select-star": "error",
+        "@sarj/no-sleep-in-test-body": "error",
+        "@sarj/no-repeated-string-literal": "error",
+        // API-shape advice rather than a runtime defect — a corpus sweep found its
+        // only hits are parser `[value, cursor]` returns, which are conventional.
+        // Warn even in strict until a rollout justifies more.
+        "@sarj/no-positional-tuple-return": "warn",
       },
     },
   },
