@@ -69,6 +69,17 @@ ruleTester.run("no-silent-promise-catch", rule, {
     {
       code: "p.catch(() => ({ ok: false }));",
     },
+    // An eslint-disable-next-line above the call suppresses cleanly even when
+    // the handler sits on a later line than the call (the report is anchored
+    // on the CallExpression, not the handler).
+    {
+      code: [
+        "// eslint-disable-next-line @rule-tester/no-silent-promise-catch -- deliberate",
+        "p.catch(",
+        "  () => null,",
+        ");",
+      ].join("\n"),
+    },
   ],
   invalid: [
     {
@@ -135,6 +146,11 @@ ruleTester.run("no-silent-promise-catch", rule, {
     {
       code: "fetchUser(id).then(render).catch(() => null);",
       errors: [{ messageId: "silentCatch" }],
+    },
+    // Multi-line: the report anchors at the call, not the handler line.
+    {
+      code: ["p.catch(", "  () => null,", ");"].join("\n"),
+      errors: [{ messageId: "silentCatch", line: 1 }],
     },
     // json/text with arguments or as a plain lookup is NOT the parse idiom.
     {

@@ -90,6 +90,24 @@ ruleTester.run("no-hardcoded-ui-text", rule, {
       code: "const x = <p>Sign in to continue</p>;",
       filename: "/repo/src/components/__tests__/widget.tsx",
     },
+    // <code>/<pre>/<kbd> display literal text, not copy — including when the
+    // text is nested deeper inside the literal element.
+    {
+      code: "const x = <code>npm install @sarj/eslint-plugin</code>;",
+      filename: TSX,
+    },
+    {
+      code: "const x = <pre>SELECT id FROM calls</pre>;",
+      filename: TSX,
+    },
+    {
+      code: "const x = <kbd>Ctrl Shift P</kbd>;",
+      filename: TSX,
+    },
+    {
+      code: "const x = <pre><span>const x = 1</span></pre>;",
+      filename: TSX,
+    },
   ],
   invalid: [
     // (a) Multi-word JSXText.
@@ -101,6 +119,17 @@ ruleTester.run("no-hardcoded-ui-text", rule, {
     // (a) Arabic JSXText.
     {
       code: "const x = <p>مرحبا بك</p>;",
+      filename: TSX,
+      errors: [{ messageId: "hardcodedJsxText" }],
+    },
+    // (a) Digits after the first word still read as copy.
+    {
+      code: "const x = <p>Total 5 Users</p>;",
+      filename: TSX,
+      errors: [{ messageId: "hardcodedJsxText" }],
+    },
+    {
+      code: "const x = <span>Page 1 of 3</span>;",
       filename: TSX,
       errors: [{ messageId: "hardcodedJsxText" }],
     },

@@ -22,14 +22,10 @@
 
 import { AST_NODE_TYPES, ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
 
+import { isTestFile } from "./_paths.js";
+
 type MessageIds = "silentCatch";
 type Options = readonly [];
-
-const TEST_FILE_PATTERNS: readonly RegExp[] = [
-  /\.test\./,
-  /\.spec\./,
-  /[\\/]__tests__[\\/]/,
-];
 
 /** True for `x.json()` / `x.text()` — the receiver of a body-parse-fallback catch. */
 function isBodyParseCall(node: TSESTree.Expression): boolean {
@@ -118,7 +114,7 @@ export default ESLintUtils.RuleCreator(
   },
   defaultOptions: [],
   create(context) {
-    if (TEST_FILE_PATTERNS.some((re) => re.test(context.filename))) {
+    if (isTestFile(context.filename)) {
       return {};
     }
 
@@ -150,7 +146,11 @@ export default ESLintUtils.RuleCreator(
         }
 
         if (isSilentHandler(handler)) {
-          context.report({ node: handler, messageId: "silentCatch" });
+          // Anchor on the CallExpression, not the handler: when the handler
+          // sits on a later line than the call (multi-line `.catch(`), a
+          // handler-anchored report escapes an `eslint-disable-next-line`
+          // above the call AND marks that directive as unused.
+          context.report({ node, messageId: "silentCatch" });
         }
       },
     };

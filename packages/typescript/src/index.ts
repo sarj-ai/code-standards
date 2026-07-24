@@ -99,8 +99,9 @@ const plugin = {
         "@sarj/single-public-export": "warn",
         "@sarj/prefer-string-literal-union": "warn",
         // Mined from 2y of PR review feedback + 5-repo code-smell audit (2026-07).
-        // no-hardcoded-ui-text is deliberately absent here: highest-FP-risk rule,
-        // strict-only (warn) until rollout proves the FP rate.
+        // no-hardcoded-ui-text is deliberately absent here AND in strict: no
+        // target repo has an i18n framework yet, so its findings are
+        // unactionable. Adoption is gated on an i18n framework decision.
         "@sarj/require-fetch-timeout": "warn",
         "@sarj/no-silent-promise-catch": "warn",
         "@sarj/require-schema-validate-search": "warn",
@@ -144,8 +145,10 @@ const plugin = {
         "@sarj/require-fetch-timeout": "error",
         "@sarj/no-silent-promise-catch": "error",
         "@sarj/require-schema-validate-search": "error",
-        // High-volume/stylistic — warn until rollout proves FP rate.
-        "@sarj/no-hardcoded-ui-text": "warn",
+        // no-hardcoded-ui-text is deliberately absent (2026-07 audit): no
+        // target repo has an i18n framework, so its 2,566 corpus findings are
+        // unactionable — there is no t() to move copy behind. The rule ships
+        // in the registry; adoption is gated on an i18n framework decision.
       },
     },
   },

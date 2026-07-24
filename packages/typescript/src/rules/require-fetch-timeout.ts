@@ -5,19 +5,35 @@
  * from an `AbortController` — in the init object.
  *
  * Scope is deliberately narrow to keep false positives near zero:
- *   - Only bare `fetch(...)` identifier calls are checked. Member calls like
+ *   - Only calls that resolve to the *global* `fetch` are checked: bare
+ *     `fetch(...)` (unless a local binding — import, parameter, variable —
+ *     shadows it) plus the explicit global spellings `globalThis.fetch(...)`,
+ *     `window.fetch(...)`, and `self.fetch(...)`. Other member calls like
  *     Cloudflare Workers service bindings (`env.MY_SERVICE.fetch(...)`) or
  *     custom clients (`client.fetch(...)`) are skipped.
  *   - A call is flagged only when the init argument is absent, or is an
  *     object literal that provably lacks `signal` (no spread, no `signal`
  *     key). Anything dynamic (an identifier, a call result, a spread) is
  *     assumed to carry a signal.
+ *   - Single-argument calls whose argument is not a string/template literal
+ *     are skipped: `fetch(request)` / `fetch(c.req.raw.clone())` are proxy
+ *     passthroughs (Workers idiom) where the inbound Request governs the
+ *     lifetime and attaching a fresh signal is impossible or wrong.
+ *   - Test files and one-off tooling (`scripts/**`, `*.mjs`) are skipped —
+ *     dev scripts die with the terminal, so hang-hardening is noise there.
  *
  * Wrapper modules that centralize timeout handling can be exempted via the
  * `allowIn` glob-pattern option.
  */
 
-import { AST_NODE_TYPES, ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
+import {
+  AST_NODE_TYPES,
+  ASTUtils,
+  ESLintUtils,
+  type TSESTree,
+} from "@typescript-eslint/utils";
+
+import { isScriptFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "missingSignal";
 type Options = readonly [
@@ -25,6 +41,13 @@ type Options = readonly [
     allowIn?: readonly string[];
   }?,
 ];
+
+/** The explicit-global receivers of `<obj>.fetch(...)`. */
+const GLOBAL_OBJECTS: ReadonlySet<string> = new Set([
+  "globalThis",
+  "window",
+  "self",
+]);
 
 function matchesAnyPattern(
   filename: string,
@@ -73,6 +96,14 @@ function initProvablyLacksSignal(init: TSESTree.CallExpressionArgument): boolean
   return true;
 }
 
+/** True for a string or template literal — a URL spelled inline. */
+function isStringish(node: TSESTree.CallExpressionArgument): boolean {
+  return (
+    (node.type === AST_NODE_TYPES.Literal && typeof node.value === "string") ||
+    node.type === AST_NODE_TYPES.TemplateLiteral
+  );
+}
+
 export default ESLintUtils.RuleCreator(
   (name) =>
     `https://github.com/sarj-ai/linting/blob/main/packages/typescript/src/rules/${name}.ts`,
@@ -90,6 +121,8 @@ export default ESLintUtils.RuleCreator(
         additionalProperties: false,
         properties: {
           allowIn: {
+            description:
+              "Glob patterns for wrapper modules exempt from the rule. Matched against the ABSOLUTE file path, so anchor with a `**/` prefix (e.g. `**/http-client.ts`).",
             type: "array",
             items: { type: "string" },
           },
@@ -103,21 +136,54 @@ export default ESLintUtils.RuleCreator(
   },
   defaultOptions: [{}],
   create(context, [optionsArg]) {
+    if (isTestFile(context.filename) || isScriptFile(context.filename)) {
+      return {};
+    }
     const allowIn = optionsArg?.allowIn ?? [];
     if (allowIn.length > 0 && matchesAnyPattern(context.filename, allowIn)) {
       return {};
     }
 
+    /** True when `identifier` resolves to the global (no local binding shadows it). */
+    function resolvesToGlobal(identifier: TSESTree.Identifier): boolean {
+      const scope = context.sourceCode.getScope(identifier);
+      const variable = ASTUtils.findVariable(scope, identifier.name);
+      // Unresolved → implicit global. Resolved with zero defs → declared
+      // global (languageOptions.globals). Any def is a local shadow.
+      return variable === null || variable.defs.length === 0;
+    }
+
+    /** True for `fetch(...)` / `globalThis.fetch(...)` / `window.fetch(...)` /
+     * `self.fetch(...)` where the receiver resolves to the global scope. */
+    function isGlobalFetchCall(callee: TSESTree.Expression): boolean {
+      if (callee.type === AST_NODE_TYPES.Identifier) {
+        return callee.name === "fetch" && resolvesToGlobal(callee);
+      }
+      return (
+        callee.type === AST_NODE_TYPES.MemberExpression &&
+        !callee.computed &&
+        callee.property.type === AST_NODE_TYPES.Identifier &&
+        callee.property.name === "fetch" &&
+        callee.object.type === AST_NODE_TYPES.Identifier &&
+        GLOBAL_OBJECTS.has(callee.object.name) &&
+        resolvesToGlobal(callee.object)
+      );
+    }
+
     return {
       CallExpression(node: TSESTree.CallExpression): void {
-        if (
-          node.callee.type !== AST_NODE_TYPES.Identifier ||
-          node.callee.name !== "fetch"
-        ) {
+        if (!isGlobalFetchCall(node.callee)) {
           return;
         }
 
-        const init = node.arguments[1];
+        // Proxy passthrough: a lone non-string argument is a Request (or
+        // equivalent) being forwarded — the inbound request owns the
+        // lifetime, and a fresh signal cannot be attached without an init.
+        const [first, init] = node.arguments;
+        if (node.arguments.length === 1 && first !== undefined && !isStringish(first)) {
+          return;
+        }
+
         if (init === undefined || initProvablyLacksSignal(init)) {
           context.report({ node, messageId: "missingSignal" });
         }

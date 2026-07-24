@@ -3,9 +3,17 @@
  * i18n layer instead — the product ships bilingual (ar/en), and every literal
  * that bypasses `t()` is a string one language never sees.
  *
+ * ADOPTION PARKED (2026-07 audit): no target repo has an i18n framework yet,
+ * so every finding is unactionable — there is no `t()` to move the copy
+ * behind (2,566 corpus hits, 60-75% of them internal tooling that may never
+ * localize). The rule ships in the registry but is wired into NO config tier;
+ * turning it on is gated on an i18n framework decision.
+ *
  * Three narrow detectors (high-FP-risk rule, so scope is deliberately tight):
- *   (a) JSXText containing two or more consecutive words of Latin or Arabic
- *       letters — prose between tags is almost always copy.
+ *   (a) JSXText containing two or more consecutive words (Latin or Arabic
+ *       letters, digits allowed after the first word: "Page 1 of 3") — prose
+ *       between tags is almost always copy. JSXText inside `<code>`, `<pre>`,
+ *       or `<kbd>` is exempt: those elements display literal text.
  *   (b) Any string literal containing an Arabic codepoint in a .tsx/.jsx
  *       file — Arabic in source is user-facing copy by definition.
  *   (c) String literals of two or more words passed to the copy-carrying JSX
@@ -18,6 +26,8 @@
 
 import { AST_NODE_TYPES, ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
 
+import { isTestFile } from "./_paths.js";
+
 type MessageIds = "hardcodedJsxText" | "hardcodedAttribute" | "arabicLiteral";
 type Options = readonly [
   {
@@ -25,14 +35,21 @@ type Options = readonly [
   }?,
 ];
 
-const IGNORED_FILE_RE =
-  /(\.(test|spec)\.[jt]sx?$)|([\\/]__tests__[\\/])|(\.stories\.)/;
+const STORIES_FILE_RE = /\.stories\./;
 
 const JSX_FILE_RE = /\.[jt]sx$/;
 
-/** Two or more consecutive words of Latin or Arabic letters. */
+/** Two or more consecutive words of Latin or Arabic letters; digits may
+ * appear after the first word ("Total 5 Users", "Page 1 of 3"). */
 const TWO_WORDS_RE =
-  /[\p{Script=Latin}\p{Script=Arabic}][\p{Script=Latin}\p{Script=Arabic}'’-]*\s+[\p{Script=Latin}\p{Script=Arabic}]/u;
+  /[\p{Script=Latin}\p{Script=Arabic}][\p{Script=Latin}\p{Script=Arabic}\p{N}'’-]*\s+[\p{Script=Latin}\p{Script=Arabic}\p{N}]/u;
+
+/** Elements whose text content is literal by design, not copy. */
+const LITERAL_TEXT_ELEMENTS: ReadonlySet<string> = new Set([
+  "code",
+  "pre",
+  "kbd",
+]);
 
 const ARABIC_RE = /\p{Script=Arabic}/u;
 
@@ -95,6 +112,25 @@ function attributeName(attr: TSESTree.JSXAttribute): string {
     : `${attr.name.namespace.name}:${attr.name.name.name}`;
 }
 
+/** True when the JSXText sits inside a `<code>` / `<pre>` / `<kbd>` element. */
+function isInsideLiteralTextElement(node: TSESTree.JSXText): boolean {
+  for (
+    let current: TSESTree.Node | null | undefined = node.parent;
+    current?.type === AST_NODE_TYPES.JSXElement ||
+    current?.type === AST_NODE_TYPES.JSXFragment;
+    current = current.parent
+  ) {
+    if (
+      current.type === AST_NODE_TYPES.JSXElement &&
+      current.openingElement.name.type === AST_NODE_TYPES.JSXIdentifier &&
+      LITERAL_TEXT_ELEMENTS.has(current.openingElement.name.name)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export default ESLintUtils.RuleCreator(
   (name) =>
     `https://github.com/sarj-ai/linting/blob/main/packages/typescript/src/rules/${name}.ts`,
@@ -129,7 +165,7 @@ export default ESLintUtils.RuleCreator(
   },
   defaultOptions: [{}],
   create(context, [optionsArg]) {
-    if (IGNORED_FILE_RE.test(context.filename)) {
+    if (isTestFile(context.filename) || STORIES_FILE_RE.test(context.filename)) {
       return {};
     }
     const i18nCallees = new Set(optionsArg?.i18nCallees ?? ["t", "i18n.t"]);
@@ -154,7 +190,7 @@ export default ESLintUtils.RuleCreator(
 
     return {
       JSXText(node: TSESTree.JSXText): void {
-        if (TWO_WORDS_RE.test(node.value)) {
+        if (TWO_WORDS_RE.test(node.value) && !isInsideLiteralTextElement(node)) {
           context.report({ node, messageId: "hardcodedJsxText" });
         }
       },

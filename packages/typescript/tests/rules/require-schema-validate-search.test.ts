@@ -61,6 +61,51 @@ ruleTester.run("require-schema-validate-search", rule, {
     {
       code: "const opts = { validateSearch: adapter };",
     },
+    // The rule's own recommended remedy: a cast that feeds a runtime
+    // validator is validated regardless — parse/safeParse/decode arguments
+    // are exempt, however deeply the cast nests.
+    {
+      code: `
+        const route = createFileRoute('/calls')({
+          validateSearch: (s) => schema.parse(s as Record<string, unknown>),
+        });
+      `,
+    },
+    {
+      code: `
+        const route = createFileRoute('/calls')({
+          validateSearch: (s) => searchSchema.safeParse(s as Record<string, unknown>).data,
+        });
+      `,
+    },
+    {
+      code: `
+        const route = createFileRoute('/calls')({
+          validateSearch: (s) => codec.decode(normalize(s as Raw)),
+        });
+      `,
+    },
+    // Angle-bracket const assertion narrows rather than lies — exempt.
+    {
+      code: "const opts = { validateSearch: (s) => ({ tab: <const>'all' }) };",
+    },
+    // Test files are exempt (route stubs are fixtures, not real routes).
+    {
+      code: `
+        const route = createFileRoute('/calls')({
+          validateSearch: (search) => search as CallsSearch,
+        });
+      `,
+      filename: "/repo/src/routes/calls.test.ts",
+    },
+    {
+      code: `
+        const route = createFileRoute('/calls')({
+          validateSearch: (search) => search as CallsSearch,
+        });
+      `,
+      filename: "/repo/src/routes/__tests__/calls.ts",
+    },
   ],
   invalid: [
     // The mined pattern: cast the raw search params and call it validated.
@@ -100,6 +145,25 @@ ruleTester.run("require-schema-validate-search", rule, {
       code: `
         const opts = {
           'validateSearch': (search) => search as Search,
+        };
+      `,
+      errors: [{ messageId: "castInValidateSearch" }],
+    },
+    // Angle-bracket cast form (`<T>x`) is the same lie as `as`.
+    {
+      code: `
+        const opts = {
+          validateSearch: (search) => <CallsSearch>search,
+        };
+      `,
+      errors: [{ messageId: "castInValidateSearch" }],
+    },
+    // A cast on the validator callee's receiver is NOT the validated-argument
+    // exemption — only arguments of parse/safeParse/decode are exempt.
+    {
+      code: `
+        const opts = {
+          validateSearch: (s) => (schema as AnySchema).parse(s),
         };
       `,
       errors: [{ messageId: "castInValidateSearch" }],
