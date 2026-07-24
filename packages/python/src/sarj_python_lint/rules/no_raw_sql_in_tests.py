@@ -1,12 +1,12 @@
-"""SARJ036: raw SQL executed in a test body — use the store/service methods.
+"""SARJ036: raw SQL INSERT executed in a test body — seed through the store.
 
 Review quote, verbatim: "avoid raw sql in tests. can we just use service
 methods". A test that runs `conn.execute("INSERT INTO call ...")` re-implements
-the store layer's contract in a second place: when the schema or the store's
-invariants change (a new NOT NULL column, an ON CONFLICT rule), the store is
-updated but the test's private SQL is not — the test now seeds states the
-application can never produce, and passes for the wrong reason. Going through
-the store/service method keeps the test coupled to the real write path.
+the store layer's write contract in a second place: when the schema or the
+store's invariants change (a new NOT NULL column, an ON CONFLICT rule), the
+store is updated but the test's private SQL is not — the test now seeds states
+the application can never produce, and passes for the wrong reason. Going
+through the store/service method keeps the test coupled to the real write path.
 
 Fires when ALL of these hold:
 
@@ -15,18 +15,37 @@ Fires when ALL of these hold:
   Conftest DB scaffolding (truncate-between-tests cleanup) and migration
   helpers legitimately speak raw SQL,
 * the call is `<recv>.execute(...)`, `<recv>.executemany(...)`, or
-  `<recv>.fetch*(...)` (any receiver: cursor, connection, pool, session),
+  `<recv>.executescript(...)` (any receiver: cursor, connection, pool,
+  session),
 * its first argument is a string literal (plain, `+`-concatenated, or an
-  f-string's literal fragments) containing a `SELECT` / `INSERT` / `UPDATE` /
-  `DELETE` keyword — matched on `_sql.strip_sql_noise`-masked text, so a
-  keyword inside a quoted SQL *value* or a SQL comment never counts, and
-  matched on word boundaries, so `fetch_by_name("select_option")` never counts.
+  f-string's literal fragments) — optionally wrapped in a single-argument
+  `text(...)` / `sa.text(...)` / `sqlalchemy.text(...)` call, since SQLAlchemy
+  2.0 mandates `text()` for raw SQL — containing a structural `INSERT INTO`,
+  matched on `_sql.strip_sql_noise`-masked text so `INSERT INTO` inside a
+  quoted SQL *value* or a SQL comment never counts.
+
+Deliberately NOT flagged — a blind population analysis of all four production
+corpora showed each of these is a legitimate, pervasive test idiom, and
+flagging them put the rule at ~79% false positives:
+
+* `SELECT` — `SELECT count(*)` / `SELECT ...` in a test is an *assertion* about
+  database state, often deliberately independent of the store's read path,
+* `DELETE` — per-test teardown/cleanup in the test body,
+* `UPDATE` — time-travel setup (`SET created_at = NOW() - interval ...`) that
+  no store method exposes on purpose,
+* `.fetch*()` calls — asyncpg read helpers serve the same assertion role, and
+  the loose prefix also swallowed unrelated `fetch_completion`/`fetch_json`
+  helpers.
+
+Only a structural INSERT bypasses the store's write invariants in a way the
+mined review feedback ("use service methods to seed") actually objected to.
 
 SQL built in a variable and passed by name is not chased — deterministic,
 call-site-visible literals only.
 
 A test that deliberately probes the schema itself (e.g. asserting a trigger or
-constraint fires) is suppressed with `# sarj-noqa: SARJ036 — <reason>`.
+constraint fires on INSERT) is suppressed with
+`# sarj-noqa: SARJ036 — <reason>`.
 """
 
 from __future__ import annotations
@@ -44,20 +63,20 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-_EXECUTE_METHODS = frozenset({"execute", "executemany"})
-_FETCH_PREFIX = "fetch"
+_EXECUTE_METHODS = frozenset({"execute", "executemany", "executescript"})
+_TEXT_WRAPPER_NAMES = frozenset({"sa", "sqlalchemy"})
 
-_SQL_KEYWORD_RE = re.compile(r"\b(?:select|insert|update|delete)\b", re.IGNORECASE)
+_INSERT_RE = re.compile(r"\bINSERT\s+INTO\b", re.IGNORECASE)
 
 
 class NoRawSqlInTests(Rule):
-    """Raw SQL string executed in a test — go through the store/service method."""
+    """Raw SQL INSERT executed in a test — seed through the store/service method."""
 
     id: str = "no-raw-sql-in-tests"
     code: str = "SARJ036"
     description: str = (
-        "raw SQL literal executed in a test re-implements the store contract — "
-        "seed and read through the store/service methods instead."
+        "raw SQL INSERT executed in a test bypasses the store's write "
+        "invariants — seed through the store/service methods instead."
     )
 
     @override
@@ -74,8 +93,8 @@ class NoRawSqlInTests(Rule):
             method = _sql_method_name(node.func)
             if method is None or not node.args:
                 continue
-            literal = _literal_text(node.args[0])
-            if literal is None or not _SQL_KEYWORD_RE.search(strip_sql_noise(literal)):
+            literal = _literal_text(_unwrap_text_call(node.args[0]))
+            if literal is None or not _INSERT_RE.search(strip_sql_noise(literal)):
                 continue
             diags.append(
                 Diagnostic(
@@ -84,9 +103,9 @@ class NoRawSqlInTests(Rule):
                     col=node.col_offset + 1,
                     code=self.code,
                     message=(
-                        f"raw SQL literal in `.{method}(...)` inside a test — "
-                        "use the store/service method so the test exercises the "
-                        "real write/read path."
+                        f"raw SQL INSERT in `.{method}(...)` inside a test — "
+                        "seed through the store/service method so the test "
+                        "exercises the real write path."
                     ),
                 )
             )
@@ -98,15 +117,35 @@ def _sql_method_name(func: ast.expr) -> str | None:
     """Return the method name when `func` is a SQL-executing attribute call.
 
     Returns:
-        The method name (`execute`, `fetchrow`, ...), or None.
+        The method name (`execute`, `executemany`, `executescript`), or None.
 
     """
-    if not isinstance(func, ast.Attribute):
-        return None
-    attr = func.attr
-    if attr in _EXECUTE_METHODS or attr.startswith(_FETCH_PREFIX):
-        return attr
+    if isinstance(func, ast.Attribute) and func.attr in _EXECUTE_METHODS:
+        return func.attr
     return None
+
+
+def _unwrap_text_call(node: ast.expr) -> ast.expr:
+    """Unwrap a single-argument `text(...)` / `sa.text(...)` / `sqlalchemy.text(...)`.
+
+    SQLAlchemy 2.0 requires raw SQL to be wrapped in `text()`, so the literal
+    of interest sits one call deeper.
+
+    Returns:
+        The wrapped argument, or `node` itself when it is not a text() call.
+
+    """
+    match node:
+        case ast.Call(func=func, args=[inner], keywords=[]):
+            match func:
+                case ast.Name(id="text"):
+                    return inner
+                case ast.Attribute(attr="text", value=ast.Name(id=recv)) if recv in _TEXT_WRAPPER_NAMES:
+                    return inner
+                case _:
+                    return node
+        case _:
+            return node
 
 
 def _literal_text(node: ast.expr) -> str | None:

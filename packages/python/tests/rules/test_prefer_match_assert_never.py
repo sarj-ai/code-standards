@@ -35,6 +35,8 @@ class Status(StrEnum):
 )
 def test_flags_silent_wildcard_behind_member_arms(fallthrough: str):
     src = f"""
+from kinds import Kind
+
 def handle(kind):
     match kind:
         case Kind.A:
@@ -52,6 +54,8 @@ def handle(kind):
 
 def test_wildcard_diag_points_at_the_wildcard_case():
     src = """
+from kinds import Kind
+
 def handle(kind):
     match kind:
         case Kind.A:
@@ -62,7 +66,7 @@ def handle(kind):
             pass
 """
     diags = _check(src)
-    assert diags[0].line == 8
+    assert diags[0].line == 10
 
 
 def test_flags_member_arms_of_imported_owner():
@@ -84,6 +88,8 @@ def store(model_name, file_id):
 
 def test_flags_or_pattern_member_arms():
     src = """
+from kinds import Kind
+
 def handle(kind):
     match kind:
         case Kind.A | Kind.B:
@@ -92,6 +98,40 @@ def handle(kind):
             c()
         case _:
             return None
+"""
+    assert len(_check(src)) == 1
+
+
+def test_flags_member_arms_of_aliased_from_import():
+    src = """
+from shared.models import Model as Kind
+
+def handle(kind):
+    match kind:
+        case Kind.A:
+            a()
+        case Kind.B:
+            b()
+        case _:
+            pass
+"""
+    assert len(_check(src)) == 1
+
+
+def test_flags_member_arms_of_module_level_class_owner():
+    src = """
+class Kind:
+    A = 1
+    B = 2
+
+def handle(kind):
+    match kind:
+        case Kind.A:
+            a()
+        case Kind.B:
+            b()
+        case _:
+            pass
 """
     assert len(_check(src)) == 1
 
@@ -133,6 +173,8 @@ def handle(event):
 
 def test_flags_nested_match():
     src = """
+from kinds import Kind
+
 class Router:
     def route(self, kind):
         if ready:
@@ -168,6 +210,8 @@ class Router:
 )
 def test_allows_loud_or_value_returning_wildcard(fallthrough: str):
     src = f"""
+from kinds import Kind
+
 def handle(kind):
     match kind:
         case Kind.A:
@@ -182,6 +226,8 @@ def handle(kind):
 
 def test_allows_wildcard_with_multi_statement_body():
     src = """
+from kinds import Kind
+
 def handle(kind):
     match kind:
         case Kind.A:
@@ -260,8 +306,31 @@ def handle(event):
     assert _check(src) == []
 
 
+def test_allows_function_nested_class_pattern_arms():
+    # Classes defined inside an unrelated function are not visible where the
+    # match dispatches — they must not make it look closed-set.
+    src = """
+def factory():
+    class Created: ...
+    class Deleted: ...
+    return Created, Deleted
+
+def handle(event):
+    match event:
+        case Created():
+            on_created(event)
+        case Deleted():
+            on_deleted(event)
+        case _:
+            pass
+"""
+    assert _check(src) == []
+
+
 def test_allows_mixed_owner_member_arms():
     src = """
+from kinds import Kind, Other
+
 def handle(x):
     match x:
         case Kind.A:
@@ -274,9 +343,76 @@ def handle(x):
     assert _check(src) == []
 
 
+def test_allows_module_constants_owner():
+    # `import constants` binds a MODULE: `constants.CREATED` is a loose
+    # module-level constant, not member access on a closed set someone owns.
+    src = """
+import constants
+
+def handle(state):
+    match state:
+        case constants.CREATED:
+            a()
+        case constants.UPDATED:
+            b()
+        case _:
+            pass
+"""
+    assert _check(src) == []
+
+
+def test_allows_aliased_module_import_owner():
+    src = """
+import app.constants as cfg
+
+def handle(state):
+    match state:
+        case cfg.A:
+            a()
+        case cfg.B:
+            b()
+        case _:
+            pass
+"""
+    assert _check(src) == []
+
+
+def test_allows_plain_variable_owner():
+    # `cfg` is a runtime object, not a class — its attributes are not a closed set.
+    src = """
+def handle(state):
+    cfg = load_config()
+    match state:
+        case cfg.A:
+            a()
+        case cfg.B:
+            b()
+        case _:
+            pass
+"""
+    assert _check(src) == []
+
+
+def test_allows_unbound_owner_name():
+    # A name never bound in this module cannot be proven to be a class.
+    src = """
+def handle(kind):
+    match kind:
+        case Kind.A:
+            a()
+        case Kind.B:
+            b()
+        case _:
+            pass
+"""
+    assert _check(src) == []
+
+
 def test_allows_default_then_refine_assignment_arms():
     # Defaults set before the match; arms only refine them; wildcard keeps them.
     src = """
+from errors import ErrorId
+
 def classify(error_id):
     slug = "generic"
     ui_type = "simple"
@@ -296,6 +432,8 @@ def classify(error_id):
 
 def test_mixed_assignment_and_action_arms_still_flagged():
     src = """
+from kinds import Kind
+
 def handle(kind):
     match kind:
         case Kind.A:
@@ -311,6 +449,8 @@ def handle(kind):
 def test_allows_guarded_real_arm():
     # A guarded arm deliberately lets its own pattern fall through to `_`.
     src = """
+from kinds import Kind
+
 def handle(kind):
     match kind:
         case Kind.A if ready:
@@ -330,6 +470,8 @@ def handle(kind):
 
 def test_allows_single_real_arm_match():
     src = """
+from kinds import Kind
+
 def handle(kind):
     match kind:
         case Kind.A:
@@ -342,6 +484,8 @@ def handle(kind):
 
 def test_allows_capture_name_wildcard():
     src = """
+from kinds import Kind
+
 def handle(kind):
     match kind:
         case Kind.A:
@@ -356,6 +500,8 @@ def handle(kind):
 
 def test_allows_guarded_wildcard():
     src = """
+from kinds import Kind
+
 def handle(kind):
     match kind:
         case Kind.A:
@@ -370,6 +516,8 @@ def handle(kind):
 
 def test_allows_match_without_wildcard():
     src = """
+from kinds import Kind
+
 def handle(kind):
     match kind:
         case Kind.A:
@@ -520,6 +668,79 @@ def handle(code):
     assert _check(src) == []
 
 
+def test_allows_function_nested_enum():
+    # An enum defined inside an unrelated function is not visible where the
+    # chain dispatches.
+    src = """
+from enum import StrEnum
+
+def make():
+    class Status(StrEnum):
+        OPEN = "open"
+        CLOSED = "closed"
+    return Status
+
+def handle(status):
+    if status == Status.OPEN:
+        a()
+    elif status == Status.CLOSED:
+        b()
+    else:
+        pass
+"""
+    assert _check(src) == []
+
+
+def test_flags_enum_chain_behind_null_check_head():
+    # A non-enum head (null check first) must not shield the enum sub-chain.
+    src = f"""{_ENUM_PREAMBLE}
+def handle(status):
+    if status is None:
+        return
+    elif status == Status.OPEN:
+        open_it()
+    elif status == Status.CLOSED:
+        close_it()
+    else:
+        pass
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "Status" in diags[0].message
+    # Points at the first enum arm, not the null-check head.
+    assert diags[0].line == 12
+
+
+def test_allows_assignment_only_chain():
+    # Default-then-refine: defaults set before the chain; arms only refine
+    # them; the silent else keeps the defaults, which is defined behavior.
+    src = f"""{_ENUM_PREAMBLE}
+def classify(status):
+    label = "generic"
+    if status == Status.OPEN:
+        label = "open"
+    elif status == Status.CLOSED:
+        label = "closed"
+    else:
+        pass
+    return label
+"""
+    assert _check(src) == []
+
+
+def test_mixed_assignment_and_action_chain_still_flagged():
+    src = f"""{_ENUM_PREAMBLE}
+def handle(status):
+    if status == Status.OPEN:
+        label = "open"
+    elif status == Status.CLOSED:
+        close_it()
+    else:
+        pass
+"""
+    assert len(_check(src)) == 1
+
+
 def test_allows_mixed_variables():
     src = f"""{_ENUM_PREAMBLE}
 def handle(a, b):
@@ -613,6 +834,8 @@ def handle(status):
 
 def test_both_detectors_fire_independently_and_sorted():
     src = f"""{_ENUM_PREAMBLE}
+from kinds import Kind
+
 def by_chain(status):
     if status == Status.OPEN:
         a()

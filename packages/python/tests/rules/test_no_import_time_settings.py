@@ -50,10 +50,44 @@ def test_message_names_the_class():
         "if os.environ.get('ENV'):\n    {stmt}",
         "if flag:\n    pass\nelse:\n    {stmt}",
         "with warnings.catch_warnings():\n    {stmt}",
+        "for _ in range(1):\n    {stmt}",
+        "match env:\n    case 'prod':\n        {stmt}",
     ],
 )
 def test_flags_inside_module_level_blocks(wrapper: str):
     src = wrapper.format(stmt="settings = Settings()")
+    assert len(_check(src)) == 1
+
+
+def test_flags_else_of_type_checking_guard():
+    # The `else:` of `if TYPE_CHECKING:` is the branch that runs at import time.
+    src = """
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    pass
+else:
+    settings = Settings()
+"""
+    assert len(_check(src)) == 1
+
+
+def test_flags_else_of_main_guard():
+    src = """
+if __name__ == "__main__":
+    run()
+else:
+    settings = Settings()
+"""
+    assert len(_check(src)) == 1
+
+
+def test_flags_body_of_not_main_guard():
+    # `__name__ != "__main__"` is true precisely when the module is imported.
+    src = """
+if __name__ != "__main__":
+    settings = Settings()
+"""
     assert len(_check(src)) == 1
 
 

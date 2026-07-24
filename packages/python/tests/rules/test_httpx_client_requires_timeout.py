@@ -36,7 +36,10 @@ def _check(source: str, path: str = PROD_PATH) -> list[Diagnostic]:
         "httpx.put(url, content=b'x')",
         "httpx.patch(url)",
         "httpx.delete(url)",
+        "httpx.head(url)",
+        "httpx.options(url)",
         "httpx.request('GET', url)",
+        "httpx.stream('GET', url)",
     ],
 )
 def test_flags_missing_timeout(call: str):
@@ -45,6 +48,45 @@ def test_flags_missing_timeout(call: str):
     assert len(diags) == 1
     assert diags[0].code == "SARJ033"
     assert "timeout" in diags[0].message
+
+
+@pytest.mark.parametrize(
+    ("preamble", "call", "named"),
+    [
+        ("import httpx as hx", "hx.AsyncClient()", "httpx.AsyncClient"),
+        ("import httpx as hx", "hx.get(url)", "httpx.get"),
+        ("from httpx import AsyncClient", "AsyncClient()", "httpx.AsyncClient"),
+        ("from httpx import Client", "Client(base_url=url)", "httpx.Client"),
+        ("from httpx import get", "get(url)", "httpx.get"),
+        ("from httpx import get as http_get", "http_get(url)", "httpx.get"),
+        ("from httpx import stream", "stream('GET', url)", "httpx.stream"),
+    ],
+)
+def test_flags_aliased_imports(preamble: str, call: str, named: str):
+    src = f"{preamble}\n\nresult = {call}\n"
+    diags = _check(src)
+    assert len(diags) == 1
+    assert named in diags[0].message
+
+
+@pytest.mark.parametrize(
+    ("preamble", "call"),
+    [
+        # Same bare names, but NOT bound from httpx — never flagged.
+        ("from requests import get", "get(url)"),
+        ("from aiohttp import request", "request('GET', url)"),
+        ("from myclients import AsyncClient", "AsyncClient()"),
+        ("from httpx import Timeout", "Timeout(5.0)"),
+    ],
+)
+def test_allows_same_names_not_bound_from_httpx(preamble: str, call: str):
+    src = f"{preamble}\n\nresult = {call}\n"
+    assert _check(src) == []
+
+
+def test_aliased_import_with_timeout_is_clean():
+    src = "from httpx import AsyncClient\n\nc = AsyncClient(timeout=10)\n"
+    assert _check(src) == []
 
 
 def test_flags_client_in_async_context_manager():
@@ -120,10 +162,9 @@ def test_allows_exempting_kwargs(call: str):
         "session.request('GET', url)",
         "requests.get(url)",
         "aiohttp.request('GET', url)",
+        # Bare names with no `from httpx import ...` binding in the module.
         "AsyncClient()",
         "Client()",
-        "httpx.stream('GET', url)",
-        "httpx.head(url)",
         "mod.httpx.get(url)",
     ],
 )

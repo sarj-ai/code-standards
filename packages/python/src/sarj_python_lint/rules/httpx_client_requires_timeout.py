@@ -8,11 +8,18 @@ default is invisible at the call site, so nobody re-examines it when the
 downstream SLA changes. (~10 production sites in the CRM/OAuth integrations
 were retrofitted with explicit timeouts after incidents.)
 
-Flags, when the receiver is the bare module name `httpx`:
+Flags, without a `timeout=` kwarg:
 
-* `httpx.Client(...)` / `httpx.AsyncClient(...)` without a `timeout=` kwarg,
-* module-level convenience calls `httpx.get/post/put/patch/delete/request(...)`
-  without a `timeout=` kwarg (each builds a throwaway client).
+* `httpx.Client(...)` / `httpx.AsyncClient(...)`,
+* module-level convenience calls
+  `httpx.get/post/put/patch/delete/head/options/request/stream(...)` (each
+  builds a throwaway client).
+
+The receiver/callee is resolved through the module's import bindings, so
+aliased forms are caught too: `import httpx as hx` + `hx.AsyncClient(...)`,
+and `from httpx import AsyncClient [as AC]` + `AsyncClient(...)`. A bare name
+that was NOT imported from httpx (e.g. `from requests import get`) is never
+flagged.
 
 Never flags — each of these means the deadline decision is made elsewhere or
 does not matter:
@@ -48,7 +55,8 @@ if TYPE_CHECKING:
 
 
 _CLIENT_CLASSES = frozenset({"Client", "AsyncClient"})
-_CONVENIENCE_FUNCS = frozenset({"get", "post", "put", "patch", "delete", "request"})
+_CONVENIENCE_FUNCS = frozenset({"get", "post", "put", "patch", "delete", "head", "options", "request", "stream"})
+_FLAGGABLE = _CLIENT_CLASSES | _CONVENIENCE_FUNCS
 _EXEMPTING_KWARGS = frozenset({"timeout", "transport", "mounts"})
 
 
@@ -69,11 +77,12 @@ class HttpxClientRequiresTimeout(Rule):
         tree = parse_or_none(path, source)
         if tree is None:
             return []
+        module_aliases, name_bindings = _httpx_bindings(tree)
         diags: list[Diagnostic] = []
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
-            callee = _httpx_callee(node.func)
+            callee = _httpx_callee(node.func, module_aliases, name_bindings)
             if callee is None or _has_exempting_kwarg(node):
                 continue
             diags.append(
@@ -92,21 +101,48 @@ class HttpxClientRequiresTimeout(Rule):
         return diags
 
 
-def _httpx_callee(func: ast.expr) -> str | None:
-    """Return the flaggable `httpx.<name>` attribute name, else None.
-
-    Only the bare module receiver `httpx` counts — `client.get(...)` on an
-    already-constructed client inherits the client's timeout and is fine.
+def _httpx_bindings(tree: ast.Module) -> tuple[frozenset[str], dict[str, str]]:
+    """Resolve the module's httpx import bindings.
 
     Returns:
-        The attribute name when `func` is a flaggable httpx callee, else None.
+        A pair of (names bound to the httpx module itself — `import httpx [as
+        hx]`, mapping of local name -> original httpx name for `from httpx
+        import Name [as Alias]`).
+
+    """
+    # The literal name `httpx` always counts as the module, even without a
+    # visible import (e.g. a snippet or a re-exported module attribute).
+    module_aliases: set[str] = {"httpx"}
+    name_bindings: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "httpx":
+                    module_aliases.add(alias.asname or "httpx")
+        elif isinstance(node, ast.ImportFrom) and node.module == "httpx" and node.level == 0:
+            for alias in node.names:
+                if alias.name in _FLAGGABLE:
+                    name_bindings[alias.asname or alias.name] = alias.name
+    return frozenset(module_aliases), name_bindings
+
+
+def _httpx_callee(func: ast.expr, module_aliases: frozenset[str], name_bindings: dict[str, str]) -> str | None:
+    """Return the flaggable httpx callee's original name, else None.
+
+    An httpx-module receiver (`httpx.get`, `hx.AsyncClient`) or a bare name
+    imported from httpx (`from httpx import AsyncClient`) counts. Attribute
+    calls on anything else — most importantly `client.get(...)` on an
+    already-constructed client, which inherits the client's timeout — do not.
+
+    Returns:
+        The original httpx attribute name when `func` is flaggable, else None.
 
     """
     match func:
-        case ast.Attribute(value=ast.Name(id="httpx"), attr=attr) if (
-            attr in _CLIENT_CLASSES or attr in _CONVENIENCE_FUNCS
-        ):
+        case ast.Attribute(value=ast.Name(id=recv), attr=attr) if recv in module_aliases and attr in _FLAGGABLE:
             return attr
+        case ast.Name(id=name) if name in name_bindings:
+            return name_bindings[name]
         case _:
             return None
 

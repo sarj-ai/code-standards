@@ -30,10 +30,20 @@ Never flags — these signatures cannot or should not change:
 * functions decorated `@override` / `@overload` / `@abstractmethod` (an
   override cannot unilaterally change the parent's signature; overload/abstract
   signatures are contracts),
-* functions that already have a keyword-only section or a `*args` variadic
-  (the author has already made a positional/keyword decision),
-* functions with positional-only parameters (`/`) — an explicit, deliberate
-  positional API.
+* HTTP route handlers — any decorator of the shape
+  `@<name>.get/post/put/patch/delete/head/options/websocket(...)` (`router`,
+  `app`, `api`, ...): FastAPI binds handler parameters by NAME (path/query
+  keys), so the positional shape is never called swap-prone by a human,
+* test files (`_paths.is_test_path`) — test fakes and helpers mirror the
+  signatures of the code under test and cannot unilaterally change them,
+* parameters that are already keyword-only (behind `*`) or positional-only
+  (before `/`, a deliberate positional API). Note this is per-parameter, not
+  per-signature: `def f(a: str, b: str, *, c: int)` is still flagged, because
+  `a`/`b` sit BEFORE the marker and remain swap-prone. A `*args` variadic
+  likewise does not shield same-type params in front of it.
+
+Parameters with defaults still count (documented judgment call: a default does
+not make the call site any less swappable).
 
 Symmetric functions (`def add(x: int, y: int)`) where order genuinely does not
 matter are suppressed with `# sarj-noqa: SARJ034 — <reason>`.
@@ -46,6 +56,7 @@ from collections import Counter
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
@@ -57,6 +68,10 @@ _MIN_SAME_TYPE = 2
 _PRIMITIVES = frozenset({"str", "int", "float", "bool"})
 
 _EXEMPT_DECORATORS = frozenset({"override", "overload", "abstractmethod"})
+
+_HTTP_ROUTE_METHODS = frozenset(
+    {"get", "post", "put", "patch", "delete", "head", "options", "websocket"}
+)
 
 _EXEMPT_NAME_PREFIXES = ("visit_", "test_")
 
@@ -73,6 +88,8 @@ class KwonlySameTypeParams(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        if is_test_path(path):
+            return []
         tree = parse_or_none(path, source)
         if tree is None:
             return []
@@ -108,12 +125,9 @@ def _is_exempt(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
         return True
     if name.startswith(_EXEMPT_NAME_PREFIXES):
         return True
-    if any(_is_exempt_decorator(dec) for dec in node.decorator_list):
-        return True
-    args = node.args
-    # An existing kwonly section / *args variadic means the positional-vs-keyword
-    # decision was already made; positional-only params (`/`) are a deliberate API.
-    return bool(args.kwonlyargs) or args.vararg is not None or bool(args.posonlyargs)
+    return any(
+        _is_exempt_decorator(dec) or _is_route_decorator(dec) for dec in node.decorator_list
+    )
 
 
 def _is_exempt_decorator(dec: ast.expr) -> bool:
@@ -126,11 +140,35 @@ def _is_exempt_decorator(dec: ast.expr) -> bool:
             return False
 
 
+def _is_route_decorator(dec: ast.expr) -> bool:
+    """Report whether `dec` is an HTTP-route decorator like `@router.get(...)`.
+
+    Matches `<Name>.<http method>` — optionally called — for any receiver name
+    (`router`, `app`, `api`, ...). FastAPI binds handler parameters by name, so
+    a route handler's positional shape is not swap-prone at any call site.
+
+    Returns:
+        True when the decorator is an HTTP-route registration.
+
+    """
+    target = dec.func if isinstance(dec, ast.Call) else dec
+    match target:
+        case ast.Attribute(value=ast.Name(), attr=attr) if attr in _HTTP_ROUTE_METHODS:
+            return True
+        case _:
+            return False
+
+
 def _swap_prone_annotation(args: ast.arguments) -> str | None:
-    """Find a primitive annotation shared by >= 2 positional parameters.
+    """Find a primitive annotation shared by >= 2 swap-prone positional parameters.
 
     A leading `self`/`cls` is excluded. Only bare-`Name` primitive annotations
     participate — `str | None`, `Literal[...]`, and domain types never group.
+    Only `args.args` (positional-or-keyword) parameters count: keyword-only
+    parameters (behind `*`) cannot be swapped positionally, and positional-only
+    parameters (before `/`) are a deliberate positional API. A `*`/`*args`/`/`
+    marker therefore exempts exactly the parameters it protects — never the
+    same-type pair sitting in front of it.
 
     Returns:
         The offending primitive name, or None when the signature is fine.

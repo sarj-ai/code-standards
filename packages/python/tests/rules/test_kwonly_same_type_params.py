@@ -160,31 +160,111 @@ class T:
 
 def test_non_exempt_decorator_still_fires():
     src = """
-@app.get("/x")
+@retry(attempts=3)
 def f(a: str, b: str) -> None: ...
 """
     assert len(_check(src)) == 1
 
 
 # --------------------------------------------------------------------------- #
-# Negative: signatures that already made the positional/keyword decision.      #
+# Negative: HTTP route handlers — FastAPI binds params by name.                #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "decorator",
+    [
+        'app.get("/x")',
+        'router.post("/calls/{call_id}")',
+        'api.put("/x")',
+        'router.patch("/x")',
+        'app.delete("/x")',
+        'router.head("/x")',
+        'app.options("/x")',
+        'router.websocket("/ws")',
+        "router.get",
+    ],
+)
+def test_allows_http_route_handlers(decorator: str):
+    src = f"""
+@{decorator}
+async def handler(org_id: str, call_id: str) -> None: ...
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "decorator",
+    [
+        'get("/x")',  # bare Name, not <name>.<method>
+        'self.router.get("/x")',  # receiver is an attribute chain, not a Name
+        'app.route("/x")',  # not an HTTP-method attribute
+    ],
+)
+def test_non_route_shaped_decorators_still_fire(decorator: str):
+    src = f"""
+@{decorator}
+def f(a: str, b: str) -> None: ...
+"""
+    assert len(_check(src)) == 1
+
+
+# --------------------------------------------------------------------------- #
+# Negative: test files are exempt.                                             #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "tests/test_call_store.py",
+        "test_helpers.py",
+        "call_store_test.py",
+        "python/bulbul/tests/helpers/fakes.py",
+        "conftest.py",
+    ],
+)
+def test_skips_test_paths(path: str):
+    src = "def fake_transfer(source_id: str, target_id: str) -> None: ...\n"
+    assert _check(src, path) == []
+
+
+def test_fires_in_non_test_paths():
+    src = "def transfer(source_id: str, target_id: str) -> None: ...\n"
+    assert len(_check(src, "python/bulbul/bulbul/calls/service.py")) == 1
+
+
+# --------------------------------------------------------------------------- #
+# Marker position: `*` / `/` exempt exactly the params they protect.           #
 # --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
     "params",
     [
-        "a: str, *, b: str",
-        "*, a: str, b: str",
-        "a: str, b: str, *, c: int",
-        "a: str, b: str, /",
-        "a: str, /, b: str",
-        "a: str, b: str, *args",
+        "a: str, *, b: str",  # only one swappable str
+        "*, a: str, b: str",  # both keyword-only
+        "a: str, b: str, /",  # both positional-only: deliberate API
+        "a: str, /, b: str",  # one posonly + one swappable str
     ],
 )
-def test_allows_existing_markers(params: str):
+def test_allows_params_protected_by_markers(params: str):
     src = f"def f({params}) -> None: ...\n"
     assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        # The same-type pair sits BEFORE the marker and stays swap-prone.
+        "a: str, b: str, *, c: int",
+        "a: str, b: str, *args",
+        "x: int, /, a: str, b: str",
+    ],
+)
+def test_flags_same_type_pair_before_marker(params: str):
+    src = f"def f({params}) -> None: ...\n"
+    assert len(_check(src)) == 1
 
 
 def test_kwargs_alone_is_not_a_marker():

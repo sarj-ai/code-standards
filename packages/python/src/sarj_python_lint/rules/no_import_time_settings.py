@@ -19,11 +19,15 @@ so the read happens at first call — after test setup, inside the app lifespan:
 Fires only on the exact shape: a module-level assignment (`=` or annotated `=`)
 whose value is a direct call to a callee whose name ends with `Settings`
 (case-sensitive: `Settings()`, `AppSettings()`, `config.VoiceSettings()`).
-Module level includes module-scope `try:`/`with:`/plain-`if:` blocks, but NOT:
+Module level includes module-scope `try:`/`with:`/`for:`/`match:`/plain-`if:`
+blocks, but NOT:
 
 * function or class bodies (deferred construction is exactly the fix),
-* `if __name__ == "__main__":` blocks (script entry, not import time),
-* `if TYPE_CHECKING:` blocks (never executes).
+* the body of `if __name__ == "__main__":` (script entry, not import time) —
+  the guard must literally use `==`; a `!=` body runs on import and IS checked,
+* the body of `if TYPE_CHECKING:` (never executes).
+
+The `else:` branch of either guard DOES run at import time and is checked.
 
 Two scoping decisions, both settled by corpus validation:
 
@@ -103,8 +107,10 @@ class NoImportTimeSettings(Rule):
 def _module_level_statements(body: list[ast.stmt]) -> Iterator[ast.stmt]:
     """Yield statements that execute at import time.
 
-    Recurses through module-scope `if`/`try`/`with` blocks but never into
-    function/class bodies, `if __name__ == "__main__":`, or `if TYPE_CHECKING:`.
+    Recurses through module-scope `if`/`try`/`with`/`for`/`match` blocks but
+    never into function/class bodies or the bodies of `if __name__ ==
+    "__main__":` / `if TYPE_CHECKING:`. The `else:` of either guard runs at
+    import time, so it is always recursed.
 
     Yields:
         Each statement that runs when the module is imported.
@@ -113,8 +119,9 @@ def _module_level_statements(body: list[ast.stmt]) -> Iterator[ast.stmt]:
     for stmt in body:
         yield stmt
         match stmt:
-            case ast.If() if not _is_main_or_type_checking_guard(stmt.test):
-                yield from _module_level_statements(stmt.body)
+            case ast.If():
+                if not _is_main_or_type_checking_guard(stmt.test):
+                    yield from _module_level_statements(stmt.body)
                 yield from _module_level_statements(stmt.orelse)
             case ast.Try():
                 yield from _module_level_statements(stmt.body)
@@ -124,13 +131,23 @@ def _module_level_statements(body: list[ast.stmt]) -> Iterator[ast.stmt]:
                 yield from _module_level_statements(stmt.finalbody)
             case ast.With() | ast.AsyncWith():
                 yield from _module_level_statements(stmt.body)
+            case ast.For() | ast.AsyncFor() | ast.While():
+                yield from _module_level_statements(stmt.body)
+                yield from _module_level_statements(stmt.orelse)
+            case ast.Match():
+                for case_ in stmt.cases:
+                    yield from _module_level_statements(case_.body)
             case _:
                 pass
 
 
 def _is_main_or_type_checking_guard(test: ast.expr) -> bool:
     match test:
-        case ast.Compare(left=ast.Name(id="__name__")):
+        case ast.Compare(
+            left=ast.Name(id="__name__"),
+            ops=[ast.Eq()],
+            comparators=[ast.Constant(value="__main__")],
+        ):
             return True
         case ast.Name(id="TYPE_CHECKING"):
             return True

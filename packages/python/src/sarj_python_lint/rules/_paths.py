@@ -1,8 +1,9 @@
-"""Shared path predicates for the file-scope-gated rules (SARJ031/033/036).
+"""Shared path predicates for the file-scope-gated rules (SARJ031/033/034/035/036).
 
 A single definition of "is this a test file?" so the test-scoped rules
 (no-sleep-in-test-body, no-raw-sql-in-tests) and the rules that *exempt* tests
-(httpx-client-requires-timeout) never diverge on what counts as a test file.
+(httpx-client-requires-timeout, kwonly-same-type-params,
+no-import-time-settings) never diverge on what counts as a test file.
 """
 
 from __future__ import annotations

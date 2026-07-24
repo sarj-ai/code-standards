@@ -18,9 +18,15 @@ payload shapes dominate and are deliberate fall-throughs, not bugs):
 
    * enum-member values of ONE owner class (`case Kind.A:` / `case Kind.A |
      Kind.B:`) — dotted members of a single class are a closed set someone
-     owns, or
-   * class patterns over classes **defined in this module** (`case Created():`)
-     — the SARJ003 local-union gate,
+     owns. The owner name must be bound by a module-scope `class` statement in
+     this file or by a `from x import Kind` binding: those are the shapes that
+     name a class. Attribute access on a name bound by `import constants`
+     (a module of loose constants) or on a plain variable (`cfg.A`) is NOT
+     member access on a closed set and never qualifies, or
+   * class patterns over classes **defined at module scope of this module**
+     (`case Created():`) — the SARJ003 local-union gate. Classes defined
+     inside some function elsewhere in the file are invisible here and do not
+     make an unrelated match closed,
 
    whose final `case _:` (bare wildcard, no guard, no capture name) body is
    exactly `pass`, bare `return`, or `return None`. String/number literal
@@ -49,11 +55,17 @@ payload shapes dominate and are deliberate fall-throughs, not bugs):
 
 2. **`if/elif` chain over a local enum with a silent `else`.** Every arm
    compares the SAME variable via `==` (or `in` over a tuple/list/set) against
-   members of the SAME class, that class is **defined in this module** with an
-   `Enum`-family base (`Enum`, `StrEnum`, `IntEnum`, `Flag`, `IntFlag`,
-   `ReprEnum`), and the terminal `else` is exactly `pass` / bare `return` /
-   `return None`. For an imported name the rule cannot prove it is an enum
-   (it could be a constants holder), so imported classes are never flagged.
+   members of the SAME class, that class is **defined at module scope of this
+   module** with an `Enum`-family base (`Enum`, `StrEnum`, `IntEnum`, `Flag`,
+   `IntFlag`, `ReprEnum`), and the terminal `else` is exactly `pass` / bare
+   `return` / `return None`. For an imported name the rule cannot prove it is
+   an enum (it could be a constants holder), so imported classes are never
+   flagged. A chain whose head is NOT an enum comparison (e.g. a null-check
+   first: `if x is None: ... elif x == Status.A: ...`) does not shield the
+   enum sub-chain that starts at the first enum arm — that sub-chain is
+   checked on its own. The default-then-refine exemption applies here exactly
+   as in detector 1: when EVERY arm body is purely assignments, the silent
+   `else` means "keep the pre-set defaults" and is not flagged.
 
         # flagged
         class Status(StrEnum):
@@ -110,23 +122,25 @@ class PreferMatchAssertNever(Rule):
         tree = parse_or_none(path, source)
         if tree is None:
             return []
-        local_classes = frozenset(
-            node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
+        module_classdefs = _module_scope_classdefs(tree)
+        local_classes = frozenset(node.name for node in module_classdefs)
+        local_enums = frozenset(
+            node.name
+            for node in module_classdefs
+            if any(_is_enum_base(b) for b in node.bases)
         )
-        local_enums = _local_enum_names(tree)
+        member_owners = local_classes | _importfrom_bound_names(tree)
         diags: list[Diagnostic] = []
-        elif_nodes: set[int] = set()
+        consumed_elifs: set[int] = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.Match):
-                wildcard = _silent_closed_set_wildcard(node, local_classes)
+                wildcard = _silent_closed_set_wildcard(node, local_classes, member_owners)
                 if wildcard is not None:
                     diags.append(self._diag_match(path, wildcard))
             elif isinstance(node, ast.If):
-                if len(node.orelse) == 1 and isinstance(node.orelse[0], ast.If):
-                    elif_nodes.add(id(node.orelse[0]))
-                if id(node) in elif_nodes:
+                if id(node) in consumed_elifs:
                     continue
-                enum_name = _silent_enum_chain(node, local_enums)
+                enum_name = _silent_enum_chain(node, local_enums, consumed_elifs)
                 if enum_name is not None:
                     diags.append(self._diag_chain(path, node, enum_name))
         diags.sort(key=lambda d: (d.line, d.col))
@@ -158,17 +172,46 @@ class PreferMatchAssertNever(Rule):
         )
 
 
-def _local_enum_names(tree: ast.Module) -> frozenset[str]:
-    """Collect names of classes defined in this module with an Enum-family base.
+def _module_scope_classdefs(tree: ast.Module) -> list[ast.ClassDef]:
+    """Collect class definitions at module scope (including class-nested ones).
+
+    Deliberately does NOT descend into function bodies: a class defined inside
+    some unrelated function is not visible where a `match` elsewhere in the
+    file dispatches, so it must not make that match look closed-set.
 
     Returns:
-        The set of local enum class names.
+        The module-scope ClassDef nodes.
+
+    """
+    found: list[ast.ClassDef] = []
+    stack: list[ast.stmt] = list(tree.body)
+    while stack:
+        stmt = stack.pop()
+        if isinstance(stmt, ast.ClassDef):
+            found.append(stmt)
+            stack.extend(stmt.body)
+    return found
+
+
+def _importfrom_bound_names(tree: ast.Module) -> frozenset[str]:
+    """Collect names bound by `from x import Name [as Alias]` statements.
+
+    A `from`-imported name is the shape that binds a class directly, so
+    `Kind.MEMBER` on such a name can be member access on a closed set. Names
+    bound by plain `import module` are module objects — attribute access on
+    them (`constants.CREATED`) reaches loose module-level constants, never an
+    owned member set — so they are deliberately NOT collected.
+
+    Returns:
+        The set of from-import bound names.
 
     """
     names: set[str] = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef) and any(_is_enum_base(b) for b in node.bases):
-            names.add(node.name)
+        if isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                if alias.name != "*":
+                    names.add(alias.asname or alias.name)
     return frozenset(names)
 
 
@@ -183,7 +226,7 @@ def _is_enum_base(base: ast.expr) -> bool:
 
 
 def _silent_closed_set_wildcard(
-    node: ast.Match, local_classes: frozenset[str]
+    node: ast.Match, local_classes: frozenset[str], member_owners: frozenset[str]
 ) -> ast.match_case | None:
     """Return the final `case _:` when it silently swallows a closed-set dispatch.
 
@@ -210,7 +253,9 @@ def _silent_closed_set_wildcard(
     if all(_is_assignment_only(case.body) for case in real_arms):
         # Default-then-refine: the wildcard keeps pre-set defaults, by design.
         return None
-    if _all_one_owner_member_arms(real_arms) or _all_local_class_arms(real_arms, local_classes):
+    if _all_one_owner_member_arms(real_arms, member_owners) or _all_local_class_arms(
+        real_arms, local_classes
+    ):
         return last
     return None
 
@@ -243,15 +288,25 @@ def _is_silent_body(body: list[ast.stmt]) -> bool:
             return False
 
 
-def _all_one_owner_member_arms(cases: list[ast.match_case]) -> bool:
+def _all_one_owner_member_arms(
+    cases: list[ast.match_case], member_owners: frozenset[str]
+) -> bool:
     """Report whether every arm matches enum-member values of one owner class.
+
+    The owner must be a name that can actually bind a class here: defined by a
+    module-scope `class` statement or bound by `from x import Cls`. A plain
+    variable or a name bound by `import constants` (a module object) never
+    counts.
 
     Returns:
         True when all arms are `Cls.MEMBER`-style values of a single `Cls`.
 
     """
     owners = {_member_pattern_owner(case.pattern) for case in cases}
-    return len(owners) == 1 and None not in owners
+    if len(owners) != 1 or None in owners:
+        return False
+    (owner,) = owners
+    return owner in member_owners
 
 
 def _member_pattern_owner(pattern: ast.pattern) -> str | None:
@@ -297,8 +352,17 @@ def _is_local_class_pattern(pattern: ast.pattern, local_classes: frozenset[str])
             return False
 
 
-def _silent_enum_chain(head: ast.If, local_enums: frozenset[str]) -> str | None:
+def _silent_enum_chain(
+    head: ast.If, local_enums: frozenset[str], consumed_elifs: set[int]
+) -> str | None:
     """Parse `head` as an ==/in chain over one local enum with a silent `else`.
+
+    Each nested `elif` that genuinely continues the chain (same target, same
+    enum) is recorded in `consumed_elifs` so the caller does not re-check it as
+    a chain head of its own. An `elif` that does NOT continue the chain (or any
+    `elif` behind a non-matching head) is deliberately left unconsumed: the
+    sub-chain starting there is a dispatch in its own right and gets its own
+    check — a null-check head must not shield the enum chain behind it.
 
     Returns:
         The enum class name when the chain qualifies, else None.
@@ -308,7 +372,7 @@ def _silent_enum_chain(head: ast.If, local_enums: frozenset[str]) -> str | None:
         return None
     first_target: ast.expr | None = None
     enum_name: str | None = None
-    arm_count = 0
+    arm_bodies: list[list[ast.stmt]] = []
     current = head
     while True:
         parsed = _enum_comparison(current.test, local_enums)
@@ -320,12 +384,17 @@ def _silent_enum_chain(head: ast.If, local_enums: frozenset[str]) -> str | None:
             enum_name = cls_name
         elif ast.dump(target) != ast.dump(first_target) or cls_name != enum_name:
             return None
-        arm_count += 1
+        if current is not head:
+            consumed_elifs.add(id(current))
+        arm_bodies.append(current.body)
         orelse = current.orelse
         if len(orelse) == 1 and isinstance(orelse[0], ast.If):
             current = orelse[0]
             continue
-        if arm_count < _MIN_ARMS or not orelse or not _is_silent_body(orelse):
+        if len(arm_bodies) < _MIN_ARMS or not orelse or not _is_silent_body(orelse):
+            return None
+        if all(_is_assignment_only(body) for body in arm_bodies):
+            # Default-then-refine: the silent else keeps pre-set defaults, by design.
             return None
         return enum_name
 

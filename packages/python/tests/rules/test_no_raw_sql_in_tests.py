@@ -18,26 +18,24 @@ def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
 
 
 # --------------------------------------------------------------------------- #
-# Positive: raw SQL literals through execute/fetch in tests.                   #
+# Positive: raw INSERT literals through execute* in tests.                     #
 # --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
     "call",
     [
-        'cursor.execute("SELECT * FROM call WHERE id = %s", (call_id,))',
+        'conn.execute("INSERT INTO call (id) VALUES (%s)", (cid,))',
         'conn.execute("insert into call (id) values (%s)", (cid,))',
-        'db.execute("UPDATE call SET status = \'done\'")',
-        'conn.execute("DELETE FROM call")',
         'cursor.executemany("INSERT INTO t (a) VALUES (%s)", rows)',
-        'await conn.fetch("SELECT id FROM call")',
-        'await conn.fetchrow("select * from call limit 1")',
-        'await conn.fetchval("SELECT count(*) FROM call")',
-        'await pool.execute("DELETE FROM batch_call")',
-        'session.execute("SELECT 1 FROM call")',
+        'db.executescript("INSERT INTO t VALUES (1); INSERT INTO t VALUES (2);")',
+        'await pool.execute("INSERT\\nINTO batch_call (id) VALUES ($1)", bid)',
+        'session.execute(text("INSERT INTO call (id) VALUES (:id)"), {"id": cid})',
+        'session.execute(sa.text("INSERT INTO call (id) VALUES (:id)"))',
+        'session.execute(sqlalchemy.text("INSERT INTO call (id) VALUES (:id)"))',
     ],
 )
-def test_flags_raw_sql_calls(call: str):
+def test_flags_raw_insert_calls(call: str):
     src = f"async def test_x(conn, cursor, db, pool, session):\n    {call}\n"
     diags = _check(src)
     assert len(diags) == 1
@@ -45,17 +43,20 @@ def test_flags_raw_sql_calls(call: str):
     assert "store/service" in diags[0].message
 
 
-def test_flags_fstring_sql():
-    src = 'async def test_x(conn):\n    await conn.execute(f"DELETE FROM call WHERE id = {cid}")\n'
+def test_flags_fstring_insert():
+    src = (
+        "async def test_x(conn):\n"
+        '    await conn.execute(f"INSERT INTO {table} (id) VALUES ({cid})")\n'
+    )
     assert len(_check(src)) == 1
 
 
-def test_flags_concatenated_sql():
-    src = 'def test_x(cur):\n    cur.execute("SELECT id " + "FROM call")\n'
+def test_flags_concatenated_insert():
+    src = 'def test_x(cur):\n    cur.execute("INSERT INTO " + "call (id) VALUES (1)")\n'
     assert len(_check(src)) == 1
 
 
-def test_flags_multiline_sql():
+def test_flags_multiline_insert():
     src = '''
 async def test_x(conn):
     await conn.execute(
@@ -75,28 +76,59 @@ def test_flags_at_module_level_helper_in_test_file():
     assert len(_check(src)) == 1
 
 
+def test_message_names_the_method():
+    src = 'def test_x(cur):\n    cur.executemany("INSERT INTO t VALUES (%s)", rows)\n'
+    diags = _check(src)
+    assert ".executemany" in diags[0].message
+
+
 # --------------------------------------------------------------------------- #
-# Negative: keyword only inside quoted values / comments / identifiers.        #
+# Negative: SELECT/UPDATE/DELETE and fetch* are legitimate test idioms.        #
 # --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
     "call",
     [
-        "cursor.execute(\"SET search_path TO 'select'\")",
-        'conn.execute("SET x = \'please delete me\'")',
-        'store.fetch_by_name("select_option")',
-        'obj.fetch_config("update_strategy")',
-        'conn.execute("NOTIFY channel, \'update ready\'")',
+        # State assertions read the database on purpose.
+        'cursor.execute("SELECT * FROM call WHERE id = %s", (call_id,))',
+        'session.execute("SELECT count(*) FROM call")',
+        'await conn.fetch("SELECT id FROM call")',
+        'await conn.fetchrow("select * from call limit 1")',
+        'await conn.fetchval("SELECT count(*) FROM call")',
+        # Teardown/cleanup in the test body.
+        'conn.execute("DELETE FROM call")',
+        'await pool.execute("DELETE FROM batch_call WHERE id = $1", bid)',
+        # Time-travel setup no store method exposes on purpose.
+        "conn.execute(\"UPDATE call SET created_at = NOW() - interval '2 days'\")",
+        # Advisory-lock / schema probes.
+        'conn.execute("SELECT pg_try_advisory_lock(42)")',
+        # asyncpg-style fetch of non-SQL helpers.
+        'client.fetch_completion("Select the best answer and update the record")',
+        'client.fetch_json("https://api.example.com")',
     ],
 )
-def test_allows_keyword_only_in_values_or_identifiers(call: str):
-    src = f"def test_x(conn, cursor, store, obj):\n    {call}\n"
+def test_allows_non_insert_sql(call: str):
+    src = f"async def test_x(conn, cursor, pool, session, client):\n    {call}\n"
     assert _check(src) == []
 
 
-def test_allows_keyword_only_in_sql_comment():
-    src = 'def test_x(conn):\n    conn.execute("SET x = 1 -- select nothing")\n'
+# --------------------------------------------------------------------------- #
+# Negative: INSERT INTO only inside quoted values / comments / prose.          #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        "cursor.execute(\"UPDATE t SET note = 'INSERT INTO nothing' WHERE id = 1\")",
+        'conn.execute("SELECT 1 -- INSERT INTO nothing")',
+        'conn.execute("INSERT")',
+        'conn.execute("insert record into the queue table")',
+    ],
+)
+def test_allows_insert_only_in_values_comments_or_prose(call: str):
+    src = f"def test_x(conn, cursor):\n    {call}\n"
     assert _check(src) == []
 
 
@@ -111,10 +143,13 @@ def test_allows_keyword_only_in_sql_comment():
         "conn.execute(query)",
         "conn.execute(build_query())",
         "conn.execute(text(sql))",
+        "conn.execute(text())",
+        'conn.execute(other.text("INSERT INTO t VALUES (1)"))',
+        'conn.execute(text("INSERT INTO t VALUES (1)", extra))',
         "conn.execute()",
-        'execute("SELECT 1")',
-        'thread_pool.submit(work, "SELECT 1")',
-        'conn.run("SELECT 1")',
+        'execute("INSERT INTO t VALUES (1)")',
+        'thread_pool.submit(work, "INSERT INTO t VALUES (1)")',
+        'conn.run("INSERT INTO t VALUES (1)")',
         'cursor.execute("TRUNCATE call")',
         'conn.execute("SET timezone = \'UTC\'")',
     ],
@@ -138,7 +173,7 @@ async def test_x(store):
 # --------------------------------------------------------------------------- #
 
 
-_SQL_CALL = 'async def f(conn):\n    await conn.execute("DELETE FROM call")\n'
+_SQL_CALL = 'async def f(conn):\n    await conn.execute("INSERT INTO call (id) VALUES (1)")\n'
 
 
 @pytest.mark.parametrize(
@@ -178,8 +213,8 @@ def test_skips_non_test_conftest_and_migrations(path: str):
 def test_multiple_hits_sorted():
     src = """
 async def test_x(conn):
-    await conn.execute("DELETE FROM a")
-    await conn.fetch("SELECT * FROM b")
+    await conn.execute("INSERT INTO a (id) VALUES (1)")
+    await conn.execute(text("INSERT INTO b (id) VALUES (2)"))
 """
     diags = _check(src)
     assert len(diags) == 2
@@ -187,7 +222,7 @@ async def test_x(conn):
 
 
 def test_line_col():
-    src = 'def test_x(conn):\n    conn.execute("DELETE FROM a")\n'
+    src = 'def test_x(conn):\n    conn.execute("INSERT INTO a VALUES (1)")\n'
     diags = _check(src)
     assert (diags[0].line, diags[0].col) == (2, 5)
 
