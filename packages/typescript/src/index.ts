@@ -37,6 +37,7 @@ import storeInsertRequiresOnConflict from "./rules/store-insert-requires-on-conf
 import noDynamicSql from "./rules/no-dynamic-sql.js";
 import noRawFetchOutsideClients from "./rules/no-raw-fetch-outside-clients.js";
 import noStorageInStatelessModules from "./rules/no-storage-in-stateless-modules.js";
+import noZodNativeEnum from "./rules/no-zod-native-enum.js";
 
 const rules = {
   "enforce-file-structure": enforceFileStructure,
@@ -78,6 +79,7 @@ const rules = {
   "no-dynamic-sql": noDynamicSql,
   "no-raw-fetch-outside-clients": noRawFetchOutsideClients,
   "no-storage-in-stateless-modules": noStorageInStatelessModules,
+  "no-zod-native-enum": noZodNativeEnum,
 };
 
 const plugin = {
@@ -133,6 +135,9 @@ const plugin = {
         "@sarj/no-positional-tuple-return": "warn",
         // Injection guard — low FP, applies to any repo touching SQL.
         "@sarj/no-dynamic-sql": "warn",
+        // Mined from two years of PR review (SARJ-928). Schema-layer sibling of
+        // `no-enum`; autofixable for inline string-literal objects.
+        "@sarj/no-zod-native-enum": "warn",
       },
     },
     strict: {
@@ -193,6 +198,8 @@ const plugin = {
         // differently.
         "@sarj/no-raw-fetch-outside-clients": "error",
         "@sarj/no-storage-in-stateless-modules": "error",
+        // Mined from two years of PR review (SARJ-928).
+        "@sarj/no-zod-native-enum": "error",
       },
     },
   },
