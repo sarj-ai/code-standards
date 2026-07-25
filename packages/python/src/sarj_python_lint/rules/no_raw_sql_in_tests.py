@@ -90,9 +90,10 @@ class NoRawSqlInTests(Rule):
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
-            method = _sql_method_name(node.func)
-            if method is None or not node.args:
+            func = node.func
+            if not (isinstance(func, ast.Attribute) and func.attr in _EXECUTE_METHODS) or not node.args:
                 continue
+            method = func.attr
             literal = _literal_text(_unwrap_text_call(node.args[0]))
             if literal is None or not _INSERT_RE.search(strip_sql_noise(literal)):
                 continue
@@ -111,18 +112,6 @@ class NoRawSqlInTests(Rule):
             )
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
-
-
-def _sql_method_name(func: ast.expr) -> str | None:
-    """Return the method name when `func` is a SQL-executing attribute call.
-
-    Returns:
-        The method name (`execute`, `executemany`, `executescript`), or None.
-
-    """
-    if isinstance(func, ast.Attribute) and func.attr in _EXECUTE_METHODS:
-        return func.attr
-    return None
 
 
 def _unwrap_text_call(node: ast.expr) -> ast.expr:

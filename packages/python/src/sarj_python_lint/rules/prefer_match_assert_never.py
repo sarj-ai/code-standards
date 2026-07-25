@@ -127,7 +127,11 @@ class PreferMatchAssertNever(Rule):
         local_enums = frozenset(
             node.name
             for node in module_classdefs
-            if any(_is_enum_base(b) for b in node.bases)
+            if any(
+                (isinstance(b, ast.Name) and b.id in _ENUM_BASES)
+                or (isinstance(b, ast.Attribute) and b.attr in _ENUM_BASES)
+                for b in node.bases
+            )
         )
         member_owners = local_classes | _importfrom_bound_names(tree)
         diags: list[Diagnostic] = []
@@ -136,40 +140,38 @@ class PreferMatchAssertNever(Rule):
             if isinstance(node, ast.Match):
                 wildcard = _silent_closed_set_wildcard(node, local_classes, member_owners)
                 if wildcard is not None:
-                    diags.append(self._diag_match(path, wildcard))
+                    diags.append(
+                        Diagnostic(
+                            path=path,
+                            line=wildcard.pattern.lineno,
+                            col=wildcard.pattern.col_offset + 1,
+                            code=self.code,
+                            message=(
+                                "silent `case _:` on a closed-set match — a new variant no-ops "
+                                "instead of failing; use `assert_never(subject)` or raise."
+                            ),
+                        )
+                    )
             elif isinstance(node, ast.If):
                 if id(node) in consumed_elifs:
                     continue
                 enum_name = _silent_enum_chain(node, local_enums, consumed_elifs)
                 if enum_name is not None:
-                    diags.append(self._diag_chain(path, node, enum_name))
+                    diags.append(
+                        Diagnostic(
+                            path=path,
+                            line=node.lineno,
+                            col=node.col_offset + 1,
+                            code=self.code,
+                            message=(
+                                f"if/elif over `{enum_name}` members with a silent `else` — a new "
+                                "member no-ops instead of failing; use `assert_never` or raise "
+                                "(ideally as a match/case)."
+                            ),
+                        )
+                    )
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
-
-    def _diag_match(self, path: Path, wildcard: ast.match_case) -> Diagnostic:
-        return Diagnostic(
-            path=path,
-            line=wildcard.pattern.lineno,
-            col=wildcard.pattern.col_offset + 1,
-            code=self.code,
-            message=(
-                "silent `case _:` on a closed-set match — a new variant no-ops "
-                "instead of failing; use `assert_never(subject)` or raise."
-            ),
-        )
-
-    def _diag_chain(self, path: Path, head: ast.If, enum_name: str) -> Diagnostic:
-        return Diagnostic(
-            path=path,
-            line=head.lineno,
-            col=head.col_offset + 1,
-            code=self.code,
-            message=(
-                f"if/elif over `{enum_name}` members with a silent `else` — a new "
-                "member no-ops instead of failing; use `assert_never` or raise "
-                "(ideally as a match/case)."
-            ),
-        )
 
 
 def _module_scope_classdefs(tree: ast.Module) -> list[ast.ClassDef]:
@@ -215,16 +217,6 @@ def _importfrom_bound_names(tree: ast.Module) -> frozenset[str]:
     return frozenset(names)
 
 
-def _is_enum_base(base: ast.expr) -> bool:
-    match base:
-        case ast.Name(id=name) if name in _ENUM_BASES:
-            return True
-        case ast.Attribute(attr=name) if name in _ENUM_BASES:
-            return True
-        case _:
-            return False
-
-
 def _silent_closed_set_wildcard(
     node: ast.Match, local_classes: frozenset[str], member_owners: frozenset[str]
 ) -> ast.match_case | None:
@@ -253,9 +245,10 @@ def _silent_closed_set_wildcard(
     if all(_is_assignment_only(case.body) for case in real_arms):
         # Default-then-refine: the wildcard keeps pre-set defaults, by design.
         return None
-    if _all_one_owner_member_arms(real_arms, member_owners) or _all_local_class_arms(
-        real_arms, local_classes
-    ):
+    all_local_class_arms = bool(local_classes) and all(
+        _is_local_class_pattern(case.pattern, local_classes) for case in real_arms
+    )
+    if _all_one_owner_member_arms(real_arms, member_owners) or all_local_class_arms:
         return last
     return None
 
@@ -326,18 +319,6 @@ def _member_pattern_owner(pattern: ast.pattern) -> str | None:
             return None
         case _:
             return None
-
-
-def _all_local_class_arms(cases: list[ast.match_case], local_classes: frozenset[str]) -> bool:
-    """Report whether every arm is a class pattern over a locally-defined class.
-
-    Returns:
-        True when all arms are `LocalCls(...)`-style patterns.
-
-    """
-    return bool(local_classes) and all(
-        _is_local_class_pattern(case.pattern, local_classes) for case in cases
-    )
 
 
 def _is_local_class_pattern(pattern: ast.pattern, local_classes: frozenset[str]) -> bool:
