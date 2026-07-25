@@ -171,7 +171,16 @@ const config = [
       "simple-import-sort/imports": "error",
       "simple-import-sort/exports": "error",
 
+      // Every suppression must say WHY. `require-description` already covers
+      // eslint-disable comments and `@typescript-eslint/ban-ts-comment` (from
+      // strictTypeChecked) covers `@ts-expect-error`, so a bespoke rule would be
+      // a duplicate.
       "@eslint-community/eslint-comments/require-description": ["error", { ignore: [] }],
+      // ...and a suppression must name the rule it suppresses. A bare
+      // `/* eslint-disable */` at the top of a file silently switches off EVERY
+      // rule for the whole file — including ones added later — which is the
+      // file-level-suppression escape hatch flagged repeatedly in review.
+      "@eslint-community/eslint-comments/no-unlimited-disable": "error",
       "@eslint-community/eslint-comments/no-restricted-disable": ["warn",
         "no-console",
         "react-hooks/exhaustive-deps",
