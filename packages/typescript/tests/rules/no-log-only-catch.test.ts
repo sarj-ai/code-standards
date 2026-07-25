@@ -82,22 +82,6 @@ ruleTester.run("no-log-only-catch", rule, {
     {
       code: "try { f(); } catch (e) { logEvent('f.failed', { error: String(e) }); }",
     },
-
-    // === Promise `.catch()` form =========================================
-    // Only the genuinely empty handler is flagged. A promise `.catch` that logs
-    // is often a legitimate terminal handler at the end of a chain.
-    { code: "flush().catch((e) => console.error(e));" },
-    { code: "flush().catch((e) => { logger.warn(e); });" },
-    // A comment documents an intentional ignore.
-    {
-      code: "flush().catch(() => { /* fire and forget, failure is acceptable */ });",
-    },
-    // A sentinel return is `no-sentinel-return-on-catch`'s job.
-    { code: "const rows = await load().catch(() => []);" },
-    // A named handler.
-    { code: "flush().catch(onError);" },
-    // `.catch` with no handler at all.
-    { code: "flush().catch();" },
   ],
   invalid: [
     // Empty catch with a binding — distinct, accurate `emptyCatch` message.
@@ -163,20 +147,6 @@ ruleTester.run("no-log-only-catch", rule, {
       code: "try { f(); } catch (e) { obs.error(e); }",
       options: [{ loggerNames: ["obs"] }],
       errors: [{ messageId: "noLogOnlyCatch" }],
-    },
-    // === Promise `.catch()` form =========================================
-    // An entirely empty handler discards the rejection with no signal at all.
-    {
-      code: "flush().catch(() => {});",
-      errors: [{ messageId: "emptyCatch" }],
-    },
-    {
-      code: "flush().catch((e) => {});",
-      errors: [{ messageId: "emptyCatch" }],
-    },
-    {
-      code: "flush().catch(function () {});",
-      errors: [{ messageId: "emptyCatch" }],
     },
   ],
 });

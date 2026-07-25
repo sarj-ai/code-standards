@@ -20,7 +20,7 @@ Presets: `recommended` (warn-first), `strict` (every rule at error), `style-guid
 
 ### Declare your logger (`loggerNames` / `logFunctions`)
 
-Four rules decide whether a call writes to a log sink: `no-log-only-catch`,
+Three rules decide whether a call writes to a log sink: `no-log-only-catch`,
 `no-sentinel-return-on-catch`, `no-secret-in-log`. Out of the box they recognise
 a log method on a logger *receiver* (`console.error`, `logger.warn`,
 `this.logger.info`). A structured logger is usually a free *function* taking a

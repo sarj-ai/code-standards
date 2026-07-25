@@ -20,12 +20,12 @@
  * of real-world hits — which was factually wrong. The two distinct message ids
  * keep each diagnostic accurate.
  *
- * The promise form of a totally empty catch — `.catch(() => {})` — is handled
- * too, and reported as `emptyCatch`. Only the genuinely empty, comment-free
- * handler is flagged: a promise `.catch` that logs is often a legitimate
- * terminal handler at the end of a chain, so unlike the `CatchClause` case the
- * log-only shape is NOT flagged in promise form. The sentinel-returning promise
- * form (`.catch(() => [])`) belongs to `no-sentinel-return-on-catch`.
+ * Scope: this rule owns the `CatchClause` (try/catch) form ONLY. The promise
+ * form — `.catch(() => {})`, `.catch(() => null)`, and every other handler that
+ * provably does nothing — is owned entirely by `no-silent-promise-catch`, whose
+ * detection is a strict superset of what this rule used to do there. Two rules
+ * firing on one `.catch()` meant two messages and two suppression comments for
+ * a single defect, so the promise path was removed from here.
  *
  * Test files opt out by default (filenames containing `.test.`, `.spec.`, or a
  * `__tests__/` path segment) since swallow-and-log is common and acceptable in
@@ -54,38 +54,6 @@ const DEFAULT_IGNORE_PATTERNS: readonly RegExp[] = [
   /\.spec\./,
   /[\\/]__tests__[\\/]/,
 ];
-
-/**
- * The inline handler of a promise `.catch(fn)` whose body is an entirely empty
- * block, or null. A named handler (`.catch(onError)`) is reviewable on its own
- * terms and an expression body (`.catch(() => [])`) is a sentinel return, which
- * `no-sentinel-return-on-catch` owns.
- */
-function emptyPromiseCatchHandler(
-  node: TSESTree.CallExpression,
-): TSESTree.BlockStatement | null {
-  const callee = node.callee;
-  if (
-    callee.type !== "MemberExpression" ||
-    callee.computed ||
-    callee.property.type !== "Identifier" ||
-    callee.property.name !== "catch"
-  ) {
-    return null;
-  }
-  const handler = node.arguments[0];
-  if (
-    handler === undefined ||
-    (handler.type !== "ArrowFunctionExpression" &&
-      handler.type !== "FunctionExpression")
-  ) {
-    return null;
-  }
-  if (handler.body.type !== "BlockStatement" || handler.body.body.length > 0) {
-    return null;
-  }
-  return handler.body;
-}
 
 export default ESLintUtils.RuleCreator(
   (name) =>
@@ -134,17 +102,6 @@ export default ESLintUtils.RuleCreator(
     }
 
     return {
-      CallExpression(node: TSESTree.CallExpression): void {
-        const body = emptyPromiseCatchHandler(node);
-        if (body === null) {
-          return;
-        }
-        // A comment inside the handler documents an intentional ignore.
-        if (context.sourceCode.getCommentsInside(body).length > 0) {
-          return;
-        }
-        context.report({ node, messageId: "emptyCatch" });
-      },
       CatchClause(node: TSESTree.CatchClause): void {
         const statements = node.body.body;
 
