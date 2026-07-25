@@ -275,13 +275,21 @@ def _classify_return(node: ast.expr) -> str | None:
 
 
 def _is_untyped_dict_args(slice_node: ast.expr) -> bool:
-    """Report whether `dict[K, V]` is flagged (only when V is `Any` or `object`).
+    """Report whether `dict[K, V]` is flagged (`str` keys with `Any`/`object` values).
+
+    Only a str-keyed dict is a record shape a pydantic model can replace. A dict
+    keyed by anything else (`dict[TypeVar, Any]`, `dict[type, Any]`) is a
+    mapping — a data structure, not an unnamed record (pydantic's own
+    `typevars_map` helpers were the sweep case).
 
     Returns:
-        True when the dict value type is untyped.
+        True when the dict is a str-keyed record shape with untyped values.
 
     """
     if not isinstance(slice_node, ast.Tuple) or len(slice_node.elts) != _DICT_ARG_COUNT:
+        return False
+    key = _resolve_annotation(slice_node.elts[0])
+    if key is None or _flat_name(key) != "str":
         return False
     value = _resolve_annotation(slice_node.elts[1])
     return value is not None and _flat_name(value) in _ANY_VALUE_NAMES

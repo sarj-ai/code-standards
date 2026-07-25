@@ -18,7 +18,11 @@ only for:
 It does NOT fire for: `while` loops (pagination, polling, queue drains — length
 unknown, inherently sequential), a loop's once-evaluated iterable
 (`for x in await fetch()`), `async for`, test modules (intentional ordering),
-or a `for` body containing control flow. Those were the false-positive sources.
+a `for` body containing control flow, or modules that import `trio`/`anyio` —
+those runtimes have no `asyncio.gather`; their structured-concurrency style
+makes a sequential-await loop the deliberate norm (channel sends, ordered
+finalization), so the suggested fix does not exist there. Those were the
+false-positive sources.
 
 References:
 - https://docs.python.org/3/library/asyncio-task.html#running-tasks-concurrently
@@ -57,6 +61,8 @@ class NoSequentialAwait(Rule):
             return []
         tree = parse_or_none(path, source)
         if tree is None:
+            return []
+        if _imports_non_asyncio_runtime(tree):
             return []
         visitor = _SequentialAwaitVisitor(_yield_exempt_awaits(tree))
         visitor.visit(tree)
@@ -97,6 +103,32 @@ _CONTROL_FLOW = (
     ast.Continue,
     ast.Raise,
 )
+
+
+_NON_ASYNCIO_RUNTIMES = frozenset({"trio", "anyio"})
+
+
+def _imports_non_asyncio_runtime(tree: ast.AST) -> bool:
+    """Report whether the module imports a non-asyncio async runtime (trio/anyio).
+
+    `asyncio.gather` does not exist under those runtimes, and their structured
+    concurrency makes sequential awaits in a loop the deliberate norm.
+
+    Returns:
+        True when trio or anyio is imported anywhere in the module.
+
+    """
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            if any(alias.name.split(".")[0] in _NON_ASYNCIO_RUNTIMES for alias in node.names):
+                return True
+        elif (
+            isinstance(node, ast.ImportFrom)
+            and node.module is not None
+            and node.module.split(".")[0] in _NON_ASYNCIO_RUNTIMES
+        ):
+            return True
+    return False
 
 
 def _names(node: ast.AST) -> set[str]:

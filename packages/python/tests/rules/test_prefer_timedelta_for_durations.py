@@ -757,3 +757,28 @@ class Config(Base[int]):
     timeout_seconds: int
 """
     assert _check(src) == []
+
+
+# --------------------------------------------------------------------------- #
+# FP-hardening (famous-repo sweep): test files are exempt — fakes mirror the   #
+# seconds-based signatures of the APIs under test (trio's JankyLock.acquire).  #
+# --------------------------------------------------------------------------- #
+
+
+def _check_at(source: str, path: str) -> list[Diagnostic]:
+    return PreferTimedeltaForDurations().check(Path(path), source)
+
+
+def test_test_file_is_exempt():
+    src = "class JankyLock:\n    def acquire(self, timeout: int = -1) -> bool: ...\n"
+    assert _check_at(src, "src/trio/_core/_tests/test_thread_cache.py") == []
+
+
+def test_conftest_is_exempt():
+    src = "def assert_gc(test, timeout: float = 10) -> None: ...\n"
+    assert _check_at(src, "tests/conftest.py") == []
+
+
+def test_production_file_still_fires():
+    src = "def schedule(timeout_seconds: int) -> None: ...\n"
+    assert len(_check_at(src, "bulbul/calls/service.py")) == 1

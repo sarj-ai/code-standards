@@ -810,3 +810,59 @@ def f(items):
     return s
 """
     assert _count(src) == 1
+
+
+# --------------------------------------------------------------------------- #
+# FP-hardening (famous-repo sweep): while-loop probe targets are not O(n²)     #
+# accumulators — the test reads the target, so join cannot express the loop.   #
+# --------------------------------------------------------------------------- #
+
+
+def test_while_probe_target_is_exempt():
+    # Minimized from pydantic's unique-name generation
+    # (`_internal/_signature.py` / `v1/utils.py`).
+    src = """
+def merge(var_kw_name, fields):
+    while var_kw_name in fields:
+        var_kw_name += '_'
+    return var_kw_name
+"""
+    assert _check(src) == []
+
+
+def test_while_probe_setdefault_walk_is_exempt():
+    # Minimized from pydantic's `create_model` reference-name walk.
+    src = """
+def register(reference_name, module_globals, created_model):
+    object_by_reference = None
+    while object_by_reference is not created_model:
+        object_by_reference = module_globals.setdefault(reference_name, created_model)
+        reference_name += '_'
+"""
+    assert _check(src) == []
+
+
+def test_while_loop_not_reading_target_still_fires():
+    src = """
+def f(n):
+    s = ''
+    i = 0
+    while i < n:
+        s += 'x'
+        i += 1
+    return s
+"""
+    assert len(_check(src)) == 1
+
+
+def test_for_loop_accumulation_still_fires_from_trio_shape():
+    # Distilled TP from trio's _raises_group repr assembly: a for-loop growing
+    # one string across iterations is the classic O(n²) shape.
+    src = """
+def render(failed, indent_1):
+    s = ''
+    for item in failed:
+        s += f'{indent_1}{item}'
+    return s
+"""
+    assert len(_check(src)) == 1

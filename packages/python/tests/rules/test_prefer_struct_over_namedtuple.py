@@ -547,3 +547,24 @@ def test_flags_top_level_collections_call_despite_submodule_import():
 
 def test_allows_string_annotation_call_form():
     assert _check('x: "collections.namedtuple" = None\n') == []
+
+
+# --------------------------------------------------------------------------- #
+# FP-hardening (famous-repo sweep): test files are exempt — a namedtuple in a  #
+# test is usually the SUBJECT (pydantic's namedtuple-validation tests).        #
+# --------------------------------------------------------------------------- #
+
+
+def test_test_file_is_exempt():
+    src = "from collections import namedtuple\nPoint = namedtuple('Point', ['x', 'y'])\n"
+    assert _check(src, path="tests/test_types_namedtuple.py") == []
+
+
+def test_tests_directory_is_exempt():
+    src = "import collections\nRow = collections.namedtuple('Row', 'id name')\n"
+    assert _check(src, path="pydantic-core/tests/validators/helpers.py") == []
+
+
+def test_production_file_still_fires():
+    src = "from collections import namedtuple\nPoint = namedtuple('Point', ['x', 'y'])\n"
+    assert len(_check(src, path="bulbul/calls/rows.py")) == 1

@@ -30,8 +30,6 @@ _SECRET_NAMES = [
     "auth_token",
     "secret",
     "client_secret",
-    "signature",
-    "sig_signature",
     "apikey",
     "api_key",
     "hmac",
@@ -110,7 +108,47 @@ def test_flags_comparison_under_not():
 )
 def test_flags_secret_word_as_whole_token(identifier: str):
     """A secret word present as a whole snake/camel token is flagged."""
-    src = f"def f({identifier}, other):\n    return {identifier} == other\n"
+    src = f"import hmac\ndef f({identifier}, other):\n    return {identifier} == other\n"
+    assert _count(src) == 1
+
+
+# ---------------------------------------------------------------------------
+# `signature` is crypto-gated: a MAC in crypto code, a *function* signature in
+# reflection code (pydantic's `default_model_signature` sweep FP).
+# ---------------------------------------------------------------------------
+
+_SIGNATURE_NAMES = ["signature", "sig_signature", "webhook_signature"]
+
+
+@pytest.mark.parametrize("name", _SIGNATURE_NAMES)
+@pytest.mark.parametrize("crypto_import", ["import hmac", "import hashlib", "from jwt import decode"])
+def test_flags_signature_when_module_imports_crypto(name: str, crypto_import: str):
+    src = f"{crypto_import}\ndef f({name}, other):\n    return {name} == other\n"
+    assert _count(src) == 1
+
+
+@pytest.mark.parametrize("name", _SIGNATURE_NAMES)
+def test_allows_signature_without_crypto_import(name: str):
+    """No crypto machinery in the module — `signature` is a function signature."""
+    src = f"import inspect\ndef f({name}, other):\n    return {name} == other\n"
+    assert _check(src) == []
+
+
+def test_allows_inspect_signature_comparison():
+    # Minimized from pydantic _internal/_signature.py: comparing a computed
+    # (name, kind) list against a default *function* signature.
+    src = (
+        "from inspect import Parameter\n"
+        "def f(present_params):\n"
+        "    default_model_signature = [('self', Parameter.POSITIONAL_ONLY)]\n"
+        "    return [(p.name, p.kind) for p in present_params] == default_model_signature\n"
+    )
+    assert _check(src) == []
+
+
+def test_token_still_fires_without_crypto_import():
+    """Only the polysemous `signature` is crypto-gated — other auth words are not."""
+    src = "def f(token, other):\n    return token == other\n"
     assert _count(src) == 1
 
 
@@ -454,7 +492,7 @@ _AUTH_HASH_NAMES = ["password_hash", "token_hash", "jwt_hash", "computed_hmac", 
 @pytest.mark.parametrize("name", _AUTH_HASH_NAMES)
 def test_flags_hash_carrying_authenticator(name: str):
     """A hash-bearing name that also carries an auth word gates access — still fires."""
-    src = f"def f({name}, provided):\n    return {name} == provided\n"
+    src = f"import hashlib\ndef f({name}, provided):\n    return {name} == provided\n"
     assert _count(src) == 1
 
 

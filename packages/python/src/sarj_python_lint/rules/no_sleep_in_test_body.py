@@ -26,6 +26,10 @@ use, not a flaky sync, and it must not fire. Because the check keys off the
 *nearest* enclosing function, such a nested helper (not `test_*`-named) is excluded
 automatically.
 
+A sleep inside a `while` loop is also exempt: `while not cond: time.sleep(0.01)`
+is condition-polling — exactly the remedy this rule's own message prescribes
+(trio's OS-thread waits were the sweep case). Only a bare fixed delay flakes.
+
 Applies only in test files (stem `test_*.py`, `*_test.py`, `conftest.py`, or a path
 under a `tests`/`test` directory).
 """
@@ -36,6 +40,7 @@ import ast
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
@@ -43,14 +48,6 @@ if TYPE_CHECKING:
 
 
 _SLEEP_RECEIVERS = frozenset({"asyncio", "time"})
-_FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
-
-
-def _is_test_path(path: Path) -> bool:
-    name = path.name
-    if name == "conftest.py" or name.startswith("test_") or name.endswith("_test.py"):
-        return True
-    return any(part in {"tests", "test"} for part in path.parts)
 
 
 def _is_nonzero_numeric_literal(node: ast.expr) -> bool:
@@ -83,7 +80,7 @@ class NoSleepInTestBody(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if not _is_test_path(path):
+        if not is_test_path(path):
             return []
         tree = parse_or_none(path, source)
         if tree is None:
@@ -120,11 +117,14 @@ class _SleepInTestBodyVisitor(ast.NodeVisitor):
     def __init__(self) -> None:
         super().__init__()
         self._func_names: list[str | None] = []
+        self._while_depths: list[int] = []
         self.hits: list[ast.Call] = []
 
     def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
         self._func_names.append(node.name)
+        self._while_depths.append(0)
         self.generic_visit(node)
+        self._while_depths.pop()
         self._func_names.pop()
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
@@ -135,12 +135,24 @@ class _SleepInTestBodyVisitor(ast.NodeVisitor):
 
     def visit_Lambda(self, node: ast.Lambda) -> None:
         self._func_names.append(None)
+        self._while_depths.append(0)
         self.generic_visit(node)
+        self._while_depths.pop()
         self._func_names.pop()
+
+    def visit_While(self, node: ast.While) -> None:
+        # `while not cond: sleep(...)` is condition-polling — the remedy, not
+        # the flake — so sleeps under a while in the current function are exempt.
+        if self._while_depths:
+            self._while_depths[-1] += 1
+        self.generic_visit(node)
+        if self._while_depths:
+            self._while_depths[-1] -= 1
 
     def visit_Call(self, node: ast.Call) -> None:
         if self._func_names and _is_sleep_call(node):
             nearest = self._func_names[-1]
-            if nearest is not None and nearest.startswith("test_"):
+            in_poll_loop = bool(self._while_depths and self._while_depths[-1])
+            if nearest is not None and nearest.startswith("test_") and not in_poll_loop:
                 self.hits.append(node)
         self.generic_visit(node)

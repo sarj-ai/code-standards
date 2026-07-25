@@ -701,3 +701,54 @@ async def f(items):
         await fetch(key)
 """
     assert len(_check(src)) == 1
+
+
+# --------------------------------------------------------------------------- #
+# FP-hardening (famous-repo sweep): trio/anyio modules have no asyncio.gather. #
+# --------------------------------------------------------------------------- #
+
+
+def test_trio_module_is_exempt():
+    # Minimized from trio's docs channel examples: sequential channel sends are
+    # the deliberate norm under structured concurrency; gather does not exist.
+    src = """
+import trio
+
+async def producer(send_channel, names):
+    for name in names:
+        await send_channel.send(name)
+"""
+    assert _check(src) == []
+
+
+def test_anyio_module_is_exempt():
+    src = """
+from anyio import sleep
+
+async def f(xs):
+    for x in xs:
+        await handle(x)
+"""
+    assert _check(src) == []
+
+
+def test_trio_submodule_import_is_exempt():
+    src = """
+import trio.lowlevel
+
+async def f(xs):
+    for x in xs:
+        await handle(x)
+"""
+    assert _check(src) == []
+
+
+def test_asyncio_module_still_fires():
+    src = """
+import asyncio
+
+async def f(xs):
+    for x in xs:
+        await handle(x)
+"""
+    assert len(_check(src)) == 1

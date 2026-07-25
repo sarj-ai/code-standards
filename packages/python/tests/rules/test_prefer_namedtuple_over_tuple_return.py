@@ -184,3 +184,54 @@ def test_suppression_recognized():
     diags = _check(src)
     assert len(diags) == 1
     assert is_suppressed(src.splitlines(), diags[0].line, diags[0].code)
+
+
+# --- FP-hardening (famous-repo sweep) ----------------------------------------
+
+
+def test_test_file_is_exempt():
+    # Minimized from trio's test helpers: an ad-hoc pair from a test fixture is
+    # local scaffolding, not a public boundary.
+    src = "async def make_pipe() -> tuple[PipeSendStream, PipeReceiveStream]:\n    return a, b\n"
+    assert _check(src, path="src/trio/_tests/test_windows_pipes.py") == []
+
+
+def test_not_implemented_stub_is_exempt():
+    # Minimized from trio's SocketType.accept: the tuple shape mirrors stdlib
+    # socket.accept and is not this module's to change.
+    src = """
+class SocketType:
+    async def accept(self) -> tuple[SocketType, AddressFormat]:
+        raise NotImplementedError
+"""
+    assert _check(src) == []
+
+
+def test_not_implemented_stub_with_docstring_is_exempt():
+    src = """
+class SocketType:
+    async def accept(self) -> tuple[SocketType, AddressFormat]:
+        \"\"\"Mirror of stdlib accept.\"\"\"
+        raise NotImplementedError("subclass me")
+"""
+    assert _check(src) == []
+
+
+def test_overload_stub_is_exempt():
+    src = """
+@overload
+def pair(x: int) -> tuple[int, str]: ...
+"""
+    assert _check(src) == []
+
+
+def test_ellipsis_body_still_fires():
+    # `...` is also the shorthand for an ordinary unwritten function — only a
+    # NotImplementedError body marks an interface stub.
+    src = "def download() -> tuple[bytes, str]: ...\n"
+    assert len(_check(src)) == 1
+
+
+def test_implemented_function_still_fires():
+    src = "def run_black(file, source) -> tuple[bool, str]:\n    return True, source\n"
+    assert len(_check(src)) == 1

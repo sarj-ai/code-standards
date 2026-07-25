@@ -1784,3 +1784,112 @@ def f():
         return None
 """
     assert len(_check(src)) == 1
+
+
+# --- FP-hardening (famous-repo sweep): trio/pydantic idioms ---
+
+
+def test_stop_async_iteration_drain_is_exempt():
+    # Minimized from trio's _channel.py: iterator exhaustion IS the expected
+    # end-of-data signal, not a swallow.
+    src = """
+async def pump(agen, send_chan):
+    while True:
+        try:
+            value = await agen.__anext__()
+        except StopAsyncIteration:
+            return
+        await send_chan.send(value)
+"""
+    assert _check(src) == []
+
+
+def test_stop_iteration_is_exempt():
+    src = """
+def first(it):
+    try:
+        head = next(it)
+    except StopIteration:
+        return
+    process(head)
+"""
+    assert _check(src) == []
+
+
+def test_none_procedure_narrow_handler_bare_return_is_exempt():
+    # Minimized from trio's _dtls.py: a `-> None` procedure exiting early on an
+    # expected, narrowly-caught condition.
+    src = """
+def handle(stream, packet) -> None:
+    try:
+        stream.bio_write(packet)
+    except ClosedResourceError:
+        return
+    stream.flush()
+"""
+    assert _check(src) == []
+
+
+def test_none_procedure_broad_handler_still_fires():
+    src = """
+def handle(stream, packet) -> None:
+    try:
+        stream.bio_write(packet)
+    except Exception:
+        return
+    stream.flush()
+"""
+    assert len(_check(src)) == 1
+
+
+def test_unannotated_function_narrow_handler_bare_return_still_fires():
+    # Without the `-> None` contract the bare return may be masking a result.
+    src = """
+def handle(stream, packet):
+    try:
+        data = stream.read()
+        process(data)
+    except ClosedResourceError:
+        return
+"""
+    assert len(_check(src)) == 1
+
+
+def test_bool_annotated_contract_returning_false_is_exempt():
+    # Minimized from pydantic's _decorators.py: the success path computes the
+    # bool, so no literal-return corroboration exists — the annotation is the
+    # contract.
+    src = """
+def uses_info(serializer, mode) -> bool:
+    try:
+        sig = signature(serializer)
+    except (ValueError, TypeError):
+        return False
+    return count_positional(sig) == 2
+"""
+    assert _check(src) == []
+
+
+def test_data_function_returning_false_still_fires():
+    src = """
+def load(path) -> dict:
+    try:
+        return parse(path)
+    except Exception:
+        return False
+"""
+    assert len(_check(src)) == 1
+
+
+def test_typeis_annotated_contract_returning_false_is_exempt():
+    # Minimized from pydantic's takes_validated_data_argument: TypeIs/TypeGuard
+    # are bool-valued contracts.
+    src = """
+def takes_data(factory) -> TypeIs[Callable]:
+    try:
+        sig = signature(factory)
+    except (ValueError, TypeError):
+        return False
+    return len(sig.parameters) == 1
+"""
+    assert _check(src) == []
