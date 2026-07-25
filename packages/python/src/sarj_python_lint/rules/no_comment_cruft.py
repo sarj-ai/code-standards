@@ -25,7 +25,17 @@ under a prose lead-in (`# For example:`, a wrapped sentence) or carries
 pseudo-code markers (`%sent%`, `[opt]`, `<FunctionBody>`, `...`); and directive
 comments — `# type:`, `# noqa`, `# sarj-noqa`,
 `# pragma:`, `# pyright:`, `# mypy:`, `# fmt:`, `# isort:`, `# ruff:`,
-`# nosec`, `# TODO`, `# FIXME`, shebangs, and coding declarations.
+`# nosec`, `# TODO`, `# FIXME`, `# language=` (IDE injection), shebangs, and
+coding declarations.
+
+Also NOT flagged (famous-repo sweep hardening):
+- generated files (`_paths.is_generated_source`) — their banners are the
+  generator's warning header, not hand-written cruft;
+- a punctuation-only "banner" directly beneath a texty comment line — that is
+  an RST-style heading underline or an ASCII-diagram row inside a prose comment
+  essay (trio's epoll/socket design essays), not a code-section separator;
+- step narration that carries a rationale marker (`because`, `since`,
+  `so that`, `otherwise`) — "First, take the lock, because ..." is a *why*.
 
 Suppress an intentional case with `# sarj-noqa: SARJ016 — <reason>`.
 """
@@ -39,6 +49,7 @@ import tokenize
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule
+from sarj_python_lint.rules._paths import is_generated_source
 
 
 if TYPE_CHECKING:
@@ -67,6 +78,7 @@ _DIRECTIVE_PREFIXES = (
     "hack",
     "xxx:",
     "-*-",
+    "language=",
 )
 
 _LICENSE_RE = re.compile(
@@ -107,6 +119,10 @@ _STEP_NARRATION_RE = re.compile(
     r"|finally|lastly|now)\s*[,:]\s*\S|^step\s+\d+\b",
     re.IGNORECASE,
 )
+
+# A rationale marker turns step narration into a legitimate *why* comment
+# ("First, we take the outer send lock, because of Trio's standard semantics").
+_RATIONALE_RE = re.compile(r"\b(?:because|since|so that|otherwise)\b", re.IGNORECASE)
 
 # Self-admitted meta-commentary — the "why later", not the why. Owner-tagged
 # directive markers are handled elsewhere (as directives) and kept.
@@ -150,7 +166,31 @@ def _is_redundant_narration(body: str) -> bool:
     c = body.strip()
     if not c or _looks_like_code(c):
         return False
+    if _RATIONALE_RE.search(c):
+        return False  # "First, take the lock, because ..." carries a why
     return bool(_STEP_NARRATION_RE.search(c) or _META_COMMENTARY_RE.search(c))
+
+
+def _is_heading_underline(body: str, prev_body: str | None) -> bool:
+    """Report whether a punctuation-only banner underlines a texty comment line.
+
+    An RST-style heading underline (`# Literature review` / `# -----------`) or
+    an ASCII-diagram row directly beneath a texty row lives INSIDE a prose
+    comment block — it is typography, not a code-section separator.
+
+    Returns:
+        True when the banner sits directly under a texty, non-banner comment.
+
+    """
+    if not _BANNER_FULL_RE.match(body):
+        return False
+    if prev_body is None:
+        return False
+    return (
+        any(_is_word_char(ch) for ch in prev_body)
+        and not _is_banner(prev_body)
+        and not _looks_like_code(prev_body)
+    )
 
 
 def _is_banner(body: str) -> bool:
@@ -236,6 +276,12 @@ class NoCommentCruft(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        if is_generated_source(source):
+            return []
+        # A Sphinx `docs/**/conf.py` is quickstart-generated boilerplate whose
+        # `# -- Section ----` banners are the tool's own convention.
+        if path.name == "conf.py" and "docs" in path.parts:
+            return []
         try:
             standalone, first_code_line = _standalone_comments(source)
         except tokenize.TokenError, IndentationError, SyntaxError:
@@ -255,6 +301,8 @@ class NoCommentCruft(Rule):
     @staticmethod
     def _classify(body: str, prev_body: str | None) -> str | None:
         if _is_banner(body):
+            if _is_heading_underline(body, prev_body):
+                return None
             return "Section-banner / region comment — structure code with functions, not ASCII rules."
         if _looks_like_code(body):
             if prev_body is not None and _is_prose_line(prev_body):

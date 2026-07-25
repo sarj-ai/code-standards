@@ -1259,3 +1259,57 @@ def route(kind: str) -> int:
     diags = _check(src)
     assert len(diags) == 2
     assert [d.line for d in diags] == sorted(d.line for d in diags)
+
+
+# --------------------------------------------------------------------------- #
+# FP-hardening (famous-repo sweep): wire-bound variables (subscript / .get()). #
+# --------------------------------------------------------------------------- #
+
+
+def test_subscript_bound_variable_is_exempt():
+    # Minimized from pydantic's _schema_gather.py: `schema['type']` is another
+    # system's wire format — a StrEnum cannot be imposed on it.
+    src = """
+def traverse(schema):
+    schema_type = schema['type']
+    if schema_type == 'definition-ref':
+        return 1
+    elif schema_type == 'definitions':
+        return 2
+"""
+    assert _check(src) == []
+
+
+def test_get_bound_variable_is_exempt():
+    # Minimized from pydantic's json_schema.py `extra_fields_behavior` read.
+    src = """
+def handle(schema):
+    extra = schema.get('config', {}).get('extra_fields_behavior')
+    if extra == 'forbid':
+        return False
+    elif extra == 'allow':
+        return True
+"""
+    assert _check(src) == []
+
+
+def test_walrus_subscript_bound_variable_is_exempt():
+    src = """
+def walk(inner_schema):
+    if (inner_schema_type := inner_schema['type']) == 'list':
+        return 1
+    if inner_schema_type == 'json-or-python':
+        return 2
+"""
+    assert _check(src) == []
+
+
+def test_plain_parameter_cluster_still_fires():
+    src = """
+def dispatch(kind):
+    if kind == 'ingest':
+        return 1
+    elif kind == 'export':
+        return 2
+"""
+    assert len(_check(src)) == 1

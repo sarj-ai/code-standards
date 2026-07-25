@@ -30,6 +30,16 @@ The three tuple uses CLAUDE.md permits are deliberately NOT flagged:
 Also NOT flagged: private (`_`-prefixed) functions, single-element `tuple[X]`,
 a bare unsubscripted `tuple`, and any non-tuple / unannotated return.
 
+Famous-repo sweep hardening also exempts:
+- test files (`_paths.is_test_path`) — test helpers returning ad-hoc pairs
+  (`make_pipe() -> tuple[Send, Receive]`) are local scaffolding, not a public
+  boundary;
+- interface stubs whose body only raises `NotImplementedError` (plus a
+  docstring) and `@overload` stubs — the tuple shape mirrors an external
+  protocol (trio's `SocketType.accept` mirrors stdlib `socket.accept`) and
+  cannot change unilaterally. A bare `...` body is NOT exempt — it is also
+  the shorthand for an ordinary unwritten function.
+
 Suppress a deliberate positional return with `# sarj-noqa: SARJ026 — <reason>`.
 
 References:
@@ -43,6 +53,7 @@ import ast
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
@@ -72,6 +83,8 @@ class PreferNamedtupleOverTupleReturn(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        if is_test_path(path):
+            return []
         tree = parse_or_none(path, source)
         if tree is None:
             return []
@@ -82,6 +95,8 @@ class PreferNamedtupleOverTupleReturn(Rule):
             if node.name.startswith("_"):
                 continue
             if node.returns is None:
+                continue
+            if _is_interface_stub(node) or _is_overload(node):
                 continue
             if not _is_bare_positional_tuple(node.returns):
                 continue
@@ -96,6 +111,46 @@ class PreferNamedtupleOverTupleReturn(Rule):
             )
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
+
+
+def _is_interface_stub(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Report whether the body only raises `NotImplementedError` (+ docstring).
+
+    Such a function declares an interface pinned elsewhere; its tuple shape is
+    not this module's to change. A bare `...` body is NOT a stub here — it is
+    also the shorthand for an ordinary unwritten function.
+
+    Returns:
+        True when the body is a NotImplementedError stub.
+
+    """
+    has_raise = False
+    for stmt in node.body:
+        if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str):
+            continue  # docstring
+        if _raises_not_implemented(stmt):
+            has_raise = True
+            continue
+        return False
+    return has_raise
+
+
+def _raises_not_implemented(stmt: ast.stmt) -> bool:
+    if not isinstance(stmt, ast.Raise):
+        return False
+    exc = stmt.exc
+    target = exc.func if isinstance(exc, ast.Call) else exc
+    return isinstance(target, ast.Name) and target.id == "NotImplementedError"
+
+
+def _is_overload(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    for dec in node.decorator_list:
+        match dec:
+            case ast.Name(id="overload") | ast.Attribute(attr="overload"):
+                return True
+            case _:
+                continue
+    return False
 
 
 def _is_bare_positional_tuple(annotation: ast.expr) -> bool:

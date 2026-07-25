@@ -19,6 +19,17 @@ bounded, not cross-iteration accumulation. Only a target initialised BEFORE the
 loop is a true O(n²) accumulator, so a preceding non-accumulating rebind of the
 target inside the loop suppresses the diagnostic.
 
+A target whose intermediate values are CONSUMED per iteration is a probe, not
+an accumulator — `"".join` at the end cannot replace it. Two consumption
+shapes are exempt (both minimized from pydantic's unique-name generation):
+
+* the enclosing `while` test reads the target
+  (`while name in taken: name += "_"`), or
+* the loop body reads the target outside its own accumulation statement
+  (`globals.setdefault(reference_name, model)` then `reference_name += "_"`).
+
+A pure accumulator is only ever written inside the loop, so it keeps firing.
+
 References:
 - https://docs.python.org/3/library/stdtypes.html#str.join
 - https://wiki.python.org/moin/PythonSpeed/PerformanceTips
@@ -71,28 +82,65 @@ class _ConcatVisitor(ast.NodeVisitor):
         self._loop_depth: int = 0
         self._string_vars: list[frozenset[str]] = [frozenset()]
         self._loop_reassigns: list[dict[str, list[int]]] = []
+        self._loop_reads: list[frozenset[str]] = []
+        self._while_probe_names: list[frozenset[str]] = []
         self.hits: list[ast.AugAssign | ast.Assign] = []
 
     @override
     def generic_visit(self, node: ast.AST) -> None:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
             saved_depth = self._loop_depth
+            saved_probes = self._while_probe_names
+            saved_reads = self._loop_reads
             self._loop_depth = 0
+            self._while_probe_names = []
+            self._loop_reads = []
             self._string_vars.append(_string_typed_locals(node))
             super().generic_visit(node)
             self._string_vars.pop()
             self._loop_depth = saved_depth
+            self._while_probe_names = saved_probes
+            self._loop_reads = saved_reads
             return
         if isinstance(node, (ast.For, ast.AsyncFor, ast.While)):
             self._loop_depth += 1
             self._loop_reassigns.append(_loop_local_reassignments(node))
+            self._loop_reads.append(_loop_read_names(node))
+            if isinstance(node, ast.While):
+                self._while_probe_names.append(frozenset(_test_names(node.test)))
             super().generic_visit(node)
+            if isinstance(node, ast.While):
+                self._while_probe_names.pop()
+            self._loop_reads.pop()
             self._loop_reassigns.pop()
             self._loop_depth -= 1
             return
-        if self._loop_depth and self._is_in_loop_concat(node) and not self._is_loop_local_target(node):
+        if (
+            self._loop_depth
+            and self._is_in_loop_concat(node)
+            and not self._is_loop_local_target(node)
+            and not self._is_probe_target(node)
+        ):
             self.hits.append(node)
         super().generic_visit(node)
+
+    def _is_probe_target(self, node: ast.AugAssign | ast.Assign) -> bool:
+        """Report whether the concat target's intermediate values are consumed.
+
+        A target read by an enclosing while test, or read inside a loop body
+        outside its own accumulation, is a probe (unique-name generation):
+        every intermediate value matters, so `join` cannot replace the growth.
+
+        Returns:
+            True when the target is consumed per iteration rather than only grown.
+
+        """
+        target_src = ast.unparse(self._accumulation_target(node))
+        if any(target_src in names for names in self._while_probe_names):
+            return True
+        # Only the INNERMOST loop's reads consume the growth per iteration; a
+        # read in an outer loop body sees only the finished inner accumulation.
+        return bool(self._loop_reads) and target_src in self._loop_reads[-1]
 
     def _is_loop_local_target(self, node: ast.AugAssign | ast.Assign) -> bool:
         """Report whether the concat target is freshly rebound earlier this iteration.
@@ -151,6 +199,48 @@ class _ConcatVisitor(ast.NodeVisitor):
         if isinstance(rhs, ast.Name) and isinstance(target, ast.Name):
             return target.id in self._string_vars[-1]
         return False
+
+
+def _test_names(test: ast.expr) -> set[str]:
+    """Collect the source text of every Name/Attribute read in a while test.
+
+    Returns:
+        The unparsed reads appearing in the test expression.
+
+    """
+    return {ast.unparse(n) for n in ast.walk(test) if isinstance(n, (ast.Name, ast.Attribute))}
+
+
+def _loop_read_names(loop: ast.For | ast.AsyncFor | ast.While) -> frozenset[str]:
+    """Collect names READ in the loop body outside their own accumulation.
+
+    An `s += x` stores (no Load of `s`); an `s = s + x` self-read is excluded.
+    Any other Load — a call argument, a subscript key, a comparison — consumes
+    the intermediate value, which marks the target as a probe. Nested
+    function/lambda bodies are excluded (they run in their own scope).
+
+    Returns:
+        The unparsed Name/Attribute reads in the loop's own body.
+
+    """
+    reads: set[str] = set()
+    stack: list[ast.AST] = list(loop.body)
+    while stack:
+        node = stack.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
+            continue
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target = node.targets[0]
+            if _is_accumulation_assign(target, node.value) and isinstance(node.value, ast.BinOp):
+                # Skip the self-read operand; still record reads in the other one.
+                other = _other_add_operand(target, node.value)
+                if other is not None:
+                    stack.append(other)
+                continue
+        stack.extend(ast.iter_child_nodes(node))
+        if isinstance(node, (ast.Name, ast.Attribute)) and isinstance(node.ctx, ast.Load):
+            reads.add(ast.unparse(node))
+    return frozenset(reads)
 
 
 def _loop_local_reassignments(loop: ast.For | ast.AsyncFor | ast.While) -> dict[str, list[int]]:

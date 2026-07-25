@@ -285,7 +285,6 @@ def test_syntax_error_returns_empty():
 _FLAGGED_DICT_ANNOTATIONS = [
     "dict[str, Any]",
     "dict[str, object]",
-    "dict[int, Any]",
     "dict[str, Any] | None",
     "None | dict[str, Any]",
     "Optional[dict[str, Any]]",
@@ -334,6 +333,12 @@ _ALLOWED_ANNOTATIONS = [
     "dict[str, CallId]",
     "dict[str, list[int]]",
     "dict[CallId, Call]",
+    # Non-str keys make a MAPPING (a data structure), not an unnamed record —
+    # minimized from pydantic's `get_standard_typevars_map` / `deep_update`.
+    "dict[int, Any]",
+    "dict[TypeVar, Any]",
+    "dict[KeyType, Any]",
+    "dict[type, object]",
     "dict[str, dict[str, Any]]",  # inner Any-dict as VALUE is not detected
     "dict[str, Any | None]",  # union value is not `Any`/`object`
     "dict[str]",  # single subscript arg — not `dict[K, V]`

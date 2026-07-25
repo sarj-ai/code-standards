@@ -38,6 +38,17 @@ swallowed error. Four such shapes are exempt:
   `None` arm (or an empty container) — the multi-statement compute-then-return
   Optional idiom, e.g. `parse_time(...) -> time | None` returning `None` on
   `except ValueError:`.
+- **Bool contract:** the enclosing function is annotated `-> bool` and the
+  handler returns a boolean — same as the boolean-probe shape but keyed off the
+  annotation, for probes whose success path computes the bool rather than
+  returning a literal (pydantic's `_serializer_info_arg` callers).
+- **Iteration control-flow:** the handler catches only `StopIteration` /
+  `StopAsyncIteration` — mapping iterator exhaustion to an exit is THE idiom
+  (trio's `agen.__anext__()` drain loop), not a swallow.
+- **Procedure early-exit:** the enclosing function is annotated `-> None`, the
+  handler is *narrow*, and it ends in a bare `return` — a procedure has no
+  result to corrupt, and a targeted except-return is a deliberate early exit on
+  an expected condition (trio's `except ClosedResourceError: return`).
 
 The genuine bug — a data-returning function whose success path yields real data and
 whose broad handler swallows to a sentinel — still fires. A bare `except: pass`
@@ -155,10 +166,16 @@ def _is_intended_result(handler: ast.ExceptHandler, ret: ast.Return, parents: Pa
     exc_names = _handler_exc_names(handler)
     if _is_feature_detection(exc_names):
         return True
+    if _is_iteration_control(exc_names):
+        return True
     func = _enclosing_function(handler, parents)
     if func is not None and _is_predicate_name(func.name):
         return True
-    if _value_kind(ret.value) == "bool" and func is not None and _has_non_except_bool_return(func):
+    if (
+        _value_kind(ret.value) == "bool"
+        and func is not None
+        and (_has_non_except_bool_return(func) or _returns_bool(func))
+    ):
         return True
     if (
         func is not None
@@ -166,6 +183,8 @@ def _is_intended_result(handler: ast.ExceptHandler, ret: ast.Return, parents: Pa
         and _is_narrow_handler(exc_names)
         and _sentinel_matches_optional(ret)
     ):
+        return True
+    if func is not None and _returns_none(func) and _is_narrow_handler(exc_names) and ret.value is None:
         return True
     return _is_lookup_with_default(handler, parents, exc_names)
 
@@ -269,6 +288,55 @@ def _handler_exc_names(handler: ast.ExceptHandler) -> tuple[str, ...] | None:
 
 _IMPORT_ERRORS: frozenset[str] = frozenset({"ImportError", "ModuleNotFoundError"})
 _BROAD_ERRORS: frozenset[str] = frozenset({"Exception", "BaseException"})
+_ITERATION_ERRORS: frozenset[str] = frozenset({"StopIteration", "StopAsyncIteration"})
+
+
+def _is_iteration_control(exc_names: tuple[str, ...] | None) -> bool:
+    """Report whether the handler catches only iterator-exhaustion exceptions.
+
+    `except StopAsyncIteration: return` is the drain-loop exit idiom, not a
+    swallow — the exception IS the expected end-of-data signal.
+
+    Returns:
+        True when every caught name is an iteration control-flow exception.
+
+    """
+    return exc_names is not None and len(exc_names) > 0 and all(name in _ITERATION_ERRORS for name in exc_names)
+
+
+_BOOL_FAMILY_SUBSCRIPTS = frozenset({"TypeGuard", "TypeIs"})
+
+
+def _returns_bool(func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Report whether `func` declares a boolean contract.
+
+    Covers `-> bool` and the bool-valued narrowing forms `-> TypeGuard[X]` /
+    `-> TypeIs[X]` (pydantic's `takes_validated_data_argument`).
+
+    Returns:
+        True for a declared boolean contract.
+
+    """
+    ann = func.returns
+    if ann is None:
+        return False
+    if isinstance(ann, ast.Name):
+        return ann.id == "bool"
+    if isinstance(ann, ast.Subscript):
+        base = ann.value
+        name = base.id if isinstance(base, ast.Name) else base.attr if isinstance(base, ast.Attribute) else None
+        return name in _BOOL_FAMILY_SUBSCRIPTS
+    return False
+
+
+def _returns_none(func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Report whether `func` is annotated `-> None` (a procedure).
+
+    Returns:
+        True for a declared None contract.
+
+    """
+    return func.returns is not None and _is_none_annotation(func.returns)
 
 
 def _is_feature_detection(exc_names: tuple[str, ...] | None) -> bool:

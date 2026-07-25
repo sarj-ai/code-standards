@@ -20,6 +20,11 @@ crosses a boundary and needs validation.
 
 `typing.NamedTuple` is NOT flagged — it is the recommended form.
 
+Test files are exempt (`_paths.is_test_path`): a `collections.namedtuple` in a
+test is usually the *subject* — exercising code that must accept untyped
+namedtuples (pydantic's validation tests were the sweep case) — not a value
+object the test should model properly.
+
 Suppress with `# sarj-noqa: SARJ015 — <reason>`.
 
 References:
@@ -33,6 +38,7 @@ import ast
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
@@ -56,6 +62,8 @@ class PreferStructOverNamedtuple(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        if is_test_path(path):
+            return []
         tree = parse_or_none(path, source)
         if tree is None:
             return []

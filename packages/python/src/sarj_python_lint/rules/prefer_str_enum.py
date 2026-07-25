@@ -32,6 +32,11 @@ Deliberately NOT flagged (real-world false positives the sweep surfaced):
 - Open-domain code variables (`language`, `country`, `currency`, `timezone`,
   `locale`, `region`, `code`, ...): special-casing a few ISO codes is not a
   closed enum.
+- Variables bound from a subscript or `.get(...)` lookup in the same function
+  (`schema_type = schema['type']`, `extra = cfg.get('behavior')`): the value
+  comes off a dict-shaped wire format owned by someone else (pydantic-core
+  schemas were the motivating sweep case) — you cannot impose a StrEnum on
+  another system's payload keys.
 
 Replace a genuine hit with:
     class Status(StrEnum):
@@ -161,7 +166,9 @@ class PreferStrEnum(Rule):
             elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 if check_clusters:
                     child_active = {}
-                    all_clusters.append((child_active, _literal_typed_names(node, alias_names)))
+                    all_clusters.append(
+                        (child_active, _literal_typed_names(node, alias_names) | _wire_bound_names(node))
+                    )
                 else:
                     child_active = None
             elif isinstance(node, ast.Lambda):
@@ -341,6 +348,48 @@ def _literal_typed_names(func: ast.FunctionDef | ast.AsyncFunctionDef, alias_nam
             names.add(node.target.id)
         stack.extend(ast.iter_child_nodes(node))
     return frozenset(names)
+
+
+def _wire_bound_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> frozenset[str]:
+    """Collect names in `func` bound from a subscript or `.get(...)` lookup.
+
+    `schema_type = schema['type']` / `extra = cfg.get('behavior')` read a value
+    off a dict-shaped wire format the module does not own; clusters on such
+    names are external-vocabulary dispatch, not an app enum. Nested
+    functions/classes own their scope and are not descended into.
+
+    Returns:
+        The set of such names.
+
+    """
+    names: set[str] = set()
+    stack: list[ast.AST] = list(func.body)
+    while stack:
+        node = stack.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
+            continue
+        target: ast.expr | None = None
+        value: ast.expr | None = None
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target, value = node.targets[0], node.value
+        elif isinstance(node, (ast.AnnAssign, ast.NamedExpr)):
+            target, value = node.target, node.value
+        if isinstance(target, ast.Name) and value is not None and _is_wire_lookup(value):
+            names.add(target.id)
+        stack.extend(ast.iter_child_nodes(node))
+    return frozenset(names)
+
+
+def _is_wire_lookup(value: ast.expr) -> bool:
+    """Report whether `value` is a subscript read or a `.get(...)` call (chained included).
+
+    Returns:
+        True for `x[...]` or `x.get(...)` shapes.
+
+    """
+    if isinstance(value, ast.Subscript):
+        return True
+    return isinstance(value, ast.Call) and isinstance(value.func, ast.Attribute) and value.func.attr == "get"
 
 
 def _is_literal_annotation(annotation: ast.expr | None, alias_names: frozenset[str]) -> bool:

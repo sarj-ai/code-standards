@@ -40,6 +40,10 @@ Deliberately NOT flagged:
   bare-numeric wire values `timedelta` cannot parse, so a raw `int`/`float` is
   the only workable type at that boundary. Ordinary `BaseModel` domain fields are
   still flagged.
+- test files (`_paths.is_test_path`): test fakes and helpers mirror the
+  signatures of stdlib/third-party APIs under test (`Lock.acquire(timeout=-1)`,
+  seconds-based subprocess helpers) and cannot change them — the trio sweep's
+  false positives were all of this shape.
 
 Suppress an intentional raw-numeric duration with `# sarj-noqa: SARJ014 — <reason>`.
 
@@ -55,6 +59,7 @@ import re
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
@@ -105,6 +110,8 @@ class PreferTimedeltaForDurations(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        if is_test_path(path):
+            return []
         tree = parse_or_none(path, source)
         if tree is None:
             return []

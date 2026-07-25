@@ -5,6 +5,14 @@ Comparing secrets (tokens, signatures, HMACs, password hashes, API keys) with
 leaks information about how many leading bytes matched. Use
 `hmac.compare_digest(a, b)`, which compares in constant time.
 
+`signature` is polysemous: in crypto code it is a MAC to verify, but in
+reflection-heavy code it is a *function* signature (`inspect.signature`,
+`default_model_signature`). A name whose only secret token is `signature`
+therefore fires only when the module imports crypto machinery (`hmac`,
+`hashlib`, `secrets`, `jwt`, `cryptography`, ...) — code verifying a MAC
+computes the expected value with exactly those modules (pydantic's signature
+merging was the sweep false positive).
+
 References:
 - https://docs.python.org/3/library/hmac.html#hmac.compare_digest
 
@@ -85,6 +93,7 @@ class PreferConstantTimeSecretCompare(Rule):
         tree = parse_or_none(path, source)
         if tree is None:
             return []
+        crypto_module = _imports_crypto(tree)
         diags: list[Diagnostic] = []
         for node in ast.walk(tree):
             if not isinstance(node, ast.Compare):
@@ -102,7 +111,7 @@ class PreferConstantTimeSecretCompare(Rule):
             # literal (ruff S105 covers hardcoded-secret literals separately).
             if any(_is_excluded_operand(op) for op in operands):
                 continue
-            if not any(_is_secret_operand(op) for op in operands):
+            if not any(_is_secret_operand(op, crypto_module=crypto_module) for op in operands):
                 continue
             diags.append(
                 Diagnostic(
@@ -124,7 +133,7 @@ def _is_test_path(path: Path) -> bool:
     return path.name.startswith("test_") or "tests" in path.parts
 
 
-def _is_secret_operand(node: ast.AST) -> bool:
+def _is_secret_operand(node: ast.AST, *, crypto_module: bool) -> bool:
     """Report whether the operand's identifier names an auth secret worth constant-time compare.
 
     Returns:
@@ -135,18 +144,48 @@ def _is_secret_operand(node: ast.AST) -> bool:
     if isinstance(node, ast.NamedExpr):
         node = node.target
     if isinstance(node, ast.Name):
-        return _is_auth_secret_name(node.id)
+        return _is_auth_secret_name(node.id, crypto_module=crypto_module)
     if isinstance(node, ast.Attribute):
-        return _is_auth_secret_name(node.attr)
+        return _is_auth_secret_name(node.attr, crypto_module=crypto_module)
     return False
 
 
-def _is_auth_secret_name(identifier: str) -> bool:
+# The polysemous auth words: a MAC in crypto code, a *function* signature in
+# reflection code. They count as auth words only in a module that imports
+# crypto machinery.
+_CRYPTO_GATED_WORDS = frozenset({"signature", "signatures"})
+
+_CRYPTO_MODULES = frozenset({"hmac", "hashlib", "secrets", "jwt", "cryptography", "Crypto", "nacl"})
+
+
+def _imports_crypto(tree: ast.AST) -> bool:
+    """Report whether the module imports crypto machinery anywhere.
+
+    Returns:
+        True when an import's root module is a known crypto module.
+
+    """
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            if any(alias.name.split(".")[0] in _CRYPTO_MODULES for alias in node.names):
+                return True
+        elif (
+            isinstance(node, ast.ImportFrom)
+            and node.module is not None
+            and node.module.split(".")[0] in _CRYPTO_MODULES
+        ):
+            return True
+    return False
+
+
+def _is_auth_secret_name(identifier: str, *, crypto_module: bool) -> bool:
     """Report whether `identifier` names an authenticator (an access-gating secret).
 
     Narrows the shared `is_secret_name` for SARJ011: strips category/handle
     descriptors, `type`/`kind` discriminators, boolean flags, and integrity-only
-    hashes, none of which are a timing-attack surface.
+    hashes, none of which are a timing-attack surface. A name whose only auth
+    token is the polysemous `signature` needs the module to import crypto
+    machinery — otherwise it is a function signature, not a MAC.
 
     Returns:
         True when comparing `identifier` in non-constant time leaks an auth secret.
@@ -161,19 +200,14 @@ def _is_auth_secret_name(identifier: str) -> bool:
         return False
     if any(tok in _CATEGORY_WORDS for tok in tokens):
         return False
-    return _has_auth_word(tokens)
-
-
-def _has_auth_word(tokens: list[str]) -> bool:
-    """Report whether the identifier's secret-ness comes from an authenticator, not a bare hash.
-
-    Returns:
-        True when an auth word is present or `api` directly precedes `key`.
-
-    """
-    if any(tok in _AUTH_WORDS for tok in tokens):
-        return True
-    return any(a == "api" and b == "key" for a, b in pairwise(tokens))
+    auth_tokens = {tok for tok in tokens if tok in _AUTH_WORDS} | {
+        f"{a}_{b}" for a, b in pairwise(tokens) if a == "api" and b == "key"
+    }
+    if not auth_tokens:
+        return False
+    if auth_tokens <= _CRYPTO_GATED_WORDS:
+        return crypto_module
+    return True
 
 
 def _is_excluded_operand(node: ast.AST) -> bool:

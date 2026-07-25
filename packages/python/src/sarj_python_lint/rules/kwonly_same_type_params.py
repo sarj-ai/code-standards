@@ -36,6 +36,19 @@ Never flags — these signatures cannot or should not change:
   keys), so the positional shape is never called swap-prone by a human,
 * test files (`_paths.is_test_path`) — test fakes and helpers mirror the
   signatures of the code under test and cannot unilaterally change them,
+* generated files (`_paths.is_generated_source`) — the signature mirrors
+  whatever the generator emits (found via trio's `_generated_io_kqueue.py`),
+* functions whose name is referenced as a VALUE anywhere in the module
+  (passed to a registry, returned, stored) — the signature is a callback
+  protocol shared with other implementations and cannot change unilaterally
+  (found via attrs' `fmt_setter` family and sphinx `app.connect` handlers),
+* the implementation of `@overload`-decorated stubs — a same-named sibling
+  in the same scope carries `@overload`, so the impl's positional shape is
+  pinned by the declared overloads (found via trio's `getsockopt`),
+* signatures whose same-typed params differ only by a numeric suffix
+  (`value_1: float, value_2: float`) — the numbering declares the function
+  symmetric, so argument order genuinely does not matter (found via
+  pydantic's `almost_equal_floats`),
 * parameters that are already keyword-only (behind `*`) or positional-only
   (before `/`, a deliberate positional API). Note this is per-parameter, not
   per-signature: `def f(a: str, b: str, *, c: int)` is still flagged, because
@@ -52,11 +65,11 @@ matter are suppressed with `# sarj-noqa: SARJ034 — <reason>`.
 from __future__ import annotations
 
 import ast
-from collections import Counter
+import re
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
-from sarj_python_lint.rules._paths import is_test_path
+from sarj_python_lint.rules._paths import is_generated_source, is_test_path
 
 
 if TYPE_CHECKING:
@@ -88,16 +101,20 @@ class KwonlySameTypeParams(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_test_path(path):
+        if is_test_path(path) or is_generated_source(source):
             return []
         tree = parse_or_none(path, source)
         if tree is None:
             return []
+        value_referenced = _value_referenced_names(tree)
+        overload_names = _overload_stub_names(tree)
         diags: list[Diagnostic] = []
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
             if _is_exempt(node):
+                continue
+            if node.name in value_referenced or node.name in overload_names:
                 continue
             offending = _swap_prone_annotation(node.args)
             if offending is None:
@@ -126,18 +143,11 @@ def _is_exempt(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     if name.startswith(_EXEMPT_NAME_PREFIXES):
         return True
     return any(
-        _is_exempt_decorator(dec) or _is_route_decorator(dec) for dec in node.decorator_list
+        (isinstance(dec, ast.Name) and dec.id in _EXEMPT_DECORATORS)
+        or (isinstance(dec, ast.Attribute) and dec.attr in _EXEMPT_DECORATORS)
+        or _is_route_decorator(dec)
+        for dec in node.decorator_list
     )
-
-
-def _is_exempt_decorator(dec: ast.expr) -> bool:
-    match dec:
-        case ast.Name(id=name) if name in _EXEMPT_DECORATORS:
-            return True
-        case ast.Attribute(attr=name) if name in _EXEMPT_DECORATORS:
-            return True
-        case _:
-            return False
 
 
 def _is_route_decorator(dec: ast.expr) -> bool:
@@ -170,6 +180,9 @@ def _swap_prone_annotation(args: ast.arguments) -> str | None:
     marker therefore exempts exactly the parameters it protects — never the
     same-type pair sitting in front of it.
 
+    A group whose parameter names differ only by a numeric suffix
+    (`value_1`/`value_2`) is a declared-symmetric signature and never groups.
+
     Returns:
         The offending primitive name, or None when the signature is fine.
 
@@ -177,12 +190,72 @@ def _swap_prone_annotation(args: ast.arguments) -> str | None:
     params = list(args.args)
     if params and params[0].arg in {"self", "cls"}:
         params = params[1:]
-    counts = Counter(
-        ann.id
-        for p in params
-        if isinstance(ann := p.annotation, ast.Name) and ann.id in _PRIMITIVES
-    )
-    for name, count in counts.most_common():
-        if count >= _MIN_SAME_TYPE:
+    groups: dict[str, list[str]] = {}
+    for p in params:
+        if isinstance(ann := p.annotation, ast.Name) and ann.id in _PRIMITIVES:
+            groups.setdefault(ann.id, []).append(p.arg)
+    for name, arg_names in sorted(groups.items(), key=lambda kv: -len(kv[1])):
+        if len(arg_names) >= _MIN_SAME_TYPE and not _is_symmetric_numbering(arg_names):
             return name
     return None
+
+
+_NUMERIC_SUFFIX_RE = re.compile(r"_?\d+$")
+
+
+def _is_symmetric_numbering(arg_names: list[str]) -> bool:
+    """Report whether every name in the group is one stem plus a numeric suffix.
+
+    `value_1`/`value_2` (or `x1`/`x2`) declare a symmetric function — argument
+    order genuinely does not matter, so the group is not swap-prone.
+
+    Returns:
+        True when all names share one stem and differ only by a number.
+
+    """
+    stems = {_NUMERIC_SUFFIX_RE.sub("", name) for name in arg_names}
+    return len(stems) == 1 and all(_NUMERIC_SUFFIX_RE.search(name) for name in arg_names)
+
+
+def _value_referenced_names(tree: ast.AST) -> frozenset[str]:
+    """Names referenced as a VALUE (loaded but not called) anywhere in the module.
+
+    A function whose name appears as a bare value — passed to a registry,
+    returned, stored in a collection — implements a callback protocol whose
+    positional shape is shared with other implementations; it cannot go
+    keyword-only unilaterally.
+
+    Returns:
+        The set of names loaded outside call position.
+
+    """
+    call_funcs = {
+        id(node.func) for node in ast.walk(tree) if isinstance(node, ast.Call)
+    }
+    return frozenset(
+        node.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and id(node) not in call_funcs
+    )
+
+
+def _overload_stub_names(tree: ast.AST) -> frozenset[str]:
+    """Names carrying an `@overload` decorator anywhere in the module.
+
+    The undecorated implementation of an overloaded function shares its name
+    with the stubs; its positional shape is pinned by the declared overloads.
+
+    Returns:
+        The set of `@overload`-decorated function names.
+
+    """
+    return frozenset(
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and any(
+            (isinstance(dec, ast.Name) and dec.id == "overload")
+            or (isinstance(dec, ast.Attribute) and dec.attr == "overload")
+            for dec in node.decorator_list
+        )
+    )

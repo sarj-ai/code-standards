@@ -363,3 +363,60 @@ async def test_b():
     await asyncio.sleep(0.02)
 """
     assert len(_check(src)) == 2
+
+
+# --------------------------------------------------------------------------- #
+# FP-hardening (famous-repo sweep): a sleep inside a while loop is polling —   #
+# the remedy this rule's own message prescribes (trio's OS-thread waits).      #
+# --------------------------------------------------------------------------- #
+
+
+def test_sleep_in_while_poll_loop_is_exempt():
+    # Minimized from trio's test_threads.py: poll until the OS thread finishes.
+    src = """
+import time
+
+def test_thread_finishes(register):
+    while register[0] != "finished":
+        time.sleep(0.01)
+"""
+    assert _check(src) == []
+
+
+def test_sleep_in_while_condition_poll_with_body_is_exempt():
+    src = """
+import time
+
+def test_thread_dies(q2):
+    thread = q2.get()
+    while thread.is_alive():
+        time.sleep(0.01)
+    assert done()
+"""
+    assert _check(src) == []
+
+
+def test_bare_sleep_after_while_loop_still_fires():
+    src = """
+import time
+
+def test_thread(q):
+    while q.empty():
+        pass
+    time.sleep(1)
+    assert done()
+"""
+    assert len(_check(src)) == 1
+
+
+def test_sleep_in_nested_def_inside_while_still_attributed_to_helper():
+    src = """
+import time
+
+def test_x():
+    while cond():
+        def _helper():
+            time.sleep(1)
+        _helper()
+"""
+    assert _check(src) == []
