@@ -185,9 +185,57 @@ function containsThrow(node: TSESTree.Node): boolean {
   );
 }
 
-/** Does `node`'s subtree read the identifier `name`? */
+/** True when a parameter pattern binds `name` (plain, default, rest, or destructured). */
+function bindsName(param: TSESTree.Node, name: string): boolean {
+  switch (param.type) {
+    case AST_NODE_TYPES.Identifier:
+      return param.name === name;
+    case AST_NODE_TYPES.AssignmentPattern:
+      return bindsName(param.left, name);
+    case AST_NODE_TYPES.RestElement:
+      return bindsName(param.argument, name);
+    case AST_NODE_TYPES.ArrayPattern:
+      return param.elements.some(
+        (element) => element !== null && bindsName(element, name),
+      );
+    case AST_NODE_TYPES.ObjectPattern:
+      return param.properties.some((property) =>
+        property.type === AST_NODE_TYPES.RestElement
+          ? bindsName(property.argument, name)
+          : bindsName(property.value, name),
+      );
+    default:
+      return false;
+  }
+}
+
+/**
+ * Does `node`'s subtree READ the identifier `name`?
+ *
+ * "Read" means a VALUE position. A bare name match is not enough, and getting
+ * that wrong silently guts the rule. Walking the whole argument subtree (so a
+ * structured logger's meta object counts as reporting the error) cost 8 of 18
+ * true positives when measured against the previous release, because all of
+ * these matched on name alone:
+ *
+ *   logCounter({ error: 1 })                // object KEY — a counter, not a log
+ *   captureMetric({ tags: { e: 1 } })       // nested key
+ *   reportStatus(response.err)              // member PROPERTY of another object
+ *   logAll(items.map((error) => error.id))  // a param that merely SHADOWS it
+ *
+ * Each of those swallows the error while looking "logged". Non-computed property
+ * keys and non-computed member properties are therefore skipped, and a nested
+ * function that rebinds the name is not descended into.
+ */
 function subtreeReadsName(node: TSESTree.Node, name: string): boolean {
   let found = false;
+
+  /** True when this function rebinds `name`, so its body reads a different value. */
+  const shadowsName = (fn: TSESTree.Node): boolean =>
+    isFunctionNode(fn) &&
+    (fn as unknown as { params: TSESTree.Parameter[] }).params.some((param) =>
+      bindsName(param, name),
+    );
 
   const recurse = (current: TSESTree.Node): void => {
     if (found) {
@@ -197,8 +245,27 @@ function subtreeReadsName(node: TSESTree.Node, name: string): boolean {
       found = true;
       return;
     }
+    if (shadowsName(current)) {
+      return;
+    }
     for (const key of Object.keys(current)) {
       if (key === "parent") {
+        continue;
+      }
+      // `{ error: 1 }` — the key names a field; it does not read the binding.
+      if (
+        key === "key" &&
+        current.type === AST_NODE_TYPES.Property &&
+        !current.computed
+      ) {
+        continue;
+      }
+      // `response.err` — the property names a field on some other object.
+      if (
+        key === "property" &&
+        current.type === AST_NODE_TYPES.MemberExpression &&
+        !current.computed
+      ) {
         continue;
       }
       const value = (current as unknown as Record<string, unknown>)[key];

@@ -323,6 +323,28 @@ ruleTester.run("no-sentinel-return-on-catch", rule, {
     { code: "await flush().catch(() => {});" },
   ],
   invalid: [
+    // Regression: the log-detection widening (walk the whole argument subtree so
+    // a structured logger's meta object counts) once matched the caught binding
+    // by NAME ALONE, which silenced 8 of 18 true positives. Each of these
+    // swallows the error while merely mentioning the name in a non-value
+    // position. Keep them pinned.
+    {
+      code: "function a() { try { return risky(); } catch (error) { logCounter({ error: 1 }); return null; } }",
+      errors: [{ messageId: "noSentinelReturn" }],
+    },
+    {
+      code: "function b() { try { return risky(); } catch (error) { captureMetric({ tags: { error: 1 } }); return null; } }",
+      errors: [{ messageId: "noSentinelReturn" }],
+    },
+    {
+      code: "function c() { try { return risky(); } catch (err) { reportStatus(response.err); return null; } }",
+      errors: [{ messageId: "noSentinelReturn" }],
+    },
+    {
+      code: "function d() { try { return risky(); } catch (error) { logAll(items.map((error) => error.id)); return null; } }",
+      errors: [{ messageId: "noSentinelReturn" }],
+    },
+
     // return null — bare swallow, function otherwise returns real data.
     {
       code: `
