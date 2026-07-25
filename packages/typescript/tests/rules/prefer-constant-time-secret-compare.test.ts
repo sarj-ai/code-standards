@@ -68,6 +68,27 @@ ruleTester.run("prefer-constant-time-secret-compare", rule, {
       code: "if (presented === expectedToken) { await next(); }",
       errors: [{ messageId: "preferConstantTimeSecretCompare" }],
     },
+    // SCREAMING_SNAKE secrets. These regressed once: the ALL-CAPS carve-out for
+    // public named constants (`TOKEN_TYPE_SYSTEM`) swallowed every real secret,
+    // because environment secrets are conventionally ALL-CAPS too. The rule was
+    // silent on all of these while firing on their camelCase equivalents, so a
+    // clean run proved nothing. Keep these pinned.
+    {
+      code: "if (token === env.INTERNAL_ADMIN_TOKEN) { await next(); }",
+      errors: [{ messageId: "preferConstantTimeSecretCompare" }],
+    },
+    {
+      code: "if (sig !== env.SLACK_SIGNING_SECRET) { return unauthorized(); }",
+      errors: [{ messageId: "preferConstantTimeSecretCompare" }],
+    },
+    {
+      code: "if (key === process.env.ASHBY_API_KEY) { allow(); }",
+      errors: [{ messageId: "preferConstantTimeSecretCompare" }],
+    },
+    {
+      code: "const { INTERNAL_ADMIN_TOKEN } = env; if (token === INTERNAL_ADMIN_TOKEN) { allow(); }",
+      errors: [{ messageId: "preferConstantTimeSecretCompare" }],
+    },
     {
       code: "if (header !== `Bearer ${env.internalAdminToken}`) { return unauthorized(); }",
       errors: [{ messageId: "preferConstantTimeSecretCompare" }],

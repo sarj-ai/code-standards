@@ -52,8 +52,28 @@ const EQUALITY_OPERATORS: ReadonlySet<string> = new Set(["===", "!==", "==", "!=
  */
 const SENTINEL_IDENTIFIERS: ReadonlySet<string> = new Set(["undefined", "NaN"]);
 
-/** True when every cased character is upper-case and at least one letter exists. */
+/**
+ * Words that mark a secret-SHAPED name as a placeholder rather than a live
+ * credential: `TOKEN_SENTINEL`, `EMPTY_SECRET`, `PLACEHOLDER_API_KEY`. Comparing
+ * against one of these is a presence check, not an authentication check, so it
+ * stays excluded even though the secret-name heuristics match it.
+ */
+const SENTINEL_WORDS = /(^|_)(SENTINEL|EMPTY|NONE|NULL|UNSET|MISSING|PLACEHOLDER|DUMMY|FAKE|EXAMPLE)(_|$)/;
+
+/**
+ * True when every cased character is upper-case and at least one letter exists —
+ * AND the name is not itself secret-shaped.
+ *
+ * The ALL-CAPS carve-out exists for public named constants (`TOKEN_TYPE_SYSTEM`).
+ * But environment secrets are conventionally SCREAMING_SNAKE too
+ * (`ADMIN_TOKEN`, `ASHBY_API_KEY`, `SLACK_SIGNING_SECRET`), so an unqualified
+ * ALL-CAPS bail-out made this rule blind to essentially every real secret
+ * compare: `env.ADMIN_TOKEN === supplied` was silent while the camelCase
+ * `env.adminToken === supplied` fired. That is the exact comparison this rule
+ * exists to catch. Defer to the shared secret-name heuristics first.
+ */
 function isConstantReference(identifier: string): boolean {
+  if (isAuthSecretName(identifier) && !SENTINEL_WORDS.test(identifier)) return false;
   return identifier === identifier.toUpperCase() && /[A-Za-z]/.test(identifier);
 }
 
