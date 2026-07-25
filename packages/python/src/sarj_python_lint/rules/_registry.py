@@ -2,9 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sarj_python_lint.rules.httpx_client_requires_timeout import (
-    HttpxClientRequiresTimeout,
-)
 from sarj_python_lint.rules.inefficient_string_concat_in_loop import (
     InefficientStringConcatInLoop,
 )
@@ -18,7 +15,6 @@ from sarj_python_lint.rules.no_cors_wildcard_with_credentials import (
 )
 from sarj_python_lint.rules.no_fat_try_blocks import NoFatTryBlocks
 from sarj_python_lint.rules.no_fstring_in_log import NoFstringInLog
-from sarj_python_lint.rules.no_import_time_settings import NoImportTimeSettings
 from sarj_python_lint.rules.no_isinstance_union_chain import NoIsinstanceUnionChain
 from sarj_python_lint.rules.no_offset_pagination import NoOffsetPagination
 from sarj_python_lint.rules.no_query_with_many_joins import NoQueryWithManyJoins
@@ -59,6 +55,11 @@ if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Rule
 
 
+# Retired codes — never reuse these for new rules:
+#   SARJ004, SARJ005 (retired before the standards merge),
+#   SARJ027, SARJ029, SARJ030 (dropped in 0.11.1 as too noisy),
+#   SARJ033 httpx-client-requires-timeout, SARJ035 no-import-time-settings
+#   (dropped by user veto after the 0.13.x mined-rules review).
 REGISTRY: dict[str, type[Rule]] = {
     NoSequentialAwait.id: NoSequentialAwait,
     InefficientStringConcatInLoop.id: InefficientStringConcatInLoop,
@@ -87,9 +88,7 @@ REGISTRY: dict[str, type[Rule]] = {
     Stepdown.id: Stepdown,
     NoRepeatedStringLiteral.id: NoRepeatedStringLiteral,
     PreferMatchAssertNever.id: PreferMatchAssertNever,
-    HttpxClientRequiresTimeout.id: HttpxClientRequiresTimeout,
     KwonlySameTypeParams.id: KwonlySameTypeParams,
-    NoImportTimeSettings.id: NoImportTimeSettings,
     NoRawSqlInTests.id: NoRawSqlInTests,
 }
 

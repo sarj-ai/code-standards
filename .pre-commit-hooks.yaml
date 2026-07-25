@@ -70,21 +70,9 @@
   language: python
   types: [python]
 
-- id: sarj-httpx-client-requires-timeout
-  name: 'sarj-lint: httpx client/call without an explicit timeout='
-  entry: sarj-python-lint check --rule httpx-client-requires-timeout
-  language: python
-  types: [python]
-
 - id: sarj-kwonly-same-type-params
   name: 'sarj-lint: multiple positional params of one primitive type — insert `*`'
   entry: sarj-python-lint check --rule kwonly-same-type-params
-  language: python
-  types: [python]
-
-- id: sarj-no-import-time-settings
-  name: 'sarj-lint: module-level Settings() construction — use a cached factory'
-  entry: sarj-python-lint check --rule no-import-time-settings
   language: python
   types: [python]
 
