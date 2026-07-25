@@ -265,11 +265,6 @@ const config = [
       "@sarj/prefer-string-literal-union": "warn",
       // High-volume/stylistic — warn until rollout proves FP rate.
       "@sarj/no-unsafe-cast": "warn",
-      // ADOPTION PARKED (2026-07 audit): no target repo has an i18n framework,
-      // so every no-hardcoded-ui-text finding is unactionable — there is no
-      // t() to move copy behind. The rule ships in the plugin; turning it on
-      // is gated on an i18n framework decision.
-      "@sarj/no-hardcoded-ui-text": "off",
     },
   },
 

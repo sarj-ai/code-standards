@@ -45,11 +45,4 @@ describe("lint-configs eslint.strict.mjs stays wired to the plugin", () => {
     expect(plugin.meta.version).toBe(packageJson.version);
   });
 
-  it("keeps no-hardcoded-ui-text registered but out of every config tier (adoption parked on i18n framework decision)", () => {
-    expect(Object.keys(rules)).toContain("no-hardcoded-ui-text");
-    const recommended = plugin.configs.recommended.rules as Record<string, unknown>;
-    expect(recommended["@sarj/no-hardcoded-ui-text"]).toBeUndefined();
-    const strict = plugin.configs.strict.rules as Record<string, unknown>;
-    expect(strict["@sarj/no-hardcoded-ui-text"]).toBeUndefined();
-  });
 });

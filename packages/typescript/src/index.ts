@@ -19,7 +19,6 @@ import requireAssertNever from "./rules/require-assert-never.js";
 import requireZodFormValidation from "./rules/require-zod-form-validation.js";
 import zodNamingConvention from "./rules/zod-naming-convention.js";
 import noCorsWildcardWithCredentials from "./rules/no-cors-wildcard-with-credentials.js";
-import noHardcodedUiText from "./rules/no-hardcoded-ui-text.js";
 import noSilentPromiseCatch from "./rules/no-silent-promise-catch.js";
 import requireFetchTimeout from "./rules/require-fetch-timeout.js";
 import requireSchemaValidateSearch from "./rules/require-schema-validate-search.js";
@@ -56,7 +55,6 @@ const rules = {
   "no-unsafe-cast": noUnsafeCast,
   "prefer-string-literal-union": preferStringLiteralUnion,
   "single-public-export": singlePublicExport,
-  "no-hardcoded-ui-text": noHardcodedUiText,
   "no-silent-promise-catch": noSilentPromiseCatch,
   "require-fetch-timeout": requireFetchTimeout,
   "require-schema-validate-search": requireSchemaValidateSearch,
@@ -99,9 +97,6 @@ const plugin = {
         "@sarj/single-public-export": "warn",
         "@sarj/prefer-string-literal-union": "warn",
         // Mined from 2y of PR review feedback + 5-repo code-smell audit (2026-07).
-        // no-hardcoded-ui-text is deliberately absent here AND in strict: no
-        // target repo has an i18n framework yet, so its findings are
-        // unactionable. Adoption is gated on an i18n framework decision.
         "@sarj/require-fetch-timeout": "warn",
         "@sarj/no-silent-promise-catch": "warn",
         "@sarj/require-schema-validate-search": "warn",
@@ -145,10 +140,6 @@ const plugin = {
         "@sarj/require-fetch-timeout": "error",
         "@sarj/no-silent-promise-catch": "error",
         "@sarj/require-schema-validate-search": "error",
-        // no-hardcoded-ui-text is deliberately absent (2026-07 audit): no
-        // target repo has an i18n framework, so its 2,566 corpus findings are
-        // unactionable — there is no t() to move copy behind. The rule ships
-        // in the registry; adoption is gated on an i18n framework decision.
       },
     },
   },
