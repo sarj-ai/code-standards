@@ -19,6 +19,9 @@ import requireAssertNever from "./rules/require-assert-never.js";
 import requireZodFormValidation from "./rules/require-zod-form-validation.js";
 import zodNamingConvention from "./rules/zod-naming-convention.js";
 import noCorsWildcardWithCredentials from "./rules/no-cors-wildcard-with-credentials.js";
+import noSilentPromiseCatch from "./rules/no-silent-promise-catch.js";
+import requireFetchTimeout from "./rules/require-fetch-timeout.js";
+import requireSchemaValidateSearch from "./rules/require-schema-validate-search.js";
 import noFatTryBlocks from "./rules/no-fat-try-blocks.js";
 import noSecretInLog from "./rules/no-secret-in-log.js";
 import noUnsafeCast from "./rules/no-unsafe-cast.js";
@@ -52,12 +55,15 @@ const rules = {
   "no-unsafe-cast": noUnsafeCast,
   "prefer-string-literal-union": preferStringLiteralUnion,
   "single-public-export": singlePublicExport,
+  "no-silent-promise-catch": noSilentPromiseCatch,
+  "require-fetch-timeout": requireFetchTimeout,
+  "require-schema-validate-search": requireSchemaValidateSearch,
 };
 
 const plugin = {
   meta: {
     name: "@sarj/eslint-plugin",
-    version: "2.6.0",
+    version: "2.7.0",
   },
   rules,
   configs: {
@@ -90,6 +96,10 @@ const plugin = {
         "@sarj/no-unsafe-cast": "warn",
         "@sarj/single-public-export": "warn",
         "@sarj/prefer-string-literal-union": "warn",
+        // Mined from 2y of PR review feedback + 5-repo code-smell audit (2026-07).
+        "@sarj/require-fetch-timeout": "warn",
+        "@sarj/no-silent-promise-catch": "warn",
+        "@sarj/require-schema-validate-search": "warn",
       },
     },
     strict: {
@@ -126,6 +136,10 @@ const plugin = {
         "@sarj/single-public-export": "error",
         // High-volume/stylistic — warn until rollout proves FP rate.
         "@sarj/prefer-string-literal-union": "warn",
+        // Mined from 2y of PR review feedback + 5-repo code-smell audit (2026-07).
+        "@sarj/require-fetch-timeout": "error",
+        "@sarj/no-silent-promise-catch": "error",
+        "@sarj/require-schema-validate-search": "error",
       },
     },
   },
