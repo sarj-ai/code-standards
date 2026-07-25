@@ -166,6 +166,26 @@ ruleTester.run("prefer-string-literal-union", rule, {
     {
       code: 'function f(o: Record<string, unknown>) { for (const [key] of Object.entries(o)) { if (key === "from" || key === "to") continue; } }',
     },
+    // FP-5: the PARSER that produces the union. Its parameter must be `string` —
+    // this is the narrowing boundary, and the declared return type is the very
+    // union the literals belong to. Rewriting `s` as the union is impossible.
+    {
+      code: "type StatusFilter = 'expired' | 'pending' | 'passed' | 'failed' | null;\nfunction parseStatusFilter(s: string): StatusFilter {\n  return s === 'expired' || s === 'pending' || s === 'passed' || s === 'failed' ? s : null;\n}",
+    },
+    // FP-5: same narrowing boundary via a `switch`.
+    {
+      code: "type Mode = 'read' | 'write';\nfunction parseMode(s: string): Mode | null { switch (s) { case 'read': return 'read'; case 'write': return 'write'; default: return null; } }",
+    },
+    // FP-5: through an async boundary — `Promise<Mode | null>` is awaited first.
+    {
+      code: "type Mode = 'read' | 'write';\nasync function parseMode(s: string): Promise<Mode | null> { if (s === 'read') return 'read'; if (s === 'write') return 'write'; return null; }",
+    },
+    // FP-5: a vendor-owned OPEN set (Slack ships dozens of `subtype`s and adds
+    // more) listed in `ignoreFields`.
+    {
+      code: 'interface SlackEvent { subtype: string; kind: "message" | "reaction"; }',
+      options: [{ ignoreFields: ["subtype"] }],
+    },
   ],
   invalid: [
     // Choice field corroborated by a sibling string-literal union.
@@ -213,6 +233,24 @@ ruleTester.run("prefer-string-literal-union", rule, {
     {
       code: "function f(x: string | undefined) { return x === 'on' || x === 'off'; }",
       errors: [{ messageId: "comparisonCluster", data: { key: "x" } }],
+    },
+    // FP-5 must not over-suppress: a declared string-literal return that does
+    // NOT contain the compared literals is not the narrowing boundary for them.
+    {
+      code: "type Mode = 'read' | 'write';\nfunction pick(kind: string): Mode { return kind === 'inbound' || kind === 'outbound' ? 'read' : 'write'; }",
+      errors: [{ messageId: "comparisonCluster", data: { key: "kind" } }],
+    },
+    // FP-5 must not over-suppress: a raw-`string` return type exempts nothing.
+    {
+      code: "function route(mode: string): string { if (mode === 'read') return 'r'; if (mode === 'write') return 'w'; return ''; }",
+      errors: [{ messageId: "comparisonCluster", data: { key: "mode" } }],
+    },
+    // FP-5: `ignoreFields` is scoped to the listed names — a sibling choice
+    // field that is NOT listed still fires.
+    {
+      code: 'interface SlackEvent { subtype: string; status: string; kind: "message" | "reaction"; }',
+      options: [{ ignoreFields: ["subtype"] }],
+      errors: [{ messageId: "bareChoiceField", data: { name: "status" } }],
     },
   ],
 });

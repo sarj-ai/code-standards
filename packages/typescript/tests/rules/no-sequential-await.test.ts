@@ -104,6 +104,21 @@ ruleTester.run("no-sequential-await", rule, {
     {
       code: "async function f(n) { for (let i = 0; i < n; i++) { await new Promise((r) => setTimeout(r, 0)); } }",
     },
+    // FP-4 / guard (e) — cursor pagination. The next request's input is the
+    // previous response's output, so there is nothing to parallelize. No
+    // break/return, and the cursor is assigned from a PROPERTY of the awaited
+    // value, so guards (a) and (b) both miss it.
+    {
+      code: "async function f(out) { let cursor; do { const page = await list(cursor); out.push(...page.items); cursor = page.nextCursor; } while (cursor); }",
+    },
+    // FP-4 — the `while` form, with a separate `hasMore` flag.
+    {
+      code: "async function f(out) { let hasMore = true; let cursor = null; while (hasMore) { const page = await list(cursor); out.push(...page.items); hasMore = page.hasMore; cursor = page.cursor; } }",
+    },
+    // FP-4 — a paging token recomputed each round trip.
+    {
+      code: "async function f() { let token = ''; while (token !== null) { const res = await fetchPage(token); token = res.nextPageToken; } }",
+    },
   ],
   invalid: [
     // for-of with a direct await.
@@ -177,6 +192,13 @@ ruleTester.run("no-sequential-await", rule, {
     // with no cross-iteration dependency or early exit — the shape to keep firing.
     {
       code: "async function f(xs, results) { for (const x of xs) { results.push(await fetchOne(x)); } }",
+      errors: [{ messageId: "noSequentialAwait" }],
+    },
+    // FP-4 must not over-suppress: a hand-rolled counter loop steps its own test
+    // variable with `++`, the iteration count is known up front, and the awaits
+    // are independent — still the parallelizable shape.
+    {
+      code: "async function f(xs) { let i = 0; while (i < xs.length) { await g(xs[i]); i++; } }",
       errors: [{ messageId: "noSequentialAwait" }],
     },
     // Gap closure: async `.forEach` callback with an await — the classic

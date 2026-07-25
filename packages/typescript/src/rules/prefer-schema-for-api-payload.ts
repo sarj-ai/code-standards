@@ -1,17 +1,25 @@
 /**
- * @fileoverview Don't access `response.json()` fields without a Zod parse first.
+ * @fileoverview Don't access `response.json()` / `JSON.parse()` fields without a
+ * Zod parse first.
  *
  * Pattern flagged:
  *   const data = await response.json();
  *   doSomething(data.foo);  // <-- unvalidated property access
  *
+ *   const body = JSON.parse(raw);
+ *   doSomething(body.foo);  // <-- same `any` leak, different source
+ *
  * Encouraged:
  *   const data = MySchema.parse(await response.json());
  *   doSomething(data.foo);  // typed + validated
  *
+ *   const raw: unknown = JSON.parse(text);   // never flagged: nothing read off it
+ *   const data = MySchema.parse(raw);
+ *
  * Heuristic:
- *   - Track variables initialized to `await someCall.json()` using ESLint's scope manager.
- *   - Untrack if reassigned to anything other than another raw `json()` call.
+ *   - Track variables initialized to `await someCall.json()` or `JSON.parse(x)`
+ *     using ESLint's scope manager.
+ *   - Untrack if reassigned to anything other than another raw payload source.
  *   - Untrack when passed to a user-defined type-guard predicate — a call whose
  *     callee name matches `/^is[A-Z]/`, or any call used in an `if`/`?:` test
  *     position (`if (guard(body)) { … body.foo … }`). Hand-written guards validate
@@ -64,9 +72,16 @@ const unwrap = (
 };
 
 /**
- * Returns true if the expression is (optionally awaited) `<x>.json()`.
+ * Returns true if the expression is (optionally awaited) a raw payload source:
+ * `<x>.json()` (a fetch/Request body) or `JSON.parse(<x>)`.
+ *
+ * Both hand back `any`, and the failure mode is the same: `payload.user.id`
+ * type-checks against a shape the peer never sent, and surfaces at runtime as
+ * `undefined` several frames away. Note this only matters at the point a FIELD
+ * is read — `const raw: unknown = JSON.parse(body)` is the recommended shape and
+ * is never reported, because nothing is accessed off it.
  */
-const isJsonCall = (
+const isRawPayloadSource = (
   node: TSESTree.Node | null | undefined,
 ): boolean => {
   let current = unwrap(node);
@@ -82,10 +97,20 @@ const isJsonCall = (
     return false;
   }
   const property = unwrap(callee.property);
+  if (property === null || property.type !== AST_NODE_TYPES.Identifier) {
+    return false;
+  }
+  if (property.name === "json") {
+    return true;
+  }
+  // `JSON.parse(...)` specifically — not any `.parse()`, which is usually the
+  // schema validation we are asking for.
+  const object = unwrap(callee.object);
   return (
-    property !== null &&
-    property.type === AST_NODE_TYPES.Identifier &&
-    property.name === "json"
+    property.name === "parse" &&
+    object !== null &&
+    object.type === AST_NODE_TYPES.Identifier &&
+    object.name === "JSON"
   );
 };
 
@@ -155,12 +180,12 @@ export default ESLintUtils.RuleCreator(
     type: "problem",
     docs: {
       description:
-        "Require Zod (or similar) schema validation on `response.json()` before property access.",
+        "Require Zod (or similar) schema validation on `response.json()` / `JSON.parse()` results before property access.",
     },
     schema: [],
     messages: {
       unparsedJsonAccess:
-        "Property access on the result of `response.json()` without a schema parse. Pipe through `XSchema.parse(...)` (Zod) before reading fields.",
+        "Property access on an unvalidated payload (`response.json()` / `JSON.parse()`) without a schema parse. Pipe through `XSchema.parse(...)` (Zod) before reading fields.",
     },
   },
   defaultOptions: [],
@@ -170,7 +195,7 @@ export default ESLintUtils.RuleCreator(
     const trackInitializer = (
       declarator: TSESTree.VariableDeclarator,
     ): void => {
-      if (!isJsonCall(declarator.init)) return;
+      if (!isRawPayloadSource(declarator.init)) return;
       const declaredVars = context.sourceCode.getDeclaredVariables(declarator);
       const variable = declaredVars[0];
       if (variable !== undefined) {
@@ -191,7 +216,7 @@ export default ESLintUtils.RuleCreator(
           node.id.type === AST_NODE_TYPES.ObjectPattern ||
           node.id.type === AST_NODE_TYPES.ArrayPattern
         ) {
-          if (isJsonCall(node.init)) {
+          if (isRawPayloadSource(node.init)) {
             context.report({ node: node.id, messageId: "unparsedJsonAccess" });
             return;
           }
@@ -208,7 +233,7 @@ export default ESLintUtils.RuleCreator(
         if (node.left.type === AST_NODE_TYPES.Identifier) {
           const variable = findVariable(scope, node.left.name);
           if (variable === null) return;
-          if (isJsonCall(node.right)) {
+          if (isRawPayloadSource(node.right)) {
             unvalidatedVariables.add(variable);
           } else {
             // Reassigned to a parse call or something else: drop tracking.
@@ -221,7 +246,7 @@ export default ESLintUtils.RuleCreator(
           node.left.type === AST_NODE_TYPES.ObjectPattern ||
           node.left.type === AST_NODE_TYPES.ArrayPattern
         ) {
-          if (isJsonCall(node.right)) {
+          if (isRawPayloadSource(node.right)) {
             context.report({
               node: node.left,
               messageId: "unparsedJsonAccess",
@@ -258,7 +283,7 @@ export default ESLintUtils.RuleCreator(
         const scope = context.sourceCode.getScope(node);
         const obj = unwrap(node.object);
 
-        if (isJsonCall(obj)) {
+        if (isRawPayloadSource(obj)) {
           // Direct `.foo` access on `(await r.json()).foo` is always bad,
           // unless the parent call is a `.parse()`/`.safeParse()` — in which
           // case it's a validation, not an unvalidated read.

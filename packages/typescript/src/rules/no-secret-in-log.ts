@@ -10,6 +10,12 @@
  * an object argument (`logger.error("msg", { token, apiKey })`) or as a bare
  * secret-named positional identifier (`logger.info("x", password)`).
  *
+ * Log recognition is shared with the catch rules via `_logging`, so the
+ * `logFunctions` option applies here too. That matters: a structured logger is
+ * usually a free function with no logger receiver, and `logEvent("slack.auth",
+ * { botToken })` was previously never even examined by this rule. Declaring the
+ * project's logger closes that hole.
+ *
  * The secret-name predicate matches a secret word only as a WHOLE token (after
  * snake_case / camelCase splitting) and disqualifies identifiers whose trailing
  * token is a counter / row-id / flag marker (`tokenCount`, `apiKeyId`,
@@ -22,76 +28,24 @@
 
 import { ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
 
+import {
+  createLogMatcher,
+  LOGGING_OPTION_PROPERTIES,
+  type LoggingOptions,
+} from "./_logging.js";
+import { INNOCUOUS_WORDS, isSecretName, tokenize } from "./_secret_names.js";
+
 type MessageIds = "noSecretInLog";
-type Options = readonly [];
+type Options = readonly [LoggingOptions?];
 
-const LOG_METHODS: ReadonlySet<string> = new Set([
-  "debug",
-  "info",
-  "warn",
-  "warning",
-  "error",
-  "exception",
-  "critical",
-  "trace",
-  "log",
-  "fatal",
-  "success",
-]);
-
-const LOGGER_NAMES: ReadonlySet<string> = new Set([
-  "logger",
-  "log",
-  "logging",
-  "loguru",
-  "console",
-  "_logger",
-  "_log",
-]);
-
-const LOGGER_FACTORIES: ReadonlySet<string> = new Set(["getlogger", "get_logger"]);
-
-const SECRET_WORDS: ReadonlySet<string> = new Set([
-  "token",
-  "secret",
-  "password",
-  "passwd",
-  "jwt",
-  "secrets",
-  "passwords",
-  "credential",
-  "credentials",
-  "authorization",
-  "signature",
-  "hmac",
-  "digest",
-  "hash",
-  "apikey",
-]);
-
-const INNOCUOUS_WORDS: ReadonlySet<string> = new Set([
-  "count",
-  "counts",
-  "budget",
-  "limit",
-  "limits",
-  "id",
-  "ids",
-  "enabled",
-  "disabled",
-  "flag",
-  "flags",
-  "present",
-  "set",
-  "unset",
-  "configured",
-  "missing",
-  "required",
-  "valid",
-  "invalid",
-  "exists",
-  "type",
-  "types",
+/**
+ * The shared metadata set plus the log-specific extras. Logging a secret's
+ * label, expiry, ARN, URL, scope, or the DI component that holds it is metadata
+ * ABOUT the credential, never the credential bytes, so it must not fire here —
+ * `prefer-constant-time-secret-compare` uses the narrower shared set.
+ */
+const LOG_INNOCUOUS_WORDS: ReadonlySet<string> = new Set([
+  ...INNOCUOUS_WORDS,
   "name",
   "names",
   "label",
@@ -139,51 +93,6 @@ const INNOCUOUS_WORDS: ReadonlySet<string> = new Set([
 const REDACTION_RE = /prefix|suffix|redact|mask|hash|hint|_len|length/i;
 const WHOLE_TOKEN_REDACTION_MARKERS: ReadonlySet<string> = new Set(["tag"]);
 
-const CAMEL_RE = /[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|\d+/g;
-const SEGMENT_RE = /[^A-Za-z0-9]+/;
-
-/**
- * Ordered lowercase tokens from snake_case + camelCase decomposition. Also
- * yields each whole snake/kebab segment lowercased, so a pathological mixed-case
- * word still surfaces its intended form.
- */
-function tokenize(identifier: string): string[] {
-  const tokens: string[] = [];
-  for (const segment of identifier.split(SEGMENT_RE)) {
-    if (!segment) {
-      continue;
-    }
-    tokens.push(segment.toLowerCase());
-    for (const part of segment.match(CAMEL_RE) ?? []) {
-      tokens.push(part.toLowerCase());
-    }
-  }
-  return tokens;
-}
-
-/** True if `api` is immediately followed by `key` (the split form of `api_key`). */
-function hasApiKey(tokens: readonly string[]): boolean {
-  for (let i = 0; i + 1 < tokens.length; i++) {
-    if (tokens[i] === "api" && tokens[i + 1] === "key") {
-      return true;
-    }
-  }
-  return false;
-}
-
-/** True if `identifier` names raw secret material (a credential, not metadata). */
-function isSecretName(identifier: string): boolean {
-  const tokens = tokenize(identifier);
-  const last = tokens.at(-1);
-  if (last !== undefined && INNOCUOUS_WORDS.has(last)) {
-    return false;
-  }
-  if (tokens.some((tok) => SECRET_WORDS.has(tok))) {
-    return true;
-  }
-  return hasApiKey(tokens);
-}
-
 /** True if the name names a raw secret and is not a redacted derivative. */
 function isSecretKeyword(name: string): boolean {
   if (REDACTION_RE.test(name)) {
@@ -192,46 +101,7 @@ function isSecretKeyword(name: string): boolean {
   if (tokenize(name).some((tok) => WHOLE_TOKEN_REDACTION_MARKERS.has(tok))) {
     return false;
   }
-  return isSecretName(name);
-}
-
-/**
- * True if `expr` evaluates to a logger. Resolves the whole receiver chain so
- * adapter/builder/factory calls are caught: `logger.bind(...).info(...)`,
- * `logging.getLogger(name).info(...)`, `this.logger.error(...)`.
- */
-function isLoggerExpr(expr: TSESTree.Expression | TSESTree.PrivateIdentifier): boolean {
-  switch (expr.type) {
-    case "Identifier":
-      return LOGGER_NAMES.has(expr.name.toLowerCase());
-    case "MemberExpression": {
-      const { property, object } = expr;
-      if (!expr.computed && property.type === "Identifier") {
-        const lowered = property.name.toLowerCase();
-        if (LOGGER_NAMES.has(lowered) || LOGGER_FACTORIES.has(lowered)) {
-          return true;
-        }
-      }
-      return isLoggerExpr(object);
-    }
-    case "CallExpression": {
-      const callee = expr.callee;
-      if (
-        callee.type === "MemberExpression" &&
-        !callee.computed &&
-        callee.property.type === "Identifier" &&
-        LOGGER_FACTORIES.has(callee.property.name.toLowerCase())
-      ) {
-        return true;
-      }
-      if (callee.type !== "Super") {
-        return isLoggerExpr(callee);
-      }
-      return false;
-    }
-    default:
-      return false;
-  }
+  return isSecretName(name, LOG_INNOCUOUS_WORDS);
 }
 
 /**
@@ -273,26 +143,25 @@ export default ESLintUtils.RuleCreator(
       description:
         "Disallow passing a secret-named value to a logging call; it leaks to log sinks. Redact or omit it.",
     },
-    schema: [],
+    schema: [
+      {
+        type: "object",
+        additionalProperties: false,
+        properties: { ...LOGGING_OPTION_PROPERTIES },
+      },
+    ],
     messages: {
       noSecretInLog:
         "Secret `{{name}}` passed to a logging call leaks it to log sinks. Redact (e.g. `{{name}}Prefix: {{name}}.slice(0, 6)`) or omit it.",
     },
   },
-  defaultOptions: [],
-  create(context) {
+  defaultOptions: [{}],
+  create(context, [loggingOptions]) {
+    const matcher = createLogMatcher(loggingOptions);
+
     return {
       CallExpression(node: TSESTree.CallExpression): void {
-        const callee = node.callee;
-        if (
-          callee.type !== "MemberExpression" ||
-          callee.computed ||
-          callee.property.type !== "Identifier" ||
-          !LOG_METHODS.has(callee.property.name)
-        ) {
-          return;
-        }
-        if (!isLoggerExpr(callee.object)) {
+        if (!matcher.isLoggingCall(node)) {
           return;
         }
 

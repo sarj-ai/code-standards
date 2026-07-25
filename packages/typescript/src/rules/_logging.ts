@@ -1,9 +1,28 @@
 /**
  * @fileoverview Shared helpers for recognising logging / error-reporting calls.
- * Used by `no-log-only-catch` and `no-sentinel-return-on-catch` so both rules
- * agree on what counts as "the error was logged/reported" before deciding a
- * catch silently swallows it. The logger-name and log-method sets mirror
- * `no-secret-in-log.ts`.
+ * Used by `no-log-only-catch`, `no-sentinel-return-on-catch` and
+ * `no-secret-in-log` so all three rules agree on what counts as "this call
+ * writes to a log sink" before deciding a catch silently swallows an error or a
+ * secret leaks.
+ *
+ * Two shapes are recognised:
+ *
+ *   - **Receiver-shaped** — a log METHOD (`debug`/`info`/`warn`/`error`/…) on a
+ *     logger RECEIVER: `console.error(...)`, `logger.warn(...)`,
+ *     `this.logger.info(...)`, and builder/factory chains
+ *     (`logger.bind({...}).info(...)`, `logging.getLogger(n).info(...)`).
+ *   - **Free-function-shaped** — a project-declared logging function, e.g.
+ *     `logEvent("pr_scan.failed", { repo, error })`. Structured loggers that are
+ *     plain functions taking a meta object are the dominant real-world shape and
+ *     have no logger receiver at all, so they are invisible to the receiver
+ *     heuristic. Projects declare theirs via the shared `logFunctions` rule
+ *     option; `loggerNames` extends the receiver set the same way.
+ *
+ * Both options are OFF by default (empty), so default behaviour is unchanged.
+ * Declaring them makes the catch rules stop reporting a correctly-logged
+ * degraded return AND makes `no-secret-in-log` start inspecting those calls —
+ * the second effect closes a real hole, since `logEvent("auth", { botToken })`
+ * was previously never examined.
  */
 
 import { type TSESTree } from "@typescript-eslint/utils";
@@ -32,6 +51,12 @@ export const LOGGER_NAMES: ReadonlySet<string> = new Set([
   "_log",
 ]);
 
+/** Factory methods that RETURN a logger (`logging.getLogger(name).info(...)`). */
+export const LOGGER_FACTORIES: ReadonlySet<string> = new Set([
+  "getlogger",
+  "get_logger",
+]);
+
 /**
  * Names of free functions / methods that report an error to a handler or sink,
  * e.g. `onUnexpectedError`, `reportError`, `captureException`, `logError`. Kept
@@ -40,55 +65,21 @@ export const LOGGER_NAMES: ReadonlySet<string> = new Set([
  */
 export const REPORT_NAME_RE = /error|report|capture|log|trace|warn/i;
 
-/**
- * True when `expr` resolves to a logger receiver — a bare logger identifier
- * (`logger`, `log`, `console`, `Log`) or a member chain ending in one
- * (`this.logger`, `svc.log`).
- */
-export function isLoggerReceiver(
-  expr: TSESTree.Expression | TSESTree.PrivateIdentifier,
-): boolean {
-  switch (expr.type) {
-    case "Identifier":
-      return LOGGER_NAMES.has(expr.name.toLowerCase());
-    case "MemberExpression": {
-      const { property, object } = expr;
-      if (
-        !expr.computed &&
-        property.type === "Identifier" &&
-        LOGGER_NAMES.has(property.name.toLowerCase())
-      ) {
-        return true;
-      }
-      return isLoggerReceiver(object);
-    }
-    default:
-      return false;
-  }
+/** Shared `loggerNames` / `logFunctions` option shape. */
+export interface LoggingOptions {
+  readonly loggerNames?: readonly string[];
+  readonly logFunctions?: readonly string[];
 }
 
 /**
- * True when `expr` is a logging call: `console.error(...)`, `logger.warn(...)`,
- * `Log.error(...)`, `this.logger.info(...)`, etc. Requires a non-computed log
- * method on a logger receiver.
+ * JSON-schema properties for the shared logging options. Spread into a rule's
+ * `schema[0].properties` so every rule that consults `_logging` accepts the same
+ * declaration and a project configures its logger exactly once.
  */
-export function isLoggingCall(expr: TSESTree.Expression): boolean {
-  if (expr.type !== "CallExpression") {
-    return false;
-  }
-  const callee = expr.callee;
-  if (
-    callee.type !== "MemberExpression" ||
-    callee.computed ||
-    callee.property.type !== "Identifier"
-  ) {
-    return false;
-  }
-  if (!LOG_METHODS.has(callee.property.name.toLowerCase())) {
-    return false;
-  }
-  return isLoggerReceiver(callee.object);
-}
+export const LOGGING_OPTION_PROPERTIES = {
+  loggerNames: { type: "array", items: { type: "string" } },
+  logFunctions: { type: "array", items: { type: "string" } },
+} as const;
 
 /** The static callee name of a call (free function or method), or null. */
 export function calleeName(callee: TSESTree.Node): string | null {
@@ -103,4 +94,92 @@ export function calleeName(callee: TSESTree.Node): string | null {
     return callee.property.name;
   }
   return null;
+}
+
+export interface LogMatcher {
+  /** Is `expr` a logger receiver (bare name, member chain, or factory call)? */
+  isLoggerReceiver(expr: TSESTree.Expression | TSESTree.PrivateIdentifier): boolean;
+  /** Is `expr` a project-declared free logging function call (`logEvent(...)`)? */
+  isLogFunctionCall(expr: TSESTree.Node): boolean;
+  /** Is `expr` a logging call of either shape? */
+  isLoggingCall(expr: TSESTree.Node): boolean;
+}
+
+/**
+ * Builds the log-recognition predicates for one rule invocation, folding in the
+ * project's declared `loggerNames` / `logFunctions`. Call once per `create()`.
+ */
+export function createLogMatcher(options: LoggingOptions = {}): LogMatcher {
+  const loggerNames: ReadonlySet<string> = new Set([
+    ...LOGGER_NAMES,
+    ...(options.loggerNames ?? []).map((name) => name.toLowerCase()),
+  ]);
+  const logFunctions: ReadonlySet<string> = new Set(options.logFunctions ?? []);
+
+  function isLoggerReceiver(
+    expr: TSESTree.Expression | TSESTree.PrivateIdentifier,
+  ): boolean {
+    switch (expr.type) {
+      case "Identifier":
+        return loggerNames.has(expr.name.toLowerCase());
+      case "MemberExpression": {
+        const { property, object } = expr;
+        if (!expr.computed && property.type === "Identifier") {
+          const lowered = property.name.toLowerCase();
+          if (loggerNames.has(lowered) || LOGGER_FACTORIES.has(lowered)) {
+            return true;
+          }
+        }
+        return isLoggerReceiver(object);
+      }
+      case "CallExpression": {
+        const callee = expr.callee;
+        if (
+          callee.type === "MemberExpression" &&
+          !callee.computed &&
+          callee.property.type === "Identifier" &&
+          LOGGER_FACTORIES.has(callee.property.name.toLowerCase())
+        ) {
+          return true;
+        }
+        if (callee.type !== "Super") {
+          return isLoggerReceiver(callee);
+        }
+        return false;
+      }
+      default:
+        return false;
+    }
+  }
+
+  function isLogFunctionCall(expr: TSESTree.Node): boolean {
+    if (expr.type !== "CallExpression" || logFunctions.size === 0) {
+      return false;
+    }
+    const name = calleeName(expr.callee);
+    return name !== null && logFunctions.has(name);
+  }
+
+  function isLoggingCall(expr: TSESTree.Node): boolean {
+    if (expr.type !== "CallExpression") {
+      return false;
+    }
+    if (isLogFunctionCall(expr)) {
+      return true;
+    }
+    const callee = expr.callee;
+    if (
+      callee.type !== "MemberExpression" ||
+      callee.computed ||
+      callee.property.type !== "Identifier"
+    ) {
+      return false;
+    }
+    if (!LOG_METHODS.has(callee.property.name.toLowerCase())) {
+      return false;
+    }
+    return isLoggerReceiver(callee.object);
+  }
+
+  return { isLoggerReceiver, isLogFunctionCall, isLoggingCall };
 }

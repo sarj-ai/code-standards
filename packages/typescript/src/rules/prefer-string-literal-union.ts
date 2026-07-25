@@ -33,9 +33,19 @@
  *    union, so without type information this shape is inert (the choice-field
  *    shape still runs).
  *
+ *    A cluster inside the very function that PRODUCES the union is suppressed
+ *    too: when the enclosing function's declared return type is a string-literal
+ *    union containing every compared literal, the `string` parameter is the
+ *    narrowing boundary and MUST stay `string` —
+ *    `function parse(s: string): Status { return s === "a" || s === "b" ? s : null }`
+ *    is the fix, not the violation.
+ *
  * `Literal`-union types (`type X = "a" | "b"`) are the target state and never
  * fire. Generated files (`*.gen.ts`, `**\/generated/**`, `*.d.ts`, or a
- * `@generated` marker) opt out.
+ * `@generated` marker) opt out. Vendor-owned OPEN sets that merely look closed
+ * (a Resend `bounceType`, a Slack `event.subtype` — dozens of values, more added
+ * over time) can be listed in the `ignoreFields` option; narrowing to a union we
+ * don't control would be wrong, not better.
  */
 
 import {
@@ -47,7 +57,16 @@ import {
 import * as ts from "typescript";
 
 type MessageIds = "bareChoiceField" | "comparisonCluster";
-type Options = readonly [];
+type Options = readonly [
+  {
+    ignoreFields?: readonly string[];
+  }?,
+];
+
+type FunctionNode =
+  | TSESTree.FunctionDeclaration
+  | TSESTree.FunctionExpression
+  | TSESTree.ArrowFunctionExpression;
 
 const CHOICE_TOKENS: ReadonlySet<string> = new Set([
   "status",
@@ -216,6 +235,8 @@ interface ClusterEntry {
 
 interface Scope {
   clusters: Map<string, ClusterEntry>;
+  /** The function this scope belongs to; null at file scope. */
+  fn: FunctionNode | null;
 }
 
 interface CollectedProperty {
@@ -235,7 +256,18 @@ export default ESLintUtils.RuleCreator(
       description:
         "Flag raw `string` choice fields and string-literal comparison clusters; prefer a string-literal union type.",
     },
-    schema: [],
+    schema: [
+      {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          ignoreFields: {
+            type: "array",
+            items: { type: "string" },
+          },
+        },
+      },
+    ],
     messages: {
       bareChoiceField:
         '`{{name}}: string` looks like a choice field — prefer a string-literal union type (e.g. `type X = "a" | "b"`). Enums are banned by `no-enum`; use a union.',
@@ -243,13 +275,17 @@ export default ESLintUtils.RuleCreator(
         '`{{key}}` is compared against a closed set of string literals — define a string-literal union type (e.g. `type X = "a" | "b"`).',
     },
   },
-  defaultOptions: [],
-  create(context) {
+  defaultOptions: [{}],
+  create(context, [optionsArg]) {
     const filename = context.filename;
     const sourceText = context.sourceCode.getText();
     if (isIgnoredFile(filename, sourceText)) {
       return {};
     }
+
+    const ignoredFields = new Set(
+      (optionsArg?.ignoreFields ?? []).map((name) => name.toLowerCase()),
+    );
 
     let services: ParserServicesWithTypeInformation | null;
     try {
@@ -318,8 +354,36 @@ export default ESLintUtils.RuleCreator(
       );
     }
 
-    function pushScope(): void {
-      scopeStack.push({ clusters: new Map() });
+    /**
+     * The string-literal members of a function's DECLARED return type, resolved
+     * through named aliases and `Promise<...>`. Null when the function has no
+     * annotation, type information is unavailable, or the type is not a
+     * string-literal union. Computed lazily — only for a function that actually
+     * accumulated a cluster — since it costs a type resolution.
+     */
+    function declaredReturnLiterals(fn: FunctionNode): ReadonlySet<string> | null {
+      const annotation = fn.returnType?.typeAnnotation;
+      if (annotation === undefined || services === null) {
+        return null;
+      }
+      const tsNode = services.esTreeNodeToTSNodeMap.get(annotation);
+      if (!ts.isTypeNode(tsNode)) {
+        return null;
+      }
+      const checker = services.program.getTypeChecker();
+      const declared = checker.getTypeFromTypeNode(tsNode);
+      const type = checker.getAwaitedType(declared) ?? declared;
+      const literals = new Set<string>();
+      for (const part of type.isUnion() ? type.types : [type]) {
+        if (part.isStringLiteral()) {
+          literals.add(part.value);
+        }
+      }
+      return literals.size >= MIN_CLUSTER_SIZE ? literals : null;
+    }
+
+    function pushScope(node: FunctionNode): void {
+      scopeStack.push({ clusters: new Map(), fn: node });
     }
 
     function popScope(): void {
@@ -327,10 +391,25 @@ export default ESLintUtils.RuleCreator(
       if (scope === undefined) {
         return;
       }
-      for (const entry of scope.clusters.values()) {
-        if (entry.allTokens && entry.literals.size >= MIN_CLUSTER_SIZE) {
-          validClusters.push(entry.node);
+      const candidates = [...scope.clusters.values()].filter(
+        (entry) => entry.allTokens && entry.literals.size >= MIN_CLUSTER_SIZE,
+      );
+      if (candidates.length === 0) {
+        return;
+      }
+      const returnLiterals =
+        scope.fn === null ? null : declaredReturnLiterals(scope.fn);
+      for (const entry of candidates) {
+        // The enclosing function declares the very union being compared against:
+        // this is the narrowing boundary that produces it, so the `string`
+        // operand is required, not a defect.
+        if (
+          returnLiterals !== null &&
+          [...entry.literals].every((lit) => returnLiterals.has(lit))
+        ) {
+          continue;
         }
+        validClusters.push(entry.node);
       }
     }
 
@@ -373,7 +452,11 @@ export default ESLintUtils.RuleCreator(
         return;
       }
       const name = keyName(key);
-      if (name === null || !isChoiceLikeName(name)) {
+      if (
+        name === null ||
+        !isChoiceLikeName(name) ||
+        ignoredFields.has(name.toLowerCase())
+      ) {
         return;
       }
       bareChoiceProps.push({ name, container, node });

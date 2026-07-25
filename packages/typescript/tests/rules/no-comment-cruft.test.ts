@@ -55,6 +55,15 @@ ruleTester.run("no-comment-cruft", rule, {
     // A genuine why-comment that happens to mention a narration word is fine.
     { code: "// firstName is required by the upstream API\nconst x = 1;" },
     { code: "// now-deprecated path kept for back-compat\nconst x = 1;" },
+    // C-2 regression: a long `//` module header carrying PROSE is documentation —
+    // the "why" this rule's own message asks for — not cruft. On the adoption
+    // codebase 11 of 15 `fileHeaderPreamble` hits were headers exactly like this.
+    {
+      code: "// This module wires the thing.\n// It is old.\n// Be careful.\n// Ask first.\nimport x from 'y';",
+    },
+    {
+      code: "// Idempotency substrate: every write derives a deterministic key.\n// The key is a UUIDv5 over (tenant, resource, epoch).\n// See RFC 9562 section 5.7 for the namespace derivation.\n// No state is kept here; a replay recomputes the same key.\nexport const x = 1;",
+    },
   ],
   invalid: [
     // Step narration — the comment walks through the code line-by-line.
@@ -104,8 +113,9 @@ ruleTester.run("no-comment-cruft", rule, {
       code: "const x = 1;\n// #region helpers\nconst y = 2;",
       errors: [{ messageId: "sectionBanner" }],
     },
+    // A content-free preamble — bare labels, no sentence, nothing explained.
     {
-      code: "// This module wires the thing.\n// It is old.\n// Be careful.\n// Ask first.\nimport x from 'y';",
+      code: "// helpers\n// utils\n// misc\n// stuff\nimport x from 'y';",
       errors: [{ messageId: "fileHeaderPreamble" }],
     },
     // A genuine multi-line commented-out block still fires on every line.

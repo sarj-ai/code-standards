@@ -23,7 +23,11 @@
  *     toasts (`toast.error(...)`), `router.refresh()`, logging, optional
  *     callbacks (`onSuccess?.()`). They are the post-success UI work that
  *     naturally trails the one awaited action; counting them flagged nearly
- *     every event handler.
+ *     every event handler. The exemption is applied STRUCTURALLY, recursing
+ *     through blocks and `if`/`else` branches, so wrapping the same call in a
+ *     guard (`if (!res.ok) { logEvent("http_error", { path }); return null; }`)
+ *     does not resurrect it. A guard's TEST is still examined — a call whose
+ *     result is branched on (`if (!validate(x))`) still counts.
  *   - Pure, non-throwing array / string / `Map` / `Object` / `Math` / `JSON`
  *     helpers (`.map`, `.filter`, `.push`, `.get`, `.join`, `Object.keys`, ...)
  *     do NOT count — they are data plumbing, not the operation being guarded.
@@ -160,12 +164,12 @@ function subtreeMatches(
   return found;
 }
 
-const hasAwait = (stmt: TSESTree.Statement): boolean =>
-  subtreeMatches(stmt, (n) => n.type === AST_NODE_TYPES.AwaitExpression);
+const hasAwait = (node: TSESTree.Node): boolean =>
+  subtreeMatches(node, (n) => n.type === AST_NODE_TYPES.AwaitExpression);
 
-const hasThrowingCallOrNew = (stmt: TSESTree.Statement): boolean =>
+const hasThrowingCallOrNew = (node: TSESTree.Node): boolean =>
   subtreeMatches(
-    stmt,
+    node,
     (n) =>
       (n.type === AST_NODE_TYPES.CallExpression && !isPureCall(n)) ||
       (n.type === AST_NODE_TYPES.NewExpression && !isPureNew(n)),
@@ -183,20 +187,41 @@ function unwrap(expr: TSESTree.Expression): TSESTree.Expression {
   return current;
 }
 
+/** A bare fire-and-forget call statement — `toast("done");`, `logEvent(...);`. */
+function isBareCallStatement(stmt: TSESTree.Statement): boolean {
+  return (
+    stmt.type === AST_NODE_TYPES.ExpressionStatement &&
+    unwrap(stmt.expression).type === AST_NODE_TYPES.CallExpression
+  );
+}
+
 /**
  * Whether a top-level try-body statement can plausibly throw when the `try`
  * runs. See the file overview for the guards; the key ones are: `await` always
  * counts, and a bare fire-and-forget call statement (no `await`) does not.
+ *
+ * Blocks and `if`/`else` branches recurse so the bare-call exemption survives a
+ * guard — a fire-and-forget call is no more throwing for sitting inside an
+ * `if`. The guard's own TEST is still checked for a throwing call, keeping
+ * `if (!validate(x))` counted. A compound statement still contributes at most
+ * ONE to the caller's count; this predicate only decides whether it counts.
  */
 function canThrow(stmt: TSESTree.Statement): boolean {
   if (hasAwait(stmt)) {
     return true;
   }
-  if (
-    stmt.type === AST_NODE_TYPES.ExpressionStatement &&
-    unwrap(stmt.expression).type === AST_NODE_TYPES.CallExpression
-  ) {
+  if (isBareCallStatement(stmt)) {
     return false;
+  }
+  if (stmt.type === AST_NODE_TYPES.BlockStatement) {
+    return stmt.body.some(canThrow);
+  }
+  if (stmt.type === AST_NODE_TYPES.IfStatement) {
+    return (
+      hasThrowingCallOrNew(stmt.test) ||
+      canThrow(stmt.consequent) ||
+      (stmt.alternate !== null && canThrow(stmt.alternate))
+    );
   }
   return hasThrowingCallOrNew(stmt);
 }

@@ -272,8 +272,68 @@ ruleTester.run("no-fat-try-blocks", rule, {
         }
       `,
     },
+    // FP-3: the bare-call exemption must survive a guard. Six statements, but
+    // only the three awaits can throw — the three \`if\` guards each contain a
+    // fire-and-forget log plus a return.
+    {
+      code: `
+        async function f(path) {
+          try {
+            const res = await fetch(path);
+            if (!res.ok) { logEvent('http_error', { path }); return null; }
+            const body = await res.json();
+            if (!body) { logEvent('empty_body', { path }); return null; }
+            const parsed = await parseBody(body);
+            if (!parsed) { logEvent('unparsed', { path }); return null; }
+            return parsed;
+          } catch (e) { handle(e); }
+        }
+      `,
+    },
+    // FP-3: the same exemption through an \`else\` branch.
+    {
+      code: `
+        function f(x) {
+          try {
+            if (x) { track('a'); } else { track('b'); }
+            if (x) { track('c'); } else { track('d'); }
+            if (x) { track('e'); } else { track('f'); }
+            if (x) { track('g'); } else { track('h'); }
+          } catch (e) { handle(e); }
+        }
+      `,
+    },
   ],
   invalid: [
+    // FP-3 must not over-suppress: a call whose RESULT is branched on still
+    // counts, even though the guard body is bare fire-and-forget.
+    {
+      code: `
+        function f(x) {
+          try {
+            if (!validate(x)) { track('a'); return null; }
+            if (!check(x)) { track('b'); return null; }
+            if (!verify(x)) { track('c'); return null; }
+            if (!confirm(x)) { track('d'); return null; }
+          } catch (e) { handle(e); }
+        }
+      `,
+      errors: [{ messageId: "fatTryBlock" }],
+    },
+    // FP-3 must not over-suppress: a result-using call inside a guard body counts.
+    {
+      code: `
+        function f(x) {
+          try {
+            if (x) { const a = one(); }
+            if (x) { const b = two(); }
+            if (x) { const c = three(); }
+            if (x) { const d = four(); }
+          } catch (e) { handle(e); }
+        }
+      `,
+      errors: [{ messageId: "fatTryBlock" }],
+    },
     // Four result-using calls — boundary just over the limit.
     {
       code: `
