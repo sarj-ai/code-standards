@@ -59,7 +59,9 @@ if TYPE_CHECKING:
 #   SARJ004, SARJ005 (retired before the standards merge),
 #   SARJ027, SARJ029, SARJ030 (dropped in 0.11.1 as too noisy),
 #   SARJ033 httpx-client-requires-timeout, SARJ035 no-import-time-settings
-#   (dropped by user veto after the 0.13.x mined-rules review).
+#   (dropped by user veto after the 0.13.x mined-rules review),
+#   SARJ037 no-trivial-single-use-helper (prototyped and dropped for FP rate;
+#   see the 0.13.1 inlining commit for the corpus analysis).
 REGISTRY: dict[str, type[Rule]] = {
     NoSequentialAwait.id: NoSequentialAwait,
     InefficientStringConcatInLoop.id: InefficientStringConcatInLoop,
