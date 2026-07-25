@@ -34,6 +34,9 @@ import noSelectStar from "./rules/no-select-star.js";
 import noSleepInTestBody from "./rules/no-sleep-in-test-body.js";
 import preferConstantTimeSecretCompare from "./rules/prefer-constant-time-secret-compare.js";
 import storeInsertRequiresOnConflict from "./rules/store-insert-requires-on-conflict.js";
+import noDynamicSql from "./rules/no-dynamic-sql.js";
+import noRawFetchOutsideClients from "./rules/no-raw-fetch-outside-clients.js";
+import noStorageInStatelessModules from "./rules/no-storage-in-stateless-modules.js";
 
 const rules = {
   "enforce-file-structure": enforceFileStructure,
@@ -72,6 +75,9 @@ const rules = {
   "no-sleep-in-test-body": noSleepInTestBody,
   "prefer-constant-time-secret-compare": preferConstantTimeSecretCompare,
   "store-insert-requires-on-conflict": storeInsertRequiresOnConflict,
+  "no-dynamic-sql": noDynamicSql,
+  "no-raw-fetch-outside-clients": noRawFetchOutsideClients,
+  "no-storage-in-stateless-modules": noStorageInStatelessModules,
 };
 
 const plugin = {
@@ -125,6 +131,8 @@ const plugin = {
         "@sarj/no-sleep-in-test-body": "warn",
         "@sarj/no-repeated-string-literal": "warn",
         "@sarj/no-positional-tuple-return": "warn",
+        // Injection guard — low FP, applies to any repo touching SQL.
+        "@sarj/no-dynamic-sql": "warn",
       },
     },
     strict: {
@@ -176,6 +184,15 @@ const plugin = {
         // only hits are parser `[value, cursor]` returns, which are conventional.
         // Warn even in strict until a rollout justifies more.
         "@sarj/no-positional-tuple-return": "warn",
+        "@sarj/no-dynamic-sql": "error",
+        // Architectural: both need per-repo config to be meaningful, so they
+        // are strict-only. `no-storage-in-stateless-modules` is a no-op until
+        // its `modules` option names the directories a team declared stateless;
+        // `no-raw-fetch-outside-clients` defaults to the `clients/` convention
+        // and takes an `allow` list for repos that lay their client layer out
+        // differently.
+        "@sarj/no-raw-fetch-outside-clients": "error",
+        "@sarj/no-storage-in-stateless-modules": "error",
       },
     },
   },

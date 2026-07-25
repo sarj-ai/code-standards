@@ -51,6 +51,20 @@ ruleTester.run("prefer-schema-for-api-payload", rule, {
     {
       code: "async function f(r) { const body = await r.json(); if (validate(body)) { return body.value; } }",
     },
+
+    // === `JSON.parse` source ==============================================
+    // The recommended shape: park it in an `unknown` and validate. Nothing is
+    // read off the raw value, so nothing is reported.
+    { code: "const raw = JSON.parse(text); const data = Schema.parse(raw); use(data.foo);" },
+    { code: "const data = Schema.parse(JSON.parse(text)); use(data.foo);" },
+    { code: "const r = Schema.safeParse(JSON.parse(text));" },
+    // Parsed but never dereferenced.
+    { code: "const raw = JSON.parse(text); send(raw);" },
+    // A `.parse()` that is not `JSON.parse` is the validation we are asking for.
+    { code: "const data = YAML.parse(text); use(data.foo);" },
+    { code: "const data = Schema.parse(text); use(data.foo);" },
+    // A hand-written guard narrows just as a schema does.
+    { code: "const d = JSON.parse(text); if (isConfig(d)) { use(d.foo); }" },
   ],
   invalid: [
     {
@@ -84,6 +98,22 @@ ruleTester.run("prefer-schema-for-api-payload", rule, {
     // Post-first-access untracking: only the FIRST unvalidated read is flagged.
     {
       code: "async function f(r) { const d = await r.json(); console.log(d.a); console.log(d.b); }",
+      errors: [{ messageId: "unparsedJsonAccess" }],
+    },
+    // === `JSON.parse` source ==============================================
+    // Field read off an unvalidated `JSON.parse` result.
+    {
+      code: "const data = JSON.parse(text); use(data.foo);",
+      errors: [{ messageId: "unparsedJsonAccess" }],
+    },
+    // Direct field access on the call result.
+    {
+      code: "const name = JSON.parse(text).name;",
+      errors: [{ messageId: "unparsedJsonAccess" }],
+    },
+    // Destructuring the raw result.
+    {
+      code: "const { foo } = JSON.parse(text);",
       errors: [{ messageId: "unparsedJsonAccess" }],
     },
   ],

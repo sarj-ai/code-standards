@@ -67,7 +67,56 @@ would be wrong, not better:
 ### `no-enum`: `ignoreFiles`
 
 Glob patterns whose files opt out (generated code already opts out by default).
-Presets: `recommended` (warn-first), `strict` (every rule at error, except the few noted in `src/index.ts` as style-adjacent).
+
+## Configurable rules
+
+Most rules take no options. These three do, because they encode a codebase's
+architecture rather than a language fact — the defaults describe one convention
+and every repo gets to name its own.
+
+| Rule | Option | Default | Effect |
+|---|---|---|---|
+| `no-raw-fetch-outside-clients` | `allow` | client/test path patterns | Files exempt from the "no bare `fetch`" rule |
+| `no-dynamic-sql` | `methods` | `["prepare", "exec", "query"]` | Statement-taking methods to inspect |
+| `no-storage-in-stateless-modules` | `modules` | `[]` (rule off) | Directories declared stateless |
+| `no-storage-in-stateless-modules` | `methods` | `["prepare", "put", "getWithMetadata"]` | Storage methods to flag |
+
+Every option value is a **regular-expression source matched against the absolute
+filename**, not a glob — so it can express both path separators. Supplying an
+option **replaces** the default rather than extending it.
+
+`no-storage-in-stateless-modules` is a **no-op until `modules` is set**. The
+method names alone (`put`, `prepare`) carry no type information, so the rule is
+only meaningful once it is pointed at the directories a team has actually
+declared stateless.
+
+```js
+// eslint.config.mjs
+import sarj from "@sarj/eslint-plugin";
+
+export default [
+  ...sarj.configs.strict,
+  {
+    rules: {
+      // This repo keeps its HTTP layer in `lib/api/`, not `clients/`.
+      "@sarj/no-raw-fetch-outside-clients": [
+        "error",
+        { allow: ["[\\\\/]lib[\\\\/]api[\\\\/]", "\\.test\\.", "\\.spec\\."] },
+      ],
+      // Declare which modules must stay stateless.
+      "@sarj/no-storage-in-stateless-modules": [
+        "error",
+        { modules: ["[\\\\/]engineer-digest[\\\\/]"] },
+      ],
+    },
+  },
+];
+```
+
+Tiering: `no-dynamic-sql` is in both presets (an injection guard with a low
+false-positive rate, relevant to any repo touching SQL). The two architectural
+rules are **`strict`-only**, since they need per-repo configuration to say
+anything useful.
 
 ## Ported from `sarj_python_lint`
 

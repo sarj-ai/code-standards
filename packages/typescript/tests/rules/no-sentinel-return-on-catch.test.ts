@@ -297,6 +297,30 @@ ruleTester.run("no-sentinel-return-on-catch", rule, {
         }
       `,
     },
+
+    // === Promise `.catch()` form =========================================
+    // Only EMPTY COLLECTIONS are flagged in promise form. `null`/`undefined`
+    // is the idiomatic optional lookup and stays legal.
+    { code: "const u = await load().catch(() => null);" },
+    { code: "const u = await load().catch(() => undefined);" },
+    { code: "const ok = await check().catch(() => false);" },
+    // A non-empty fallback is a real, deliberate default.
+    { code: "const rows = await load().catch(() => DEFAULT_ROWS);" },
+    { code: "const rows = await load().catch(() => [FALLBACK]);" },
+    // Logged, then degraded — the failure is still visible.
+    { code: "const rows = await load().catch((e) => { logger.error(e); return []; });" },
+    { code: "const rows = await load().catch((e) => { console.warn('load failed', e); return []; });" },
+    // Rethrows.
+    { code: "const rows = await load().catch((e) => { throw e; });" },
+    { code: "const rows = await load().catch((e) => { report(e); throw e; });" },
+    // A documented, reviewed swallow.
+    { code: "const rows = await load().catch(() => { /* empty is correct on 404 */ return []; });" },
+    // A named handler is reviewable on its own terms.
+    { code: "const rows = await load().catch(onLoadError);" },
+    // `.catch` on something that is not a promise chain still needs a function.
+    { code: "const rows = await load().catch();" },
+    // An empty block handler belongs to `no-log-only-catch`, not here.
+    { code: "await flush().catch(() => {});" },
   ],
   invalid: [
     // return null — bare swallow, function otherwise returns real data.
@@ -415,6 +439,33 @@ ruleTester.run("no-sentinel-return-on-catch", rule, {
         }
       `,
       errors: [{ messageId: "noSentinelReturn" }],
+    },
+    // === Promise `.catch()` form =========================================
+    // Expression body returning an empty array: a failed read becomes an empty
+    // result and the caller cannot tell the difference.
+    {
+      code: "const rows = await load().catch(() => []);",
+      errors: [{ messageId: "noSentinelCatchHandler" }],
+    },
+    // Empty object literal, parenthesised so it is an expression not a block.
+    {
+      code: "const cfg = await load().catch(() => ({}));",
+      errors: [{ messageId: "noSentinelCatchHandler" }],
+    },
+    // Block body whose last statement returns the sentinel, with no logging.
+    {
+      code: "const rows = await load().catch((e) => { cleanup(); return []; });",
+      errors: [{ messageId: "noSentinelCatchHandler" }],
+    },
+    // A classic `function` expression handler.
+    {
+      code: "const rows = await load().catch(function (e) { return []; });",
+      errors: [{ messageId: "noSentinelCatchHandler" }],
+    },
+    // Non-awaited promise chain.
+    {
+      code: "load().catch(() => []).then(use);",
+      errors: [{ messageId: "noSentinelCatchHandler" }],
     },
   ],
 });

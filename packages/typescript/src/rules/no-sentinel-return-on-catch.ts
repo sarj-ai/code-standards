@@ -33,6 +33,15 @@
  * type. A declared `T | null` / `T | undefined` return does NOT exempt: hiding a
  * failure behind a nullable accessor is the exact true positive this rule
  * exists for, and exempting it would gut the rule.
+ *
+ * The same swallow is available in promise form — `await load().catch(() => [])`
+ * — where there is no `CatchClause` at all, so it is handled separately below.
+ * The promise path is deliberately NARROWER: it fires only on an EMPTY
+ * COLLECTION (`[]`, `{}`), the shape that is genuinely indistinguishable from a
+ * successful empty read. `.catch(() => null)` / `.catch(() => undefined)` is the
+ * idiomatic optional lookup and is left alone. It consults the same shared log
+ * matcher, so a handler that logs the error before degrading is exempt exactly
+ * as the `CatchClause` path is.
  */
 
 import {
@@ -49,7 +58,7 @@ import {
   REPORT_NAME_RE,
 } from "./_logging.js";
 
-type MessageIds = "noSentinelReturn";
+type MessageIds = "noSentinelReturn" | "noSentinelCatchHandler";
 type Options = readonly [LoggingOptions?];
 
 type SentinelKind = "nullish" | "boolean" | "array" | "object" | "string";
@@ -403,6 +412,58 @@ function functionReturnsSameSentinelKindElsewhere(
   });
 }
 
+/** Any function-valued node usable as a `.catch()` handler. */
+type CatchHandler =
+  | TSESTree.ArrowFunctionExpression
+  | TSESTree.FunctionExpression;
+
+/**
+ * The handler passed to a promise `.catch(fn)`, or null when this is not a
+ * promise catch with an inline function. An inline function is required: a
+ * named handler (`.catch(onError)`) is reviewable on its own terms.
+ */
+function promiseCatchHandler(
+  node: TSESTree.CallExpression,
+): CatchHandler | null {
+  const callee = node.callee;
+  if (
+    callee.type !== AST_NODE_TYPES.MemberExpression ||
+    callee.computed ||
+    callee.property.type !== AST_NODE_TYPES.Identifier ||
+    callee.property.name !== "catch"
+  ) {
+    return null;
+  }
+  const handler = node.arguments[0];
+  if (
+    handler === undefined ||
+    (handler.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
+      handler.type !== AST_NODE_TYPES.FunctionExpression)
+  ) {
+    return null;
+  }
+  return handler;
+}
+
+/**
+ * True for an empty collection literal — `[]` or `{}`. Only these are flagged on
+ * the promise path: an empty collection returned from a failed read is
+ * indistinguishable from a successful empty read, whereas `null`/`undefined` is
+ * the idiomatic "not found".
+ */
+function isEmptyCollection(node: TSESTree.Node | null | undefined): boolean {
+  if (node === null || node === undefined) {
+    return false;
+  }
+  if (node.type === AST_NODE_TYPES.ArrayExpression) {
+    return node.elements.length === 0;
+  }
+  if (node.type === AST_NODE_TYPES.ObjectExpression) {
+    return node.properties.length === 0;
+  }
+  return false;
+}
+
 /** Is `node` inside `ancestor`'s subtree? */
 function isWithin(node: TSESTree.Node, ancestor: TSESTree.Node): boolean {
   let current: TSESTree.Node | undefined | null = node;
@@ -436,6 +497,8 @@ export default ESLintUtils.RuleCreator(
     messages: {
       noSentinelReturn:
         "This `catch` block swallows the error by returning an empty sentinel without logging it. Rethrow it, log/report it, or return a typed Result.",
+      noSentinelCatchHandler:
+        "`.catch(() => [])` reports a failed read as an empty result, so callers cannot tell an outage from 'nothing to do'. Log the error and rethrow, or return an explicit failure value.",
     },
   },
   defaultOptions: [{}],
@@ -468,7 +531,57 @@ export default ESLintUtils.RuleCreator(
       });
     }
 
+    /**
+     * The node to report for a `.catch()` handler that swallows into an empty
+     * collection, or null when the handler does something real. Covers both the
+     * expression body (`() => []`) and the block body whose last statement
+     * returns the sentinel. Lives inside `create` because the log/report
+     * exemption needs the per-invocation shared log matcher.
+     */
+    function swallowingHandlerTarget(
+      handler: CatchHandler,
+    ): TSESTree.Node | null {
+      if (handler.body.type !== AST_NODE_TYPES.BlockStatement) {
+        return isEmptyCollection(handler.body) ? handler.body : null;
+      }
+
+      const statements = handler.body.body;
+      const last = statements[statements.length - 1];
+      if (last === undefined || last.type !== AST_NODE_TYPES.ReturnStatement) {
+        return null;
+      }
+      if (!isEmptyCollection(last.argument)) {
+        return null;
+      }
+      if (containsThrow(handler.body)) {
+        return null;
+      }
+
+      const caughtName =
+        handler.params[0]?.type === AST_NODE_TYPES.Identifier
+          ? handler.params[0].name
+          : null;
+      if (logsOrReportsError(handler.body, caughtName)) {
+        return null;
+      }
+      // A comment documents a deliberate, reviewed swallow.
+      if (context.sourceCode.getCommentsInside(handler.body).length > 0) {
+        return null;
+      }
+      return last;
+    }
+
     return {
+      CallExpression(node: TSESTree.CallExpression): void {
+        const handler = promiseCatchHandler(node);
+        if (handler === null) {
+          return;
+        }
+        const target = swallowingHandlerTarget(handler);
+        if (target !== null) {
+          context.report({ node: target, messageId: "noSentinelCatchHandler" });
+        }
+      },
       CatchClause(node: TSESTree.CatchClause): void {
         const body = node.body.body;
         if (body.length === 0) {
