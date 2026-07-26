@@ -538,3 +538,52 @@ def test_staging_secret_should_be_flagged(kw: str):
 def test_plural_secret_bundle_should_be_flagged(kw: str):
     """A logged bundle like `secrets=all_secrets` is a genuine leak."""
     assert _codes(f'logger.info("loaded", {kw}=v)\n') == ["SARJ012"]
+
+
+# --------------------------------------------------------------------------- #
+# Family 19: LEADING boolean-flag prefixes (`has_secret`, `isToken`)           #
+# --------------------------------------------------------------------------- #
+#
+# The mirror image of the trailing flag markers in Family 11: a name whose
+# leading WORD is a boolean predicate answers "does a secret exist?" and carries
+# no credential, so logging it leaks nothing. Both spellings must behave
+# identically — `has_secret` and `hasSecret` are the same name, and the camelCase
+# form is only visible after camel splitting.
+
+_LEADING_FLAG_KEYWORDS = [
+    "has_secret",
+    "hasSecret",
+    "is_token",
+    "isToken",
+    "was_password",
+    "wasPassword",
+    "should_rotate_token",
+    "can_use_api_key",
+    "are_credentials_loaded",
+]
+
+
+@pytest.mark.parametrize("kw", _LEADING_FLAG_KEYWORDS)
+def test_does_not_flag_leading_boolean_flag(kw: str):
+    assert _check(f'logger.info("state", {kw}=flag)\n') == []
+
+
+@pytest.mark.parametrize("kw", ["token_present", "password_enabled"])
+def test_trailing_flag_markers_still_exempt(kw: str):
+    """The pre-existing trailing-flag exemption is unchanged by the leading one."""
+    assert _check(f'logger.info("state", {kw}=flag)\n') == []
+
+
+@pytest.mark.parametrize(
+    "kw",
+    ["api_key", "INTERNAL_ADMIN_TOKEN", "slack_signing_secret", "auth_token"],
+)
+def test_genuine_secret_still_flagged_alongside_flag_exemption(kw: str):
+    """Real credentials keep firing — the exemption is on the leading word, nothing else."""
+    assert _codes(f'logger.info("boot", {kw}=v)\n') == ["SARJ012"]
+
+
+@pytest.mark.parametrize("kw", ["issuer_token", "canary_token", "issuerToken"])
+def test_flags_credential_whose_leading_word_only_looks_like_a_flag(kw: str):
+    """`issuer`/`canary` merely start with the letters of `is`/`can` — still credentials."""
+    assert _codes(f'logger.info("boot", {kw}=v)\n') == ["SARJ012"]
