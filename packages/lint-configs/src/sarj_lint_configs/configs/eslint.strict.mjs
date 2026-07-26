@@ -288,11 +288,11 @@ const config = [
       "@sarj/require-fetch-timeout": "error",
       "@sarj/no-silent-promise-catch": "error",
       "@sarj/require-schema-validate-search": "error",
-      "@sarj/enforce-file-structure": "warn",
-      "@sarj/prefer-semantic-colors": "warn",
-      "@sarj/prefer-string-literal-union": "warn",
+      "@sarj/enforce-file-structure": "error",
+      "@sarj/prefer-semantic-colors": "error",
+      "@sarj/prefer-string-literal-union": "error",
       // High-volume/stylistic — warn until rollout proves FP rate.
-      "@sarj/no-unsafe-cast": "warn",
+      "@sarj/no-unsafe-cast": "error",
 
       // ── 2.8.0 / 2.9.0 additions ─────────────────────────────────────────────
       // Correctness and security invariants — error, like their peers above.
@@ -308,8 +308,8 @@ const config = [
       // and prefer-string-literal-union above. Measured on a 1,578-file
       // third-party corpus: every hit was the conventional `[value, cursor]`
       // parser idiom, i.e. style rather than defect.
-      "@sarj/no-positional-tuple-return": "warn",
-      "@sarj/no-repeated-string-literal": "warn",
+      "@sarj/no-positional-tuple-return": "error",
+      "@sarj/no-repeated-string-literal": "error",
 
       // Deliberately NOT enabled here — these two are architectural rules that
       // are meaningless without per-repo paths, so a shared config cannot set

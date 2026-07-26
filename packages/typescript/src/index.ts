@@ -87,7 +87,7 @@ const rules = {
 const plugin = {
   meta: {
     name: "@sarj/eslint-plugin",
-    version: "2.10.0",
+    version: "2.11.0",
   },
   rules,
   configs: {
@@ -171,15 +171,15 @@ const plugin = {
         "@sarj/no-comment-cruft": "error",
         // Frontend / styling — distilled from frontend PR-review mining. Stylistic,
         // no autofix → warn (rollout should prove the FP rate before raising it).
-        "@sarj/prefer-semantic-colors": "warn",
+        "@sarj/prefer-semantic-colors": "error",
         // Ported from sarj-python-lint (SARJ), corpus-validated FP~0.
         "@sarj/no-fat-try-blocks": "error",
         "@sarj/no-cors-wildcard-with-credentials": "error",
         "@sarj/no-secret-in-log": "error",
-        "@sarj/no-unsafe-cast": "warn",
+        "@sarj/no-unsafe-cast": "error",
         "@sarj/single-public-export": "error",
-        // High-volume/stylistic — warn until rollout proves FP rate.
-        "@sarj/prefer-string-literal-union": "warn",
+        // Promoted to error 2026-07-25 — strict means strict (user directive).
+        "@sarj/prefer-string-literal-union": "error",
         // Mined from 2y of PR review feedback + 5-repo code-smell audit (2026-07).
         "@sarj/require-fetch-timeout": "error",
         "@sarj/no-silent-promise-catch": "error",
@@ -194,7 +194,7 @@ const plugin = {
         // API-shape advice rather than a runtime defect — a corpus sweep found its
         // only hits are parser `[value, cursor]` returns, which are conventional.
         // Warn even in strict until a rollout justifies more.
-        "@sarj/no-positional-tuple-return": "warn",
+        "@sarj/no-positional-tuple-return": "error",
         "@sarj/no-dynamic-sql": "error",
         // Architectural: both need per-repo config to be meaningful, so they
         // are strict-only. `no-storage-in-stateless-modules` is a no-op until

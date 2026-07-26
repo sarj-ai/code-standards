@@ -69,6 +69,6 @@
   "reportExplicitAny": "error",
   "reportIgnoreCommentWithoutRule": "error",
   "reportPrivateLocalImportUsage": "error",
-  "reportAny": "warning",
-  "reportUnannotatedClassAttribute": "warning"
+  "reportAny": "error",
+  "reportUnannotatedClassAttribute": "error"
 }
