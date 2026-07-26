@@ -189,7 +189,9 @@ def _is_rotting_xfail(dec: ast.expr) -> bool:
 _ENV_PROBE_MODULES = frozenset({"sys", "os", "platform", "sysconfig"})
 
 # Attribute / name words that identify an interpreter- or OS-version probe.
-_ENV_PROBE_RE = re.compile(r"version|implementation|platform|machine|pypy|jython|win32|windows|linux|darwin|macos", re.IGNORECASE)
+_ENV_PROBE_RE = re.compile(
+    r"version|implementation|platform|machine|pypy|jython|win32|windows|linux|darwin|macos", re.IGNORECASE
+)
 
 
 def _is_environment_gated(dec: ast.Call) -> bool:

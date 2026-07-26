@@ -69,6 +69,12 @@ References:
 - https://docs.python.org/3/tutorial/errors.html#handling-exceptions
 - https://docs.python.org/3/library/ast.html#ast.Try
 
+* **generated files** (`_paths.is_generated_source`). Their layout is the
+  generator's, and re-running the generator discards any edit, so a finding
+  there can never be acted on in place. Measured on the 69 `DO NOT EDIT`
+  files git-tracked across bulbul and noura-be — Speakeasy's
+  `python/sdk/src/sarj_platform_sdk/` accounts for all of them.
+
 """
 
 from __future__ import annotations
@@ -79,6 +85,7 @@ from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
 from sarj_python_lint.rules._logging import is_logger_expr
+from sarj_python_lint.rules._paths import is_generated_source
 
 
 if TYPE_CHECKING:
@@ -124,38 +131,42 @@ def _nested_scope_body_ids(node: ast.AST) -> frozenset[int]:
 #: `set` and `record` are deliberately ABSENT — `cache.set(k, v)` /
 #: `store.record(row)` collide with them and are real work whose failure a handler
 #: is plausibly written for.
-_OBSERVABILITY_METHODS = frozenset({
-    "inc",
-    "dec",
-    "observe",
-    "set_to_current_time",
-    "labels",
-    "increment",
-    "decrement",
-    "gauge",
-    "timing",
-    "histogram",
-    "record_exception",
-    "add_event",
-    "set_attribute",
-    "set_attributes",
-    "set_status",
-})
+_OBSERVABILITY_METHODS = frozenset(
+    {
+        "inc",
+        "dec",
+        "observe",
+        "set_to_current_time",
+        "labels",
+        "increment",
+        "decrement",
+        "gauge",
+        "timing",
+        "histogram",
+        "record_exception",
+        "add_event",
+        "set_attribute",
+        "set_attributes",
+        "set_status",
+    }
+)
 
 #: Clock reads. `time.monotonic()` / `perf_counter()` / `time()` and
 #: `datetime.now()` / `utcnow()` cannot raise at all, but they are the calls that
 #: turn an elapsed-time bookkeeping line into a "throwing" statement.
 _CLOCK_ROOTS = frozenset({"time", "datetime", "date"})
-_CLOCK_METHODS = frozenset({
-    "monotonic",
-    "monotonic_ns",
-    "perf_counter",
-    "perf_counter_ns",
-    "time",
-    "time_ns",
-    "now",
-    "utcnow",
-})
+_CLOCK_METHODS = frozenset(
+    {
+        "monotonic",
+        "monotonic_ns",
+        "perf_counter",
+        "perf_counter_ns",
+        "time",
+        "time_ns",
+        "now",
+        "utcnow",
+    }
+)
 
 #: Value-shaping builtins. These are what an instrumentation line calls on its
 #: arguments — `logger.info(..., n=len(items), elapsed_s=round(t, 2))`,
@@ -163,21 +174,23 @@ _CLOCK_METHODS = frozenset({
 #: line passes them, so they don't make the statement a candidate for the
 #: handler. Builtins that genuinely do work and raise (`open`, `eval`, `next`,
 #: `getattr`) are deliberately absent.
-_INERT_BUILTINS = frozenset({
-    "abs",
-    "bool",
-    "float",
-    "format",
-    "id",
-    "int",
-    "len",
-    "list",
-    "repr",
-    "round",
-    "str",
-    "tuple",
-    "type",
-})
+_INERT_BUILTINS = frozenset(
+    {
+        "abs",
+        "bool",
+        "float",
+        "format",
+        "id",
+        "int",
+        "len",
+        "list",
+        "repr",
+        "round",
+        "str",
+        "tuple",
+        "type",
+    }
+)
 
 
 def _attr_root(expr: ast.expr) -> str | None:
@@ -316,6 +329,8 @@ class NoFatTryBlocks(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        if is_generated_source(source):
+            return []
         tree = parse_or_none(path, source)
         if tree is None:
             return []
