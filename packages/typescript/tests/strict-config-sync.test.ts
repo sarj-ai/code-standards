@@ -195,16 +195,17 @@ describe("lint-configs eslint.strict.mjs stays wired to the plugin", () => {
     const pluginStrict = plugin.configs.strict.rules as Record<string, string>;
 
     // rule -> [plugin tier, config tier, why the config deviates]
-    const DECLARED_DEVIATIONS = new Map<string, readonly [string, string]>([
-      // Structural moves are high-churn for existing consumers, so the shared
-      // config keeps it advisory even though the plugin's strict errors.
-      ["enforce-file-structure", ["error", "warn"]],
-      // High-volume and stylistic: it flags duplicated structured literals,
-      // which lands in bulk on first adoption. Warn until a rollout proves the
-      // signal, matching how prefer-string-literal-union and no-unsafe-cast are
-      // treated here.
-      ["no-repeated-string-literal", ["error", "warn"]],
-    ]);
+    // Empty by design as of this change: "strict" now means every rule at
+    // `error` in BOTH the plugin's own configs.strict and the shared config, so
+    // there is nothing left to declare. The two former entries
+    // (enforce-file-structure, no-repeated-string-literal) were promoted rather
+    // than kept as exceptions.
+    //
+    // Keep the mechanism. It is what makes lowering a tier a reviewed edit with
+    // a written reason instead of a one-word diff nobody reads — and the drift
+    // it catches is exactly how no-repeated-string-literal ended up at `warn`
+    // under a header claiming the tiers already mirrored the plugin.
+    const DECLARED_DEVIATIONS = new Map<string, readonly [string, string]>([]);
 
     const drift: string[] = [];
     for (const [name, pluginSeverity] of Object.entries(pluginStrict)) {
