@@ -26,6 +26,14 @@ jobs:
         working-directory: packages/python
     steps:
       - uses: actions/checkout@v7
+      # release.yml's `detect` job watches packages/python/pyproject.toml, but
+      # pre-commit consumers install the root package — so a bump to one and not
+      # the other silently skips the publish. That is exactly how 0.15.0 was
+      # merged without ever reaching PyPI. `make test` depends on this check but
+      # runs from the repo root, which this job never does.
+      - name: Check root/package versions are in sync
+        working-directory: .
+        run: make check-configs-synced
       - uses: astral-sh/setup-uv@v8.2.0
         with:
           enable-cache: true
