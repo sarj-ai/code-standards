@@ -45,6 +45,27 @@ ruleTester.run("no-positional-tuple-return", rule, {
     {
       code: "function split(): [string, number] { return impl(); }",
     },
+    // A purely local helper stays unflagged even when the module exports OTHER
+    // names through specifiers — the specifier lookup must be name-scoped, not
+    // "this file has exports".
+    {
+      code: "function split(): [string, number] { return impl(); }\nconst other = 1;\nexport { other };",
+    },
+    // A same-named binding exported from ANOTHER module is not this function.
+    {
+      code: "function split(): [string, number] { return impl(); }\nexport { split } from './other.js';",
+    },
+    // A type-only export does not put the value on the public surface.
+    {
+      code: "function split(): [string, number] { return impl(); }\nexport type { split };",
+    },
+    {
+      code: "function split(): [string, number] { return impl(); }\nexport { type split };",
+    },
+    // Hook naming still wins over the specifier export.
+    {
+      code: "function useToggle(): [boolean, (next: boolean) => void] { return impl(); }\nexport { useToggle };",
+    },
     // --- Single-element tuple and array types are not positional records. ---
     { code: "export function one(): [string] { return impl(); }" },
     { code: "export function many(): Array<[string, number]> { return impl(); }" },
@@ -75,6 +96,46 @@ ruleTester.run("no-positional-tuple-return", rule, {
     // Default export.
     {
       code: "export default function run(): [string, Error | null] { return impl(); }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    // --- Exported through a detached specifier, not the inline keyword. ---
+    {
+      code: "function split(s: string): [string, number] { return impl(s); }\nexport { split };",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    // Renamed on the way out — the local binding is what the rule matches.
+    {
+      code: "function split(s: string): [string, number] { return impl(s); }\nexport { split as s };",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    // One specifier list can export several bindings.
+    {
+      code: "function split(s: string): [string, number] { return impl(s); }\nconst other = 1;\nexport { other, split };",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    // Arrow function assigned to a const, exported later.
+    {
+      code: "const resolve = (): [User, boolean] => impl();\nexport { resolve };",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    // Only the exported declarator of a multi-declarator statement is public.
+    {
+      code: "const resolve = (): [User, boolean] => impl(), local = (): [User, boolean] => impl();\nexport { resolve };",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    // A method of a class exported later — the class name carries the export.
+    {
+      code: "class Repo { find(): [Row, number] { return impl(); } }\nexport { Repo };",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    // `export default split` — the identifier form, not a declaration.
+    {
+      code: "function split(s: string): [string, number] { return impl(s); }\nexport default split;",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    // TS `export =` assignment.
+    {
+      code: "function split(s: string): [string, number] { return impl(s); }\nexport = split;",
       errors: [{ messageId: "noPositionalTupleReturn" }],
     },
   ],

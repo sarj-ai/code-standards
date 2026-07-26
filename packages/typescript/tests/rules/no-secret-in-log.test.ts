@@ -102,6 +102,83 @@ ruleTester.run("no-secret-in-log", rule, {
       code: 'logEvent("slack.auth", { tokenPrefix });',
       options: [{ logFunctions: ["logEvent"] }],
     },
+
+    // A LEADING boolean-predicate word makes the name a flag answering "does a
+    // secret exist?", which leaks nothing. Mirrors the trailing innocuous-word
+    // guard; both now live in the shared `isSecretName`.
+    {
+      code: 'logEvent("s", { hasSecret });',
+      options: [{ logFunctions: ["logEvent"] }],
+    },
+    { code: "logger.info({ isToken });" },
+    { code: "log.info({ has_secret });" },
+    { code: "log.info({ is_token });" },
+    { code: 'logger.info("auth", { isTokenStrategy, wasPasswordReset });' },
+    { code: "logger.info(hasApiKey);" },
+    // `hash_secret` IS a secret to the shared predicate — `hash` is a whole word,
+    // not the prefix `has` — but this rule exempts every `hash` name via its own
+    // REDACTION_RE, the same clause that keeps the pinned `passwordHash` valid.
+    // Its firing behaviour is therefore owned by `prefer-constant-time-secret-compare`,
+    // not by the leading-flag guard.
+    { code: 'logger.info("auth", { hash_secret });' },
+
+    // ---- raw-blob arm: the exemptions that keep it adoptable ----
+    // A narrowed FIELD of a body is the fix, not the defect — the member
+    // property decides, never the object it was picked from.
+    { code: 'logger.info("resp", { id: body.id });' },
+    { code: 'logger.info("resp", { bodyLength: body.length });' },
+    { code: 'logger.info("resp", { status: res.status, issueCount: body.issues.length });' },
+    { code: 'logger.info("resp", { payloadId: payload.id });' },
+    // Passed through a redactor / summariser: the SHAPE is the exemption, so any
+    // project's own summariser qualifies without being enumerated.
+    { code: 'logger.info("resp", { body: redact(body) });' },
+    { code: 'logger.info("resp", { body: sanitize(body) });' },
+    { code: 'logger.info("resp", { body: pick(body, ["id", "status"]) });' },
+    { code: 'logger.info("resp", { body: JSON.stringify(body).slice(0, 200) });' },
+    { code: 'logger.info("resp", { payload: summarizeIssues(payload) });' },
+    { code: "logger.info(redact(res.body));" },
+    // Already a rendered string / template, not the blob.
+    { code: 'logger.info("resp", { body: "ok" });' },
+    { code: 'logger.info("resp", { body: `status=${res.status}` });' },
+    { code: 'logger.info("resp", { body: res.ok ? "ok" : "failed" });' },
+    // Redaction / derivation markers in the NAME.
+    { code: 'logger.info("resp", { redactedBody });' },
+    { code: 'logger.info("resp", { sanitizedPayload });' },
+    { code: 'logger.info("resp", { truncatedBody });' },
+    { code: 'logger.info("resp", { maskedPayload });' },
+    { code: 'logger.info("resp", { bodyHash });' },
+    { code: 'logger.info("resp", { bodyPreview });' },
+    { code: 'logger.info("resp", { payloadSummary });' },
+    { code: 'logger.info("resp", { safeBody });' },
+    { code: 'logger.info("resp", { bodySize, paramsCount });' },
+    // Boolean flags about a blob, not the blob.
+    { code: 'logger.info("resp", { hasBody });' },
+    { code: 'logger.info("resp", { isPayload });' },
+    // Generic container words are NOT blob words — firing on these is what would
+    // get the rule switched off.
+    { code: 'logger.info("x", { data });' },
+    { code: 'logger.info("x", { input, args, result });' },
+    { code: 'logger.info("x", { event, record, item });' },
+    { code: 'logger.info("x", { req, res });' },
+    // Metadata whose trailing word is not a blob word.
+    { code: 'logger.info("x", { bodyType, paramsSchema });' },
+    // Spread is deliberately out of scope for this arm.
+    { code: 'logger.info("resp", { ...body });' },
+    // Not a logging call at all.
+    { code: 'metrics.record("resp", { body });' },
+    { code: "res.send({ body });" },
+    // A free function is not a log sink until the project declares it — the blob
+    // arm honours `logFunctions` exactly like the secret arm.
+    { code: 'logEvent("ashby.response", { body });' },
+    // Bodies in a test file are fixtures the author wrote, not production PII.
+    {
+      code: 'logger.info("resp", { body });',
+      filename: "src/ashby.test.ts",
+    },
+    {
+      code: "console.log(res.body);",
+      filename: "tests/fixtures/ashby.ts",
+    },
   ],
   invalid: [
     // Object property: shorthand secret names.
@@ -204,6 +281,108 @@ ruleTester.run("no-secret-in-log", rule, {
       code: 'obs.error("auth", { apiKey });',
       options: [{ loggerNames: ["obs"] }],
       errors: [{ messageId: "noSecretInLog" }],
+    },
+
+    // The leading-flag exemption matches a whole WORD, never a character prefix,
+    // so these credentials keep firing (`issuer` != `is`, `canary` != `can`).
+    // `hash_secret` is pinned in the shared-predicate tests instead: this rule's
+    // own REDACTION_RE exempts every `hash` name, deliberately and separately.
+    {
+      code: 'logger.info("oauth", { issuer_token });',
+      errors: [{ messageId: "noSecretInLog" }],
+    },
+    {
+      code: 'logger.info("probe", { canary_token });',
+      errors: [{ messageId: "noSecretInLog" }],
+    },
+    {
+      code: 'logger.info("cfg", { api_key, auth_token, slack_signing_secret });',
+      errors: [
+        { messageId: "noSecretInLog" },
+        { messageId: "noSecretInLog" },
+        { messageId: "noSecretInLog" },
+      ],
+    },
+    {
+      code: 'logger.info("cfg", { INTERNAL_ADMIN_TOKEN });',
+      errors: [{ messageId: "noSecretInLog" }],
+    },
+
+    // ---- raw-blob arm: the coverage the GritQL plugin used to own ----
+    // The shape the port was blocked on: a whole response body threaded into a
+    // structured logger's meta object. No property here is secret-NAMED.
+    {
+      code: 'logEvent("ashby.response", { status: res.status, body });',
+      options: [{ logFunctions: ["logEvent"] }],
+      errors: [{ messageId: "noRawBodyInLog" }],
+    },
+    {
+      code: 'logEvent("webhook.received", { rawBody });',
+      options: [{ logFunctions: ["logEvent"] }],
+      errors: [{ messageId: "noRawBodyInLog" }],
+    },
+    // Renaming the blob onto another key does not launder it.
+    {
+      code: 'logEvent("webhook.received", { meta: body });',
+      options: [{ logFunctions: ["logEvent"] }],
+      errors: [{ messageId: "noRawBodyInLog" }],
+    },
+    // A member access whose PROPERTY is the blob.
+    {
+      code: 'logger.info("resp", { body: res.body });',
+      errors: [{ messageId: "noRawBodyInLog" }],
+    },
+    // Bare positional blob — the console shape the grit never covered.
+    { code: "console.log(res.body);", errors: [{ messageId: "noRawBodyInLog" }] },
+    { code: 'logger.debug("req", payload);', errors: [{ messageId: "noRawBodyInLog" }] },
+    // The rest of the enumerated blob words.
+    {
+      code: 'logger.warn("req", { requestBody });',
+      errors: [{ messageId: "noRawBodyInLog" }],
+    },
+    {
+      code: 'logger.info("resp", { responsePayload });',
+      errors: [{ messageId: "noRawBodyInLog" }],
+    },
+    {
+      code: 'logger.info("hook", { webhookPayload });',
+      errors: [{ messageId: "noRawBodyInLog" }],
+    },
+    {
+      code: 'logger.info("route", { searchParams });',
+      errors: [{ messageId: "noRawBodyInLog" }],
+    },
+    {
+      code: 'logger.info("upload", { formData });',
+      errors: [{ messageId: "noRawBodyInLog" }],
+    },
+    // `safe` is only a redaction marker as a WHOLE token.
+    {
+      code: 'logger.info("resp", { unsafeBody });',
+      errors: [{ messageId: "noRawBodyInLog" }],
+    },
+    // A declared logger RECEIVER carries the blob arm too.
+    {
+      code: 'obs.error("resp", { body });',
+      options: [{ loggerNames: ["obs"] }],
+      errors: [{ messageId: "noRawBodyInLog" }],
+    },
+    // Two blobs in one meta object → one report each.
+    {
+      code: 'logger.error("proxy", { requestBody, responseBody });',
+      errors: [{ messageId: "noRawBodyInLog" }, { messageId: "noRawBodyInLog" }],
+    },
+    // A name that is BOTH secret-shaped and blob-shaped reports once, as the
+    // secret — that advice is the more specific of the two.
+    {
+      code: 'logger.info("auth", { tokenBody });',
+      errors: [{ messageId: "noSecretInLog" }],
+    },
+    // Both arms can fire on the same call, one report each.
+    {
+      code: 'logEvent("ashby.call", { apiKey, body });',
+      options: [{ logFunctions: ["logEvent"] }],
+      errors: [{ messageId: "noSecretInLog" }, { messageId: "noRawBodyInLog" }],
     },
   ],
 });

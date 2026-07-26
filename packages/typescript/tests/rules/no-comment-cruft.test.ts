@@ -64,6 +64,31 @@ ruleTester.run("no-comment-cruft", rule, {
     {
       code: "// Idempotency substrate: every write derives a deterministic key.\n// The key is a UUIDv5 over (tenant, resource, epoch).\n// See RFC 9562 section 5.7 for the namespace derivation.\n// No state is kept here; a replay recomputes the same key.\nexport const x = 1;",
     },
+    // --- "restates the next line": the guards that keep it conservative. ---
+    // One unmatched word means the comment carries something the code does not.
+    { code: "// increment the counter for PLT-812\ncounter += 1;" },
+    { code: "// guard the race described in PLT-812\nlocked = true;" },
+    // A why-comment is longer than narration and does not corroborate anyway.
+    {
+      code: "// retry because the upstream rate-limits us at 10 rps\nconst result = retry(fn);",
+    },
+    // The opener must be a narration verb, not a noun that shares its spelling.
+    { code: "// counter tracks retries\ncounter += 1;" },
+    // Overlap that lives only in an argument is coincidental — the statement
+    // extracts points, the validation the comment names happens further down.
+    {
+      code: "// validate coordinates\nconst points = extractPoints(feature.geometry.coordinates);",
+    },
+    // A comment above a multi-line statement labels a region, not one line.
+    { code: "// merge all enrichments\nconst combined = {\n  a: 1,\n  b: 2,\n};" },
+    // A blank line means the comment heads a block, not the statement below.
+    { code: "// create the session\n\nconst session = createSession();" },
+    // A zero/empty seed computes nothing for the comment to restate.
+    { code: "// count tiles\nlet tileCount = 0;" },
+    // A declaration is documented by a comment, not narrated by it.
+    { code: "// create the model\nfunction createModel() { return 1; }" },
+    // Nothing left to corroborate once the opening verb is removed.
+    { code: "// initialize\ninitialize();" },
   ],
   invalid: [
     // Step narration — the comment walks through the code line-by-line.
@@ -130,6 +155,34 @@ ruleTester.run("no-comment-cruft", rule, {
     {
       code: "const x = 1;\n// ==== SECTION ====\nconst y = 2;",
       errors: [{ messageId: "sectionBanner" }],
+    },
+    // --- "restates the next line" — the canonical redundant comment. ---
+    {
+      code: "// increment the counter\ncounter += 1;",
+      errors: [{ messageId: "redundantNarration" }],
+    },
+    {
+      code: "function f(user) {\n  // return the user\n  return user;\n}",
+      errors: [{ messageId: "redundantNarration" }],
+    },
+    // Every content word is in the statement head: target and callee.
+    {
+      code: "// get the case\nconst caseData = getCase(caseId);",
+      errors: [{ messageId: "redundantNarration" }],
+    },
+    {
+      code: "// save to localStorage\nlocalStorage.setItem('app-theme', theme);",
+      errors: [{ messageId: "redundantNarration" }],
+    },
+    // Plural folds to singular so `// count tiles` matches `tileCount`.
+    {
+      code: "// count tiles\nconst tileCount = tiles.length;",
+      errors: [{ messageId: "redundantNarration" }],
+    },
+    // A bare assignment statement, not a declaration.
+    {
+      code: "// create new room\nroomId = makeRoomId(sessionId);",
+      errors: [{ messageId: "redundantNarration" }],
     },
   ],
 });

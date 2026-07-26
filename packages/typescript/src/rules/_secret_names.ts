@@ -114,10 +114,17 @@ const DESCRIPTOR_WORDS: ReadonlySet<string> = new Set([
 const CATEGORY_WORDS: ReadonlySet<string> = new Set(["type", "types", "kind", "kinds"]);
 
 /**
- * A leading boolean-predicate token marks a flag, not the credential itself:
- * `isToken`, `hasSecret`, `isTokenStrategy`.
+ * A leading boolean-predicate word marks a flag, not the credential itself:
+ * `isToken`, `hasSecret`, `has_secret`, `isTokenStrategy`. Consulted by the
+ * SHARED `isSecretName`, so every consumer gets it: this is the exact mirror of
+ * the trailing innocuous-word check that already lives there — a boolean
+ * answering "does a secret exist?" leaks nothing whether the marker leads or
+ * trails, and word ORDER should not decide whether a name counts as a
+ * credential. Matched as a whole leading WORD via `leadingWord`, never as a
+ * character prefix, so `hash_secret` (`hash` != `has`), `issuer_token`
+ * (`issuer` != `is`) and `canary_token` (`canary` != `can`) keep firing.
  */
-const FLAG_PREFIXES: ReadonlySet<string> = new Set([
+export const FLAG_PREFIXES: ReadonlySet<string> = new Set([
   "is",
   "has",
   "was",
@@ -182,10 +189,11 @@ export function tokenize(identifier: string): string[] {
  *
  * `tokenize` deliberately emits each whole snake/kebab segment before its camel
  * parts, so `tokens[0]` for the camelCase `hasSecret` is the useless `hassecret`
- * rather than `has`. Python's rule reads `tokens[0]` directly and gets away with
- * it because Python identifiers are snake_case; TypeScript's are not, so the
- * leading-word check has to split the first segment explicitly or every
- * `isToken` / `hasSecret` flag would be mistaken for a credential.
+ * rather than `has`. Reading `tokens[0]` directly — as the Python original's
+ * local check did — therefore never matched a camelCase flag at all, and Python's
+ * shared predicate had no leading check whatsoever; both were false positives,
+ * fixed on both sides. The leading-word check has to split the first segment
+ * explicitly or every `isToken` / `hasSecret` flag is mistaken for a credential.
  */
 export function leadingWord(identifier: string): string | undefined {
   for (const segment of identifier.split(SEGMENT_RE)) {
@@ -210,6 +218,11 @@ export function hasApiKey(tokens: readonly string[]): boolean {
  * True if `identifier` names raw secret material (a credential, not metadata).
  * `innocuous` defaults to the shared metadata set; callers that need a wider
  * exemption list (e.g. `no-secret-in-log`) pass their own superset.
+ *
+ * Two symmetric metadata guards run before the secret-word scan: a TRAILING
+ * innocuous word (`tokenCount`, `apiKeyId`) and a LEADING boolean-predicate word
+ * (`hasSecret`, `is_token`). Both describe a name that is *about* a credential
+ * rather than being one.
  */
 export function isSecretName(
   identifier: string,
@@ -218,6 +231,10 @@ export function isSecretName(
   const tokens = tokenize(identifier);
   const last = tokens.at(-1);
   if (last !== undefined && innocuous.has(last)) {
+    return false;
+  }
+  const first = leadingWord(identifier);
+  if (first !== undefined && FLAG_PREFIXES.has(first)) {
     return false;
   }
   if (tokens.some((tok) => SECRET_WORDS.has(tok))) {
@@ -230,19 +247,17 @@ export function isSecretName(
  * True if `identifier` names an *authenticator* — an access-gating secret whose
  * bytes an attacker could recover by timing a byte-wise comparison.
  *
- * Narrows `isSecretName` for SARJ011: strips category/handle descriptors,
- * `type`/`kind` discriminators, boolean flags, and integrity-only hashes, none of
- * which are a timing-attack surface even though logging them may still matter.
+ * Narrows `isSecretName` for SARJ011: strips category/handle descriptors and
+ * `type`/`kind` discriminators, neither of which is a timing-attack surface even
+ * though logging them may still matter. Leading boolean-predicate flags are no
+ * longer stripped here — `isSecretName` now rejects them for every consumer, so
+ * repeating the check would be dead code.
  */
 export function isAuthSecretName(identifier: string): boolean {
   if (!isSecretName(identifier)) {
     return false;
   }
   const tokens = tokenize(identifier);
-  const first = leadingWord(identifier);
-  if (first !== undefined && FLAG_PREFIXES.has(first)) {
-    return false;
-  }
   const last = tokens.at(-1);
   if (last !== undefined && DESCRIPTOR_WORDS.has(last)) {
     return false;
