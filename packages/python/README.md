@@ -24,6 +24,32 @@ uv tool install sarj-python-lint
     - id: sarj-no-fstring-in-log
 ```
 
+### Test-quality rules (0.15.0)
+
+Mined from an AST audit of ~7,500 test functions across two production repos.
+Every one is scoped to test files and carries the false-positive guard that made
+it shippable; the module docstring for each records the population it was
+measured against.
+
+```yaml
+    - id: sarj-mock-without-spec                   # SARJ040
+    - id: sarj-test-loops-over-literal-cases       # SARJ041
+    - id: sarj-parametrize-case-needs-id           # SARJ042
+    - id: sarj-zero-assertion-test                 # SARJ043
+    - id: sarj-fixture-returns-bare-tuple          # SARJ044
+    - id: sarj-kwarg-heavy-construction-in-test    # SARJ045
+    - id: sarj-xfail-requires-strict               # SARJ046
+    - id: sarj-sleep-with-computed-arg-in-test     # SARJ047
+```
+
+Adopting these against an existing suite is easier through the baseline ratchet
+than as a big-bang fix — snapshot the current counts, then let them only shrink:
+
+```bash
+sarj-python-lint check --rule mock-without-spec --update-baseline test-quality-baseline.json python/
+sarj-python-lint check --rule mock-without-spec --baseline test-quality-baseline.json python/
+```
+
 ## CLI
 
 ```bash

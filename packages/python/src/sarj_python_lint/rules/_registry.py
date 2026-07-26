@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from sarj_python_lint.rules.fixture_returns_bare_tuple import FixtureReturnsBareTuple
 from sarj_python_lint.rules.inefficient_string_concat_in_loop import (
     InefficientStringConcatInLoop,
 )
+from sarj_python_lint.rules.kwarg_heavy_construction_in_test import KwargHeavyConstructionInTest
 from sarj_python_lint.rules.kwonly_same_type_params import KwonlySameTypeParams
+from sarj_python_lint.rules.mock_without_spec import MockWithoutSpec
 from sarj_python_lint.rules.no_aggregation_in_store_query import (
     NoAggregationInStoreQuery,
 )
@@ -29,6 +32,7 @@ from sarj_python_lint.rules.no_sleep_in_test_body import NoSleepInTestBody
 from sarj_python_lint.rules.no_unreachable_after_terminal import (
     NoUnreachableAfterTerminal,
 )
+from sarj_python_lint.rules.parametrize_case_needs_id import ParametrizeCaseNeedsId
 from sarj_python_lint.rules.prefer_class_row import PreferClassRow
 from sarj_python_lint.rules.prefer_constant_time_secret_compare import (
     PreferConstantTimeSecretCompare,
@@ -49,10 +53,16 @@ from sarj_python_lint.rules.prefer_timedelta_for_durations import (
 )
 from sarj_python_lint.rules.pydantic_at_boundaries import PydanticAtBoundaries
 from sarj_python_lint.rules.single_public_export import SinglePublicExport
+from sarj_python_lint.rules.sleep_with_computed_arg_in_test import SleepWithComputedArgInTest
 from sarj_python_lint.rules.stepdown import Stepdown
 from sarj_python_lint.rules.store_insert_requires_on_conflict import (
     StoreInsertRequiresOnConflict,
 )
+from sarj_python_lint.rules.test_loops_over_literal_cases import (
+    TestLoopsOverLiteralCases,
+)
+from sarj_python_lint.rules.xfail_requires_strict import XfailRequiresStrict
+from sarj_python_lint.rules.zero_assertion_test import ZeroAssertionTest
 
 
 if TYPE_CHECKING:
@@ -98,6 +108,14 @@ REGISTRY: dict[str, type[Rule]] = {
     NoRawSqlInTests.id: NoRawSqlInTests,
     NoFileLevelSuppression.id: NoFileLevelSuppression,
     PreferModuleLevelConstant.id: PreferModuleLevelConstant,
+    MockWithoutSpec.id: MockWithoutSpec,
+    TestLoopsOverLiteralCases.id: TestLoopsOverLiteralCases,
+    ParametrizeCaseNeedsId.id: ParametrizeCaseNeedsId,
+    FixtureReturnsBareTuple.id: FixtureReturnsBareTuple,
+    KwargHeavyConstructionInTest.id: KwargHeavyConstructionInTest,
+    XfailRequiresStrict.id: XfailRequiresStrict,
+    SleepWithComputedArgInTest.id: SleepWithComputedArgInTest,
+    ZeroAssertionTest.id: ZeroAssertionTest,
 }
 
 __all__ = ["REGISTRY"]

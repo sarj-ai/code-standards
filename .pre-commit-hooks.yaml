@@ -169,3 +169,51 @@
   language: python
   files: '\.(tf|hcl|tfvars)$'
   additional_dependencies: ['sarj-iac-lint']
+
+- id: sarj-mock-without-spec
+  name: 'sarj-lint: mock built without spec= accepts any attribute'
+  entry: sarj-python-lint check --rule mock-without-spec
+  language: python
+  types: [python]
+
+- id: sarj-test-loops-over-literal-cases
+  name: 'sarj-lint: test loops over a literal case table (parametrize it)'
+  entry: sarj-python-lint check --rule test-loops-over-literal-cases
+  language: python
+  types: [python]
+
+- id: sarj-parametrize-case-needs-id
+  name: 'sarj-lint: opaque parametrize case reports as case0'
+  entry: sarj-python-lint check --rule parametrize-case-needs-id
+  language: python
+  types: [python]
+
+- id: sarj-zero-assertion-test
+  name: 'sarj-lint: test contains no assertion of any kind'
+  entry: sarj-python-lint check --rule zero-assertion-test
+  language: python
+  types: [python]
+
+- id: sarj-fixture-returns-bare-tuple
+  name: 'sarj-lint: fixture returns a bare multi-field tuple'
+  entry: sarj-python-lint check --rule fixture-returns-bare-tuple
+  language: python
+  types: [python]
+
+- id: sarj-kwarg-heavy-construction-in-test
+  name: 'sarj-lint: kwarg-heavy construction inline in a test body'
+  entry: sarj-python-lint check --rule kwarg-heavy-construction-in-test
+  language: python
+  types: [python]
+
+- id: sarj-xfail-requires-strict
+  name: 'sarj-lint: bug-pinning xfail without strict=True'
+  entry: sarj-python-lint check --rule xfail-requires-strict
+  language: python
+  types: [python]
+
+- id: sarj-sleep-with-computed-arg-in-test
+  name: 'sarj-lint: computed sleep() delay in a test body'
+  entry: sarj-python-lint check --rule sleep-with-computed-arg-in-test
+  language: python
+  types: [python]
