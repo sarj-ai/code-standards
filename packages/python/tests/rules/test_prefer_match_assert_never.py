@@ -865,3 +865,191 @@ def test_empty_or_trivial_source(source: str):
 
 def test_syntax_error_returns_empty():
     assert _check("def f(:\n    pass") == []
+
+
+# --------------------------------------------------------------------------- #
+# Detector (c): handler dict that does not cover the enum.                     #
+# --------------------------------------------------------------------------- #
+
+
+def test_flags_handler_dict_missing_a_member():
+    src = _ENUM_PREAMBLE + """
+HANDLERS = {Status.OPEN: on_open, Status.CLOSED: on_closed}
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert diags[0].code == "SARJ032"
+    assert "2 of `Status`'s 3 members" in diags[0].message
+    assert "Status.FAILED" in diags[0].message
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        "on_open, Status.CLOSED: on_closed",
+        "mod.on_open, Status.CLOSED: mod.on_closed",
+        "lambda c: 1, Status.CLOSED: lambda c: 2",
+    ],
+)
+def test_flags_each_handler_shape(values: str):
+    src = _ENUM_PREAMBLE + f"\nHANDLERS = {{Status.OPEN: {values}}}\n"
+    assert len(_check(src)) == 1
+
+
+def test_flags_dispatch_map_inside_a_function():
+    src = _ENUM_PREAMBLE + """
+def build():
+    handlers = {Status.OPEN: on_open, Status.CLOSED: on_closed}
+    return handlers[Status.OPEN]
+"""
+    assert len(_check(src)) == 1
+
+
+def test_flags_annotated_dispatch_map():
+    src = _ENUM_PREAMBLE + """
+HANDLERS: dict[Status, object] = {Status.OPEN: on_open, Status.CLOSED: on_closed}
+"""
+    assert len(_check(src)) == 1
+
+
+def test_complete_map_is_clean():
+    src = _ENUM_PREAMBLE + """
+HANDLERS = {Status.OPEN: on_open, Status.CLOSED: on_closed, Status.FAILED: on_failed}
+"""
+    assert _check(src) == []
+
+
+def test_literal_values_are_a_data_table_not_a_dispatch():
+    src = _ENUM_PREAMBLE + """
+COLOURS = {Status.OPEN: "green", Status.CLOSED: "grey"}
+"""
+    assert _check(src) == []
+
+
+def test_double_star_spread_is_not_flagged():
+    src = _ENUM_PREAMBLE + """
+HANDLERS = {Status.OPEN: on_open, Status.CLOSED: on_closed, **extra}
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "growth",
+    [
+        "HANDLERS.update({Status.FAILED: on_failed})",
+        "HANDLERS.setdefault(Status.FAILED, on_failed)",
+        "HANDLERS[Status.FAILED] = on_failed",
+    ],
+)
+def test_map_grown_later_is_not_flagged(growth: str):
+    src = _ENUM_PREAMBLE + f"""
+HANDLERS = {{Status.OPEN: on_open, Status.CLOSED: on_closed}}
+{growth}
+"""
+    assert _check(src) == []
+
+
+def test_imported_enum_is_never_flagged():
+    src = """
+from kinds import Kind
+
+HANDLERS = {Kind.A: on_a, Kind.B: on_b}
+"""
+    assert _check(src) == []
+
+
+def test_non_enum_local_class_is_not_flagged():
+    src = """
+class Constants:
+    A = "a"
+    B = "b"
+    C = "c"
+
+HANDLERS = {Constants.A: on_a, Constants.B: on_b}
+"""
+    assert _check(src) == []
+
+
+def test_single_entry_map_is_below_the_arm_floor():
+    src = _ENUM_PREAMBLE + """
+HANDLERS = {Status.OPEN: on_open}
+"""
+    assert _check(src) == []
+
+
+def test_keys_from_two_owners_are_not_a_closed_dispatch():
+    src = _ENUM_PREAMBLE + """
+from other import Kind
+
+HANDLERS = {Status.OPEN: on_open, Kind.A: on_a}
+"""
+    assert _check(src) == []
+
+
+def test_non_member_key_is_not_flagged():
+    src = _ENUM_PREAMBLE + """
+HANDLERS = {Status.OPEN: on_open, Status.MISSPELLED: on_other}
+"""
+    assert _check(src) == []
+
+
+def test_string_keys_are_not_flagged():
+    src = _ENUM_PREAMBLE + """
+HANDLERS = {"open": on_open, "closed": on_closed}
+"""
+    assert _check(src) == []
+
+
+def test_aliases_do_not_inflate_the_member_count():
+    src = """
+from enum import StrEnum
+
+class Status(StrEnum):
+    OPEN = "open"
+    ACTIVE = "open"
+    CLOSED = "closed"
+
+HANDLERS = {Status.OPEN: on_open, Status.CLOSED: on_closed}
+"""
+    assert _check(src) == []
+
+
+def test_private_and_method_names_are_not_members():
+    src = """
+from enum import StrEnum
+
+class Status(StrEnum):
+    OPEN = "open"
+    CLOSED = "closed"
+    _INTERNAL = "x"
+
+    def label(self) -> str:
+        return self.value
+
+HANDLERS = {Status.OPEN: on_open, Status.CLOSED: on_closed}
+"""
+    assert _check(src) == []
+
+
+def test_tuple_target_is_not_a_dispatch_map():
+    src = _ENUM_PREAMBLE + """
+HANDLERS, OTHER = {Status.OPEN: on_open, Status.CLOSED: on_closed}, None
+"""
+    assert _check(src) == []
+
+
+def test_all_three_detectors_report_together_sorted():
+    src = _ENUM_PREAMBLE + """
+HANDLERS = {Status.OPEN: on_open, Status.CLOSED: on_closed}
+
+def by_chain(status):
+    if status == Status.OPEN:
+        a()
+    elif status == Status.CLOSED:
+        b()
+    else:
+        pass
+"""
+    diags = _check(src)
+    assert len(diags) == 2
+    assert [(d.line, d.col) for d in diags] == sorted((d.line, d.col) for d in diags)

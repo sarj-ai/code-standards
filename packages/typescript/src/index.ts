@@ -37,6 +37,8 @@ import storeInsertRequiresOnConflict from "./rules/store-insert-requires-on-conf
 import noDynamicSql from "./rules/no-dynamic-sql.js";
 import noRawFetchOutsideClients from "./rules/no-raw-fetch-outside-clients.js";
 import noStorageInStatelessModules from "./rules/no-storage-in-stateless-modules.js";
+import noZodNativeEnum from "./rules/no-zod-native-enum.js";
+import preferModuleLevelConstant from "./rules/prefer-module-level-constant.js";
 
 const rules = {
   "enforce-file-structure": enforceFileStructure,
@@ -78,12 +80,14 @@ const rules = {
   "no-dynamic-sql": noDynamicSql,
   "no-raw-fetch-outside-clients": noRawFetchOutsideClients,
   "no-storage-in-stateless-modules": noStorageInStatelessModules,
+  "no-zod-native-enum": noZodNativeEnum,
+  "prefer-module-level-constant": preferModuleLevelConstant,
 };
 
 const plugin = {
   meta: {
     name: "@sarj/eslint-plugin",
-    version: "2.8.0",
+    version: "2.9.0",
   },
   rules,
   configs: {
@@ -133,6 +137,13 @@ const plugin = {
         "@sarj/no-positional-tuple-return": "warn",
         // Injection guard — low FP, applies to any repo touching SQL.
         "@sarj/no-dynamic-sql": "warn",
+        // Mined from two years of PR review (SARJ-928). Schema-layer sibling of
+        // `no-enum`; autofixable for inline string-literal objects.
+        "@sarj/no-zod-native-enum": "warn",
+        // Mined from two years of PR review — the single most frequent uncovered
+        // theme (~37 PRs). Measured 17 hits / 1085 real TS files, all true
+        // positives, so it is safe to run everywhere.
+        "@sarj/prefer-module-level-constant": "warn",
       },
     },
     strict: {
@@ -193,6 +204,9 @@ const plugin = {
         // differently.
         "@sarj/no-raw-fetch-outside-clients": "error",
         "@sarj/no-storage-in-stateless-modules": "error",
+        // Mined from two years of PR review (SARJ-928).
+        "@sarj/no-zod-native-enum": "error",
+        "@sarj/prefer-module-level-constant": "error",
       },
     },
   },
