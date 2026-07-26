@@ -234,7 +234,12 @@ const config = [
       "no-shadow": "off",
       "@typescript-eslint/no-shadow": "error",
 
-      // Full @sarj/eslint-plugin@2.9.0 strict ruleset. Tiers mirror the plugin's
+      // The COMPLETE @sarj/eslint-plugin strict ruleset — deliberately not
+      // pinned to a version number here. A hand-written "@2.7.0" claim went
+      // stale twice and was wrong both times (12 rules unwired at 2.9.0); the
+      // sync tests in packages/typescript/tests/strict-config-sync.test.ts now
+      // assert completeness and tier parity on every run, which is a guarantee
+      // rather than a comment that rots. Tiers mirror the plugin's
       // own `configs.strict` — error for most, warn for the stylistic/high-volume
       // rules (prefer-semantic-colors, prefer-string-literal-union,
       // no-unsafe-cast, which are warn in the plugin's strict too).
