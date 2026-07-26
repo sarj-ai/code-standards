@@ -122,14 +122,41 @@ const SVG_EXEMPT_COLOR_VALUES = new Set<string>([
 // (icon/illustration artwork), not a reusable UI token — the color is inherent to
 // the graphic. Exempt any descendant of `<svg>` (which subsumes the defs
 // containers `<mask>`/`<clipPath>`/`<defs>`/`<pattern>`/gradients).
+function jsxElementName(node: TSESTree.JSXElement): string | null {
+  const name = node.openingElement.name;
+  if (name.type === AST_NODE_TYPES.JSXIdentifier) return name.name;
+  if (name.type === AST_NODE_TYPES.JSXMemberExpression && name.property.type === AST_NODE_TYPES.JSXIdentifier) {
+    return name.property.name;
+  }
+  return null;
+}
+
+function isSvgLikeElementName(name: string): boolean {
+  return name === "svg" || SVG_DEFS_CONTAINERS.has(name) || /svg$/i.test(name);
+}
+
 const isInsideSvg = (node: TSESTree.Node): boolean => {
   let current: TSESTree.Node | null | undefined = node.parent;
   while (current !== undefined && current !== null) {
+    if (current.type === AST_NODE_TYPES.JSXElement) {
+      const name = jsxElementName(current);
+      if (name !== null && isSvgLikeElementName(name)) return true;
+    }
+    current = current.parent;
+  }
+  return false;
+};
+
+const isInsideIconFactoryPath = (node: TSESTree.Node): boolean => {
+  let current: TSESTree.Node | null | undefined = node.parent;
+  while (current !== undefined && current !== null) {
     if (
-      current.type === AST_NODE_TYPES.JSXElement &&
-      current.openingElement.name.type === AST_NODE_TYPES.JSXIdentifier &&
-      (current.openingElement.name.name === "svg" ||
-        SVG_DEFS_CONTAINERS.has(current.openingElement.name.name))
+      current.type === AST_NODE_TYPES.Property &&
+      propName(current.key) === "path" &&
+      current.parent.type === AST_NODE_TYPES.ObjectExpression &&
+      current.parent.parent.type === AST_NODE_TYPES.CallExpression &&
+      current.parent.parent.callee.type === AST_NODE_TYPES.Identifier &&
+      current.parent.parent.callee.name === "createIcon"
     ) {
       return true;
     }
@@ -303,7 +330,7 @@ export default ESLintUtils.RuleCreator(
         ) {
           return;
         }
-        if (isInsideSvg(node)) return;
+        if (isInsideSvg(node) || isInsideIconFactoryPath(node)) return;
         checkColorValueNode(node.value);
       },
       // Inline style objects: style={{ color: "#111827", backgroundColor: "#fff" }}

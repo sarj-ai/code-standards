@@ -34,6 +34,12 @@ ruleTester.run("no-unsafe-cast", rule, {
     { code: "const x = value as Foo | Bar;" },
     // Single cast through unknown alone is allowed; only the double-cast form is flagged.
     { code: "const x = value as unknown;" },
+    // Generated clients often have template-owned casts that application code
+    // cannot improve at the call site.
+    {
+      code: "export const f = () => service.fetch() as unknown as Promise<TData>;",
+      filename: "/repo/src/openapi-gen/queries/queries.ts",
+    },
   ],
   invalid: [
     // The guard is path-scoped only: production code still fires.

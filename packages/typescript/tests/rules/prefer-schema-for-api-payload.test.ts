@@ -31,6 +31,11 @@ ruleTester.run("prefer-schema-for-api-payload", rule, {
       code: "async function t(res) { const body = await res.json(); use(body.id); }",
       filename: "/repo/src/__tests__/api.test.ts",
     },
+    // Generated API clients own their payload typing at the generator/template boundary.
+    {
+      code: "async function f(r) { const body = await r.json(); return body.id; }",
+      filename: "/repo/src/openapi-gen/client.ts",
+    },
     // No json() involved.
     { code: "const x = { foo: 1 }; doStuff(x.foo);" },
     // Parsed through Zod.

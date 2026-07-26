@@ -49,6 +49,8 @@ import {
   AST_NODE_TYPES,
 } from "@typescript-eslint/utils";
 
+import { isGeneratedFile } from "./_paths.js";
+
 type MessageIds = "fatTryBlock";
 type Options = readonly [];
 
@@ -258,6 +260,10 @@ export default ESLintUtils.RuleCreator(
   },
   defaultOptions: [],
   create(context) {
+    if (isGeneratedFile(context.filename, context.sourceCode.text)) {
+      return {};
+    }
+
     const sourceCode = context.sourceCode;
 
     return {

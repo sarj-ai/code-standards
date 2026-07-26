@@ -11,6 +11,8 @@
 
 import { ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
 
+import { isGeneratedFile } from "./_paths.js";
+
 type MessageIds = "noEnum";
 type Options = readonly [
   {
@@ -20,6 +22,7 @@ type Options = readonly [
 
 const DEFAULT_IGNORE_PATTERNS: readonly RegExp[] = [
   /[\\/]generated[\\/]/,
+  /[\\/]openapi-gen[\\/]/,
   /\.gen\.tsx?$/,
   /\.generated\.tsx?$/,
 ];
@@ -88,7 +91,7 @@ export default ESLintUtils.RuleCreator(
     );
     const isIgnoredByOption =
       ignoreFiles.length > 0 && matchesAnyPattern(filename, ignoreFiles);
-    const isGenerated = hasGeneratedMarker(sourceText);
+    const isGenerated = hasGeneratedMarker(sourceText) || isGeneratedFile(filename, sourceText);
 
     if (isIgnoredByDefault || isIgnoredByOption || isGenerated) {
       return {};

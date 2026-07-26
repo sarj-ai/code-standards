@@ -17,6 +17,21 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("no-fat-try-blocks", rule, {
   valid: [
+    // Generated request clients are template output, not hand-authored error
+    // handling worth reshaping.
+    {
+      code: `
+        async function request() {
+          try {
+            const a = await one();
+            const b = await two();
+            const c = await three();
+            const d = await four();
+          } catch (e) { return undefined; }
+        }
+      `,
+      filename: "/repo/src/openapi-gen/requests/core/request.ts",
+    },
     // Exactly three throwing (result-using) statements — at the limit.
     {
       code: `
