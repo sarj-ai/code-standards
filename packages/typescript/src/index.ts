@@ -112,7 +112,7 @@ const plugin = {
         "@sarj/prefer-discriminated-union": "warn",
         "@sarj/no-comment-cruft": "warn",
         // Frontend / styling — distilled from frontend PR-review mining.
-        "@sarj/prefer-semantic-colors": "warn",
+        "@sarj/prefer-semantic-colors": ["warn", { requireSemanticTokens: true }],
         // Ported from sarj-python-lint (SARJ), corpus-validated FP~0.
         "@sarj/no-fat-try-blocks": "warn",
         "@sarj/no-cors-wildcard-with-credentials": "warn",
@@ -171,7 +171,7 @@ const plugin = {
         "@sarj/no-comment-cruft": "error",
         // Frontend / styling — distilled from frontend PR-review mining. Stylistic,
         // no autofix → warn (rollout should prove the FP rate before raising it).
-        "@sarj/prefer-semantic-colors": "error",
+        "@sarj/prefer-semantic-colors": ["error", { requireSemanticTokens: true }],
         // Ported from sarj-python-lint (SARJ), corpus-validated FP~0.
         "@sarj/no-fat-try-blocks": "error",
         "@sarj/no-cors-wildcard-with-credentials": "error",

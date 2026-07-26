@@ -289,7 +289,7 @@ const config = [
       "@sarj/no-silent-promise-catch": "error",
       "@sarj/require-schema-validate-search": "error",
       "@sarj/enforce-file-structure": "error",
-      "@sarj/prefer-semantic-colors": "error",
+      "@sarj/prefer-semantic-colors": ["error", { requireSemanticTokens: true }],
       "@sarj/prefer-string-literal-union": "error",
       // High-volume/stylistic — warn until rollout proves FP rate.
       "@sarj/no-unsafe-cast": "error",

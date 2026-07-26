@@ -30,11 +30,17 @@
  */
 
 import { AST_NODE_TYPES, ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
+import { existsSync, readFileSync } from "fs";
+import { dirname, join, parse } from "path";
 
 import { classTokens, tailwindBase } from "./_tailwind.js";
 
 type MessageIds = "rawPalette" | "arbitraryColor" | "inlineColor";
-type Options = readonly [];
+type Options = readonly [
+  {
+    requireSemanticTokens?: boolean;
+  }?,
+];
 
 const COLOR_PREFIXES =
   "text|bg|border(?:-[trblxyse])?|ring(?:-offset)?|fill|stroke|from|via|to|divide|decoration|placeholder|accent|caret|shadow|outline";
@@ -75,6 +81,20 @@ const STYLE_COLOR_PROPS = new Set<string>([
 const RAW_COLOR_VALUE_RE = new RegExp(`#[0-9a-fA-F]{3,8}\\b|\\b(?:${COLOR_FN})\\s*\\(`, "i");
 
 const STORIES_FILE_RE = /\.stories\.[cm]?[jt]sx?$/i;
+const SEMANTIC_TOKEN_RE = /--(?:background|foreground|primary|secondary|muted|accent|destructive|border|card|popover)\b|(?:bg|text|border)-(?:background|foreground|primary|secondary|muted|accent|destructive|border|card|popover)\b/;
+const DETECTION_FILES = [
+  "components.json",
+  "tailwind.config.js",
+  "tailwind.config.cjs",
+  "tailwind.config.mjs",
+  "tailwind.config.ts",
+  "app/globals.css",
+  "src/app/globals.css",
+  "src/index.css",
+  "src/styles/globals.css",
+  "styles/globals.css",
+];
+const semanticTokenCache = new Map<string, boolean>();
 
 /** SVG container elements whose children carry structural (not UI-token) colors. */
 const SVG_DEFS_CONTAINERS = new Set<string>([
@@ -118,6 +138,37 @@ const isInsideSvg = (node: TSESTree.Node): boolean => {
   return false;
 };
 
+const hasSemanticTokenSystem = (filename: string): boolean => {
+  let dir = dirname(filename);
+  const root = parse(dir).root;
+  for (let depth = 0; depth < 8; depth += 1) {
+    const cached = semanticTokenCache.get(dir);
+    if (cached !== undefined) return cached;
+
+    let found = false;
+    for (const rel of DETECTION_FILES) {
+      const candidate = join(dir, rel);
+      if (!existsSync(candidate)) continue;
+      if (rel === "components.json") {
+        found = true;
+        break;
+      }
+      try {
+        if (SEMANTIC_TOKEN_RE.test(readFileSync(candidate, "utf8"))) {
+          found = true;
+          break;
+        }
+      } catch {
+        // Ignore unreadable config files; absence of evidence means no report.
+      }
+    }
+    semanticTokenCache.set(dir, found);
+    if (found || dir === root) return found;
+    dir = dirname(dir);
+  }
+  return false;
+};
+
 const propName = (key: TSESTree.Property["key"]): string | null => {
   if (key.type === AST_NODE_TYPES.Identifier) return key.name;
   if (key.type === AST_NODE_TYPES.Literal && typeof key.value === "string") return key.value;
@@ -135,7 +186,15 @@ export default ESLintUtils.RuleCreator(
       description:
         "Enforce design-system semantic color tokens (bg-primary, text-destructive, …) over raw Tailwind palette classes (text-red-500), arbitrary color values (bg-[#fff]), and inline color literals.",
     },
-    schema: [],
+    schema: [
+      {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          requireSemanticTokens: { type: "boolean" },
+        },
+      },
+    ],
     messages: {
       rawPalette:
         "Raw palette class '{{class}}' — use a semantic token (e.g. text-foreground, bg-primary, text-destructive, bg-muted).",
@@ -145,9 +204,12 @@ export default ESLintUtils.RuleCreator(
         "Hardcoded color '{{value}}' — use a semantic token / CSS variable. For charts/standalone pages add an eslint-disable with a reason.",
     },
   },
-  defaultOptions: [],
-  create(context) {
+  defaultOptions: [{}],
+  create(context, [options]) {
     if (STORIES_FILE_RE.test(context.filename)) return {};
+    if (options?.requireSemanticTokens === true && !hasSemanticTokenSystem(context.filename)) {
+      return {};
+    }
 
     const reportClasses = (value: string, node: TSESTree.Node): void => {
       for (const token of classTokens(value)) {

@@ -75,6 +75,13 @@ class TimeEdge:
     assert _check(src) == []
 
 
+def test_allows_bare_plural_units_and_formula_names():
+    src = """
+def payroll(hours_worked: float, hours: float, days: int) -> float: ...
+"""
+    assert _check(src) == []
+
+
 def test_allows_percentage_and_rate_named_floats():
     src = """
 class Report:
@@ -272,7 +279,7 @@ def test_non_duration_numeric_not_flagged(name: str):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("name", ["hour", "minute", "second", "day", "week", "month"])
+@pytest.mark.parametrize("name", ["hour", "hours", "minute", "minutes", "second", "seconds", "day", "days", "week", "month"])
 def test_singular_wall_clock_not_flagged(name: str):
     src = f"def f({name}: int) -> None: ...\n"
     assert _check(src) == []
