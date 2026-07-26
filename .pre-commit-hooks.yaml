@@ -217,3 +217,9 @@
   entry: sarj-python-lint check --rule sleep-with-computed-arg-in-test
   language: python
   types: [python]
+
+- id: sarj-no-first-party-private-import
+  name: 'sarj-lint: private import from one of OUR modules'
+  entry: sarj-python-lint check --rule no-first-party-private-import
+  language: python
+  types: [python]

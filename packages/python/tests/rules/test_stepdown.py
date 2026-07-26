@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from sarj_python_lint.rules.stepdown import (
     Stepdown,
-    _walk,  # pyright: ignore[reportPrivateUsage] # ruff:ignore[import-private-name] — parity test for the rule's inlined AST walker vs ast.walk
+    _walk,  # pyright: ignore[reportPrivateUsage]  # sarj-noqa: SARJ048 — parity test for the rule's inlined AST walker vs ast.walk
 )
 
 

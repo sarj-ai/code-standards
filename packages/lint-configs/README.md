@@ -29,3 +29,32 @@ export default [...strict];
 ```
 
 Re-run sync with `--force` after upgrading. Programmatic access via `from sarj_lint_configs import RUFF_STRICT, PYRIGHT_STRICT, ESLINT_STRICT` (returns `pathlib.Path` into the wheel).
+
+## 0.8.0 — `PLC2701` moved out of ruff
+
+`PLC2701 import-private-name` is now in the ignore list. It cannot tell a
+private name of *ours* from a private name of a *dependency's*: its exemption
+is "same top-level package", so `from livekit.agents.inference_runner import
+_InferenceRunner` — an API livekit made private in 1.6.6, with no public
+replacement — is flagged identically to a first-party helper someone forgot to
+export. Ruff has no configuration surface that separates them.
+
+The check is replaced by `SARJ048` in
+[`sarj-python-lint`](https://pypi.org/project/sarj-python-lint/) ≥ 0.19.0,
+which resolves the imported module against your project tree and fires only on
+first-party modules:
+
+```yaml
+- repo: https://github.com/sarj-ai/standards
+  rev: python-v0.19.0
+  hooks:
+    - id: sarj-no-first-party-private-import
+```
+
+**If you are not running the sarj-python-lint hooks, re-enable `PLC2701` in
+your own `[tool.ruff.lint] extend-select`** — an over-firing check beats no
+check.
+
+Attribute access (`session._stt`) is unchanged: ruff's `SLF001` and pyright's
+`reportPrivateUsage` both still fire, and neither can make the first/third-party
+distinction. Both configs carry the rationale and the escape hatches inline.

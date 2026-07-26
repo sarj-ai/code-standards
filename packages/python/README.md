@@ -42,6 +42,31 @@ measured against.
     - id: sarj-sleep-with-computed-arg-in-test     # SARJ047
 ```
 
+### Private access, first-party only (0.19.0)
+
+```yaml
+    - id: sarj-no-first-party-private-import       # SARJ048
+```
+
+Reaching past a module's public surface is a design finding when the module is
+ours and an unavoidable fact of life when it is not: a dependency that moves an
+API private in a minor release leaves no edit that satisfies the lint.
+
+`SARJ048` fires only when the module declaring the private name resolves to a
+package inside your own project. Third-party privates are never flagged.
+
+**It replaces ruff's `PLC2701 import-private-name`,** whose only exemption is
+*same top-level package* — a different question, and one that cannot separate
+`from bulbul.stores.task_store import _row_to_task` (real; export it) from
+`from livekit.agents.inference_runner import _InferenceRunner` (no fix exists).
+`sarj-lint-configs` ≥ 0.8.0 ships `PLC2701` in its ignore list for exactly this
+reason; if you take that config, turn this hook on, or you lose the check
+entirely.
+
+Attribute access (`session._stt`) is out of scope and stays with ruff's
+`SLF001`, which cannot make the distinction either — see the rationale in
+`ruff.strict.toml`.
+
 Adopting these against an existing suite is easier through the baseline ratchet
 than as a big-bang fix — snapshot the current counts, then let them only shrink:
 

@@ -18,6 +18,9 @@ from sarj_python_lint.rules.no_cors_wildcard_with_credentials import (
 )
 from sarj_python_lint.rules.no_fat_try_blocks import NoFatTryBlocks
 from sarj_python_lint.rules.no_file_level_suppression import NoFileLevelSuppression
+from sarj_python_lint.rules.no_first_party_private_import import (
+    NoFirstPartyPrivateImport,
+)
 from sarj_python_lint.rules.no_fstring_in_log import NoFstringInLog
 from sarj_python_lint.rules.no_isinstance_union_chain import NoIsinstanceUnionChain
 from sarj_python_lint.rules.no_offset_pagination import NoOffsetPagination
@@ -116,6 +119,7 @@ REGISTRY: dict[str, type[Rule]] = {
     XfailRequiresStrict.id: XfailRequiresStrict,
     SleepWithComputedArgInTest.id: SleepWithComputedArgInTest,
     ZeroAssertionTest.id: ZeroAssertionTest,
+    NoFirstPartyPrivateImport.id: NoFirstPartyPrivateImport,
 }
 
 __all__ = ["REGISTRY"]
