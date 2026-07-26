@@ -65,8 +65,6 @@ class Utils: ...
 
 def test_junk_drawer_private_helpers_and_constants_ignored():
     src = """
-THRESHOLD = 300
-
 class Language: ...
 
 def _normalize(x: str) -> str: ...
@@ -76,6 +74,47 @@ _CACHE: dict[int, bool] = {}
     diags = _check(src, path="types.py")
     assert len(diags) == 1
     assert "language.py" in diags[0].message
+
+
+# --------------------------------------------------------------------------- #
+# FP-hardening (famous-repo sweep): a public constant is a public export too.  #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "constant",
+    ["REPO = 'pydantic/pydantic'", "MAX_RETRIES: int = 3", "HISTORY_FILE = 'HISTORY.md'"],
+)
+def test_public_constant_blocks_the_rename(constant: str):
+    # Minimized from pydantic `release/shared.py:6`: one public function
+    # (`run_command`) but four exported constants, three of which its importers
+    # pull in. `run_command.py` would be the wrong name for that module.
+    src = f"""
+{constant}
+
+def run_command(*args: str) -> str: ...
+"""
+    assert _check(src, path="shared.py") == []
+
+
+@pytest.mark.parametrize(
+    "assignment",
+    [
+        "logger = get_logger(__name__)",  # lowercase: infrastructure, not API
+        "_CACHE: dict[str, int] = {}",  # private
+        "__all__ = ['run_command']",  # describes the surface, is not part of it
+        "_registry = {}",
+    ],
+)
+def test_non_public_constants_do_not_block_the_rename(assignment: str):
+    src = f"""
+{assignment}
+
+def run_command(*args: str) -> str: ...
+"""
+    diags = _check(src, path="shared.py")
+    assert len(diags) == 1
+    assert "run_command.py" in diags[0].message
 
 
 def test_junk_drawer_zero_public_defs_not_flagged():

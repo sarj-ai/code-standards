@@ -15,6 +15,36 @@
  * `=` assignment whose RHS is a `+` `BinaryExpression` with the target as one
  * operand) are detected — they have identical O(n^2) behavior. A plain
  * `s = x + y` (target absent from the RHS) is NOT flagged.
+ *
+ * AT MOST ONE REPORT PER (accumulator, loop). A single loop that appends in
+ * several branches is ONE defect with ONE fix — replace the accumulator with an
+ * array of parts — so N reports on it are N-1 copies of the same finding, and
+ * silencing it costs N disable comments. Corpus sweep (2220 files across zod /
+ * TanStack Query / react-router / swr / zustand, 2026-07): 62 raw reports
+ * collapsed to 21 distinct defects. `react-router/packages/react-router-fs-routes/flatRoutes.ts`
+ * alone produced 23 reports; `react-router/packages/react-router/lib/server-runtime/cookies.ts:221-231`
+ * produced 6, all of them the one percent-encoder loop appending `result` from
+ * four branches. This matches the one-report-per-loop policy `no-sequential-await`
+ * already follows.
+ *
+ * EXEMPTION — AN ACCUMULATOR DECLARED INSIDE THE LOOP BODY (bulbul PR #4111).
+ * The O(n^2) claim requires the accumulator to survive across iterations. A
+ * `let s = "..."` declared *inside* the body is rebound to a fresh string every
+ * pass, so the `+=` runs a bounded number of times on a string that is discarded
+ * at the end of the iteration — there is no quadratic growth for `join` to
+ * remove, and the parts are typically already being collected into an array.
+ * Evidence:
+ * `typescript/packages/app/src/lib/lexical/plugins/utils/serializes-state-to-text.ts:16`,
+ * where `let sectionText = \`## ${…}\`` is declared in the body, appended to at
+ * most once behind an `if (body)`, and then pushed onto `textParts` for a
+ * `textParts.join()` after the loop. The disable there reads "single conditional
+ * append to a per-iteration string; result is collected via textParts.join below,
+ * not O(n²)" — the rule had nothing to offer.
+ *
+ * The Python twin SARJ002 (`inefficient_string_concat_in_loop`) has drawn this
+ * same line since it shipped: "A target that is freshly (re)bound earlier in the
+ * same loop body … is loop-local: it starts empty each iteration, so the growth
+ * is bounded, not cross-iteration accumulation." The two rules now agree.
  */
 
 import { ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
@@ -128,12 +158,44 @@ function isConcatOntoTarget(
 }
 
 /**
+ * Returns true when the accumulator's declaration lives inside `loop`'s BODY, so
+ * a fresh string is bound on every iteration.
+ *
+ * `let s = ""` before the loop is the cross-iteration accumulator this rule
+ * targets. `let s = ""` inside the body is not: the `+=` runs a bounded number of
+ * times against a string that is discarded at the end of the pass, and there is
+ * no quadratic growth to remove — the parts are usually already collected into an
+ * array afterwards. Compared by source range, which is exact for a declaration
+ * that is lexically nested in the body.
+ */
+function isDeclaredInsideLoop(
+  variable: Scope.Variable,
+  loop: TSESTree.Node,
+): boolean {
+  const def = variable.defs[0];
+  if (def === undefined) {
+    return false;
+  }
+  const body = (
+    loop as
+      | TSESTree.ForStatement
+      | TSESTree.ForOfStatement
+      | TSESTree.ForInStatement
+      | TSESTree.WhileStatement
+      | TSESTree.DoWhileStatement
+  ).body;
+  const [declStart, declEnd] = def.node.range;
+  const [bodyStart, bodyEnd] = body.range;
+  return declStart >= bodyStart && declEnd <= bodyEnd;
+}
+
+/**
  * Returns true if `node` is contained within the body of a loop statement.
  * Walks ancestors and, for each loop, ensures the node is inside the loop's
  * BODY (not its test/init/update clauses, which run a bounded number of times
  * relative to the body and aren't the antipattern we target).
  */
-function isInsideLoopBody(node: TSESTree.Node): boolean {
+function enclosingLoop(node: TSESTree.Node): TSESTree.Node | null {
   let child: TSESTree.Node = node;
   let parent = node.parent;
   while (parent !== undefined && parent !== null) {
@@ -147,13 +209,13 @@ function isInsideLoopBody(node: TSESTree.Node): boolean {
         | TSESTree.WhileStatement
         | TSESTree.DoWhileStatement;
       if (loop.body === child) {
-        return true;
+        return loop;
       }
     }
     child = parent;
     parent = parent.parent;
   }
-  return false;
+  return null;
 }
 
 export default ESLintUtils.RuleCreator(
@@ -175,6 +237,10 @@ export default ESLintUtils.RuleCreator(
   },
   defaultOptions: [],
   create(context) {
+    // One defect per (accumulator, loop) — see @fileoverview. Keyed on the loop
+    // node so sibling loops over the same variable each keep their report.
+    const reported = new WeakMap<TSESTree.Node, Set<string>>();
+
     return {
       AssignmentExpression(node: TSESTree.AssignmentExpression): void {
         // The LHS must be a plain variable reference.
@@ -191,7 +257,8 @@ export default ESLintUtils.RuleCreator(
           return;
         }
         // Must occur inside a loop body, else it's a one-shot append.
-        if (!isInsideLoopBody(node)) {
+        const loop = enclosingLoop(node);
+        if (loop === null) {
           return;
         }
 
@@ -207,6 +274,23 @@ export default ESLintUtils.RuleCreator(
         if (!isStringInitializedVariable(variable)) {
           return;
         }
+        // The O(n^2) claim requires the accumulator to SURVIVE across iterations.
+        // One declared inside the loop body is a fresh string every pass, so its
+        // length is bounded by one iteration's work and `join` cannot replace it.
+        // See @fileoverview for the PR #4111 evidence.
+        if (isDeclaredInsideLoop(variable, loop)) {
+          return;
+        }
+
+        let seen = reported.get(loop);
+        if (seen === undefined) {
+          seen = new Set<string>();
+          reported.set(loop, seen);
+        }
+        if (seen.has(node.left.name)) {
+          return;
+        }
+        seen.add(node.left.name);
 
         context.report({
           node,

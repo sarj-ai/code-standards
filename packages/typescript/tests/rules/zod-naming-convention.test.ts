@@ -13,6 +13,23 @@ const ruleTester = new RuleTester();
 
 ruleTester.run("zod-naming-convention", rule, {
   valid: [
+    // FP guard (a), corpus: zod/packages/zod/src/v4/classic/tests/index.test.ts:782
+    // — a schema declared in a test is a local fixture, not a cross-module API.
+    {
+      code: 'const a = z.lazy(() => z.string());',
+      filename: "/repo/src/v4/classic/tests/index.test.ts",
+    },
+    // FP guard (b), corpus: zod/packages/zod/src/v3/tests/record.test.ts:166 —
+    // `.parse()` / `.safeParse()` / `.toJSONSchema()` yield a value, not a schema.
+    { code: 'const result1 = z.record(z.any()).parse({ foo: undefined });' },
+    { code: 'const outcome = z.string().safeParse(234);' },
+    { code: 'const jsonSchema = z.toJSONSchema(HelloSchema, { target: "draft-7" });' },
+    { code: 'const reg = z.registry<Meta>();' },
+    // FP guard (c), corpus: zod/packages/treeshake/zod-string.ts:3 — the name
+    // already reads as a schema; the anchored, case-sensitive suffix missed it.
+    { code: 'const schema = z.object({ a: z.string() });' },
+    { code: 'const schema1 = z.string().min(5);' },
+    { code: 'const numberSchemaOptional = z.number().optional();' },
     // Direct z.object() with Z prefix
     { code: "const ZUser = z.object({ name: z.string() });" },
     // Chained z.object().extend() with Z prefix
@@ -52,6 +69,22 @@ ruleTester.run("zod-naming-convention", rule, {
     },
   ],
   invalid: [
+    // Guard (c) must not over-fire: still off-convention with no "schema" in it.
+    {
+      code: 'const user = z.object({ a: z.string() });',
+      errors: [{ messageId: "zodSchemaName" }],
+    },
+    // Guard (b) must not over-fire: a builder chain ending on a schema method.
+    {
+      code: 'const user = z.object({ a: z.string() }).strict();',
+      errors: [{ messageId: "zodSchemaName" }],
+    },
+    // Guard (c) is suffix-flavoured only — a prefix-only team still gets the report.
+    {
+      code: 'const userschema = z.object({ a: z.string() });',
+      options: [{ convention: "prefix" }],
+      errors: [{ messageId: "zPrefix" }],
+    },
     // Direct z.object() matching neither convention.
     {
       code: "const User = z.object({ name: z.string() });",

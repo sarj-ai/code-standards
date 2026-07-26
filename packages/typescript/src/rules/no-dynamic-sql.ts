@@ -24,6 +24,18 @@
  *     mechanism, not a bypass of it.
  *   - `.prepare()` on something that is not a database. Requiring an
  *     interpolated runtime value keeps this rare in practice.
+ *   - A statement text that contains no SQL data-statement keyword. `exec` and
+ *     `query` are not SQL-specific names: a 5-repo sweep of real TypeScript
+ *     (zod / TanStack Query / react-router / swr / zustand, 2,186 files) found
+ *     4/4 hits were `child_process.exec` building a SHELL command line —
+ *     an `open <url>` at
+ *     react-router/integration/helpers/playwright-fixture.ts:230 and an
+ *     `npm view <pkg>@<version> version` at
+ *     react-router/scripts/changes/publish.ts:111. Requiring the statement to
+ *     actually read as SQL (`SELECT` / `INSERT INTO` / `UPDATE` / `DELETE FROM`
+ *     / DDL / `PRAGMA` / a CTE head) takes that class to zero without touching
+ *     any real injection: an interpolated statement with no SQL verb in it was
+ *     never a SQL statement.
  *
  * CONFIGURATION
  * `methods` is the list of statement-taking method names to inspect. Extend it
@@ -35,6 +47,8 @@
  */
 
 import { AST_NODE_TYPES, ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
+
+import { stripSqlNoise } from "./_sql.js";
 
 type MessageIds = "dynamicSql";
 
@@ -117,6 +131,40 @@ function runtimeConcatOperands(node: TSESTree.Node): TSESTree.Expression[] {
   );
 }
 
+/**
+ * A SQL data/DDL statement keyword. `exec` and `query` are generic method names
+ * — `child_process.exec` shares them — so the statement text itself has to prove
+ * it is SQL before an interpolation into it can be an injection.
+ */
+const SQL_STATEMENT_RE =
+  /\b(?:select\s|insert\s+into\b|insert\s+or\b|update\s+\w|delete\s+from\b|replace\s+into\b|merge\s+into\b|upsert\s+into\b|create\s+(?:temp(?:orary)?\s+)?(?:table|index|view|trigger|schema|database)\b|alter\s+table\b|drop\s+(?:table|index|view|trigger)\b|truncate\s+table\b|pragma\s+\w|with\s+\w+\s+as\s*\(|from\s+\w+\s+where\b)/i;
+
+/** The marker a non-static operand contributes to the reconstructed statement text. */
+const RUNTIME_MARKER = " ? ";
+
+/**
+ * The statically known text of a statement argument, with every runtime operand
+ * replaced by a placeholder. Enough to answer "is this SQL?" for both the
+ * template-literal and the `+`-concatenation shape.
+ */
+function staticStatementText(node: TSESTree.Node): string {
+  if (node.type === AST_NODE_TYPES.TemplateLiteral) {
+    return node.quasis.map((quasi) => quasi.value.cooked ?? quasi.value.raw).join(RUNTIME_MARKER);
+  }
+  if (node.type === AST_NODE_TYPES.Literal) {
+    return typeof node.value === "string" ? node.value : RUNTIME_MARKER;
+  }
+  if (node.type === AST_NODE_TYPES.BinaryExpression && node.operator === "+") {
+    return staticStatementText(node.left) + staticStatementText(node.right);
+  }
+  return RUNTIME_MARKER;
+}
+
+/** True when the statement argument reads as SQL rather than as a shell command line. */
+function looksLikeSql(node: TSESTree.Node): boolean {
+  return SQL_STATEMENT_RE.test(stripSqlNoise(staticStatementText(node)));
+}
+
 /** The inspected method name of `receiver.method(...)`, or null. */
 function statementMethodName(
   node: TSESTree.CallExpression,
@@ -176,7 +224,7 @@ export default ESLintUtils.RuleCreator(
         }
 
         const statement = node.arguments[0];
-        if (statement === undefined) {
+        if (statement === undefined || !looksLikeSql(statement)) {
           return;
         }
 

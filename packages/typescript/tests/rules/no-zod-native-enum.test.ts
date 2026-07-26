@@ -25,6 +25,12 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("no-zod-native-enum", rule, {
   valid: [
+    // FP guard, corpus: zod/packages/zod/src/v3/tests/nativeEnum.test.ts:12 —
+    // a test that covers `z.nativeEnum` has to call `z.nativeEnum`.
+    {
+      code: 'import { z } from "zod"; const fruitEnum = z.nativeEnum(Fruits);',
+      filename: "tests/nativeEnum.test.ts",
+    },
     // The prescribed pattern.
     { code: 'const S = z.enum(["active", "inactive"]);' },
     // `z.enum` over an `as const` array of literals — also prescribed.
@@ -61,6 +67,12 @@ ruleTester.run("no-zod-native-enum", rule, {
     { code: "const values = MySchema.enum;" },
   ],
   invalid: [
+    // Production schemas still fire.
+    {
+      code: 'import { z } from "zod"; const ZFruit = z.nativeEnum(Fruits);',
+      filename: "schemas/fruit.ts",
+      errors: [{ messageId: "nativeEnum" }],
+    },
     // Inline object literal of string values — autofixed.
     {
       code: 'const S = z.nativeEnum({ Active: "active", Inactive: "inactive" });',

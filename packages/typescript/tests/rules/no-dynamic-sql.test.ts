@@ -40,6 +40,17 @@ ruleTester.run("no-dynamic-sql", rule, {
     { code: "db.prepare(base + suffix);" },
     // A method call with no arguments at all.
     { code: "db.prepare();" },
+    // --- Not SQL at all -----------------------------------------------------
+    // `exec` is child_process's method too. Real corpus:
+    // react-router/integration/helpers/playwright-fixture.ts:230 —
+    // a shell command line, not a statement.
+    { code: "cp.exec(`open ${this.app.serverUrl}${href}`);" },
+    // react-router/scripts/changes/publish.ts:111.
+    {
+      code: "cp.exec(`npm view ${packageName}@${version} version`, { encoding: 'utf-8' }, cb);",
+    },
+    // Concatenated shell arguments are equally not SQL.
+    { code: 'cp.exec("git rev-parse " + ref);' },
     // --- Custom `methods` replaces the defaults -----------------------------
     {
       code: "db.query(`select * from t where id = ${id}`);",
@@ -91,6 +102,20 @@ ruleTester.run("no-dynamic-sql", rule, {
     {
       code: "db.raw(`select * from t where id = '${id}'`);",
       options: [{ methods: ["raw"] }],
+      errors: [{ messageId: "dynamicSql" }],
+    },
+    // The "is this SQL?" gate must not open an escape hatch: `exec` on a real
+    // statement still fires, and so do the DDL/upsert verbs.
+    {
+      code: "conn.exec(`update accounts set balance = ${amount} where id = 1`);",
+      errors: [{ messageId: "dynamicSql" }],
+    },
+    {
+      code: "db.prepare(`insert into audit (actor) values ('${actor}')`);",
+      errors: [{ messageId: "dynamicSql" }],
+    },
+    {
+      code: "db.exec(`drop table ${tableName}`);",
       errors: [{ messageId: "dynamicSql" }],
     },
   ],

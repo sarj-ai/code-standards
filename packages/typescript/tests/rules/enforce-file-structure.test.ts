@@ -186,6 +186,34 @@ ruleTester.run("enforce-file-structure", rule, {
     },
   ],
   invalid: [
+    // One misplacement is one message, however many imports trail it. Real
+    // corpus: react-router/packages/react-router-dev/vite/plugin.ts:41, where a
+    // single `const nodeRequire = createRequire(...)` between two import blocks
+    // used to emit 18 diagnostics.
+    {
+      filename: NON_ACTION_FILENAME,
+      code: `
+        import a from 'a';
+        const nodeRequire = createRequire(import.meta.url);
+        import b from 'b';
+        import c from 'c';
+        import d from 'd';
+      `,
+      errors: [{ messageId: "importsFirst" }],
+    },
+    // Two independent interleavings are two defects and stay two messages.
+    {
+      filename: NON_ACTION_FILENAME,
+      code: `
+        import a from 'a';
+        const one = 1;
+        import b from 'b';
+        import c from 'c';
+        const two = 2;
+        import d from 'd';
+      `,
+      errors: [{ messageId: "importsFirst" }, { messageId: "importsFirst" }],
+    },
     // Import after a body statement (an exported const) — imports must be first.
     {
       filename: NON_ACTION_FILENAME,

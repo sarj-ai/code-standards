@@ -34,7 +34,15 @@ Deliberately NOT flagged:
   mistaken for the smell,
 * a single-element tuple — nothing to mis-order,
 * a starred tuple (`return *pair, extra`) — the arity is not statically known,
-* a tuple returned from a nested helper or closure inside the fixture.
+* a tuple returned from a nested helper or closure inside the fixture,
+* **a fixture annotated `-> tuple[A, B, ...]` whose element types are all
+  syntactically distinct.** The rule's whole argument is that a reorder fails
+  silently — and with distinct static types it does not: swapping the elements
+  is a type error the checker reports at the call site, which is the same
+  protection a `NamedTuple` would buy. Found in bulbul PR #4111 on
+  `python/bulbul/bulbul/tests/fixtures/stores.py:421`, which returns
+  `-> tuple[PsqlOrganizationStore, PsqlUserStore]`. A repeated type
+  (`tuple[str, str]`) still fires: there the reorder really is silent.
 """
 
 from __future__ import annotations
@@ -103,8 +111,37 @@ def _bare_tuple_results(tree: ast.Module) -> list[tuple[ast.expr, int]]:
     for node in ast.walk(tree):
         if not isinstance(node, _FUNC_NODES) or not _is_fixture(node):
             continue
+        if _returns_distinctly_typed_tuple(node):
+            continue
         hits.extend(_tuple_results_of(node))
     return hits
+
+
+def _returns_distinctly_typed_tuple(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Report whether the fixture is annotated as a tuple of all-distinct types.
+
+    A reorder of `tuple[Store, User]` is a type error the checker catches; a
+    reorder of `tuple[str, str]` is silent. Only the latter is what this rule
+    exists to prevent, so the former is exempt.
+
+    Returns:
+        True when the return annotation is a `tuple[...]` whose element types
+        are pairwise distinct.
+
+    """
+    returns = node.returns
+    if not isinstance(returns, ast.Subscript):
+        return False
+    base = returns.value
+    base_name = base.attr if isinstance(base, ast.Attribute) else base.id if isinstance(base, ast.Name) else None
+    if base_name not in {"tuple", "Tuple"}:
+        return False
+    elts = returns.slice.elts if isinstance(returns.slice, ast.Tuple) else [returns.slice]
+    # `tuple[str, ...]` is a homogeneous sequence, not a record — not our shape.
+    if any(isinstance(e, ast.Constant) and e.value is Ellipsis for e in elts):
+        return False
+    rendered = [ast.dump(e) for e in elts]
+    return len(rendered) >= _MIN_FIELDS and len(set(rendered)) == len(rendered)
 
 
 def _is_fixture(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:

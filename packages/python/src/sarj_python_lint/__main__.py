@@ -105,6 +105,34 @@ def _baseline_counts(diags: list[Diagnostic]) -> dict[str, dict[str, int]]:
     return counts
 
 
+def _read_baseline(path: Path) -> dict[str, dict[str, int]]:
+    """Load a baseline file, keeping only well-formed `{path: {CODE: count}}` entries.
+
+    `json.loads` returns `Any`, so the shape is narrowed here rather than
+    asserted — a hand-edited baseline should degrade to "not baselined" rather
+    than crash the run or silently suppress on a malformed entry.
+
+    Returns:
+        The baseline counts, with any entry of the wrong shape dropped.
+
+    """
+    raw: object = json.loads(  # pyright: ignore[reportAny] — json.loads is an untyped stdlib boundary; the shape is narrowed below
+        path.read_text(encoding="utf-8")
+    )
+    if not isinstance(raw, dict):
+        return {}
+    counts: dict[str, dict[str, int]] = {}
+    for file_key, per_code in raw.items():  # pyright: ignore[reportUnknownVariableType] — json.loads yields Any leaves
+        if not isinstance(file_key, str) or not isinstance(per_code, dict):
+            continue
+        counts[file_key] = {
+            code: n
+            for code, n in per_code.items()  # pyright: ignore[reportUnknownVariableType] — same
+            if isinstance(code, str) and isinstance(n, int)
+        }
+    return counts
+
+
 def _apply_baseline(diags: list[Diagnostic], baseline: dict[str, dict[str, int]]) -> list[Diagnostic]:
     """Suppress up to the baselined count per (path, code); excess diags survive.
 
@@ -167,7 +195,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
     if args.baseline is not None:
-        diags = _apply_baseline(diags, json.loads(args.baseline.read_text()))
+        diags = _apply_baseline(diags, _read_baseline(args.baseline))
     for d in diags:
         sys.stdout.write(d.format() + "\n")
     return 1 if diags else 0

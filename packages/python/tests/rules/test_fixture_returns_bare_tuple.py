@@ -261,3 +261,69 @@ def a_fix(flag):
 """
     diags = _check(src)
     assert [d.line for d in diags] == sorted(d.line for d in diags)
+
+
+# --------------------------------------------------------------------------- #
+# FP guard from bulbul PR #4111: distinct static types make a reorder a type    #
+# error, which is the same protection a NamedTuple buys.                       #
+# --------------------------------------------------------------------------- #
+
+
+def test_distinctly_typed_tuple_annotation_is_exempt():
+    # bulbul/tests/fixtures/stores.py:421 — swapping these is a pyright error.
+    src = """
+import pytest
+
+@pytest.fixture
+def setup_orgs_and_users() -> tuple[PsqlOrganizationStore, PsqlUserStore]:
+    return org_store, user_store
+"""
+    assert _check(src) == []
+
+
+def test_repeated_type_in_annotation_still_fires():
+    # `tuple[str, str]` is exactly the silent-reorder case the rule exists for.
+    src = """
+import pytest
+
+@pytest.fixture
+def ids() -> tuple[str, str]:
+    return org_id, user_id
+"""
+    assert len(_check(src)) == 1
+
+
+def test_unannotated_fixture_still_fires():
+    src = """
+import pytest
+
+@pytest.fixture
+def pair():
+    return org, user
+"""
+    assert len(_check(src)) == 1
+
+
+def test_homogeneous_variadic_tuple_annotation_still_fires():
+    # `tuple[str, ...]` is a sequence, not a record — the distinctness argument
+    # does not apply, so the rule keeps its say.
+    src = """
+import pytest
+
+@pytest.fixture
+def names() -> tuple[str, ...]:
+    return first, second
+"""
+    assert len(_check(src)) == 1
+
+
+def test_typing_tuple_alias_is_also_recognised():
+    src = """
+import pytest
+import typing
+
+@pytest.fixture
+def pair() -> typing.Tuple[OrgStore, UserStore]:
+    return org, user
+"""
+    assert _check(src) == []

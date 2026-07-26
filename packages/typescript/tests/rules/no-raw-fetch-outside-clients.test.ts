@@ -20,6 +20,30 @@ const HANDLER = "/repo/src/routes/handler.ts";
 
 ruleTester.run("no-raw-fetch-outside-clients", rule, {
   valid: [
+    // FP guard, corpus: query/examples/react/star-wars/src/api.ts:7 — an `api`
+    // module IS the client layer, just the other common spelling of `clients/`.
+    {
+      code: "export const getFilm = async (id) => fetch(`/films/${id}`);",
+      filename: "/repo/src/api.ts",
+    },
+    {
+      code: "export const getFilm = async (id) => fetch(`/films/${id}`);",
+      filename: "/repo/src/api/films.ts",
+    },
+    {
+      code: "export const getFilm = async (id) => fetch(`/films/${id}`);",
+      filename: "/repo/src/lib/star-wars-api.ts",
+    },
+    // FP guard, corpus: react-router names suites `single-fetch-test.ts`.
+    {
+      code: "async function t() { await fetch('/x'); }",
+      filename: "/repo/integration/single-fetch-test.ts",
+    },
+    // FP guard, corpus: query/packages/query-codemods/.../__testfixtures__/bug-reports.input.tsx
+    {
+      code: "async function t() { await fetch('/x'); }",
+      filename: "/repo/src/v5/__testfixtures__/bug-reports.input.tsx",
+    },
     // --- Allowed by the default path patterns -------------------------------
     {
       code: "export const get = () => fetch(url);",
@@ -73,6 +97,12 @@ ruleTester.run("no-raw-fetch-outside-clients", rule, {
     },
   ],
   invalid: [
+    // The guards must not over-fire: a component is still not the client layer.
+    {
+      code: "async function load() { const r = await fetch('/api/todos'); return r.json(); }",
+      filename: "/repo/src/pages/index.tsx",
+      errors: [{ messageId: "rawFetch" }],
+    },
     // Bare global fetch in a route handler.
     {
       code: "export const handler = () => fetch('https://example.test');",

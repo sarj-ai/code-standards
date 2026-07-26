@@ -147,6 +147,44 @@ def test_thing():
     assert _check(src) == []
 
 
+# --------------------------------------------------------------------------- #
+# FP guard: a sub-test already gives each iteration its own report.            #
+# --------------------------------------------------------------------------- #
+
+
+def test_unittest_subtest_loop_is_exempt():
+    src = """
+class TestThing:
+    def test_rejects_non_string_configs(self):
+        for config_key in ["include", "force-exclude"]:
+            with self.subTest(config_key=config_key):
+                assert reject(config_key)
+"""
+    assert _check(src) == []
+
+
+def test_pytest_subtests_loop_is_exempt():
+    src = """
+def test_thing(subtests):
+    for case in ["a", "b"]:
+        with subtests.test(case=case):
+            assert handle(case)
+"""
+    assert _check(src) == []
+
+
+def test_an_unrelated_test_named_context_manager_still_fires():
+    # Only `subtests.test(...)` is the plugin; `runner.test(...)` is some
+    # other object's method and reports nothing per case.
+    src = """
+def test_thing(runner):
+    for case in ["a", "b"]:
+        with runner.test(case):
+            assert handle(case)
+"""
+    assert len(_check(src)) == 1
+
+
 def test_loop_without_assert_is_exempt():
     # Setup legitimately loops over a literal to build state.
     src = """

@@ -17,6 +17,33 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("no-sequential-await", rule, {
   valid: [
+    // FP guard (f), corpus: react-router/packages/react-router/__tests__/dom/special-characters-test.tsx:312
+    // — a table-driven case sweep whose iterations share one JSDOM container.
+    {
+      code: "async function f(specialChars) { for (const c of specialChars) { await testParamValues(c); } }",
+      filename: "/repo/packages/x/__tests__/dom/special-characters-test.tsx",
+    },
+    // FP guard (f), corpus: zod/packages/bench/object-async.ts:6 — a benchmark
+    // measures ONE operation at a time by construction.
+    {
+      code: "async function f(DATA) { for (const d of DATA) { await zod3.parseAsync(d); } }",
+      filename: "/repo/packages/bench/object-async.ts",
+    },
+    // FP guard (g), corpus: query/packages/lit-query/src/tests/infinite-and-options.test.ts:207
+    // — `await Promise.resolve()` is a microtask flush, not I/O.
+    {
+      code: "async function f(host) { for (let i = 0; i < 5; i += 1) { host.update(); await Promise.resolve(); } }",
+    },
+    // FP guard (h), corpus: react-router/packages/react-router-dev/config/config.ts:776
+    // — a preset chain threads one mutable config through in order.
+    {
+      code: "async function f(cfg) { for (const preset of cfg.presets ?? []) { await preset.resolved(cfg); } }",
+    },
+    // FP guard (i), corpus: react-router/integration/vite-server-bundles-test.ts:282
+    // — one Playwright page cannot navigate to two URLs at once.
+    {
+      code: "async function f(paths, page) { for (const p of paths) { const res = await page.goto(p); expect(res.status()).toBe(404); } }",
+    },
     // The prescribed pattern — concurrent awaits, no await inside the loop.
     {
       code: "async function f(xs) { await Promise.all(xs.map(async (x) => g(x))); }",
@@ -121,6 +148,17 @@ ruleTester.run("no-sequential-await", rule, {
     },
   ],
   invalid: [
+    // Guard (f) is path-scoped: the same loop in production code still fires.
+    {
+      code: "async function f(xs, out) { for (const x of xs) { out.push(await load(x)); } }",
+      filename: "/repo/src/lib/loader.ts",
+      errors: [{ messageId: "noSequentialAwait" }],
+    },
+    // Guard (g) must not over-suppress a real awaited call named `resolve`.
+    {
+      code: "async function f(xs, out) { for (const x of xs) { out.push(await registry.resolve(x)); } }",
+      errors: [{ messageId: "noSequentialAwait" }],
+    },
     // for-of with a direct await.
     {
       code: "async function f(xs) { for (const x of xs) { await g(x); } }",

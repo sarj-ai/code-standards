@@ -48,14 +48,15 @@ def c():
     assert len(diags) == 2
 
 
-def test_min_occurrences_threshold_is_three():
+def test_two_distinct_functions_is_enough():
+    """Cross-function drift begins at two copies; there is no separate occurrence count."""
     two = f'''
 def a():
     return """{_LONG_SQL}"""
 def b():
     return """{_LONG_SQL}"""
 '''
-    assert _check(two) == []
+    assert len(_check(two)) == 1
     three = f'''
 def a():
     return """{_LONG_SQL}"""
@@ -386,6 +387,92 @@ def f():
     return """{_LONG_SQL}"""
 '''
     assert _check(src) == []
+
+
+_FORWARD_REF = "pkg.subpkg.models.orders.line_item_snapshot"
+assert len(_FORWARD_REF) >= 40
+
+
+def test_excludes_doc_metadata_in_parameter_annotations():
+    """FastAPI copies the same Doc() paragraph onto every verb; 494 of 499 corpus findings."""
+    src = f'''
+def get(response_model: Annotated[str, Doc("""{_LONG_SQL}""")] = None): ...
+def put(response_model: Annotated[str, Doc("""{_LONG_SQL}""")] = None): ...
+def post(response_model: Annotated[str, Doc("""{_LONG_SQL}""")] = None): ...
+'''
+    assert _check(src) == []
+
+
+def test_excludes_deprecated_metadata_in_parameter_annotations():
+    src = f'''
+def query(regex: Annotated[str, deprecated("""{_LONG_SQL}""")] = None): ...
+def header(regex: Annotated[str, deprecated("""{_LONG_SQL}""")] = None): ...
+'''
+    assert _check(src) == []
+
+
+def test_excludes_annotated_metadata_under_dotted_typing_alias():
+    src = f'''
+def a(x: typing.Annotated[str, Doc("""{_LONG_SQL}""")] = None): ...
+def b(x: typing.Annotated[str, Doc("""{_LONG_SQL}""")] = None): ...
+'''
+    assert _check(src) == []
+
+
+def test_excludes_annotated_metadata_in_return_annotations():
+    src = f'''
+def a() -> Annotated[str, Doc("""{_LONG_SQL}""")]: ...
+def b() -> Annotated[str, Doc("""{_LONG_SQL}""")]: ...
+'''
+    assert _check(src) == []
+
+
+def test_excludes_annotated_metadata_in_variable_annotations():
+    src = f'''
+def a():
+    x: Annotated[str, Doc("""{_LONG_SQL}""")] = ""
+def b():
+    x: Annotated[str, Doc("""{_LONG_SQL}""")] = ""
+'''
+    assert _check(src) == []
+
+
+def test_excludes_string_forward_reference_annotations():
+    src = f"""
+def a(x: "{_FORWARD_REF}"): ...
+def b(x: "{_FORWARD_REF}"): ...
+"""
+    assert _check(src) == []
+
+
+def test_annotation_guard_does_not_exempt_the_same_value_used_at_runtime():
+    """The Doc() copy is dropped, but two runtime copies of the same literal still couple."""
+    src = f'''
+def a(x: Annotated[str, Doc("""{_LONG_SQL}""")] = None):
+    return """{_LONG_SQL}"""
+def b():
+    return """{_LONG_SQL}"""
+'''
+    assert len(_check(src)) == 1
+
+
+def test_annotation_guard_does_not_exempt_parameter_defaults():
+    """A default sits in `arguments.defaults`, beside the annotation, not inside it."""
+    src = f'''
+def a(sql: Annotated[str, Doc("doc")] = """{_LONG_SQL}"""): ...
+def b(sql: Annotated[str, Doc("doc")] = """{_LONG_SQL}"""): ...
+'''
+    assert len(_check(src)) == 1
+
+
+def test_annotation_guard_does_not_exempt_a_forward_ref_used_as_a_key():
+    src = f"""
+def a():
+    return "{_FORWARD_REF}"
+def b():
+    return "{_FORWARD_REF}"
+"""
+    assert len(_check(src)) == 1
 
 
 @pytest.mark.xfail(

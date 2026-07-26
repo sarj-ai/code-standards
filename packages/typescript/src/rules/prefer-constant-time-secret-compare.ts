@@ -26,6 +26,11 @@
  *   `token.length === 0`, `tokenType === "bearer"`, `x === TOKEN_TYPE_SYSTEM` —
  *   comparing against a compile-time constant or a null check reveals nothing
  *   about a runtime secret.
+ * - Marker values whose camelCase name merely ENDS in a secret word:
+ *   `queryFn === skipToken`. A `skipToken` is a unique `Symbol` compared by
+ *   identity, so there are no bytes to walk and no timing to leak. This was the
+ *   rule's entire false-positive surface on the 2026-07 corpus sweep — 10 hits
+ *   out of 10, all `skipToken`; see `SENTINEL_PREFIX_RE`.
  * - Anything in a test file: no attacker measures a test's clock, and fixture
  *   assertions (`expect(res.apiKey === "known")`) are not an auth path.
  *
@@ -61,6 +66,22 @@ const SENTINEL_IDENTIFIERS: ReadonlySet<string> = new Set(["undefined", "NaN"]);
 const SENTINEL_WORDS = /(^|_)(SENTINEL|EMPTY|NONE|NULL|UNSET|MISSING|PLACEHOLDER|DUMMY|FAKE|EXAMPLE)(_|$)/;
 
 /**
+ * The camelCase spelling of the same idea: a marker VALUE whose name happens to
+ * end in a secret-shaped word. A library exports `skipToken` as a unique
+ * `Symbol` and callers test identity against it — there are no bytes to compare
+ * and nothing an attacker could learn from the timing.
+ *
+ * Corpus evidence (2220 files across zod / TanStack Query / react-router / swr /
+ * zustand, 2026-07): the rule fired 10 times and ALL TEN were
+ * `options.queryFn === skipToken`, e.g.
+ * `query/packages/query-core/src/queryClient.ts:604`. The list is deliberately
+ * limited to modifiers that can only introduce a marker; `default`/`invalid`
+ * are excluded because `defaultApiKey` really can hold a live credential.
+ */
+const SENTINEL_PREFIX_RE =
+  /^(skip|sentinel|empty|none|missing|unset|placeholder|dummy|fake|example|noop)[A-Z]/;
+
+/**
  * True when every cased character is upper-case and at least one letter exists —
  * AND the name is not itself secret-shaped.
  *
@@ -89,12 +110,17 @@ function isExcludedOperand(node: TSESTree.Node): boolean {
     case AST_NODE_TYPES.TemplateLiteral:
       return node.expressions.length === 0;
     case AST_NODE_TYPES.Identifier:
-      return SENTINEL_IDENTIFIERS.has(node.name) || isConstantReference(node.name);
+      return (
+        SENTINEL_IDENTIFIERS.has(node.name) ||
+        SENTINEL_PREFIX_RE.test(node.name) ||
+        isConstantReference(node.name)
+      );
     case AST_NODE_TYPES.MemberExpression:
       return (
         !node.computed &&
         node.property.type === AST_NODE_TYPES.Identifier &&
-        isConstantReference(node.property.name)
+        (SENTINEL_PREFIX_RE.test(node.property.name) ||
+          isConstantReference(node.property.name))
       );
     default:
       return false;

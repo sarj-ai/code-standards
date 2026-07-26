@@ -24,6 +24,10 @@ _WIDE_IN_TEST = f"""
 def test_thing():
     row = UpsertCall({_NINE_KWARGS})
     assert row
+
+def test_other():
+    other = UpsertCall({_NINE_KWARGS})
+    assert other
 """
 
 
@@ -34,7 +38,7 @@ def test_thing():
 
 @pytest.mark.parametrize("path", ["test_x.py", "x_test.py", "conftest.py", "a/tests/h.py"])
 def test_fires_in_test_paths(path: str):
-    assert len(_check(_WIDE_IN_TEST, path)) == 1
+    assert len(_check(_WIDE_IN_TEST, path)) == 2
 
 
 @pytest.mark.parametrize("path", ["src/service.py", "a/testing/thing.py"])
@@ -48,7 +52,7 @@ def test_skips_non_test_paths(path: str):
 
 
 def test_flags_nine_keywords():
-    assert len(_check(_WIDE_IN_TEST)) == 1
+    assert len(_check(_WIDE_IN_TEST)) == 2
 
 
 def test_eight_keywords_is_under_the_threshold():
@@ -61,8 +65,7 @@ def test_thing():
 
 
 def test_message_reports_the_keyword_count():
-    [diag] = _check(_WIDE_IN_TEST)
-    assert "passes 9 keywords" in diag.message
+    assert "passes 9 keywords" in _check(_WIDE_IN_TEST)[0].message
 
 
 def test_flags_construction_nested_in_control_flow():
@@ -71,8 +74,11 @@ def test_thing(flag):
     if flag:
         row = UpsertCall({_NINE_KWARGS})
         assert row
+
+def test_other():
+    assert UpsertCall({_NINE_KWARGS})
 """
-    assert len(_check(src)) == 1
+    assert len(_check(src)) == 2
 
 
 def test_flags_async_test():
@@ -80,8 +86,11 @@ def test_flags_async_test():
 async def test_thing():
     row = await store.upsert(UpsertCall({_NINE_KWARGS}))
     assert row
+
+async def test_other():
+    assert await store.upsert(UpsertCall({_NINE_KWARGS}))
 """
-    assert len(_check(src)) == 1
+    assert len(_check(src)) == 2
 
 
 # --------------------------------------------------------------------------- #
@@ -198,8 +207,11 @@ def test_reports_line_and_column_of_the_call():
 def test_thing():
     row = UpsertCall({_NINE_KWARGS})
     assert row
+
+def test_other():
+    assert UpsertCall({_NINE_KWARGS})
 """
-    [diag] = _check(src)
+    diag = _check(src)[0]
     assert (diag.line, diag.col) == (3, 11)
     assert diag.code == "SARJ045"
 
@@ -213,3 +225,100 @@ def test_thing():
 """
     diags = _check(src)
     assert [d.line for d in diags] == sorted(d.line for d in diags)
+
+
+def test_mapping_update_is_data_not_a_construction():
+    # Minimized from rich's tests/test_table.py: 29 keywords relabelling box
+    # characters through `__dict__.update(...)` — entries, not fields.
+    src = """
+def test_placement_table_box_elements():
+    table = Table(box=box.ASCII)
+    table.box.__dict__.update(
+        top_left="a", top="b", top_divider="c", top_right="d", head_left="1",
+        head_vertical="2", head_right="3", head_row_left="e", head_row_cross="g",
+    )
+    assert render(table)
+"""
+    assert _check(src) == []
+
+
+def test_wide_construction_next_to_an_update_still_fires():
+    src = """
+def test_style():
+    style = Style(
+        color="red", bgcolor="black", bold=True, dim=True, italic=True,
+        underline=True, blink=True, blink2=True, reverse=True,
+    )
+    assert str(style)
+
+def test_style_again():
+    other = Style(
+        color="blue", bgcolor="white", bold=False, dim=True, italic=True,
+        underline=True, blink=True, blink2=True, reverse=True,
+    )
+    assert str(other)
+"""
+    assert len(_check(src)) == 2
+
+
+# --------------------------------------------------------------------------- #
+# FP guard from bulbul PR #4111: the message promises "every other test repeats  #
+# the same boilerplate", so the rule checks that premise rather than asserting.  #
+# --------------------------------------------------------------------------- #
+
+
+def test_single_construction_in_the_file_is_exempt():
+    # test_analytics_events.py:227 built the only `Batch(` in the file, with 12
+    # required fields. There is no duplication for a builder to remove.
+    src = f"""
+def test_thing():
+    batch = Batch({_NINE_KWARGS})
+    assert batch
+"""
+    assert _check(src) == []
+
+
+def test_second_construction_of_the_same_callee_arms_the_rule():
+    src = f"""
+def test_one():
+    assert Batch({_NINE_KWARGS})
+
+def test_two():
+    assert Batch({_NINE_KWARGS})
+"""
+    assert len(_check(src)) == 2
+
+
+def test_a_narrow_sibling_construction_still_counts_as_repetition():
+    # The duplication is of the *callee*, not of the wide call — one wide site
+    # plus a narrow one still means a builder with defaults would pay off.
+    src = f"""
+def test_one():
+    assert Batch({_NINE_KWARGS})
+
+def test_two():
+    assert Batch(id="b2")
+"""
+    assert len(_check(src)) == 1
+
+
+def test_construction_repeated_only_outside_a_test_still_counts():
+    src = f"""
+def _seed():
+    return Batch(id="seed")
+
+def test_one():
+    assert Batch({_NINE_KWARGS})
+"""
+    assert len(_check(src)) == 1
+
+
+def test_distinct_callees_do_not_count_toward_each_other():
+    src = f"""
+def test_one():
+    assert Batch({_NINE_KWARGS})
+
+def test_two():
+    assert Call({_NINE_KWARGS})
+"""
+    assert _check(src) == []

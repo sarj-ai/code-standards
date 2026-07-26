@@ -32,6 +32,15 @@
  * rolls, etc.) is NOT flagged, and neither is the bare `id`/`key`/`session`
  * substring on its own — we err toward suppressing ambiguous correlation ids.
  *
+ * Test files are out of scope entirely. A fixture generator is not a token
+ * mint, and the `.toString(36)` idiom is how tests cheaply produce distinct
+ * keys. Measured on 2,186 real TypeScript files (zod / TanStack Query /
+ * react-router / swr / zustand): 3 of 6 hits were exactly that —
+ * zod/packages/zod/src/v3/tests/Mocker.ts:13 (a mock-data string generator) and
+ * two in
+ * react-router/packages/react-router/__tests__/vendor/turbo-stream-test.ts:215
+ * (random map keys for a serialization round-trip). None is a credential.
+ *
  * KNOWN GAP (false-negative): an arithmetic expression between `Math.random()`
  * and `.toString(36)` breaks the member-chain walk, e.g.
  * `(Math.random() * 1e9).toString(36)`. The intervening `BinaryExpression`
@@ -41,6 +50,8 @@
  */
 
 import { ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
+
+import { isTestFile } from "./_paths.js";
 
 type MessageIds = "insecureRandomId";
 type Options = readonly [];
@@ -295,6 +306,9 @@ export default ESLintUtils.RuleCreator(
   },
   defaultOptions: [],
   create(context) {
+    if (isTestFile(context.filename)) {
+      return {};
+    }
     return {
       CallExpression(node: TSESTree.CallExpression): void {
         if (!isMathRandomCall(node)) {

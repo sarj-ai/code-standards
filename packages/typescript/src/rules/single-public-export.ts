@@ -13,9 +13,20 @@
  * A junk-drawer stem carries no domain to lose, so replacing it with the export
  * name is strictly an improvement; an informative stem (`pagination.ts`) names a
  * domain broader than its one current export and is deliberately never flagged.
+ *
+ * CORPUS SWEEP (2220 files, zod / TanStack Query / react-router / swr /
+ * zustand, 2026-07): 1 hit, and it was a false positive —
+ * `react-router/packages/react-router/__tests__/server-runtime/utils.ts:20`
+ * exports one `mockServerBuild` helper. The basename-only `TEST_FILE_RE` does
+ * not see `__tests__/`, so test-support modules escaped the existing test
+ * exemption; a suite's shared helper module is `utils.ts` by convention and
+ * renaming it buys nothing. The check now also consults the shared `isTestFile`
+ * path predicate, which understands directories.
  */
 
 import { ESLintUtils, type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
+
+import { isTestFile } from "./_paths.js";
 
 type MessageIds = "renameJunkDrawer";
 type Options = readonly [];
@@ -192,6 +203,10 @@ export default ESLintUtils.RuleCreator(
 
     if (base.endsWith(".d.ts")) return {};
     if (TEST_FILE_RE.test(base)) return {};
+    // A test-support module is conventionally `__tests__/utils.ts`; the suite
+    // imports it as "the helpers for these tests" and the stem is meaningful in
+    // that context. `TEST_FILE_RE` only sees the basename, so it misses these.
+    if (isTestFile(context.filename)) return {};
 
     const stem = stemOf(base);
     if (!JUNK_DRAWER_STEMS.has(stem.toLowerCase())) return {};

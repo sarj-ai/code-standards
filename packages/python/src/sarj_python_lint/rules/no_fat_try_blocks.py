@@ -15,6 +15,26 @@ false-positive patterns that dominated real-world suppressions:
   statement and are free. Statements nested inside an `if` / `with` / loop
   count as the single compound statement that contains them. Nested `try`
   blocks are checked independently. `try*` (PEP 654) is held to the same limit.
+* OBSERVABILITY STATEMENTS ARE FREE for the same reason pure assignments are.
+  A statement whose calls are all instrumentation — a logger call, a Prometheus /
+  statsd / OpenTelemetry recorder (`counter.labels(...).inc()`,
+  `hist.observe(elapsed)`, `span.set_attribute(...)`), a monotonic clock read, or
+  a value-shaping builtin used to format an argument (`len`, `round`, `type`) —
+  does not obscure which statement the handler was written for: nobody catches a
+  failed `logger.info`. It is also, being success-path bookkeeping, exactly what
+  must stay INSIDE the `try` so it does not run on the except path — so the rule
+  was asking for a change that cannot be made. A statement mixing a real call
+  with logging still counts.
+
+  Evidence, bulbul PR #4111 (all suppressed at PR head, none a defect):
+  `python/agent/agent/lk/cache_primer.py:47` and `:110` — both suppressions read
+  "success-only bookkeeping (elapsed/metrics/log) must stay inside try so it does
+  not run on the except path"; of the 6 and 5 statements counted there, only 2
+  and 1 were real operations (`get_static_prompt`, `llm.chat`), the rest were
+  `time.monotonic()`, two `cache_primer_*.labels(...).inc()/.observe()` recorders
+  and a `logger.info`. Likewise
+  `python/agent/agent/lk/builder/tool_builder.py:118` (4 counted, the 4th a
+  `logger.info`).
 * `try` blocks that carry an `else` or `finally` clause are exempt. Those
   clauses are a deliberate success/cleanup contract that couples the body to
   the handler (a `finally` that tears down a resource, an `else`/`finally` that
@@ -58,6 +78,7 @@ import enum
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._logging import is_logger_expr
 
 
 if TYPE_CHECKING:
@@ -95,6 +116,114 @@ def _nested_scope_body_ids(node: ast.AST) -> frozenset[int]:
     return frozenset()
 
 
+#: Terminal method names of the metrics/tracing recorders. Prometheus counters and
+#: histograms (`counter.labels(...).inc()`, `hist.observe(x)`, `gauge.set(x)`),
+#: statsd (`.increment`, `.timing`), and OpenTelemetry spans
+#: (`span.set_attribute(...)`, `span.record_exception(e)`) are all fire-and-forget
+#: recorders — see `_is_observability_call`.
+#: `set` and `record` are deliberately ABSENT — `cache.set(k, v)` /
+#: `store.record(row)` collide with them and are real work whose failure a handler
+#: is plausibly written for.
+_OBSERVABILITY_METHODS = frozenset({
+    "inc",
+    "dec",
+    "observe",
+    "set_to_current_time",
+    "labels",
+    "increment",
+    "decrement",
+    "gauge",
+    "timing",
+    "histogram",
+    "record_exception",
+    "add_event",
+    "set_attribute",
+    "set_attributes",
+    "set_status",
+})
+
+#: Clock reads. `time.monotonic()` / `perf_counter()` / `time()` and
+#: `datetime.now()` / `utcnow()` cannot raise at all, but they are the calls that
+#: turn an elapsed-time bookkeeping line into a "throwing" statement.
+_CLOCK_ROOTS = frozenset({"time", "datetime", "date"})
+_CLOCK_METHODS = frozenset({
+    "monotonic",
+    "monotonic_ns",
+    "perf_counter",
+    "perf_counter_ns",
+    "time",
+    "time_ns",
+    "now",
+    "utcnow",
+})
+
+#: Value-shaping builtins. These are what an instrumentation line calls on its
+#: arguments — `logger.info(..., n=len(items), elapsed_s=round(t, 2))`,
+#: `tool_name=type(tool).__name__`. They are pure and total on the values a log
+#: line passes them, so they don't make the statement a candidate for the
+#: handler. Builtins that genuinely do work and raise (`open`, `eval`, `next`,
+#: `getattr`) are deliberately absent.
+_INERT_BUILTINS = frozenset({
+    "abs",
+    "bool",
+    "float",
+    "format",
+    "id",
+    "int",
+    "len",
+    "list",
+    "repr",
+    "round",
+    "str",
+    "tuple",
+    "type",
+})
+
+
+def _attr_root(expr: ast.expr) -> str | None:
+    """Find the leftmost identifier of an attribute chain (`a.b.c` -> `a`).
+
+    Returns:
+        The root identifier name, or None when the chain is not rooted in a Name.
+
+    """
+    current = expr
+    while isinstance(current, ast.Attribute):
+        current = current.value
+    return current.id if isinstance(current, ast.Name) else None
+
+
+def _is_observability_call(call: ast.Call) -> bool:
+    """Report whether `call` is instrumentation — logging, metrics/tracing, or a clock read.
+
+    No `except` handler is ever written *for* one of these: a logger call is
+    swallow-by-design (loguru/`logging` route their own failures to the handler's
+    error stream), a Prometheus/OTel recorder mutates an in-process counter, and a
+    monotonic clock read cannot raise. They are exactly the statements engineers
+    keep inside a `try` so they run only on the success path, which is why they
+    dominate the rule's suppressions.
+
+    Returns:
+        True when the call is an observability/instrumentation call.
+
+    """
+    func = call.func
+    if is_logger_expr(func):
+        return True
+    if isinstance(func, ast.Name):
+        return func.id in _INERT_BUILTINS
+    if not isinstance(func, ast.Attribute):
+        return False
+    if func.attr in _CLOCK_METHODS and _attr_root(func) in _CLOCK_ROOTS:
+        return True
+    # A metrics/tracing recorder — including `counter.labels(...).inc()`, whose
+    # receiver is itself an observability call.
+    if func.attr in _OBSERVABILITY_METHODS:
+        receiver = func.value
+        return not isinstance(receiver, ast.Call) or _is_observability_call(receiver)
+    return False
+
+
 def _can_raise(stmt: ast.stmt) -> bool:
     """Report whether the statement can plausibly raise when the `try` runs.
 
@@ -102,11 +231,22 @@ def _can_raise(stmt: ast.stmt) -> bool:
     Pure assignments / rebinds and inert `def` / `lambda` definitions (whose
     bodies never execute here) are free.
 
+    So is a statement whose calls are ALL observability — logging, metrics,
+    tracing, a clock read. Those don't obscure which statement the handler was
+    written for (nobody catches a failed `logger.info`), and, being success-path
+    bookkeeping, they are precisely what must stay inside the `try` so it does not
+    run on the except path. Treating them as free is the same argument that
+    already makes pure assignments free. A statement that MIXES a real call with
+    logging still counts.
+
     Returns:
         True when the statement may throw.
 
     """
-    return any(isinstance(n, (ast.Call, ast.Await)) for n in _walk_same_scope(stmt))
+    calls = [n for n in _walk_same_scope(stmt) if isinstance(n, (ast.Call, ast.Await))]
+    if not calls:
+        return False
+    return not all(isinstance(n, ast.Call) and _is_observability_call(n) for n in calls)
 
 
 class _Exit(enum.Enum):

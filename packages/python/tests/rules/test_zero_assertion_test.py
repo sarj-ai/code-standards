@@ -49,6 +49,26 @@ def test_skips_uncollected_script_probes(path: str):
     assert _check(_BARE_TEST, path) == []
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "black/tests/data/cases/class_blank_parentheses.py",
+        "black/tests/data/cases/fmtonoff5.py",
+        "tests/helpers.py",
+        "tests/conftest.py",
+    ],
+)
+def test_skips_modules_pytest_does_not_collect(path: str):
+    # `is_test_path` accepts anything under `tests/`; pytest only imports
+    # `test_*.py` / `*_test.py`. black's formatter fixtures live under
+    # `tests/data/cases/` and are arbitrary Python, not tests.
+    assert _check(_BARE_TEST, path) == []
+
+
+def test_still_fires_for_a_collected_module_in_the_same_tree():
+    assert len(_check(_BARE_TEST, "black/tests/test_black.py")) == 1
+
+
 # --------------------------------------------------------------------------- #
 # Positive: the result is computed and dropped on the floor.                   #
 # --------------------------------------------------------------------------- #
@@ -130,6 +150,76 @@ def test_thing():
     assert _check(src) == []
 
 
+@pytest.mark.parametrize(
+    "call",
+    [
+        "pytest.deprecated_call(match='gone')",
+        "pytest.RaisesGroup(pytest.RaisesExc(TypeError))",
+        "pytest_raises_user_error_for_undefined_type('Foobar', 'UndefinedType')",
+    ],
+)
+def test_raises_token_anywhere_in_the_name_is_exempt(call: str):
+    # pytest 8.4's RaisesGroup/RaisesExc and pydantic's own
+    # `pytest_raises_user_error_for_undefined_type` all expect a throw.
+    src = f"""
+import pytest
+
+def test_thing():
+    with {call}:
+        parse("bad")
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize("call", ["response.raise_for_status()", "warn_user(result)"])
+def test_a_name_merely_near_raise_is_not_a_verification(call: str):
+    src = f"""
+def test_thing():
+    {call}
+"""
+    assert len(_check(src)) == 1
+
+
+# --------------------------------------------------------------------------- #
+# FP guard: pytest-benchmark. 93 of 291 third-party hits were benchmarks.      #
+# --------------------------------------------------------------------------- #
+
+
+def test_called_benchmark_fixture_is_exempt():
+    src = """
+def test_model_eq_extra_forbid(benchmark):
+    m1 = ModelNoExtra()
+    benchmark(model_eq, m1, m1)
+"""
+    assert _check(src) == []
+
+
+def test_benchmark_applied_as_a_decorator_is_exempt():
+    src = """
+def test_validators_build(benchmark) -> None:
+    @benchmark
+    def bench() -> None:
+        build()
+"""
+    assert _check(src) == []
+
+
+def test_declaring_benchmark_without_using_it_still_flags():
+    src = """
+def test_thing(benchmark):
+    compute()
+"""
+    assert len(_check(src)) == 1
+
+
+def test_calling_something_named_benchmark_without_the_fixture_still_flags():
+    src = """
+def test_thing():
+    benchmark(compute)
+"""
+    assert len(_check(src)) == 1
+
+
 # --------------------------------------------------------------------------- #
 # FP guard: delegated assertion helpers and fluent DSLs.                       #
 # --------------------------------------------------------------------------- #
@@ -185,6 +275,111 @@ def test_thing():
     asyncio.run(_run())
 """
     assert _check(src) == []
+
+
+# --------------------------------------------------------------------------- #
+# FP guard: helpers defined in the same module. Resolving called names against  #
+# the module's own defs cleared 50 third-party hits (black's `invokeBlack`,     #
+# flask's `common_object_test`, pydantic's `inspect_type_hints`).               #
+# --------------------------------------------------------------------------- #
+
+
+def test_module_local_helper_that_asserts_is_exempt():
+    src = """
+def common_object_test(app):
+    assert app.config["TEST_KEY"] == "foo"
+
+def test_config_from_object():
+    app = flask.Flask(__name__)
+    common_object_test(app)
+"""
+    assert _check(src) == []
+
+
+def test_helper_defined_below_its_caller_is_still_found():
+    src = """
+def test_root_model_as_field():
+    inspect_type_hints(MyModel)
+
+def inspect_type_hints(obj):
+    assert get_type_hints(obj)
+"""
+    assert _check(src) == []
+
+
+def test_sibling_method_helper_reached_through_self_is_exempt():
+    src = """
+class BlackTestCase:
+    def invokeBlack(self, args, exit_code=0):
+        result = BlackRunner().invoke(black.main, args)
+        assert result.exit_code == exit_code
+
+    def test_no_src_fails(self):
+        self.invokeBlack([], exit_code=1)
+"""
+    assert _check(src) == []
+
+
+def test_helper_that_only_delegates_to_another_helper_is_exempt():
+    # black's `compare_results` holds no assert of its own; the one it calls does.
+    src = """
+def check_ast_equivalence(src, dst):
+    assert black.assert_equivalent(src, dst) is None
+
+def compare_results(result, expected):
+    check_ast_equivalence(result, expected)
+
+def test_expression(self):
+    compare_results(run(), EXPECTED)
+"""
+    assert _check(src) == []
+
+
+def test_module_local_helper_that_asserts_nothing_still_flags():
+    src = """
+def import_from(dotted_path):
+    return importlib.import_module(dotted_path)
+
+def test_moved_on_v2(module):
+    import_from(module)
+"""
+    assert len(_check(src)) == 1
+
+
+# --------------------------------------------------------------------------- #
+# FP guard: re-running another module's tests. 17 third-party hits, all in the  #
+# fastapi/sqlmodel tutorial suites.                                            #
+# --------------------------------------------------------------------------- #
+
+
+def test_calling_an_imported_test_function_is_exempt():
+    src = """
+from docs_src.app_testing.tutorial002_py310 import test_read_main
+
+def test_main():
+    test_read_main()
+"""
+    assert _check(src) == []
+
+
+def test_calling_a_test_off_a_module_object_is_exempt():
+    src = """
+def test_tutorial(modules):
+    modules.test.test_create_hero()
+"""
+    assert _check(src) == []
+
+
+def test_calling_a_locally_defined_test_that_verifies_nothing_still_flags():
+    # The delegate is right here and it asserts nothing, so nothing is verified.
+    src = """
+def test_inner():
+    return compute()
+
+def test_outer():
+    test_inner()
+"""
+    assert len(_check(src)) == 2
 
 
 def test_assertion_inside_control_flow_is_exempt():

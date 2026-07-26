@@ -53,6 +53,15 @@ ruleTester.run("no-json-stringify-error", rule, {
     { code: "const err = {}; MyJSON.stringify(err);" },
     // No arguments.
     { code: "JSON.stringify();" },
+
+    // --- Data payloads hanging off an error object ---------------------------
+    // `error.data` on a react-router `ErrorResponse` is the loader's own JSON
+    // body, fully enumerable. Real corpus:
+    // react-router/playground/rsc-vite/src/routes/root/root.client.tsx:42.
+    { code: "JSON.stringify(error.data);" },
+    { code: "const s = JSON.stringify(err.status);" },
+    { code: "JSON.stringify(error.issues);" },
+    { code: "JSON.stringify(err.response);" },
   ],
   invalid: [
     // A `catch` binding passed directly, even with an unconventional name.
@@ -113,6 +122,17 @@ ruleTester.run("no-json-stringify-error", rule, {
     // An unrelated ternary (not an instanceof guard) does not suppress the report.
     {
       code: "const s = ready ? other : JSON.stringify(err);",
+      errors: [{ messageId: "noJsonStringifyError" }],
+    },
+
+    // A payload accessor is exempt, but a nested-error accessor on the same base
+    // still fires — the guard is about the property, not the base.
+    {
+      code: "JSON.stringify(error.cause);",
+      errors: [{ messageId: "noJsonStringifyError" }],
+    },
+    {
+      code: "JSON.stringify(err.originalError);",
       errors: [{ messageId: "noJsonStringifyError" }],
     },
   ],

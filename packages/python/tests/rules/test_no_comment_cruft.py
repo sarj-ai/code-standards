@@ -641,3 +641,129 @@ def f():
     return 1
 """
     assert len(_check(src)) == 1
+
+
+# --------------------------------------------------------------------------- #
+# FP guards found in a 2,657-file sweep (pydantic, fastapi, black, flask, ...). #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "insert_assert(exc_info.value.errors(include_url=False))",
+        "insert_assert(Model.model_json_schema())",
+        "insert_assert (m.foobar)",
+    ],
+)
+def test_insert_assert_regeneration_recipe_is_exempt(body: str):
+    # pydantic parks this above the assertion it writes; uncommenting it makes
+    # pytest-examples rewrite the file, so git history never held the line.
+    assert _standalone(body) == [], body
+
+
+def test_other_commented_out_dev_tool_calls_still_fire():
+    # The opposite case: `debug(...)` prints, it does not regenerate anything,
+    # so a commented-out call to it is ordinary dead debugging code.
+    for body in ("debug(v)", "insert_asserts(v)", "my_insert_assert(v)"):
+        diags = _standalone(body)
+        assert len(diags) == 1, body
+        assert "Commented-out code" in diags[0].message
+
+
+def test_snippet_block_under_colon_lead_in_survives_a_blank_comment_row():
+    # flask/helpers.py: `# Original implementation:`, a blank `#`, then the
+    # snippet — the lead-in is two rows up, not one.
+    src = "x = 1\n# Original implementation:\n#\n#     session.setdefault('_f', []).append(c)\ny = 2\n"
+    assert _check(src) == []
+
+
+def test_snippet_block_covers_every_row_of_the_run():
+    # black/comments.py: the second snippet row is indented under the first,
+    # so its predecessor is code-shaped rather than prose.
+    src = (
+        "x = 1\n"
+        "# The one-liner has been split across multiple lines:\n"
+        "#     if True:\n"
+        '#         print("a"); print("b")\n'
+        "y = 2\n"
+    )
+    assert _check(src) == []
+
+
+def test_snippet_block_ends_when_plain_prose_resumes():
+    src = (
+        "x = 1\n"
+        "# Original implementation:\n"
+        "#     session.setdefault('_f', []).append(c)\n"
+        "# That assumed the session tracked mutations, which it does not.\n"
+        "# self.retry()\n"
+        "# self.log()\n"
+        "y = 2\n"
+    )
+    diags = _check(src)
+    assert len(diags) == 1
+    assert diags[0].line == 6
+
+
+def test_bare_block_keyword_lead_in_does_not_arm_a_snippet_block():
+    # pydantic/v1/mypy.py: `# else:` announces nothing — it is dead code, and
+    # the indented rows beneath it are the dead branch, not an illustration.
+    src = "x = 1\n# else:\n#     v.is_staticmethod = True\n#     dec = Decorator(func, v)\ny = 2\n"
+    diags = _check(src)
+    assert len(diags) == 1
+    assert diags[0].line == 4
+
+
+def test_prose_lead_in_without_a_colon_does_not_arm_a_snippet_block():
+    # sqlmodel/tests/test_select_typing.py: a disabled test body under a plain
+    # prose reason stays flagged past the first row.
+    src = (
+        "x = 1\n"
+        "# check typing of select with 5 fields, which does not pass mypy yet\n"
+        "# with Session(engine) as session:\n"
+        "#     statement = select(Hero.id)\n"
+        "#     results = session.exec(statement)\n"
+        "y = 2\n"
+    )
+    diags = _check(src)
+    assert [d.line for d in diags] == [4, 5]
+
+
+@pytest.mark.parametrize(
+    "prev",
+    [
+        "typing-extensions swallows one of the warnings, so we support",
+        "strip trailing newline, not usually part of a text repr",
+    ],
+)
+def test_narration_on_a_wrapped_sentence_tail_is_exempt(prev: str):
+    # The why lives in the row above; this row is half a sentence.
+    assert _check(f"x = 1\n# {prev}\n# both ways for now.\ny = 2\n") == []
+
+
+@pytest.mark.parametrize("prev", ["we cache the parsed value here.", "see the note above:", "reuse it (cheaply)"])
+def test_narration_after_a_finished_sentence_still_fires(prev: str):
+    diags = _check(f"x = 1\n# {prev}\n# First, take the lock.\ny = 2\n")
+    assert len(diags) == 1
+    assert "narrates" in diags[0].message
+
+
+def test_blank_comment_row_ends_the_paragraph_so_narration_still_fires():
+    src = "x = 1\n# we keep two counters here\n#\n# First, take the lock.\ny = 2\n"
+    diags = _check(src)
+    assert len(diags) == 1
+    assert diags[0].line == 4
+
+
+def test_letterless_line_art_header_is_not_a_preamble():
+    # requests/__init__.py carries its logo as a four-line comment block.
+    src = "#   __\n#  /__)  _  _     _   _ _/   _\n# / (   (- (/ (/ (- _)  /  _)\n#          /\nimport os\n"
+    assert _check(src) == []
+
+
+def test_header_preamble_with_a_single_letter_still_flags():
+    src = "# a1\n# b2\n# c3\n# d4\nimport os\n"
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "preamble" in diags[0].message

@@ -15,6 +15,18 @@
  *     A comment-only catch (`catch { /* ignore, safe because … *\/ }`) is treated
  *     as an intentional, documented ignore and is exempt.
  *
+ * The documented-ignore exemption applies to BOTH message ids. A catch that logs
+ * and explains why the failure is survivable is the same deliberate decision as
+ * a comment-only empty catch, and the rule's own message ("handle it for real")
+ * has nothing to add to it. Measured on 2,186 real TypeScript files (zod /
+ * TanStack Query / react-router / swr / zustand): of 10 log-only hits, the one
+ * carrying a written rationale was
+ * react-router/packages/react-router-dev/vite/styles.ts:104 —
+ * `catch { console.warn(...); // this can happen with dynamically imported
+ * modules … }` — and it is precisely the case the rule should not litigate. A
+ * bare `catch (e) { console.error(e); }` with no comment still fires (9 hits,
+ * e.g. react-router/packages/react-router/lib/dom/ssr/fog-of-war.ts:209).
+ *
  * A previous version fired the "logging then swallowing" message on empty and
  * comment-only catches that contained no logging call at all — the vast majority
  * of real-world hits — which was factually wrong. The two distinct message ids
@@ -105,13 +117,20 @@ export default ESLintUtils.RuleCreator(
       CatchClause(node: TSESTree.CatchClause): void {
         const statements = node.body.body;
 
+        // A comment inside the block documents an intentional ignore — for a
+        // silent swallow and for a log-and-continue alike.
+        const isDocumented =
+          context.sourceCode.getCommentsInside(node.body).length > 0;
+
         if (statements.length === 0) {
-          // A comment inside the block documents an intentional ignore; only a
-          // truly empty catch is an unexplained silent swallow.
-          if (context.sourceCode.getCommentsInside(node.body).length > 0) {
+          if (isDocumented) {
             return;
           }
           context.report({ node, messageId: "emptyCatch" });
+          return;
+        }
+
+        if (isDocumented) {
           return;
         }
 

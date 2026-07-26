@@ -330,3 +330,40 @@ def test_double_dash_in_string_value_strips_real_on_conflict() -> None:
 def test_plus_concat_runtime_value_between_keywords_is_missed() -> None:
     src = 'q = "INSERT INTO t " + table + " (id) VALUES (%s)"'
     assert _count(src) == 1
+
+
+# --------------------------------------------------------------------------- #
+# bulbul PR #4111 regression: a test file is never a store module.              #
+#                                                                               #
+# `test_<x>_store.py` ends in `_store.py`, so the store-layer naming test used   #
+# to sweep in the tests FOR the store layer. A fixture that seeds one row per    #
+# test needs no ON CONFLICT — idempotency is what the per-test database reset    #
+# provides — and raw SQL in tests is already judged by SARJ036.                  #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        pytest.param("tests/store/test_sip_connection_store.py", id="test-prefixed-store-name"),
+        pytest.param("foo_store_test.py", id="test-suffixed-store-name"),
+        pytest.param("tests/fixtures.py", id="under-tests-dir"),
+        pytest.param("stores/conftest.py", id="conftest-under-stores"),
+    ],
+)
+def test_test_files_are_not_store_modules(path: str) -> None:
+    """Evidence: bulbul `python/bulbul/tests/store/test_sip_connection_store.py:37`."""
+    src = 'q = "INSERT INTO phone_provider (provider_name) VALUES (%s) RETURNING id::text"'
+    assert _count(src, path) == 0
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        pytest.param("sip_connection_store.py", id="store-module"),
+        pytest.param("stores/phone_provider_store.py", id="under-stores-dir"),
+    ],
+)
+def test_production_store_modules_still_fire(path: str) -> None:
+    src = 'q = "INSERT INTO phone_provider (provider_name) VALUES (%s) RETURNING id::text"'
+    assert _count(src, path) == 1

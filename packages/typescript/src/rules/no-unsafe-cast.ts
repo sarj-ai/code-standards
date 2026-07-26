@@ -7,10 +7,25 @@
  *
  * `as const` is exempt — it narrows rather than widens and is the prescribed
  * pattern for literal inference.
+ *
+ * TEST FILES ARE EXEMPT. Corpus sweep (2220 files across zod / TanStack Query /
+ * react-router / swr / zustand, 2026-07): 947 raw hits, 357 of them inside test
+ * files, and the test-file ones are a different act entirely. A test asserts on
+ * behaviour, not on types: it hands the subject a deliberately partial or
+ * deliberately invalid value to drive a branch that a well-typed caller could
+ * never reach, and `as any` is how you spell that.
+ * `query/packages/preact-query/src/__tests__/HydrationBoundary.test.tsx:401`
+ * (`<HydrationBoundary state={{} as any}>`, exercising the empty-state path) and
+ * `zustand/tests/devtools.test.tsx` (71 hits, all mock wiring) are
+ * representative. "Model the shape" is not advice a fixture can act on, so every
+ * one of those reports is noise the author must suppress. The 590 hits in
+ * production sources still fire.
  */
 
 import { ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
 import { AST_NODE_TYPES } from "@typescript-eslint/utils";
+
+import { isTestFile } from "./_paths.js";
 
 type MessageIds = "asAny" | "doubleCast";
 
@@ -47,6 +62,10 @@ export default ESLintUtils.RuleCreator(
   },
   defaultOptions: [],
   create(context) {
+    if (isTestFile(context.filename)) {
+      return {};
+    }
+
     function checkAssertion(
       node: TSESTree.TSAsExpression | TSESTree.TSTypeAssertion,
     ): void {

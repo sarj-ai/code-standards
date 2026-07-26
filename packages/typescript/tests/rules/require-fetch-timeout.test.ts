@@ -17,6 +17,12 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("require-fetch-timeout", rule, {
   valid: [
+    // FP guard, corpus: query/packages/query-codemods/src/v5/remove-overloads/__testfixtures__/bug-reports.input.tsx
+    // — jscodeshift BEFORE/AFTER text a codemod test diffs; it never runs.
+    {
+      code: "async function f() { await fetch('https://api.example.com/x'); }",
+      filename: "/repo/src/v5/remove-overloads/__testfixtures__/bug-reports.input.tsx",
+    },
     // signal present.
     {
       code: "await fetch(url, { signal: AbortSignal.timeout(5000) });",
@@ -98,6 +104,12 @@ ruleTester.run("require-fetch-timeout", rule, {
     },
   ],
   invalid: [
+    // Production code still fires.
+    {
+      code: "async function f() { await fetch('https://api.example.com/x'); }",
+      filename: "/repo/src/clients/api-client.ts",
+      errors: [{ messageId: "missingSignal" }],
+    },
     // Inline-URL calls with no init argument.
     {
       code: "await fetch('/api/things');",

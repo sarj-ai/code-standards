@@ -40,9 +40,42 @@
  * still fires.
  *
  * At most one report is emitted per offending loop / callback.
+ *
+ * CORPUS SWEEP (2220 files across zod / TanStack Query / react-router / swr /
+ * zustand, 2026-07): 64 raw hits. Three further suppressions came out of it:
+ *
+ *   (f) TEST AND BENCHMARK FILES — 45 hits. A loop in a test is a table-driven
+ *       case sweep or a teardown, and its iterations share one global fixture,
+ *       so serial IS the contract.
+ *       `react-router/packages/react-router/__tests__/dom/special-characters-test.tsx:312`
+ *       (`for (let charDef of specialChars) { await testParamValues(...) }`, 10
+ *       hits in that file alone) mounts and unmounts a React tree into the same
+ *       JSDOM container per case; `Promise.all` would interleave them into one
+ *       container and the suite would simply be wrong. Teardown has the same
+ *       shape —
+ *       `react-router/packages/create-react-router/__tests__/create-react-router-test.ts:77`
+ *       (`for (let dir of tempDirs) await rm(dir, ...)`). A BENCHMARK is the
+ *       purest case: `zod/packages/bench/object-async.ts:6`
+ *       (`for (const _ of DATA) await zod3.parseAsync(_)`) exists precisely to
+ *       measure one operation at a time; concurrency would destroy the number
+ *       it is trying to produce.
+ *   (g) `await Promise.resolve()` / `await Promise.reject()` — a microtask
+ *       flush used to let queued work settle, the microtask twin of the
+ *       `await new Promise(setTimeout)` already covered by (c). There is no I/O
+ *       to parallelize. `query/packages/lit-query/src/tests/infinite-and-options.test.ts:207`
+ *       (`for (let i = 0; i < 5; i += 1) { host.update(); await Promise.resolve() }`).
+ *   (h) `preset` / `plugin` / `extension` added to the ordered-iterable hints —
+ *       a preset or plugin list is a lifecycle chain exactly like the `hook` and
+ *       `middleware` entries already there, and each entry may observe what the
+ *       previous one wrote. `react-router/packages/react-router-dev/config/config.ts:776`
+ *       (`for (let preset of reactRouterUserConfig.presets ?? []) await
+ *       preset.reactRouterConfigResolved?.({ reactRouterConfig })`) threads one
+ *       mutable `reactRouterConfig` through every preset in order.
  */
 
 import { ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
+
+import { isTestFile } from "./_paths.js";
 
 type MessageIds = "noSequentialAwait";
 type Options = readonly [];
@@ -62,7 +95,14 @@ const ARRAY_ITERATION_METHODS = new Set<string>(["forEach", "map", "filter"]);
  * design: the rule prefers a false negative to a false positive.
  */
 const SEQUENTIAL_ITERABLE_HINT =
-  /sort|reverse|ordered|sequence|hook|middleware|pipeline|\bstage|\bstep|\bphase|migration|chain|buffer|stream|teleport|chunk|\bqueue|drain/i;
+  /sort|reverse|ordered|sequence|hook|middleware|pipeline|preset|plugin|extension|\bstage|\bstep|\bphase|migration|chain|buffer|stream|teleport|chunk|\bqueue|drain/i;
+
+/**
+ * Guard (f): a benchmark file. A benchmark loop measures ONE operation at a
+ * time; running the iterations concurrently would destroy the measurement, so
+ * the serial await is the entire point.
+ */
+const BENCH_FILE_RE = /(^|[\\/])bench(marks?)?[\\/]|\.bench\.[cm]?[jt]sx?$/i;
 
 /**
  * Node types that introduce a new function scope. We never descend across one
@@ -144,6 +184,24 @@ function collectAwaits(root: TSESTree.Node): TSESTree.AwaitExpression[] {
 }
 
 /**
+ * Guard (i): the loop body ASSERTS. A loop containing `expect(...)` (or
+ * `assert(...)`) is sweeping a table of cases, and its iterations share one
+ * fixture — a browser page, a rendered tree, a temp directory. Running them
+ * concurrently interleaves the assertions so a failure names the wrong case,
+ * and for a single-page driver it is not even possible.
+ *
+ * This is the syntactic form of guard (f): react-router spells its suites
+ * `integration/vite-css-test.ts`, which no path predicate matching `*.test.ts`
+ * can see. Corpus evidence (2026-07): 17 of the 31 hits surviving guard (f) were
+ * exactly this — `react-router/integration/vite-server-bundles-test.ts:282`
+ * (`for (let path of _404s) { let response = await page.goto(...);
+ * expect(response?.status()).toBe(404) }`, one Playwright page that cannot
+ * navigate to two URLs at once) and
+ * `react-router/integration/sri-test.ts:121`.
+ */
+const ASSERTION_CALLEE_RE = /^(expect|assert|should|invariant)$/;
+
+/**
  * Guard (a): the scope contains a `return` / `break` / `continue`, marking a
  * retry / short-circuit / early-exit loop whose serial awaits are intentional.
  */
@@ -192,6 +250,20 @@ function isTimerYield(node: TSESTree.AwaitExpression): boolean {
   // `await sleep(ms)` / `await delay()` / `await this.wait()` — a poll/throttle
   // yield in a `while` loop, deliberately serial.
   if (arg.type === "CallExpression") {
+    // Guard (g): `await Promise.resolve()` / `await Promise.reject()` is a
+    // microtask flush — the microtask twin of the `new Promise(setTimeout)`
+    // yield above. There is no I/O in it to run concurrently.
+    if (
+      arg.callee.type === "MemberExpression" &&
+      !arg.callee.computed &&
+      arg.callee.object.type === "Identifier" &&
+      arg.callee.object.name === "Promise" &&
+      arg.callee.property.type === "Identifier" &&
+      (arg.callee.property.name === "resolve" ||
+        arg.callee.property.name === "reject")
+    ) {
+      return true;
+    }
     const name = calleeName(arg.callee);
     return name !== null && TIMER_HELPER_RE.test(name);
   }
@@ -214,6 +286,28 @@ function isQueueDrain(node: TSESTree.AwaitExpression): boolean {
     arg.callee.property.type === "Identifier" &&
     QUEUE_DRAIN_METHODS.test(arg.callee.property.name)
   );
+}
+
+/** Guard (i): does this scope contain an assertion call? */
+function hasAssertion(root: TSESTree.Node): boolean {
+  let found = false;
+  visitScope(root, (node) => {
+    if (node.type !== "CallExpression") {
+      return;
+    }
+    let callee: TSESTree.Node = node.callee;
+    // Unwrap `expect(x).resolves`, `assert.ok`, `chai.expect` — the base name.
+    while (callee.type === "MemberExpression") {
+      callee = callee.object;
+    }
+    if (callee.type === "CallExpression") {
+      callee = callee.callee;
+    }
+    if (callee.type === "Identifier" && ASSERTION_CALLEE_RE.test(callee.name)) {
+      found = true;
+    }
+  });
+  return found;
 }
 
 function referencesName(root: TSESTree.Node, name: string): boolean {
@@ -304,11 +398,15 @@ function shouldReport(
   awaits: readonly TSESTree.AwaitExpression[],
   earlyExit: boolean,
   iterableText: string | null,
+  asserts = false,
 ): boolean {
   if (awaits.length === 0) {
     return false;
   }
   if (earlyExit) {
+    return false;
+  }
+  if (asserts) {
     return false;
   }
   if (iterableText !== null && SEQUENTIAL_ITERABLE_HINT.test(iterableText)) {
@@ -341,6 +439,11 @@ export default ESLintUtils.RuleCreator(
   },
   defaultOptions: [],
   create(context) {
+    // Guard (f): fixtures and benchmarks serialize on purpose — see @fileoverview.
+    if (isTestFile(context.filename) || BENCH_FILE_RE.test(context.filename)) {
+      return {};
+    }
+
     /**
      * The parts of a loop where an await "belonging to this loop" can live: the
      * body, plus the C-style `for` init/test/update or the for-of/for-in
@@ -378,6 +481,7 @@ export default ESLintUtils.RuleCreator(
 
       const awaits: TSESTree.AwaitExpression[] = [];
       let earlyExit = false;
+      let asserts = false;
       for (const part of loopParts(node)) {
         if (part === null || isLoop(part)) {
           continue;
@@ -386,8 +490,11 @@ export default ESLintUtils.RuleCreator(
         if (!earlyExit && hasEarlyExit(part)) {
           earlyExit = true;
         }
+        if (!asserts && hasAssertion(part)) {
+          asserts = true;
+        }
       }
-      if (shouldReport(awaits, earlyExit, iterableTextOf(node))) {
+      if (shouldReport(awaits, earlyExit, iterableTextOf(node), asserts)) {
         context.report({ node, messageId: "noSequentialAwait" });
       }
     }
@@ -436,7 +543,9 @@ export default ESLintUtils.RuleCreator(
         const awaits = collectAwaits(callback.body);
         const earlyExit = hasEarlyExit(callback.body);
         const iterableText = context.sourceCode.getText(callee.object);
-        if (shouldReport(awaits, earlyExit, iterableText)) {
+        if (
+          shouldReport(awaits, earlyExit, iterableText, hasAssertion(callback.body))
+        ) {
           context.report({ node, messageId: "noSequentialAwait" });
         }
       },

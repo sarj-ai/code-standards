@@ -10,6 +10,17 @@
  * a function argument (e.g. `router.post('/api/x', handler)`) so Express-style
  * route *definitions* aren't mistaken for client-side mutations.
  *
+ * NON-REACT FRAMEWORKS ARE SKIPPED. "Use a Server Action" is not advice an
+ * Angular, Vue, Svelte or Solid module can act on — the feature does not exist
+ * outside React/Next. Corpus sweep (2220 files across zod / TanStack Query /
+ * react-router / swr / zustand, 2026-07): 9 hits, of which 3 were Angular
+ * services —
+ * `query/examples/angular/auto-refetching/src/app/services/tasks.service.ts:38`
+ * (`lastValueFrom(this.#http.post('/api/tasks', task))`, an `HttpClient`
+ * injection) — and 4 were jscodeshift input/output fixtures under
+ * `__testfixtures__/`, which are text a codemod transforms rather than code that
+ * runs. Both are now skipped; the 2 genuine React hits still fire.
+ *
  * References:
  *   - https://nextjs.org/docs/app/building-your-application/data-fetching/server-actions-and-mutations
  */
@@ -24,7 +35,14 @@ const MUTATION_METHODS = new Set(["POST", "PUT", "DELETE", "PATCH"]);
 const AXIOS_MUTATION_METHODS = new Set(["post", "put", "delete", "patch"]);
 
 const SKIP_FILE_REGEX =
-  /(?:\.test\.[jt]sx?$|\.spec\.[jt]sx?$|\/tests?\/|\/__tests__\/|\/scripts?\/|\/app\/api\/.*\/route\.[jt]sx?$|\/pages\/api\/)/;
+  /(?:\.test\.[jt]sx?$|\.spec\.[jt]sx?$|-(?:test|spec)\.[jt]sx?$|\/tests?\/|\/__tests__\/|\/__testfixtures__\/|\/scripts?\/|\/app\/api\/.*\/route\.[jt]sx?$|\/pages\/api\/)/;
+
+/**
+ * Import sources that prove the module belongs to a framework where Server
+ * Actions do not exist. See @fileoverview for the corpus evidence.
+ */
+const NON_REACT_FRAMEWORK_RE =
+  /^(?:@angular\/|@nestjs\/|vue$|vue\/|svelte$|svelte\/|solid-js$|solid-js\/|@ember\/|rxjs$|rxjs\/)/;
 
 type Ctx = Readonly<RuleContext<MessageIds, Options>>;
 
@@ -178,8 +196,21 @@ export default ESLintUtils.RuleCreator(
       return {};
     }
 
+    // Set by the ImportDeclaration visitor. Imports are hoisted to the top of a
+    // module, so every one is seen before the first CallExpression below.
+    let isNonReactFramework = false;
+
     return {
+      ImportDeclaration(node) {
+        if (
+          typeof node.source.value === "string" &&
+          NON_REACT_FRAMEWORK_RE.test(node.source.value)
+        ) {
+          isNonReactFramework = true;
+        }
+      },
       CallExpression(node) {
+        if (isNonReactFramework) return;
         let isMutation = false;
 
         // 1. Standard fetch('/api/orders', { method: 'POST' })

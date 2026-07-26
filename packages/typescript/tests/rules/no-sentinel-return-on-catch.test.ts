@@ -17,6 +17,26 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("no-sentinel-return-on-catch", rule, {
   valid: [
+    // FP guard, corpus: react-router/packages/create-react-router/utils.ts:196
+    // and react-router/packages/react-router/lib/rsc/server.rsc.ts:1501 — an
+    // unannotated predicate whose whole contract is a boolean answer.
+    {
+      code: "async function directoryExists(p) { try { const s = await stat(p); return s.isDirectory(); } catch { return false; } }",
+    },
+    {
+      code: "function isClientReference(x) { try { return x.$$typeof === SYM; } catch { return false; } }",
+    },
+    {
+      code: "const hasDependency = ({ name }) => { try { return Boolean(require.resolve(name)); } catch { return false; } };",
+    },
+    // FP guard, corpus: react-router/packages/react-router/lib/server-runtime/crypto.ts:30
+    // — the same sentinel already sits on a normal path, behind a ternary.
+    {
+      code: "function verify(value, valid) { try { return valid ? value : false; } catch { return false; } }",
+    },
+    {
+      code: "function readVersion(content) { try { const p = parse(content); return typeof p.version === 'string' ? p.version : null; } catch { return null; } }",
+    },
     // Rethrow — the canonical correct handling.
     {
       code: `
@@ -299,6 +319,16 @@ ruleTester.run("no-sentinel-return-on-catch", rule, {
     },
   ],
   invalid: [
+    // The name guard is boolean-only: a nullable accessor still fires.
+    {
+      code: "function isReady(p) { try { return load(p); } catch { return null; } }",
+      errors: [{ messageId: "noSentinelReturn" }],
+    },
+    // A non-predicate name with no matching normal-path sentinel still fires.
+    {
+      code: "async function loadRows(p) { try { return await query(p); } catch { return []; } }",
+      errors: [{ messageId: "noSentinelReturn" }],
+    },
     // Regression: the log-detection widening (walk the whole argument subtree so
     // a structured logger's meta object counts) once matched the caught binding
     // by NAME ALONE, which silenced 8 of 18 true positives. Each of these

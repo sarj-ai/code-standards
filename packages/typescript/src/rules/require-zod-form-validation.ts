@@ -20,11 +20,22 @@
  * A Zod receiver is recognised by name — `Schema`-suffixed (`userSchema`), the
  * `Z<Capital>` house form (`ZUser`), or the bare `z` builder — matching
  * `zod-naming-convention`, which accepts both conventions.
+ *
+ * TEST FILES ARE EXEMPT. Corpus sweep (2220 files across zod / TanStack Query /
+ * react-router / swr / zustand, 2026-07): 42 raw hits, 40 of them in
+ * react-router suites and every one an assertion rather than a trust boundary.
+ * `react-router/packages/react-router/__tests__/dom/data-browser-router-test.tsx:4183`
+ * is the shape — `let formData = await actionSpy.mock.calls[0][0].request.formData();
+ * expect(formData.get("a")).toBe("1")`. The FormData was built by the test two
+ * lines earlier; there is no attacker, and validating it with a schema would
+ * assert the schema instead of the router. The rule's premise — "this value is
+ * attacker-controlled" — is false by construction in a fixture.
  */
 
 import { ESLintUtils, type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
 import type { RuleContext, Scope } from "@typescript-eslint/utils/ts-eslint";
 
+import { isTestFile } from "./_paths.js";
 import { ZOD_SCHEMA_NAME_RE } from "./_zod.js";
 
 type MessageIds = "missingZodValidation";
@@ -112,6 +123,10 @@ export default ESLintUtils.RuleCreator(
   },
   defaultOptions: [],
   create(context: Ctx) {
+    if (isTestFile(context.filename)) {
+      return {};
+    }
+
     // A receiver is a FormData source if its name reads like form data, or if
     // it is a binding initialized from a `.formData()` call.
     const isFormSourceIdentifier = (node: TSESTree.Node): boolean => {

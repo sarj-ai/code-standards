@@ -21,6 +21,14 @@
  *     lifetime and attaching a fresh signal is impossible or wrong.
  *   - Test files and one-off tooling (`scripts/**`, `*.mjs`) are skipped —
  *     dev scripts die with the terminal, so hang-hardening is noise there.
+ *   - Codemod fixtures under `__testfixtures__/` are skipped. Corpus sweep
+ *     (2220 files across zod / TanStack Query / react-router / swr / zustand,
+ *     2026-07): 8 of 79 hits came from a single jscodeshift input/output pair,
+ *     `query/packages/query-codemods/src/v5/remove-overloads/__testfixtures__/bug-reports.input.tsx`
+ *     and its `.output.tsx` twin. Those files are the BEFORE and AFTER text a
+ *     codemod test diffs; editing them to add a signal would break the test they
+ *     exist to drive, and the code never runs. The shared `isTestFile` predicate
+ *     knows `fixtures/` but not jscodeshift's `__testfixtures__/` spelling.
  *
  * Wrapper modules that centralize timeout handling can be exempted via the
  * `allowIn` glob-pattern option.
@@ -34,6 +42,9 @@ import {
 } from "@typescript-eslint/utils";
 
 import { isScriptFile, isTestFile } from "./_paths.js";
+
+/** jscodeshift's fixture directory — input/output text, not code that runs. */
+const CODEMOD_FIXTURE_RE = /[\\/]__testfixtures__[\\/]/;
 
 type MessageIds = "missingSignal";
 type Options = readonly [
@@ -136,7 +147,11 @@ export default ESLintUtils.RuleCreator(
   },
   defaultOptions: [{}],
   create(context, [optionsArg]) {
-    if (isTestFile(context.filename) || isScriptFile(context.filename)) {
+    if (
+      isTestFile(context.filename) ||
+      isScriptFile(context.filename) ||
+      CODEMOD_FIXTURE_RE.test(context.filename)
+    ) {
       return {};
     }
     const allowIn = optionsArg?.allowIn ?? [];

@@ -108,12 +108,12 @@ def test_flags_annotated_assignment():
 
 
 def test_message_points_at_module_scope():
-    diags = _check(_fn('allowed = ["a", "b", "c"]'))
+    diags = _check(_fn('allowed = ["a", "b", "c"]\nreturn len(allowed)'))
     assert "module scope" in diags[0].message
 
 
 def test_line_and_col():
-    diags = _check(_fn('allowed = ["a", "b", "c"]'))
+    diags = _check(_fn('allowed = ["a", "b", "c"]\nreturn len(allowed)'))
     assert (diags[0].line, diags[0].col) == (2, 5)
 
 
@@ -372,8 +372,11 @@ def test_sorted_copies_but_sort_mutates():
     assert _check(_fn('allowed = ["a", "b", "c"]\nallowed.sort()\nreturn allowed')) == []
 
 
-def test_fires_when_never_referenced_again():
-    assert len(_check(_fn('allowed = ["a", "b", "c"]\nreturn payload'))) == 1
+def test_ignores_binding_the_function_never_reads():
+    # Sweep evidence: rich/examples/log.py:54 binds `foo = (1, 2, 3)` and never
+    # reads it — Console(log_locals=True) picks it up by frame inspection, so
+    # the hoist would both serve no use site and empty the frame it renders.
+    assert _check(_fn('allowed = ["a", "b", "c"]\nreturn payload')) == []
 
 
 def test_fires_on_multiple_safe_reads():
@@ -478,3 +481,39 @@ def test_empty_or_trivial_source(source: str):
 
 def test_syntax_error_returns_empty():
     assert _check("def f(:\n    pass") == []
+
+
+# --------------------------------------------------------------------------- #
+# FP-hardening: frame reflection (famous-repo sweep).                         #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "reflection",
+    [
+        "print(locals())",
+        "return render_scope(locals(), title='locals')",
+        "return vars()",
+    ],
+)
+def test_ignores_function_that_reflects_over_its_frame(reflection: str):
+    # Minimized from rich/rich/scope.py:82-83, where `list_of_things` /
+    # `dict_of_things` exist only to be rendered by `render_scope(locals())`.
+    src = _fn(f"allowed = ['a', 'b', 'c']\n{reflection}\nreturn len(allowed)")
+    assert _check(src) == []
+
+
+def test_vars_with_an_argument_is_not_frame_reflection():
+    # `vars(obj)` reads someone else's __dict__ — it does not expose this frame.
+    src = _fn("allowed = ['a', 'b', 'c']\nemit(vars(payload))\nreturn len(allowed)")
+    assert len(_check(src)) == 1
+
+
+def test_read_by_a_safe_consumer_still_fires():
+    # The opposite case for the zero-read guard: one recognised read is enough.
+    assert len(_check(_fn("allowed = ['a', 'b', 'c']\nreturn len(allowed)"))) == 1
+
+
+def test_regex_bound_but_never_used_is_ignored():
+    src = _fn('pattern = re.compile(r"^[a-z]+$")\nreturn payload')
+    assert _check(src) == []

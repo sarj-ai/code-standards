@@ -575,3 +575,100 @@ def test_backtick_inside_string_value_wrongly_exempts_postgres_query() -> None:
 def test_bigquery_import_file_with_real_postgres_query_is_over_broad() -> None:
     src = 'from google.cloud import bigquery\nq = "SELECT COUNT(*) FROM call WHERE org_id = %s GROUP BY status"\n'
     assert len(_check(src)) == 1
+
+
+# --------------------------------------------------------------------------- #
+# bulbul PR #4111 regressions.                                                  #
+#                                                                               #
+# `IS [NOT] DISTINCT FROM` is Postgres' null-safe comparison OPERATOR, and a     #
+# `test_<x>_store.py` is a test, not a store module. Both classes were 100%      #
+# suppressed at PR head with no defect behind any of them.                      #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param(
+            'q = "UPDATE t SET a = 1 WHERE org_id IS NOT DISTINCT FROM %s"\n',
+            id="is-not-distinct-from",
+        ),
+        pytest.param(
+            'q = "SELECT id FROM call WHERE org_id IS DISTINCT FROM %s"\n',
+            id="is-distinct-from",
+        ),
+        pytest.param(
+            'q = "SELECT id FROM call WHERE a IS   NOT\\n  DISTINCT   FROM b"\n',
+            id="is-not-distinct-from-whitespace-split",
+        ),
+        pytest.param(
+            'q = "select id from call where a is not distinct from b"\n',
+            id="is-not-distinct-from-lowercase",
+        ),
+    ],
+)
+def test_null_safe_comparison_operator_is_not_aggregation(source: str) -> None:
+    """`IS [NOT] DISTINCT FROM` is a per-row predicate that merely shares a keyword with `SELECT DISTINCT`.
+
+    Evidence: bulbul `python/bulbul/bulbul/stores/provisioned_number_store.py:375`.
+    """
+    assert _check(source) == []
+
+
+def test_provisioned_number_upsert_shape_is_clean() -> None:
+    """The exact PR #4111 site: an ON CONFLICT upsert guarded by a null-safe comparison."""
+    src = (
+        'q = """\n'
+        "    INSERT INTO provisioned_number (phone_number_id, organization_id)\n"
+        "    VALUES (%s, %s)\n"
+        "    ON CONFLICT (phone_number_id) DO UPDATE\n"
+        "        SET updated_at = NOW()\n"
+        "        WHERE provisioned_number.organization_id\n"
+        "                IS NOT DISTINCT FROM EXCLUDED.organization_id\n"
+        '"""\n'
+    )
+    assert _check(src) == []
+
+
+def test_real_distinct_still_fires_alongside_a_null_safe_comparison() -> None:
+    """Blanking the operator must not blind the rule to a genuine `SELECT DISTINCT` in the same query."""
+    src = 'q = "SELECT DISTINCT org_id FROM call WHERE a IS NOT DISTINCT FROM b"\n'
+    diags = _check(src)
+    assert _labels(diags) == ["Store query uses DISTINCT"]
+
+
+def test_count_still_fires_alongside_a_null_safe_comparison() -> None:
+    src = 'q = "SELECT COUNT(*) FROM call WHERE org_id IS NOT DISTINCT FROM %s"\n'
+    assert _labels(_check(src)) == ["Store query uses COUNT("]
+
+
+@pytest.mark.parametrize(
+    "filename",
+    [
+        pytest.param("tests/store/test_batch_call_store.py", id="test-prefixed-store-name"),
+        pytest.param("tests/store/test_global_prompt_store.py", id="test-prefixed-store-name-2"),
+        pytest.param("call_store_test.py", id="test-suffixed-store-name"),
+        pytest.param("tests/helpers.py", id="under-tests-dir"),
+        pytest.param("stores/conftest.py", id="conftest-under-stores"),
+    ],
+)
+def test_test_files_are_not_store_modules(filename: str) -> None:
+    """A COUNT(*) asserting over per-test fixture rows never runs on the OLTP primary.
+
+    Evidence: bulbul `python/bulbul/tests/store/test_batch_call_store.py:2092`,
+    `:2538` and `python/bulbul/tests/store/test_global_prompt_store.py:67`.
+    """
+    src = 'q = "SELECT COUNT(*) FROM batch_call WHERE batch_id = %s::uuid"\n'
+    assert _check(src, filename=filename) == []
+
+
+@pytest.mark.parametrize(
+    "filename",
+    [
+        pytest.param("call_store.py", id="store-module"),
+        pytest.param("stores/call_history_store.py", id="under-stores-dir"),
+    ],
+)
+def test_production_store_modules_still_fire(filename: str) -> None:
+    src = 'q = "SELECT COUNT(*) FROM batch_call WHERE batch_id = %s::uuid"\n'
+    assert len(_check(src, filename=filename)) == 1

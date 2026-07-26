@@ -71,6 +71,14 @@ Deliberately NOT flagged:
 * **Test files and generated files** (`_paths.is_test_path` /
   `_paths.is_generated_source`): fixture tables belong next to the assertion
   that explains them, and generated code mirrors its generator.
+* **Bindings the function never reads** and **functions that call `locals()` /
+  `vars()`**. Both are the same hole in the escape analysis: a local can leave
+  the frame reflectively, without ever appearing as a `Name` load. The famous-repo
+  sweep found three (`rich/rich/scope.py:82`, `:83` — `list_of_things` /
+  `dict_of_things` rendered by `render_scope(locals(), ...)`; `rich/examples/log.py:54`
+  — `foo = (1, 2, 3)` read only by Console's `log_locals=True` frame inspection).
+  A binding with zero reads has no use site to justify the hoist anyway, and
+  hoisting it changes what `locals()` returns.
 
 One real difference from the TypeScript original: that rule must never hoist a
 `/g` or `/y` regex, because a JavaScript RegExp object carries `lastIndex`
@@ -243,6 +251,8 @@ def _hoistable_bindings(func: _Function) -> Iterator[tuple[ast.stmt, str, _Candi
 
     """
     scope = _scope_of(func)
+    if _reads_frame_locals(scope):
+        return
     for node in scope.nodes:
         if id(node) in scope.nested or not isinstance(node, ast.stmt):
             continue
@@ -280,6 +290,26 @@ def _scope_of(func: _Function) -> _Scope:
         child_nested = is_nested or isinstance(node, _INNER_SCOPE_NODES)
         stack.extend((child, node, child_nested) for child in ast.iter_child_nodes(node))
     return _Scope(nodes=nodes, parents=parents, nested=nested)
+
+
+def _reads_frame_locals(scope: _Scope) -> bool:
+    """Report whether the function reflects over its own frame via `locals()` / `vars()`.
+
+    Every local then escapes without appearing as a `Name` load — `rich`'s
+    `render_scope(locals(), ...)` renders the very tables this rule would hoist
+    out of the frame — so no binding in such a function is safe to move.
+
+    Returns:
+        True when the body calls no-argument `locals()` or `vars()`.
+
+    """
+    for node in scope.nodes:
+        match node:
+            case ast.Call(func=ast.Name(id="locals" | "vars"), args=[], keywords=[]):
+                return True
+            case _:
+                continue
+    return False
 
 
 def _candidate_binding(node: ast.stmt) -> tuple[ast.Name, ast.expr] | None:
@@ -456,9 +486,10 @@ def _is_safely_hoistable(
 ) -> bool:
     """Report whether every reference to the binding is a non-mutating, non-escaping read.
 
-    Default-deny: the binding must be bound exactly once and every other
-    reference must be recognised as safe, so an unfamiliar usage suppresses the
-    report rather than risking a hoist that shares mutable state across calls.
+    Default-deny: the binding must be bound exactly once, must be read at least
+    once, and every other reference must be recognised as safe, so an unfamiliar
+    usage suppresses the report rather than risking a hoist that shares mutable
+    state across calls.
 
     Returns:
         True when the binding can be moved to module scope without changing behaviour.
@@ -467,6 +498,7 @@ def _is_safely_hoistable(
     name = target.id
     if name in _parameter_names(func):
         return False
+    reads = 0
     for node in scope.nodes:
         if id(node) in scope.nested:
             if _mentions_name(node, name):
@@ -479,9 +511,14 @@ def _is_safely_hoistable(
         if not isinstance(node.ctx, ast.Load):
             if node is not target:
                 return False
-        elif not _is_safe_read(node, scope.parents, safe_methods):
+        elif _is_safe_read(node, scope.parents, safe_methods):
+            reads += 1
+        else:
             return False
-    return True
+    # A binding the function never reads is either dead or read reflectively
+    # (`locals()`, a debugger, a frame-inspecting logger); either way there is no
+    # use site the hoist would serve, and moving it changes what `locals()` holds.
+    return reads > 0
 
 
 def _parameter_names(func: _Function) -> frozenset[str]:

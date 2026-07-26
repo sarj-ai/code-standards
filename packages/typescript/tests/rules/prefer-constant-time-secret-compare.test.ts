@@ -17,6 +17,11 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("prefer-constant-time-secret-compare", rule, {
   valid: [
+    // FP guard, corpus: query/packages/query-core/src/queryClient.ts:604 (10 of
+    // 10 hits) — `skipToken` is a marker Symbol compared by identity.
+    { code: "if (options.queryFn === skipToken) { options.enabled = false; }" },
+    { code: "const disabled = defaultedOptions.queryFn === skipToken;" },
+    { code: "if (value !== emptyToken) { use(value); }" },
     // --- Presence checks: comparing against a sentinel leaks nothing. ---
     { code: "if (token === null) { deny(); }" },
     { code: "if (token !== undefined) { use(token); }" },
@@ -63,6 +68,11 @@ ruleTester.run("prefer-constant-time-secret-compare", rule, {
     },
   ],
   invalid: [
+    // The sentinel prefix list must stay narrow: a live credential still fires.
+    {
+      code: "if (req.headers.apiKey === env.apiKey) { allow(); }",
+      errors: [{ messageId: "preferConstantTimeSecretCompare" }],
+    },
     // The live shape: an admin bearer token compared with `===`.
     {
       code: "if (presented === expectedToken) { await next(); }",

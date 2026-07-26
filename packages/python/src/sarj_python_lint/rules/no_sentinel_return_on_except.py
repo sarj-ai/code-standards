@@ -50,6 +50,28 @@ swallowed error. Four such shapes are exempt:
   result to corrupt, and a targeted except-return is a deliberate early exit on
   an expected condition (trio's `except ClosedResourceError: return`).
 
+A 2,657-file third-party sweep added three more, each keyed to a *narrow* handler
+or to a `try` body that has nothing to swallow — the broad-handler swallow the
+rule exists to catch is untouched by all three:
+
+- **Declared falsy result:** the handler is narrow and returns the very sentinel
+  the function already returns on a NON-exception path, so the sentinel is the
+  function's published answer and every caller must already handle it (requests'
+  `_accept_connection`: `if not ready: return None` above `except OSError:
+  return None`; pydantic's `extract_docstrings_from_cls`: `except OSError:
+  return {}` beside a plain `if not source: return {}`).
+- **Printed exception:** a narrow handler that `print(...)`s the exception it
+  bound (`except OSError as err: print(f"Can't open {filename}: {err}")`) makes
+  the error observable — in a script or CLI, `print` IS the log (black's
+  `blib2to3/pgen2/conv.py`). A handler that prints something unrelated to the
+  exception is still a silent swallow.
+- **Nothing to swallow:** a `try` body that is only imports (the optional-
+  dependency guard `try: from rich._win32_console import ... except: pass`,
+  rich's `test_windows_renderer.py`) or only inert statements (`pass` / `...` /
+  a docstring, black's `remove_except_types_parens*` fixtures). An import guard
+  is the documented feature-detection shape; an inert body can raise nothing at
+  all, so no error is being discarded.
+
 The genuine bug — a data-returning function whose success path yields real data and
 whose broad handler swallows to a sentinel — still fires. A bare `except: pass`
 that discards the error with no return is also flagged.
@@ -99,9 +121,13 @@ class NoSentinelReturnOnExcept(Rule):
             return None
         if _handler_reraises(handler):
             return None
+        # A `try` body of only imports or only inert statements has no error to
+        # discard: it is an optional-dependency guard or a no-op.
+        if _guarded_body_swallows_nothing(handler, parents):
+            return None
         last = handler.body[-1]
         if isinstance(last, ast.Return) and (last.value is None or _is_sentinel(last.value)):
-            if _handler_logs_before_return(handler):
+            if _handler_logs_before_return(handler) or _handler_prints_exception(handler):
                 return None
             if _is_intended_result(handler, last, parents):
                 return None
@@ -185,7 +211,116 @@ def _is_intended_result(handler: ast.ExceptHandler, ret: ast.Return, parents: Pa
         return True
     if func is not None and _returns_none(func) and _is_narrow_handler(exc_names) and ret.value is None:
         return True
+    if func is not None and _is_narrow_handler(exc_names) and _sentinel_is_declared_result(func, ret):
+        return True
     return _is_lookup_with_default(handler, parents, exc_names)
+
+
+def _sentinel_is_declared_result(func: ast.FunctionDef | ast.AsyncFunctionDef, ret: ast.Return) -> bool:
+    """Report whether a NON-exception path of `func` returns this same sentinel.
+
+    When the success path already answers `None` / `{}` / `[]` for "nothing
+    here", that value is the function's published result and every caller
+    handles it — the narrow handler is mapping an expected failure onto the
+    contract, not inventing a silent one. Only checked for narrow handlers: a
+    broad `except Exception` mapping onto the same sentinel is still a swallow.
+
+    Returns:
+        True when the handler's sentinel is also returned on a success path.
+
+    """
+    key = _sentinel_key(ret.value)
+    if key is None:
+        return False
+    return any(_sentinel_key(other.value) == key for stmt in func.body for other in _non_except_returns(stmt))
+
+
+def _sentinel_key(value: ast.expr | None) -> str | None:
+    """Classify a return value as one of the recognized sentinel shapes.
+
+    Returns:
+        A stable key naming the sentinel, or None when the value is real data.
+
+    """
+    if value is None:
+        return "none"
+    if isinstance(value, ast.Constant):
+        if value.value is None:
+            return "none"
+        if value.value is False:
+            return "false"
+        return "empty-str" if isinstance(value.value, str) and not value.value else None
+    if isinstance(value, ast.List) and not value.elts:
+        return "empty-list"
+    if isinstance(value, ast.Tuple) and not value.elts:
+        return "empty-tuple"
+    if isinstance(value, ast.Dict) and not value.keys:
+        return "empty-dict"
+    if isinstance(value, ast.Set) and not value.elts:
+        return "empty-set"
+    if isinstance(value, ast.Call):
+        func = value.func
+        if isinstance(func, ast.Name) and func.id == "set" and not value.args and not value.keywords:
+            return "empty-set"
+    return None
+
+
+def _guarded_body_swallows_nothing(handler: ast.ExceptHandler, parents: ParentMap) -> bool:
+    """Report whether the guarded `try` body has no error worth discarding.
+
+    Two shapes: a body of only `import` statements (the optional-dependency
+    guard — the documented feature-detection idiom, spelled with a bare
+    `except:` in the wild) and a body of only inert statements (`pass`, `...`,
+    a bare docstring), which cannot raise at all.
+
+    Returns:
+        True when the `try` body is an import guard or is inert.
+
+    """
+    try_node = parents.get(handler)
+    if not isinstance(try_node, ast.Try | ast.TryStar) or not try_node.body:
+        return False
+    if all(isinstance(stmt, (ast.Import, ast.ImportFrom)) for stmt in try_node.body):
+        return True
+    return all(_is_inert(stmt) for stmt in try_node.body)
+
+
+def _is_inert(stmt: ast.stmt) -> bool:
+    """Report whether `stmt` can raise nothing at all.
+
+    Returns:
+        True for `pass` and for a bare literal expression (`...`, a docstring).
+
+    """
+    if isinstance(stmt, ast.Pass):
+        return True
+    return isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant)
+
+
+def _handler_prints_exception(handler: ast.ExceptHandler) -> bool:
+    """Report whether the handler `print(...)`s the exception it bound.
+
+    In a script or CLI there is no logger; `print(f"...: {err}")` is how the
+    error is surfaced, so it is observable rather than silently swallowed. The
+    printed expression must reference the bound name, so a `print("done")` that
+    says nothing about the failure does not exempt anything, and the handler
+    must be narrow — a broad `except Exception` that prints and returns a
+    sentinel is still the swallow this rule targets.
+
+    Returns:
+        True when a print of the bound exception reaches the sentinel return.
+
+    """
+    bound = handler.name
+    if bound is None or not _is_narrow_handler(_handler_exc_names(handler)):
+        return False
+    for stmt in handler.body[:-1]:
+        for node in ast.walk(stmt):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name) or node.func.id != "print":
+                continue
+            if any(isinstance(inner, ast.Name) and inner.id == bound for arg in node.args for inner in ast.walk(arg)):
+                return True
+    return False
 
 
 def _is_narrow_handler(exc_names: tuple[str, ...] | None) -> bool:

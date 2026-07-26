@@ -769,3 +769,176 @@ except ValueError:
         raise
 """
     assert _check(src) == []
+
+
+# --------------------------------------------------------------------------- #
+# bulbul PR #4111 regressions: observability statements are free.               #
+#                                                                               #
+# Success-path bookkeeping — a logger call, a Prometheus/statsd/OTel recorder,   #
+# a monotonic clock read, a value-shaping builtin in a log argument — does not   #
+# obscure which statement the handler was written for, and cannot be hoisted     #
+# out of the try without running on the except path. The rule was demanding a    #
+# change that could not be made, which is why both cache_primer sites suppressed #
+# it with "success-only bookkeeping ... must stay inside try".                   #
+# --------------------------------------------------------------------------- #
+
+
+def test_cache_primer_shape_is_clean():
+    """One real await plus four instrumentation statements.
+
+    Evidence: bulbul `python/agent/agent/lk/cache_primer.py:110` (5 counted).
+    """
+    src = """
+start_time = time.monotonic()
+try:
+    async for _ in llm.chat(chat_ctx=ctx):
+        break
+
+    elapsed = time.monotonic() - start_time
+    cache_primer_total.labels(result="success", phase="scenario").inc()
+    cache_primer_duration.labels(phase="scenario").observe(elapsed)
+    logger.info(
+        "[CACHE] Primed LLM cache (scenario)",
+        prefix_length=len(prefix),
+        elapsed_s=round(elapsed, 2),
+    )
+except Exception:
+    logger.warning("failed")
+"""
+    assert _check(src) == []
+
+
+def test_cache_primer_static_shape_is_clean():
+    """Two real awaits plus four instrumentation statements.
+
+    Evidence: bulbul `python/agent/agent/lk/cache_primer.py:47` (6 counted).
+    """
+    src = """
+try:
+    static_prompt = await global_prompt_service.get_static_prompt(language=language)
+
+    async for _ in llm.chat(chat_ctx=ctx):
+        break
+
+    elapsed = time.monotonic() - start_time
+    cache_primer_total.labels(result="success", phase="static").inc()
+    cache_primer_duration.labels(phase="static").observe(elapsed)
+    logger.info("[CACHE] Primed", prompt_length=len(static_prompt))
+except Exception:
+    logger.warning("failed")
+"""
+    assert _check(src) == []
+
+
+def test_tool_builder_shape_is_clean():
+    """Three real statements plus a trailing logger.info.
+
+    Evidence: bulbul `python/agent/agent/lk/builder/tool_builder.py:118` (4 counted).
+    """
+    src = """
+try:
+    function_tools = await default_tool.init()
+    agent_tools.extend(function_tools)
+    if fragment := default_tool.prompt_fragment():
+        prompt_fragments.append(fragment)
+    logger.info(
+        "[TOOL] instantiated default tool",
+        tool_name=type(default_tool).__name__,
+        function_count=len(function_tools),
+    )
+except Exception as e:
+    errors_total.labels(provider="agent", error_type=type(e).__name__).inc()
+    logger.exception("[TOOL] failed")
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "stmt",
+    [
+        pytest.param('logger.info("msg", n=len(items))', id="logger"),
+        pytest.param('log.bind(k=1).warning("msg")', id="logger-builder-chain"),
+        pytest.param('logging.getLogger(__name__).error("msg")', id="stdlib-logger-factory"),
+        pytest.param("elapsed = time.monotonic() - start", id="monotonic-clock"),
+        pytest.param("t = time.perf_counter()", id="perf-counter"),
+        pytest.param("now = datetime.now()", id="datetime-now"),
+        pytest.param('requests_total.labels(route="/x").inc()', id="prometheus-counter"),
+        pytest.param("latency.observe(elapsed)", id="prometheus-histogram"),
+        pytest.param('statsd.timing("x", elapsed)', id="statsd"),
+        pytest.param('span.set_attribute("k", "v")', id="otel-set-attribute"),
+        pytest.param("span.record_exception(e)", id="otel-record-exception"),
+        pytest.param("n = len(items)", id="inert-builtin"),
+    ],
+)
+def test_observability_statements_do_not_count(stmt: str):
+    """Three real throwing statements plus one instrumentation statement stays at the limit."""
+    src = f"""
+try:
+    a = one()
+    b = two()
+    c = three()
+    {stmt}
+except ValueError:
+    pass
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "stmt",
+    [
+        pytest.param('logger.info("msg", user=fetch_user())', id="logger-with-real-call-arg"),
+        pytest.param("cache.set(key, value)", id="cache-set-is-not-a-metric"),
+        pytest.param("store.record(row)", id="store-record-is-not-a-metric"),
+        pytest.param('data = open("f").read()', id="open-is-not-inert"),
+        pytest.param("await emit_metric()", id="bare-await"),
+    ],
+)
+def test_statements_mixing_real_work_still_count(stmt: str):
+    """The guard must not become a blanket escape hatch for anything with a dot in it."""
+    src = f"""
+try:
+    a = one()
+    b = two()
+    c = three()
+    {stmt}
+except ValueError:
+    pass
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "4 statements that can raise" in diags[0].message
+
+
+def test_a_try_full_of_only_logging_never_fires():
+    src = """
+try:
+    logger.info("a")
+    logger.info("b")
+    logger.info("c")
+    logger.info("d")
+    logger.info("e")
+except ValueError:
+    pass
+"""
+    assert _check(src) == []
+
+
+def test_genuinely_fat_try_still_fires():
+    """The 16-statement code_switching block must remain a finding.
+
+    Evidence: bulbul `python/agent/agent/lk/agent_tools/meta/code_switching.py:154`.
+    """
+    src = """
+try:
+    a = one()
+    b = two()
+    c = three()
+    d = four()
+    logger.info("done")
+except ValueError:
+    pass
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "4 statements that can raise" in diags[0].message

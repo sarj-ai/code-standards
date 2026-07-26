@@ -1893,3 +1893,124 @@ def takes_data(factory) -> TypeIs[Callable]:
     return len(sig.parameters) == 1
 """
     assert _check(src) == []
+
+
+# --- FP-hardening (famous-repo sweep) -------------------------------------
+
+
+def test_narrow_handler_returning_the_declared_sentinel_is_exempt():
+    # Minimized from requests' testserver `_accept_connection`: the success path
+    # already answers None on timeout, so None is the published result.
+    src = """
+def _accept_connection(self):
+    try:
+        ready, _, _ = select.select([self.server_sock], [], [], 1)
+        if not ready:
+            return None
+        return self.server_sock.accept()[0]
+    except OSError:
+        return None
+"""
+    assert _check(src) == []
+
+
+def test_narrow_handler_returning_declared_empty_dict_is_exempt():
+    # Minimized from pydantic's extract_docstrings_from_cls.
+    src = """
+def extract(cls) -> dict:
+    try:
+        source, _ = inspect.getsourcelines(cls)
+    except OSError:
+        return {}
+    if not source:
+        return {}
+    return parse(source)
+"""
+    assert _check(src) == []
+
+
+def test_broad_handler_returning_the_declared_sentinel_still_fires():
+    src = """
+def load(path):
+    if path is None:
+        return None
+    try:
+        return parse(path)
+    except Exception:
+        return None
+"""
+    assert len(_check(src)) == 1
+
+
+def test_narrow_handler_sentinel_absent_from_success_path_still_fires():
+    src = """
+def load(path):
+    try:
+        raw = read(path)
+        parsed = parse(raw)
+    except OSError:
+        return []
+    return normalize(parsed)
+"""
+    assert len(_check(src)) == 1
+
+
+def test_narrow_handler_printing_the_bound_exception_is_exempt():
+    # Minimized from black's blib2to3/pgen2/conv.py: in a script, print IS the log.
+    src = """
+def parse_graminit_c(self, filename):
+    try:
+        f = open(filename)
+    except OSError as err:
+        print(f"Can't open {filename}: {err}")
+        return False
+    return self.parse(f)
+"""
+    assert _check(src) == []
+
+
+def test_narrow_handler_printing_something_unrelated_still_fires():
+    src = """
+def parse_graminit_c(self, filename):
+    try:
+        f = open(filename)
+    except OSError as err:
+        print("could not parse")
+        return False
+    return self.parse(f)
+"""
+    assert len(_check(src)) == 1
+
+
+def test_optional_import_guard_with_bare_except_is_exempt():
+    # Minimized from rich's tests/test_windows_renderer.py.
+    src = """
+try:
+    from rich._win32_console import LegacyWindowsTerm
+    from rich._windows_renderer import legacy_windows_render
+except:
+    pass
+"""
+    assert _check(src) == []
+
+
+def test_bare_except_pass_over_a_real_call_still_fires():
+    src = """
+try:
+    configure()
+except:
+    pass
+"""
+    assert len(_check(src)) == 1
+
+
+def test_bare_except_pass_over_an_inert_body_is_exempt():
+    # Minimized from black's remove_except_types_parens fixtures: a `pass` body
+    # raises nothing, so the handler discards no error.
+    src = """
+try:
+    pass
+except:
+    pass
+"""
+    assert _check(src) == []

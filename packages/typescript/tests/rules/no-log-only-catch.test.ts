@@ -82,6 +82,16 @@ ruleTester.run("no-log-only-catch", rule, {
     {
       code: "try { f(); } catch (e) { logEvent('f.failed', { error: String(e) }); }",
     },
+
+    // --- A documented log-and-continue is a decision, not a swallow ----------
+    // Real corpus: react-router/packages/react-router-dev/vite/styles.ts:104 —
+    // the comment explains why the failure is survivable.
+    {
+      code: "try { f(); } catch { console.warn('css'); // happens for dynamically imported modules\n }",
+    },
+    {
+      code: "try { f(); } catch (e) { /* offline is expected here */ console.error(e); }",
+    },
   ],
   invalid: [
     // Empty catch with a binding — distinct, accurate `emptyCatch` message.
@@ -146,6 +156,13 @@ ruleTester.run("no-log-only-catch", rule, {
     {
       code: "try { f(); } catch (e) { obs.error(e); }",
       options: [{ loggerNames: ["obs"] }],
+      errors: [{ messageId: "noLogOnlyCatch" }],
+    },
+
+    // A bare log-only catch with no rationale still fires. Real corpus:
+    // react-router/packages/react-router/lib/dom/ssr/fog-of-war.ts:209.
+    {
+      code: "try { f(); } catch (e) { console.error('Failed to fetch manifest patches', e); }",
       errors: [{ messageId: "noLogOnlyCatch" }],
     },
   ],

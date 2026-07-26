@@ -28,10 +28,28 @@
  *    where fixtures legitimately repeat literal payloads.
  *
  * A substitution-free template literal IS included: in TypeScript that is just a
- * multi-line string, and it is exactly where embedded SQL lives.
+ * multi-line string, and it is exactly where embedded SQL lives — but only when
+ * it is UNTAGGED (see below).
  *
  * Every occurrence after the first is reported, so a deliberate duplicate can be
  * disabled on its own line.
+ *
+ * CORPUS SWEEP (2220 files across zod / TanStack Query / react-router / swr /
+ * zustand, 2026-07): 96 raw hits, 100% of them the quasi of a TAGGED template
+ * and every one a false positive. Two families:
+ *   - 94 in react-router's Playwright suites, where `js`…`` is the SOURCE TEXT of
+ *     a scratch app the test writes to disk
+ *     (`react-router/integration/single-fetch-test.ts:1482` repeats a 3-line
+ *     `app/routes/target.tsx` fixture). Hoisting a shared constant would move the
+ *     fixture away from the assertion that explains it — and the fixtures are
+ *     MEANT to be near-identical; that is what makes the assertions comparable.
+ *   - 2 in `query/packages/query-devtools/src/Devtools.tsx:398`, where ``css`…` ``
+ *     is a goober style block whose "duplicate" is a style rule, i.e. exactly the
+ *     styling-string category `isScaffolding` already excludes for JSX attributes.
+ * A tagged template is an INVOCATION, not a string value: the tag decides what
+ * the text means, so "these two strings must not drift" is not a claim the rule
+ * can make about it. Tagged templates are therefore excluded. An untagged
+ * multi-line SQL/prompt literal — the shape the rule exists for — still fires.
  */
 
 import { AST_NODE_TYPES, ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
@@ -142,6 +160,11 @@ export default ESLintUtils.RuleCreator(
         }
       },
       TemplateLiteral(node: TSESTree.TemplateLiteral): void {
+        // A tagged template (`js`…``, `css`…``, `sql`…``) is a call, not a
+        // string value — the tag, not this rule, decides what the text means.
+        if (node.parent.type === AST_NODE_TYPES.TaggedTemplateExpression) {
+          return;
+        }
         const [only] = node.quasis;
         if (node.expressions.length === 0 && only !== undefined) {
           record(only.value.cooked ?? only.value.raw, node);

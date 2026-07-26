@@ -782,3 +782,103 @@ def test_conftest_is_exempt():
 def test_production_file_still_fires():
     src = "def schedule(timeout_seconds: int) -> None: ...\n"
     assert len(_check_at(src, "bulbul/calls/service.py")) == 1
+
+
+# --------------------------------------------------------------------------- #
+# FP-hardening (famous-repo sweep): overload stubs, CLI params, pass-throughs. #
+# --------------------------------------------------------------------------- #
+
+
+def test_overload_stub_is_exempt():
+    # Minimized from anyio/src/anyio/_core/_sockets.py:82-141: five overloads
+    # restate `happy_eyeballs_delay` for the one implementation at :155.
+    src = """
+@overload
+async def connect_tcp(host: str, *, happy_eyeballs_delay: float = ...) -> TLSStream: ...
+
+async def connect_tcp(host: str, *, happy_eyeballs_delay: float = 0.25) -> SocketStream:
+    return await _connect(host, happy_eyeballs_delay)
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert diags[0].line == 5
+
+
+def test_typing_qualified_overload_is_exempt():
+    src = "@typing.overload\ndef wait(timeout_seconds: int) -> None: ...\n"
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "decorator",
+    [
+        '@click.option("--timeout", type=float, default=5.0)',
+        '@click.argument("timeout")',
+        '@option("--timeout", type=float)',
+        "@typer.run",
+    ],
+)
+def test_cli_decorated_parameters_are_exempt(decorator: str):
+    # Minimized from httpx/httpx/_main.py:464 — click parses the value out of
+    # argv as a float; timedelta is not a shape argv can carry.
+    src = f"{decorator}\ndef main(url: str, timeout: float) -> None: ...\n"
+    assert _check(src) == []
+
+
+def test_non_cli_decorator_still_fires():
+    src = "@functools.cache\ndef main(url: str, timeout: float) -> None: ...\n"
+    assert len(_check(src)) == 1
+
+
+def test_same_name_delegation_is_exempt():
+    # Minimized from anyio/src/anyio/_backends/_trio.py:1115 — the unit belongs
+    # to the wrapped stdlib API.
+    src = """
+class Backend:
+    @classmethod
+    async def sleep(cls, delay: float) -> None:
+        await trio.sleep(delay)
+"""
+    assert _check(src) == []
+
+
+def test_same_name_delegation_with_docstring_is_exempt():
+    src = """
+async def sleep(delay: float) -> None:
+    \"\"\"Pause the current task for the specified duration.\"\"\"
+    return await get_async_backend().sleep(delay)
+"""
+    assert _check(src) == []
+
+
+def test_delegation_to_a_different_name_still_fires():
+    src = "async def wait(delay: float) -> None:\n    await anyio.sleep(delay)\n"
+    assert len(_check(src)) == 1
+
+
+def test_computing_with_the_parameter_still_fires():
+    # Not a pass-through: `fail_after` owns the arithmetic, so it owns the unit.
+    src = """
+def fail_after(delay: float) -> CancelScope:
+    return fail_after(current_time() + delay)
+"""
+    assert len(_check(src)) == 1
+
+
+def test_multi_statement_body_still_fires():
+    src = """
+async def sleep(delay: float) -> None:
+    log.debug("sleeping")
+    await anyio.sleep(delay)
+"""
+    assert len(_check(src)) == 1
+
+
+def test_delegation_only_exempts_the_forwarded_parameter():
+    src = """
+async def sleep(delay: float, ttl: int) -> None:
+    await anyio.sleep(delay)
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "`ttl" in diags[0].message

@@ -19,6 +19,23 @@ const COLUMNS = "id, ashby_candidate_id, dataset_id, status, expires_at";
 
 ruleTester.run("no-repeated-string-literal", rule, {
   valid: [
+    // FP guard, corpus: react-router/integration/single-fetch-test.ts:1482 — a
+    // tagged template is an invocation; the tag decides what the text means.
+    {
+      code: [
+        'const a = js`export default function Component() {\n  return null;\n}`;',
+        'function one() { return js`export default function Component() {\n  return null;\n}`; }',
+        'function two() { return js`export default function Component() {\n  return null;\n}`; }',
+      ].join("\n"),
+    },
+    // Corpus: query/packages/query-devtools/src/Devtools.tsx:398 — a `css` block.
+    {
+      code: [
+        'const base = css`\n  min-width: min-content;\n  display: flex;\n`;',
+        'function a() { return css`\n  min-width: min-content;\n  display: flex;\n`; }',
+        'function b() { return css`\n  min-width: min-content;\n  display: flex;\n`; }',
+      ].join("\n"),
+    },
     // --- Unstructured prose is never flagged, even when repeated: two messages
     // that happen to be equal have different intent, and a shared constant would
     // wrongly couple them. ---

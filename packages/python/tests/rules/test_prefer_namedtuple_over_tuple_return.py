@@ -165,11 +165,11 @@ def test_syntax_error_returns_empty():
     assert _check("def f( -> tuple[int, str]\n") == []
 
 
-def test_nested_function_fires():
+def test_nested_function_is_exempt():
+    # A closure has no callers outside its enclosing frame, so its pair never
+    # crosses the boundary this rule guards.
     src = "def outer():\n    def inner() -> tuple[int, str]: ...\n    return inner\n"
-    diags = _check(src)
-    assert len(diags) == 1
-    assert diags[0].line == 2
+    assert _check(src) == []
 
 
 # --- Suppression -------------------------------------------------------------
@@ -230,4 +230,175 @@ def test_ellipsis_body_still_fires():
 
 def test_implemented_function_still_fires():
     src = "def run_black(file, source) -> tuple[bool, str]:\n    return True, source\n"
+    assert len(_check(src)) == 1
+
+
+# --- FP-hardening: closures and declared overrides ---------------------------
+
+
+def test_sort_key_closure_is_exempt():
+    # Minimized from rich/rich/scope.py:45 and rich/rich/_inspect.py:128 — a
+    # `sorted(key=...)` function MUST return a tuple.
+    src = """
+def render_scope(scope):
+    def sort_items(item: tuple[str, Any]) -> tuple[bool, str]:
+        key, _value = item
+        return (not key.startswith("__"), key.lower())
+
+    return sorted(scope.items(), key=sort_items)
+"""
+    assert _check(src) == []
+
+
+def test_method_nested_in_a_function_is_exempt():
+    src = """
+def build():
+    class Inner:
+        def pair(self) -> tuple[int, str]: ...
+    return Inner
+"""
+    assert _check(src) == []
+
+
+def test_module_level_function_still_fires_after_a_nested_one():
+    # The closure skip must not swallow the functions that follow it.
+    src = """
+def outer():
+    def inner() -> tuple[int, str]: ...
+    return inner
+
+
+def public() -> tuple[bytes, str]: ...
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert diags[0].line == 7
+
+
+def test_override_decorated_method_is_exempt():
+    src = """
+class APIRoute(Route):
+    @override
+    def matches(self, scope: Scope) -> tuple[Match, Scope]: ...
+"""
+    assert _check(src) == []
+
+
+def test_typing_qualified_override_decorator_is_exempt():
+    src = """
+class APIRoute(Route):
+    @typing.override
+    def matches(self, scope: Scope) -> tuple[Match, Scope]: ...
+"""
+    assert _check(src) == []
+
+
+def test_super_delegating_method_is_exempt():
+    # Minimized from fastapi/fastapi/routing.py:825 — starlette's BaseRoute
+    # pins the shape of `matches`.
+    src = """
+class APIWebSocketRoute(routing.WebSocketRoute):
+    def matches(self, scope: Scope) -> tuple[Match, Scope]:
+        match, child_scope = super().matches(scope)
+        return match, child_scope
+"""
+    assert _check(src) == []
+
+
+def test_super_call_to_a_different_method_still_fires():
+    src = """
+class C(Base):
+    def matches(self, scope: Scope) -> tuple[Match, Scope]:
+        super().__init__()
+        return Match.NONE, {}
+"""
+    assert len(_check(src)) == 1
+
+
+def test_class_reimplementing_its_same_named_base_is_exempt():
+    # Minimized from anyio/src/anyio/_backends/_trio.py:617 —
+    # `class UDPSocket(_TrioSocketMixin, abc.UDPSocket)` implements its own ABC.
+    src = """
+class UDPSocket(_TrioSocketMixin, abc.UDPSocket):
+    async def receive(self) -> tuple[bytes, IPSockAddrType]: ...
+"""
+    assert _check(src) == []
+
+
+def test_shared_method_name_across_classes_with_foreign_bases_is_exempt():
+    # Minimized from fastapi/fastapi/routing.py: six classes declare
+    # `matches(scope) -> tuple[Match, Scope]`, starlette's BaseRoute contract.
+    src = """
+class _FrontendRoute(BaseRoute):
+    def matches(self, scope: Scope) -> tuple[Match, Scope]: ...
+
+
+class _IncludedRouter(BaseRoute):
+    def matches(self, scope: Scope) -> tuple[Match, Scope]: ...
+"""
+    assert _check(src) == []
+
+
+def test_shared_method_name_on_locally_defined_bases_still_fires():
+    # You own the base, so you own the shape.
+    src = """
+class Base:
+    pass
+
+
+class A(Base):
+    def pair(self) -> tuple[int, str]: ...
+
+
+class B(Base):
+    def pair(self) -> tuple[int, str]: ...
+"""
+    assert len(_check(src)) == 2
+
+
+def test_single_class_with_a_foreign_base_still_fires():
+    src = """
+class Handler(BaseRoute):
+    def matches(self, scope: Scope) -> tuple[Match, Scope]: ...
+"""
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize("base", ["BaseModel", "Protocol", "Generic[T]", "NamedTuple", "Enum", "str"])
+def test_structural_bases_do_not_mark_a_method_as_an_override(base: str):
+    src = f"""
+class A({base}):
+    def pair(self) -> tuple[int, str]: ...
+
+
+class B({base}):
+    def pair(self) -> tuple[int, str]: ...
+"""
+    assert len(_check(src)) == 2
+
+
+def test_abstract_declaration_is_exempt():
+    # Minimized from anyio/src/anyio/abc/_sockets.py:230 — the shape mirrors
+    # stdlib `socket.recvmsg`.
+    src = """
+class UNIXSocketStream(SocketStream):
+    @abstractmethod
+    async def receive_fds(self, msglen: int, maxfds: int) -> tuple[bytes, list[int]]:
+        \"\"\"Receive file descriptors along with a message from the peer.\"\"\"
+"""
+    assert _check(src) == []
+
+
+def test_abstract_method_with_a_real_body_still_fires():
+    src = """
+class C(ABC):
+    @abstractmethod
+    def pair(self) -> tuple[int, str]:
+        return 1, "a"
+"""
+    assert len(_check(src)) == 1
+
+
+def test_undecorated_ellipsis_body_in_a_class_still_fires():
+    src = "class C:\n    def pair(self) -> tuple[int, str]: ...\n"
     assert len(_check(src)) == 1

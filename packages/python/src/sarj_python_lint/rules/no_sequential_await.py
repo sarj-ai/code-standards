@@ -24,6 +24,23 @@ makes a sequential-await loop the deliberate norm (channel sends, ordered
 finalization), so the suggested fix does not exist there. Those were the
 false-positive sources.
 
+Two further exemptions, both minimized from a 2,657-file third-party sweep:
+
+* **A loop-carried result** — `value = await function(value, element)` — is a
+  fold, not a map: iteration N+1 consumes iteration N's result, so there is
+  nothing to run concurrently and `gather` cannot express it (anyio's
+  `functools.reduce`). Only an `Assign` whose own target is read inside the
+  awaited expression qualifies; `results.append(await f(x))` is still a map and
+  still fires.
+* **Structured-concurrency primitives used without an absolute import** —
+  `CancelScope`, `create_task_group`, `start_soon`, `open_nursery`,
+  `checkpoint`, `fail_after`, `move_on_after`. trio's and anyio's *own* modules
+  reach their runtime through relative imports (`from .. import
+  create_task_group`), so the import check above cannot see it and every
+  ordered `await listener.aclose()` in their cleanup paths was flagged with a
+  fix (`asyncio.gather`) that does not exist in that codebase. `asyncio` has no
+  such names, so an asyncio module is unaffected.
+
 References:
 - https://docs.python.org/3/library/asyncio-task.html#running-tasks-concurrently
 
@@ -62,9 +79,9 @@ class NoSequentialAwait(Rule):
         tree = parse_or_none(path, source)
         if tree is None:
             return []
-        if _imports_non_asyncio_runtime(tree):
+        if _imports_non_asyncio_runtime(tree) or _uses_structured_concurrency(tree):
             return []
-        visitor = _SequentialAwaitVisitor(_yield_exempt_awaits(tree))
+        visitor = _SequentialAwaitVisitor(_exempt_awaits(tree))
         visitor.visit(tree)
         diags = [
             Diagnostic(
@@ -131,6 +148,41 @@ def _imports_non_asyncio_runtime(tree: ast.AST) -> bool:
     return False
 
 
+# Names that exist only in trio / anyio, so a module using one is a
+# structured-concurrency module even when it reaches its runtime by a relative
+# import. `TaskGroup` is deliberately absent: `asyncio.TaskGroup` shares it.
+_STRUCTURED_CONCURRENCY_NAMES = frozenset(
+    {
+        "CancelScope",
+        "create_task_group",
+        "start_soon",
+        "open_nursery",
+        "checkpoint",
+        "fail_after",
+        "move_on_after",
+        "create_memory_object_stream",
+    }
+)
+
+
+def _uses_structured_concurrency(tree: ast.AST) -> bool:
+    """Report whether the module uses a trio/anyio-only concurrency primitive.
+
+    trio's and anyio's own modules import their runtime relatively, so the
+    import check cannot see it; the primitives they use are the visible proof.
+
+    Returns:
+        True when a trio/anyio-only name appears anywhere in the module.
+
+    """
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and node.id in _STRUCTURED_CONCURRENCY_NAMES:
+            return True
+        if isinstance(node, ast.Attribute) and node.attr in _STRUCTURED_CONCURRENCY_NAMES:
+            return True
+    return False
+
+
 def _names(node: ast.AST) -> set[str]:
     return {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
 
@@ -160,6 +212,40 @@ def _walk_same_scope(node: ast.AST) -> list[ast.AST]:
     return out
 
 
+def _exempt_awaits(tree: ast.AST) -> set[int]:
+    """`id()`s of every await that is not a per-element map step.
+
+    Returns:
+        The union of the yield-streamed and loop-carried exempt awaits.
+
+    """
+    return _yield_exempt_awaits(tree) | _loop_carried_awaits(tree)
+
+
+def _loop_carried_awaits(tree: ast.AST) -> set[int]:
+    """`id()`s of awaits whose result feeds the next iteration through the same name.
+
+    `value = await function(value, element)` is a fold: the awaited call reads
+    the very name the assignment rebinds, so iteration N+1 cannot start before
+    N finishes and `gather` cannot express it.
+
+    Returns:
+        The `id()`s of the loop-carried awaits.
+
+    """
+    exempt: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        targets = {name for target in node.targets for name in _names(target)}
+        if not targets:
+            continue
+        for inner in _walk_same_scope(node.value):
+            if isinstance(inner, ast.Await) and _names(inner) & targets:
+                exempt.add(id(inner))
+    return exempt
+
+
 def _yield_exempt_awaits(tree: ast.AST) -> set[int]:
     """`id()`s of awaits that are the value yielded by an async generator.
 
@@ -181,7 +267,7 @@ def _yield_exempt_awaits(tree: ast.AST) -> set[int]:
     return exempt
 
 
-def _is_gather_antipattern(node: ast.For, yield_exempt: set[int]) -> bool:
+def _is_gather_antipattern(node: ast.For, exempt: set[int]) -> bool:
     """Report whether `node` is `for x in xs: <straight-line body awaiting a call that uses x>`.
 
     Returns:
@@ -193,7 +279,7 @@ def _is_gather_antipattern(node: ast.For, yield_exempt: set[int]) -> bool:
     targets = _names(node.target)
     for stmt in node.body:
         for inner in _walk_same_scope(stmt):
-            if isinstance(inner, ast.Await) and id(inner) not in yield_exempt and _names(inner) & targets:
+            if isinstance(inner, ast.Await) and id(inner) not in exempt and _names(inner) & targets:
                 return True
     return False
 
@@ -207,15 +293,15 @@ class _SequentialAwaitVisitor(ast.NodeVisitor):
     once-evaluated iterable is excluded (see module comment).
     """
 
-    def __init__(self, yield_exempt: set[int]) -> None:
+    def __init__(self, exempt: set[int]) -> None:
         super().__init__()
-        self._yield_exempt = yield_exempt
+        self._exempt: set[int] = exempt
         self._loops: list[ast.AST] = []
         self._flagged: set[int] = set()
         self.hits: list[ast.Await] = []
 
     def _flag_if_in_loop(self, node: ast.Await) -> None:
-        if id(node) in self._yield_exempt:
+        if id(node) in self._exempt:
             return
         if self._loops:
             loop = self._loops[-1]
@@ -229,7 +315,7 @@ class _SequentialAwaitVisitor(ast.NodeVisitor):
         # Only a straight-line per-element-await body is the gather antipattern;
         # control-flow bodies (conditional/ordered) are not pushed, so awaits in
         # them are not flagged for this loop.
-        antipattern = _is_gather_antipattern(node, self._yield_exempt)
+        antipattern = _is_gather_antipattern(node, self._exempt)
         if antipattern:
             self._loops.append(node)
         self.visit(node.target)

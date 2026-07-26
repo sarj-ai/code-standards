@@ -31,7 +31,7 @@ def build_payload(call) -> dict[str, Any]:
 
 
 def test_flags_dict_str_object_return():
-    src = "def f() -> dict[str, object]:\n    return {}\n"
+    src = "def f() -> dict[str, object]:\n    return {'id': 1}\n"
     assert len(_check(src)) == 1
 
 
@@ -40,19 +40,19 @@ def test_flags_bare_dict_and_typing_dict():
 from typing import Dict
 
 def f() -> dict:
-    return {}
+    return {'id': 1}
 
 def g() -> Dict:
-    return {}
+    return {'id': 1}
 
 def h() -> Dict[str, Any]:
-    return {}
+    return {'id': 1}
 """
     assert len(_check(src)) == 3
 
 
 def test_flags_list_of_untyped_dict():
-    src = "def f() -> list[dict[str, Any]]:\n    return []\n"
+    src = "def f() -> list[dict[str, Any]]:\n    return [{'id': 1}]\n"
     assert len(_check(src)) == 1
 
 
@@ -61,16 +61,16 @@ def test_flags_optional_untyped_dict():
 from typing import Any, Optional
 
 def f() -> dict[str, Any] | None:
-    return None
+    return {"id": 1}
 
 def g() -> Optional[dict[str, Any]]:
-    return None
+    return {"id": 1}
 """
     assert len(_check(src)) == 2
 
 
 def test_flags_async_def():
-    src = "async def f() -> dict[str, Any]:\n    return {}\n"
+    src = "async def f() -> dict[str, Any]:\n    return {'id': 1}\n"
     assert len(_check(src)) == 1
 
 
@@ -78,14 +78,14 @@ def test_flags_method_in_class():
     src = """
 class CallService:
     def summarize(self) -> dict[str, Any]:
-        return {}
+        return {'id': 1}
 """
     assert len(_check(src)) == 1
 
 
 def test_skips_private_function():
     """Private/internal functions are not public boundaries — never flagged."""
-    src = "def _build() -> dict[str, Any]:\n    return {}\n"
+    src = "def _build() -> dict[str, Any]:\n    return {'id': 1}\n"
     assert _check(src) == []
 
 
@@ -99,11 +99,11 @@ class M:
     @model_validator(mode="before")
     @classmethod
     def normalize(cls, data) -> dict[str, Any]:
-        return data
+        return {"id": 1}
 
     @field_validator("x")
     def coerce(cls, v) -> dict[str, Any]:
-        return v
+        return {"id": 1}
 """
     assert _check(src) == []
 
@@ -111,13 +111,13 @@ class M:
 def test_allows_concrete_dict_value_types():
     src = """
 def f() -> dict[str, str]:
-    return {}
+    return {'id': 1}
 
 def g() -> dict[str, int]:
-    return {}
+    return {'id': 1}
 
 def h() -> dict[str, list[int]]:
-    return {}
+    return {'id': 1}
 """
     assert _check(src) == []
 
@@ -205,7 +205,7 @@ def test_allows_route_with_pydantic_return_annotation():
     src = """
 @router.get("/calls/{call_id}")
 async def get_call(call_id: str) -> CallResponse:
-    return CallResponse(id=call_id)
+    return {"id": call_id}
 """
     assert _check(src) == []
 
@@ -224,11 +224,11 @@ def test_ignores_non_router_receivers():
     src = """
 @client.get("/upstream")
 def fetch_upstream():
-    return {}
+    return {'id': 1}
 
 @retry.post()
 def push():
-    return {}
+    return {'id': 1}
 """
     assert _check(src) == []
 
@@ -246,7 +246,7 @@ async def delete_org(org_id: str):
 
 
 def test_skips_test_files():
-    src = "def f() -> dict[str, Any]:\n    return {}\n"
+    src = "def f() -> dict[str, Any]:\n    return {'id': 1}\n"
     assert _check(src, path="test_calls.py") == []
     assert _check(src, path="python/bulbul/tests/helpers.py") == []
 
@@ -312,7 +312,7 @@ _FLAGGED_DICT_ANNOTATIONS = [
 
 @pytest.mark.parametrize("ann", _FLAGGED_DICT_ANNOTATIONS)
 def test_flagged_dict_annotations(ann: str):
-    diags = _check(f"def f() -> {ann}:\n    return {{}}\n")
+    diags = _check(f"def f() -> {ann}:\n    return {{'id': 1}}\n")
     assert len(diags) == 1, ann
     assert diags[0].code == "SARJ008"
     assert "pydantic model" in diags[0].message
@@ -363,28 +363,28 @@ _ALLOWED_ANNOTATIONS = [
 
 @pytest.mark.parametrize("ann", _ALLOWED_ANNOTATIONS)
 def test_allowed_annotations(ann: str):
-    assert _check(f"def f() -> {ann}:\n    return x\n") == [], ann
+    assert _check(f'def f() -> {ann}:\n    return {{"id": 1}}\n') == [], ann
 
 
 # --- Forward-reference string annotations -----------------------------------
 
 
 def test_flags_string_forward_ref_dict():
-    assert len(_check('def f() -> "dict[str, Any]":\n    return {}\n')) == 1
+    assert len(_check('def f() -> "dict[str, Any]":\n    return {"id": 1}\n')) == 1
 
 
 def test_flags_string_forward_ref_nested_list_dict():
-    assert len(_check('def f() -> "list[dict[str, Any]]":\n    return []\n')) == 1
+    assert len(_check('def f() -> "list[dict[str, Any]]":\n    return [{"id": 1}]\n')) == 1
 
 
 def test_allows_string_forward_ref_concrete():
     assert _check('def f() -> "tuple[bool, str]":\n    return True, "x"\n') == []
-    assert _check('def f() -> "CallPayload":\n    return c\n') == []
+    assert _check('def f() -> "CallPayload":\n    return {"id": 1}\n') == []
 
 
 def test_string_forward_ref_with_syntax_error_not_flagged():
     """A malformed string annotation resolves to None → treated as unannotated."""
-    assert _check('def f() -> "dict[":\n    return {}\n') == []
+    assert _check('def f() -> "dict[":\n    return {"id": 1}\n') == []
 
 
 # --- Validator hook variants (parametrized) ---------------------------------
@@ -404,7 +404,7 @@ _VALIDATOR_DECORATORS = [
 
 @pytest.mark.parametrize("dec", _VALIDATOR_DECORATORS)
 def test_validator_hooks_never_flagged(dec: str):
-    src = f"class M:\n    {dec}\n    def v(cls, value) -> dict[str, Any]:\n        return value\n"
+    src = f"class M:\n    {dec}\n    def v(cls, value) -> dict[str, Any]:\n        return {{'id': 1}}\n"
     assert _check(src) == [], dec
 
 
@@ -423,7 +423,7 @@ def test_overload_variants_never_flagged(dec: str):
 @pytest.mark.parametrize("method", ["get", "post", "put", "patch", "delete"])
 @pytest.mark.parametrize("receiver", ["app", "router", "admin_router", "v1_router"])
 def test_route_methods_and_receivers_flagged_without_annotation(method: str, receiver: str):
-    src = f'@{receiver}.{method}("/x")\ndef handler():\n    return {{}}\n'
+    src = f'@{receiver}.{method}("/x")\ndef handler():\n    return {{"id": 1}}\n'
     diags = _check(src)
     assert len(diags) == 1, (method, receiver)
     assert "no return annotation" in diags[0].message
@@ -431,7 +431,7 @@ def test_route_methods_and_receivers_flagged_without_annotation(method: str, rec
 
 @pytest.mark.parametrize("method", ["get", "post", "put", "patch", "delete"])
 def test_route_methods_allowed_with_return_annotation(method: str):
-    src = f'@router.{method}("/x")\ndef handler() -> CallResponse:\n    return c\n'
+    src = f'@router.{method}("/x")\ndef handler() -> CallResponse:\n    return {{"id": 1}}\n'
     assert _check(src) == [], method
 
 
@@ -440,7 +440,7 @@ def test_route_with_response_model_but_dict_annotation_still_flagged():
     src = """
 @router.get("/x", response_model=X)
 def f() -> dict[str, Any]:
-    return {}
+    return {'id': 1}
 """
     diags = _check(src)
     assert len(diags) == 1
@@ -449,35 +449,35 @@ def f() -> dict[str, Any]:
 
 def test_route_websocket_method_not_flagged():
     """`websocket` is not an HTTP verb → not treated as a route boundary."""
-    src = '@router.websocket("/ws")\ndef f():\n    return {}\n'
+    src = '@router.websocket("/ws")\ndef f():\n    return {"id": 1}\n'
     assert _check(src) == []
 
 
 def test_route_decorator_must_be_a_call():
     """A bare `@router.get` (no parens) is not a route decorator Call."""
-    src = "@router.get\ndef f():\n    return {}\n"
+    src = "@router.get\ndef f():\n    return {'id': 1}\n"
     assert _check(src) == []
 
 
 def test_bare_name_call_decorator_not_a_route():
-    src = '@get("/x")\ndef f():\n    return {}\n'
+    src = '@get("/x")\ndef f():\n    return {"id": 1}\n'
     assert _check(src) == []
 
 
 def test_deeply_attributed_receiver_not_a_route():
     """`@v1.router.get(...)` — receiver is an Attribute, not a bare Name."""
-    src = '@v1.router.get("/x")\ndef f():\n    return {}\n'
+    src = '@v1.router.get("/x")\ndef f():\n    return {"id": 1}\n'
     assert _check(src) == []
 
 
 def test_private_route_handler_not_flagged():
     """Private-name guard runs before route detection."""
-    src = '@router.get("/x")\ndef _internal():\n    return {}\n'
+    src = '@router.get("/x")\ndef _internal():\n    return {"id": 1}\n'
     assert _check(src) == []
 
 
 def test_route_returning_none_annotation_not_flagged():
-    src = '@router.post("/x")\ndef f() -> None:\n    return None\n'
+    src = '@router.post("/x")\ndef f() -> None:\n    return {"id": 1}\n'
     assert _check(src) == []
 
 
@@ -486,23 +486,23 @@ def test_route_returning_none_annotation_not_flagged():
 
 def test_plain_missing_annotation_not_flagged():
     """Only routes are flagged for a missing annotation — plain functions are not."""
-    src = "def f():\n    return {}\n"
+    src = "def f():\n    return {'id': 1}\n"
     assert _check(src) == []
 
 
 def test_non_route_call_decorator_missing_annotation_not_flagged():
-    src = "@lru_cache()\ndef f():\n    return {}\n"
+    src = "@lru_cache()\ndef f():\n    return {'id': 1}\n"
     assert _check(src) == []
 
 
 def test_non_route_call_decorator_with_dict_still_flagged():
     """A non-route decorator does not exempt a raw-dict return annotation."""
-    src = "@lru_cache()\ndef f() -> dict[str, Any]:\n    return {}\n"
+    src = "@lru_cache()\ndef f() -> dict[str, Any]:\n    return {'id': 1}\n"
     assert len(_check(src)) == 1
 
 
 def test_property_returning_dict_flagged():
-    src = "class C:\n    @property\n    def data(self) -> dict[str, Any]:\n        return {}\n"
+    src = "class C:\n    @property\n    def data(self) -> dict[str, Any]:\n        return {'id': 1}\n"
     assert len(_check(src)) == 1
 
 
@@ -510,7 +510,7 @@ def test_property_returning_dict_flagged():
 
 
 def test_reports_line_and_col_for_top_level_function():
-    src = "\n\ndef f() -> dict[str, Any]:\n    return {}\n"
+    src = "\n\ndef f() -> dict[str, Any]:\n    return {'id': 1}\n"
     diags = _check(src)
     assert len(diags) == 1
     assert diags[0].line == 3
@@ -518,7 +518,7 @@ def test_reports_line_and_col_for_top_level_function():
 
 
 def test_reports_line_and_col_for_indented_method():
-    src = "class C:\n    def m(self) -> dict[str, Any]:\n        return {}\n"
+    src = "class C:\n    def m(self) -> dict[str, Any]:\n        return {'id': 1}\n"
     diags = _check(src)
     assert len(diags) == 1
     assert diags[0].line == 2
@@ -526,7 +526,7 @@ def test_reports_line_and_col_for_indented_method():
 
 
 def test_route_reports_decorated_function_line():
-    src = '\n@router.get("/x")\ndef handler():\n    return {}\n'
+    src = '\n@router.get("/x")\ndef handler():\n    return {"id": 1}\n'
     diags = _check(src)
     assert len(diags) == 1
     assert diags[0].line == 3
@@ -538,64 +538,62 @@ def test_route_reports_decorated_function_line():
 def test_multiple_top_level_functions_in_source_order():
     src = """
 def a() -> dict[str, Any]:
-    return {}
+    return {'id': 1}
 
 def b() -> dict[str, Any]:
-    return {}
+    return {'id': 1}
 
 def c() -> dict[str, Any]:
-    return {}
+    return {'id': 1}
 """
     diags = _check(src)
     assert [d.line for d in diags] == [2, 5, 8]
     assert [d.message.split("`")[1] for d in diags] == ["a", "b", "c"]
 
 
-def test_nested_functions_both_flagged():
+def test_only_the_outer_function_is_flagged():
+    """A closure is not importable — only the enclosing function is a boundary."""
     src = """
 def outer() -> dict[str, Any]:
     def inner() -> dict[str, Any]:
-        return {}
-    return {}
-"""
-    diags = _check(src)
-    assert len(diags) == 2
-    assert {d.message.split("`")[1] for d in diags} == {"outer", "inner"}
-
-
-def test_public_nested_in_private_still_flagged():
-    """The private-name guard is per-function; a public inner function is a boundary."""
-    src = """
-def _outer():
-    def inner() -> dict[str, Any]:
-        return {}
-    return inner
+        return {'id': 1}
+    return {'id': 1}
 """
     diags = _check(src)
     assert len(diags) == 1
-    assert diags[0].message.split("`")[1] == "inner"
+    assert diags[0].message.split("`")[1] == "outer"
+
+
+def test_public_nested_in_private_not_flagged():
+    """A public name nested inside a private function is still a closure."""
+    src = """
+def _outer():
+    def inner() -> dict[str, Any]:
+        return {'id': 1}
+    return inner
+"""
+    assert _check(src) == []
 
 
 def test_walk_order_is_breadth_first_not_line_sorted():
-    """Locks current emission order: siblings before nested children (ast.walk BFS)."""
+    """Locks emission order: `ast.walk` BFS, so a method follows its top-level sibling."""
     src = """
-def a() -> dict[str, Any]:
-    def b() -> dict[str, Any]:
-        return {}
-    return {}
+class C:
+    def a(self) -> dict[str, Any]:
+        return {'id': 1}
 
-def c() -> dict[str, Any]:
-    return {}
+def b() -> dict[str, Any]:
+    return {'id': 1}
 """
     diags = _check(src)
-    assert [d.line for d in diags] == [2, 7, 3]
+    assert [d.line for d in diags] == [6, 3]
 
 
 # --- Message content --------------------------------------------------------
 
 
 def test_dict_message_includes_function_name_and_annotation():
-    diags = _check("def build_payload() -> dict[str, Any]:\n    return {}\n")
+    diags = _check("def build_payload() -> dict[str, Any]:\n    return {'id': 1}\n")
     assert len(diags) == 1
     msg = diags[0].message
     assert "build_payload" in msg
@@ -604,7 +602,7 @@ def test_dict_message_includes_function_name_and_annotation():
 
 
 def test_route_message_includes_route_name():
-    diags = _check('@router.get("/x")\ndef get_call():\n    return {}\n')
+    diags = _check('@router.get("/x")\ndef get_call():\n    return {"id": 1}\n')
     assert len(diags) == 1
     msg = diags[0].message
     assert "get_call" in msg
@@ -636,8 +634,8 @@ def test_sources_with_no_boundary_functions_return_empty(src: str):
         "def f(:\n",
         "def f() ->\n",
         "class C\n    pass\n",
-        "@\ndef f() -> dict[str, Any]:\n    return {}\n",
-        "def f() -> dict[str, Any]\n    return {}\n",
+        "@\ndef f() -> dict[str, Any]:\n    return {'id': 1}\n",
+        "def f() -> dict[str, Any]\n    return {'id': 1}\n",
     ],
 )
 def test_syntax_errors_return_empty(src: str):
@@ -658,7 +656,7 @@ def test_syntax_errors_return_empty(src: str):
     ],
 )
 def test_test_paths_are_skipped(path: str):
-    src = "def f() -> dict[str, Any]:\n    return {}\n"
+    src = "def f() -> dict[str, Any]:\n    return {'id': 1}\n"
     assert _check(src, path=path) == []
 
 
@@ -673,7 +671,7 @@ def test_test_paths_are_skipped(path: str):
     ],
 )
 def test_non_test_paths_are_still_linted(path: str):
-    src = "def f() -> dict[str, Any]:\n    return {}\n"
+    src = "def f() -> dict[str, Any]:\n    return {'id': 1}\n"
     assert len(_check(src, path=path)) == 1, path
 
 
@@ -686,18 +684,18 @@ def test_non_test_paths_are_still_linted(path: str):
 
 def test_flags_builtins_dict_subscript():
     """`builtins.dict[str, Any]` — attribute receiver still resolves to `dict`."""
-    src = "import builtins\ndef f() -> builtins.dict[str, Any]:\n    return {}\n"
+    src = "import builtins\ndef f() -> builtins.dict[str, Any]:\n    return {'id': 1}\n"
     assert len(_check(src)) == 1
 
 
 def test_flags_builtins_dict_bare():
-    src = "import builtins\ndef f() -> builtins.dict:\n    return {}\n"
+    src = "import builtins\ndef f() -> builtins.dict:\n    return {'id': 1}\n"
     assert len(_check(src)) == 1
 
 
 def test_flags_list_of_bare_dict():
     """`list[dict]` — the inner bare `dict` classifies as untyped."""
-    assert len(_check("def f() -> list[dict]:\n    return []\n")) == 1
+    assert len(_check("def f() -> list[dict]:\n    return [{'id': 1}]\n")) == 1
 
 
 def test_flags_union_with_nested_optional_dict():
@@ -705,19 +703,19 @@ def test_flags_union_with_nested_optional_dict():
 from typing import Union, Optional, Any
 
 def f() -> Union[str, Optional[dict[str, Any]]]:
-    return None
+    return {"id": 1}
 """
     assert len(_check(src)) == 1
 
 
 def test_flags_forward_ref_with_leading_newline():
     """A leading newline inside an eval-mode string forward-ref parses fine."""
-    assert len(_check('def f() -> "\\ndict[str, Any]":\n    return {}\n')) == 1
+    assert len(_check('def f() -> "\\ndict[str, Any]":\n    return {"id": 1}\n')) == 1
 
 
 def test_flags_implicitly_concatenated_string_annotation():
     """Adjacent string literals fold into one Constant at parse time → resolvable."""
-    assert len(_check('def f() -> "dict[str, " "Any]":\n    return {}\n')) == 1
+    assert len(_check('def f() -> "dict[str, " "Any]":\n    return {"id": 1}\n')) == 1
 
 
 # --- Additional allowed shapes / documented limitations (passing) -----------
@@ -725,23 +723,23 @@ def test_flags_implicitly_concatenated_string_annotation():
 
 def test_allows_dict_with_bare_dict_value():
     """Bare `dict` in VALUE position is not inspected (mirrors `dict[str, dict[str, Any]]`)."""
-    assert _check("def f() -> dict[str, dict]:\n    return {}\n") == []
+    assert _check("def f() -> dict[str, dict]:\n    return {'id': 1}\n") == []
 
 
 def test_allows_sequence_of_untyped_dict():
     """Only `list`/`List` are unwrapped — `Sequence[...]` is not."""
-    src = "from collections.abc import Sequence\ndef f() -> Sequence[dict[str, Any]]:\n    return []\n"
+    src = "from collections.abc import Sequence\ndef f() -> Sequence[dict[str, Any]]:\n    return [{'id': 1}]\n"
     assert _check(src) == []
 
 
 def test_allows_kwargs_any_without_return_annotation():
     """`**kwargs: Any` is a param annotation; a non-route missing return is not flagged."""
-    assert _check("def f(**kwargs: Any):\n    return {}\n") == []
+    assert _check("def f(**kwargs: Any):\n    return {'id': 1}\n") == []
 
 
 def test_allows_type_alias_return_pure_annotation_limitation():
     """Pure-annotation rule does not resolve `type X = dict[...]` aliases (by design)."""
-    src = "type Payload = dict[str, Any]\ndef f() -> Payload:\n    return {}\n"
+    src = "type Payload = dict[str, Any]\ndef f() -> Payload:\n    return {'id': 1}\n"
     assert _check(src) == []
 
 
@@ -749,18 +747,192 @@ def test_allows_type_alias_return_pure_annotation_limitation():
 
 
 def test_annotated_dict_return_should_be_flagged():
-    src = 'from typing import Annotated, Any\ndef f() -> Annotated[dict[str, Any], "meta"]:\n    return {}\n'
+    src = 'from typing import Annotated, Any\ndef f() -> Annotated[dict[str, Any], "meta"]:\n    return {"id": 1}\n'
     assert len(_check(src)) == 1
 
 
 def test_forward_ref_with_leading_space_should_be_flagged():
-    assert len(_check('def f() -> " dict[str, Any]":\n    return {}\n')) == 1
+    assert len(_check('def f() -> " dict[str, Any]":\n    return {"id": 1}\n')) == 1
 
 
 def test_dict_with_string_forward_ref_any_value_should_be_flagged():
-    assert len(_check('def f() -> dict[str, "Any"]:\n    return {}\n')) == 1
+    assert len(_check('def f() -> dict[str, "Any"]:\n    return {"id": 1}\n')) == 1
 
 
 def test_pytest_fixture_returning_dict_is_false_positive():
-    src = "import pytest\n@pytest.fixture\ndef sample() -> dict[str, Any]:\n    return {}\n"
+    src = "import pytest\n@pytest.fixture\ndef sample() -> dict[str, Any]:\n    return {'id': 1}\n"
     assert _check(src) == []
+
+
+# ===========================================================================
+# CORPUS SWEEP: 413 findings over fastapi / pydantic / black / sqlmodel /
+# rich / flask / httpx / requests / anyio (2,657 files).
+# ===========================================================================
+
+# --- Guard: the record must be built in place -------------------------------
+
+_OPAQUE_MAPPING_BODIES = [
+    # `black/src/black/files.py:130` (parse_pyproject_toml), `pydantic/mypy.py:1433`.
+    "return tomllib.load(f)",
+    # `fastapi/scripts/sponsors.py:92`, `pydantic/.github/.../people.py:358`.
+    "return response.json()",
+    # `sqlmodel/_compat.py:100`, `pydantic/_internal/_typing_extra.py:287`.
+    "return getattr(obj, '__annotations__', {})",
+    # `pydantic/_internal/_typing_extra.py:205` (parent_frame_namespace).
+    "return frame.f_locals",
+    # `pydantic/json_schema.py:2547`, `fastapi/openapi/utils.py:529`.
+    "return generator.generate(schema)",
+    # `pydantic/mypy.py:1272` (get_values_dict) — comprehension keys are dynamic.
+    "return {k: v for k, v in self.__dict__.items()}",
+    # `flask/src/flask/json/tag.py:87` (tag) — the key is a runtime value.
+    "return {self.key: value}",
+    # `flask/src/flask/config.py:323` (get_namespace) — `{}` then filled.
+    "return {}",
+    # A merge of mappings the function did not author.
+    "return {**base, **overrides}",
+]
+
+
+@pytest.mark.parametrize("body", _OPAQUE_MAPPING_BODIES)
+def test_opaque_mapping_returns_are_not_records(body: str):
+    """A mapping the function parses/forwards/reflects over has no shape to declare."""
+    assert _check(f"def f() -> dict[str, Any]:\n    {body}\n") == [], body
+
+
+_RECORD_BODIES = [
+    # `requests/src/requests/help.py:67` (info), `flask/examples/celery/.../views.py:22`.
+    "return {'ready': ready, 'value': value}",
+    # A record assigned to a local, then mutated before return (`app.py:620`).
+    "rv = {'app': app}\n    rv.update(extra)\n    return rv",
+    "rv: dict[str, Any] = {'app': app}\n    return rv",
+    # `list[dict[str, Any]]` shapes.
+    "return [{'id': 1}]",
+    "return [{'id': row.id} for row in rows]",
+    # One opaque branch does not excuse the record branch.
+    "if x:\n        return other.copy()\n    return {'id': 1}",
+    # A single literal string key is enough evidence.
+    "return {'id': ident, key: value}",
+]
+
+
+@pytest.mark.parametrize("body", _RECORD_BODIES)
+def test_in_place_records_are_flagged(body: str):
+    assert len(_check(f"def f() -> dict[str, Any]:\n    {body}\n")) == 1, body
+
+
+def test_stub_body_is_not_flagged_known_limitation():
+    """`pydantic_core/core_schema.py:234` — a `...` stub builds no record in place."""
+    assert _check("def data(self) -> dict[str, Any]: ...\n") == []
+
+
+def test_record_built_by_a_nested_function_does_not_count():
+    """The outer function forwards an opaque mapping; the inner record is not its return."""
+    src = """
+def outer() -> dict[str, Any]:
+    def make():
+        return {"id": 1}
+    return cache.load()
+"""
+    assert _check(src) == []
+
+
+def test_record_assigned_but_not_returned_does_not_count():
+    src = """
+def f() -> dict[str, Any]:
+    seed = {"id": 1}
+    return transform(seed)
+"""
+    assert _check(src) == []
+
+
+# --- Guard: closures are not boundaries -------------------------------------
+
+
+def test_closure_returning_record_not_flagged():
+    """`httpx/_transports/asgi.py:134` — an inner ASGI callable is not importable."""
+    src = """
+class ASGITransport:
+    async def handle(self):
+        async def receive() -> dict[str, Any]:
+            return {"type": "http.request", "more_body": False}
+        return receive
+"""
+    assert _check(src) == []
+
+
+def test_method_of_class_defined_inside_a_function_not_flagged():
+    src = """
+def factory():
+    class Inner:
+        def payload(self) -> dict[str, Any]:
+            return {"id": 1}
+    return Inner
+"""
+    assert _check(src) == []
+
+
+def test_module_level_class_method_is_still_a_boundary():
+    """Opposite case: the closure guard must not swallow ordinary methods."""
+    src = """
+class Service:
+    def payload(self) -> dict[str, Any]:
+        return {"id": 1}
+"""
+    assert len(_check(src)) == 1
+
+
+# --- Guard: dict-conversion protocol methods --------------------------------
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["asdict", "as_dict", "dict", "model_dump", "to_data", "to_dict"],
+)
+def test_dict_conversion_methods_not_flagged(name: str):
+    """`pydantic/main.py:469`, `sqlmodel/main.py:890`, `fastapi/_compat/v2.py:100`."""
+    src = f"def {name}(self) -> dict[str, Any]:\n    return {{'id': self.id}}\n"
+    assert _check(src) == [], name
+
+
+@pytest.mark.parametrize("name", ["to_dictionary", "build_dict", "dict_for", "as_dict_of"])
+def test_names_merely_containing_dict_are_still_flagged(name: str):
+    """Opposite case: the exemption is an exact-name allowlist, not a substring match."""
+    src = f"def {name}(self) -> dict[str, Any]:\n    return {{'id': self.id}}\n"
+    assert len(_check(src)) == 1, name
+
+
+# --- Routes: the missing-annotation trigger needs an ad-hoc dict too --------
+
+
+_NON_RECORD_ROUTE_BODIES = [
+    # 128 corpus findings: the route returns a model / ORM object.
+    "return Item(id=1)",
+    "return session.get(Hero, hero_id)",
+    # 35: a list of models.
+    "return session.exec(select(Hero)).all()",
+    # 25: a Response subclass (`fastapi/docs_src/custom_response/*`).
+    "return HTMLResponse(content=html)",
+    "return StreamingResponse(iterfile())",
+    "return templates.TemplateResponse('item.html', ctx)",
+    # 11: no return at all (`status_code=204` style handlers).
+    "pass",
+]
+
+
+@pytest.mark.parametrize("body", _NON_RECORD_ROUTE_BODIES)
+def test_route_without_annotation_and_without_ad_hoc_dict_not_flagged(body: str):
+    src = f'@router.get("/x")\ndef handler():\n    {body}\n'
+    assert _check(src) == [], body
+
+
+def test_route_without_annotation_returning_ad_hoc_dict_still_flagged():
+    """Opposite case: 130 corpus findings are exactly this (`return {"item_id": ...}`)."""
+    src = '@router.get("/items/{item_id}")\ndef read_item(item_id: str):\n    return {"item_id": item_id}\n'
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "ad-hoc dict" in diags[0].message
+
+
+def test_route_without_annotation_returning_list_of_records_flagged():
+    src = '@router.get("/items")\ndef read_items():\n    return [{"item_name": "Foo"}]\n'
+    assert len(_check(src)) == 1

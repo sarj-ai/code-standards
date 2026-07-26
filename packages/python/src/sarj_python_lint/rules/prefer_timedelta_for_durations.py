@@ -44,6 +44,27 @@ Deliberately NOT flagged:
   signatures of stdlib/third-party APIs under test (`Lock.acquire(timeout=-1)`,
   seconds-based subprocess helpers) and cannot change them — the trio sweep's
   false positives were all of this shape.
+- `@overload` stubs. The overload set restates one implementation's signature N
+  times, so reporting each is N-1 duplicates of the same finding; the
+  implementation that follows is still flagged. Six of the famous-repo sweep's
+  21 hits were this
+  (`anyio/src/anyio/_core/_sockets.py:82`, `:97`, `:113`, `:129`, `:141` all
+  restating `happy_eyeballs_delay` for `connect_tcp` at `:155`, plus
+  `anyio/src/anyio/functools.py:282` restating `ttl` for `:303`).
+- **CLI parameters** — a parameter of a function decorated with `click` /
+  `typer` (`@click.option`, `@click.argument`, ...). Same boundary argument as
+  pydantic-settings: the value is parsed out of `argv` by the framework
+  (`type=float`), and `timedelta` is not a shape argv can carry
+  (`httpx/httpx/_main.py:464`, `timeout: float` behind `@click.option("--timeout",
+  type=float, default=5.0)`).
+- **Same-name delegation wrappers** — a body that does nothing but forward the
+  parameter to a callee of the same name (`async def sleep(delay: float): await
+  trio.sleep(delay)`). The unit belongs to the wrapped API, not to the wrapper:
+  `anyio/src/anyio/_backends/_trio.py:1115`,
+  `anyio/src/anyio/_backends/_asyncio.py:2532`, and
+  `anyio/src/anyio/_core/_eventloop.py:88` all mirror stdlib `sleep`. A body
+  that computes with the parameter (`deadline = current_time() + delay`) is not
+  a pass-through and still fires.
 
 Suppress an intentional raw-numeric duration with `# sarj-noqa: SARJ014 — <reason>`.
 
@@ -84,6 +105,13 @@ _EXCLUDE_RE = re.compile(
 
 _NUMERIC_NAMES = frozenset({"int", "float"})
 
+#: Roots of the CLI frameworks whose decorators bind a parameter to an argv value.
+_CLI_MODULES = frozenset({"click", "typer"})
+
+#: Decorator names that declare a CLI parameter whatever they are imported from
+#: (`@option(...)`, `@app.argument(...)`).
+_CLI_DECORATORS = frozenset({"argument", "option"})
+
 _CONSTRAINED_NUMERIC = {
     "PositiveInt": "int",
     "NonNegativeInt": "int",
@@ -119,8 +147,12 @@ class PreferTimedeltaForDurations(Rule):
         diags: list[Diagnostic] = []
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                if _is_overload(node) or _has_cli_decorator(node):
+                    continue
                 args = node.args
                 for a in (*args.posonlyargs, *args.args, *args.kwonlyargs):
+                    if _is_forwarded_to_same_name(node, a.arg):
+                        continue
                     self._consider(a.arg, a.annotation, a, diags, path)
             elif isinstance(node, ast.AnnAssign):
                 if id(node) in settings_fields:
@@ -157,6 +189,83 @@ class PreferTimedeltaForDurations(Rule):
                 ),
             )
         )
+
+
+def _is_overload(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Report whether the function is an `@overload` restatement of another signature.
+
+    Returns:
+        True when an `overload` decorator is present.
+
+    """
+    return any(_trailing_name(dec) == "overload" for dec in node.decorator_list)
+
+
+def _has_cli_decorator(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Report whether the function is a `click` / `typer` command entry point.
+
+    Its parameters are parsed out of `argv` by the framework, which knows how to
+    build an `int`/`float` and not a `timedelta`.
+
+    Returns:
+        True when any decorator comes from a CLI framework.
+
+    """
+    for dec in node.decorator_list:
+        target = dec.func if isinstance(dec, ast.Call) else dec
+        dotted = _dotted_name(target)
+        if dotted is None:
+            continue
+        parts = dotted.split(".")
+        if parts[0] in _CLI_MODULES or parts[-1] in _CLI_DECORATORS:
+            return True
+    return False
+
+
+def _is_forwarded_to_same_name(node: ast.FunctionDef | ast.AsyncFunctionDef, param: str) -> bool:
+    """Report whether the body only forwards `param` to a callee of the function's own name.
+
+    `async def sleep(delay: float) -> None: await trio.sleep(delay)` is a
+    pass-through: the unit is the wrapped API's, and this signature exists to
+    mirror it.
+
+    Returns:
+        True when the body is a single same-name call that receives `param`.
+
+    """
+    body = [stmt for stmt in node.body if not _is_docstring(stmt)]
+    if len(body) != 1:
+        return False
+    match body[0]:
+        case ast.Return(value=ast.expr() as value) | ast.Expr(value=value):
+            call = value.value if isinstance(value, ast.Await) else value
+        case _:
+            return False
+    if not isinstance(call, ast.Call) or _trailing_name(call.func) != node.name:
+        return False
+    passed = [*call.args, *(kw.value for kw in call.keywords)]
+    return any(isinstance(arg, ast.Name) and arg.id == param for arg in passed)
+
+
+def _is_docstring(stmt: ast.stmt) -> bool:
+    return isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str)
+
+
+def _dotted_name(node: ast.expr) -> str | None:
+    """Render a `Name` / `Attribute` chain as a dotted string.
+
+    Returns:
+        The dotted name, or None when the expression is not a plain chain.
+
+    """
+    match node:
+        case ast.Name(id=ident):
+            return ident
+        case ast.Attribute(value=value, attr=attr):
+            base = _dotted_name(value)
+            return None if base is None else f"{base}.{attr}"
+        case _:
+            return None
 
 
 def _settings_field_ids(tree: ast.Module) -> frozenset[int]:

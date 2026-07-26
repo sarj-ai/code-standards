@@ -31,6 +31,18 @@
  * - **React hooks** — any `use*` function. `[value, setValue]` is the
  *   established contract of the entire hooks ecosystem; renaming at the call
  *   site is the intended affordance, not a hazard.
+ * - **Accessor/mutator pairs** — a 2-tuple with a function type in either slot
+ *   (`[T, (next: T) => void]`, `[() => void, Promise<void>]`). A function slot
+ *   is a capability handle, not a data field. That is the
+ *   same `[value, setValue]` contract without the `use` prefix, and every
+ *   reactive library outside React ships it: measured on 2,186 real TypeScript
+ *   files (zod / TanStack Query / react-router / swr / zustand), 2 of the 5 hits
+ *   were this shape —
+ *   query/packages/svelte-query/src/containers.svelte.ts:31 returning
+ *   `[T, (newValue: T) => void]` and
+ *   query/packages/query-persist-client-core/src/persist.ts:162 returning
+ *   `[() => void, Promise<void>]` (unsubscribe handle + completion). Neither has
+ *   "fields" to name; boxing them in an object would fight the ecosystem.
  * - Single-element tuples, unannotated returns, and non-exported helpers, whose
  *   two or three call sites live in the same file as the definition.
  */
@@ -41,6 +53,9 @@ type MessageIds = "noPositionalTupleReturn";
 type Options = readonly [];
 
 const MIN_ELEMENTS = 2;
+
+/** The pair length an accessor/mutator tuple has. */
+const ACCESSOR_PAIR_LENGTH = 2;
 
 /** Type wrappers whose single type argument is the value actually returned. */
 const AWAITABLE_TYPES: ReadonlySet<string> = new Set(["Promise", "PromiseLike", "Awaited"]);
@@ -85,6 +100,12 @@ function isPermittedTuple(
     return true;
   }
   if (elements[0]?.type === AST_NODE_TYPES.TSLiteralType) {
+    return true;
+  }
+  if (
+    elements.length === ACCESSOR_PAIR_LENGTH &&
+    elements.some((element) => element.type === AST_NODE_TYPES.TSFunctionType)
+  ) {
     return true;
   }
   const texts = new Set(elements.map((element) => normalizedText(sourceCode, element)));

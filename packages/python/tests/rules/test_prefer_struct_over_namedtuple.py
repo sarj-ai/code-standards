@@ -568,3 +568,34 @@ def test_tests_directory_is_exempt():
 def test_production_file_still_fires():
     src = "from collections import namedtuple\nPoint = namedtuple('Point', ['x', 'y'])\n"
     assert len(_check(src, path="bulbul/calls/rows.py")) == 1
+
+
+# --------------------------------------------------------------------------- #
+# The two famous-repo sweep hits, verified true and pinned as regressions.    #
+# --------------------------------------------------------------------------- #
+
+
+def test_flags_namedtuple_built_in_a_property_with_a_local_import():
+    # httpx/httpx/_urls.py:409 — the deprecated `URL.raw` property imports
+    # collections inside the body and builds a 4-field untyped namedtuple.
+    src = """
+class URL:
+    @property
+    def raw(self) -> tuple[bytes, bytes, int, bytes]:
+        import collections
+
+        RawURL = collections.namedtuple(
+            "RawURL", ["raw_scheme", "raw_host", "port", "raw_path"]
+        )
+        return RawURL(self.raw_scheme, self.raw_host, self.port, self.raw_path)
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert diags[0].line == 7
+
+
+def test_flags_fieldless_probe_namedtuple():
+    # rich/rich/pretty.py:90 — a zero-field probe used to find the file of the
+    # generated __repr__; `class _Dummy(NamedTuple): pass` does the same job.
+    src = 'import collections\n_dummy_namedtuple = collections.namedtuple("_dummy_namedtuple", [])\n'
+    assert len(_check(src)) == 1
