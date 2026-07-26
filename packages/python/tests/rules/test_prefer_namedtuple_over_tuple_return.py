@@ -149,11 +149,7 @@ def test_reports_indented_col():
 
 
 def test_multiple_sorted_by_line():
-    src = (
-        "def a() -> tuple[int, str]: ...\n"
-        "def b() -> tuple[int, int]: ...\n"
-        "def c() -> tuple[bytes, str, None]: ...\n"
-    )
+    src = "def a() -> tuple[int, str]: ...\ndef b() -> tuple[int, int]: ...\ndef c() -> tuple[bytes, str, None]: ...\n"
     diags = _check(src)
     assert [d.line for d in diags] == [1, 3]
 

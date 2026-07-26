@@ -44,10 +44,7 @@ def test_flags_raw_insert_calls(call: str):
 
 
 def test_flags_fstring_insert():
-    src = (
-        "async def test_x(conn):\n"
-        '    await conn.execute(f"INSERT INTO {table} (id) VALUES ({cid})")\n'
-    )
+    src = 'async def test_x(conn):\n    await conn.execute(f"INSERT INTO {table} (id) VALUES ({cid})")\n'
     assert len(_check(src)) == 1
 
 
@@ -151,7 +148,7 @@ def test_allows_insert_only_in_values_comments_or_prose(call: str):
         'thread_pool.submit(work, "INSERT INTO t VALUES (1)")',
         'conn.run("INSERT INTO t VALUES (1)")',
         'cursor.execute("TRUNCATE call")',
-        'conn.execute("SET timezone = \'UTC\'")',
+        "conn.execute(\"SET timezone = 'UTC'\")",
     ],
 )
 def test_allows_non_matching_calls(call: str):

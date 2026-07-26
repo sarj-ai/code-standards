@@ -32,6 +32,14 @@ reason mentioning intermittence.
 
 Deliberately NOT flagged:
 
+* **property-based and fuzz tests.** A `@given(...)` (hypothesis) or
+  `<schema>.parametrize()` (schemathesis) decorator means one test function
+  expands into many generated cases, and a documented bug is typically tripped
+  by only a subset of them — the rest legitimately XPASS. `strict=True` there
+  turns every passing generated input into a failure, which is why these suites
+  set `strict=False` deliberately. Found against bulbul's
+  `test_calls_fuzz_known_bugs`, where the unroutable-id shapes trip the bug and
+  the other generated ids do not,
 * `xfail` with no `reason=`, or a reason describing an environment gate rather
   than a defect ("no GPU on CI") — those are not bug pins,
 * `pytest.xfail(...)` called imperatively inside a body — that aborts the test
@@ -64,6 +72,14 @@ _NONDETERMINISM_RE = re.compile(r"intermittent|flak|sometimes|non-?deterministic
 
 # Sibling markers that declare a nondeterministic dependency.
 _NONDETERMINISTIC_MARKERS = frozenset({"real_llm", "flaky", "network", "integration"})
+
+# Hypothesis' entry point. One `@given` expands into many generated inputs.
+_PROPERTY_DECORATORS = frozenset({"given"})
+
+# schemathesis binds `.parametrize()` on a schema object. `pytest.mark.parametrize`
+# is a fixed table and is NOT this — it is excluded by checking the receiver.
+_PARAMETRIZE_ATTR = "parametrize"
+_PYTEST_MARK = "mark"
 
 _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 
@@ -119,7 +135,26 @@ def _rotting_bug_pins(tree: ast.Module) -> list[ast.Call]:
 
 
 def _has_nondeterministic_marker(decorators: list[ast.expr]) -> bool:
-    return any(_marker_name(dec) in _NONDETERMINISTIC_MARKERS for dec in decorators)
+    return any(_marker_name(dec) in _NONDETERMINISTIC_MARKERS or _is_property_based(dec) for dec in decorators)
+
+
+def _is_property_based(dec: ast.expr) -> bool:
+    """Report whether `dec` expands the test into many generated inputs.
+
+    Returns:
+        True for a hypothesis `@given(...)` or a schemathesis
+        `<schema>.parametrize()`, both of which make a partial XPASS normal.
+
+    """
+    target = dec.func if isinstance(dec, ast.Call) else dec
+    if isinstance(target, ast.Name):
+        return target.id in _PROPERTY_DECORATORS
+    if not isinstance(target, ast.Attribute) or target.attr != _PARAMETRIZE_ATTR:
+        return False
+    # `pytest.mark.parametrize` is a fixed table, not a generator — the receiver
+    # is `mark`. A schemathesis schema object is anything else.
+    receiver = target.value
+    return not (isinstance(receiver, ast.Attribute) and receiver.attr == _PYTEST_MARK)
 
 
 def _marker_name(dec: ast.expr) -> str | None:

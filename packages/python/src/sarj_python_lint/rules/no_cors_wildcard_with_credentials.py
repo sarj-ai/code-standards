@@ -36,8 +36,7 @@ class NoCorsWildcardWithCredentials(Rule):
     id: str = "no-cors-wildcard-with-credentials"
     code: str = "SARJ028"
     description: str = (
-        'CORS `allow_credentials=True` with `"*"` in `allow_origins` lets any '
-        "site read authenticated responses."
+        'CORS `allow_credentials=True` with `"*"` in `allow_origins` lets any site read authenticated responses.'
     )
 
     @override

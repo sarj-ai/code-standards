@@ -53,6 +53,7 @@ from sarj_python_lint.rules._paths import is_generated_source
 
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from pathlib import Path
 
 
@@ -144,6 +145,55 @@ def _is_word_char(ch: str) -> bool:
     return ch.isalnum() or ch == "_"
 
 
+_CODING_COOKIE_RE = re.compile(r"coding[:=]\s*[-_.a-zA-Z0-9]+")
+
+# Only `>>>` arms a doctest block. A bare `...` cannot: an ASCII banner of
+# dots starts with it, and exempting on that alone silently disabled the
+# banner check.
+_DOCTEST_PROMPT = ">>>"
+
+
+def _is_coding_cookie(body: str) -> bool:
+    """Report whether the comment is a PEP 263 source-encoding declaration.
+
+    `# encoding=utf-8` / `# -*- coding: utf-8 -*-` are read by the interpreter,
+    not commentary, and `rich` carries them at the top of test modules.
+
+    Returns:
+        True when the body declares a source encoding.
+
+    """
+    return bool(_CODING_COOKIE_RE.search(body))
+
+
+def _doctest_block_lines(standalone: Sequence[tuple[int, int, str]]) -> set[int]:
+    """Collect every line of a contiguous comment run that contains a doctest prompt.
+
+    A commented doctest is documentation, not dead code, but its *expected
+    output* lines look exactly like commented-out code — `# URL('https://...')`
+    in httpx's `_client.py` is the canonical shape. Exempting only the `>>>`
+    lines would still flag the output beneath them, so the whole run goes.
+
+    Returns:
+        The line numbers belonging to a doctest comment block.
+
+    """
+    exempt: set[int] = set()
+    block: list[tuple[int, str]] = []
+
+    def flush() -> None:
+        if any(body.startswith(_DOCTEST_PROMPT) for _, body in block):
+            exempt.update(line for line, _ in block)
+        block.clear()
+
+    for line, _, body in sorted(standalone):
+        if block and line != block[-1][0] + 1:
+            flush()
+        block.append((line, body))
+    flush()
+    return exempt
+
+
 def _is_directive(body: str) -> bool:
     low = body.lower()
     for prefix in _DIRECTIVE_PREFIXES:
@@ -186,11 +236,7 @@ def _is_heading_underline(body: str, prev_body: str | None) -> bool:
         return False
     if prev_body is None:
         return False
-    return (
-        any(_is_word_char(ch) for ch in prev_body)
-        and not _is_banner(prev_body)
-        and not _looks_like_code(prev_body)
-    )
+    return any(_is_word_char(ch) for ch in prev_body) and not _is_banner(prev_body) and not _looks_like_code(prev_body)
 
 
 def _is_banner(body: str) -> bool:
@@ -288,8 +334,9 @@ class NoCommentCruft(Rule):
             return []
         diags: dict[int, Diagnostic] = {}
         by_line = {line: body for line, _, body in standalone}
+        doctest_lines = _doctest_block_lines(standalone)
         for line, col, body in standalone:
-            if _is_directive(body):
+            if _is_directive(body) or _is_coding_cookie(body) or line in doctest_lines:
                 continue
             prev_body = by_line.get(line - 1)
             msg = self._classify(body, prev_body)

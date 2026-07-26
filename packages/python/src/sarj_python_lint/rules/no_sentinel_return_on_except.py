@@ -123,8 +123,7 @@ class NoSentinelReturnOnExcept(Rule):
                 col=handler.col_offset + 1,
                 code=self.code,
                 message=(
-                    "Bare `except: pass` silently swallows the exception — "
-                    "re-raise, log it, or handle it explicitly."
+                    "Bare `except: pass` silently swallows the exception — re-raise, log it, or handle it explicitly."
                 ),
             )
         return None

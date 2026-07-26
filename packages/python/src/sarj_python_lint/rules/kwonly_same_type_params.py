@@ -82,9 +82,7 @@ _PRIMITIVES = frozenset({"str", "int", "float", "bool"})
 
 _EXEMPT_DECORATORS = frozenset({"override", "overload", "abstractmethod"})
 
-_HTTP_ROUTE_METHODS = frozenset(
-    {"get", "post", "put", "patch", "delete", "head", "options", "websocket"}
-)
+_HTTP_ROUTE_METHODS = frozenset({"get", "post", "put", "patch", "delete", "head", "options", "websocket"})
 
 _EXEMPT_NAME_PREFIXES = ("visit_", "test_")
 
@@ -229,9 +227,7 @@ def _value_referenced_names(tree: ast.AST) -> frozenset[str]:
         The set of names loaded outside call position.
 
     """
-    call_funcs = {
-        id(node.func) for node in ast.walk(tree) if isinstance(node, ast.Call)
-    }
+    call_funcs = {id(node.func) for node in ast.walk(tree) if isinstance(node, ast.Call)}
     return frozenset(
         node.id
         for node in ast.walk(tree)

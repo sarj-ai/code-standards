@@ -67,15 +67,40 @@ def test_thing(payload):
     assert len(_check(src)) == 1
 
 
-def test_flags_opaque_column_inside_a_tuple_case():
+def test_flags_case_whose_columns_are_all_opaque():
     src = """
 import pytest
 
-@pytest.mark.parametrize(("cfg", "ok"), [(Config(1), True), (Config(2), False)])
-def test_thing(cfg, ok):
-    assert run(cfg) is ok
+@pytest.mark.parametrize(("cfg", "other"), [(Config(1), Config(2)), (Config(3), Config(4))])
+def test_thing(cfg, other):
+    assert run(cfg, other)
 """
     assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "(Config(1), True)",
+        '("0.0", Decimal("0.0"))',
+        '(datetime(2012, 4, 9), "2012-04-09")',
+        '(UUID("ebcdab58-6eb8-46fb-a190-d07a33e9eac8"), 1)',
+        '(Err("too short"), "input is too short")',
+    ],
+)
+def test_one_nameable_column_is_enough(case: str):
+    # pytest joins per-column ids with `-`, so a single nameable column still
+    # distinguishes the case: ("0.0", Decimal("0.0")) reports as `0.0-value1`.
+    # Requiring *any* opaque column instead of *all* produced 372 hits across
+    # pydantic/flask/httpx/requests/rich, overwhelmingly false positives.
+    src = f"""
+import pytest
+
+@pytest.mark.parametrize(("a", "b"), [{case}, {case}])
+def test_thing(a, b):
+    assert run(a, b)
+"""
+    assert _check(src) == []
 
 
 def test_flags_unnamed_pytest_param_with_opaque_payload():

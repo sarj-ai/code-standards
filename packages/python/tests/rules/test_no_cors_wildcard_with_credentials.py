@@ -197,10 +197,7 @@ def test_line_and_col_module_level():
 
 
 def test_line_and_col_indented_call():
-    src = (
-        "def build():\n"
-        '    return add_middleware(allow_origins=["*"], allow_credentials=True)\n'
-    )
+    src = 'def build():\n    return add_middleware(allow_origins=["*"], allow_credentials=True)\n'
     diags = _check(src)
     assert len(diags) == 1
     assert diags[0].line == 2
