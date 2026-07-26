@@ -36,9 +36,40 @@
  *      That is a re-export written the long way, and `export … from` was already
  *      treated as an indicator; the two spellings now agree.
  *
+ * ONE MORE INDICATOR FROM bulbul PR #4111:
+ *
+ *   3. **Importing `next/dynamic`.** In the App Router, `dynamic(…, { ssr: false })`
+ *      is a hard BUILD ERROR inside a Server Component — Next.js rejects it with
+ *      "`ssr: false` is not allowed with `next/dynamic` in Server Components".
+ *      A lazy-wrapper module therefore has NO legal form without the directive,
+ *      so the rule was demanding something the framework forbids and the only
+ *      available response was a disable comment. These wrappers also look
+ *      maximally "unnecessary" to the old predicate: one `dynamic()` call, no
+ *      hooks, no handlers, no browser globals.
+ *      `typescript/packages/app/src/app/dashboard/call-volume-chart-lazy.tsx:1`
+ *      (deferring the recharts bundle off the server dashboard page) and
+ *      `typescript/packages/app/src/components/rich-text-editor/rich-text-editor-lazy.tsx:1`
+ *      (deferring the Lexical bundle off /agents and /admin/global-prompts).
+ *
+ *      HONEST SCOPE: both of those files also happen to be covered by indicator
+ *      2, since each EXPORTS a const whose initializer reads the imported
+ *      `dynamic`. Indicator 3 is therefore defense-in-depth, not the thing that
+ *      currently silences them: it is what covers the same wrapper when the lazy
+ *      component is module-internal (`const Editor = dynamic(…); export function
+ *      Page() { return <Editor />; }`), where indicator 2 does not reach and the
+ *      framework constraint is identical. The test suite pins exactly that shape.
+ *
+ * All FOUR of the repo's `no-unnecessary-use-client` disables are consequently
+ * stale rather than live false positives — including
+ * `app/src/app/scenarios/organization-selector-wrapper.tsx:1` and its batch-calls
+ * twin, which pass a hook adapter as a function prop and are already exempt via
+ * indicator 2. The valid-case suite pins all of them so a future narrowing of
+ * indicator 2 cannot silently reintroduce the reports.
+ *
  * References:
  *   - https://nextjs.org/docs/app/building-your-application/rendering/client-components
  *   - https://react.dev/reference/rsc/use-client (wrapping third-party components)
+ *   - https://nextjs.org/docs/app/api-reference/functions/dynamic (`ssr: false`)
  */
 
 import {
@@ -72,6 +103,15 @@ const BROWSER_GLOBALS: ReadonlySet<string> = new Set([
   "KeyboardEvent",
   "TouchEvent",
 ]);
+
+/**
+ * Modules whose very import forces a client boundary, independent of what the
+ * file then does with them. `next/dynamic` is the case that matters: in the App
+ * Router, `dynamic(..., { ssr: false })` is a BUILD ERROR in a Server Component
+ * ("`ssr: false` is not allowed with `next/dynamic` in Server Components"), so a
+ * lazy-wrapper module has no legal form without `'use client'`. See @fileoverview.
+ */
+const CLIENT_REQUIRED_MODULES: ReadonlySet<string> = new Set(["next/dynamic"]);
 
 const CLIENT_ONLY_PACKAGES_REGEX =
   /^(?:@radix-ui\/|framer-motion|react-dom|react-day-picker|@floating-ui\/|react-select|react-toastify|react-hook-form|recharts|react-dropzone|react-slick|react-swipeable|react-resizable|react-draggable|react-beautiful-dnd|@hello-pangea\/dnd|react-virtualized|react-window|@tanstack\/react-table|@tanstack\/react-query|react-redux|recoil|jotai|zustand|@tippyjs\/react|react-color|react-datepicker|next-themes|react-helmet|react-helmet-async|styled-components|@emotion\/)/;
@@ -259,7 +299,10 @@ export default ESLintUtils.RuleCreator(
         if (directiveNode === null) return;
         if (typeof node.source.value !== "string") return;
         const source = node.source.value;
-        if (CLIENT_ONLY_PACKAGES_REGEX.test(source)) {
+        if (
+          CLIENT_ONLY_PACKAGES_REGEX.test(source) ||
+          CLIENT_REQUIRED_MODULES.has(source)
+        ) {
           hasClientIndicator = true;
         }
         for (const specifier of node.specifiers) {

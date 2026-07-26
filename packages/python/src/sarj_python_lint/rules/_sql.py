@@ -13,6 +13,8 @@ from __future__ import annotations
 import ast
 from typing import TYPE_CHECKING
 
+from sarj_python_lint.rules._paths import is_test_path
+
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -27,10 +29,29 @@ def is_store_module(path: Path) -> bool:
     SQL generator) legitimately writes `SELECT *`, bare `INSERT`, and `COUNT()`,
     so those files are out of scope.
 
+    TEST FILES ARE NEVER STORE MODULES. `test_<x>_store.py` ends with `_store.py`,
+    so the naming test alone swept the *tests for* the store layer into the rules
+    written for the store layer itself. Every store-semantics premise fails there:
+    a test asserts over a handful of per-test fixture rows (so a `COUNT(*)` is not
+    a hot-path aggregation competing with OLTP traffic), and a fixture seeds a row
+    exactly once (so a bare `INSERT` needs no `ON CONFLICT` — idempotency is what
+    the per-test database reset provides). Raw SQL in tests already has its own
+    rule, SARJ036 no-raw-sql-in-tests, which judges it on test-appropriate terms.
+
+    Evidence, bulbul PR #4111 (all suppressed at PR head, none a defect):
+      - SARJ020 `python/bulbul/tests/store/test_batch_call_store.py:2092`, `:2538`
+        ("test assertion count over per-test fixture rows"),
+        `python/bulbul/tests/store/test_global_prompt_store.py:67`
+        ("test asserts exactly one row exists after the upsert").
+      - SARJ018 `python/bulbul/tests/store/test_sip_connection_store.py:37`
+        (`_insert_test_provider` seeding one `phone_provider` row per test).
+
     Returns:
         True when `path` belongs to the store layer.
 
     """
+    if is_test_path(path):
+        return False
     return path.name.endswith("_store.py") or "stores" in path.parts
 
 

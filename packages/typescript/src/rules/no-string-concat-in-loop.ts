@@ -26,6 +26,25 @@
  * produced 6, all of them the one percent-encoder loop appending `result` from
  * four branches. This matches the one-report-per-loop policy `no-sequential-await`
  * already follows.
+ *
+ * EXEMPTION — AN ACCUMULATOR DECLARED INSIDE THE LOOP BODY (bulbul PR #4111).
+ * The O(n^2) claim requires the accumulator to survive across iterations. A
+ * `let s = "..."` declared *inside* the body is rebound to a fresh string every
+ * pass, so the `+=` runs a bounded number of times on a string that is discarded
+ * at the end of the iteration — there is no quadratic growth for `join` to
+ * remove, and the parts are typically already being collected into an array.
+ * Evidence:
+ * `typescript/packages/app/src/lib/lexical/plugins/utils/serializes-state-to-text.ts:16`,
+ * where `let sectionText = \`## ${…}\`` is declared in the body, appended to at
+ * most once behind an `if (body)`, and then pushed onto `textParts` for a
+ * `textParts.join()` after the loop. The disable there reads "single conditional
+ * append to a per-iteration string; result is collected via textParts.join below,
+ * not O(n²)" — the rule had nothing to offer.
+ *
+ * The Python twin SARJ002 (`inefficient_string_concat_in_loop`) has drawn this
+ * same line since it shipped: "A target that is freshly (re)bound earlier in the
+ * same loop body … is loop-local: it starts empty each iteration, so the growth
+ * is bounded, not cross-iteration accumulation." The two rules now agree.
  */
 
 import { ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
@@ -139,6 +158,38 @@ function isConcatOntoTarget(
 }
 
 /**
+ * Returns true when the accumulator's declaration lives inside `loop`'s BODY, so
+ * a fresh string is bound on every iteration.
+ *
+ * `let s = ""` before the loop is the cross-iteration accumulator this rule
+ * targets. `let s = ""` inside the body is not: the `+=` runs a bounded number of
+ * times against a string that is discarded at the end of the pass, and there is
+ * no quadratic growth to remove — the parts are usually already collected into an
+ * array afterwards. Compared by source range, which is exact for a declaration
+ * that is lexically nested in the body.
+ */
+function isDeclaredInsideLoop(
+  variable: Scope.Variable,
+  loop: TSESTree.Node,
+): boolean {
+  const def = variable.defs[0];
+  if (def === undefined) {
+    return false;
+  }
+  const body = (
+    loop as
+      | TSESTree.ForStatement
+      | TSESTree.ForOfStatement
+      | TSESTree.ForInStatement
+      | TSESTree.WhileStatement
+      | TSESTree.DoWhileStatement
+  ).body;
+  const [declStart, declEnd] = def.node.range;
+  const [bodyStart, bodyEnd] = body.range;
+  return declStart >= bodyStart && declEnd <= bodyEnd;
+}
+
+/**
  * Returns true if `node` is contained within the body of a loop statement.
  * Walks ancestors and, for each loop, ensures the node is inside the loop's
  * BODY (not its test/init/update clauses, which run a bounded number of times
@@ -221,6 +272,13 @@ export default ESLintUtils.RuleCreator(
         // numeric initializer (or anything non-string) is intentionally
         // excluded to avoid false positives.
         if (!isStringInitializedVariable(variable)) {
+          return;
+        }
+        // The O(n^2) claim requires the accumulator to SURVIVE across iterations.
+        // One declared inside the loop body is a fresh string every pass, so its
+        // length is bounded by one iteration's work and `join` cannot replace it.
+        // See @fileoverview for the PR #4111 evidence.
+        if (isDeclaredInsideLoop(variable, loop)) {
           return;
         }
 

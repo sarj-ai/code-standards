@@ -139,7 +139,8 @@ def identifier_tokens(identifier: str) -> list[str]:
         if not segment:
             continue
         tokens.append(segment.lower())
-        tokens.extend(part.lower() for part in _CAMEL_RE.findall(segment))
+        camel_parts: list[str] = _CAMEL_RE.findall(segment)
+        tokens.extend(part.lower() for part in camel_parts)
     return tokens
 
 
@@ -159,7 +160,7 @@ def leading_word(identifier: str) -> str | None:
     for segment in _SEGMENT_RE.split(identifier):
         if not segment:
             continue
-        parts = _CAMEL_RE.findall(segment)
+        parts: list[str] = _CAMEL_RE.findall(segment)
         return parts[0].lower() if parts else segment.lower()
     return None
 

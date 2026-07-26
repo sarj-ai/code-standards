@@ -114,6 +114,69 @@ ruleTester.run("no-string-concat-in-loop", rule, {
         }
       `,
     },
+    // bulbul PR #4111,
+    // typescript/packages/app/src/lib/lexical/plugins/utils/serializes-state-to-text.ts:16
+    // — the accumulator is DECLARED INSIDE the body, so it is a fresh string
+    // every pass, appended to at most once, and the parts are already collected
+    // into `textParts` for a `join` after the loop. Nothing quadratic to remove.
+    {
+      code: `
+        const textParts = [];
+        for (const node of children) {
+          if (isSection(node)) {
+            let sectionText = \`## \${node.title}\`;
+            if (node.body) {
+              sectionText += \`\\n\${node.body}\\n\`;
+            }
+            textParts.push(sectionText);
+          }
+        }
+        return textParts.join("\\n\\n");
+      `,
+    },
+    // Same shape, minimal: declaration inside the body is bounded growth.
+    {
+      code: `
+        for (const item of items) {
+          let line = "";
+          line += item.a;
+          line += item.b;
+          out.push(line);
+        }
+      `,
+    },
+    // Declared inside the body of a while loop.
+    {
+      code: `
+        while (queue.length) {
+          let s = "";
+          s += queue.pop();
+          out.push(s);
+        }
+      `,
+    },
+    // Declared in the body of the INNER loop — bounded by the inner pass.
+    {
+      code: `
+        for (const row of rows) {
+          for (const cell of row) {
+            let s = "";
+            s += cell;
+            out.push(s);
+          }
+        }
+      `,
+    },
+    // Longhand `s = s + x` on a body-declared accumulator is equally bounded.
+    {
+      code: `
+        for (const item of items) {
+          let s = "";
+          s = s + item;
+          out.push(s);
+        }
+      `,
+    },
   ],
   invalid: [
     // Corpus: react-router/packages/react-router/lib/server-runtime/cookies.ts:221
@@ -237,6 +300,46 @@ ruleTester.run("no-string-concat-in-loop", rule, {
         let s = "";
         for (let i = 0; i < n; i++) {
           s = s + items[i] + ",";
+        }
+      `,
+      errors: [{ messageId: "noStringConcatInLoop" }],
+    },
+    // TRUE POSITIVE the body-declaration exemption must not swallow: declared
+    // OUTSIDE the loop, so it survives every iteration — the real O(n^2) shape.
+    // Nearly identical to the exempt serializes-state-to-text case above except
+    // for where the `let` sits.
+    {
+      code: `
+        let sectionText = "";
+        for (const node of children) {
+          if (node.body) {
+            sectionText += \`\\n\${node.body}\\n\`;
+          }
+        }
+        return sectionText;
+      `,
+      errors: [{ messageId: "noStringConcatInLoop" }],
+    },
+    // Declared in the OUTER loop body but accumulated in the INNER loop: it
+    // still survives every inner iteration, so the growth is unbounded there.
+    {
+      code: `
+        for (const row of rows) {
+          let s = "";
+          for (const cell of row) {
+            s += cell;
+          }
+          out.push(s);
+        }
+      `,
+      errors: [{ messageId: "noStringConcatInLoop" }],
+    },
+    // Declared in the loop's INITIALIZER, not its body — one binding for the
+    // whole loop, so it accumulates across iterations.
+    {
+      code: `
+        for (let i = 0, s = ""; i < n; i++) {
+          s += items[i];
         }
       `,
       errors: [{ messageId: "noStringConcatInLoop" }],

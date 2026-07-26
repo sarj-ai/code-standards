@@ -27,6 +27,26 @@ query and is out of scope. A file-level BigQuery-SDK import exempts only queries
 that carry no Postgres-specific signal — a psycopg `%s` placeholder marks a real
 Postgres store query even in a mixed analytics module.
 
+EXEMPTIONS ADDED FROM bulbul PR #4111 (11 suppressed hits at PR head; none was a
+defect):
+
+* `IS [NOT] DISTINCT FROM` is Postgres' NULL-SAFE COMPARISON OPERATOR, not the
+  set-deduplicating `DISTINCT`. It is a per-row predicate that does exactly what
+  `=` does except on NULLs, so it costs nothing this rule cares about; it merely
+  shares a keyword with `SELECT DISTINCT`. The operator is blanked before the
+  aggregation scan, so the rest of the query is still judged normally.
+  Evidence: `python/bulbul/bulbul/stores/provisioned_number_store.py:375` — an
+  `INSERT ... ON CONFLICT DO UPDATE ... WHERE provisioned_number.organization_id
+  IS NOT DISTINCT FROM EXCLUDED.organization_id` upsert containing no aggregation
+  at all.
+* TEST FILES are not store modules (`_sql.is_store_module`). `test_<x>_store.py`
+  ends in `_store.py`, so the store-layer naming test used to sweep in the tests
+  *for* the store layer. A `COUNT(*)` in a test asserts over a handful of
+  per-test fixture rows and never runs on the OLTP primary, so the rule's whole
+  premise is absent. Evidence:
+  `python/bulbul/tests/store/test_batch_call_store.py:2092`, `:2538` and
+  `python/bulbul/tests/store/test_global_prompt_store.py:67`.
+
 If an aggregate genuinely must run on Postgres (e.g. a tiny bounded admin
 count), suppress with `# sarj-noqa: SARJ020 — <reason>`.
 """
@@ -92,11 +112,33 @@ _BIGQUERY_SQL = re.compile(
 # so a literal `%` inside a `LIKE` pattern can't false-signal.
 _POSTGRES_SQL = re.compile(r"%\(\w+\)s|%s")
 
+# `IS [NOT] DISTINCT FROM` is Postgres' null-safe comparison OPERATOR — it is a
+# per-row predicate in a WHERE/ON/DO-UPDATE clause and does nothing an equality
+# test doesn't. It shares only the spelling with `SELECT DISTINCT` / `COUNT(
+# DISTINCT ...)`, the set-deduplicating constructs this rule exists to find,
+# which is why the bare `\bDISTINCT\b` scan mis-read it. Blanked before the
+# aggregation scan so the surrounding query is still judged on its real content.
+# Evidence: bulbul PR #4111 `python/bulbul/stores/provisioned_number_store.py:375`
+# — an `INSERT ... ON CONFLICT DO UPDATE ... WHERE organization_id IS NOT
+# DISTINCT FROM EXCLUDED.organization_id` upsert with no aggregation anywhere.
+_NULL_SAFE_COMPARISON = re.compile(r"\bIS\s+(?:NOT\s+)?DISTINCT\s+FROM\b", re.IGNORECASE)
+
 _AGGREGATIONS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("COUNT(", re.compile(r"\bCOUNT\s*\(", re.IGNORECASE)),
     ("GROUP BY", re.compile(r"\bGROUP\s+BY\b", re.IGNORECASE)),
     ("DISTINCT", re.compile(r"\bDISTINCT\b", re.IGNORECASE)),
 )
+
+
+def _blank_null_safe_comparisons(sql: str) -> str:
+    """Blank out `IS [NOT] DISTINCT FROM` operators, preserving length and newlines.
+
+    Returns:
+        `sql` with every null-safe comparison operator replaced by spaces.
+
+    """
+    return _NULL_SAFE_COMPARISON.sub(lambda m: " " * len(m.group(0)), sql)
+
 
 # A diagnostic needs BOTH a query shape (SELECT/UPDATE/DELETE) and an aggregation
 # (COUNT/GROUP/DISTINCT). Noise-stripping only ever blanks characters to spaces, so
@@ -159,7 +201,7 @@ class NoAggregationInStoreQuery(Rule):
             if _AGG_GATE.search(text) is None or _VERB_GATE.search(text) is None:
                 continue
 
-            sql = strip_sql_noise(text)
+            sql = _blank_null_safe_comparisons(strip_sql_noise(text))
             if _QUERY_SHAPE.search(sql) is None or _CLICKHOUSE_SQL.search(sql) or _BIGQUERY_SQL.search(sql):
                 continue
             if bigquery_file and _POSTGRES_SQL.search(sql) is None:
