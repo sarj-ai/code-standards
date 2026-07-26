@@ -459,10 +459,12 @@ def test_still_flags_password_compound_label():
 
 
 # ---------------------------------------------------------------------------
-# SARJ011-only narrowing: integrity hashes, category/handle descriptors,
-# boolean flags, and ALL-CAPS sentinel constants are not a timing surface.
-# (SARJ012 `no-secret-in-log` keeps the broader shared secret set — these are
-# suppressed inside this rule, not in `_secret_names`.)
+# SARJ011-only narrowing: integrity hashes, category/handle descriptors, and
+# ALL-CAPS sentinel constants are not a timing surface. (SARJ012
+# `no-secret-in-log` keeps the broader shared secret set — these are suppressed
+# inside this rule, not in `_secret_names`. The leading boolean-flag exemption
+# below is the exception: it lives in the shared `_secret_names` predicate, so
+# SARJ012 gets it too — a flag is neither a timing surface nor a leak.)
 # ---------------------------------------------------------------------------
 
 _INTEGRITY_HASH_NAMES = [
@@ -514,11 +516,46 @@ def test_allows_descriptor_and_category_lookalike(name: str):
     assert _check(src) == []
 
 
-@pytest.mark.parametrize("name", ["is_token", "has_secret", "is_token_strategy", "was_password"])
+_BOOLEAN_FLAG_NAMES = [
+    # snake_case
+    "is_token",
+    "has_secret",
+    "is_token_strategy",
+    "was_password",
+    "should_rotate_token",
+    # camelCase — the leading word is only visible after camel splitting, so
+    # these regressed when the check read the first token of the decomposition
+    # (which is the whole segment `hassecret`, not `has`).
+    "isToken",
+    "hasSecret",
+    "isTokenStrategy",
+    "wasPassword",
+]
+
+
+@pytest.mark.parametrize("name", _BOOLEAN_FLAG_NAMES)
 def test_allows_boolean_flag_prefix(name: str):
     """A leading `is`/`has`/`was` marks a boolean flag, not the credential itself."""
     src = f"def f({name}, other):\n    return {name} == other\n"
     assert _check(src) == []
+
+
+_FLAG_PREFIX_LOOKALIKES = [
+    # The leading WORD must match, never a prefix of one: `hash`/`issuer`/`canary`
+    # merely start with the letters of `has`/`is`/`can` and stay credentials.
+    "hash_secret",
+    "issuer_token",
+    "canary_token",
+    "hashSecret",
+    "issuerToken",
+]
+
+
+@pytest.mark.parametrize("name", _FLAG_PREFIX_LOOKALIKES)
+def test_flags_credential_whose_leading_word_only_looks_like_a_flag(name: str):
+    """A credential is not exempted just because its first word starts with `is`/`has`/`can`."""
+    src = f"def f({name}, other):\n    return {name} == other\n"
+    assert _count(src) == 1
 
 
 _ALLCAPS_SENTINELS = [

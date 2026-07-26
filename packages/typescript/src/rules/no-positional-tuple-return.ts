@@ -12,7 +12,10 @@
  *
  * Fires on an *exported* function (or exported class method) whose declared
  * return type is a tuple of two or more elements — directly or wrapped in
- * `Promise<...>`.
+ * `Promise<...>`. Exported means either the inline keyword (`export function
+ * split`) or a detached specifier for the same module-scope binding (`export {
+ * split }`, `export { split as s }`, `export default split`, `export = split`);
+ * a re-export from another module and a type-only export do not count.
  *
  * The permitted tuple uses are deliberately NOT flagged, matching the Python
  * rule's tuning plus the TS-specific idioms:
@@ -109,11 +112,10 @@ function functionName(node: TSESTree.Node): string | null {
 }
 
 /**
- * True when the function is reachable from outside the module — the boundary the
- * rule is about. Walks to the top-level statement that contains it and asks
- * whether that statement is exported.
+ * True when an ancestor statement carries the `export` keyword inline —
+ * `export function f`, `export const f =`, `export default function f`.
  */
-function isExported(node: TSESTree.Node): boolean {
+function isInlineExported(node: TSESTree.Node): boolean {
   for (let current: TSESTree.Node | undefined | null = node; current != null; current = current.parent) {
     const parent = current.parent;
     if (
@@ -124,6 +126,93 @@ function isExported(node: TSESTree.Node): boolean {
     }
   }
   return false;
+}
+
+/**
+ * The module-scope binding the function lives under — `split` for a top-level
+ * `function split`, `Repo` for a method of a top-level `class Repo`. That is the
+ * name an `export { … }` specifier elsewhere in the file would refer to. Null
+ * when the function is not anchored to a named top-level declaration.
+ */
+function moduleScopeBindingName(node: TSESTree.Node): string | null {
+  let current: TSESTree.Node = node;
+  let child: TSESTree.Node = node;
+  while (current.parent != null && current.parent.type !== AST_NODE_TYPES.Program) {
+    child = current;
+    current = current.parent;
+  }
+  if (current.parent?.type !== AST_NODE_TYPES.Program) {
+    return null;
+  }
+  if (
+    current.type === AST_NODE_TYPES.FunctionDeclaration ||
+    current.type === AST_NODE_TYPES.ClassDeclaration
+  ) {
+    return current.id?.name ?? null;
+  }
+  if (current.type === AST_NODE_TYPES.VariableDeclaration) {
+    if (child.type !== AST_NODE_TYPES.VariableDeclarator || child.id.type !== AST_NODE_TYPES.Identifier) {
+      return null;
+    }
+    return child.id.name;
+  }
+  return null;
+}
+
+/**
+ * Local names this module puts on its public surface through a *detached* export
+ * statement: `export { split }`, `export { split as s }`, `export default split`,
+ * `export = split`. A re-export (`export { x } from "./other"`) names a binding
+ * owned by another module, and a type-only export (`export type { x }`) does not
+ * expose the value, so neither counts.
+ */
+function specifierExportedNames(program: TSESTree.Program): ReadonlySet<string> {
+  const names = new Set<string>();
+  for (const statement of program.body) {
+    if (
+      statement.type === AST_NODE_TYPES.ExportNamedDeclaration &&
+      statement.declaration == null &&
+      statement.source == null &&
+      statement.exportKind !== "type"
+    ) {
+      for (const specifier of statement.specifiers) {
+        if (specifier.exportKind !== "type" && specifier.local.type === AST_NODE_TYPES.Identifier) {
+          names.add(specifier.local.name);
+        }
+      }
+      continue;
+    }
+    if (
+      statement.type === AST_NODE_TYPES.ExportDefaultDeclaration &&
+      statement.declaration.type === AST_NODE_TYPES.Identifier
+    ) {
+      names.add(statement.declaration.name);
+      continue;
+    }
+    if (
+      statement.type === AST_NODE_TYPES.TSExportAssignment &&
+      statement.expression.type === AST_NODE_TYPES.Identifier
+    ) {
+      names.add(statement.expression.name);
+    }
+  }
+  return names;
+}
+
+/**
+ * True when the function is reachable from outside the module — the boundary the
+ * rule is about. Either the declaration is exported inline, or its module-scope
+ * binding is exported later through an export specifier.
+ */
+function isExported(node: TSESTree.Node, specifierExports: ReadonlySet<string>): boolean {
+  if (isInlineExported(node)) {
+    return true;
+  }
+  if (specifierExports.size === 0) {
+    return false;
+  }
+  const binding = moduleScopeBindingName(node);
+  return binding !== null && specifierExports.has(binding);
 }
 
 export default ESLintUtils.RuleCreator(
@@ -145,6 +234,7 @@ export default ESLintUtils.RuleCreator(
   },
   defaultOptions: [],
   create(context) {
+    const specifierExports = specifierExportedNames(context.sourceCode.ast);
     const check = (
       node:
         | TSESTree.FunctionDeclaration
@@ -163,7 +253,7 @@ export default ESLintUtils.RuleCreator(
       if (name === null || name.startsWith("_") || /^use[A-Z]/.test(name)) {
         return;
       }
-      if (!isExported(node)) {
+      if (!isExported(node, specifierExports)) {
         return;
       }
       context.report({

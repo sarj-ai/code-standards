@@ -49,10 +49,6 @@ _DESCRIPTOR_WORDS = frozenset({"type", "types", "name", "names", "id", "ids", "k
 # credential: `TOKEN_TYPE_SYSTEM`, `credential_type`, `grant_kind`.
 _CATEGORY_WORDS = frozenset({"type", "types", "kind", "kinds"})
 
-# A leading boolean-predicate token marks a flag, not the credential itself:
-# `is_token`, `has_secret`, `is_token_strategy`.
-_FLAG_PREFIXES = frozenset({"is", "has", "was", "are", "can", "should"})
-
 # Words that make an identifier a secret *only* via an integrity/content hash
 # (`content_hash`, `metadata_hash`, `row_hash`) rather than an authenticator.
 # A name that ALSO carries one of these keeps firing (`password_hash`,
@@ -182,10 +178,17 @@ def _is_auth_secret_name(identifier: str, *, crypto_module: bool) -> bool:
     """Report whether `identifier` names an authenticator (an access-gating secret).
 
     Narrows the shared `is_secret_name` for SARJ011: strips category/handle
-    descriptors, `type`/`kind` discriminators, boolean flags, and integrity-only
-    hashes, none of which are a timing-attack surface. A name whose only auth
-    token is the polysemous `signature` needs the module to import crypto
-    machinery — otherwise it is a function signature, not a MAC.
+    descriptors, `type`/`kind` discriminators, and integrity-only hashes, none
+    of which are a timing-attack surface. A name whose only auth token is the
+    polysemous `signature` needs the module to import crypto machinery —
+    otherwise it is a function signature, not a MAC.
+
+    Boolean flags (`is_token`, `hasSecret`) are NOT handled here: the shared
+    `is_secret_name` now rejects a leading flag word for both SARJ011 and
+    SARJ012, so the gate above has already returned. A duplicate local check
+    used to live here and was dead once that landed — worse, it read
+    `tokens[0]`, which is the whole snake segment (`"hassecret"`), so it never
+    matched a camelCase flag in the first place.
 
     Returns:
         True when comparing `identifier` in non-constant time leaks an auth secret.
@@ -194,8 +197,6 @@ def _is_auth_secret_name(identifier: str, *, crypto_module: bool) -> bool:
     if not is_secret_name(identifier):
         return False
     tokens = identifier_tokens(identifier)
-    if tokens and tokens[0] in _FLAG_PREFIXES:
-        return False
     if tokens and tokens[-1] in _DESCRIPTOR_WORDS:
         return False
     if any(tok in _CATEGORY_WORDS for tok in tokens):

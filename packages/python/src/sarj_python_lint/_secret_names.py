@@ -11,13 +11,15 @@ misfired on a large false-positive class observed in a real audit:
   `tokenize`, `tokenizer`, `token_budget`.
 - Row-id / handle names: `api_key_id`, `*_key_id` — the id of a key row, not the
   key material.
-- Boolean feature / presence / state flags: `password_enabled`,
-  `token_present`, `password_set`, `password_configured` — a boolean answering
-  "is it there / was it set", not the credential itself. A `type` discriminator
-  is the same: `token_type` is `"Bearer"`, `credential_type` is a class name.
+- Boolean feature / presence / state flags, in both word orders: trailing
+  (`password_enabled`, `token_present`, `password_set`, `password_configured`)
+  and leading (`has_secret`, `hasSecret`, `is_token`, `isToken`) — a boolean
+  answering "is it there / was it set", not the credential itself. A `type`
+  discriminator is the same: `token_type` is `"Bearer"`, `credential_type` is a
+  class name.
 - Innocent words embedding a secret word: `secretary` (embeds `secret`).
 
-We fix this with two changes:
+We fix this with three changes:
 
 1. Match a secret word only as a WHOLE token (after snake_case / camelCase
    splitting), never a substring. This alone clears `tokenize`, `tokenizer`,
@@ -28,6 +30,10 @@ We fix this with two changes:
    also present — this clears `token_count`, `api_key_id`, `password_enabled`,
    while still catching a credential that merely leads with such a word
    (`valid_token`, `present_token` are secrets, not flags).
+3. Disqualify an identifier whose LEADING WORD is a boolean predicate (`is`,
+   `has`, `was`, ...) — the mirror image of (2), clearing `has_secret` /
+   `hasSecret` / `is_token` / `isToken`, which name a boolean answering "does a
+   secret exist?" and are neither a leak nor a timing surface.
 """
 
 from __future__ import annotations
@@ -89,6 +95,28 @@ _INNOCUOUS_WORDS = frozenset(
     }
 )
 
+# A LEADING boolean-predicate word marks a flag, not the credential itself:
+# `has_secret`, `hasSecret`, `is_token`, `isToken`, `should_rotate_token`.
+#
+# WHY THE SHARED PREDICATE (both SARJ011 and SARJ012), not just the SARJ011-only
+# auth narrowing the TS port uses: this is the exact mirror of the TRAILING
+# `_INNOCUOUS_WORDS` check above, which already exempts both rules. `has_token`
+# and `token_present` are the same boolean; word order must not decide whether a
+# name counts as a credential. And the SARJ012 case stands on its own — a boolean
+# answering "does a secret exist?" leaks nothing when logged, so the rule was
+# reporting a pure false positive. (As with the trailing form, the exemption keys
+# on the NAME: someone who writes `has_secret=the_actual_secret` still leaks, but
+# that hole predates this and is inherent to a name-only rule.)
+#
+# WHY IT IS SAFE IN THE PERMISSIVE DIRECTION: every member is a copula/auxiliary
+# verb that is never the head noun of a credential. Real secret names are noun
+# phrases — `auth_token`, `api_key`, `signing_secret`, `INTERNAL_ADMIN_TOKEN` —
+# and none begins with `is`/`has`/`was`/`are`/`can`/`should`. Matching is on the
+# whole leading WORD, never a prefix of one, so names that merely start with
+# those letters keep firing: `hash_secret` (`hash` != `has`), `issuer_token`
+# (`issuer` != `is`), `canary_token` (`canary` != `can`).
+_FLAG_PREFIXES = frozenset({"is", "has", "was", "are", "can", "should"})
+
 # camelCase / PascalCase / ALLCAPS / digit run splitter, applied to each
 # snake/kebab segment. `APIKey` -> ["API", "Key"], `authToken` -> ["auth", "Token"].
 _CAMEL_RE = re.compile(r"[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|\d+")
@@ -115,6 +143,27 @@ def identifier_tokens(identifier: str) -> list[str]:
     return tokens
 
 
+def leading_word(identifier: str) -> str | None:
+    """Return the first *word* of `identifier`, lowercased, or None if it has none.
+
+    `identifier_tokens` deliberately emits each whole snake/kebab segment before
+    its camel parts, so its first entry for the camelCase `hasSecret` is the
+    useless `hassecret` rather than `has`. Splitting the leading segment with the
+    same camel regex makes `has_secret` and `hasSecret` both yield `has`.
+
+    Returns:
+        The lowercased leading word, or None when `identifier` has no word
+        characters at all.
+
+    """
+    for segment in _SEGMENT_RE.split(identifier):
+        if not segment:
+            continue
+        parts = _CAMEL_RE.findall(segment)
+        return parts[0].lower() if parts else segment.lower()
+    return None
+
+
 def is_secret_name(identifier: str) -> bool:
     """Report whether `identifier` names raw secret material (a credential, not metadata).
 
@@ -124,6 +173,8 @@ def is_secret_name(identifier: str) -> bool:
     """
     tokens = identifier_tokens(identifier)
     if tokens and tokens[-1] in _INNOCUOUS_WORDS:
+        return False
+    if leading_word(identifier) in _FLAG_PREFIXES:
         return False
     if any(tok in _SECRET_WORDS for tok in tokens):
         return True
