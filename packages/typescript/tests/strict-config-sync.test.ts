@@ -23,14 +23,87 @@ const STRICT_CONFIG_PATH = resolve(
   "../../lint-configs/src/sarj_lint_configs/configs/eslint.strict.mjs",
 );
 
+/**
+ * Blank out line and block comments while leaving string and template contents
+ * intact, so a `//` inside a URL literal is never mistaken for a comment.
+ *
+ * Matching over the raw file text does not work here, and the reason is exactly
+ * the drift these tests exist to catch: the per-repo opt-ins are documented in
+ * eslint.strict.mjs as commented-out example blocks containing the literal text
+ * `"@sarj/no-raw-fetch-outside-clients": [...]`. A raw-text regex counts those
+ * as live references, which (a) makes PER_REPO_OPT_IN dead code and (b) lets any
+ * future rule pass BOTH assertions while only ever appearing in a comment.
+ *
+ * Newlines are preserved so the stripped text still lines up with the original.
+ * Regex literals are not tracked — the config contains none, and a rule key
+ * never sits inside one; string/template state is what the URL case needs.
+ */
+function stripComments(source: string): string {
+  const QUOTES = new Set(["'", '"', "`"]);
+  let out = "";
+  let index = 0;
+
+  while (index < source.length) {
+    const char = source[index] ?? "";
+    const next = source[index + 1] ?? "";
+
+    if (char === "/" && next === "/") {
+      while (index < source.length && source[index] !== "\n") index += 1;
+      continue;
+    }
+
+    if (char === "/" && next === "*") {
+      index += 2;
+      while (
+        index < source.length &&
+        !(source[index] === "*" && source[index + 1] === "/")
+      ) {
+        if (source[index] === "\n") out += "\n";
+        index += 1;
+      }
+      index += 2;
+      continue;
+    }
+
+    if (QUOTES.has(char)) {
+      const quote = char;
+      out += char;
+      index += 1;
+      while (index < source.length && source[index] !== quote) {
+        // A backslash escapes the next character, including the closing quote.
+        if (source[index] === "\\") {
+          out += source.slice(index, index + 2);
+          index += 2;
+          continue;
+        }
+        out += source[index];
+        index += 1;
+      }
+      out += quote;
+      index += 1;
+      continue;
+    }
+
+    out += char;
+    index += 1;
+  }
+
+  return out;
+}
+
+/** Rule names the strict config configures as LIVE rule keys, comments excluded. */
+function referencedRuleNames(configText: string): string[] {
+  // Rule keys only ("@sarj/<rule>":) — not the "@sarj/eslint-plugin" import.
+  return Array.from(
+    stripComments(configText).matchAll(/"@sarj\/([a-z0-9-]+)"\s*:/gu),
+    (match) => match[1] ?? "",
+  );
+}
+
 describe("lint-configs eslint.strict.mjs stays wired to the plugin", () => {
   it("references only rule names that exist in the plugin's rules export", () => {
     const text = readFileSync(STRICT_CONFIG_PATH, "utf8");
-    // Rule keys only ("@sarj/<rule>":) — not the "@sarj/eslint-plugin" import.
-    const referenced = Array.from(
-      text.matchAll(/"@sarj\/([a-z0-9-]+)"\s*:/gu),
-      (match) => match[1] ?? "",
-    );
+    const referenced = referencedRuleNames(text);
     expect(referenced.length).toBeGreaterThan(0);
 
     const known = new Set(Object.keys(rules));
@@ -48,12 +121,7 @@ describe("lint-configs eslint.strict.mjs stays wired to the plugin", () => {
    */
   it("every plugin rule is either wired into the strict config or explicitly opted out", () => {
     const text = readFileSync(STRICT_CONFIG_PATH, "utf8");
-    const referenced = new Set(
-      Array.from(
-        text.matchAll(/"@sarj\/([a-z0-9-]+)"\s*:/gu),
-        (match) => match[1] ?? "",
-      ),
-    );
+    const referenced = new Set(referencedRuleNames(text));
 
     // Architectural rules whose options are inherently per-repo, so a SHARED
     // config cannot set them meaningfully. Each is documented as an opt-in in
@@ -69,10 +137,20 @@ describe("lint-configs eslint.strict.mjs stays wired to the plugin", () => {
       .sort();
     expect(unwired).toEqual([]);
 
-    // And the opt-outs must actually be documented, not silently listed here.
+    // The opt-outs must actually be documented, not silently listed here. Now
+    // that referencedRuleNames() ignores comments this is a genuinely separate
+    // claim from being wired: "mentioned in the file" vs "configured".
     for (const name of PER_REPO_OPT_IN) {
       expect(text).toContain(name);
     }
+
+    // ...and the exemption must still be needed. If someone wires an opt-in for
+    // real, the stale entry has to go, or it silently re-opens the same hole for
+    // whatever rule is added next.
+    const redundant = [...PER_REPO_OPT_IN].filter((name) =>
+      referenced.has(name),
+    );
+    expect(redundant).toEqual([]);
   });
 
   it("plugin meta.version matches package.json version", () => {
