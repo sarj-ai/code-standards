@@ -54,7 +54,7 @@ import {
 } from "@typescript-eslint/utils";
 import type { RuleContext, Scope } from "@typescript-eslint/utils/ts-eslint";
 
-import { isTestFile } from "./_paths.js";
+import { isGeneratedFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "unparsedJsonAccess";
 type Options = readonly [];
@@ -312,7 +312,7 @@ export default ESLintUtils.RuleCreator(
   defaultOptions: [],
   create(context: Ctx) {
     // A fixture parses what it just produced and asserts on it; see @fileoverview.
-    if (isTestFile(context.filename)) {
+    if (isTestFile(context.filename) || isGeneratedFile(context.filename, context.sourceCode.text)) {
       return {};
     }
 

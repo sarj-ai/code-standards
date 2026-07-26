@@ -10,7 +10,10 @@
 
 const SCRIPT_FILE_RE = /([\\/]scripts[\\/])|(\.mjs$)/;
 const STORY_FILE_RE = /\.stories\.[cm]?[jt]sx?$/i;
-const GENERATED_FILE_RE = /([\\/]generated[\\/])|(\.gen\.[cm]?[jt]sx?$)|(\.generated\.[cm]?[jt]sx?$)|(\.d\.[cm]?ts$)/;
+const GENERATED_FILE_RE =
+  /([\\/](?:generated|openapi-gen|graphql[\\/]types)[\\/])|(\.gen\.[cm]?[jt]sx?$)|(\.generated\.[cm]?[jt]sx?$)|(\.d\.[cm]?ts$)|(\.types\.[cm]?ts$)/;
+const GENERATED_MARKER_RE =
+  /(?:@generated\b|generated (?:with|by)|generated (?:graphql )?types|do not edit(?: directly| manually)?)/i;
 
 /**
  * True for a test file: a `*.test.*` / `*.spec.*` basename, or anything under a
@@ -30,7 +33,7 @@ export function isStoryFile(filename: string): boolean {
 }
 
 export function isGeneratedFile(filename: string, sourceText = ""): boolean {
-  return GENERATED_FILE_RE.test(filename.replaceAll("\\", "/")) || /@generated\b/.test(sourceText.slice(0, 1024));
+  return GENERATED_FILE_RE.test(filename.replaceAll("\\", "/")) || GENERATED_MARKER_RE.test(sourceText.slice(0, 2048));
 }
 
 /**

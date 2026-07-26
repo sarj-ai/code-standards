@@ -41,6 +41,8 @@
 
 import { AST_NODE_TYPES, ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
 
+import { isGeneratedFile } from "./_paths.js";
+
 type MessageIds =
   | "commentedOutCode"
   | "sectionBanner"
@@ -427,6 +429,10 @@ export default ESLintUtils.RuleCreator(
   },
   defaultOptions: [],
   create(context) {
+    if (isGeneratedFile(context.filename, context.sourceCode.text)) {
+      return {};
+    }
+
     const sourceCode = context.sourceCode;
 
     function isStandalone(comment: TSESTree.Comment): boolean {

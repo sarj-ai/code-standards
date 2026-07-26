@@ -64,6 +64,7 @@ import {
   type LoggingOptions,
   REPORT_NAME_RE,
 } from "./_logging.js";
+import { isGeneratedFile } from "./_paths.js";
 
 type MessageIds = "noSentinelReturn";
 type Options = readonly [LoggingOptions?];
@@ -630,6 +631,10 @@ export default ESLintUtils.RuleCreator(
   },
   defaultOptions: [{}],
   create(context, [loggingOptions]) {
+    if (isGeneratedFile(context.filename, context.sourceCode.text)) {
+      return {};
+    }
+
     const matcher = createLogMatcher(loggingOptions);
 
     /**

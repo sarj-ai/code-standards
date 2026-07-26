@@ -195,6 +195,16 @@ ruleTester.run("enforce-file-structure", rule, {
         import { checkTokenValidity } from "../token-validation";
       `,
     },
+    // Generated GraphQL type files may emit helper types before imports.
+    {
+      filename: "/repo/src/workspace/types/GraphRoot.types.ts",
+      code: `
+        /** Internal type. DO NOT USE DIRECTLY. */
+        type Exact<T> = T;
+        // Generated GraphQL types, do not edit manually.
+        import * as Types from "../../graphql/types";
+      `,
+    },
   ],
   invalid: [
     // One misplacement is one message, however many imports trail it. Real

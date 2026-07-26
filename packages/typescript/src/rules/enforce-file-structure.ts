@@ -9,7 +9,7 @@
 
 import { ESLintUtils, type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
 
-import { isTestFile } from "./_paths.js";
+import { isGeneratedFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "importsFirst" | "useServerDirective";
 type Options = readonly [];
@@ -90,7 +90,7 @@ export default ESLintUtils.RuleCreator(
   },
   defaultOptions: [],
   create(context) {
-    if (isTestFile(context.filename)) {
+    if (isTestFile(context.filename) || isGeneratedFile(context.filename, context.sourceCode.text)) {
       return {};
     }
 

@@ -37,6 +37,15 @@ ruleTester.run("no-enum", rule, {
       code: "enum Status { A, B }",
       filename: "/repo/src/api.gen.ts",
     },
+    // Common generated-code conventions from GraphQL/OpenAPI toolchains.
+    {
+      code: "enum Status { A, B }",
+      filename: "/repo/src/openapi-gen/types.ts",
+    },
+    {
+      code: "// Generated GraphQL types, do not edit manually.\nenum Status { A, B }",
+      filename: "/repo/src/workspace/types/GraphRoot.types.ts",
+    },
   ],
   invalid: [
     {

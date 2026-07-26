@@ -17,6 +17,16 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("no-string-concat-in-loop", rule, {
   valid: [
+    // Generated stream parsers may use template-owned string accumulation.
+    {
+      code: `
+        let text = "";
+        for (const chunk of chunks) {
+          text += chunk;
+        }
+      `,
+      filename: "/repo/src/openapi-gen/requests/core/serverSentEvents.gen.ts",
+    },
     // The prescribed pattern: push parts to an array, join after the loop.
     {
       code: `

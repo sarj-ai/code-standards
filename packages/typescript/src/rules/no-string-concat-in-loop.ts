@@ -50,6 +50,8 @@
 import { ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
 import type { Scope } from "@typescript-eslint/utils/ts-eslint";
 
+import { isGeneratedFile } from "./_paths.js";
+
 type MessageIds = "noStringConcatInLoop";
 type Options = readonly [];
 
@@ -237,6 +239,10 @@ export default ESLintUtils.RuleCreator(
   },
   defaultOptions: [],
   create(context) {
+    if (isGeneratedFile(context.filename, context.sourceCode.text)) {
+      return {};
+    }
+
     // One defect per (accumulator, loop) — see @fileoverview. Keyed on the loop
     // node so sibling loops over the same variable each keep their report.
     const reported = new WeakMap<TSESTree.Node, Set<string>>();

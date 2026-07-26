@@ -17,6 +17,12 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("no-sentinel-return-on-catch", rule, {
   valid: [
+    // Generated request clients are template output; sentinel handling there is
+    // owned by the generator.
+    {
+      code: "async function request() { try { return await run(); } catch { return undefined; } }",
+      filename: "/repo/src/openapi-gen/requests/core/request.ts",
+    },
     // FP guard, corpus: react-router/packages/create-react-router/utils.ts:196
     // and react-router/packages/react-router/lib/rsc/server.rsc.ts:1501 — an
     // unannotated predicate whose whole contract is a boolean answer.

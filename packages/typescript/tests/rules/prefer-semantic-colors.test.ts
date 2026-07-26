@@ -36,6 +36,14 @@ ruleTester.run("prefer-semantic-colors", rule, {
     { code: `const x = <svg><path fill="#e6e6e6" d="M0 0h1v1H0z" /></svg>;` },
     { code: `const x = <svg viewBox="0 0 20 20"><circle fill="#d0d6d7" cx="10" cy="10" r="5" /><polygon stroke="#D06B64" points="0,0 1,1" /></svg>;` },
     { code: `const x = <svg><linearGradient><stop stopColor="#D06B64" /></linearGradient></svg>;` },
+    {
+      code: `const x = <StyledSvg><path fill="#e7e1ec" /><path stroke="#2f1d4a" /></StyledSvg>;`,
+    },
+    // Icon factories often accept raw SVG path fragments rather than a literal
+    // <svg> wrapper; these are still artwork colors, not component styling.
+    {
+      code: `export const Pin = createIcon({ path: <g><path fill="#017cee" /><path fill="#00ad46" /></g> });`,
+    },
     // Neutral drawing literals are exempt on fill/stroke everywhere.
     { code: `const x = <path fill="#fff" stroke="#000" />;` },
     { code: `const x = <path fill="transparent" stroke="inherit" />;` },

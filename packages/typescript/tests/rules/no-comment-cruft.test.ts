@@ -64,6 +64,12 @@ ruleTester.run("no-comment-cruft", rule, {
     {
       code: "// Idempotency substrate: every write derives a deterministic key.\n// The key is a UUIDv5 over (tenant, resource, epoch).\n// See RFC 9562 section 5.7 for the namespace derivation.\n// No state is kept here; a replay recomputes the same key.\nexport const x = 1;",
     },
+    // Generated files are template output; style/comment rules have no useful
+    // author action there.
+    {
+      code: "// generated with @7nohe/openapi-react-query-codegen\n// ---- Queries ----\nexport const x = 1;",
+      filename: "/repo/src/openapi-gen/queries.ts",
+    },
     // --- "restates the next line": the guards that keep it conservative. ---
     // One unmatched word means the comment carries something the code does not.
     { code: "// increment the counter for PLT-812\ncounter += 1;" },
