@@ -19,6 +19,10 @@
  *     `api.ts` / `*-api.ts` module — plus test files and codemod fixtures.
  *   - A method named `fetch` on some other receiver (`cache.fetch(k)`,
  *     `queryClient.fetch()`): only the global is HTTP.
+ *   - A pre-signed upload/download URL transfer (`fetch(uploadUrl, ...)`,
+ *     `fetch(file.downloadUrl)`). Those URLs are one-off storage handoffs,
+ *     not calls to a first-party service API that belongs behind a client
+ *     wrapper.
  *   - `new Request(...)` / `axios(...)` and friends. This rule is about the
  *     global `fetch`, not about every HTTP library.
  *
@@ -93,6 +97,8 @@ const GLOBAL_RECEIVERS: ReadonlySet<string> = new Set([
   "self",
 ]);
 
+const PRESIGNED_URL_NAME_RE = /(?:pre-?signed|signed|upload|download)Url$/i;
+
 /** True when `node` is a call to the global `fetch`. */
 function isGlobalFetchCall(node: TSESTree.CallExpression): boolean {
   const callee = node.callee;
@@ -112,6 +118,29 @@ function isGlobalFetchCall(node: TSESTree.CallExpression): boolean {
   }
 
   return false;
+}
+
+function identifierLikeName(node: TSESTree.Node): string | null {
+  if (node.type === "Identifier") {
+    return node.name;
+  }
+  if (
+    node.type === "MemberExpression" &&
+    !node.computed &&
+    node.property.type === "Identifier"
+  ) {
+    return node.property.name;
+  }
+  return null;
+}
+
+function isPresignedUrlTransfer(node: TSESTree.CallExpression): boolean {
+  const first = node.arguments[0];
+  if (first === undefined) {
+    return false;
+  }
+  const name = identifierLikeName(first);
+  return name !== null && PRESIGNED_URL_NAME_RE.test(name);
 }
 
 /**
@@ -173,6 +202,9 @@ export default ESLintUtils.RuleCreator(
 
     return {
       CallExpression(node: TSESTree.CallExpression): void {
+        if (isPresignedUrlTransfer(node)) {
+          return;
+        }
         if (isGlobalFetchCall(node)) {
           context.report({ node, messageId: "rawFetch" });
         }

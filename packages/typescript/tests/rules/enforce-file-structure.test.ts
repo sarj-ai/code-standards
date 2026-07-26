@@ -184,6 +184,17 @@ ruleTester.run("enforce-file-structure", rule, {
       filename: "src/lib/redaction.ts",
       code: `export function redact(s: string) { return s; }`,
     },
+    // Test files often register Vitest mocks before importing the subject under
+    // test. That textual order is intentional setup, not module structure debt.
+    {
+      filename: "/repo/src/lib/integration/__tests__/token-validation.test.ts",
+      code: `
+        import { vi } from "vitest";
+        const { forRequest } = vi.hoisted(() => ({ forRequest: vi.fn() }));
+        vi.mock("@/services", () => ({ Services: { forRequest } }));
+        import { checkTokenValidity } from "../token-validation";
+      `,
+    },
   ],
   invalid: [
     // One misplacement is one message, however many imports trail it. Real

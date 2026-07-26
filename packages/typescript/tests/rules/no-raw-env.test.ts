@@ -62,6 +62,17 @@ ruleTester.run("no-raw-env", rule, {
       code: "export default { reporters: process.env.GITHUB_ACTIONS };",
       filename: "vitest.config.mts",
     },
+    // Validated env boundary modules are the one place raw reads belong.
+    {
+      code: `
+        import { z } from "zod";
+        const ZClientSettings = z.object({ publicKey: z.string() });
+        export const CLIENT_SETTINGS = ZClientSettings.parse({
+          publicKey: process.env["NEXT_PUBLIC_KEY"],
+        });
+      `,
+      filename: "/repo/src/client-settings.ts",
+    },
   ],
   invalid: [
     {

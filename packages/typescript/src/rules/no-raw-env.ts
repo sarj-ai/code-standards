@@ -42,6 +42,22 @@ type Options = readonly [];
 /** Build / test / tooling config: `vite.config.ts`, `vitest.config.mts`, `playwright.config.ts`. */
 const CONFIG_FILE_RE = /(^|[\\/])[\w.-]+\.config\.[cm]?[jt]sx?$/;
 
+/**
+ * Modules that define the validated env boundary have to read raw env exactly
+ * once before handing values to Zod. Keep this path-scoped so ordinary
+ * `config.ts`/settings helpers still use the boundary instead of becoming one.
+ */
+const ENV_BOUNDARY_FILE_RE =
+  /(^|[\\/])(?:env|client-env|server-env|client-settings|server-settings)\.[cm]?[jt]sx?$/;
+
+function isValidatedEnvBoundary(filename: string, sourceText: string): boolean {
+  return (
+    ENV_BOUNDARY_FILE_RE.test(filename.replaceAll("\\", "/")) &&
+    /\bz\.object\s*\(/.test(sourceText) &&
+    /\.parse\s*\(/.test(sourceText)
+  );
+}
+
 /** True for the `process.env` member node (dotted or as the base of `process.env[key]`). */
 function isProcessEnv(node: TSESTree.MemberExpression): boolean {
   return (
@@ -137,7 +153,8 @@ export default ESLintUtils.RuleCreator(
     if (
       isTestFile(filename) ||
       isScriptFile(filename) ||
-      CONFIG_FILE_RE.test(filename.replaceAll("\\", "/"))
+      CONFIG_FILE_RE.test(filename.replaceAll("\\", "/")) ||
+      isValidatedEnvBoundary(filename, context.sourceCode.text)
     ) {
       return {};
     }

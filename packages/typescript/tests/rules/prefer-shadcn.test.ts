@@ -43,6 +43,10 @@ ruleTester.run("prefer-shadcn", rule, {
     { code: "const x = <div className='wrapper' />;" },
     // `type="hidden"` has no shadcn primitive — skipped.
     { code: "const x = <input type='hidden' value='x' />;" },
+    // Native file controls are usually hidden/programmatic upload surfaces, not
+    // text-like fields that benefit from the shadcn Input wrapper.
+    { code: "const x = <input type='file' accept='.csv' />;" },
+    { code: "const x = <input accept='.json,.csv' className='absolute opacity-0' />;" },
   ],
   invalid: [
     // Real screens still fire.
