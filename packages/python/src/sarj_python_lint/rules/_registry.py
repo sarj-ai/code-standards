@@ -27,6 +27,7 @@ from sarj_python_lint.rules.no_offset_pagination import NoOffsetPagination
 from sarj_python_lint.rules.no_query_with_many_joins import NoQueryWithManyJoins
 from sarj_python_lint.rules.no_raw_sql_in_tests import NoRawSqlInTests
 from sarj_python_lint.rules.no_repeated_string_literal import NoRepeatedStringLiteral
+from sarj_python_lint.rules.no_restated_comment import NoRestatedComment
 from sarj_python_lint.rules.no_secret_in_log import NoSecretInLog
 from sarj_python_lint.rules.no_select_star import NoSelectStar
 from sarj_python_lint.rules.no_sentinel_return_on_except import NoSentinelReturnOnExcept
@@ -55,6 +56,7 @@ from sarj_python_lint.rules.prefer_timedelta_for_durations import (
     PreferTimedeltaForDurations,
 )
 from sarj_python_lint.rules.pydantic_at_boundaries import PydanticAtBoundaries
+from sarj_python_lint.rules.redundant_docstring import RedundantDocstring
 from sarj_python_lint.rules.single_public_export import SinglePublicExport
 from sarj_python_lint.rules.sleep_with_computed_arg_in_test import SleepWithComputedArgInTest
 from sarj_python_lint.rules.stepdown import Stepdown
@@ -64,6 +66,7 @@ from sarj_python_lint.rules.store_insert_requires_on_conflict import (
 from sarj_python_lint.rules.test_loops_over_literal_cases import (
     TestLoopsOverLiteralCases,
 )
+from sarj_python_lint.rules.trailing_value_narration import TrailingValueNarration
 from sarj_python_lint.rules.xfail_requires_strict import XfailRequiresStrict
 from sarj_python_lint.rules.zero_assertion_test import ZeroAssertionTest
 
@@ -120,6 +123,9 @@ REGISTRY: dict[str, type[Rule]] = {
     SleepWithComputedArgInTest.id: SleepWithComputedArgInTest,
     ZeroAssertionTest.id: ZeroAssertionTest,
     NoFirstPartyPrivateImport.id: NoFirstPartyPrivateImport,
+    NoRestatedComment.id: NoRestatedComment,
+    RedundantDocstring.id: RedundantDocstring,
+    TrailingValueNarration.id: TrailingValueNarration,
 }
 
 __all__ = ["REGISTRY"]

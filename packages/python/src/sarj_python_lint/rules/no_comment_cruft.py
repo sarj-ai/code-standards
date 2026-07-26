@@ -73,18 +73,49 @@ exists to remove; and keyword-argument-shaped labels (`# tls=True`,
 no-space-around-`=` shape would have taken 9 genuinely dead lines with it
 (`pydantic-core/tests/validators/test_url.py:1165-1167`) to spare 6 labels.
 
+Two live false positives were found by running the shipped rule over the
+corpus and are fixed here:
+- the region check matched the bare WORD `region`, so
+  `# region, sector AND facility_type are HARD constraints when the investor
+  names them — ...` (demo-gateway/demos/momah-furas-anas/pipeline/matching.py:159,
+  plus six TypeScript siblings) read as a folding marker. It now requires the
+  marker SHAPE: no title, or a short unpunctuated one.
+- `for now` fired on a ticket-bearing scoping note. A comment naming where the
+  decision is recorded is doing the one thing code cannot, so protected-class
+  signal S1 (ticket / URL / RFC / issue number) now exempts narration — at RUN
+  granularity, because a scoping note puts its owner on the last line.
+
+Extensions added in the same pass, each measured ZERO-hit on bulbul (which
+enforces this rule at `error`, so an extension that fires there would break a
+consumer's CI on a patch release):
+- bare one-word section labels from a closed vocabulary (`# Constants`,
+  `# Helpers`, `# Types`) — 22 corpus hits, 12 of 12 sampled were true;
+- the `Helper function to ...` opener — 6 of 6;
+- `Let's <verb>`, gated on a verb list so the third-person `lets` (which does
+  real explanatory work) is untouched;
+- Unicode box-drawing rules (`────────`) as banners — 34 corpus hits the ASCII-
+  only check could not see;
+- a numbered / `Phase N:` marker, but ONLY when the file carries exactly one.
+  A run of them is a documented algorithm walkthrough, which is the kind of
+  comment this rule exists to protect.
+
 Suppress an intentional case with `# sarj-noqa: SARJ016 — <reason>`.
 """
 
 from __future__ import annotations
 
 import ast
-import io
 import re
 import tokenize
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule
+from sarj_python_lint.rules._comments import (
+    comment_runs,
+    has_external_reference,
+    nested_comment_lines,
+    standalone_comments,
+)
 from sarj_python_lint.rules._paths import is_generated_source
 
 
@@ -125,8 +156,21 @@ _LICENSE_RE = re.compile(
 )
 
 _BANNER_FULL_RE = re.compile(r"^[-=#*~_+.\s]{4,}$")
-_BANNER_RUN_RE = re.compile(r"={4,}|-{4,}|#{4,}|\*{4,}|~{4,}")
-_REGION_RE = re.compile(r"^(?:end)?region\b", re.IGNORECASE)
+# `[\u2500-\u257f]` is the Unicode box-drawing block. A `────────` rule is the
+# same section separator as `--------`, just prettier; 34 of them were sitting in
+# the corpus under a check that only knew ASCII.
+_BANNER_RUN_RE = re.compile(r"={4,}|-{4,}|#{4,}|\*{4,}|~{4,}|[\u2500-\u257f]{4,}")
+
+# A VS Code / Visual Studio folding marker: `# region`, `# region helpers`,
+# `#region Types`, `# endregion`. The title must be short and unpunctuated.
+# Matching the bare word alone flagged running prose that merely opens with it —
+# `# region, sector AND facility_type are HARD constraints when the investor
+# names them — ...` at demo-gateway/demos/momah-furas-anas/pipeline/matching.py:159,
+# plus five TypeScript siblings. A marker names a region; a sentence discusses
+# one, and a sentence has punctuation and more than a handful of words.
+_REGION_MARKER_RE = re.compile(r"^#?(?:end)?region\b(?P<title>.*)$", re.IGNORECASE)
+_REGION_TITLE_RE = re.compile(r"^[\s:\-\u2013\u2014]*\w[\w \-/&+]*$")
+_REGION_TITLE_MAX_WORDS = 5
 
 _CODE_STMT_RE = re.compile(
     r"^(?:import |from \S+ import |return\b|yield\b|await |"
@@ -187,9 +231,54 @@ _META_COMMENTARY_RE = re.compile(
     re.IGNORECASE,
 )
 
+# A bare one-word signpost naming a region of the file (`# Constants`,
+# `# Helpers`, `# Types`). It is a table of contents for a file that should have
+# been split, and it goes stale silently. 22 corpus hits across noura-be and
+# demo-gateway, 12 of 12 sampled were true positives. Closed vocabulary on
+# purpose: a one-word comment outside this list ("# Riyadh") is far more likely
+# to be a genuine label for a value.
+_SECTION_LABEL_WORDS = frozenset({
+    "actions", "components", "config", "configuration", "constant", "constants",
+    "enums", "exports", "fixtures", "getters", "globals", "handler", "handlers",
+    "helper", "helpers", "hook", "hooks", "imports", "interfaces", "main",
+    "mocks", "models", "mutations", "props", "queries", "reducers", "routes",
+    "schemas", "selectors", "setters", "setup", "state", "styles", "teardown",
+    "type", "types", "util", "utilities", "utils",
+})
+_SECTION_LABEL_RE = re.compile(r"^([A-Za-z]+)\s*:?\s*$")
 
-def _comment_body(raw: str) -> str:
-    return raw.lstrip("#").strip()
+# "Helper function to check if a path is active" — the opener announces the
+# *category* of the thing below (which its `def` already states) and then
+# restates its name. 6 corpus hits, 6 true positives.
+_HELPER_OPENER_RE = re.compile(
+    r"^(?:a\s+)?helper\s+(?:function|method|component|hook|class|type|util(?:ity)?)\b",
+    re.IGNORECASE,
+)
+
+# Verbs that describe the mechanics of the code below. Shared with the `Let's …`
+# gate and kept in step with the TypeScript `NARRATION_VERB_RE`.
+_NARRATION_VERBS = (
+    r"add|append|assign|await|build|calculate|call|check|clear|close|compute|convert|copy|count|"
+    r"create|declare|decrement|define|delete|extract|fetch|filter|find|format|generate|get|handle|"
+    r"increment|init|initialise|initialize|insert|iterate|join|load|log|loop|map|merge|open|parse|"
+    r"print|process|push|read|remove|render|reset|return|save|send|set|setup|sort|split|start|stop|"
+    r"store|update|validate|wrap|write"
+)
+
+# "Let's not await the promise" — the first-person-plural walkthrough voice.
+# Gated on the verb list because the third-person `lets` is a different word
+# doing real work: "lets a same-day re-run find the message it already posted"
+# explains a mechanism and must not be touched.
+_LETS_RE = re.compile(
+    rf"^let'?s\s+(?:not\s+|just\s+|now\s+|first\s+)?(?:{_NARRATION_VERBS})(?:s|es|ed|ing)?\b",
+    re.IGNORECASE,
+)
+
+# Enumeration markers that narrate a sequence: `# 1. Load the config`,
+# `# Phase 2: reconcile`. Flagged only when the file carries exactly one of
+# them — a *run* of them is a documented algorithm walkthrough, which is the
+# kind of comment this rule exists to protect.
+_ENUMERATION_RE = re.compile(r"^(?:\d+[.)]\s+\S|phase\s+\d+\b)", re.IGNORECASE)
 
 
 def _is_word_char(ch: str) -> bool:
@@ -242,6 +331,26 @@ def _doctest_block_lines(standalone: Sequence[tuple[int, int, str]]) -> set[int]
             flush()
         block.append((line, body))
     flush()
+    return exempt
+
+
+def _externally_referenced_lines(standalone: Sequence[tuple[int, int, str]]) -> set[int]:
+    """Collect every line of a comment run that cites a ticket, URL, RFC or issue.
+
+    Protected-class signal S1, applied at run granularity because a scoping note
+    puts its owner at the end: bulbul's four-line Zoho-canary comment ends
+    "EN-only for now — add an AR variant once AR audio exists (PROD-249)", and
+    judging the last line alone read "for now" as an unowned admission. A comment
+    that names where the decision is recorded is doing the one thing code cannot.
+
+    Returns:
+        The line numbers belonging to a run carrying an external reference.
+
+    """
+    exempt: set[int] = set()
+    for run in comment_runs(standalone):
+        if any(has_external_reference(body) for _, _, body in run):
+            exempt.update(line for line, _, _ in run)
     return exempt
 
 
@@ -307,8 +416,30 @@ def _is_sentence_continuation(prev_body: str | None) -> bool:
     return bool(prev_body) and not _SENTENCE_END_RE.search(prev_body)
 
 
-def _is_redundant_narration(body: str, prev_body: str | None) -> bool:
+def _is_section_label(body: str) -> bool:
+    """Report whether the comment is a bare one-word section signpost.
+
+    Returns:
+        True for `# Constants`, `# Helpers:`, `# Types` and their siblings.
+
+    """
+    match = _SECTION_LABEL_RE.match(body)
+    return match is not None and match.group(1).lower() in _SECTION_LABEL_WORDS
+
+
+def _is_redundant_narration(
+    body: str,
+    prev_body: str | None,
+    *,
+    isolated_enumeration: bool,
+    nested: bool,
+) -> bool:
     """Whether a comment merely narrates the code (step markers, meta-commentary).
+
+    `isolated_enumeration` is True when this comment is the file's ONLY
+    numbered/phase marker; a file with several is walking through an algorithm.
+    `nested` is True inside a bracketed expression, where a one-word label is
+    grouping the elements beneath it rather than signposting the file.
 
     Returns:
         True for step-narration lead-ins and self-admitted meta-commentary.
@@ -321,7 +452,13 @@ def _is_redundant_narration(body: str, prev_body: str | None) -> bool:
         return False  # "First, take the lock, because ..." carries a why
     if _is_sentence_continuation(prev_body):
         return False
-    return bool(_STEP_NARRATION_RE.search(c) or _META_COMMENTARY_RE.search(c))
+    if _STEP_NARRATION_RE.search(c) or _META_COMMENTARY_RE.search(c):
+        return True
+    if _HELPER_OPENER_RE.match(c) or _LETS_RE.match(c):
+        return True
+    if not nested and _is_section_label(c):
+        return True
+    return isolated_enumeration and bool(_ENUMERATION_RE.match(c))
 
 
 def _is_heading_underline(body: str, prev_body: str | None) -> bool:
@@ -342,6 +479,24 @@ def _is_heading_underline(body: str, prev_body: str | None) -> bool:
     return any(_is_word_char(ch) for ch in prev_body) and not _is_banner(prev_body) and not _looks_like_code(prev_body)
 
 
+def _is_region_marker(body: str) -> bool:
+    """Report whether the comment is a folding-region marker rather than prose.
+
+    Returns:
+        True for `# region`, `# region helpers`, `#endregion` and friends.
+
+    """
+    match = _REGION_MARKER_RE.match(body)
+    if match is None:
+        return False
+    title = match.group("title").strip()
+    if not title:
+        return True
+    if not _REGION_TITLE_RE.match(title):
+        return False
+    return len(title.split()) <= _REGION_TITLE_MAX_WORDS
+
+
 def _is_banner(body: str) -> bool:
     if not body:
         return False
@@ -349,7 +504,7 @@ def _is_banner(body: str) -> bool:
         return True
     if _BANNER_RUN_RE.search(body):
         return True
-    return bool(_REGION_RE.match(body))
+    return _is_region_marker(body)
 
 
 def _looks_like_code(body: str) -> bool:
@@ -432,24 +587,40 @@ class NoCommentCruft(Rule):
         if path.name == "conf.py" and "docs" in path.parts:
             return []
         try:
-            standalone, first_code_line = _standalone_comments(source)
+            standalone, first_code_line = standalone_comments(source)
         except tokenize.TokenError, IndentationError, SyntaxError:
             return []
         diags: dict[int, Diagnostic] = {}
         by_line = {line: body for line, _, body in standalone}
         skip = _doctest_block_lines(standalone) | _illustration_block_lines(standalone)
+        referenced = _externally_referenced_lines(standalone)
+        nested = nested_comment_lines(source)
+        enumerated = [line for line, _, body in standalone if _ENUMERATION_RE.match(body)]
         for line, col, body in standalone:
             if _is_directive(body) or _is_coding_cookie(body) or line in skip:
                 continue
             prev_body = by_line.get(line - 1)
-            msg = self._classify(body, prev_body)
+            msg = self._classify(
+                body,
+                prev_body,
+                narration_protected=line in referenced,
+                isolated_enumeration=enumerated == [line],
+                nested=line in nested,
+            )
             if msg is not None:
                 diags[line] = Diagnostic(path=path, line=line, col=col + 1, code=self.code, message=msg)
         self._flag_leading_preamble(standalone, first_code_line, path, diags)
         return [diags[k] for k in sorted(diags)]
 
     @staticmethod
-    def _classify(body: str, prev_body: str | None) -> str | None:
+    def _classify(
+        body: str,
+        prev_body: str | None,
+        *,
+        narration_protected: bool,
+        isolated_enumeration: bool,
+        nested: bool,
+    ) -> str | None:
         if _CODE_REGEN_CALL_RE.match(body):
             return None
         if _is_banner(body):
@@ -460,7 +631,11 @@ class NoCommentCruft(Rule):
             if prev_body is not None and _is_prose_line(prev_body):
                 return None
             return "Commented-out code — delete it; git history remembers."
-        if _is_redundant_narration(body, prev_body):
+        if narration_protected:
+            return None
+        if _is_redundant_narration(
+            body, prev_body, isolated_enumeration=isolated_enumeration, nested=nested
+        ):
             return "Comment narrates the code — delete it or say why, not what. Code is self-documenting."
         return None
 
@@ -501,32 +676,3 @@ class NoCommentCruft(Rule):
                         "use a module docstring for the why, not a block of comments."
                     ),
                 )
-
-
-_LAYOUT_TOKENS = frozenset({tokenize.NL, tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT})
-
-_NON_CODE_TOKENS = _LAYOUT_TOKENS | frozenset({tokenize.COMMENT, tokenize.ENCODING, tokenize.ENDMARKER})
-
-
-def _standalone_comments(source: str) -> tuple[list[tuple[int, int, str]], int]:
-    """Return (standalone comments, first code line).
-
-    A comment is standalone when it is the only content on its line. `first code
-    line` is the row of the first real code token (a large sentinel if none).
-
-    Returns:
-        The standalone comments and the first code line's row.
-
-    """
-    out: list[tuple[int, int, str]] = []
-    first_code_line = 1 << 30
-    prev_end_row = 0
-    readline = io.StringIO(source).readline
-    for tok in tokenize.generate_tokens(readline):
-        if tok.type == tokenize.COMMENT and tok.start[0] != prev_end_row:
-            out.append((tok.start[0], tok.start[1], _comment_body(tok.string)))
-        if tok.type not in _LAYOUT_TOKENS:
-            prev_end_row = tok.end[0]
-        if tok.type not in _NON_CODE_TOKENS:
-            first_code_line = min(first_code_line, tok.start[0])
-    return out, first_code_line

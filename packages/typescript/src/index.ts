@@ -39,6 +39,9 @@ import noRawFetchOutsideClients from "./rules/no-raw-fetch-outside-clients.js";
 import noStorageInStatelessModules from "./rules/no-storage-in-stateless-modules.js";
 import noZodNativeEnum from "./rules/no-zod-native-enum.js";
 import preferModuleLevelConstant from "./rules/prefer-module-level-constant.js";
+import jsdocRestatesSignature from "./rules/jsdoc-restates-signature.js";
+import noRestatedComment from "./rules/no-restated-comment.js";
+import trailingValueNarration from "./rules/trailing-value-narration.js";
 
 const rules = {
   "enforce-file-structure": enforceFileStructure,
@@ -82,12 +85,15 @@ const rules = {
   "no-storage-in-stateless-modules": noStorageInStatelessModules,
   "no-zod-native-enum": noZodNativeEnum,
   "prefer-module-level-constant": preferModuleLevelConstant,
+  "jsdoc-restates-signature": jsdocRestatesSignature,
+  "no-restated-comment": noRestatedComment,
+  "trailing-value-narration": trailingValueNarration,
 };
 
 const plugin = {
   meta: {
     name: "@sarj/eslint-plugin",
-    version: "2.12.2",
+    version: "2.13.0",
   },
   rules,
   configs: {
@@ -144,6 +150,17 @@ const plugin = {
         // theme (~37 PRs). Measured 17 hits / 1085 real TS files, all true
         // positives, so it is safe to run everywhere.
         "@sarj/prefer-module-level-constant": "warn",
+        // Anti-comment-verbosity family (2026-07), from a 37,918-comment,
+        // nine-repo measurement study. Each is a deletion-class finding, so each
+        // was validated against pydantic / trio / attrs as well as the maintained
+        // repos: `no-restated-comment` 0 hits in bulbul and 4 in the three famous
+        // corpora combined; `trailing-value-narration` 18 hits, 18 true
+        // positives; `jsdoc-restates-signature` 36 hits, 0 measured false
+        // positives, and it offers a suggestion rather than a `--fix` because a
+        // wrong deletion is silent information loss.
+        "@sarj/no-restated-comment": "warn",
+        "@sarj/jsdoc-restates-signature": "warn",
+        "@sarj/trailing-value-narration": "warn",
       },
     },
     strict: {
@@ -207,6 +224,11 @@ const plugin = {
         // Mined from two years of PR review (SARJ-928).
         "@sarj/no-zod-native-enum": "error",
         "@sarj/prefer-module-level-constant": "error",
+        // Anti-comment-verbosity family (2026-07) — see the `recommended` block
+        // for the measured hit counts and false-positive rates.
+        "@sarj/no-restated-comment": "error",
+        "@sarj/jsdoc-restates-signature": "error",
+        "@sarj/trailing-value-narration": "error",
       },
     },
   },

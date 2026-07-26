@@ -281,8 +281,10 @@ def test_region_and_endregion_both_flag():
     assert all("Section-banner" in d.message for d in diags)
 
 
-def test_box_drawing_run_is_not_a_banner():
-    assert _check("x = 1\n# ════════\ny = 2\n") == []
+def test_box_drawing_run_is_a_banner():
+    diags = _check("x = 1\n# ════════\ny = 2\n")
+    assert len(diags) == 1
+    assert "Section-banner" in diags[0].message
 
 
 def test_three_char_symbol_run_is_not_a_banner():
@@ -767,3 +769,145 @@ def test_header_preamble_with_a_single_letter_still_flags():
     diags = _check(src)
     assert len(diags) == 1
     assert "preamble" in diags[0].message
+
+
+# --- region markers vs prose that opens with the word "region" ---------------
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "region",
+        "endregion",
+        "region helpers",
+        "region: Constants",
+        "endregion helpers",
+        "region auth / session",
+    ],
+)
+def test_region_marker_shapes_flag(body: str):
+    diags = _standalone(body)
+    assert len(diags) == 1
+    assert "Section-banner" in diags[0].message
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        # demo-gateway/demos/momah-furas-anas/pipeline/matching.py:159 — a prose
+        # comment whose first word happens to be "region".
+        "region, sector AND facility_type are HARD constraints when the investor names them",
+        "region is derived from the caller's IP, which the CDN rewrites",
+        "regions are resolved lazily",
+        "region names must stay lowercase; the API rejects mixed case.",
+    ],
+)
+def test_prose_opening_with_region_is_not_a_marker(body: str):
+    assert _standalone(body) == []
+
+
+# --- ticket-bearing scoping notes --------------------------------------------
+
+
+def test_meta_commentary_with_a_ticket_is_exempt():
+    assert _standalone("EN-only for now; add an AR variant once AR audio exists (PROD-249)") == []
+
+
+def test_meta_commentary_with_a_url_is_exempt():
+    assert _standalone("hacky — mirrors https://example.com/api/quirk until they fix it") == []
+
+
+def test_ticket_anywhere_in_the_run_exempts_the_whole_run():
+    src = (
+        "x = 1\n"
+        "# Zoho freshness canary: the sink writes Description so Modified_Time advances.\n"
+        "# EN-only for now (PROD-249).\n"
+        "y = 2\n"
+    )
+    assert _check(src) == []
+
+
+def test_meta_commentary_without_a_ticket_still_fires():
+    diags = _standalone("quick fix, clean this up")
+    assert len(diags) == 1
+    assert "narrates" in diags[0].message
+
+
+# --- SARJ016 extensions -------------------------------------------------------
+
+
+@pytest.mark.parametrize("body", ["Constants", "Helpers", "Types", "Main", "Handlers:", "Hooks"])
+def test_bare_section_label_flags(body: str):
+    diags = _standalone(body)
+    assert len(diags) == 1
+    assert "narrates" in diags[0].message
+
+
+@pytest.mark.parametrize("body", ["Riyadh", "SAR", "seconds", "idempotent"])
+def test_one_word_comment_outside_the_label_vocabulary_is_kept(body: str):
+    assert _standalone(body) == []
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "Helper function to check if a path is active",
+        "Helper component for header with tooltip",
+        "A helper class to wrap the row",
+    ],
+)
+def test_helper_opener_flags(body: str):
+    diags = _standalone(body)
+    assert len(diags) == 1
+    assert "narrates" in diags[0].message
+
+
+def test_lets_with_a_narration_verb_flags():
+    diags = _standalone("Let's not await the promise")
+    assert len(diags) == 1
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "lets a same-day re-run find the message it already posted",
+        "Lets describeAppointmentWithUser skip the extra round-trip",
+        "lets `.` match a newline",
+    ],
+)
+def test_third_person_lets_is_kept(body: str):
+    assert _standalone(body) == []
+
+
+def test_isolated_enumeration_marker_flags():
+    diags = _standalone("1. Load the config")
+    assert len(diags) == 1
+    assert "narrates" in diags[0].message
+
+
+def test_enumeration_run_is_a_walkthrough_and_is_kept():
+    src = "x = 1\n# 1. Load the config\ny = 2\n# 2. Reconcile the rows\nz = 3\n# 3. Emit\nw = 4\n"
+    assert _check(src) == []
+
+
+def test_isolated_phase_marker_flags():
+    assert len(_standalone("Phase 2: reconcile")) == 1
+
+
+def test_region_prose_with_a_full_stop_is_not_a_marker():
+    # demo-gateway/.../voice/action/route.ts:1187 — a short noun phrase that
+    # would pass the title shape if a sentence-final period were allowed.
+    assert _standalone("Region centroids for map_pan.") == []
+
+
+def test_section_label_inside_a_literal_groups_its_elements():
+    # pydantic/pydantic/__init__.py:98 — `# config` sits inside `__all__`,
+    # grouping the names beneath it rather than signposting the file.
+    src = '__all__ = [\n    "model_serializer",\n    # config\n    "ConfigDict",\n]\n'
+    assert _check(src) == []
+
+
+def test_section_label_at_module_level_still_flags():
+    diags = _check("import os\n\n# Constants\nMAX = 1\n")
+    assert len(diags) == 1
+    assert "narrates" in diags[0].message
