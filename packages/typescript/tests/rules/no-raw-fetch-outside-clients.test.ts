@@ -79,6 +79,16 @@ ruleTester.run("no-raw-fetch-outside-clients", rule, {
     { code: "const d = queryClient.fetch();", filename: HANDLER },
     // Going through a client is the whole point of the rule.
     { code: "const r = await slackClient.postMessage(c, t);", filename: HANDLER },
+    // Pre-signed upload/download URLs are storage handoffs, not calls to a
+    // first-party service API that belongs behind the app client layer.
+    {
+      code: "await fetch(uploadUrl, { method: 'PUT', body: file });",
+      filename: "/repo/src/app/batch-calls/create-batch-form.tsx",
+    },
+    {
+      code: "await fetch(file.downloadUrl);",
+      filename: "/repo/src/app/knowledge-bases/kb-files-list.tsx",
+    },
     // A computed member access we cannot resolve statically.
     { code: "const r = api['fetch'](url);", filename: HANDLER },
     // A local binding shadowing nothing global, on a non-global receiver.

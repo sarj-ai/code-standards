@@ -9,6 +9,8 @@
 
 import { ESLintUtils, type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
 
+import { isTestFile } from "./_paths.js";
+
 type MessageIds = "importsFirst" | "useServerDirective";
 type Options = readonly [];
 
@@ -88,6 +90,10 @@ export default ESLintUtils.RuleCreator(
   },
   defaultOptions: [],
   create(context) {
+    if (isTestFile(context.filename)) {
+      return {};
+    }
+
     return {
       Program(node: TSESTree.Program): void {
         const body = node.body;

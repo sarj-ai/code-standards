@@ -6,9 +6,9 @@
  *
  * `<input>` is resolved by its `type`: a bare `<input type="checkbox">` maps to
  * `<Checkbox>`, `radio` → `<RadioGroup>`, `range` → `<Slider>`, and the text-like
- * types (or no type) → `<Input>`. `type="hidden"` is skipped (no shadcn primitive),
- * and a dynamic `type={…}` falls back to the generic `<Input>` rather than asserting
- * a wrong primitive.
+ * types (or no type) → `<Input>`. `type="hidden"` and native file upload controls
+ * are skipped (no shadcn primitive), and a dynamic `type={…}` falls back to the
+ * generic `<Input>` rather than asserting a wrong primitive.
  *
  * TEST FILES ARE EXEMPT. Corpus sweep (2220 files across zod / TanStack Query /
  * react-router / swr / zustand, 2026-07): 84 raw hits, 53 of them in a single
@@ -47,7 +47,7 @@ const INPUT_TYPE_REPLACEMENTS: Readonly<Record<string, string>> = {
 };
 
 /** `<input type>` values with no shadcn equivalent — never reported. */
-const SKIPPED_INPUT_TYPES = new Set<string>(["hidden"]);
+const SKIPPED_INPUT_TYPES = new Set<string>(["file", "hidden"]);
 
 const kebabCase = (component: string): string =>
   component.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
@@ -71,9 +71,18 @@ const literalTypeAttr = (
   return null;
 };
 
+const hasFileAcceptAttr = (node: TSESTree.JSXOpeningElement): boolean =>
+  node.attributes.some(
+    (attribute) =>
+      attribute.type === AST_NODE_TYPES.JSXAttribute &&
+      attribute.name.type === AST_NODE_TYPES.JSXIdentifier &&
+      attribute.name.name === "accept",
+  );
+
 /** Resolve an `<input>` to its shadcn primitive, or null to skip it entirely. */
 const resolveInputReplacement = (node: TSESTree.JSXOpeningElement): string | null => {
   const typeAttr = literalTypeAttr(node);
+  if (hasFileAcceptAttr(node)) return null;
   if (typeAttr === null || typeAttr.kind === "dynamic") return "Input";
   if (SKIPPED_INPUT_TYPES.has(typeAttr.value)) return null;
   return INPUT_TYPE_REPLACEMENTS[typeAttr.value] ?? "Input";
