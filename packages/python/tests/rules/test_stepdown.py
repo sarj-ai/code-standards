@@ -388,7 +388,9 @@ def _load() -> dict:
     assert _check(src) == []
 
 
-def test_module_helper_above_class_caller_fires():
+def test_module_helper_whose_only_caller_is_a_class_is_not_flagged():
+    # A class is a scope, not a call site: no module-level position sits
+    # "directly below" the method that actually calls the helper.
     src = """
 def _load() -> dict:
     return {}
@@ -397,10 +399,7 @@ class Runner:
     def run(self) -> dict:
         return _load()
 """
-    diags = _check(src)
-    assert len(diags) == 1
-    assert "_load" in diags[0].message
-    assert "Runner" in diags[0].message
+    assert _check(src) == []
 
 
 def test_private_class_not_flagged():
@@ -778,17 +777,93 @@ class Right(Base):
     assert all("_fit" in d.message for d in diags)
 
 
-def test_module_helper_message_reports_reference_line_not_class_def_line():
+def test_message_reports_reference_line_not_caller_def_line():
     src = """
 def _worker(x: int) -> int:
     return x
 
-class Runner:
-    def run(self, xs: list[int]) -> list[int]:
-        return [_worker(x) for x in xs]
+def run(xs: list[int]) -> list[int]:
+    total = 0
+    return [_worker(x) for x in xs]
 """
     diags = _check(src)
     assert len(diags) == 1
     assert "_worker" in diags[0].message
-    assert "Runner" in diags[0].message
+    assert "run" in diags[0].message
+    # Line 7 is the reference; `run` itself is defined on line 5.
     assert "referenced at line 7" in diags[0].message
+
+
+# --------------------------------------------------------------------------- #
+# FP-hardening (famous-repo sweep): a class is never the stepdown target.      #
+# --------------------------------------------------------------------------- #
+
+
+def test_class_caller_referencing_helper_from_several_methods_is_not_flagged():
+    # Distilled from pydantic `_internal/_generate_schema.py:286`, where
+    # `_extract_json_schema_info_from_field_info` is referenced by three
+    # different `GenerateSchema` methods yet collapsed into one "caller".
+    # There is no canonical "below which caller?" answer here.
+    src = """
+def _norm(k: str) -> str:
+    return k
+
+class Big:
+    def a(self) -> str:
+        return _norm("a")
+
+    def b(self) -> str:
+        return _norm("b")
+"""
+    assert _check(src) == []
+
+
+def test_class_still_counts_as_a_caller_for_multi_caller_suppression():
+    # The class does not become invisible: a helper shared by a class and a
+    # function has two callers and stays out of scope.
+    src = """
+def _shared() -> int:
+    return 1
+
+def run() -> int:
+    return _shared()
+
+class Runner:
+    def go(self) -> int:
+        return _shared()
+"""
+    assert _check(src) == []
+
+
+def test_function_caller_defined_below_a_class_still_fires():
+    # The class-caller guard is about the *flagged* caller only — a genuine
+    # single function caller is reported even when classes sit in between.
+    src = """
+def _load() -> dict:
+    return {}
+
+class Unrelated:
+    pass
+
+def run() -> dict:
+    return _load()
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "_load" in diags[0].message
+    assert "run" in diags[0].message
+
+
+def test_class_scope_method_helper_still_fires():
+    # In class scope every caller is a method, so the guard changes nothing.
+    src = """
+class Runner:
+    def _load(self) -> dict:
+        return {}
+
+    def run(self) -> dict:
+        return self._load()
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "_load" in diags[0].message

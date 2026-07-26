@@ -1007,14 +1007,24 @@ def handle(get) -> int:
     assert _check(src) == []
 
 
-def test_yoda_and_not_equal_mix_into_one_cluster():
+def test_yoda_form_joins_the_same_cluster():
     src = """
 def handle(status: str) -> int:
     if "active" == status:
         return 1
-    if status != "inactive":
+    if status == "inactive":
         return 2
     return 0
+"""
+    assert len(_check(src)) == 1
+
+
+def test_not_equal_pair_enumerates_the_domain():
+    src = """
+def handle(status: str) -> int:
+    if status != "active" and status != "inactive":
+        return 0
+    return 1
 """
     assert len(_check(src)) == 1
 
@@ -1311,5 +1321,249 @@ def dispatch(kind):
         return 1
     elif kind == 'export':
         return 2
+"""
+    assert len(_check(src)) == 1
+
+
+# --------------------------------------------------------------------------- #
+# FP-hardening (famous-repo sweep): domains defined somewhere else.           #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    ["JustifyMethod", '"JustifyMethod"', "AlignMethod | None", "Optional[AlignMethod]", "rich.AlignMethod"],
+)
+def test_separately_typed_parameter_is_exempt(annotation: str):
+    # Minimized from rich/rich/containers.py:129 — `JustifyMethod` is a Literal
+    # alias declared in rich/console.py and imported here, so the closed set
+    # already exists at a definition site this module does not own.
+    src = f"""
+def justify(text, justify: {annotation}) -> int:
+    if justify == "left":
+        return 1
+    elif justify == "center":
+        return 2
+    return 0
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize("annotation", ["str", '"str"', "str | None", "Optional[str]"])
+def test_str_annotated_parameter_still_fires(annotation: str):
+    src = f"""
+def handle(status: {annotation}) -> int:
+    if status == "active":
+        return 1
+    elif status == "inactive":
+        return 2
+    return 0
+"""
+    assert len(_check(src)) == 1
+
+
+def test_value_derived_from_a_typed_name_is_exempt():
+    # Minimized from rich/rich/text.py:874.
+    src = """
+def truncate(self, overflow: OverflowMethod | None = None) -> int:
+    _overflow = overflow or self.overflow or DEFAULT_OVERFLOW
+    if _overflow != "ignore":
+        return 1
+    if _overflow == "ellipsis":
+        return 2
+    return 0
+"""
+    assert _check(src) == []
+
+
+def test_value_from_a_literal_returning_local_function_is_exempt():
+    # Minimized from pydantic/pydantic/_internal/_generate_schema.py:2833.
+    src = """
+def _inlining_behavior(ref) -> Literal['inline', 'keep', 'preserve_metadata']:
+    return 'keep'
+
+
+def finalize(ref) -> int:
+    behavior = _inlining_behavior(ref)
+    if behavior == 'inline':
+        return 1
+    if behavior == 'preserve_metadata':
+        return 2
+    return 0
+"""
+    assert _check(src) == []
+
+
+def test_value_from_an_untyped_local_function_still_fires():
+    src = """
+def classify(ref):
+    return 'inline'
+
+
+def finalize(ref) -> int:
+    behavior = classify(ref)
+    if behavior == 'inline':
+        return 1
+    if behavior == 'keep':
+        return 2
+    return 0
+"""
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    ("binding", "var"),
+    [
+        ("node_type = token.type", "node_type"),
+        ("node_type = leaf.value", "node_type"),
+        ("node_type = cls.__config__.node_type", "node_type"),
+        ('node_type = os.getenv("NODE_TYPE")', "node_type"),
+        ('node_type = next(tokens, "")', "node_type"),
+        ("node_type = tokens.pop(0)", "node_type"),
+    ],
+)
+def test_locals_bound_from_a_foreign_read_are_exempt(binding: str, var: str):
+    # The direct form (`token.type == "text"`) never fired; aliasing it to a
+    # local must not change the answer.
+    src = f"""
+def render(token, tokens, cls) -> int:
+    {binding}
+    if {var} == "text":
+        return 1
+    elif {var} == "hardbreak":
+        return 2
+    return 0
+"""
+    assert _check(src) == []
+
+
+def test_local_bound_from_an_own_attribute_still_fires():
+    # `self.kind` is this class's own field — a StrEnum here is actionable.
+    src = """
+def render(self) -> int:
+    kind = self.kind
+    if kind == "text":
+        return 1
+    elif kind == "break":
+        return 2
+    return 0
+"""
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    "loop",
+    [
+        "for k, _v in obj.items():",
+        "for k in obj.keys():",
+        "for _i, (k, _v) in enumerate(obj.items()):",
+        "for _arg, k in zip(obj.args, obj.arg_names):",
+        "for k in sorted(obj._fields):",
+        "for k in obj.field_names:",
+    ],
+)
+def test_loop_targets_over_foreign_iterables_are_exempt(loop: str):
+    # Minimized from pydantic/pydantic/_internal/_core_utils.py:117,
+    # pydantic/pydantic/mypy.py:1096 and black/src/black/parsing.py:218.
+    src = f"""
+def walk(obj) -> int:
+    {loop}
+        if k == "metadata":
+            return 1
+        elif k == "targets":
+            return 2
+    return 0
+"""
+    assert _check(src) == []
+
+
+def test_loop_target_over_a_local_list_still_fires():
+    src = """
+def walk(kinds) -> int:
+    for kind in kinds:
+        if kind == "ingest":
+            return 1
+        elif kind == "export":
+            return 2
+    return 0
+"""
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize("name", ["mode", "_mode", "file_mode", "open_mode"])
+def test_open_mode_vocabulary_is_exempt(name: str):
+    # Minimized from flask/src/flask/app.py:437 and rich/rich/progress.py:1345.
+    src = f"""
+def open_resource({name}: str = "rb"):
+    if {name} not in {{"r", "rt", "rb"}}:
+        raise ValueError({name})
+    if {name} == "rb":
+        return 1
+    return 2
+"""
+    assert _check(src) == []
+
+
+def test_mode_with_word_values_still_fires():
+    src = """
+def render(mode: str) -> int:
+    if mode == "strict":
+        return 1
+    elif mode == "lenient":
+        return 2
+    return 0
+"""
+    assert len(_check(src)) == 1
+
+
+def test_single_char_enum_on_a_non_mode_variable_still_fires():
+    # The file-mode carve-out keys off the NAME as well as the shape.
+    src = """
+def grade(g: str) -> int:
+    if g == "a":
+        return 4
+    elif g == "b":
+        return 3
+    return 0
+"""
+    assert len(_check(src)) == 1
+
+
+def test_self_and_cls_comparison_is_reflection():
+    # Minimized from pydantic/pydantic/v1/class_validators.py:268.
+    src = """
+def make_validator(args) -> int:
+    first_arg = args[0]
+    if first_arg == 'self':
+        raise ConfigError('no self')
+    elif first_arg == 'cls':
+        return 1
+    return 0
+"""
+    assert _check(src) == []
+
+
+def test_equality_and_inequality_on_different_literals_do_not_enumerate():
+    # Minimized from fastapi/docs_src/dependencies/tutorial008c_py310.py:19 —
+    # two independent guards, not a dispatch over a domain.
+    src = """
+def get_item(item_id: str) -> int:
+    if item_id == "portal-gun":
+        raise InternalError(item_id)
+    if item_id != "plumbus":
+        raise HTTPException(status_code=404)
+    return 1
+"""
+    assert _check(src) == []
+
+
+def test_membership_set_corroborates_a_single_equality():
+    # Minimized from fastapi/fastapi/routing.py:6367 — the `in` assertion spells
+    # out the closed domain the `==` then dispatches over.
+    src = """
+def add_event_handler(self, event_type: str, func) -> None:
+    assert event_type in ("startup", "shutdown")
+    if event_type == "startup":
+        self.on_startup.append(func)
 """
     assert len(_check(src)) == 1

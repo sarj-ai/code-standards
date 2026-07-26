@@ -12,6 +12,25 @@ const ruleTester = new RuleTester();
 
 ruleTester.run("prefer-schema-for-api-payload", rule, {
   valid: [
+    // FP guard, corpus: react-router/integration/request-test.ts:120 — the
+    // assertion IS the validation, and the suite is hyphen-named so no path
+    // predicate sees it.
+    {
+      code: "async function t(page) { const loaderData = JSON.parse(await page.innerHTML()); expect(loaderData.method).toEqual('GET'); }",
+    },
+    // FP guard, corpus: zod/scripts/check-versions.ts:13 — JSON off local disk
+    // is not a peer's payload.
+    {
+      code: "const packageJson = JSON.parse(readFileSync(p, 'utf8')); const v = packageJson.version;",
+    },
+    {
+      code: "async function f(metaPath) { const meta = JSON.parse(await fs.readFile(metaPath, 'utf-8')); return meta.pages; }",
+    },
+    // Test files: a fixture parses what it just produced.
+    {
+      code: "async function t(res) { const body = await res.json(); use(body.id); }",
+      filename: "/repo/src/__tests__/api.test.ts",
+    },
     // No json() involved.
     { code: "const x = { foo: 1 }; doStuff(x.foo);" },
     // Parsed through Zod.
@@ -67,6 +86,12 @@ ruleTester.run("prefer-schema-for-api-payload", rule, {
     { code: "const d = JSON.parse(text); if (isConfig(d)) { use(d.foo); }" },
   ],
   invalid: [
+    // The trust boundary still fires: a network payload read outside an assertion.
+    {
+      code: "async function f(res) { const body = await res.json(); return body.id; }",
+      filename: "/repo/src/clients/user-client.ts",
+      errors: [{ messageId: "unparsedJsonAccess" }],
+    },
     {
       code: "async function f(r) { const data = await r.json(); return data.name; }",
       errors: [{ messageId: "unparsedJsonAccess" }],

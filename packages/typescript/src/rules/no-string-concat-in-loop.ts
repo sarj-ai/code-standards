@@ -15,6 +15,17 @@
  * `=` assignment whose RHS is a `+` `BinaryExpression` with the target as one
  * operand) are detected — they have identical O(n^2) behavior. A plain
  * `s = x + y` (target absent from the RHS) is NOT flagged.
+ *
+ * AT MOST ONE REPORT PER (accumulator, loop). A single loop that appends in
+ * several branches is ONE defect with ONE fix — replace the accumulator with an
+ * array of parts — so N reports on it are N-1 copies of the same finding, and
+ * silencing it costs N disable comments. Corpus sweep (2220 files across zod /
+ * TanStack Query / react-router / swr / zustand, 2026-07): 62 raw reports
+ * collapsed to 21 distinct defects. `react-router/packages/react-router-fs-routes/flatRoutes.ts`
+ * alone produced 23 reports; `react-router/packages/react-router/lib/server-runtime/cookies.ts:221-231`
+ * produced 6, all of them the one percent-encoder loop appending `result` from
+ * four branches. This matches the one-report-per-loop policy `no-sequential-await`
+ * already follows.
  */
 
 import { ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
@@ -133,7 +144,7 @@ function isConcatOntoTarget(
  * BODY (not its test/init/update clauses, which run a bounded number of times
  * relative to the body and aren't the antipattern we target).
  */
-function isInsideLoopBody(node: TSESTree.Node): boolean {
+function enclosingLoop(node: TSESTree.Node): TSESTree.Node | null {
   let child: TSESTree.Node = node;
   let parent = node.parent;
   while (parent !== undefined && parent !== null) {
@@ -147,13 +158,13 @@ function isInsideLoopBody(node: TSESTree.Node): boolean {
         | TSESTree.WhileStatement
         | TSESTree.DoWhileStatement;
       if (loop.body === child) {
-        return true;
+        return loop;
       }
     }
     child = parent;
     parent = parent.parent;
   }
-  return false;
+  return null;
 }
 
 export default ESLintUtils.RuleCreator(
@@ -175,6 +186,10 @@ export default ESLintUtils.RuleCreator(
   },
   defaultOptions: [],
   create(context) {
+    // One defect per (accumulator, loop) — see @fileoverview. Keyed on the loop
+    // node so sibling loops over the same variable each keep their report.
+    const reported = new WeakMap<TSESTree.Node, Set<string>>();
+
     return {
       AssignmentExpression(node: TSESTree.AssignmentExpression): void {
         // The LHS must be a plain variable reference.
@@ -191,7 +206,8 @@ export default ESLintUtils.RuleCreator(
           return;
         }
         // Must occur inside a loop body, else it's a one-shot append.
-        if (!isInsideLoopBody(node)) {
+        const loop = enclosingLoop(node);
+        if (loop === null) {
           return;
         }
 
@@ -207,6 +223,16 @@ export default ESLintUtils.RuleCreator(
         if (!isStringInitializedVariable(variable)) {
           return;
         }
+
+        let seen = reported.get(loop);
+        if (seen === undefined) {
+          seen = new Set<string>();
+          reported.set(loop, seen);
+        }
+        if (seen.has(node.left.name)) {
+          return;
+        }
+        seen.add(node.left.name);
 
         context.report({
           node,

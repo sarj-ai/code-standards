@@ -1,3 +1,12 @@
+/**
+ * @fileoverview Require imports to come first, then allow step-down ordering for
+ * the rest of the file, and require a `use server` directive to be the first
+ * statement.
+ *
+ * Reporting is per-DEFECT, not per-import: see the `inMisplacedRun` note in
+ * `create` for the corpus measurement behind that.
+ */
+
 import { ESLintUtils, type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
 
 type MessageIds = "importsFirst" | "useServerDirective";
@@ -94,6 +103,15 @@ export default ESLintUtils.RuleCreator(
         }
 
         let seenBody = false;
+        // One misplacement is one defect. A single interleaved statement pushes
+        // every later import "after the body", and reporting each of them turns
+        // one `const nodeRequire = createRequire(...)` between two import blocks
+        // into 18 messages — measured at
+        // react-router/packages/react-router-dev/vite/plugin.ts:41, which alone
+        // produced 18 of the 33 corpus hits. Report the head of each contiguous
+        // run of misplaced imports instead, so a file with two separate
+        // interleavings still gets two messages.
+        let inMisplacedRun = false;
 
         for (const statement of body) {
           if (isStringDirective(statement)) continue;
@@ -103,9 +121,11 @@ export default ESLintUtils.RuleCreator(
               continue;
             case "body":
               seenBody = true;
+              inMisplacedRun = false;
               continue;
             case "import":
-              if (seenBody) {
+              if (seenBody && !inMisplacedRun) {
+                inMisplacedRun = true;
                 context.report({
                   node: statement,
                   messageId: "importsFirst",

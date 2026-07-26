@@ -329,3 +329,58 @@ async def test_thing():
     assert await correct()
 """
     assert len(_check(src)) == 1
+
+
+# --------------------------------------------------------------------------- #
+# FP-hardening (famous-repo sweep): an environment-gated conditional xfail      #
+# pins a third-party defect on the environments that carry it, not our bug.     #
+# --------------------------------------------------------------------------- #
+
+
+def test_allows_interpreter_gated_conditional_xfail():
+    # Minimized from anyio's tests/streams/test_text.py.
+    src = """
+import platform
+import sys
+
+@pytest.mark.xfail(
+    platform.python_implementation() == "PyPy" and sys.pypy_version_info < (7, 3, 2),
+    reason="PyPy has a bug in its incremental UTF-8 decoder (#3274)",
+)
+async def test_receive_encoding_error():
+    assert decode() == "x"
+"""
+    assert _check(src) == []
+
+
+def test_allows_os_gated_conditional_xfail():
+    src = """
+@pytest.mark.xfail(sys.platform == "win32", reason="broken on Windows only")
+def test_paths():
+    assert resolve() == "/tmp"
+"""
+    assert _check(src) == []
+
+
+def test_flags_unconditional_bug_pin_in_same_file_as_gated_one():
+    src = """
+@pytest.mark.xfail(sys.platform == "win32", reason="broken on Windows only")
+def test_paths():
+    assert resolve() == "/tmp"
+
+@pytest.mark.xfail(reason="Bug: returns 404 instead of the error envelope")
+def test_envelope():
+    assert envelope() == {}
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert diags[0].line == 6
+
+
+def test_flags_conditional_xfail_gated_on_a_non_environment_flag():
+    src = """
+@pytest.mark.xfail(FEATURE_ROLLED_OUT, reason="Bug: the new path drops the envelope")
+def test_envelope():
+    assert envelope() == {}
+"""
+    assert len(_check(src)) == 1

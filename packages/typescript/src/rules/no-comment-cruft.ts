@@ -25,6 +25,18 @@
  * is the content-free preamble: a stack of bare labels/fragments with nothing
  * explained. A prose header should be a JSDoc block for tooling reasons, but
  * that is a formatting preference, not cruft, and this rule does not litigate it.
+ *
+ * A 2026-07 sweep of 2,186 real TypeScript files (zod, TanStack Query,
+ * react-router, swr, zustand) produced 821 hits and turned up four false-positive
+ * classes, each now guarded at the point that produced it — see
+ * `DIAGRAM_ARROW_RE` (ASCII timelines read as banners), `ENUMERATED_ITEM_RE` (a
+ * numbered walkthrough read as a content-free preamble), `isInsideCommentRun` (a
+ * phrase inside a prose paragraph read as a one-line narration label), and
+ * `hasIllustrationLeadInAbove` (a code sample read as commented-out code because
+ * its `Example:` heading was more than one line up). The bulk of the remaining
+ * hits are real: zod alone carries hundreds of lines of genuinely commented-out
+ * code (e.g. zod/packages/zod/src/v4/core/checks.ts:1231-1244, a whole disabled
+ * `$ZodCheckTrim` implementation), and those still fire.
  */
 
 import { AST_NODE_TYPES, ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
@@ -56,10 +68,29 @@ const DIRECTIVE_RE =
 const LICENSE_RE =
   /copyright|licen[cs]ed?|spdx|permission is hereby granted|all rights reserved/i;
 
+// An enumerated step in a numbered/bulleted plan: `1. get all tags`, `- read the
+// manifest`. A stack of these is an algorithm walkthrough — the "why/how" the
+// rule's own message asks for — even though no item ends in a full stop, which
+// is why `isProse` misses it.
+const ENUMERATED_ITEM_RE = /^(?:\d+[.):]|[-*•])\s+\S/;
+const ENUMERATED_ITEM_MIN_WORDS = 3;
+const ENUMERATED_PREAMBLE_MIN_ITEMS = 2;
+
 const BANNER_FULL_RE = /^[\s\-=*#~_+.]{4,}$/;
 // `={4,}` not `={3,}`: `===` is TS strict-equality and appears in prose comments.
 const BANNER_RUN_RE = /={4,}|-{4,}|#{4,}|\*{4,}|~{4,}/;
 const REGION_RE = /^#?(?:end)?region\b/i;
+
+// An ASCII sequence-diagram arrow. A long rule of dashes that ENDS IN AN ARROW
+// HEAD is drawing a timeline, not separating sections: `req------->res` is the
+// clearest documentation of a race condition anyone has written, and deleting it
+// loses information no function extraction can recover. Measured on 2,186 real
+// TypeScript files (zod / TanStack Query / react-router / swr / zustand): 8 of
+// the 83 section-banner hits were one such diagram, swr/src/index/use-swr.ts:524
+// through :549, explaining request/mutation interleaving. A real banner
+// (`// ---------- Checks ----------`,
+// react-router/scripts/pr.ts:157) has no arrow head and still fires.
+const DIAGRAM_ARROW_RE = /[-=~]{2,}>|<[-=~]{2,}/;
 
 const CODE_KEYWORD_RE =
   /^(import |export |const |let |var |function\b|class |interface |type \w|enum |return\b|throw |await |async |if\s*\(|for\s*\(|while\s*\(|switch\s*\(|new |console\.)/;
@@ -89,7 +120,8 @@ function isDirective(text: string): boolean {
 function isBanner(text: string): boolean {
   const t = text.trim();
   if (!t) return false;
-  return BANNER_FULL_RE.test(t) || BANNER_RUN_RE.test(t) || REGION_RE.test(t);
+  if (BANNER_FULL_RE.test(t) || REGION_RE.test(t)) return true;
+  return BANNER_RUN_RE.test(t) && !DIAGRAM_ARROW_RE.test(t);
 }
 
 function looksLikeCode(text: string): boolean {
@@ -101,6 +133,12 @@ function looksLikeCode(text: string): boolean {
 
 function hasPseudocode(text: string): boolean {
   return PSEUDOCODE_RE.test(text);
+}
+
+/** An explanatory item of a numbered/bulleted walkthrough. */
+function isEnumeratedProseItem(text: string): boolean {
+  const t = text.trim();
+  return ENUMERATED_ITEM_RE.test(t) && t.split(/\s+/).length >= ENUMERATED_ITEM_MIN_WORDS;
 }
 
 // A prose lead-in preceding a code-shaped line marks that line as an
@@ -258,18 +296,94 @@ function restatesNextLine(body: string, statement: string | null): boolean {
   return content.every((word) => code.has(word));
 }
 
+// A causal connective. `for now` inside a sentence that also states WHY is a
+// justification, not an admission — `// Needed for now since router.fetch is not
+// async until v7` (react-router/.../__tests__/router/lazy-discovery-test.ts:2412,
+// and :2505) is the reason the sleep exists, which is exactly what the rule wants
+// a comment to carry. A bare `// quick fix for now` still fires.
+const JUSTIFICATION_RE =
+  /\b(?:because|since|until|due to|so that|otherwise|which is why|in order to|to avoid|to work around|to prevent)\b/i;
+
 /**
  * Whether a single-line comment merely narrates the code rather than explaining
  * the *why*. Three deterministic shapes: step narration ("First, …"), self-
  * admitted meta-commentary ("keeping it simple"), and a restatement of the very
  * next line (`// increment the counter` above `counter += 1`).
+ *
+ * `standalone` is false when the comment is one line of a contiguous `//` block.
+ * The step and meta shapes are single-line tells; inside a paragraph they match a
+ * clause of running prose rather than a label. Measured on 2,186 real TypeScript
+ * files (zod / TanStack Query / react-router / swr / zustand), 9 of 42 narration
+ * hits were exactly that — e.g. react-router/integration/bug-report-test.ts:26
+ * ("First, make sure to install dependencies and build React Router. From the
+ * root of / the project, run this:"), a six-line contributor instruction, and
+ * react-router/packages/react-router/lib/dom/ssr/routes.tsx:663. A restatement of
+ * the next line is still checked in a block, since it is corroborated against the
+ * code rather than against a phrase.
  */
-function isRedundantNarration(body: string, statementBelow: string | null): boolean {
+function isRedundantNarration(
+  body: string,
+  statementBelow: string | null,
+  standalone: boolean,
+): boolean {
   const t = body.trim();
   if (!t || looksLikeCode(t) || hasPseudocode(t)) return false;
-  if (STEP_NARRATION_RE.test(t)) return true;
-  if (META_COMMENTARY_RE.test(t)) return true;
+  if (standalone) {
+    if (STEP_NARRATION_RE.test(t)) return true;
+    if (META_COMMENTARY_RE.test(t) && !JUSTIFICATION_RE.test(t)) return true;
+  }
   return restatesNextLine(t, statementBelow);
+}
+
+/** True when `a` and `b` are `//` comments on consecutive lines. */
+function areAdjacentLineComments(
+  a: TSESTree.Comment | undefined,
+  b: TSESTree.Comment | undefined,
+): boolean {
+  return (
+    a !== undefined &&
+    b !== undefined &&
+    a.type === "Line" &&
+    b.type === "Line" &&
+    b.loc.start.line === a.loc.end.line + 1
+  );
+}
+
+/**
+ * True when the comment at `index` is one line of a contiguous `//` block rather
+ * than a lone annotation.
+ */
+function isInsideCommentRun(comments: readonly TSESTree.Comment[], index: number): boolean {
+  const comment = comments[index];
+  return (
+    areAdjacentLineComments(comments[index - 1], comment) ||
+    areAdjacentLineComments(comment, comments[index + 1])
+  );
+}
+
+/** How far back the illustration lead-in scan walks within one `//` block. */
+const LEAD_IN_SCAN_LIMIT = 24;
+
+/**
+ * True when a prose lead-in (`// Example:`, `// For example:`, a grammar
+ * production head) appears earlier in the SAME contiguous `//` block. The
+ * existing check only looked at the immediately preceding comment, so a code
+ * illustration more than one line below its own heading was read as
+ * commented-out code — measured at
+ * react-router/packages/react-router/lib/hooks.tsx:791, where `// function
+ * Blog() {` sits nine lines under its `// Example:` heading inside one 17-line
+ * block (2 hits there of the 695 commented-out-code hits over 2,186 files).
+ */
+function hasIllustrationLeadInAbove(
+  comments: readonly TSESTree.Comment[],
+  index: number,
+): boolean {
+  for (let i = index - 1; i >= 0 && index - i <= LEAD_IN_SCAN_LIMIT; i--) {
+    if (!areAdjacentLineComments(comments[i], comments[i + 1])) return false;
+    const body = stripCommentMarker(comments[i]?.value ?? "");
+    if (body.length > 0 && body.endsWith(":")) return true;
+  }
+  return false;
 }
 
 function hasCommentedOutCode(
@@ -349,6 +463,14 @@ export default ESLintUtils.RuleCreator(
       // A preamble carrying at least one prose sentence is documentation — the
       // "why" the rule wants — regardless of which comment syntax carries it.
       if (bodies.some((body) => isProse(body))) return;
+      // Same for a numbered/bulleted walkthrough. The single corpus hit for this
+      // message across 2,186 real TypeScript files was
+      // react-router/scripts/release-comments.ts:1, a six-step description of
+      // what the script does ("1. get all tags sorted by creation date", …) —
+      // documentation, not a stack of content-free labels.
+      if (bodies.filter(isEnumeratedProseItem).length >= ENUMERATED_PREAMBLE_MIN_ITEMS) {
+        return;
+      }
       context.report({ node: first, messageId: "fileHeaderPreamble" });
     }
 
@@ -377,7 +499,10 @@ export default ESLintUtils.RuleCreator(
             prev.type === "Line" &&
             prev.loc.end.line === comment.loc.start.line - 1 &&
             isProse(stripCommentMarker(prev.value));
-          if (hasCommentedOutCode(texts, precedingProse)) {
+          if (
+            hasCommentedOutCode(texts, precedingProse) &&
+            !hasIllustrationLeadInAbove(comments, i)
+          ) {
             context.report({ node: comment, messageId: "commentedOutCode" });
             continue;
           }
@@ -386,7 +511,11 @@ export default ESLintUtils.RuleCreator(
           if (comment.type === "Line" && texts.length === 1) {
             const body = texts[0];
             const statement = restatableStatementBelow(comment, sourceCode);
-            if (body !== undefined && isRedundantNarration(body, statement)) {
+            const standalone = !isInsideCommentRun(comments, i);
+            if (
+              body !== undefined &&
+              isRedundantNarration(body, statement, standalone)
+            ) {
               context.report({ node: comment, messageId: "redundantNarration" });
             }
           }

@@ -13,6 +13,15 @@ therefore fires only when the module imports crypto machinery (`hmac`,
 computes the expected value with exactly those modules (pydantic's signature
 merging was the sweep false positive).
 
+A comparison inside an `__eq__` / `__ne__` method is exempt. Those dunders
+implement *value equality* between two objects the process already holds; they
+are not an authentication gate, and nothing grants access on their result. A
+2,657-file third-party sweep produced 8 findings and 2 were exactly this shape
+(requests' `HTTPBasicAuth.__eq__` / `HTTPDigestAuth.__eq__`, which compare
+`self.password == getattr(other, "password", None)` so two auth objects can be
+compared for identity). A real credential check (`if token != expected:`) sits
+in a request handler, not in a dunder, and still fires.
+
 References:
 - https://docs.python.org/3/library/hmac.html#hmac.compare_digest
 
@@ -90,9 +99,14 @@ class PreferConstantTimeSecretCompare(Rule):
         if tree is None:
             return []
         crypto_module = _imports_crypto(tree)
+        dunder_compares = _equality_dunder_compares(tree)
         diags: list[Diagnostic] = []
         for node in ast.walk(tree):
             if not isinstance(node, ast.Compare):
+                continue
+            # Value equality between two objects the process holds is not an
+            # auth gate — nothing is granted on the result.
+            if id(node) in dunder_compares:
                 continue
             # Only single-operator comparisons using == or != (Eq/NotEq).
             # Chained comparisons (a == b == c) and is/is not don't apply.
@@ -127,6 +141,45 @@ class PreferConstantTimeSecretCompare(Rule):
 
 def _is_test_path(path: Path) -> bool:
     return path.name.startswith("test_") or "tests" in path.parts
+
+
+# Dunders that implement value equality rather than an authentication decision.
+_EQUALITY_DUNDERS = frozenset({"__eq__", "__ne__"})
+
+
+def _equality_dunder_compares(tree: ast.AST) -> frozenset[int]:
+    """Collect the `id()`s of every `Compare` written directly in an `__eq__`/`__ne__` body.
+
+    A nested `def`/`lambda` declared inside the dunder is its own callable and
+    can be invoked from anywhere, so it is not covered by the exemption.
+
+    Returns:
+        The ids of comparisons that implement value equality.
+
+    """
+    ids: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in _EQUALITY_DUNDERS:
+            ids.update(id(inner) for inner in _walk_same_scope(node) if isinstance(inner, ast.Compare))
+    return frozenset(ids)
+
+
+def _walk_same_scope(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.AST]:
+    """Walk a function body without descending into nested `def`/`lambda` scopes.
+
+    Returns:
+        The nodes of `func`'s own body.
+
+    """
+    out: list[ast.AST] = []
+    stack: list[ast.AST] = list(func.body)
+    while stack:
+        current = stack.pop()
+        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            continue
+        out.append(current)
+        stack.extend(ast.iter_child_nodes(current))
+    return out
 
 
 def _is_secret_operand(node: ast.AST, *, crypto_module: bool) -> bool:

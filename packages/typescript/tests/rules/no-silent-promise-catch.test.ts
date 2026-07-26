@@ -17,6 +17,26 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("no-silent-promise-catch", rule, {
   valid: [
+    // FP guard, corpus: query/packages/query-core/src/thenable.ts:54 — the
+    // suppression is documented, which is the thing the rule asks for.
+    { code: "thenable.catch(() => {\n  // prevent unhandled rejection errors\n});" },
+    // Corpus: react-router/packages/react-router/lib/router/router.ts:6052 — the
+    // explanation sits on the line above the statement.
+    {
+      code: [
+        "// Prevent unhandled rejection errors - handled inside of `callLoadOrAction`",
+        "lazyRoutePromise.catch(() => {});",
+      ].join("\n"),
+    },
+    // Corpus: react-router/packages/react-router/lib/components.tsx:1664 — trailing.
+    { code: "promise = Promise.reject().catch(() => {}); // Avoid unhandled rejection warnings" },
+    // FP guard, corpus: react-router/packages/react-router/lib/rsc/html-stream/server.ts:80
+    // — a teardown call rejects when the resource is already gone.
+    { code: "async function f(reader, reason) { await reader.cancel(reason).catch(() => {}); }" },
+    { code: "socket.close().catch(() => null);" },
+    // FP guard, corpus: react-router/integration/helpers/playwright-fixture.ts:318
+    // — the next link consumes the fallback, so it is a recovery step.
+    { code: "evaluate.catch(() => null).then(() => { done(); });" },
     // Handler that logs is fine.
     {
       code: "p.catch((err) => logger.error({ err }, 'lookup failed'));",
@@ -82,6 +102,19 @@ ruleTester.run("no-silent-promise-catch", rule, {
     },
   ],
   invalid: [
+    // The comment guard ignores tooling directives — they are not an explanation.
+    {
+      code: [
+        "// @ts-expect-error legacy",
+        "load().catch(() => null);",
+      ].join("\n"),
+      errors: [{ messageId: "silentCatch" }],
+    },
+    // An undocumented swallow on a non-teardown call still fires.
+    {
+      code: "fetchUser(id).catch(() => null);",
+      errors: [{ messageId: "silentCatch" }],
+    },
     {
       code: "p.catch(() => null);",
       errors: [{ messageId: "silentCatch" }],

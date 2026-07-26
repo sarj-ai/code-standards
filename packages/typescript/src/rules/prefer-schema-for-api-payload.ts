@@ -28,6 +28,20 @@
  *   - `.parse()` / `.safeParse()` chained directly on the json call are legit
  *     and never produce a tracked binding in the first place.
  *
+ * NOT FLAGGED (corpus sweep, 2220 files across zod / TanStack Query /
+ * react-router / swr / zustand, 2026-07 — 86 raw hits, 50 of them these):
+ *   - **Test files**, 46 hits. A test parses a payload it produced itself and
+ *     immediately asserts on it:
+ *     `react-router/integration/request-test.ts:120-121`
+ *     (`loaderData = JSON.parse(await page.locator("#loader-data").innerHTML());
+ *     expect(loaderData.method).toEqual("GET")`). Routing that through a schema
+ *     would assert the schema instead of the subject, and the assertion IS the
+ *     validation.
+ *   - **Reads inside an assertion** (`expect(payload.method)`) — see
+ *     `isInsideAssertion`. This catches hyphen-named suites such as
+ *     `react-router/integration/request-test.ts` that no path predicate sees.
+ *   - **JSON read off local disk**, 4 hits — see `isLocalFileRead`.
+ *
  * References:
  *   - https://zod.dev/?id=parse
  *   - https://www.totaltypescript.com/parse-don-t-validate
@@ -39,6 +53,8 @@ import {
   type TSESTree,
 } from "@typescript-eslint/utils";
 import type { RuleContext, Scope } from "@typescript-eslint/utils/ts-eslint";
+
+import { isTestFile } from "./_paths.js";
 
 type MessageIds = "unparsedJsonAccess";
 type Options = readonly [];
@@ -110,8 +126,113 @@ const isRawPayloadSource = (
     property.name === "parse" &&
     object !== null &&
     object.type === AST_NODE_TYPES.Identifier &&
-    object.name === "JSON"
+    object.name === "JSON" &&
+    // ...but not `JSON.parse(readFileSync(p, "utf8"))` — see isLocalFileRead.
+    !isLocalFileRead(current.arguments[0])
   );
+};
+
+/** Filesystem readers whose result is repo-local text, not a peer's payload. */
+const FILE_READ_RE = /^(readFile|readFileSync|readJson|readJsonSync|readJSON)$/;
+
+/**
+ * True when the expression tree contains a filesystem read, i.e. the JSON came
+ * off local disk rather than off the wire.
+ *
+ * The rule's premise is that the value is "unvalidated and attacker-controlled".
+ * `JSON.parse(readFileSync("package.json", "utf8"))` is neither: the bytes ship
+ * with the repo, nobody else can write them, and a Zod schema over a file the
+ * build already depends on adds a second place to update.
+ *
+ * Corpus evidence (2220 files across zod / TanStack Query / react-router / swr /
+ * zustand, 2026-07): `zod/scripts/check-versions.ts:13-14`
+ * (`const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
+ * const packageJsonVersion = packageJson.version as string;` — and the very next
+ * line is a `typeof` check), `zod/scripts/check-semver.ts:10-11`, and
+ * `zod/packages/docs/app/llms-full.txt/route.ts:13-17`
+ * (`JSON.parse(await fs.readFile(metaPath, "utf-8"))` over the docs' own
+ * `meta.json`). A `response.json()` — the actual trust boundary — is unaffected.
+ */
+const isLocalFileRead = (node: TSESTree.Node | null | undefined): boolean => {
+  let found = false;
+  const visit = (current: TSESTree.Node | null | undefined): void => {
+    if (found || current === null || current === undefined) return;
+    if (current.type === AST_NODE_TYPES.CallExpression) {
+      const callee = unwrap(current.callee);
+      const name =
+        callee?.type === AST_NODE_TYPES.Identifier
+          ? callee.name
+          : callee?.type === AST_NODE_TYPES.MemberExpression &&
+              !callee.computed &&
+              callee.property.type === AST_NODE_TYPES.Identifier
+            ? callee.property.name
+            : null;
+      if (name !== null && FILE_READ_RE.test(name)) {
+        found = true;
+        return;
+      }
+    }
+    for (const key of Object.keys(current) as (keyof TSESTree.Node)[]) {
+      if (key === "parent") continue;
+      const value = current[key];
+      for (const child of (Array.isArray(value) ? value : [value]) as unknown[]) {
+        if (
+          child !== null &&
+          typeof child === "object" &&
+          typeof (child as { type?: unknown }).type === "string"
+        ) {
+          visit(child as TSESTree.Node);
+        }
+      }
+    }
+  };
+  visit(node);
+  return found;
+};
+
+/** Assertion helpers whose argument is being checked, not consumed. */
+const ASSERTION_CALLEE_RE = /^(expect|assert|should|invariant)$/;
+
+/**
+ * True when the node sits inside an assertion call, e.g.
+ * `expect(loaderData.method).toEqual("GET")`.
+ *
+ * The rule's premise is that the field is READ and trusted. Inside an assertion
+ * it is neither: the assertion states what the value must be, which is the same
+ * check a schema would perform, and a schema parse would move the failure away
+ * from the assertion that explains it.
+ *
+ * Corpus evidence (2220 files across zod / TanStack Query / react-router / swr /
+ * zustand, 2026-07): after the test-file exemption, 15 of the 45 remaining hits
+ * were this — react-router names its Playwright suites `integration/request-test.ts`
+ * (hyphen), which no `*.test.ts` path predicate can recognise, so the shape
+ * check is what catches them.
+ * `react-router/integration/request-test.ts:120-121`:
+ * `loaderData = JSON.parse(await page.locator("#loader-data").innerHTML());
+ * expect(loaderData.method).toEqual("GET");`
+ */
+const isInsideAssertion = (node: TSESTree.Node): boolean => {
+  for (
+    let current: TSESTree.Node | undefined | null = node.parent;
+    current !== undefined && current !== null;
+    current = current.parent
+  ) {
+    if (current.type !== AST_NODE_TYPES.CallExpression) continue;
+    let callee: TSESTree.Node = current.callee;
+    while (callee.type === AST_NODE_TYPES.MemberExpression) {
+      callee = callee.object;
+    }
+    if (callee.type === AST_NODE_TYPES.CallExpression) {
+      callee = callee.callee;
+    }
+    if (
+      callee.type === AST_NODE_TYPES.Identifier &&
+      ASSERTION_CALLEE_RE.test(callee.name)
+    ) {
+      return true;
+    }
+  }
+  return false;
 };
 
 const findVariable = (
@@ -190,6 +311,11 @@ export default ESLintUtils.RuleCreator(
   },
   defaultOptions: [],
   create(context: Ctx) {
+    // A fixture parses what it just produced and asserts on it; see @fileoverview.
+    if (isTestFile(context.filename)) {
+      return {};
+    }
+
     const unvalidatedVariables = new Set<Scope.Variable>();
 
     const trackInitializer = (
@@ -280,6 +406,8 @@ export default ESLintUtils.RuleCreator(
         }
       },
       MemberExpression(node): void {
+        // The read is inside an assertion — the assertion IS the validation.
+        if (isInsideAssertion(node)) return;
         const scope = context.sourceCode.getScope(node);
         const obj = unwrap(node.object);
 

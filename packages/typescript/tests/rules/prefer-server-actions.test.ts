@@ -12,6 +12,22 @@ const ruleTester = new RuleTester();
 
 ruleTester.run("prefer-server-actions", rule, {
   valid: [
+    // FP guard, corpus: query/examples/angular/auto-refetching/src/app/services/tasks.service.ts:38
+    // — Server Actions do not exist outside React/Next.
+    {
+      code: [
+        'import { inject } from "@angular/core";',
+        'import { HttpClient } from "@angular/common/http";',
+        'const http = inject(HttpClient);',
+        'export const addTask = (task) => http.post("/api/tasks", task);',
+      ].join("\n"),
+      filename: "/repo/src/app/services/tasks.service.ts",
+    },
+    // FP guard: jscodeshift input/output fixtures are text, not running code.
+    {
+      code: "fetch('/api/todos', { method: 'POST' });",
+      filename: "/repo/src/v5/__testfixtures__/bug-reports.input.tsx",
+    },
     // GET is fine — only mutations are flagged.
     { code: "fetch('/api/users');" },
     { code: "fetch('/api/users', { method: 'GET' });" },
@@ -37,6 +53,12 @@ ruleTester.run("prefer-server-actions", rule, {
     },
   ],
   invalid: [
+    // A React page still fires.
+    {
+      code: "const r = await fetch('/api/data', { method: 'POST', body });",
+      filename: "/repo/src/pages/index.tsx",
+      errors: [{ messageId: "preferServerAction" }],
+    },
     {
       code: "fetch('/api/users', { method: 'POST' });",
       errors: [{ messageId: "preferServerAction" }],

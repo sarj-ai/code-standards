@@ -25,6 +25,22 @@ test is usually the *subject* — exercising code that must accept untyped
 namedtuples (pydantic's validation tests were the sweep case) — not a value
 object the test should model properly.
 
+The famous-repo sweep (2,657 files of fastapi / pydantic / black / sqlmodel /
+rich / flask / httpx / requests / anyio) produced exactly 2 hits and BOTH are
+true positives, so no exemption was added:
+
+- `httpx/httpx/_urls.py:409` — `RawURL = collections.namedtuple("RawURL",
+  ["raw_scheme", "raw_host", "port", "raw_path"])`, built inside a deprecated
+  `URL.raw` property. Four fields, no types, and the surrounding annotation is
+  the positional `tuple[bytes, bytes, int, bytes]` this rule's sibling SARJ026
+  flags; a `class RawURL(NamedTuple)` fixes both.
+- `rich/rich/pretty.py:90` — `_dummy_namedtuple = collections.namedtuple(
+  "_dummy_namedtuple", [])`, a probe used to locate the file of the generated
+  `__repr__`. `class _DummyNamedTuple(NamedTuple): pass` produces the same
+  generated `__repr__`, so the rewrite is available here too.
+
+The rule stayed at 2 hits over 2,657 files: it is rare, precise, and cheap.
+
 Suppress with `# sarj-noqa: SARJ015 — <reason>`.
 
 References:

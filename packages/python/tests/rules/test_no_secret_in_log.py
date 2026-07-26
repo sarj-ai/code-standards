@@ -587,3 +587,57 @@ def test_genuine_secret_still_flagged_alongside_flag_exemption(kw: str):
 def test_flags_credential_whose_leading_word_only_looks_like_a_flag(kw: str):
     """`issuer`/`canary` merely start with the letters of `is`/`can` — still credentials."""
     assert _codes(f'logger.info("boot", {kw}=v)\n') == ["SARJ012"]
+
+
+# --------------------------------------------------------------------------- #
+# Family 20: LIVENESS CANARY                                                   #
+# --------------------------------------------------------------------------- #
+#
+# This rule reports ZERO hits across 2,657 files of popular third-party Python
+# (fastapi, pydantic, black, sqlmodel, rich, flask, httpx, requests, anyio).
+# That is "nothing to find", not "broken": those 2,657 files contain only 182
+# logging calls in total, and just 5 of them pass ANY named keyword — all five
+# being stdlib-reserved `extra=` / `exc_info=`, never a structured field. A
+# rule keyed on structured keywords cannot fire on a corpus with no structured
+# logging in it.
+#
+# Every other test in this file is a one-liner, so none of them would notice the
+# rule going silent on a realistic multi-statement module. This one would.
+
+_SERVICE_MODULE = """
+import logging
+
+from loguru import logger
+
+log = logging.getLogger(__name__)
+
+
+def authenticate(token, password, api_key, jwt, secret):
+    logger.info("auth ok", token=token)
+    logger.error("bad creds", password=password)
+    logger.debug("outbound call", api_key=api_key)
+    logger.warning("expiring soon", jwt=jwt)
+    self.logger.info("nested receiver", credentials=secret)
+    logging.getLogger("audit").info("factory chain", authorization=secret)
+    logger.bind(request_id=rid).info("builder chain", signature=secret)
+
+
+def safely(token, api_key):
+    logger.info("auth ok", token_prefix=token[:6], api_key_tag=tag(api_key))
+    logger.info("usage", token_count=n, has_secret=True, api_key_id=row_id)
+    logger.info(f"token={token}")
+    log.info("stdlib", extra={"token": token})
+    audit.record("stored", token=token)
+"""
+
+
+def test_liveness_every_leak_shape_still_fires():
+    diags = _check(_SERVICE_MODULE)
+    assert [d.line for d in diags] == [10, 11, 12, 13, 14, 15, 16]
+    assert {d.code for d in diags} == {"SARJ012"}
+
+
+def test_liveness_no_safe_shape_fires():
+    """Redaction markers, metadata names, f-strings, `extra=`, and non-loggers stay silent."""
+    safe = _SERVICE_MODULE.split("def safely")[1]
+    assert _check(f"def safely{safe}") == []

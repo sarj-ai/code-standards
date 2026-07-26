@@ -697,3 +697,44 @@ def test_flags_valid_token_credential():
 def test_allows_secret_vs_name_bound_to_literal():
     src = 'def f(token):\n    expected = "PLACEHOLDER"\n    return token == expected\n'
     assert _check(src) == []
+
+
+# --- Value-equality dunders are not an auth gate --------------------------
+
+
+def test_allows_secret_compare_in_eq_dunder():
+    src = """
+class HTTPBasicAuth:
+    def __eq__(self, other):
+        return self.password == getattr(other, "password", None)
+"""
+    assert _check(src) == []
+
+
+def test_allows_secret_compare_in_ne_dunder():
+    src = """
+class HTTPBasicAuth:
+    def __ne__(self, other):
+        return self.api_key != getattr(other, "api_key", None)
+"""
+    assert _check(src) == []
+
+
+def test_flags_secret_compare_in_ordinary_method_of_same_class():
+    src = """
+class HTTPBasicAuth:
+    def authenticate(self, other):
+        return self.password == other.password
+"""
+    assert _count(src) == 1
+
+
+def test_flags_secret_compare_in_nested_def_inside_eq_dunder():
+    src = """
+class Auth:
+    def __eq__(self, other):
+        def check(provided):
+            return self.token == provided
+        return check(other.token)
+"""
+    assert _count(src) == 1

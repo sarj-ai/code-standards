@@ -30,6 +30,22 @@ A sleep inside a `while` loop is also exempt: `while not cond: time.sleep(0.01)`
 is condition-polling — exactly the remedy this rule's own message prescribes
 (trio's OS-thread waits were the sweep case). Only a bare fixed delay flakes.
 
+A bounded `for` retry loop that exits early on the condition is the same remedy
+with a deadline attached, so it is exempt too:
+
+    for _ in range(20):
+        if started.is_set():
+            break
+        await asyncio.sleep(0.01)
+
+The `for` must carry that conditional exit (an `if` whose body `break`s /
+`return`s / `raise`s); a `for` that merely repeats a fixed delay each iteration
+is not polling and still fires. Found in a 2,657-file third-party sweep against
+anyio's `test_from_thread.py` (`for _ in range(10): if ...: return; sleep(0.1)`)
+and black's `test_blackd.py` (`for _ in range(20): if started.is_set(): break;
+await asyncio.sleep(0.01)`) — both poll with a timeout and neither can flake the
+way a bare delay does.
+
 Applies only in test files (stem `test_*.py`, `*_test.py`, `conftest.py`, or a path
 under a `tests`/`test` directory).
 """
@@ -69,6 +85,33 @@ def _is_sleep_call(node: ast.Call) -> bool:
         and len(node.args) >= 1
         and _is_nonzero_numeric_literal(node.args[0])
     )
+
+
+def _is_conditional_exit(stmt: ast.stmt) -> bool:
+    """Report whether `stmt` is an `if` that can leave the loop early.
+
+    Returns:
+        True for an `if` whose body diverts via `break` / `return` / `raise`.
+
+    """
+    return isinstance(stmt, ast.If) and any(
+        isinstance(inner, (ast.Break, ast.Return, ast.Raise)) for inner in ast.walk(stmt)
+    )
+
+
+def _is_poll_loop(node: ast.For | ast.AsyncFor) -> bool:
+    """Report whether a bounded `for` loop polls a condition rather than just waiting.
+
+    `for _ in range(20): if ready(): break; sleep(0.01)` is condition-polling with
+    a deadline — the remedy this rule prescribes — so its sleep is not a flake.
+    A `for` body with no conditional exit merely repeats a fixed delay and is not
+    polling.
+
+    Returns:
+        True when the loop body carries a conditional early exit.
+
+    """
+    return any(_is_conditional_exit(stmt) for stmt in node.body)
 
 
 class NoSleepInTestBody(Rule):
@@ -117,14 +160,14 @@ class _SleepInTestBodyVisitor(ast.NodeVisitor):
     def __init__(self) -> None:
         super().__init__()
         self._func_names: list[str | None] = []
-        self._while_depths: list[int] = []
+        self._poll_depths: list[int] = []
         self.hits: list[ast.Call] = []
 
     def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
         self._func_names.append(node.name)
-        self._while_depths.append(0)
+        self._poll_depths.append(0)
         self.generic_visit(node)
-        self._while_depths.pop()
+        self._poll_depths.pop()
         self._func_names.pop()
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
@@ -135,24 +178,41 @@ class _SleepInTestBodyVisitor(ast.NodeVisitor):
 
     def visit_Lambda(self, node: ast.Lambda) -> None:
         self._func_names.append(None)
-        self._while_depths.append(0)
+        self._poll_depths.append(0)
         self.generic_visit(node)
-        self._while_depths.pop()
+        self._poll_depths.pop()
         self._func_names.pop()
+
+    def _visit_poll_loop(self, node: ast.AST) -> None:
+        if self._poll_depths:
+            self._poll_depths[-1] += 1
+        self.generic_visit(node)
+        if self._poll_depths:
+            self._poll_depths[-1] -= 1
 
     def visit_While(self, node: ast.While) -> None:
         # `while not cond: sleep(...)` is condition-polling — the remedy, not
         # the flake — so sleeps under a while in the current function are exempt.
-        if self._while_depths:
-            self._while_depths[-1] += 1
-        self.generic_visit(node)
-        if self._while_depths:
-            self._while_depths[-1] -= 1
+        self._visit_poll_loop(node)
+
+    def visit_For(self, node: ast.For) -> None:
+        # A bounded retry loop that exits early on the condition is the same
+        # polling remedy with a deadline; a `for` that only repeats a delay is not.
+        if _is_poll_loop(node):
+            self._visit_poll_loop(node)
+        else:
+            self.generic_visit(node)
+
+    def visit_AsyncFor(self, node: ast.AsyncFor) -> None:
+        if _is_poll_loop(node):
+            self._visit_poll_loop(node)
+        else:
+            self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
         if self._func_names and _is_sleep_call(node):
             nearest = self._func_names[-1]
-            in_poll_loop = bool(self._while_depths and self._while_depths[-1])
+            in_poll_loop = bool(self._poll_depths and self._poll_depths[-1])
             if nearest is not None and nearest.startswith("test_") and not in_poll_loop:
                 self.hits.append(node)
         self.generic_visit(node)

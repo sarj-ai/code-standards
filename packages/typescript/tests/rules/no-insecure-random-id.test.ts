@@ -70,6 +70,24 @@ ruleTester.run("no-insecure-random-id", rule, {
     // unless the binding name is identifier/secret-like. The innocuous binding
     // name here means this is (currently) not flagged.
     { code: "const x = (Math.random() * 1e9).toString(36);" },
+
+    // --- Test files are out of scope ----------------------------------------
+    // A fixture generator is not a token mint. Real corpus:
+    // zod/packages/zod/src/v3/tests/Mocker.ts:13 ...
+    {
+      code: "class Mocker { get string() { return Math.random().toString(36).substring(7); } }",
+      filename: "src/v3/tests/Mocker.ts",
+    },
+    // ... and react-router/packages/react-router/__tests__/vendor/
+    // turbo-stream-test.ts:215.
+    {
+      code: "const m = { [Math.random().toString(36).slice(2)]: 1 };",
+      filename: "__tests__/vendor/turbo-stream-test.ts",
+    },
+    {
+      code: "const apiToken = Math.random().toString(36);",
+      filename: "src/auth.test.ts",
+    },
   ],
   invalid: [
     // Trigger 1: classic `.toString(36)` insecure id idiom.
@@ -141,6 +159,14 @@ ruleTester.run("no-insecure-random-id", rule, {
     // Strong security name in a class property definition.
     {
       code: "class S { token = Math.random(); }",
+      errors: [{ messageId: "insecureRandomId" }],
+    },
+
+    // The very same idiom in production code still fires — the exemption is
+    // scoped to the path, not to the shape.
+    {
+      code: "const m = { [Math.random().toString(36).slice(2)]: 1 };",
+      filename: "src/serialize.ts",
       errors: [{ messageId: "insecureRandomId" }],
     },
   ],

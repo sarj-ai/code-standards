@@ -116,6 +116,29 @@ ruleTester.run("no-string-concat-in-loop", rule, {
     },
   ],
   invalid: [
+    // Corpus: react-router/packages/react-router/lib/server-runtime/cookies.ts:221
+    // — one accumulator appended from several branches of ONE loop is ONE defect
+    // with ONE fix, so exactly one report is emitted.
+    {
+      code: "function f(str) { let result = ''; for (const chr of str) { if (ok(chr)) { result += chr; } else { result += '%'; result += hex(chr); } } return result; }",
+      errors: [{ messageId: "noStringConcatInLoop" }],
+    },
+    // Two distinct accumulators in one loop are two distinct defects.
+    {
+      code: "function f(xs) { let a = ''; let b = ''; for (const x of xs) { a += x; b += x; } return a + b; }",
+      errors: [
+        { messageId: "noStringConcatInLoop" },
+        { messageId: "noStringConcatInLoop" },
+      ],
+    },
+    // Sibling loops over the same accumulator each keep their own report.
+    {
+      code: "function f(xs, ys) { let s = ''; for (const x of xs) { s += x; } for (const y of ys) { s += y; } return s; }",
+      errors: [
+        { messageId: "noStringConcatInLoop" },
+        { messageId: "noStringConcatInLoop" },
+      ],
+    },
     // Empty-string init, `for` loop — the canonical antipattern.
     {
       code: `

@@ -420,3 +420,58 @@ def test_x():
         _helper()
 """
     assert _check(src) == []
+
+
+def test_sleep_in_bounded_poll_for_loop_is_exempt():
+    src = """
+import time
+
+def test_thread_exits(initial_count):
+    for _ in range(10):
+        if threading.active_count() == initial_count:
+            return
+        time.sleep(0.1)
+    pytest.fail("thread did not exit")
+"""
+    assert _check(src) == []
+
+
+def test_async_sleep_in_bounded_poll_for_loop_is_exempt():
+    src = """
+import asyncio
+
+async def test_task_starts(started):
+    for _ in range(20):
+        if started.is_set():
+            break
+        await asyncio.sleep(0.01)
+    assert started.is_set()
+"""
+    assert _check(src) == []
+
+
+def test_sleep_in_for_loop_without_conditional_exit_still_fires():
+    src = """
+import time
+
+def test_growing_display(live):
+    for step in range(10):
+        live.update(step)
+        time.sleep(0.2)
+"""
+    assert len(_check(src)) == 1
+
+
+def test_sleep_after_poll_for_loop_still_fires():
+    src = """
+import time
+
+def test_ready(flag):
+    for _ in range(10):
+        if flag.is_set():
+            break
+        time.sleep(0.01)
+    time.sleep(2)
+    assert flag.is_set()
+"""
+    assert len(_check(src)) == 1

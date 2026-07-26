@@ -1,21 +1,18 @@
-"""SARJ008: untyped dict / heterogeneous tuple at a function boundary — use pydantic.
+"""SARJ008: an ad-hoc dict record at a function boundary — use pydantic.
 
 The anti-pattern:
 
     def build_payload(call: Call) -> dict[str, Any]:
         return {"id": call.id, "status": call.status}
 
-    async def stop_call(...) -> tuple[bool, str | None]:
-        ...
-
     @router.get("/calls/{call_id}")
     async def get_call(call_id: str):   # no return annotation at all
-        ...
+        return {"id": call_id}
 
-Raw ``dict[str, Any]`` / ``dict[str, object]`` / bare ``dict`` returns and
-heterogeneous ``tuple[...]`` returns hide the shape of the data from both the
-type checker and the reader. Define a pydantic model (or frozen dataclass)
-instead — Python analogue of ``@sarj/prefer-schema-for-api-payload``:
+A record built inline and typed as raw ``dict[str, Any]`` /
+``dict[str, object]`` / bare ``dict`` hides its shape from both the type
+checker and the reader. Define a pydantic model (or frozen dataclass) instead
+— Python analogue of ``@sarj/prefer-schema-for-api-payload``:
 
     class CallPayload(BaseModel):
         id: CallId
@@ -23,20 +20,55 @@ instead — Python analogue of ``@sarj/prefer-schema-for-api-payload``:
 
     def build_payload(call: Call) -> CallPayload: ...
 
-Purely annotation-based (no type inference), checked on function definitions
-(sync + async):
+Annotation-driven, checked on function definitions (sync + async). A function
+is flagged only when BOTH hold:
 
-1. Return annotation that is ``dict[str, Any]`` / ``dict[str, object]`` /
-   bare ``dict`` / ``Dict``, or ``list[dict[str, Any]]``.
-2. FastAPI route handlers (``@router.get(...)`` / ``@app.post(...)`` etc.)
+1. Shape — either a return annotation that is ``dict[str, Any]`` /
+   ``dict[str, object]`` / bare ``dict`` / ``Dict`` (or ``list[...]`` of one),
+   or a FastAPI route handler (``@router.get(...)`` / ``@app.post(...)`` etc.)
    with no return annotation and no ``response_model=`` in the decorator.
+2. Evidence — the body visibly builds the record in place: a
+   ``return {"k": ..., ...}`` with at least one literal string key (or a
+   ``return name`` whose ``name = {"k": ...}`` is assigned in the same
+   function; ``list`` literals and list comprehensions of such dicts count).
+
+Requirement 2 is what separates "an unnamed record that wants to be a model"
+from "an opaque mapping": a function that parses, forwards, merges or
+reflects over a mapping it did not author has no record shape to declare.
 
 Deliberately NOT flagged (kept high-precision for real boundaries):
-private / ``_``-prefixed functions (internal, not a public contract), pydantic
-``@model_validator`` / ``@field_validator`` hooks (raw dict in/out is their
-API), ``tuple[...]`` returns (multiple return values are idiomatic Python),
-fully-concrete dict value types (``dict[str, str]``), ``@overload`` stubs, and
-test files.
+
+* private / ``_``-prefixed functions — internal, not a public contract;
+* nested functions (closures) — not importable, so not a boundary at all.
+  Corpus: ``httpx/_transports/asgi.py:134`` (``receive``), an inner ASGI
+  callable whose ``{"type": "http.request", ...}`` messages are fixed by the
+  ASGI spec;
+* dict-conversion protocol methods (``model_dump`` / ``dict`` / ``asdict`` /
+  ``as_dict`` / ``to_dict`` / ``to_data``) — returning a dict IS their
+  declared contract, and for pydantic's own the signature is inherited.
+  Corpus (6): ``pydantic/main.py:469`` + ``sqlmodel/main.py:890``
+  (``model_dump``), ``pydantic/main.py:1385`` + ``sqlmodel/main.py:938``
+  (``dict``), ``fastapi/_compat/v2.py:100`` (``asdict``),
+  ``pydantic/mypy.py:284`` (``to_data``);
+* opaque mappings the function did not author — no in-place record literal.
+  Corpus (56 of the 67 raw-dict findings across fastapi/pydantic/black/
+  flask/rich/sqlmodel), e.g. parsed documents ``black/src/black/files.py:130``
+  (``parse_pyproject_toml`` → ``tomllib.load``), ``pydantic/mypy.py:1433``
+  (``parse_toml``); symbol tables ``pydantic/_internal/_typing_extra.py:359``
+  (``get_cls_type_hints``), ``sqlmodel/_compat.py:100`` (``get_annotations``);
+  generated JSON Schema / OpenAPI documents ``pydantic/json_schema.py:2547``
+  (``model_json_schema``), ``fastapi/openapi/utils.py:529`` (``get_openapi``);
+  caller-owned metadata ``rich/style.py:473`` (``meta``), and namespace
+  mappings ``flask/config.py:323`` (``get_namespace``);
+* pydantic ``@model_validator`` / ``@field_validator`` hooks (raw dict in/out
+  is their API), ``@pytest.fixture`` scaffolding, ``tuple[...]`` returns
+  (multiple return values are idiomatic Python), fully-concrete dict value
+  types (``dict[str, str]``), ``@overload`` stubs, and test files.
+
+Known limitation (accepted, precision over recall): a stub or abstract
+declaration such as ``def data(self) -> dict[str, Any]: ...`` builds no record
+in place, so it is not flagged — corpus
+``pydantic-core/python/pydantic_core/core_schema.py:234``.
 
 References:
 - https://docs.pydantic.dev/latest/concepts/models/
@@ -58,6 +90,9 @@ if TYPE_CHECKING:
 
 
 _HTTP_METHODS = {"get", "post", "put", "patch", "delete"}
+# Dict-conversion protocol methods: returning a raw dict is the declared
+# contract (and inherited, for pydantic's `model_dump`/`dict`).
+_DICT_CONVERSION_NAMES = {"asdict", "as_dict", "dict", "model_dump", "to_data", "to_dict"}
 _DICT_NAMES = {"dict", "Dict"}
 _LIST_NAMES = {"list", "List"}
 _ANY_VALUE_NAMES = {"Any", "object"}
@@ -87,6 +122,7 @@ class PydanticAtBoundaries(Rule):
         if tree is None:
             return []
         diags: list[Diagnostic] = []
+        local = _local_function_ids(tree)
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
@@ -95,6 +131,13 @@ class PydanticAtBoundaries(Rule):
             # Private/internal functions are not public boundaries — their
             # return shape is an implementation detail, not a data contract.
             if node.name.startswith("_"):
+                continue
+            # A closure cannot be imported, so it is not a boundary either.
+            if id(node) in local:
+                continue
+            # `model_dump`/`asdict`/`to_dict`-style converters declare "this
+            # returns a dict" as their contract — that is not a missing model.
+            if node.name in _DICT_CONVERSION_NAMES:
                 continue
             # Pydantic validator hooks (`@model_validator`/`@field_validator`)
             # take and return raw dict/values by contract — that's the API, not
@@ -108,7 +151,10 @@ class PydanticAtBoundaries(Rule):
             route = _route_info(node)
             returns = _resolve_annotation(node.returns)
             if returns is None:
-                if route is not None and not route.has_response_model:
+                # Only an ad-hoc record built in place is an unnamed model. A
+                # mapping the function merely parses/forwards/reflects over has
+                # no declarable shape. Checked last: it walks the body.
+                if route is not None and not route.has_response_model and _builds_record_literal(node):
                     diags.append(
                         Diagnostic(
                             path=path,
@@ -116,15 +162,16 @@ class PydanticAtBoundaries(Rule):
                             col=node.col_offset + 1,
                             code=self.code,
                             message=(
-                                f"FastAPI route `{node.name}` has no return "
-                                "annotation — declare a pydantic response model "
-                                "(or pass `response_model=`)."
+                                f"FastAPI route `{node.name}` returns an ad-hoc "
+                                "dict with no return annotation — declare a "
+                                "pydantic response model (or pass "
+                                "`response_model=`)."
                             ),
                         )
                     )
                 continue
             kind = _classify_return(returns)
-            if kind is None:
+            if kind is None or not _builds_record_literal(node):
                 continue
             ann_text = ast.unparse(returns)
             diags.append(
@@ -144,6 +191,84 @@ class PydanticAtBoundaries(Rule):
 
 def _is_test_path(path: Path) -> bool:
     return path.name.startswith("test_") or "tests" in path.parts
+
+
+def _local_function_ids(tree: ast.Module) -> set[int]:
+    """Collect `id()`s of every function defined inside another function's body.
+
+    Such a function is a closure: it cannot be imported, so its return shape is
+    an implementation detail rather than a boundary contract.
+
+    Returns:
+        The set of node ids for nested (local) function definitions.
+
+    """
+    out: set[int] = set()
+    stack: list[tuple[ast.AST, bool]] = [(tree, False)]
+    while stack:
+        node, inside = stack.pop()
+        for child in ast.iter_child_nodes(node):
+            child_is_func = isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
+            if child_is_func and inside:
+                out.add(id(child))
+            stack.append((child, inside or child_is_func))
+    return out
+
+
+def _is_record_literal(node: ast.expr) -> bool:
+    """Report whether `node` is an unnamed record built in place.
+
+    A dict display with at least one literal string key is a record — the shape
+    a pydantic model would name. A dict comprehension, a `{**a, **b}` merge or
+    an empty `{}` carries no such shape. `list` displays and list
+    comprehensions are unwrapped so `list[dict[str, Any]]` returns count too.
+
+    Returns:
+        True when the expression builds a str-keyed record literal.
+
+    """
+    if isinstance(node, ast.List):
+        return any(_is_record_literal(elt) for elt in node.elts)
+    if isinstance(node, ast.ListComp):
+        return _is_record_literal(node.elt)
+    if not isinstance(node, ast.Dict):
+        return False
+    return any(isinstance(key, ast.Constant) and isinstance(key.value, str) for key in node.keys)
+
+
+def _builds_record_literal(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Report whether the function returns a record it built in place.
+
+    Either `return {"k": ...}` directly, or `return name` where `name` was
+    assigned such a literal in the same function. Nested function / lambda /
+    class bodies are not inspected — their returns belong to them.
+
+    Returns:
+        True when a returned value is an in-place record literal.
+
+    """
+    returned: list[ast.expr] = []
+    record_names: set[str] = set()
+    stack: list[ast.AST] = list(node.body)
+    while stack:
+        current = stack.pop()
+        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+            continue
+        if isinstance(current, ast.Return) and current.value is not None:
+            returned.append(current.value)
+        elif isinstance(current, ast.Assign) and _is_record_literal(current.value):
+            record_names.update(t.id for t in current.targets if isinstance(t, ast.Name))
+        elif (
+            isinstance(current, ast.AnnAssign)
+            and isinstance(current.target, ast.Name)
+            and current.value is not None
+            and _is_record_literal(current.value)
+        ):
+            record_names.add(current.target.id)
+        stack.extend(ast.iter_child_nodes(current))
+    return any(
+        _is_record_literal(value) or (isinstance(value, ast.Name) and value.id in record_names) for value in returned
+    )
 
 
 def _is_overload(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:

@@ -89,8 +89,74 @@ ruleTester.run("no-comment-cruft", rule, {
     { code: "// create the model\nfunction createModel() { return 1; }" },
     // Nothing left to corroborate once the opening verb is removed.
     { code: "// initialize\ninitialize();" },
+    // --- ASCII sequence diagrams are documentation, not banners --------------
+    // Real corpus: swr/src/index/use-swr.ts:524-549, explaining request /
+    // mutation interleaving. A dash run ENDING IN AN ARROW HEAD draws a
+    // timeline; it is not a section rule.
+    {
+      code: "const x = 1;\n//   req1------------------>res1        (current one)\n//        req2---------------->res2\nconst y = 2;",
+    },
+    { code: "const x = 1;\n//   mutate-------...---------->\nconst y = 2;" },
+    // --- A numbered walkthrough is a file header, not a label stack ----------
+    // Real corpus: react-router/scripts/release-comments.ts:1.
+    {
+      code: "// 1. get all tags sorted by creation date\n// 2. get all commits between current and last tag\n// 3. check if commit is a PR and get the number\n// 4. comment on PRs with the release version\nimport semver from 'semver';",
+    },
+    // --- A phrase inside a prose paragraph is not a narration label ----------
+    // Real corpus: react-router/integration/bug-report-test.ts:26 — a six-line
+    // contributor instruction whose first clause opens with "First,".
+    {
+      code: "// First, make sure to install dependencies and build React Router. From the root of\n// the project, run this:\n//\n//    pnpm install\nconst x = 1;",
+    },
+    // Real corpus:
+    // react-router/packages/react-router/lib/dom/ssr/routes.tsx:663.
+    {
+      code: "// createElement on it.  Patching here as a quick fix and hoping it's no longer\n// an issue in Vite.\nconst x = 1;",
+    },
+    // --- "for now" attached to a stated reason is the why, not an excuse -----
+    // Real corpus:
+    // react-router/packages/react-router/__tests__/router/lazy-discovery-test.ts:2412.
+    {
+      code: "// Needed for now since router.fetch is not async until v7\nawait wait(10);",
+    },
+    // --- A code sample under its own heading is an illustration --------------
+    // Real corpus: react-router/packages/react-router/lib/hooks.tsx:791, where
+    // `// function Blog() {` sits nine lines below its `// Example:` heading.
+    {
+      code: "// Example:\n//\n// <Routes>\n//   <Route path=\"blog\" element={<Blog />} />\n// </Routes>\n//\n// function Blog() {\n//   return null;\n// }\nconst x = 1;",
+    },
   ],
   invalid: [
+    // --- The four guards must not become escape hatches ---------------------
+    // A separator rule with no arrow head is still a banner (contrast the
+    // `req---->res` diagram in `valid`).
+    {
+      code: "const x = 1;\n// ---------- Checks ----------\nconst y = 2;",
+      errors: [{ messageId: "sectionBanner" }],
+    },
+    // A stack of bare labels is still a content-free preamble even though the
+    // numbered-walkthrough guard exists: these carry no explanation.
+    {
+      code: "// 1.\n// 2.\n// 3.\n// 4.\nimport x from 'y';",
+      errors: [{ messageId: "fileHeaderPreamble" }],
+    },
+    // A standalone one-line meta note with no rationale still fires (contrast
+    // `// Needed for now since …` in `valid`).
+    {
+      code: "const a = 1;\n\n// quick fix for now\nconst limit = 10;",
+      errors: [{ messageId: "redundantNarration" }],
+    },
+    // Commented-out code with no illustration lead-in above it still fires.
+    {
+      code: "const x = 1;\n\n// const a = 1;\nconst y = 2;",
+      errors: [{ messageId: "commentedOutCode" }],
+    },
+    // A restatement is corroborated against the code, so it fires even inside a
+    // comment block — only the phrase-matching shapes need a standalone comment.
+    {
+      code: "// why we do this\n// increment the counter\ncounter += 1;",
+      errors: [{ messageId: "redundantNarration" }],
+    },
     // Step narration — the comment walks through the code line-by-line.
     {
       code: "// First, fetch the user\nconst u = api.getUser();",

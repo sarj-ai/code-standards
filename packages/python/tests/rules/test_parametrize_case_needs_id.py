@@ -220,6 +220,82 @@ def test_thing(value):
     assert _check(src) == []
 
 
+@pytest.mark.parametrize(
+    "case",
+    ["float('nan')", "int(1e10)", "type(None)", "str(raw)", "bytes(raw)", "re.compile('a')"],
+)
+def test_builtin_scalar_constructor_cases_are_exempt(case: str):
+    # pytest renders the runtime value: `float('nan')` reports as `nan`,
+    # `type(None)` as `NoneType`. 8 third-party tables were flagged this way.
+    src = f"""
+import pytest
+
+@pytest.mark.parametrize("value", [{case}, {case}])
+def test_thing(value):
+    assert value is not ...
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["Decimal('0.0')", "datetime(2012, 4, 9)", "dict(a=1)", "timedelta(hours=10)"],
+)
+def test_other_constructor_cases_still_flag(case: str):
+    src = f"""
+import pytest
+
+@pytest.mark.parametrize("value", [{case}, {case}])
+def test_thing(value):
+    assert value is not ...
+"""
+    assert len(_check(src)) == 1
+
+
+def test_scalar_constructor_next_to_an_opaque_column_is_enough():
+    src = """
+import pytest
+
+@pytest.mark.parametrize(
+    ("kwargs", "input_value", "expected"),
+    [({'lt': 0}, float('nan'), Err('x')), ({'gt': 0}, float('inf'), Decimal('inf'))],
+)
+def test_thing(kwargs, input_value, expected):
+    assert run(kwargs, input_value) == expected
+"""
+    assert _check(src) == []
+
+
+def test_parametrize_call_outside_a_decorator_is_exempt():
+    # black/tests/data/cases/split_delimiter_comments.py is formatter input that
+    # happens to contain a bare `parametrize(...)` expression.
+    src = """
+parametrize(
+    (
+        {},
+        {},
+    ),
+    (
+        {},
+        {},
+    ),
+)
+"""
+    assert _check(src) == []
+
+
+def test_parametrize_decorating_a_class_still_fires():
+    src = """
+import pytest
+
+@pytest.mark.parametrize("payload", [{"a": 1}, {"a": 2}])
+class TestThing:
+    def test_thing(self, payload):
+        assert payload
+"""
+    assert len(_check(src)) == 1
+
+
 def test_non_literal_values_argument_is_exempt():
     src = """
 import pytest

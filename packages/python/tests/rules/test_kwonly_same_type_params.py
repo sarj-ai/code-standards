@@ -24,7 +24,7 @@ def _check(source: str, path: str = "python/bulbul/bulbul/calls/service.py") -> 
     [
         ("source_id: str, target_id: str", "str"),
         ("a: int, b: int", "int"),
-        ("x: float, y: float, z: float", "float"),
+        ("lat: float, lon: float, alt: float", "float"),
         ("dry_run: bool, force: bool", "bool"),
         ("name: str, org_id: int, label: str", "str"),
         ("a: str, b: str, c: int", "str"),
@@ -286,7 +286,7 @@ def test_multiple_functions_sorted():
     src = """
 def f(a: str, b: str) -> None: ...
 
-def g(x: int, y: int) -> None: ...
+def g(org_id: int, call_id: int) -> None: ...
 """
     diags = _check(src)
     assert len(diags) == 2
@@ -391,6 +391,160 @@ def test_symmetric_suffix_without_underscore_is_exempt():
 
 def test_distinct_stems_with_numbers_still_fire():
     src = "def link(node1_id: str, parent2_key: str) -> None: ...\n"
+    assert len(_check(src)) == 1
+
+
+# --------------------------------------------------------------------------- #
+# FP-hardening (famous-repo sweep, 2,657 files): signatures that CANNOT go     #
+# keyword-only, and vocabularies where position is the notation.               #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["seek", "read", "write", "readinto", "truncate", "recv", "setsockopt", "add_unredirected_header", "get_header"],
+)
+def test_duck_typed_stdlib_protocol_methods_are_exempt(name: str):
+    # The stdlib is the caller and calls these POSITIONALLY (`io` does
+    # `f.seek(0, 2)`, `http.cookiejar` does `req.add_unredirected_header(k, v)`)
+    # so inserting `*` is a runtime TypeError, not a style change.
+    # Corpus: requests/cookies.py:89 and :95, rich/progress.py:270,
+    # anyio/streams/file.py:97, httpx/_models.py:1257.
+    src = f"""
+class Stream:
+    def {name}(self, first: int, second: int) -> int: ...
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize("name", ["seek", "add_unredirected_header"])
+def test_protocol_names_as_plain_functions_still_fire(name: str):
+    # The exemption is for METHODS implementing a protocol — a module-level
+    # function that merely shares the name owns its own calling convention.
+    src = f"def {name}(first: int, second: int) -> int: ...\n"
+    assert len(_check(src)) == 1
+
+
+def test_super_call_proves_an_override_and_exempts():
+    # Minimized from httpx `_models.py:1257`,
+    # `_CookieCompatRequest(urllib.request.Request).add_unredirected_header`:
+    # an override cannot narrow the base class's calling convention.
+    src = """
+class Child(Base):
+    def register(self, key: str, value: str) -> None:
+        super().register(key, value)
+"""
+    assert _check(src) == []
+
+
+def test_super_call_to_a_different_method_does_not_exempt():
+    src = """
+class Child(Base):
+    def register(self, key: str, value: str) -> None:
+        super().__init__()
+"""
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    "decorator",
+    [
+        "click.command()",
+        'click.option("--bind-host", type=str)',
+        'click.argument("style")',
+        "typer.Typer()",
+        'main.command("comment-body")',
+        "app.command()",
+        "cli.group()",
+    ],
+)
+def test_cli_command_handlers_are_exempt(decorator: str):
+    # click/typer bind handler parameters by NAME from the declared options;
+    # the human call site is a shell command line. Corpus: httpx/_main.py:452,
+    # black/src/blackd/__init__.py:96,
+    # black/scripts/diff_shades_gha_helper.py:167.
+    src = f"""
+@{decorator}
+def main(bind_host: str, cors_origin: str) -> None: ...
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "decorator",
+    [
+        'command("x")',  # bare Name, not <name>.<attr>
+        'obj.execute("x")',  # not a CLI-registration attribute
+        'self.cli.command("x")',  # receiver is an attribute chain, not a Name
+    ],
+)
+def test_non_cli_shaped_decorators_still_fire(decorator: str):
+    src = f"""
+@{decorator}
+def f(a: str, b: str) -> None: ...
+"""
+    assert len(_check(src)) == 1
+
+
+def test_pep484_positional_only_param_names_are_exempt():
+    # Minimized from rich `_null_file.py:24`, `NullFile(IO[str]).seek`:
+    # PEP 484 spells positional-only parameters `__x`, so they cannot be made
+    # keyword-only at all.
+    src = """
+class NullFile:
+    def scroll(self, __offset: int, __whence: int = 1) -> int: ...
+"""
+    assert _check(src) == []
+
+
+def test_dunder_suffixed_param_names_are_not_positional_only():
+    src = """
+class T:
+    def scroll(self, __offset__: int, __whence__: int) -> int: ...
+"""
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        "x: int, y: int",  # rich/control.py:79 Control.move
+        "x: int, y: int, z: int",
+        "width: int, height: int",  # rich/segment.py:462 Segment.align_top
+        "red: float, green: float, blue: float",  # rich/color.py:409 from_rgb
+        "red: float, green: float, blue: float, alpha: float",
+        "start: int = 0, step: int = 1",  # anyio/itertools.py:271 count
+        "row: int, column: int",
+        "top: int, right: int, bottom: int, left: int",
+        "year: int, month: int, day: int",
+        "hour: int, minute: int, second: int",
+    ],
+)
+def test_conventional_ordered_vocabularies_are_exempt(params: str):
+    src = f"def f({params}) -> None: ...\n"
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        "x: int, offset: int",  # only half the group is vocabulary
+        "width: int, chars_len: int",  # rich/rule.py:105 _rule_line — kept
+        "red: float, tint: float",
+        "start: int, cursor: int",
+        "a: str, b: str",  # single letters are NOT a vocabulary escape
+        "s: str, d: str",
+    ],
+)
+def test_groups_only_partly_in_a_vocabulary_still_fire(params: str):
+    src = f"def f({params}) -> None: ...\n"
+    assert len(_check(src)) == 1
+
+
+def test_vocabularies_do_not_cross_domains():
+    # `x`/`y` and `width`/`height` are separate vocabularies; a group spanning
+    # both is not one piece of notation.
+    src = "def f(x: int, height: int) -> None: ...\n"
     assert len(_check(src)) == 1
 
 

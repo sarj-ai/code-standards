@@ -17,8 +17,9 @@ Fires when ALL of these hold:
   excludes it automatically,
 * the loop iterates a **literal** `list`, `tuple`, or `set` displayed inline at
   the loop header, holding at least two elements,
-* and the loop body contains an `assert` (at any depth inside the loop, but not
-  inside a nested `def`).
+* the loop body contains an `assert` (at any depth inside the loop, but not
+  inside a nested `def`),
+* and the body does **not** open a sub-test context.
 
 The literal-iterable requirement is the load-bearing false-positive guard, and
 it is the entire difference between this rule and a naive "assert inside a for"
@@ -40,7 +41,14 @@ Deliberately NOT flagged:
   a decorator,
 * a single-element literal — no table to speak of,
 * a literal loop whose body only builds state or calls the system under test
-  with no assertion — that is setup, and setup legitimately loops.
+  with no assertion — that is setup, and setup legitimately loops,
+* **a loop that wraps each iteration in a sub-test** — `with self.subTest(...)`
+  (unittest) or `with subtests.test(...)` (the pytest-subtests plugin). Every
+  complaint in the message above is already answered there: the loop does not
+  stop at the first failure, and each iteration is reported under its own named
+  sub-test. `black/tests/test_black.py:1699` and `:1719` iterate
+  `["include", "force-exclude"]` inside `with self.subTest(config_key=...)`;
+  both were third-party-sweep false positives.
 """
 
 from __future__ import annotations
@@ -64,6 +72,13 @@ _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 
 # Anything that opens a new function scope: an assert inside one belongs to it.
 _SCOPE_NODES = (*_FUNC_NODES, ast.Lambda)
+
+# `self.subTest(...)` (unittest) and `subtests.test(...)` (pytest-subtests):
+# each iteration already reports independently and a failure does not abort the
+# loop, which is exactly what this rule asks parametrize to provide.
+_SUBTEST_ATTRS = frozenset({"subTest", "subtest"})
+
+_SUBTESTS_FIXTURE = "subtests"
 
 
 class TestLoopsOverLiteralCases(Rule):
@@ -150,7 +165,7 @@ class _LiteralCaseLoopVisitor(ast.NodeVisitor):
         if not self._in_test_function():
             return
         count = _literal_case_count(node.iter)
-        if count < _MIN_CASES or not _body_asserts(node):
+        if count < _MIN_CASES or not _body_asserts(node) or _body_opens_a_subtest(node):
             return
         self.hits.append((node, count))
 
@@ -172,6 +187,24 @@ def _literal_case_count(iterable: ast.expr) -> int:
 
 def _body_asserts(node: ast.For | ast.AsyncFor) -> bool:
     return any(_contains_assert(stmt) for stmt in node.body)
+
+
+def _body_opens_a_subtest(node: ast.For | ast.AsyncFor) -> bool:
+    return any(
+        isinstance(child, (ast.With, ast.AsyncWith))
+        and any(_is_subtest_call(item.context_expr) for item in child.items)
+        for stmt in node.body
+        for child in ast.walk(stmt)
+    )
+
+
+def _is_subtest_call(expr: ast.expr) -> bool:
+    if not isinstance(expr, ast.Call) or not isinstance(expr.func, ast.Attribute):
+        return False
+    attr = expr.func
+    if attr.attr in _SUBTEST_ATTRS:
+        return True
+    return attr.attr == "test" and isinstance(attr.value, ast.Name) and attr.value.id == _SUBTESTS_FIXTURE
 
 
 def _contains_assert(node: ast.AST) -> bool:

@@ -17,6 +17,11 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("prefer-discriminated-union", rule, {
   valid: [
+    // FP guard, corpus: swr/src/_internal/types.ts:1191 — an all-boolean record
+    // is a FLAG SET; every combination is legal, so there is no illegal state.
+    {
+      code: "interface StateDependencies { data?: boolean; error?: boolean; isValidating?: boolean; isLoading?: boolean }",
+    },
     // A proper discriminated union — the prescribed pattern.
     {
       code: "type Result = { ok: true; data: string } | { ok: false; error: string };",
@@ -61,6 +66,11 @@ ruleTester.run("prefer-discriminated-union", rule, {
     },
   ],
   invalid: [
+    // A boolean flag alongside an actual optional PAYLOAD still fires.
+    {
+      code: "interface Result { success: boolean; data?: string; error?: Error }",
+      errors: [{ messageId: "preferDiscriminatedUnion" }],
+    },
     // interface form: `success` boolean + 2 optionals.
     {
       code: "interface Result { success: boolean; data?: string; error?: string; }",

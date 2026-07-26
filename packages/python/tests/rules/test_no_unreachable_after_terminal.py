@@ -107,7 +107,7 @@ def f():
         ),
         (
             "module-body",
-            "return 1\ndead()\n",
+            "raise ValueError()\ndead()\n",
         ),
         (
             "if-body",
@@ -442,24 +442,76 @@ def test_syntax_errors_return_empty(src: str):
 
 
 # --------------------------------------------------------------------------- #
-# Edge: break/continue outside a loop still parse and are flagged structurally. #
+# Context: a terminal only ends the block where Python allows it. `return`      #
+# outside a function and `break`/`continue` outside a loop are SyntaxErrors —   #
+# the file never runs, so nothing after them is meaningfully dead.              #
 # --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("terminal", ["break", "continue"])
-def test_break_continue_outside_loop_flagged_structurally(terminal: str):
+def test_break_continue_outside_loop_is_not_flagged(terminal: str):
     src = f"""
 def f():
     {terminal}
     dead()
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize("terminal", ["break", "continue"])
+def test_break_continue_inside_loop_still_flagged(terminal: str):
+    src = f"""
+def f(xs):
+    for x in xs:
+        {terminal}
+        dead()
 """
     diags = _check(src)
     assert len(diags) == 1
     assert diags[0].code == "SARJ010"
 
 
-def test_module_level_return_is_flagged_structurally():
+def test_break_in_loop_else_clause_is_not_flagged():
+    # `break` in a `for ... else:` binds to an ENCLOSING loop, not this one, so
+    # at function scope it is a SyntaxError rather than a terminal.
+    src = """
+def f(xs):
+    for x in xs:
+        pass
+    else:
+        break
+        dead()
+"""
+    assert _check(src) == []
+
+
+def test_break_inside_nested_def_in_a_loop_is_not_flagged():
+    src = """
+def f(xs):
+    for x in xs:
+        def inner():
+            break
+            dead()
+"""
+    assert _check(src) == []
+
+
+def test_module_level_return_is_not_flagged():
     src = "return 1\ndead()\n"
+    assert _check(src) == []
+
+
+def test_class_body_return_is_not_flagged():
+    src = """
+class C:
+    return 1
+    dead()
+"""
+    assert _check(src) == []
+
+
+def test_module_level_raise_is_still_flagged():
+    src = "raise ValueError()\ndead()\n"
     assert len(_check(src)) == 1
 
 
@@ -535,7 +587,7 @@ def outer():
             5,
             13,
         ),
-        ("return 1\ndead()\n", 2, 1),
+        ("raise ValueError()\ndead()\n", 2, 1),
     ],
 )
 def test_diagnostic_line_and_col(src: str, line: int, col: int):
@@ -570,10 +622,7 @@ def b():
     assert [d.line for d in diags] == [4, 7]
 
 
-def test_nested_blocks_follow_walk_order_not_line_order():
-    # ast.walk is breadth-first: the outer function body (dead_outer, later in
-    # the file) is visited before the inner function body (dead_inner). The
-    # rule does not re-sort, so the diagnostics are NOT in ascending line order.
+def test_nested_blocks_report_in_line_order():
     src = """
 def outer():
     def inner():
@@ -583,7 +632,7 @@ def outer():
     dead_outer()
 """
     diags = _check(src)
-    assert [d.line for d in diags] == [7, 5]
+    assert [d.line for d in diags] == [5, 7]
 
 
 # --------------------------------------------------------------------------- #

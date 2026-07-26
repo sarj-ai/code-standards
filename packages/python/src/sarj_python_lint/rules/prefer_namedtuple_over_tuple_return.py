@@ -35,10 +35,35 @@ Famous-repo sweep hardening also exempts:
   (`make_pipe() -> tuple[Send, Receive]`) are local scaffolding, not a public
   boundary;
 - interface stubs whose body only raises `NotImplementedError` (plus a
-  docstring) and `@overload` stubs — the tuple shape mirrors an external
-  protocol (trio's `SocketType.accept` mirrors stdlib `socket.accept`) and
-  cannot change unilaterally. A bare `...` body is NOT exempt — it is also
-  the shorthand for an ordinary unwritten function.
+  docstring), `@overload` stubs, and `@abstractmethod` declarations with no
+  implementation — the tuple shape mirrors an external protocol (trio's
+  `SocketType.accept` mirrors stdlib `socket.accept`;
+  `anyio/src/anyio/abc/_sockets.py:230` `receive_fds` mirrors
+  `socket.recvmsg`) and cannot change unilaterally. A bare `...` body on an
+  *undecorated* function is NOT exempt — it is also the shorthand for an
+  ordinary unwritten function;
+- **nested functions.** A closure has no callers outside its enclosing
+  function, so it never crosses the boundary this rule protects, and the pair
+  it returns is usually mandated by the consumer: 2 of the 3 sweep hits are
+  `sorted(key=...)` functions that MUST return a tuple
+  (`rich/rich/_inspect.py:128`, `rich/rich/scope.py:45`), the third a local
+  stack popper (`rich/rich/markup.py:146`);
+- **declared overrides.** A method implementing an inherited contract does not
+  own its signature. Recognised, in order of directness: an `@override`
+  decorator; a `super().<same name>(...)` call in the body
+  (`fastapi/fastapi/routing.py:825`, `:1244`); a base whose trailing name
+  repeats the class's own name, the "concrete implementation of my ABC" idiom
+  (`anyio/src/anyio/_backends/_trio.py:514` `class UNIXSocketStream(SocketStream,
+  abc.UNIXSocketStream)`, `:617`, `_asyncio.py:1502`, `:1693`); and an imported
+  (non-structural) base combined with a sibling class in the same module
+  declaring the same method name — one shared shape across sibling classes is a
+  contract, not a local design choice (`fastapi/fastapi/routing.py` declares
+  `matches(scope) -> tuple[Match, Scope]`, starlette's `BaseRoute` protocol, on
+  6 classes).
+
+An override of a third-party base that carries none of those marks is still
+flagged; adding `@override` (which the type checker wants anyway) both
+documents the inheritance and silences the rule.
 
 Suppress a deliberate positional return with `# sarj-noqa: SARJ026 — <reason>`.
 
@@ -50,6 +75,8 @@ References:
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
+from types import EllipsisType
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
@@ -57,6 +84,7 @@ from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
 
 
@@ -64,6 +92,35 @@ _TUPLE_NAMES = frozenset({"tuple", "Tuple"})
 _LITERAL_NAMES = frozenset({"Literal"})
 
 _MIN_ELEMENTS = 2
+
+#: How many classes in one module must declare a same-named method before the
+#: shape counts as a shared contract rather than one class's own design.
+_SIBLING_DECLARATIONS = 2
+
+#: Bases that shape a class rather than hand it an interface to implement. A
+#: method on a `BaseModel` / `Protocol` / `Generic` subclass is still the
+#: module's own design, so these do not mark a method as an inherited override.
+_STRUCTURAL_BASES = frozenset(
+    {
+        "ABC",
+        "BaseModel",
+        "Enum",
+        "Exception",
+        "Generic",
+        "IntEnum",
+        "NamedTuple",
+        "Protocol",
+        "StrEnum",
+        "TypedDict",
+        "dict",
+        "float",
+        "int",
+        "list",
+        "object",
+        "str",
+        "tuple",
+    }
+)
 
 _MSG = (
     "public function returns a bare positional tuple[...] — callers must unpack by "
@@ -88,15 +145,16 @@ class PreferNamedtupleOverTupleReturn(Rule):
         tree = parse_or_none(path, source)
         if tree is None:
             return []
+        facts = _module_facts(tree)
         diags: list[Diagnostic] = []
-        for node in ast.walk(tree):
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
+        for node, owner in _iter_boundary_functions(tree):
             if node.name.startswith("_"):
                 continue
             if node.returns is None:
                 continue
-            if _is_interface_stub(node) or _is_overload(node):
+            if _is_interface_stub(node) or _is_overload(node) or _is_abstract_declaration(node):
+                continue
+            if _is_declared_override(node, owner, facts):
                 continue
             if not _is_bare_positional_tuple(node.returns):
                 continue
@@ -111,6 +169,127 @@ class PreferNamedtupleOverTupleReturn(Rule):
             )
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
+
+
+@dataclass(frozen=True, slots=True)
+class _ModuleFacts:
+    """What the module knows about itself: its own classes, its imports, its method names."""
+
+    local_classes: frozenset[str]
+    #: For each method name, how many distinct classes in this module declare it.
+    classes_declaring: dict[str, int]
+
+
+def _module_facts(tree: ast.Module) -> _ModuleFacts:
+    """Collect the module-wide facts the override heuristics need.
+
+    Returns:
+        The names of classes defined here and the per-method-name class counts.
+
+    """
+    local_classes: set[str] = set()
+    classes_declaring: dict[str, int] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef):
+            continue
+        local_classes.add(node.name)
+        for name in {m.name for m in node.body if isinstance(m, (ast.FunctionDef, ast.AsyncFunctionDef))}:
+            classes_declaring[name] = classes_declaring.get(name, 0) + 1
+    return _ModuleFacts(local_classes=frozenset(local_classes), classes_declaring=classes_declaring)
+
+
+def _iter_boundary_functions(
+    tree: ast.Module,
+) -> Iterator[tuple[ast.FunctionDef | ast.AsyncFunctionDef, ast.ClassDef | None]]:
+    """Walk every module-level or class-level function, paired with its owning class.
+
+    Functions nested inside another function are skipped outright: a closure has
+    no callers outside the frame that defines it, so its return shape never
+    crosses the boundary this rule guards.
+
+    Yields:
+        Each boundary function and the class that declares it, if any.
+
+    """
+    stack: list[tuple[ast.AST, ast.ClassDef | None]] = [(tree, None)]
+    while stack:
+        node, owner = stack.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            yield node, owner
+            continue  # do not descend: everything below is nested in a function
+        child_owner = node if isinstance(node, ast.ClassDef) else owner
+        stack.extend((child, child_owner) for child in ast.iter_child_nodes(node))
+
+
+def _is_declared_override(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    owner: ast.ClassDef | None,
+    facts: _ModuleFacts,
+) -> bool:
+    """Report whether the method implements a contract inherited from a base class.
+
+    An override does not own its signature: the tuple shape is pinned by the
+    base, so changing it here is not an option this module has.
+
+    Returns:
+        True when the method is a recognised override.
+
+    """
+    if any(_name_of(dec) == "override" for dec in node.decorator_list):
+        return True
+    if _calls_super_method(node):
+        return True
+    if owner is None:
+        return False
+    base_names = [name for base in owner.bases if (name := _name_of(base)) is not None]
+    if owner.name in base_names:
+        return True  # `class UDPSocket(abc.UDPSocket)` — a concrete impl of its own ABC
+    foreign = any(name not in facts.local_classes and name not in _STRUCTURAL_BASES for name in base_names)
+    return foreign and facts.classes_declaring.get(node.name, 0) >= _SIBLING_DECLARATIONS
+
+
+def _calls_super_method(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Report whether the body calls `super().<this method's name>(...)`.
+
+    Returns:
+        True when the body delegates to the base implementation.
+
+    """
+    for child in ast.walk(node):
+        match child:
+            case ast.Call(func=ast.Attribute(attr=attr, value=ast.Call(func=ast.Name(id="super")))) if (
+                attr == node.name
+            ):
+                return True
+            case _:
+                continue
+    return False
+
+
+def _is_abstract_declaration(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Report whether the node is an `@abstractmethod` with no implementation.
+
+    Like the `NotImplementedError` stub, such a declaration states a contract
+    whose shape usually mirrors something external (anyio's `receive_fds`
+    mirrors `socket.recvmsg`), and the concrete side is elsewhere.
+
+    Returns:
+        True for an abstract declaration whose body is only a docstring / `...` / `pass`.
+
+    """
+    if not any(_name_of(dec) == "abstractmethod" for dec in node.decorator_list):
+        return False
+    return all(_is_empty_statement(stmt) for stmt in node.body)
+
+
+def _is_empty_statement(stmt: ast.stmt) -> bool:
+    match stmt:
+        case ast.Pass():
+            return True
+        case ast.Expr(value=ast.Constant(value=str() | EllipsisType())):
+            return True
+        case _:
+            return False
 
 
 def _is_interface_stub(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:

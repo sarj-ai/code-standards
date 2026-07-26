@@ -21,7 +21,18 @@ is a regression. A junk-drawer stem carries no domain to lose, so replacing it
 with the export name is strictly an improvement.
 
 Public = a top-level `class` / `def` / `async def` whose name has no leading
-underscore. Constants (assignments), `__all__`, and imports are ignored.
+underscore. Imports are ignored.
+
+A public module-level CONSTANT (`UPPER_SNAKE = ...`, with or without an
+annotation) counts as a public export too, and any such constant blocks the
+rule: the module's public surface is then wider than its one def, so naming the
+file after that def is a lie. Corpus evidence (1 of the 2 hits over 2,657 files
+of third-party Python): `pydantic/release/shared.py:6` has one public function
+`run_command` but also exports `REPO`, `HISTORY_FILE`, `PACKAGE_VERSION_FILE`
+and `GITHUB_TOKEN`, three of which its importers (`release/prepare.py`,
+`release/push.py`) pull in — `run_command.py` would be the wrong name for it.
+Lowercase module-level assignments (`logger = ...`, cached singletons) are NOT
+public exports and do not block the rule.
 
 Skipped entirely: `__init__.py`, `conftest.py`, test files (`test_*.py` or under
 a `tests/` directory), and framework-convention filenames whose stem is fixed by
@@ -130,7 +141,7 @@ class SinglePublicExport(Rule):
             for node in tree.body
             if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and not node.name.startswith("_")
         ]
-        if len(public_defs) != 1:
+        if len(public_defs) != 1 or _has_public_constant(tree):
             return []
 
         primary = public_defs[0]
@@ -151,6 +162,34 @@ class SinglePublicExport(Rule):
                 ),
             )
         ]
+
+
+def _has_public_constant(tree: ast.Module) -> bool:
+    """Report whether the module exports a public `UPPER_SNAKE` constant.
+
+    A constant is part of the module's public surface just as a def is, so its
+    presence means the sole def is not the whole story and renaming the file
+    after that def would misdescribe the module. `__all__` and other dunders
+    are excluded (they describe the surface, they are not part of it), as are
+    lowercase assignments such as `logger`.
+
+    Returns:
+        True when at least one public constant is assigned at module level.
+
+    """
+    targets: list[ast.expr] = []
+    for stmt in tree.body:
+        match stmt:
+            case ast.Assign(targets=assigned):
+                targets.extend(assigned)
+            case ast.AnnAssign(target=target):
+                targets.append(target)
+            case _:
+                pass
+    return any(
+        isinstance(t, ast.Name) and not t.id.startswith("_") and t.id == t.id.upper() and any(c.isalpha() for c in t.id)
+        for t in targets
+    )
 
 
 def _snake_case(name: str) -> str:

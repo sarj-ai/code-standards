@@ -324,6 +324,83 @@ def test_ignores_flask_style_self_logger_with_exc_info():
     assert _check('self.logger.error(f"Exception on {path}", exc_info=sys.exc_info())\n') == []
 
 
+# --------------------------------------------------------------------------- #
+# FP guard: a stdlib `logging` receiver. The structured-keyword fix raises      #
+# `TypeError` on stdlib, so the rule must stay silent. Corpus: 70 of 94 hits.   #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        'logging.info(f"Using config: {c}")',
+        'logging.debug(f"Checking PR: #{n}")',
+        'logging.error(f"Response was not 200, after: {a}")',
+    ],
+)
+def test_ignores_stdlib_module_level_convenience_functions(call: str):
+    assert _check(f"import logging\n\n{call}\n") == []
+
+
+def test_ignores_aliased_stdlib_logging_module():
+    assert _check('import logging as log\n\nlog.info(f"{x}")\n') == []
+
+
+def test_ignores_submodule_import_binding_of_logging():
+    assert _check('import logging.handlers\n\nlogging.info(f"{x}")\n') == []
+
+
+def test_bare_logging_receiver_without_the_import_still_fires():
+    # The opposite case: the exemption is import-backed, exactly like the
+    # loguru-vs-hand-rolled distinction elsewhere — an unbacked name is a guess.
+    assert len(_check('logging.info(f"{x}")\n')) == 1
+
+
+@pytest.mark.parametrize(
+    "binding",
+    [
+        "LOG = logging.getLogger(__name__)",
+        "LOG: logging.Logger = logging.getLogger(__name__)",
+        "LOG = getLogger(__name__)",
+    ],
+)
+def test_ignores_module_level_logger_assigned_from_getlogger(binding: str):
+    src = f'import logging\n\n{binding}\n\ndef f():\n    LOG.info(f"Cleaning up {{p}}")\n'
+    assert _check(src) == []
+
+
+def test_ignores_builder_chain_on_an_assigned_stdlib_logger():
+    src = 'import logging\n\nLOG = logging.getLogger(__name__)\nLOG.getChild("s").info(f"{x}")\n'
+    assert _check(src) == []
+
+
+def test_same_name_assigned_from_a_non_getlogger_factory_still_fires():
+    src = 'import logging\n\nLOG = loguru.logger.bind(a=1)\nLOG.info(f"{x}")\n'
+    assert len(_check(src)) == 1
+
+
+def test_stdlib_attribute_binding_does_not_poison_an_unrelated_bare_logger():
+    # `self.logger = logging.getLogger(...)` binds `self.logger`, NOT `logger`;
+    # matching on the loose name would silence every loguru call in the file.
+    src = """
+import logging
+from loguru import logger
+
+class C:
+    def __init__(self):
+        self.logger = logging.getLogger("c")
+
+    def go(self):
+        self.logger.info(f"stdlib {x}")
+
+def f():
+    logger.info(f"loguru {x}")
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert diags[0].line == 13
+
+
 def test_flags_loguru_import_and_bare_logger():
     src = 'from loguru import logger\nlogger.info(f"val {x}")\n'
     diags = _check(src)

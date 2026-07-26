@@ -213,3 +213,30 @@ def test_thing():
 """
     diags = _check(src)
     assert [d.line for d in diags] == sorted(d.line for d in diags)
+
+
+def test_mapping_update_is_data_not_a_construction():
+    # Minimized from rich's tests/test_table.py: 29 keywords relabelling box
+    # characters through `__dict__.update(...)` — entries, not fields.
+    src = """
+def test_placement_table_box_elements():
+    table = Table(box=box.ASCII)
+    table.box.__dict__.update(
+        top_left="a", top="b", top_divider="c", top_right="d", head_left="1",
+        head_vertical="2", head_right="3", head_row_left="e", head_row_cross="g",
+    )
+    assert render(table)
+"""
+    assert _check(src) == []
+
+
+def test_wide_construction_next_to_an_update_still_fires():
+    src = """
+def test_style():
+    style = Style(
+        color="red", bgcolor="black", bold=True, dim=True, italic=True,
+        underline=True, blink=True, blink2=True, reverse=True,
+    )
+    assert str(style)
+"""
+    assert len(_check(src)) == 1

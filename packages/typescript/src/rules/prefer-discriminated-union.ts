@@ -10,6 +10,21 @@
  * that exactly one branch's fields are present.
  *
  * This is the TypeScript mirror of the Python rule SARJ005.
+ *
+ * A PAYLOAD IS REQUIRED. The defect is that a payload can be present in the
+ * wrong branch (`success: true` carrying an `error`), so the shape must have at
+ * least one optional member that is NOT itself a boolean. An all-boolean record
+ * is a FLAG SET, not a state machine: every combination of its members is legal,
+ * so there is no illegal state to make unrepresentable and a discriminated union
+ * would be strictly worse.
+ *
+ * Corpus evidence (2220 files across zod / TanStack Query / react-router / swr /
+ * zustand, 2026-07): the rule fired exactly once, and it was this false
+ * positive — `swr/src/_internal/types.ts:1191`,
+ * `interface StateDependencies { data?: boolean; error?: boolean;
+ * isValidating?: boolean; isLoading?: boolean }`. That is SWR's dependency
+ * TRACKER: each flag records "did the render read this field?", and all sixteen
+ * combinations are meaningful.
  */
 
 import { ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
@@ -68,6 +83,7 @@ function looksLikeMutuallyExclusiveState(
 ): boolean {
   let hasStatusBoolean = false;
   let optionalCount = 0;
+  let optionalPayloadCount = 0;
 
   for (const member of typeLiteral.members) {
     if (member.type !== AST_NODE_TYPES.TSPropertySignature) {
@@ -76,6 +92,11 @@ function looksLikeMutuallyExclusiveState(
 
     if (member.optional) {
       optionalCount += 1;
+      // A non-boolean optional is a PAYLOAD — the thing that can end up in the
+      // wrong branch. An all-boolean record is a flag set; see @fileoverview.
+      if (!isBooleanTyped(member)) {
+        optionalPayloadCount += 1;
+      }
     }
 
     const name = getMemberName(member);
@@ -88,7 +109,11 @@ function looksLikeMutuallyExclusiveState(
     }
   }
 
-  return hasStatusBoolean && optionalCount >= MIN_OPTIONAL_MEMBERS;
+  return (
+    hasStatusBoolean &&
+    optionalCount >= MIN_OPTIONAL_MEMBERS &&
+    optionalPayloadCount >= 1
+  );
 }
 
 export default ESLintUtils.RuleCreator(

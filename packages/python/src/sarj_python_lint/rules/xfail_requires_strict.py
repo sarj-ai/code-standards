@@ -42,6 +42,18 @@ Deliberately NOT flagged:
   the other generated ids do not,
 * `xfail` with no `reason=`, or a reason describing an environment gate rather
   than a defect ("no GPU on CI") — those are not bug pins,
+* **environment-gated conditional `xfail`.** A positional condition that probes
+  the interpreter or OS — `@pytest.mark.xfail(platform.python_implementation()
+  == "PyPy" and sys.pypy_version_info < (7, 3, 2), reason="PyPy has a bug in
+  its incremental UTF-8 decoder")` — pins a *third-party* defect on the subset
+  of environments that carry it, which is the same environment gate the bullet
+  above excludes, merely spelled as code instead of prose. The reason text
+  still says "bug", so the reason heuristic alone fired on it: 2 of the 5
+  findings in a 2,657-file third-party sweep were this shape (anyio's
+  `test_text.py`, pydantic-core's `test_complex.py`). Making those strict turns
+  the day upstream ships the fix into a red build in an environment the project
+  does not control. An *unconditional* `xfail` pinning our own defect still
+  fires,
 * `pytest.xfail(...)` called imperatively inside a body — that aborts the test
   immediately and has no strict/non-strict distinction,
 * `xfail` used as a `pytest.param` marker argument, where the surrounding
@@ -165,12 +177,40 @@ def _marker_name(dec: ast.expr) -> str | None:
 def _is_rotting_xfail(dec: ast.expr) -> bool:
     if not isinstance(dec, ast.Call) or _marker_name(dec) != _XFAIL:
         return False
-    if _is_strict(dec):
+    if _is_strict(dec) or _is_environment_gated(dec):
         return False
     reason = _reason_text(dec)
     if reason is None or _NONDETERMINISM_RE.search(reason):
         return False
     return bool(_DEFECT_RE.search(reason))
+
+
+# Modules whose reads describe the environment the suite happens to run in.
+_ENV_PROBE_MODULES = frozenset({"sys", "os", "platform", "sysconfig"})
+
+# Attribute / name words that identify an interpreter- or OS-version probe.
+_ENV_PROBE_RE = re.compile(r"version|implementation|platform|machine|pypy|jython|win32|windows|linux|darwin|macos", re.IGNORECASE)
+
+
+def _is_environment_gated(dec: ast.Call) -> bool:
+    """Report whether the marker's condition gates on the interpreter or OS.
+
+    A conditional `xfail` whose condition probes `sys` / `platform` / `os` (or
+    names a version / implementation) applies the marker only on the
+    environments that carry a *third-party* defect. That is an environment gate,
+    not a pin on this codebase's own bug.
+
+    Returns:
+        True when a positional condition probes the environment.
+
+    """
+    for condition in dec.args:
+        for node in ast.walk(condition):
+            if isinstance(node, ast.Name) and (node.id in _ENV_PROBE_MODULES or _ENV_PROBE_RE.search(node.id)):
+                return True
+            if isinstance(node, ast.Attribute) and _ENV_PROBE_RE.search(node.attr):
+                return True
+    return False
 
 
 def _is_strict(dec: ast.Call) -> bool:

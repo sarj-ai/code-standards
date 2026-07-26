@@ -18,6 +18,35 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("no-unnecessary-use-client", rule, {
   valid: [
+    // FP guard 1, corpus: zod/packages/docs/components/tabs.tsx:1 and
+    // swr/examples/suspense-global/global-swr-config.tsx:1 — wrapping a
+    // third-party component is the documented reason for the directive.
+    {
+      code: [
+        '"use client";',
+        'import { Primitive } from "fumadocs-ui/components/tabs";',
+        'export function Tabs({ items }) { return <Primitive.Tabs items={items} />; }',
+      ].join("\n"),
+      filename: "/repo/components/tabs.tsx",
+    },
+    {
+      code: [
+        '"use client";',
+        'import { SWRConfig } from "swr";',
+        'export function GlobalSWRConfig({ children }) { return <SWRConfig value={{}}>{children}</SWRConfig>; }',
+      ].join("\n"),
+      filename: "/repo/components/global-swr-config.tsx",
+    },
+    // FP guard 2, corpus: query/packages/react-query-devtools/src/index.ts:1 —
+    // a re-export written the long way.
+    {
+      code: [
+        '"use client";',
+        'import * as Devtools from "./ReactQueryDevtools";',
+        'export const ReactQueryDevtools = Devtools.ReactQueryDevtools;',
+      ].join("\n"),
+      filename: "/repo/src/index.ts",
+    },
     // No directive.
     { code: "export default function X() { return <div />; }" },
     // Directive + hook.
@@ -46,6 +75,16 @@ ruleTester.run("no-unnecessary-use-client", rule, {
     },
   ],
   invalid: [
+    // The guards must not over-fire: a locally-defined, server-safe component.
+    {
+      code: [
+        '"use client";',
+        'import { Row } from "./row";',
+        'export function List() { return <ul><Row /></ul>; }',
+      ].join("\n"),
+      filename: "/repo/components/list.tsx",
+      errors: [{ messageId: "unnecessaryUseClient" }],
+    },
     {
       code: "'use client'; export default function X() { return <div>hello</div>; }",
       errors: [{ messageId: "unnecessaryUseClient" }],

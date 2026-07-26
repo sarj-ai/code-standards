@@ -752,3 +752,102 @@ async def f(xs):
         await handle(x)
 """
     assert len(_check(src)) == 1
+
+
+def test_relative_import_module_using_cancel_scope_is_exempt():
+    # Minimized from anyio's `to_process.py`: anyio's own modules import their
+    # runtime relatively, so only the primitive names reveal the runtime.
+    src = """
+from .abc import Process
+
+async def cleanup(killed_processes):
+    with CancelScope(shield=True):
+        for killed_process in killed_processes:
+            await killed_process.aclose()
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "primitive",
+    ["CancelScope(shield=True)", "create_task_group()", "fail_after(1)", "move_on_after(1)"],
+)
+def test_structured_concurrency_primitives_exempt_the_module(primitive: str):
+    src = f"""
+from .abc import Listener
+
+async def f(xs):
+    for x in xs:
+        await x.aclose()
+
+async def g():
+    with {primitive}:
+        pass
+"""
+    assert _check(src) == []
+
+
+def test_start_soon_attribute_call_exempts_the_module():
+    src = """
+from .. import create_task_group
+
+async def serve(listeners, handler):
+    async with create_task_group() as tg:
+        for listener in listeners:
+            tg.start_soon(listener.serve, handler)
+
+async def aclose(listeners):
+    for listener in listeners:
+        await listener.aclose()
+"""
+    assert _check(src) == []
+
+
+def test_asyncio_taskgroup_does_not_exempt_the_module():
+    # `TaskGroup` is shared with asyncio 3.11+, so it is not a runtime signal.
+    src = """
+import asyncio
+
+async def f(xs, tg: asyncio.TaskGroup):
+    for x in xs:
+        await handle(x)
+"""
+    assert len(_check(src)) == 1
+
+
+# --------------------------------------------------------------------------- #
+# FP-hardening (famous-repo sweep): a fold is not a map.                       #
+# --------------------------------------------------------------------------- #
+
+
+def test_loop_carried_accumulator_is_exempt():
+    # Minimized from anyio's `functools.reduce`: each call consumes the previous
+    # result, so there is nothing to gather.
+    src = """
+async def reduce(function, iterable, value):
+    for element in iterable:
+        value = await function(value, element)
+    return value
+"""
+    assert _check(src) == []
+
+
+def test_assignment_not_reading_its_own_target_still_fires():
+    src = """
+async def f(xs):
+    for x in xs:
+        value = await fetch(x)
+        record(value)
+"""
+    assert len(_check(src)) == 1
+
+
+def test_append_of_awaited_result_still_fires():
+    src = """
+async def f(values):
+    results = []
+    for sub_value in values:
+        results.append(await sub_value.read())
+    return results
+"""
+    assert len(_check(src)) == 1

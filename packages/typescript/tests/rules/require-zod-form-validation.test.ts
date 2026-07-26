@@ -13,6 +13,12 @@ const ruleTester = new RuleTester();
 
 ruleTester.run("require-zod-form-validation", rule, {
   valid: [
+    // FP guard, corpus: react-router/packages/react-router/__tests__/dom/data-browser-router-test.tsx:4183
+    // — the FormData was built by the test; there is no trust boundary.
+    {
+      code: "async function t(request) { const formData = await request.formData(); expect(formData.get('a')).toBe('1'); }",
+      filename: "/repo/packages/x/__tests__/dom/data-browser-router-test.tsx",
+    },
     // formData.get() wrapped in a Zod schema .parse() call
     {
       code: "const name = ZUser.parse({ name: formData.get('name') });",
@@ -69,6 +75,12 @@ ruleTester.run("require-zod-form-validation", rule, {
     },
   ],
   invalid: [
+    // A real action still fires.
+    {
+      code: "export async function action(request) { const formData = await request.formData(); return save(formData.get('name')); }",
+      filename: "/repo/src/app/actions.ts",
+      errors: [{ messageId: "missingZodValidation" }],
+    },
     // Bare formData.get() with no Zod validation
     {
       code: "const name = formData.get('name');",

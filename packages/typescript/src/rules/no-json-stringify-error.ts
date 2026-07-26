@@ -17,6 +17,18 @@
  * non-Error fallback is exactly correct.
  *
  * Object literals and arbitrary identifiers (`JSON.stringify(user)`) are not flagged.
+ *
+ * Rule (2) originally assumed that any property of an error-named base is itself
+ * an error. It is not: the error objects real frameworks throw carry a plain,
+ * fully-enumerable DATA payload alongside the non-enumerable `message`/`stack`.
+ * A sweep of 2,186 real TypeScript files (zod / TanStack Query / react-router /
+ * swr / zustand) hit exactly that at
+ * react-router/playground/rsc-vite/src/routes/root/root.client.tsx:42 —
+ * `JSON.stringify(error.data)` on a react-router `ErrorResponse`, where `.data`
+ * is the loader's own JSON body and stringifying it is the correct thing to do.
+ * `PAYLOAD_PROPS` lists those accessors (`data`, `status`, `issues`, ...)
+ * alongside `SAFE_STRING_PROPS`; `err.cause` and friends still fire because the
+ * property name itself names an error.
  */
 
 import { ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
@@ -32,6 +44,29 @@ const ERROR_PROP_PATTERN = /^(cause|lastError|error|err|exception|originalError|
 
 /** Property names whose value is a plain string — the recommended escape hatch. */
 const SAFE_STRING_PROPS: ReadonlySet<string> = new Set(["message", "stack", "name"]);
+
+/**
+ * Accessors that hold an error's *data* payload rather than a nested error.
+ * These are ordinary enumerable JSON, so `JSON.stringify` on them is correct —
+ * react-router's `ErrorResponse.data`, zod's `ZodError.issues`, an HTTP client's
+ * `.status` / `.response.body`.
+ */
+const PAYLOAD_PROPS: ReadonlySet<string> = new Set([
+  "data",
+  "status",
+  "statuscode",
+  "statustext",
+  "code",
+  "issues",
+  "details",
+  "body",
+  "payload",
+  "response",
+  "info",
+  "meta",
+  "metadata",
+  "context",
+]);
 
 /**
  * Walk up the scope chain looking for a `catch` clause whose binding matches
@@ -75,7 +110,11 @@ function memberSuggestsError(
     base.type === "Identifier" &&
     (ERROR_NAME_PATTERN.test(base.name) || isCatchBinding(scope, base.name));
   if (baseSuggestsError) {
-    return propName === null || !SAFE_STRING_PROPS.has(propName.toLowerCase());
+    if (propName === null) {
+      return true;
+    }
+    const lowered = propName.toLowerCase();
+    return !SAFE_STRING_PROPS.has(lowered) && !PAYLOAD_PROPS.has(lowered);
   }
 
   return false;

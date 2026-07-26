@@ -71,6 +71,18 @@ ruleTester.run("no-positional-tuple-return", rule, {
     { code: "export function many(): Array<[string, number]> { return impl(); }" },
     // --- No return annotation to judge. ---
     { code: "export function inferred() { return ['a', 1]; }" },
+
+    // --- Accessor / mutator pairs -------------------------------------------
+    // `[value, setValue]` without the `use` prefix. Real corpus:
+    // query/packages/svelte-query/src/containers.svelte.ts:31.
+    {
+      code: "export function createRef<T>(init: T): [T, (newValue: T) => void] { return impl(init); }",
+    },
+    // A handle + completion pair. Real corpus:
+    // query/packages/query-persist-client-core/src/persist.ts:162.
+    {
+      code: "export function persistQueryClient(o: Opts): [() => void, Promise<void>] { return impl(o); }",
+    },
   ],
   invalid: [
     // The canonical shape: distinct fields the caller must unpack by position.
@@ -136,6 +148,19 @@ ruleTester.run("no-positional-tuple-return", rule, {
     // TS `export =` assignment.
     {
       code: "function split(s: string): [string, number] { return impl(s); }\nexport = split;",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+
+    // The pair exemption is exactly two elements: a three-tuple with a callback
+    // slot is still a record whose fields need names.
+    {
+      code: "export function open(u: string): [Socket, () => void, number] { return impl(u); }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    // Two data fields with no function slot still fire. Real corpus:
+    // react-router/packages/react-router/lib/router/utils.ts:1732.
+    {
+      code: "export function compilePath(p: string): [RegExp, CompiledPathParam[]] { return impl(p); }",
       errors: [{ messageId: "noPositionalTupleReturn" }],
     },
   ],

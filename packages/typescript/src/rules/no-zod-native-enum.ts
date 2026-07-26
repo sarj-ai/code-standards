@@ -40,6 +40,17 @@
  * flagged. Generated files (`*.gen.ts`, `**\/generated/**`, `*.d.ts`, or a
  * `@generated` marker) opt out, matching `no-enum` — codegen from an OpenAPI
  * spec legitimately emits enums and the schemas that wrap them.
+ *
+ * TEST FILES ARE EXEMPT. Corpus sweep (2220 files across zod / TanStack Query /
+ * react-router / swr / zustand, 2026-07): 32 raw hits, 32 of them in test files
+ * and 100% false positives. A test that covers `z.nativeEnum` has to CALL
+ * `z.nativeEnum` — `zod/packages/zod/src/v3/tests/nativeEnum.test.ts:12`
+ * (`const fruitEnum = z.nativeEnum(Fruits)`) is not importing a banned construct
+ * through the back door, it is the coverage for the construct. The same applies
+ * to any consumer pinning the migration behaviour of a legacy enum schema, and
+ * it mirrors the exemption `no-enum` already grants generated code: the rule
+ * targets the DECISION to model a domain with an enum, and a fixture makes no
+ * such decision.
  */
 
 import {
@@ -50,6 +61,8 @@ import {
   AST_NODE_TYPES,
 } from "@typescript-eslint/utils";
 import * as ts from "typescript";
+
+import { isTestFile } from "./_paths.js";
 
 type MessageIds = "nativeEnum" | "enumOfTsEnum";
 type Options = readonly [];
@@ -183,6 +196,10 @@ export default ESLintUtils.RuleCreator(
   create(context) {
     const sourceCode = context.sourceCode;
     if (isIgnoredFile(context.filename, sourceCode.getText())) {
+      return {};
+    }
+    // A test that covers `z.nativeEnum` must call it; see @fileoverview.
+    if (isTestFile(context.filename)) {
       return {};
     }
 

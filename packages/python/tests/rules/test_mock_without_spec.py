@@ -181,6 +181,152 @@ def test_thing():
 
 
 # --------------------------------------------------------------------------- #
+# FP guard: `spec` / `new` are POSITIONAL parameters of these signatures, and  #
+# that is how they are nearly always spelled. Corpus: 35 of 137 hits.          #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    ("exempt", "flagged"),
+    [
+        # `Mock(spec=None, wraps=None, ...)` — arg 1 is `spec`.
+        ("mock.Mock(Room)", "mock.Mock()"),
+        ("mock.MagicMock(Room)", "mock.MagicMock()"),
+        ("mock.AsyncMock(Room)", "mock.AsyncMock()"),
+        # `patch(target, new=DEFAULT, ...)` — arg 2 is `new`.
+        ("mock.patch('agent.main.run', fake_run)", "mock.patch('agent.main.run')"),
+        # `patch.object(target, attribute, new=DEFAULT, ...)` — arg 3 is `new`.
+        (
+            "mock.patch.object(Service, 'run', fake_run)",
+            "mock.patch.object(Service, 'run')",
+        ),
+    ],
+)
+def test_positional_replacement_is_exempt_but_its_absence_is_flagged(exempt: str, flagged: str):
+    template = """
+from unittest import mock
+
+def test_thing():
+    assert {call}
+"""
+    assert _check(template.format(call=exempt)) == []
+    assert len(_check(template.format(call=flagged))) == 1
+
+
+def test_star_args_forwarding_is_exempt():
+    # `*args` may carry the positional `new`; the arity is unknown, so decline
+    # to guess rather than emit a probable FP — the `**kwargs` policy, mirrored.
+    src = """
+from unittest import mock
+
+def test_thing(args):
+    assert mock.patch(*args)
+"""
+    assert _check(src) == []
+
+
+def test_decorator_form_with_a_positional_replacement_is_exempt():
+    src = """
+from unittest.mock import patch
+
+@patch("black.dump_to_file", dump_to_stderr)
+def test_thing(self):
+    assert True
+"""
+    assert _check(src) == []
+
+
+# --------------------------------------------------------------------------- #
+# FP guard: a double that is only called and introspected is a stub function / #
+# call recorder — there is no collaborator type for `spec=` to name.           #
+# --------------------------------------------------------------------------- #
+
+
+def test_call_recorder_is_exempt():
+    src = """
+from unittest import mock
+
+def test_thing():
+    validate_stub = mock.MagicMock()
+    validate_stub('A', 'pre')
+    validate_stub.assert_called_once_with('A', 'pre')
+    validate_stub.reset_mock()
+    assert validate_stub.call_args_list
+"""
+    assert _check(src) == []
+
+
+def test_recorder_that_is_never_called_is_still_flagged():
+    # The opposite case: a double merely bound and handed around is a stand-in
+    # for an object, and production code can attribute-access it unseen.
+    src = """
+from unittest import mock
+
+def test_thing():
+    dbsession = mock.MagicMock()
+    assert dbsession is not None
+"""
+    assert len(_check(src)) == 1
+
+
+def test_recorder_read_back_through_a_domain_attribute_is_still_flagged():
+    src = """
+from unittest import mock
+
+def test_thing():
+    session = mock.MagicMock()
+    session('ping')
+    session.close()
+"""
+    assert len(_check(src)) == 1
+
+
+# --------------------------------------------------------------------------- #
+# FP guard: an `except ImportError` stand-in has nothing importable to spec.   #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("caught", ["ImportError", "ModuleNotFoundError", "(ImportError, OSError)"])
+def test_import_failure_stand_in_is_exempt(caught: str):
+    src = f"""
+from unittest import mock
+
+try:
+    import uvloop
+except {caught}:
+    uvloop = mock.Mock()
+"""
+    assert _check(src) == []
+
+
+def test_stand_in_for_a_non_import_failure_is_still_flagged():
+    src = """
+from unittest import mock
+
+try:
+    backend = load_backend()
+except ValueError:
+    backend = mock.Mock()
+"""
+    assert len(_check(src)) == 1
+
+
+def test_mock_outside_the_import_handler_is_still_flagged():
+    src = """
+from unittest import mock
+
+try:
+    import uvloop
+except ImportError:
+    uvloop = mock.Mock()
+
+def test_thing():
+    assert mock.Mock()
+"""
+    assert len(_check(src)) == 1
+
+
+# --------------------------------------------------------------------------- #
 # FP guard: the name is only trusted when a unittest.mock import backs it.     #
 # This is what keeps hand-rolled MockFoo/Mock doubles out of the results.      #
 # --------------------------------------------------------------------------- #

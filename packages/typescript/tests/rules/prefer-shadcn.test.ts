@@ -20,6 +20,12 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("prefer-shadcn", rule, {
   valid: [
+    // FP guard, corpus: react-router/packages/react-router/__tests__/dom/data-browser-router-test.tsx:1415
+    // — the smallest DOM that makes a router assertion reachable, not a UI.
+    {
+      code: 'const el = <input name="test" value="value" />;',
+      filename: "/repo/packages/x/__tests__/dom/data-browser-router-test.tsx",
+    },
     // shadcn primitives — the prescribed components.
     { code: "const x = <Input value='' onChange={() => {}} />;" },
     { code: "const x = <Select><option /></Select>;" },
@@ -34,6 +40,12 @@ ruleTester.run("prefer-shadcn", rule, {
     { code: "const x = <input type='hidden' value='x' />;" },
   ],
   invalid: [
+    // Real screens still fire.
+    {
+      code: 'const el = <input name="q" />;',
+      filename: "/repo/src/app/search/page.tsx",
+      errors: [{ messageId: "preferShadcn" }],
+    },
     {
       code: "const x = <input type='text' />;",
       errors: [

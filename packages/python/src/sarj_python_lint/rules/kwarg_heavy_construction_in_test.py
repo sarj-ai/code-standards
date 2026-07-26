@@ -36,7 +36,13 @@ Deliberately NOT flagged:
 * positional arguments — a call with many positionals is a different smell, and
   ruff's own rules already discourage it,
 * `dict(...)` and literal dict displays — those are data, not a domain object,
-  and naming their keys is the point rather than the problem.
+  and naming their keys is the point rather than the problem,
+* `<mapping>.update(...)` — the same data case one call further on. The keywords
+  are mapping entries being spread, not constructor fields, so there is no
+  object for a builder to build. A 2,657-file third-party sweep produced 14
+  findings and the widest of them (29 keywords) was rich's
+  `table.box.__dict__.update(top_left="a", top="b", ...)`, which relabels box
+  characters wholesale.
 """
 
 from __future__ import annotations
@@ -56,6 +62,10 @@ _MAX_KEYWORDS = 8
 
 # `dict(a=1, b=2, ...)` is a mapping literal, not a domain object.
 _DATA_CALLABLES = frozenset({"dict"})
+
+# `<mapping>.update(a=1, b=2, ...)` spreads mapping entries — data again, and no
+# object a builder could construct.
+_DATA_METHODS = frozenset({"update"})
 
 
 class KwargHeavyConstructionInTest(Rule):
@@ -141,4 +151,6 @@ class _KwargHeavyVisitor(ast.NodeVisitor):
 
 
 def _is_data_callable(func: ast.expr) -> bool:
-    return isinstance(func, ast.Name) and func.id in _DATA_CALLABLES
+    if isinstance(func, ast.Name):
+        return func.id in _DATA_CALLABLES
+    return isinstance(func, ast.Attribute) and func.attr in _DATA_METHODS

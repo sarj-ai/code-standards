@@ -37,6 +37,42 @@ Also NOT flagged (famous-repo sweep hardening):
 - step narration that carries a rationale marker (`because`, `since`,
   `so that`, `otherwise`) — "First, take the lock, because ..." is a *why*.
 
+Not flagged either (2,657-file sweep of fastapi/pydantic/black/sqlmodel/rich/
+flask/httpx/requests/anyio — 745 findings triaged, 404 were false positives):
+- `# insert_assert(...)`, the pytest-examples code-regeneration recipe. 383
+  hits, every one in pydantic (`pydantic/tests/test_types.py:180` and 239
+  identical siblings), always parked directly above the assertion it writes.
+  `insert_assert` is never *called* anywhere in that repo — the comment exists
+  to be uncommented, so "delete it, git history remembers" is advice about a
+  line git never held.
+- Every line of an announced snippet block: a colon-terminated prose lead-in
+  (`# Original implementation:`) arms the rest of its contiguous comment run.
+  Judging lines one at a time saw only the row directly above and missed the
+  announcement — `flask/src/flask/helpers.py:343` is separated from its lead-in
+  by a blank `#`, `black/src/black/comments.py:621` indents a second snippet
+  row under the first, and `black/src/black/linegen.py:1862-1871` interleaves
+  four `with`-statement grammar examples with `#     ...` rows. 8 hits. A bare
+  block keyword (`# else:`) arms nothing: it announces nothing, it *is*
+  commented-out code — `pydantic/pydantic/v1/mypy.py:895` stays flagged.
+- Narration markers on a line whose predecessor ends mid-sentence — the tail of
+  a wrapped prose comment, whose *why* sits in the rows above. 14 hits,
+  including `pydantic/pydantic/json_schema.py:1046` (the whole comment is
+  `# for now`, continuing two rows of explanation) and
+  `black/src/black/concurrency.py:79` ("I know it's / not ideal, but ..."). A
+  blank `#` ends the paragraph, so it continues nothing.
+- A leading comment block with no letter in it at all — line art, not a
+  preamble a module docstring could absorb. 1 hit: the requests logo at
+  `requests/src/requests/__init__.py:1`.
+
+Deliberately still flagged, after reading the sources: `# debug(v)`
+(pydantic-core, 37 hits) is a commented-out print-debugging call, not a
+regeneration recipe; fastapi's `# ====...` test-section rules (88 hits) and
+pydantic's `# ~~~ BOOLEAN TYPES ~~~` (33 hits) are the very banners this rule
+exists to remove; and keyword-argument-shaped labels (`# tls=True`,
+`anyio/src/anyio/_core/_sockets.py:101`) keep firing because exempting the
+no-space-around-`=` shape would have taken 9 genuinely dead lines with it
+(`pydantic-core/tests/validators/test_url.py:1165-1167`) to spare 6 labels.
+
 Suppress an intentional case with `# sarj-noqa: SARJ016 — <reason>`.
 """
 
@@ -111,6 +147,21 @@ _ASSIGN_OR_CALL_RE = re.compile(r"^[A-Za-z_][\w.\[\]]*\s*(?:=|:=|\+=|-=|\*=|/=)\
 # `...`). Real commented-out code doesn't carry these — they mark an
 # illustration inside a doc comment, not a line that was once executed.
 _PSEUDOCODE_RE = re.compile(r"%[^%\s]+%|\[opt\]|<[^<>]+>|\.\.\.")
+
+# Code-regeneration recipes: a commented-out call that exists *to be
+# uncommented*, at which point the tool rewrites the file around it.
+# `insert_assert(...)` (pytest-examples / devtools) sits directly above the
+# assertion it generates; "delete it, git history remembers" is wrong advice
+# because git never held it.
+_CODE_REGEN_CALL_RE = re.compile(r"^insert_assert\s*\(")
+
+# Any letter, in any script. A leading comment block without a single one is
+# line art (requests' logo), not a header preamble a docstring could replace.
+_HAS_LETTER_RE = re.compile(r"[^\W\d_]")
+
+# Sentence-final punctuation. A comment line whose predecessor lacks it is the
+# wrapped tail of one sentence, not a standalone claim about the code.
+_SENTENCE_END_RE = re.compile(r"""[.!?:;)\]}"'`]$""")
 
 # Step-narration lead-ins ("First, ...", "Then, ...", "Finally, ...", "Step 2:").
 # A trailing comma/colon is required so English adverbs ("finally the invariant
@@ -194,6 +245,40 @@ def _doctest_block_lines(standalone: Sequence[tuple[int, int, str]]) -> set[int]
     return exempt
 
 
+def _illustration_block_lines(standalone: Sequence[tuple[int, int, str]]) -> set[int]:
+    """Collect the lines of every embedded-snippet block inside a comment run.
+
+    A colon-terminated prose line (`# Original implementation:`) announces a
+    snippet, and everything after it in the same contiguous comment run is that
+    snippet until plain prose resumes. Judging those lines one at a time misses
+    the announcement two rows up — flask's `# Original implementation:` is
+    separated from its snippet by a blank `#`, and black's f-string grammar
+    notes indent a second snippet row under the first.
+
+    A bare block keyword (`# else:`) is excluded: it announces nothing, it *is*
+    commented-out code.
+
+    Returns:
+        The line numbers belonging to an announced snippet block.
+
+    """
+    exempt: set[int] = set()
+    armed = False
+    prev_line: int | None = None
+    for line, _, body in sorted(standalone):
+        if prev_line is not None and line != prev_line + 1:
+            armed = False
+        prev_line = line
+        if not body:
+            continue
+        if _is_prose_line(body):
+            armed = body.endswith(":") and not _CODE_HEADER_RE.match(body)
+            continue
+        if armed:
+            exempt.add(line)
+    return exempt
+
+
 def _is_directive(body: str) -> bool:
     low = body.lower()
     for prefix in _DIRECTIVE_PREFIXES:
@@ -206,7 +291,23 @@ def _is_directive(body: str) -> bool:
     return False
 
 
-def _is_redundant_narration(body: str) -> bool:
+def _is_sentence_continuation(prev_body: str | None) -> bool:
+    """Report whether the previous comment line leaves a sentence unfinished.
+
+    Narration is judged one line at a time, but a wrapped prose comment is one
+    thought spread over several rows. When the row above ends mid-sentence this
+    row is its tail (`# for now`, `# both ways for now.`) — the *why* lives in
+    the rows above, and flagging the tail points at a fragment. A blank `#`
+    ends the paragraph, so it does not continue anything.
+
+    Returns:
+        True when this line continues the previous comment line's sentence.
+
+    """
+    return bool(prev_body) and not _SENTENCE_END_RE.search(prev_body)
+
+
+def _is_redundant_narration(body: str, prev_body: str | None) -> bool:
     """Whether a comment merely narrates the code (step markers, meta-commentary).
 
     Returns:
@@ -218,6 +319,8 @@ def _is_redundant_narration(body: str) -> bool:
         return False
     if _RATIONALE_RE.search(c):
         return False  # "First, take the lock, because ..." carries a why
+    if _is_sentence_continuation(prev_body):
+        return False
     return bool(_STEP_NARRATION_RE.search(c) or _META_COMMENTARY_RE.search(c))
 
 
@@ -334,9 +437,9 @@ class NoCommentCruft(Rule):
             return []
         diags: dict[int, Diagnostic] = {}
         by_line = {line: body for line, _, body in standalone}
-        doctest_lines = _doctest_block_lines(standalone)
+        skip = _doctest_block_lines(standalone) | _illustration_block_lines(standalone)
         for line, col, body in standalone:
-            if _is_directive(body) or _is_coding_cookie(body) or line in doctest_lines:
+            if _is_directive(body) or _is_coding_cookie(body) or line in skip:
                 continue
             prev_body = by_line.get(line - 1)
             msg = self._classify(body, prev_body)
@@ -347,6 +450,8 @@ class NoCommentCruft(Rule):
 
     @staticmethod
     def _classify(body: str, prev_body: str | None) -> str | None:
+        if _CODE_REGEN_CALL_RE.match(body):
+            return None
         if _is_banner(body):
             if _is_heading_underline(body, prev_body):
                 return None
@@ -355,7 +460,7 @@ class NoCommentCruft(Rule):
             if prev_body is not None and _is_prose_line(prev_body):
                 return None
             return "Commented-out code — delete it; git history remembers."
-        if _is_redundant_narration(body):
+        if _is_redundant_narration(body, prev_body):
             return "Comment narrates the code — delete it or say why, not what. Code is self-documenting."
         return None
 
@@ -381,6 +486,8 @@ class NoCommentCruft(Rule):
             prev_line = line
         if any(_LICENSE_RE.search(body) for _, _, body in leading):
             return
+        if not any(_HAS_LETTER_RE.search(body) for _, _, body in leading):
+            return  # line-art logo, not prose a module docstring could carry
         if len(leading) >= _LEADING_PREAMBLE_MIN:
             line, col, _ = leading[0]
             if line not in diags:

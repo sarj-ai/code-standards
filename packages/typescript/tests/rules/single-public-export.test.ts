@@ -12,6 +12,12 @@ const ruleTester = new RuleTester();
 
 ruleTester.run("single-public-export", rule, {
   valid: [
+    // FP guard, corpus: react-router/packages/react-router/__tests__/server-runtime/utils.ts:20
+    // — a suite's shared helper module is `utils.ts` by convention.
+    {
+      code: "export function mockServerBuild(routes) { return routes; }",
+      filename: "/repo/packages/x/__tests__/server-runtime/utils.ts",
+    },
     // Non-junk-drawer stem: informative name is never flagged even with one export.
     {
       filename: "src/user-service.ts",

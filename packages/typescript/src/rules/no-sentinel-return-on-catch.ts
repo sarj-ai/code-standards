@@ -25,14 +25,21 @@
  *   - the typed-optional / safe-parse / predicate shape: the try body returns an
  *     expression whose subtree contains a parse-style call that throws on bad
  *     input (`JSON.parse(x)`, `new URL(s).protocol === "https:"`, or a lone
- *     `await request.json()`), or the enclosing function is a declared predicate
- *     (`: boolean`) or returns the same sentinel kind on a normal path. Here the
- *     sentinel is the declared contract.
+ *     `await request.json()`), or the enclosing function is a predicate — either
+ *     declared (`: boolean`) or NAMED as one (`isDirectory`, `fileExists`) — or
+ *     returns the same sentinel kind on a normal path, including through a
+ *     ternary (`return valid ? value : false`). Here the sentinel is the
+ *     declared contract.
  *
- * The predicate exemption is deliberately limited to a declared `boolean` return
- * type. A declared `T | null` / `T | undefined` return does NOT exempt: hiding a
+ * The predicate exemption is deliberately limited to a `boolean` result. A
+ * declared `T | null` / `T | undefined` return does NOT exempt: hiding a
  * failure behind a nullable accessor is the exact true positive this rule
  * exists for, and exempting it would gut the rule.
+ *
+ * The last two clauses came out of a 2026-07 corpus sweep (2220 files across
+ * zod / TanStack Query / react-router / swr / zustand) in which the rule fired
+ * 10 times and every hit was a false positive — see `PREDICATE_NAME_RE` and
+ * `returnedSentinelKinds` for the per-family evidence.
  *
  * Scope: this rule owns the `CatchClause` (try/catch) form ONLY. The same
  * swallow written in promise form — `await load().catch(() => [])` — is owned
@@ -387,6 +394,69 @@ function enclosingReturnTypeNode(
 }
 
 /**
+ * Function names that declare a boolean contract as clearly as a `: boolean`
+ * annotation does. TypeScript INFERS the return type of
+ * `async function isDirectory(d: string) { try { … } catch { return false } }`,
+ * so demanding the annotation made the predicate exemption depend on a style
+ * choice rather than on the contract.
+ *
+ * Corpus evidence (2220 files across zod / TanStack Query / react-router / swr /
+ * zustand, 2026-07): 7 of the rule's 10 hits were unannotated predicates —
+ * `react-router/packages/create-react-router/utils.ts:196-202` (`directoryExists`),
+ * `:205-211` (`fileExists`), and
+ * `react-router/packages/react-router/lib/rsc/server.rsc.ts:1501-1507`
+ * (`isClientReference`). `false` is the ANSWER those functions exist to give;
+ * there is no richer value a caller could have received.
+ */
+const PREDICATE_NAME_RE = /^(is|has|can|should|must|does|did|was|were|are)[A-Z]/;
+const PREDICATE_SUFFIX_RE = /(Exists?|Available|Enabled|Disabled)$/;
+
+/** The name of the nearest enclosing function, or null for an anonymous one. */
+function enclosingFunctionName(node: TSESTree.Node): string | null {
+  let current: TSESTree.Node | undefined | null = node.parent;
+  while (current !== undefined && current !== null) {
+    if (isFunctionNode(current)) {
+      if (
+        "id" in current &&
+        isNode(current.id) &&
+        current.id.type === AST_NODE_TYPES.Identifier
+      ) {
+        return current.id.name;
+      }
+      const parent = current.parent;
+      if (
+        parent?.type === AST_NODE_TYPES.VariableDeclarator &&
+        parent.id.type === AST_NODE_TYPES.Identifier
+      ) {
+        return parent.id.name;
+      }
+      return null;
+    }
+    current = current.parent;
+  }
+  return null;
+}
+
+/**
+ * True when the enclosing function's NAME declares it a predicate and the catch
+ * returns a boolean. Same reasoning as `isDeclaredBooleanPredicate`, applied to
+ * the (very common) unannotated spelling.
+ */
+function isNamedBooleanPredicate(
+  catchNode: TSESTree.CatchClause,
+  kind: SentinelKind,
+): boolean {
+  if (kind !== "boolean") {
+    return false;
+  }
+  const name = enclosingFunctionName(catchNode);
+  return (
+    name !== null &&
+    (PREDICATE_NAME_RE.test(name) || PREDICATE_SUFFIX_RE.test(name))
+  );
+}
+
+/**
  * True when the enclosing function is a DECLARED predicate — annotated
  * `: boolean` (or `: Promise<boolean>`) — and the catch returns `false`. A
  * boolean return type cannot carry error information at all, so "return a typed
@@ -475,8 +545,52 @@ function functionReturnsSameSentinelKindElsewhere(
     if (isWithin(current, catchNode.body)) {
       return false;
     }
-    return sentinelKind(current.argument) === kind;
+    return returnedSentinelKinds(current.argument).has(kind);
   });
+}
+
+/**
+ * The sentinel kinds a returned expression can evaluate to. A bare sentinel
+ * yields one; a ternary or a `??` / `||` fallback yields the kinds of its
+ * branches, because `return valid ? value : false` puts `false` on a NORMAL
+ * path just as plainly as `return false` does.
+ *
+ * Corpus evidence (2026-07 sweep): the remaining 3 of the rule's 10 hits were
+ * this spelling —
+ * `react-router/packages/react-router/lib/server-runtime/crypto.ts:30`
+ * (`return valid ? value : false;` on the happy path, then `return false` in the
+ * catch for an unparseable signature) and
+ * `react-router/scripts/utils/git.ts:12` (`return typeof parsed.version ===
+ * "string" ? parsed.version : null`). In both, the catch sentinel is the value
+ * the function already documents for "no result", so it hides nothing.
+ */
+function returnedSentinelKinds(
+  arg: TSESTree.Expression | null,
+): ReadonlySet<SentinelKind> {
+  const kinds = new Set<SentinelKind>();
+  if (arg === null) {
+    return kinds;
+  }
+  const direct = sentinelKind(arg);
+  if (direct !== null) {
+    kinds.add(direct);
+    return kinds;
+  }
+  if (arg.type === AST_NODE_TYPES.ConditionalExpression) {
+    for (const branch of [arg.consequent, arg.alternate]) {
+      for (const nested of returnedSentinelKinds(branch)) {
+        kinds.add(nested);
+      }
+    }
+  } else if (
+    arg.type === AST_NODE_TYPES.LogicalExpression &&
+    (arg.operator === "??" || arg.operator === "||")
+  ) {
+    for (const nested of returnedSentinelKinds(arg.right)) {
+      kinds.add(nested);
+    }
+  }
+  return kinds;
 }
 
 /** Is `node` inside `ancestor`'s subtree? */
@@ -578,6 +692,10 @@ export default ESLintUtils.RuleCreator(
         }
 
         const kind = sentinelKind(last.argument);
+        if (kind !== null && isNamedBooleanPredicate(node, kind)) {
+          return;
+        }
+
         if (kind !== null && isDeclaredBooleanPredicate(node, kind)) {
           return;
         }

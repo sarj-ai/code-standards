@@ -11,8 +11,8 @@ silently renames every test id.
 
 Fires when ALL of these hold:
 
-* the file is a test file, and the decorator is `@pytest.mark.parametrize` (or a
-  bare `parametrize` imported from pytest),
+* the file is a test file, and the call sits **in a decorator list** and is
+  `@pytest.mark.parametrize` (or a bare `parametrize` imported from pytest),
 * the decorator does **not** pass `ids=` — one `ids=` covers the whole table, so
   its presence exempts every case,
 * and **every** column of the case is opaque to pytest's id generation: a
@@ -40,6 +40,23 @@ Deliberately NOT flagged:
 
 * scalar cases — strings, numbers, booleans, `None`, and enum members all
   generate readable ids on their own,
+* **a call to a builtin scalar constructor.** pytest's `_idval` renders the
+  *runtime value*, so `float('nan')` reports as `nan`, `int(1e10)` as
+  `10000000000`, and `type(None)` as `NoneType` (anything with a `__name__` is
+  named by it). Treating every `Call` as opaque flagged 8 tables in the
+  third-party sweep that name themselves perfectly:
+  `pydantic/tests/test_validators.py:249` (`[float('nan'), float('inf')]`),
+  `pydantic/tests/test_types.py:2823` and `:5267` (`(None, type(None))`),
+  `pydantic/pydantic-core/tests/validators/test_int.py:34`, `:181`, `:248`,
+  `.../test_float.py:74` and `.../test_decimal.py:178`. `str`, `bytes`, `int`,
+  `float`, `bool`, `complex`, `type` and `re.compile` are the constructors
+  pytest can always name; `dict(...)`, `Decimal(...)`, `datetime(...)` and every
+  other factory still degenerate to `case0`,
+* **a `parametrize(...)` call outside a decorator list.** `is_test_path` accepts
+  everything under `tests/`, which sweeps in formatter fixtures:
+  `black/tests/data/cases/split_delimiter_comments.py:14` and `:41` contain a
+  top-level `parametrize(({}, {}), ({}, {}))` expression that is input data for
+  black, not a pytest table. Requiring decorator position removed both,
 * any table carrying a decorator-level `ids=`, whether a list or a callable,
 * a case already wrapped in `pytest.param(..., id="...")`,
 * `parametrize` whose values argument is a name or a call rather than an inline
@@ -67,7 +84,14 @@ _PARAM = "param"
 # Node kinds pytest cannot render into a readable test id.
 _OPAQUE_NODES = (ast.Dict, ast.Set, ast.DictComp, ast.SetComp, ast.ListComp, ast.GeneratorExp, ast.Call)
 
+# Constructors whose result pytest's `_idval` always renders: the scalar types
+# it stringifies, plus `type` and `re.compile`, whose results carry a `__name__`
+# / a `.pattern` that pytest reads instead.
+_NAMEABLE_CONSTRUCTORS = frozenset({"str", "bytes", "int", "float", "bool", "complex", "type", "compile"})
+
 _VALUES_ARG_INDEX = 1
+
+_DECORATED_NODES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 
 
 class ParametrizeCaseNeedsId(Rule):
@@ -114,8 +138,8 @@ def _tables_with_unnameable_cases(tree: ast.Module) -> list[tuple[ast.Call, int]
     # resolves every case at once, so per-case reporting would be N copies of
     # one fix and would bury a large table's other diagnostics.
     hits: list[tuple[ast.Call, int]] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call) or not _is_parametrize(node.func):
+    for node in _decorator_calls(tree):
+        if not _is_parametrize(node.func):
             continue
         if _has_keyword(node, "ids") or len(node.args) <= _VALUES_ARG_INDEX:
             continue
@@ -126,6 +150,25 @@ def _tables_with_unnameable_cases(tree: ast.Module) -> list[tuple[ast.Call, int]
         if count:
             hits.append((node, count))
     return hits
+
+
+def _decorator_calls(tree: ast.Module) -> list[ast.Call]:
+    """Collect every call used as a decorator, in source order.
+
+    A `parametrize(...)` anywhere else is not applied to a test — in a formatter
+    fixture it is not even pytest's `parametrize`.
+
+    Returns:
+        The decorator calls of every function, method and class in the module.
+
+    """
+    return [
+        dec
+        for node in ast.walk(tree)
+        if isinstance(node, _DECORATED_NODES)
+        for dec in node.decorator_list
+        if isinstance(dec, ast.Call)
+    ]
 
 
 def _is_parametrize(func: ast.expr) -> bool:
@@ -160,4 +203,14 @@ def _is_opaque_value(value: ast.expr) -> bool:
     # all-opaque case degenerates to `case0`.
     if isinstance(value, ast.Tuple):
         return bool(value.elts) and all(_is_opaque_value(elt) for elt in value.elts)
+    if isinstance(value, ast.Call) and _builds_a_nameable_value(value.func):
+        return False
     return isinstance(value, _OPAQUE_NODES)
+
+
+def _builds_a_nameable_value(func: ast.expr) -> bool:
+    # `float('nan')` -> `nan`, `type(None)` -> `NoneType`: pytest renders the
+    # value these produce, so the case names itself after all.
+    if isinstance(func, ast.Attribute):
+        return func.attr in _NAMEABLE_CONSTRUCTORS
+    return isinstance(func, ast.Name) and func.id in _NAMEABLE_CONSTRUCTORS

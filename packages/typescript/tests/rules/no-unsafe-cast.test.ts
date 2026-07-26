@@ -17,6 +17,16 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("no-unsafe-cast", rule, {
   valid: [
+    // FP guard, corpus: query/packages/preact-query/src/__tests__/HydrationBoundary.test.tsx:401
+    // — a fixture hands the subject a deliberately partial value to drive a branch.
+    {
+      code: "const el = <HydrationBoundary state={{} as any} />;",
+      filename: "/repo/src/__tests__/HydrationBoundary.test.tsx",
+    },
+    {
+      code: "const store = createStore(fn as unknown as Store);",
+      filename: "/repo/tests/devtools.test.ts",
+    },
     { code: "const x = { a: 1 } as const;" },
     { code: "const x = value as SpecificType;" },
     { code: "const x = value satisfies SomeType;" },
@@ -26,6 +36,12 @@ ruleTester.run("no-unsafe-cast", rule, {
     { code: "const x = value as unknown;" },
   ],
   invalid: [
+    // The guard is path-scoped only: production code still fires.
+    {
+      code: "const x = y as any;",
+      filename: "/repo/src/lib/thing.ts",
+      errors: [{ messageId: "asAny" }],
+    },
     {
       code: "const x = value as any;",
       errors: [{ messageId: "asAny" }],

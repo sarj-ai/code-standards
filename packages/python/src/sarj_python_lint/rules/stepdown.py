@@ -26,6 +26,19 @@ Never fires on:
 - Public defs and private top-level classes (declarations, not helpers).
 - Unused helpers (no same-scope caller).
 - Helpers with two or more same-scope callers (no canonical stepdown target).
+- Helpers whose sole caller is a CLASS. A class is a scope, not a call site:
+  the real caller is a method inside it, and no module-level position sits
+  "directly below" that method — the helper would land after the class's
+  closing line, which for a large class is hundreds of lines past the
+  reference (`fastapi/routing.py:214`, `_wrap_gen_lifespan_context`, whose
+  only "caller" is `APIRouter` spanning lines 2219-6405). Collapsing a whole
+  class into one caller also hides genuine multi-caller ambiguity —
+  `pydantic/_internal/_generate_schema.py:286` is referenced from three
+  different `GenerateSchema` methods yet counted once, exactly the arbitrary
+  "below which caller?" case this rule excludes elsewhere. Classes still
+  COUNT as callers, so a helper shared by a class and a function stays
+  suppressed as multi-caller (31 corpus hits removed, e.g.
+  `httpx/_models.py:67`, `rich/console.py:505`, `requests/adapters.py:85`).
 - Mutual / indirect / two-node recursion — cycles have no valid stepdown order.
 - Names that are position-pinned by an import-time / class-creation-time
   reference: module-level statements, decorator lists, default arguments,
@@ -195,6 +208,8 @@ def _flag_if_above_single_caller(
     if len(callers) != 1:
         return []
     (caller,) = callers
+    if isinstance(defs[caller], ast.ClassDef):
+        return []
     if _reaches(graph, name, caller):
         return []
     if node.lineno >= defs[caller].lineno:
