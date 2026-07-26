@@ -17,11 +17,13 @@ from sarj_python_lint.rules.no_cors_wildcard_with_credentials import (
     NoCorsWildcardWithCredentials,
 )
 from sarj_python_lint.rules.no_fat_try_blocks import NoFatTryBlocks
+from sarj_python_lint.rules.no_file_level_escape_hatch_noqa import NoFileLevelEscapeHatchNoqa
 from sarj_python_lint.rules.no_file_level_suppression import NoFileLevelSuppression
 from sarj_python_lint.rules.no_first_party_private_import import (
     NoFirstPartyPrivateImport,
 )
 from sarj_python_lint.rules.no_fstring_in_log import NoFstringInLog
+from sarj_python_lint.rules.no_gen_random_uuid_in_sql import NoGenRandomUuidInSql
 from sarj_python_lint.rules.no_isinstance_union_chain import NoIsinstanceUnionChain
 from sarj_python_lint.rules.no_offset_pagination import NoOffsetPagination
 from sarj_python_lint.rules.no_query_with_many_joins import NoQueryWithManyJoins
@@ -33,6 +35,7 @@ from sarj_python_lint.rules.no_select_star import NoSelectStar
 from sarj_python_lint.rules.no_sentinel_return_on_except import NoSentinelReturnOnExcept
 from sarj_python_lint.rules.no_sequential_await import NoSequentialAwait
 from sarj_python_lint.rules.no_sleep_in_test_body import NoSleepInTestBody
+from sarj_python_lint.rules.no_stdlib_logging import NoStdlibLogging
 from sarj_python_lint.rules.no_unreachable_after_terminal import (
     NoUnreachableAfterTerminal,
 )
@@ -126,6 +129,9 @@ REGISTRY: dict[str, type[Rule]] = {
     NoRestatedComment.id: NoRestatedComment,
     RedundantDocstring.id: RedundantDocstring,
     TrailingValueNarration.id: TrailingValueNarration,
+    NoStdlibLogging.id: NoStdlibLogging,
+    NoGenRandomUuidInSql.id: NoGenRandomUuidInSql,
+    NoFileLevelEscapeHatchNoqa.id: NoFileLevelEscapeHatchNoqa,
 }
 
 __all__ = ["REGISTRY"]

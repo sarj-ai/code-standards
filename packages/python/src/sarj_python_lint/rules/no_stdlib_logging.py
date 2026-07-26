@@ -1,0 +1,195 @@
+"""SARJ052: stdlib `logging` imported in application code — the house logger is loguru.
+
+Two logging systems in one process is one system too many. The stdlib logger
+and loguru keep separate handler chains, separate levels and separate sinks, so
+a module that reaches for `logging.getLogger(__name__)` writes to a logger
+nobody configured: its records skip the JSON formatter, skip the Sentry
+breadcrumb integration, skip the PII redaction patcher, and — because the
+stdlib root logger defaults to WARNING with a `lastResort` stderr handler —
+usually vanish in production while looking fine locally. The house convention
+(`ruff.strict.toml` sets `logger-objects = ["loguru.logger"]` so ruff's G-family
+even judges loguru calls) is that `from loguru import logger` is the only
+logger.
+
+Fires on any runtime import of the stdlib logging package:
+`import logging`, `import logging as x`, `import logging.config`,
+`from logging import getLogger`, `from logging.handlers import RotatingFileHandler`.
+
+Deliberately NOT flagged:
+
+* **the loguru bridge.** A module that imports stdlib `logging` *and* loguru is
+  by construction the shim that routes one into the other — an `InterceptHandler`
+  subclassing `logging.Handler`, a `logging.basicConfig` call that installs it,
+  a third-party library's logger being re-pointed. That is the one legitimate
+  reason to touch stdlib logging in a loguru house, and it cannot be written
+  without naming both. Measured across the two production corpora this exemption
+  is exact: bulbul's three sites (`bulbul/__init__.py`, `configure_logging.py`,
+  `agent/main.py`) and noura-be's one (`common/logging.py`) are all bridges, all
+  import loguru, and no other module in either repo imports stdlib logging.
+* **`if TYPE_CHECKING:` imports** — `logging.Logger` as an annotation is a type,
+  not a logger. Nothing is emitted through it.
+* **test files** (`_paths.is_test_path`) — `caplog` is pytest's fixture and it
+  speaks stdlib logging; asserting on a dependency's records is normal.
+* **`scripts/` and `notebooks/`** — one-shot code with no log pipeline to join.
+* **generated files** — they mirror whatever their generator emits.
+
+This is a house-convention rule, not a universal one: a *library* should log
+through stdlib `logging` precisely because it must not impose a sink on its
+callers (trio's three sites are correct for trio). Enable the hook in
+applications, not in libraries.
+
+A genuine exception is suppressed with `# sarj-noqa: SARJ052 — <reason>`.
+"""
+
+from __future__ import annotations
+
+import ast
+from typing import TYPE_CHECKING, final, override
+
+from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._paths import is_generated_source, is_test_path
+
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from pathlib import Path
+
+
+_LOGGING_ROOT = "logging"
+_LOGURU_ROOT = "loguru"
+
+# Directories whose code is one-shot: no long-lived process, no log pipeline.
+_EXEMPT_DIR_NAMES = frozenset({"scripts", "notebooks"})
+
+_MESSAGE = (
+    "stdlib `logging` is not the house logger — use `from loguru import logger`. "
+    "Two logger hierarchies means separate handlers, levels and sinks, so these "
+    "records skip the configured formatter, redaction and error reporting."
+)
+
+
+@final
+class NoStdlibLogging(Rule):
+    """Stdlib `logging` imported in application code — use loguru."""
+
+    id: str = "no-stdlib-logging"
+    code: str = "SARJ052"
+    description: str = (
+        "stdlib `logging` imported outside the loguru bridge — a second logger "
+        "hierarchy with its own handlers, levels and sinks; use loguru."
+    )
+
+    @override
+    def check(self, path: Path, source: str) -> list[Diagnostic]:
+        """Report every runtime stdlib-`logging` import in `source`.
+
+        Returns:
+            The diagnostics, sorted by (line, col).
+
+        """
+        if is_test_path(path) or _EXEMPT_DIR_NAMES.intersection(path.parts) or is_generated_source(source):
+            return []
+        tree = parse_or_none(path, source)
+        if tree is None:
+            return []
+        if _imports_loguru(tree):
+            return []
+        type_only = _type_checking_lines(tree)
+        diags = [
+            Diagnostic(
+                path=path,
+                line=node.lineno,
+                col=node.col_offset + 1,
+                code=self.code,
+                message=_MESSAGE,
+            )
+            for node in _logging_imports(tree)
+            if node.lineno not in type_only
+        ]
+        diags.sort(key=lambda d: (d.line, d.col))
+        return diags
+
+
+def _logging_imports(tree: ast.Module) -> Iterator[ast.Import | ast.ImportFrom]:
+    """Yield every `import logging...` / `from logging... import ...` node.
+
+    Yields:
+        The importing node, once per statement.
+
+    """
+    for node in ast.walk(tree):
+        match node:
+            case ast.Import(names=names) if any(_is_logging_module(alias.name) for alias in names):
+                yield node
+            case ast.ImportFrom(module=str(module), level=0) if _is_logging_module(module):
+                yield node
+            case _:
+                pass
+
+
+def _imports_loguru(tree: ast.Module) -> bool:
+    """Report whether the module imports loguru anywhere.
+
+    A module naming both loggers is the bridge between them — the one shape that
+    has to speak stdlib logging in a loguru house.
+
+    Returns:
+        True when loguru is imported.
+
+    """
+    return any(
+        (isinstance(node, ast.Import) and any(_is_loguru_module(alias.name) for alias in node.names))
+        or (isinstance(node, ast.ImportFrom) and node.module is not None and _is_loguru_module(node.module))
+        for node in ast.walk(tree)
+    )
+
+
+def _type_checking_lines(tree: ast.Module) -> frozenset[int]:
+    """Collect the line numbers of every statement guarded by `if TYPE_CHECKING:`.
+
+    Returns:
+        The 1-based lines that only exist for the type checker.
+
+    """
+    return frozenset(
+        inner.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.If) and _is_type_checking_test(node.test)
+        for stmt in node.body
+        for inner in ast.walk(stmt)
+        if isinstance(inner, ast.stmt)
+    )
+
+
+def _is_type_checking_test(test: ast.expr) -> bool:
+    """Report whether `test` is the conventional `TYPE_CHECKING` guard.
+
+    Returns:
+        True for `TYPE_CHECKING` and `typing.TYPE_CHECKING`.
+
+    """
+    match test:
+        case ast.Name(id="TYPE_CHECKING") | ast.Attribute(attr="TYPE_CHECKING"):
+            return True
+        case _:
+            return False
+
+
+def _is_logging_module(name: str) -> bool:
+    """Report whether a dotted module name is stdlib `logging` or a submodule of it.
+
+    Returns:
+        True for `logging` and `logging.*`.
+
+    """
+    return name == _LOGGING_ROOT or name.startswith(f"{_LOGGING_ROOT}.")
+
+
+def _is_loguru_module(name: str) -> bool:
+    """Report whether a dotted module name is `loguru` or a submodule of it.
+
+    Returns:
+        True for `loguru` and `loguru.*`.
+
+    """
+    return name == _LOGURU_ROOT or name.startswith(f"{_LOGURU_ROOT}.")

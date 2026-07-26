@@ -10,6 +10,7 @@ from sarj_sql_lint.rules.no_limit_offset import NoLimitOffset
 from sarj_sql_lint.rules.no_pg_enum import NoPgEnum
 from sarj_sql_lint.rules.prefer_jsonb import PreferJsonb
 from sarj_sql_lint.rules.prefer_text_over_varchar import PreferTextOverVarchar
+from sarj_sql_lint.rules.prefer_uuidv7_default import PreferUuidv7Default
 
 
 if TYPE_CHECKING:
@@ -25,4 +26,5 @@ REGISTRY: dict[str, type[Rule]] = {
     PreferJsonb.id: PreferJsonb,
     NoLimitOffset.id: NoLimitOffset,
     IndexConcurrently.id: IndexConcurrently,
+    PreferUuidv7Default.id: PreferUuidv7Default,
 }

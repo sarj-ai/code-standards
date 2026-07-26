@@ -18,6 +18,7 @@ uv tool install sarj-sql-lint
 | SARJ106 | `prefer-jsonb`                | `JSON` column type or `::json` cast — use JSONB                              |
 | SARJ107 | `no-limit-offset`             | `OFFSET` keyword — use cursor pagination (`WHERE id > :cursor ... LIMIT n`)  |
 | SARJ108 | `index-concurrently`          | `CREATE INDEX` without `CONCURRENTLY` — locks the table against writes       |
+| SARJ109 | `prefer-uuidv7-default`       | `gen_random_uuid()` (random UUIDv4) — use `uuidv7()` so keys are time-ordered |
 
 All scanning runs over a comment/string/dollar-quote-masked view of the source, so keywords inside `--`/`/* */` comments, `'...'` literals, `$tag$...$tag$` bodies and `"..."` identifiers never match.
 
@@ -46,6 +47,8 @@ Add a `-- sarj-noqa` comment on the offending line to silence a diagnostic; scop
     - id: sarj-prefer-jsonb
       files: '\.sql$'
     - id: sarj-no-limit-offset
+      files: '\.sql$'
+    - id: sarj-prefer-uuidv7-default
       files: '\.sql$'
 ```
 
