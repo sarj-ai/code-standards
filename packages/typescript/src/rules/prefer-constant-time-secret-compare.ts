@@ -80,6 +80,7 @@ const SENTINEL_WORDS = /(^|_)(SENTINEL|EMPTY|NONE|NULL|UNSET|MISSING|PLACEHOLDER
  */
 const SENTINEL_PREFIX_RE =
   /^(skip|sentinel|empty|none|missing|unset|placeholder|dummy|fake|example|noop)[A-Z]/;
+const AST_NODE_TYPE_RE = /^(?:TS|JSX)?[A-Z][A-Za-z]*(?:Signature|Keyword|Expression|Declaration|Element|Literal|Identifier)$/;
 
 /**
  * True when every cased character is upper-case and at least one letter exists —
@@ -94,6 +95,7 @@ const SENTINEL_PREFIX_RE =
  * exists to catch. Defer to the shared secret-name heuristics first.
  */
 function isConstantReference(identifier: string): boolean {
+  if (AST_NODE_TYPE_RE.test(identifier)) return true;
   if (isAuthSecretName(identifier) && !SENTINEL_WORDS.test(identifier)) return false;
   return identifier === identifier.toUpperCase() && /[A-Za-z]/.test(identifier);
 }

@@ -26,6 +26,11 @@ ruleTester.run("prefer-shadcn", rule, {
       code: 'const el = <input name="test" value="value" />;',
       filename: "/repo/packages/x/__tests__/dom/data-browser-router-test.tsx",
     },
+    // Storybook stories are component examples/fixtures, not app screens.
+    {
+      code: 'export const Default = () => <input name="demo" />;',
+      filename: "/repo/src/popover/index.stories.tsx",
+    },
     // shadcn primitives — the prescribed components.
     { code: "const x = <Input value='' onChange={() => {}} />;" },
     { code: "const x = <Select><option /></Select>;" },

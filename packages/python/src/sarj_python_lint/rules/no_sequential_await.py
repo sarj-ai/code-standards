@@ -76,6 +76,8 @@ class NoSequentialAwait(Rule):
     def check(self, path: Path, source: str) -> list[Diagnostic]:
         if _is_test_path(path):
             return []
+        if "await" not in source or "for " not in source:
+            return []
         tree = parse_or_none(path, source)
         if tree is None:
             return []

@@ -235,6 +235,8 @@ class PreferStrEnum(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        if not _has_str_enum_signal(source):
+            return []
         tree = parse_or_none(path, source)
         if tree is None:
             return []
@@ -330,6 +332,22 @@ class PreferStrEnum(Rule):
                 )
             )
         return diags
+
+
+def _has_str_enum_signal(source: str) -> bool:
+    """Cheap source gate for files that cannot contain this rule's triggers.
+
+    Returns:
+        True when the source contains enough lexical signal to justify parsing.
+
+    """
+    has_string_literal = '"' in source or "'" in source
+    if "str" in source and any(name in source.lower() for name in CHOICES_ATTR_NAMES):
+        return True
+    return (
+        has_string_literal
+        and ("==" in source or "!=" in source or "case " in source or "match " in source)
+    )
 
 
 def _cluster_fires(key: str, entry: _ClusterEntry) -> bool:

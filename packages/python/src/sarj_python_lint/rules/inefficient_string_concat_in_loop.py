@@ -67,6 +67,8 @@ class InefficientStringConcatInLoop(Rule):
     def check(self, path: Path, source: str) -> list[Diagnostic]:
         if is_generated_source(source):
             return []
+        if "+" not in source or ("for " not in source and "while " not in source):
+            return []
         tree = parse_or_none(path, source)
         if tree is None:
             return []

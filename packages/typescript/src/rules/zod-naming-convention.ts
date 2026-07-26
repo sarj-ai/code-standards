@@ -49,7 +49,7 @@
 
 import { ESLintUtils, type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
 
-import { isTestFile } from "./_paths.js";
+import { isGeneratedFile, isTestFile } from "./_paths.js";
 import { ZOD_PREFIX_RE, ZOD_SCHEMA_NAME_RE, ZOD_SUFFIX_RE } from "./_zod.js";
 
 type MessageIds = "zPrefix" | "schemaSuffix" | "zodSchemaName";
@@ -172,7 +172,7 @@ export default ESLintUtils.RuleCreator(
     const acceptsSchemaWord = convention !== "prefix";
 
     // Guard (a): a schema declared in a test is a local fixture, not an API.
-    if (isTestFile(context.filename)) {
+    if (isTestFile(context.filename) || isGeneratedFile(context.filename, context.sourceCode.text)) {
       return {};
     }
 

@@ -87,7 +87,7 @@ class Rule(ABC):
         raise NotImplementedError
 
 
-_last_parse: tuple[tuple[str, int, int], ast.Module | None] | None = None
+_last_parse: tuple[str, str, ast.Module | None] | None = None
 
 
 def parse_or_none(path: Path, source: str) -> ast.Module | None:
@@ -98,12 +98,12 @@ def parse_or_none(path: Path, source: str) -> ast.Module | None:
 
     """
     global _last_parse  # ruff:ignore[global-statement] — single-slot memo; the CLI runs rules per file sequentially
-    key = (str(path), len(source), hash(source))
-    if _last_parse is not None and _last_parse[0] == key:
-        return _last_parse[1]
+    path_key = str(path)
+    if _last_parse is not None and _last_parse[0] == path_key and _last_parse[1] is source:
+        return _last_parse[2]
     try:
         tree = ast.parse(source, filename=str(path))
     except SyntaxError:
         tree = None
-    _last_parse = (key, tree)
+    _last_parse = (path_key, source, tree)
     return tree
