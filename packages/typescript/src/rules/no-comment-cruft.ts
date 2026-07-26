@@ -37,10 +37,25 @@
  * hits are real: zod alone carries hundreds of lines of genuinely commented-out
  * code (e.g. zod/packages/zod/src/v4/core/checks.ts:1231-1244, a whole disabled
  * `$ZodCheckTrim` implementation), and those still fire.
+ *
+ * A 2026-07 corpus run of the SHIPPED rule turned up two live false positives,
+ * both fixed here: `REGION_RE` matched the bare word `region`, so prose opening
+ * with it read as a folding marker (six sites, e.g. `// Region centroids for
+ * map_pan.`), and `for now` fired on a ticket-bearing scoping note — a comment
+ * naming where the decision is recorded is doing the one thing code cannot, so
+ * protected-class signal S1 now exempts narration at RUN granularity. The same
+ * pass added `sarj-noqa` to `DIRECTIVE_RE` (this repo's own suppression syntax
+ * was missing, so a suppression comment could itself be flagged) and four
+ * detectors that are all ZERO-hit on bulbul, the repo that runs this rule at
+ * `error`: bare section labels, the `Helper function to …` opener, `Let's
+ * <verb>`, Unicode box-drawing banners, and an ISOLATED numbered/`Phase N:`
+ * marker. JSX-expression comments stay categorically exempt: `{/* Step 1:
+ * Select Patient *\/}` mirrors the literal step labels a wizard renders.
  */
 
 import { AST_NODE_TYPES, ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
 
+import { hasExternalReference, restatableStatementBelow, restatesStatementHead } from "./_comments.js";
 import { isGeneratedFile } from "./_paths.js";
 
 type MessageIds =
@@ -64,8 +79,11 @@ const META_COMMENTARY_RE =
   /\b(?:for now|keeping (?:it|this) simple|could be (?:refactored|improved|cleaned up|simplified)|refactor(?:ed|ing)? (?:later|this)|not sure (?:if|whether|why|how)|quick[- ](?:and[- ]dirty|fix)|(?:a |bit of a )?hacky|is a hack|temporary (?:solution|workaround|fix|hack)|revisit (?:this|later|below)|clean (?:this|it) up|not ideal|placeholder for now)\b/i;
 
 
+// `sarj-noqa` is this repo's own suppression syntax (see `rule_base.py`). It was
+// missing here, so `// sarj-noqa: … — <reason>` on its own line was read as
+// prose and could itself be flagged.
 const DIRECTIVE_RE =
-  /^(eslint\b|eslint-|@ts-|prettier-ignore|prettier\b|biome-|c8\b|v8\b|istanbul\b|@type\b|@vite|webpack|<reference|<amd|global\b|noinspection|todo\b|fixme\b|hack\b|xxx\b)/i;
+  /^(eslint\b|eslint-|sarj-noqa\b|@ts-|prettier-ignore|prettier\b|biome-|c8\b|v8\b|istanbul\b|@type\b|@vite|webpack|<reference|<amd|global\b|noinspection|todo\b|fixme\b|hack\b|xxx\b)/i;
 
 const LICENSE_RE =
   /copyright|licen[cs]ed?|spdx|permission is hereby granted|all rights reserved/i;
@@ -80,8 +98,72 @@ const ENUMERATED_PREAMBLE_MIN_ITEMS = 2;
 
 const BANNER_FULL_RE = /^[\s\-=*#~_+.]{4,}$/;
 // `={4,}` not `={3,}`: `===` is TS strict-equality and appears in prose comments.
-const BANNER_RUN_RE = /={4,}|-{4,}|#{4,}|\*{4,}|~{4,}/;
-const REGION_RE = /^#?(?:end)?region\b/i;
+// `[\u2500-\u257f]` is the Unicode box-drawing block — `────────` is the same
+// section separator as `--------`, and 34 of them were sitting in the corpus
+// under a check that only knew ASCII.
+const BANNER_RUN_RE = /={4,}|-{4,}|#{4,}|\*{4,}|~{4,}|[\u2500-\u257f]{4,}/;
+
+// A VS Code / Visual Studio folding marker: `//#region`, `// region helpers`,
+// `// endregion`. The title must be short and unpunctuated. Matching the bare
+// word alone flagged running prose that merely opens with it — six sites across
+// the corpus, the clearest being
+// demo-gateway/demos/momah-furas-anas/pipeline/matching.py:159 ("region, sector
+// AND facility_type are HARD constraints when the investor names them — …") and
+// its five TypeScript siblings. A marker *names* a region; a sentence discusses
+// one, and a sentence has punctuation (a full stop included — `// Region
+// centroids for map_pan.` is prose) and more than a handful of words.
+const REGION_MARKER_RE = /^#?(?:end)?region\b(.*)$/i;
+const REGION_TITLE_RE = /^[\s:\-\u2013\u2014]*\w[\w \-/&+]*$/;
+const REGION_TITLE_MAX_WORDS = 5;
+
+function isRegionMarker(text: string): boolean {
+  const match = REGION_MARKER_RE.exec(text);
+  if (match === null) return false;
+  const title = (match[1] ?? "").trim();
+  if (title.length === 0) return true;
+  if (!REGION_TITLE_RE.test(title)) return false;
+  return title.split(/\s+/).length <= REGION_TITLE_MAX_WORDS;
+}
+
+// A bare one-word signpost naming a region of the file (`// Types`, `// Main`,
+// `// Helpers`). It is a table of contents for a file that should have been
+// split, and it goes stale silently. 22 corpus hits, 12 of 12 sampled were true
+// positives. Closed vocabulary on purpose: a one-word comment outside this list
+// is far more likely to be a genuine label for a value.
+const SECTION_LABEL_WORDS: ReadonlySet<string> = new Set([
+  "actions", "components", "config", "configuration", "constant", "constants",
+  "enums", "exports", "fixtures", "getters", "globals", "handler", "handlers",
+  "helper", "helpers", "hook", "hooks", "imports", "interfaces", "main",
+  "mocks", "models", "mutations", "props", "queries", "reducers", "routes",
+  "schemas", "selectors", "setters", "setup", "state", "styles", "teardown",
+  "type", "types", "util", "utilities", "utils",
+]);
+const SECTION_LABEL_RE = /^([A-Za-z]+)\s*:?\s*$/;
+
+function isSectionLabel(text: string): boolean {
+  const match = SECTION_LABEL_RE.exec(text);
+  return match !== null && SECTION_LABEL_WORDS.has((match[1] ?? "").toLowerCase());
+}
+
+// "Helper function to check if a path is active" — the opener announces the
+// *category* of the thing below (which its declaration already states) and then
+// restates its name. 6 corpus hits, 6 true positives.
+const HELPER_OPENER_RE = /^(?:a\s+)?helper\s+(?:function|method|component|hook|class|type|util(?:ity)?)\b/i;
+
+// "Let's not await the promise" — the first-person-plural walkthrough voice.
+// Gated on the narration verb list because the third-person `lets` is a
+// different word doing real work: "lets a same-day re-run find the message it
+// already posted" explains a mechanism and must not be touched.
+const LETS_RE =
+  /^let'?s\s+(?:not\s+|just\s+|now\s+|first\s+)?(?:add|append|assign|await|build|calculate|call|check|clear|close|compute|convert|copy|count|create|declare|decrement|define|delete|extract|fetch|filter|find|format|generate|get|handle|increment|init|initialise|initialize|insert|iterate|join|load|log|loop|map|merge|open|parse|print|process|push|read|remove|render|reset|return|save|send|set|setup|sort|split|start|stop|store|update|validate|wrap|write)(?:s|es|ed|ing)?\b/i;
+
+// Enumeration markers that narrate a sequence: `// 1. Load the config`,
+// `// Phase 2: reconcile`. Flagged only when the file carries exactly one — a
+// *run* of them is a documented algorithm walkthrough, which is the kind of
+// comment this rule exists to protect. JSX-expression comments are exempt
+// wholesale (see `isStandalone`): `{/* Step 1: Select Patient */}` mirrors the
+// literal step labels of a UI wizard.
+const ENUMERATION_RE = /^(?:\d+[.)]\s+\S|phase\s+\d+\b)/i;
 
 // An ASCII sequence-diagram arrow. A long rule of dashes that ENDS IN AN ARROW
 // HEAD is drawing a timeline, not separating sections: `req------->res` is the
@@ -122,7 +204,7 @@ function isDirective(text: string): boolean {
 function isBanner(text: string): boolean {
   const t = text.trim();
   if (!t) return false;
-  if (BANNER_FULL_RE.test(t) || REGION_RE.test(t)) return true;
+  if (BANNER_FULL_RE.test(t) || isRegionMarker(t)) return true;
   return BANNER_RUN_RE.test(t) && !DIAGRAM_ARROW_RE.test(t);
 }
 
@@ -182,122 +264,6 @@ function isProse(text: string): boolean {
 //     so the comment must restate what the statement *computes* (its target and
 //     its callee), not merely something it passes as an argument.
 
-const NARRATION_MAX_WORDS = 6;
-const NARRATION_MIN_CONTENT = 1;
-const TOKEN_PLURAL_MIN = 4;
-
-// Statements that compute something a comment could be restating. A block, a
-// class/function/type declaration, an `if`, a `for` — anything whose body the
-// comment could be labelling instead — is deliberately absent.
-const RESTATABLE_STATEMENTS: ReadonlySet<string> = new Set([
-  AST_NODE_TYPES.ExpressionStatement,
-  AST_NODE_TYPES.ReturnStatement,
-  AST_NODE_TYPES.ThrowStatement,
-  AST_NODE_TYPES.VariableDeclaration,
-]);
-
-// Verbs that describe the mechanics of the next statement. A comment opening
-// with anything else (a noun, "because", "we", a ticket id) is not narration.
-const NARRATION_VERB_RE =
-  /^(?:add|append|assign|build|calculate|call|check|clear|close|compute|convert|copy|count|create|declare|decrement|define|delete|extract|fetch|filter|find|format|generate|get|handle|increment|init|initialise|initialize|insert|iterate|join|load|log|loop|make|map|merge|open|parse|print|process|push|read|remove|render|reset|return|save|send|set|setup|sort|split|start|stop|store|update|validate|wrap|write)(?:s|es|d|ed|ing)?$/i;
-
-// Words that carry no information about *which* code the comment describes, so
-// they are not required to appear in the line below.
-const NARRATION_STOPWORDS: ReadonlySet<string> = new Set([
-  "a", "all", "an", "and", "any", "are", "as", "at", "back", "be", "both", "by",
-  "each", "for", "from", "here", "if", "in", "into", "is", "it", "its", "just",
-  "new", "of", "on", "one", "onto", "or", "our", "out", "over", "so", "that",
-  "the", "then", "this", "to", "up", "us", "we", "when", "with",
-]);
-
-/** Lowercase, with a single plural `s` folded away so `users` matches `user`. */
-function normalizeToken(word: string): string {
-  const lower = word.toLowerCase();
-  return lower.length > TOKEN_PLURAL_MIN && lower.endsWith("s") && !lower.endsWith("ss")
-    ? lower.slice(0, -1)
-    : lower;
-}
-
-/** Every identifier in a slice of source, plus its camelCase / snake_case parts. */
-function codeTokens(source: string): ReadonlySet<string> {
-  const tokens = new Set<string>();
-  for (const identifier of source.match(/[A-Za-z_$][\w$]*/g) ?? []) {
-    tokens.add(normalizeToken(identifier));
-    for (const part of identifier.split(/[_$]+|(?<=[a-z0-9])(?=[A-Z])/)) {
-      if (part.length > 0) tokens.add(normalizeToken(part));
-    }
-  }
-  return tokens;
-}
-
-/** The slice of ESLint's `SourceCode` this shape reads. */
-interface StatementReader {
-  getTokenAfter: (
-    node: TSESTree.Comment,
-    options: { includeComments: boolean },
-  ) => TSESTree.Token | null;
-  getNodeByRangeIndex: (index: number) => TSESTree.Node | null;
-  getText: (node: TSESTree.Node) => string;
-}
-
-/** A declaration with nothing but a zero/empty seed computes nothing to restate. */
-function isTrivialInitializer(node: TSESTree.VariableDeclaration): boolean {
-  return node.declarations.every((declarator) => {
-    const init = declarator.init;
-    if (init == null || init.type === AST_NODE_TYPES.Literal) return true;
-    return (
-      (init.type === AST_NODE_TYPES.ArrayExpression && init.elements.length === 0) ||
-      (init.type === AST_NODE_TYPES.ObjectExpression && init.properties.length === 0)
-    );
-  });
-}
-
-/**
- * The source of the single-line statement a comment sits directly above, or null
- * when what follows is a block, a declaration, a type member or anything else
- * the comment could be *labelling* rather than restating.
- */
-function restatableStatementBelow(comment: TSESTree.Comment, sourceCode: StatementReader): string | null {
-  const token = sourceCode.getTokenAfter(comment, { includeComments: false });
-  if (token === null || token.loc.start.line !== comment.loc.end.line + 1) return null;
-  for (
-    let node: TSESTree.Node | undefined | null = sourceCode.getNodeByRangeIndex(token.range[0]);
-    node != null && node.type !== AST_NODE_TYPES.Program;
-    node = node.parent
-  ) {
-    if (!RESTATABLE_STATEMENTS.has(node.type)) continue;
-    if (node.loc.start.line !== token.loc.start.line || node.loc.end.line !== node.loc.start.line) {
-      return null;
-    }
-    if (node.type === AST_NODE_TYPES.VariableDeclaration && isTrivialInitializer(node)) {
-      return null;
-    }
-    return sourceCode.getText(node);
-  }
-  return null;
-}
-
-/**
- * True when a short verb-led comment adds nothing to the statement beneath it:
- * every content word after the opening verb already appears in that statement's
- * head — its assignment target or its callee.
- */
-function restatesNextLine(body: string, statement: string | null): boolean {
-  if (statement === null) return false;
-  const words = body.match(/[A-Za-z][\w$]*/g) ?? [];
-  const opener = words[0];
-  if (opener === undefined || words.length > NARRATION_MAX_WORDS) return false;
-  if (!NARRATION_VERB_RE.test(opener)) return false;
-  const content = words
-    .slice(1)
-    .map(normalizeToken)
-    .filter((word) => !NARRATION_STOPWORDS.has(word));
-  if (content.length < NARRATION_MIN_CONTENT) return false;
-  const head = statement.split("(")[0] ?? statement;
-  const code = codeTokens(head);
-  return content.every((word) => code.has(word));
-}
-
 // A causal connective. `for now` inside a sentence that also states WHY is a
 // justification, not an admission — `// Needed for now since router.fetch is not
 // async until v7` (react-router/.../__tests__/router/lazy-discovery-test.ts:2412,
@@ -327,14 +293,57 @@ function isRedundantNarration(
   body: string,
   statementBelow: string | null,
   standalone: boolean,
+  isolatedEnumeration: boolean,
+  nested: boolean,
 ): boolean {
   const t = body.trim();
   if (!t || looksLikeCode(t) || hasPseudocode(t)) return false;
   if (standalone) {
     if (STEP_NARRATION_RE.test(t)) return true;
     if (META_COMMENTARY_RE.test(t) && !JUSTIFICATION_RE.test(t)) return true;
+    if (HELPER_OPENER_RE.test(t) || LETS_RE.test(t)) return true;
+    if (!nested && isSectionLabel(t)) return true;
+    if (isolatedEnumeration && ENUMERATION_RE.test(t)) return true;
   }
-  return restatesNextLine(t, statementBelow);
+  return restatesStatementHead(t, statementBelow);
+}
+
+// Statement-position containers. A comment whose innermost enclosing node is
+// anything else sits INSIDE an expression — an array, an object literal, a call
+// argument list — where a one-word label groups the elements beneath it rather
+// than signposting the file. `# config` inside pydantic's `__all__` is the
+// Python twin of this; both readings produce the same comment and only the
+// nesting tells them apart.
+const STATEMENT_CONTAINERS: ReadonlySet<string> = new Set([
+  AST_NODE_TYPES.Program,
+  AST_NODE_TYPES.BlockStatement,
+  AST_NODE_TYPES.ClassBody,
+  AST_NODE_TYPES.StaticBlock,
+  AST_NODE_TYPES.SwitchCase,
+  AST_NODE_TYPES.TSModuleBlock,
+  AST_NODE_TYPES.TSInterfaceBody,
+]);
+
+/**
+ * True when the comment at `index` belongs to a contiguous `//` run in which
+ * some line cites a ticket, URL, RFC or issue number (protected-class signal
+ * S1, applied at run granularity).
+ *
+ * A scoping note puts its owner at the end — bulbul's Zoho-canary comment ends
+ * "EN-only for now — add an AR variant once AR audio exists (PROD-249)" — so
+ * judging the last line alone read "for now" as an unowned admission. A comment
+ * that names where the decision is recorded is doing the one thing code cannot.
+ */
+function runCitesAReference(comments: readonly TSESTree.Comment[], index: number): boolean {
+  for (let i = index; i >= 0; i--) {
+    if (i < index && !areAdjacentLineComments(comments[i], comments[i + 1])) break;
+    if (hasExternalReference(stripCommentMarker(comments[i]?.value ?? ""))) return true;
+  }
+  for (let i = index + 1; i < comments.length; i++) {
+    if (!areAdjacentLineComments(comments[i - 1], comments[i])) break;
+    if (hasExternalReference(stripCommentMarker(comments[i]?.value ?? ""))) return true;
+  }
+  return false;
 }
 
 /** True when `a` and `b` are `//` comments on consecutive lines. */
@@ -485,6 +494,9 @@ export default ESLintUtils.RuleCreator(
         const comments = sourceCode.getAllComments();
         const firstCodeLine =
           sourceCode.ast.tokens[0]?.loc.start.line ?? Number.MAX_SAFE_INTEGER;
+        const enumerated = comments.filter(
+          (c) => c.type === "Line" && ENUMERATION_RE.test(stripCommentMarker(c.value)),
+        );
 
         for (let i = 0; i < comments.length; i++) {
           const comment = comments[i];
@@ -518,9 +530,12 @@ export default ESLintUtils.RuleCreator(
             const body = texts[0];
             const statement = restatableStatementBelow(comment, sourceCode);
             const standalone = !isInsideCommentRun(comments, i);
+            const container = sourceCode.getNodeByRangeIndex(comment.range[0]);
+            const nested = container !== null && !STATEMENT_CONTAINERS.has(container.type);
             if (
               body !== undefined &&
-              isRedundantNarration(body, statement, standalone)
+              !runCitesAReference(comments, i) &&
+              isRedundantNarration(body, statement, standalone, enumerated.length === 1, nested)
             ) {
               context.report({ node: comment, messageId: "redundantNarration" });
             }

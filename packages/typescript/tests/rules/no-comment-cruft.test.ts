@@ -12,6 +12,46 @@ const ruleTester = new RuleTester();
 
 ruleTester.run("no-comment-cruft", rule, {
   valid: [
+    // --- region markers vs prose that opens with the word "region" ---
+    // demo-gateway/demos/momah-furas-anas/pipeline/matching.py:159 and five TS
+    // siblings: a prose comment whose first word happens to be "region".
+    {
+      code: "const x = 1;\n// region, sector AND facility_type are HARD constraints when the investor names them\nconst y = 2;",
+    },
+    { code: "const x = 1;\n// region is derived from the caller's IP, which the CDN rewrites\nconst y = 2;" },
+    { code: "const x = 1;\n// regions are resolved lazily\nconst y = 2;" },
+    // A short noun phrase that would pass the title shape if a sentence-final
+    // period were allowed (demo-gateway/.../voice/action/route.ts:1187).
+    { code: "const x = 1;\n// Region centroids for map_pan.\nconst y = 2;" },
+    // --- a ticket/URL turns a scoping note into an owned decision ---
+    { code: "// EN-only for now; add an AR variant once AR audio exists (PROD-249)\nconst langs = ['en'];" },
+    { code: "// hacky — mirrors https://example.com/api/quirk until they fix it\nconst x = 1;" },
+    // The reference may sit on any line of the run (bulbul's Zoho canary puts it
+    // last), so the whole run is exempt.
+    {
+      code: "// Zoho freshness canary: the sink writes Description so Modified_Time advances.\n// EN-only for now (PROD-249).\nconst config = load();",
+    },
+    // A one-word label inside an expression groups the elements beneath it —
+    // the TS twin of `# config` inside pydantic's `__all__`.
+    { code: "export const names = [\n  'a',\n  // config\n  'b',\n];" },
+    // --- one-word comments outside the section-label vocabulary ---
+    { code: "const city = 1;\n// Riyadh\nconst y = 2;" },
+    { code: "const x = 1;\n// idempotent\nconst y = 2;" },
+    // Third-person `lets` is a different word doing real work.
+    { code: "const x = 1;\n// lets a same-day re-run find the message it already posted\nconst y = 2;" },
+    { code: "const x = 1;\n// Lets describeAppointmentWithUser skip the extra round-trip\nconst y = 2;" },
+    // A RUN of enumeration markers is an algorithm walkthrough, not narration.
+    {
+      code: "// 1. Load the config\nconst c = load();\n// 2. Reconcile the rows\nconst r = reconcile(c);\n// 3. Emit\nemit(r);",
+    },
+    // `sarj-noqa` is a directive, not prose.
+    { code: "const x = 1;\n// sarj-noqa: SARJ016 — deliberate\nconst y = 2;" },
+    // JSX-expression comments are categorically exempt: `{/* Step 1: Select
+    // Patient */}` mirrors the literal step labels a wizard renders.
+    {
+      code: "const el = <div>\n  {/* Step 1: Select Patient */}\n  <Picker />\n</div>;",
+      filename: "wizard.tsx",
+    },
     // Prose "why" comment is the legitimate use.
     { code: "// retry because the upstream API is flaky\nconst x = retry();" },
     // Trailing explanatory comment.
@@ -133,6 +173,61 @@ ruleTester.run("no-comment-cruft", rule, {
     },
   ],
   invalid: [
+    // --- region marker shapes still fire ---
+    {
+      code: "const x = 1;\n// region helpers\nconst y = 2;",
+      errors: [{ messageId: "sectionBanner" }],
+    },
+    {
+      code: "const x = 1;\n// endregion\nconst y = 2;",
+      errors: [{ messageId: "sectionBanner" }],
+    },
+    // --- Unicode box-drawing rules are banners too ---
+    {
+      code: "const x = 1;\n// \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst y = 2;",
+      errors: [{ messageId: "sectionBanner" }],
+    },
+    // --- bare section labels ---
+    {
+      code: "const x = 1;\n// Types\ntype Foo = { a: number };",
+      errors: [{ messageId: "redundantNarration" }],
+    },
+    {
+      code: "const x = 1;\n// Helpers\nfunction h() { return 1; }",
+      errors: [{ messageId: "redundantNarration" }],
+    },
+    // --- "Helper function to …" openers ---
+    {
+      code: "const x = 1;\n// Helper function to check if a path is active\nfunction isActive(p) { return p; }",
+      errors: [{ messageId: "redundantNarration" }],
+    },
+    {
+      code: "const x = 1;\n// Helper component for header with tooltip\nfunction Header() { return null; }",
+      errors: [{ messageId: "redundantNarration" }],
+    },
+    // --- first-person-plural walkthrough voice ---
+    {
+      code: "const x = 1;\n// Let's not await the promise\nvoid run();",
+      errors: [{ messageId: "redundantNarration" }],
+    },
+    // --- an ISOLATED enumeration marker is narration ---
+    {
+      code: "const x = 1;\n// 1. Load the config\nconst c = load();",
+      errors: [{ messageId: "redundantNarration" }],
+    },
+    {
+      code: "const x = 1;\n// Phase 2: reconcile\nreconcile();",
+      errors: [{ messageId: "redundantNarration" }],
+    },
+    // --- a standalone non-JSX block comment gets the banner / dead-code checks ---
+    {
+      code: "const x = 1;\n/* const a = 1; */\nconst y = 2;",
+      errors: [{ messageId: "commentedOutCode" }],
+    },
+    {
+      code: "const x = 1;\n/* ================= */\nconst y = 2;",
+      errors: [{ messageId: "sectionBanner" }],
+    },
     // --- The four guards must not become escape hatches ---------------------
     // A separator rule with no arrow head is still a banner (contrast the
     // `req---->res` diagram in `valid`).

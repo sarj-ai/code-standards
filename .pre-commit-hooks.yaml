@@ -58,6 +58,24 @@
   language: python
   types: [python]
 
+- id: sarj-no-restated-comment
+  name: 'sarj-lint: comment restates the statement below it'
+  entry: sarj-python-lint check --rule no-restated-comment
+  language: python
+  types: [python]
+
+- id: sarj-redundant-docstring
+  name: 'sarj-lint: docstring only re-spells the signature'
+  entry: sarj-python-lint check --rule redundant-docstring
+  language: python
+  types: [python]
+
+- id: sarj-trailing-value-narration
+  name: 'sarj-lint: trailing comment restates a literal on the line'
+  entry: sarj-python-lint check --rule trailing-value-narration
+  language: python
+  types: [python]
+
 - id: sarj-no-fstring-in-log
   name: 'sarj-lint: f-string logging message — use structured keyword arguments'
   entry: sarj-python-lint check --rule no-fstring-in-log

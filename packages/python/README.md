@@ -67,6 +67,22 @@ Attribute access (`session._stt`) is out of scope and stays with ruff's
 `SLF001`, which cannot make the distinction either — see the rationale in
 `ruff.strict.toml`.
 
+### Comment-hygiene rules (0.20.0)
+
+From a 37,918-comment, nine-repo measurement study. All three are
+deletion-class, so each was validated against pydantic / trio / attrs as well as
+the maintained repos before shipping — the counts and the false-positive classes
+each guard was built from are recorded in the rule module docstrings.
+
+```yaml
+    - id: sarj-no-restated-comment                 # SARJ049
+    - id: sarj-redundant-docstring                 # SARJ050
+    - id: sarj-trailing-value-narration            # SARJ051
+```
+
+`redundant-docstring` finds real volume on a codebase that has never had it
+(105 in noura-be), so the same baseline ratchet applies.
+
 Adopting these against an existing suite is easier through the baseline ratchet
 than as a big-bang fix — snapshot the current counts, then let them only shrink:
 

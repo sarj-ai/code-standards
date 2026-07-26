@@ -12,9 +12,22 @@ import sarj from "@sarj/eslint-plugin";
 export default [...sarj.configs.recommended];
 ```
 
-41 rules. Each rule's source under `src/rules/` carries its own `@fileoverview` rationale plus `meta.docs.description` + `meta.messages` — read the file for the full reasoning, including the false positives it deliberately does not fire on.
+44 rules. Each rule's source under `src/rules/` carries its own `@fileoverview` rationale plus `meta.docs.description` + `meta.messages` — read the file for the full reasoning, including the false positives it deliberately does not fire on.
 
 Presets: `recommended` (warn-first), `strict` (every rule at error), `style-guide` (formatting/naming subset).
+
+## New in 2.13.0 — the anti-comment-verbosity family
+
+From a 37,918-comment, nine-repo measurement study. All three are
+deletion-class, so each was validated against zod / swr / zustand / TanStack
+Query as well as the maintained repos. Read the `@fileoverview` in each rule for
+the hit counts and the false-positive class every guard was built from.
+
+| Rule | What it catches | Preset |
+|---|---|---|
+| `no-restated-comment` | A single-line comment whose every content word already appears on the statement below it. Defers to `no-comment-cruft` for the verb-led shape, so a comment is never reported twice. | warn / error |
+| `jsdoc-restates-signature` | A JSDoc block whose description and `@param`/`@returns` only re-spell the signature. Offers a delete SUGGESTION, never an auto-`--fix`. | warn / error |
+| `trailing-value-narration` | `staleTime: 5 * 60 * 1000, // 5 minutes` — the unit belongs in the name, where it cannot drift. | warn / error |
 
 ## New in 2.9.0
 

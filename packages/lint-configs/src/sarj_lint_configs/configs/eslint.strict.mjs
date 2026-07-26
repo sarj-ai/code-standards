@@ -309,6 +309,21 @@ const config = [
       // third-party corpus: every hit was the conventional `[value, cursor]`
       // parser idiom, i.e. style rather than defect.
       "@sarj/no-positional-tuple-return": "error",
+
+      // ── anti-comment-verbosity family (2026-07) ─────────────────────────────
+      // From a 37,918-comment, nine-repo measurement study. All three are
+      // deletion-class, so each was validated against pydantic / trio / attrs as
+      // well as the maintained repos: `no-restated-comment` fires 0 times in
+      // bulbul and 4 times across the three famous corpora combined (every one a
+      // genuine `// set_inheritable` over `s1.set_inheritable(False)`);
+      // `trailing-value-narration` 18 hits, 18 true positives, all `staleTime`
+      // and cookie-age lines; `jsdoc-restates-signature` 36 hits and 0 measured
+      // false positives, and it offers a SUGGESTION rather than a `--fix`
+      // because deleting a doc block in bulk is silent information loss if the
+      // judgement is wrong even once.
+      "@sarj/no-restated-comment": "error",
+      "@sarj/jsdoc-restates-signature": "error",
+      "@sarj/trailing-value-narration": "error",
       "@sarj/no-repeated-string-literal": "error",
 
       // Deliberately NOT enabled here — these two are architectural rules that
