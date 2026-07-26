@@ -71,6 +71,12 @@ Suppress an intentional raw-numeric duration with `# sarj-noqa: SARJ014 — <rea
 References:
 - https://docs.python.org/3/library/datetime.html#timedelta-objects
 
+* **generated files** (`_paths.is_generated_source`). Their layout is the
+  generator's, and re-running the generator discards any edit, so a finding
+  there can never be acted on in place. Measured on the 69 `DO NOT EDIT`
+  files git-tracked across bulbul and noura-be — Speakeasy's
+  `python/sdk/src/sarj_platform_sdk/` accounts for all of them.
+
 """
 
 from __future__ import annotations
@@ -80,7 +86,7 @@ import re
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
-from sarj_python_lint.rules._paths import is_test_path
+from sarj_python_lint.rules._paths import is_generated_source, is_test_path
 
 
 if TYPE_CHECKING:
@@ -138,6 +144,8 @@ class PreferTimedeltaForDurations(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        if is_generated_source(source):
+            return []
         if is_test_path(path):
             return []
         tree = parse_or_none(path, source)

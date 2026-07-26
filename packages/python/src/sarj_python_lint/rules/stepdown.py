@@ -58,6 +58,11 @@ Never fires on:
   `_code_str`). Siblings are excluded — an identically-named sibling method is a
   different method. Callers in classes outside the module remain invisible to
   syntactic analysis.
+* **generated files** (`_paths.is_generated_source`). Their layout is the
+  generator's, and re-running the generator discards any edit, so a finding
+  there can never be acted on in place. Measured on the 69 `DO NOT EDIT`
+  files git-tracked across bulbul and noura-be — Speakeasy's
+  `python/sdk/src/sarj_platform_sdk/` accounts for all of them.
 """
 
 from __future__ import annotations
@@ -67,6 +72,7 @@ from collections import Counter
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._paths import is_generated_source
 
 
 if TYPE_CHECKING:
@@ -105,6 +111,8 @@ class Stepdown(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        if is_generated_source(source):
+            return []
         if _is_test_path(path):
             return []
         tree = parse_or_none(path, source)
