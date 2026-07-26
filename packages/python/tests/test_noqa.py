@@ -1,4 +1,5 @@
 """Test that # sarj-noqa: SARJ00X suppression works on real diagnostics."""
+
 from pathlib import Path
 
 from sarj_python_lint.rule_base import is_suppressed

@@ -126,9 +126,7 @@ class NoIsinstanceUnionChain(Rule):
         tree = parse_or_none(path, source)
         if tree is None:
             return []
-        local_classes = frozenset(
-            node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
-        )
+        local_classes = frozenset(node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef))
         elif_nodes: set[int] = set()
         diags: list[Diagnostic] = []
         for node in ast.walk(tree):

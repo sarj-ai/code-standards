@@ -244,9 +244,7 @@ def _module_scope_classdefs(tree: ast.Module) -> list[ast.ClassDef]:
     return found
 
 
-def _enum_member_names(
-    classdefs: list[ast.ClassDef], local_enums: frozenset[str]
-) -> dict[str, frozenset[str]]:
+def _enum_member_names(classdefs: list[ast.ClassDef], local_enums: frozenset[str]) -> dict[str, frozenset[str]]:
     """Map each module-scope enum's name to the member names it declares.
 
     A member is a plain `NAME = <value>` assignment in the class body. Methods,
@@ -296,16 +294,13 @@ def _grown_dict_names(tree: ast.Module) -> frozenset[str]:
     grown: set[str] = set()
     for node in ast.walk(tree):
         match node:
-            case ast.Call(
-                func=ast.Attribute(value=ast.Name(id=name), attr=attr)
-            ) if attr in _DICT_GROWING_METHODS:
+            case ast.Call(func=ast.Attribute(value=ast.Name(id=name), attr=attr)) if attr in _DICT_GROWING_METHODS:
                 grown.add(name)
             case ast.Assign(targets=targets):
                 grown.update(
                     subscript.value.id
                     for subscript in targets
-                    if isinstance(subscript, ast.Subscript)
-                    and isinstance(subscript.value, ast.Name)
+                    if isinstance(subscript, ast.Subscript) and isinstance(subscript.value, ast.Name)
                 )
             case _:
                 pass
@@ -347,9 +342,7 @@ def _incomplete_dispatch_map(
     if owner is None or owner not in enum_members:
         return None
     declared = enum_members[owner]
-    covered = {
-        key.attr for key in mapping.keys if isinstance(key, ast.Attribute) and key.attr in declared
-    }
+    covered = {key.attr for key in mapping.keys if isinstance(key, ast.Attribute) and key.attr in declared}
     if len(covered) != len(mapping.keys) or not covered < declared:
         return None
     missing = ", ".join(f"{owner}.{name}" for name in sorted(declared - covered))
@@ -483,9 +476,7 @@ def _is_silent_body(body: list[ast.stmt]) -> bool:
             return False
 
 
-def _all_one_owner_member_arms(
-    cases: list[ast.match_case], member_owners: frozenset[str]
-) -> bool:
+def _all_one_owner_member_arms(cases: list[ast.match_case], member_owners: frozenset[str]) -> bool:
     """Report whether every arm matches enum-member values of one owner class.
 
     The owner must be a name that can actually bind a class here: defined by a
@@ -535,9 +526,7 @@ def _is_local_class_pattern(pattern: ast.pattern, local_classes: frozenset[str])
             return False
 
 
-def _silent_enum_chain(
-    head: ast.If, local_enums: frozenset[str], consumed_elifs: set[int]
-) -> str | None:
+def _silent_enum_chain(head: ast.If, local_enums: frozenset[str], consumed_elifs: set[int]) -> str | None:
     """Parse `head` as an ==/in chain over one local enum with a silent `else`.
 
     Each nested `elif` that genuinely continues the chain (same target, same

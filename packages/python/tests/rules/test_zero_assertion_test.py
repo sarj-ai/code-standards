@@ -293,3 +293,58 @@ def test_c():
 """
     diags = _check(src)
     assert [d.line for d in diags] == sorted(d.line for d in diags)
+
+
+# --------------------------------------------------------------------------- #
+# FP guard: pytest only collects module-level functions and class methods.     #
+# A third-party sweep found 36 nested-callback hits, all false positives.      #
+# --------------------------------------------------------------------------- #
+
+
+def test_nested_route_handler_named_test_is_not_a_test():
+    # The canonical Flask shape: a view function named for its route, declared
+    # inside a test that asserts on the response afterwards.
+    src = """
+def test_subdomain_matching(app, client):
+    @app.route("/", subdomain="test")
+    def test_index():
+        return "test index"
+
+    rv = client.get("/", "http://test.localhost.localdomain/")
+    assert rv.data == b"test index"
+"""
+    assert _check(src) == []
+
+
+def test_nested_test_named_function_without_asserts_is_still_not_flagged():
+    src = """
+def test_outer():
+    def test_inner():
+        return 1
+    test_inner()
+    assert True is not False
+"""
+    assert _check(src) == []
+
+
+def test_class_method_is_still_collected():
+    src = """
+class TestThing:
+    def test_does_nothing(self):
+        compute()
+"""
+    assert len(_check(src)) == 1
+
+
+def test_fixture_named_test_something_is_exempt():
+    # flask/tests/conftest.py defines `test_apps` as a fixture; asserting
+    # nothing is exactly right for it.
+    src = """
+import pytest
+
+@pytest.fixture
+def test_apps(monkeypatch):
+    monkeypatch.syspath_prepend("x")
+    yield
+"""
+    assert _check(src) == []

@@ -165,6 +165,45 @@ def test_thing():
     assert _check(src) == []
 
 
+@pytest.mark.parametrize(
+    "decorator",
+    [
+        "@given(st.text())",
+        "@given(value=st.integers())",
+        "@known_bug_schema.parametrize()",
+        "@schema.parametrize()",
+        "@self.schema.parametrize()",
+    ],
+)
+def test_property_based_tests_are_exempt(decorator: str):
+    # One test function expands into many generated inputs; a documented bug is
+    # usually tripped by only a subset, so the rest legitimately XPASS and
+    # strict=True would turn every passing input into a failure.
+    src = f"""
+import pytest
+
+{decorator}
+@pytest.mark.xfail(reason="BUG: unroutable ids return the wrong envelope", strict=False)
+def test_thing(case):
+    case.call_and_validate()
+"""
+    assert _check(src) == []
+
+
+def test_pytest_mark_parametrize_is_still_flagged():
+    # A fixed case table is not a generator — every case runs the same code path,
+    # so a bug pin over it can and should be strict.
+    src = """
+import pytest
+
+@pytest.mark.parametrize("value", ["a", "b"])
+@pytest.mark.xfail(reason="BUG: wrong envelope")
+def test_thing(value):
+    assert correct(value)
+"""
+    assert len(_check(src)) == 1
+
+
 def test_xfail_without_a_reason_is_exempt():
     src = """
 import pytest

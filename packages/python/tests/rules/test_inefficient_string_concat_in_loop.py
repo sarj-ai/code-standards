@@ -640,7 +640,7 @@ _WRAPPED_CONCAT_BODIES = [
         id="finally-body",
     ),
     pytest.param(
-        '        with open(\'p\') as _fh:\n            s += f"{x}"',
+        "        with open('p') as _fh:\n            s += f\"{x}\"",
         id="with-body",
     ),
 ]

@@ -39,7 +39,17 @@ Deliberately NOT flagged:
 
 * a test marked `@pytest.mark.skip`/`skipif`/`xfail` — it is not expected to
   verify anything right now,
-* a fixture, helper, or any function not named `test_*`,
+* **a `test_*` function nested inside another function.** pytest only collects
+  module-level functions and methods of `Test*` classes, so a nested one is not
+  a test at all — it is a callback that happens to be named for what it does.
+  Flask route handlers are the canonical case: `def test_index()` registered
+  with `@app.route("/", subdomain="test")` inside a test that asserts on the
+  response afterwards. A third-party sweep found 36 such hits, every one a false
+  positive. Only functions whose parent is the module or a class are considered.
+* **a `@pytest.fixture`**, whatever it is named. `flask/tests/conftest.py`
+  defines `def test_apps(monkeypatch)` as a fixture; it sets up `sys.path` and
+  yields, and asserting nothing is exactly right for it,
+* a helper, or any function not named `test_*`,
 * an abstract or stub body (`...`, `pass`, docstring only) — an intentionally
   empty placeholder is a different problem from a half-written test,
 * anything under a `scripts/` directory. `digital-bank/banking-ai/chat/scripts/`
@@ -74,6 +84,8 @@ _RAISES_NAMES = frozenset({"raises", "warns", "fail"})
 _FLUENT_ATTRS = frozenset({"expect"})
 
 _SKIP_MARKERS = frozenset({"skip", "skipif", "xfail"})
+
+_FIXTURE = "fixture"
 
 _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 
@@ -126,13 +138,38 @@ def _is_uncollected(path: Path) -> bool:
 
 def _unverifying_tests(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
     hits: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, _FUNC_NODES) or not node.name.startswith("test_"):
-            continue
-        if _is_skipped(node) or _is_placeholder(node) or _verifies_something(node):
+    for node in _collectible_tests(tree):
+        if _is_skipped(node) or _is_fixture(node) or _is_placeholder(node) or _verifies_something(node):
             continue
         hits.append(node)
     return hits
+
+
+def _collectible_tests(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
+    """Collect the `test_*` functions pytest would actually run.
+
+    Only module-level functions and methods of a class qualify. A `test_*`
+    nested inside another function is a callback, not a test — pytest never
+    collects it — so descending into function bodies would invent findings.
+
+    Returns:
+        The test functions in the order they appear.
+
+    """
+    found: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
+    containers: list[ast.Module | ast.ClassDef] = [tree]
+    while containers:
+        for stmt in containers.pop().body:
+            if isinstance(stmt, ast.ClassDef):
+                containers.append(stmt)
+            elif isinstance(stmt, _FUNC_NODES) and stmt.name.startswith("test_"):
+                found.append(stmt)
+    found.sort(key=lambda n: (n.lineno, n.col_offset))
+    return found
+
+
+def _is_fixture(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    return any(_marker_name(dec) == _FIXTURE for dec in node.decorator_list)
 
 
 def _is_skipped(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:

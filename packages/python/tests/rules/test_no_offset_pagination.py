@@ -154,9 +154,7 @@ def test_store_file_flagged(path: str):
     assert len(_check('q = "LIMIT %s OFFSET %s"\n', path=path)) == 1
 
 
-@pytest.mark.parametrize(
-    "path", ["app/views.py", "blog.py", "sqlalchemy/sql/compiler.py"]
-)
+@pytest.mark.parametrize("path", ["app/views.py", "blog.py", "sqlalchemy/sql/compiler.py"])
 def test_nonstore_file_not_flagged(path: str):
     assert _check('q = "LIMIT %s OFFSET %s"\n', path=path) == []
 

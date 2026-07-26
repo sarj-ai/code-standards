@@ -1,4 +1,5 @@
 """Every rule must be self-documenting: non-empty id, code, description, and a docstring."""
+
 from __future__ import annotations
 
 import pytest
@@ -14,9 +15,7 @@ def test_rule_has_self_documenting_meta(rule_id: str) -> None:
 
     assert cls.id == rule_id, f"REGISTRY key {rule_id!r} != cls.id {cls.id!r}"
     assert cls.id, f"{rule_id}: empty id"
-    assert cls.id.replace("-", "").replace("_", "").isalnum(), (
-        f"{rule_id}: id must be kebab/snake-case, got {cls.id!r}"
-    )
+    assert cls.id.replace("-", "").replace("_", "").isalnum(), f"{rule_id}: id must be kebab/snake-case, got {cls.id!r}"
 
     assert cls.code, f"{rule_id}: missing code"
     assert cls.code.startswith("SARJ"), f"{rule_id}: code {cls.code!r} must start with SARJ"

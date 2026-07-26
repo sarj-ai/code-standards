@@ -513,22 +513,12 @@ def test_illustration_under_for_example_lead_in_is_not_flagged():
 
 
 def test_prose_continuation_line_that_parses_is_not_flagged():
-    src = (
-        "x = 1\n"
-        "# passes a value that already called\n"
-        "# self._type_adapter.validate_python(value)\n"
-        "y = 2\n"
-    )
+    src = "x = 1\n# passes a value that already called\n# self._type_adapter.validate_python(value)\ny = 2\n"
     assert _check(src) == []
 
 
 def test_prose_describing_else_branch_over_isinstance_call_is_not_flagged():
-    src = (
-        "x = 1\n"
-        "# matches when the argument is a request, i.e.\n"
-        "# isinstance(args[0], BaseRequest)\n"
-        "y = 2\n"
-    )
+    src = "x = 1\n# matches when the argument is a request, i.e.\n# isinstance(args[0], BaseRequest)\ny = 2\n"
     assert _check(src) == []
 
 
@@ -599,3 +589,55 @@ def test_step_narration_without_rationale_still_fires():
     diags = _check(src)
     assert len(diags) == 1
     assert "narrates" in diags[0].message
+
+
+# --------------------------------------------------------------------------- #
+# FP guards found in a third-party sweep (httpx, flask, rich, pydantic).       #
+# --------------------------------------------------------------------------- #
+
+
+def test_doctest_block_including_its_output_is_exempt():
+    # httpx/_client.py: the `>>>` lines document usage and the lines beneath
+    # them are expected output, which looks exactly like commented-out code.
+    src = """
+def build():
+    # So, eg...
+    #
+    # >>> client = Client(base_url="https://www.example.com/subpath")
+    # >>> client.base_url
+    # URL('https://www.example.com/subpath/')
+    return 1
+"""
+    assert _check(src) == []
+
+
+def test_commented_out_code_after_the_doctest_block_still_fires():
+    src = """
+def build():
+    # >>> client = Client()
+    # URL('https://example.com/')
+
+    # return _legacy_path(url)
+    return 1
+"""
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    "cookie",
+    ["# encoding=utf-8", "# -*- coding: utf-8 -*-", "# coding: latin-1"],
+)
+def test_pep263_coding_cookie_is_exempt(cookie: str):
+    # rich carries these at the top of test modules; the interpreter reads them.
+    assert _check(f"{cookie}\nx = 1\n") == []
+
+
+def test_dot_banner_is_still_flagged():
+    # Regression: a banner of dots begins with "...", so arming the doctest
+    # exemption on that prefix silently disabled the banner check.
+    src = """
+# ....................
+def f():
+    return 1
+"""
+    assert len(_check(src)) == 1

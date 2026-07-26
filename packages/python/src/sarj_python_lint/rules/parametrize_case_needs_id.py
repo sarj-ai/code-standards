@@ -15,10 +15,18 @@ Fires when ALL of these hold:
   bare `parametrize` imported from pytest),
 * the decorator does **not** pass `ids=` — one `ids=` covers the whole table, so
   its presence exempts every case,
-* and a case value is opaque to pytest's id generation: a `dict`, `set`,
-  comprehension, or a constructor/factory `Call`. For a multi-argument case the
-  check descends into the tuple, since one opaque column is enough to poison the
-  generated id,
+* and **every** column of the case is opaque to pytest's id generation: a
+  `dict`, `set`, comprehension, or a constructor/factory `Call`.
+
+  Requiring *every* column, not any, is the difference between a useful rule and
+  a noisy one. pytest builds an id by joining the per-argument ids with `-`, so a
+  single nameable column still distinguishes the case: `("0.0", Decimal("0.0"))`
+  reports as `0.0-value1`, which a reader can find. A third-party sweep over
+  pydantic, flask, httpx, requests and rich flagged 372 tables under the
+  any-column reading; the overwhelming majority paired an opaque value with a
+  perfectly nameable string or number — `Decimal('0.0')`, `datetime(2012, 4, 9)`,
+  `UUID(...)`, `timedelta(hours=10)`, `Err('...')` — and were false positives.
+  Only a case whose columns are *all* opaque degenerates to `case0`, `case1`,
 * and that specific case is not individually named by `pytest.param(..., id=...)`.
 
 The `pytest.param` unwrap is the load-bearing false-positive guard. A first pass
@@ -142,12 +150,14 @@ def _is_unnameable(case: ast.expr) -> bool:
         # An explicitly named case is fine however opaque its payload is.
         if _has_keyword(case, "id"):
             return False
-        return any(_is_opaque_value(arg) for arg in case.args)
+        return bool(case.args) and all(_is_opaque_value(arg) for arg in case.args)
     return _is_opaque_value(case)
 
 
 def _is_opaque_value(value: ast.expr) -> bool:
-    # A multi-column case is a tuple; one opaque column poisons the whole id.
+    # A multi-column case is a tuple. pytest joins the per-column ids with `-`,
+    # so one nameable column is enough to tell the case apart — only an
+    # all-opaque case degenerates to `case0`.
     if isinstance(value, ast.Tuple):
-        return any(_is_opaque_value(elt) for elt in value.elts)
+        return bool(value.elts) and all(_is_opaque_value(elt) for elt in value.elts)
     return isinstance(value, _OPAQUE_NODES)

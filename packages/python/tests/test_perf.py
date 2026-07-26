@@ -13,6 +13,7 @@ Two guards, both run over a large synthetic Python file:
 The documented target is < 50 ms / 1k LOC per rule; the relative gate enforces it in
 spirit without flaking across machines.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

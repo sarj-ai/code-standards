@@ -44,9 +44,7 @@ if TYPE_CHECKING:
 # `OFFSET` followed by a value/param token — the real pagination construct. This
 # excludes the English word ("no base offset"), `'offset'` dict keys, and BigQuery
 # `UNNEST(...) WITH OFFSET AS col` (array indexing, no value token after OFFSET).
-_OFFSET_PAGINATION = re.compile(
-    r"\bOFFSET\s+(?:%s|%\(\w+\)s|:\w+|@\w+|\$\d+|\d+)", re.IGNORECASE
-)
+_OFFSET_PAGINATION = re.compile(r"\bOFFSET\s+(?:%s|%\(\w+\)s|:\w+|@\w+|\$\d+|\d+)", re.IGNORECASE)
 
 
 class NoOffsetPagination(Rule):
