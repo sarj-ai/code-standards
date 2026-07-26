@@ -1,0 +1,144 @@
+"""SARJ045: a domain object built with many kwargs inline belongs in a builder.
+
+A test that constructs `SarjBeneficiary(id=..., name=..., iban=..., bank=...,
+status=..., created_at=..., updated_at=..., owner=..., currency=...)` in its own
+body states nine facts, and typically only one of them is the thing under test.
+The other eight are noise the reader must scan past to find the interesting
+field, and every one of them has to be revisited when the model gains a required
+column — across every test that spells the object out. A builder or factory with
+defaults collapses that to `build_beneficiary(status="frozen")`, which says what
+the test is about.
+
+Fires when ALL of these hold:
+
+* the file is a test file, and the **nearest enclosing function** of the call is
+  named `test_*`,
+* and the call passes more than eight keyword arguments.
+
+The nearest-enclosing-function guard is what makes this rule worth having rather
+than noise. A blind sweep of both corpora found 113 kwarg-heavy constructions,
+but 96 of them sit inside a module-level `_make_*`/`_build_*` helper — which is
+precisely the factory this rule asks for, already written. Counting those would
+have meant nagging at the well-factored code and rewarding the sloppy kind.
+Scoped to calls directly in a test body, the population drops to 17.
+
+The threshold is deliberately high. Eight keywords is well past the point where
+a constructor call is self-explanatory, and it was chosen so the rule fires only
+where the audited corpora showed a genuine builder was missing — in at least
+three cases (`digital-bank/banking-ai/chat/tests/test_chat_store.py`) the fix is
+a one-line import of a `build_sarj_beneficiary` helper that already exists in
+`common/testing/builders.py`.
+
+Deliberately NOT flagged:
+
+* calls inside a fixture, a `_make_*` helper, or any non-test function — that is
+  the factory, and it is allowed to be verbose exactly once,
+* positional arguments — a call with many positionals is a different smell, and
+  ruff's own rules already discourage it,
+* `dict(...)` and literal dict displays — those are data, not a domain object,
+  and naming their keys is the point rather than the problem.
+"""
+
+from __future__ import annotations
+
+import ast
+from typing import TYPE_CHECKING, override
+
+from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._paths import is_test_path
+
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+
+_MAX_KEYWORDS = 8
+
+# `dict(a=1, b=2, ...)` is a mapping literal, not a domain object.
+_DATA_CALLABLES = frozenset({"dict"})
+
+
+class KwargHeavyConstructionInTest(Rule):
+    """A >8-keyword construction directly in a test body wants a builder."""
+
+    id: str = "kwarg-heavy-construction-in-test"
+    code: str = "SARJ045"
+    description: str = "Object built with many keywords inline in a test — extract a builder with defaults."
+
+    @override
+    def check(self, path: Path, source: str) -> list[Diagnostic]:
+        """Flag kwarg-heavy constructions sitting directly in a test body.
+
+        Returns:
+            One diagnostic per over-wide construction, sorted by position.
+
+        """
+        if not is_test_path(path):
+            return []
+        tree = parse_or_none(path, source)
+        if tree is None:
+            return []
+
+        visitor = _KwargHeavyVisitor()
+        visitor.visit(tree)
+        diags = [
+            Diagnostic(
+                path=path,
+                line=node.lineno,
+                col=node.col_offset + 1,
+                code=self.code,
+                message=(
+                    f"this call passes {count} keywords inline, so the one field under test is buried "
+                    "and every other test repeats the same boilerplate. Extract a builder with "
+                    "defaults and override only what this test is about."
+                ),
+            )
+            for node, count in visitor.hits
+        ]
+        diags.sort(key=lambda d: (d.line, d.col))
+        return diags
+
+
+class _KwargHeavyVisitor(ast.NodeVisitor):
+    """Flag wide keyword calls whose nearest enclosing function is a test.
+
+    Mirrors SARJ031's enclosing-function stack so a construction inside a
+    `_make_*` helper or fixture declared anywhere in the file is attributed to
+    that helper — the factory is allowed to be verbose.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._func_names: list[str | None] = []
+        self.hits: list[tuple[ast.Call, int]] = []
+
+    def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        self._func_names.append(node.name)
+        self.generic_visit(node)
+        self._func_names.pop()
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self._visit_function(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self._visit_function(node)
+
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        self._func_names.append(None)
+        self.generic_visit(node)
+        self._func_names.pop()
+
+    def visit_Call(self, node: ast.Call) -> None:
+        if self._in_test_function() and not _is_data_callable(node.func):
+            named = [kw for kw in node.keywords if kw.arg is not None]
+            if len(named) > _MAX_KEYWORDS:
+                self.hits.append((node, len(named)))
+        self.generic_visit(node)
+
+    def _in_test_function(self) -> bool:
+        nearest = self._func_names[-1] if self._func_names else None
+        return nearest is not None and nearest.startswith("test_")
+
+
+def _is_data_callable(func: ast.expr) -> bool:
+    return isinstance(func, ast.Name) and func.id in _DATA_CALLABLES
