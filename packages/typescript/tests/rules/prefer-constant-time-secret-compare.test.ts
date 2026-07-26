@@ -53,6 +53,8 @@ ruleTester.run("prefer-constant-time-secret-compare", rule, {
     { code: "if (userId === other.userId) { merge(); }" },
     { code: "if (keyboardEvent === lastEvent) { skip(); }" },
     { code: "if (publicKey === other.publicKey) { skip(); }" },
+    // AST node type constants can contain `Signature` but are enum values, not credentials.
+    { code: "if (member.type !== AST_NODE_TYPES.TSPropertySignature) { return null; }" },
     // --- Ordering / relational operators are not equality short-circuits. ---
     { code: "if (token > other.token) { sort(); }" },
     // --- Computed access has no static property name to judge. ---

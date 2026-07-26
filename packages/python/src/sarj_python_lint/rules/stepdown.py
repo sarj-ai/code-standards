@@ -115,6 +115,8 @@ class Stepdown(Rule):
             return []
         if _is_test_path(path):
             return []
+        if "def _" not in source and "async def _" not in source:
+            return []
         tree = parse_or_none(path, source)
         if tree is None:
             return []

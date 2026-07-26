@@ -28,7 +28,7 @@ import {
   type TSESTree,
 } from "@typescript-eslint/utils";
 
-import { isTestFile } from "./_paths.js";
+import { isStoryFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "preferShadcn";
 type Options = readonly [];
@@ -98,7 +98,7 @@ export default ESLintUtils.RuleCreator(
   },
   defaultOptions: [],
   create(context) {
-    if (isTestFile(context.filename)) {
+    if (isTestFile(context.filename) || isStoryFile(context.filename)) {
       return {};
     }
 
