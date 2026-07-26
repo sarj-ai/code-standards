@@ -234,7 +234,7 @@ const config = [
       "no-shadow": "off",
       "@typescript-eslint/no-shadow": "error",
 
-      // Full @sarj/eslint-plugin@2.7.0 strict ruleset. Tiers mirror the plugin's
+      // Full @sarj/eslint-plugin@2.9.0 strict ruleset. Tiers mirror the plugin's
       // own `configs.strict` — error for most, warn for the stylistic/high-volume
       // rules (prefer-semantic-colors, prefer-string-literal-union,
       // no-unsafe-cast) — with one deliberate deviation: enforce-file-structure
@@ -274,6 +274,33 @@ const config = [
       "@sarj/prefer-string-literal-union": "warn",
       // High-volume/stylistic — warn until rollout proves FP rate.
       "@sarj/no-unsafe-cast": "warn",
+
+      // ── 2.8.0 / 2.9.0 additions ─────────────────────────────────────────────
+      // Correctness and security invariants — error, like their peers above.
+      "@sarj/prefer-constant-time-secret-compare": "error",
+      "@sarj/no-dynamic-sql": "error",
+      "@sarj/store-insert-requires-on-conflict": "error",
+      "@sarj/no-offset-pagination": "error",
+      "@sarj/no-select-star": "error",
+      "@sarj/no-zod-native-enum": "error",
+      "@sarj/prefer-module-level-constant": "error",
+      "@sarj/no-sleep-in-test-body": "error",
+      // High-volume/stylistic, so warn — same treatment as prefer-semantic-colors
+      // and prefer-string-literal-union above. Measured on a 1,578-file
+      // third-party corpus: every hit was the conventional `[value, cursor]`
+      // parser idiom, i.e. style rather than defect.
+      "@sarj/no-positional-tuple-return": "warn",
+      "@sarj/no-repeated-string-literal": "warn",
+
+      // Deliberately NOT enabled here — these two are architectural rules that
+      // are meaningless without per-repo paths, so a shared config cannot set
+      // them. `no-storage-in-stateless-modules` defaults to `modules: []` and is
+      // inert until a consumer names its stateless modules;
+      // `no-raw-fetch-outside-clients` needs an `allow` list matching that
+      // repo's client-layer convention (the default assumes `clients/`). Opt in
+      // per repo:
+      //   "@sarj/no-storage-in-stateless-modules": ["error", { modules: [...] }],
+      //   "@sarj/no-raw-fetch-outside-clients": ["error", { allow: [...] }],
     },
   },
 
