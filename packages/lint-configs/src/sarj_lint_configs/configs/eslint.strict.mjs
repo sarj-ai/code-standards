@@ -237,9 +237,23 @@ const config = [
       // Full @sarj/eslint-plugin@2.9.0 strict ruleset. Tiers mirror the plugin's
       // own `configs.strict` — error for most, warn for the stylistic/high-volume
       // rules (prefer-semantic-colors, prefer-string-literal-union,
-      // no-unsafe-cast) — with one deliberate deviation: enforce-file-structure
-      // is warn here while the plugin's own strict has it at error (structural
-      // moves are high-churn for existing consumers, so it stays advisory).
+      // no-unsafe-cast, which are warn in the plugin's strict too).
+      //
+      // Deviations from the plugin's strict tiers, and the ONLY ones — the
+      // `severities match the plugin's own strict preset` test in
+      // packages/typescript/tests/strict-config-sync.test.ts fails on any other:
+      //   - enforce-file-structure: warn here, error in the plugin. Structural
+      //     moves are high-churn for existing consumers, so it stays advisory.
+      //   - no-repeated-string-literal: warn here, error in the plugin. It flags
+      //     duplicated structured literals, which lands in bulk on first
+      //     adoption; warn until a rollout proves the signal.
+      //   - no-storage-in-stateless-modules and no-raw-fetch-outside-clients are
+      //     error in the plugin's strict but not enabled here at all; both are
+      //     meaningless without per-repo paths. See the opt-in block below.
+      //
+      // A `files:`-scoped block further down deliberately turns no-raw-env off
+      // for env source-of-truth files; that is an override, not a tier change.
+      //
       // no-enum / no-fat-try-blocks / no-raw-env are the single owners of the
       // enum / oversized-try / process.env concerns (the native no-restricted-*
       // equivalents were removed above).

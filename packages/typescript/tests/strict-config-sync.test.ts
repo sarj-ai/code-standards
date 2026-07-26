@@ -100,6 +100,30 @@ function referencedRuleNames(configText: string): string[] {
   );
 }
 
+/**
+ * Each rule's severity in the config's MAIN block, keyed by rule name.
+ *
+ * Deliberately takes the FIRST occurrence of a name. The main block comes first
+ * in the file; the later `files:`-scoped blocks re-set some rules on purpose
+ * (`"@sarj/no-raw-env": "off"` for env source-of-truth files). Those overrides
+ * are the config doing its job, not tier drift, so only the base severity is
+ * compared. Entries configured as `[severity, options]` arrays are skipped —
+ * this config expresses every @sarj tier as a bare string today, and a static
+ * parse should not pretend to read option tuples.
+ */
+function baseSeverities(configText: string): Map<string, string> {
+  const found = new Map<string, string>();
+  for (const match of stripComments(configText).matchAll(
+    /"@sarj\/([a-z0-9-]+)"\s*:\s*"(\w+)"/gu,
+  )) {
+    const [, name, severity] = match;
+    if (name !== undefined && severity !== undefined && !found.has(name)) {
+      found.set(name, severity);
+    }
+  }
+  return found;
+}
+
 describe("lint-configs eslint.strict.mjs stays wired to the plugin", () => {
   it("references only rule names that exist in the plugin's rules export", () => {
     const text = readFileSync(STRICT_CONFIG_PATH, "utf8");
@@ -151,6 +175,59 @@ describe("lint-configs eslint.strict.mjs stays wired to the plugin", () => {
       referenced.has(name),
     );
     expect(redundant).toEqual([]);
+  });
+
+  /**
+   * The third drift axis. A rule can be present in both places and still not
+   * mean the same thing: `no-repeated-string-literal` was wired at `warn` while
+   * the plugin's own `configs.strict` has it at `error`, and the config's header
+   * went on claiming its tiers "mirror the plugin's own configs.strict" with
+   * `enforce-file-structure` as the single deviation. Silently shipping a
+   * weaker tier than the plugin declares is the same class of lie as the stale
+   * "@2.7.0" version line — true once, then quietly not.
+   *
+   * Deviations are allowed, but they have to be declared HERE with a reason,
+   * which makes lowering a tier a reviewed edit instead of a diff nobody reads.
+   */
+  it("severities match the plugin's own strict preset, except where declared", () => {
+    const text = readFileSync(STRICT_CONFIG_PATH, "utf8");
+    const configured = baseSeverities(text);
+    const pluginStrict = plugin.configs.strict.rules as Record<string, string>;
+
+    // rule -> [plugin tier, config tier, why the config deviates]
+    const DECLARED_DEVIATIONS = new Map<string, readonly [string, string]>([
+      // Structural moves are high-churn for existing consumers, so the shared
+      // config keeps it advisory even though the plugin's strict errors.
+      ["enforce-file-structure", ["error", "warn"]],
+      // High-volume and stylistic: it flags duplicated structured literals,
+      // which lands in bulk on first adoption. Warn until a rollout proves the
+      // signal, matching how prefer-string-literal-union and no-unsafe-cast are
+      // treated here.
+      ["no-repeated-string-literal", ["error", "warn"]],
+    ]);
+
+    const drift: string[] = [];
+    for (const [name, pluginSeverity] of Object.entries(pluginStrict)) {
+      const rule = name.replace("@sarj/", "");
+      const configSeverity = configured.get(rule);
+      if (configSeverity === undefined) {
+        continue; // not wired — the opt-in assertion above owns that case
+      }
+      const declared = DECLARED_DEVIATIONS.get(rule);
+      if (declared !== undefined) {
+        // The declaration itself must stay true, or it is just a mute button.
+        expect([rule, pluginSeverity, configSeverity]).toEqual([
+          rule,
+          declared[0],
+          declared[1],
+        ]);
+        continue;
+      }
+      if (configSeverity !== pluginSeverity) {
+        drift.push(`${rule}: plugin=${pluginSeverity} config=${configSeverity}`);
+      }
+    }
+    expect(drift).toEqual([]);
   });
 
   it("plugin meta.version matches package.json version", () => {
