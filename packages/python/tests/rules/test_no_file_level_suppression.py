@@ -18,7 +18,7 @@ def _check(source: str, path: str = SRC_PATH) -> list[Diagnostic]:
 
 
 # --------------------------------------------------------------------------- #
-# Positive: bare `# ruff: noqa` anywhere in the file.                          #
+# Positive: bare Ruff file-wide noqa anywhere in the file.                      #
 # --------------------------------------------------------------------------- #
 
 
