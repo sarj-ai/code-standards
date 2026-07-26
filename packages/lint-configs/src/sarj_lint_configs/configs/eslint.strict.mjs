@@ -234,12 +234,26 @@ const config = [
       "no-shadow": "off",
       "@typescript-eslint/no-shadow": "error",
 
-      // Full @sarj/eslint-plugin@2.7.0 strict ruleset. Tiers mirror the plugin's
+      // Full @sarj/eslint-plugin@2.9.0 strict ruleset. Tiers mirror the plugin's
       // own `configs.strict` — error for most, warn for the stylistic/high-volume
       // rules (prefer-semantic-colors, prefer-string-literal-union,
-      // no-unsafe-cast) — with one deliberate deviation: enforce-file-structure
-      // is warn here while the plugin's own strict has it at error (structural
-      // moves are high-churn for existing consumers, so it stays advisory).
+      // no-unsafe-cast, which are warn in the plugin's strict too).
+      //
+      // Deviations from the plugin's strict tiers, and the ONLY ones — the
+      // `severities match the plugin's own strict preset` test in
+      // packages/typescript/tests/strict-config-sync.test.ts fails on any other:
+      //   - enforce-file-structure: warn here, error in the plugin. Structural
+      //     moves are high-churn for existing consumers, so it stays advisory.
+      //   - no-repeated-string-literal: warn here, error in the plugin. It flags
+      //     duplicated structured literals, which lands in bulk on first
+      //     adoption; warn until a rollout proves the signal.
+      //   - no-storage-in-stateless-modules and no-raw-fetch-outside-clients are
+      //     error in the plugin's strict but not enabled here at all; both are
+      //     meaningless without per-repo paths. See the opt-in block below.
+      //
+      // A `files:`-scoped block further down deliberately turns no-raw-env off
+      // for env source-of-truth files; that is an override, not a tier change.
+      //
       // no-enum / no-fat-try-blocks / no-raw-env are the single owners of the
       // enum / oversized-try / process.env concerns (the native no-restricted-*
       // equivalents were removed above).
@@ -274,6 +288,33 @@ const config = [
       "@sarj/prefer-string-literal-union": "warn",
       // High-volume/stylistic — warn until rollout proves FP rate.
       "@sarj/no-unsafe-cast": "warn",
+
+      // ── 2.8.0 / 2.9.0 additions ─────────────────────────────────────────────
+      // Correctness and security invariants — error, like their peers above.
+      "@sarj/prefer-constant-time-secret-compare": "error",
+      "@sarj/no-dynamic-sql": "error",
+      "@sarj/store-insert-requires-on-conflict": "error",
+      "@sarj/no-offset-pagination": "error",
+      "@sarj/no-select-star": "error",
+      "@sarj/no-zod-native-enum": "error",
+      "@sarj/prefer-module-level-constant": "error",
+      "@sarj/no-sleep-in-test-body": "error",
+      // High-volume/stylistic, so warn — same treatment as prefer-semantic-colors
+      // and prefer-string-literal-union above. Measured on a 1,578-file
+      // third-party corpus: every hit was the conventional `[value, cursor]`
+      // parser idiom, i.e. style rather than defect.
+      "@sarj/no-positional-tuple-return": "warn",
+      "@sarj/no-repeated-string-literal": "warn",
+
+      // Deliberately NOT enabled here — these two are architectural rules that
+      // are meaningless without per-repo paths, so a shared config cannot set
+      // them. `no-storage-in-stateless-modules` defaults to `modules: []` and is
+      // inert until a consumer names its stateless modules;
+      // `no-raw-fetch-outside-clients` needs an `allow` list matching that
+      // repo's client-layer convention (the default assumes `clients/`). Opt in
+      // per repo:
+      //   "@sarj/no-storage-in-stateless-modules": ["error", { modules: [...] }],
+      //   "@sarj/no-raw-fetch-outside-clients": ["error", { allow: [...] }],
     },
   },
 
