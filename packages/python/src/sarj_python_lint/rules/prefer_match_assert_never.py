@@ -79,6 +79,32 @@ payload shapes dominate and are deliberate fall-throughs, not bugs):
         else:
             return None       # new Status member silently ignored
 
+3. **Handler dict that does not cover the enum.** A `dict` literal whose keys
+   are all members of ONE enum defined at module scope of this module, whose
+   values all look like handlers (a name, an attribute, or a lambda — never a
+   literal), and which names FEWER members than the enum declares. This is the
+   lookup-table spelling of the same bug: `HANDLERS[kind]` raises `KeyError` on
+   the missed member if you are lucky and `HANDLERS.get(kind)` silently returns
+   `None` if you are not, and neither pyright nor a `match` statement is there
+   to notice. The message names the shortfall so the missing members are
+   obvious.
+
+        # flagged — Kind has three members, the map has two
+        class Kind(StrEnum):
+            A = "a"
+            B = "b"
+            C = "c"
+
+        HANDLERS = {Kind.A: handle_a, Kind.B: handle_b}
+
+   Deliberately NOT flagged here: a map whose values are literals (that is a
+   lookup table of data — a partial one is routinely intentional, e.g. "only
+   these two members have a display colour"); a map that spreads `**other`
+   (its real key set is not visible); a map whose name is later `.update(...)`d
+   or assigned into by subscript anywhere in the file (it is built in pieces on
+   purpose); and any map over an imported enum, since the rule cannot see how
+   many members that enum has and guessing would invent findings.
+
 A deliberate ignore-the-rest dispatch (e.g. classifying external ids where the
 provider can add values at any time) is suppressed with
 `# sarj-noqa: SARJ032 — <reason>`.
@@ -105,6 +131,9 @@ if TYPE_CHECKING:
 _MIN_ARMS = 2
 
 _ENUM_BASES = frozenset({"Enum", "StrEnum", "IntEnum", "Flag", "IntFlag", "ReprEnum"})
+
+# Methods that grow a dict in place — a map built in pieces is not incomplete.
+_DICT_GROWING_METHODS = frozenset({"update", "setdefault"})
 
 
 class PreferMatchAssertNever(Rule):
@@ -134,6 +163,8 @@ class PreferMatchAssertNever(Rule):
             )
         )
         member_owners = local_classes | _importfrom_bound_names(tree)
+        enum_members = _enum_member_names(module_classdefs, local_enums)
+        grown_maps = _grown_dict_names(tree)
         diags: list[Diagnostic] = []
         consumed_elifs: set[int] = set()
         for node in ast.walk(tree):
@@ -170,6 +201,24 @@ class PreferMatchAssertNever(Rule):
                             ),
                         )
                     )
+            elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+                shortfall = _incomplete_dispatch_map(node, enum_members, grown_maps)
+                if shortfall is not None:
+                    enum_name, covered, total, missing = shortfall
+                    diags.append(
+                        Diagnostic(
+                            path=path,
+                            line=node.lineno,
+                            col=node.col_offset + 1,
+                            code=self.code,
+                            message=(
+                                f"dispatch map covers {covered} of `{enum_name}`'s {total} "
+                                f"members (missing {missing}) — a new member falls through to "
+                                "a KeyError or a silent None; cover every member and "
+                                "`assert_never` (or raise) on a lookup miss."
+                            ),
+                        )
+                    )
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
 
@@ -193,6 +242,159 @@ def _module_scope_classdefs(tree: ast.Module) -> list[ast.ClassDef]:
             found.append(stmt)
             stack.extend(stmt.body)
     return found
+
+
+def _enum_member_names(
+    classdefs: list[ast.ClassDef], local_enums: frozenset[str]
+) -> dict[str, frozenset[str]]:
+    """Map each module-scope enum's name to the member names it declares.
+
+    A member is a plain `NAME = <value>` assignment in the class body. Methods,
+    annotations without a value (`x: int`), and private/dunder names are not
+    members. Members sharing one constant value are ALIASES of a single member
+    (`AKA = "open"` beside `OPEN = "open"`), so they are counted once —
+    over-counting members would invent a shortfall that does not exist.
+
+    Returns:
+        A mapping of enum class name to its member-name set.
+
+    """
+    members: dict[str, frozenset[str]] = {}
+    for classdef in classdefs:
+        if classdef.name not in local_enums:
+            continue
+        by_value: dict[str, str] = {}
+        names: set[str] = set()
+        for stmt in classdef.body:
+            if not isinstance(stmt, ast.Assign) or len(stmt.targets) != 1:
+                continue
+            target = stmt.targets[0]
+            if not isinstance(target, ast.Name) or target.id.startswith("_"):
+                continue
+            if isinstance(stmt.value, ast.Constant):
+                key = f"{type(stmt.value.value).__name__}:{stmt.value.value!r}"
+                if key in by_value:
+                    # An alias of an already-counted member.
+                    continue
+                by_value[key] = target.id
+            names.add(target.id)
+        members[classdef.name] = frozenset(names)
+    return members
+
+
+def _grown_dict_names(tree: ast.Module) -> frozenset[str]:
+    """Collect names of dicts that are grown after their literal is written.
+
+    `HANDLERS.update(...)`, `HANDLERS.setdefault(k, v)` and `HANDLERS[k] = v`
+    all mean the literal is a starting point rather than the whole map, so its
+    key count says nothing about coverage.
+
+    Returns:
+        The set of names that are extended somewhere in the module.
+
+    """
+    grown: set[str] = set()
+    for node in ast.walk(tree):
+        match node:
+            case ast.Call(
+                func=ast.Attribute(value=ast.Name(id=name), attr=attr)
+            ) if attr in _DICT_GROWING_METHODS:
+                grown.add(name)
+            case ast.Assign(targets=targets):
+                grown.update(
+                    subscript.value.id
+                    for subscript in targets
+                    if isinstance(subscript, ast.Subscript)
+                    and isinstance(subscript.value, ast.Name)
+                )
+            case _:
+                pass
+    return frozenset(grown)
+
+
+def _incomplete_dispatch_map(
+    node: ast.Assign | ast.AnnAssign,
+    enum_members: dict[str, frozenset[str]],
+    grown_maps: frozenset[str],
+) -> tuple[str, int, int, str] | None:
+    """Return the shortfall when `node` binds a handler dict that misses enum members.
+
+    Requires a single `Name` target, a `dict` literal value with no `**` spread,
+    at least `_MIN_ARMS` keys that are ALL members of one module-scope enum, all
+    values handler-shaped (name / attribute / lambda), and a name that is never
+    grown elsewhere in the module.
+
+    Returns:
+        `(enum name, covered, total, missing members)`, or None when the
+        assignment is not an incomplete dispatch map.
+
+    """
+    target = _single_name_target(node)
+    if target is None or target in grown_maps or not isinstance(node.value, ast.Dict):
+        return None
+    mapping = node.value
+    if any(key is None for key in mapping.keys):
+        # `**other` — the real key set is not visible here.
+        return None
+    if len(mapping.keys) < _MIN_ARMS:
+        return None
+    if not all(_is_handler_value(value) for value in mapping.values):
+        return None
+    owners = {_member_owner(key) for key in mapping.keys}
+    if len(owners) != 1:
+        return None
+    owner = next(iter(owners))
+    if owner is None or owner not in enum_members:
+        return None
+    declared = enum_members[owner]
+    covered = {
+        key.attr for key in mapping.keys if isinstance(key, ast.Attribute) and key.attr in declared
+    }
+    if len(covered) != len(mapping.keys) or not covered < declared:
+        return None
+    missing = ", ".join(f"{owner}.{name}" for name in sorted(declared - covered))
+    return owner, len(covered), len(declared), missing
+
+
+def _single_name_target(node: ast.Assign | ast.AnnAssign) -> str | None:
+    """Return the bound name when `node` assigns to exactly one plain name.
+
+    Returns:
+        The target name, or None for tuple/attribute/subscript targets.
+
+    """
+    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+    if len(targets) != 1:
+        return None
+    target = targets[0]
+    return target.id if isinstance(target, ast.Name) else None
+
+
+def _is_handler_value(value: ast.expr | None) -> bool:
+    """Report whether a dict value looks like a handler rather than data.
+
+    A literal value makes the dict a data table, where a partial mapping is
+    routinely deliberate; a name, attribute or lambda makes it a dispatch table.
+
+    Returns:
+        True when the value is handler-shaped.
+
+    """
+    return isinstance(value, (ast.Name, ast.Attribute, ast.Lambda))
+
+
+def _member_owner(key: ast.expr | None) -> str | None:
+    """Return the class name in a `Owner.MEMBER` dict key.
+
+    Returns:
+        The owner name, or None when the key is not simple member access.
+
+    """
+    match key:
+        case ast.Attribute(value=ast.Name(id=owner)):
+            return owner
+        case _:
+            return None
 
 
 def _importfrom_bound_names(tree: ast.Module) -> frozenset[str]:

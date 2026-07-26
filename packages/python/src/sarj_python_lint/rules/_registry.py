@@ -14,6 +14,7 @@ from sarj_python_lint.rules.no_cors_wildcard_with_credentials import (
     NoCorsWildcardWithCredentials,
 )
 from sarj_python_lint.rules.no_fat_try_blocks import NoFatTryBlocks
+from sarj_python_lint.rules.no_file_level_suppression import NoFileLevelSuppression
 from sarj_python_lint.rules.no_fstring_in_log import NoFstringInLog
 from sarj_python_lint.rules.no_isinstance_union_chain import NoIsinstanceUnionChain
 from sarj_python_lint.rules.no_offset_pagination import NoOffsetPagination
@@ -33,6 +34,9 @@ from sarj_python_lint.rules.prefer_constant_time_secret_compare import (
     PreferConstantTimeSecretCompare,
 )
 from sarj_python_lint.rules.prefer_match_assert_never import PreferMatchAssertNever
+from sarj_python_lint.rules.prefer_module_level_constant import (
+    PreferModuleLevelConstant,
+)
 from sarj_python_lint.rules.prefer_namedtuple_over_tuple_return import (
     PreferNamedtupleOverTupleReturn,
 )
@@ -92,6 +96,8 @@ REGISTRY: dict[str, type[Rule]] = {
     PreferMatchAssertNever.id: PreferMatchAssertNever,
     KwonlySameTypeParams.id: KwonlySameTypeParams,
     NoRawSqlInTests.id: NoRawSqlInTests,
+    NoFileLevelSuppression.id: NoFileLevelSuppression,
+    PreferModuleLevelConstant.id: PreferModuleLevelConstant,
 }
 
 __all__ = ["REGISTRY"]

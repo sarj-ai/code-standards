@@ -82,6 +82,18 @@
   language: python
   types: [python]
 
+- id: sarj-no-file-level-suppression
+  name: 'sarj-lint: unscoped file-level suppression blanket — scope it to the codes it silences'
+  entry: sarj-python-lint check --rule no-file-level-suppression
+  language: python
+  types: [python]
+
+- id: sarj-prefer-module-level-constant
+  name: 'sarj-lint: literal-only constant rebuilt on every call — hoist it to module scope'
+  entry: sarj-python-lint check --rule prefer-module-level-constant
+  language: python
+  types: [python]
+
 - id: sarj-enforce-timestamptz
   name: 'sarj-lint(sql): TIMESTAMP must use WITH TIME ZONE (TIMESTAMPTZ)'
   entry: sarj-sql-lint check --rule enforce-timestamptz
