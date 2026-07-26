@@ -23,11 +23,11 @@ def _check(source: str, path: str = "python/bulbul/bulbul/calls/service.py") -> 
     ("params", "primitive"),
     [
         ("source_id: str, target_id: str", "str"),
-        ("a: int, b: int", "int"),
-        ("lat: float, lon: float, alt: float", "float"),
+        ("parent_id: int, child_id: int", "int"),
+        ("old_score: float, new_score: float", "float"),
         ("dry_run: bool, force: bool", "bool"),
-        ("name: str, org_id: int, label: str", "str"),
-        ("a: str, b: str, c: int", "str"),
+        ("user_id: str, org_id: str, label: int", "str"),
+        ("src_key: str, dst_key: str, c: int", "str"),
     ],
 )
 def test_flags_same_primitive_positionals(params: str, primitive: str):
@@ -56,18 +56,18 @@ def test_flags_classmethod_excluding_cls():
     src = """
 class Store:
     @classmethod
-    def build(cls, key: str, value: str) -> "Store": ...
+    def build(cls, old_key: str, new_key: str) -> "Store": ...
 """
     assert len(_check(src)) == 1
 
 
 def test_flags_with_defaults():
-    src = "def f(a: str, b: str = 'x') -> None: ...\n"
+    src = "def f(source_id: str, target_id: str = 'x') -> None: ...\n"
     assert len(_check(src)) == 1
 
 
 def test_one_diagnostic_per_function():
-    src = "def f(a: str, b: str, c: int, d: int) -> None: ...\n"
+    src = "def f(source_id: str, target_id: str, old_key: int, new_key: int) -> None: ...\n"
     assert len(_check(src)) == 1
 
 
@@ -86,9 +86,27 @@ def test_one_diagnostic_per_function():
         "",
         "a, b",
         "a: str, b",
+        "a: int, b: int",
+        "a: str, b: str, c: int",
+        "base: int, exponent: int",
     ],
 )
 def test_allows_distinct_or_missing_annotations(params: str):
+    src = f"def f({params}) -> None: ...\n"
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        "lat: float, lon: float, alt: float",
+        "left: int, right: int",
+        "lo: int, hi: int",
+        "low: float, high: float",
+        "source: int, sink: int",
+    ],
+)
+def test_allows_conventional_algorithm_or_coordinate_pairs(params: str):
     src = f"def f({params}) -> None: ...\n"
     assert _check(src) == []
 
@@ -161,7 +179,7 @@ class T:
 def test_non_exempt_decorator_still_fires():
     src = """
 @retry(attempts=3)
-def f(a: str, b: str) -> None: ...
+def f(source_id: str, target_id: str) -> None: ...
 """
     assert len(_check(src)) == 1
 
@@ -204,7 +222,7 @@ async def handler(org_id: str, call_id: str) -> None: ...
 def test_non_route_shaped_decorators_still_fire(decorator: str):
     src = f"""
 @{decorator}
-def f(a: str, b: str) -> None: ...
+def f(source_id: str, target_id: str) -> None: ...
 """
     assert len(_check(src)) == 1
 
@@ -257,9 +275,9 @@ def test_allows_params_protected_by_markers(params: str):
     "params",
     [
         # The same-type pair sits BEFORE the marker and stays swap-prone.
-        "a: str, b: str, *, c: int",
-        "a: str, b: str, *args",
-        "x: int, /, a: str, b: str",
+        "source_id: str, target_id: str, *, c: int",
+        "source_id: str, target_id: str, *args",
+        "x: int, /, source_id: str, target_id: str",
     ],
 )
 def test_flags_same_type_pair_before_marker(params: str):
@@ -269,7 +287,7 @@ def test_flags_same_type_pair_before_marker(params: str):
 
 def test_kwargs_alone_is_not_a_marker():
     # **kwargs does not protect the positional params from swapping.
-    src = "def f(a: str, b: str, **kwargs) -> None: ...\n"
+    src = "def f(source_id: str, target_id: str, **kwargs) -> None: ...\n"
     assert len(_check(src)) == 1
 
 
@@ -284,7 +302,7 @@ def test_lambda_never_flagged():
 
 def test_multiple_functions_sorted():
     src = """
-def f(a: str, b: str) -> None: ...
+def f(source_id: str, target_id: str) -> None: ...
 
 def g(org_id: int, call_id: int) -> None: ...
 """
@@ -294,7 +312,7 @@ def g(org_id: int, call_id: int) -> None: ...
 
 
 def test_line_col_point_at_def():
-    diags = _check("def f(a: str, b: str) -> None: ...\n")
+    diags = _check("def f(source_id: str, target_id: str) -> None: ...\n")
     assert (diags[0].line, diags[0].col) == (1, 1)
 
 
@@ -421,7 +439,7 @@ class Stream:
 def test_protocol_names_as_plain_functions_still_fire(name: str):
     # The exemption is for METHODS implementing a protocol — a module-level
     # function that merely shares the name owns its own calling convention.
-    src = f"def {name}(first: int, second: int) -> int: ...\n"
+    src = f"def {name}(source_id: int, target_id: int) -> int: ...\n"
     assert len(_check(src)) == 1
 
 
@@ -431,7 +449,7 @@ def test_super_call_proves_an_override_and_exempts():
     # an override cannot narrow the base class's calling convention.
     src = """
 class Child(Base):
-    def register(self, key: str, value: str) -> None:
+    def register(self, old_key: str, new_key: str) -> None:
         super().register(key, value)
 """
     assert _check(src) == []
@@ -440,7 +458,7 @@ class Child(Base):
 def test_super_call_to_a_different_method_does_not_exempt():
     src = """
 class Child(Base):
-    def register(self, key: str, value: str) -> None:
+    def register(self, old_key: str, new_key: str) -> None:
         super().__init__()
 """
     assert len(_check(src)) == 1
@@ -481,7 +499,7 @@ def main(bind_host: str, cors_origin: str) -> None: ...
 def test_non_cli_shaped_decorators_still_fire(decorator: str):
     src = f"""
 @{decorator}
-def f(a: str, b: str) -> None: ...
+def f(source_id: str, target_id: str) -> None: ...
 """
     assert len(_check(src)) == 1
 
@@ -500,7 +518,7 @@ class NullFile:
 def test_dunder_suffixed_param_names_are_not_positional_only():
     src = """
 class T:
-    def scroll(self, __offset__: int, __whence__: int) -> int: ...
+    def scroll(self, __source_id__: int, __target_id__: int) -> int: ...
 """
     assert len(_check(src)) == 1
 
@@ -536,16 +554,16 @@ def test_conventional_ordered_vocabularies_are_exempt(params: str):
         "s: str, d: str",
     ],
 )
-def test_groups_only_partly_in_a_vocabulary_still_fire(params: str):
+def test_groups_only_partly_in_a_vocabulary_are_not_enough_without_risky_names(params: str):
     src = f"def f({params}) -> None: ...\n"
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
 def test_vocabularies_do_not_cross_domains():
     # `x`/`y` and `width`/`height` are separate vocabularies; a group spanning
     # both is not one piece of notation.
     src = "def f(x: int, height: int) -> None: ...\n"
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
 def test_positive_distilled_from_trio_set_result():

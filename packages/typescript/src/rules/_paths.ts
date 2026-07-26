@@ -17,10 +17,10 @@ const SCRIPT_FILE_RE = /([\\/]scripts[\\/])|(\.mjs$)/;
 export function isTestFile(filename: string): boolean {
   const normalized = filename.replaceAll("\\", "/");
   const base = normalized.slice(normalized.lastIndexOf("/") + 1);
-  if (/\.(test|spec)\.[cm]?[jt]sx?$/.test(base)) {
+  if (/\.(test|spec|e2e|integration)\.[cm]?[jt]sx?$/.test(base)) {
     return true;
   }
-  return /(^|\/)(tests?|__tests__|__mocks__|fixtures)\//.test(normalized);
+  return /(^|\/)(tests?|__tests__|__mocks__|fixtures|e2e|integration)\//.test(normalized);
 }
 
 /**

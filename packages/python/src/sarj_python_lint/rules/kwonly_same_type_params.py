@@ -157,16 +157,30 @@ _DUCK_PROTOCOL_METHODS = frozenset(
 #: drawn entirely from one of these reads unambiguously positionally.
 _CONVENTIONAL_ORDER_GROUPS = (
     frozenset({"x", "y", "z"}),
+    frozenset({"lat", "lon", "alt"}),
+    frozenset({"latitude", "longitude", "altitude"}),
     frozenset({"width", "height", "depth"}),
     frozenset({"red", "green", "blue", "alpha"}),
     frozenset({"row", "column"}),
     frozenset({"top", "right", "bottom", "left"}),
+    frozenset({"left", "right"}),
+    frozenset({"lo", "hi"}),
+    frozenset({"low", "high"}),
+    frozenset({"minimum", "maximum"}),
+    frozenset({"min_value", "max_value"}),
+    frozenset({"begin", "end"}),
+    frozenset({"source", "sink"}),
     frozenset({"year", "month", "day"}),
     frozenset({"hour", "minute", "second", "microsecond"}),
     frozenset({"start", "stop", "step"}),
 )
 
 _EXEMPT_NAME_PREFIXES = ("visit_", "test_")
+_RISKY_NAME_PART_RE = re.compile(
+    r"(?:^|_)(?:id|key|token|secret|password|signature|hash|email|url|uri|path|file|"
+    r"source|src|target|dst|dest|destination|parent|child|from|to|old|new|"
+    r"before|after|previous|next|expected|actual|left_id|right_id)(?:_|$)"
+)
 
 
 class KwonlySameTypeParams(Rule):
@@ -350,9 +364,28 @@ def _swap_prone_annotation(args: ast.arguments) -> str | None:
     for name, arg_names in sorted(groups.items(), key=lambda kv: -len(kv[1])):
         if len(arg_names) >= _MIN_SAME_TYPE and not (
             _is_symmetric_numbering(arg_names) or _is_conventional_order(arg_names)
-        ):
+        ) and _is_high_value_group(name, arg_names):
             return name
     return None
+
+
+def _is_high_value_group(annotation: str, arg_names: list[str]) -> bool:
+    """Report whether a same-primitive group is worth enforcing globally.
+
+    Booleans are always high-risk because positional `True, False` carries no
+    call-site meaning. Other primitives fire only when the parameter names carry
+    production-domain identifiers or directed relationships (`source_id`,
+    `target_id`, `old_key`, `new_key`, `input_path`, `output_path`). This keeps
+    math / algorithm APIs such as `power(base, exponent)` and `f(a, b)` out of
+    the default rule while preserving the bug class the rule was written for.
+
+    Returns:
+        True when the group should be reported.
+
+    """
+    if annotation == "bool":
+        return True
+    return sum(1 for name in arg_names if _RISKY_NAME_PART_RE.search(name)) >= _MIN_SAME_TYPE
 
 
 def _is_dunder_prefixed(arg: str) -> bool:

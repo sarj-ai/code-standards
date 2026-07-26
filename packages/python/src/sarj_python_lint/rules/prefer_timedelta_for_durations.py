@@ -110,6 +110,25 @@ _EXCLUDE_RE = re.compile(
 )
 
 _NUMERIC_NAMES = frozenset({"int", "float"})
+_BARE_UNIT_NAMES = frozenset(
+    {
+        "day",
+        "days",
+        "hour",
+        "hours",
+        "minute",
+        "minutes",
+        "min",
+        "mins",
+        "second",
+        "seconds",
+        "sec",
+        "secs",
+        "millisecond",
+        "milliseconds",
+        "ms",
+    }
+)
 
 #: Roots of the CLI frameworks whose decorators bind a parameter to an argv value.
 _CLI_MODULES = frozenset({"click", "typer"})
@@ -179,6 +198,8 @@ class PreferTimedeltaForDurations(Rule):
         path: Path,
     ) -> None:
         if annotation is None:
+            return
+        if name.lower() in _BARE_UNIT_NAMES or name.lower().endswith(("_worked", "_elapsed")):
             return
         if not _UNIT_RE.search(name) or _EXCLUDE_RE.search(name):
             return

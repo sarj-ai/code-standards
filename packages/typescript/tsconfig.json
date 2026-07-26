@@ -8,6 +8,7 @@
     // explicit RuleModule<...> annotation on every default export for zero safety
     // gain — tsup emits the declarations fine. Every other strict flag stays on.
     "isolatedDeclarations": false,
+    "types": ["node"],
     // tsup's DTS step injects a (now-deprecated) baseUrl; silence the TS7.0 warning.
     "ignoreDeprecations": "6.0"
   },
