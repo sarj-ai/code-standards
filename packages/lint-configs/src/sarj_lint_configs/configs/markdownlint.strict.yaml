@@ -1,0 +1,10 @@
+# Sarj strict Markdown lint configuration for markdownlint / markdownlint-cli2
+default: true
+MD013: false # Line length (handled by text editor / formatter)
+MD033: false # Allow inline HTML when necessary (e.g., details/summary, alerts)
+MD041: false # First line in file does not strictly need to be top-level heading (for snippets/partials)
+MD024:
+  siblings_only: true # Allow duplicate heading names in different sections
+MD029:
+  style: "ordered"
+MD040: true # Require language specified on fenced code blocks
