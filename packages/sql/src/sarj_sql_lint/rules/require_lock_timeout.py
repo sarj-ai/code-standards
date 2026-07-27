@@ -20,8 +20,8 @@ if TYPE_CHECKING:
 DDL_PATTERN = re.compile(r"\b(ALTER\s+TABLE|CREATE\s+(?:UNIQUE\s+)?INDEX|DROP\s+TABLE)\b", re.IGNORECASE)
 TX_END_PATTERN = re.compile(r"\b(COMMIT|ROLLBACK)\b", re.IGNORECASE)
 
-TIMEOUT_ASSIGNMENT_PATTERN = re.compile(
-    r"\b(?:SET\s+(?:LOCAL\s+)?|RESET\s+)(lock_timeout|statement_timeout)(?:\s*(?:=|\bTO\b)\s*([^\s;]+))?",
+ASSIGNMENT_PATTERN = re.compile(
+    r"\b(SET\s+LOCAL|SET|RESET)\s+(lock_timeout|statement_timeout)(?:\s*(?:=|\bTO\b)\s*([^\s;]+))?",
     re.IGNORECASE,
 )
 POSITIVE_VAL_PATTERN = re.compile(r"^['\"]?(?:[1-9]\d*|[1-9]\d*[a-zA-Z]+)['\"]?$", re.IGNORECASE)
@@ -42,21 +42,34 @@ class RequireLockTimeout(Rule):
 
         for ddl_match in DDL_PATTERN.finditer(masked):
             ddl_start = ddl_match.start()
+
+            active_timeouts: dict[str, bool] = {"lock_timeout": False, "statement_timeout": False}
             tx_ends = [c.end() for c in TX_END_PATTERN.finditer(masked, 0, ddl_start)]
-            block_start = tx_ends[-1] if tx_ends else 0
 
-            block_source = source[block_start:ddl_start]
-            assignments = list(TIMEOUT_ASSIGNMENT_PATTERN.finditer(block_source))
+            for match in ASSIGNMENT_PATTERN.finditer(source, 0, ddl_start):
+                match_pos = match.start()
 
-            has_active_timeout = False
-            if assignments:
-                last = assignments[-1]
-                cmd = last.group(0).upper()
-                val = (last.group(2) or "").strip()
-                if "RESET" not in cmd and val and POSITIVE_VAL_PATTERN.match(val):
-                    has_active_timeout = True
+                # Verify assignment is not inside a comment
+                if masked[match_pos:match_pos+3].strip() == "" and "--" in source[:match_pos].splitlines()[-1]:
+                    continue
 
-            if not has_active_timeout:
+                is_local = "LOCAL" in match.group(1).upper()
+                expired_by_tx = is_local and any(t > match_pos for t in tx_ends)
+                if expired_by_tx:
+                    continue
+
+                target_var = match.group(2).lower()
+                cmd = match.group(1).upper()
+                val = (match.group(3) or "").strip().strip(";")
+
+                if "RESET" in cmd:
+                    active_timeouts[target_var] = False
+                elif val and POSITIVE_VAL_PATTERN.match(val):
+                    active_timeouts[target_var] = True
+                else:
+                    active_timeouts[target_var] = False
+
+            if not any(active_timeouts.values()):
                 lineno = masked[:ddl_start].count("\n") + 1
                 diags.append(
                     Diagnostic(

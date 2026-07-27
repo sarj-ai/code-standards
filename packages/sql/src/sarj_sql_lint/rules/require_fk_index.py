@@ -18,8 +18,8 @@ if TYPE_CHECKING:
 
 def _mask_literals_and_comments(sql: str) -> str:
     sql = re.sub(r"--[^\n]*", lambda m: " " * len(m.group(0)), sql)
-    sql = re.sub(r"/\*[\s\S]*?\*/", lambda m: " " * len(m.group(0)), sql)
-    sql = re.sub(r"'(?:''|[^'])*'", lambda m: " " * len(m.group(0)), sql)
+    sql = re.sub(r"/\*[\s\S]*?\*/", lambda m: re.sub(r"[^\n]", " ", m.group(0)), sql)
+    sql = re.sub(r"'(?:''|[^'])*'", lambda m: re.sub(r"[^\n]", " ", m.group(0)), sql)
     return sql
 
 
@@ -67,6 +67,7 @@ class RequireFkIndex(Rule):
 
         indexed_cols_by_table: dict[str, set[tuple[str, ...]]] = {}
 
+        # 1. Parse explicit CREATE INDEX statements
         for match in CREATE_INDEX_PATTERN.finditer(masked):
             table = _normalize_name(match.group(1))
             cols_raw = match.group(2)
@@ -74,7 +75,19 @@ class RequireFkIndex(Rule):
             if cols:
                 indexed_cols_by_table.setdefault(table, set()).add(cols)
 
+        # 2. File-wide collection of PRIMARY KEY and UNIQUE constraints per table
         statements = masked.split(";")
+        for stmt in statements:
+            table_match = TABLE_SCOPE_PATTERN.search(stmt)
+            if table_match:
+                table_name = _normalize_name(table_match.group(1))
+                for pk_u_match in TABLE_PK_OR_UNIQUE_PATTERN.finditer(stmt):
+                    raw_pk_cols = pk_u_match.group(1)
+                    pk_cols = tuple(_normalize_name(c) for c in raw_pk_cols.split(","))
+                    if pk_cols:
+                        indexed_cols_by_table.setdefault(table_name, set()).add(pk_cols)
+
+        # 3. Process statements for FOREIGN KEY constraints
         char_offset = 0
 
         for stmt in statements:
@@ -88,12 +101,7 @@ class RequireFkIndex(Rule):
                         table_indexes = indexed_cols_by_table.get(base_table, set())
                     leading_indexed_cols = {idx[0] for idx in table_indexes if idx}
 
-                    for pk_u_match in TABLE_PK_OR_UNIQUE_PATTERN.finditer(stmt):
-                        raw_pk_cols = pk_u_match.group(1)
-                        pk_cols = [_normalize_name(c) for c in raw_pk_cols.split(",")]
-                        if pk_cols:
-                            leading_indexed_cols.add(pk_cols[0])
-
+                    # Check for table-level FOREIGN KEY (col1, col2)
                     for fk_match in TABLE_FK_PATTERN.finditer(stmt):
                         raw_cols = fk_match.group(1)
                         fk_cols = tuple(_normalize_name(c) for c in raw_cols.split(","))
@@ -115,31 +123,33 @@ class RequireFkIndex(Rule):
                                 )
                             )
 
+                    # Check inline column definitions
                     header_end = table_match.end()
                     body = stmt[header_end:]
 
-                    for segment in body.split(","):
-                        if "REFERENCES" in segment.upper() and not TABLE_FK_PATTERN.search(segment):
-                            if PRIMARY_OR_UNIQUE_KEYWORD.search(segment):
-                                continue
-                            col_match = INLINE_COLUMN_PATTERN.search(segment)
-                            if col_match:
-                                col_name = _normalize_name(col_match.group(1))
-                                if col_name not in ("foreign", "key", "constraint", "alter", "table", "create", "add", "column") and col_name not in leading_indexed_cols:
-                                    segment_offset = char_offset + stmt.find(segment)
-                                    lineno = masked[:segment_offset].count("\n") + 1
-                                    diags.append(
-                                        Diagnostic(
-                                            path=path,
-                                            line=lineno,
-                                            col=1,
-                                            code=self.code,
-                                            message=(
-                                                f"Foreign key column `{col_name}` on table `{full_table}` should have a corresponding `CREATE INDEX` "
-                                                "to prevent full table scans and lock contention during parent row deletes."
-                                            ),
+                    if not TABLE_FK_PATTERN.search(body):
+                        for line in body.splitlines():
+                            if "REFERENCES" in line.upper():
+                                if PRIMARY_OR_UNIQUE_KEYWORD.search(line):
+                                    continue
+                                col_match = INLINE_COLUMN_PATTERN.search(line)
+                                if col_match:
+                                    col_name = _normalize_name(col_match.group(1))
+                                    if col_name not in ("foreign", "key", "constraint", "alter", "table", "create", "add", "column") and col_name not in leading_indexed_cols:
+                                        line_offset = char_offset + stmt.find(line)
+                                        lineno = masked[:line_offset].count("\n") + 1
+                                        diags.append(
+                                            Diagnostic(
+                                                path=path,
+                                                line=lineno,
+                                                col=1,
+                                                code=self.code,
+                                                message=(
+                                                    f"Foreign key column `{col_name}` on table `{full_table}` should have a corresponding `CREATE INDEX` "
+                                                    "to prevent full table scans and lock contention during parent row deletes."
+                                                ),
+                                            )
                                         )
-                                    )
 
             char_offset += len(stmt) + 1
 
