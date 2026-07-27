@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from sarj_iac_lint.rules.no_comment_cruft import NoCommentCruft
 from sarj_iac_lint.rules.require_deletion_protection import RequireDeletionProtection
+from sarj_iac_lint.rules.require_prevent_destroy import RequirePreventDestroyOnIrreplaceable
 
 
 if TYPE_CHECKING:
@@ -14,5 +15,6 @@ if TYPE_CHECKING:
 
 REGISTRY: dict[str, type[Rule]] = {
     RequireDeletionProtection.id: RequireDeletionProtection,
+    RequirePreventDestroyOnIrreplaceable.id: RequirePreventDestroyOnIrreplaceable,
     NoCommentCruft.id: NoCommentCruft,
 }
