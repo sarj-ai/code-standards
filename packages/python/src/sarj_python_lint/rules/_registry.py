@@ -26,6 +26,9 @@ from sarj_python_lint.rules.no_fstring_in_log import NoFstringInLog
 from sarj_python_lint.rules.no_gen_random_uuid_in_sql import NoGenRandomUuidInSql
 from sarj_python_lint.rules.no_isinstance_union_chain import NoIsinstanceUnionChain
 from sarj_python_lint.rules.no_offset_pagination import NoOffsetPagination
+from sarj_python_lint.rules.no_optional_tenant_predicate import (
+    NoOptionalTenantPredicate,
+)
 from sarj_python_lint.rules.no_query_with_many_joins import NoQueryWithManyJoins
 from sarj_python_lint.rules.no_raw_sql_in_tests import NoRawSqlInTests
 from sarj_python_lint.rules.no_repeated_string_literal import NoRepeatedStringLiteral
@@ -83,10 +86,19 @@ if TYPE_CHECKING:
 #   SARJ027, SARJ029, SARJ030 (dropped in 0.11.1 as too noisy),
 #   SARJ033 httpx-client-requires-timeout, SARJ035 no-import-time-settings
 #   (dropped by user veto after the 0.13.x mined-rules review),
-#   SARJ055 no-filler-success-adverb (built and corpus-validated, then dropped:
-#   precision was fine at 1 FP in 327, but it fires on 4.7% of Airflow's
-#   info/debug log calls, so the pattern is a professional convention rather
-#   than the AI tell the rule assumed — house style, not a defect),
+#   SARJ055 no-filler-success-adverb (built and corpus-validated, then dropped
+#   — but not for the reason first recorded. The headline "4.7% of Airflow's
+#   info/debug logs" is a composition artifact: 237 of those 248 hits are in
+#   `providers/` (contributed vendor operators, heavily copy-pasted — the
+#   template "%s completed successfully." appears 22 times verbatim). Airflow's
+#   maintainer-owned `airflow-core/` sits at 1.15% and Home Assistant at 1.24%,
+#   so the real external baseline is ~1.2%, not 4.7%. The rule was re-measured
+#   and dropped on a stronger basis: the narrow variant — fire only when the
+#   adverb is the sole content beyond a bare verb — has 12 external hits and
+#   ZERO internal ones across all six repos, so it would govern nothing we
+#   write. The broad rule remains opt-in house style, not a defect check.
+#   (Noted for any future revisit: noura-be measures 7.92%, a genuine outlier
+#   against every corpus; that, not the narrow variant, is the case to make.),
 #   SARJ037 no-trivial-single-use-helper (prototyped and dropped for FP rate;
 #   see the 0.13.1 inlining commit for the corpus analysis).
 REGISTRY: dict[str, type[Rule]] = {
@@ -136,6 +148,7 @@ REGISTRY: dict[str, type[Rule]] = {
     NoStdlibLogging.id: NoStdlibLogging,
     NoGenRandomUuidInSql.id: NoGenRandomUuidInSql,
     NoFileLevelEscapeHatchNoqa.id: NoFileLevelEscapeHatchNoqa,
+    NoOptionalTenantPredicate.id: NoOptionalTenantPredicate,
 }
 
 __all__ = ["REGISTRY"]

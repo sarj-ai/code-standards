@@ -178,6 +178,45 @@ sarj-python-lint check --rule mock-without-spec --update-baseline test-quality-b
 sarj-python-lint check --rule mock-without-spec --baseline test-quality-baseline.json python/
 ```
 
+### Multi-tenant scoping (0.22.0)
+
+```yaml
+    - id: sarj-no-optional-tenant-predicate        # SARJ056
+```
+
+`SARJ056` fires when every WHERE-fragment mentioning a tenant column
+(`organization_id` and friends) sits inside a conditional, so the predicate
+disappears — and the query still runs — whenever the filter is empty:
+
+```python
+where_conditions = []
+if args.organization_ids:                                    # ← optional
+    where_conditions.append(SQL("organization_id = ANY(%s::uuid[])"))
+...
+where_clause = SQL(" AND ").join(where_conditions) if where_conditions else SQL("1=1")
+```
+
+The safe idiom seeds the list, so scoping always applies and the rule stays
+quiet:
+
+```python
+conditions: list[Composable] = [SQL("organization_id = %s")]
+```
+
+A function with **no** tenant predicate at all never fires — an intentionally
+cross-tenant admin query is out of scope; only *attempted-but-optional* scoping
+is a finding. Where a caller genuinely wants the all-tenant query, that
+intent belongs in an explicit method (or an inline `sarj-noqa`) rather than in
+an omitted filter.
+
+Measured before shipping: **0 findings across 26,345 files** of pydantic, trio,
+attrs, Airflow and Home Assistant — single-tenant codebases have no tenant
+column, so the rule is silent by construction — and 0 in noura-be, ai, kpi-hub
+and demo-gateway. In bulbul it finds 10 sites, all genuine fail-open
+compositions, two of which were reachable cross-tenant reads at the time of
+writing (`POST /v1/calls/list` and `POST /v1/calls/batch/list`, both of which
+composed `WHERE 1=1` for a user whose `organization_id` was NULL).
+
 ## CLI
 
 ```bash
