@@ -126,7 +126,7 @@ def test_message_is_the_whole_advice_verbatim():
 def test_reports_line_and_column_of_the_function():
     [diag] = _check(_LOOP_ONLY)
     assert (diag.line, diag.col) == (2, 1)
-    assert diag.code == "SARJ062"
+    assert diag.code == "SARJ065"
 
 
 def test_reports_the_indented_position_of_a_method():

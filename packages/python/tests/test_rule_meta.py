@@ -37,8 +37,9 @@ _RETIRED_CODES = frozenset(
         "SARJ033",
         "SARJ035",
         "SARJ037",
-        "SARJ069",
-        "SARJ070",
+        "SARJ055",
+        "SARJ072",
+        "SARJ073",
     }
 )
 

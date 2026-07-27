@@ -81,7 +81,7 @@ def test_message_is_exactly_the_advice_we_mean_to_give():
 
 def test_reports_line_column_and_code():
     [diag] = _check(_INTERACTION_ONLY)
-    assert (diag.line, diag.col, diag.code) == (2, 1, "SARJ060")
+    assert (diag.line, diag.col, diag.code) == (2, 1, "SARJ063")
 
 
 def test_reports_the_position_of_a_nested_test_not_the_module_start():
@@ -277,7 +277,7 @@ def test_main():
 
 # --------------------------------------------------------------------------- #
 # FP guard: a single collaborator is one notification, not a sequence. Counted  #
-# by root object, matching SARJ059: a collaborator is an object, not one of its #
+# by root object, matching SARJ062: a collaborator is an object, not one of its #
 # methods. 56 of the 60 raw django findings were this shape, and counting whole #
 # dotted paths instead of roots let one mock satisfy the gate on its own —      #
 # 799 of 1,261 OSS findings (63%).                                             #

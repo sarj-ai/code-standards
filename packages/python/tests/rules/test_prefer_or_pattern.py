@@ -39,7 +39,7 @@ def f(cfg):
 def test_flags_two_adjacent_arms_with_identical_bodies():
     diags = _check(_TWO_CLASS_ARMS)
     assert len(diags) == 1
-    assert diags[0].code == "SARJ067"
+    assert diags[0].code == "SARJ070"
     assert "2 consecutive" in diags[0].message
 
 
@@ -987,5 +987,5 @@ def test_async_function_body_is_found():
 def test_rule_metadata():
     rule = PreferOrPattern()
     assert rule.id == "prefer-or-pattern"
-    assert rule.code == "SARJ067"
+    assert rule.code == "SARJ070"
     assert len(rule.description) >= 10

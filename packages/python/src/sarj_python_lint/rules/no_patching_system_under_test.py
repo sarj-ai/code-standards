@@ -1,4 +1,4 @@
-"""SARJ058: a test that mocks out the unit's own logic verifies the mock, not the unit.
+"""SARJ061: a test that mocks out the unit's own logic verifies the mock, not the unit.
 
 Mocking is a boundary tool. Replacing a collaborator the unit *talks to* — an
 HTTP client, a store, a clock — keeps the unit's own behaviour under test. Ripping
@@ -146,7 +146,7 @@ nothing syntactic tells them apart. `patch("sentry_sdk.utils.get_git_revision")`
 seam that this rule flags. A verb-prefix heuristic was measured and rejected: 43%
 of all hits are I/O-verb-prefixed (`get_`, `send_`, `read_`, `write_`, `fetch_`),
 so it would take most of the true positives with it. These are what
-`# sarj-noqa: SARJ058` is for.
+`# sarj-noqa: SARJ061` is for.
 
 CORPUS EVIDENCE
 ---------------
@@ -225,7 +225,7 @@ celery's remaining 71 are concentrated: `t/unit/backends/test_gcs.py` (39) and
 `t/unit/utils/test_platforms.py` (24) account for 63 of them, both suites that
 mock a module's own functions and assert on the mock. The rule is a real finding
 there, not noise, but a codebase adopting it mid-flight should expect to
-`# sarj-noqa: SARJ058` the deliberate cases — a sibling that really is slow or
+`# sarj-noqa: SARJ061` the deliberate cases — a sibling that really is slow or
 privileged (`celery.platforms.setuid`) is exactly what suppression is for.
 
 The rule finds nothing in bulbul or noura-be today. Both reach for
@@ -290,7 +290,7 @@ class NoPatchingSystemUnderTest(Rule):
     """Mocking a function or method of the unit under test verifies the mock."""
 
     id: str = "no-patching-system-under-test"
-    code: str = "SARJ058"
+    code: str = "SARJ061"
     description: str = "Test patches a function/method of the unit it exercises — the real code path never runs."
 
     @override

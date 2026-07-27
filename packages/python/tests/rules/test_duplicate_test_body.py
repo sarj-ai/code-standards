@@ -67,7 +67,7 @@ def test_flags_the_copy_and_not_the_original():
     [diag] = _check(_COPY_PASTED_PAIR)
     assert diag.line == 8
     assert diag.col == 1
-    assert diag.code == "SARJ063"
+    assert diag.code == "SARJ066"
 
 
 def test_flags_a_group_once_on_its_first_copy():
@@ -175,12 +175,12 @@ async def test_two():
 
 
 def test_differing_docstrings_suppress_a_duplicate():
-    # Reversed in the 0.22.0 wave. This rule and SARJ067 `prefer-or-pattern`
-    # shipped together taking opposite positions on the same signal: SARJ067
+    # Reversed in the 0.22.0 wave. This rule and SARJ070 `prefer-or-pattern`
+    # shipped together taking opposite positions on the same signal: SARJ070
     # suppresses when two arms carry different comments, because merging forces
     # one of them to be deleted. Stripping the docstring here said the opposite.
     #
-    # SARJ067's guard is measured on two independent sites — bulbul's
+    # SARJ070's guard is measured on two independent sites — bulbul's
     # analytics_service.py:172 (`# 7 data points` / `# 30-31 data points`) and
     # litellm's user_api_key_auth_mcp.py:776 (`# Unreachable: kept for match
     # exhaustiveness`) — and on the standards repo's own suite 29 of 125

@@ -1,4 +1,4 @@
-"""SARJ055: a hand-rolled in-memory store makes the test verify a dict, not the database.
+"""SARJ058: a hand-rolled in-memory store makes the test verify a dict, not the database.
 
 A `Store` / `Repository` / `Dao` is a persistence port, and in this codebase the
 implementation behind it is SQL — `PsqlUserStore`, `PsqlOrganizationStore`,
@@ -146,7 +146,7 @@ earlier revision fell back to the class's own name, producing "`FakeTaskStateSto
 re-implements the `FakeTaskStateStore` persistence port". That spelling now drops the
 name instead of inventing one.
 
-This rule is the persistence-port counterpart of SARJ056 (`prefer-library-fake`),
+This rule is the persistence-port counterpart of SARJ059 (`prefer-library-fake`),
 which covers hand-rolled doubles of *external* services that a maintained library
 already fakes. Doubles of this project's own SQL-backed ports have no library to reach
 for; the fix is the real store plus the test database.
@@ -273,7 +273,7 @@ class PreferRealStoreInTests(Rule):
     """A dict-backed fake of a SQL-backed persistence port verifies the fake, not the database."""
 
     id: str = "prefer-real-store-in-tests"
-    code: str = "SARJ055"
+    code: str = "SARJ058"
     description: str = (
         "Hand-rolled in-memory `Store`/`Repository` double — the test verifies a dict instead of the real store."
     )

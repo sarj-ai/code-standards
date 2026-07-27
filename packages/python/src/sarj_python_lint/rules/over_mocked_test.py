@@ -1,4 +1,4 @@
-"""SARJ059: a test that substitutes six collaborators exercises the mock wiring, not the code.
+"""SARJ062: a test that substitutes six collaborators exercises the mock wiring, not the code.
 
 Past a certain ratio the system under test is gone. Every collaborator answers
 whatever the test told it to answer, so the assertions can only re-read the
@@ -358,7 +358,7 @@ class OverMockedTest(Rule):
     """A test that replaces most of its system under test verifies the mock wiring."""
 
     id: str = "over-mocked-test"
-    code: str = "SARJ059"
+    code: str = "SARJ062"
     description: str = "Test substitutes too many collaborators — it exercises the mock wiring, not the code."
 
     @override

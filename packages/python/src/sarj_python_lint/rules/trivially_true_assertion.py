@@ -1,4 +1,4 @@
-"""SARJ061: an assertion whose outcome the test itself already decided.
+"""SARJ064: an assertion whose outcome the test itself already decided.
 
 A test earns its keep by being able to go red. An assertion whose truth is
 settled by the test's own source text cannot, so it adds a line to the coverage
@@ -19,6 +19,36 @@ Nothing in those three lines can fail unless pydantic stops assigning fields.
 The test is named `test_encrypted_payload_fields`
 (`noura-be/python/noura/tests/test_vb_auth_generic.py:372`) and it verifies the
 language, not the model.
+
+**Known overlap with SARJ057 `no-tautological-expect`, which landed on `main`
+while this rule was in review.** Both fire on `assert True` and on a truthy
+non-string constant, so a line of that shape draws two diagnostics. They are not
+redundant elsewhere: SARJ057 additionally reads `assertTrue(<literal>)`,
+`assertEqual(<lit>, <lit>)` and the collection-display slips (`assert {…}` as a
+one-element set, `assert [f"…"]` with the `== messages` lost), while this rule
+owns the two shapes that need to see what the test constructed a line earlier —
+the keyword echo and `isinstance`-after-construction — which SARJ057 does not
+model at all.
+
+The overlap is the constant shape only, and it should be resolved by this rule
+ceding it, on two grounds. SARJ057 is the better implementation of that
+particular job — 4 findings over 28,608 files at 0 false positives, with
+carve-outs this rule lacks for `except`-handler markers and pytest-benchmark
+bodies — and the constant shape contributes **0 of this rule's 17 first-party
+findings**, all of which are keyword echoes. Deferred rather than done here
+because the two rules disagree on volume in a way nobody has explained yet: over
+comparable corpora SARJ057 reports 4 and this rule's constant arm reports 41, and
+whether those 37 are true positives SARJ057 misses or false positives it
+correctly avoids decides whether ceding loses anything. Measure that before
+deleting `_is_always_true_constant`.
+
+One thing is already settled: **SARJ057 has a false positive this rule guards
+against.** It reports `faris/python/falltime/falltime/tests/services/test_pdf_processor.py:96`
+and `:112`, where `assert True` marks the success arm of a `match` whose `case _`
+raises — the pattern is the assertion and the test goes red when it stops
+matching. SARJ057's docstring claims 0 false positives, but its corpus did not
+include `faris`. The carve-out is `_is_branch_marker` here and should be ported
+there.
 
 **What ruff already owns, and is therefore NOT duplicated here.** Every shape
 below was checked against `ruff --select ALL --preview`, the configuration this
@@ -178,7 +208,7 @@ Deliberately NOT flagged:
   is arbitrary Python, and `scripts/test_*.py` holds manual CLI probes.
 
 Known residual false positives, both one finding each and both `# sarj-noqa:
-SARJ061` material:
+SARJ064` material:
 
 * celery's `Bunch(foo='foo', bar=2)` then `assert x.foo == 'foo'`
   (`t/unit/utils/test_objects.py:8`). `Bunch` is a kwargs-to-attributes bag, so
@@ -328,7 +358,7 @@ class TriviallyTrueAssertion(Rule):
     """An assertion whose outcome is fixed by the test's own source text."""
 
     id: str = "trivially-true-assertion"
-    code: str = "SARJ061"
+    code: str = "SARJ064"
     description: str = "Assertion cannot fail — its outcome is decided by the test's own literals, not by the code."
 
     @override

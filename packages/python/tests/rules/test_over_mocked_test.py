@@ -55,7 +55,7 @@ def test_the_message_is_the_one_the_rule_documents():
         "not the code. Prefer a real dependency (a test database, an in-process app, `respx` for "
         "HTTP) and mock only the true external boundary."
     )
-    assert diag.code == "SARJ059"
+    assert diag.code == "SARJ062"
 
 
 def test_reports_the_line_and_column_of_the_function():

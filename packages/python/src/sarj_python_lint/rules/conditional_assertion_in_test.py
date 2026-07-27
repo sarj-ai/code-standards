@@ -1,4 +1,4 @@
-"""SARJ062: a test whose every assertion sits behind a branch or loop can pass asserting nothing.
+"""SARJ065: a test whose every assertion sits behind a branch or loop can pass asserting nothing.
 
 ```python
 def test_results():
@@ -313,7 +313,7 @@ class ConditionalAssertionInTest(Rule):
     """A test whose assertions all sit behind a branch or loop that may not run."""
 
     id: str = "conditional-assertion-in-test"
-    code: str = "SARJ062"
+    code: str = "SARJ065"
     description: str = "Every assertion in the test is inside a conditional or loop — it can pass asserting nothing."
 
     @override

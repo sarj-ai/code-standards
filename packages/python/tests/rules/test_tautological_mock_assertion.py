@@ -715,7 +715,7 @@ def test_syntax_error_returns_no_diagnostics():
 def test_reports_the_position_of_the_assertion():
     [diag] = _check(_TAUTOLOGY)
     assert (diag.line, diag.col) == (6, 5)
-    assert diag.code == "SARJ057"
+    assert diag.code == "SARJ060"
 
 
 def test_reports_the_position_of_an_assertion_nested_in_a_class_and_a_with_block():

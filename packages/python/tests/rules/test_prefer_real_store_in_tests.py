@@ -1075,7 +1075,7 @@ class FakeMessageStore:
 def test_reports_line_and_column_of_the_class():
     [diag] = _check(_DICT_BACKED)
     assert (diag.line, diag.col) == (2, 1)
-    assert diag.code == "SARJ055"
+    assert diag.code == "SARJ058"
 
 
 def test_reports_the_position_of_a_nested_class():

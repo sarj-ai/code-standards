@@ -1,4 +1,4 @@
-"""SARJ060: a test whose only assertions are about which calls landed on a mock.
+"""SARJ063: a test whose only assertions are about which calls landed on a mock.
 
 ```python
 def test_send_notification():
@@ -19,7 +19,7 @@ observable result.
 
 **How this divides the space with SARJ043 `zero-assertion-test`.** SARJ043 fires
 on a test with *no* assertion of any kind; every `m.assert_called_*()` counts as
-an assertion there, so SARJ043 is silent on this shape by construction. SARJ060
+an assertion there, so SARJ043 is silent on this shape by construction. SARJ063
 is the adjacent case: at least one assertion, and every one of them is mock call
 bookkeeping. The two never fire on the same function. SARJ043's notion of "what
 counts as an assertion" is re-stated privately in this module rather than shared,
@@ -72,7 +72,7 @@ thin adapter has no observable output but the call it forwards. One true
 positive goes with them, `celery/t/unit/tasks/test_result.py:504`: `test_get`
 replaces `x.join` and `x.join_native` on the `ResultSet` it is testing and then
 asserts they were called, so both roots are the system under test. That is
-SARJ058 `no-patching-system-under-test`'s shape, not this rule's.
+SARJ061 `no-patching-system-under-test`'s shape, not this rule's.
 
 Treating a leading `self.` / `cls.` as transparent was tried and rejected: it
 restores 20 findings, all airflow, all the same DBAPI-hook shape
@@ -89,7 +89,7 @@ object, and no longer fires. The one that remains is
 `celery/t/unit/worker/test_autoscale.py:200` (`test_thread_crash` asserts
 `os._exit` was called with 1, which cannot be observed without exiting). That is
 "the effect is on process-global machinery"; a guard for that shape would be
-overfitting to one corpus, so `# sarj-noqa: SARJ060` is the intended escape.
+overfitting to one corpus, so `# sarj-noqa: SARJ063` is the intended escape.
 
 Deliberately NOT flagged:
 
@@ -99,7 +99,7 @@ Deliberately NOT flagged:
   and for a notifier that is the whole contract; asking the same object two
   questions (`mock_source_db.backup` then `mock_source_db.close`) is still one
   fact about one object. A collaborator is an object, not one of its methods —
-  the same reduction SARJ059 `over-mocked-test` applies when it counts
+  the same reduction SARJ062 `over-mocked-test` applies when it counts
   substituted collaborators, and the two rules have to agree or a shape can be
   "one collaborator" to one rule and "two" to the other. This guard alone
   removed 56 of the 62 raw django findings and all four raw fastapi
@@ -240,7 +240,7 @@ _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 
 # Distinct mocked collaborators that must be pinned before the test is
 # describing a *sequence* rather than a single notification. Counted by root
-# object, matching SARJ059: a collaborator is an object, not one of its methods.
+# object, matching SARJ062: a collaborator is an object, not one of its methods.
 _MIN_INTERACTION_TARGETS = 2
 
 # Wiring a callback onto a collaborator is the one side effect that genuinely
@@ -324,7 +324,7 @@ class InteractionOnlyTest(Rule):
     """A test asserting only which calls hit a mock pins the implementation."""
 
     id: str = "interaction-only-test"
-    code: str = "SARJ060"
+    code: str = "SARJ063"
     description: str = "Test asserts only on mock call bookkeeping — it pins the call sequence, not the behaviour."
 
     @override
@@ -572,7 +572,7 @@ def _root_objects(targets: frozenset[str]) -> set[str]:
 
     `mock_hook.return_value.get_instance` and
     `mock_hook.return_value.start_pipeline` are two questions asked of one
-    collaborator, so both reduce to `mock_hook`. This is SARJ059's reduction —
+    collaborator, so both reduce to `mock_hook`. This is SARJ062's reduction —
     a collaborator is an object, not one of its methods — and the two rules have
     to agree on it.
 

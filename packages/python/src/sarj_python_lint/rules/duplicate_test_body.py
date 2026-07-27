@@ -1,4 +1,4 @@
-"""SARJ063: N copy-pasted test functions in one module are one `parametrize` waiting to be written.
+"""SARJ066: N copy-pasted test functions in one module are one `parametrize` waiting to be written.
 
 `test_admin_can_delete` and `test_editor_can_delete` whose bodies are the same
 three lines with `"admin"` swapped for `"editor"` are not two tests. They are one
@@ -121,11 +121,11 @@ Deliberately NOT flagged:
 * **members whose documentation differs.** When two bodies are identical code
   and different prose — a docstring, or a comment inside the body — collapsing
   them forces one of the two texts to be deleted, and the text is routinely the
-  only record of why the two exist. This rule shipped alongside **SARJ067
+  only record of why the two exist. This rule shipped alongside **SARJ070
   `prefer-or-pattern`**, which suppresses on exactly this signal for `match`
   arms; the two took opposite positions on the same question until this guard
   was ported across, since an earlier design stripped the docstring before
-  comparing. SARJ067's guard is measured on two independent sites —
+  comparing. SARJ070's guard is measured on two independent sites —
   `bulbul/python/webserver/webserver/services/analytics_service.py:172`
   (`# 7 data points` / `# 30-31 data points`) and litellm's
   `user_api_key_auth_mcp.py:776` (`# Unreachable: kept for match exhaustiveness`)
@@ -270,7 +270,7 @@ class DuplicateTestBody(Rule):
     """Copy-pasted test functions differing only in literals — parametrize them."""
 
     id: str = "duplicate-test-body"
-    code: str = "SARJ063"
+    code: str = "SARJ066"
     description: str = (
         "Test function duplicates another test's body in the same module — collapse them into "
         "one `@pytest.mark.parametrize` with `ids=`."
