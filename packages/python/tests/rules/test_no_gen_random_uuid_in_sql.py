@@ -128,12 +128,14 @@ UUIDV7_CONSTRUCTIONS = [
     # 0042_3_0_0_add_uuid_primary_key_to_task_instance_.py:52 — the pgcrypto-less
     # fallback inside a hand-rolled uuidv7. Telling this to "use uuidv7()" tells
     # the definition of uuidv7 to call itself.
-    'SQL = """\n'
-    "CREATE OR REPLACE FUNCTION uuid_generate_v7(p_timestamp timestamptz)\n"
-    "RETURNS uuid AS $$ BEGIN\n"
-    "  buffer := unix_time_ms || substring(uuid_send(gen_random_uuid()) FROM 1 FOR 5);\n"
-    "  RETURN encode(buffer, 'hex')::uuid;\n"
-    'END $$;\n"""\n',
+    (
+        'SQL = """\n'
+        "CREATE OR REPLACE FUNCTION uuid_generate_v7(p_timestamp timestamptz)\n"
+        "RETURNS uuid AS $$ BEGIN\n"
+        "  buffer := unix_time_ms || substring(uuid_send(gen_random_uuid()) FROM 1 FOR 5);\n"
+        "  RETURN encode(buffer, 'hex')::uuid;\n"
+        'END $$;\n"""\n'
+    ),
     'SQL = "SELECT set_byte(uuid_send(gen_random_uuid()), 6, 112)"\n',
     'SQL = "CREATE TABLE t (id uuid DEFAULT uuidv7())"\n',
 ]
