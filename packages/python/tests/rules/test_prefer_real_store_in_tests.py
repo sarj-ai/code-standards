@@ -18,6 +18,10 @@ def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
     return PreferRealStoreInTests().check(Path(path), textwrap.dedent(source))
 
 
+def _container_id(container: str) -> str:
+    return container.replace(" ", "")
+
+
 # The canonical shape: a dict written by one method and read by another.
 _DICT_BACKED = """
 class InMemoryUserStore(UserStore):
@@ -96,7 +100,7 @@ def test_flags_the_canonical_dict_backed_fake():
         "{k: v for k, v in seed}",
         "[row for row in seed]",
     ],
-    ids=lambda c: c.replace(" ", ""),
+    ids=_container_id,
 )
 def test_every_container_form_backs_a_store(container: str):
     src = f"""

@@ -32,18 +32,30 @@ def _patches(count: int, prefix: str = "app.mod") -> str:
     return f"{decorators}\ndef test_thing({params}):\n    assert run() == 1\n"
 
 
+def _mock_count_id(count: int) -> str:
+    return f"{count}-mocks-clean"
+
+
+def _flagged_mock_count_id(count: int) -> str:
+    return f"{count}-mocks-flagged"
+
+
+def _dotted_target_id(target: str) -> str:
+    return target.replace(".", "-")
+
+
 # --------------------------------------------------------------------------- #
 # The threshold. Measured across 170,354 corpus tests: 99.71% sit at five or    #
 # below, so the rule fires above five.                                         #
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.parametrize("count", [0, 1, 2, 3, 4, 5], ids=lambda n: f"{n}-mocks-clean")
+@pytest.mark.parametrize("count", [0, 1, 2, 3, 4, 5], ids=_mock_count_id)
 def test_at_or_below_the_threshold_is_clean(count: int):
     assert _check(_patches(count)) == []
 
 
-@pytest.mark.parametrize("count", [6, 7, 9], ids=lambda n: f"{n}-mocks-flagged")
+@pytest.mark.parametrize("count", [6, 7, 9], ids=_flagged_mock_count_id)
 def test_above_the_threshold_fires(count: int):
     assert len(_check(_patches(count))) == 1
 
@@ -957,7 +969,7 @@ def test_patch_dict_is_not_a_substitution(decorator: str):
         "app.clock.now",
         "app.ids.uuid7",
     ],
-    ids=lambda t: t.replace(".", "-"),
+    ids=_dotted_target_id,
 )
 def test_infrastructure_knobs_do_not_count(target: str):
     src = f"""

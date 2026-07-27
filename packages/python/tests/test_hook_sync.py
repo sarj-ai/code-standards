@@ -60,7 +60,7 @@ def test_no_hook_names_an_unknown_rule() -> None:
 
 def test_hook_ids_match_their_entry_rule() -> None:
     text = _HOOKS_PATH.read_text(encoding="utf-8")
-    hook_ids = _HOOK_ID_RE.findall(text)
-    entries = _PYTHON_ENTRY_RE.findall(text)
+    hook_ids = [match.group(1) for match in _HOOK_ID_RE.finditer(text)]
+    entries = [match.group(1) for match in _PYTHON_ENTRY_RE.finditer(text)]
     mismatched = [hid for hid in hook_ids if hid in REGISTRY and hid not in entries]
     assert not mismatched, f"hook id `sarj-{mismatched}` does not run `--rule {mismatched}`"
