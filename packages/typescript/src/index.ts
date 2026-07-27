@@ -42,6 +42,7 @@ import preferModuleLevelConstant from "./rules/prefer-module-level-constant.js";
 import jsdocRestatesSignature from "./rules/jsdoc-restates-signature.js";
 import noRestatedComment from "./rules/no-restated-comment.js";
 import trailingValueNarration from "./rules/trailing-value-narration.js";
+import noTautologicalExpect from "./rules/no-tautological-expect.js";
 
 const rules = {
   "enforce-file-structure": enforceFileStructure,
@@ -88,12 +89,13 @@ const rules = {
   "jsdoc-restates-signature": jsdocRestatesSignature,
   "no-restated-comment": noRestatedComment,
   "trailing-value-narration": trailingValueNarration,
+  "no-tautological-expect": noTautologicalExpect,
 };
 
 const plugin = {
   meta: {
     name: "@sarj/eslint-plugin",
-    version: "2.13.0",
+    version: "2.14.0",
   },
   rules,
   configs: {
@@ -161,6 +163,14 @@ const plugin = {
         "@sarj/no-restated-comment": "warn",
         "@sarj/jsdoc-restates-signature": "warn",
         "@sarj/trailing-value-narration": "warn",
+        // The TS half of SARJ057 (2026-07). Python has caught the
+        // assertion-FREE test since 0.15.0 (SARJ043) and had no TS
+        // counterpart, which is how `expect(true).toBe(true); // placeholder`
+        // survived in internal-automations: the file HAS an assertion.
+        // Measured across 5,819 .ts/.tsx files (1,003 of them test files) in
+        // six internal repos plus got / hono / swr / trpc: 3 hits, 3 true
+        // positives, 0 false positives.
+        "@sarj/no-tautological-expect": "warn",
       },
     },
     strict: {
@@ -229,6 +239,8 @@ const plugin = {
         "@sarj/no-restated-comment": "error",
         "@sarj/jsdoc-restates-signature": "error",
         "@sarj/trailing-value-narration": "error",
+        // TS half of SARJ057 — see the `recommended` block for the measurement.
+        "@sarj/no-tautological-expect": "error",
       },
     },
   },

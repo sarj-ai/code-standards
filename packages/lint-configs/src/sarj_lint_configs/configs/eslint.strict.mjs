@@ -325,6 +325,10 @@ const config = [
       "@sarj/jsdoc-restates-signature": "error",
       "@sarj/trailing-value-narration": "error",
       "@sarj/no-repeated-string-literal": "error",
+      // An assertion whose operands are all literals can never fail. The TS
+      // half of SARJ057; the Python half is the `sarj-no-tautological-expect`
+      // pre-commit hook.
+      "@sarj/no-tautological-expect": "error",
 
       // Deliberately NOT enabled here — these two are architectural rules that
       // are meaningless without per-repo paths, so a shared config cannot set

@@ -260,6 +260,18 @@
   language: python
   types: [python]
 
+- id: sarj-no-optional-tenant-predicate
+  name: 'sarj-lint: tenant predicate only added inside a conditional — scoping fails open'
+  entry: sarj-python-lint check --rule no-optional-tenant-predicate
+  language: python
+  types: [python]
+
+- id: sarj-no-tautological-expect
+  name: 'sarj-lint: assertion whose operands are all literals — it can never fail'
+  entry: sarj-python-lint check --rule no-tautological-expect
+  language: python
+  types: [python]
+
 - id: sarj-prefer-uuidv7-default
   name: 'sarj-lint(sql): gen_random_uuid() default — use uuidv7()'
   entry: sarj-sql-lint check --rule prefer-uuidv7-default

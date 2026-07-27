@@ -114,6 +114,7 @@ from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
 from sarj_python_lint.rules._paths import is_test_path
+from sarj_python_lint.rules._pytest import uses_benchmark_fixture
 
 
 if TYPE_CHECKING:
@@ -131,9 +132,6 @@ _RAISES_TOKEN_RE = re.compile(r"(^|_)(raises|warns|deprecated_call)", re.IGNOREC
 _RAISES_NAMES = frozenset({"raises", "warns", "fail"})
 
 _TEST_PREFIX = "test_"
-
-# The pytest-benchmark fixture: the test measures time, it does not verify.
-_BENCHMARK = "benchmark"
 
 # Fluent verification DSLs reached through an attribute rather than a call name.
 _FLUENT_ATTRS = frozenset({"expect"})
@@ -203,7 +201,7 @@ def _unverifying_tests(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunc
     verifying_helpers = _verifying_local_names(defined_here)
     hits: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
     for node in _collectible_tests(tree):
-        if _is_skipped(node) or _is_fixture(node) or _is_placeholder(node) or _uses_benchmark_fixture(node):
+        if _is_skipped(node) or _is_fixture(node) or _is_placeholder(node) or uses_benchmark_fixture(node):
             continue
         if _verifies_something(node) or _delegates_verification(node, defined_here, verifying_helpers):
             continue
@@ -290,15 +288,6 @@ def _is_inert(stmt: ast.stmt) -> bool:
     if isinstance(stmt, ast.Pass):
         return True
     return isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant)
-
-
-def _uses_benchmark_fixture(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    # pytest-benchmark: `def test_x(benchmark)` then `benchmark(fn, arg)` or
-    # `@benchmark` on a nested function. The fixture times the callable; a
-    # benchmark that asserted on the result would be measuring the assertion.
-    args = node.args
-    declared = any(arg.arg == _BENCHMARK for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs))
-    return declared and any(isinstance(child, ast.Name) and child.id == _BENCHMARK for child in ast.walk(node))
 
 
 def _verifies_something(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:

@@ -178,6 +178,92 @@ sarj-python-lint check --rule mock-without-spec --update-baseline test-quality-b
 sarj-python-lint check --rule mock-without-spec --baseline test-quality-baseline.json python/
 ```
 
+### Multi-tenant scoping (0.22.0)
+
+```yaml
+    - id: sarj-no-optional-tenant-predicate        # SARJ056
+```
+
+`SARJ056` fires when every WHERE-fragment mentioning a tenant column
+(`organization_id` and friends) sits inside a conditional, so the predicate
+disappears — and the query still runs — whenever the filter is empty:
+
+```python
+where_conditions = []
+if args.organization_ids:                                    # ← optional
+    where_conditions.append(SQL("organization_id = ANY(%s::uuid[])"))
+...
+where_clause = SQL(" AND ").join(where_conditions) if where_conditions else SQL("1=1")
+```
+
+The safe idiom seeds the list, so scoping always applies and the rule stays
+quiet:
+
+```python
+conditions: list[Composable] = [SQL("organization_id = %s")]
+```
+
+A function with **no** tenant predicate at all never fires — an intentionally
+cross-tenant admin query is out of scope; only *attempted-but-optional* scoping
+is a finding. Where a caller genuinely wants the all-tenant query, that
+intent belongs in an explicit method (or an inline `sarj-noqa`) rather than in
+an omitted filter.
+
+Measured before shipping: **0 findings across 26,345 files** of pydantic, trio,
+attrs, Airflow and Home Assistant — single-tenant codebases have no tenant
+column, so the rule is silent by construction — and 0 in noura-be, ai, kpi-hub
+and demo-gateway. In bulbul it finds 10 sites, all genuine fail-open
+compositions, two of which were reachable cross-tenant reads at the time of
+writing (`POST /v1/calls/list` and `POST /v1/calls/batch/list`, both of which
+composed `WHERE 1=1` for a user whose `organization_id` was NULL).
+
+### Assertions that can never fail (0.23.0)
+
+```yaml
+    - id: sarj-no-tautological-expect              # SARJ057
+```
+
+`SARJ057` fires when an assertion's operands are all literals, so its outcome is
+fixed before the code runs. `SARJ043` already catches the test with *no*
+assertion; this is the test whose assertion is decorative.
+
+The placeholder spelling (`assert True`) is the obvious half. The expensive half
+is the assertion whose real condition slid out of the condition slot, because it
+was a working assertion when it was typed:
+
+```python
+assert {                                              # ← braces, not parentheses
+    "referencing a non existing `via_device` " in caplog.text
+}                                                     # one-element SET, always truthy
+
+assert [f"No logs found on hdfs for ti={ti}"]         # the `== messages` was lost
+assert True, cover_result_json[0]["success"][...]     # slid into the MESSAGE slot
+```
+
+**The narrowness is the rule.** The obvious generalisation — "flag a comparison
+of a thing with itself" — measures ~95% false positives: `assert i == i`,
+`assert x is x`, `expect(hash([o])).toEqual(hash([o]))` are reflexivity,
+determinism and memoization tests, and for a type with custom `__eq__`/`__hash__`
+they can genuinely fail. So an identifier, attribute or call operand is never
+enough; both sides must be literals, and textually identical ones. `assert True`
+as the sole statement of an `except` handler is exempt — it asserts *which branch
+ran* — as is anything inside a pytest-benchmark test.
+
+Measured before shipping: **4 findings across 28,608 files** — 26,346 of
+pydantic, trio, attrs, Airflow and Home Assistant plus 2,262 first-party files
+in bulbul, noura-be, kpi-hub, ai and demo-gateway. All 4 are true positives
+(Home Assistant `tests/helpers/test_device_registry.py:3711` and `:3777`,
+`tests/components/emulated_hue/test_hue_api.py:1078`, Airflow
+`providers/apache/hdfs/.../log/test_hdfs_task_handler.py:170`); 0 false
+positives. The two `except ...: assert True` markers that a carve-out-free
+version does flag — `pydantic-core/tests/benchmarks/test_micro_benchmarks.py:716`
+and `core/tests/components/mqtt/test_client.py:1353` — were verified silent.
+
+The TypeScript half of the same rule ships as `@sarj/no-tautological-expect` in
+`@sarj/eslint-plugin` ≥ 2.14.0; until now there was no TS counterpart at all,
+which is how `expect(true).toBe(true); // placeholder` survived in a suite named
+for the behaviour it was supposed to check.
+
 ## CLI
 
 ```bash
