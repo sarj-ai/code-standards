@@ -55,6 +55,23 @@ Deliberately NOT flagged:
   Both known Python false positives are this shape —
   `pydantic-core/tests/benchmarks/test_micro_benchmarks.py:716` and
   `core/tests/components/mqtt/test_client.py:1353`;
+* **`assert <constant>` in a `match` arm when a sibling arm always fails** —
+  the same reasoning as the `except` marker above, one construct along. In::
+
+      match PROCESSOR.process(source_file=protected, password="not right"):
+          case PDFProcessError(error=DecryptionError.INCORRECT_PASSWORD):
+              assert True
+          case _:
+              raise AssertionError
+
+  the *pattern* is the assertion: the test goes red the moment the result stops
+  matching, so the marker records which arm ran rather than claiming a literal is
+  true. Found against `faris`
+  (`falltime/tests/services/test_pdf_processor.py:96` and `:112`), a first-party
+  repo that was not in this rule's original 28,608-file corpus — so the "0 false
+  positives" measured there held only because `faris` was absent. A `match` with
+  no failing arm proves nothing and still fires, as does a constant assertion
+  outside the `match`;
 * **anything inside a pytest-benchmark test**, whether it takes the `benchmark`
   fixture or wears `@pytest.mark.benchmark` — the same carve-out SARJ043 needs,
   shared through `_pytest.py`. The try/`assert False`/except/`assert True`
@@ -89,6 +106,9 @@ if TYPE_CHECKING:
 
 
 _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
+
+# `pytest.fail(...)` / `self.fail(...)` — an arm that calls it cannot pass.
+_FAIL = "fail"
 
 # unittest methods whose single argument fixes the outcome on its own.
 _TRUTHY_ARG_METHODS = frozenset({"assertTrue"})
@@ -170,7 +190,44 @@ def _exempt_nodes(tree: ast.Module) -> set[ast.AST]:
             exempt.update(ast.walk(node))
         elif isinstance(node, ast.ExceptHandler) and len(node.body) == 1 and isinstance(node.body[0], ast.Assert):
             exempt.add(node.body[0])
+        elif isinstance(node, ast.Match):
+            exempt.update(_match_arm_markers(node))
     return exempt
+
+
+def _match_arm_markers(node: ast.Match) -> set[ast.AST]:
+    """Collect `assert <constant>` statements marking which arm of a `match` ran.
+
+    The `except`-handler carve-out above generalises: when one arm of a `match`
+    always fails, a constant assertion in another arm is a statement about which
+    pattern matched, not about the literal. The pattern *is* the assertion, and
+    the test goes red the moment the subject stops matching it.
+
+    Returns:
+        The constant assertions in arms other than the failing one, or an empty
+        set when no arm always fails.
+
+    """
+    if not any(all(_always_fails(stmt) for stmt in case.body) for case in node.cases):
+        return set()
+    return {
+        stmt for case in node.cases for stmt in case.body if isinstance(stmt, ast.Assert) and not _always_fails(stmt)
+    }
+
+
+def _always_fails(stmt: ast.stmt) -> bool:
+    """Report whether `stmt` cannot complete without failing the test.
+
+    Returns:
+        True for `raise ...`, `assert <falsy literal>`, and a bare `pytest.fail`
+        or `self.fail` call.
+
+    """
+    if isinstance(stmt, ast.Raise):
+        return True
+    if isinstance(stmt, ast.Assert):
+        return _is_always_falsy_literal(stmt.test)
+    return isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call) and _called_method(stmt.value) == _FAIL
 
 
 def _tautologies(tree: ast.Module, exempt: set[ast.AST]) -> list[tuple[ast.Assert | ast.Call, str]]:

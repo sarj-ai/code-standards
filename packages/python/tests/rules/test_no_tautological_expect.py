@@ -251,3 +251,73 @@ def test_ignores_syntax_error():
 
 def test_ignores_empty_source():
     assert _count("") == 0
+
+
+# --------------------------------------------------------------------------- #
+# `match` arms. The generalisation of the except-handler marker: when one arm   #
+# always fails, a constant assertion in another arm says which pattern matched. #
+# --------------------------------------------------------------------------- #
+
+
+def test_ignores_assert_true_marking_a_match_arm_beside_a_raising_arm():
+    """Faris falltime/tests/services/test_pdf_processor.py:96 — the pattern is the assertion."""
+    src = (
+        "def test_wrong_password(tmpdir):\n"
+        "    match PROCESSOR.process(source_file=protected, password='not right'):\n"
+        "        case PDFProcessError(error=DecryptionError.INCORRECT_PASSWORD):\n"
+        "            assert True\n"
+        "        case _:\n"
+        "            raise AssertionError\n"
+    )
+    assert _count(src) == 0
+
+
+def test_ignores_a_match_arm_marker_beside_a_pytest_fail_arm():
+    src = (
+        "def test_x():\n"
+        "    match go():\n"
+        "        case Err():\n"
+        "            assert True\n"
+        "        case _:\n"
+        "            pytest.fail('wrong shape')\n"
+    )
+    assert _count(src) == 0
+
+
+def test_ignores_a_match_arm_marker_beside_an_assert_false_arm():
+    src = (
+        "def test_x():\n"
+        "    match go():\n"
+        "        case Err():\n"
+        "            assert True\n"
+        "        case _:\n"
+        "            assert False\n"
+    )
+    assert _count(src) == 0
+
+
+def test_flags_a_match_arm_marker_when_no_arm_can_fail():
+    """Without a failing arm the `match` proves nothing, so the assertion is bare."""
+    src = (
+        "def test_x():\n"
+        "    match go():\n"
+        "        case Err():\n"
+        "            assert True\n"
+        "        case _:\n"
+        "            pass\n"
+    )
+    assert _count(src) == 1
+
+
+def test_flags_a_constant_assert_outside_the_match_that_has_a_failing_arm():
+    """The carve-out reaches the arms, not the whole function."""
+    src = (
+        "def test_x():\n"
+        "    match go():\n"
+        "        case Err():\n"
+        "            assert True\n"
+        "        case _:\n"
+        "            raise AssertionError\n"
+        "    assert True\n"
+    )
+    assert _count(src) == 1
