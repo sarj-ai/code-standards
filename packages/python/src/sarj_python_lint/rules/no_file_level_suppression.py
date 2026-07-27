@@ -50,22 +50,17 @@ reason in the diff where a reviewer sees it.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
-import io
 import re
 import tokenize
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule
+from sarj_python_lint.rules._suppression_comments import Comment, scan_comments
 
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-
-# Sentinel row for "this file has no statement at all" (empty / comments-only):
-# every comment then counts as preceding the first statement.
-_NO_STATEMENT_LINE = 1 << 30
 
 # Directive heads, spelled as the tools themselves accept them: no space before
 # the colon, optional space after. `ruff:` is matched case-insensitively (ruff
@@ -82,9 +77,6 @@ _BRACKET_CODES_RE = re.compile(r"^\s*\[\s*\w")
 
 # `type: ignored` / `ruff: noqas` are different words, not the directive.
 _WORD_CONTINUATION_RE = re.compile(r"^\w")
-
-_LAYOUT_TOKENS = frozenset({tokenize.NL, tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT})
-_NON_STATEMENT_TOKENS = _LAYOUT_TOKENS | frozenset({tokenize.COMMENT, tokenize.ENCODING, tokenize.ENDMARKER})
 
 _RUFF_MESSAGE = (
     "bare `# ruff: noqa` exempts this entire file from every ruff rule, "
@@ -125,7 +117,7 @@ class NoFileLevelSuppression(Rule):
 
         """
         try:
-            comments = _scan_comments(source)
+            comments = scan_comments(source)
         except tokenize.TokenError, IndentationError, SyntaxError:
             return []
         diags = [
@@ -137,18 +129,7 @@ class NoFileLevelSuppression(Rule):
         return diags
 
 
-@dataclass(frozen=True, slots=True)
-class _Comment:
-    """One comment token, with the context that decides whether it is file-level."""
-
-    line: int
-    col: int
-    body: str
-    standalone: bool
-    before_first_statement: bool = False
-
-
-def _blanket_message(comment: _Comment) -> str | None:
+def _blanket_message(comment: Comment) -> str | None:
     """Classify a comment as one of the three unscoped blankets.
 
     A bare `# ruff: noqa` counts wherever it sits; the mypy and pyright forms
@@ -184,45 +165,3 @@ def _is_unscoped(body: str, directive: re.Pattern[str], codes: re.Pattern[str]) 
     if _WORD_CONTINUATION_RE.match(rest):
         return False
     return not codes.match(rest)
-
-
-def _scan_comments(source: str) -> list[_Comment]:
-    """Tokenize `source` and describe every comment in it.
-
-    A comment is standalone when no token ended on its line before it, and
-    precedes the first statement when it sits above the first non-comment,
-    non-layout token.
-
-    Returns:
-        Every comment, in source order.
-
-    """
-    comments: list[_Comment] = []
-    first_statement_line = _NO_STATEMENT_LINE
-    prev_end_row = 0
-    readline = io.StringIO(source).readline
-    for tok in tokenize.generate_tokens(readline):
-        if tok.type == tokenize.COMMENT:
-            comments.append(
-                _Comment(
-                    line=tok.start[0],
-                    col=tok.start[1] + 1,
-                    body=_comment_body(tok.string),
-                    standalone=tok.start[0] != prev_end_row,
-                )
-            )
-        if tok.type not in _LAYOUT_TOKENS:
-            prev_end_row = tok.end[0]
-        if tok.type not in _NON_STATEMENT_TOKENS:
-            first_statement_line = min(first_statement_line, tok.start[0])
-    return [replace(c, before_first_statement=c.line < first_statement_line) for c in comments]
-
-
-def _comment_body(raw: str) -> str:
-    """Strip a comment token down to its directive text.
-
-    Returns:
-        The comment text without its leading `#` markers or surrounding space.
-
-    """
-    return raw.lstrip("#").strip()

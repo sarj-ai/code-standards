@@ -1,6 +1,6 @@
 [project]
 name = "sarj-sql-lint"
-version = "0.2.0"
+version = "0.3.0"
 description = "Custom SQL lint rules for Postgres migrations — sqlfluff + pygrep, pre-commit-friendly."
 readme = "README.md"
 authors = [{ name = "sarj-ai" }]

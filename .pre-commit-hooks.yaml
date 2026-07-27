@@ -241,3 +241,60 @@
   entry: sarj-python-lint check --rule no-first-party-private-import
   language: python
   types: [python]
+
+- id: sarj-no-stdlib-logging
+  name: 'sarj-lint: stdlib logging imported outside the loguru bridge'
+  entry: sarj-python-lint check --rule no-stdlib-logging
+  language: python
+  types: [python]
+
+- id: sarj-no-gen-random-uuid-in-sql
+  name: 'sarj-lint: gen_random_uuid() in embedded SQL — use uuidv7()'
+  entry: sarj-python-lint check --rule no-gen-random-uuid-in-sql
+  language: python
+  types: [python]
+
+- id: sarj-no-file-level-escape-hatch-noqa
+  name: 'sarj-lint: file-level `# ruff: noqa: TID251` — suppress escape hatches per line'
+  entry: sarj-python-lint check --rule no-file-level-escape-hatch-noqa
+  language: python
+  types: [python]
+
+- id: sarj-prefer-uuidv7-default
+  name: 'sarj-lint(sql): gen_random_uuid() default — use uuidv7()'
+  entry: sarj-sql-lint check --rule prefer-uuidv7-default
+  language: python
+  types: [sql]
+  additional_dependencies: ['sarj-sql-lint']
+
+# Whole-tree gate, not a per-file check: it must see every file to compare
+# totals, so it never takes filenames and runs once per commit.
+- id: sarj-suppression-ratchet
+  name: 'sarj-ratchet: suppression ceilings (per code, per package, per file)'
+  entry: sarj-ratchet
+  language: python
+  pass_filenames: false
+  always_run: true
+
+# --- pygrep hooks -----------------------------------------------------------
+# These two are deliberately NOT SARJ rules. Both encode a convention whose
+# boundary is repo-specific, and an AST port was measured to be mostly false
+# positives without that repo's own scoping (see the 0.21.0 release notes).
+# They are shipped here so consumers stop hand-rolling the regex, and both
+# REQUIRE a `files:`/`exclude:` in the consumer's config to be useful.
+
+- id: sarj-fakes-in-shared-location
+  name: 'sarj-lint: shared test fake declared outside the shared fakes module (scope with exclude:)'
+  entry: '^\s*class\s+(Fake|InMemory|Recording|Stub|Raising)\w*(Service|Store|Client)\w*\b'
+  language: pygrep
+  types: [python]
+
+# Bans EXECUTING raw SQL in a test by matching the pool-connection acquisition
+# every raw block starts with — broader than SARJ036 no-raw-sql-in-tests, which
+# only fires on a literal INSERT. Typing-only psycopg imports are unaffected.
+- id: sarj-no-raw-connection-in-tests
+  name: 'sarj-lint: raw pool connection acquired in a test (scope with files:/exclude:)'
+  entry: '\.connection\(\s*\)'
+  language: pygrep
+  types: [python]
+  files: '(/tests/.*|/test_[^/]+|/conftest\.py)$'
