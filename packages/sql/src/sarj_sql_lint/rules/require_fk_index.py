@@ -24,7 +24,7 @@ def _mask_literals_and_comments(sql: str) -> str:
 
 
 CREATE_INDEX_PATTERN = re.compile(
-    r"\bCREATE\s+(?:UNIQUE\s+)?INDEX\b[\s\S]*?\bON\s+([a-zA-Z0-9_\"\.]+)\s*(?:USING\s+[a-zA-Z0-9_]+\s*)?\(\s*([a-zA-Z0-9_,\s\"]+)\)",
+    r"\bCREATE\s+(?:UNIQUE\s+)?INDEX\b[\s\S]*?\bON\s+([a-zA-Z0-9_\"\.]+)\s*(?:USING\s+[a-zA-Z0-9_]+\s*)?\(\s*([\s\S]*?)\)",
     re.IGNORECASE,
 )
 TABLE_SCOPE_PATTERN = re.compile(
@@ -40,14 +40,16 @@ TABLE_PK_OR_UNIQUE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 INLINE_COLUMN_PATTERN = re.compile(
-    r"(?:\bADD\s+(?:COLUMN\s+)?)?\b([a-zA-Z0-9_\"]+)\b\s+[a-zA-Z0-9_\"\.]+(?:\([^)]*\))?[^\n;,]*?\bREFERENCES\s+[a-zA-Z0-9_\"\.]+\b",
+    r"(?:\bADD\s+(?:COLUMN\s+)?)?\b([a-zA-Z0-9_\"]+)\b[\s\S]*?\bREFERENCES\s+[a-zA-Z0-9_\"\.]+\b",
     re.IGNORECASE,
 )
 PRIMARY_OR_UNIQUE_KEYWORD = re.compile(r"\b(PRIMARY\s+KEY|UNIQUE)\b", re.IGNORECASE)
 
 
 def _normalize_name(name: str) -> str:
-    return name.strip('"').lower()
+    clean = name.strip('"').strip()
+    clean = re.sub(r"\s+(?:ASC|DESC|NULLS\s+FIRST|NULLS\s+LAST)\b.*", "", clean, flags=re.IGNORECASE)
+    return clean.strip('"').lower()
 
 
 @final
@@ -71,9 +73,6 @@ class RequireFkIndex(Rule):
             cols = tuple(_normalize_name(c) for c in cols_raw.split(","))
             if cols:
                 indexed_cols_by_table.setdefault(table, set()).add(cols)
-                if "." in table:
-                    base_table = table.split(".")[-1]
-                    indexed_cols_by_table.setdefault(base_table, set()).add(cols)
 
         statements = masked.split(";")
         char_offset = 0
@@ -85,7 +84,7 @@ class RequireFkIndex(Rule):
                     full_table = _normalize_name(table_match.group(1))
                     base_table = full_table.split(".")[-1]
                     table_indexes = indexed_cols_by_table.get(full_table, set())
-                    if not table_indexes and "." in full_table:
+                    if not table_indexes and "." not in full_table:
                         table_indexes = indexed_cols_by_table.get(base_table, set())
                     leading_indexed_cols = {idx[0] for idx in table_indexes if idx}
 
@@ -119,16 +118,16 @@ class RequireFkIndex(Rule):
                     header_end = table_match.end()
                     body = stmt[header_end:]
 
-                    for line in body.splitlines():
-                        if "REFERENCES" in line.upper() and not TABLE_FK_PATTERN.search(line):
-                            if PRIMARY_OR_UNIQUE_KEYWORD.search(line):
+                    for segment in body.split(","):
+                        if "REFERENCES" in segment.upper() and not TABLE_FK_PATTERN.search(segment):
+                            if PRIMARY_OR_UNIQUE_KEYWORD.search(segment):
                                 continue
-                            col_match = INLINE_COLUMN_PATTERN.search(line)
+                            col_match = INLINE_COLUMN_PATTERN.search(segment)
                             if col_match:
                                 col_name = _normalize_name(col_match.group(1))
                                 if col_name not in ("foreign", "key", "constraint", "alter", "table", "create", "add", "column") and col_name not in leading_indexed_cols:
-                                    line_offset = char_offset + stmt.find(line)
-                                    lineno = masked[:line_offset].count("\n") + 1
+                                    segment_offset = char_offset + stmt.find(segment)
+                                    lineno = masked[:segment_offset].count("\n") + 1
                                     diags.append(
                                         Diagnostic(
                                             path=path,

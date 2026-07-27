@@ -18,11 +18,13 @@ if TYPE_CHECKING:
 
 
 DDL_PATTERN = re.compile(r"\b(ALTER\s+TABLE|CREATE\s+(?:UNIQUE\s+)?INDEX|DROP\s+TABLE)\b", re.IGNORECASE)
-TIMEOUT_PATTERN = re.compile(
-    r"\bSET\s+(?:LOCAL\s+)?(lock_timeout|statement_timeout)\s*(?:=|\bTO\b)\s*(?!0\b|'0'|\"0\"|DEFAULT|OFF)\S+",
+TX_END_PATTERN = re.compile(r"\b(COMMIT|ROLLBACK)\b", re.IGNORECASE)
+
+TIMEOUT_ASSIGNMENT_PATTERN = re.compile(
+    r"\b(?:SET\s+(?:LOCAL\s+)?|RESET\s+)(lock_timeout|statement_timeout)(?:\s*(?:=|\bTO\b)\s*([^\s;]+))?",
     re.IGNORECASE,
 )
-TX_END_PATTERN = re.compile(r"\b(COMMIT|ROLLBACK)\b", re.IGNORECASE)
+POSITIVE_VAL_PATTERN = re.compile(r"^['\"]?(?:[1-9]\d*|[1-9]\d*[a-zA-Z]+)['\"]?$", re.IGNORECASE)
 
 
 @final
@@ -43,8 +45,18 @@ class RequireLockTimeout(Rule):
             tx_ends = [c.end() for c in TX_END_PATTERN.finditer(masked, 0, ddl_start)]
             block_start = tx_ends[-1] if tx_ends else 0
 
-            block_content = masked[block_start:ddl_start]
-            if not TIMEOUT_PATTERN.search(block_content):
+            block_source = source[block_start:ddl_start]
+            assignments = list(TIMEOUT_ASSIGNMENT_PATTERN.finditer(block_source))
+
+            has_active_timeout = False
+            if assignments:
+                last = assignments[-1]
+                cmd = last.group(0).upper()
+                val = (last.group(2) or "").strip()
+                if "RESET" not in cmd and val and POSITIVE_VAL_PATTERN.match(val):
+                    has_active_timeout = True
+
+            if not has_active_timeout:
                 lineno = masked[:ddl_start].count("\n") + 1
                 diags.append(
                     Diagnostic(
