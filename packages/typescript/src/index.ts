@@ -44,6 +44,7 @@ import noRestatedComment from "./rules/no-restated-comment.js";
 import trailingValueNarration from "./rules/trailing-value-narration.js";
 import noTautologicalExpect from "./rules/no-tautological-expect.js";
 import requireInterfaceForInjectedService from "./rules/require-interface-for-injected-service.js";
+import preferNonNullableCollection from "./rules/prefer-non-nullable-collection.js";
 
 const rules = {
   "enforce-file-structure": enforceFileStructure,
@@ -92,6 +93,7 @@ const rules = {
   "trailing-value-narration": trailingValueNarration,
   "no-tautological-expect": noTautologicalExpect,
   "require-interface-for-injected-service": requireInterfaceForInjectedService,
+  "prefer-non-nullable-collection": preferNonNullableCollection,
 };
 
 const plugin = {
@@ -181,6 +183,7 @@ const plugin = {
         // mocking. 11-repo sweep: 229 exported classes, 82% already carry a
         // port, 29 fire, 28 of them true positives.
         "@sarj/require-interface-for-injected-service": "warn",
+        "@sarj/prefer-non-nullable-collection": "warn",
       },
     },
     strict: {
@@ -258,6 +261,7 @@ const plugin = {
         // / `prefer-library-fake` wave. The convention already exists in the
         // corpus (175 `implements` clauses vs 29 hits), so strict enforces it.
         "@sarj/require-interface-for-injected-service": "error",
+        "@sarj/prefer-non-nullable-collection": "error",
       },
     },
   },

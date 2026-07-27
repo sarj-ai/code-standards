@@ -22,6 +22,7 @@ uv tool install sarj-python-lint
     - id: sarj-prefer-struct-over-namedtuple
     - id: sarj-no-comment-cruft
     - id: sarj-no-fstring-in-log
+    - id: sarj-prefer-non-nullable-collection      # SARJ074
 ```
 
 ### Test-quality rules (0.15.0)
