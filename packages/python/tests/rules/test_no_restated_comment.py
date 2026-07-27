@@ -114,6 +114,54 @@ def test_kwarg_group_label_is_kept():
     assert _check(src) == []
 
 
+@pytest.mark.parametrize(
+    "src",
+    [
+        pytest.param(
+            "await reproduce(\n"
+            "    hass,\n"
+            "    [\n"
+            "        # Test invalid state\n"
+            '        State("input_number.test_number", "invalid_state"),\n'
+            "    ],\n"
+            ")\n",
+            id="list-element-label",
+        ),
+        pytest.param(
+            "responses = [\n"
+            "    # Stream URL 1\n"
+            "    make_stream_url_response(expiration, token_num=1),\n"
+            "    # Stream URL 2\n"
+            "    make_stream_url_response(expiration, token_num=2),\n"
+            "]\n",
+            id="repeated-element-labels",
+        ),
+    ],
+)
+def test_comment_inside_a_bracketed_expression_labels_an_element(src: str):
+    # home-assistant tests/components/input_number/test_reproduce_state.py:63 and
+    # tests/components/nest/test_camera.py:379 — the element's own words are what
+    # the label names, and deleting the label loses which case is which.
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "assert not executor.task_queue.empty()",
+        'assert state.attributes.get("task_queue") is None',
+        "assert task_queue != empty",
+    ],
+)
+def test_negation_in_the_code_makes_a_positive_comment_informative(code: str):
+    # `not` / `no` / `none` are stopwords for the tokenizer, so a comment stating
+    # the POSITIVE property passes the zero-information test against a line that
+    # spells it as a double negative. Saying "is queued" over `not ... empty()` is
+    # the translation the reader wanted — airflow
+    # providers/cncf/kubernetes/.../test_kubernetes_executor.py:1022.
+    assert _pair("the task queue", code) == []
+
+
 # --- exemptions ---------------------------------------------------------------
 
 

@@ -31,6 +31,16 @@ failure mode, so every one of these guards is load-bearing:
 - **Not a group label.** When the statement below is followed by a same-indent,
   same-shape sibling, the comment heads a run (`# Constants` over eight
   assignments), and deleting it loses the grouping.
+- **Not inside a bracketed expression.** A comment at bracket depth > 0 labels
+  an *element* of a list, dict or call — one `State(...)` in a list of test
+  cases, one entry in a `__all__` group — and the element's own words are what
+  it labels. `_comments.nested_comment_lines` exists for exactly this reading.
+- **No negation in the code.** The comment-side negation guard below has a
+  mirror: when the CODE expresses a property negatively and the comment states
+  it positively, the comment is doing a translation the code cannot.
+  `# The task is queued` over `assert not kubernetes_executor.task_queue.empty()`
+  (airflow) passes the zero-information test only because `not` and `no` are
+  stopwords for the tokenizer.
 - **Protected class exempt.** Anything carrying a ticket, URL, unit, causal
   connective or the other `_comments` signals is left alone.
 - **≤8 words**, no `?` (a question is a note to a reader), no non-ASCII prose
@@ -38,12 +48,34 @@ failure mode, so every one of these guards is load-bearing:
   vacuously true), no commented-out code (SARJ016 owns that), no banner shapes.
 
 **Measured** (this implementation, not the prototype). bulbul **0**; noura-be
-**29** over 20 distinct comment texts, every one read and every one a true
-positive (`# Get profile by national ID`, `# Update last login`,
-`# Submit legal info`); pydantic **2**, trio **2**, attrs **0** — and all four of
-those are genuine (`# set_inheritable` above `s1.set_inheritable(False)`,
-`# get_inheritable` above `assert not s1.get_inheritable()`). **0 measured false
-positives in 33 findings.**
+**29** over 20 distinct comment texts; pydantic **2**, trio **2**, attrs **0** —
+and those four are genuine (`# set_inheritable` above `s1.set_inheritable(False)`,
+`# get_inheritable` above `assert not s1.get_inheritable()`).
+
+**The 33-finding sweep those numbers came from was too small to see the failure
+mode.** A later sweep over home-assistant (18,069 files, 348 hits) and airflow
+(7,656 files, 165) produced 513 findings; 60 were sampled at random and each read
+against its source. **47 true positives, 13 false — a 21.7% false-positive rate**,
+not the 0% the small corpora suggested. The two guards above are what a labelled
+evaluation showed to be free (they suppress 2 of the 13 false positives and 0 of
+the 47 true ones); three other candidate guards were built, measured and
+*rejected* for costing more recall than they bought:
+
+* *comment matched only through a string literal* — 7 FP but 6 TP, a wash
+  (`# Set false` over `variables_set(["variables", "set", "false", "false"])`).
+* *comment heads a blank-line-separated paragraph of ≥2 statements* — 9 FP, 12 TP.
+* *a sibling comment nearby shares a content word* — 7 FP but **33** TP. Two
+  restatements in one function usually name the same domain noun; the shared word
+  is the subject matter, not a section structure.
+
+The residual **19%** is one shape the tokenizer cannot separate: a section label
+heading a block in a test body (`# test tamper sensor` over the first of six
+asserts, `# Test with domain only` over the first of a three-block series). Read
+as a hit rate that is **0.8% of eligible single-line comments** in both external
+corpora — well under the 4.7%-of-log-calls that got SARJ055 dropped for being a
+professional convention — so the shape is rare, not idiomatic. But a house
+enabling this at `error` is choosing to reject a test-body section label, and
+should say so out loud rather than believe the 0% number.
 
 Getting there cost five guards, each added at the site that produced it and each
 with a regression test: the code-keyword arm of the commented-out check (a
@@ -69,6 +101,7 @@ from sarj_python_lint.rules._comments import (
     comment_runs,
     content_tokens,
     is_protected,
+    nested_comment_lines,
     restates,
     standalone_comments,
 )
@@ -134,6 +167,14 @@ _MODALITY_RE = re.compile(r"\b(?:can|could|should|shall|may|might|must|will|woul
 _LEAD_IN_RE = re.compile(r":$")
 _EMPHASIS_RE = re.compile(r"\*\w[^*]*\*|`[^`]+`")
 _NEGATION_WORD_RE = re.compile(r"\b(?:no|not|never|neither|nor|without|none|non)\b", re.IGNORECASE)
+
+# The same asymmetry, on the code's side. `not` / `no` / `none` are stopwords for
+# `content_tokens`, so a comment stating a property POSITIVELY passes the
+# zero-information test against a line that expresses it as a double negative —
+# `# The task is queued` over `assert not kubernetes_executor.task_queue.empty()`
+# (airflow-2/providers/cncf/kubernetes/.../test_kubernetes_executor.py:1022).
+# Turning `not ... empty()` into "is queued" is the translation the reader wanted.
+_CODE_NEGATION_RE = re.compile(r"\bnot\b|!=|\bis None\b|\.empty\(|assert(?:Not|False)")
 
 # A statement whose head a comment could be restating.
 _SIMPLE_STMT_RE = re.compile(
@@ -266,6 +307,7 @@ class NoRestatedComment(Rule):
             return []
         try:
             standalone, _ = standalone_comments(source)
+            nested = nested_comment_lines(source)
         except tokenize.TokenError, IndentationError, SyntaxError:
             return []
         lines = source.splitlines()
@@ -274,6 +316,8 @@ class NoRestatedComment(Rule):
             if len(run) != 1:
                 continue
             line, col, body = run[0]
+            if line in nested:
+                continue
             if self._restates_below(body, line, lines):
                 diags.append(
                     Diagnostic(
@@ -310,6 +354,8 @@ class NoRestatedComment(Rule):
         if not code.strip() or code.lstrip().startswith("#"):
             return False
         if not _SIMPLE_STMT_RE.match(code) or _BLOCK_OPENER_RE.match(code):
+            return False
+        if _CODE_NEGATION_RE.search(code):
             return False
         if not _ACTION_STMT_RE.search(code):
             return False

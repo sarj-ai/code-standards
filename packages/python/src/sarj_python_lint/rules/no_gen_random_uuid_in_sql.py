@@ -28,6 +28,19 @@ That second condition is what keeps prose out: a docstring, a comment string or
 an error message that merely *names* the function is not a SQL statement, and
 this rule is about the DDL, not the word.
 
+**Not flagged: SQL that is itself building a UUIDv7.** On Postgres < 18 the
+portable way to get `uuidv7()` is to define it, and every such definition draws
+its 74 random bits from `gen_random_uuid()` or `gen_random_bytes()` and then
+overwrites the high bits with a timestamp. Airflow's
+`0042_3_0_0_add_uuid_primary_key_to_task_instance_.py` is exactly that — a
+`CREATE OR REPLACE FUNCTION uuid_generate_v7(...)` whose pgcrypto-less fallback
+is `substring(uuid_send(gen_random_uuid()) FROM 1 FOR 5) || ...`. Telling that
+code to "use uuidv7() instead" is telling the definition of uuidv7 to call
+itself, so a string that names `uuid_generate_v7` / `uuidv7` / `uuid7`, or feeds
+`gen_random_uuid()` into `uuid_send`/`substring`/`set_byte`/`encode` rather than
+into a column, is left alone. Measured: this was 1 of the 2 hits the rule
+produced over 26,000 external files.
+
 Generated files are exempt — they mirror whatever their generator emits.
 
 A deliberate use (reproducing a legacy default in a data-migration test,
@@ -57,6 +70,17 @@ _GEN_RANDOM_UUID_RE = re.compile(r"\bgen_random_uuid\s*\(", re.IGNORECASE)
 # docstring.
 _SQL_SHAPE_RE = re.compile(
     r"\b(?:CREATE|ALTER|INSERT|UPDATE|SELECT|DEFAULT|VALUES)\b",
+    re.IGNORECASE,
+)
+
+# A string that is *implementing* v7 rather than defaulting a column to v4. Either
+# it names the v7 function it is defining, or it is unpacking the random UUID into
+# bytes to splice a timestamp into — which is the only reason to call
+# `gen_random_uuid()` and immediately take it apart.
+_BUILDS_UUIDV7_RE = re.compile(
+    r"\buuid_?(?:generate_)?v7\b|"
+    r"\b(?:uuid_send|gen_random_bytes|set_byte|get_byte|int8send)\s*\(|"
+    r"\b(?:substring|encode|overlay)\s*\(\s*(?:uuid_send\s*\()?\s*gen_random_uuid",
     re.IGNORECASE,
 )
 
@@ -111,8 +135,10 @@ def _is_offending_sql(value: str) -> bool:
 
     Returns:
         True when the masked text is SQL-shaped and names the function outside a
-        comment or quoted value.
+        comment or quoted value, and is not itself constructing a UUIDv7.
 
     """
     masked = strip_sql_noise(value)
-    return bool(_GEN_RANDOM_UUID_RE.search(masked) and _SQL_SHAPE_RE.search(masked))
+    if not (_GEN_RANDOM_UUID_RE.search(masked) and _SQL_SHAPE_RE.search(masked)):
+        return False
+    return not _BUILDS_UUIDV7_RE.search(masked)
