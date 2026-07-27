@@ -367,3 +367,47 @@ def test_test_files_are_not_store_modules(path: str) -> None:
 def test_production_store_modules_still_fire(path: str) -> None:
     src = 'q = "INSERT INTO phone_provider (provider_name) VALUES (%s) RETURNING id::text"'
     assert _count(src, path) == 1
+
+
+# --------------------------------------------------------------------------- #
+# Cross-package parity with SARJ105 and the TS twin                            #
+# (`packages/sql/.../insert_requires_on_conflict.py`,                          #
+#  `packages/typescript/src/rules/store-insert-requires-on-conflict.ts`).      #
+# All three must share ONE definition of "already idempotent" and ONE          #
+# definition of a real insert write. If one of these fails, the three          #
+# implementations have drifted again — fix the drift, not the test.            #
+# --------------------------------------------------------------------------- #
+
+ALREADY_IDEMPOTENT = [
+    pytest.param(
+        'q = "INSERT INTO t (a) VALUES (%s) ON CONFLICT (a) DO NOTHING"',
+        id="postgres_on_conflict",
+    ),
+    pytest.param(
+        'q = "INSERT INTO t (a, b) VALUES (%s, %s) ON DUPLICATE KEY UPDATE b = VALUES(b)",',
+        id="mysql_on_duplicate_key",
+    ),
+    pytest.param('q = "INSERT OR IGNORE INTO t (a) VALUES (?)"', id="sqlite_insert_or_ignore"),
+    pytest.param('q = "INSERT OR REPLACE INTO t (a) VALUES (?)"', id="sqlite_insert_or_replace"),
+]
+
+
+@pytest.mark.parametrize("source", ALREADY_IDEMPOTENT)
+def test_every_idempotent_insert_form_is_excused(source: str) -> None:
+    """A MySQL upsert used to fire here and be clean in TS — the same write, two verdicts."""
+    assert _count(source) == 0
+
+
+def test_insert_or_abort_is_not_excused() -> None:
+    """`OR IGNORE`/`OR REPLACE` survive replay; `OR ABORT` does not, so it still fires."""
+    assert _count('q = "INSERT OR ABORT INTO t (a) VALUES (?)"') == 1
+
+
+def test_prose_mentioning_insert_into_and_values_does_not_fire() -> None:
+    """The old `.*?` under DOTALL matched `insert into ... values` across a whole sentence."""
+    src = 'msg = "failed to insert into the queue: values were rejected by the broker"'
+    assert _count(src) == 0
+
+
+def test_insert_keyword_without_a_write_verb_does_not_fire() -> None:
+    assert _count('q = "GRANT INSERT ON TABLE t TO app_role"') == 0

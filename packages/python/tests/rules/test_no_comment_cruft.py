@@ -292,7 +292,10 @@ def test_three_char_symbol_run_is_not_a_banner():
 
 
 def test_flags_leading_file_header_preamble():
-    src = "# alpha note here\n# beta note here\n# gamma note here\n# delta note here\nimport os\n"
+    # A content-free header: bare labels, nothing explained. A preamble that
+    # carries a prose sentence is documentation and is exempt — see
+    # `test_preamble_with_a_prose_sentence_is_documentation`.
+    src = "# module: ingest\n# author: apham\n# version: 3\n# status: draft\nimport os\n"
     diags = _check(src)
     assert len(diags) == 1
     assert "preamble" in diags[0].message
@@ -304,6 +307,72 @@ def test_preamble_message_reports_line_count():
     diags = _check(src)
     assert len(diags) == 1
     assert "(5 lines)" in diags[0].message
+
+
+# --- file-header preamble: the "no prose sentence" guard -------------------
+# Shared spec with the TS twin's `fileHeaderPreamble` arm. The naive
+# 4-consecutive-comment-lines test penalises syntax rather than content, so it
+# flags a module header precisely when someone bothered to write one. Measured
+# over bulbul + noura-be + django/fastapi/celery: 7 hits, 7 false positives.
+# Each case below is minimized from one of them.
+
+
+def test_preamble_with_a_prose_sentence_is_documentation():
+    # django/django/contrib/auth/urls.py:1 — explains why the URLconf exists.
+    src = (
+        "# The views used below are normally mapped in the AdminSite instance.\n"
+        "# This URLs file is used to provide a reliable view deployment for test\n"
+        "# purposes. It is also provided as a convenience to those who want to\n"
+        "# deploy these URLs elsewhere.\n"
+        "from django.urls import path\n"
+    )
+    assert _check(src) == []
+
+
+def test_preamble_whose_lead_in_ends_in_a_colon_is_documentation():
+    # fastapi/tests/test_no_schema_split.py:1 — links the upstream discussion.
+    src = (
+        "# Test with parts from, and to verify the report in:\n"
+        "# https://github.com/fastapi/fastapi/discussions/14177\n"
+        "# Made an issue in:\n"
+        "# https://github.com/fastapi/fastapi/issues/14247\n"
+        "from enum import Enum\n"
+    )
+    assert _check(src) == []
+
+
+def test_preamble_of_cli_usage_prose_is_documentation():
+    # django/scripts/manage_translations.py:2 — the script's CLI reference.
+    src = (
+        "# This Python file contains utility scripts to manage translations.\n"
+        "# It has to be run inside the django git root directory.\n"
+        "#\n"
+        "# The following commands are available:\n"
+        "#\n"
+        "# * update_catalogs: check for new strings in core catalogs.\n"
+        "import os\n"
+    )
+    assert _check(src) == []
+
+
+def test_content_free_label_stack_is_still_a_preamble():
+    # The shape the arm is kept for: no line is a sentence, nothing is explained.
+    src = "# module: ingest\n# owner: platform\n# version: 3\n# status: draft\nimport os\n"
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "preamble" in diags[0].message
+
+
+def test_one_prose_line_anywhere_in_the_run_exempts_the_whole_preamble():
+    # The guard is `any`, not `all`: a single explained line makes it a doc.
+    src = (
+        "# module: ingest\n"
+        "# owner: platform\n"
+        "# Retries are capped at three because the upstream rate-limits us.\n"
+        "# status: draft\n"
+        "import os\n"
+    )
+    assert _check(src) == []
 
 
 def test_three_line_preamble_is_below_threshold():

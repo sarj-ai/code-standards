@@ -12,9 +12,31 @@ The rule walks SQL string literals embedded in `.py`, neutralizes string-literal
 values and `--` / `/* */` comments first (so an `'offset'` value or a prose
 `"offset out of range"` message is never mistaken for the keyword), and flags an
 `OFFSET` keyword immediately followed by a value/param token (`%s`, `%(name)s`,
-`:name`, `@name`, `$1`, or a digit) — the real pagination construct. Requiring the
-value token excludes the English word and BigQuery's `UNNEST(...) WITH OFFSET AS
-col` array indexing (which has no value after `OFFSET`).
+`?`, `?1`, `:name`, `@name`, `$1`, or a digit) — the real pagination construct.
+Requiring the value token excludes the English word and BigQuery's
+`UNNEST(...) WITH OFFSET AS col` array indexing (which has no value after
+`OFFSET`).
+
+CONVERGED WITH SARJ107 AND THE TS TWIN (2026-07). The concept is implemented
+three times — here, in `packages/sql/src/sarj_sql_lint/rules/no_limit_offset.py`
+(SARJ107, for `.sql` migrations) and in
+`packages/typescript/src/rules/no-offset-pagination.ts`. Two defects were fixed:
+
+  - **This rule's parameter set omitted `?`.** Every other marker was present,
+    so `LIMIT %s OFFSET %s` (psycopg) fired but `LIMIT ? OFFSET ?` — the
+    sqlite3 / aiosqlite / D1 spelling, and the one the TS twin's docstring uses
+    as its own headline example — was a silent false negative. Any sqlite-backed
+    store paginating with `?` was simply not linted. The three packages now share
+    one parameter alternation, the union of what each dialect uses, so a marker
+    added for one language cannot go missing in another.
+  - **SARJ107 required no value token at all** — it was a bare word-boundary
+    `OFFSET` match, so it fired on `ALTER TABLE t ADD COLUMN offset INTEGER`.
+    Fixed there.
+
+Corpus delta of the `?` addition over bulbul + noura-be + django/fastapi/celery:
+0 new findings (the first-party Python stores are psycopg/`%s`, so the gap was
+latent rather than active) and 0 lost — the 4 existing findings, all in
+`noura-be/python/dashboard/stores/`, are unchanged.
 
     # flagged
     "SELECT id, status FROM call ORDER BY created_at LIMIT %s OFFSET %s"
@@ -44,7 +66,16 @@ if TYPE_CHECKING:
 # `OFFSET` followed by a value/param token — the real pagination construct. This
 # excludes the English word ("no base offset"), `'offset'` dict keys, and BigQuery
 # `UNNEST(...) WITH OFFSET AS col` (array indexing, no value token after OFFSET).
-_OFFSET_PAGINATION = re.compile(r"\bOFFSET\s+(?:%s|%\(\w+\)s|:\w+|@\w+|\$\d+|\d+)", re.IGNORECASE)
+#
+# The parameter alternatives are the UNION of every marker the three packages
+# see, and are kept identical in SARJ107 and the TS twin — see the module
+# docstring. `\?\d*` (sqlite3 / aiosqlite / D1) was missing here specifically,
+# which made `LIMIT ? OFFSET ?` a silent false negative in Python while the TS
+# twin caught it.
+_OFFSET_PAGINATION = re.compile(
+    r"\bOFFSET\s+(?:%s|%\(\w+\)s|\?\d*|:\w+|@\w+|\$\d+|\d+)",
+    re.IGNORECASE,
+)
 
 
 class NoOffsetPagination(Rule):

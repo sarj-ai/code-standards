@@ -1,10 +1,36 @@
 /**
  * @fileoverview TS port of SARJ024 (`no-repeated-string-literal`). The same long,
- * *structured* string repeated three or more times across two or more functions
- * of a module is a real maintenance hazard: when one copy is edited the others
- * silently drift. A column list that gains a column in the read query but not in
- * the upsert, or a prompt template updated in one branch only, fails at runtime
- * and nowhere else.
+ * *structured* string repeated across two or more functions of a module is a real
+ * maintenance hazard: when one copy is edited the others silently drift. A column
+ * list that gains a column in the read query but not in the upsert, or a prompt
+ * template updated in one branch only, fails at runtime and nowhere else.
+ *
+ * COUNT THRESHOLD — CONVERGED WITH SARJ024 (2026-07). This rule and the Python
+ * twin had drifted to two different definitions of "repeated": TS demanded three
+ * total occurrences, Python only two distinct enclosing functions. A literal used
+ * exactly twice therefore fired in `.py` and was clean in `.ts`, which is a
+ * defect — the same code judged differently by file extension. Both were measured
+ * and TS moved to Python's rule; **"two distinct functions" is the only count
+ * threshold.** Evidence:
+ *   - Requiring three occurrences would drop 15 of the 18 findings over the
+ *     first-party Python corpora (bulbul `python/` + `sdks/python`, noura-be) and
+ *     the django/fastapi/celery FP controls, and the dropped ones are true
+ *     positives of exactly the shape this rule exists for:
+ *     `noura-be/.../modules/onboarding/store.py:631` repeats one
+ *     `SELECT stage FROM onboarding_profiles WHERE onboarding_token = %s FOR
+ *     UPDATE` verbatim between `submit_financial_info_atomic` and
+ *     `submit_legal_info_atomic`, and `.../modules/card/store.py:287` repeats a
+ *     10-column `SELECT … JOIN card_types …` between two methods. Two copies is
+ *     where column-list drift *begins*; the third was arbitrary.
+ *   - Dropping the gate costs the TS side nothing. Over 748 first-party TS/TSX
+ *     files (bulbul `typescript/` + `sdks/typescript`, noura-fe) the rule yields
+ *     0 findings at BOTH thresholds. Over the 2,186-file third-party corpus
+ *     (zod / TanStack Query / react-router / swr / zustand) it yields 0 at three
+ *     and 5 at two — and all 5 were react-router `*-test.ts` fixtures that the
+ *     test-file exemption should already have covered but did not, because
+ *     `_paths.isTestFile` only knew the `.test.ts` spelling. That gap is fixed at
+ *     its source, so the corpus delta of this change is 0 → 0 everywhere.
+ * Precision here is carried by the *structured* filter below, not by counting.
  *
  * The rule is deliberately narrow — it fires only where cross-site drift is a
  * genuine bug, never on coincidentally-equal prose. Three filters combine:
@@ -20,7 +46,8 @@
  *    into one shared constant.
  * 2. **Cross-function only.** Occurrences must span at least two distinct
  *    enclosing functions. Two uses inside one function are edited together and
- *    hoisting them buys no drift protection — that is pure locality loss.
+ *    hoisting them buys no drift protection — that is pure locality loss. This
+ *    is the only count threshold; see the note above.
  * 3. **Exclusions.** Template literals *with* substitutions (the f-string
  *    analogue — each fragment is half a sentence, not a reusable value), import
  *    and `require` sources, JSX attribute values (a repeated Tailwind class list
@@ -60,7 +87,6 @@ type MessageIds = "noRepeatedStringLiteral";
 type Options = readonly [];
 
 const MIN_LENGTH = 40;
-const MIN_OCCURRENCES = 3;
 const MIN_DISTINCT_SCOPES = 2;
 const PREVIEW_LENGTH = 40;
 
@@ -172,9 +198,6 @@ export default ESLintUtils.RuleCreator(
       },
       "Program:exit": (): void => {
         for (const [value, nodes] of occurrences) {
-          if (nodes.length < MIN_OCCURRENCES) {
-            continue;
-          }
           const distinctScopes = new Set(
             nodes.map((node) => scopes.get(node)).filter((scope) => scope != null),
           );

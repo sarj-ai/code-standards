@@ -16,8 +16,45 @@ readability audit, not this rule):
    Structure code with functions, not ASCII rules.
 
 3. Leading file-header preamble — a run of 4+ standalone comment lines at the
-   top of the file before any code. Use a module docstring for the *why*, not a
-   block of `#` lines.
+   top of the file before any code **that contains no prose sentence**. Use a
+   module docstring for the *why*, not a block of `#` lines.
+
+   The "no prose sentence" guard is load-bearing, and it is a CROSS-PACKAGE
+   CONTRACT shared with the TS port's `fileHeaderPreamble` arm
+   (`packages/typescript/src/rules/no-comment-cruft.ts`). The naive test — 4+
+   consecutive comment lines, nothing else — penalises *syntax* rather than
+   *content*, so it flags a module header precisely when someone bothered to
+   write one. TS measured this first on a 42k-LOC codebase: 11 of 15 hits were
+   the repo's best documentation and exactly 1 was genuine (an ASCII banner
+   `sectionBanner` already covers). Python shipped the naive test for longer, and
+   re-measuring it in 2026-07 over bulbul + noura-be + django/fastapi/celery
+   reproduced the same result even more starkly: **7 hits, 7 false positives,
+   0 true positives.** Every one was a prose header a module docstring should
+   simply absorb, not delete:
+     - `django/django/contrib/auth/urls.py:1` — why this URLconf exists at all
+       ("normally mapped in the AdminSite instance … provided as a convenience").
+     - `django/tests/deprecation/internal.py:1` — the fixture's whole contract
+       (which functions call `warn_about_external_use`, and at what stack depth).
+     - `django/tests/test_sqlite.py:1` — how to point the suite at another
+       backend, with the contributing-docs URL.
+     - `django/scripts/manage_translations.py:2` — the script's 20-line CLI
+       reference, `$ python scripts/manage_translations.py lang_stats -l es`.
+     - `django/tests/i18n/exclude/__init__.py:1`,
+       `fastapi/tests/test_no_schema_split.py:1` (links the upstream discussion
+       and issue the regression pins), `celery/examples/resultgraph/tasks.py:1`
+       (a `>>>` usage example).
+   After the guard the corpus yields **0** preamble findings and the other two
+   arms are untouched (494 → 487 total, delta exactly those 7). The arm is kept
+   rather than deleted so it stays a preventive ratchet against a genuinely
+   content-free header (a stack of bare `# author:` / `# version:` labels), and
+   so the two packages keep one definition of the shape — deleting it here would
+   re-open the divergence from the other side.
+
+   A note for the next auditor: an independent audit reached the same conclusion
+   from the SQL side, observing that the naive test would hit 31 of 239 `.sql`
+   files, all well-documented destructive migrations. No SQL rule implements this
+   concept (`sarj_sql_lint` has no comment-cruft rule), so there was nothing to
+   change there — but if one is ever added, it inherits this guard.
 
 Deliberately NOT flagged: trailing/standalone *prose* comments (the legitimate
 "why"); code-shaped *illustrations* — a line that parses as Python but sits
@@ -663,6 +700,11 @@ class NoCommentCruft(Rule):
             return
         if not any(_HAS_LETTER_RE.search(body) for _, _, body in leading):
             return  # line-art logo, not prose a module docstring could carry
+        # A preamble carrying at least one prose sentence is documentation — the
+        # *why* this rule asks for — regardless of which comment syntax carries
+        # it. See the module docstring for the corpus evidence.
+        if any(_is_prose_line(body) for _, _, body in leading):
+            return
         if len(leading) >= _LEADING_PREAMBLE_MIN:
             line, col, _ = leading[0]
             if line not in diags:

@@ -175,3 +175,42 @@ def test_boundary_inputs_return_empty(source: str):
 )
 def test_syntax_error_returns_empty(source: str):
     assert _check(source) == []
+
+
+# --------------------------------------------------------------------------- #
+# Cross-package parity with SARJ107 and the TS twin                            #
+# (`packages/sql/.../no_limit_offset.py`,                                      #
+#  `packages/typescript/src/rules/no-offset-pagination.ts`).                   #
+# All three share ONE parameter alternation. `?` was missing here, so every    #
+# sqlite3 / aiosqlite store paginating with `LIMIT ? OFFSET ?` was a silent    #
+# false negative while the TS twin caught it.                                  #
+# --------------------------------------------------------------------------- #
+
+PARAM_MARKERS = {
+    "pyformat": 'q = "SELECT id FROM t ORDER BY id LIMIT %s OFFSET %s"\n',
+    "pyformat_named": 'q = "SELECT id FROM t ORDER BY id LIMIT %(n)s OFFSET %(off)s"\n',
+    "qmark": 'q = "SELECT id FROM t ORDER BY id LIMIT ? OFFSET ?"\n',
+    "numbered_qmark": 'q = "SELECT id FROM t ORDER BY id LIMIT ?1 OFFSET ?2"\n',
+    "named_colon": 'q = "SELECT id FROM t ORDER BY id LIMIT :n OFFSET :off"\n',
+    "named_at": 'q = "SELECT id FROM t ORDER BY id LIMIT @n OFFSET @off"\n',
+    "numeric_dollar": 'q = "SELECT id FROM t ORDER BY id LIMIT $1 OFFSET $2"\n',
+    "bare_digit": 'q = "SELECT id FROM t ORDER BY id LIMIT 10 OFFSET 20"\n',
+}
+
+
+@pytest.mark.parametrize("source", PARAM_MARKERS.values(), ids=list(PARAM_MARKERS))
+def test_every_shared_param_marker_is_detected(source: str):
+    assert len(_check(source)) == 1
+
+
+NON_PAGINATION = {
+    "bigquery_with_offset": 'q = "SELECT x, i FROM UNNEST(arr) AS x WITH OFFSET AS i"\n',
+    "english_word": 'msg = "the offset is out of range for this window"\n',
+    "column_named_offset": 'q = "ALTER TABLE t ADD COLUMN offset INTEGER NOT NULL DEFAULT 0"\n',
+}
+
+
+@pytest.mark.parametrize("source", NON_PAGINATION.values(), ids=list(NON_PAGINATION))
+def test_offset_without_a_value_token_is_not_pagination(source: str):
+    """Requiring the value token is the shared reason all three packages stay quiet here."""
+    assert _check(source) == []
