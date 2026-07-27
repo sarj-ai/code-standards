@@ -40,7 +40,7 @@ TABLE_PK_OR_UNIQUE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 INLINE_COLUMN_PATTERN = re.compile(
-    r"\b([a-zA-Z0-9_\"]+)\b[^\n;,]*?\bREFERENCES\s+[a-zA-Z0-9_\"\.]+\b",
+    r"(?:\bADD\s+(?:COLUMN\s+)?)?\b([a-zA-Z0-9_\"]+)\b\s+[a-zA-Z0-9_\"\.]+(?:\([^)]*\))?[^\n;,]*?\bREFERENCES\s+[a-zA-Z0-9_\"\.]+\b",
     re.IGNORECASE,
 )
 PRIMARY_OR_UNIQUE_KEYWORD = re.compile(r"\b(PRIMARY\s+KEY|UNIQUE)\b", re.IGNORECASE)
@@ -84,7 +84,9 @@ class RequireFkIndex(Rule):
                 if table_match:
                     full_table = _normalize_name(table_match.group(1))
                     base_table = full_table.split(".")[-1]
-                    table_indexes = indexed_cols_by_table.get(full_table, set()) | indexed_cols_by_table.get(base_table, set())
+                    table_indexes = indexed_cols_by_table.get(full_table, set())
+                    if not table_indexes and "." in full_table:
+                        table_indexes = indexed_cols_by_table.get(base_table, set())
                     leading_indexed_cols = {idx[0] for idx in table_indexes if idx}
 
                     for pk_u_match in TABLE_PK_OR_UNIQUE_PATTERN.finditer(stmt):
