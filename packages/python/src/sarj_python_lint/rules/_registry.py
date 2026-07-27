@@ -39,6 +39,7 @@ from sarj_python_lint.rules.no_sentinel_return_on_except import NoSentinelReturn
 from sarj_python_lint.rules.no_sequential_await import NoSequentialAwait
 from sarj_python_lint.rules.no_sleep_in_test_body import NoSleepInTestBody
 from sarj_python_lint.rules.no_stdlib_logging import NoStdlibLogging
+from sarj_python_lint.rules.no_tautological_expect import NoTautologicalExpect
 from sarj_python_lint.rules.no_unreachable_after_terminal import (
     NoUnreachableAfterTerminal,
 )
@@ -149,6 +150,7 @@ REGISTRY: dict[str, type[Rule]] = {
     NoGenRandomUuidInSql.id: NoGenRandomUuidInSql,
     NoFileLevelEscapeHatchNoqa.id: NoFileLevelEscapeHatchNoqa,
     NoOptionalTenantPredicate.id: NoOptionalTenantPredicate,
+    NoTautologicalExpect.id: NoTautologicalExpect,
 }
 
 __all__ = ["REGISTRY"]

@@ -12,9 +12,40 @@ import sarj from "@sarj/eslint-plugin";
 export default [...sarj.configs.recommended];
 ```
 
-44 rules. Each rule's source under `src/rules/` carries its own `@fileoverview` rationale plus `meta.docs.description` + `meta.messages` — read the file for the full reasoning, including the false positives it deliberately does not fire on.
+45 rules. Each rule's source under `src/rules/` carries its own `@fileoverview` rationale plus `meta.docs.description` + `meta.messages` — read the file for the full reasoning, including the false positives it deliberately does not fire on.
 
 Presets: `recommended` (warn-first), `strict` (every rule at error), `style-guide` (formatting/naming subset).
+
+## New in 2.14.0 — `no-tautological-expect`
+
+The TS half of SARJ057. An `expect(...)` whose operands are all literals has
+already decided its outcome before the test runs — `expect(true).toBe(true)`
+passes if you delete the module under test.
+
+Python has caught the assertion-*free* test since 0.15.0 (`SARJ043
+zero-assertion-test`) and had no TypeScript counterpart, which is exactly how
+`expect(true).toBe(true); // placeholder` survived in an internal suite named for
+the behaviour it was supposed to check: the file *has* an assertion, so nothing
+was looking at it.
+
+| Rule | What it catches | Preset |
+|---|---|---|
+| `no-tautological-expect` | `expect(<literal>).toBe/toEqual/toStrictEqual(<textually identical literal>)`, and `expect(<literal>).toBeDefined()/toBeTruthy()/toBeNull()/…` — a zero-argument matcher on a literal receiver. | warn / error |
+
+**The narrowness is the rule.** The obvious generalisation — "flag a comparison
+of a thing with itself" — measures ~95% false positives:
+`expect(hash([o])).toEqual(hash([o]))` is a *determinism* test,
+`expect(memo(x)).toBe(memo(x))` a *memoization* test, `expect(a).toEqual(a)` on a
+value with custom equality a *reflexivity* test. All three can genuinely fail. So
+an identifier, member-expression or call operand is never enough: both sides must
+be literals, and textually identical ones. A modified chain (`.not`, `.resolves`,
+`.rejects`), a spread, an interpolated template literal, and two *different*
+literals are all left alone.
+
+Measured before shipping: **3 hits across 5,819 `.ts`/`.tsx` files** (1,003 of
+them test files, where the rule is active) — six internal repos plus `got`,
+`hono`, `swr` and `trpc`. 3 true positives, **0 false positives**; every hit is
+an abandoned placeholder.
 
 ## New in 2.13.0 — the anti-comment-verbosity family
 

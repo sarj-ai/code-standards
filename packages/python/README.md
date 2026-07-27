@@ -217,6 +217,53 @@ compositions, two of which were reachable cross-tenant reads at the time of
 writing (`POST /v1/calls/list` and `POST /v1/calls/batch/list`, both of which
 composed `WHERE 1=1` for a user whose `organization_id` was NULL).
 
+### Assertions that can never fail (0.23.0)
+
+```yaml
+    - id: sarj-no-tautological-expect              # SARJ057
+```
+
+`SARJ057` fires when an assertion's operands are all literals, so its outcome is
+fixed before the code runs. `SARJ043` already catches the test with *no*
+assertion; this is the test whose assertion is decorative.
+
+The placeholder spelling (`assert True`) is the obvious half. The expensive half
+is the assertion whose real condition slid out of the condition slot, because it
+was a working assertion when it was typed:
+
+```python
+assert {                                              # ← braces, not parentheses
+    "referencing a non existing `via_device` " in caplog.text
+}                                                     # one-element SET, always truthy
+
+assert [f"No logs found on hdfs for ti={ti}"]         # the `== messages` was lost
+assert True, cover_result_json[0]["success"][...]     # slid into the MESSAGE slot
+```
+
+**The narrowness is the rule.** The obvious generalisation — "flag a comparison
+of a thing with itself" — measures ~95% false positives: `assert i == i`,
+`assert x is x`, `expect(hash([o])).toEqual(hash([o]))` are reflexivity,
+determinism and memoization tests, and for a type with custom `__eq__`/`__hash__`
+they can genuinely fail. So an identifier, attribute or call operand is never
+enough; both sides must be literals, and textually identical ones. `assert True`
+as the sole statement of an `except` handler is exempt — it asserts *which branch
+ran* — as is anything inside a pytest-benchmark test.
+
+Measured before shipping: **4 findings across 28,608 files** — 26,346 of
+pydantic, trio, attrs, Airflow and Home Assistant plus 2,262 first-party files
+in bulbul, noura-be, kpi-hub, ai and demo-gateway. All 4 are true positives
+(Home Assistant `tests/helpers/test_device_registry.py:3711` and `:3777`,
+`tests/components/emulated_hue/test_hue_api.py:1078`, Airflow
+`providers/apache/hdfs/.../log/test_hdfs_task_handler.py:170`); 0 false
+positives. The two `except ...: assert True` markers that a carve-out-free
+version does flag — `pydantic-core/tests/benchmarks/test_micro_benchmarks.py:716`
+and `core/tests/components/mqtt/test_client.py:1353` — were verified silent.
+
+The TypeScript half of the same rule ships as `@sarj/no-tautological-expect` in
+`@sarj/eslint-plugin` ≥ 2.14.0; until now there was no TS counterpart at all,
+which is how `expect(true).toBe(true); // placeholder` survived in a suite named
+for the behaviour it was supposed to check.
+
 ## CLI
 
 ```bash
