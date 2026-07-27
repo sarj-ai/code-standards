@@ -216,6 +216,31 @@ runtime-evaluated-decorators = [
   "fastapi.FastAPI.api_route",
 ]
 
+[lint.flake8-pytest-style]
+# PT011's default list omits RuntimeError, which is the one ambiguous builtin this
+# house raises deliberately — a `pytest.raises(RuntimeError)` with no `match=` cannot
+# tell "the code correctly refused" from "it crashed on the way there". A corpus sweep
+# over bulbul, noura-be, django, fastapi and celery found 32 such sites, none of which
+# PT011 reports. The other names here are ruff's defaults, restated because setting the
+# key replaces the list rather than extending it.
+#
+# Deliberately NOT added: AttributeError, TypeError, KeyError, IndexError, NameError.
+# Those are raised by the interpreter enforcing a protocol, so the message belongs to
+# CPython and `match=` is both unwritable and version-brittle — pinning `__slots__`
+# via `raises(AttributeError): x.__dict__` is the canonical shape. Judging them added
+# ~250 findings across the same corpus, 251 in django alone, and every one sampled was
+# a legitimate protocol assertion.
+raises-require-match-for = [
+  "BaseException",
+  "Exception",
+  "ValueError",
+  "OSError",
+  "IOError",
+  "EnvironmentError",
+  "RuntimeError",
+  "socket.error",
+]
+
 [lint.flake8-tidy-imports.banned-api]
 "unittest.mock.Mock".msg              = "Prefer real fixtures or hand-rolled fakes implementing the relevant ABC. If a mock is genuinely required, import with `# noqa: TID251 — <reason>`."
 "unittest.mock.AsyncMock".msg         = "Same as Mock."

@@ -1,0 +1,666 @@
+from pathlib import Path
+import textwrap
+from typing import TYPE_CHECKING
+
+import pytest
+
+from sarj_python_lint.rules.trivially_true_assertion import TriviallyTrueAssertion
+
+
+if TYPE_CHECKING:
+    from sarj_python_lint.rule_base import Diagnostic
+
+
+TEST_PATH = "python/noura/tests/test_vb_auth_generic.py"
+
+
+def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
+    return TriviallyTrueAssertion().check(Path(path), textwrap.dedent(source))
+
+
+_CONSTANT_TEST = """
+def test_thing():
+    assert True
+"""
+
+_ECHO_TEST = """
+def test_thing():
+    payload = EncryptedPayload(jws_signature="sig-456")
+    assert payload.jws_signature == "sig-456"
+"""
+
+
+# --------------------------------------------------------------------------- #
+# Path gating.                                                                 #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("path", ["test_x.py", "x_test.py", "a/tests/test_y.py"])
+def test_fires_in_test_paths(path: str):
+    assert len(_check(_CONSTANT_TEST, path)) == 1
+
+
+@pytest.mark.parametrize("path", ["src/service.py", "a/testing/thing.py"])
+def test_skips_non_test_paths(path: str):
+    assert _check(_CONSTANT_TEST, path) == []
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "black/tests/data/cases/fmtonoff5.py",
+        "tests/helpers.py",
+        "tests/conftest.py",
+        "scripts/test_probe.py",
+    ],
+)
+def test_skips_modules_pytest_does_not_collect(path: str):
+    assert _check(_CONSTANT_TEST, path) == []
+
+
+# --------------------------------------------------------------------------- #
+# Shape 1: the condition is a constant ruff has no rule for.                    #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "condition",
+    ["True", "1", "1.5", "...", "b'x'", "[1]", "[compute()]", "{1, 2}", "{'a': 1}", "not False", "not ''", "not 0"],
+    ids=[
+        "true",
+        "int",
+        "float",
+        "ellipsis",
+        "bytes",
+        "list",
+        "list-of-calls",
+        "set",
+        "dict",
+        "not-false",
+        "not-empty-string",
+        "not-zero",
+    ],
+)
+def test_flags_constant_conditions(condition: str):
+    assert len(_check(f"def test_thing():\n    assert {condition}\n")) == 1
+
+
+def test_flags_constant_condition_with_a_message():
+    assert len(_check('def test_thing():\n    assert True, "we got here"\n')) == 1
+
+
+@pytest.mark.parametrize(
+    "condition",
+    ["False", "None", "0", "[]", "{}", "()", "''"],
+    ids=["false", "none", "zero", "empty-list", "empty-dict", "empty-tuple", "empty-string"],
+)
+def test_falsy_constants_are_someone_elses_problem(condition: str):
+    # An always-failing assertion is loud on every run, so it self-corrects;
+    # `assert False` is ruff's B011/PT015 besides.
+    assert _check(f"def test_thing():\n    assert {condition}\n") == []
+
+
+# ---- ruff already owns these; duplicating them would be a defect ---- #
+
+
+@pytest.mark.parametrize(
+    "condition",
+    ["'x'", "(1, 2)", "1 == 1", "2 > 1", "True is True", "x == x", "m is m", "'a' in ['a', 'b']"],
+    ids=[
+        "string-literal-PLW0129",
+        "tuple-F631",
+        "constant-compare-PLR0133",
+        "constant-inequality-PLR0133",
+        "identity-of-constants-PLR0133",
+        "self-compare-PLR0124",
+        "self-identity-PLR0124",
+        "literal-membership-PLR6201",
+    ],
+)
+def test_shapes_ruff_covers_are_not_duplicated(condition: str):
+    assert _check(f"def test_thing(x, m):\n    assert {condition}\n") == []
+
+
+@pytest.mark.parametrize("condition", ["[*items]", "{**data}"], ids=["list-unpack", "dict-unpack"])
+def test_unpacked_displays_may_still_be_empty(condition: str):
+    assert _check(f"def test_thing(items, data):\n    assert {condition}\n") == []
+
+
+# ---- false-positive guard: a hand-rolled branch check ---- #
+
+
+@pytest.mark.parametrize(
+    "otherwise",
+    ["assert False", "pytest.fail('nope')", "raise AssertionError"],
+    ids=["assert-false", "pytest-fail", "raise"],
+)
+def test_constant_assert_paired_with_a_failing_branch_is_exempt(otherwise: str):
+    # celery t/unit/concurrency/test_prefork.py:429 — clumsy, but the pair can
+    # fail, which is the whole test.
+    src = f"""
+    def test_thing(hub):
+        if hub.ready():
+            assert True
+        else:
+            {otherwise}
+    """
+    assert _check(src) == []
+
+
+def test_constant_assert_in_the_failing_branch_is_also_exempt():
+    src = """
+    def test_thing(hub):
+        if hub.broken():
+            assert False
+        else:
+            assert True
+    """
+    assert _check(src) == []
+
+
+def test_constant_assert_in_a_branch_with_no_failing_sibling_still_fires():
+    src = """
+    def test_thing(hub):
+        if hub.ready():
+            assert True
+        else:
+            log("not ready")
+    """
+    assert len(_check(src)) == 1
+
+
+def test_constant_assert_under_an_if_without_an_else_still_fires():
+    src = """
+    def test_thing(hub):
+        if hub.ready():
+            assert True
+    """
+    assert len(_check(src)) == 1
+
+
+# --------------------------------------------------------------------------- #
+# Shape 2: reading a constructor keyword straight back out.                     #
+# --------------------------------------------------------------------------- #
+
+
+def test_flags_keyword_echo():
+    assert len(_check(_ECHO_TEST)) == 1
+
+
+def test_flags_keyword_echo_written_the_other_way_round():
+    src = """
+    def test_thing():
+        payload = EncryptedPayload(jws_signature="sig-456")
+        assert "sig-456" == payload.jws_signature
+    """
+    assert len(_check(src)) == 1
+
+
+def test_flags_every_echoed_field_separately():
+    src = """
+    def test_thing():
+        payload = EncryptedPayload(operation_key_id="key-123", jws_signature="sig-456")
+        assert payload.operation_key_id == "key-123"
+        assert payload.jws_signature == "sig-456"
+    """
+    assert len(_check(src)) == 2
+
+
+def test_flags_identity_spelling_of_a_boolean_field():
+    # bulbul integration/tests/unit/test_verifier_base.py:31 —
+    # `assert result.passed is False` after `VerifyResult(passed=False, ...)`.
+    src = """
+    def test_thing():
+        result = VerifyResult(passed=False)
+        assert result.passed is False
+    """
+    assert len(_check(src)) == 1
+
+
+def test_flags_a_dotted_constructor():
+    src = """
+    def test_thing():
+        x = models.CalleeInput(phone_number="+1234567890")
+        assert x.phone_number == "+1234567890"
+    """
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    "literal",
+    ["[]", "{'trace_id': 'abc'}", "{'app/foo'}", "-1"],
+    ids=["empty-list", "dict", "set", "negative-int"],
+)
+def test_flags_echoed_collection_and_signed_literals(literal: str):
+    src = f"""
+    def test_thing():
+        rec = Registration(payload={literal})
+        assert rec.payload == {literal}
+    """
+    assert len(_check(src)) == 1
+
+
+# ---- false-positive guard: the callee is not a class ---- #
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        "make_settings(ENV='staging')",
+        "_worker_options(num_idle_processes=2)",
+        "service.get_onboarding_error_details(limit=25)",
+        "factory.create_client(language='ar')",
+    ],
+    ids=["module-helper", "private-helper", "service-method", "factory-method"],
+)
+def test_a_function_that_maps_its_arguments_is_not_a_constructor(call: str):
+    # noura-be test_core_config.py:52 reads an env var back through
+    # pydantic-settings; test_bigquery_inline_service.py:534 checks a service
+    # echoes pagination into its response envelope. Both are real behaviour.
+    field, value = ("ENV", "'staging'") if "ENV" in call else ("limit", "25")
+    src = f"""
+    def test_thing(service, factory):
+        result = {call}
+        assert result.{field} == {value}
+    """
+    assert _check(src) == []
+
+
+def test_the_same_shape_with_a_capitalised_callee_fires():
+    src = """
+    def test_thing():
+        result = Settings(ENV="staging")
+        assert result.ENV == "staging"
+    """
+    assert len(_check(src)) == 1
+
+
+# ---- false-positive guard: collaborator classes normalise what they are given ---- #
+
+
+@pytest.mark.parametrize(
+    "cls",
+    ["CacheBackend", "OpenAIClient", "self.Backend", "AnalyticsService", "OrganizationStore"],
+    ids=["backend", "client", "attribute-backend", "service", "store"],
+)
+def test_collaborator_classes_are_exempt(cls: str):
+    # celery's cache backends run `expires=` through `prepare_expires`, so
+    # t/unit/backends/test_cache.py:126 is a coercion test, not a tautology.
+    src = f"""
+    def test_thing(self):
+        b = {cls}(expires=10)
+        assert b.expires == 10
+    """
+    assert _check(src) == []
+
+
+def test_a_record_class_with_the_same_field_still_fires():
+    src = """
+    def test_thing():
+        b = RetentionPolicy(expires=10)
+        assert b.expires == 10
+    """
+    assert len(_check(src)) == 1
+
+
+# ---- false-positive guard: a field a sibling test proves is transformed ---- #
+
+
+def test_a_field_another_test_shows_coercing_is_exempt():
+    # bulbul tests/unit/test_gemini_settings.py — `model="lite"` is rewritten to
+    # "flash-lite-3.1", so `test_valid_model_unchanged` is the negative half of
+    # a validator test and genuinely can fail.
+    src = """
+    def test_lite_is_remapped():
+        settings = GeminiLLMSettings(model="lite")
+        assert settings.model == "flash-lite-3.1"
+
+    def test_valid_model_unchanged():
+        settings = GeminiLLMSettings(model="flash")
+        assert settings.model == "flash"
+    """
+    assert _check(src) == []
+
+
+def test_without_the_coercing_sibling_the_same_assertion_fires():
+    src = """
+    def test_valid_model_unchanged():
+        settings = GeminiLLMSettings(model="flash")
+        assert settings.model == "flash"
+    """
+    assert len(_check(src)) == 1
+
+
+def test_coercion_evidence_is_scoped_to_the_field():
+    src = """
+    def test_lite_is_remapped():
+        settings = GeminiLLMSettings(model="lite")
+        assert settings.model == "flash-lite-3.1"
+
+    def test_provider_kept():
+        settings = GeminiLLMSettings(provider="gemini")
+        assert settings.provider == "gemini"
+    """
+    assert len(_check(src)) == 1
+
+
+def test_coercion_evidence_is_scoped_to_the_class():
+    src = """
+    def test_lite_is_remapped():
+        settings = GeminiLLMSettings(model="lite")
+        assert settings.model == "flash-lite-3.1"
+
+    def test_other_model_kept():
+        settings = OpenAISettings(model="flash")
+        assert settings.model == "flash"
+    """
+    assert len(_check(src)) == 1
+
+
+# ---- false-positive guard: the constructor did work on the literal ---- #
+
+
+@pytest.mark.parametrize(
+    ("given", "asserted"),
+    [
+        ("value='A@B.com'", "e.value == 'a@b.com'"),
+        ("count=0", "e.count is False"),
+        ("count=1", "e.count == 1.0"),
+        ("name='A B'", "e.slug == 'a-b'"),
+        ("name='bo'", "e.title == 'bo'"),
+    ],
+    ids=["case-coerced", "bool-for-int", "float-for-int", "derived-field", "renamed-field"],
+)
+def test_a_transformed_value_or_a_renamed_field_is_exempt(given: str, asserted: str):
+    src = f"""
+    def test_thing():
+        e = Email({given})
+        assert {asserted}
+    """
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    ("given", "asserted"),
+    [("value='a@b.com'", "e.value == 'a@b.com'"), ("count=0", "e.count == 0")],
+    ids=["identical-string", "identical-int"],
+)
+def test_a_structurally_identical_literal_fires(given: str, asserted: str):
+    src = f"""
+    def test_thing():
+        e = Email({given})
+        assert {asserted}
+    """
+    assert len(_check(src)) == 1
+
+
+def test_a_dunder_attribute_is_exempt():
+    # celery t/unit/utils/test_local.py:31 — a lazy proxy resolving `__doc__`
+    # goes through descriptor machinery, not plain assignment.
+    src = """
+    def test_doc():
+        x = Proxy(__doc__='foo')
+        assert x.__doc__ == 'foo'
+    """
+    assert _check(src) == []
+
+
+def test_a_plain_attribute_of_the_same_class_fires():
+    src = """
+    def test_doc():
+        x = Proxy(doc='foo')
+        assert x.doc == 'foo'
+    """
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    ("given", "asserted"),
+    [("name=name", "u.name == name"), ("name='bo'", "u.name == expected")],
+    ids=["non-literal-keyword", "non-literal-expectation"],
+)
+def test_a_non_literal_on_either_side_is_exempt(given: str, asserted: str):
+    # A `@given(...)` property test hands the constructor a generated value, so
+    # this also covers hypothesis.
+    src = f"""
+    def test_thing(name, expected):
+        u = User({given})
+        assert {asserted}
+    """
+    assert _check(src) == []
+
+
+def test_a_serialisation_round_trip_is_exempt():
+    src = """
+    def test_thing():
+        payload = {"id": 1, "name": "bo"}
+        assert User(**payload).model_dump() == payload
+    """
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "operator",
+    ["!=", ">", "<="],
+    ids=["not-equal", "greater", "less-equal"],
+)
+def test_a_non_echo_operator_is_exempt(operator: str):
+    src = f"""
+    def test_thing():
+        u = User(count=1)
+        assert u.count {operator} 1
+    """
+    assert _check(src) == []
+
+
+# ---- false-positive guard: something touched the local in between ---- #
+
+
+@pytest.mark.parametrize(
+    "meddling",
+    [
+        "u = User(name='other')",
+        "save(u)",
+        "u.refresh()",
+        "u.name = 'other'",
+        "del u",
+        "copy = u",
+        "print(u.name)",
+        "for u in users: pass",
+    ],
+    ids=[
+        "rebound",
+        "passed-to-a-function",
+        "method-called",
+        "attribute-assigned",
+        "deleted",
+        "aliased",
+        "read-outside-an-assert",
+        "loop-target",
+    ],
+)
+def test_any_other_mention_of_the_local_is_disqualifying(meddling: str):
+    src = f"""
+    def test_thing(users):
+        u = User(name='bo')
+        {meddling}
+        assert u.name == 'bo'
+    """
+    assert _check(src) == []
+
+
+def test_an_untouched_local_fires():
+    src = """
+    def test_thing(users):
+        u = User(name='bo')
+        assert u.name == 'bo'
+    """
+    assert len(_check(src)) == 1
+
+
+def test_a_parameter_shadowing_the_name_is_exempt():
+    src = """
+    def test_thing(u):
+        u = User(name='bo')
+        assert u.name == 'bo'
+    """
+    assert _check(src) == []
+
+
+def test_an_assertion_above_the_construction_is_exempt():
+    src = """
+    def test_thing(u):
+        assert other.name == 'bo'
+        other = User(name='bo')
+    """
+    assert _check(src) == []
+
+
+def test_a_tuple_unpacking_target_is_exempt():
+    src = """
+    def test_thing():
+        u, v = build_pair(name='bo')
+        assert u.name == 'bo'
+    """
+    assert _check(src) == []
+
+
+# --------------------------------------------------------------------------- #
+# Shape 3: isinstance against the class that was just called.                   #
+# --------------------------------------------------------------------------- #
+
+
+def test_flags_isinstance_of_the_class_just_constructed():
+    # celery t/unit/worker/test_request.py:1534.
+    src = """
+    def test_from_message_empty_args(self):
+        job = Request(m, app=self.app)
+        assert isinstance(job, Request)
+    """
+    assert len(_check(src)) == 1
+
+
+def test_flags_isinstance_with_a_dotted_class():
+    src = """
+    def test_thing():
+        job = worker.Request(m)
+        assert isinstance(job, worker.Request)
+    """
+    assert len(_check(src)) == 1
+
+
+def test_isinstance_that_narrows_for_a_later_assertion_is_exempt():
+    # basedpyright strict needs this to prove the reads below are well-typed;
+    # deleting it breaks the build.
+    src = """
+    def test_thing(m):
+        job = Request(m)
+        assert isinstance(job, Request)
+        assert job.name == m.name
+    """
+    assert _check(src) == []
+
+
+def test_isinstance_with_only_earlier_assertions_still_fires():
+    src = """
+    def test_thing(m):
+        assert m.ready
+        job = Request(m)
+        assert isinstance(job, Request)
+    """
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    ("construction", "checked"),
+    [
+        ("Request.from_message(m)", "Request"),
+        ("make_request(m)", "Request"),
+        ("Request(m)", "BaseRequest"),
+        ("Request(m)", "(Request, BaseRequest)"),
+    ],
+    ids=["factory-classmethod", "factory-function", "different-class", "class-tuple"],
+)
+def test_isinstance_that_checks_something_real_is_exempt(construction: str, checked: str):
+    src = f"""
+    def test_thing(m):
+        job = {construction}
+        assert isinstance(job, {checked})
+    """
+    assert _check(src) == []
+
+
+def test_isinstance_of_a_name_the_test_did_not_construct_is_exempt():
+    src = """
+    def test_thing(job):
+        assert isinstance(job, Request)
+    """
+    assert _check(src) == []
+
+
+# --------------------------------------------------------------------------- #
+# Edge cases and diagnostic shape.                                             #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("source", ["", "  \n\n ", "# comment\n"], ids=["empty", "blank", "comment"])
+def test_empty_source_is_clean(source: str):
+    assert _check(source) == []
+
+
+def test_syntax_error_returns_no_diagnostics():
+    assert _check("def test_x(:\n    assert True\n") == []
+
+
+def test_reports_line_column_and_code():
+    [diag] = _check(_CONSTANT_TEST)
+    assert (diag.line, diag.col, diag.code) == (3, 5, "SARJ056")
+
+
+def test_each_assertion_is_reported_once():
+    src = """
+    def test_thing():
+        u = User(name="bo")
+        assert isinstance(u, User)
+    """
+    assert len(_check(src)) == 1
+
+
+def test_diagnostics_are_sorted_by_position():
+    src = """
+    def test_a():
+        assert True
+
+    def test_b():
+        u = User(name="bo")
+        assert u.name == "bo"
+
+    def test_c():
+        assert 1
+    """
+    diags = _check(src)
+    assert [d.line for d in diags] == sorted(d.line for d in diags)
+    assert len(diags) == 3
+
+
+def test_fires_inside_a_test_class():
+    src = """
+    class TestPayload:
+        def test_fields(self):
+            payload = EncryptedPayload(jws_signature="sig-456")
+            assert payload.jws_signature == "sig-456"
+    """
+    assert len(_check(src)) == 1
+
+
+def test_fires_inside_a_loop_body():
+    # bulbul tests/calls/test_batch_file_utils.py:1156 — the loop varies `name`,
+    # so asserting the unvaried `phone_number` is still pure echo.
+    src = """
+    def test_thing(names):
+        for name in names:
+            callee = CalleeInput(phone_number="+1234567890", name=name)
+            assert callee.phone_number == "+1234567890"
+            assert callee.name == name
+    """
+    assert len(_check(src)) == 1
