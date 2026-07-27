@@ -37,6 +37,20 @@ genuine bug, never on coincidentally-equal prose. Three filters combine:
    if either were reworded. Cross-function drift *begins* at two copies; the
    third was arbitrary, and precision here is carried by filter 1, not by counting.
 
+   THIS IS A CROSS-PACKAGE CONTRACT. The TS port
+   (`packages/typescript/src/rules/no-repeated-string-literal.ts`) had kept the
+   abandoned three-occurrence gate, so a literal used exactly twice fired here
+   and was clean in `.ts` — the same code judged differently by file extension.
+   Re-measured and converged 2026-07: requiring three occurrences would drop 15
+   of the 18 findings over bulbul + noura-be + django/fastapi/celery, and the
+   dropped ones are true positives — `noura-be/.../onboarding/store.py:631`
+   repeats one `SELECT stage FROM onboarding_profiles … FOR UPDATE` verbatim
+   between `submit_financial_info_atomic` and `submit_legal_info_atomic`, and
+   `.../card/store.py:287` repeats a 10-column `SELECT … JOIN card_types …`
+   between two methods. TS dropped its gate instead; its corpus delta was 0.
+   Do not re-introduce a total-occurrence threshold in either package without
+   re-running both sweeps.
+
 3. **Exclusions.** f-string fragments (`ast.Constant` inside `JoinedStr`),
    docstrings (first statement of module/class/function), strings under an
    OpenAPI/pydantic scaffolding keyword (`examples=`, `description=`, `title=`,

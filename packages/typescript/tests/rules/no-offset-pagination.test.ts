@@ -43,8 +43,39 @@ ruleTester.run("no-offset-pagination", rule, {
       code: "await db.prepare(`SELECT id FROM runs LIMIT ? OFFSET ?`).all();",
       filename: "/repo/test/runs.test.ts",
     },
+    // --- CROSS-PACKAGE PARITY with Python's SARJ025 and SQL's SARJ107
+    // (`packages/python/.../no_offset_pagination.py`,
+    // `packages/sql/.../no_limit_offset.py`). All three flag `OFFSET` only when
+    // a value/param token follows, and all three share ONE parameter
+    // alternation. SARJ107 was a bare `\bOFFSET\b` and fired on
+    // `ADD COLUMN offset INTEGER`; SARJ025 omitted `?`, so `LIMIT ? OFFSET ?`
+    // was a silent false negative in Python. ---
+    { code: "db.prepare(`ALTER TABLE batch ADD COLUMN offset INTEGER NOT NULL DEFAULT 0`).run();" },
+    { code: "db.prepare(`CREATE TABLE t (id BIGINT, offset INTEGER)`).run();" },
+    { code: "db.query(`SELECT x, i FROM UNNEST(arr) AS x WITH OFFSET AS i`);" },
   ],
   invalid: [
+    // Every marker of the shared parameter alternation.
+    {
+      code: "db.query(`SELECT id FROM runs ORDER BY id LIMIT ? OFFSET ?`);",
+      errors: [{ messageId: "noOffsetPagination" }],
+    },
+    {
+      code: "db.query(`SELECT id FROM runs ORDER BY id LIMIT ?1 OFFSET ?2`);",
+      errors: [{ messageId: "noOffsetPagination" }],
+    },
+    {
+      code: "db.query(`SELECT id FROM runs ORDER BY id LIMIT @n OFFSET @off`);",
+      errors: [{ messageId: "noOffsetPagination" }],
+    },
+    {
+      code: "db.query(`SELECT id FROM runs ORDER BY id LIMIT %s OFFSET %s`);",
+      errors: [{ messageId: "noOffsetPagination" }],
+    },
+    {
+      code: "db.query(`SELECT id FROM runs ORDER BY id LIMIT %(n)s OFFSET %(off)s`);",
+      errors: [{ messageId: "noOffsetPagination" }],
+    },
     // The SQLite/D1 parameter markers.
     {
       code: "db.prepare(`SELECT id, status FROM runs ORDER BY created_at LIMIT ? OFFSET ?`).all();",

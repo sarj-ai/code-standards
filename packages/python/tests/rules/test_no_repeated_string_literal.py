@@ -496,3 +496,44 @@ def c():
     return "{prose}"
 """
     assert _check(src) == []
+
+
+# --------------------------------------------------------------------------- #
+# Cross-package parity with the TS twin                                        #
+# (`packages/typescript/src/rules/no-repeated-string-literal.ts`).             #
+# "Two distinct enclosing functions" is the ONLY count threshold, in BOTH      #
+# packages. TS carried an abandoned three-occurrence gate, so a literal used   #
+# exactly twice fired here and was clean in `.ts`. If this fails, someone has  #
+# re-introduced a total-occurrence threshold — re-run both corpus sweeps       #
+# before changing the test.                                                    #
+# --------------------------------------------------------------------------- #
+
+
+def test_exactly_two_occurrences_in_two_functions_fires():
+    """Two copies across two functions is a finding.
+
+    Minimized from `noura-be/.../modules/onboarding/store.py:631`, where one
+    `SELECT stage ... FOR UPDATE` is repeated between `submit_financial_info_atomic`
+    and `submit_legal_info_atomic`.
+    """
+    src = f'''
+def submit_financial_info():
+    return """{_LONG_SQL}"""
+
+def submit_legal_info():
+    return """{_LONG_SQL}"""
+'''
+    diags = _check(src)
+    assert len(diags) == 1
+    assert diags[0].code == "SARJ024"
+
+
+def test_two_occurrences_inside_one_function_does_not_fire():
+    """The distinct-scope filter, not a count gate, is what carries precision."""
+    src = f'''
+def only_one():
+    a = """{_LONG_SQL}"""
+    b = """{_LONG_SQL}"""
+    return a, b
+'''
+    assert _check(src) == []

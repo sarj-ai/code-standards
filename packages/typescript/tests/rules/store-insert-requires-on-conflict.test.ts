@@ -73,8 +73,34 @@ ruleTester.run("store-insert-requires-on-conflict", rule, {
       code: "await db.prepare(`INSERT INTO runs (id) VALUES ('a')`).run();",
       filename: "/repo/src/__tests__/seed.ts",
     },
+    // --- CROSS-PACKAGE PARITY with Python's SARJ018 and SQL's SARJ105
+    // (`packages/python/.../store_insert_requires_on_conflict.py`,
+    // `packages/sql/.../insert_requires_on_conflict.py`). All three must share
+    // ONE definition of "already idempotent". A MySQL upsert used to be a false
+    // positive in the other two while this rule correctly excused it. If one of
+    // these fails, the three implementations have drifted again. ---
+    {
+      code: "db.prepare(`INSERT INTO t (a, b) VALUES (?, ?) ON CONFLICT (a) DO NOTHING`).run();",
+    },
+    {
+      code: "db.prepare(`INSERT INTO t (a, b) VALUES (?, ?) ON DUPLICATE KEY UPDATE b = VALUES(b)`).run();",
+    },
+    { code: "db.prepare(`INSERT OR IGNORE INTO t (a) VALUES (?)`).run();" },
+    { code: "db.prepare(`INSERT OR REPLACE INTO t (a) VALUES (?)`).run();" },
+    // The write-verb gate: an `INSERT` privilege grant is not a write.
+    { code: "db.prepare(`GRANT INSERT ON TABLE t TO app_role`).run();" },
+    // Strict adjacency keeps English prose out. Python's `.*?` under DOTALL
+    // matched `insert into ... values` across this whole sentence.
+    {
+      code: "const msg = 'failed to insert into the queue: values were rejected by the broker';",
+    },
   ],
   invalid: [
+    // `OR IGNORE`/`OR REPLACE` survive replay; `OR ABORT` does not.
+    {
+      code: "db.prepare(`INSERT OR ABORT INTO t (a) VALUES (?)`).run();",
+      errors: [{ messageId: "storeInsertRequiresOnConflict" }],
+    },
     // The base case: a bare insert on a store write path.
     {
       code: "db.prepare(`INSERT INTO runs (id, status) VALUES (?1, ?2)`).run();",

@@ -43,6 +43,7 @@ import jsdocRestatesSignature from "./rules/jsdoc-restates-signature.js";
 import noRestatedComment from "./rules/no-restated-comment.js";
 import trailingValueNarration from "./rules/trailing-value-narration.js";
 import noTautologicalExpect from "./rules/no-tautological-expect.js";
+import requireInterfaceForInjectedService from "./rules/require-interface-for-injected-service.js";
 
 const rules = {
   "enforce-file-structure": enforceFileStructure,
@@ -90,6 +91,7 @@ const rules = {
   "no-restated-comment": noRestatedComment,
   "trailing-value-narration": trailingValueNarration,
   "no-tautological-expect": noTautologicalExpect,
+  "require-interface-for-injected-service": requireInterfaceForInjectedService,
 };
 
 const plugin = {
@@ -120,7 +122,10 @@ const plugin = {
         "@sarj/prefer-discriminated-union": "warn",
         "@sarj/no-comment-cruft": "warn",
         // Frontend / styling — distilled from frontend PR-review mining.
-        "@sarj/prefer-semantic-colors": ["warn", { requireSemanticTokens: true }],
+        "@sarj/prefer-semantic-colors": [
+          "warn",
+          { requireSemanticTokens: true },
+        ],
         // Ported from sarj-python-lint (SARJ), corpus-validated FP~0.
         "@sarj/no-fat-try-blocks": "warn",
         "@sarj/no-cors-wildcard-with-credentials": "warn",
@@ -171,6 +176,11 @@ const plugin = {
         // six internal repos plus got / hono / swr / trpc: 3 hits, 3 true
         // positives, 0 false positives.
         "@sarj/no-tautological-expect": "warn",
+        // Substitutability: an exported service class with injected
+        // collaborators and no interface above it can only be tested by
+        // mocking. 11-repo sweep: 229 exported classes, 82% already carry a
+        // port, 29 fire, 28 of them true positives.
+        "@sarj/require-interface-for-injected-service": "warn",
       },
     },
     strict: {
@@ -198,7 +208,10 @@ const plugin = {
         "@sarj/no-comment-cruft": "error",
         // Frontend / styling — distilled from frontend PR-review mining. Stylistic,
         // no autofix → warn (rollout should prove the FP rate before raising it).
-        "@sarj/prefer-semantic-colors": ["error", { requireSemanticTokens: true }],
+        "@sarj/prefer-semantic-colors": [
+          "error",
+          { requireSemanticTokens: true },
+        ],
         // Ported from sarj-python-lint (SARJ), corpus-validated FP~0.
         "@sarj/no-fat-try-blocks": "error",
         "@sarj/no-cors-wildcard-with-credentials": "error",
@@ -241,6 +254,10 @@ const plugin = {
         "@sarj/trailing-value-narration": "error",
         // TS half of SARJ057 — see the `recommended` block for the measurement.
         "@sarj/no-tautological-expect": "error",
+        // Substitutability: the TS sibling of the Python `prefer-real-store-in-tests`
+        // / `prefer-library-fake` wave. The convention already exists in the
+        // corpus (175 `implements` clauses vs 29 hits), so strict enforces it.
+        "@sarj/require-interface-for-injected-service": "error",
       },
     },
   },

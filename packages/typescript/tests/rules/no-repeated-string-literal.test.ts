@@ -54,11 +54,16 @@ ruleTester.run("no-repeated-string-literal", rule, {
         "function c() { return 'pick the fields you want from the list of columns'; }",
       ].join("\n"),
     },
-    // --- Under the occurrence threshold. ---
+    // --- Two uses inside ONE function: edited together, so hoisting them buys
+    // no drift protection. The distinct-scope filter, not a count of
+    // occurrences, is what carries precision here. ---
     {
       code: [
-        `function a() { return \`SELECT ${COLUMNS} FROM candidates\`; }`,
-        `function b() { return \`SELECT ${COLUMNS} FROM candidates\`; }`,
+        "function only() {",
+        `  const x = \`SELECT ${COLUMNS} FROM candidates\`;`,
+        `  const y = \`SELECT ${COLUMNS} FROM candidates\`;`,
+        "  return [x, y];",
+        "}",
       ].join("\n"),
     },
     // --- Under the length threshold. ---
@@ -107,8 +112,41 @@ ruleTester.run("no-repeated-string-literal", rule, {
         `function c() { return \`SELECT ${COLUMNS} FROM candidates\`; }`,
       ].join("\n"),
     },
+    // --- ...including the `-test.ts` / `_test.ts` spellings. All 5 of this
+    // rule's hits over the 2,186-file third-party corpus were react-router
+    // `*-test.ts` source-transform fixtures that the exemption already intended
+    // to cover; `_paths.isTestFile` only knew the `.test.ts` spelling. ---
+    {
+      filename: "/repo/vite/remove-exports-test.ts",
+      code: [
+        `function a() { return \`SELECT ${COLUMNS} FROM candidates\`; }`,
+        `function b() { return \`SELECT ${COLUMNS} FROM candidates\`; }`,
+      ].join("\n"),
+    },
+    {
+      filename: "/repo/vite/remove_exports_test.ts",
+      code: [
+        `function a() { return \`SELECT ${COLUMNS} FROM candidates\`; }`,
+        `function b() { return \`SELECT ${COLUMNS} FROM candidates\`; }`,
+      ].join("\n"),
+    },
   ],
   invalid: [
+    // --- CROSS-PACKAGE PARITY with Python's SARJ024. "Two distinct enclosing
+    // functions" is the ONLY count threshold, in BOTH packages. This rule
+    // carried an abandoned three-occurrence gate, so a literal used exactly
+    // twice fired in `.py` and was clean in `.ts`. Minimized from
+    // `noura-be/.../modules/onboarding/store.py:631`, where one
+    // `SELECT stage ... FOR UPDATE` is repeated between two store methods.
+    // If this fails, someone re-introduced a total-occurrence threshold —
+    // re-run both corpus sweeps before changing the test. ---
+    {
+      code: [
+        `function submitFinancialInfo() { return \`SELECT ${COLUMNS} FROM candidates\`; }`,
+        `function submitLegalInfo() { return \`SELECT ${COLUMNS} FROM candidates\`; }`,
+      ].join("\n"),
+      errors: [{ messageId: "noRepeatedStringLiteral" }],
+    },
     // A repeated column list / query across three functions: the drift hazard.
     {
       code: [

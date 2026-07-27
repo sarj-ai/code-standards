@@ -156,11 +156,33 @@ def test_skips_trailing_inline_comment():
     assert _check(src) == []
 
 
-def test_skips_create_table_inside_dollar_quoted_body():
+def test_flags_create_table_inside_dollar_quoted_body():
+    """A `$$ ... $$` body is live SQL, not string data — the rule must see into it.
+
+    This previously asserted the opposite. `mask_sql` blanked dollar-quoted bodies
+    as though they were string literals, which hid 26 live DDL/DML keywords across
+    12 files of the bulbul + noura-be corpus from all 8 rules. A `CREATE TABLE`
+    without `IF NOT EXISTS` inside a function body is exactly as non-idempotent as
+    one at the top level — the second call fails — so it must be flagged.
+    """
     src = """
 CREATE OR REPLACE FUNCTION seed() RETURNS void AS $$
 BEGIN
     CREATE TABLE staging (id INT);
+END
+$$ LANGUAGE plpgsql;
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert diags[0].line == 4
+
+
+def test_string_literal_inside_a_dollar_quoted_body_is_still_masked():
+    """Keeping the body as SQL must not stop its own string literals being masked."""
+    src = """
+CREATE OR REPLACE FUNCTION seed() RETURNS void AS $$
+BEGIN
+    RAISE NOTICE 'CREATE TABLE staging (id INT);';
 END
 $$ LANGUAGE plpgsql;
 """

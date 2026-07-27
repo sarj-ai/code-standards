@@ -166,3 +166,164 @@ resource "azurerm_postgresql_flexible_server" "db" {
 }
 """
     assert len(_check(src)) == 1
+
+
+# --- nesting: the walker rewrite's reason for existing -----------------------
+
+
+def test_flags_protection_only_inside_settings():
+    # Reproduced bug: `settings { deletion_protection_enabled }` is the API-side
+    # flag two levels down; it does not stop `terraform destroy`.
+    src = """
+resource "google_sql_database_instance" "nested_only" {
+  name = "prod"
+  settings {
+    tier                        = "db-f1-micro"
+    deletion_protection_enabled = true
+  }
+}
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "only inside `settings`" in diags[0].message
+    assert diags[0].line == 2
+
+
+def test_nested_true_does_not_rescue_top_level_false():
+    # The old flat scan took the first match in file order and passed this.
+    src = """
+resource "google_sql_database_instance" "main" {
+  settings {
+    deletion_protection_enabled = true
+  }
+  deletion_protection = false
+}
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "deletion_protection = false" in diags[0].message
+
+
+def test_top_level_flag_alongside_nested_one_is_protected():
+    # The shape both real corpus Cloud SQL instances use.
+    src = """
+resource "google_sql_database_instance" "main" {
+  deletion_protection = true
+  settings {
+    deletion_protection_enabled = true
+  }
+}
+"""
+    assert _check(src) == []
+
+
+def test_prevent_destroy_outside_lifecycle_does_not_protect():
+    src = """
+resource "aws_db_instance" "x" {
+  engine = "postgres"
+  restore_to_point_in_time {
+    prevent_destroy = true
+  }
+}
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "no deletion_protection" in diags[0].message
+
+
+def test_prevent_destroy_in_a_nested_lifecycle_does_not_protect():
+    src = """
+resource "aws_db_instance" "x" {
+  engine = "postgres"
+  restore_to_point_in_time {
+    lifecycle {
+      prevent_destroy = true
+    }
+  }
+}
+"""
+    assert len(_check(src)) == 1
+
+
+def test_prevent_destroy_false_does_not_protect():
+    src = """
+resource "google_bigquery_dataset" "d" {
+  dataset_id = "d"
+  lifecycle {
+    prevent_destroy = false
+  }
+}
+"""
+    assert len(_check(src)) == 1
+
+
+def test_lifecycle_without_prevent_destroy_does_not_protect():
+    src = """
+resource "google_bigquery_dataset" "d" {
+  dataset_id = "d"
+  lifecycle {
+    ignore_changes = [labels]
+  }
+}
+"""
+    assert len(_check(src)) == 1
+
+
+# --- multi-line values ------------------------------------------------------
+
+
+def test_multiline_expression_value_is_protected():
+    src = """
+resource "google_sql_database_instance" "main" {
+  deletion_protection = (
+    var.env == "prod"
+  )
+}
+"""
+    assert _check(src) == []
+
+
+def test_multiline_false_is_disabled():
+    # The old regex captured only the trailing `(` and passed every multi-line
+    # value, including this one.
+    src = """
+resource "aws_rds_cluster" "c" {
+  deletion_protection = (
+    false
+  )
+}
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "deletion_protection = false" in diags[0].message
+
+
+# --- masking guards, both directions ----------------------------------------
+
+
+def test_commented_out_protection_does_not_protect():
+    src = """
+resource "google_sql_database_instance" "main" {
+  # deletion_protection = true
+  name = "prod"
+}
+"""
+    assert len(_check(src)) == 1
+
+
+def test_false_inside_a_heredoc_does_not_disable():
+    src = """
+resource "google_sql_database_instance" "main" {
+  deletion_protection = true
+  startup = <<-EOT
+    deletion_protection = false
+  EOT
+}
+"""
+    assert _check(src) == []
+
+
+def test_reports_the_resource_line_and_column():
+    src = 'resource "google_sql_database_instance" "main" {\n  name = "prod"\n}\n'
+    (diag,) = _check(src)
+    assert (diag.line, diag.col) == (1, 1)

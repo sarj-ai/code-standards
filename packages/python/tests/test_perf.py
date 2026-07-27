@@ -12,6 +12,14 @@ Two guards, both run over a large synthetic Python file:
 
 The documented target is < 50 ms / 1k LOC per rule; the relative gate enforces it in
 spirit without flaking across machines.
+
+Every rule is timed on **both** a test path and a non-test path, and scored on the
+slower of the two. Roughly half the registry is file-scope gated — the test-quality
+family returns immediately for a non-test path, and SARJ001 conversely exempts tests —
+so timing a single path flavour measures how fast a rule declines to run rather than
+how fast it runs. That also poisons the relative gate: once the gated rules are half
+the registry the median lands on a rule that did nothing, the ceiling collapses toward
+`_RELATIVE_SLACK_S`, and every rule that does real work looks like an outlier.
 """
 
 from __future__ import annotations
@@ -62,6 +70,11 @@ _RELATIVE_SLACK_S = 0.003
 _ACTIVE_RULE_FLOOR_S = 0.001
 
 
+# A rule is scored on whichever path flavour makes it do real work. See the module
+# docstring: measuring only one flavour times the file-scope gate, not the rule.
+_PATHS = (Path("synthetic.py"), Path("tests/test_synthetic.py"))
+
+
 def _best_time_s(rule_id: str, path: Path, source: str, repeats: int = 5) -> float:
     rule = REGISTRY[rule_id]()
     best = float("inf")
@@ -72,11 +85,20 @@ def _best_time_s(rule_id: str, path: Path, source: str, repeats: int = 5) -> flo
     return best
 
 
+def _worst_path_time_s(rule_id: str, source: str) -> float:
+    """Time `rule_id` on every path flavour and return its slowest.
+
+    Returns:
+        The best-of-N seconds for whichever path flavour the rule actually runs on.
+
+    """
+    return max(_best_time_s(rule_id, path, source) for path in _PATHS)
+
+
 def test_no_rule_exceeds_absolute_budget() -> None:
-    path = Path("synthetic.py")
     loc = _SYNTHETIC_PY.count("\n") + 1
     for rule_id in sorted(REGISTRY):
-        seconds = _best_time_s(rule_id, path, _SYNTHETIC_PY)
+        seconds = _worst_path_time_s(rule_id, _SYNTHETIC_PY)
         ms_per_kloc = seconds / loc * 1_000_000
         assert ms_per_kloc < _ABSOLUTE_MS_PER_KLOC, (
             f"{rule_id}: {ms_per_kloc:.1f} ms/1k LOC exceeds {_ABSOLUTE_MS_PER_KLOC} ms budget"
@@ -84,8 +106,12 @@ def test_no_rule_exceeds_absolute_budget() -> None:
 
 
 def test_no_rule_is_algorithmic_outlier() -> None:
-    path = Path("synthetic.py")
-    timings = {rid: _best_time_s(rid, path, _SYNTHETIC_PY) for rid in REGISTRY}
+    # Every rule is timed on the path flavour where it does real work (see the
+    # module docstring), so the "active" floor below is a canary on the benchmark
+    # source rather than a filter on gated rules: with per-path timing there is no
+    # rule that legitimately sits at zero, so anything that does means the
+    # synthetic module stopped exercising the registry.
+    timings = {rid: _worst_path_time_s(rid, _SYNTHETIC_PY) for rid in REGISTRY}
     active = sorted(t for t in timings.values() if t >= _ACTIVE_RULE_FLOOR_S)
     assert active, "no rule did measurable work — the benchmark source stopped exercising the rules"
     median = active[len(active) // 2]
