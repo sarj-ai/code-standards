@@ -925,7 +925,7 @@ def test_syntax_error_returns_no_diagnostics():
 def test_reports_line_and_column_of_the_class():
     [diag] = _check(_FAKE_S3)
     assert (diag.line, diag.col) == (2, 1)
-    assert diag.code == "SARJ049"
+    assert diag.code == "SARJ056"
 
 
 def test_multiple_hits_in_one_file_are_sorted_by_position():

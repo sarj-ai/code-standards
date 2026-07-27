@@ -10,7 +10,7 @@ uv tool install sarj-python-lint
 
 ```yaml
 - repo: https://github.com/sarj-ai/standards
-  rev: python-v0.2.0
+  rev: python-v0.22.0
   hooks:
     - id: sarj-no-sequential-await
     - id: sarj-inefficient-string-concat-in-loop
@@ -128,6 +128,37 @@ decisions into one unreviewable one and pre-authorizes every mock added later.
 Scoped exemptions for mechanical codes (`E501`, `F401`, `UP035`) are never
 flagged — measured across five repos those are the entire population.
 
+
+### Mock-quality and real-dependency rules (0.22.0)
+
+The second test-quality wave. Where the 0.15.0 family asks "does this test assert
+anything?", this one asks "does it exercise anything real?" — it pushes suites off
+hand-rolled doubles and onto the real store, the real database and a maintained fake
+library. Measured against bulbul, noura-be, five other first-party repos and fourteen
+OSS corpora; two candidates were dropped outright when the corpus showed they only
+duplicated ruff.
+
+```yaml
+    - id: sarj-prefer-real-store-in-tests          # SARJ055
+    - id: sarj-prefer-library-fake                 # SARJ056
+    - id: sarj-tautological-mock-assertion         # SARJ057
+    - id: sarj-no-patching-system-under-test       # SARJ058
+    - id: sarj-over-mocked-test                    # SARJ059
+    - id: sarj-interaction-only-test               # SARJ060
+    - id: sarj-trivially-true-assertion            # SARJ061
+    - id: sarj-conditional-assertion-in-test       # SARJ062
+    - id: sarj-duplicate-test-body                 # SARJ063
+    - id: sarj-unused-mock-setup                   # SARJ064
+```
+
+### Expressiveness rules (0.22.0)
+
+```yaml
+    - id: sarj-prefer-fstring-over-concat          # SARJ065
+    - id: sarj-prefer-match-pattern-destructuring  # SARJ066
+    - id: sarj-prefer-or-pattern                   # SARJ067
+    - id: sarj-require-port-for-service            # SARJ068
+```
 ### Suppression ratchet (`sarj-ratchet`, 0.21.0)
 
 ```yaml

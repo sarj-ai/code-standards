@@ -1,4 +1,4 @@
-"""SARJ059: mock setup the test can never exercise is a lie about what is covered.
+"""SARJ064: mock setup the test can never exercise is a lie about what is covered.
 
 An arrange block that configures a collaborator the test never reaches misleads
 every later reader — it says "this test depends on `refund` returning a receipt"
@@ -175,7 +175,7 @@ class UnusedMockSetup(Rule):
     """Mock configuration the test provably never exercises."""
 
     id: str = "unused-mock-setup"
-    code: str = "SARJ059"
+    code: str = "SARJ064"
     description: str = "Mock setup the test can never exercise — overwritten before use, or asserted never called."
 
     @override

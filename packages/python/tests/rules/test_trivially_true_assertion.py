@@ -614,7 +614,7 @@ def test_syntax_error_returns_no_diagnostics():
 
 def test_reports_line_column_and_code():
     [diag] = _check(_CONSTANT_TEST)
-    assert (diag.line, diag.col, diag.code) == (3, 5, "SARJ056")
+    assert (diag.line, diag.col, diag.code) == (3, 5, "SARJ061")
 
 
 def test_each_assertion_is_reported_once():

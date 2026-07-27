@@ -76,7 +76,7 @@ def test_message_names_the_test():
 
 def test_reports_line_column_and_code():
     [diag] = _check(_INTERACTION_ONLY)
-    assert (diag.line, diag.col, diag.code) == (2, 1, "SARJ055")
+    assert (diag.line, diag.col, diag.code) == (2, 1, "SARJ060")
 
 
 def test_flags_async_awaited_assertions():

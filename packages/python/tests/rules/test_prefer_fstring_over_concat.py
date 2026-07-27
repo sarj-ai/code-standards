@@ -49,7 +49,7 @@ def test_fires(source: str):
 def test_reports_position_of_the_whole_chain():
     diags = _check('\nvalue = "a" + name + "b"\n')
     assert (diags[0].line, diags[0].col) == (2, 9)
-    assert diags[0].code == "SARJ060"
+    assert diags[0].code == "SARJ065"
 
 
 def test_reports_outermost_chain_only():

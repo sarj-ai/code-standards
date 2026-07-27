@@ -67,7 +67,7 @@ def test_flags_the_copy_and_not_the_original():
     [diag] = _check(_COPY_PASTED_PAIR)
     assert diag.line == 8
     assert diag.col == 1
-    assert diag.code == "SARJ058"
+    assert diag.code == "SARJ063"
 
 
 def test_flags_every_member_after_the_first():

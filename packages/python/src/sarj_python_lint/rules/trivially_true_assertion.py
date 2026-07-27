@@ -1,4 +1,4 @@
-"""SARJ056: an assertion whose outcome the test itself already decided.
+"""SARJ061: an assertion whose outcome the test itself already decided.
 
 A test earns its keep by being able to go red. An assertion whose truth is
 settled by the test's own source text cannot, so it adds a line to the coverage
@@ -144,7 +144,7 @@ Known residual false positive: celery's `Bunch(foo='foo', bar=2)` then
 `assert x.foo == 'foo'` (`t/unit/utils/test_objects.py:8`). `Bunch` is a
 kwargs-to-attributes bag, so storing keyword arguments *is* its whole behaviour
 and the tautology is the test. Two findings; no syntactic signal distinguishes
-it from the models above, and `# sarj-noqa: SARJ056` is the intended escape.
+it from the models above, and `# sarj-noqa: SARJ061` is the intended escape.
 """
 
 from __future__ import annotations
@@ -265,7 +265,7 @@ class TriviallyTrueAssertion(Rule):
     """An assertion whose outcome is fixed by the test's own source text."""
 
     id: str = "trivially-true-assertion"
-    code: str = "SARJ056"
+    code: str = "SARJ061"
     description: str = "Assertion cannot fail — its outcome is decided by the test's own literals, not by the code."
 
     @override

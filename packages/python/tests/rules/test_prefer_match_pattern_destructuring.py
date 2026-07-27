@@ -50,7 +50,7 @@ def test_flags_one_field_read_twice():
 def test_reports_at_the_pattern_position():
     (diag,) = _check(_REACH_BACK)
     assert (diag.line, diag.col) == (3, 10)
-    assert diag.code == "SARJ061"
+    assert diag.code == "SARJ066"
 
 
 def test_message_names_the_fields_and_writes_the_pattern():

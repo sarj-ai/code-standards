@@ -97,7 +97,7 @@ def test_message_names_the_overwriting_line():
 def test_reports_the_first_of_the_pair():
     [diag] = _check(_OVERWRITTEN)
     assert (diag.line, diag.col) == (3, 5)
-    assert diag.code == "SARJ059"
+    assert diag.code == "SARJ064"
 
 
 @pytest.mark.parametrize(
@@ -609,4 +609,4 @@ def test_three():
 
 
 def test_diagnostics_carry_the_rule_code():
-    assert all(d.code == "SARJ059" for d in _check(_ASSERTED_NOT_CALLED))
+    assert all(d.code == "SARJ064" for d in _check(_ASSERTED_NOT_CALLED))

@@ -1,4 +1,4 @@
-"""SARJ061: a `case Cls():` arm that reaches back into the subject for its fields.
+"""SARJ066: a `case Cls():` arm that reaches back into the subject for its fields.
 
 A class pattern that binds nothing and then reads the subject's attributes in the
 body throws away the best part of structural pattern matching:
@@ -113,7 +113,7 @@ scenario:`).
 The rule cannot see whether an attribute is a plain field or a property with
 side effects. A keyword pattern runs `getattr` while the arm is being *tried*,
 which is marginally earlier than the body would have run it; for a property that
-does real work, suppress with `# sarj-noqa: SARJ061 — <reason>`.
+does real work, suppress with `# sarj-noqa: SARJ066 — <reason>`.
 
 References:
 - https://peps.python.org/pep-0634/#class-patterns
@@ -189,7 +189,7 @@ class PreferMatchPatternDestructuring(Rule):
     """A `case Cls():` arm that reads the subject's fields should bind them in the pattern."""
 
     id: str = "prefer-match-pattern-destructuring"
-    code: str = "SARJ061"
+    code: str = "SARJ066"
     description: str = (
         "`case Cls():` binds nothing and the arm reaches back into the subject for "
         "its fields — destructure in the pattern so a renamed field fails the match "

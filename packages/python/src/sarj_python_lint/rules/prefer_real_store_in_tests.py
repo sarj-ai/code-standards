@@ -1,4 +1,4 @@
-"""SARJ048: a hand-rolled in-memory store makes the test verify a dict, not the database.
+"""SARJ055: a hand-rolled in-memory store makes the test verify a dict, not the database.
 
 A `Store` / `Repository` / `Dao` is a persistence port, and in this codebase the
 implementation behind it is SQL — `PsqlUserStore`, `PsqlOrganizationStore`,
@@ -101,7 +101,7 @@ Deliberately NOT flagged:
   is a deliberate no-op, not a claim to behave like the database, so `Null` and `Noop`
   are not double markers here.
 
-This rule is the persistence-port counterpart of SARJ049 (`prefer-library-fake`),
+This rule is the persistence-port counterpart of SARJ056 (`prefer-library-fake`),
 which covers hand-rolled doubles of *external* services that a maintained library
 already fakes. Doubles of this project's own SQL-backed ports have no library to reach
 for; the fix is the real store plus the test database.
@@ -203,7 +203,7 @@ class PreferRealStoreInTests(Rule):
     """A dict-backed fake of a SQL-backed persistence port verifies the fake, not the database."""
 
     id: str = "prefer-real-store-in-tests"
-    code: str = "SARJ048"
+    code: str = "SARJ055"
     description: str = (
         "Hand-rolled in-memory `Store`/`Repository` double — the test verifies a dict instead of the real store."
     )

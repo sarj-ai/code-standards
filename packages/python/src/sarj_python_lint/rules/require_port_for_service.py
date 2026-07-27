@@ -1,10 +1,10 @@
-"""SARJ063: a concrete service with injected collaborators and no ABC above it is not substitutable.
+"""SARJ068: a concrete service with injected collaborators and no ABC above it is not substitutable.
 
 `class ZohoDeskService:` that takes a `ZohoDeskDAO` in its constructor and exposes
 five public methods is a seam that cannot be moved. Every consumer has to name the
 concrete class in its own annotations, so the only way to test a consumer is to
-`patch` the class or hand it a `MagicMock` — which is the disease the SARJ048 /
-SARJ049 / SARJ052 / SARJ055 family attacks from the other end. Those rules say "stop
+`patch` the class or hand it a `MagicMock` — which is the disease the SARJ055 /
+SARJ056 / SARJ059 / SARJ060 family attacks from the other end. Those rules say "stop
 mocking your own collaborator"; they can only be obeyed if there is something to
 substitute. An ABC above the service is that something: the consumer depends on the
 port, the test passes the real implementation or a purpose-built one, and nothing has
@@ -293,7 +293,7 @@ class RequirePortForService(Rule):
     """A concrete service with injected collaborators and no ABC above it cannot be substituted."""
 
     id: str = "require-port-for-service"
-    code: str = "SARJ063"
+    code: str = "SARJ068"
     description: str = (
         "Concrete `*Service`/`*Store`/`*Client` with injected collaborators and no ABC — consumers "
         "must depend on the concrete class, so their tests can only mock it."

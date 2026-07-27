@@ -1,4 +1,4 @@
-"""SARJ062: adjacent `case` arms with identical bodies — merge them into one or-pattern.
+"""SARJ067: adjacent `case` arms with identical bodies — merge them into one or-pattern.
 
 `match` grew the `|` or-pattern precisely so that several shapes sharing one
 handler are written as one arm. Splitting them into consecutive arms that
@@ -106,7 +106,7 @@ Deliberately NOT flagged:
   is the live example: the `MatchAs`/`MatchStar` arm binds `bound` and the
   `MatchMapping` arm below it binds `rest`, so only the first pair is reported.
 
-Suppress a deliberate split with `# sarj-noqa: SARJ062 — <reason>` on the first
+Suppress a deliberate split with `# sarj-noqa: SARJ067 — <reason>` on the first
 arm's `case` line.
 
 References:
@@ -143,7 +143,7 @@ class PreferOrPattern(Rule):
     """Consecutive `case` arms with identical bodies — write one `A() | B():` arm."""
 
     id: str = "prefer-or-pattern"
-    code: str = "SARJ062"
+    code: str = "SARJ067"
     description: str = (
         "consecutive `case` arms repeating an identical body — merge them into a "
         "single `|` or-pattern so the shared handler is written once."

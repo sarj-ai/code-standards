@@ -1,4 +1,4 @@
-"""SARJ049: a hand-rolled double of a third-party service should use the library that fakes it properly.
+"""SARJ056: a hand-rolled double of a third-party service should use the library that fakes it properly.
 
 A dict standing in for S3, a class with a `.chat.completions.create` that returns a
 canned string, a `FakeRedis` backed by a plain dict — each of these encodes one
@@ -363,7 +363,7 @@ class PreferLibraryFake(Rule):
     """A hand-rolled double of a third-party service should use the maintained fake instead."""
 
     id: str = "prefer-library-fake"
-    code: str = "SARJ049"
+    code: str = "SARJ056"
     description: str = (
         "Hand-rolled double of a third-party service (S3, Redis, an LLM provider, SMTP, …) where a "
         "maintained fake library exists."

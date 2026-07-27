@@ -1,4 +1,4 @@
-r"""SARJ060: build a string with an f-string, not `"literal" + expression`.
+r"""SARJ065: build a string with an f-string, not `"literal" + expression`.
 
 `"user " + name + " failed"` is worse than `f"user {name} failed"` in four
 concrete ways: every non-`str` operand needs an explicit `str()` wrapper and
@@ -149,7 +149,7 @@ character-set constant composed from another constant —
 `_DIGITS_AND_LETTERS = _DIGITS + "abXY"`. There `+` reads as alphabet union and
 the f-string adds nothing. Guarding it would require knowing the constant is a
 character set, which the AST cannot tell from any other module-level string
-constant; suppress it with `# sarj-noqa: SARJ060 — <reason>`.
+constant; suppress it with `# sarj-noqa: SARJ065 — <reason>`.
 """
 
 from __future__ import annotations
@@ -227,7 +227,7 @@ class PreferFstringOverConcat(Rule):
     """String built with `+` from a literal and an expression — use an f-string."""
 
     id: str = "prefer-fstring-over-concat"
-    code: str = "SARJ060"
+    code: str = "SARJ065"
     description: str = (
         "String built with `+` from a literal and a runtime expression — an f-string needs no "
         "`str()` coercion and keeps the literal's spacing visible."

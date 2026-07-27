@@ -1,4 +1,4 @@
-"""SARJ055: a test whose only assertions are about which calls landed on a mock.
+"""SARJ060: a test whose only assertions are about which calls landed on a mock.
 
 ```python
 def test_send_notification():
@@ -19,7 +19,7 @@ observable result.
 
 **How this divides the space with SARJ043 `zero-assertion-test`.** SARJ043 fires
 on a test with *no* assertion of any kind; every `m.assert_called_*()` counts as
-an assertion there, so SARJ043 is silent on this shape by construction. SARJ055
+an assertion there, so SARJ043 is silent on this shape by construction. SARJ060
 is the adjacent case: at least one assertion, and every one of them is mock call
 bookkeeping. The two never fire on the same function. SARJ043's notion of "what
 counts as an assertion" is re-stated privately in this module rather than shared,
@@ -61,7 +61,7 @@ positives and 2 false positives (9%). The two residual false positives are
 `celery/t/unit/worker/test_autoscale.py:200` (`test_thread_crash` asserts
 `os._exit` was called with 1, which cannot be observed without exiting). Both
 are "the effect is on process-global machinery"; a guard for that shape would be
-overfitting to one corpus, so `# sarj-noqa: SARJ055` is the intended escape.
+overfitting to one corpus, so `# sarj-noqa: SARJ060` is the intended escape.
 
 Deliberately NOT flagged:
 
@@ -286,7 +286,7 @@ class InteractionOnlyTest(Rule):
     """A test asserting only which calls hit a mock pins the implementation."""
 
     id: str = "interaction-only-test"
-    code: str = "SARJ055"
+    code: str = "SARJ060"
     description: str = "Test asserts only on mock call bookkeeping — it pins the call sequence, not the behaviour."
 
     @override

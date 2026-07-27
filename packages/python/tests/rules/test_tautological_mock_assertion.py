@@ -609,7 +609,7 @@ def test_syntax_error_returns_no_diagnostics():
 def test_reports_the_position_of_the_assertion():
     [diag] = _check(_TAUTOLOGY)
     assert (diag.line, diag.col) == (6, 5)
-    assert diag.code == "SARJ050"
+    assert diag.code == "SARJ057"
 
 
 def test_one_diagnostic_per_test_function():

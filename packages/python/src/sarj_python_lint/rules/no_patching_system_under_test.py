@@ -1,4 +1,4 @@
-"""SARJ051: a test that mocks out the unit's own logic verifies the mock, not the unit.
+"""SARJ058: a test that mocks out the unit's own logic verifies the mock, not the unit.
 
 Mocking is a boundary tool. Replacing a collaborator the unit *talks to* — an
 HTTP client, a store, a clock — keeps the unit's own behaviour under test. Ripping
@@ -140,7 +140,7 @@ celery's 78 are concentrated: `t/unit/backends/test_gcs.py` (39) and
 `t/unit/utils/test_platforms.py` (25) account for 64 of them, both suites that
 mock a module's own functions and assert on the mock. The rule is a real finding
 there, not noise, but a codebase adopting it mid-flight should expect to
-`# sarj-noqa: SARJ051` the deliberate cases — a sibling that really is slow or
+`# sarj-noqa: SARJ058` the deliberate cases — a sibling that really is slow or
 privileged (`celery.platforms.setuid`) is exactly what suppression is for.
 
 The rule finds nothing in bulbul or noura-be today. Both reach for
@@ -201,7 +201,7 @@ class NoPatchingSystemUnderTest(Rule):
     """Mocking a function or method of the unit under test verifies the mock."""
 
     id: str = "no-patching-system-under-test"
-    code: str = "SARJ051"
+    code: str = "SARJ058"
     description: str = "Test patches a function/method of the unit it exercises — the real code path never runs."
 
     @override

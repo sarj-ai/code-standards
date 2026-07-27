@@ -148,7 +148,7 @@ def test_message_names_the_dotted_target_for_a_sibling_patch():
 def test_reports_line_and_column_of_the_patch_call():
     [diag] = _check(_SIBLING)
     assert (diag.line, diag.col) == (7, 2)
-    assert diag.code == "SARJ051"
+    assert diag.code == "SARJ058"
 
 
 def test_multiple_hits_in_one_file_are_sorted_by_position():

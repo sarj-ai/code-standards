@@ -1,4 +1,4 @@
-"""SARJ058: N copy-pasted test functions in one module are one `parametrize` waiting to be written.
+"""SARJ063: N copy-pasted test functions in one module are one `parametrize` waiting to be written.
 
 `test_admin_can_delete` and `test_editor_can_delete` whose bodies are the same
 three lines with `"admin"` swapped for `"editor"` are not two tests. They are one
@@ -212,7 +212,7 @@ class DuplicateTestBody(Rule):
     """Copy-pasted test functions differing only in literals — parametrize them."""
 
     id: str = "duplicate-test-body"
-    code: str = "SARJ058"
+    code: str = "SARJ063"
     description: str = (
         "Test function duplicates another test's body in the same module — collapse them into "
         "one `@pytest.mark.parametrize` with `ids=`."

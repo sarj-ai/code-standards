@@ -58,7 +58,7 @@ def test_message_names_the_test_and_the_count():
 def test_reports_line_and_column_of_the_function():
     [diag] = _check(_patches(6))
     assert diag.col == 1
-    assert diag.code == "SARJ052"
+    assert diag.code == "SARJ059"
 
 
 def test_diagnostics_are_sorted_by_position():

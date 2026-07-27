@@ -1,4 +1,4 @@
-"""Tests for SARJ063 require-port-for-service."""
+"""Tests for SARJ068 require-port-for-service."""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ _SERVICE = textwrap.dedent(
 def test_flags_concrete_service_with_injected_collaborator() -> None:
     diags = _check(_SERVICE)
     assert len(diags) == 1
-    assert diags[0].code == "SARJ063"
+    assert diags[0].code == "SARJ068"
     assert diags[0].line == 2
     assert diags[0].col == 1
 
@@ -826,5 +826,5 @@ def test_multiple_findings_are_sorted_by_position() -> None:
 def test_rule_metadata() -> None:
     rule = RequirePortForService()
     assert rule.id == "require-port-for-service"
-    assert rule.code == "SARJ063"
+    assert rule.code == "SARJ068"
     assert len(rule.description) >= 10

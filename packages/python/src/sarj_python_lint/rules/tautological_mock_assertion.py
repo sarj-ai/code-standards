@@ -1,4 +1,4 @@
-"""SARJ050: a test whose only assertion is the value it fed the mock verifies nothing.
+"""SARJ057: a test whose only assertion is the value it fed the mock verifies nothing.
 
 ```python
 def test_prompt_config_awaits_pool_then_loads(monkeypatch):
@@ -160,7 +160,7 @@ class TautologicalMockAssertion(Rule):
     """A test whose every assertion echoes a value the test itself stubbed."""
 
     id: str = "tautological-mock-assertion"
-    code: str = "SARJ050"
+    code: str = "SARJ057"
     description: str = "Test's only assertion compares against the value it configured the mock to return."
 
     @override

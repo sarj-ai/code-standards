@@ -121,7 +121,7 @@ def test_message_names_the_test():
 def test_reports_line_and_column_of_the_function():
     [diag] = _check(_LOOP_ONLY)
     assert (diag.line, diag.col) == (2, 1)
-    assert diag.code == "SARJ057"
+    assert diag.code == "SARJ062"
 
 
 def test_diagnostics_are_sorted_by_position():

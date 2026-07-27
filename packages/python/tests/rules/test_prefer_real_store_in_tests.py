@@ -913,7 +913,7 @@ def test_message_points_at_the_real_implementation_by_convention():
 def test_reports_line_and_column_of_the_class():
     [diag] = _check(_DICT_BACKED)
     assert (diag.line, diag.col) == (2, 1)
-    assert diag.code == "SARJ048"
+    assert diag.code == "SARJ055"
 
 
 @pytest.mark.parametrize("source", ["", "  \n\n ", "# comment\n"])

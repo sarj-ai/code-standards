@@ -310,3 +310,177 @@
   language: pygrep
   types: [python]
   files: '(/tests/.*|/test_[^/]+|/conftest\.py)$'
+
+- id: sarj-no-sentinel-return-on-except
+  name: 'sarj-lint: `except` handler returns a sentinel and never re-raises'
+  entry: sarj-python-lint check --rule no-sentinel-return-on-except
+  language: python
+  types: [python]
+
+- id: sarj-no-unreachable-after-terminal
+  name: 'sarj-lint: Unreachable code after a terminal statement (`return`/`raise`/`break`/`c'
+  entry: sarj-python-lint check --rule no-unreachable-after-terminal
+  language: python
+  types: [python]
+
+- id: sarj-prefer-constant-time-secret-compare
+  name: 'sarj-lint: Direct `==`/`!=` on a secret'
+  entry: sarj-python-lint check --rule prefer-constant-time-secret-compare
+  language: python
+  types: [python]
+
+- id: sarj-no-secret-in-log
+  name: 'sarj-lint: Secret passed by keyword to a logging call'
+  entry: sarj-python-lint check --rule no-secret-in-log
+  language: python
+  types: [python]
+
+- id: sarj-store-insert-requires-on-conflict
+  name: 'sarj-lint: Embedded SQL INSERT in store code without ON CONFLICT'
+  entry: sarj-python-lint check --rule store-insert-requires-on-conflict
+  language: python
+  types: [python]
+
+- id: sarj-no-query-with-many-joins
+  name: 'sarj-lint: SQL query with 3 or more JOINs'
+  entry: sarj-python-lint check --rule no-query-with-many-joins
+  language: python
+  types: [python]
+
+- id: sarj-no-aggregation-in-store-query
+  name: 'sarj-lint: DISTINCT / GROUP BY / COUNT in a Postgres store query'
+  entry: sarj-python-lint check --rule no-aggregation-in-store-query
+  language: python
+  types: [python]
+
+- id: sarj-no-select-star
+  name: 'sarj-lint: SELECT * in a store query'
+  entry: sarj-python-lint check --rule no-select-star
+  language: python
+  types: [python]
+
+- id: sarj-single-public-export
+  name: 'sarj-lint: A junk-drawer module with a single public def/class should be renamed af'
+  entry: sarj-python-lint check --rule single-public-export
+  language: python
+  types: [python]
+
+- id: sarj-stepdown
+  name: 'sarj-lint: Private helper defined above its only caller'
+  entry: sarj-python-lint check --rule stepdown
+  language: python
+  types: [python]
+
+- id: sarj-no-repeated-string-literal
+  name: 'sarj-lint: Structured string literal repeated across functions'
+  entry: sarj-python-lint check --rule no-repeated-string-literal
+  language: python
+  types: [python]
+
+- id: sarj-no-offset-pagination
+  name: 'sarj-lint: OFFSET pagination is O(N) and unstable under concurrent writes'
+  entry: sarj-python-lint check --rule no-offset-pagination
+  language: python
+  types: [python]
+
+- id: sarj-prefer-namedtuple-over-tuple-return
+  name: 'sarj-lint: public function returning a bare positional tuple[A, B, ...]'
+  entry: sarj-python-lint check --rule prefer-namedtuple-over-tuple-return
+  language: python
+  types: [python]
+
+- id: sarj-no-cors-wildcard-with-credentials
+  name: 'sarj-lint: CORS `allow_credentials=True` with `"*"` in `allow_origins` lets any sit'
+  entry: sarj-python-lint check --rule no-cors-wildcard-with-credentials
+  language: python
+  types: [python]
+
+- id: sarj-no-sleep-in-test-body
+  name: 'sarj-lint: Nonzero `sleep()` in a test body'
+  entry: sarj-python-lint check --rule no-sleep-in-test-body
+  language: python
+  types: [python]
+
+- id: sarj-prefer-real-store-in-tests
+  name: 'sarj-lint: Hand-rolled in-memory `Store`/`Repository` double'
+  entry: sarj-python-lint check --rule prefer-real-store-in-tests
+  language: python
+  types: [python]
+
+- id: sarj-prefer-library-fake
+  name: 'sarj-lint: Hand-rolled double of a third-party service (S3, Redis, an LLM provider,'
+  entry: sarj-python-lint check --rule prefer-library-fake
+  language: python
+  types: [python]
+
+- id: sarj-tautological-mock-assertion
+  name: 'sarj-lint: Test''s only assertion compares against the value it configured the mock '
+  entry: sarj-python-lint check --rule tautological-mock-assertion
+  language: python
+  types: [python]
+
+- id: sarj-no-patching-system-under-test
+  name: 'sarj-lint: Test patches a function/method of the unit it exercises'
+  entry: sarj-python-lint check --rule no-patching-system-under-test
+  language: python
+  types: [python]
+
+- id: sarj-over-mocked-test
+  name: 'sarj-lint: Test substitutes too many collaborators'
+  entry: sarj-python-lint check --rule over-mocked-test
+  language: python
+  types: [python]
+
+- id: sarj-interaction-only-test
+  name: 'sarj-lint: Test asserts only on mock call bookkeeping'
+  entry: sarj-python-lint check --rule interaction-only-test
+  language: python
+  types: [python]
+
+- id: sarj-trivially-true-assertion
+  name: 'sarj-lint: Assertion cannot fail'
+  entry: sarj-python-lint check --rule trivially-true-assertion
+  language: python
+  types: [python]
+
+- id: sarj-conditional-assertion-in-test
+  name: 'sarj-lint: Every assertion in the test is inside a conditional or loop'
+  entry: sarj-python-lint check --rule conditional-assertion-in-test
+  language: python
+  types: [python]
+
+- id: sarj-duplicate-test-body
+  name: 'sarj-lint: Test function duplicates another test''s body in the same module'
+  entry: sarj-python-lint check --rule duplicate-test-body
+  language: python
+  types: [python]
+
+- id: sarj-unused-mock-setup
+  name: 'sarj-lint: Mock setup the test can never exercise'
+  entry: sarj-python-lint check --rule unused-mock-setup
+  language: python
+  types: [python]
+
+- id: sarj-prefer-fstring-over-concat
+  name: 'sarj-lint: String built with `+` from a literal and a runtime expression'
+  entry: sarj-python-lint check --rule prefer-fstring-over-concat
+  language: python
+  types: [python]
+
+- id: sarj-prefer-match-pattern-destructuring
+  name: 'sarj-lint: `case Cls():` binds nothing and the arm reaches back into the subject fo'
+  entry: sarj-python-lint check --rule prefer-match-pattern-destructuring
+  language: python
+  types: [python]
+
+- id: sarj-prefer-or-pattern
+  name: 'sarj-lint: consecutive `case` arms repeating an identical body'
+  entry: sarj-python-lint check --rule prefer-or-pattern
+  language: python
+  types: [python]
+
+- id: sarj-require-port-for-service
+  name: 'sarj-lint: Concrete `*Service`/`*Store`/`*Client` with injected collaborators and n'
+  entry: sarj-python-lint check --rule require-port-for-service
+  language: python
+  types: [python]
