@@ -17,8 +17,20 @@ than none.
   `# about a working week` over `60 * 60 * 24 * 5` does not, and neither does
   `# ~3.5 days` over `300000` — a conversion the reader cannot do in their
   head is exactly the comment worth keeping);
+- the comment names a **unit**. This is the rule's whole premise — "the comment
+  adds one thing, the unit" — and without it the identifier arm alone let
+  through comments that state a domain fact rather than a unit
+  (`_OUNCE_TO_G = _POUND_TO_G / 16  # 16 ounces to a pound`, `# 0 -> 0` over a
+  parametrize case, `# Invalid day (32)`). Those are not restatements of a
+  value; they are why the constant has that value, and they stay.
 - every non-numeric word is either a unit word or already an identifier on the
-  line.
+  line;
+- the comment is **not inside a bracketed expression**. The remedy this rule
+  prescribes is *put the unit in the name*, which presupposes a name to put it
+  in. A comment on a dict entry, a call kwarg or a tuple element has none — a
+  pytest fixture's `"value": 60,  # 60 seconds`, a third-party kwarg's
+  `cookTime=60,  # 60 seconds`, `t.valve_position = 25  # 25%`. There the
+  comment is the *only* carrier of the unit and deleting it loses the fact.
 
 A comment carrying a ticket or URL is exempt (protected-class signal S1).
 
@@ -33,6 +45,13 @@ bulbul, noura-be, pydantic, trio and attrs** — it is a ratchet against the sha
 appearing, not a cleanup of one that has, and it is listed here rather than
 quietly dropped so the two languages cannot diverge on the same judgement.
 
+The last two guards were added by a sweep over home-assistant (18,069 files) and
+airflow (7,656), which produced 22 hits the original predicate could not tell
+apart. Every one was read: **8 true positives, 14 false** (64%), and every false
+positive was one of the two shapes above — 10 inside a bracketed expression, 4
+with no unit word in the comment at all. With both guards the same corpus yields
+**8 hits, 8 true positives, 0 false**.
+
 Suppress an intentional case with `# sarj-noqa: SARJ051 — <reason>`.
 """
 
@@ -46,6 +65,7 @@ from sarj_python_lint.rule_base import Diagnostic, Rule
 from sarj_python_lint.rules._comments import (
     code_tokens,
     has_external_reference,
+    nested_comment_lines,
     stem,
     trailing_comments,
 )
@@ -93,6 +113,8 @@ def _narrates_value(body: str, code: str) -> bool:
     comment_numbers = {match.group(0) for match in _NUMBER_RE.finditer(body)}
     if not comment_numbers or not comment_numbers <= code_numbers:
         return False
+    if not any(word in _UNIT_WORDS for word in words):
+        return False
     identifiers = code_tokens(code)
     identifier_stems = {stem(token) for token in identifiers}
     for word in words:
@@ -120,12 +142,13 @@ class TrailingValueNarration(Rule):
             return []
         try:
             trailing = trailing_comments(source)
+            nested = nested_comment_lines(source)
         except tokenize.TokenError, IndentationError, SyntaxError:
             return []
         lines = source.splitlines()
         diags: list[Diagnostic] = []
         for line, col, body in trailing:
-            if line > len(lines):
+            if line > len(lines) or line in nested:
                 continue
             if _narrates_value(body, lines[line - 1][:col]):
                 diags.append(

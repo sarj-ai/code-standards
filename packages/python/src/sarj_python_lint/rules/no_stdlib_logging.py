@@ -18,14 +18,27 @@ Fires on any runtime import of the stdlib logging package:
 Deliberately NOT flagged:
 
 * **the loguru bridge.** A module that imports stdlib `logging` *and* loguru is
-  by construction the shim that routes one into the other — an `InterceptHandler`
+  usually the shim that routes one into the other — an `InterceptHandler`
   subclassing `logging.Handler`, a `logging.basicConfig` call that installs it,
   a third-party library's logger being re-pointed. That is the one legitimate
-  reason to touch stdlib logging in a loguru house, and it cannot be written
-  without naming both. Measured across the two production corpora this exemption
-  is exact: bulbul's three sites (`bulbul/__init__.py`, `configure_logging.py`,
-  `agent/main.py`) and noura-be's one (`common/logging.py`) are all bridges, all
-  import loguru, and no other module in either repo imports stdlib logging.
+  reason to touch stdlib logging in a loguru house. Measured across the two
+  production corpora the exemption is exact: bulbul's three sites
+  (`bulbul/__init__.py`, `configure_logging.py`, `agent/main.py`) and noura-be's
+  one (`common/logging.py`) are all bridges, all import loguru, and no other
+  module in either repo imports stdlib logging.
+
+  Importing loguru is **not on its own** enough, though, and the first version of
+  this rule made it so. A file-wide pass keyed on one import means that the day
+  someone adds `import logging` + `logging.getLogger(__name__).info(...)` to a
+  module that already says `from loguru import logger`, the rule goes quiet — and
+  a module already using the house logger is the *most* likely place for a second
+  hierarchy to appear by accident. So the exemption additionally requires the
+  file to show that it **configures** stdlib logging rather than emitting through
+  it: `logging.Handler` / `LogRecord` / `Logger` / `Formatter` / `Filter`,
+  `basicConfig`, `addHandler` / `setLevel` / `addLevelName` / `handlers=` /
+  `propagate`, `getLogger()` with no argument, or `logging.<LEVEL>` used as a
+  level constant. All four production bridges match; a module that merely logs
+  through both does not.
 * **`if TYPE_CHECKING:` imports** — `logging.Logger` as an annotation is a type,
   not a logger. Nothing is emitted through it.
 * **test files** (`_paths.is_test_path`) — `caplog` is pytest's fixture and it
@@ -44,6 +57,7 @@ A genuine exception is suppressed with `# sarj-noqa: SARJ052 — <reason>`.
 from __future__ import annotations
 
 import ast
+import re
 from typing import TYPE_CHECKING, final, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
@@ -60,6 +74,18 @@ _LOGURU_ROOT = "loguru"
 
 # Directories whose code is one-shot: no long-lived process, no log pipeline.
 _EXEMPT_DIR_NAMES = frozenset({"scripts", "notebooks"})
+
+# Evidence that a module CONFIGURES stdlib logging rather than emitting through
+# it. Paired with a loguru import this is the bridge; a loguru import on its own
+# is not, or the rule would fall silent on exactly the module most likely to grow
+# a second logger hierarchy by accident.
+_BRIDGE_MARKER_RE = re.compile(
+    r"\b(?:Handler|LogRecord|Logger|Formatter|Filter|LoggerAdapter|LoggingIntegration)\b|"
+    r"\b(?:basicConfig|addHandler|removeHandler|setLevel|addLevelName|addFilter|dictConfig|fileConfig|captureWarnings|lastResort)\b|"
+    r"\bpropagate\b|\bhandlers\s*=|"
+    r"\bgetLogger\s*\(\s*\)|"
+    r"\blogging\.(?:DEBUG|INFO|WARNING|WARN|ERROR|CRITICAL|FATAL|NOTSET)\b"
+)
 
 _MESSAGE = (
     "stdlib `logging` is not the house logger — use `from loguru import logger`. "
@@ -92,7 +118,7 @@ class NoStdlibLogging(Rule):
         tree = parse_or_none(path, source)
         if tree is None:
             return []
-        if _imports_loguru(tree):
+        if _imports_loguru(tree) and _BRIDGE_MARKER_RE.search(source):
             return []
         type_only = _type_checking_lines(tree)
         diags = [
@@ -130,8 +156,8 @@ def _logging_imports(tree: ast.Module) -> Iterator[ast.Import | ast.ImportFrom]:
 def _imports_loguru(tree: ast.Module) -> bool:
     """Report whether the module imports loguru anywhere.
 
-    A module naming both loggers is the bridge between them — the one shape that
-    has to speak stdlib logging in a loguru house.
+    Half of the bridge test; the caller pairs it with `_BRIDGE_MARKER_RE` so that
+    naming loguru is not on its own a licence to open a second logger hierarchy.
 
     Returns:
         True when loguru is imported.

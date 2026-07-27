@@ -123,6 +123,34 @@ def test_unparsable_source_yields_no_diagnostics():
     assert _check('SQL = "CREATE TABLE t (id UUID DEFAULT gen_random_uuid())"\ndef (:\n') == []
 
 
+UUIDV7_CONSTRUCTIONS = [
+    # airflow-core/src/airflow/migrations/versions/
+    # 0042_3_0_0_add_uuid_primary_key_to_task_instance_.py:52 — the pgcrypto-less
+    # fallback inside a hand-rolled uuidv7. Telling this to "use uuidv7()" tells
+    # the definition of uuidv7 to call itself.
+    (
+        'SQL = """\n'
+        "CREATE OR REPLACE FUNCTION uuid_generate_v7(p_timestamp timestamptz)\n"
+        "RETURNS uuid AS $$ BEGIN\n"
+        "  buffer := unix_time_ms || substring(uuid_send(gen_random_uuid()) FROM 1 FOR 5);\n"
+        "  RETURN encode(buffer, 'hex')::uuid;\n"
+        'END $$;\n"""\n'
+    ),
+    'SQL = "SELECT set_byte(uuid_send(gen_random_uuid()), 6, 112)"\n',
+    'SQL = "CREATE TABLE t (id uuid DEFAULT uuidv7())"\n',
+]
+
+
+@pytest.mark.parametrize("source", UUIDV7_CONSTRUCTIONS)
+def test_sql_building_a_uuidv7_is_not_the_defect(source: str):
+    assert _check(source) == []
+
+
+def test_a_plain_v4_default_still_fires_in_a_migration():
+    src = 'op.execute("ALTER TABLE t ALTER COLUMN id SET DEFAULT gen_random_uuid()")\n'
+    assert len(_check(src)) == 1
+
+
 def test_applies_to_test_files_too():
     src = 'SQL = "CREATE TABLE t (id UUID DEFAULT gen_random_uuid())"\n'
     assert len(_check(src, Path("svc/tests/test_store.py"))) == 1

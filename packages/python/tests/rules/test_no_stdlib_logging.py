@@ -50,9 +50,23 @@ def test_reports_each_import_statement_once():
 @pytest.mark.parametrize(
     "source",
     [
-        pytest.param("import logging\n\nfrom loguru import logger\n", id="bridge-from-loguru"),
-        pytest.param("import logging\nimport loguru\n", id="bridge-import-loguru"),
+        pytest.param(
+            "import logging\n\nfrom loguru import logger\n\nlogging.basicConfig(handlers=[Intercept()], level=0)\n",
+            id="bridge-from-loguru",
+        ),
+        pytest.param(
+            "import logging\nimport loguru\n\n\nclass Intercept(logging.Handler):\n    pass\n",
+            id="bridge-import-loguru",
+        ),
         pytest.param("import logging\nfrom loguru._logger import Logger\n", id="bridge-loguru-submodule"),
+        pytest.param(
+            "import logging as stdlib_logging\nfrom loguru import logger\n\nroot = stdlib_logging.getLogger()\n",
+            id="bridge-repoints-the-root-logger",
+        ),
+        pytest.param(
+            "import logging\nfrom loguru import logger\n\nlogging.getLogger('httpx').setLevel(logging.WARNING)\n",
+            id="bridge-quiets-a-dependency",
+        ),
         pytest.param("from loguru import logger\n", id="no-stdlib-import"),
         pytest.param("from structlog import get_logger\n", id="other-logging-library"),
         pytest.param("from myapp.logging import setup\n", id="first-party-logging-module"),
@@ -62,6 +76,14 @@ def test_reports_each_import_statement_once():
 )
 def test_allows(source: str):
     assert _check(source) == []
+
+
+def test_naming_loguru_is_not_on_its_own_a_bridge():
+    # The exemption's premise is that the module *configures* stdlib logging.
+    # A module that merely emits through both has opened the second hierarchy the
+    # rule exists to prevent, and it is the likeliest place for one to appear.
+    src = "import logging\n\nfrom loguru import logger\n\nlog = logging.getLogger(__name__)\nlog.info('hi')\n"
+    assert [d.line for d in _check(src)] == [1]
 
 
 def test_allows_type_checking_only_import():

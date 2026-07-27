@@ -78,3 +78,51 @@ def test_unparseable_source_returns_nothing():
 def test_identifier_words_do_not_rescue_the_comment():
     # `stale`/`time` are on the line, `5` and `minutes` are the unit narration.
     assert len(_check("stale_time = 5 * 60 * 1000  # stale time: 5 minutes\n")) == 1
+
+
+# --- the remedy needs a name to put the unit in -------------------------------
+
+
+NO_NAME_TO_FIX = [
+    # home-assistant tests/components/matter/test_number.py:284 and :293 — a
+    # pytest fixture's dict entry and a third-party kwarg. The comment is the
+    # ONLY carrier of the unit; there is nothing to rename.
+    'payload = {\n    "value": 60,  # 60 seconds\n}\n',
+    "await set_cook(\n    cookTime=60,  # 60 seconds\n)\n",
+    # tests/components/prana/test_number.py:39 — a parametrize case.
+    "CASES = [\n    (0.0, 0),  # 0 seconds -> 0\n]\n",
+    # airflow dev/breeze/tests/test_release_date_validation.py:56 — `day` is a
+    # unit word, so only the bracket guard separates this from a real narration.
+    'CASES = [\n    ("2025-11-32", "Invalid date"),  # Invalid day 32\n]\n',
+]
+
+
+@pytest.mark.parametrize("src", NO_NAME_TO_FIX)
+def test_comment_inside_a_bracketed_expression_is_kept(src: str):
+    assert _check(src) == []
+
+
+NO_UNIT_NAMED = [
+    # homeassistant/util/unit_conversion.py:78 — the comment states the domain
+    # fact that fixes the constant, not the constant's unit.
+    "_OUNCE_TO_G = _POUND_TO_G / 16  # 16 ounces to a pound",
+    "_STONE_TO_G = _POUND_TO_G * 14  # 14 pounds to a stone",
+    # tests/components/homekit_controller/test_connection.py:560 — `services`
+    # reached the identifier arm through `service_num`; nothing names a unit.
+    "for service_num in range(10):  # 10 services",
+    # homeassistant/components/isy994/const.py:529 — a value-mapping table row.
+    "MAP = {0: STATE_OFF, 100: STATE_ON}  # 0-Off 100-On",
+]
+
+
+@pytest.mark.parametrize("line", NO_UNIT_NAMED)
+def test_comment_without_a_unit_word_is_kept(line: str):
+    # The rule's premise is that the comment adds exactly one thing — the unit.
+    # Without a unit word it is stating something else, and something else stays.
+    assert _check(f"{line}\n") == []
+
+
+def test_a_name_that_already_carries_the_unit_still_drifts():
+    # `_SEC` in the name does not stop `# 5 minutes` going stale when someone
+    # edits the arithmetic — homeassistant/components/esphome/assist_satellite.py:116.
+    assert len(_check("_ANNOUNCEMENT_TIMEOUT_SEC = 5 * 60  # 5 minutes\n")) == 1
