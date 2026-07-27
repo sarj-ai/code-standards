@@ -83,6 +83,10 @@ if TYPE_CHECKING:
 #   SARJ027, SARJ029, SARJ030 (dropped in 0.11.1 as too noisy),
 #   SARJ033 httpx-client-requires-timeout, SARJ035 no-import-time-settings
 #   (dropped by user veto after the 0.13.x mined-rules review),
+#   SARJ055 no-filler-success-adverb (built and corpus-validated, then dropped:
+#   precision was fine at 1 FP in 327, but it fires on 4.7% of Airflow's
+#   info/debug log calls, so the pattern is a professional convention rather
+#   than the AI tell the rule assumed — house style, not a defect),
 #   SARJ037 no-trivial-single-use-helper (prototyped and dropped for FP rate;
 #   see the 0.13.1 inlining commit for the corpus analysis).
 REGISTRY: dict[str, type[Rule]] = {
