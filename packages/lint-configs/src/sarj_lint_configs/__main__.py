@@ -15,6 +15,7 @@ CONFIG_NAMES: dict[str, tuple[str, str]] = {
     "eslint":       ("eslint.strict.mjs", "eslint.strict.mjs"),
     "markdownlint": ("markdownlint.strict.yaml", ".markdownlint.yaml"),
     "taplo":        ("taplo.strict.toml", ".taplo.toml"),
+    "yamllint":     ("yamllint.strict.yaml", ".yamllint.yaml"),
 }
 
 _NEXT_STEPS = (

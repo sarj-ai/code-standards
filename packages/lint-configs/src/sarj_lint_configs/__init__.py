@@ -7,6 +7,7 @@ from sarj_lint_configs._meta import (
     PYRIGHT_STRICT,
     RUFF_STRICT,
     TAPLO_STRICT,
+    YAMLLINT_STRICT,
     __version__,
 )
 
@@ -18,5 +19,6 @@ __all__ = [
     "PYRIGHT_STRICT",
     "RUFF_STRICT",
     "TAPLO_STRICT",
+    "YAMLLINT_STRICT",
     "__version__",
 ]
