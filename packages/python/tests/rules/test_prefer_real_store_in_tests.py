@@ -43,7 +43,9 @@ class InMemoryUserStore(UserStore):
     [
         "tests/fakes/user_store.py",
         "tests/test_auth_service.py",
-        "a/user_store_test.py",
+        # Not `user_store_test.py`: a module named for the port is the port's own
+        # test, which the port-under-test guard below suppresses on purpose.
+        "a/auth_service_test.py",
         "tests/conftest.py",
         "common/testing/fakes.py",
         "webserver/webserver/test_fakes/user_store.py",
@@ -894,26 +896,205 @@ class FakeUserStore(UserStore):
 
 
 # --------------------------------------------------------------------------- #
+# Guard: ports whose backend is not a relational database. There is no `Psql*`  #
+# sibling to prefer for a vector index, a Redis lock or a task-state bag, so    #
+# the advice would be wrong. All five of the rule's OSS hits were this shape or #
+# the next one.                                                                 #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    ("name", "base"),
+    [
+        # langchain ships this: tests/unit_tests/indexes/test_indexing.py:40.
+        ("InMemoryVectorStore", "VectorStore"),
+        # litellm: test_pod_lock_manager.py:367, no base class at all.
+        ("FakeRedisLockStore", ""),
+        # airflow: test_spark_submit.py:489.
+        ("FakeTaskStateStore", ""),
+        ("FakeConversationMemoryStore", ""),
+        ("MockRedisStore", ""),
+        ("MockBlobStore", ""),
+        ("StubDocRepository", ""),
+        ("FakeGraphDb", ""),
+        ("MockArtifactRepo", ""),
+        ("FakeTraceStore", ""),
+        # The qualifier may arrive only through the base class.
+        ("FakeIndex", "VectorStore"),
+    ],
+)
+def test_non_relational_ports_do_not_fire(name: str, base: str):
+    src = f"""
+class {name}({base}):
+    def __init__(self) -> None:
+        self._rows = {{}}
+
+    def add(self, key, value):
+        self._rows[key] = value
+
+    def get(self, key):
+        return self._rows.get(key)
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize("name", ["InMemoryApiKeyStore", "InMemoryObjectStore"])
+def test_key_and_object_qualifiers_still_fire(name: str):
+    # `Key` and `Object` are deliberately absent from the qualifier list: adding
+    # them was measured and it kills these two bulbul true positives
+    # (tests/fakes/api_key_store.py:10, tests/fakes/object_store.py:17).
+    src = f"""
+class {name}:
+    def __init__(self) -> None:
+        self._rows = {{}}
+
+    def add(self, key, value):
+        self._rows[key] = value
+
+    def get(self, key):
+        return self._rows.get(key)
+"""
+    assert len(_check(src)) == 1
+
+
+def test_a_bare_in_memory_store_is_not_read_as_the_memory_qualifier():
+    # The double marker is stripped before the qualifier is matched, so
+    # `InMemoryStore` reduces to `Store` rather than to `MemoryStore`.
+    src = """
+class InMemoryStore(UserStore):
+    def __init__(self) -> None:
+        self._rows = {}
+
+    def add(self, key, value):
+        self._rows[key] = value
+
+    def get(self, key):
+        return self._rows.get(key)
+"""
+    assert len(_check(src)) == 1
+
+
+# --------------------------------------------------------------------------- #
+# Guard: the port under test. mlflow's `MockAbstractStore(AbstractStore)`       #
+# (tests/store/model_registry/test_abstract_store.py:23) is the minimal         #
+# concrete subclass needed to exercise the ABC's template methods — the ABC is  #
+# the system under test.                                                        #
+# --------------------------------------------------------------------------- #
+
+
+_PORT_UNDER_TEST = """
+class MockAbstractStore(AbstractStore):
+    def __init__(self) -> None:
+        self.model_versions = {}
+
+    def create_model_version(self, name, version):
+        self.model_versions[name] = version
+
+    def get_model_version(self, name):
+        return self.model_versions.get(name)
+"""
+
+
+@pytest.mark.parametrize("path", ["tests/store/test_abstract_store.py", "tests/store/abstract_store_test.py"])
+def test_the_module_that_tests_the_port_does_not_fire(path: str):
+    assert _check(_PORT_UNDER_TEST, path) == []
+
+
+@pytest.mark.parametrize("path", ["tests/store/test_registry.py", "tests/store/test_abstract_store_extras.py"])
+def test_the_same_class_in_any_other_module_does_fire(path: str):
+    assert len(_check(_PORT_UNDER_TEST, path)) == 1
+
+
+def test_the_port_under_test_is_recognised_without_a_base_class():
+    # airflow's `FakeTaskStateStore` in test_task_state_store.py:47 names no base;
+    # the subject comes from the class name with its double marker stripped.
+    src = """
+class FakeUserStore:
+    def __init__(self) -> None:
+        self._rows = {}
+
+    def add(self, user):
+        self._rows[user.id] = user
+
+    def get(self, id_):
+        return self._rows.get(id_)
+"""
+    assert _check(src, "tests/test_user_store.py") == []
+    assert len(_check(src, "tests/test_user_service.py")) == 1
+
+
+# --------------------------------------------------------------------------- #
 # Message and edge cases.                                                      #
 # --------------------------------------------------------------------------- #
 
 
-def test_message_names_the_class_and_the_port():
-    [diag] = _check(_DICT_BACKED)
-    assert "`InMemoryUserStore`" in diag.message
-    assert "`UserStore`" in diag.message
+_EXPECTED_MESSAGE = (
+    "`InMemoryUserStore` re-implements the `UserStore` persistence port in memory, so every test that "
+    "uses it verifies a dict rather than the real store — unique and foreign-key constraints, "
+    "`ON CONFLICT` upserts, transaction rollback, `ORDER BY` and NULL ordering, pagination and "
+    "concurrent writes all differ in the backend, and the suite stays green while production breaks. "
+    "Drive the real `UserStore` implementation — the one named for its backend, `Psql*` by this "
+    "codebase's convention — against the test database fixture, and subclass it if you need to inject "
+    "a failure."
+)
+
+_EXPECTED_PORTLESS_MESSAGE = (
+    "`FakeMessageStore` re-implements a persistence port in memory, so every test that uses it "
+    "verifies a dict rather than the real store — unique and foreign-key constraints, `ON CONFLICT` "
+    "upserts, transaction rollback, `ORDER BY` and NULL ordering, pagination and concurrent writes "
+    "all differ in the backend, and the suite stays green while production breaks. Drive the real "
+    "implementation — the one named for its backend, `Psql*` by this codebase's convention — against "
+    "the test database fixture, and subclass it if you need to inject a failure."
+)
 
 
-def test_message_points_at_the_real_implementation_by_convention():
+def test_message_is_exactly_this():
     [diag] = _check(_DICT_BACKED)
-    assert "Psql*" in diag.message
-    assert "test database fixture" in diag.message
+    assert diag.message == _EXPECTED_MESSAGE
+
+
+def test_a_class_with_no_port_base_is_not_named_as_its_own_port():
+    # The old fallback read "`FakeMessageStore` re-implements the `FakeMessageStore`
+    # persistence port", which was 3 of the rule's 5 false positives on OSS.
+    src = """
+class FakeMessageStore:
+    def __init__(self) -> None:
+        self._rows = {}
+
+    def put(self, message):
+        self._rows[message.id] = message
+
+    def get(self, id_):
+        return self._rows.get(id_)
+"""
+    [diag] = _check(src)
+    assert diag.message == _EXPECTED_PORTLESS_MESSAGE
+    assert "the `FakeMessageStore` persistence port" not in diag.message
 
 
 def test_reports_line_and_column_of_the_class():
     [diag] = _check(_DICT_BACKED)
     assert (diag.line, diag.col) == (2, 1)
     assert diag.code == "SARJ055"
+
+
+def test_reports_the_position_of_a_nested_class():
+    src = """
+class TestUserService:
+    def test_lookup(self):
+        with pytest.raises(LookupError):
+            class InMemoryUserStore(UserStore):
+                def __init__(self) -> None:
+                    self._rows = {}
+
+                def add(self, user):
+                    self._rows[user.id] = user
+
+                async def get(self, id_):
+                    return self._rows.get(id_)
+"""
+    [diag] = _check(src)
+    assert (diag.line, diag.col) == (5, 13)
 
 
 @pytest.mark.parametrize("source", ["", "  \n\n ", "# comment\n"])

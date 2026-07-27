@@ -318,6 +318,91 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         }
       `,
     },
+    // FRAMEWORK ROUTERS. Three copies of one template across the estate —
+    // summer/.../eight-job-runner/src/router.ts:11,
+    // farwa/.../farwa-job-runner/src/router.ts:11 and
+    // tamr/.../tamr-job-runner/src/router.ts:7 — a class the server's bootstrap
+    // mounts and nothing ever injects. The original docstring already called the
+    // first one its single borderline false positive.
+    {
+      filename: "/repo/src/router.ts",
+      code: `
+        export class MainRouter {
+          constructor(
+            private readonly taskStore: TaskStore,
+            private readonly taskExecutor: TaskExecutor,
+          ) {}
+          init() {
+            const router = express.Router();
+            router.post("/", async (req, res) => {
+              await this.taskExecutor.execute(await this.taskStore.setToInProgress(req.body.id));
+            });
+            return router;
+          }
+        }
+      `,
+    },
+    // The bare `Router()` spelling of the same factory.
+    {
+      filename: "/repo/src/router.ts",
+      code: `
+        export class MainRouter {
+          constructor(private readonly taskStore: TaskStore) {}
+          init() {
+            const router = Router();
+            router.get("/", () => this.taskStore.list());
+            return router;
+          }
+        }
+      `,
+    },
+    // Handling the framework's own namespaced request/response is the same signal.
+    {
+      filename: "/repo/src/webhook.ts",
+      code: `
+        export class WebhookController {
+          constructor(private readonly taskStore: TaskStore) {}
+          handle(req: express.Request, res: express.Response): void {
+            void this.taskStore.record(req.body);
+            res.status(204).send();
+          }
+        }
+      `,
+    },
+    // TRANSPORT WRAPPERS. money2020/src/lib/http-client.ts:34 and
+    // banking-demo/src/lib/http-client.ts:39, verbatim in shape. The Python twin
+    // excludes `*Client` for exactly this reason: an ABC over a class whose only
+    // collaborator is somebody else's HTTP transport substitutes nothing, and a
+    // consumer's test fakes the transport rather than the wrapper.
+    {
+      filename: "/repo/src/lib/http-client.ts",
+      code: `
+        export class Money2020HttpClient {
+          constructor(private readonly client: KyInstance) {}
+          async inbound(input: Money2020CallInput): Promise<ConnectionDetails> {
+            return null as never;
+          }
+        }
+      `,
+    },
+    {
+      filename: "/repo/src/lib/http-client.ts",
+      code: `
+        export class AshbyClient {
+          constructor(private readonly http: AxiosInstance) {}
+          async listJobs(): Promise<Job[]> { return []; }
+        }
+      `,
+    },
+    {
+      filename: "/repo/src/lib/http-client.ts",
+      code: `
+        export class WarehouseClient {
+          constructor(private readonly session: Session) {}
+          async query(sql: string): Promise<Row[]> { return []; }
+        }
+      `,
+    },
   ],
 
   invalid: [
@@ -531,6 +616,147 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         {
           messageId: "requireInterface",
           data: { name: "PanelPresenter", deps: "store: PanelStore", methods: "select" },
+        },
+      ],
+    },
+    // The framework-wiring guard is about routers, not about `express` being in
+    // the file. Drop the `Router()` call and the namespaced parameter types and
+    // the same shape is an ordinary injected service again.
+    {
+      filename: "/repo/src/router.ts",
+      code: `
+        export class MainRouter {
+          constructor(
+            private readonly taskStore: TaskStore,
+            private readonly taskExecutor: TaskExecutor,
+          ) {}
+          async init(taskId: string) {
+            await this.taskExecutor.execute(await this.taskStore.setToInProgress(taskId));
+          }
+        }
+      `,
+      errors: [
+        {
+          messageId: "requireInterface",
+          data: {
+            name: "MainRouter",
+            deps: "taskStore: TaskStore, taskExecutor: TaskExecutor",
+            methods: "init",
+          },
+        },
+      ],
+    },
+    // The DOM `Request`/`Response` a Workers `fetch` handler names are unqualified
+    // and must not read as express wiring.
+    {
+      filename: "/repo/src/worker.ts",
+      code: `
+        export class FetchHandler {
+          constructor(private readonly taskStore: TaskStore) {}
+          async fetch(request: Request): Promise<Response> {
+            return new Response(JSON.stringify(await this.taskStore.list()));
+          }
+        }
+      `,
+      errors: [
+        {
+          messageId: "requireInterface",
+          data: { name: "FetchHandler", deps: "taskStore: TaskStore", methods: "fetch" },
+        },
+      ],
+    },
+    // TRUE POSITIVES the transport guard must not swallow. kashta
+    // .../precedent-node/src/services/call-service.ts:50 wraps an `AxiosInstance`
+    // in a DOMAIN operation, and its consumers do have something to substitute —
+    // the `*Client` arm of the guard is what keeps it firing.
+    {
+      filename: "/repo/src/services/call-service.ts",
+      code: `
+        export class HttpCallService {
+          constructor(private readonly client: AxiosInstance) {}
+          async call(body: CallRequest) { return (await this.client.post("/v1/calls", body)).data; }
+        }
+      `,
+      errors: [
+        {
+          messageId: "requireInterface",
+          data: { name: "HttpCallService", deps: "client: AxiosInstance", methods: "call" },
+        },
+      ],
+    },
+    // summer/.../credit/src/app/api/document-parser.ts:116 — `interface
+    // DocumentParser` sits three lines above and the class never says
+    // `implements`. That is the drift this rule exists for.
+    {
+      filename: "/repo/src/app/api/document-parser.ts",
+      code: `
+        export interface DocumentParser {
+          parse(args: ParseArgs): Promise<CreditDocumentParseResponse>;
+        }
+        export class DocumentParserImpl {
+          constructor(readonly axios: AxiosInstance) {}
+          async parse(args: ParseArgs): Promise<CreditDocumentParseResponse> { return null as never; }
+        }
+      `,
+      errors: [
+        {
+          messageId: "requireInterface",
+          data: { name: "DocumentParserImpl", deps: "axios: AxiosInstance", methods: "parse" },
+        },
+      ],
+    },
+    // The `unless a same-file interface shares the stem` arm, on a `*Client` name:
+    // an in-file `IAshbyClient` the class fails to implement is real drift.
+    {
+      filename: "/repo/src/lib/ashby-client.ts",
+      code: `
+        export interface IAshbyClient {
+          listJobs(): Promise<Job[]>;
+        }
+        export class AshbyClient {
+          constructor(private readonly http: AxiosInstance) {}
+          async listJobs(): Promise<Job[]> { return []; }
+        }
+      `,
+      errors: [
+        {
+          messageId: "requireInterface",
+          data: { name: "AshbyClient", deps: "http: AxiosInstance", methods: "listJobs" },
+        },
+      ],
+    },
+    // A transport alongside a real collaborator is not a lone transport.
+    {
+      filename: "/repo/src/lib/ashby-client.ts",
+      code: `
+        export class AshbyClient {
+          constructor(
+            private readonly http: AxiosInstance,
+            private readonly cache: JobCache,
+          ) {}
+          async listJobs(): Promise<Job[]> { return []; }
+        }
+      `,
+      errors: [
+        {
+          messageId: "requireInterface",
+          data: { name: "AshbyClient", deps: "http: AxiosInstance, cache: JobCache", methods: "listJobs" },
+        },
+      ],
+    },
+    // A `*Client` whose single collaborator is a domain port, not a transport.
+    {
+      filename: "/repo/src/lib/ashby-client.ts",
+      code: `
+        export class AshbyClient {
+          constructor(private readonly jobStore: JobStore) {}
+          async listJobs(): Promise<Job[]> { return []; }
+        }
+      `,
+      errors: [
+        {
+          messageId: "requireInterface",
+          data: { name: "AshbyClient", deps: "jobStore: JobStore", methods: "listJobs" },
         },
       ],
     },

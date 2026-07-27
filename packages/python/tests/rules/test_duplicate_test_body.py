@@ -70,7 +70,11 @@ def test_flags_the_copy_and_not_the_original():
     assert diag.code == "SARJ063"
 
 
-def test_flags_every_member_after_the_first():
+def test_flags_a_group_once_on_its_first_copy():
+    # One diagnostic per group, not per copy. A module that repeats one body N
+    # times is a single `parametrize` refactor, and N-1 diagnostics for one
+    # decision reads as N-1 problems: `vb-landing`'s test_text_chunker.py emitted
+    # eight, all naming the same original.
     src = """
 def test_one():
     x = build("a")
@@ -89,7 +93,30 @@ def test_three():
     y = run(x)
     assert y is True
 """
-    assert [d.line for d in _check(src)] == [8, 14]
+    assert [d.line for d in _check(src)] == [8]
+
+
+def test_group_diagnostic_counts_the_copies_it_stands_for():
+    src = """
+def test_one():
+    x = build("a")
+    y = run(x)
+    assert y is True
+
+
+def test_two():
+    x = build("b")
+    y = run(x)
+    assert y is True
+
+
+def test_three():
+    x = build("c")
+    y = run(x)
+    assert y is True
+"""
+    [diag] = _check(src)
+    assert "and 1 more in this module" in diag.message
 
 
 def test_flags_byte_for_byte_duplicates():
@@ -105,8 +132,14 @@ def test_two():
     thing.run()
     assert thing.done
 """
+    # A verbatim copy cannot be collapsed into a `parametrize` — there is no
+    # varying argument to lift — so the advice has to differ from the ordinary
+    # case. Every byte-for-byte pair read across the corpora was a copy-paste
+    # that never got its edit: `prefect`'s test_unset_async is test_unset, and
+    # bulbul's test_superadmin_can_delete_any_scenario has no superadmin in it.
     [diag] = _check(src)
-    assert "byte-for-byte identical body" in diag.message
+    assert "is a verbatim copy of" in diag.message
+    assert "never got its edit" in diag.message
 
 
 def test_flags_methods_of_a_pytest_style_class():
@@ -141,8 +174,19 @@ async def test_two():
     assert len(_check(src)) == 1
 
 
-def test_docstrings_do_not_hide_a_duplicate():
-    # Different prose, identical behaviour — still one test run twice.
+def test_differing_docstrings_suppress_a_duplicate():
+    # Reversed in the 0.22.0 wave. This rule and SARJ067 `prefer-or-pattern`
+    # shipped together taking opposite positions on the same signal: SARJ067
+    # suppresses when two arms carry different comments, because merging forces
+    # one of them to be deleted. Stripping the docstring here said the opposite.
+    #
+    # SARJ067's guard is measured on two independent sites — bulbul's
+    # analytics_service.py:172 (`# 7 data points` / `# 30-31 data points`) and
+    # litellm's user_api_key_auth_mcp.py:776 (`# Unreachable: kept for match
+    # exhaustiveness`) — and on the standards repo's own suite 29 of 125
+    # findings paired tests whose differing documentation is provenance no
+    # `ids=` can carry: two corpus citations, or two regression pins naming the
+    # separate bugs they hold down.
     src = '''
 def test_one():
     """Admins may delete."""
@@ -157,6 +201,60 @@ def test_two():
     allowed = can_delete(u)
     assert allowed is True
 '''
+    assert _check(src) == []
+
+
+def test_matching_docstrings_still_flag_a_duplicate():
+    src = '''
+def test_one():
+    """Roles may delete."""
+    u = make_user(role="admin")
+    allowed = can_delete(u)
+    assert allowed is True
+
+
+def test_two():
+    """Roles may delete."""
+    u = make_user(role="editor")
+    allowed = can_delete(u)
+    assert allowed is True
+'''
+    assert len(_check(src)) == 1
+
+
+def test_differing_in_body_comments_suppress_a_duplicate():
+    src = """
+def test_one():
+    # pins celery/t/unit/test_loops.py:9
+    u = make_user(role="admin")
+    allowed = can_delete(u)
+    assert allowed is True
+
+
+def test_two():
+    # pins bulbul/agent/tests/test_collect_digits_tool.py:598
+    u = make_user(role="editor")
+    allowed = can_delete(u)
+    assert allowed is True
+"""
+    assert _check(src) == []
+
+
+def test_matching_in_body_comments_still_flag_a_duplicate():
+    src = """
+def test_one():
+    # pins the deletion path
+    u = make_user(role="admin")
+    allowed = can_delete(u)
+    assert allowed is True
+
+
+def test_two():
+    # pins the deletion path
+    u = make_user(role="editor")
+    allowed = can_delete(u)
+    assert allowed is True
+"""
     assert len(_check(src)) == 1
 
 

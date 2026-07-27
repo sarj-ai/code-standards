@@ -55,6 +55,15 @@ def test_message_names_both_patterns():
     assert "SarjCustomSTTSettings()" in diag.message
 
 
+def test_message_text_is_exact():
+    (diag,) = _check(_TWO_CLASS_ARMS)
+    assert diag.message == (
+        "2 consecutive `case` arms repeat an identical body — merge them into one "
+        "or-pattern (`case SarjGroqSTTSettings() | SarjCustomSTTSettings():`) so the "
+        "shared handling is written once."
+    )
+
+
 def test_flags_a_run_of_four_arms_once():
     diags = _check(
         """
@@ -364,6 +373,47 @@ def test_skips_arms_whose_bodies_have_different_lengths():
     )
 
 
+def test_skips_arms_whose_bodies_share_a_first_statement_but_differ_in_length():
+    """The length check must run *before* the element-wise compare.
+
+    `test_skips_arms_whose_bodies_have_different_lengths` above uses arms whose
+    first statements differ, so the element-wise `all(...)` short-circuits and
+    never reaches the strict `zip`. This shape shares its first statement, so
+    deleting the length guard raises `ValueError: zip() argument 2 is shorter
+    than argument 1` instead of returning a diagnostic list.
+    """
+    assert (
+        _check(
+            """
+            def f(v):
+                match v:
+                    case A():
+                        log()
+                        return 1
+                    case B():
+                        log()
+            """
+        )
+        == []
+    )
+
+
+def test_flags_the_same_shared_prefix_once_the_bodies_are_the_same_length():
+    diags = _check(
+        """
+        def f(v):
+            match v:
+                case A():
+                    log()
+                    return 1
+                case B():
+                    log()
+                    return 1
+        """
+    )
+    assert len(diags) == 1
+
+
 def test_skips_arms_that_differ_only_in_a_nested_literal():
     assert (
         _check(
@@ -463,6 +513,43 @@ def test_flags_the_same_pair_once_the_separating_comment_is_gone():
         """
     )
     assert len(diags) == 1
+
+
+def test_a_comment_on_the_second_arms_case_line_is_not_a_gap_comment():
+    """The gap ends one line *above* the second `case`.
+
+    A comment on the second arm's own `case` line belongs to that arm, so it is
+    compared against the first arm's comments rather than read as a deliberate
+    separator. Widening the gap to include `second.pattern.lineno` would swallow
+    this comment and suppress a legitimate finding.
+    """
+    diags = _check(
+        """
+        def f(v):
+            match v:
+                case A():  # provider
+                    return 1
+                case B():  # provider
+                    return 1
+        """
+    )
+    assert len(diags) == 1
+
+
+def test_differing_comments_on_the_case_lines_still_suppress():
+    assert (
+        _check(
+            """
+            def f(v):
+                match v:
+                    case A():  # the cheap provider
+                        return 1
+                    case B():  # the expensive provider
+                        return 1
+            """
+        )
+        == []
+    )
 
 
 def test_a_comment_after_the_run_does_not_suppress_it():
@@ -796,6 +883,46 @@ def test_a_very_long_pattern_is_elided_in_the_message():
     assert "..." in diags[0].message
 
 
+# `_MAX_RENDERED_PATTERN` is 48; these two names render to exactly 48 and 49
+# characters, pinning both the constant's value and the `>` in the comparison.
+_RENDERS_TO_48 = "SarjCartesiaDeepgramElevenLabsHamsaTTSSettings()"
+_RENDERS_TO_49 = "SarjCartesiaDeepgramElevenLabsHamsaXTTSSettings()"
+
+
+def test_a_pattern_at_exactly_the_render_limit_is_kept_whole():
+    assert len(_RENDERS_TO_48) == 48
+    diags = _check(
+        f"""
+        def f(v):
+            match v:
+                case {_RENDERS_TO_48}:
+                    stt_model = None
+                case B():
+                    stt_model = None
+        """
+    )
+    assert len(diags) == 1
+    assert _RENDERS_TO_48 in diags[0].message
+    assert "..." not in diags[0].message
+
+
+def test_a_pattern_one_character_over_the_render_limit_is_elided():
+    assert len(_RENDERS_TO_49) == 49
+    diags = _check(
+        f"""
+        def f(v):
+            match v:
+                case {_RENDERS_TO_49}:
+                    stt_model = None
+                case B():
+                    stt_model = None
+        """
+    )
+    assert len(diags) == 1
+    assert _RENDERS_TO_49 not in diags[0].message
+    assert f"{_RENDERS_TO_49[:48]}..." in diags[0].message
+
+
 def test_run_inside_a_loop_body_is_found():
     diags = _check(
         """
@@ -824,6 +951,23 @@ def test_run_inside_a_class_method_is_found():
         """
     )
     assert len(diags) == 1
+    assert (diags[0].line, diags[0].col) == (5, 18)
+
+
+def test_run_inside_a_with_block_reports_the_nested_position():
+    diags = _check(
+        """
+        def f(v):
+            with open(path) as handle:
+                match v:
+                    case A():
+                        handle.write("a")
+                    case B():
+                        handle.write("a")
+        """
+    )
+    assert len(diags) == 1
+    assert (diags[0].line, diags[0].col) == (5, 18)
 
 
 def test_async_function_body_is_found():

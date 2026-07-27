@@ -131,6 +131,16 @@ def test_message_names_the_class_and_the_service():
     assert "mock_aws" in diag.message
 
 
+def test_the_exact_message_text():
+    [diag] = _check(_FAKE_S3)
+    assert diag.message == (
+        "`FakeS3Client` hand-rolls AWS S3; a hand-written double only encodes what its author "
+        "remembered of the protocol, so the test passes against a service that does not exist. "
+        "use `moto`'s `mock_aws` (or MinIO via `testcontainers`) so the double enforces the real "
+        "bucket/key/versioning and NoSuchKey behaviour instead of a dict."
+    )
+
+
 @pytest.mark.parametrize(
     "marker",
     ["Fake", "Mock", "Stub", "Dummy", "InMemory", "Scripted", "Recording"],
@@ -445,6 +455,69 @@ class FakeRedisClient:
     assert len(_check(src)) == 1
 
 
+def test_exactly_half_the_methods_forwarding_is_still_a_spy():
+    # The `>= half` boundary: 2 forwards of 4 methods. Both `forwards >= 2` and
+    # `forwards * 2 >= len(methods)` hold with no slack, so tightening either
+    # comparison to `>` makes this fire.
+    src = """
+class RecordingRedisClient:
+    def get(self, key):
+        return self._inner.get(key)
+
+    def set(self, key, value):
+        return self._inner.set(key, value)
+
+    def delete(self, key):
+        self._calls.append(key)
+        del self._store[key]
+
+    def flush(self):
+        self._store.clear()
+"""
+    assert _check(src) == []
+
+
+def test_two_forwards_of_five_methods_is_not_a_spy():
+    # One method past the halfway mark: the class reimplements more than it
+    # observes, so dropping the `forwards * 2 >= len(methods)` arm loses this.
+    src = """
+class RecordingRedisClient:
+    def get(self, key):
+        return self._inner.get(key)
+
+    def set(self, key, value):
+        return self._inner.set(key, value)
+
+    def delete(self, key):
+        self._calls.append(key)
+        del self._store[key]
+
+    def flush(self):
+        self._store.clear()
+
+    def expire(self, key, seconds):
+        self._ttls[key] = seconds
+"""
+    assert len(_check(src)) == 1
+
+
+def test_a_lone_forward_among_two_methods_is_not_a_spy():
+    # `forwards >= 2` carries this one alone: half of two methods forward, so
+    # dropping the arm — or lowering the 2 to 1 — silences a real hand-roll.
+    rows = "\n".join(f'            "key_{i}": {i},' for i in range(20))
+    src = f"""
+class FakeRedisClient:
+    def get(self, key):
+        return self._inner.get(key)
+
+    def snapshot(self):
+        return {{
+{rows}
+        }}
+"""
+    assert len(_check(src)) == 1
+
+
 def test_forwarding_to_a_module_level_object_is_not_a_spy():
     src = """
 class FakeRedisClient:
@@ -603,6 +676,58 @@ class InMemorySmtpServer:
         return None
 """
     assert len(_check(src)) == 1
+
+
+def _two_real_methods_spanning(span: int) -> str:
+    """Build a double with exactly two non-dunder methods and an exact line span.
+
+    The fixed scaffolding — the `class` line, `def __init__`, a blank line and two
+    two-line methods separated by a blank — is 8 lines; the rest is `__init__` body.
+
+    Returns:
+        Source for a class whose `end_lineno - lineno + 1` is exactly `span`.
+
+    """
+    body = "\n".join(f"        self.field_{i} = {i}" for i in range(span - 8))
+    return f"""
+class InMemorySmtpServer:
+    def __init__(self):
+{body}
+
+    def send_message(self, msg):
+        return None
+
+    def login(self, user, password):
+        return None
+"""
+
+
+def test_two_real_methods_one_line_below_the_span_floor_stay_silent():
+    # Pins `_MIN_LINES` and the `<` from below: two real methods is under
+    # `_MIN_METHODS`, so a 24-line class has to fall through to silence.
+    assert _check(_two_real_methods_spanning(24)) == []
+
+
+def test_two_real_methods_exactly_at_the_span_floor_fire():
+    # Pins `_MIN_LINES` and the `<` from above, and the `+ 1` in the span
+    # arithmetic: without it a 25-line class measures 24 and goes quiet.
+    assert len(_check(_two_real_methods_spanning(25))) == 1
+
+
+def test_three_methods_of_which_two_are_real_are_below_the_method_floor():
+    # `_MIN_METHODS` counts behaviour, not `def`s: three methods, one dunder.
+    src = """
+class FakeRedisClient:
+    def __init__(self):
+        self.store = {}
+
+    def get(self, key):
+        return self.store.get(key)
+
+    def set(self, key, value):
+        self.store[key] = value
+"""
+    assert _check(src) == []
 
 
 def test_a_long_double_with_no_real_method_stays_silent():

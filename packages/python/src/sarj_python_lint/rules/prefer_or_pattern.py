@@ -33,6 +33,16 @@ produced 15 findings: bulbul 4, noura-be 1, this repo 10, django 0, celery 0,
 fastapi 0. All 15 were read at the cited line and classified by hand; all 15
 were true positives, a 0% false-positive rate on a 100% sample.
 
+Widening to 20 corpora (the six above plus digital-bank, submissions, ai and 14
+OSS repos — airflow, dagster, litellm, saleor, mlflow, langchain, superset,
+zulip, prefect, warehouse, sentry-python, django, fastapi, celery), 42,732 files
+in all, gives 31 findings and still no false positive: dagster 11, this repo 11,
+bulbul 4, mlflow 2, noura-be 1, digital-bank 1, superset 1. Ten of the eleven
+findings in this repo are on rule modules that predate this rule (`stepdown.py`,
+`prefer_module_level_constant.py`, and so on) and the eleventh is on a rule
+module added alongside it; all are genuine and none is fixed here, so the rule
+currently reports on its own repository.
+
 The strongest evidence is that the offending files *already know the idiom*.
 `bulbul/bulbul/observability/setup.py` opens the very same `match` with
 `case OpenAITTSSettings(voice=voice) | GroqTTSSettings(voice=voice):` and
@@ -67,19 +77,31 @@ of these hold:
 Deliberately NOT flagged:
 
 * **arms whose bodies carry different comments.** `bulbul/webserver/webserver/
-  services/analytics_service.py:170` dispatches `TimePeriod.WEEK` and
+  services/analytics_service.py:172` dispatches `TimePeriod.WEEK` and
   `TimePeriod.MONTH` to the same `granularity = TimeGranularity.DAY`, but each
   line ends in a different trailing comment (`# 7 data points` /
   `# 30-31 data points`) explaining why that period lands on that granularity.
   The bodies are identical *code* and different *documentation*; merging would
   force one of the two comments to be deleted. Any difference between the
   comment text inside the two arm spans therefore suppresses the diagnostic.
-  Ablating this guard is the only thing that changes the corpus result at all:
-  it takes the sweep from 15 findings to 16, and the extra one is exactly this
-  site — without the guard the rule would ship at a 6% FP rate instead of 0%,
+  Ablating this guard is the only thing that changes the six-codebase result at
+  all: it takes that sweep from 15 findings to 16, and the extra one is exactly
+  this site — without the guard the rule would ship at a 6% FP rate (1 in 16)
+  instead of 0%. Re-measured over all 20 corpora the guard costs no true
+  positive and suppresses exactly two sites, 31 findings becoming 33: the bulbul
+  one above and `litellm/litellm/proxy/_experimental/mcp_server/auth/
+  user_api_key_auth_mcp.py:776`, where `SessionBearerInvalid()` and
+  `NotSessionBearer()` both `raise _aggregate_gateway_dcr_challenge(...)` but the
+  second arm carries a two-line comment recording that it is unreachable and
+  kept for exhaustiveness. Both are documentation that merging would destroy,
 * **a comment sitting between the two arms.** A line comment in the gap before
   a `case` is the author grouping the arms on purpose ("providers that do not
-  expose a model:"); the separation is load-bearing documentation,
+  expose a model:"); the separation is load-bearing documentation. The gap is
+  the lines strictly between the two arms — a comment on the first arm's last
+  body line or on the second arm's own `case` line belongs to an arm and is
+  compared by the previous guard instead. This guard changes nothing on any of
+  the 20 corpora in either direction; like the empty-body guard below it is a
+  deliberate scope limit, not a measured FP class,
 * **non-adjacent arms with the same body.** Reordering arms across an
   intervening pattern can change which arm wins, so a rule that hoisted arms
   together would not be a safe rewrite. Only runs that are already consecutive

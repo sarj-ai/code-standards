@@ -23,9 +23,10 @@ Fires when ALL of these hold:
   BigQuery, Pub/Sub, Kafka, an LLM provider brand, Redis, Postgres/MySQL, Mongo,
   SMTP, httpx, requests, aiohttp, or the clock,
 * the double has substance — at least 3 non-dunder methods, or at least 25 lines
-  exposing at least two entry points (methods, or a nested connection class). A
-  four-line stub is not worth a diagnostic, and it is certainly not worth a new
-  dependency,
+  (`end_lineno - lineno + 1`, so a class spanning exactly 25 fires and one spanning
+  24 does not) exposing at least two entry points (methods, or a nested connection
+  class). A four-line stub is not worth a diagnostic, and it is certainly not worth
+  a new dependency,
 * and the recommended library is not already imported in the file.
 
 The message names the specific library per service, because that is the entire value
@@ -94,7 +95,9 @@ Deliberately NOT flagged:
   methods straight to an injected `GCSObjectStore` — it hand-rolls nothing, it
   observes. Any class where at least half the methods, and at least two of them, are
   single-statement forwards to a same-named method on a `self.<attr>` is a decorator,
-  not a fake,
+  not a fake. Both arms are boundaries, not slack: 2 forwards of 4 methods is a spy,
+  2 of 5 is not, and 1 of 2 is not — the count arm is what keeps a single delegating
+  convenience method on an otherwise hand-rolled double from silencing it,
 * **data holders.** `MockSession(pydantic.BaseModel)`, `_FakeDtmfResult(NamedTuple)`,
   `FakeConnError(Exception)` — a canned value object is not a protocol implementation.
   Bases of `BaseModel`, `NamedTuple`, `TypedDict`, `Enum`, `Exception`, `Protocol`,

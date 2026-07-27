@@ -95,6 +95,19 @@ Deliberately NOT flagged:
   `side_effect` re-enables `return_value`, so the two are not competing
   configurations of the same thing (`celery/t/unit/backends/test_gcs.py:414`).
   Only assignments to the *identical* target pair up,
+* **anything paired across a scope boundary.** A nested `def` or `class` inside a
+  test is its own scope, and the rule never pairs a configuration in one with an
+  assertion in the other — in *either* direction. It cannot know when the helper
+  runs relative to the act, and guessing is how the unusable first formulation
+  went wrong. The cost is symmetric and real: a helper that only calls
+  `assert_not_called()` does not condemn the outer arrange block, and a helper
+  that only configures a mock is not condemned by the outer test's
+  `assert_not_called()`,
+* **a configuration on the same physical line as the assertion.** Ordering is by
+  line number, so `m.get.assert_not_called(); m.get.return_value = X` and its
+  reverse both stay silent. The comparison is strict on purpose: the reverse
+  spelling is the far commoner one and there the configuration genuinely is for
+  whatever the test does next,
 * **`configure_mock(...)` / `attach_mock(...)` / `Mock(**{"a.return_value": …})`
   key strings.** Measured across the five corpora: 15 `configure_mock` /
   `attach_mock` calls and 116 `**{...}` call sites, none of which the two sound

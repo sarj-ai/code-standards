@@ -40,15 +40,32 @@ Fires when ALL of these hold:
     `raise NotImplementedError`, and still has at least one live method — a partial
     second implementation that satisfies the type checker and abandons the contract.
 
-Corpus evidence. Measured over bulbul (`/Users/nasrmaswood/code/bulbul/python`, 1,179
-files, 6 hits), noura-be (`/Users/nasrmaswood/code/noura-be/python`, 502 files, 2 hits),
-django (2,927 files, 0), fastapi (1,130, 0) and celery (417, 0). Exactly ten classes in
-the two first-party repos match the name gate; the body gates accept eight and reject
-two, and both rejections are correct (below). All eight were read in full and classified
-by hand: 8 true positives, 0 false positives. The OSS corpora produce zero hits — not
-one class in 4,474 files of mature Python pairs a test-double marker with a
-persistence-port tail — which is the right behaviour for a rule this opinionated, and a
-direct consequence of `Storage` and `Cache` being kept out of the token list.
+What this rule recognises, and what it does not. It models exactly one spelling of the
+defect: a **hand-written class** whose name carries a double marker and a
+persistence-port tail. The other spelling — a `unittest.mock` object standing in for a
+port, `MagicMock(spec=AudioFileStore)` in a conftest or a bare `AsyncMock()` assigned
+into a worker's store slot by a factory — is invisible to it, because there is no class
+to name and no body to classify. The `ai` repo carries the defect in that form (roughly
+a hundred candidate sites) and this rule reports zero there. Reaching it needs
+type-directed resolution of what the mock is standing in for, which is a different rule;
+do not read a clean run as "no dict-backed ports here".
+
+Corpus evidence. Swept over 42,657 files in 19 repositories: bulbul
+(`/Users/nasrmaswood/code/bulbul/python`, 1,179 files, 6 hits), noura-be
+(`/Users/nasrmaswood/code/noura-be/python`, 502 files, 2 hits), digital-bank (267, 0),
+submissions (194, 0), ai (179, 0), and 40,336 files of mature OSS Python — airflow,
+dagster, litellm, saleor, django, mlflow, langchain, superset, zulip, prefect, fastapi,
+warehouse, sentry-python, celery — with **0 hits**. Exactly ten classes in the two
+first-party repos match the name gate; the body gates accept eight and reject two, and
+both rejections are correct (below). All eight were read in full and classified by hand:
+8 true positives, 0 false positives.
+
+An earlier revision claimed zero OSS hits over a 4,474-file corpus. At nine times that
+corpus it fired five times and all five were false positives: langchain's shipped
+`InMemoryVectorStore`, litellm's `FakeRedisLockStore`, mlflow's
+`MockAbstractStore(AbstractStore)` and two airflow `FakeTaskStateStore`s. The two guards
+below — non-relational port qualifiers, and the port-under-test module — remove all five
+and cost nothing: bulbul stays at 6 and noura-be at 2.
 
 Deliberately NOT flagged:
 
@@ -95,11 +112,39 @@ Deliberately NOT flagged:
   tails fire; `Client`, `Service`, `Api`, `Gateway`, `Publisher`, `Enqueuer` and
   `Queue` do not. `Table` is excluded too — it names a schema object or a rendered
   grid, not a port,
+* **ports whose backend is not a relational database.** langchain's
+  `InMemoryVectorStore(VectorStore)` — which langchain *ships*, it is not a test
+  double — litellm's `FakeRedisLockStore` and airflow's `FakeTaskStateStore` are a
+  vector index, a Redis lock and a task-state bag. There is no `Psql*` sibling to
+  prefer, so this rule's advice would be actively wrong. A `Vector`, `Redis`, `Blob`,
+  `Doc`, `Graph`, `Lock`, `Memory`, `State`, `Artifact` or `Trace` qualifier
+  immediately before the port tail suppresses it, on the port base or on the class
+  name with its double marker stripped — `FakeRedisLockStore` declares no base at
+  all, and stripping the marker first is what keeps `InMemory` from reading as the
+  `Memory` qualifier, so a bare `InMemoryStore` still fires. Of those ten tokens
+  `Vector`, `Lock` and `State` are the ones the corpus exercises; the rest are there
+  because the same argument applies to them, and all ten together cost zero first-party
+  hits. `Key` and `Object` are deliberately absent: adding them was measured and it
+  kills bulbul's `InMemoryApiKeyStore` and `InMemoryObjectStore`, both true positives,
+* **the port under test.** mlflow's `MockAbstractStore(AbstractStore)` lives in
+  `tests/store/model_registry/test_abstract_store.py`: it is the minimal concrete
+  subclass needed to exercise the ABC's template methods, and the ABC is the system
+  under test, not a shipped port being doubled. When the module stem is
+  `test_<snake(port)>` or `<snake(port)>_test` the file's whole purpose is testing the
+  port, so the subclass is harness. Not tried: "require a `Psql*` sibling in the same
+  file" — measured, and it removes all 8 first-party true positives, because the fakes
+  live in files that import the port and nothing else,
 * **abstract bases, `Protocol`s and `TypedDict`s**, and any class with an
   `@abstractmethod` — those are the port, not a re-implementation of it,
 * **null objects.** `NullUpsertCredentialStore`, `NoopStore` — the null-object pattern
   is a deliberate no-op, not a claim to behave like the database, so `Null` and `Noop`
   are not double markers here.
+
+The diagnostic names the port only when a base class supplies one. A class that
+declares no base — `class FakeMessageStore:` — has no port name to quote, and an
+earlier revision fell back to the class's own name, producing "`FakeTaskStateStore`
+re-implements the `FakeTaskStateStore` persistence port". That spelling now drops the
+name instead of inventing one.
 
 This rule is the persistence-port counterpart of SARJ056 (`prefer-library-fake`),
 which covers hand-rolled doubles of *external* services that a maintained library
@@ -132,7 +177,19 @@ _DOUBLE_SUFFIX_RE = re.compile(r"(?:InMemory|Mock|Fake|Stub|Dummy)$")
 # Tokens that name a persistence port. Case-sensitive CamelCase tails, so `Storage`,
 # `Restore` and `Bookstore` do not match `Store`. `Cache`, `Storage`, `Table`,
 # `Client`, `Service`, `Api` and `Publisher` are excluded — see the module docstring.
-_PORT_TAIL_RE = re.compile(r"(?:Store|Repository|Repo|DAO|Dao|Database|DB|Db)$")
+_PORT_TAIL = r"(?:Store|Repository|Repo|DAO|Dao|Database|DB|Db)"
+_PORT_TAIL_RE = re.compile(_PORT_TAIL + "$")
+
+# Qualifiers that put the port somewhere other than a relational database: a vector
+# index, a Redis key, a blob, a document or graph database, a distributed lock, an
+# agent's conversation memory, a workflow's state bag, an artifact or a trace. There
+# is no `Psql*` sibling to prefer for any of them, so the advice this rule gives would
+# be wrong. Matched against the port base and against the class name with its
+# test-double marker removed — `FakeRedisLockStore` names no base at all.
+_NON_RELATIONAL_RE = re.compile(r"(?:Vector|Redis|Blob|Doc|Graph|Lock|Memory|State|Artifact|Trace)" + _PORT_TAIL + "$")
+
+# `AbstractStore` -> `abstract_store`, for spotting `test_<port>.py`.
+_CAMEL_BOUNDARY_RE = re.compile(r"(?<!^)(?=[A-Z])")
 
 # A base class that already IS the real implementation: subclassing it to inject one
 # fault is the practice this rule is asking for, not the one it is complaining about.
@@ -198,6 +255,19 @@ _DOUBLE_STEM_RE = re.compile(r"(?:^|_)(?:fakes?|mocks?|stubs?|doubles?|testing)(
 # partial second implementation rather than a placeholder.
 _MIN_HOLLOW_STUBS = 2
 
+# The middle of the diagnostic, shared by both spellings of its opening clause.
+_DIVERGENCE = (
+    " persistence port in memory, so every test that uses it verifies a dict rather than the real store — "
+    "unique and foreign-key constraints, `ON CONFLICT` upserts, transaction rollback, `ORDER BY` and NULL "
+    "ordering, pagination and concurrent writes all differ in the backend, and the suite stays green while "
+    "production breaks. Drive the real "
+)
+
+_ADVICE = (
+    "implementation — the one named for its backend, `Psql*` by this codebase's convention — against the "
+    "test database fixture, and subclass it if you need to inject a failure."
+)
+
 
 class PreferRealStoreInTests(Rule):
     """A dict-backed fake of a SQL-backed persistence port verifies the fake, not the database."""
@@ -228,20 +298,28 @@ class PreferRealStoreInTests(Rule):
                 line=node.lineno,
                 col=node.col_offset + 1,
                 code=self.code,
-                message=(
-                    f"`{node.name}` re-implements the `{port}` persistence port in memory, so every test "
-                    "that uses it verifies a dict rather than the real store — unique and foreign-key "
-                    "constraints, `ON CONFLICT` upserts, transaction rollback, `ORDER BY` and NULL "
-                    "ordering, pagination and concurrent writes all differ in the backend, and the suite "
-                    f"stays green while production breaks. Drive the real `{port}` implementation — the "
-                    "one named for its backend, `Psql*` by this codebase's convention — against the test "
-                    "database fixture, and subclass it if you need to inject a failure."
-                ),
+                message=_message(node.name, port),
             )
-            for node, port in _rehomed_stores(tree)
+            for node, port in _rehomed_stores(tree, path.stem)
         ]
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
+
+
+def _message(name: str, port: str | None) -> str:
+    """Word the diagnostic around the port, or around nothing when no base names one.
+
+    A class that declares no base class supplies no port name, and naming the fake as
+    its own port ("`FakeTaskStateStore` re-implements the `FakeTaskStateStore` port")
+    is nonsense. The second spelling drops the name rather than inventing one.
+
+    Returns:
+        The full diagnostic message.
+
+    """
+    subject = f"the `{port}`" if port is not None else "a"
+    real = f"`{port}` " if port is not None else ""
+    return f"`{name}` re-implements {subject}{_DIVERGENCE}{real}{_ADVICE}"
 
 
 def _is_test_double_path(path: Path) -> bool:
@@ -261,8 +339,8 @@ def _is_test_double_path(path: Path) -> bool:
     return bool(_DOUBLE_STEM_RE.search(path.stem))
 
 
-def _rehomed_stores(tree: ast.Module) -> list[tuple[ast.ClassDef, str]]:
-    hits: list[tuple[ast.ClassDef, str]] = []
+def _rehomed_stores(tree: ast.Module, stem: str) -> list[tuple[ast.ClassDef, str | None]]:
+    hits: list[tuple[ast.ClassDef, str | None]] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.ClassDef) or not _is_double_name(node.name):
             continue
@@ -272,13 +350,62 @@ def _rehomed_stores(tree: ast.Module) -> list[tuple[ast.ClassDef, str]]:
             continue
         if _is_abstract(node, bases) or any(_REAL_BACKEND_RE.match(b) for b in bases):
             continue
+        if _is_non_relational(node.name, port_base) or _is_port_under_test(stem, node.name, port_base):
+            continue
         if _is_dict_backed(node) or (port_base is not None and _is_hollow_port(node)):
-            hits.append((node, port_base or node.name))
+            hits.append((node, port_base))
     return hits
 
 
 def _is_double_name(name: str) -> bool:
     return bool(_DOUBLE_PREFIX_RE.search(name) or _DOUBLE_SUFFIX_RE.search(name))
+
+
+def _undoubled(name: str) -> str:
+    """Strip the test-double marker, leaving the port the class is a double of.
+
+    `InMemoryVectorStore` -> `VectorStore`, `UserStoreFake` -> `UserStore`. Removing
+    the marker first is what keeps `InMemory` from reading as the `Memory` qualifier:
+    a bare `InMemoryStore` reduces to `Store` and stays flaggable.
+
+    Returns:
+        The class name without its leading or trailing double marker.
+
+    """
+    return _DOUBLE_SUFFIX_RE.sub("", _DOUBLE_PREFIX_RE.sub("", name))
+
+
+def _is_non_relational(name: str, port_base: str | None) -> bool:
+    """Report whether the port names a backend that is not a relational database.
+
+    Returns:
+        True when the port base, or the undoubled class name, carries a
+        non-relational qualifier such as `Vector`, `Redis` or `Lock`.
+
+    """
+    if port_base is not None and _NON_RELATIONAL_RE.search(port_base):
+        return True
+    return bool(_NON_RELATIONAL_RE.search(_undoubled(name)))
+
+
+def _is_port_under_test(stem: str, name: str, port_base: str | None) -> bool:
+    """Report whether the file exists to test the port this class subclasses.
+
+    `tests/store/model_registry/test_abstract_store.py` defines
+    `MockAbstractStore(AbstractStore)` — the minimal concrete subclass needed to
+    exercise the ABC's template methods. The abstract base is the system under test,
+    so the subclass is the harness, not a second implementation of a shipped port.
+
+    Returns:
+        True when the module stem is `test_<port>` or `<port>_test`.
+
+    """
+    subject = _snake(port_base if port_base is not None else _undoubled(name))
+    return stem in {f"test_{subject}", f"{subject}_test"}
+
+
+def _snake(name: str) -> str:
+    return _CAMEL_BOUNDARY_RE.sub("_", name).lower()
 
 
 def _dotted_tail(node: ast.expr) -> str | None:

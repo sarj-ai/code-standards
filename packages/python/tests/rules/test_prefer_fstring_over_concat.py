@@ -52,6 +52,54 @@ def test_reports_position_of_the_whole_chain():
     assert diags[0].code == "SARJ065"
 
 
+def test_reports_position_of_a_chain_nested_in_a_class_and_a_with_block():
+    # Both coordinates are non-1, so neither a hardcoded line nor a hardcoded
+    # `col=1` (the `col_offset + 1` conversion) can pass this.
+    diags = _check(
+        """
+        class Renderer:
+            def render(self, name):
+                with open(name) as handle:
+                    label = "user " + name
+                    handle.write(label)
+        """
+    )
+    assert [(d.line, d.col) for d in diags] == [(5, 21)]
+
+
+# --------------------------------------------------------------------------- #
+# the exact message text (each of the three message fragments, verbatim)      #
+# --------------------------------------------------------------------------- #
+
+
+_BASE_MESSAGE = (
+    "string built with `+` from a literal and a runtime value — write it as one f-string, "
+    "which keeps the literal's spacing visible and needs no `str()` coercion"
+)
+
+
+def test_message_is_exactly_the_base_advice():
+    (diag,) = _check('greeting = "hello " + name')
+    assert diag.message == _BASE_MESSAGE
+
+
+def test_message_appends_the_str_wrapper_clause_verbatim():
+    (diag,) = _check('label = "id=" + str(user.id)')
+    assert diag.message == f"{_BASE_MESSAGE}; the `str(...)` wrapper disappears"
+
+
+def test_message_appends_the_join_clause_verbatim():
+    (diag,) = _check('v = "a" + b + "c" + d + "e" + f + "g"')
+    assert diag.message == f"{_BASE_MESSAGE}; at 7 operands `''.join(...)` may read better still"
+
+
+def test_message_appends_both_clauses_in_order():
+    (diag,) = _check('v = "a" + str(b) + "c" + d + "e"')
+    assert diag.message == (
+        f"{_BASE_MESSAGE}; the `str(...)` wrapper disappears; at 5 operands `''.join(...)` may read better still"
+    )
+
+
 def test_reports_outermost_chain_only():
     assert len(_check('value = "a" + one + "b" + two + "c" + three')) == 1
 
@@ -78,6 +126,21 @@ def test_message_suggests_join_for_long_chains():
 def test_message_omits_join_hint_for_short_chains():
     (diag,) = _check('v = "a" + b + "c"')
     assert "join" not in diag.message
+
+
+@pytest.mark.parametrize(
+    ("source", "operands", "suggests_join"),
+    [
+        pytest.param('v = "a" + b + "c"', 3, False, id="three-operands"),
+        pytest.param('v = "a" + b + "c" + d', 4, False, id="four-operands-just-below"),
+        pytest.param('v = "a" + b + "c" + d + "e"', 5, True, id="five-operands-exactly-at"),
+        pytest.param('v = "a" + b + "c" + d + "e" + f', 6, True, id="six-operands-just-above"),
+    ],
+)
+def test_join_hint_threshold_is_exactly_five_operands(source: str, operands: int, suggests_join: bool):
+    # Pins `_JOIN_RECOMMENDATION_OPERANDS`: moving it to 4 or 6 flips one row.
+    (diag,) = _check(source)
+    assert (f"at {operands} operands `''.join(...)` may read better still" in diag.message) is suggests_join
 
 
 # --------------------------------------------------------------------------- #
@@ -195,7 +258,7 @@ def test_fires_when_the_braces_are_removed(source: str):
 @pytest.mark.parametrize(
     "source",
     [
-        pytest.param('line = ("%0" + width + "d. %s") % (index, text)', id="width-in-template"),
+        pytest.param('line = ("%0" + width + "d") % (index, text)', id="width-in-template"),
         pytest.param('line = ("%" + str(arg)) % value', id="spec-in-template"),
     ],
 )
@@ -206,12 +269,119 @@ def test_skips_percent_format_template_assembly(source: str):
 @pytest.mark.parametrize(
     "source",
     [
-        pytest.param('line = ("%0" + width + "d. %s")', id="template-not-applied"),
+        pytest.param('line = ("%0" + width + "d")', id="template-not-applied"),
         pytest.param('line = value % ("%0" + width + "d")', id="chain-on-the-right-of-percent"),
     ],
 )
 def test_fires_when_the_chain_is_not_the_percent_left_operand(source: str):
+    # `"%0"` on its own is a width fragment, not a conversion specifier, so the
+    # literal guard below stays silent and only the `%`-left-operand guard is
+    # under test here.
     assert len(_check(source)) == 1
+
+
+# --------------------------------------------------------------------------- #
+# false-positive guards: literals carrying a `%`-conversion specifier          #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param('query = "SELECT %s" + suffix', id="percent-s"),
+        pytest.param('msg = template + " You may need to add %r to ALLOWED_HOSTS."', id="percent-r"),
+        pytest.param('fmt = "%(asctime)s " + name + ": %(message)s"', id="mapping-key"),
+        pytest.param('path = candidate + ".%s"', id="specifier-only-literal"),
+        pytest.param('bar = "progress: %.2f" + tail', id="precision-spec"),
+        pytest.param("pattern = \"SELECT '%%', %s\" + suffix", id="escaped-percent"),
+    ],
+)
+def test_skips_literals_carrying_a_conversion_specifier(source: str):
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param('segment = "%2F" + rest', id="url-encoded-slash"),
+        pytest.param('segment = "%20" + rest', id="url-encoded-space"),
+        pytest.param('segment = "%3D" + rest', id="url-encoded-equals"),
+        pytest.param('note = "50% of " + total', id="percent-in-prose"),
+        pytest.param('query = "SELECT id" + suffix', id="specifier-removed"),
+    ],
+)
+def test_fires_when_the_percent_is_not_a_conversion_specifier(source: str):
+    assert len(_check(source)) == 1
+
+
+# --------------------------------------------------------------------------- #
+# false-positive guards: ORM / SQL expression operands                        #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        # django/tests/expressions/tests.py:1299 — an injection regression test
+        # whose payload an f-string rewrite would silently delete.
+        pytest.param('qs = Company.objects.filter(name__in=[F("num_chairs") + "1)) OR ((1==1"])', id="django-f"),
+        pytest.param('label = "[" + Value(name) + "]"', id="django-value"),
+        pytest.param('perm = "[" + cls.name + "].(id:" + expression.cast(cls.id, String) + ")"', id="sa-expression"),
+        pytest.param('label = func.trim(first) + " " + func.trim(last)', id="sa-func"),
+        pytest.param('label = sa.func.lower(col) + "-suffix"', id="sa-dotted-func"),
+        pytest.param('clause = literal_column("a") + "-suffix"', id="literal-column"),
+        pytest.param('clause = "prefix-" + bindparam("x")', id="bindparam"),
+    ],
+)
+def test_skips_orm_expression_operands(source: str):
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param('qs = Company.objects.filter(name__in=[chairs + "1)) OR ((1==1"])', id="orm-call-hoisted"),
+        pytest.param('label = trim(first) + " x " + trim(last)', id="unrelated-call-root"),
+        pytest.param('label = helper.lower(col) + "-suffix"', id="unrelated-attribute-root"),
+    ],
+)
+def test_fires_without_the_orm_operand(source: str):
+    assert len(_check(source)) == 1
+
+
+# --------------------------------------------------------------------------- #
+# false-positive guards: boolean-fallback operands                            #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param('port = (os.environ.get("HOST") or "localhost") + ":" + port', id="or-fallback-prefix"),
+        pytest.param('cursor = (context.cursor or "") + "."', id="or-fallback-suffix"),
+        pytest.param('label = (lang or "") + ":" + code', id="or-fallback-middle"),
+        pytest.param('body = "</think>" + (delta.content or "")', id="or-fallback-trailing"),
+        pytest.param('body = "x" + (ready and label)', id="and-fallback"),
+    ],
+)
+def test_skips_boolean_fallback_operands(source: str):
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param('port = host + ":" + port', id="fallback-hoisted-to-a-name"),
+        pytest.param('cursor = context.cursor + "."', id="fallback-removed"),
+    ],
+)
+def test_fires_when_the_boolean_fallback_is_hoisted(source: str):
+    assert len(_check(source)) == 1
+
+
+def test_fires_when_the_whole_chain_is_a_boolean_operand():
+    # The BoolOp is the parent here, not an operand — the chain itself is plain.
+    assert len(_check('label = override or ("-" + field)')) == 1
 
 
 # --------------------------------------------------------------------------- #
@@ -234,6 +404,44 @@ def test_skips_join_operands(source: str):
 
 def test_fires_when_the_join_is_replaced_by_a_plain_call():
     assert len(_check('msg = "routes:\\n" + render(rows)')) == 1
+
+
+# --------------------------------------------------------------------------- #
+# false-positive guards: whitespace-only blob gluing                          #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        # This repo's own tests/rules/test_over_mocked_test.py:65.
+        pytest.param(
+            'src = _patches(6).replace("t", "a") + "\\n\\n" + _patches(6).replace("t", "b")',
+            id="two-source-fixtures",
+        ),
+        pytest.param('table = "\\n" + tabulate(rows, tablefmt="github") + "\\n\\n"', id="rendered-table"),
+        pytest.param('bar = "\\n" + f" {title} ".center(width, "=") + "\\n"', id="whitespace-only-fstring-operand"),
+        pytest.param('name = first.get("a", "") + " " + last.get("b", "")', id="keyword-lookup-pair"),
+    ],
+)
+def test_skips_whitespace_only_blob_gluing(source: str):
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        # The chain carries prose, so the f-string has something to make readable
+        # — even when the prose lives inside an f-string operand.
+        pytest.param('src = _patches(6).replace("t", "a") + " then " + tail', id="literal-carries-prose"),
+        pytest.param('text = title.get("k", "") + "\\n\\n" + f"phone: {phone}\\n"', id="fstring-carries-prose"),
+        # No call argument to quote, so nothing has to nest inside a placeholder.
+        pytest.param('src = _try_with(4) + "\\n" + _try_with(5)', id="no-string-literal-argument"),
+        pytest.param('src = GUARDED + "\\n" + UNGUARDED', id="bare-name-operands"),
+    ],
+)
+def test_fires_when_the_blob_glue_guard_does_not_apply(source: str):
+    assert len(_check(source)) == 1
 
 
 # --------------------------------------------------------------------------- #

@@ -90,12 +90,51 @@ that are latent bugs rather than mere noise:
   `test_chord_part_return_propagate_default` is identical to
   `..._propagate_set`, so one of the two configures nothing.
 
-fastapi is a genuine outlier at 18.6% rather than a rule defect: its suite is
-one-endpoint-per-test by construction (`tests/test_path.py` alone holds a
-31-member group of `client.get(path)` / `assert status` / `assert json` bodies),
-and every cluster read there was a real, collapsible table.
+fastapi's 18.6% is its suite being one-endpoint-per-test by construction
+(`tests/test_path.py` alone holds a 31-member group of `client.get(path)` /
+`assert status` / `assert json` bodies), and every cluster read there was a real,
+collapsible table. An earlier draft of this docstring called that "a genuine
+outlier rather than a rule defect"; that framing does not survive dogfooding.
+Run against this repo's own suite the rule fires on **23.5%** of substantive
+tests (125 of 533) — worse than the case being excused, and on a shape the
+calibration corpus never contained: a lint-rule suite whose tests are entirely
+literal-driven, where erasing every constant erases the whole specification and
+a file of unrelated guards collapses into one group. Two narrowings were
+proposed and are **not** implemented here — requiring the erased literals to be
+short and single-line, or requiring at least one non-literal difference — both
+of which need the 21/0 true-positive validation re-run before they could ship.
+Until then the honest statement is that this rule is noisy on literal-driven
+suites, not that fastapi is unusual.
+
+Reporting is **one diagnostic per group**, placed on the group's first copy, not
+one per copy. `vb-landing/agent/tests/test_text_chunker.py` emitted eight
+diagnostics all naming `test_split_at_period` as the original — eight findings
+for one `parametrize` refactor, which reads as eight problems.
+
+A group whose members are **byte-for-byte identical** gets a different message,
+because there is no varying argument to lift into a `parametrize` column: the
+action is to fix or delete one of them. Every such pair read across the corpora
+was a copy-paste that never got its edit (see the five cited above).
 
 Deliberately NOT flagged:
+
+* **members whose documentation differs.** When two bodies are identical code
+  and different prose — a docstring, or a comment inside the body — collapsing
+  them forces one of the two texts to be deleted, and the text is routinely the
+  only record of why the two exist. This rule shipped alongside **SARJ067
+  `prefer-or-pattern`**, which suppresses on exactly this signal for `match`
+  arms; the two took opposite positions on the same question until this guard
+  was ported across, since an earlier design stripped the docstring before
+  comparing. SARJ067's guard is measured on two independent sites —
+  `bulbul/python/webserver/webserver/services/analytics_service.py:172`
+  (`# 7 data points` / `# 30-31 data points`) and litellm's
+  `user_api_key_auth_mcp.py:776` (`# Unreachable: kept for match exhaustiveness`)
+  — and on this repo's own suite 29 of 125 findings paired tests whose differing
+  documentation is provenance no `ids=` could carry: two different corpus
+  citations (`tests/rules/test_over_mocked_test.py:788` and `:797`, one citing
+  celery and one bulbul), or two regression pins naming the separate historical
+  bugs they hold down (`packages/iac/tests/rules/test_require_deletion_protection.py:192`
+  and `:286`). Identical documentation on both members still groups them,
 
 * **`unittest.TestCase` methods.** pytest documents that
   `@pytest.mark.parametrize` cannot be applied to a `unittest.TestCase`
@@ -155,9 +194,11 @@ from __future__ import annotations
 import ast
 import copy
 import re
+import tokenize
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._comments import standalone_comments, trailing_comments
 from sarj_python_lint.rules._paths import is_generated_source, is_test_path
 
 
@@ -207,6 +248,23 @@ _LITERAL_ECHO_LIMIT = 32
 # Differing literals named in the message; past this the list is summarized.
 _MAX_LITERALS_SHOWN = 3
 
+# A *differing* string literal that spans more than one line and is longer than
+# this is a fixture document — an embedded program, a rendered template, a CSV
+# block — not a case value. Erasing one of those erases the whole specification,
+# which is how a file of unrelated tests collapses into a single group. See the
+# "fixture documents" bullet below for the measurement behind the number.
+_MAX_CASE_LITERAL = 32
+
+_PARAMETRIZE_ADVICE = (
+    "Collapse them into one `@pytest.mark.parametrize(...)`, passing `ids=` so each scenario "
+    "keeps the name it has today (see SARJ042)."
+)
+
+_IDENTICAL_ADVICE = (
+    "There is no case table to build here: one of the two is a copy-paste that never got its "
+    "edit. Make it exercise what its name claims, or delete it."
+)
+
 
 class DuplicateTestBody(Rule):
     """Copy-pasted test functions differing only in literals — parametrize them."""
@@ -223,7 +281,8 @@ class DuplicateTestBody(Rule):
         """Flag test functions whose normalized body already exists in the module.
 
         Returns:
-            One diagnostic per copy (never the original), sorted by position.
+            One diagnostic per duplicate group, on the group's first copy, sorted
+            by position.
 
         """
         if not is_test_path(path) or is_generated_source(source):
@@ -231,16 +290,20 @@ class DuplicateTestBody(Rule):
         tree = parse_or_none(path, source)
         if tree is None:
             return []
+        try:
+            groups = _duplicate_groups(tree, source)
+        except tokenize.TokenError, IndentationError, SyntaxError:
+            return []
 
         diags = [
             Diagnostic(
                 path=path,
-                line=duplicate.node.lineno,
-                col=duplicate.node.col_offset + 1,
+                line=group[1].node.lineno,
+                col=group[1].node.col_offset + 1,
                 code=self.code,
-                message=_message(duplicate, original, path),
+                message=_message(group, path),
             )
-            for original, duplicate in _duplicate_pairs(tree)
+            for group in groups
         ]
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
@@ -282,19 +345,23 @@ class _Outline:
 class _Shape:
     """One test function's body reduced to a comparable normalized form.
 
-    `body` is equal for two functions of the same outline exactly when a
-    `parametrize` could merge them; `literals` holds each erased constant in
-    traversal order, so two members of the same group have literal lists of the
-    same length and positional comparison names what differs.
+    `key` is equal for two functions of the same outline exactly when a
+    `parametrize` could merge them: the normalized body, plus the prose the two
+    functions carry. `literals` holds each erased constant in traversal order,
+    so two members of the same group have literal lists of the same length and
+    positional comparison names what differs.
     """
 
-    def __init__(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+    def __init__(self, node: ast.FunctionDef | ast.AsyncFunctionDef, comments: dict[int, str]) -> None:
         super().__init__()
         self.node: ast.FunctionDef | ast.AsyncFunctionDef = node
         body = _body_without_docstring(node)
         canonical = _Canonicalizer(_bound_names(body))
         self.body: str = "".join(canonical.render(stmt) for stmt in body)
         self.literals: tuple[object, ...] = tuple(canonical.literals)
+        # Prose is identity, not shape: merging two tests forces one of the two
+        # explanations to be deleted, and `ids=` cannot carry a paragraph.
+        self.key: tuple[str, tuple[str, ...]] = (self.body, _documentation(node, comments))
 
 
 class _Canonicalizer(ast.NodeVisitor):
@@ -333,11 +400,14 @@ class _Canonicalizer(ast.NodeVisitor):
             node.id = self._aliases.setdefault(node.id, f"v{len(self._aliases)}")
 
 
-def _duplicate_pairs(tree: ast.Module) -> list[tuple[_Shape, _Shape]]:
-    """Group the module's tests by body shape and pair each copy with its original.
+def _duplicate_groups(tree: ast.Module, source: str) -> list[list[_Shape]]:
+    """Group the module's tests by body shape, discarding the groups that are not copies.
+
+    Raises out of here when `source` cannot be tokenized; `check` catches that.
 
     Returns:
-        `(original, copy)` for every member of a group after the first.
+        One list per duplicate group, original first, each of at least
+        `_MIN_GROUP` members.
 
     """
     outlines: dict[tuple[str, bool, tuple[str, ...], str, str], list[_Outline]] = {}
@@ -349,21 +419,81 @@ def _duplicate_pairs(tree: ast.Module) -> list[tuple[_Shape, _Shape]]:
             continue
         outlines.setdefault(outline.key, []).append(outline)
 
-    pairs: list[tuple[_Shape, _Shape]] = []
-    for bucket in outlines.values():
-        if len(bucket) < _MIN_GROUP:
-            continue
-        groups: dict[str, list[_Shape]] = {}
+    buckets = [bucket for bucket in outlines.values() if len(bucket) >= _MIN_GROUP]
+    if not buckets:
+        # The tokenize pass is only worth paying for once something might fire.
+        return []
+    comments = _comment_lines(source)
+
+    found: list[list[_Shape]] = []
+    for bucket in buckets:
+        groups: dict[tuple[str, tuple[str, ...]], list[_Shape]] = {}
         for outline in bucket:
-            shape = _Shape(outline.node)
-            groups.setdefault(shape.body, []).append(shape)
-        pairs.extend(
-            (members[0], duplicate)
+            shape = _Shape(outline.node, comments)
+            groups.setdefault(shape.key, []).append(shape)
+        found.extend(
+            members
             for members in groups.values()
-            if len(members) >= _MIN_GROUP
-            for duplicate in members[1:]
+            if len(members) >= _MIN_GROUP and not _erases_a_fixture_document(members)
         )
-    return pairs
+    return found
+
+
+def _comment_lines(source: str) -> dict[int, str]:
+    """Index every `#` comment in the file by the line it sits on.
+
+    Both halves come from `_comments`' single memoized tokenize pass, so this
+    costs nothing extra in a run where another comment rule already scanned the
+    file. A comment inside a string literal is *not* seen — which matters here,
+    because this rule's own suite embeds test programs containing `#` lines.
+
+    Returns:
+        `{line: comment text}` for every comment, trailing or on its own line.
+
+    """
+    standalone, _ = standalone_comments(source)
+    return {line: text for line, _, text in (*standalone, *trailing_comments(source))}
+
+
+def _documentation(node: ast.FunctionDef | ast.AsyncFunctionDef, comments: dict[int, str]) -> tuple[str, ...]:
+    """Collect the prose a function carries: its docstring and its own comments.
+
+    The span runs from the `def` line to the end of the body, so decorators —
+    already compared verbatim — are not counted twice.
+
+    Returns:
+        The docstring followed by each comment text in source order.
+
+    """
+    docstring = ast.get_docstring(node, clean=False) or ""
+    end = node.end_lineno or node.lineno
+    return (docstring, *(comments[line] for line in range(node.lineno, end + 1) if line in comments))
+
+
+def _erases_a_fixture_document(members: list[_Shape]) -> bool:
+    """Report whether the group is held together by erasing a multi-line fixture.
+
+    Compares the group's constants position by position: a position where the
+    members disagree and at least one of them is a long multi-line string is a
+    whole embedded specification that normalization threw away, not a case value
+    a `parametrize` column could hold.
+
+    Returns:
+        True when such a position exists, and the group should not be reported.
+
+    """
+    # `zip(*...)` loses the element type through the star-unpack, so the columns
+    # are materialised with an explicit annotation rather than inlined.
+    columns: list[tuple[object, ...]] = list(zip(*(member.literals for member in members), strict=True))
+    return any(
+        any(value != column[0] or type(value) is not type(column[0]) for value in column)
+        and any(_is_fixture_document(value) for value in column)
+        for column in columns
+    )
+
+
+def _is_fixture_document(value: object) -> bool:
+    return isinstance(value, str) and "\n" in value and len(value) > _MAX_CASE_LITERAL
 
 
 def _test_functions(tree: ast.Module) -> list[tuple[str, bool, ast.FunctionDef | ast.AsyncFunctionDef]]:
@@ -378,20 +508,70 @@ def _test_functions(tree: ast.Module) -> list[tuple[str, bool, ast.FunctionDef |
         `(container, inside a unittest.TestCase, function)` triples.
 
     """
+    classes = _class_index(tree)
     found: list[tuple[str, bool, ast.FunctionDef | ast.AsyncFunctionDef]] = []
     pending: list[tuple[str, bool, ast.Module | ast.ClassDef]] = [("", False, tree)]
     while pending:
         container, in_test_case, node = pending.pop()
         for stmt in node.body:
             if isinstance(stmt, ast.ClassDef):
-                pending.append((f"{container}{stmt.name}.", in_test_case or _is_test_case_class(stmt), stmt))
+                pending.append(
+                    (
+                        f"{container}{stmt.name}.",
+                        in_test_case or _is_test_case_class(stmt, classes, frozenset()),
+                        stmt,
+                    )
+                )
             elif isinstance(stmt, _FUNC_NODES) and stmt.name.startswith(_TEST_PREFIX):
                 found.append((container, in_test_case, stmt))
     return found
 
 
-def _is_test_case_class(node: ast.ClassDef) -> bool:
-    return any(_UNITTEST_BASE_RE.search(_base_name(base)) for base in node.bases)
+def _class_index(tree: ast.Module) -> dict[str, ast.ClassDef]:
+    """Map every class name the module defines to its definition.
+
+    Needed to follow a base class up its own inheritance chain: the name test
+    below is only meaningful on a base the module does *not* define.
+
+    Returns:
+        `{class name: definition}`, first definition winning on a re-bind.
+
+    """
+    found: dict[str, ast.ClassDef] = {}
+    pending: list[ast.Module | ast.ClassDef] = [tree]
+    while pending:
+        for stmt in pending.pop().body:
+            if isinstance(stmt, ast.ClassDef):
+                found.setdefault(stmt.name, stmt)
+                pending.append(stmt)
+    return found
+
+
+def _is_test_case_class(node: ast.ClassDef, classes: dict[str, ast.ClassDef], seen: frozenset[str]) -> bool:
+    """Report whether the class reaches `unittest.TestCase` through any base.
+
+    A base the module defines is resolved and followed rather than pattern
+    matched, because the suite-local base is usually named for the *subject*
+    (`BaseAction`, `BaseTestChartDataApi`) while the TestCase it inherits from
+    sits a hop or two further up. The name test applies only to a base the
+    module does not define, where there is nothing left to follow.
+
+    Returns:
+        True when some base, transitively, is named like a `unittest.TestCase`.
+
+    """
+    if node.name in seen:
+        return False
+    inner = seen | {node.name}
+    for base in node.bases:
+        name = _base_name(base)
+        local = classes.get(name)
+        if local is not None:
+            if _is_test_case_class(local, classes, inner):
+                return True
+        elif _UNITTEST_BASE_RE.search(name):
+            return True
+    return False
 
 
 def _base_name(base: ast.expr) -> str:
@@ -471,23 +651,32 @@ def _walk(node: ast.AST) -> Iterator[ast.AST]:
         yield from _walk(child)
 
 
-def _message(duplicate: _Shape, original: _Shape, path: Path) -> str:
+def _message(group: list[_Shape], path: Path) -> str:
     """Describe the duplication and point back at the original.
+
+    A group whose members share every literal is not a `parametrize` candidate —
+    there is nothing to put in the table — so it gets its own message asking for
+    the copy to be fixed or deleted.
 
     Returns:
         The diagnostic text, naming the differing literals when there are any.
 
     """
+    original, duplicate = group[0], group[1]
+    others = len(group) - _MIN_GROUP
+    also = f" (and {others} more in this module)" if others > 0 else ""
+    origin = f"`{original.node.name}` ({path}:{original.node.lineno})"
     differences = _differing_literals(original.literals, duplicate.literals)
-    if differences:
-        detail = f"differing only in {_render_differences(differences)}"
-    else:
-        detail = "with a byte-for-byte identical body"
+    if not differences:
+        return (
+            f"`{duplicate.node.name}`{also} is a verbatim copy of {origin} — same calls, same "
+            f"literals, only the names differ, so the suite runs one behaviour twice and reports "
+            f"two passes. {_IDENTICAL_ADVICE}"
+        )
     return (
-        f"`{duplicate.node.name}` repeats the body of `{original.node.name}` ({path}:{original.node.lineno}) "
-        f"{detail} — two tests, one behaviour, and every future edit has to be made in both. "
-        "Collapse them into one `@pytest.mark.parametrize(...)`, passing `ids=` so each scenario "
-        "keeps the name it has today (see SARJ042)."
+        f"`{duplicate.node.name}`{also} repeats the body of {origin} differing only in "
+        f"{_render_differences(differences)} — two tests, one behaviour, and every future edit "
+        f"has to be made in both. {_PARAMETRIZE_ADVICE}"
     )
 
 

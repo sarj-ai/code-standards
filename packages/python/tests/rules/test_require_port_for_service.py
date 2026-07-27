@@ -44,15 +44,46 @@ def test_flags_concrete_service_with_injected_collaborator() -> None:
     assert diags[0].col == 1
 
 
-def test_message_names_the_class_and_the_collaborator() -> None:
+def test_message_is_exactly_the_shipped_text() -> None:
+    # Pins the whole message, not a substring: mutation testing showed the constants
+    # could be replaced wholesale without a single test noticing.
+    assert _check(_SERVICE)[0].message == (
+        "`ThingService` injects `ThingStore` and exposes 2 public methods, but has no abstract base, "
+        "so every consumer has to name the concrete class and the only way to test one is to patch or "
+        "mock it. Extract the public methods onto an `abc.ABC` (or a `Protocol`) and have "
+        "`ThingService` implement it, so consumers depend on the port and tests can pass a real or "
+        "purpose-built implementation instead of a mock."
+    )
+
+
+def test_message_does_not_cite_another_repos_class_names() -> None:
+    # The fix instruction has to be readable in any repository the rule runs in.
     message = _check(_SERVICE)[0].message
-    assert "`ThingService`" in message
-    assert "`ThingStore`" in message
-    assert "abc.ABC" in message
+    assert "TaskStore" not in message
+    assert "this codebase" not in message
 
 
 def test_message_reports_the_public_method_count() -> None:
     assert "exposes 2 public methods" in _check(_SERVICE)[0].message
+
+
+def test_message_counts_only_the_public_methods() -> None:
+    message = _check(
+        """
+        class ThingService:
+            def __init__(self, store: ThingStore) -> None:
+                self.store = store
+
+            def read(self) -> str: ...
+
+            def write(self) -> None: ...
+
+            def wipe(self) -> None: ...
+
+            def _helper(self) -> None: ...
+        """
+    )[0].message
+    assert "exposes 3 public methods" in message
 
 
 def test_diagnostic_points_at_the_class_not_the_constructor() -> None:
@@ -136,6 +167,106 @@ def test_base_named_class_is_the_port_being_asked_for(class_name: str) -> None:
 def test_base_prefix_needs_a_capital_to_count() -> None:
     # `Baseline...` is a word beginning with "Base", not a base class.
     assert len(_check(_SERVICE.replace("ThingService", "BaselineService"))) == 1
+
+
+# ---- route-handler guard ----
+
+
+def _handler_service(parameter: str) -> str:
+    return f"""
+        class ThingService:
+            def __init__(self, store: ThingStore) -> None:
+                self.store = store
+
+            def read(self, {parameter}) -> str: ...
+
+            def write(self) -> None: ...
+        """
+
+
+@pytest.mark.parametrize(
+    "parameter",
+    [
+        "request: Request",
+        "request: fastapi.Request",
+        "response: Response",
+        "background_tasks: BackgroundTasks",
+        "websocket: WebSocket",
+        "file: UploadFile",
+        "x_mock: Annotated[list[str] | None, Header()] = None",
+        "page: Annotated[int, Query()] = 1",
+        "store: Annotated[ThingStore, Depends(get_store)]",
+        "payload: Annotated[dict[str, str], Body()]",
+        "thing_id: Annotated[str, Path()]",
+        "name: Annotated[str, Form()]",
+        "upload: Annotated[bytes, File()]",
+        "session: Annotated[str, Cookie()]",
+        "scopes: Annotated[str, Security(oauth)]",
+        "store: ThingStore = Depends(get_store)",
+        "x_mock: str = Header(None)",
+    ],
+    ids=[
+        "Request",
+        "dotted-Request",
+        "Response",
+        "BackgroundTasks",
+        "WebSocket",
+        "UploadFile",
+        "Annotated-Header",
+        "Annotated-Query",
+        "Annotated-Depends",
+        "Annotated-Body",
+        "Annotated-Path",
+        "Annotated-Form",
+        "Annotated-File",
+        "Annotated-Cookie",
+        "Annotated-Security",
+        "default-Depends",
+        "default-Header",
+    ],
+)
+def test_route_handler_signatures_suppress(parameter: str) -> None:
+    # summer's `ReceiptService` is `ReceiptRouter`'s body: a router that happens to be
+    # named `*Service`, so the name gate cannot see it. An ABC over an HTTP boundary
+    # substitutes nothing.
+    assert _check(_handler_service(parameter)) == []
+
+
+def test_the_same_class_without_the_web_parameter_fires() -> None:
+    # The other direction of the guard above: strip the framework vocabulary and the
+    # class is an ordinary unsubstitutable service again.
+    assert len(_check(_handler_service("key: str"))) == 1
+
+
+def test_pathlib_path_parameter_is_not_a_route_marker() -> None:
+    # `Path` is a FastAPI marker only in its call form; `path: Path` is pathlib.
+    assert len(_check(_handler_service("path: Path"))) == 1
+
+
+def test_private_method_taking_a_request_does_not_suppress() -> None:
+    # Only the public surface decides whether the class is a transport boundary.
+    assert (
+        len(
+            _check(
+                """
+                class ThingService:
+                    def __init__(self, store: ThingStore) -> None:
+                        self.store = store
+
+                    def read(self) -> str: ...
+
+                    def write(self) -> None: ...
+
+                    def _log(self, request: Request) -> None: ...
+                """
+            )
+        )
+        == 1
+    )
+
+
+def test_domain_type_ending_in_request_is_not_a_route_marker() -> None:
+    assert len(_check(_handler_service("args: ExtractFromUrlRequest"))) == 1
 
 
 # ---- inheritance guards ----
@@ -662,9 +793,10 @@ def test_class_whose_suffix_is_not_in_scope_still_fires() -> None:
     )
 
 
-def test_suffix_must_itself_be_service_shaped() -> None:
-    # `Widget` is in scope and is a suffix of `CacheWidgetService`, but a port name
-    # has to look like a port; otherwise any imported noun would silence the rule.
+def test_name_containing_a_service_tail_mid_word_is_silent() -> None:
+    # The gate is a tail, not a substring: `BigThingServiceRunner` contains `Service`
+    # but does not end in it. (The conjunct that the *port suffix* must itself be
+    # service-shaped is pinned separately, below.)
     assert (
         len(
             _check(
@@ -682,8 +814,98 @@ def test_suffix_must_itself_be_service_shaped() -> None:
                 """
             )
         )
-        # `BigThingServiceRunner` does not end in a service tail at all.
         == 0
+    )
+
+
+def test_port_suffix_must_start_at_a_camel_case_boundary() -> None:
+    # `ationService` is a suffix of `NotificationService` and is service-shaped, but it
+    # starts mid-word, so it is a coincidence rather than a qualified port name. Without
+    # the `name[index].isupper()` conjunct any such import would silence the rule.
+    assert (
+        len(
+            _check(
+                """
+                from app.legacy import ationService
+
+
+                class NotificationService:
+                    def __init__(self, store: ThingStore) -> None:
+                        self.store = store
+
+                    def read(self) -> str: ...
+
+                    def write(self) -> None: ...
+                """
+            )
+        )
+        == 1
+    )
+
+
+def test_uppercase_suffix_that_is_not_service_shaped_does_not_exempt() -> None:
+    # `AO` starts at a capital and is in scope, but it is not a port name — this is the
+    # conjunct that stops a partial token from acting as one.
+    assert (
+        len(
+            _check(
+                """
+                from app.legacy import AO
+
+
+                class PaymentDAO:
+                    def __init__(self, store: ThingStore) -> None:
+                        self.store = store
+
+                    def read(self) -> str: ...
+
+                    def write(self) -> None: ...
+                """
+            )
+        )
+        == 1
+    )
+
+
+def test_port_suffix_may_start_one_character_in() -> None:
+    # `PTokenStore` qualifies `TokenStore` with a single letter; the suffix scan has to
+    # start at index 1, not 2.
+    assert (
+        _check(
+            """
+            from app.ports import TokenStore
+
+
+            class PTokenStore:
+                def __init__(self, inner: TokenStore) -> None:
+                    self.inner = inner
+
+                def fetch(self) -> str: ...
+
+                def invalidate(self) -> None: ...
+            """
+        )
+        == []
+    )
+
+
+def test_the_whole_class_name_is_not_its_own_port() -> None:
+    # The scan must stay on *proper* suffixes: a class is never exempted by itself.
+    assert (
+        len(
+            _check(
+                """
+                class TokenStore:
+                    def __init__(self, inner: ThingGateway) -> None:
+                        self.inner = inner
+
+                    def fetch(self) -> str: ...
+
+                    def invalidate(self) -> None: ...
+                """
+            )
+        )
+        == 1
     )
 
 
@@ -774,6 +996,18 @@ def test_same_module_without_the_main_guard_fires() -> None:
     assert len(_check(library)) == 1
 
 
+def test_main_guard_must_be_top_level() -> None:
+    # A `__name__` check buried inside a function does not make the module a program.
+    nested = f'{_SERVICE}\n\ndef main() -> None:\n    if __name__ == "__main__":\n        pass\n'
+    assert len(_check(nested)) == 1
+
+
+def test_a_top_level_if_that_is_not_a_main_guard_does_not_exempt() -> None:
+    # The `if` has to test `__name__`; any other module-level branch is ordinary code.
+    guarded = f"{_SERVICE}\n\nif TYPE_CHECKING:\n    from app.stores import ThingStore\n"
+    assert len(_check(guarded)) == 1
+
+
 def test_generated_source_is_exempt() -> None:
     assert _check(f'"""@generated by protoc - do not edit."""\n{_SERVICE}') == []
 
@@ -793,9 +1027,69 @@ def test_empty_source_yields_nothing() -> None:
     assert _check("") == []
 
 
+def test_unparseable_forward_reference_is_ignored() -> None:
+    assert _check(_SERVICE.replace("store: ThingStore", 'store: "Thing Store"')) == []
+
+
+def test_non_string_constant_annotation_is_ignored() -> None:
+    assert _check(_SERVICE.replace("store: ThingStore", "store: None")) == []
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    ["Awaitable[ThingStore]", "Final[ThingStore]", "ClassVar[ThingStore]"],
+    ids=["Awaitable", "Final", "ClassVar"],
+)
+def test_transparent_generics_are_unwrapped(annotation: str) -> None:
+    assert len(_check(_SERVICE.replace("store: ThingStore", f"store: {annotation}"))) == 1
+
+
+def test_only_the_first_argument_of_a_transparent_generic_is_read() -> None:
+    # Known limit, pinned so it is a decision rather than a surprise: unwrapping takes
+    # `elts[0]`, so `Coroutine[Any, Any, ThingStore]` reduces to `Any` and reads as a
+    # value. No constructor in any measured corpus is annotated this way.
+    assert _check(_SERVICE.replace("store: ThingStore", "store: Coroutine[Any, Any, ThingStore]")) == []
+
+
+def test_subscripted_project_type_keeps_the_container_name() -> None:
+    # `stores.Registry[Row]` is a project type, so the outer name is the collaborator.
+    assert len(_check(_SERVICE.replace("store: ThingStore", "store: stores.Registry[Row]"))) == 1
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    ["dict[str, ThingStore]", "list[ThingStore]", "tuple[ThingStore, ...]"],
+    ids=["dict", "list", "tuple"],
+)
+def test_subscripted_builtin_container_is_still_a_value(annotation: str) -> None:
+    # A collection of collaborators is a collection, not one injected port: only the
+    # container's own name is read, so these must not unwrap to `ThingStore`.
+    assert _check(_SERVICE.replace("store: ThingStore", f"store: {annotation}")) == []
+
+
 def test_nested_class_is_reached() -> None:
     nested = f"class Outer:\n{textwrap.indent(_SERVICE, '    ')}"
     assert len(_check(nested)) == 1
+
+
+def test_nested_finding_reports_its_real_line_and_column() -> None:
+    # Both coordinates non-1, so a hardcoded `col=1` (or `col_offset` without the +1)
+    # cannot pass. The class sits at indentation 8 on line 5.
+    diags = _check(
+        """
+        class Outer:
+            class Middle:
+
+                class ThingService:
+                    def __init__(self, store: ThingStore) -> None:
+                        self.store = store
+
+                    def read(self) -> str: ...
+
+                    def write(self) -> None: ...
+        """
+    )
+    assert [(d.line, d.col) for d in diags] == [(5, 9)]
 
 
 def test_multiple_findings_are_sorted_by_position() -> None:

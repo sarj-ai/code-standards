@@ -36,39 +36,73 @@ Fires when ALL of these hold for a pytest-collected test function:
   / `assert_awaited*` call, or an assertion reading `.called`, `.call_count`,
   `.call_args`, `.call_args_list`, `.mock_calls`, `.method_calls`,
   `.await_count`, `.await_args`,
-* it pins **two or more distinct interaction targets** — two collaborators, or
-  two methods of one — so the test is describing a call *sequence*,
+* it pins **two or more distinct root objects** — so the test is describing a
+  call *sequence across collaborators*, not one collaborator asked several
+  questions. `mock_hook.return_value.get_instance` and
+  `mock_hook.return_value.start_pipeline` are one root, `mock_hook`,
 * none of those assertions is negative,
 * the test name does not declare the interaction as the contract, and the pinned
   targets are neither all callback registrations nor all patched free functions.
 
-**The guards are the rule.** Across 22,269 collected tests in five repos, 649
+**The guards are the rule.** Across 49,363 collected tests in six repos, 4,361
 tests assert only on mock bookkeeping. Shipping that population would have been
 indefensible: 61 of django's 62 raw findings are legitimate. The funnel:
 
-| corpus   | raw | ≥2 targets | non-negative | name | registration | free fn |
-|----------|-----|-----------|--------------|------|--------------|---------|
-| bulbul   | 107 |        21 |            8 |    7 |            5 |       5 |
-| noura-be |   3 |         0 |            0 |    0 |            0 |       0 |
-| django   |  62 |         6 |            2 |    2 |            2 |       1 |
-| fastapi  |   4 |         0 |            0 |    0 |            0 |       0 |
-| celery   | 473 |       120 |           75 |   72 |           71 |      59 |
+| corpus   |   raw | ≥2 roots | non-negative |  name | registration | free fn |
+|----------|-------|----------|--------------|-------|--------------|---------|
+| bulbul   |   107 |       16 |            7 |     7 |            5 |       5 |
+| noura-be |     3 |        0 |            0 |     0 |            0 |       0 |
+| django   |    62 |        6 |            2 |     2 |            2 |       1 |
+| fastapi  |     4 |        0 |            0 |     0 |            0 |       0 |
+| celery   |   473 |       78 |           52 |    50 |           50 |      38 |
+| airflow  | 3,712 |      757 |          540 |   521 |          521 |     293 |
+
+Counting *root objects* rather than dotted target paths at the second stage is
+what makes the funnel hold on a large corpus. Before that reduction the rule
+returned 1,261 findings over the 14-repo OSS sweep plus the first-party repos;
+after it, 462 — 799 removed, 63%. It cost nothing on the calibration corpus
+(bulbul 5→5, noura-be 0→0, django 1→1, fastapi 0→0, and 0→0 across
+digital-bank, submissions and ai); airflow went 999→293. The removals are
+adapter passthroughs asking one collaborator several questions —
+`airflow/providers/google/tests/unit/google/cloud/hooks/test_dataproc_metastore.py:265`
+pins `mock_client` and `mock_client.return_value.restore_service`,
+`.../operators/test_datafusion.py:221` pins three methods of
+`mock_hook.return_value` — and those tests are correct as written, because a
+thin adapter has no observable output but the call it forwards. One true
+positive goes with them, `celery/t/unit/tasks/test_result.py:504`: `test_get`
+replaces `x.join` and `x.join_native` on the `ResultSet` it is testing and then
+asserts they were called, so both roots are the system under test. That is
+SARJ058 `no-patching-system-under-test`'s shape, not this rule's.
+
+Treating a leading `self.` / `cls.` as transparent was tried and rejected: it
+restores 20 findings, all airflow, all the same DBAPI-hook shape
+(`self.conn.commit` + `self.cur.execute` in
+`providers/common/sql/.../test_dbapi.py:116` and its siblings), and 0 anywhere
+else. Those are the adapter passthroughs the guard exists to remove, so the
+plain root split is the calibrated behaviour.
 
 Manual read of 22 findings (5 bulbul, 1 django, 16 celery) classed 20 true
-positives and 2 false positives (9%). The two residual false positives are
-`celery/t/unit/utils/test_debug.py:16` (`test_blockdetection` arms and resets a
-`SIGALRM` handler — a process-global effect with nothing to observe) and
+positives and 2 false positives (9%). The root reduction took one of those two
+with it: `celery/t/unit/utils/test_debug.py:16` (`test_blockdetection`) pins
+`signals.arm_alarm`, `signals.__setitem__` and `signals.reset_alarm`, one
+object, and no longer fires. The one that remains is
 `celery/t/unit/worker/test_autoscale.py:200` (`test_thread_crash` asserts
-`os._exit` was called with 1, which cannot be observed without exiting). Both
-are "the effect is on process-global machinery"; a guard for that shape would be
+`os._exit` was called with 1, which cannot be observed without exiting). That is
+"the effect is on process-global machinery"; a guard for that shape would be
 overfitting to one corpus, so `# sarj-noqa: SARJ060` is the intended escape.
 
 Deliberately NOT flagged:
 
-* **a test pinning a single interaction target.** Asserting `call_count` *and*
-  `call_args` on one mock is one fact — "this collaborator was told once, with
-  this payload" — and for a notifier that is the whole contract. This guard
-  alone removed 56 of the 62 raw django findings and all four raw fastapi
+* **a test pinning a single collaborator**, however many of its methods or
+  bookkeeping attributes it reads. Asserting `call_count` *and* `call_args` on
+  one mock is one fact — "this collaborator was told once, with this payload" —
+  and for a notifier that is the whole contract; asking the same object two
+  questions (`mock_source_db.backup` then `mock_source_db.close`) is still one
+  fact about one object. A collaborator is an object, not one of its methods —
+  the same reduction SARJ059 `over-mocked-test` applies when it counts
+  substituted collaborators, and the two rules have to agree or a shape can be
+  "one collaborator" to one rule and "two" to the other. This guard alone
+  removed 56 of the 62 raw django findings and all four raw fastapi
   findings, without touching the motivating shape above. Every one of the ten
   file-watcher tests in `django/tests/utils_tests/test_autoreload.py` (`test_glob`
   at :642, `test_multiple_globs` at :655, and their siblings) reads
@@ -90,21 +124,24 @@ Deliberately NOT flagged:
 * **a test whose name says the interaction is the contract** — `publish`,
   `emit`, `dispatch`, `broadcast`, `retry`, `backoff`, `cache`, `idempoten`,
   `debounce`, `throttl`, `not_called`, `only_once`. Measured, not guessed: this
-  list removes 2 bulbul findings (`test_cache_serves_on_second_get` in
-  `bulbul/tests/services/test_global_settings_service.py:593`, where hitting the
-  object store a second time is exactly what must not happen, and
-  `test_call_outcome_success_publishes_downstream` in
-  `worker/tests/test_task_executor_routing.py:155`) and 3 celery ones, and none
-  in django or fastapi. Any wider and it guts the rule — an earlier draft that
-  also matched `never`, `does_not`, `lazy` and `memo` was cut back for that
-  reason,
+  list removes 2 celery findings (`test_broadcast` and `test_broadcast_limit` in
+  `celery/t/unit/app/test_control.py:213`/`:221`, where broadcasting the command
+  *is* the contract) and 19 airflow ones — `retry`, `dispatch` and `emit`
+  wrappers such as `airflow/providers/git/tests/unit/git/bundles/
+  test_git.py:1348` (`test_clone_bare_repo_invalid_repository_error_retry`) —
+  and none in bulbul, noura-be, django or fastapi. Any wider and it guts the
+  rule — an earlier draft that also matched `never`, `does_not`, `lazy` and
+  `memo` was cut back for that reason,
 * **a test that only pins callback registration** — every target ends in
   `connect`, `on`, `off`, `subscribe`, `register`, `add_listener`, … Wiring a
   handler onto a collaborator returns nothing and changes nothing until the event
-  fires, so the registration is the only checkable fact. `celery/t/unit/fixups/
-  test_django.py:183` (`test_install` asserts four `signals.*.connect` calls) and
-  bulbul's `agent/tests/test_silence_monitor.py:79`/`:95`
-  (`room.on`/`session.on`, then `room.off`/`session.off`) are the shape,
+  fires, so the registration is the only checkable fact. bulbul's
+  `agent/tests/test_silence_monitor.py:79`/`:95` (`room.on`/`session.on`, then
+  `room.off`/`session.off`) are the shape, and the only two findings this guard
+  still removes across the six repos: `celery/t/unit/fixups/test_django.py:183`
+  (`test_install` asserts four `sigs.*.connect` calls) used to reach it and is
+  now cut earlier, by the distinct-root guard, since all four hang off one
+  `sigs` object,
 * **a test where every pinned target is a patched free function** — a bare name
   with no receiver, which means the collaborator was swapped in by `@patch` at
   module scope rather than handed to the code as an object. There is no instance
@@ -201,8 +238,9 @@ _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 
 # --- the calibrated guards; see the module docstring for the measurements ---
 
-# Distinct mocked collaborators (or distinct methods of one) that must be pinned
-# before the test is describing a *sequence* rather than a single notification.
+# Distinct mocked collaborators that must be pinned before the test is
+# describing a *sequence* rather than a single notification. Counted by root
+# object, matching SARJ059: a collaborator is an object, not one of its methods.
 _MIN_INTERACTION_TARGETS = 2
 
 # Wiring a callback onto a collaborator is the one side effect that genuinely
@@ -336,7 +374,9 @@ def _interaction_only_tests(tree: ast.Module) -> list[_Profile]:
             # An outcome assertion clears the test; no assertion at all is
             # SARJ043's finding, not this rule's.
             continue
-        if len(counts.targets) < _MIN_INTERACTION_TARGETS:
+        if len(_root_objects(counts.targets)) < _MIN_INTERACTION_TARGETS:
+            # Two methods of one mock are one collaborator asked two questions,
+            # not a sequence across collaborators.
             continue
         if counts.negative:
             # A negative claim — "must not charge the card twice", "A is called
@@ -525,6 +565,22 @@ def _interaction_targets(expr: ast.AST) -> set[str]:
         ):
             targets.add(_dotted(node.func.value))
     return targets
+
+
+def _root_objects(targets: frozenset[str]) -> set[str]:
+    """Reduce dotted interaction targets to the objects they hang off.
+
+    `mock_hook.return_value.get_instance` and
+    `mock_hook.return_value.start_pipeline` are two questions asked of one
+    collaborator, so both reduce to `mock_hook`. This is SARJ059's reduction —
+    a collaborator is an object, not one of its methods — and the two rules have
+    to agree on it.
+
+    Returns:
+        The leading segment of every target.
+
+    """
+    return {target.split(".")[0] for target in targets}
 
 
 def _dotted(expr: ast.expr) -> str:

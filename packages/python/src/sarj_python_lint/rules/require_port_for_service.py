@@ -10,23 +10,48 @@ substitute. An ABC above the service is that something: the consumer depends on 
 port, the test passes the real implementation or a purpose-built one, and nothing has
 to be patched.
 
-This is not an imported opinion — it is the convention this codebase already chose and
-already follows almost everywhere. Across bulbul and noura-be, 193 non-test classes
-carry a service-family name (`*Service`, `*Store`, `*Client`, `*Repository`, `*DAO`,
-`*Provider`, `*Gateway`); 91 of them *are* the port (an `ABC` or `Protocol`), 63 more
-subclass a first-party port, and only 22 have no base class at all — 89% adoption. The
-`Store` family is at 97% (92 of 95), the exemplar being `class TaskStore(ABC)` with
-`class PsqlTaskStore(TaskStore)` driven by the real-Postgres `db_pool` fixture in
-`integration/tests/conftest.py`. `*Service` is the straggler at 75% (40 of 53), which
-is why the user asked for this rule. Narrowing to the classes that actually have a
-seam — 130 non-test classes take an injected collaborator and expose two or more public
-methods — 97 already inherit a first-party abstract base and only 26 have no base at
-all. This rule flags stragglers against an established convention; it does not
-introduce one.
+**What this rule is, given the evidence.** An earlier version of this docstring said the
+rule "flags stragglers against an established convention" and quoted 89% adoption. That
+number was bulbul's, and the convention it describes is bulbul's. Counting public,
+non-test classes whose name ends in a service-family token (`*Service`, `*Store`,
+`*DAO`, `*Gateway`, `*Provider`) and asking how many have no base class at all, across
+every first-party Python repo on the machine:
 
-The codebase's port mechanism is `abc.ABC`, not `typing.Protocol`, by 150 classes to
-23 (bulbul 117/13, noura-be 33/10) — so the fix this rule asks for is an `ABC` with
-`@abstractmethod`s, and the message says so.
+| repo | service-family classes | no base | already have a base |
+|---|---|---|---|
+| faris | 16 | 0 | 100% |
+| docs | 12 | 0 | 100% |
+| bulbul | 140 | 8 | 94% |
+| summer | 18 | 1 | 94% |
+| bell | 23 | 4 | 83% |
+| ai | 14 | 3 | 79% |
+| noura-be | 26 | 8 | 69% |
+| tahded | 4 | 2 | 50% |
+| digital-bank | 26 | 16 | 38% |
+
+(submissions is absent because it has no service-family classes at all.)
+
+bulbul is where the convention is strongest and where the rule was written; it is not
+where the findings are. **`digital-bank` alone accounts for 15 of the 30 first-party
+findings** — `banking_api/modules/{card,auth,bank,transfer,mfa,beneficiary,account,
+onboarding}/{store,service}.py`, uniformly `class XStore: def __init__(self, pool:
+AsyncConnectionPool)` paired with `class XService: def __init__(self, store: XStore)`,
+no base anywhere. Every one is a true positive by this rule's definition — nothing in
+that service layer is substitutable, and its tests can only mock — but they are not
+stragglers behind a local convention. They are the repo's architecture.
+
+So the framing the data supports is: **this rule reports service layers with no seam.**
+Where ports are already the norm (faris, docs, bulbul, summer) the output is a short
+list of exceptions and reads as "you missed these". Where they are not (digital-bank,
+tahded, noura-be) the output is a description of the design, and the response owed is a
+decision about the design, not eight small refactors. Turning the rule on in a new repo
+should start with the count, not with the diff.
+
+The port mechanism these repos reach for is `abc.ABC` rather than `typing.Protocol`, by
+150 classes to 23 (bulbul 117/13, noura-be 33/10), so the message names `abc.ABC`
+first. It names `Protocol` as the alternative and cites no repo's class names: the rule
+also runs on code that has never seen this codebase, and "follow the convention used for
+`TaskStore` / `PsqlTaskStore`" is not an instruction litellm can act on.
 
 Fires when ALL of these hold:
 
@@ -45,41 +70,65 @@ Fires when ALL of these hold:
   builtin, not a container, not a `Path`/`UUID`/`datetime`, not a `*Settings` /
   `*Config` / `Logger` / `Clock` / `*Context`, and not a data type defined in the same
   module,
-* and it declares **at least two public methods** — plain instance methods, not
-  properties, `staticmethod`s or `classmethod`s.
+* it declares **at least two public methods** — plain instance methods, not
+  properties, `staticmethod`s or `classmethod`s,
+* and **none of those public methods is an HTTP route handler** — no parameter
+  annotated `Request`/`Response`/`BackgroundTasks`/`WebSocket`/`UploadFile`, and no
+  FastAPI-style marker call (`Header()`, `Query()`, `Depends()`, `Body()`, `Path()`,
+  `Form()`, `File()`, `Cookie()`, `Security()`) inside an `Annotated[...]` or as a
+  default.
 
-Corpus evidence. Measured over 42,017 files in sixteen repositories: bulbul (1,179),
-noura-be (502), django (2,927), fastapi (1,130), celery (417), airflow (7,655), dagster
-(5,983), langchain (2,536), litellm (5,054), mlflow (2,607), prefect (1,887), saleor
-(4,302), sentry-python (498), superset (2,440), warehouse (888) and zulip (2,012).
-**Ten findings** — 5 bulbul, 3 noura-be, 2 litellm, and zero in the other thirteen
-repositories, django and fastapi among them. Twenty-five candidate hits were read at
-source across successive tightenings and classified by hand; the surviving ten are 9
-true positives and 1 false positive (`LazyPerUserOAuthTokenStore`, below), a 10% rate
-overall and 0 of 8 on the first-party repos.
+Corpus evidence. Measured over **42,996 files in twenty-four repositories**. Ten
+first-party — bulbul (1,179), noura-be (502), digital-bank (267), submissions (194), ai
+(179), tahded (88), summer (81), docs (76), faris (67), bell (42), 2,675 files — and
+fourteen open-source: airflow (7,655), dagster (5,982), litellm (5,054), saleor (4,301),
+django (2,927), mlflow (2,594), langchain (2,536), superset (2,440), zulip (2,012),
+prefect (1,887), fastapi (1,130), warehouse (888), sentry-python (498), celery (417),
+40,321 files.
 
-The name gate is not vacuous on the OSS control: django, fastapi and celery contain 49
-public classes with a service-family name, ten of which have no base class, and they
-survive to the last gate — the collaborator requirement — before being rejected.
+**Thirty-two findings**: 30 first-party — digital-bank 15, bulbul 5, bell 4, noura-be 3,
+ai 3, and zero in submissions, faris, docs, tahded and summer — and **2 in the 40,321
+open-source files**, both in litellm, with zero in the other thirteen, django and
+fastapi among them. Candidate hits were read at source across successive tightenings and
+classified by hand; the survivors are 31 true positives by the rule's own definition and
+1 false positive (`LazyPerUserOAuthTokenStore`, below).
 
-Every threshold was measured, not guessed. Against the same 42,017 files:
+That OSS number is the point rather than an embarrassment: **2 hits in 40,321 files
+against 30 first-party** says this is a house-convention rule, and the docstring should
+say so plainly instead of implying generality. It is not near-dead because the gates are
+broken. The fourteen OSS repos contain 291 public non-test classes with a service-family
+name, 59 of them with no base class at all, and they survive to the later gates — the
+`@implementer` check, the collaborator requirement, the method floor — before being
+rejected. warehouse alone contributes 25 of those 59 and loses every one of them to the
+`zope.interface` guard.
 
-* public-method floor **1**: 10 -> 18 findings (7 of them new OSS false positives).
-  Every addition is a one-method wrapper, which is a function in a trenchcoat,
-* public-method floor **2** (shipped): 10 findings,
-* floor **3**: 10 -> 7. It drops `ZohoOAuthService`, which is a genuine port,
-* adding **`Client`** to the name gate: 10 -> 17, and all seven additions are OSS false
-  positives, because `*Client` is the vendor-SDK-wrapper family — dagster's
-  `GithubClient(client: requests.Session)`, airflow's `Client(session: httpx.Client)`,
-  litellm's `MCPClient`. An ABC over a class whose collaborator is somebody else's HTTP
-  transport substitutes nothing. It costs **zero** first-party findings,
-* adding **`Repository`/`Repo`**: 10 -> 11, one new false positive (dagster's
-  `RemoteRepository`, a code location, not a data-access port; prefect's
-  `GitRepository` is the same word abuse). It also costs zero first-party findings,
-  because neither repo has a single class named `*Repository`,
-* adding **`Manager`/`Adapter`/`Handler`/`Router`**: 10 -> 36, with 10 new first-party
-  findings that are all FastAPI routers and LiveKit lifecycle helpers,
-* **no name gate at all**: 10 -> 178, 156 of them in OSS. The name gate is doing the
+Every threshold was re-measured against these 42,996 files rather than carried over:
+
+* public-method floor **1**: 32 -> 42 findings, +10 and -0. Five of the additions are
+  first-party one-method wrappers — `TranslationService` in both noura-be and
+  digital-bank, noura-be's `EmailService`, bulbul's `VoicePreviewService`, tahded's
+  `ModelService` — and five are OSS. A one-method class is a function in a trenchcoat
+  and an ABC over it is ceremony,
+* public-method floor **2** (shipped): 32 findings,
+* floor **3**: 32 -> 23, +0 and -9. It removes the one known false positive
+  (`LazyPerUserOAuthTokenStore`) at a cost of eight true positives: all four of bell's
+  `*ProvisioningService`s, digital-bank's `AuthService` and `MfaService`, and bulbul's
+  `ScenarioGenerationService` and `ZohoOAuthService`. Not a trade worth making,
+* adding **`Client`** to the name gate: 32 -> 39. All seven additions are OSS and all
+  are the vendor-SDK-wrapper family — airflow's `Client`, dagster's `GithubClient`,
+  `ClaudeSDKClient` and `DagsterCloudAgentHttpClient`, litellm's `PrismaClient` and
+  `MCPClient`. An ABC over a class whose collaborator is somebody else's HTTP transport
+  substitutes nothing. It costs **zero** first-party findings,
+* adding **`Repository`/`Repo`**: 32 -> 33. The one addition is dagster's
+  `RemoteRepository`, a code location rather than a data-access port. Zero first-party
+  findings, because no first-party repo names a class `*Repository` at all,
+* adding **`Manager`/`Adapter`/`Handler`/`Router`**: 32 -> 58, +26, ten of them
+  first-party and every one of those a FastAPI router (`OrganizationRouter`,
+  `SipConnectionRouter`, `PhoneNumberRouter`, `SallaRouter`, `CustomScenarioRouter`), a
+  lifecycle helper (`IntegrationsManager`, `RunManager`, two `AgentStateManager`s) or
+  `ChatAdapter`. This is the widening the route-handler guard below exists to survive,
+* adding **`Proposer`/`Processor`**: 32 -> 33 — see the false-negative note at the end,
+* **no name gate at all**: 32 -> 206, 156 of them in OSS. The name gate is doing the
   precision work.
 
 Deliberately NOT flagged:
@@ -103,6 +152,20 @@ Deliberately NOT flagged:
   Same for `AuthorizationMiddleware`
   (`webserver/webserver/middleware/authorization_middleware.py:13`). The name gate
   excludes all six routers plus the middleware,
+* **routers that call themselves services**, which the name gate cannot help with.
+  summer's `ReceiptService`
+  (`sarj/applications/receipts/receipt_service.py:42`) is `ReceiptRouter`'s body: its
+  two public methods are the route handlers, taking `Request`, `BackgroundTasks`,
+  `Annotated[list[str] | None, Header()]` and `Annotated[UploadFile, File()]`, and
+  `ReceiptRouter.get_router` forwards to them argument for argument. A signature
+  written in a web framework's vocabulary is a transport boundary; an ABC over it
+  substitutes nothing, because the thing on the other side is the framework. So a
+  class is skipped when any *public* method takes a request/response object or a
+  FastAPI-style parameter marker. Measured cost: 31 -> 30 first-party findings and 2 ->
+  2 in OSS — it removes exactly that one false positive and no true positive, in any
+  repo. Only the *call* form of `Path`/`File` counts, so `path: Path` stays a value and
+  `Annotated[str, Path()]` is a route; and only public methods are consulted, so a
+  private `_log(self, request: Request)` helper does not exempt a real service,
 * **entry-point scripts.** `LogtoAdminClient`
   (`webserver/webserver/scripts/logto_provision.py:139`) passes every shape test — an
   injected `httpx.Client`, four public methods, no base — and was a measured false
@@ -144,9 +207,38 @@ Deliberately NOT flagged:
   (`litellm/proxy/_experimental/mcp_server/outbound_credentials/per_user_oauth_store.py:170`)
   is a real false positive, because its module imports the refinement
   (`InvalidatableOAuthTokenStore`) rather than the base, and resolving that needs
-  cross-module analysis a single-file AST rule does not do. It is the one FP in ten
-  findings across 42,017 files, and it is in someone else's repository,
+  cross-module analysis a single-file AST rule does not do. It is the one FP in the 32
+  findings across 42,996 files, and it is in someone else's repository,
 * **`Generic[T]` containers and mixins**, both excluded by the zero-bases requirement.
+
+Known false negatives, considered and declined — recorded here so the measurement is
+not re-derived. Dropping the name gate entirely returns 156 OSS findings against the
+shipped 2, so **154 OSS classes pass every other gate** — concrete, base-less, an
+injected typed collaborator, two or more public methods — and are held out by the name
+alone. Nearly all are correctly ignored: contexts (`ScheduleEvaluationContext`),
+definitions (`DagsterType`, `ConfigType`), `*Operations` accessors, cursors, resolvers,
+generators and routers. Three are genuine misses:
+
+* `StateProposer` (`prefect/src/prefect/runner/_state_proposer.py:23`) — six public
+  methods, an injected `PrefectClient`, no ABC. prefect's own suite constructs it as
+  `StateProposer(client=AsyncMock())` at `tests/runner/test__state_proposer.py:191`,
+  which is precisely the consequence this rule predicts,
+* `AirflowInstance`
+  (`dagster/.../dagster_airlift/core/airflow_instance.py:62`) — 20 public methods over
+  an injected `AirflowAuthBackend`,
+* `QueryContextProcessor` (`superset/superset/common/query_context_processor.py:70`).
+
+Adding **`Proposer`/`Processor`** to the name gate was measured against the full 24-repo
+corpus: 32 -> 33 findings. The single addition is `StateProposer`, a true positive; no
+first-party finding is added and no false positive appears. `QueryContextProcessor` is
+*still* not reached, because its only constructor parameter is a `QueryContext` and the
+configuration gate rejects `*Context`; `AirflowInstance` needs a fourth token as well.
+It is declined anyway, and the reason is not cost but value: 21 first-party and 60 OSS
+classes are named `*Processor`/`*Proposer`, and widening the gate over 81 classes buys
+exactly one finding, in a repository nobody here owns. The name gate is meant to encode
+this codebase's own port vocabulary — `*Service`, `*Store`, `*DAO`, `*Gateway`,
+`*Provider` — and `*Processor` is not part of it. Revisit only if a first-party repo
+starts naming ports that way.
 """
 
 from __future__ import annotations
@@ -164,7 +256,9 @@ if TYPE_CHECKING:
 
 
 # Name tails that mark a class as a service in this codebase's own vocabulary. Measured
-# against both repos: 172 non-test classes match, 88% of them already have a port.
+# across ten first-party repos: 279 public non-test classes match, 42 of them with no
+# base class — see the per-repo spread in the module docstring, which varies from 100%
+# adoption (faris, docs) to 38% (digital-bank).
 # Case-sensitive CamelCase tails, so `Restore`, `Bookstore` and `Rediscover` miss.
 # `Manager`, `Adapter`, `Builder`, `Router` and `Middleware` are deliberately absent —
 # adding them turned six FastAPI routers and two LiveKit lifecycle helpers into hits.
@@ -272,6 +366,16 @@ _INTERFACE_DECORATORS = frozenset({"abstractmethod", "abstractproperty", "overlo
 # way pyramid projects spell it.
 _IMPLEMENTS_DECORATORS = frozenset({"implementer", "implementer_only", "provider", "runtime_checkable", "register"})
 
+# Parameter types that only appear on an HTTP route handler. A class whose public
+# methods take these is the web layer, whatever it calls itself — see the module
+# docstring on `ReceiptService`.
+_HTTP_PARAM_TYPES = frozenset({"Request", "Response", "BackgroundTasks", "WebSocket", "UploadFile"})
+
+# Callables used as FastAPI/Starlette parameter markers, either inside an `Annotated[...]`
+# or as the parameter's default. `Path` and `File` are also stdlib-ish names, which is why
+# only the *call* form counts: `Annotated[str, Path()]` is a route, `path: Path` is not.
+_HTTP_PARAM_MARKERS = frozenset({"Header", "Query", "Depends", "Body", "Path", "Form", "File", "Cookie", "Security"})
+
 # Directory segments that hold programs rather than importable library code.
 _SCRIPT_DIR_NAMES = frozenset({"scripts", "bin", "tools", "migrations", "alembic", "management", "commands"})
 
@@ -281,10 +385,6 @@ _TEST_HELPER_STEM_RE = re.compile(r"(?:^|_)(?:fakes?|mocks?|stubs?|doubles?|test
 
 # One public method is a function in a trenchcoat; an ABC over it is ceremony.
 _MIN_PUBLIC_METHODS = 2
-
-# The shortest suffix that can plausibly name a port rather than be a coincidence:
-# `Store` and `Dao` are real ports, but a two-letter tail would match by accident.
-_MIN_PORT_NAME_LEN = 3
 
 _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 
@@ -335,9 +435,8 @@ class RequirePortForService(Rule):
                     f"`{node.name}` injects `{collaborator}` and exposes {_public_method_count(node)} public "
                     "methods, but has no abstract base, so every consumer has to name the concrete class and "
                     "the only way to test one is to patch or mock it. Extract the public methods onto an "
-                    f"`abc.ABC` and have `{node.name}` implement it — the convention this codebase already "
-                    "uses for `TaskStore` / `PsqlTaskStore` — so consumers depend on the port and tests can "
-                    "pass a real implementation instead of a mock."
+                    f"`abc.ABC` (or a `Protocol`) and have `{node.name}` implement it, so consumers depend on "
+                    "the port and tests can pass a real or purpose-built implementation instead of a mock."
                 ),
             )
             for node in classes
@@ -400,9 +499,68 @@ def _unsubstitutable_service(
         return None
     if _has_base(node) or _is_data_type(node) or _declares_interface(node):
         return None
-    if _public_method_count(node) < _MIN_PUBLIC_METHODS:
+    if _public_method_count(node) < _MIN_PUBLIC_METHODS or _handles_http_requests(node):
         return None
     return _injected_collaborator(node, data_names)
+
+
+def _handles_http_requests(node: ast.ClassDef) -> bool:
+    """Report whether the class's public methods are HTTP route handlers.
+
+    The name gate can exclude `*Router`, but not a router that calls itself a
+    service — summer's `ReceiptService`
+    (`sarj/applications/receipts/receipt_service.py:42`) is `ReceiptRouter`'s body,
+    and its two public methods take `Request`, `BackgroundTasks` and
+    `Annotated[..., Header()]`. A signature written in a web framework's vocabulary
+    is a transport boundary, not a port: an ABC over it substitutes nothing, because
+    the thing on the other side is the framework.
+
+    Returns:
+        True when some public method takes a request/response object or a
+        FastAPI-style parameter marker.
+
+    """
+    return any(
+        _is_http_parameter(param, default)
+        for method in _methods(node)
+        if not method.name.startswith("_")
+        for param, default in _params_with_defaults(method)
+    )
+
+
+def _params_with_defaults(
+    method: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> list[tuple[ast.arg, ast.expr | None]]:
+    """Pair every parameter of `method` with its default expression.
+
+    Returns:
+        One `(parameter, default or None)` tuple per declared parameter.
+
+    """
+    args = method.args
+    positional = [*args.posonlyargs, *args.args]
+    padding: list[ast.expr | None] = [None] * (len(positional) - len(args.defaults))
+    return [
+        *zip(positional, [*padding, *args.defaults], strict=True),
+        *zip(args.kwonlyargs, args.kw_defaults, strict=True),
+    ]
+
+
+def _is_http_parameter(param: ast.arg, default: ast.expr | None) -> bool:
+    """Report whether one parameter belongs to a web framework rather than a domain call.
+
+    Returns:
+        True for a request/response annotation, or for a marker call such as
+        `Header()` in an `Annotated[...]` or as the parameter's default.
+
+    """
+    if param.annotation is not None:
+        for inner in ast.walk(param.annotation):
+            if isinstance(inner, ast.Name | ast.Attribute) and _dotted_tail(inner) in _HTTP_PARAM_TYPES:
+                return True
+            if isinstance(inner, ast.Call) and _dotted_tail(inner.func) in _HTTP_PARAM_MARKERS:
+                return True
+    return isinstance(default, ast.Call) and _dotted_tail(default.func) in _HTTP_PARAM_MARKERS
 
 
 def _names_a_port_in_scope(name: str, bound_names: frozenset[str] | set[str]) -> bool:
@@ -416,15 +574,17 @@ def _names_a_port_in_scope(name: str, bound_names: frozenset[str] | set[str]) ->
     inheritance would be wrong on every Protocol-first codebase; this is the guard
     that keeps it honest.
 
+    The suffix has to start at a CamelCase boundary and has to be service-shaped
+    itself, or any coincidentally-imported noun would silence the rule. There is no
+    separate minimum length: `_SERVICE_NAME_RE` cannot match anything shorter than
+    `DAO`, so a length floor was a conjunct no input could ever exercise.
+
     Returns:
         True when some service-shaped name in scope is a proper suffix of `name`.
 
     """
     return any(
-        len(suffix := name[index:]) >= _MIN_PORT_NAME_LEN
-        and name[index].isupper()
-        and suffix in bound_names
-        and bool(_SERVICE_NAME_RE.search(suffix))
+        name[index].isupper() and (suffix := name[index:]) in bound_names and bool(_SERVICE_NAME_RE.search(suffix))
         for index in range(1, len(name))
     )
 

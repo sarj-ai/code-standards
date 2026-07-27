@@ -31,7 +31,12 @@ standard ships:
   (`comparison-of-constant`),
 * `assert x == x`, `assert m is m` — PLR0124 (`comparison-with-itself`). This is
   the brief's "self-comparison of a mock" shape in full; it was implemented,
-  found to be a straight duplicate, and **dropped**,
+  found to be a straight duplicate, and **dropped**. It stays dropped: the one
+  self-comparison bug in the whole estate is faris's
+  `case Error(error=error): assert error == error`
+  (`falltime/tests/services/test_validate_iban.py:34`), where the capture pattern
+  shadows the `parametrize` argument and the whole `BAD_IBANS` table therefore
+  verifies nothing — and PLR0124 was run against that file and does report it,
 * `assert "a" in ["a", "b"]` — PLR6201 (`literal-membership`) fires on it, and
   an implementation of the always-true membership check found **zero**
   occurrences across all five corpora, so it too was **dropped**.
@@ -52,18 +57,36 @@ Fires when any of these hold:
 * a local name is bound exactly once to `SomeClass(...)` and the test then
   asserts `isinstance(name, SomeClass)`.
 
-Corpus evidence — 6,155 Python files across bulbul, noura-be, django, fastapi
-and celery, containing roughly 25,500 bare `assert` statements. 28 findings:
-bulbul 17, noura-be 6, celery 5, django 0, fastapi 0. django's suite is
-`unittest`-style (70 bare asserts in 2,927 files), so zero there is arithmetic,
-not silence; fastapi's 4,828 bare asserts are almost all about an HTTP response
-the test did not construct, and zero findings on that population is the
-strongest evidence the shape is targeted. Two of the 28 are false positives
-(celery's `Bunch`, below) — a 7.1% rate on the full finding set. The
-keyword-echo shape carries 27 of the 28; `isinstance` carries 1; the constant
-shape earned **no** true positive in any corpus and is retained only because
-`assert True` is the canonical LLM coverage-theatre marker, is a genuine gap in
-ruff (which covers only `assert False`), and costs one expression test.
+**One diagnostic per test function.** A test that echoes six constructor keywords
+has one defect, not six, and every line of it is repaired by the same decision.
+Reporting each assertion put 1,347 diagnostics on 736 test functions, so 45% of
+the estate-wide finding set was a repeat line inside a test already flagged. The
+rule now reports the *first* unfalsifiable assertion in each function and stays
+quiet about the rest, which loses no test. Note that this is a weaker
+collapse than also requiring every assertion in the test to be trivial: that was
+measured and costs 11 of bulbul's 17 findings and 3 of noura-be's 6, because the
+common real shape is one honest assertion surrounded by echoes.
+
+**The advice is conditioned on SARJ043.** 402 of the 733 findings are tests in
+which *every* assertion is unfalsifiable, so acting on "drop the assertion" would
+produce a test with no assertions at all — which SARJ043 (`zero-assertion-test`)
+then rejects. Two rules in one suite must not give contradictory instructions, so
+the message detects that case and asks for the behaviour the test name claims, or
+for the test's deletion, instead of for a deletion of the line.
+
+Corpus evidence — 21 repositories: bulbul, noura-be, digital-bank, submissions,
+ai, faris, data and 14 OSS suites. 733 findings, of which the keyword echo
+carries 682, `isinstance` 10 and the constant shape 41: airflow 174, litellm
+187, superset 145, mlflow 70, prefect 69, langchain 29, dagster 27, bulbul 12,
+data 8, sentry-python 4, noura-be 3, celery 3, digital-bank 2, and zero in
+django, fastapi, saleor, zulip, warehouse, submissions, ai and faris. django's
+suite is `unittest`-style (70 bare asserts in 2,927 files), so zero there is
+arithmetic, not silence; fastapi's 4,828 bare asserts are almost all about an
+HTTP response the test did not construct, and zero findings on that population
+is the strongest evidence the shape is targeted. An external audit re-derived
+the false-positive rate over 40,336 OSS files and measured ~9%, against the
+7.1% originally claimed from five corpora — the only rule in this wave whose
+claimed rate held at scale.
 
 Deliberately NOT flagged:
 
@@ -94,7 +117,11 @@ Deliberately NOT flagged:
   (`t/unit/backends/test_cache.py:126`, and the same shape at
   `test_couchbase.py:130` and `test_redis.py:1172`). A class whose name ends in
   `Backend`, `Client`, `Service`, `Store` and the like is a thing that does work,
-  not a record that holds fields,
+  not a record that holds fields. `Receiver` joined that list on the same
+  evidence: celery's `Receiver(Mock(), accept={'app/foo'})` then
+  `assert r.accept == {'app/foo'}` (`t/unit/events/test_events.py:349`) coerces
+  through `prepare_accept_content`. Measured across all 21 corpora the suffix
+  removes exactly that one finding and no other,
 * **a field the same module proves is transformed.** bulbul's
   `GeminiLLMSettings` rewrites `model="lite"` to `"flash-lite-3.1"`; three
   functions down, `test_valid_model_unchanged` constructs it with
@@ -113,8 +140,18 @@ Deliberately NOT flagged:
 * **`assert True` as one arm of a hand-rolled branch check.** celery writes
   `if <condition>: assert True; else: assert False`
   (`t/unit/concurrency/test_prefork.py:429`) — ugly, but the pair can fail, and
-  it was the *only* `assert True` in all five corpora. A constant assertion
-  whose sibling `if` branch always fails or raises is exempt,
+  it was the *only* `assert True` in the original five corpora. A constant
+  assertion whose sibling `if` branch always fails or raises is exempt,
+* **`assert True` marking the success arm of a `match`.** The same idea in the
+  spelling this estate actually writes: faris's
+  `match PROCESSOR.process(...): case PDFProcessError(repair=..., error=...):
+  assert True; case _: raise AssertionError`
+  (`falltime/tests/services/test_pdf_processor.py:96` and `:112`). The *pattern*
+  is the assertion and `case _` is the failure, so "passes no matter what the
+  code does" is simply false — the test goes red the moment the pattern stops
+  matching. A constant assertion in a `match` arm whose sibling arm raises or
+  calls `pytest.fail` is exempt. Measured across all 21 corpora this drops the
+  constant-shape count from 43 to 41 and removes exactly those two findings,
 * **an `isinstance` assertion that narrows for a later one.** basedpyright
   strict needs `assert isinstance(x, T)` to prove the assertions after it are
   well-typed; deleting it breaks the build. Any later assertion in the same
@@ -140,11 +177,23 @@ Deliberately NOT flagged:
   `tests/`; black keeps formatter fixtures in `tests/data/cases/` whose content
   is arbitrary Python, and `scripts/test_*.py` holds manual CLI probes.
 
-Known residual false positive: celery's `Bunch(foo='foo', bar=2)` then
-`assert x.foo == 'foo'` (`t/unit/utils/test_objects.py:8`). `Bunch` is a
-kwargs-to-attributes bag, so storing keyword arguments *is* its whole behaviour
-and the tautology is the test. Two findings; no syntactic signal distinguishes
-it from the models above, and `# sarj-noqa: SARJ061` is the intended escape.
+Known residual false positives, both one finding each and both `# sarj-noqa:
+SARJ061` material:
+
+* celery's `Bunch(foo='foo', bar=2)` then `assert x.foo == 'foo'`
+  (`t/unit/utils/test_objects.py:8`). `Bunch` is a kwargs-to-attributes bag, so
+  storing keyword arguments *is* its whole behaviour and the tautology is the
+  test. No syntactic signal distinguishes it from the models above,
+* litellm's `DeleteContainerFileResponse(object="container.file.deleted")` then
+  `assert m.object == "container.file.deleted"`
+  (`tests/test_litellm/containers/test_container_utils.py:258`), whose sibling
+  test does the same with `"container_file.deleted"`. Together the two assert
+  that a pydantic model accepts both wire spellings, so the construction is the
+  assertion. The obvious guard — suppress a `(class, field)` echoed with two or
+  more *different* literals in one module — was implemented and measured: it
+  removes 149 of the 733 findings, including 3 of bulbul's 12, to buy this one
+  false positive. **Rejected**; the shape is far too common among genuine
+  echoes to trade on.
 """
 
 from __future__ import annotations
@@ -205,6 +254,7 @@ _COLLABORATOR_SUFFIXES = (
     "adapter",
     "connection",
     "transport",
+    "receiver",
 )
 
 # Calls that end a branch in failure, so a sibling `assert True` is a marker for
@@ -216,19 +266,31 @@ _FAILING_CALL_NAMES = frozenset({"fail", "exit"})
 # comparison is ruff's F632 and stays that rule's problem.
 _ECHO_OPS = (ast.Eq, ast.Is)
 
-_CONSTANT_MESSAGE = (
+_CONSTANT_DIAGNOSIS = (
     "this assertion's condition is a constant, so it passes no matter what the code under test does — "
-    "it adds a covered line and nothing else. Assert on a value the code produced, or delete the test"
+    "it adds a covered line and nothing else"
 )
 
-_KWARG_MESSAGE = (
+_KWARG_DIAGNOSIS = (
     "this reads back the literal the test just handed the constructor, so it can only fail if attribute "
-    "assignment stops working. Assert on something the constructor derived, or drop the assertion"
+    "assignment stops working"
 )
 
-_ISINSTANCE_MESSAGE = (
+_ISINSTANCE_DIAGNOSIS = (
     "the value was produced by calling this very class a line above, so the `isinstance` check pins the "
-    "language rather than the code. Assert on the object's state instead, or drop the assertion"
+    "language rather than the code"
+)
+
+# The advice when the test still has an assertion that can fail.
+_ADVICE = ". Assert on something the code under test derived, or drop the assertion"
+
+# The advice when it does not. Telling the author to drop the assertion would
+# hand them a test SARJ043 (`zero-assertion-test`) immediately rejects, so the two
+# rules have to agree: the repair is to assert the behaviour, or delete the test.
+_ONLY_ASSERTION_ADVICE = (
+    ". Every assertion this test makes is like it, so dropping them would leave a test that verifies "
+    "nothing, which SARJ043 (`zero-assertion-test`) rejects in turn. Assert the behaviour the test name "
+    "claims to cover, or delete the test"
 )
 
 
@@ -259,6 +321,7 @@ class _Index:
     parents: dict[int, ast.AST]
     asserts: list[ast.Assert]
     scopes: list[_Scope]
+    owners: dict[int, _Scope]
 
 
 class TriviallyTrueAssertion(Rule):
@@ -273,7 +336,8 @@ class TriviallyTrueAssertion(Rule):
         """Flag assertions whose truth is settled by the test source itself.
 
         Returns:
-            One diagnostic per unfalsifiable assertion, sorted by position.
+            One diagnostic per test function that contains such an assertion,
+            reported at the first of them and sorted by position.
 
         """
         if not is_test_path(path) or not _is_collected_module(path):
@@ -286,16 +350,57 @@ class TriviallyTrueAssertion(Rule):
         findings: dict[int, tuple[ast.Assert, str]] = {}
         for node in index.asserts:
             if _is_always_true_constant(node.test) and not _is_branch_marker(node, index.parents):
-                findings[id(node)] = (node, _CONSTANT_MESSAGE)
-        for node, message in _construction_findings(index):
-            _ = findings.setdefault(id(node), (node, message))
+                findings[id(node)] = (node, _CONSTANT_DIAGNOSIS)
+        for node, diagnosis in _construction_findings(index):
+            _ = findings.setdefault(id(node), (node, diagnosis))
 
         diags = [
-            Diagnostic(path=path, line=node.lineno, col=node.col_offset + 1, code=self.code, message=message)
-            for node, message in findings.values()
+            Diagnostic(
+                path=path,
+                line=node.lineno,
+                col=node.col_offset + 1,
+                code=self.code,
+                message=diagnosis + _advice(index.owners.get(id(node)), findings),
+            )
+            for node, diagnosis in _one_per_test(index, findings)
         ]
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
+
+
+def _one_per_test(index: _Index, findings: dict[int, tuple[ast.Assert, str]]) -> list[tuple[ast.Assert, str]]:
+    """Keep the earliest finding in each test function and discard the rest.
+
+    A test that echoes six constructor keywords has one defect, not six, and the
+    repair is the same line of thinking for all of them. Reporting each of them
+    made 45% of the estate-wide finding set repeat lines inside a test that was
+    already flagged.
+
+    Returns:
+        One assertion-and-diagnosis pair per enclosing function, plus every
+        finding that sits outside a function at all.
+
+    """
+    anchors: dict[int, tuple[ast.Assert, str]] = {}
+    for node, diagnosis in findings.values():
+        scope = index.owners.get(id(node))
+        key = id(node) if scope is None else id(scope)
+        earlier = anchors.get(key)
+        if earlier is None or (node.lineno, node.col_offset) < (earlier[0].lineno, earlier[0].col_offset):
+            anchors[key] = (node, diagnosis)
+    return list(anchors.values())
+
+
+def _advice(scope: _Scope | None, findings: dict[int, tuple[ast.Assert, str]]) -> str:
+    """Choose the repair to recommend, which SARJ043 constrains.
+
+    Returns:
+        The advice clause to append to the diagnosis.
+
+    """
+    if scope is None or any(id(node) not in findings for node in scope.asserts):
+        return _ADVICE
+    return _ONLY_ASSERTION_ADVICE
 
 
 def _is_collected_module(path: Path) -> bool:
@@ -322,6 +427,7 @@ def _index_module(tree: ast.Module) -> _Index:
     parents: dict[int, ast.AST] = {}
     asserts: list[ast.Assert] = []
     scopes: list[_Scope] = []
+    owners: dict[int, _Scope] = {}
     stack: list[tuple[ast.AST, _Scope | None]] = [(tree, None)]
     while stack:
         node, scope = stack.pop()
@@ -332,12 +438,13 @@ def _index_module(tree: ast.Module) -> _Index:
             asserts.append(node)
             if scope is not None:
                 scope.asserts.append(node)
+                owners[id(node)] = scope
         elif scope is not None:
             _record_local(node, scope)
         for child in ast.iter_child_nodes(node):
             parents[id(child)] = node
             stack.append((child, scope))
-    return _Index(parents=parents, asserts=asserts, scopes=scopes)
+    return _Index(parents=parents, asserts=asserts, scopes=scopes, owners=owners)
 
 
 def _record_local(node: ast.AST, scope: _Scope) -> None:
@@ -384,22 +491,37 @@ def _is_branch_marker(node: ast.Assert, parents: dict[int, ast.AST]) -> bool:
     """Report whether the constant assertion is one arm of a hand-rolled check.
 
     `if ok: assert True` / `else: assert False` is a clumsy but genuine
-    verification: taken together the two arms can fail.
+    verification: taken together the two arms can fail. So is the `match` form,
+    where the pattern is the assertion and `case _: raise AssertionError` is the
+    failure — reaching `assert True` at all is the thing being checked.
 
     Returns:
-        True when a sibling branch of an enclosing `if` always fails.
+        True when a sibling branch of an enclosing `if` or `match` always fails.
 
     """
     current: ast.AST = node
     parent = parents.get(id(current))
     while parent is not None:
-        if isinstance(parent, ast.If):
-            siblings = parent.orelse if any(stmt is current for stmt in parent.body) else parent.body
-            if any(_always_fails(stmt) for stmt in siblings):
-                return True
+        if any(_always_fails(stmt) for stmt in _alternative_branch(parent, current)):
+            return True
         current = parent
         parent = parents.get(id(current))
     return False
+
+
+def _alternative_branch(parent: ast.AST, current: ast.AST) -> list[ast.stmt]:
+    """List the statements of the branches this one is an alternative to.
+
+    Returns:
+        The other arm of an `if`, or every other arm of a `match`; empty for any
+        other parent.
+
+    """
+    if isinstance(parent, ast.If):
+        return parent.orelse if any(stmt is current for stmt in parent.body) else parent.body
+    if isinstance(parent, ast.Match) and isinstance(current, ast.match_case):
+        return [stmt for case in parent.cases if case is not current for stmt in case.body]
+    return []
 
 
 def _always_fails(stmt: ast.stmt) -> bool:
@@ -447,10 +569,10 @@ def _construction_findings(index: _Index) -> list[tuple[ast.Assert, str]]:
             if echo is not None:
                 echoes.append(echo)
             elif _is_isinstance_echo(node, constructed, scope.asserts):
-                hits.append((node, _ISINSTANCE_MESSAGE))
+                hits.append((node, _ISINSTANCE_DIAGNOSIS))
 
     coercing = {echo.field for echo in echoes if not echo.echoes}
-    hits.extend((echo.node, _KWARG_MESSAGE) for echo in echoes if echo.echoes and echo.field not in coercing)
+    hits.extend((echo.node, _KWARG_DIAGNOSIS) for echo in echoes if echo.echoes and echo.field not in coercing)
     return hits
 
 

@@ -22,7 +22,9 @@ asserts` is computed bottom-up:
   `pytest.fail`) or a call to a same-module helper that itself asserts,
 * `with pytest.raises(...)` / `with self.assertRaisesMessage(...)`,
 * an `if` only when it has an `else`/`elif` chain in which **every** branch
-  either asserts or bails out (`return`, `raise`, `pytest.skip(...)`),
+  either asserts or bails out (`return`, `raise`, `pytest.skip(...)`), or when
+  its single arm fails the test outright — `if failures: pytest.fail(...)` is
+  `assert not failures` spelled long-hand,
 * a `for`/`while` **never**, unless the iterable is proven non-empty (below) or
   a `for ... else:` clause asserts,
 * a `try` when any limb asserts, and a `match` only with a `case _`.
@@ -54,8 +56,25 @@ does pass vacuously if `group` drops its children, which is the very thing the
 test claims to check — but few teams would act on them. The bulbul and
 noura-be findings are all worth reading.
 
+A later sweep over 19 corpora (the five above plus airflow, dagster, litellm,
+saleor, mlflow, langchain, superset, zulip, prefect, warehouse, sentry-python
+and three more first-party repos) reported 751, and the failure-aggregator
+guard below took that to 669. All 82 removals were the same shape and none of
+them was first-party: bulbul 6, noura-be 6, django 5, celery 11 and fastapi 1
+are unchanged by it.
+
 Deliberately NOT flagged:
 
+* **a failure aggregator.** `failures = []`, a loop that appends, then `if
+  failures: pytest.fail("; ".join(failures))` *is* `assert not failures` — the
+  arm that is not taken is the passing outcome, so nothing about the check is
+  conditional. Any one-armed `if` whose body always raises, asserts a falsy
+  literal, or calls `fail` reads this way, as does an `if X: ... elif not X:
+  ...` chain, which leaves no third case. 82 hits: 68 in litellm's
+  `tests/e2e/claude_code/**` model harness, the rest in airflow
+  (`always/test_project_structure.py:360`), dagster, mlflow
+  (`tests/sagemaker/test_sagemaker_deployment_client.py:373`), langchain and
+  sentry-python (`integrations/threading/test_threading.py:224`, the `elif`),
 * **a loop whose collection was sized first.** `assert len(rows) == 3` (or
   `assert rows`, `assert len(rows) > 0`, `self.assertEqual(len(rows), 2)`,
   `assertTrue(rows)`, `assertIn(x, rows)`, `if not rows: pytest.skip(...)`)
@@ -68,8 +87,10 @@ Deliberately NOT flagged:
   dict, `range(6)`, `range(len(rows))`, `range(n + 1)`, a comprehension with no
   `if` over a non-empty iterable, `zip(...)` where either leg is non-empty,
   `dict.fromkeys(whitelist, 0).items()`, `"a,b".split(",")` — resolved through
-  local, module-level and default-argument bindings. celery writes its fixtures
-  as defaults (`def test_merge(self, p, data=["foo", "bar", "baz"])`,
+  local, module-level and default-argument bindings. A name is followed to its
+  binding at most once per path, which is what makes `a = b` beside `b = a`
+  terminate rather than chase itself. celery writes its fixtures as defaults
+  (`def test_merge(self, p, data=["foo", "bar", "baz"])`,
   `t/unit/worker/test_state.py:119`),
 * **a loop over a `@pytest.mark.parametrize` column whose every row is a
   non-empty literal.** `parametrize("present", [["a"], ["b", "c"]])` then
@@ -98,10 +119,17 @@ Deliberately NOT flagged:
   `test_functions.py:827`, `servers/test_basehttp.py:29`,
   `validation/test_unique.py:51` and bulbul's
   `test_batch_call_service.py:302`, all false positives,
-* **an early-exit guard.** `if not has_gpu: pytest.skip(...)` followed by
-  assertions is the fallthrough asserting, not a missed assertion; `return`,
-  `raise`, `continue`, `break`, `pytest.xfail(...)`, `self.skipTest(...)` and
-  `pytest.importorskip(...)` read the same way,
+* **a branch that bails out.** In `if cond: pytest.skip(...) else: assert ...`
+  the skipping arm owes no assertion — the arm that falls through is the one
+  that has to check. `return`, `raise`, `continue`, `break`, `pytest.xfail(...)`,
+  `pytest.exit(...)`, `self.skipTest(...)` and `pytest.importorskip(...)` all
+  count as bailing out. Note where this stops, because the shape reads as if it
+  did more: a bail-out on an *emptiness* test is also read as sizing the
+  collection (`if not rows: pytest.skip(...)` clears a following `for row in
+  rows:`), but a bail-out on anything else proves nothing about a later loop,
+  so `if not has_gpu: pytest.skip(...)` above `for row in fetch(): assert row`
+  still fires — the skip says the machine has a GPU, not that `fetch()`
+  returned anything,
 * **a `try` whose check sits in any limb.** An explicit `try` in a test is
   `assertRaises` written long-hand, reached for when `assertRaises` cannot
   express the check: django's `forms_tests/field_tests/test_datefield.py:212`
@@ -132,6 +160,24 @@ Deliberately NOT flagged:
   `@test_mutation()` wraps the body in an `assertRaisesMessage`, and reading
   the decorator as part of the body invented five findings in
   `tests/gis_tests/test_gis_tests_utils.py`.
+
+Measured and rejected, so that the next auditor does not re-raise them:
+
+* **exempting a loop over a name bound to a pytest fixture.** Hit density runs
+  from django's 0.3 per 1,000 tests to sentry-python's 11.9, and the cause is
+  structural: every fixed-table exemption above is keyed to unittest shapes
+  (`self.`/`cls.` roots, CapWords, parameter defaults), and django is 100%
+  class-method tests, celery 96%. A pytest-fixture suite that loops over a
+  lowercase fixture parameter gets no exemption at all. Reading a test's own
+  parameters as non-empty removes 93 of the 669 hits — but three of them are
+  half of noura-be's findings, including
+  `common/tests/test_function_calls_v3.py:35`, where three consecutive tests
+  loop over a `tools` fixture and all three go green if the tool registry ever
+  regresses to empty. That is precisely the failure this rule exists to catch,
+  so the exemption costs more than it saves,
+* **exempting every test that opens with an early-exit guard**, the literal
+  reading of the bail-out bullet above. It removes 3 hits in 19 corpora, and
+  would suppress the whole class by construction for that. Not worth it.
 """
 
 from __future__ import annotations
@@ -167,6 +213,10 @@ _VERIFY_NAMES = frozenset({"raises", "warns", "fail", "deprecated_call"})
 # Calls that abandon the test rather than fail it. A branch that ends in one of
 # these is an early-exit guard, not a missing assertion.
 _EXIT_NAMES = frozenset({"skip", "xfail", "exit", "skipTest", "importorskip"})
+
+# Calls that end the test in failure: `pytest.fail(...)`, `self.fail(...)`. A
+# one-armed `if` whose body reaches one is the assertion, spelled long-hand.
+_FAIL_NAMES = frozenset({"fail"})
 
 # Fluent verification DSLs reached through an attribute rather than a call name.
 _FLUENT_ATTRS = frozenset({"expect"})
@@ -241,9 +291,6 @@ _ALWAYS_NONEMPTY_METHODS = frozenset({"split", "rsplit", "splitlines"})
 # `itertools.product(alphabet, repeat=n)`, `rows.copy()`.
 _PASSTHROUGH_METHODS = frozenset({"fromkeys", "product", "copy", "gather"})
 
-# How far to chase `rows = build()` style bindings before giving up.
-_MAX_RESOLVE_DEPTH = 14
-
 # pytest's default `python_files`. `is_test_path` is broader on purpose.
 _COLLECTED_SUFFIX = "_test.py"
 
@@ -274,7 +321,8 @@ class ConditionalAssertionInTest(Rule):
         """Flag tests where no execution path is guaranteed to reach an assertion.
 
         Returns:
-            One diagnostic per test whose assertions are all conditional, sorted by position.
+            One diagnostic per test whose assertions are all conditional, in
+            source order — `_collectible_tests` is what sorts them.
 
         """
         if not is_test_path(path) or not _is_collected_module(path):
@@ -283,7 +331,7 @@ class ConditionalAssertionInTest(Rule):
         if tree is None:
             return []
 
-        diags = [
+        return [
             Diagnostic(
                 path=path,
                 line=node.lineno,
@@ -298,8 +346,6 @@ class ConditionalAssertionInTest(Rule):
             )
             for node in _conditionally_asserting_tests(tree)
         ]
-        diags.sort(key=lambda d: (d.line, d.col))
-        return diags
 
 
 def _is_collected_module(path: Path) -> bool:
@@ -430,19 +476,105 @@ def _stmt_guarantees(stmt: ast.stmt, facts: _Facts) -> bool:
 
 def _if_guarantees(stmt: ast.If, facts: _Facts) -> bool:
     if not stmt.orelse:
+        # `if failures: pytest.fail(...)` *is* `assert not failures`: the arm
+        # that is not taken is the passing outcome, and the arm that is taken
+        # fails the test. There is nothing conditional about the check.
+        if _always_fails(stmt.body):
+            return True
         return _is_capability_probe(stmt.test) and _guaranteed(stmt.body, facts)
-    taken, other = stmt.body, stmt.orelse
+    if _arms_guarantee(stmt.body, stmt.orelse, facts):
+        return True
+    complementary = _complementary_branch(stmt)
+    return complementary is not None and _arms_guarantee(stmt.body, complementary, facts)
+
+
+def _arms_guarantee(taken: Sequence[ast.stmt], other: Sequence[ast.stmt], facts: _Facts) -> bool:
     if not (_branch_ok(taken, facts) and _branch_ok(other, facts)):
         return False
     # Two branches that both bail out assert nothing between them.
     return _guaranteed(taken, facts) or _guaranteed(other, facts)
 
 
+def _always_fails(body: Sequence[ast.stmt]) -> bool:
+    """Report whether reaching this block always ends the test in failure.
+
+    Returns:
+        True when some statement in the block unconditionally raises, asserts a
+        falsy literal, or calls `fail`.
+
+    """
+    return any(_stmt_always_fails(stmt) for stmt in body)
+
+
+def _stmt_always_fails(stmt: ast.stmt) -> bool:
+    if isinstance(stmt, ast.Raise):
+        return True
+    if isinstance(stmt, ast.Assert):
+        return _is_falsy_literal(stmt.test)
+    if isinstance(stmt, ast.If):
+        return _always_fails(stmt.body) and bool(stmt.orelse) and _always_fails(stmt.orelse)
+    if isinstance(stmt, _WITH_NODES):
+        return _always_fails(stmt.body)
+    return isinstance(stmt, ast.Expr) and _is_failure_call(stmt.value)
+
+
+def _is_falsy_literal(test: ast.expr) -> bool:
+    # `assert False` / `assert 0, "unreachable"` — a verdict, not a check.
+    return isinstance(test, ast.Constant) and not test.value
+
+
+def _is_failure_call(value: ast.expr) -> bool:
+    # `pytest.fail(...)`, `self.fail(...)`, a bare `fail(...)` after `from
+    # pytest import fail`. Unlike `skip`/`xfail`, these are verdicts, not exits.
+    if not isinstance(value, ast.Call):
+        return False
+    func = value.func
+    if isinstance(func, ast.Attribute):
+        return func.attr in _FAIL_NAMES
+    return isinstance(func, ast.Name) and func.id in _FAIL_NAMES
+
+
+def _complementary_branch(stmt: ast.If) -> list[ast.stmt] | None:
+    """Read an `if X: ... elif not X: ...` chain as the `if`/`else` it is.
+
+    An `elif` whose test is implied by the negation of the `if`'s test leaves
+    no third case — sentry-python writes `if propagate_scope or ...: elif not
+    propagate_scope:` (`tests/integrations/threading/test_threading.py:224`).
+
+    Returns:
+        The `elif` body when it completes the chain, otherwise None.
+
+    """
+    if len(stmt.orelse) != 1:
+        return None
+    inner = stmt.orelse[0]
+    if not isinstance(inner, ast.If) or inner.orelse:
+        return None
+    return inner.body if _completes(stmt.test, inner.test) else None
+
+
+def _completes(first: ast.expr, second: ast.expr) -> bool:
+    # Reaching the `elif` means every disjunct of the `if` was false, so a
+    # `not X` (or an `X` opposite a `not X`) among them makes the chain total.
+    values = first.values if isinstance(first, ast.BoolOp) and isinstance(first.op, ast.Or) else [first]
+    return any(_is_negation_pair(value, second) for value in values)
+
+
+def _is_negation_pair(one: ast.expr, other: ast.expr) -> bool:
+    return _negated_source(one) == _unparse(other) or _negated_source(other) == _unparse(one)
+
+
+def _negated_source(expr: ast.expr) -> str | None:
+    if isinstance(expr, ast.UnaryOp) and isinstance(expr.op, ast.Not):
+        return _unparse(expr.operand)
+    return None
+
+
 def _loop_guarantees(stmt: ast.For | ast.AsyncFor, facts: _Facts) -> bool:
     # A `for ... else:` clause runs whenever the loop was not broken out of.
     if _guaranteed(stmt.orelse, facts):
         return True
-    if not _iterable_is_nonempty(stmt.iter, facts, 0):
+    if not _iterable_is_nonempty(stmt.iter, facts, frozenset()):
         return False
     # Inside a loop that is proven to run, anything reached *through* the loop
     # variable is part of the item's own structure — `for c in countries: for
@@ -696,7 +828,7 @@ def _accumulators_filled(node: ast.FunctionDef | ast.AsyncFunctionDef, facts: _F
     """
     filled: set[str] = set()
     for child in ast.walk(node):
-        if not isinstance(child, _LOOP_NODES) or not _iterable_is_nonempty(child.iter, facts, 0):
+        if not isinstance(child, _LOOP_NODES) or not _iterable_is_nonempty(child.iter, facts, frozenset()):
             continue
         for inner in ast.walk(child):
             if not (isinstance(inner, ast.Call) and isinstance(inner.func, ast.Attribute)):
@@ -972,18 +1104,21 @@ def _emptiness_check_proves(left: ast.expr, op: ast.cmpop, right: ast.expr) -> s
     return proven
 
 
-def _iterable_is_nonempty(expr: ast.expr, facts: _Facts, depth: int) -> bool:
+def _iterable_is_nonempty(expr: ast.expr, facts: _Facts, seen: frozenset[str]) -> bool:
     """Report whether iterating `expr` is guaranteed to run the loop body once.
+
+    `seen` holds the names already followed to their bindings on this path.
+    Every other step of the walk moves to a strictly smaller sub-expression, so
+    refusing to resolve a name twice is what makes the walk terminate — `a = b`
+    beside `b = a` would otherwise chase itself forever.
 
     Returns:
         True when the iterable is a non-empty literal, a proven-non-empty name,
         or a wrapper around one.
 
     """
-    if depth > _MAX_RESOLVE_DEPTH:
-        return False
     if isinstance(expr, (ast.Starred, ast.Await)):
-        return _iterable_is_nonempty(expr.value, facts, depth + 1)
+        return _iterable_is_nonempty(expr.value, facts, seen)
     source = _unparse(expr)
     if source in facts.nonempty or (isinstance(expr, ast.Name) and expr.id in facts.roots):
         return True
@@ -998,19 +1133,19 @@ def _iterable_is_nonempty(expr: ast.expr, facts: _Facts, depth: int) -> bool:
             len(generators) == 1
             and first is not None
             and not first.ifs
-            and _iterable_is_nonempty(first.iter, facts, depth + 1)
+            and _iterable_is_nonempty(first.iter, facts, seen)
         )
     if isinstance(expr, ast.BinOp):
-        return _binop_is_nonempty(expr, facts, depth)
+        return _binop_is_nonempty(expr, facts, seen)
     if isinstance(expr, ast.Call):
-        return _call_is_nonempty(expr, facts, depth) or _is_static_table(expr, facts, depth)
+        return _call_is_nonempty(expr, facts, seen) or _is_static_table(expr, facts, seen)
     bound = facts.bindings.get(source)
-    if bound is not None and bound is not expr:
-        return _iterable_is_nonempty(bound, facts, depth + 1)
-    return _is_static_table(expr, facts, depth)
+    if bound is not None and bound is not expr and source not in seen:
+        return _iterable_is_nonempty(bound, facts, seen | {source})
+    return _is_static_table(expr, facts, seen)
 
 
-def _is_static_table(expr: ast.expr, facts: _Facts, depth: int) -> bool:
+def _is_static_table(expr: ast.expr, facts: _Facts, seen: frozenset[str]) -> bool:
     """Report whether the iterable names a fixed table rather than a computed result.
 
     Three shapes read as "declared once, somewhere else":
@@ -1052,17 +1187,17 @@ def _is_static_table(expr: ast.expr, facts: _Facts, depth: int) -> bool:
     # `validator = CommonPasswordValidator()` then `for p in validator.passwords:`
     # — the receiver has to be resolved before the chain reads as static.
     bound = facts.bindings.get(node.id)
-    if bound is None or bound is expr or depth >= _MAX_RESOLVE_DEPTH:
+    if bound is None or bound is expr or node.id in seen:
         return False
-    return _is_static_table(bound, facts, depth + 1)
+    return _is_static_table(bound, facts, seen | {node.id})
 
 
-def _binop_is_nonempty(expr: ast.BinOp, facts: _Facts, depth: int) -> bool:
+def _binop_is_nonempty(expr: ast.BinOp, facts: _Facts, seen: frozenset[str]) -> bool:
     if isinstance(expr.op, ast.Add):
-        return _iterable_is_nonempty(expr.left, facts, depth + 1) or _iterable_is_nonempty(expr.right, facts, depth + 1)
+        return _iterable_is_nonempty(expr.left, facts, seen) or _iterable_is_nonempty(expr.right, facts, seen)
     if isinstance(expr.op, ast.Mult):
         for seq, count in ((expr.left, expr.right), (expr.right, expr.left)):
-            if _is_positive_int(count) and _iterable_is_nonempty(seq, facts, depth + 1):
+            if _is_positive_int(count) and _iterable_is_nonempty(seq, facts, seen):
                 return True
     return False
 
@@ -1076,41 +1211,43 @@ def _is_positive_int(expr: ast.expr) -> bool:
     )
 
 
-def _call_is_nonempty(expr: ast.Call, facts: _Facts, depth: int) -> bool:
+def _call_is_nonempty(expr: ast.Call, facts: _Facts, seen: frozenset[str]) -> bool:
     func = expr.func
     if isinstance(func, ast.Name):
         if func.id == "range":
-            return _range_is_nonempty(expr, facts, depth)
+            return _range_is_nonempty(expr, facts, seen)
         if func.id in _PASSTHROUGH_CALLS and expr.args:
-            return _iterable_is_nonempty(expr.args[0], facts, depth + 1)
+            return _iterable_is_nonempty(expr.args[0], facts, seen)
         if func.id == "zip":
             # `zip` truncates to its shortest leg, so this is an assumption, not
             # a proof — but a test that zips two sequences together is asserting
             # they line up, and every corpus instance paired equal-length views
             # of one fixture (`zip(ref_geoms, ref_merged)`, `zip(t(), range(3))`).
-            return any(_iterable_is_nonempty(arg, facts, depth + 1) for arg in expr.args)
+            return any(_iterable_is_nonempty(arg, facts, seen) for arg in expr.args)
         return False
     if not isinstance(func, ast.Attribute):
         return False
     if func.attr in _ALWAYS_NONEMPTY_METHODS:
         return True
     if func.attr in _VIEW_METHODS and not expr.args:
-        return _iterable_is_nonempty(func.value, facts, depth + 1)
+        return _iterable_is_nonempty(func.value, facts, seen)
     if func.attr in _PASSTHROUGH_METHODS and expr.args:
-        return _iterable_is_nonempty(expr.args[0], facts, depth + 1)
+        return _iterable_is_nonempty(expr.args[0], facts, seen)
     if func.attr in _PASSTHROUGH_METHODS:
-        return _iterable_is_nonempty(func.value, facts, depth + 1)
+        return _iterable_is_nonempty(func.value, facts, seen)
     return False
 
 
-def _range_is_nonempty(expr: ast.Call, facts: _Facts, depth: int) -> bool:
+def _range_is_nonempty(expr: ast.Call, facts: _Facts, seen: frozenset[str]) -> bool:
+    # `range(stop=3)` is legal to write but `range` takes no keywords, so a
+    # keyword here means the name is not the builtin.
     if expr.keywords:
         return False
     # `for i in range(len(rows))` is `for row in rows` with an index.
     only = expr.args[0] if len(expr.args) == 1 else None
     sized = _len_argument(only) if only is not None else None
     if sized is not None:
-        return _iterable_is_nonempty(sized, facts, depth + 1)
+        return _iterable_is_nonempty(sized, facts, seen)
     # `range(pickle.HIGHEST_PROTOCOL + 1)` — a count plus a positive offset is
     # empty only for a negative count, which no test means by it.
     if isinstance(only, ast.BinOp) and isinstance(only.op, ast.Add):
@@ -1120,9 +1257,9 @@ def _range_is_nonempty(expr: ast.Call, facts: _Facts, depth: int) -> bool:
         if not (isinstance(arg, ast.Constant) and isinstance(arg.value, int) and not isinstance(arg.value, bool)):
             return False
         bounds.append(arg.value)
-    if not 1 <= len(bounds) <= 3:  # ruff:ignore[magic-value-comparison] — range() takes one to three arguments
-        return False
     try:
         return len(range(*bounds)) > 0
-    except ValueError:
+    except ValueError, TypeError:
+        # `range(1, 10, 0)` is a zero step; no arguments at all, or four of
+        # them, means the name is not the builtin. Neither proves anything.
         return False

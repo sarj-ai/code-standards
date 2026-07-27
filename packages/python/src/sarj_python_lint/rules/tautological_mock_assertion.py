@@ -45,10 +45,22 @@ without them would be wrong roughly four times in five.
 
 Deliberately NOT flagged:
 
-* **an assertion that reaches into the result.** `assert result.name == X` or
+* **an assertion that reaches into the result**, whether it does so inline or
+  through a local. `assert result.name == X` or
   `assert response.json()["data"]["url"] == X` asserts *where the value ended
   up*, which is behaviour the stub does not decide — the code could have put it
-  in the wrong field, dropped it, or transformed it. 16 of the 44 structural
+  in the wrong field, dropped it, or transformed it. The same is true written
+  across two statements, so a local bound exactly once to an attribute or
+  subscript expression is resolved back to it before the exemption is applied
+  (`data = content["data"]["shop"][...]` / `assert data == external_auths`).
+  A name the function binds more than once is left alone: the alias is then
+  ambiguous and the rule does not guess. Measured over 19 repositories this
+  costs one finding — saleor's
+  `saleor/graphql/shop/tests/queries/test_shop.py:515`, a full GraphQL round
+  trip through `user_api_client.post_graphql` whose parametrized
+  `external_auths` list is stubbed onto `PluginsManager` and then compared
+  against the serialized envelope — and it is a false positive; total 138 -> 137,
+  with bulbul unchanged at 2 and noura-be at 0. 16 of the 44 structural
   matches are this shape and every one was a real assertion, including
   `bulbul/python/agent/tests/test_ivr_navigation.py:163`
   (`assert tool._last_send_time == post_send_sentinel` after patching
@@ -94,6 +106,19 @@ Deliberately NOT flagged:
 * a `test_*` nested inside another function, a non-collected module, and
   anything under `scripts/` — pytest runs none of them.
 
+**Known limit: precedence claims.** A test that stubs two collaborators and
+asserts the result equals *one* of them is asserting which source wins, not
+echoing a stub — mlflow's
+`tests/tracking/_model_registry/test_utils.py:172`
+(`test_registry_uri_from_spark_session_overrides_databricks_default`) stubs both
+`get_tracking_uri` and `_get_registry_uri_from_spark_session` and asserts the
+Spark URI is the one that comes back. The rule reports it. No narrow predicate
+separates it from a genuine echo: "two or more stubbed values exempts" was
+measured over the 137 surviving findings and would silence 33 of them (24%),
+most of which stub the same value twice or stub an unrelated collaborator, so
+the cure is far worse than the disease. The shape is left firing and recorded
+here.
+
 Note that this standard's own ruff config bans `unittest.mock` outright, so the
 `return_value` spelling is rare in the audited first-party code by construction;
 the `monkeypatch.setattr(..., lambda: X)` spelling is the one it will meet most
@@ -103,6 +128,7 @@ often, and it is treated identically.
 from __future__ import annotations
 
 import ast
+from collections import Counter
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
@@ -244,11 +270,17 @@ def _tautology_in(func: ast.FunctionDef | ast.AsyncFunctionDef) -> ast.Assert | 
     asserts: list[ast.Assert] = []
     provided: dict[str, ast.expr] = {}
     receivers: set[int] = set()
+    assigned: dict[str, ast.expr] = {}
+    bindings: Counter[str] = Counter()
     for node in ast.walk(func):
         if isinstance(node, ast.Assert):
             asserts.append(node)
         elif isinstance(node, ast.Assign):
             _record_attribute_stub(node, provided)
+            _record_alias(node, assigned)
+        elif isinstance(node, ast.Name):
+            if isinstance(node.ctx, ast.Store):
+                bindings[node.id] += 1
         elif isinstance(node, ast.Attribute | ast.Subscript):
             receivers.add(id(node.value))
         elif isinstance(node, ast.Call):
@@ -258,14 +290,27 @@ def _tautology_in(func: ast.FunctionDef | ast.AsyncFunctionDef) -> ast.Assert | 
     if not asserts:
         return None
 
+    aliases = {name: value for name, value in assigned.items() if bindings[name] == 1}
     signatures = {_signature(value) for value in provided.values()}
     matched: list[ast.Assert] = []
     for node in asserts:
-        target = _echoed_operand(node, provided, signatures)
+        target = _echoed_operand(node, provided, signatures, aliases)
         if target is None or not _appears_only_at_the_stub(func, target, receivers):
             return None
         matched.append(node)
     return matched[0]
+
+
+def _record_alias(node: ast.Assign, assigned: dict[str, ast.expr]) -> None:
+    """Note that `x = <expr>` binds a local to an expression.
+
+    Only plain-name targets are recorded — a tuple unpack binds a piece of the
+    value, not the value. The caller then discards every name the function binds
+    more than once, so what survives is an unambiguous alias.
+    """
+    for target in node.targets:
+        if isinstance(target, ast.Name):
+            assigned[target.id] = node.value
 
 
 def _record_attribute_stub(node: ast.Assign, provided: dict[str, ast.expr]) -> None:
@@ -329,7 +374,12 @@ def _is_trivial(value: ast.expr) -> bool:
     return False
 
 
-def _echoed_operand(node: ast.Assert, provided: dict[str, ast.expr], signatures: set[str]) -> ast.expr | None:
+def _echoed_operand(
+    node: ast.Assert,
+    provided: dict[str, ast.expr],
+    signatures: set[str],
+    aliases: dict[str, ast.expr],
+) -> ast.expr | None:
     """Find the operand of `node` that the test itself stubbed.
 
     Returns:
@@ -345,9 +395,34 @@ def _echoed_operand(node: ast.Assert, provided: dict[str, ast.expr], signatures:
     for value, other in ((right, left), (left, right)):
         if not _is_stubbed(value, provided, signatures):
             continue
-        if isinstance(other, _WHOLE_RESULT_NODES) and not _is_stubbed(other, provided, signatures):
+        if not isinstance(other, _WHOLE_RESULT_NODES) or _reaches_into_the_result(other, aliases):
+            continue
+        if not _is_stubbed(other, provided, signatures):
             return value
     return None
+
+
+def _reaches_into_the_result(node: ast.expr, aliases: dict[str, ast.expr]) -> bool:
+    """Report whether `node` is a local bound to a piece of something bigger.
+
+    `data = content["data"]["shop"]["availableExternalAuthentications"]` followed by
+    `assert data == external_auths` is the subscript exemption written across two
+    statements — the assertion still says *where the value ended up*, which is
+    behaviour the stub does not decide. Resolving the alias is what lets the
+    exemption see it (saleor
+    `saleor/graphql/shop/tests/queries/test_shop.py:515`, a full GraphQL round
+    trip through `user_api_client.post_graphql`).
+
+    Returns:
+        True when following single-assignment aliases lands on an attribute or
+        subscript read.
+
+    """
+    seen: set[str] = set()
+    while isinstance(node, ast.Name) and node.id in aliases and node.id not in seen:
+        seen.add(node.id)
+        node = aliases[node.id]
+    return isinstance(node, ast.Attribute | ast.Subscript)
 
 
 def _is_stubbed(node: ast.expr, provided: dict[str, ast.expr], signatures: set[str]) -> bool:

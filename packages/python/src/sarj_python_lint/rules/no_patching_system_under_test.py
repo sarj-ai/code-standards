@@ -20,11 +20,14 @@ can prove from one file.** Both are deliberately narrow.
 
 Shape 1 — a sibling of the symbol under test:
 
-* the test does `from <mod> import <names>` and calls one of `<names>`, so `<mod>`
-  is demonstrably the module under test, and
-* it patches `"<mod>.<attr>"` where `<attr>` is *itself* one of the names this test
-  file imported from `<mod>` — which is the only local proof that `<attr>` is a
-  member of that module rather than something the module imported from elsewhere.
+* the test does `from <mod> import <names>` and patches `"<mod>.<attr>"` where
+  `<attr>` is *itself* one of the names this test file imported from `<mod>` —
+  which is the only local proof that `<attr>` is a member of that module rather
+  than something the module imported from elsewhere, and
+* **the enclosing function itself enters `<mod>`**, either by calling another of
+  the names imported from it or through a module alias the file binds (`from
+  airflow.security import kerberos` … `kerberos.run(...)`). The evidence has to be
+  in the same function as the patch; see the pooled-evidence bullet below.
 
 Shape 2 — the object under test, with a hole in it:
 
@@ -55,6 +58,24 @@ Deliberately NOT flagged:
   to be a name the test file *itself* imported from that module removes all of
   them: a re-exported third-party symbol is not something a test imports from the
   wrapper module,
+* **evidence borrowed from a sibling test.** The proof that `<mod>` is the unit
+  under test must live in the same function as the patch. Pooling it file-wide let
+  one test license another's unrelated patch:
+  `litellm/tests/test_litellm/router_utils/test_health_check_allowed_fails_integration.py:661`
+  patches `cooldown_handlers._set_cooldown_deployments` while exercising
+  `proxy_server._write_health_state_to_router_cache` — a different module
+  entirely — and the `from ...cooldown_handlers import _set_cooldown_deployments`
+  that licensed it is a function-local import inside a sibling test 400 lines up.
+  Test files that import a module in a dozen different test bodies made this the
+  single largest false-positive class,
+* **module singletons.** A snake_case target that the file only ever drives
+  through its attributes and never calls is an object, not a function:
+  `patch("...mcp_server_manager.global_mcp_server_manager")` (declared
+  `global_mcp_server_manager: MCPServerManager = MCPServerManager()` and patched 83
+  times across two litellm suites, always via `mock_mgr.expand_permission_list...`)
+  and `patch("celery.platforms.signals")` (`celery/t/unit/utils/test_platforms.py`,
+  used as `signals.supported('INT')`). Swapping a module-level singleton is the
+  canonical dependency-injection seam — the opposite of the defect,
 * **classes and constants.** Only a plain function-shaped name (`snake_case`,
   optionally one leading underscore) is a candidate. A CapWords target is a
   collaborator *type* being swapped for a double — the ordinary seam, e.g. `patch(
@@ -76,6 +97,17 @@ Deliberately NOT flagged:
   (`django/tests/queries/test_iterator.py:29`) and `patch.object(hasher, "encode",
   side_effect=hasher.encode)` (`django/tests/auth_tests/test_hashers.py:221`) both
   keep the real behaviour and only count calls,
+* **`side_effect=<Exception>`.** A mock that raises is a tripwire or a fault
+  injector, never a stand-in for the real answer, and the code path being proved is
+  the *caller's* — which does run. `patch.object(handler, "format_subject",
+  side_effect=AssertionError("Should not be called"))` proves `emit` short-circuits
+  when `ADMINS` is empty (`django/tests/logging_tests/tests.py:570`);
+  `patch.object(manager, "persist_parsing_result", side_effect=RuntimeError("boom"))`
+  proves the parsing loop still records stats
+  (`airflow/airflow-core/tests/unit/dag_processing/test_manager.py:1302`);
+  `patch("prefect._internal.send_entrypoint_logs._send", side_effect=Exception(...))`
+  is a test named `test_silently_swallows_exceptions`
+  (`prefect/tests/_internal/test_send_entrypoint_logs.py:115`),
 * **`monkeypatch.setattr` in every spelling.** pytest's `setattr` requires a
   replacement value, so it is *always* the concrete-replacement case above — a
   hand-written fake, which is the practice this rule steers toward. It is also the
@@ -99,26 +131,79 @@ Deliberately NOT flagged:
 * `patch` reached through a name no `unittest.mock` import backs — a project's own
   `patch` helper is not this rule's business.
 
+KNOWN LIMIT
+-----------
+
+The rule cannot separate a helper that *is* the unit's logic from an I/O boundary
+the SUT happens to spell as a private function of its own module. Both are
+snake_case members of the module under test, both are imported by the test, and
+nothing syntactic tells them apart. `patch("sentry_sdk.utils.get_git_revision")`
+(`sentry-python/tests/test_utils.py:704`) shells out to `git`;
+`patch("corporate.lib.stripe.get_latest_seat_count")`
+(`zulip/corporate/tests/test_stripe.py:3065`) is a database aggregate;
+`patch("zerver.lib.send_email._send_messages")`
+(`zulip/zerver/tests/test_send_email.py:210`) opens SMTP. Each is a legitimate
+seam that this rule flags. A verb-prefix heuristic was measured and rejected: 43%
+of all hits are I/O-verb-prefixed (`get_`, `send_`, `read_`, `write_`, `fetch_`),
+so it would take most of the true positives with it. These are what
+`# sarj-noqa: SARJ058` is for.
+
 CORPUS EVIDENCE
 ---------------
 
-Measured over bulbul, noura-be, django, fastapi and celery (test files only):
+Measured over 19 repos — bulbul, noura-be, digital-bank, submissions, ai and the
+14 OSS corpora, 40,336 Python files. `before` is the rule as first written;
+`after` is with the three guards above (function-local evidence, module
+singletons, `side_effect=<Exception>`):
 
-| corpus   | shape 1 | shape 2 | total |
-|----------|---------|---------|-------|
-| bulbul   | 0       | 0       | 0     |
-| noura-be | 0       | 0       | 0     |
-| django   | 2       | 9       | 11    |
-| fastapi  | 0       | 0       | 0     |
-| celery   | 36      | 42      | 78    |
+| corpus        | before | after |
+|---------------|--------|-------|
+| bulbul        | 0      | 0     |
+| noura-be      | 0      | 0     |
+| digital-bank  | 0      | 0     |
+| submissions   | 0      | 0     |
+| ai            | 1      | 1     |
+| airflow       | 512    | 494   |
+| dagster       | 34     | 26    |
+| litellm       | 755    | 645   |
+| saleor        | 0      | 0     |
+| django        | 11     | 10    |
+| mlflow        | 273    | 216   |
+| langchain     | 2      | 2     |
+| superset      | 115    | 102   |
+| zulip         | 146    | 130   |
+| prefect       | 36     | 34    |
+| fastapi       | 0      | 0     |
+| warehouse     | 0      | 0     |
+| sentry-python | 5      | 5     |
+| celery        | 78     | 71    |
+| **total**     | 1968   | 1736  |
 
-All 11 django hits and 10 sampled celery hits were read at the cited line. One
-false positive in 21 (5%): `django/tests/logging_tests/tests.py:570` installs
-`side_effect=AssertionError("Should not be called")` on `AdminEmailHandler.
-format_subject` as a tripwire proving `emit` short-circuits when `ADMINS` is
-empty — there the mock is the assertion, not a stand-in. The other 20 are the real
-pattern, and most of them assert on the mock and nothing else:
-`django/tests/pagination/tests.py:597` (`patch.object(paginator,
+**Every guard costs zero first-party hits** — bulbul, noura-be, digital-bank and
+submissions are 0 before and after, and `ai`'s single hit survives all three, so
+all 232 removals are OSS. Applied on its own to the unguarded rule, the
+function-local guard removes 196, the singleton guard 76 and the tripwire guard
+30; they overlap heavily (63 of the singleton removals are also pooled-evidence
+removals), so dropping one guard from the finished rule re-adds 126, 12 and 24
+respectively.
+
+The module-alias half of the function-local guard is what keeps it honest. The
+naive form — "a bare call to another name imported from `<mod>`, in this
+function" — removes a comparable 199, but 18 of those are real findings reached
+through the module object rather than a bare name: `@mock.patch(
+"airflow.security.kerberos.renew_from_kt")` on a test whose body runs
+`kerberos.run(...)` and asserts `mock_renew_from_kt.mock_calls == [...]`
+(`airflow/airflow-core/tests/unit/security/test_kerberos.py:306`), and
+`mock.patch("mlflow.utils.databricks_utils.get_workspace_id")` around
+`databricks_utils._print_databricks_deployment_job_url(...)`
+(`mlflow/tests/utils/test_databricks_utils.py:964`). Resolving `kerberos` back to
+`airflow.security.kerberos` recovers all 18 and still removes every one of the 96
+litellm pooled-evidence hits.
+
+All 11 original django hits and 10 sampled celery hits were read at the cited
+line, as were every removal of the tripwire guard and a sample of the other two.
+The remaining hits are the real pattern, and most of them assert on the mock and
+nothing else: `django/tests/pagination/tests.py:597` (`patch.object(paginator,
 "validate_number")` then `paginator.get_elided_page_range(2)`, whose only
 assertion is `mock.assert_called_with(2)`),
 `django/tests/backends/oracle/test_creation.py:43` and
@@ -136,8 +221,8 @@ sibling `set_process_title` mocked, asserting only that it was called) and
 `celery/t/unit/tasks/test_chord.py:228` (`ch.apply_async()` with `ch.run`
 replaced, asserting `run.assert_called_once_with(...)`).
 
-celery's 78 are concentrated: `t/unit/backends/test_gcs.py` (39) and
-`t/unit/utils/test_platforms.py` (25) account for 64 of them, both suites that
+celery's remaining 71 are concentrated: `t/unit/backends/test_gcs.py` (39) and
+`t/unit/utils/test_platforms.py` (24) account for 63 of them, both suites that
 mock a module's own functions and assert on the mock. The rule is a real finding
 there, not noise, but a codebase adopting it mid-flight should expect to
 `# sarj-noqa: SARJ058` the deliberate cases — a sibling that really is slow or
@@ -181,6 +266,10 @@ _BOUNDARY_NAME_RE = re.compile(
     r"|logger|log|cache|store|repo|repository)s?$",
     re.IGNORECASE,
 )
+
+# A `side_effect=` naming one of these installs a mock that raises. That is a
+# tripwire or a fault injector, not a stand-in for the real answer.
+_EXCEPTION_NAME_RE = re.compile(r"(Error|Exception|Warning|Exit|Interrupt|Timeout|Abort)$")
 
 # Any of these means the author supplied a substitute instead of taking a MagicMock.
 _CONCRETE_REPLACEMENT_KEYWORDS = frozenset({"new", "new_callable", "wraps"})
@@ -245,8 +334,8 @@ class _ModuleFacts:
 
     Every judgement this rule makes is local: which module a name came from, which
     names the file imported from a given module, what the file defines itself, and
-    what it calls. Cross-file resolution is out of reach, so these five tables are
-    the entire evidence base.
+    how it uses each name. Cross-file resolution is out of reach, so these tables
+    are the entire evidence base.
     """
 
     def __init__(self) -> None:
@@ -254,8 +343,10 @@ class _ModuleFacts:
         self.mock_modules: set[str] = set()
         self.imported_from: dict[str, set[str]] = {}
         self.origin: dict[str, str] = {}
+        self.module_aliases: dict[str, str] = {}
         self.local_defs: set[str] = set()
         self.called: set[str] = set()
+        self.receivers: set[str] = set()
 
     @property
     def reaches_mock(self) -> bool:
@@ -269,7 +360,7 @@ class _ModuleFacts:
 
     @classmethod
     def from_tree(cls, tree: ast.Module) -> _ModuleFacts:
-        """Collect the import, definition and call tables of one module.
+        """Collect the import, definition and usage tables of one module.
 
         Returns:
             The populated fact table.
@@ -285,12 +376,16 @@ class _ModuleFacts:
                 found.local_defs.add(node.name)
             elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
                 found.called.add(node.func.id)
+            elif isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+                found.receivers.add(node.value.id)
         return found
 
     def _add_import(self, node: ast.Import) -> None:
         for alias in node.names:
             if alias.name == _MOCK_MODULE:
                 self.mock_modules.add(alias.asname or "unittest")
+            if alias.asname:
+                self.module_aliases[alias.asname] = alias.name
 
     def _add_from_import(self, node: ast.ImportFrom) -> None:
         if node.module == "unittest":
@@ -331,14 +426,16 @@ class _ModuleFacts:
         # `unittest.mock.patch(...)` — the receiver is itself an attribute chain.
         return isinstance(node, ast.Attribute) and node.attr == "mock" and self._is_mock_module(node.value)
 
-    def is_module_under_test(self, module: str, attr: str) -> bool:
-        """Report whether `module.attr` is a symbol this file both imports and exercises.
+    def is_module_under_test(self, module: str, attr: str, scope: _Scope) -> bool:
+        """Report whether `module.attr` is a symbol this file imports and *this function* exercises.
 
         Two conditions, and both matter. The file must import `attr` itself from
         `module` — that is the only local proof `attr` is a member of `module`
-        rather than a third-party name `module` re-exports. And the file must call
-        some *other* name it imported from `module`, which is what makes `module`
-        the unit under test rather than an incidental dependency.
+        rather than a third-party name `module` re-exports. And the function
+        holding the patch must itself enter `module`, which is what makes `module`
+        the unit under test rather than an incidental dependency of some other
+        test in the same file. Entering it counts either way round: calling
+        another name imported from it, or calling through a module alias.
 
         Returns:
             True when the patched symbol is a sibling of something this test runs.
@@ -347,7 +444,40 @@ class _ModuleFacts:
         names = self.imported_from.get(module)
         if names is None or attr not in names:
             return False
-        return bool((names - {attr}) & self.called)
+        if (names - {attr}) & scope.calls:
+            return True
+        return any(self.resolve_module(dotted) == module for dotted in scope.calls_through)
+
+    def resolve_module(self, dotted: str) -> str:
+        """Expand a call receiver into the dotted module path it stands for.
+
+        `import a.b as x` makes `x.f()` a call into `a.b`; `from a import b` makes
+        `b.f()` a call into `a.b` when `b` is a submodule. Anything else is already
+        absolute or unresolvable, and is returned unchanged.
+
+        Returns:
+            The receiver with its head segment expanded.
+
+        """
+        head, _, rest = dotted.partition(".")
+        base = self.module_aliases.get(head)
+        if base is None:
+            package = self.origin.get(head)
+            base = f"{package}.{head}" if package else head
+        return f"{base}.{rest}" if rest else base
+
+    def is_module_singleton(self, attr: str) -> bool:
+        """Report whether `attr` names an object the file drives rather than a function it calls.
+
+        `global_mcp_server_manager.expand_permission_list(...)` with no bare
+        `global_mcp_server_manager(...)` anywhere is a module-level instance, and
+        swapping one is the dependency-injection seam this rule steers toward.
+
+        Returns:
+            True when the name is only ever an attribute receiver.
+
+        """
+        return attr in self.receivers and attr not in self.called
 
     def is_locally_manufactured(self, constructor: str) -> bool:
         """Report whether `constructor` names a class or factory this test file defines.
@@ -365,19 +495,21 @@ class _ModuleFacts:
 class _Scope:
     """What one function body does with its local names.
 
-    Shape 2 needs three facts, all confined to a single function: which classes it
-    constructs, which locals hold the result of a construction, and which
-    attributes it calls on each name.
+    Both shapes need facts confined to a single function: which names it calls and
+    through which receivers (shape 1's proof that this test enters the module it
+    patches), and which classes it constructs, which locals hold the result of a
+    construction and which attributes it calls on each name (shape 2).
     """
 
     def __init__(self) -> None:
-        self.constructed: set[str] = set()
         self.built_by: dict[str, str] = {}
         self.attr_calls: dict[str, set[str]] = {}
+        self.calls: set[str] = set()
+        self.calls_through: set[str] = set()
 
     @classmethod
     def of(cls, func: ast.FunctionDef | ast.AsyncFunctionDef) -> _Scope:
-        """Index the constructions and attribute calls inside one function.
+        """Index the constructions and calls inside one function.
 
         Returns:
             The populated scope table.
@@ -398,9 +530,13 @@ class _Scope:
     def _record_call(self, node: ast.Call) -> None:
         func = node.func
         if isinstance(func, ast.Name):
-            self.constructed.add(func.id)
-        elif isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
-            self.attr_calls.setdefault(func.value.id, set()).add(func.attr)
+            self.calls.add(func.id)
+        elif isinstance(func, ast.Attribute):
+            if isinstance(func.value, ast.Name):
+                self.attr_calls.setdefault(func.value.id, set()).add(func.attr)
+            receiver = _dotted_name(func.value)
+            if receiver is not None:
+                self.calls_through.add(receiver)
 
     def constructor_of(self, name: str) -> str | None:
         """Find the class or factory that produced the object `name` refers to.
@@ -412,7 +548,7 @@ class _Scope:
         """
         if name in self.built_by:
             return self.built_by[name]
-        return name if name in self.constructed else None
+        return name if name in self.calls else None
 
     def other_attrs_called_on(self, name: str, patched: str) -> bool:
         """Report whether the function calls some *other* attribute of the patched object.
@@ -437,16 +573,14 @@ def _self_patches(tree: ast.Module, facts: _ModuleFacts) -> list[tuple[ast.Call,
         patches = _patch_calls(func, facts)
         if not patches:
             continue
-        # `_Scope` costs a second walk of the body and only shape 2 reads it, so
-        # it is built for the minority of functions that call `patch.object`.
-        scope = _Scope.of(func) if any(kind == _PATCH_OBJECT for _, kind in patches) else None
+        # `_Scope` costs a second walk of the body, so it is built only for the
+        # minority of functions that actually reach for a patcher.
+        scope = _Scope.of(func)
         for node, kind in patches:
             target = (
-                _sibling_of_unit_under_test(node, facts)
+                _sibling_of_unit_under_test(node, facts, scope)
                 if kind == _PATCH
                 else _method_of_object_under_test(node, facts, scope)
-                if scope is not None
-                else None
             )
             if target is not None:
                 hits.append((node, target))
@@ -492,7 +626,7 @@ def _top_level_functions(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFu
     return found
 
 
-def _sibling_of_unit_under_test(node: ast.Call, facts: _ModuleFacts) -> str | None:
+def _sibling_of_unit_under_test(node: ast.Call, facts: _ModuleFacts, scope: _Scope) -> str | None:
     """Match shape 1: `patch("<mod>.<attr>")` on a sibling of the symbol being tested.
 
     Returns:
@@ -503,9 +637,11 @@ def _sibling_of_unit_under_test(node: ast.Call, facts: _ModuleFacts) -> str | No
     if dotted is None:
         return None
     module, _, attr = dotted.rpartition(".")
-    if not _is_own_logic(attr) or _has_concrete_replacement(node, _PATCH, attr):
+    if not _is_own_logic(attr) or facts.is_module_singleton(attr):
         return None
-    return dotted if facts.is_module_under_test(module, attr) else None
+    if _has_concrete_replacement(node, _PATCH, attr) or _raises_instead_of_answering(node):
+        return None
+    return dotted if facts.is_module_under_test(module, attr, scope) else None
 
 
 def _method_of_object_under_test(node: ast.Call, facts: _ModuleFacts, scope: _Scope) -> str | None:
@@ -519,7 +655,9 @@ def _method_of_object_under_test(node: ast.Call, facts: _ModuleFacts, scope: _Sc
         return None
     name = node.args[0].id
     attr = _string_arg(node.args[1])
-    if attr is None or not _is_own_logic(attr) or _has_concrete_replacement(node, _PATCH_OBJECT, attr, name):
+    if attr is None or not _is_own_logic(attr) or _raises_instead_of_answering(node):
+        return None
+    if _has_concrete_replacement(node, _PATCH_OBJECT, attr, name):
         return None
     constructor = scope.constructor_of(name)
     if constructor is None or facts.is_locally_manufactured(constructor):
@@ -549,6 +687,26 @@ def _has_concrete_replacement(node: ast.Call, patcher: str, attr: str, receiver:
     )
 
 
+def _raises_instead_of_answering(node: ast.Call) -> bool:
+    """Report whether the patch installs a mock that raises rather than one that answers.
+
+    `side_effect=AssertionError("Should not be called")` is a tripwire and
+    `side_effect=RuntimeError("boom")` is a fault injector. Neither stands in for
+    the unit's own logic, and the path being proved is the caller's, which runs.
+
+    Returns:
+        True when `side_effect=` names an exception class or builds an instance of one.
+
+    """
+    return any(kw.arg == "side_effect" and _names_an_exception(kw.value) for kw in node.keywords)
+
+
+def _names_an_exception(value: ast.expr) -> bool:
+    called = value.func if isinstance(value, ast.Call) else value
+    name = called.attr if isinstance(called, ast.Attribute) else called.id if isinstance(called, ast.Name) else ""
+    return bool(_EXCEPTION_NAME_RE.search(name))
+
+
 def _delegates_to_real(value: ast.expr, attr: str, receiver: str | None) -> bool:
     # The spy idiom: `side_effect=cursor_iter` alongside
     # `patch("...compiler.cursor_iter")`, or `side_effect=hasher.encode` alongside
@@ -558,6 +716,18 @@ def _delegates_to_real(value: ast.expr, attr: str, receiver: str | None) -> bool
     if not isinstance(value, ast.Attribute) or value.attr != attr:
         return False
     return receiver is None or (isinstance(value.value, ast.Name) and value.value.id == receiver)
+
+
+def _dotted_name(node: ast.expr) -> str | None:
+    parts: list[str] = []
+    current = node
+    while isinstance(current, ast.Attribute):
+        parts.append(current.attr)
+        current = current.value
+    if not isinstance(current, ast.Name):
+        return None
+    parts.append(current.id)
+    return ".".join(reversed(parts))
 
 
 def _string_arg(node: ast.expr) -> str | None:

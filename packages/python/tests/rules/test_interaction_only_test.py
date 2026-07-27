@@ -69,14 +69,34 @@ def test_flags_the_motivating_shape():
     assert len(_check(_INTERACTION_ONLY)) == 1
 
 
-def test_message_names_the_test():
+def test_message_is_exactly_the_advice_we_mean_to_give():
     [diag] = _check(_INTERACTION_ONLY)
-    assert "`test_send_notification`" in diag.message
+    assert diag.message == (
+        "every assertion in `test_send_notification` is about which calls landed on a mock, so it "
+        "pins today's call sequence and goes red on a refactor that changes nothing observable. "
+        "Assert on the outcome — the returned value, the persisted row, the rendered body — and "
+        "keep interaction assertions for side effects you genuinely cannot observe."
+    )
 
 
 def test_reports_line_column_and_code():
     [diag] = _check(_INTERACTION_ONLY)
     assert (diag.line, diag.col, diag.code) == (2, 1, "SARJ060")
+
+
+def test_reports_the_position_of_a_nested_test_not_the_module_start():
+    # The `def` sits on line 4 at column 9, indented inside two nested classes,
+    # so neither coordinate is 1 and a hardcoded position cannot pass.
+    src = """
+class TestOuter:
+    class TestInner:
+        def test_nested(self):
+            handle(store, bus)
+            store.save.assert_called_once()
+            bus.emit_event.assert_called_once()
+"""
+    [diag] = _check(src)
+    assert (diag.line, diag.col) == (4, 9)
 
 
 def test_flags_async_awaited_assertions():
@@ -256,8 +276,11 @@ def test_main():
 
 
 # --------------------------------------------------------------------------- #
-# FP guard: a single interaction target is one notification, not a sequence.   #
-# 56 of the 60 raw django findings were this shape.                            #
+# FP guard: a single collaborator is one notification, not a sequence. Counted  #
+# by root object, matching SARJ059: a collaborator is an object, not one of its #
+# methods. 56 of the 60 raw django findings were this shape, and counting whole #
+# dotted paths instead of roots let one mock satisfy the gate on its own —      #
+# 799 of 1,261 OSS findings (63%).                                             #
 # --------------------------------------------------------------------------- #
 
 
@@ -274,14 +297,67 @@ class TestThing:
     assert _check(src) == []
 
 
-def test_two_methods_of_one_mock_is_a_sequence():
+def test_two_methods_of_one_mock_is_one_collaborator():
+    # One object asked two questions is one fact about one collaborator.
     src = """
 def test_thing():
     creation.setup_worker_connection(2)
     mock_source_db.backup.assert_called_once_with(mock_target_db)
     mock_source_db.close.assert_called_once()
 """
+    assert _check(src) == []
+
+
+def test_the_same_two_methods_split_across_two_mocks_fires():
+    # Removing the root reduction — pinning `backup` and `close` on *different*
+    # objects — is the sequence-across-collaborators shape the rule is for.
+    src = """
+def test_thing():
+    creation.setup_worker_connection(2)
+    mock_source_db.backup.assert_called_once_with(mock_target_db)
+    mock_target_db.close.assert_called_once()
+"""
     assert len(_check(src)) == 1
+
+
+def test_methods_reached_through_return_value_are_one_collaborator():
+    # airflow .../operators/test_datafusion.py:221 — three questions asked of
+    # one patched hook, a thin adapter passthrough with nothing else observable.
+    src = """
+class TestStartPipelineOperator:
+    def test_execute_check_hook_call(self, mock_hook):
+        op.execute(context=MagicMock())
+        mock_hook.return_value.get_instance.assert_called_once_with(name=INSTANCE)
+        mock_hook.return_value.start_pipeline.assert_called_once_with(name=PIPELINE)
+        mock_hook.return_value.wait_for_pipeline_state.assert_called_once_with(timeout=300)
+"""
+    assert _check(src) == []
+
+
+def test_the_patched_class_and_its_return_value_are_one_collaborator():
+    # airflow .../hooks/test_dataproc_metastore.py:265.
+    src = """
+class TestHook:
+    def test_restore_service(self, mock_client):
+        self.hook.restore_service(project_id=PROJECT)
+        mock_client.assert_called_once()
+        mock_client.return_value.restore_service.assert_called_once_with(request={})
+"""
+    assert _check(src) == []
+
+
+def test_mocks_held_on_self_share_the_self_root():
+    # A deliberate calibration: `self.conn` / `self.cur` collapse to `self`.
+    # Making `self.` transparent restores 20 airflow DBAPI-adapter findings and
+    # nothing anywhere else, so the plain root split is what ships.
+    src = """
+class TestDbApiHook:
+    def test_insert_rows(self):
+        self.db_hook.insert_rows("table", [("hello",)])
+        self.cur.execute.assert_any_call("INSERT INTO table VALUES (%s)", ("hello",))
+        assert self.conn.commit.call_count == 2
+"""
+    assert _check(src) == []
 
 
 def test_a_single_interaction_assertion_never_fires():
@@ -408,12 +484,14 @@ def {name}():
 @pytest.mark.parametrize(
     ("first", "second"),
     [
-        pytest.param("sigs.task_prerun.connect", "sigs.task_postrun.connect", id="signal-connect"),
+        # Every pair spans two root objects on purpose: a pair sharing a root
+        # never reaches this guard, so it would pass for the wrong reason.
+        pytest.param("worker_sigs.task_prerun.connect", "beat_sigs.task_postrun.connect", id="signal-connect"),
         pytest.param("room.on", "session.on", id="event-on"),
         pytest.param("room.off", "session.off", id="event-off"),
         pytest.param("bus.subscribe", "other.unsubscribe", id="subscribe"),
         pytest.param("registry.register", "other.unregister", id="register"),
-        pytest.param("emitter.add_listener", "emitter.remove_listener", id="listeners"),
+        pytest.param("emitter.add_listener", "other_emitter.remove_listener", id="listeners"),
     ],
 )
 def test_registration_only_pins_are_exempt(first: str, second: str):

@@ -70,6 +70,18 @@ character-set bullet below. Separately, 773 chains were rejected outright by the
 concatenation reaching a `+` with a literal in it); without that test the rule
 would have fired on more arithmetic than string building.
 
+A later external audit re-swept 40,336 files across 20 repos (the five above
+plus digital-bank, submissions, ai, this repo, airflow, dagster, litellm,
+saleor, mlflow, langchain, superset, zulip, prefect, warehouse, sentry-python)
+and confirmed the sampled FP rate at 4.5%. That sweep found four residual FP
+shapes, each now guarded and each measured at **zero** true-positive cost on the
+first-party repos (bulbul 24, noura-be 15, digital-bank 23, submissions 7, ai 8
+before and after): `or`/`and` operands (12 hits), ORM expression operands (3),
+`%`-format template literals (10) and whitespace-only blob gluing (12; one hit
+is shared with the ORM guard). Total 4,882 → 4,846 across the 20 repos, with no
+hit gained; 574 → 565 across the eight repos of the standard sweep, whose
+first-party counts are unchanged.
+
 Deliberately NOT flagged:
 
 * **any chain containing a non-`str` literal.** `x + 1`, `b"GET " + path`,
@@ -104,6 +116,23 @@ Deliberately NOT flagged:
   noura-be's `dashboard/stores/user_store.py:399`
   (`"WHERE " + " AND ".join(conditions)`). 43 hits — the single largest guard
   after string repetition,
+* **a chain that only glues opaque blobs together with whitespace**: every
+  literal fragment in it is whitespace — including the constant parts of any
+  f-string operand, so a chain carrying real prose inside an f-string still
+  fires — AND at least one operand is a call carrying a string-literal argument.
+  This is the general case of the `.join` bullet above. There is no prose for
+  the f-string to make readable, and the rewrite has to nest a quoted call
+  inside a placeholder: this repo's own
+  `tests/rules/test_over_mocked_test.py:65` glues two source fixtures with
+  `_patches(6).replace("test_thing", "test_a") + "\n\n" + ...`, whose f-string
+  form nests two quoted `.replace(...)` calls; airflow's
+  `scripts/ci/prek/supported_versions.py:63,73` is `"\n" + tabulate(rows,
+  tablefmt="github", ...)`; mlflow's `dev/flavors/src/flavors/_matrix.py:248` is
+  `"\n" + f" {title} ".center(length, "=") + "\n"`. 12 hits. The broader
+  spelling — *any* 3-or-more-operand chain whose only literals are whitespace —
+  was measured and rejected: it removes 170 hits but costs 6 first-party true
+  positives (noura-be's `services/chatbot/v3/handlers/general.py:113,172` and
+  siblings, which do carry prose inside their f-string operands),
 * **an operand that is string repetition** (`"A" * N + " tail"`,
   `"x" + "\n" * 51 + "y"`). `f"{'A' * N} tail"` is strictly worse than the
   original. Found in bulbul's
@@ -116,11 +145,14 @@ Deliberately NOT flagged:
   `json.dumps(payload, indent=2) + "\n"`. Found identically in five bulbul and
   four noura-be ratchet scripts (`scripts/check_coverage_ratchet.py:72` and
   siblings). Three or more operands still fire, because `a + " " + b` really is
-  clearer as `f"{a} {b}"`. 32 hits,
-* **a chain that is the left operand of `%`.** `("%0" + width + "d. %s") % (i,
-  line)` assembles a *format template*, not a message; rewriting the left side
-  as an f-string leaves a confusing f-string/`%`-format hybrid. django's
-  `template/defaultfilters.py:240,243,292`. 3 hits,
+  clearer as `f"{a} {b}"` — unless the blob-gluing bullet above applies. 32 hits,
+* **a chain that is the left operand of `%`.** `("%0" + width + "d") % (i, line)`
+  assembles a *format template*, not a message; rewriting the left side as an
+  f-string leaves a confusing f-string/`%`-format hybrid. This is the positional
+  companion to the conversion-specifier bullet below: it catches templates whose
+  literals carry only a width or flag fragment (`"%0"`, `"d"`), which no
+  specifier regex can recognise, and needs the `%` to be applied on the spot.
+  django's `template/defaultfilters.py:240,243,292`. 3 hits,
 * **an operand that is a translation or safe-string call** (`_`, `gettext`,
   `gettext_lazy`, `ngettext`, `pgettext`, `format_lazy`, `lazy`, `mark_safe`,
   `format_html`). Interpolating a lazy translation proxy into an f-string forces
@@ -128,10 +160,37 @@ Deliberately NOT flagged:
   entire bug `format_lazy` exists to avoid; interpolating a `SafeString` returns
   a plain `str` and silently drops the "already escaped" marking. This is a
   behaviour change, not a restyle. 1 hit,
-* **an operand that is a conditional expression.** `("-" if desc else "") +
-  "datefield"` becomes `f"{'-' if desc else ''}datefield"`, which buries a
-  branch inside a format placeholder. django's `db/models/query.py:1617,1650`
-  and `db/backends/oracle/base.py:324`. 7 hits,
+* **an operand that is a conditional expression or a boolean fallback.**
+  `("-" if desc else "") + "datefield"` becomes `f"{'-' if desc else ''}datefield"`,
+  which buries a branch inside a format placeholder; `(value or "") + "\n"` and
+  `(lang or "") + ":" + code` bury exactly the same branch in exactly the same
+  place, spelled `or` instead of `if`. django's `db/models/query.py:1617,1650`,
+  `db/backends/oracle/base.py:324` and `tests/admin_views/tests.py:304`, plus
+  litellm's `llms/snowflake/chat/transformation.py:369` and zulip's
+  `zerver/views/documentation.py:53`. 7 + 12 hits,
+* **an operand that builds an ORM / SQL expression object** — `F(...)`,
+  `Value(...)`, `literal(...)`, `Concat(...)`, `RawSQL(...)`, `bindparam(...)`,
+  or an attribute call rooted at `func` / `expression` / `sa` / `sqlalchemy`.
+  The `+` there is `Concat` by operator overload on a query node, not string
+  concatenation, and an f-string would render the expression's `repr` at build
+  time instead. This is behaviour-breaking, not cosmetic: django's
+  `tests/expressions/tests.py:1299` is the SQL-injection regression test
+  `F("num_chairs") + "1)) OR ((1==1"`, and rewriting it as an f-string silently
+  deletes the payload the test exists to prove is escaped. Also superset's
+  `models/core.py:1336` (`@perm.expression`) and a `func.nullif(...)` label in
+  one of its migrations. 3 hits,
+* **a literal carrying a `%`-conversion specifier** (`"%s"`, `"%r"`,
+  `"%(asctime)s"`, `"%.2f"`). `"SELECT %s" + suffix` and
+  `"%(asctime)s %(hostname)s " + name + ": %(message)s"` assemble a `%`-format
+  template whose consumer applies it later, so the chain is not the finished
+  string; an f-string here produces an f-string/`%`-format hybrid. This is the
+  literal-side companion to the `%`-left-operand guard above, which only sees
+  the case where `%` is applied on the spot. URL-encoded octets are NOT
+  specifiers — a `(?![0-9A-Fa-f]{2})` lookahead keeps `"%2F" + segment[1:]`
+  (dagster's `_core/storage/upath_io_manager.py:28,52`) firing. django's
+  `utils/formats.py:75`, `contrib/gis/db/backends/mysql/operations.py:28`,
+  `tests/backends/tests.py:84,296,301` and zulip's `zproject/dev_settings.py:75`.
+  10 hits,
 * **a literal ending in a SQL keyword** (`"SELECT * FROM " + table`,
   `"... WHERE id = " + uid`). Ruff's `S608` already reports that exact shape as
   an injection vector, and SARJ021 covers `SELECT *`; answering "use an
@@ -214,6 +273,22 @@ _LAZY_CALLS = frozenset(
         "format_html",
     }
 )
+
+# A literal carrying a `%`-conversion specifier is a `%`-format template being
+# assembled, not a message. The `(?![0-9A-Fa-f]{2})` lookahead keeps URL-encoded
+# octets (`%2F`, `%20`, `%3D`) from reading as specifiers; the cost is that a
+# genuine hex-looking width spec (`%20d`) is also skipped, which is the safe way
+# round. The space flag is deliberately absent from the flag class so that prose
+# like `"50% of "` is not read as `% o`.
+_PCT_FORMAT_RE = re.compile(r"%(?![0-9A-Fa-f]{2})(?:\([^)]*\))?[-#0+]?[0-9*.]*[hlL]?[diouxXeEfFgGcrsa%]")
+
+# Constructors that build an ORM / SQL *expression object*, not a string. Adding
+# a literal to one of these is `Concat`-by-operator-overload deep inside a query.
+_ORM_CALLS = frozenset({"F", "Value", "literal", "literal_column", "Concat", "RawSQL", "bindparam"})
+
+# Roots whose attribute calls are SQLAlchemy expression constructors
+# (`func.coalesce(...)`, `expression.cast(...)`, `sa.func.lower(...)`).
+_ORM_ROOTS = frozenset({"func", "expression", "sa", "sqla", "sqlalchemy"})
 
 # Past this many operands an f-string is a wall of placeholders and `"".join`
 # (or a template) is usually the better answer; the message says so.
@@ -329,11 +404,18 @@ def _verdict(node: ast.BinOp) -> str | None:
         return None
     if any(_SQL_RE.search(text) for text in literals):
         return None
-    if any(_is_join_call(expr) or _is_string_repetition(expr) or _is_lazy_call(expr) for expr in dynamic):
+    if any(_PCT_FORMAT_RE.search(text) for text in literals):
         return None
-    if any(isinstance(expr, ast.IfExp) for expr in dynamic):
+    if any(
+        _is_join_call(expr) or _is_string_repetition(expr) or _is_lazy_call(expr) or _is_orm_expression(expr)
+        for expr in dynamic
+    ):
+        return None
+    if any(isinstance(expr, ast.IfExp | ast.BoolOp) for expr in dynamic):
         return None
     if len(operands) == _TERMINATOR_OPERANDS and all(not text.strip() for text in literals):
+        return None
+    if _is_blob_glue(operands, dynamic):
         return None
 
     message = (
@@ -355,6 +437,77 @@ def _is_join_call(expr: ast.expr) -> bool:
 
     """
     return isinstance(expr, ast.Call) and isinstance(expr.func, ast.Attribute) and expr.func.attr == "join"
+
+
+def _root_name(expr: ast.expr) -> str:
+    """Walk an attribute/subscript spine down to its leftmost `Name`.
+
+    Returns:
+        The leftmost identifier, or "" when the spine does not start at a name.
+
+    """
+    while isinstance(expr, ast.Attribute | ast.Subscript):
+        expr = expr.value
+    return expr.id if isinstance(expr, ast.Name) else ""
+
+
+def _is_orm_expression(expr: ast.expr) -> bool:
+    """Report whether `expr` builds an ORM/SQL expression object rather than a string.
+
+    Returns:
+        True for `F(...)`/`Value(...)`-style constructors and `func.*`/`expression.*` calls.
+
+    """
+    if not isinstance(expr, ast.Call):
+        return False
+    func = expr.func
+    if isinstance(func, ast.Name) and func.id in _ORM_CALLS:
+        return True
+    return isinstance(func, ast.Attribute) and _root_name(func) in _ORM_ROOTS
+
+
+def _template_text(operands: list[ast.expr]) -> list[str]:
+    """Collect every literal text fragment in the chain, f-string parts included.
+
+    Returns:
+        The constant string pieces contributed by `Constant` and `JoinedStr` operands.
+
+    """
+    text: list[str] = []
+    for operand in operands:
+        if isinstance(operand, ast.Constant) and isinstance(operand.value, str):
+            text.append(operand.value)
+        elif isinstance(operand, ast.JoinedStr):
+            text += [
+                part.value for part in operand.values if isinstance(part, ast.Constant) and isinstance(part.value, str)
+            ]
+    return text
+
+
+def _has_string_literal_argument(expr: ast.expr) -> bool:
+    """Report whether `expr` is a call carrying a string literal in its arguments.
+
+    Returns:
+        True when nesting `expr` in a placeholder would nest quotes inside the f-string.
+
+    """
+    if not isinstance(expr, ast.Call):
+        return False
+    arguments: list[ast.expr] = [*expr.args, *(kw.value for kw in expr.keywords)]
+    return any(isinstance(arg, ast.Constant) and isinstance(arg.value, str) for arg in arguments)
+
+
+def _is_blob_glue(operands: list[ast.expr], dynamic: list[ast.expr]) -> bool:
+    """Report whether the chain only glues opaque blobs together with whitespace.
+
+    Returns:
+        True when the chain carries no template text and quotes would have to nest.
+
+    """
+    text = _template_text(operands)
+    if not text or any(fragment.strip() for fragment in text):
+        return False
+    return any(_has_string_literal_argument(expr) for expr in dynamic)
 
 
 def _is_lazy_call(expr: ast.expr) -> bool:

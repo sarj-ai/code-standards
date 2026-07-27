@@ -178,6 +178,51 @@ def test_constant_assert_under_an_if_without_an_else_still_fires():
     assert len(_check(src)) == 1
 
 
+# ---- false-positive guard: `assert True` marking the success arm of a `match` ---- #
+
+
+@pytest.mark.parametrize(
+    "otherwise",
+    ["raise AssertionError", "pytest.fail('wrong shape')", "assert False"],
+    ids=["raise", "pytest-fail", "assert-false"],
+)
+def test_constant_assert_in_a_match_arm_with_a_failing_arm_is_exempt(otherwise: str):
+    # faris falltime/tests/services/test_pdf_processor.py:96 — the pattern is the
+    # assertion and `case _` is the failure, so the test goes red the moment the
+    # result stops matching.
+    src = f"""
+    def test_with_wrong_password(tmpdir):
+        match PROCESSOR.process(password="not right"):
+            case PDFProcessError(error=DecryptionError.INCORRECT_PASSWORD):
+                assert True
+            case _:
+                {otherwise}
+    """
+    assert _check(src) == []
+
+
+def test_constant_assert_in_a_match_arm_with_no_failing_arm_still_fires():
+    src = """
+    def test_with_wrong_password(tmpdir):
+        match PROCESSOR.process(password="not right"):
+            case PDFProcessError(error=DecryptionError.INCORRECT_PASSWORD):
+                assert True
+            case _:
+                log("unexpected")
+    """
+    assert len(_check(src)) == 1
+
+
+def test_constant_assert_in_the_only_match_arm_still_fires():
+    src = """
+    def test_with_wrong_password(tmpdir):
+        match PROCESSOR.process(password="not right"):
+            case _:
+                assert True
+    """
+    assert len(_check(src)) == 1
+
+
 # --------------------------------------------------------------------------- #
 # Shape 2: reading a constructor keyword straight back out.                     #
 # --------------------------------------------------------------------------- #
@@ -196,14 +241,43 @@ def test_flags_keyword_echo_written_the_other_way_round():
     assert len(_check(src)) == 1
 
 
-def test_flags_every_echoed_field_separately():
+def test_a_test_that_echoes_several_fields_is_reported_once_at_the_first():
+    # 45% of the estate-wide finding set used to be repeat lines inside a test
+    # that was already flagged; the defect and its repair are one decision.
     src = """
     def test_thing():
         payload = EncryptedPayload(operation_key_id="key-123", jws_signature="sig-456")
         assert payload.operation_key_id == "key-123"
         assert payload.jws_signature == "sig-456"
     """
-    assert len(_check(src)) == 2
+    [diag] = _check(src)
+    assert diag.line == 4
+
+
+def test_the_same_two_echoes_split_across_two_tests_are_reported_twice():
+    src = """
+    def test_key_id():
+        payload = EncryptedPayload(operation_key_id="key-123")
+        assert payload.operation_key_id == "key-123"
+
+    def test_signature():
+        payload = EncryptedPayload(jws_signature="sig-456")
+        assert payload.jws_signature == "sig-456"
+    """
+    assert [d.line for d in _check(src)] == [4, 8]
+
+
+def test_an_honest_assertion_alongside_an_echo_does_not_suppress_the_echo():
+    # A stricter collapse — flag only when *every* assertion in the test is
+    # trivial — was measured and costs 11 of bulbul's 17 findings, because one
+    # honest assertion surrounded by echoes is the common real shape.
+    src = """
+    def test_thing(clock):
+        payload = EncryptedPayload(jws_signature="sig-456")
+        assert payload.jws_signature == "sig-456"
+        assert payload.created_at > clock.start
+    """
+    assert len(_check(src)) == 1
 
 
 def test_flags_identity_spelling_of_a_boolean_field():
@@ -280,8 +354,8 @@ def test_the_same_shape_with_a_capitalised_callee_fires():
 
 @pytest.mark.parametrize(
     "cls",
-    ["CacheBackend", "OpenAIClient", "self.Backend", "AnalyticsService", "OrganizationStore"],
-    ids=["backend", "client", "attribute-backend", "service", "store"],
+    ["CacheBackend", "OpenAIClient", "self.Backend", "AnalyticsService", "OrganizationStore", "Receiver"],
+    ids=["backend", "client", "attribute-backend", "service", "store", "receiver"],
 )
 def test_collaborator_classes_are_exempt(cls: str):
     # celery's cache backends run `expires=` through `prepare_expires`, so
@@ -489,6 +563,19 @@ def test_any_other_mention_of_the_local_is_disqualifying(meddling: str):
     assert _check(src) == []
 
 
+def test_a_method_called_on_the_local_inside_an_assertion_is_disqualifying():
+    # The `assert` wrapper does not make the call safe: `model_dump()` runs
+    # arbitrary code on the object before the field below is read. This is also
+    # the round trip of `assert Model(**d).model_dump() == d` given a name.
+    src = """
+    def test_thing():
+        u = User(name='bo')
+        assert u.model_dump() == {'name': 'bo'}
+        assert u.name == 'bo'
+    """
+    assert _check(src) == []
+
+
 def test_an_untouched_local_fires():
     src = """
     def test_thing(users):
@@ -617,6 +704,18 @@ def test_reports_line_column_and_code():
     assert (diag.line, diag.col, diag.code) == (3, 5, "SARJ061")
 
 
+def test_reports_the_position_of_a_finding_nested_in_a_class_and_a_with_block():
+    src = """
+    class TestPayload:
+        def test_fields(self):
+            with freeze_time("2026-01-01"):
+                payload = EncryptedPayload(jws_signature="sig-456")
+                assert payload.jws_signature == "sig-456"
+    """
+    [diag] = _check(src)
+    assert (diag.line, diag.col) == (6, 13)
+
+
 def test_each_assertion_is_reported_once():
     src = """
     def test_thing():
@@ -637,10 +736,89 @@ def test_diagnostics_are_sorted_by_position():
 
     def test_c():
         assert 1
+
+    def test_d():
+        job = Request(m)
+        assert isinstance(job, Request)
     """
-    diags = _check(src)
-    assert [d.line for d in diags] == sorted(d.line for d in diags)
-    assert len(diags) == 3
+    assert [(d.line, d.col) for d in _check(src)] == [(3, 5), (7, 5), (10, 5), (14, 5)]
+
+
+# --------------------------------------------------------------------------- #
+# The message, and the conflict with SARJ043 it has to avoid.                  #
+# --------------------------------------------------------------------------- #
+
+
+_ORDINARY_ADVICE = ". Assert on something the code under test derived, or drop the assertion"
+
+_SARJ043_ADVICE = (
+    ". Every assertion this test makes is like it, so dropping them would leave a test that verifies "
+    "nothing, which SARJ043 (`zero-assertion-test`) rejects in turn. Assert the behaviour the test name "
+    "claims to cover, or delete the test"
+)
+
+
+_CONSTANT_DIAGNOSIS = (
+    "this assertion's condition is a constant, so it passes no matter what the code under test does — "
+    "it adds a covered line and nothing else"
+)
+
+_KWARG_DIAGNOSIS = (
+    "this reads back the literal the test just handed the constructor, so it can only fail if attribute "
+    "assignment stops working"
+)
+
+_ISINSTANCE_DIAGNOSIS = (
+    "the value was produced by calling this very class a line above, so the `isinstance` check pins the "
+    "language rather than the code"
+)
+
+_SURVIVING_ASSERTION = "    assert clock.now() > 0\n"
+
+
+@pytest.mark.parametrize(
+    ("source", "diagnosis"),
+    [
+        ("def test_thing(clock):\n    assert True\n" + _SURVIVING_ASSERTION, _CONSTANT_DIAGNOSIS),
+        (
+            'def test_thing(clock):\n    u = User(name="bo")\n    assert u.name == "bo"\n' + _SURVIVING_ASSERTION,
+            _KWARG_DIAGNOSIS,
+        ),
+        (
+            "def test_thing(clock):\n    u = User()\n    assert isinstance(u, User)\n" + _SURVIVING_ASSERTION,
+            _ISINSTANCE_DIAGNOSIS,
+        ),
+    ],
+    ids=["constant", "keyword-echo", "isinstance"],
+)
+def test_each_shape_states_its_diagnosis_and_the_ordinary_advice(source: str, diagnosis: str):
+    [diag] = _check(source)
+    assert diag.message == diagnosis + _ORDINARY_ADVICE
+
+
+def test_a_test_whose_every_assertion_is_trivial_is_not_told_to_drop_it():
+    # SARJ043 (`zero-assertion-test`) flags a test with no assertions, so "drop
+    # the assertion" would be an instruction straight into another diagnostic.
+    src = """
+    def test_thing():
+        u = User(name="bo")
+        assert u.name == "bo"
+    """
+    [diag] = _check(src)
+    assert diag.message.endswith(_SARJ043_ADVICE)
+    assert "drop the assertion" not in diag.message
+
+
+def test_a_test_that_keeps_a_falsifiable_assertion_is_told_to_drop_the_line():
+    src = """
+    def test_thing(clock):
+        u = User(name="bo")
+        assert u.name == "bo"
+        assert u.created_at > clock.start
+    """
+    [diag] = _check(src)
+    assert diag.message.endswith(_ORDINARY_ADVICE)
+    assert "SARJ043" not in diag.message
 
 
 def test_fires_inside_a_test_class():

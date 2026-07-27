@@ -113,9 +113,14 @@ def test_flags_unittest_assertion_inside_a_loop():
     assert len(_check(src)) == 1
 
 
-def test_message_names_the_test():
+def test_message_is_the_whole_advice_verbatim():
     [diag] = _check(_LOOP_ONLY)
-    assert "`test_results`" in diag.message
+    assert diag.message == (
+        "every assertion in `test_results` sits inside a conditional or loop that may not run, "
+        "so the test passes without checking anything when the branch is not taken or the "
+        "iterable is empty. Assert unconditionally, assert the collection's size before "
+        "looping (`assert len(rows) == 3`), or give the `if` an `else` that also asserts."
+    )
 
 
 def test_reports_line_and_column_of_the_function():
@@ -124,22 +129,32 @@ def test_reports_line_and_column_of_the_function():
     assert diag.code == "SARJ062"
 
 
-def test_diagnostics_are_sorted_by_position():
+def test_reports_the_indented_position_of_a_method():
+    # Both coordinates are non-1 here, so a hardcoded `col=1` cannot pass.
     src = """
-    def test_a():
-        for x in fetch():
-            assert x
-
-    def test_b():
-        for x in fetch():
-            assert x
-
-    def test_c():
-        for x in fetch():
-            assert x
+    class TestThing:
+        def test_rows(self):
+            for row in fetch():
+                assert row
     """
-    diags = _check(src)
-    assert [d.line for d in diags] == sorted(d.line for d in diags)
+    [diag] = _check(src)
+    assert (diag.line, diag.col) == (3, 5)
+
+
+def test_diagnostics_are_sorted_by_position():
+    # The class is walked after the module body, so the class's method is found
+    # second and has to be sorted back in front of the module-level test.
+    src = """
+    class TestEarly:
+        def test_first(self):
+            for row in fetch():
+                assert row
+
+    def test_second():
+        for row in fetch():
+            assert row
+    """
+    assert [(d.line, d.col) for d in _check(src)] == [(3, 5), (7, 1)]
 
 
 # --------------------------------------------------------------------------- #
@@ -241,11 +256,16 @@ def test_assert_raises_context_manager_is_exempt():
 
 
 def test_top_level_raise_is_exempt():
+    # The `raise` is the whole verdict: falling out of the search loop means the
+    # fixture never produced the row the test was looking for. Nothing here is
+    # named like an assertion, so only the `ast.Raise` arm can clear it.
     src = """
     def test_thing():
-        if not ok():
-            raise AssertionError("nope")
-        raise AssertionError("always")
+        for row in fetch():
+            if row.bad:
+                assert row.error
+                return
+        raise RuntimeError("no bad row in the fixture")
     """
     assert _check(src) == []
 
@@ -282,6 +302,149 @@ def test_match_without_a_wildcard_case_still_flags():
                 assert one()
             case "b":
                 assert two()
+    """
+    assert len(_check(src)) == 1
+
+
+# --------------------------------------------------------------------------- #
+# FP guard: a one-armed `if` that fails the test is the assertion.             #
+# --------------------------------------------------------------------------- #
+
+
+_AGGREGATOR = """
+import pytest
+
+def test_all_models():
+    failures = []
+    for model in discover():
+        if not check(model):
+            failures.append(model)
+    if failures:
+        {verdict}
+"""
+
+
+@pytest.mark.parametrize(
+    "verdict",
+    [
+        'pytest.fail("; ".join(failures))',
+        'fail("; ".join(failures))',
+        'raise AssertionError("; ".join(failures))',
+        "assert False, failures",
+        "assert 0",
+    ],
+)
+def test_failure_aggregator_is_the_assertion(verdict: str):
+    # litellm tests/e2e/claude_code/**: collect every model's error, fail once.
+    assert _check(_AGGREGATOR.format(verdict=verdict)) == []
+
+
+@pytest.mark.parametrize(
+    "verdict",
+    [
+        'pytest.skip("nothing to check")',
+        "log(failures)",
+        "assert True",
+    ],
+)
+def test_a_one_armed_if_that_does_not_fail_still_flags(verdict: str):
+    # Skipping is not failing, and `assert True` is not a verdict either.
+    assert len(_check(_AGGREGATOR.format(verdict=verdict))) == 1
+
+
+def test_unittest_self_fail_aggregator_is_the_assertion():
+    src = """
+    class TestThing:
+        def test_all(self):
+            failures = []
+            for model in discover():
+                failures.append(model)
+            if failures:
+                self.fail("some models failed")
+    """
+    assert _check(src) == []
+
+
+def test_a_verdict_reached_through_a_nested_if_or_a_with_is_still_a_verdict():
+    src = """
+    import pytest
+
+    def test_all():
+        for model in discover():
+            assert model
+        if failures:
+            with capture_report():
+                if strict:
+                    pytest.fail("strict")
+                else:
+                    raise RuntimeError("lenient")
+    """
+    assert _check(src) == []
+
+
+def test_a_verdict_on_only_one_arm_of_a_nested_if_still_flags():
+    src = """
+    import pytest
+
+    def test_all():
+        for model in discover():
+            assert model
+        if failures:
+            if strict:
+                pytest.fail("strict")
+    """
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [("flag or slow_path()", "not flag"), ("not flag", "flag")],
+)
+def test_complementary_if_elif_without_an_else_is_exempt(first: str, second: str):
+    # sentry-python tests/integrations/threading/test_threading.py:224.
+    src = f"""
+    def test_thing(flag):
+        if {first}:
+            assert one()
+        elif {second}:
+            assert two()
+    """
+    assert _check(src) == []
+
+
+def test_an_elif_that_does_not_complete_the_chain_still_flags():
+    src = """
+    def test_thing(flag):
+        if flag:
+            assert one()
+        elif other:
+            assert two()
+    """
+    assert len(_check(src)) == 1
+
+
+def test_a_complementary_chain_with_a_silent_final_else_still_flags():
+    # Writing an `else` after `elif not flag` says the author did not think the
+    # chain was total, and the arm they wrote there asserts nothing.
+    src = """
+    def test_thing(flag):
+        if flag:
+            assert one()
+        elif not flag:
+            assert two()
+        else:
+            log()
+    """
+    assert len(_check(src)) == 1
+
+
+def test_a_complementary_chain_whose_first_arm_asserts_nothing_still_flags():
+    src = """
+    def test_thing(flag):
+        if flag:
+            log()
+        elif not flag:
+            assert two()
     """
     assert len(_check(src)) == 1
 
@@ -348,6 +511,7 @@ def test_rows():
         "assert len(rows) != 0",
         "assert 3 == len(rows)",
         "assert 0 < len(rows)",
+        "assert 1 <= len(rows)",
         "assert rows",
         "assert rows == [1, 2, 3]",
         "assert 7 in rows",
@@ -358,6 +522,7 @@ def test_rows():
         "self.assertTrue(rows)",
         "self.assertEqual(rows, [1, 2])",
         "self.assertIn(7, rows)",
+        "self.assertLen(rows, 3)",
     ],
 )
 def test_a_sibling_size_claim_clears_the_loop(claim: str):
@@ -370,8 +535,13 @@ def test_a_sibling_size_claim_clears_the_loop(claim: str):
         "assert len(rows) == 0",
         "assert len(other) == 3",
         "assert total > 0",
+        # An upper bound is not a lower bound, whichever side `len` reads on.
+        "assert len(rows) <= 5",
+        "assert 5 > len(rows)",
+        "assert 5 >= len(rows)",
         "self.assertEqual(len(rows), 0)",
         "self.assertLess(len(rows), 5)",
+        "self.assertLen(rows, 0)",
     ],
 )
 def test_a_sibling_claim_that_does_not_size_the_loop_still_flags(claim: str):
@@ -407,6 +577,7 @@ def test_an_emptiness_guard_that_bails_out_is_exempt():
         '"abc"',
         "range(3)",
         "range(1, 4)",
+        "range(0, 10, 2)",
         "range(len([1, 2]))",
         "range(n + 1)",
         "sorted([3, 1])",
@@ -428,7 +599,26 @@ def test_loop_over_a_literal_collection_is_exempt(iterable: str):
     assert _check(src) == []
 
 
-@pytest.mark.parametrize("iterable", ["[]", "()", "{}", "range(0)", "[x for x in [1, 2] if x > 1]", "fetch()"])
+@pytest.mark.parametrize(
+    "iterable",
+    [
+        "[]",
+        "()",
+        "{}",
+        "range(0)",
+        "range(5, 2)",
+        # Not the builtin, or not a usable one: no keyword arguments, one to
+        # three positional arguments, and a non-zero step.
+        "range(stop=3)",
+        "range(3, step=2)",
+        "range()",
+        "range(1, 2, 3, 4)",
+        "range(1, 10, 0)",
+        "range(2, n)",
+        "[x for x in [1, 2] if x > 1]",
+        "fetch()",
+    ],
+)
 def test_loop_over_a_possibly_empty_iterable_still_flags(iterable: str):
     src = f"""
     def test_thing():
@@ -637,14 +827,100 @@ def test_loop_over_a_constructed_objects_attribute_is_exempt():
 
 
 def test_loop_over_an_imported_name_is_exempt():
+    # Lowercase on purpose: a capitalised name would be cleared by the CapWords
+    # check before the imported-name guard is ever reached.
     src = """
-    from voice.filters import SINGLE_CHARS
+    from voice.filters import srlist
 
     def test_thing():
-        for char in SINGLE_CHARS:
-            assert filt.process(char) == ""
+        for s in srlist:
+            assert filt.process(s) == ""
     """
     assert _check(src) == []
+
+
+def test_loop_over_the_same_name_unimported_still_flags():
+    src = """
+    def test_thing():
+        for s in srlist:
+            assert filt.process(s) == ""
+    """
+    assert len(_check(src)) == 1
+
+
+def test_loop_over_a_capitalised_attribute_is_exempt():
+    src = """
+    def test_thing():
+        for code in registry.KNOWN_CODES:
+            assert lookup(code) is not None
+    """
+    assert _check(src) == []
+
+
+def test_loop_over_a_lowercase_attribute_chain_still_flags():
+    src = """
+    def test_thing():
+        for code in registry.known_codes:
+            assert lookup(code) is not None
+    """
+    assert len(_check(src)) == 1
+
+
+def test_loop_over_a_passthrough_method_on_a_literal_receiver_is_exempt():
+    src = """
+    def test_thing():
+        rows = [1, 2]
+        for item in rows.copy():
+            assert item
+    """
+    assert _check(src) == []
+
+
+def test_loop_over_a_passthrough_method_on_a_computed_receiver_still_flags():
+    src = """
+    def test_thing():
+        for item in fetch().copy():
+            assert item
+    """
+    assert len(_check(src)) == 1
+
+
+def test_a_chain_of_aliases_resolves_to_the_literal():
+    src = """
+    def test_thing():
+        a = [1, 2]
+        b = a
+        c = b
+        d = c
+        for item in d:
+            assert item
+    """
+    assert _check(src) == []
+
+
+def test_a_self_referential_binding_terminates_and_still_flags():
+    # Both halves of the `+` resolve back to `rows`; without the once-per-path
+    # rule this walk branches in two at every step and never finishes.
+    src = """
+    def test_thing():
+        rows = rows + rows
+        for row in rows:
+            assert row.ok
+    """
+    assert len(_check(src)) == 1
+
+
+def test_bindings_that_refer_to_each_other_terminate_and_still_flag():
+    # Resolving `rows` reaches `other`, which reaches `rows` again; following a
+    # name at most once per path is what stops the walk.
+    src = """
+    def test_thing():
+        rows = other
+        other = rows
+        for row in rows:
+            assert row.ok
+    """
+    assert len(_check(src)) == 1
 
 
 def test_loop_over_an_imported_function_call_still_flags():
@@ -707,7 +983,7 @@ def test_a_one_armed_if_inside_a_proven_loop_still_flags():
 
 
 # --------------------------------------------------------------------------- #
-# FP guard: early-exit guards.                                                 #
+# FP guard: a branch that bails out owes no assertion.                         #
 # --------------------------------------------------------------------------- #
 
 
@@ -716,19 +992,24 @@ def test_a_one_armed_if_inside_a_proven_loop_still_flags():
     [
         'pytest.skip("no gpu")',
         'pytest.xfail("known bad")',
+        'pytest.exit("cannot continue")',
         "return",
         "self.skipTest('no gpu')",
         'pytest.importorskip("numpy")',
     ],
 )
-def test_early_exit_guard_before_the_assertions_is_exempt(bail: str):
+def test_a_branch_that_bails_out_owes_no_assertion(bail: str):
+    # The `else` is the only arm that asserts; the test is clean only because
+    # the other arm never reaches the end of the test.
     src = f"""
     import pytest
 
-    def test_thing():
-        if not has_gpu:
-            {bail}
-        assert compute() == 1
+    class TestThing:
+        def test_thing(self):
+            if not has_gpu:
+                {bail}
+            else:
+                assert compute() == 1
     """
     assert _check(src) == []
 
@@ -740,6 +1021,34 @@ def test_a_guard_that_does_not_bail_out_still_flags():
             configure()
         else:
             assert compute() == 1
+    """
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize("bail", ["continue", "break"])
+def test_a_loop_branch_that_bails_out_owes_no_assertion(bail: str):
+    src = f"""
+    def test_thing():
+        for row in [1, 2]:
+            if row.uninteresting:
+                {bail}
+            else:
+                assert row.ok
+    """
+    assert _check(src) == []
+
+
+def test_an_early_exit_on_an_unrelated_condition_does_not_size_a_later_loop():
+    # The docstring's limit: skipping when there is no GPU says nothing about
+    # `fetch()` having returned anything, so this is still a vacuous test.
+    src = """
+    import pytest
+
+    def test_thing():
+        if not has_gpu:
+            pytest.skip("no gpu")
+        for row in fetch():
+            assert row.ok
     """
     assert len(_check(src)) == 1
 
@@ -985,6 +1294,39 @@ def test_multiple_hits_in_one_file():
             assert compute()
     """
     assert len(_check(src)) == 2
+
+
+def test_flags_a_fluent_dsl_assertion_inside_a_loop():
+    # `result.expect.contains_call(...)` verifies through a marker partway along
+    # the chain; without it the test would read as asserting nothing at all and
+    # would belong to SARJ043 instead of being reported here.
+    src = """
+    def test_thing():
+        result = analyse()
+        for name in result.names:
+            result.expect.contains_call(name)
+    """
+    assert len(_check(src)) == 1
+
+
+def test_a_fluent_dsl_assertion_outside_the_loop_clears_the_test():
+    src = """
+    def test_thing():
+        result = analyse()
+        result.expect.contains_call("send")
+        for name in result.names:
+            result.expect.contains_call(name)
+    """
+    assert _check(src) == []
+
+
+def test_an_ordinary_attribute_call_in_a_loop_is_not_an_assertion():
+    src = """
+    def test_thing():
+        for row in fetch():
+            client.send(row)
+    """
+    assert _check(src) == []
 
 
 def test_local_helper_that_asserts_counts_as_the_assertion():

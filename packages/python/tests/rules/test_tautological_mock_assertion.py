@@ -211,6 +211,16 @@ def test_message_explains_the_fix():
     assert "Assert on what the code *did*" in diag.message
 
 
+def test_the_exact_message_text():
+    [diag] = _check(_TAUTOLOGY)
+    assert diag.message == (
+        "this is the test's only assertion and it compares against the value the test itself configured "
+        "the mock to return, so it holds however the code under test behaves — it verifies "
+        "`unittest.mock`, not this codebase. Assert on what the code *did*: the arguments it passed, the "
+        "transformation it applied, or the effect it performed."
+    )
+
+
 # --------------------------------------------------------------------------- #
 # FP guard: an assertion that reaches into the result. 16 of the 44 structural #
 # matches across the audited corpora were this shape, all real assertions.     #
@@ -258,6 +268,102 @@ def test_recording_url(client):
     assert url == "https://signed.example/abc.mp4"
 """
     assert len(_check(src)) == 1
+
+
+def test_a_local_bound_to_a_subscript_of_the_result_is_exempt():
+    # saleor `graphql/shop/tests/queries/test_shop.py:515` — a full GraphQL round
+    # trip whose envelope is unpacked into `data` before the comparison. Same
+    # assertion as `test_subscript_of_the_result_is_exempt`, spelled over two
+    # statements.
+    src = """
+def test_query_available_external_authentications(external_auths, user_api_client, monkeypatch):
+    monkeypatch.setattr(
+        "saleor.plugins.manager.PluginsManager.list_external_authentications",
+        lambda self, active_only: external_auths,
+    )
+    response = user_api_client.post_graphql(QUERY)
+    content = get_graphql_content(response)
+    data = content["data"]["shop"]["availableExternalAuthentications"]
+    assert data == external_auths
+"""
+    assert _check(src) == []
+
+
+def test_a_local_bound_to_an_attribute_of_the_result_is_exempt():
+    src = """
+def test_last_send_time_updated():
+    with patch.object(nav.time, "time", return_value=4242.0):
+        tool.send_dtmf(ctx, "1")
+    stamp = tool._last_send_time
+    assert stamp == 4242.0
+"""
+    assert _check(src) == []
+
+
+def test_a_local_bound_to_the_whole_result_still_fires():
+    # The same two-statement shape without the reach-in: `result` is the whole
+    # thing the code produced, so the echo is still an echo.
+    src = """
+def test_query_available_external_authentications(external_auths, user_api_client, monkeypatch):
+    monkeypatch.setattr(
+        "saleor.plugins.manager.PluginsManager.list_external_authentications",
+        lambda self, active_only: external_auths,
+    )
+    response = user_api_client.post_graphql(QUERY)
+    data = get_graphql_content(response)
+    assert data == external_auths
+"""
+    assert len(_check(src)) == 1
+
+
+def test_a_rebound_local_is_too_ambiguous_to_resolve():
+    # `data` names two different things; the rule does not guess which one the
+    # assertion is about, so the reach-in exemption does not apply.
+    src = """
+def test_recording_url(client):
+    object_store.sign.return_value = "https://signed.example/abc.mp4"
+    data = client.get("/calls/1")
+    data = data.json()["data"]["recording_url"]
+    assert data == "https://signed.example/abc.mp4"
+"""
+    assert len(_check(src)) == 1
+
+
+def test_an_alias_chain_is_followed_to_the_reach_in():
+    # `expected` renames `url`, which reaches into `body`; one hop is not enough.
+    src = """
+def test_recording_url(client):
+    object_store.sign.return_value = "https://signed.example/abc.mp4"
+    body = client.get("/calls/1").json()
+    url = body["data"]["recording_url"]
+    expected = url
+    assert expected == "https://signed.example/abc.mp4"
+"""
+    assert _check(src) == []
+
+
+def test_a_circular_alias_pair_terminates():
+    # Each name is still bound exactly once, so both survive into the alias map
+    # and resolving one walks into the other. Without a visited set this hangs.
+    src = """
+def test_swap():
+    store.get.return_value = {"id": 7}
+    a = b
+    b = a
+    assert a == {"id": 7}
+"""
+    assert len(_check(src)) == 1
+
+
+def test_a_chained_assignment_binds_every_name_it_names():
+    src = """
+def test_recording_url(client):
+    object_store.sign.return_value = "https://signed.example/abc.mp4"
+    body = client.get("/calls/1").json()
+    url = shown = body["data"]["recording_url"]
+    assert shown == "https://signed.example/abc.mp4"
+"""
+    assert _check(src) == []
 
 
 def test_real_end_to_end_client_assertion_never_fires():
@@ -610,6 +716,19 @@ def test_reports_the_position_of_the_assertion():
     [diag] = _check(_TAUTOLOGY)
     assert (diag.line, diag.col) == (6, 5)
     assert diag.code == "SARJ057"
+
+
+def test_reports_the_position_of_an_assertion_nested_in_a_class_and_a_with_block():
+    src = """
+class TestUsers:
+    def test_get_user(self):
+        store.get.return_value = {"id": 7}
+        with freeze_time("2026-01-01"):
+            result = service.get_user(store)
+            assert result == {"id": 7}
+"""
+    [diag] = _check(src)
+    assert (diag.line, diag.col) == (7, 13)
 
 
 def test_one_diagnostic_per_test_function():

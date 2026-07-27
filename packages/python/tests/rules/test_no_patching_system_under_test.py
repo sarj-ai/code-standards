@@ -145,10 +145,38 @@ def test_message_names_the_dotted_target_for_a_sibling_patch():
     assert "`app.billing.apply_discount`" in diag.message
 
 
+def test_message_is_reported_verbatim():
+    [diag] = _check(_SIBLING)
+    assert diag.message == (
+        "this patches `app.billing.apply_discount`, which belongs to the unit this test then "
+        "exercises, so the real code path never runs and the assertions only describe the mock. "
+        "Patch at the boundary the unit talks to instead, or exercise the real method."
+    )
+
+
 def test_reports_line_and_column_of_the_patch_call():
     [diag] = _check(_SIBLING)
     assert (diag.line, diag.col) == (7, 2)
     assert diag.code == "SARJ058"
+
+
+def test_reports_the_position_of_a_patch_nested_in_a_class_and_a_with_block():
+    # Both coordinates are far from 1, so neither a hardcoded line nor a
+    # hardcoded column survives this.
+    src = """
+    from unittest import mock
+
+    from app.billing import Invoice
+
+
+    class TestInvoice:
+        def test_total(self):
+            invoice = Invoice(lines)
+            with mock.patch.object(invoice, "line_total"):
+                assert invoice.total() == 5
+    """
+    [diag] = _check(src)
+    assert (diag.line, diag.col) == (10, 14)
 
 
 def test_multiple_hits_in_one_file_are_sorted_by_position():
@@ -295,17 +323,34 @@ def test_a_module_this_file_never_imports_from_is_exempt():
 
 
 def test_a_relative_import_cannot_prove_the_module_and_is_exempt():
+    # `from .helpers import ...` binds `node.module == "helpers"`, which would
+    # match the target string `helpers.compute` if the relative-import guard were
+    # dropped — but `.helpers` is not the top-level `helpers` package.
     src = """
     from unittest.mock import patch
 
-    from .billing import apply_discount, compute_invoice
+    from .helpers import compute, render
 
 
-    @patch("app.billing.apply_discount")
-    def test_compute_invoice(mock_discount):
-        assert compute_invoice(order) == 10
+    @patch("helpers.compute")
+    def test_render(mock_compute):
+        assert render(1) == 10
     """
     assert _check(src) == []
+
+
+def test_the_same_shape_with_an_absolute_import_does_fire():
+    src = """
+    from unittest.mock import patch
+
+    from helpers import compute, render
+
+
+    @patch("helpers.compute")
+    def test_render(mock_compute):
+        assert render(1) == 10
+    """
+    assert len(_check(src)) == 1
 
 
 def test_module_whose_other_imports_are_never_called_is_exempt():
@@ -320,6 +365,101 @@ def test_module_whose_other_imports_are_never_called_is_exempt():
     @patch("app.billing.apply_discount")
     def test_compute_invoice(mock_discount):
         assert mock_discount is not None
+    """
+    assert _check(src) == []
+
+
+# --------------------------------------------------------------------------- #
+# FP guard: the proof that <mod> is the unit under test must live in the same  #
+# function as the patch. Pooling it file-wide let one test license another's   #
+# unrelated patch — the largest FP class at scale (196 of 1,968 corpus hits).  #
+# --------------------------------------------------------------------------- #
+
+
+def test_a_sibling_tests_call_does_not_license_the_patch():
+    # litellm test_health_check_allowed_fails_integration.py:661 — the patch
+    # exercises `app.pricing`, and the only call into `app.billing` is in a
+    # different test entirely.
+    src = """
+    from unittest.mock import patch
+
+    from app.billing import apply_discount, compute_invoice
+    from app.pricing import quote
+
+
+    def test_compute_invoice():
+        assert compute_invoice(order) == 10
+
+
+    @patch("app.billing.apply_discount")
+    def test_quote(mock_discount):
+        assert quote(order) == 3
+    """
+    assert _check(src) == []
+
+
+def test_the_same_call_inside_the_patching_function_does_fire():
+    src = """
+    from unittest.mock import patch
+
+    from app.billing import apply_discount, compute_invoice
+    from app.pricing import quote
+
+
+    @patch("app.billing.apply_discount")
+    def test_quote(mock_discount):
+        assert compute_invoice(order) == 10
+        assert quote(order) == 3
+    """
+    assert len(_check(src)) == 1
+
+
+def test_the_unit_reached_through_a_module_alias_is_evidence():
+    # airflow/airflow-core/tests/unit/security/test_kerberos.py:306 — `run` is a
+    # member of the patched module but the test never imports it by name, so the
+    # only proof it enters the module is the `kerberos.` receiver.
+    src = """
+    from unittest import mock
+
+    from airflow.security import kerberos
+    from airflow.security.kerberos import detect_conf_var, renew_from_kt
+
+
+    @mock.patch("airflow.security.kerberos.renew_from_kt")
+    def test_run(mock_renew):
+        kerberos.run(principal="test-principal", keytab="/tmp/keytab")
+        assert mock_renew.mock_calls == [mock.call("test-principal", "/tmp/keytab")]
+    """
+    assert len(_check(src)) == 1
+
+
+def test_an_aliased_import_resolves_to_the_module_it_names():
+    src = """
+    from unittest import mock
+
+    import mlflow.utils.databricks_utils as databricks_utils
+    from mlflow.utils.databricks_utils import get_workspace_id, get_workspace_url
+
+
+    def test_deployment_job_url():
+        with mock.patch("mlflow.utils.databricks_utils.get_workspace_id", return_value=456):
+            assert databricks_utils.build_deployment_job_url(job_id=123)
+    """
+    assert len(_check(src)) == 1
+
+
+def test_an_alias_for_a_different_module_is_not_evidence():
+    src = """
+    from unittest import mock
+
+    from airflow.security import krb5
+    from airflow.security.kerberos import detect_conf_var, renew_from_kt
+
+
+    @mock.patch("airflow.security.kerberos.renew_from_kt")
+    def test_run(mock_renew):
+        krb5.run(principal="test-principal", keytab="/tmp/keytab")
+        assert mock_renew.mock_calls
     """
     assert _check(src) == []
 
@@ -424,6 +564,70 @@ def test_a_name_merely_containing_a_boundary_word_still_fires():
     assert len(_check(src)) == 1
 
 
+# --------------------------------------------------------------------------- #
+# FP guard: a snake_case name the file only ever drives through its attributes  #
+# is a module singleton, and swapping one is the DI seam. 76 corpus hits.       #
+# --------------------------------------------------------------------------- #
+
+
+def test_a_module_singleton_driven_through_its_attributes_is_exempt():
+    # `global_mcp_server_manager: MCPServerManager = MCPServerManager()` is
+    # patched 83 times across two litellm suites, always as an object.
+    src = """
+    from unittest.mock import patch
+
+    from app.billing import compute_invoice, invoice_registry
+
+
+    def test_compute_invoice():
+        with patch("app.billing.invoice_registry") as mock_registry:
+            assert compute_invoice(order) == 10
+        mock_registry.expand.assert_called_once()
+
+
+    def test_registry_starts_empty():
+        assert invoice_registry.entries == []
+    """
+    assert _check(src) == []
+
+
+def test_a_name_the_file_also_calls_bare_is_not_a_singleton():
+    # `build_report.cache_clear()` makes it an attribute receiver too, so the
+    # veto has to turn on the *absence* of a bare call, not the receiver alone.
+    src = """
+    from unittest.mock import patch
+
+    from app.billing import build_report, compute_invoice
+
+
+    def test_compute_invoice():
+        with patch("app.billing.build_report") as mock_report:
+            assert compute_invoice(order) == 10
+        mock_report.assert_called_once()
+
+
+    def test_build_report_directly():
+        build_report.cache_clear()
+        assert build_report(order) == 1
+    """
+    assert len(_check(src)) == 1
+
+
+def test_a_name_that_is_never_a_receiver_is_not_a_singleton():
+    src = """
+    from unittest.mock import patch
+
+    from app.billing import build_report, compute_invoice
+
+
+    def test_compute_invoice():
+        with patch("app.billing.build_report") as mock_report:
+            assert compute_invoice(order) == 10
+        mock_report.assert_called_once()
+    """
+    assert len(_check(src)) == 1
+
+
 def test_dunder_method_of_the_object_under_test_is_exempt():
     src = """
     from unittest import mock
@@ -476,9 +680,10 @@ def test_a_concrete_replacement_is_exempt(call: str):
         'patch("app.billing.apply_discount")',
         'patch("app.billing.apply_discount", return_value=10)',
         'patch("app.billing.apply_discount", autospec=True)',
-        'patch("app.billing.apply_discount", side_effect=ValueError)',
+        'patch("app.billing.apply_discount", side_effect=[10, 20])',
+        'patch("app.billing.apply_discount", side_effect=canned_answers)',
     ],
-    ids=["bare", "return-value", "autospec", "side-effect-exception"],
+    ids=["bare", "return-value", "autospec", "side-effect-list", "side-effect-name"],
 )
 def test_an_auto_generated_mock_does_fire(call: str):
     src = f"""
@@ -492,6 +697,59 @@ def test_an_auto_generated_mock_does_fire(call: str):
             assert compute_invoice(order) == 10
     """
     assert len(_check(src)) == 1
+
+
+# --------------------------------------------------------------------------- #
+# FP guard: a mock that raises is a tripwire or a fault injector, never a       #
+# stand-in for the real answer, and the caller's path does run. 30 corpus hits. #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "side_effect",
+    [
+        "ValueError",
+        'RuntimeError("boom")',
+        'AssertionError("Should not be called")',
+        'Exception("connection failed")',
+        "SystemExit",
+        "asyncio.TimeoutError",
+        "ExpectedException()",
+    ],
+    ids=["class", "instance", "tripwire", "bare-exception", "exit", "dotted", "test-local"],
+)
+def test_a_side_effect_that_raises_is_exempt(side_effect: str):
+    # django/tests/logging_tests/tests.py:570 proves `emit` short-circuits when
+    # ADMINS is empty; prefect test_send_entrypoint_logs.py:115 is literally
+    # named `test_silently_swallows_exceptions`.
+    src = f"""
+    from unittest.mock import patch
+
+    from app.billing import apply_discount, compute_invoice
+
+
+    def test_compute_invoice():
+        with patch("app.billing.apply_discount", side_effect={side_effect}):
+            assert compute_invoice(order) == 10
+    """
+    assert _check(src) == []
+
+
+def test_a_raising_side_effect_on_the_object_under_test_is_also_exempt():
+    # airflow test_manager.py:1302 — `patch.object(manager,
+    # "persist_parsing_result", side_effect=RuntimeError("boom"))`.
+    src = """
+    from unittest import mock
+
+    from app.billing import Invoice
+
+
+    def test_total():
+        invoice = Invoice(lines)
+        with mock.patch.object(invoice, "line_total", side_effect=RuntimeError("boom")):
+            assert invoice.total() == 5
+    """
+    assert _check(src) == []
 
 
 def test_a_side_effect_delegating_to_the_real_symbol_is_a_spy():
@@ -798,6 +1056,23 @@ def test_exercise_in_a_different_test_does_not_leak():
     def test_two():
         invoice = Invoice(lines)
         assert invoice.total() == 5
+    """
+    assert _check(src) == []
+
+
+def test_patch_object_without_an_attribute_argument_is_ignored():
+    # `_PATCH_OBJECT_MIN_ARGS`: one argument is not enough to judge anything, and
+    # reaching for `args[1]` regardless would raise IndexError.
+    src = """
+    from unittest import mock
+
+    from app.billing import Invoice
+
+
+    def test_total():
+        invoice = Invoice(lines)
+        with mock.patch.object(invoice):
+            assert invoice.total() == 5
     """
     assert _check(src) == []
 

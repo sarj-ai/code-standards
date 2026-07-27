@@ -15,12 +15,23 @@
  *   (c) declares >=1 public instance method (a class with only a constructor,
  *       fields, or getters is a value object / DTO, not a service).
  *
- * CORPUS SWEEP (2026-07): 11 first-party TypeScript repos — bulbul/typescript,
+ * CORPUS SWEEP (2026-07, re-measured over 18 repos): bulbul/typescript,
  * automations, portal, demo-gateway, sarj-demos, noura-be, kpi-hub, najm,
- * kashta, summer, hala, ai-canvas-health — 7,912 non-test / non-generated files,
- * 229 exported class declarations. 175 already carry an `implements` clause and
- * 14 extend a base class: 82% of the population is ALREADY compliant, which is
- * what makes this a lint rule rather than a design proposal. 29 fire.
+ * kashta, summer, hala, ai-canvas-health, farwa, tamr, money2020, banking-demo,
+ * pericles, digital-bank. 286 exported class declarations in non-test /
+ * non-generated files; 216 already carry an `implements` clause, extend a base
+ * class, or are themselves abstract. 76% of the population is ALREADY
+ * compliant, which is what makes this a lint rule rather than a design
+ * proposal. 30 fire after the two guards below (35 before them).
+ *
+ * The earlier sweep read 82% of 229 because it covered only the first twelve
+ * repos; the six added here are where both false-positive families lived, and
+ * both were invisible to it. Adoption varies far more than the aggregate
+ * suggests: portal (62/62), bulbul (32/32), pericles (12/12), hala and
+ * demo-gateway are at 100%; tamr 86%, summer 83%, farwa 80%, najm 71%, kashta
+ * 56%, ai-canvas-health / money2020 / banking-demo 50%, automations 46% (32 of
+ * 69), digital-bank 29%, noura-be 25%. The rule is a ratchet for the low half,
+ * not a description of the high half.
  *
  * The convention being enforced is `interface`, not `abstract class`, and the
  * corpus is unambiguous about it: 175 `implements` clauses against exactly ONE
@@ -34,21 +45,27 @@
  * `DocumentParserImpl` / `DocumentParser` (summer) — so the message names no
  * interface for you.
  *
- * FIRING DISTRIBUTION, and why the hits are outliers rather than a house style:
- *   bulbul/typescript  32 exported classes, 0 hits (30 implements, 2 extends)
- *   portal             62 exported classes, 0 hits (57 implements, 5 extends)
- *   hala                4 exported classes, 0 hits
- *   automations        69 exported classes, 20 hits (29 implements)
- *   najm               17 exported classes,  3 hits (11 implements)
- *   summer             24 exported classes,  3 hits (20 implements)
- *   kashta              9 exported classes,  2 hits (5 implements)
- *   ai-canvas-health    2 exported classes,  1 hit
- *   demo-gateway / sarj-demos / kpi-hub / noura-be: 0 hits
+ * FIRING DISTRIBUTION, and why the hits are outliers rather than a house style
+ * (before -> after the two guards below):
+ *   automations        69 exported classes, 20 -> 20 hits
+ *   najm               17 exported classes,  3 ->  3 hits
+ *   summer             24 exported classes,  3 ->  2 hits
+ *   farwa              20 exported classes,  3 ->  2 hits
+ *   kashta              9 exported classes,  2 ->  2 hits
+ *   ai-canvas-health    2 exported classes,  1 ->  1 hit
+ *   tamr               14 exported classes,  1 ->  0 hits
+ *   money2020           2 exported classes,  1 ->  0 hits
+ *   banking-demo        2 exported classes,  1 ->  0 hits
+ *   bulbul / portal / pericles / hala / demo-gateway / sarj-demos / kpi-hub /
+ *   noura-be / digital-bank: 0 hits
  *
- * All 29 hits were reviewed by hand; 28 are true positives and 1 is borderline
- * (summer/typescript/packages/eight-job-runner/src/router.ts:11 `MainRouter`,
- * an express wiring class that nobody injects) — a measured false-positive rate
- * of 0-3.4%.
+ * THE FALSE-POSITIVE RATE WAS 14%, NOT 0-3.4%. The earlier claim rested on a
+ * sweep that never reached farwa, tamr, money2020 or banking-demo, and both
+ * false-positive families live only there (plus one instance each already in
+ * summer and, for the transport family, nowhere the old sweep looked). Of 35
+ * raw hits, 5 were false: three copies of one express router template and two
+ * copies of one `ky` wrapper. The two guards below remove exactly those 5 and
+ * cost 0 true positives — verified hit-by-hit across all 18 repos, 35 -> 30.
  *
  * The origin case is
  * automations/apps/internal-automations/src/talent/name-healer/service.ts:28
@@ -92,6 +109,40 @@
  *     each take `svc: Services` AND build one internal `ReferralProcessor`, and
  *     both silently stopped firing. Constructing a helper is not being a wiring
  *     class; the ratio is what separates the two.
+ *
+ *   - FRAMEWORK ROUTERS. summer/typescript/.../eight-job-runner/src/router.ts:11,
+ *     farwa/typescript/packages/farwa-job-runner/src/router.ts:11 and
+ *     tamr/typescript/packages/tamr-job-runner/src/router.ts:7 are three copies
+ *     of one template: `MainRouter(taskStore, taskExecutor)` whose `init()`
+ *     returns an `express.Router()`. The server's bootstrap mounts it; nothing
+ *     injects it, so there is no consumer to hand a port to. -> a class whose
+ *     body manufactures a router (`express.Router()` / `Router()`) or handles
+ *     the framework's own namespaced request/response types
+ *     (`express.Request`) is exempt. The DOM `Request`/`Response` globals a
+ *     Workers `fetch` handler names are unqualified and deliberately do not
+ *     match. Cost: 3 of 35 raw hits, all three false positives, 0 true
+ *     positives lost.
+ *
+ *   - TRANSPORT WRAPPERS. money2020/src/lib/http-client.ts:34 and
+ *     banking-demo/src/lib/http-client.ts:39 are two copies of
+ *     `Money2020HttpClient(private readonly client: KyInstance)`. These are
+ *     false by this standard's own stated reasoning: the Python twin excludes
+ *     `*Client` precisely because an ABC over a class whose collaborator is
+ *     somebody else's HTTP transport substitutes nothing — a consumer's test
+ *     fakes the transport (`respx`, `nock`, `msw`), not the wrapper. -> a class
+ *     is exempt when its ONLY collaborator is a third-party transport
+ *     (`KyInstance`, `AxiosInstance`, `Session`), it is named `*Client`, AND no
+ *     interface in the same file shares its stem. All three arms are load
+ *     bearing. The `*Client` arm is what keeps kashta's
+ *     `.../precedent-node/src/services/call-service.ts:50` `HttpCallService`
+ *     and summer's `.../credit/src/app/api/document-parser.ts:116`
+ *     `DocumentParserImpl` firing — both are `AxiosInstance`-only, and both
+ *     wrap the transport in a domain operation their consumers can substitute.
+ *     The same-file-interface arm has zero measured cost and is kept as a
+ *     precaution: a `FooClient` beside an `IFooClient` it never `implements` is
+ *     exactly the drift this rule exists for, and the corpus cannot prove that
+ *     shape's absence elsewhere. Cost: 2 of 35 raw hits, both false positives,
+ *     0 true positives lost.
  *
  * GUARDS WITH ZERO MEASURED COST, kept as precautions because the corpus is
  * first-party and cannot prove their absence elsewhere: decorated classes
@@ -152,6 +203,24 @@ const CONFIGISH_TYPE_RE =
  */
 const CONFIGISH_NAME_RE =
   /^(?:options|opts|config|configuration|settings|params|props|args|env|environment|callbacks|flags|logger|log|clock)$/i;
+
+/**
+ * Third-party HTTP transports. A class whose ONLY stored collaborator is one of
+ * these is a thin wrapper over somebody else's wire client: the Python side of
+ * this standard excludes `*Client` for exactly this reason — an ABC over a class
+ * whose collaborator is somebody else's HTTP transport substitutes nothing, and
+ * a consumer's test fakes the transport (`respx`, `nock`, `msw`), not the wrapper.
+ */
+const HTTP_TRANSPORT_TYPE_RE = /^(?:KyInstance|AxiosInstance|Session)$/;
+
+/** Only the `*Client` naming carries the guard; see the transport-wrapper note in the header. */
+const TRANSPORT_WRAPPER_NAME_RE = /Client$/;
+
+/** `express.Router()` / `Router()` — the router-factory call that marks HTTP wiring. */
+const ROUTER_FACTORY_NAME = "Router";
+
+/** Namespaced framework HTTP types (`express.Request`), never the DOM globals of the same name. */
+const FRAMEWORK_HTTP_TYPES: ReadonlySet<string> = new Set(["Request", "Response", "NextFunction"]);
 
 interface Collaborator {
   readonly name: string;
@@ -253,6 +322,102 @@ const readConstructor = (ctor: TSESTree.MethodDefinition): ConstructorFacts => {
   return { collaborators, constructedFields };
 };
 
+/** Walk every descendant node, `parent` links excluded, until `found` returns true. */
+const subtreeHas = (root: TSESTree.Node, found: (node: TSESTree.Node) => boolean): boolean => {
+  let hit = false;
+  const visit = (current: TSESTree.Node): void => {
+    if (hit) return;
+    if (found(current)) {
+      hit = true;
+      return;
+    }
+    for (const key of Object.keys(current) as (keyof TSESTree.Node)[]) {
+      if (key === "parent") continue;
+      const value = current[key];
+      for (const child of (Array.isArray(value) ? value : [value]) as unknown[]) {
+        if (
+          child !== null &&
+          typeof child === "object" &&
+          typeof (child as { type?: unknown }).type === "string"
+        ) {
+          visit(child as TSESTree.Node);
+        }
+      }
+    }
+  };
+  visit(root);
+  return hit;
+};
+
+/**
+ * Report whether the class body is HTTP framework wiring: it manufactures a
+ * router (`express.Router()`), or it handles the framework's own namespaced
+ * request/response objects. Such a class is mounted by the server's bootstrap,
+ * never injected into anything, so there is no consumer to give a port to.
+ */
+const isFrameworkWiring = (body: TSESTree.ClassBody): boolean =>
+  subtreeHas(body, (node) => {
+    if (node.type === AST_NODE_TYPES.CallExpression) {
+      const { callee } = node;
+      if (callee.type === AST_NODE_TYPES.Identifier) return callee.name === ROUTER_FACTORY_NAME;
+      return (
+        callee.type === AST_NODE_TYPES.MemberExpression &&
+        !callee.computed &&
+        callee.property.type === AST_NODE_TYPES.Identifier &&
+        callee.property.name === ROUTER_FACTORY_NAME
+      );
+    }
+    // `express.Request` — qualified on purpose, so the DOM `Request`/`Response`
+    // globals a Workers `fetch` handler names do not read as express wiring.
+    return (
+      node.type === AST_NODE_TYPES.TSTypeReference &&
+      node.typeName.type === AST_NODE_TYPES.TSQualifiedName &&
+      FRAMEWORK_HTTP_TYPES.has(node.typeName.right.name)
+    );
+  });
+
+/** `IFooClient` / `FooClientImpl` both reduce to `FooClient`, the three impl conventions the corpus uses. */
+const stem = (name: string): string => name.replace(/^I(?=[A-Z])/, "").replace(/Impl$/, "");
+
+/** Interface declarations at the top level of this module, exported or not. */
+const fileInterfaceNames = (program: TSESTree.Program): string[] => {
+  const names: string[] = [];
+  for (const statement of program.body) {
+    const declaration =
+      statement.type === AST_NODE_TYPES.ExportNamedDeclaration ? statement.declaration : statement;
+    if (declaration?.type === AST_NODE_TYPES.TSInterfaceDeclaration) names.push(declaration.id.name);
+  }
+  return names;
+};
+
+/**
+ * Report whether the class is a thin wrapper over somebody else's HTTP transport.
+ *
+ * Three conditions, all necessary. The class receives exactly ONE collaborator
+ * and that collaborator is a third-party transport, so there is no domain seam
+ * hiding behind it. It is named `*Client`, which is the arm that keeps kashta's
+ * `HttpCallService` and summer's `DocumentParserImpl` — both `AxiosInstance`-only
+ * — firing, because those wrap a transport in a *domain* operation and their
+ * consumers do have something to substitute. And no interface in the same file
+ * shares its stem, because an in-file port the class silently fails to
+ * `implements` is the drift this rule exists to catch.
+ */
+const isTransportWrapper = (
+  className: string,
+  collaborators: readonly Collaborator[],
+  program: TSESTree.Program,
+): boolean => {
+  const [only] = collaborators;
+  if (collaborators.length !== 1 || only === undefined) return false;
+  if (!HTTP_TRANSPORT_TYPE_RE.test(only.typeName)) return false;
+  if (!TRANSPORT_WRAPPER_NAME_RE.test(className)) return false;
+  const target = stem(className);
+  return !fileInterfaceNames(program).some((name) => {
+    const other = stem(name);
+    return target.endsWith(other) || other.endsWith(target);
+  });
+};
+
 /**
  * Public instance methods only. `kind === "method"` excludes getters and setters
  * on purpose: a class that exposes only accessors is a value object, and the
@@ -321,6 +486,10 @@ export default ESLintUtils.RuleCreator(
         // collaborator is an ordinary service, not a wiring class, so the test
         // is a ratio rather than the mere presence of a `new`.
         if (constructedFields > collaborators.length) return;
+        // HTTP wiring: a router factory is mounted by the bootstrap, not injected.
+        if (isFrameworkWiring(node.body)) return;
+        // A lone third-party transport is not a seam a port could protect.
+        if (isTransportWrapper(node.id.name, collaborators, context.sourceCode.ast)) return;
 
         const methods = publicMethodNames(node.body);
         if (methods.length === 0) return;

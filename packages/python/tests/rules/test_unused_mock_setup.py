@@ -324,6 +324,28 @@ def test_message_names_the_asserted_path():
     assert "never" in diag.message
 
 
+def test_the_exact_assert_not_called_message():
+    [diag] = _check(_ASSERTED_NOT_CALLED)
+    assert diag.message == (
+        "`subject_service.extract_api_key_user.return_value` is configured here, but the test asserts "
+        "`subject_service.extract_api_key_user` was never called and nothing runs after that assertion "
+        "— the configured value can never be observed. Delete the setup, or assert on the call it was "
+        "written for"
+    )
+
+
+def test_the_act_on_the_assertions_own_line_still_precedes_it():
+    # Boundary on `last_effect <= line`: the last thing that can drive the mock
+    # shares a line with the assertion, so it still ran *before* it and nothing
+    # follows. Anything stricter than `<=` loses this.
+    src = """
+def test_skips_lookup():
+    service.lookup.return_value = None
+    handle(request); service.lookup.assert_not_called()
+"""
+    assert len(_check(src)) == 1
+
+
 # ---- false-positive guards: the assertion is a checkpoint, not the verdict ----
 
 
@@ -429,6 +451,18 @@ def test_lookup():
     assert _check(src) == []
 
 
+def test_a_configuration_on_the_assertions_own_line_is_still_for_what_comes_next():
+    # Boundary on `line > stmt.lineno`: same line, configuration second. The
+    # assertion describes the state before it, exactly as when they are on
+    # separate lines, so relaxing the comparison to `>=` would misfire here.
+    src = """
+def test_lookup():
+    service.lookup.assert_not_called(); service.lookup.return_value = None
+    assert True
+"""
+    assert _check(src) == []
+
+
 def test_assert_not_called_on_an_unrelated_path_is_exempt():
     src = """
 def test_lookup():
@@ -460,6 +494,23 @@ def test_lookup():
         service.lookup.assert_not_called()
 
     register(_later)
+"""
+    assert _check(src) == []
+
+
+def test_a_nested_helpers_configuration_does_not_pair_with_the_outer_assertion():
+    # The mirror of the case above, and the one that pins `_NESTED_SCOPES`: a
+    # nested `def` owns its own scope, so the rule refuses to pair across the
+    # boundary in either direction. Both misses are the price of never guessing
+    # when a helper runs.
+    src = """
+def test_lookup():
+    def _arrange():
+        service.lookup.return_value = None
+
+    _arrange()
+    handle(request)
+    service.lookup.assert_not_called()
 """
     assert _check(src) == []
 
@@ -610,3 +661,25 @@ def test_three():
 
 def test_diagnostics_carry_the_rule_code():
     assert all(d.code == "SARJ064" for d in _check(_ASSERTED_NOT_CALLED))
+
+
+def test_the_exact_overwrite_message():
+    [diag] = _check(_OVERWRITTEN)
+    assert diag.message == (
+        "`gateway.charge.return_value` is set here and overwritten on line 4 with nothing in between "
+        "that could call the mock, so this value is never used. Delete the dead setup, or move the code "
+        "under test between the two configurations"
+    )
+
+
+def test_reports_the_position_of_a_finding_nested_in_a_class_and_a_with_block():
+    src = """
+class TestBilling:
+    def test_charge(self):
+        with mock.patch("billing.clock"):
+            gateway.charge.return_value = 1
+            gateway.charge.return_value = 2
+            assert billing.charge(gateway) == 2
+"""
+    [diag] = _check(src)
+    assert (diag.line, diag.col) == (5, 13)
