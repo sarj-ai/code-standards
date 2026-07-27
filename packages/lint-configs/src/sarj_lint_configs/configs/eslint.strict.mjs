@@ -9,7 +9,6 @@ import simpleImportSort from "eslint-plugin-simple-import-sort";
 import betterTailwindcss from "eslint-plugin-better-tailwindcss";
 import sarj from "@sarj/eslint-plugin";
 
-
 /** @type {import("eslint").Linter.Config[]} */
 const config = [
   ...tseslint.configs.strictTypeChecked,
@@ -60,31 +59,55 @@ const config = [
       "@typescript-eslint/no-misused-promises": "error",
       "@typescript-eslint/require-await": "error",
       "@typescript-eslint/restrict-template-expressions": "error",
-      "@typescript-eslint/no-unused-vars": ["error", {
-        argsIgnorePattern: "^_",
-        varsIgnorePattern: "^_",
-        caughtErrorsIgnorePattern: "^_",
-        ignoreRestSiblings: true,
-      }],
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+          ignoreRestSiblings: true,
+        },
+      ],
       "@typescript-eslint/consistent-indexed-object-style": ["error", "record"],
-      "@typescript-eslint/consistent-type-imports": ["error", {
-        prefer: "type-imports",
-        fixStyle: "inline-type-imports",
-      }],
+      "@typescript-eslint/consistent-type-imports": [
+        "error",
+        {
+          prefer: "type-imports",
+          fixStyle: "inline-type-imports",
+        },
+      ],
       "@typescript-eslint/switch-exhaustiveness-check": "error",
-      "@typescript-eslint/consistent-type-assertions": ["error", {
-        assertionStyle: "never",
-        objectLiteralTypeAssertions: "never",
-      }],
+      "@typescript-eslint/consistent-type-assertions": [
+        "error",
+        {
+          assertionStyle: "never",
+          objectLiteralTypeAssertions: "never",
+        },
+      ],
       "@typescript-eslint/naming-convention": [
         "error",
-        { selector: "default", format: ["camelCase"], leadingUnderscore: "allow" },
-        { selector: "variable", format: ["camelCase", "UPPER_CASE", "PascalCase"], leadingUnderscore: "allow" },
+        {
+          selector: "default",
+          format: ["camelCase"],
+          leadingUnderscore: "allow",
+        },
+        {
+          selector: "variable",
+          format: ["camelCase", "UPPER_CASE", "PascalCase"],
+          leadingUnderscore: "allow",
+        },
         { selector: "typeLike", format: ["PascalCase"] },
-        { selector: "import", format: ["camelCase", "PascalCase", "UPPER_CASE"] },
+        {
+          selector: "import",
+          format: ["camelCase", "PascalCase", "UPPER_CASE"],
+        },
         { selector: "objectLiteralProperty", format: null },
         { selector: "typeProperty", format: null },
-        { selector: "parameter", format: ["camelCase", "snake_case"], leadingUnderscore: "allow" },
+        {
+          selector: "parameter",
+          format: ["camelCase", "snake_case"],
+          leadingUnderscore: "allow",
+        },
       ],
 
       // Additional type-aware strictness incorporated from bulbul's base config.
@@ -112,24 +135,72 @@ const config = [
       "@typescript-eslint/array-type": "error",
       "no-else-return": "error",
 
-      "react/jsx-no-leaked-render": ["error", { validStrategies: ["ternary", "coerce"] }],
-      "react/no-unstable-nested-components": ["error", { prohibitLocalVariables: true }],
+      "react/jsx-no-leaked-render": [
+        "error",
+        { validStrategies: ["ternary", "coerce"] },
+      ],
+      "react/no-unstable-nested-components": [
+        "error",
+        { prohibitLocalVariables: true },
+      ],
       "react-hooks/exhaustive-deps": "error",
       "react-hooks/rules-of-hooks": "error",
-      "react/forbid-elements": ["error", { forbid: [
-        { element: "button",   message: "Use <Button> from your design system." },
-        { element: "input",    message: "Use <Input> / <Checkbox> / <RadioGroup> from your design system." },
-        { element: "select",   message: "Use <Select> from your design system." },
-        { element: "textarea", message: "Use <Textarea> from your design system." },
-        { element: "dialog",   message: "Use <Dialog> / <AlertDialog> from your design system." },
-        { element: "table",    message: "Use <Table> family from your design system." },
-      ]}],
-      "react/forbid-component-props": ["error", { forbid: [
-        { propName: "style", message: "Use design-token utility classes. For dynamic values, set a CSS custom property and reference it via an arbitrary-value class." },
-      ]}],
-      "react/forbid-dom-props": ["error", { forbid: [
-        { propName: "style", message: "Use design-token utility classes. For dynamic values, set a CSS custom property and reference it via an arbitrary-value class." },
-      ]}],
+      "react/forbid-elements": [
+        "error",
+        {
+          forbid: [
+            {
+              element: "button",
+              message: "Use <Button> from your design system.",
+            },
+            {
+              element: "input",
+              message:
+                "Use <Input> / <Checkbox> / <RadioGroup> from your design system.",
+            },
+            {
+              element: "select",
+              message: "Use <Select> from your design system.",
+            },
+            {
+              element: "textarea",
+              message: "Use <Textarea> from your design system.",
+            },
+            {
+              element: "dialog",
+              message: "Use <Dialog> / <AlertDialog> from your design system.",
+            },
+            {
+              element: "table",
+              message: "Use <Table> family from your design system.",
+            },
+          ],
+        },
+      ],
+      "react/forbid-component-props": [
+        "error",
+        {
+          forbid: [
+            {
+              propName: "style",
+              message:
+                "Use design-token utility classes. For dynamic values, set a CSS custom property and reference it via an arbitrary-value class.",
+            },
+          ],
+        },
+      ],
+      "react/forbid-dom-props": [
+        "error",
+        {
+          forbid: [
+            {
+              propName: "style",
+              message:
+                "Use design-token utility classes. For dynamic values, set a CSS custom property and reference it via an arbitrary-value class.",
+            },
+          ],
+        },
+      ],
       "react/jsx-pascal-case": "error",
       "react/no-danger": "error",
       "react/no-this-in-sfc": "error",
@@ -145,7 +216,10 @@ const config = [
       "react/jsx-boolean-value": ["error", "never"],
 
       "unicorn/consistent-function-scoping": "error",
-      "unicorn/filename-case": ["error", { cases: { kebabCase: true }, ignore: [String.raw`\.d\.ts$`] }],
+      "unicorn/filename-case": [
+        "error",
+        { cases: { kebabCase: true }, ignore: [String.raw`\.d\.ts$`] },
+      ],
       "unicorn/prefer-switch": "warn",
       "unicorn/no-array-for-each": "warn",
       "unicorn/no-useless-undefined": "error",
@@ -163,7 +237,10 @@ const config = [
       // Deterministic ordering (incorporated from bulbul). perfectionist sorts
       // structural members; simple-import-sort owns import/export ordering
       // (chosen over eslint-plugin-import to avoid Next.js resolver conflicts).
-      "perfectionist/sort-objects": ["error", { type: "natural", order: "asc" }],
+      "perfectionist/sort-objects": [
+        "error",
+        { type: "natural", order: "asc" },
+      ],
       "perfectionist/sort-interfaces": "error",
       "perfectionist/sort-classes": "error",
       "perfectionist/sort-jsx-props": "error",
@@ -175,13 +252,17 @@ const config = [
       // eslint-disable comments and `@typescript-eslint/ban-ts-comment` (from
       // strictTypeChecked) covers `@ts-expect-error`, so a bespoke rule would be
       // a duplicate.
-      "@eslint-community/eslint-comments/require-description": ["error", { ignore: [] }],
+      "@eslint-community/eslint-comments/require-description": [
+        "error",
+        { ignore: [] },
+      ],
       // ...and a suppression must name the rule it suppresses. A bare
       // `/* eslint-disable */` at the top of a file silently switches off EVERY
       // rule for the whole file — including ones added later — which is the
       // file-level-suppression escape hatch flagged repeatedly in review.
       "@eslint-community/eslint-comments/no-unlimited-disable": "error",
-      "@eslint-community/eslint-comments/no-restricted-disable": ["warn",
+      "@eslint-community/eslint-comments/no-restricted-disable": [
+        "warn",
         "no-console",
         "react-hooks/exhaustive-deps",
       ],
@@ -198,27 +279,32 @@ const config = [
         },
         {
           selector: "CallExpression[callee.name='useCallback']",
-          message: "Don't memoize by hand — the React Compiler handles it. Remove useCallback.",
+          message:
+            "Don't memoize by hand — the React Compiler handles it. Remove useCallback.",
         },
         {
           selector: "CallExpression[callee.name='useMemo']",
-          message: "Don't memoize by hand — the React Compiler handles it. Remove useMemo (extract a plain function or compute inline).",
+          message:
+            "Don't memoize by hand — the React Compiler handles it. Remove useMemo (extract a plain function or compute inline).",
         },
       ],
-      "no-restricted-imports": ["error", {
-        paths: [
-          {
-            name: "@clerk/nextjs",
-            importNames: ["auth", "currentUser"],
-            message: "Prefer an internal user-service wrapper.",
-          },
-          {
-            name: "@clerk/nextjs/server",
-            message: "Prefer an internal user-service wrapper.",
-          },
-        ],
-        patterns: ["*/index", "*/index.ts"],
-      }],
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@clerk/nextjs",
+              importNames: ["auth", "currentUser"],
+              message: "Prefer an internal user-service wrapper.",
+            },
+            {
+              name: "@clerk/nextjs/server",
+              message: "Prefer an internal user-service wrapper.",
+            },
+          ],
+          patterns: ["*/index", "*/index.ts"],
+        },
+      ],
 
       "object-shorthand": ["error", "always"],
       "no-return-await": "error",
@@ -289,7 +375,10 @@ const config = [
       "@sarj/no-silent-promise-catch": "error",
       "@sarj/require-schema-validate-search": "error",
       "@sarj/enforce-file-structure": "error",
-      "@sarj/prefer-semantic-colors": ["error", { requireSemanticTokens: true }],
+      "@sarj/prefer-semantic-colors": [
+        "error",
+        { requireSemanticTokens: true },
+      ],
       "@sarj/prefer-string-literal-union": "error",
       // High-volume/stylistic — warn until rollout proves FP rate.
       "@sarj/no-unsafe-cast": "error",
@@ -329,6 +418,12 @@ const config = [
       // half of SARJ057; the Python half is the `sarj-no-tautological-expect`
       // pre-commit hook.
       "@sarj/no-tautological-expect": "error",
+      // Substitutability. An exported class that stores injected collaborators
+      // and implements no interface forces every consumer onto the concrete
+      // type, so the only way to test a consumer is to mock the class. Measured
+      // across 11 first-party repos (7,912 files, 229 exported classes): 82%
+      // already carry a port, 29 fire, 28 hand-reviewed as true positives.
+      "@sarj/require-interface-for-injected-service": "error",
 
       // Deliberately NOT enabled here — these two are architectural rules that
       // are meaningless without per-repo paths, so a shared config cannot set
