@@ -17,7 +17,12 @@ _SARJ_NOQA_RE = re.compile(
     re.IGNORECASE,
 )
 _NON_NEWLINE = re.compile(r"[^\n]")
-_DOLLAR_OPEN_RE = re.compile(r"\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$")
+
+# A dollar-quote delimiter: `$$` or `$tag$`, where `tag` is an identifier. The tag
+# may NOT start with a digit, which is what keeps `$1`/`$2` positional parameters
+# from ever matching (there is no `$1$` delimiter in Postgres).
+_DOLLAR_DELIM_RE = re.compile(r"\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$")
+_IDENT_CHAR_RE = re.compile(r"[A-Za-z0-9_]")
 
 
 def is_suppressed(source_lines: list[str], line: int, code: str) -> bool:
@@ -68,23 +73,76 @@ def _scan_quoted(source: str, start: int, quote: str) -> int:
     return n
 
 
-def mask_sql(source: str) -> str:
-    """Blank out comments, string literals, dollar-quoted bodies and quoted identifiers.
+def _dollar_open_tag(source: str, i: int) -> str | None:
+    """Return the dollar-quote delimiter opening at `i`, or None if one does not.
 
-    The returned text has the same length and line structure as `source`, with the
-    contents of `--`/`/* */` comments, `'...'` literals, `$tag$...$tag$` strings and
-    `"..."` identifiers replaced by spaces. Routing rule scanning through this masked
-    text keeps keywords inside comments/strings/identifiers from ever matching.
+    Two things must hold. The text at `i` must look like `$$` or `$tag$` — the tag
+    is an identifier, so a leading digit is impossible and `$1`/`$2` positional
+    parameters can never match. And `i` must not sit inside an identifier: Postgres
+    allows `$` as a non-leading identifier character, so the `$` in `total$amount`
+    or `foo$bar$` is part of the name and opens nothing. The check is deliberately
+    NOT applied when looking for a *closing* delimiter — once the lexer is inside a
+    dollar-quoted body identifier rules no longer apply, so `END$$;` really does
+    close a `$$` body.
 
     Returns:
-        A same-length copy of `source` with those spans blanked.
+        The delimiter text (`"$$"`, `"$func$"`, ...), or None.
+
+    """
+    if i > 0 and _IDENT_CHAR_RE.match(source, i - 1) is not None:
+        return None
+    m = _DOLLAR_DELIM_RE.match(source, i)
+    return None if m is None else m.group(0)
+
+
+def _closing_depth(source: str, i: int, open_tags: list[str]) -> int | None:
+    """Index in `open_tags` of the outermost open delimiter that closes at `i`.
+
+    Outermost wins: an inner `$b$` left unterminated inside a `$a$` body must not
+    stop the `$a$` body from ending, so hitting `$a$` pops `$b$` along with it.
+
+    Returns:
+        The index into `open_tags`, or None when nothing closes here.
+
+    """
+    for depth, tag in enumerate(open_tags):
+        if source.startswith(tag, i):
+            return depth
+    return None
+
+
+def _scan(source: str) -> tuple[str, list[tuple[int, int]]]:
+    """Mask `source` and report the char spans covered by outermost dollar quotes.
+
+    A single left-to-right pass, so precedence is correct: a `$$` inside a `--`
+    comment or a `'...'` literal is masked as part of that comment/literal and
+    opens nothing. Dollar-quote delimiters are blanked but their bodies are kept
+    and scanned as SQL, which is what makes a nested `$inner$ ... $inner$` and a
+    string literal inside a `DO` block both come out right.
+
+    Returns:
+        `(masked_text, spans)` where each span is a half-open `(start, end)` char
+        range covering an outermost `$tag$ ... $tag$` run, delimiters included.
 
     """
     out: list[str] = []
+    open_tags: list[str] = []
+    spans: list[tuple[int, int]] = []
+    body_start = 0
     i = 0
     n = len(source)
     while i < n:
         ch = source[i]
+        if ch == "$" and open_tags:
+            depth = _closing_depth(source, i, open_tags)
+            if depth is not None:
+                tag = open_tags[depth]
+                del open_tags[depth:]
+                out.append(" " * len(tag))
+                i += len(tag)
+                if not open_tags:
+                    spans.append((body_start, i))
+                continue
         pair = source[i : i + 2]
         if pair == "--":
             end = source.find("\n", i)
@@ -95,21 +153,137 @@ def mask_sql(source: str) -> str:
         elif ch in {"'", '"'}:
             end = _scan_quoted(source, i, ch)
         elif ch == "$":
-            m = _DOLLAR_OPEN_RE.match(source, i)
-            if m is None:
+            tag = _dollar_open_tag(source, i)
+            if tag is None:
                 out.append(ch)
                 i += 1
                 continue
-            tag = m.group(0)
-            close = source.find(tag, m.end())
-            end = n if close == -1 else close + len(tag)
+            if not open_tags:
+                body_start = i
+            open_tags.append(tag)
+            out.append(" " * len(tag))
+            i += len(tag)
+            continue
         else:
             out.append(ch)
             i += 1
             continue
         out.append(_blank(source[i:end]))
         i = end
-    return "".join(out)
+    if open_tags:
+        spans.append((body_start, n))
+    return "".join(out), spans
+
+
+def mask_sql(source: str) -> str:
+    r"""Blank out comments, string literals and quoted identifiers; KEEP dollar-quoted bodies.
+
+    The returned text has the same length and line structure as `source` — masking
+    replaces characters with spaces and never deletes or reflows, so line numbers
+    (and therefore `-- sarj-noqa`, which is line-keyed) survive unchanged.
+
+    Blanked: `--` and `/* */` comment bodies, `'...'` literals, `"..."` identifiers,
+    and the `$$` / `$tag$` *delimiters* themselves.
+
+    NOT blanked: the body between dollar-quote delimiters. A `$$ ... $$` body in a
+    migration is not string *data*, it is live SQL — a `DO $$ ... $$` block or a
+    `CREATE FUNCTION ... AS $$ ... $$` body — and blanking it hid real DDL/DML from
+    every rule. The body is re-scanned by this same masker, so strings and comments
+    *inside* it are still masked and a nested `$inner$ ... $inner$` is handled.
+
+    Corpus evidence (bulbul + noura-be, 239 tracked `.sql` files, 9,108 lines).
+    Blanking the bodies hid **26 live DDL/DML keywords across 12 files** from all
+    8 rules — 19 `UPDATE`, 3 `ALTER TABLE`, 2 `DELETE FROM`, 2 `INSERT INTO`.
+    Named examples:
+
+    * `bulbul/.../20250817124731_migrate_rewaa_calls_to_their_org.sql:21,31,60,70`
+      — four `UPDATE public.batch` / `UPDATE public.call` re-owning statements
+      inside a `DO $$ ... $$` block,
+    * `bulbul/.../20251214112241_delete_batch_and_related_calls.sql:18,22`
+      — `DELETE FROM batch` / `DELETE FROM call` inside a `DO $$ ... $$` block,
+    * `bulbul/.../20260112190150_add_character_count_to_kb_files.sql:32`
+      — `ALTER TABLE knowledge_base_file ADD CONSTRAINT ...` inside a `DO` block,
+    * `noura-be/digital-bank/banking-be/migrations/028_seed_ajb_bank.sql:21`
+      — `INSERT INTO banks (...)` inside a `DO $$ ... $$` block.
+
+    A raw-vs-masked keyword diff reports a larger 50 for the same corpus, but 24 of
+    those are prose inside `--` comments *within* the bodies (`-- Step 1: Update the
+    'batch' table`) which stay masked either way. 26 is the number of keywords that
+    actually become visible to a rule.
+
+    This was also a cross-language divergence: `strip_sql_noise` in the sibling
+    Python package (`sarj_python_lint/rules/_sql.py`) has no dollar branch at all,
+    so the *same* SQL text was judged when embedded in a `.py` string and unjudged
+    when it lived in a `.sql` migration — the gap favoured the riskier file type.
+    Keeping the body closes the gap from the `.sql` side.
+
+    Net effect on the corpus (post-`sarj-noqa` findings before -> after):
+    SARJ101 23 -> 23, SARJ102 250 -> 250, SARJ103 0 -> 0, SARJ104 140 -> 140,
+    SARJ106 0 -> 0, SARJ107 0 -> 0, SARJ108 334 -> 334, and **SARJ105
+    insert-requires-on-conflict 17 -> 19**. Nothing is lost anywhere. The two new
+    SARJ105 hits — `noura-be/.../022_seed_banks.sql:34` and
+    `noura-be/.../028_seed_ajb_bank.sql:21` — are both **false positives**: each
+    `INSERT` sits in a `DO $$ ... $$` seed block already guarded by
+    `IF EXISTS (SELECT 1 FROM banks WHERE code = ...) THEN CONTINUE/RETURN`, which
+    is a perfectly good replay guard, and `ON CONFLICT` there would be redundant.
+    That is 2 of 2 new hits wrong, so SARJ105 wants a function-body exemption to
+    go with this change — `if diagnostic_line in dollar_quoted_lines(source)`
+    drops exactly those two and nothing else (19 -> 17). The other seven rules are
+    line-local type/DDL checks whose premise holds inside a body just as it does
+    outside, and none of them moved, so none needs an exemption.
+
+    Known, deliberate divergences from the Postgres lexer, both in the safe
+    direction: a `$$` sitting inside a `--`/`/* */` comment or inside a `'...'`
+    literal *within* a body does not terminate that body (Postgres, which treats
+    the body as raw text, would let it). Reading the body as SQL is what makes
+    comments inside `DO` blocks stay masked, which is overwhelmingly the common
+    case in the corpus. An unterminated delimiter keeps the rest of the file as
+    SQL rather than swallowing it.
+
+    Returns:
+        A same-length copy of `source` with those spans blanked.
+
+    """
+    masked, _ = _scan(source)
+    return masked
+
+
+def dollar_quoted_lines(source: str) -> frozenset[int]:
+    """1-based line numbers that fall inside a `$$ ... $$` / `$tag$ ... $tag$` body.
+
+    `mask_sql` deliberately keeps those bodies as SQL, which is what lets rules see
+    the DDL/DML inside `DO` blocks and function bodies. A rule whose premise is
+    *migration-level* rather than statement-level can use this to exempt them:
+    `if diagnostic.line in dollar_quoted_lines(source): continue`.
+
+    SARJ105 insert-requires-on-conflict is the live case. Its premise is migration
+    replay, but a `DO $$ ... $$` seed block guards its own replay with
+    `IF EXISTS (...) THEN CONTINUE/RETURN` instead of `ON CONFLICT`, and both new
+    SARJ105 findings unlocked by keeping bodies visible are that shape
+    (`noura-be/.../022_seed_banks.sql:34`, `noura-be/.../028_seed_ajb_bank.sql:21`)
+    — 2 of 2 wrong. Applying this exemption there takes SARJ105 from 19 back to 17
+    over the corpus, removing exactly those two and nothing else. The other seven
+    rules are line-local type/DDL checks that are equally true inside a body, and
+    none of them changed count, so none should use this.
+
+    The delimiter lines themselves are included when any part of the body shares
+    the line.
+
+    Returns:
+        The 1-based line numbers covered by a dollar-quoted body.
+
+    """
+    _, spans = _scan(source)
+    if not spans:
+        return frozenset()
+    inside: set[int] = set()
+    for start, end in spans:
+        first = source.count("\n", 0, start) + 1
+        # `end - 1` is the span's last character: an unterminated body runs to
+        # end-of-file, and its trailing newline must not add a phantom line.
+        last = first + source.count("\n", start, end - 1)
+        inside.update(range(first, last + 1))
+    return frozenset(inside)
 
 
 def split_statements(masked: str) -> list[Statement]:
