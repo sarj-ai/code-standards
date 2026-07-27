@@ -262,6 +262,7 @@ const config = [
       // no-enum / no-fat-try-blocks / no-raw-env are the single owners of the
       // enum / oversized-try / process.env concerns (the native no-restricted-*
       // equivalents were removed above).
+      "@sarj/button-requires-type": "error",
       "@sarj/zod-naming-convention": "error",
       "@sarj/require-assert-never": "error",
       "@sarj/require-zod-form-validation": "error",

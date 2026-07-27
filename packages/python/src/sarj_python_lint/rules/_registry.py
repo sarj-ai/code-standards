@@ -29,6 +29,9 @@ from sarj_python_lint.rules.no_offset_pagination import NoOffsetPagination
 from sarj_python_lint.rules.no_query_with_many_joins import NoQueryWithManyJoins
 from sarj_python_lint.rules.no_raw_sql_in_tests import NoRawSqlInTests
 from sarj_python_lint.rules.no_repeated_string_literal import NoRepeatedStringLiteral
+from sarj_python_lint.rules.no_report_call_issue_ignore import (
+    NoReportCallIssueIgnore,
+)
 from sarj_python_lint.rules.no_restated_comment import NoRestatedComment
 from sarj_python_lint.rules.no_secret_in_log import NoSecretInLog
 from sarj_python_lint.rules.no_select_star import NoSelectStar
@@ -132,6 +135,7 @@ REGISTRY: dict[str, type[Rule]] = {
     NoStdlibLogging.id: NoStdlibLogging,
     NoGenRandomUuidInSql.id: NoGenRandomUuidInSql,
     NoFileLevelEscapeHatchNoqa.id: NoFileLevelEscapeHatchNoqa,
+    NoReportCallIssueIgnore.id: NoReportCallIssueIgnore,
 }
 
 __all__ = ["REGISTRY"]

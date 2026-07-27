@@ -1,4 +1,5 @@
 import enforceFileStructure from "./rules/enforce-file-structure.js";
+import buttonRequiresType from "./rules/button-requires-type.js";
 import noClientSideDataFetching from "./rules/no-client-side-data-fetching.js";
 import noCommentCruft from "./rules/no-comment-cruft.js";
 import noEnum from "./rules/no-enum.js";
@@ -44,6 +45,7 @@ import noRestatedComment from "./rules/no-restated-comment.js";
 import trailingValueNarration from "./rules/trailing-value-narration.js";
 
 const rules = {
+  "button-requires-type": buttonRequiresType,
   "enforce-file-structure": enforceFileStructure,
   "no-client-side-data-fetching": noClientSideDataFetching,
   "no-comment-cruft": noCommentCruft,
@@ -93,7 +95,7 @@ const rules = {
 const plugin = {
   meta: {
     name: "@sarj/eslint-plugin",
-    version: "2.13.0",
+    version: "2.14.0",
   },
   rules,
   configs: {
@@ -101,6 +103,7 @@ const plugin = {
       plugins: ["@sarj"],
       rules: {
         "@sarj/zod-naming-convention": "warn",
+        "@sarj/button-requires-type": "warn",
         "@sarj/require-assert-never": "error",
         "@sarj/require-zod-form-validation": "error",
         "@sarj/enforce-file-structure": "warn",
@@ -167,6 +170,7 @@ const plugin = {
       plugins: ["@sarj"],
       rules: {
         "@sarj/zod-naming-convention": "error",
+        "@sarj/button-requires-type": "error",
         "@sarj/require-assert-never": "error",
         "@sarj/require-zod-form-validation": "error",
         "@sarj/enforce-file-structure": "error",

@@ -25,6 +25,7 @@ SKIP_DIR_NAMES = {
     "__pycache__",
     ".pytest_cache",
     ".ruff_cache",
+    ".uv-cache",
     ".mypy_cache",
     ".turbo",
     ".yarn",

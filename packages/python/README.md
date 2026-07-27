@@ -89,7 +89,15 @@ each guard was built from are recorded in the rule module docstrings.
     - id: sarj-no-stdlib-logging                   # SARJ052
     - id: sarj-no-gen-random-uuid-in-sql           # SARJ053
     - id: sarj-no-file-level-escape-hatch-noqa     # SARJ054
+    - id: sarj-no-report-call-issue-ignore         # SARJ055
 ```
+
+`SARJ055` bans `# type: ignore[reportCallIssue]`. It is intentionally narrower
+than a blanket `pyright: ignore[reportCallIssue]` ban after corpus validation:
+Django/Pydantic/Flask had 0 hits for the narrowed rule, while the broader shape
+was too noisy in dynamic library code. In Sarj repos it surfaces call-contract
+debt that should either be fixed or moved to a documented, narrow
+`pyright: ignore[reportCallIssue]` boundary.
 
 `SARJ052` bans importing stdlib `logging` in application code, because the
 house logger is loguru and two logger hierarchies mean two handler chains: the

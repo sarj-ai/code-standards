@@ -16,6 +16,14 @@ export default [...sarj.configs.recommended];
 
 Presets: `recommended` (warn-first), `strict` (every rule at error), `style-guide` (formatting/naming subset).
 
+## New in 2.14.0 — explicit JSX button types
+
+- `button-requires-type` requires native JSX `<button>` elements to declare
+  `type`. This was mined from bulbul PR #3483, where an auxiliary button
+  accidentally submitted a surrounding form. Corpus sweep: noura-be 10 hits /
+  129 TSX files, bulbul 1 / 449, VS Code 0 / 266 after test/generated skips,
+  Next.js 86 / 6,697, Angular 0 / 30.
+
 ## New in 2.13.0 — the anti-comment-verbosity family
 
 From a 37,918-comment, nine-repo measurement study. All three are
@@ -25,6 +33,7 @@ the hit counts and the false-positive class every guard was built from.
 
 | Rule | What it catches | Preset |
 |---|---|---|
+| `button-requires-type` | JSX `<button>` without an explicit `type`, which defaults to submit inside forms. | recommended/strict |
 | `no-restated-comment` | A single-line comment whose every content word already appears on the statement below it. Defers to `no-comment-cruft` for the verb-led shape, so a comment is never reported twice. | warn / error |
 | `jsdoc-restates-signature` | A JSDoc block whose description and `@param`/`@returns` only re-spell the signature. Offers a delete SUGGESTION, never an auto-`--fix`. | warn / error |
 | `trailing-value-narration` | `staleTime: 5 * 60 * 1000, // 5 minutes` — the unit belongs in the name, where it cannot drift. | warn / error |
