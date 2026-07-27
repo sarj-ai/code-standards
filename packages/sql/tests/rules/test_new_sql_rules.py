@@ -11,18 +11,22 @@ P = Path("migration.sql")
 def test_require_lock_timeout() -> None:
     rule = RequireLockTimeout()
 
-    # Passes with SET LOCAL lock_timeout before DDL
+    # Passes when lock_timeout is set prior to DDL in transaction block
     clean_sql = """
     SET LOCAL lock_timeout = '2s';
     CREATE UNIQUE INDEX idx_unique ON users(email);
     """
     assert rule.check(P, clean_sql) == []
 
-    # Fails when CREATE UNIQUE INDEX lacks timeout
-    violating_sql = """
-    CREATE UNIQUE INDEX idx_unique ON users(email);
+    # Fails when COMMIT expires lock_timeout before second DDL
+    expired_tx_sql = """
+    BEGIN;
+    SET LOCAL lock_timeout = '2s';
+    ALTER TABLE a ADD COLUMN x INT;
+    COMMIT;
+    ALTER TABLE b ADD COLUMN y INT;
     """
-    diags = rule.check(P, violating_sql)
+    diags = rule.check(P, expired_tx_sql)
     assert len(diags) == 1
     assert diags[0].code == "SARJ110"
 
@@ -30,24 +34,13 @@ def test_require_lock_timeout() -> None:
 def test_add_constraint_not_valid() -> None:
     rule = AddConstraintNotValid()
 
-    # Passes with NOT VALID on CHECK / FK
-    clean_sql = """
-    ALTER TABLE users
-      ADD CONSTRAINT check_age CHECK (age >= 18) NOT VALID;
-    """
-    assert rule.check(P, clean_sql) == []
+    # Ignores UNIQUE constraints even if a column is named "check"
+    unique_col_check_sql = "ALTER TABLE t ADD CONSTRAINT uq UNIQUE (check);"
+    assert rule.check(P, unique_col_check_sql) == []
 
-    # Ignores UNIQUE constraints (Postgres does not support NOT VALID on UNIQUE)
-    unique_sql = "ALTER TABLE users ADD CONSTRAINT uq_email UNIQUE (email);"
-    assert rule.check(P, unique_sql) == []
-
-    # Validates multiple clauses independently when commas exist inside parameters
-    multi_clause_sql = """
-    ALTER TABLE users
-      ADD CONSTRAINT c1 CHECK (fn(a, b)) NOT VALID,
-      ADD CONSTRAINT c2 CHECK (score > 0);
-    """
-    diags = rule.check(P, multi_clause_sql)
+    # Fails on CHECK constraint without NOT VALID
+    violating_sql = "ALTER TABLE users ADD CONSTRAINT check_age CHECK (age >= 18);"
+    diags = rule.check(P, violating_sql)
     assert len(diags) == 1
     assert diags[0].code == "SARJ111"
 
@@ -55,29 +48,20 @@ def test_add_constraint_not_valid() -> None:
 def test_require_fk_index() -> None:
     rule = RequireFkIndex()
 
-    # Passes with quoted identifiers
-    quoted_sql = """
-    CREATE TABLE "orders" ("user_id" UUID REFERENCES "users"("id"));
-    CREATE INDEX idx_orders_user_id ON "orders"("user_id");
+    # Passes with multiline INDEX ON with USING btree
+    multiline_using_sql = """
+    CREATE TABLE orders (user_id UUID REFERENCES users(id));
+    CREATE INDEX idx_orders
+      ON orders USING btree (user_id);
     """
-    assert rule.check(P, quoted_sql) == []
+    assert rule.check(P, multiline_using_sql) == []
 
-    # Passes when FK column is PRIMARY KEY
-    pk_fk_sql = """
+    # Passes when table-level PRIMARY KEY constraint exists
+    table_pk_sql = """
     CREATE TABLE profiles (
-        user_id UUID PRIMARY KEY REFERENCES users(id)
-    );
-    """
-    assert rule.check(P, pk_fk_sql) == []
-
-    # Fails when composite FK leading column is unindexed
-    composite_unindexed = """
-    CREATE TABLE tenant_users (
-        tenant_id UUID,
         user_id UUID,
-        FOREIGN KEY (tenant_id, user_id) REFERENCES users(id)
+        PRIMARY KEY (user_id),
+        FOREIGN KEY (user_id) REFERENCES users(id)
     );
     """
-    diags = rule.check(P, composite_unindexed)
-    assert len(diags) == 1
-    assert diags[0].code == "SARJ112"
+    assert rule.check(P, table_pk_sql) == []

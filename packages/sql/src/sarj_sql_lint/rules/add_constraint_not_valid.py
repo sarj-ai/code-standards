@@ -18,7 +18,10 @@ if TYPE_CHECKING:
 
 
 ADD_CONSTRAINT_KEYWORD = re.compile(r"\bADD\s+CONSTRAINT\b", re.IGNORECASE)
-TARGET_KIND_PATTERN = re.compile(r"\b(CHECK|FOREIGN\s+KEY)\b", re.IGNORECASE)
+STRICT_TARGET_KIND_PATTERN = re.compile(
+    r"\bADD\s+CONSTRAINT\s+(?:[a-zA-Z0-9_\"\.]+\s+)?(CHECK|FOREIGN\s+KEY)\b",
+    re.IGNORECASE,
+)
 NOT_VALID_PATTERN = re.compile(r"\bNOT\s+VALID\b", re.IGNORECASE)
 
 
@@ -44,7 +47,7 @@ class AddConstraintNotValid(Rule):
                 end = semi_idx
 
             clause = masked[start:end]
-            if TARGET_KIND_PATTERN.search(clause) and not NOT_VALID_PATTERN.search(clause):
+            if STRICT_TARGET_KIND_PATTERN.search(clause) and not NOT_VALID_PATTERN.search(clause):
                 lineno = masked[:start].count("\n") + 1
                 col = start - masked.rfind("\n", 0, start)
                 diags.append(

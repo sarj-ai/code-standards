@@ -544,14 +544,14 @@
   entry: sarj-sql-lint check --rule require-lock-timeout
   language: python
   types: [sql]
-  additional_dependencies: ['sarj-sql-lint']
+  additional_dependencies: ['sarj-sql-lint==0.4.0']
 
 - id: sarj-add-constraint-not-valid
   name: 'sarj-lint: ADD CONSTRAINT (CHECK/FK) without NOT VALID'
   entry: sarj-sql-lint check --rule add-constraint-not-valid
   language: python
   types: [sql]
-  additional_dependencies: ['sarj-sql-lint']
+  additional_dependencies: ['sarj-sql-lint==0.4.0']
 
 - id: sarj-require-fk-index
   name: 'sarj-lint: Foreign key column without index on child table'

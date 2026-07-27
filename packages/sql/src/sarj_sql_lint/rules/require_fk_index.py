@@ -24,7 +24,7 @@ def _mask_literals_and_comments(sql: str) -> str:
 
 
 CREATE_INDEX_PATTERN = re.compile(
-    r"\bCREATE\s+(?:UNIQUE\s+)?INDEX\b[^\n;]*?\bON\s+([a-zA-Z0-9_\"\.]+)\s*\(\s*([a-zA-Z0-9_,\s\"]+)\)",
+    r"\bCREATE\s+(?:UNIQUE\s+)?INDEX\b[\s\S]*?\bON\s+([a-zA-Z0-9_\"\.]+)\s*(?:USING\s+[a-zA-Z0-9_]+\s*)?\(\s*([a-zA-Z0-9_,\s\"]+)\)",
     re.IGNORECASE,
 )
 TABLE_SCOPE_PATTERN = re.compile(
@@ -35,11 +35,15 @@ TABLE_FK_PATTERN = re.compile(
     r"\bFOREIGN\s+KEY\s*\(\s*([a-zA-Z0-9_,\s\"]+)\s*\)\s*REFERENCES\b",
     re.IGNORECASE,
 )
+TABLE_PK_OR_UNIQUE_PATTERN = re.compile(
+    r"\b(?:PRIMARY\s+KEY|UNIQUE)\s*\(\s*([a-zA-Z0-9_,\s\"]+)\s*\)",
+    re.IGNORECASE,
+)
 INLINE_COLUMN_PATTERN = re.compile(
     r"\b([a-zA-Z0-9_\"]+)\b[^\n;,]*?\bREFERENCES\s+[a-zA-Z0-9_\"\.]+\b",
     re.IGNORECASE,
 )
-PRIMARY_OR_UNIQUE_PATTERN = re.compile(r"\b(PRIMARY\s+KEY|UNIQUE)\b", re.IGNORECASE)
+PRIMARY_OR_UNIQUE_KEYWORD = re.compile(r"\b(PRIMARY\s+KEY|UNIQUE)\b", re.IGNORECASE)
 
 
 def _normalize_name(name: str) -> str:
@@ -83,6 +87,12 @@ class RequireFkIndex(Rule):
                     table_indexes = indexed_cols_by_table.get(full_table, set()) | indexed_cols_by_table.get(base_table, set())
                     leading_indexed_cols = {idx[0] for idx in table_indexes if idx}
 
+                    for pk_u_match in TABLE_PK_OR_UNIQUE_PATTERN.finditer(stmt):
+                        raw_pk_cols = pk_u_match.group(1)
+                        pk_cols = [_normalize_name(c) for c in raw_pk_cols.split(",")]
+                        if pk_cols:
+                            leading_indexed_cols.add(pk_cols[0])
+
                     for fk_match in TABLE_FK_PATTERN.finditer(stmt):
                         raw_cols = fk_match.group(1)
                         fk_cols = tuple(_normalize_name(c) for c in raw_cols.split(","))
@@ -109,7 +119,7 @@ class RequireFkIndex(Rule):
 
                     for line in body.splitlines():
                         if "REFERENCES" in line.upper() and not TABLE_FK_PATTERN.search(line):
-                            if PRIMARY_OR_UNIQUE_PATTERN.search(line):
+                            if PRIMARY_OR_UNIQUE_KEYWORD.search(line):
                                 continue
                             col_match = INLINE_COLUMN_PATTERN.search(line)
                             if col_match:
