@@ -63,6 +63,9 @@ from sarj_python_lint.rules.prefer_module_level_constant import (
 from sarj_python_lint.rules.prefer_namedtuple_over_tuple_return import (
     PreferNamedtupleOverTupleReturn,
 )
+from sarj_python_lint.rules.prefer_non_nullable_collection import (
+    PreferNonNullableCollection,
+)
 from sarj_python_lint.rules.prefer_or_pattern import PreferOrPattern
 from sarj_python_lint.rules.prefer_real_store_in_tests import PreferRealStoreInTests
 from sarj_python_lint.rules.prefer_str_enum import PreferStrEnum
@@ -186,6 +189,7 @@ REGISTRY: dict[str, type[Rule]] = {
     PreferMatchPatternDestructuring.id: PreferMatchPatternDestructuring,
     PreferOrPattern.id: PreferOrPattern,
     RequirePortForService.id: RequirePortForService,
+    PreferNonNullableCollection.id: PreferNonNullableCollection,
 }
 
 __all__ = ["REGISTRY"]

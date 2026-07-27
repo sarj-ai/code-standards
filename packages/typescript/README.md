@@ -12,7 +12,7 @@ import sarj from "@sarj/eslint-plugin";
 export default [...sarj.configs.recommended];
 ```
 
-45 rules. Each rule's source under `src/rules/` carries its own `@fileoverview` rationale plus `meta.docs.description` + `meta.messages` — read the file for the full reasoning, including the false positives it deliberately does not fire on.
+46 rules. Each rule's source under `src/rules/` carries its own `@fileoverview` rationale plus `meta.docs.description` + `meta.messages` — read the file for the full reasoning, including the false positives it deliberately does not fire on.
 
 Presets: `recommended` (warn-first), `strict` (every rule at error), `style-guide` (formatting/naming subset).
 
@@ -68,6 +68,7 @@ Both distilled from two years of PR-review comments across ~1,065 PRs.
 |---|---|---|
 | `no-zod-native-enum` | `z.nativeEnum(...)` and `z.enum(SomeTsEnum)` — the schema-layer back door around `no-enum`. Autofixes an inline string-literal object to `z.enum([...])`. | warn / error |
 | `prefer-module-level-constant` | A literal-only `const` collection (array, object, `Set`, `Map`, `Object.freeze`) or non-global regex declared inside a function body, never mutated and never escaping — hoist it to module scope. Options: `minElements` (default 3), `checkRegex`, `ignoreTestFiles`. | warn / error |
+| `prefer-non-nullable-collection` | An array type explicitly combined with `null`/`undefined`, creating two equivalent empty states. | warn / error |
 
 ## Options
 

@@ -392,6 +392,7 @@ const config = [
       "@sarj/no-select-star": "error",
       "@sarj/no-zod-native-enum": "error",
       "@sarj/prefer-module-level-constant": "error",
+      "@sarj/prefer-non-nullable-collection": "error",
       "@sarj/no-sleep-in-test-body": "error",
       // High-volume/stylistic, so warn — same treatment as prefer-semantic-colors
       // and prefer-string-literal-union above. Measured on a 1,578-file
