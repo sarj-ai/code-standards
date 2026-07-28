@@ -1,108 +1,77 @@
-"""SARJ110: Forbid implicit dictionary accesses using string literals.
+"""SARJ055: Forbid implicit dictionary accesses on loosely-typed payloads.
 
 The anti-pattern:
-    price = foo.get("price")
-    user_id = event["user_id"]
+    number = ctx.participant.attributes.get("sip.phoneNumber")
+    user_id = event.payload["user_id"]
 
-Accessing dictionaries with hardcoded string literals implies the object has a known schema.
-This should be parsed declaratively with Pydantic instead of plucked manually.
+Accessing unstructured `.attributes`, `.payload`, or `.meta` dictionaries bypasses
+type safety and runtime validation.
 
 Define a Pydantic model and parse the payload at the boundary instead:
-    class Payload(BaseModel):
-        price: int
-        user_id: str
+    class ParticipantAttributes(BaseModel):
+        sip_phone_number: str | None = Field(alias="sip.phoneNumber")
 
-    data = Payload.model_validate(foo)
-    price = data.price
+    attrs = ParticipantAttributes.model_validate(ctx.participant.attributes)
+    number = attrs.sip_phone_number
 """
 
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
 
-
 if TYPE_CHECKING:
     from pathlib import Path
 
-_EXCLUDED_BASES = {
-    "environ",
-    "headers",
-    "cookies",
-    "session",
-    "redis",
-    "cache",
-    "state",
-    "config",
-    "kwargs",
-    "env",
-    "os",
-    "sys",
-}
-
-
-def _get_base_name(node: ast.expr) -> str | None:
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        return node.attr
-    return None
-
+_FORBIDDEN_PROPERTIES = {"attributes", "payload", "meta"}
 
 class NoImplicitAttributeAccess(Rule):
-    """Implicit dictionary access with string literals — use declarative parsing."""
+    """Implicit dictionary access on payload objects — use Pydantic models."""
 
     id: str = "no-implicit-attribute-access"
-    code: str = "SARJ110"
-    description: str = "Implicit dictionary access with string literals — parse declaratively with Pydantic."
+    code: str = "SARJ055"
+    description: str = "Implicit dictionary access on loosely-typed payload properties — use Pydantic models."
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if _is_test_path(path) or _is_excluded_path(path):
+        if _is_test_path(path):
             return []
         tree = parse_or_none(path, source)
         if tree is None:
             return []
-
+        
         diags: list[Diagnostic] = []
         for node in ast.walk(tree):
-            value: str | None = None
-            base: ast.expr | None = None
-            match node:
-                case ast.Call(
-                    func=ast.Attribute(attr="get", value=call_base),
-                    args=[ast.Constant(value=str() as call_value), *_],
-                ):
-                    value = call_value
-                    base = call_base
-                case ast.Subscript(
-                    value=subscript_base,
-                    slice=ast.Constant(value=str() as subscript_value),
-                ):
-                    value = subscript_value
-                    base = subscript_base
-                case _:
-                    continue
-            if _get_base_name(base) not in _EXCLUDED_BASES:
-                diags.append(
-                    Diagnostic(
-                        path=path,
-                        line=node.lineno,
-                        col=node.col_offset + 1,
-                        code=self.code,
-                        message=f"Imperative string-key lookup for {value!r} — use a declarative Pydantic model instead.",
+            if isinstance(node, ast.Call):
+                # Check for `.attributes.get(...)`
+                if isinstance(node.func, ast.Attribute) and node.func.attr == "get":
+                    if isinstance(node.func.value, ast.Attribute) and node.func.value.attr in _FORBIDDEN_PROPERTIES:
+                        diags.append(
+                            Diagnostic(
+                                path=path,
+                                line=node.lineno,
+                                col=node.col_offset + 1,
+                                code=self.code,
+                                message=f"Implicit `.get()` access on `.{node.func.value.attr}` bypasses validation — use a Pydantic model instead."
+                            )
+                        )
+            elif isinstance(node, ast.Subscript):
+                # Check for `.attributes[...]`
+                if isinstance(node.value, ast.Attribute) and node.value.attr in _FORBIDDEN_PROPERTIES:
+                    diags.append(
+                        Diagnostic(
+                            path=path,
+                            line=node.lineno,
+                            col=node.col_offset + 1,
+                            code=self.code,
+                            message=f"Implicit subscript access on `.{node.value.attr}` bypasses validation — use a Pydantic model instead."
+                        )
                     )
-                )
 
         return diags
 
-
 def _is_test_path(path: Path) -> bool:
     return path.name.startswith("test_") or "tests" in path.parts
-
-
-def _is_excluded_path(path: Path) -> bool:
-    excluded = {".uv-cache", ".venv", "venv", "node_modules", "site-packages"}
-    return bool(excluded.intersection(path.parts))
