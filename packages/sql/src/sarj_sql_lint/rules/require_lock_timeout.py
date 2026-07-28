@@ -21,10 +21,10 @@ DDL_PATTERN = re.compile(r"\b(ALTER\s+TABLE|CREATE\s+(?:UNIQUE\s+)?INDEX|DROP\s+
 TX_END_PATTERN = re.compile(r"\b(COMMIT|ROLLBACK)\b", re.IGNORECASE)
 
 ASSIGNMENT_PATTERN = re.compile(
-    r"\b(SET\s+LOCAL|SET|RESET)\s+(lock_timeout|statement_timeout)(?:\s*(?:=|\bTO\b)\s*([^\s;]+))?",
+    r"\b(SET\s+LOCAL|SET|RESET)\s+(lock_timeout|statement_timeout)(?:\s*(?:=|\bTO\b)\s*([^\s;]+(?:[\s']+[^\s;]+)*))?",
     re.IGNORECASE,
 )
-POSITIVE_VAL_PATTERN = re.compile(r"^['\"]?(?:[1-9]\d*|[1-9]\d*[a-zA-Z]+)['\"]?$", re.IGNORECASE)
+POSITIVE_VAL_PATTERN = re.compile(r"^['\"]?\s*(?:[0-9]*\.?[0-9]+\s*(?:[a-zA-Z]+\s*)?|[1-9]\d*)\s*['\"]?$", re.IGNORECASE)
 
 
 @final
@@ -47,15 +47,12 @@ class RequireLockTimeout(Rule):
             tx_ends = [c.end() for c in TX_END_PATTERN.finditer(masked, 0, ddl_start)]
 
             for match in ASSIGNMENT_PATTERN.finditer(source, 0, ddl_start):
-                match_pos = match.start()
-
-                # Verify assignment is not inside a comment
-                if masked[match_pos:match_pos+3].strip() == "" and "--" in source[:match_pos].splitlines()[-1]:
+                start_pos = match.start()
+                if not masked[start_pos : start_pos + 3].strip():
                     continue
 
                 is_local = "LOCAL" in match.group(1).upper()
-                expired_by_tx = is_local and any(t > match_pos for t in tx_ends)
-                if expired_by_tx:
+                if is_local and any(match.start() < t < ddl_start for t in tx_ends):
                     continue
 
                 target_var = match.group(2).lower()
@@ -64,7 +61,7 @@ class RequireLockTimeout(Rule):
 
                 if "RESET" in cmd:
                     active_timeouts[target_var] = False
-                elif val and POSITIVE_VAL_PATTERN.match(val):
+                elif val and POSITIVE_VAL_PATTERN.match(val) and val not in {"0", "'0'", "'0s'", "'0ms'"}:
                     active_timeouts[target_var] = True
                 else:
                     active_timeouts[target_var] = False

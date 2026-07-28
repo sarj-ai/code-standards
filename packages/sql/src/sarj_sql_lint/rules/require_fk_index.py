@@ -6,21 +6,26 @@ triggers a full sequential scan on the child table if the FK is unindexed, locki
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from pathlib import Path
 import re
-from typing import TYPE_CHECKING, final, override
+from typing import final, override
 
 from sarj_sql_lint.rule_base import Diagnostic, Rule
 
 
-if TYPE_CHECKING:
-    from pathlib import Path
+RESERVED_KEYWORDS: set[str] = {"foreign", "key", "constraint", "alter", "table", "create", "add", "column"}
 
 
 def _mask_literals_and_comments(sql: str) -> str:
     sql = re.sub(r"--[^\n]*", lambda m: " " * len(m.group(0)), sql)
     sql = re.sub(r"/\*[\s\S]*?\*/", lambda m: re.sub(r"[^\n]", " ", m.group(0)), sql)
-    sql = re.sub(r"'(?:''|[^'])*'", lambda m: re.sub(r"[^\n]", " ", m.group(0)), sql)
-    return sql
+
+    def mask_literal(m: re.Match[str]) -> str:
+        s = m.group(0)
+        return "'" + re.sub(r"[^\n]", " ", s[1:-1]) + "'"
+
+    return re.sub(r"'(?:''|[^'])*'", mask_literal, sql)
 
 
 CREATE_INDEX_PATTERN = re.compile(
@@ -52,6 +57,36 @@ def _normalize_name(name: str) -> str:
     return clean.strip('"').lower()
 
 
+def _collect_indexes(masked: str) -> dict[str, set[tuple[str, ...]]]:
+    indexed_cols: dict[str, set[tuple[str, ...]]] = {}
+    for match in CREATE_INDEX_PATTERN.finditer(masked):
+        table = _normalize_name(match.group(1))
+        cols = tuple(_normalize_name(c) for c in match.group(2).split(","))
+        if cols:
+            indexed_cols.setdefault(table, set()).add(cols)
+
+    for stmt in masked.split(";"):
+        table_match = TABLE_SCOPE_PATTERN.search(stmt)
+        if not table_match:
+            continue
+        table = _normalize_name(table_match.group(1))
+        for pk_match in TABLE_PK_OR_UNIQUE_PATTERN.finditer(stmt):
+            pk_cols = tuple(_normalize_name(c) for c in pk_match.group(1).split(","))
+            if pk_cols:
+                indexed_cols.setdefault(table, set()).add(pk_cols)
+    return indexed_cols
+
+
+@dataclass(frozen=True)
+class _StmtContext:
+    path: Path
+    masked: str
+    stmt: str
+    char_offset: int
+    full_table: str
+    header_end: int
+
+
 @final
 class RequireFkIndex(Rule):
     """Foreign key column without corresponding index on child table."""
@@ -64,33 +99,10 @@ class RequireFkIndex(Rule):
     def check(self, path: Path, source: str) -> list[Diagnostic]:
         diags: list[Diagnostic] = []
         masked = _mask_literals_and_comments(source)
+        indexed_cols_by_table = _collect_indexes(masked)
 
-        indexed_cols_by_table: dict[str, set[tuple[str, ...]]] = {}
-
-        # 1. Parse explicit CREATE INDEX statements
-        for match in CREATE_INDEX_PATTERN.finditer(masked):
-            table = _normalize_name(match.group(1))
-            cols_raw = match.group(2)
-            cols = tuple(_normalize_name(c) for c in cols_raw.split(","))
-            if cols:
-                indexed_cols_by_table.setdefault(table, set()).add(cols)
-
-        # 2. File-wide collection of PRIMARY KEY and UNIQUE constraints per table
-        statements = masked.split(";")
-        for stmt in statements:
-            table_match = TABLE_SCOPE_PATTERN.search(stmt)
-            if table_match:
-                table_name = _normalize_name(table_match.group(1))
-                for pk_u_match in TABLE_PK_OR_UNIQUE_PATTERN.finditer(stmt):
-                    raw_pk_cols = pk_u_match.group(1)
-                    pk_cols = tuple(_normalize_name(c) for c in raw_pk_cols.split(","))
-                    if pk_cols:
-                        indexed_cols_by_table.setdefault(table_name, set()).add(pk_cols)
-
-        # 3. Process statements for FOREIGN KEY constraints
         char_offset = 0
-
-        for stmt in statements:
+        for stmt in masked.split(";"):
             if "REFERENCES" in stmt.upper():
                 table_match = TABLE_SCOPE_PATTERN.search(stmt)
                 if table_match:
@@ -99,58 +111,59 @@ class RequireFkIndex(Rule):
                     table_indexes = indexed_cols_by_table.get(full_table, set())
                     if not table_indexes and "." not in full_table:
                         table_indexes = indexed_cols_by_table.get(base_table, set())
-                    leading_indexed_cols = {idx[0] for idx in table_indexes if idx}
+                    leading_indexed = {idx[0] for idx in table_indexes if idx}
 
-                    # Check for table-level FOREIGN KEY (col1, col2)
-                    for fk_match in TABLE_FK_PATTERN.finditer(stmt):
-                        raw_cols = fk_match.group(1)
-                        fk_cols = tuple(_normalize_name(c) for c in raw_cols.split(","))
-                        leading_fk_col = fk_cols[0] if fk_cols else ""
-                        if leading_fk_col and leading_fk_col not in leading_indexed_cols:
-                            match_offset = char_offset + stmt.find(fk_match.group(0))
-                            lineno = masked[:match_offset].count("\n") + 1
-                            col_pos = match_offset - masked.rfind("\n", 0, match_offset)
-                            diags.append(
-                                Diagnostic(
-                                    path=path,
-                                    line=lineno,
-                                    col=max(1, col_pos),
-                                    code=self.code,
-                                    message=(
-                                        f"Foreign key column `{leading_fk_col}` on table `{full_table}` should have a corresponding `CREATE INDEX` "
-                                        "to prevent full table scans and lock contention during parent row deletes."
-                                    ),
-                                )
-                            )
-
-                    # Check inline column definitions
-                    header_end = table_match.end()
-                    body = stmt[header_end:]
-
-                    if not TABLE_FK_PATTERN.search(body):
-                        for line in body.splitlines():
-                            if "REFERENCES" in line.upper():
-                                if PRIMARY_OR_UNIQUE_KEYWORD.search(line):
-                                    continue
-                                col_match = INLINE_COLUMN_PATTERN.search(line)
-                                if col_match:
-                                    col_name = _normalize_name(col_match.group(1))
-                                    if col_name not in ("foreign", "key", "constraint", "alter", "table", "create", "add", "column") and col_name not in leading_indexed_cols:
-                                        line_offset = char_offset + stmt.find(line)
-                                        lineno = masked[:line_offset].count("\n") + 1
-                                        diags.append(
-                                            Diagnostic(
-                                                path=path,
-                                                line=lineno,
-                                                col=1,
-                                                code=self.code,
-                                                message=(
-                                                    f"Foreign key column `{col_name}` on table `{full_table}` should have a corresponding `CREATE INDEX` "
-                                                    "to prevent full table scans and lock contention during parent row deletes."
-                                                ),
-                                            )
-                                        )
+                    ctx = _StmtContext(path, masked, stmt, char_offset, full_table, table_match.end())
+                    diags.extend(self._check_fk_constraints(ctx, leading_indexed))
 
             char_offset += len(stmt) + 1
+        return diags
 
+    def _check_fk_constraints(
+        self,
+        ctx: _StmtContext,
+        leading_indexed: set[str],
+    ) -> list[Diagnostic]:
+        diags: list[Diagnostic] = []
+        for fk_match in TABLE_FK_PATTERN.finditer(ctx.stmt):
+            fk_cols = tuple(_normalize_name(c) for c in fk_match.group(1).split(","))
+            leading_col = fk_cols[0] if fk_cols else ""
+            if leading_col and leading_col not in leading_indexed:
+                match_offset = ctx.char_offset + ctx.stmt.find(fk_match.group(0))
+                lineno = ctx.masked[:match_offset].count("\n") + 1
+                col_pos = match_offset - ctx.masked.rfind("\n", 0, match_offset)
+                diags.append(
+                    Diagnostic(
+                        path=ctx.path,
+                        line=lineno,
+                        col=max(1, col_pos),
+                        code=self.code,
+                        message=(
+                            f"Foreign key column `{leading_col}` on table `{ctx.full_table}` should have a corresponding `CREATE INDEX` "
+                            "to prevent full table scans and lock contention during parent row deletes."
+                        ),
+                    )
+                )
+
+        body = ctx.stmt[ctx.header_end :]
+        for segment in body.split(","):
+            if "REFERENCES" in segment.upper() and not TABLE_FK_PATTERN.search(segment) and not PRIMARY_OR_UNIQUE_KEYWORD.search(segment):
+                col_match = INLINE_COLUMN_PATTERN.search(segment)
+                if col_match:
+                    col_name = _normalize_name(col_match.group(1))
+                    if col_name not in RESERVED_KEYWORDS and col_name not in leading_indexed:
+                        segment_offset = ctx.char_offset + ctx.stmt.find(segment)
+                        lineno = ctx.masked[:segment_offset].count("\n") + 1
+                        diags.append(
+                            Diagnostic(
+                                path=ctx.path,
+                                line=lineno,
+                                col=1,
+                                code=self.code,
+                                message=(
+                                    f"Foreign key column `{col_name}` on table `{ctx.full_table}` should have a corresponding `CREATE INDEX` "
+                                    "to prevent full table scans and lock contention during parent row deletes."
+                                ),
+                            )
+                        )
         return diags
