@@ -121,7 +121,12 @@ def own_top_package(path: Path) -> str | None:
             top = ancestor.name
         if ancestor == root:
             break
+    if top is None and root is not None:
+        roots = _first_party_roots(root)
+        if len(roots) == 1:
+            return next(iter(roots))
     return top
+
 
 
 def _resolved(path: Path) -> Path | None:
