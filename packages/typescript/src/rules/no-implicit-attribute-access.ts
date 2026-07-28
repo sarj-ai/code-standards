@@ -24,10 +24,12 @@ export default ESLintUtils.RuleCreator(
   create(context) {
     return {
       MemberExpression(node: TSESTree.MemberExpression): void {
+        if (!node.computed) {
+            return;
+        }
         const objectNode = node.object;
         
-        // We are looking for something like: ctx.participant.attributes.get("...")
-        // or ctx.participant.attributes["foo"]
+        // We are looking for something like: ctx.participant.attributes["foo"]
         if (objectNode.type === AST_NODE_TYPES.MemberExpression) {
             const propertyName = 
                 objectNode.property.type === AST_NODE_TYPES.Identifier 
