@@ -5,8 +5,8 @@
     {
       "name": "sarj-audit",
       "source": "./plugins/sarj-audit",
-      "description": "Codebase audit commands — judgment-layer audits that complement the machine-enforced @sarj lint rules in this repo. Each audit cites the deterministic rule that backs it where one exists.",
-      "version": "1.0.0"
+      "description": "High-density codebase audit commands for system architecture, security & atomicity, and test strategy (non-overlapping with deterministic lint rules)",
+      "version": "2.0.0"
     }
   ]
 }

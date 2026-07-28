@@ -31,9 +31,10 @@ For a one-off personal install instead:
 
 ### High-Density Audit Commands
 
-1. **`/sarj-audit:system-architecture`** — Audits service layer boundaries, dependency injection / inversion of control, client→server & app→database logic pushdown, and data contract tiers (`BaseModel` vs `@dataclass(frozen=True)`).
-2. **`/sarj-audit:security-and-atomicity`** — Audits multi-tenant isolation & IDOR prevention, RBAC role enforcement, server-derived session identity, TOCTOU race conditions, multi-write transaction boundaries, and idempotent retry keys.
-3. **`/sarj-audit:testing-and-modernization`** — Audits test fidelity & mock architecture (replacing `AsyncMock` over-mocking with fakes/DB container fixtures) and identifies complex hand-rolled code candidates for replacement with mature third-party libraries.
+- **`/sarj-audit:stack-detection`** — Shared stack-aware Phase-0 detection pass (detects framework, database, ORM, linter authority, tenancy model, and DI conventions before running audits).
+- **`/sarj-audit:system-architecture`** — Audits service layer boundaries, layer directionality, dependency injection / inversion of control, client→server & app→database logic pushdown, DTO entity leakage, sync-to-async queue offloading, and data contract tiers (`BaseModel` vs `@dataclass(frozen=True)`).
+- **`/sarj-audit:security-and-atomicity`** — Audits multi-tenant isolation & IDOR prevention, RBAC role enforcement, server-derived session identity vs client-supplied IDs, TOCTOU race conditions, multi-write transaction boundaries, external network calls inside DB transactions, and idempotent retry keys.
+- **`/sarj-audit:testing-and-modernization`** — Audits test fidelity & mock architecture (4-tier hierarchy promoting `AsyncMock` over-mocking to fakes/DB container fixtures) and identifies complex hand-rolled code candidates for replacement with mature third-party libraries or modern stdlib features.
 
 The plugin lives in [`plugins/sarj-audit/`](plugins/sarj-audit/); [`commands/stack-detection.md`](plugins/sarj-audit/commands/stack-detection.md) is the shared stack-aware Phase-0 the audits gate on.
 
