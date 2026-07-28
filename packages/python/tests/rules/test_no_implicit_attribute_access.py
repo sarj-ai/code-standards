@@ -22,6 +22,8 @@ def _check(source: str, path: Path = _PROD) -> list[Diagnostic]:
         pytest.param("val = event.payload.get('user_id')\n", id="payload-get"),
         pytest.param("val = event.meta['user_id']\n", id="meta-subscript"),
         pytest.param("val = ctx.attributes['foo']\n", id="attributes-subscript"),
+        pytest.param("val = some_random_dict.get('price')\n", id="random-dict-get"),
+        pytest.param("val = any_obj['price']\n", id="random-dict-subscript"),
     ],
 )
 def test_flags_implicit_access(source: str):
@@ -34,8 +36,11 @@ def test_flags_implicit_access(source: str):
     "source",
     [
         pytest.param("val = attrs.sip_phone_number\n", id="explicit-property-access"),
-        pytest.param("val = regular_dict.get('foo')\n", id="regular-dict-get"),
-        pytest.param("val = regular_dict['foo']\n", id="regular-dict-subscript"),
+        pytest.param("val = os.environ.get('foo')\n", id="environ-get"),
+        pytest.param("val = headers['Authorization']\n", id="headers-subscript"),
+        pytest.param("val = redis.get('my_key')\n", id="redis-get"),
+        pytest.param("val = foo.get(dynamic_key)\n", id="dynamic-key-get"),
+        pytest.param("val = foo[dynamic_key]\n", id="dynamic-key-subscript"),
     ],
 )
 def test_allows_valid_access(source: str):

@@ -2,7 +2,20 @@ import { AST_NODE_TYPES, ESLintUtils, type TSESTree } from "@typescript-eslint/u
 
 type MessageIds = "noImplicitAttributeAccess";
 
-const FORBIDDEN_PROPERTIES = new Set(["attributes", "payload", "meta"]);
+const EXCLUDED_BASES = new Set([
+  "environ", "headers", "cookies", "session", "redis", "cache", 
+  "state", "config", "env", "process", "localStorage", "sessionStorage"
+]);
+
+function getBaseName(node: TSESTree.Node): string | null {
+  if (node.type === AST_NODE_TYPES.Identifier) {
+    return node.name;
+  }
+  if (node.type === AST_NODE_TYPES.MemberExpression && node.property.type === AST_NODE_TYPES.Identifier) {
+    return node.property.name;
+  }
+  return null;
+}
 
 export default ESLintUtils.RuleCreator(
   (name) =>
@@ -12,12 +25,12 @@ export default ESLintUtils.RuleCreator(
   meta: {
     type: "problem",
     docs: {
-      description: "Disallow implicit dictionary access on loosely-typed payloads; use Zod schemas.",
+      description: "Disallow imperative dictionary access with string literals; use declarative Zod schemas.",
     },
     schema: [],
     messages: {
       noImplicitAttributeAccess:
-        "Implicit access on loosely-typed `{{property}}` payload. Use a Zod schema to explicitly parse and validate this data instead.",
+        "Imperative lookup for '{{key}}' — if the key is known, parse the object declaratively with a Zod schema instead.",
     },
   },
   defaultOptions: [],
@@ -27,20 +40,15 @@ export default ESLintUtils.RuleCreator(
         if (!node.computed) {
             return;
         }
-        const objectNode = node.object;
         
-        // We are looking for something like: ctx.participant.attributes["foo"]
-        if (objectNode.type === AST_NODE_TYPES.MemberExpression) {
-            const propertyName = 
-                objectNode.property.type === AST_NODE_TYPES.Identifier 
-                ? objectNode.property.name 
-                : null;
-                
-            if (propertyName && FORBIDDEN_PROPERTIES.has(propertyName)) {
+        // We are looking for something like: foo["price"]
+        if (node.property.type === AST_NODE_TYPES.Literal && typeof node.property.value === "string") {
+            const baseName = getBaseName(node.object);
+            if (!baseName || !EXCLUDED_BASES.has(baseName)) {
                 context.report({
                     node,
                     messageId: "noImplicitAttributeAccess",
-                    data: { property: propertyName },
+                    data: { key: node.property.value },
                 });
             }
         }
@@ -50,18 +58,14 @@ export default ESLintUtils.RuleCreator(
         if (callee.type === AST_NODE_TYPES.MemberExpression) {
             const method = callee.property.type === AST_NODE_TYPES.Identifier ? callee.property.name : null;
             if (method === "get") {
-                const objectNode = callee.object;
-                if (objectNode.type === AST_NODE_TYPES.MemberExpression) {
-                    const propertyName = 
-                        objectNode.property.type === AST_NODE_TYPES.Identifier 
-                        ? objectNode.property.name 
-                        : null;
-                        
-                    if (propertyName && FORBIDDEN_PROPERTIES.has(propertyName)) {
+                const arg = node.arguments[0];
+                if (arg && arg.type === AST_NODE_TYPES.Literal && typeof arg.value === "string") {
+                    const baseName = getBaseName(callee.object);
+                    if (!baseName || !EXCLUDED_BASES.has(baseName)) {
                         context.report({
                             node,
                             messageId: "noImplicitAttributeAccess",
-                            data: { property: propertyName },
+                            data: { key: arg.value },
                         });
                     }
                 }
