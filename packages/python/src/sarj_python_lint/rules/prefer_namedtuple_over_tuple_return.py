@@ -359,7 +359,7 @@ def _is_bare_positional_tuple(annotation: ast.expr) -> bool:
     elements = annotation.slice.elts
     if len(elements) < _MIN_ELEMENTS:
         return False
-    if any(_is_ellipsis(el) for el in elements):
+    if any(_is_ellipsis(el) or _is_variadic(el) for el in elements):
         return False
     if _all_equal(elements):
         return False
@@ -381,6 +381,13 @@ def _is_ellipsis(node: ast.expr) -> bool:
     return isinstance(node, ast.Constant) and node.value is Ellipsis
 
 
+def _is_variadic(node: ast.expr) -> bool:
+    """Report whether an element is a variadic unpack (`*Ts` or `Unpack[Ts]`)."""
+    if isinstance(node, ast.Starred):
+        return True
+    return isinstance(node, ast.Subscript) and _name_of(node.value) == "Unpack"
+
+
 def _is_literal(node: ast.expr) -> bool:
     """Report whether `node` is a `Literal[...]` subscript (discriminated-union tag).
 
@@ -388,6 +395,8 @@ def _is_literal(node: ast.expr) -> bool:
         True when the node is a `Literal[...]` subscript.
 
     """
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        return _is_literal(node.left) and _is_literal(node.right)
     return isinstance(node, ast.Subscript) and _name_of(node.value) in _LITERAL_NAMES
 
 
@@ -398,6 +407,10 @@ def _name_of(node: ast.expr) -> str | None:
         The trailing identifier, or None when `node` is neither a Name nor Attribute.
 
     """
+    if isinstance(node, ast.Call):
+        node = node.func
+    if isinstance(node, ast.Subscript):
+        node = node.value
     if isinstance(node, ast.Name):
         return node.id
     if isinstance(node, ast.Attribute):
@@ -412,4 +425,13 @@ def _ast_equal(a: ast.expr, b: ast.expr) -> bool:
         True when the two trees are structurally equal.
 
     """
-    return ast.dump(a) == ast.dump(b)
+    return ast.dump(_strip_annotated(a)) == ast.dump(_strip_annotated(b))
+
+
+def _strip_annotated(node: ast.expr) -> ast.expr:
+    """Strip Annotated[...] down to its base type for equality checks."""
+    if isinstance(node, ast.Subscript) and _name_of(node.value) == "Annotated":
+        if isinstance(node.slice, ast.Tuple) and len(node.slice.elts) > 0:
+            return node.slice.elts[0]
+        return node.slice
+    return node

@@ -380,32 +380,41 @@ function isSafeRead(identifier: TSESTree.Identifier): boolean {
       // `foo[X]` — the binding is used as a key, which is a plain read.
       return true;
     }
-    const grandparent = parent.parent;
-    // `X.a = 1`, `X[0] = 1`, `X.a += 1`
+
+    let highestMember = parent;
+    while (
+      highestMember.parent.type === AST_NODE_TYPES.MemberExpression &&
+      highestMember.parent.object === highestMember
+    ) {
+      highestMember = highestMember.parent;
+    }
+
+    const grandparent = highestMember.parent;
+    // `X.a = 1`, `X[0][1] = 1`, `X.a.b += 1`
     if (
       grandparent.type === AST_NODE_TYPES.AssignmentExpression &&
-      grandparent.left === parent
+      grandparent.left === highestMember
     ) {
       return false;
     }
-    // `X.a++`
+    // `X.a.b++`
     if (grandparent.type === AST_NODE_TYPES.UpdateExpression) {
       return false;
     }
-    // `delete X.a`
+    // `delete X.a.b`
     if (
       grandparent.type === AST_NODE_TYPES.UnaryExpression &&
       grandparent.operator === "delete"
     ) {
       return false;
     }
-    // `X.push(...)`, `X.sort()`, ...
+    // `X.a.push(...)`, `X.sort()`, ...
     if (
-      !parent.computed &&
-      parent.property.type === AST_NODE_TYPES.Identifier &&
-      MUTATING_METHODS.has(parent.property.name) &&
+      !highestMember.computed &&
+      highestMember.property.type === AST_NODE_TYPES.Identifier &&
+      MUTATING_METHODS.has(highestMember.property.name) &&
       grandparent.type === AST_NODE_TYPES.CallExpression &&
-      grandparent.callee === parent
+      grandparent.callee === highestMember
     ) {
       return false;
     }

@@ -410,6 +410,50 @@ def f() -> tuple[str, int]:
 """
 
 
+def test_generic_base_classes_in_inheritance_are_exempt():
+    src = """
+class _IncludedRouter(BaseRoute[Scope]):
+    def matches(self, scope: Scope) -> tuple[Match, Scope]: ...
+    
+class _FrontendRoute(BaseRoute[Scope]):
+    def matches(self, scope: Scope) -> tuple[Match, Scope]: ...
+"""
+    assert _check(src) == []
+
+
+def test_variadic_tuples_are_exempt():
+    assert _check("def f() -> tuple[int, *Ts]: ...\n") == []
+    assert _check("def f() -> tuple[int, Unpack[Ts]]: ...\n") == []
+
+
+def test_literal_unions_are_exempt():
+    assert _check("def f() -> tuple[Literal['a'] | Literal['b'], int]: ...\n") == []
+
+
+def test_annotated_metadata_equality():
+    assert _check("def f() -> tuple[Annotated[int, 'a'], Annotated[int, 'b']]: ...\n") == []
+    assert _check("def f() -> tuple[Annotated[int, 'a'], Annotated[str, 'b']]: ...\n") != []
+
+
+def test_override_call_decorator_is_exempt():
+    src = """
+class APIRoute(Route):
+    @override()
+    def matches(self, scope: Scope) -> tuple[Match, Scope]: ...
+"""
+    assert _check(src) == []
+
+
+def test_abstractmethod_call_decorator_is_exempt():
+    src = """
+class UNIXSocketStream(SocketStream):
+    @abstractmethod()
+    async def receive_fds(self, msglen: int, maxfds: int) -> tuple[bytes, list[int]]:
+        pass
+"""
+    assert _check(src) == []
+
+
 # --------------------------------------------------------------------------- #
 # FP guard: generated files. Their layout is the generator's and re-running it  #
 # discards any edit, so a finding there can never be acted on in place.        #

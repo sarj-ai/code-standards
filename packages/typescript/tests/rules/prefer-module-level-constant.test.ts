@@ -61,10 +61,19 @@ ruleTester.run("prefer-module-level-constant", rule, {
       code: "function f() { const a = [1, 2, 3]; a[0] = 9; return a.length; }",
     },
     {
+      code: "function f() { const matrix = [[1, 2], [3, 4]]; matrix[0][1] = 99; return matrix.length; }",
+    },
+    {
+      code: "function f() { const grid = [[1, 2], [3, 4]]; grid[0].push(99); return grid.length; }",
+    },
+    {
       code: "function f() { const o = { a: 1, b: 2, c: 3 }; delete o.a; return o; }",
     },
     {
       code: "function f() { const o = { a: 1, b: 2, c: 3 }; o.a++; return o.a; }",
+    },
+    {
+      code: "function f() { const o = { nested: { a: 1 } }; o.nested.a++; return o.nested.a; }",
     },
 
     // FP mode: the value escapes, so the CALLER may mutate the shared instance.

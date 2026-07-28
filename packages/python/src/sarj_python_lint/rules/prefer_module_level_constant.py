@@ -590,13 +590,30 @@ def _is_safe_read(node: ast.Name, parents: dict[int, ast.AST], safe_methods: fro
 
     """
     parent = parents.get(id(node))
+    if isinstance(parent, ast.Subscript) and parent.value is not node:
+        return True
+
+    highest = node
+    curr_parent = parents.get(id(highest))
+    while curr_parent is not None:
+        if isinstance(curr_parent, ast.Attribute) and curr_parent.value is highest:
+            highest = curr_parent
+            curr_parent = parents.get(id(highest))
+        elif isinstance(curr_parent, ast.Subscript) and curr_parent.value is highest:
+            highest = curr_parent
+            curr_parent = parents.get(id(highest))
+        else:
+            break
+
+    if highest is not node:
+        # We walked up a chain of Attributes and/or Subscripts.
+        if not isinstance(highest.ctx, ast.Load):
+            return False
+        if isinstance(highest, ast.Attribute):
+            return _is_safe_method_call(highest, parents, safe_methods)
+        return True
+
     match parent:
-        case ast.Attribute():
-            return _is_safe_method_call(parent, parents, safe_methods)
-        case ast.Subscript(value=value, ctx=ctx):
-            # `x[k]` reads; `x[k] = v` / `del x[k]` mutate. `d[x]` uses the
-            # binding as a key, which is a plain read whatever `d` does.
-            return isinstance(ctx, ast.Load) if value is node else True
         case ast.Call(args=args, func=callee):
             return any(arg is node for arg in args) and _is_safe_callee(callee)
         case ast.keyword(arg=str(), value=value) if value is node:

@@ -226,9 +226,14 @@ def test_ignores_deeply_nested_displays():
         "allowed.merge_in(other)",
         # Subscript / attribute stores and deletes.
         'allowed[0] = "d"',
+        'allowed[0][1] = "d"',
         "del allowed[0]",
+        "del allowed[0][1]",
         "del allowed",
         "allowed.attr = 1",
+        "allowed.nested.attr = 1",
+        # Nested method calls that mutate
+        'allowed[0].append("d")',
         # Rebinds.
         'allowed += ["d"]',
         'allowed = ["x", "y", "z"]',
