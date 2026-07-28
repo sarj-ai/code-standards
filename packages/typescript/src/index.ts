@@ -46,6 +46,9 @@ import noTautologicalExpect from "./rules/no-tautological-expect.js";
 import requireInterfaceForInjectedService from "./rules/require-interface-for-injected-service.js";
 import preferNonNullableCollection from "./rules/prefer-non-nullable-collection.js";
 import primaryExportFileName from "./rules/primary-export-file-name.js";
+import requireEmptyStateProp from "./rules/require-empty-state-prop.js";
+import requireInteractiveStates from "./rules/require-interactive-states.js";
+import requireTextBalance from "./rules/require-text-balance.js";
 
 const rules = {
   "enforce-file-structure": enforceFileStructure,
@@ -96,6 +99,9 @@ const rules = {
   "no-tautological-expect": noTautologicalExpect,
   "require-interface-for-injected-service": requireInterfaceForInjectedService,
   "prefer-non-nullable-collection": preferNonNullableCollection,
+  "require-empty-state-prop": requireEmptyStateProp,
+  "require-interactive-states": requireInteractiveStates,
+  "require-text-balance": requireTextBalance,
 };
 
 const plugin = {
@@ -187,6 +193,9 @@ const plugin = {
         // port, 29 fire, 28 of them true positives.
         "@sarj/require-interface-for-injected-service": "warn",
         "@sarj/prefer-non-nullable-collection": "warn",
+        "@sarj/require-empty-state-prop": "warn",
+        "@sarj/require-interactive-states": "warn",
+        "@sarj/require-text-balance": "warn",
       },
     },
     strict: {
@@ -266,6 +275,9 @@ const plugin = {
         // corpus (175 `implements` clauses vs 29 hits), so strict enforces it.
         "@sarj/require-interface-for-injected-service": "error",
         "@sarj/prefer-non-nullable-collection": "error",
+        "@sarj/require-empty-state-prop": "error",
+        "@sarj/require-interactive-states": "error",
+        "@sarj/require-text-balance": "error",
       },
     },
   },
