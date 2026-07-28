@@ -1,6 +1,6 @@
 import { TSESLint, TSESTree } from '@typescript-eslint/utils';
 
-export const requireTextBalance: TSESLint.RuleModule<
+const requireTextBalance: TSESLint.RuleModule<
   'missingTextBalance' | 'missingTextPretty',
   []
 > = {
@@ -91,3 +91,5 @@ export const requireTextBalance: TSESLint.RuleModule<
     };
   },
 };
+
+export default requireTextBalance;

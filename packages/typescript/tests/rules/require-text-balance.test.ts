@@ -1,5 +1,5 @@
 import { RuleTester } from '@typescript-eslint/rule-tester';
-import { requireTextBalance } from '../../src/rules/require-text-balance';
+import requireTextBalance from '../../src/rules/require-text-balance';
 import { afterAll, describe, it } from 'vitest';
 import * as tsParser from '@typescript-eslint/parser';
 

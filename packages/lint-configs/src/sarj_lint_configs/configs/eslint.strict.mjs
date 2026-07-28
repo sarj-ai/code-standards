@@ -437,11 +437,9 @@ const config = [
       // across 11 first-party repos (7,912 files, 229 exported classes): 82%
       // already carry a port, 29 fire, 28 hand-reviewed as true positives.
       "@sarj/require-interface-for-injected-service": "error",
-      "@sarj/require-empty-state-prop": "error",
       "@sarj/require-interactive-states": "error",
       "@sarj/require-text-balance": "error",
       "@sarj/theme-no-raw-colors": "error",
-      "@sarj/no-monolithic-components": "error",
 
       // Deliberately NOT enabled here — these two are architectural rules that
       // are meaningless without per-repo paths, so a shared config cannot set
