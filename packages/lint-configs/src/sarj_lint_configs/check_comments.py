@@ -10,9 +10,21 @@ def check_file(path):
             tokens = tokenize.generate_tokens(f.readline)
             for tok in tokens:
                 if tok.type == tokenize.COMMENT:
-                    comment = tok.string.lstrip('#').strip().lower()
-                    if comment.startswith('increment') or comment.startswith('return') or comment.startswith('function to') or 'TODO' in tok.string:
-                        issues.append(f"{path}:{tok.start[0]} - Useless or redundant comment: {tok.string}")
+                    raw_comment = tok.string
+                    comment = raw_comment.lstrip('#').strip().lower()
+                    
+                    # 1. Ban ASCII section banners (e.g. ##### STRINGS #####)
+                    if set(comment).issubset({'#', '*', '=', '-', '/'}) and len(comment) > 3:
+                        issues.append(f"{path}:{tok.start[0]} - ASCII visual banner comment is forbidden: {raw_comment}")
+                    
+                    # 2. Ban untracked TODO / FIXME markers without issue ticket link or milestone
+                    if ('todo' in comment or 'fixme' in comment) and not ('http' in comment or '#' in comment or '(' in comment):
+                        issues.append(f"{path}:{tok.start[0]} - Untracked TODO/FIXME without issue ticket or context: {raw_comment}")
+                        
+                    # 3. Ban translational / code restatement prefixes
+                    prefixes = ('increment', 'return', 'function to', 'extract', 'get ', 'set ', 'check for')
+                    if any(comment.startswith(p) for p in prefixes):
+                        issues.append(f"{path}:{tok.start[0]} - Useless translational comment restating code: {raw_comment}")
     except Exception:
         pass
     
@@ -24,8 +36,10 @@ def check_file(path):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 docstring = ast.get_docstring(node)
                 if docstring:
-                    if docstring.strip().lower() == node.name.replace('_', ' ').lower():
-                        issues.append(f"{path}:{node.lineno} - Trivial docstring duplicates name: {docstring}")
+                    clean_doc = docstring.strip().lower().rstrip('.')
+                    clean_name = node.name.replace('_', ' ').lower()
+                    if clean_doc == clean_name or clean_doc == f"get {clean_name}" or clean_doc == f"set {clean_name}":
+                        issues.append(f"{path}:{node.lineno} - Trivial docstring duplicates signature: {docstring}")
     except Exception:
         pass
     
