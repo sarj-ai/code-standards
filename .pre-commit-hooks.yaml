@@ -503,3 +503,39 @@
   language: python
   types: [python]
 
+- id: sarj-prefer-walrus-regex-match
+  name: 'sarj-lint: Regex match assignment immediately followed by an `if` check'
+  entry: sarj-python-lint check --rule prefer-walrus-regex-match
+  language: python
+  types: [python]
+
+- id: sarj-prefer-walrus-comprehension-filter
+  name: 'sarj-lint: Repeated expression in comprehension filter and element'
+  entry: sarj-python-lint check --rule prefer-walrus-comprehension-filter
+  language: python
+  types: [python]
+
+- id: sarj-prefer-walrus-stream-loop
+  name: 'sarj-lint: Stream read loop using `while True:` with assignment and break'
+  entry: sarj-python-lint check --rule prefer-walrus-stream-loop
+  language: python
+  types: [python]
+
+- id: sarj-prefer-self-type-annotation
+  name: 'sarj-lint: Method returns `self` but annotates return with explicit class name'
+  entry: sarj-python-lint check --rule prefer-self-type-annotation
+  language: python
+  types: [python]
+
+- id: sarj-prefer-pattern-matching
+  name: 'sarj-lint: Unified pattern matching and match-assignment rule'
+  entry: sarj-python-lint check --rule prefer-pattern-matching
+  language: python
+  types: [python]
+
+- id: sarj-primary-export-file-name
+  name: 'sarj-lint: Single primary export file should be named after the exported symbol'
+  entry: sarj-python-lint check --rule primary-export-file-name
+  language: python
+  types: [python]
+

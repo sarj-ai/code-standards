@@ -42,7 +42,7 @@ def test_flags_hideous_parser_helper():
     diags = _check(_HIDEOUS_PARSER_IDIOM)
     assert len(diags) >= 1
     codes = {d.code for d in diags}
-    assert "SARJ074" in codes
+    assert "SARJ080" in codes
 
 
 def test_flags_control_flow_raise_inside_try():
@@ -57,7 +57,7 @@ def test_flags_control_flow_raise_inside_try():
     """
     diags = _check(source)
     assert len(diags) == 1
-    assert diags[0].code == "SARJ074"
+    assert diags[0].code == "SARJ080"
     assert "Control-flow raise in try block" in diags[0].message
     assert diags[0].line == 5
 
@@ -75,7 +75,7 @@ def test_flags_sequential_sentinel_guards():
     """
     diags = _check(source)
     assert len(diags) == 1
-    assert diags[0].code == "SARJ074"
+    assert diags[0].code == "SARJ080"
     assert "Sequential sentinel/type guards" in diags[0].message
 
 
