@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 ADD_CONSTRAINT_KEYWORD = re.compile(r"\bADD\s+CONSTRAINT\b", re.IGNORECASE)
 STRICT_TARGET_KIND_PATTERN = re.compile(
-    r"\bADD\s+CONSTRAINT\s+(?:[a-zA-Z0-9_\"\.]+\s+)?(CHECK|FOREIGN\s+KEY)\b",
+    r"\bADD\s+(?:CONSTRAINT\s+[a-zA-Z0-9_\"\.-]+\s+)?(CHECK|FOREIGN\s+KEY)\b",
     re.IGNORECASE,
 )
 NOT_VALID_PATTERN = re.compile(r"\bNOT\s+VALID\b", re.IGNORECASE)

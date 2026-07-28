@@ -29,11 +29,11 @@ def _mask_literals_and_comments(sql: str) -> str:
 
 
 CREATE_INDEX_PATTERN = re.compile(
-    r"\bCREATE\s+(?:UNIQUE\s+)?INDEX\b[\s\S]*?\bON\s+([a-zA-Z0-9_\"\.]+)\s*(?:USING\s+[a-zA-Z0-9_]+\s*)?\(\s*([\s\S]*?)\)",
+    r"\bCREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:CONCURRENTLY\s+)?(?:IF\s+NOT\s+EXISTS\s+)?[\s\S]*?\bON\s+(?:ONLY\s+)?([a-zA-Z0-9_\"\.]+)\s*(?:USING\s+[a-zA-Z0-9_]+\s*)?\(\s*([\s\S]*?)\)",
     re.IGNORECASE,
 )
 TABLE_SCOPE_PATTERN = re.compile(
-    r"\b(?:CREATE|ALTER)\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z0-9_\"\.]+)",
+    r"\b(?:CREATE|ALTER)\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:ONLY\s+)?([a-zA-Z0-9_\"\.]+)",
     re.IGNORECASE,
 )
 TABLE_FK_PATTERN = re.compile(
@@ -52,28 +52,33 @@ PRIMARY_OR_UNIQUE_KEYWORD = re.compile(r"\b(PRIMARY\s+KEY|UNIQUE)\b", re.IGNOREC
 
 
 def _normalize_name(name: str) -> str:
-    clean = name.strip('"').strip()
+    clean = name.strip()
     clean = re.sub(r"\s+(?:ASC|DESC|NULLS\s+FIRST|NULLS\s+LAST)\b.*", "", clean, flags=re.IGNORECASE)
-    return clean.strip('"').lower()
+    clean = clean.replace('"', '').strip()
+    return clean.lower()
 
 
 def _collect_indexes(masked: str) -> dict[str, set[tuple[str, ...]]]:
     indexed_cols: dict[str, set[tuple[str, ...]]] = {}
     for match in CREATE_INDEX_PATTERN.finditer(masked):
-        table = _normalize_name(match.group(1))
-        cols = tuple(_normalize_name(c) for c in match.group(2).split(","))
+        full_table = _normalize_name(match.group(1))
+        base_table = full_table.split(".")[-1]
+        cols = tuple(_normalize_name(c) for c in match.group(2).split(",") if _normalize_name(c))
         if cols:
-            indexed_cols.setdefault(table, set()).add(cols)
+            indexed_cols.setdefault(full_table, set()).add(cols)
+            indexed_cols.setdefault(base_table, set()).add(cols)
 
     for stmt in masked.split(";"):
         table_match = TABLE_SCOPE_PATTERN.search(stmt)
         if not table_match:
             continue
-        table = _normalize_name(table_match.group(1))
+        full_table = _normalize_name(table_match.group(1))
+        base_table = full_table.split(".")[-1]
         for pk_match in TABLE_PK_OR_UNIQUE_PATTERN.finditer(stmt):
-            pk_cols = tuple(_normalize_name(c) for c in pk_match.group(1).split(","))
+            pk_cols = tuple(_normalize_name(c) for c in pk_match.group(1).split(",") if _normalize_name(c))
             if pk_cols:
-                indexed_cols.setdefault(table, set()).add(pk_cols)
+                indexed_cols.setdefault(full_table, set()).add(pk_cols)
+                indexed_cols.setdefault(base_table, set()).add(pk_cols)
     return indexed_cols
 
 
@@ -108,9 +113,7 @@ class RequireFkIndex(Rule):
                 if table_match:
                     full_table = _normalize_name(table_match.group(1))
                     base_table = full_table.split(".")[-1]
-                    table_indexes = indexed_cols_by_table.get(full_table, set())
-                    if not table_indexes and "." not in full_table:
-                        table_indexes = indexed_cols_by_table.get(base_table, set())
+                    table_indexes = indexed_cols_by_table.get(full_table, set()) | indexed_cols_by_table.get(base_table, set())
                     leading_indexed = {idx[0] for idx in table_indexes if idx}
 
                     ctx = _StmtContext(path, masked, stmt, char_offset, full_table, table_match.end())
@@ -125,7 +128,10 @@ class RequireFkIndex(Rule):
         leading_indexed: set[str],
     ) -> list[Diagnostic]:
         diags: list[Diagnostic] = []
+        matched_fk_spans: list[tuple[int, int]] = []
+
         for fk_match in TABLE_FK_PATTERN.finditer(ctx.stmt):
+            matched_fk_spans.append((fk_match.start(), fk_match.end()))
             fk_cols = tuple(_normalize_name(c) for c in fk_match.group(1).split(","))
             leading_col = fk_cols[0] if fk_cols else ""
             if leading_col and leading_col not in leading_indexed:
@@ -145,9 +151,13 @@ class RequireFkIndex(Rule):
                     )
                 )
 
+        # Mask table-level FK definitions before inspecting inline column references
         body = ctx.stmt[ctx.header_end :]
+        fk_clean_pattern = re.compile(r"\bFOREIGN\s+KEY\s*\([^)]*\)\s*REFERENCES\s+[a-zA-Z0-9_\"\.]+(?:\([^)]*\))?", re.IGNORECASE)
+        body = fk_clean_pattern.sub(lambda m: " " * len(m.group(0)), body)
+
         for segment in body.split(","):
-            if "REFERENCES" in segment.upper() and not TABLE_FK_PATTERN.search(segment) and not PRIMARY_OR_UNIQUE_KEYWORD.search(segment):
+            if "REFERENCES" in segment.upper() and not TABLE_FK_PATTERN.search(segment) and not PRIMARY_OR_UNIQUE_KEYWORD.search(segment) and "CONSTRAINT" not in segment.upper() and "FOREIGN KEY" not in segment.upper():
                 col_match = INLINE_COLUMN_PATTERN.search(segment)
                 if col_match:
                     col_name = _normalize_name(col_match.group(1))
@@ -167,3 +177,6 @@ class RequireFkIndex(Rule):
                             )
                         )
         return diags
+
+
+

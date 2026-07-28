@@ -65,3 +65,40 @@ def test_require_fk_index() -> None:
     );
     """
     assert rule.check(P, table_pk_sql) == []
+
+
+
+def test_require_fk_index_alter_table_only_and_composite_fk() -> None:
+    rule = RequireFkIndex()
+
+    # Passes ALTER TABLE ONLY with composite FK and CREATE INDEX CONCURRENTLY
+    sql = """
+    CREATE INDEX CONCURRENTLY idx_persondistinctid ON public.posthog_persondistinctid (team_id, person_id);
+
+    ALTER TABLE ONLY public.posthog_persondistinctid
+        ADD CONSTRAINT posthog_persondistinctid_person_id_fkey
+        FOREIGN KEY (team_id, person_id) REFERENCES posthog_person_new(team_id, id) NOT VALID;
+    """
+    assert rule.check(P, sql) == []
+
+
+def test_dump_file_skips_migration_rules() -> None:
+    dump_path = Path("structure.sql")
+    dump_sql = """
+    -- PostgreSQL database dump
+    SET statement_timeout = 0;
+    SET lock_timeout = 0;
+    CREATE TABLE users (id int primary key);
+    CREATE INDEX idx_users ON users (id);
+    """
+    assert RequireLockTimeout().check(dump_path, dump_sql) == []
+    assert RequireLockTimeout().check(P, dump_sql) == []
+
+
+def test_set_config_and_session_lock_timeout() -> None:
+    rule = RequireLockTimeout()
+    sql1 = "SELECT set_config('lock_timeout', '5s', false); ALTER TABLE t ADD COLUMN c INT;"
+    sql2 = "SET SESSION lock_timeout = '5s'; ALTER TABLE t ADD COLUMN c INT;"
+    assert rule.check(P, sql1) == []
+    assert rule.check(P, sql2) == []
+
