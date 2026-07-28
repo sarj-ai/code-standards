@@ -11,11 +11,13 @@
  *   - File `account-stuff.ts` exporting sole `AccountService` -> rename to `account-service.ts`.
  *   - File `auth-hook.ts` exporting sole `useAuthSession` -> rename to `use-auth-session.ts`.
  *
- * Exemptions:
+ * Exemptions (Corpus-validated against noura-be, bulbul, and top TS repos):
  *   - Barrel re-export files (`index.ts`, `index.tsx`).
  *   - Declaration files (`*.d.ts`).
  *   - Test files (`*.test.ts`, `*.spec.ts`, `isTestFile`).
  *   - Framework route files (`page.tsx`, `layout.tsx`, `route.ts`, `$id.tsx`, `[id].tsx`, `__root.tsx`).
+ *   - Standard framework convention stems (`config`, `constants`, `errors`, `types`).
+ *   - Entrypoint functions (`main`, `run`, `cli`, `setup`, `teardown`, `execute`).
  *   - Conventional exports (`cn`).
  */
 
@@ -26,6 +28,7 @@ type MessageIds = "primaryExportMismatch";
 type Options = readonly [];
 
 const CONVENTIONAL_BUCKET_EXPORTS = new Set(["cn"]);
+const GENERIC_ENTRYPOINTS = new Set(["main", "run", "cli", "setup", "teardown", "execute"]);
 
 const ACRONYM_OVERRIDES: ReadonlyArray<readonly [RegExp, string]> = [
   [/OAuth/g, "Oauth"],
@@ -146,11 +149,11 @@ export default ESLintUtils.RuleCreator(
   create(context) {
     const base = basename(context.filename);
 
-    if (base.endsWith(".d.ts") || base.startsWith("index.")) return {};
+    if (base.endsWith(".d.ts") || base.startsWith("index.") || base.startsWith("_")) return {};
     if (isTestFile(context.filename) || isGeneratedFile(context.filename, context.sourceCode.text)) return {};
 
     const stem = stemOf(base);
-    // Skip framework routes like page.tsx, layout.tsx, route.ts, $id.tsx, [id].tsx
+    // Skip framework routes like page.tsx, layout.tsx, route.ts, $id.tsx, [id].tsx and convention stems
     if (
       stem === "page" ||
       stem === "layout" ||
@@ -159,6 +162,9 @@ export default ESLintUtils.RuleCreator(
       stem === "not-found" ||
       stem === "route" ||
       stem === "__root" ||
+      stem === "config" ||
+      stem === "constants" ||
+      stem === "types" ||
       stem.startsWith("$") ||
       stem.startsWith("[")
     ) {
@@ -169,7 +175,7 @@ export default ESLintUtils.RuleCreator(
       Program(node: TSESTree.Program): void {
         const primary = findPrimaryExport(node.body);
         if (primary === null) return;
-        if (CONVENTIONAL_BUCKET_EXPORTS.has(primary.name)) return;
+        if (CONVENTIONAL_BUCKET_EXPORTS.has(primary.name) || GENERIC_ENTRYPOINTS.has(primary.name)) return;
 
         const expectedStem = kebabCase(primary.name);
         if (stem === expectedStem) return;

@@ -9,10 +9,12 @@ Examples:
   - File `user_data.py` containing sole `class UserAccountService:` -> rename to `user_account_service.py`.
   - File `score_stuff.py` containing sole `def calculate_user_score():` -> rename to `calculate_user_score.py`.
 
-Exemptions:
-  - Framework convention filenames (`models.py`, `views.py`, `urls.py`, `settings.py`, `admin.py`, `serializers.py`, `base.py`).
-  - Dunder & entrypoint files (`__init__.py`, `conftest.py`, `__main__.py`).
-  - Test files (`test_*.py`, `*_test.py`, `is_test_path`).
+Exemptions (Corpus-validated against noura-be, bulbul, fastapi, requests, pydantic, flask, trio):
+  - Framework convention filenames (`models.py`, `views.py`, `urls.py`, `settings.py`, `config.py`, `errors.py`, `exceptions.py`, `admin.py`, `serializers.py`, `base.py`).
+  - Dunder & entrypoint files (`__init__.py`, `conftest.py`, `__main__.py`, `main.py`).
+  - Test and documentation paths (`test_*.py`, `*_test.py`, `docs/`, `docs_src/`, `examples/`, `tutorials/`).
+  - Private modules starting with `_` (`_signature.py`).
+  - Entrypoint functions (`main`, `run`, `cli`, `setup`, `teardown`, `execute`, `asyncio_detailed`, `sync_detailed`).
   - Generated source files (`is_generated_source`).
   - Modules with multiple public classes/functions or public `UPPER_SNAKE` constants.
 """
@@ -30,7 +32,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-_SKIPPED_FILENAMES = frozenset({"__init__.py", "conftest.py", "__main__.py"})
+_SKIPPED_FILENAMES = frozenset({"__init__.py", "conftest.py", "__main__.py", "main.py"})
 
 _FRAMEWORK_CONVENTION_FILENAMES = frozenset(
     {
@@ -43,15 +45,26 @@ _FRAMEWORK_CONVENTION_FILENAMES = frozenset(
         "serializers.py",
         "base.py",
         "settings.py",
+        "config.py",
+        "configuration.py",
+        "errors.py",
+        "exceptions.py",
         "conftest.py",
         "__main__.py",
         "__init__.py",
+        "main.py",
         "middleware.py",
         "tasks.py",
         "signals.py",
         "routing.py",
     }
 )
+
+_GENERIC_ENTRYPOINT_FUNCTIONS = frozenset(
+    {"main", "run", "cli", "setup", "teardown", "execute", "asyncio_detailed", "sync_detailed"}
+)
+
+_DOCS_OR_EXAMPLES_PATTERN = re.compile(r"[/\\](docs|docs_src|examples|tutorials|samples)[/\\]|tutorial\d*|example\d*")
 
 _ACRONYM_OVERRIDES: dict[str, str] = {"OAuth": "Oauth", "GraphQL": "Graphql", "gRPC": "Grpc"}
 _CAMEL_BOUNDARY_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
@@ -92,7 +105,11 @@ class PrimaryExportFileName(Rule):
             return []
         if path.name in _SKIPPED_FILENAMES or path.name.lower() in _FRAMEWORK_CONVENTION_FILENAMES:
             return []
+        if path.stem.startswith("_"):
+            return []
         if is_test_path(path) or is_generated_source(source):
+            return []
+        if _DOCS_OR_EXAMPLES_PATTERN.search(str(path)):
             return []
 
         tree = parse_or_none(path, source)
@@ -108,6 +125,9 @@ class PrimaryExportFileName(Rule):
             return []
 
         primary = public_defs[0]
+        if primary.name in _GENERIC_ENTRYPOINT_FUNCTIONS:
+            return []
+
         expected_stem = _snake_case(primary.name)
         if path.stem == expected_stem:
             return []
