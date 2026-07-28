@@ -11,7 +11,7 @@ from __future__ import annotations
 
 # `_hcl` is package-private by design; the walker is exercised directly because
 # its guards (masking, nesting, value rejoining) are what the rules depend on.
-from sarj_iac_lint._hcl import blocks  # ruff:ignore[import-private-name]
+from sarj_iac_lint._hcl import blocks
 
 
 def test_parses_type_labels_and_position():

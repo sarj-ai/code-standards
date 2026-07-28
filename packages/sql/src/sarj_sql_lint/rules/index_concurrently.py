@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING, final, override
 
-from sarj_sql_lint.rule_base import Diagnostic, Rule, mask_sql
+from sarj_sql_lint.rule_base import Diagnostic, Rule, is_dump_file, mask_sql
 
 
 if TYPE_CHECKING:
@@ -35,7 +35,11 @@ class IndexConcurrently(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        if is_dump_file(source, path):
+            return []
+
         diags: list[Diagnostic] = []
+
         for lineno, line in enumerate(mask_sql(source).splitlines(), start=1):
             diags.extend(
                 Diagnostic(
