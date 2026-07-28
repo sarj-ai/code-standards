@@ -75,6 +75,9 @@ from sarj_python_lint.rules.prefer_struct_over_namedtuple import (
 from sarj_python_lint.rules.prefer_timedelta_for_durations import (
     PreferTimedeltaForDurations,
 )
+from sarj_python_lint.rules.primary_export_file_name import (
+    PrimaryExportFileName,
+)
 from sarj_python_lint.rules.pydantic_at_boundaries import PydanticAtBoundaries
 from sarj_python_lint.rules.redundant_docstring import RedundantDocstring
 from sarj_python_lint.rules.require_port_for_service import RequirePortForService
@@ -151,6 +154,7 @@ REGISTRY: dict[str, type[Rule]] = {
     NoAggregationInStoreQuery.id: NoAggregationInStoreQuery,
     NoSelectStar.id: NoSelectStar,
     SinglePublicExport.id: SinglePublicExport,
+    PrimaryExportFileName.id: PrimaryExportFileName,
     Stepdown.id: Stepdown,
     NoRepeatedStringLiteral.id: NoRepeatedStringLiteral,
     PreferMatchAssertNever.id: PreferMatchAssertNever,
