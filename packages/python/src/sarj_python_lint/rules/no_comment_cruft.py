@@ -178,8 +178,6 @@ _DIRECTIVE_PREFIXES = (
     "flake8:",
     "nosec",
     "nosemgrep",
-    "todo",
-    "fixme",
     "hack",
     "xxx:",
     "-*-",
@@ -249,7 +247,7 @@ _SENTENCE_END_RE = re.compile(r"""[.!?:;)\]}"'`]$""")
 # holds") aren't mistaken for an enumeration marker.
 _STEP_NARRATION_RE = re.compile(
     r"^(?:first(?:ly)?|second(?:ly)?|third(?:ly)?|then|next|after(?:wards| that)?"
-    r"|finally|lastly|now)\s*[,:]\s*\S|^step\s+\d+\b",
+    r"|finally|lastly|now)\s*[,:]\s*\S",
     re.IGNORECASE,
 )
 
@@ -350,7 +348,13 @@ _LETS_RE = re.compile(
 # `# Phase 2: reconcile`. Flagged only when the file carries exactly one of
 # them — a *run* of them is a documented algorithm walkthrough, which is the
 # kind of comment this rule exists to protect.
-_ENUMERATION_RE = re.compile(r"^(?:\d+[.)]\s+\S|phase\s+\d+\b)", re.IGNORECASE)
+_ENUMERATION_RE = re.compile(r"^(?:\d+[.)]\s+\S|(?:phase|step)\s+\d+\b)", re.IGNORECASE)
+
+# Dummy translational comments: ultra-short comments that just restate the code.
+_DUMMY_TRANSLATION_RE = re.compile(
+    r"^(?:increment|return|returns|get|gets|set\b(?! up\b)|sets\b(?! up\b)|function to|method to)\b",
+    re.IGNORECASE,
+)
 
 
 def _is_word_char(ch: str) -> bool:
@@ -528,6 +532,14 @@ def _is_redundant_narration(
         return True
     if _HELPER_OPENER_RE.match(c) or _LETS_RE.match(c):
         return True
+    words = c.split()
+    if len(words) <= 4 and _DUMMY_TRANSLATION_RE.match(c) and not any(ch in c for ch in "():="):
+        # Exclude common rationale words or test markers
+        lower_c = c.lower()
+        if not any(w in lower_c for w in ("when", "because", "if", "so that", "due to", "for", "instead of", "to prevent", "to avoid", "only")):
+            # Also exclude single-word labels like `# get` which are often group labels in tests
+            if len(words) > 1:
+                return True
     if not nested and _is_section_label(c):
         return True
     return isolated_enumeration and bool(_ENUMERATION_RE.match(c))
@@ -594,6 +606,9 @@ def _looks_like_code(body: str) -> bool:
     if c.startswith("@"):
         return _compiles(c + "\ndef _f():\n    pass")
     if _ASSIGN_OR_CALL_RE.match(c):
+        # Implicit type condition documentation (e.g. under `else:`)
+        if c.startswith("isinstance(") or c.startswith("issubclass("):
+            return False
         return _is_assign_or_call(c)
     return False
 
@@ -694,6 +709,10 @@ class NoCommentCruft(Rule):
         nested: bool,
     ) -> str | None:
         if _CODE_REGEN_CALL_RE.match(body):
+            return None
+        if re.match(r"^(?:todo|fixme)\b", body, re.IGNORECASE):
+            if not narration_protected:
+                return "Untracked TODO/FIXME marker — add an issue ticket or context link."
             return None
         if _is_banner(body):
             if _is_heading_underline(body, prev_body):
