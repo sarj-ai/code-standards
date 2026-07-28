@@ -74,6 +74,23 @@ def test_promise_function_async_skips_method_declarations() -> None:
     )
 
 
+def test_prefer_nullish_coalescing_ignores_primitives() -> None:
+    text = ESLINT_STRICT.read_text()
+    assert re.search(
+        r'"@typescript-eslint/prefer-nullish-coalescing"\s*:\s*\[\s*"error"\s*,\s*\{[^}]*ignorePrimitives\s*:\s*\{',
+        text,
+    )
+
+
+def test_naming_convention_allows_framework_names() -> None:
+    text = ESLINT_STRICT.read_text()
+    assert re.search(
+        r'"@typescript-eslint/naming-convention".+?format:\s*\["camelCase"\].+?filter:\s*\{\s*regex:\s*"\^\(UNSAFE_\|__\)"',
+        text,
+        re.DOTALL
+    )
+
+
 def test_cli_list(tmp_path: Path) -> None:
     proc = subprocess.run(
         [sys.executable, "-m", "sarj_lint_configs", "list"],
