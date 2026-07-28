@@ -2,6 +2,7 @@ import ast
 import tokenize
 import sys
 import os
+import re
 
 def check_file(path):
     issues = []
@@ -17,13 +18,14 @@ def check_file(path):
                     if tok.start[0] == 1:
                         continue
 
-                    # 1. Ban ASCII section banners (only in non-test source files)
-                    if set(comment).issubset({'#', '*', '=', '-', '/'}) and len(comment) > 10 and 'test' not in path.lower():
+                    # 1. Ban ASCII section banners (e.g. ##### STRINGS ##### or // ====== TITLE =====)
+                    if re.search(r'^[#\*=\-/]{3,}\s*[A-Z0-9_\s]*\s*[#\*=\-/]{3,}$', comment) and len(comment) > 10 and 'test' not in path.lower():
                         issues.append(f"{path}:{tok.start[0]} - ASCII visual banner comment is forbidden in source files: {raw_comment}")
                     
-                    # 2. Ban untracked TODO / FIXME markers (allow issue numbers, URLs, JIRA keys, or explicit removal/version conditions)
-                    if ('todo' in comment or 'fixme' in comment):
-                        has_context = any(k in comment for k in ('http', '#', '(', 'remove when', 'drop', 'python 3.', 'v2', 'v3', 'version', 'ticket', '-'))
+                    # 2. Ban untracked TODO / FIXME markers (strip # noqa directives before checking for issue numbers/links)
+                    comment_no_noqa = re.sub(r'#\s*noqa.*$', '', comment)
+                    if ('todo' in comment_no_noqa or 'fixme' in comment_no_noqa):
+                        has_context = any(k in comment_no_noqa for k in ('http', '#', '(', 'remove when', 'drop', 'python 3.', 'v2', 'v3', 'version', 'ticket', '-'))
                         if not has_context:
                             issues.append(f"{path}:{tok.start[0]} - Untracked TODO/FIXME without issue ticket or context: {raw_comment}")
                         
