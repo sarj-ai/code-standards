@@ -43,7 +43,18 @@ const config = [
       "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/no-non-null-assertion": "error",
       "@typescript-eslint/no-deprecated": "error",
-      "@typescript-eslint/only-throw-error": "error",
+      "@typescript-eslint/only-throw-error": [
+        "error",
+        {
+          allow: [
+            {
+              from: "package",
+              package: "@tanstack/react-router",
+              name: ["redirect"],
+            },
+          ],
+        },
+      ],
       "@typescript-eslint/prefer-promise-reject-errors": "error",
       "@typescript-eslint/no-meaningless-void-operator": "error",
       "@typescript-eslint/no-mixed-enums": "error",

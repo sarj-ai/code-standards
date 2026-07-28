@@ -262,13 +262,11 @@ raises-require-match-for = [
 "uuid.uuid4".msg                      = "Use uuid.uuid7() — time-ordered, aligns with the DB uuidv7() default. For unguessable secrets use secrets.token_urlsafe(), not a UUID."
 
 [lint.per-file-ignores]
-# Tests routinely assert, take boolean params, use magic numbers, and shell out
-# to the binary under test (subprocess) — none of that is a smell in a test.
-# Union of this standard's prior test idioms and bulbul's: subprocess (S404/603/607)
-# for CLI tools that shell out to the binary under test; RUF076 (autouse) and
-# PLR6301 (test methods that never use self) for pytest class/fixture idioms.
-"**/tests/**"     = ["S101", "FBT001", "FBT002", "FBT003", "PLR2004", "S404", "S603", "S607", "RUF076", "PLR6301"]
-"**/test_*.py"    = ["ANN201", "ANN202"]
+# Tests routinely assert, inspect private state (whitebox testing), take fixture/stub params,
+# use magic numbers, use async coroutine signatures, and shell out to binaries — none of that is a smell in a test.
+"**/tests/**"     = ["S101", "S105", "S106", "S301", "S311", "S404", "S603", "S607", "S608", "FBT001", "FBT002", "FBT003", "PLR2004", "RUF076", "PLR6301", "SLF001", "ARG001", "ARG002", "RUF029", "ANN201", "ANN202"]
+"**/test_*.py"    = ["S101", "S105", "S106", "S301", "S311", "S404", "S603", "S607", "S608", "FBT001", "FBT002", "FBT003", "PLR2004", "RUF076", "PLR6301", "SLF001", "ARG001", "ARG002", "RUF029", "ANN201", "ANN202"]
+"**/conftest.py"  = ["S101", "S105", "S106", "S301", "S311", "S404", "S603", "S607", "S608", "FBT001", "FBT002", "FBT003", "PLR2004", "RUF076", "PLR6301", "SLF001", "ARG001", "ARG002", "RUF029", "ANN201", "ANN202"]
 "scripts/**"      = ["T201", "S", "BLE001", "TRY002"]
 # CLI entrypoints print to stdout — that's their job, not stray debug output.
 "**/__main__.py"  = ["T201"]
