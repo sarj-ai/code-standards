@@ -24,7 +24,7 @@ When invoked to create a new lint rule, follow this workflow:
      - `bulbul`
      - 10 top open-source TypeScript and Python repositories.
 
-4. **Analyze and Refine using `codex exec`**:
-   - Integrate and invoke `codex exec` in your workflow to analyze the execution results and lint errors.
-   - Feed the lint outputs into `codex exec` using the best model available to evaluate false positives.
-   - Iterate on the rule implementations in the `standards` repository based on Codex's analysis to refine the logic and eliminate false positives.
+4. **Analyze and Refine**:
+   - Spawn 5 separate subagents to validate and understand the output of linting those repositories.
+   - Have the subagents analyze the findings to identify false positives and make the rule more robust.
+   - Iterate on the rule implementations in the `standards` repository based on the subagents' analysis to refine the logic.
