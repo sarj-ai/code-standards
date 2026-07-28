@@ -62,6 +62,18 @@ def test_eslint_config_is_esm() -> None:
     assert "export default" in text
 
 
+def test_promise_function_async_skips_method_declarations() -> None:
+    # The autofix is destructive on framework-defined methods: React's ReactNode
+    # includes Promise<AwaitedReactNode>, so a class component's render() infers
+    # as promise-returning and the fixer adds `async`, which makes React throw
+    # #482 at runtime. Checking methods must stay off.
+    text = ESLINT_STRICT.read_text()
+    assert re.search(
+        r'"@typescript-eslint/promise-function-async"\s*:\s*\[\s*"error"\s*,\s*\{[^}]*checkMethodDeclarations\s*:\s*false',
+        text,
+    )
+
+
 def test_cli_list(tmp_path: Path) -> None:
     proc = subprocess.run(
         [sys.executable, "-m", "sarj_lint_configs", "list"],

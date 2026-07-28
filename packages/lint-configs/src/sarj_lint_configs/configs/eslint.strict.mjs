@@ -126,7 +126,13 @@ const config = [
       "@typescript-eslint/no-unnecessary-condition": "error",
       "@typescript-eslint/prefer-nullish-coalescing": "error",
       "@typescript-eslint/prefer-optional-chain": "error",
-      "@typescript-eslint/promise-function-async": "error",
+      // checkMethodDeclarations is off because the autofix is destructive on
+      // framework-defined methods. React's ReactNode union includes
+      // Promise<AwaitedReactNode> (for async Server Components), so a class
+      // component's render() infers as promise-returning and the fixer adds
+      // `async` — which makes React throw #482 and takes down every route the
+      // component wraps. Standalone functions and arrows are still checked.
+      "@typescript-eslint/promise-function-async": ["error", { checkMethodDeclarations: false }],
       "@typescript-eslint/no-non-null-asserted-optional-chain": "error",
       "@typescript-eslint/no-unnecessary-type-assertion": "error",
       "@typescript-eslint/no-redundant-type-constituents": "error",
