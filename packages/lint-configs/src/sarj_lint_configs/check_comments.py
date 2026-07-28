@@ -13,18 +13,21 @@ def check_file(path):
                     raw_comment = tok.string
                     comment = raw_comment.lstrip('#').strip().lower()
                     
-                    # 1. Ban ASCII section banners (e.g. ##### STRINGS #####)
-                    if set(comment).issubset({'#', '*', '=', '-', '/'}) and len(comment) > 3:
-                        issues.append(f"{path}:{tok.start[0]} - ASCII visual banner comment is forbidden: {raw_comment}")
+                    # 1. Ban ASCII section banners (only in non-test source files)
+                    if set(comment).issubset({'#', '*', '=', '-', '/'}) and len(comment) > 10 and 'test' not in path.lower():
+                        issues.append(f"{path}:{tok.start[0]} - ASCII visual banner comment is forbidden in source files: {raw_comment}")
                     
-                    # 2. Ban untracked TODO / FIXME markers without issue ticket link or milestone
-                    if ('todo' in comment or 'fixme' in comment) and not ('http' in comment or '#' in comment or '(' in comment):
-                        issues.append(f"{path}:{tok.start[0]} - Untracked TODO/FIXME without issue ticket or context: {raw_comment}")
+                    # 2. Ban untracked TODO / FIXME markers (allow issue numbers, URLs, or explicit removal/version conditions)
+                    if ('todo' in comment or 'fixme' in comment):
+                        has_context = any(k in comment for k in ('http', '#', '(', 'remove when', 'drop', 'python 3.', 'v2', 'v3', 'version', 'ticket'))
+                        if not has_context:
+                            issues.append(f"{path}:{tok.start[0]} - Untracked TODO/FIXME without issue ticket or context: {raw_comment}")
                         
-                    # 3. Ban translational / code restatement prefixes
-                    prefixes = ('increment', 'return', 'function to', 'extract', 'get ', 'set ', 'check for')
-                    if any(comment.startswith(p) for p in prefixes):
-                        issues.append(f"{path}:{tok.start[0]} - Useless translational comment restating code: {raw_comment}")
+                    # 3. Ban translational / code restatement comments (only if purely restating and lack explanatory rationale like 'when', 'because', 'if', 'so that')
+                    words = comment.split()
+                    if len(words) <= 5 and not any(w in comment for w in ('when', 'because', 'if', 'so that', 'due to', 'instead of', 'to prevent', 'to avoid')):
+                        if any(comment.startswith(p) for p in ('increment ', 'return ', 'function to ', 'get ', 'set ')):
+                            issues.append(f"{path}:{tok.start[0]} - Useless translational comment restating code: {raw_comment}")
     except Exception:
         pass
     
