@@ -45,6 +45,7 @@ import trailingValueNarration from "./rules/trailing-value-narration.js";
 import noTautologicalExpect from "./rules/no-tautological-expect.js";
 import requireInterfaceForInjectedService from "./rules/require-interface-for-injected-service.js";
 import preferNonNullableCollection from "./rules/prefer-non-nullable-collection.js";
+import primaryExportFileName from "./rules/primary-export-file-name.js";
 
 const rules = {
   "enforce-file-structure": enforceFileStructure,
@@ -73,6 +74,7 @@ const rules = {
   "no-unsafe-cast": noUnsafeCast,
   "prefer-string-literal-union": preferStringLiteralUnion,
   "single-public-export": singlePublicExport,
+  "primary-export-file-name": primaryExportFileName,
   "no-silent-promise-catch": noSilentPromiseCatch,
   "require-fetch-timeout": requireFetchTimeout,
   "require-schema-validate-search": requireSchemaValidateSearch,
@@ -134,6 +136,7 @@ const plugin = {
         "@sarj/no-secret-in-log": "warn",
         "@sarj/no-unsafe-cast": "warn",
         "@sarj/single-public-export": "warn",
+        "@sarj/primary-export-file-name": "warn",
         "@sarj/prefer-string-literal-union": "warn",
         // Mined from 2y of PR review feedback + 5-repo code-smell audit (2026-07).
         "@sarj/require-fetch-timeout": "warn",
@@ -221,6 +224,7 @@ const plugin = {
         "@sarj/no-secret-in-log": "error",
         "@sarj/no-unsafe-cast": "error",
         "@sarj/single-public-export": "error",
+        "@sarj/primary-export-file-name": "error",
         // Promoted to error 2026-07-25 — strict means strict (user directive).
         "@sarj/prefer-string-literal-union": "error",
         // Mined from 2y of PR review feedback + 5-repo code-smell audit (2026-07).

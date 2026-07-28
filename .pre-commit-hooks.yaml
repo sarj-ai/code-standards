@@ -371,6 +371,12 @@
   language: python
   types: [python]
 
+- id: sarj-primary-export-file-name
+  name: 'sarj-lint: A module stem should match its primary public def/class export'
+  entry: sarj-python-lint check --rule primary-export-file-name
+  language: python
+  types: [python]
+
 - id: sarj-stepdown
   name: 'sarj-lint: Private helper defined above its only caller'
   entry: sarj-python-lint check --rule stepdown
