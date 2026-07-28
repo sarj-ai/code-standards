@@ -249,7 +249,7 @@ _LOG_METHODS = frozenset(
 # and case-SENSITIVE: SQL keywords are written in caps by universal convention,
 # so `"copied from "` in prose is not mistaken for a query fragment.
 _SQL_RE = re.compile(
-    r"\b(SELECT|INSERT\s+INTO|UPDATE|DELETE\s+FROM|WHERE|FROM|JOIN|ORDER\s+BY|GROUP\s+BY|VALUES|SET)\b\s*$"
+    r"\b(SELECT|INSERT\s+INTO|UPDATE|DELETE\s+FROM|WHERE|FROM|JOIN|ORDER\s+BY|GROUP\s+BY|VALUES|SET|AND|OR|LIMIT|OFFSET|HAVING|LIKE|IN|ON|RETURNING|UNION(?:\s+ALL)?)\b\s*$"
 )
 
 # Calls returning a lazy translation proxy or an escape-aware SafeString.
@@ -430,13 +430,19 @@ def _verdict(node: ast.BinOp) -> str | None:
 
 
 def _is_join_call(expr: ast.expr) -> bool:
-    """Report whether `expr` is a `<sep>.join(...)` call.
+    """Report whether `expr` is a `.join(...)`, `join(...)` or format/path joining call.
 
     Returns:
-        True for any `.join(...)` attribute call.
+        True for any `.join(...)`/`.format(...)` attribute or function call.
 
     """
-    return isinstance(expr, ast.Call) and isinstance(expr.func, ast.Attribute) and expr.func.attr == "join"
+    if not isinstance(expr, ast.Call):
+        return False
+    if isinstance(expr.func, ast.Attribute):
+        return expr.func.attr in {"join", "joinpath", "urljoin", "format", "encode"}
+    if isinstance(expr.func, ast.Name):
+        return expr.func.id in {"join", "joinpath", "urljoin", "format"}
+    return False
 
 
 def _root_name(expr: ast.expr) -> str:
@@ -455,9 +461,11 @@ def _is_orm_expression(expr: ast.expr) -> bool:
     """Report whether `expr` builds an ORM/SQL expression object rather than a string.
 
     Returns:
-        True for `F(...)`/`Value(...)`-style constructors and `func.*`/`expression.*` calls.
+        True for `F(...)`/`Value(...)`-style constructors and `func.*`/`expression.*` calls or attributes.
 
     """
+    if isinstance(expr, ast.Attribute) and (expr.attr in {"c", "column"} or _root_name(expr) in _ORM_ROOTS):
+        return True
     if not isinstance(expr, ast.Call):
         return False
     func = expr.func
