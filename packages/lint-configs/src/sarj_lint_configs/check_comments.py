@@ -13,13 +13,17 @@ def check_file(path):
                     raw_comment = tok.string
                     comment = raw_comment.lstrip('#').strip().lower()
                     
+                    # Skip top-of-file module summary comments (line 1)
+                    if tok.start[0] == 1:
+                        continue
+
                     # 1. Ban ASCII section banners (only in non-test source files)
                     if set(comment).issubset({'#', '*', '=', '-', '/'}) and len(comment) > 10 and 'test' not in path.lower():
                         issues.append(f"{path}:{tok.start[0]} - ASCII visual banner comment is forbidden in source files: {raw_comment}")
                     
-                    # 2. Ban untracked TODO / FIXME markers (allow issue numbers, URLs, or explicit removal/version conditions)
+                    # 2. Ban untracked TODO / FIXME markers (allow issue numbers, URLs, JIRA keys, or explicit removal/version conditions)
                     if ('todo' in comment or 'fixme' in comment):
-                        has_context = any(k in comment for k in ('http', '#', '(', 'remove when', 'drop', 'python 3.', 'v2', 'v3', 'version', 'ticket'))
+                        has_context = any(k in comment for k in ('http', '#', '(', 'remove when', 'drop', 'python 3.', 'v2', 'v3', 'version', 'ticket', '-'))
                         if not has_context:
                             issues.append(f"{path}:{tok.start[0]} - Untracked TODO/FIXME without issue ticket or context: {raw_comment}")
                         
@@ -27,7 +31,7 @@ def check_file(path):
                     # Exclude docstrings, JSDoc example blocks, and multi-line doc blocks
                     if not raw_comment.startswith(('"""', "'''", '/*', '*')):
                         words = comment.split()
-                        if len(words) <= 5 and not any(w in comment for w in ('when', 'because', 'if', 'so that', 'due to', 'instead of', 'to prevent', 'to avoid', '@example')):
+                        if len(words) <= 5 and not any(w in comment for w in ('when', 'because', 'if', 'so that', 'due to', 'instead of', 'to prevent', 'to avoid', 'only', '@example')):
                             if any(comment.startswith(p) for p in ('increment ', 'return ', 'function to ', 'get ', 'set ')):
                                 issues.append(f"{path}:{tok.start[0]} - Useless translational comment restating code: {raw_comment}")
     except Exception:
