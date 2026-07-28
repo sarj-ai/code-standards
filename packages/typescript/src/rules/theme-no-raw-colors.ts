@@ -24,6 +24,16 @@ export default ESLintUtils.RuleCreator(
   },
   defaultOptions: [],
   create(context) {
+    const filename = context.filename ?? context.getFilename();
+    if (
+      filename.includes('theme/') ||
+      filename.includes('colors.ts') ||
+      filename.includes('themeVars.ts') ||
+      filename.includes('tailwind.config')
+    ) {
+      return {};
+    }
+
     function checkString(node: TSESTree.Node, value: string) {
       if (HEX_COLOR_REGEX.test(value)) {
         context.report({
