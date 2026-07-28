@@ -163,6 +163,13 @@ def test_flags_redundant_narration(body: str):
     assert "narrates" in diags[0].message
 
 
+def test_flags_dummy_translational_comments():
+    diags = _standalone("increment i by 1")
+    assert len(diags) == 1
+    diags = _standalone("return the response")
+    assert len(diags) == 1
+
+
 @pytest.mark.parametrize(
     "body",
     [
@@ -193,9 +200,6 @@ DIRECTIVES = [
     "flake8: noqa",
     "nosec",
     "nosemgrep",
-    "todo: revisit this soon",
-    "TODO@nmaswood: revisit",
-    "fixme: broken under load",
     "hack: workaround for upstream bug",
     "xxx: dangerous assumption here",
     "-*- coding: utf-8 -*-",
@@ -205,6 +209,16 @@ DIRECTIVES = [
 @pytest.mark.parametrize("body", DIRECTIVES)
 def test_ignores_directive_comments(body: str):
     assert _standalone(body) == []
+
+
+def test_flags_untracked_todo_and_fixme():
+    assert len(_standalone("todo: revisit this soon")) == 1
+    assert len(_standalone("fixme: broken under load")) == 1
+
+
+def test_ignores_tracked_todo_and_fixme():
+    assert _standalone("todo: revisit this soon (JIRA-1234)") == []
+    assert _standalone("fixme: broken under load http://github.com/issue/12") == []
 
 
 def test_header_keywords_without_body_are_not_code():
