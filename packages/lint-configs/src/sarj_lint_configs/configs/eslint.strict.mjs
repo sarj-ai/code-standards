@@ -101,6 +101,11 @@ const config = [
           selector: "default",
           format: ["camelCase"],
           leadingUnderscore: "allow",
+          trailingUnderscore: "allow",
+          filter: {
+            regex: "^(UNSAFE_|__)",
+            match: false,
+          },
         },
         {
           selector: "variable",
@@ -124,7 +129,10 @@ const config = [
       // Additional type-aware strictness incorporated from bulbul's base config.
       "@typescript-eslint/prefer-as-const": "error",
       "@typescript-eslint/no-unnecessary-condition": "error",
-      "@typescript-eslint/prefer-nullish-coalescing": "error",
+      "@typescript-eslint/prefer-nullish-coalescing": [
+        "error",
+        { ignorePrimitives: { number: true, string: true, boolean: true } },
+      ],
       "@typescript-eslint/prefer-optional-chain": "error",
       // checkMethodDeclarations is off because the autofix is destructive on
       // framework-defined methods. React's ReactNode union includes
