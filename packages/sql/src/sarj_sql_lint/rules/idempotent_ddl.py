@@ -73,6 +73,9 @@ class IdempotentDdl(Rule):
         diags: list[Diagnostic] = []
 
         for lineno, line in enumerate(mask_sql(source).splitlines(), start=1):
+            line_upper = line.upper()
+            if "CREATE" not in line_upper and "DROP" not in line_upper and "ADD" not in line_upper:
+                continue
             for pattern, message in _CHECKS:
                 diags.extend(
                     Diagnostic(

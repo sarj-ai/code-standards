@@ -132,34 +132,26 @@ def _closing_depth(source: str, i: int, open_tags: list[str]) -> int | None:
 
 
 def _scan(source: str) -> tuple[str, list[tuple[int, int]]]:
-    """Mask `source` and report the char spans covered by outermost dollar quotes.
-
-    A single left-to-right pass, so precedence is correct: a `$$` inside a `--`
-    comment or a `'...'` literal is masked as part of that comment/literal and
-    opens nothing. Dollar-quote delimiters are blanked but their bodies are kept
-    and scanned as SQL, which is what makes a nested `$inner$ ... $inner$` and a
-    string literal inside a `DO` block both come out right.
-
-    Returns:
-        `(masked_text, spans)` where each span is a half-open `(start, end)` char
-        range covering an outermost `$tag$ ... $tag$` run, delimiters included.
-
-    """
     out: list[str] = []
     open_tags: list[str] = []
     spans: list[tuple[int, int]] = []
     body_start = 0
     i = 0
+    chunk_start = 0
     n = len(source)
+
     while i < n:
         ch = source[i]
         if ch == "$" and open_tags:
             depth = _closing_depth(source, i, open_tags)
             if depth is not None:
+                if i > chunk_start:
+                    out.append(source[chunk_start:i])
                 tag = open_tags[depth]
                 del open_tags[depth:]
                 out.append(" " * len(tag))
                 i += len(tag)
+                chunk_start = i
                 if not open_tags:
                     spans.append((body_start, i))
                 continue
@@ -175,21 +167,30 @@ def _scan(source: str) -> tuple[str, list[tuple[int, int]]]:
         elif ch == "$":
             tag = _dollar_open_tag(source, i)
             if tag is None:
-                out.append(ch)
                 i += 1
                 continue
+            if i > chunk_start:
+                out.append(source[chunk_start:i])
             if not open_tags:
                 body_start = i
             open_tags.append(tag)
             out.append(" " * len(tag))
             i += len(tag)
+            chunk_start = i
             continue
         else:
-            out.append(ch)
             i += 1
             continue
+
+        if i > chunk_start:
+            out.append(source[chunk_start:i])
         out.append(_blank(source[i:end]))
         i = end
+        chunk_start = i
+
+    if chunk_start < n:
+        out.append(source[chunk_start:n])
+
     if open_tags:
         spans.append((body_start, n))
     return "".join(out), spans
