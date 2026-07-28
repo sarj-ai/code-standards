@@ -35,7 +35,7 @@ def test_flags_nullable_list_fields_on_any_class(annotation: str, default: str) 
     source = f"class AnyModel:\n    organization_ids: {annotation}{default}\n"
     diagnostics = _check(source)
     assert len(diagnostics) == 1
-    assert diagnostics[0].code == "SARJ074"
+    assert diagnostics[0].code == "SARJ076"
     assert diagnostics[0].line == 2
     assert "default_factory=list" in diagnostics[0].message
 

@@ -53,7 +53,7 @@ class PreferNonNullableCollection(Rule):
     """Nullable list field -- use a non-null list with an empty default."""
 
     id: str = "prefer-non-nullable-collection"
-    code: str = "SARJ074"
+    code: str = "SARJ076"
     description: str = (
         "List fields should use a non-null list and an empty default instead of "
         "two equivalent empty states."
