@@ -7,8 +7,9 @@ or statement_timeout prior to executing each DDL block.
 
 from __future__ import annotations
 
+import operator
 import re
-from typing import TYPE_CHECKING, final, override
+from typing import TYPE_CHECKING, Any, final, override
 
 from sarj_sql_lint.rule_base import Diagnostic, Rule, is_dump_file, mask_sql
 
@@ -24,7 +25,9 @@ ASSIGNMENT_PATTERN = re.compile(
     r"\b(?:SET\s+(?:LOCAL|SESSION)?|RESET)\s+(lock_timeout|statement_timeout)(?:\s*(?:=|\bTO\b)\s*('[\s\S]*?'|\"[^\"]*\"|[^\s;]+))?|set_config\s*\(\s*'?(lock_timeout|statement_timeout)'?\s*,\s*('[\s\S]*?'|\"[^\"]*\"|[^\s,;]+)",
     re.IGNORECASE,
 )
-POSITIVE_VAL_PATTERN = re.compile(r"^['\"]?\s*(?:[0-9]*\.?[0-9]+\s*(?:[a-zA-Z]+\s*)?|[1-9]\d*)\s*['\"]?$", re.IGNORECASE)
+POSITIVE_VAL_PATTERN = re.compile(
+    r"^['\"]?\s*(?:[0-9]*\.?[0-9]+\s*(?:[a-zA-Z]+\s*)?|[1-9]\d*)\s*['\"]?$", re.IGNORECASE
+)
 
 
 @final
@@ -48,12 +51,10 @@ class RequireLockTimeout(Rule):
             start_pos = match.start()
             if masked[start_pos : start_pos + 3].strip():
                 events.append((start_pos, "ASSIGNMENT", match))
-        for match in TX_END_PATTERN.finditer(masked):
-            events.append((match.start(), "TX_END", match))
-        for match in DDL_PATTERN.finditer(masked):
-            events.append((match.start(), "DDL", match))
+        events.extend((match.start(), "TX_END", match) for match in TX_END_PATTERN.finditer(masked))
+        events.extend((match.start(), "DDL", match) for match in DDL_PATTERN.finditer(masked))
 
-        events.sort(key=lambda x: x[0])
+        events.sort(key=operator.itemgetter(0))
 
         active_global_timeouts: dict[str, bool] = {"lock_timeout": False, "statement_timeout": False}
         active_local_timeouts: dict[str, bool] = {"lock_timeout": False, "statement_timeout": False}
@@ -65,7 +66,15 @@ class RequireLockTimeout(Rule):
                 target_var = (match.group(1) or match.group(3) or "").lower()
                 val = (match.group(2) or match.group(4) or "").strip().strip(";")
 
-                is_active = False if "RESET" in cmd else (bool(val) and POSITIVE_VAL_PATTERN.match(val) is not None and val not in {"0", "'0'", "'0s'", "'0ms'"})
+                is_active = (
+                    False
+                    if "RESET" in cmd
+                    else (
+                        bool(val)
+                        and POSITIVE_VAL_PATTERN.match(val) is not None
+                        and val not in {"0", "'0'", "'0s'", "'0ms'"}
+                    )
+                )
 
                 if is_local:
                     active_local_timeouts[target_var] = is_active
@@ -91,4 +100,3 @@ class RequireLockTimeout(Rule):
                     )
 
         return diags
-

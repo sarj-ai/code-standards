@@ -118,9 +118,7 @@ def test_statement_without_trailing_semicolon_is_still_checked():
 
 ALREADY_IDEMPOTENT = {
     "postgres_on_conflict": "INSERT INTO t (a) VALUES (1) ON CONFLICT (a) DO NOTHING;",
-    "mysql_on_duplicate_key": (
-        "INSERT INTO t (a, b) VALUES (1, 2) ON DUPLICATE KEY UPDATE b = VALUES(b);"
-    ),
+    "mysql_on_duplicate_key": ("INSERT INTO t (a, b) VALUES (1, 2) ON DUPLICATE KEY UPDATE b = VALUES(b);"),
     "sqlite_insert_or_ignore": "INSERT OR IGNORE INTO t (a) VALUES (1);",
     "sqlite_insert_or_replace": "INSERT OR REPLACE INTO t (a) VALUES (1);",
 }

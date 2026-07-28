@@ -128,7 +128,6 @@ def own_top_package(path: Path) -> str | None:
     return top
 
 
-
 def _resolved(path: Path) -> Path | None:
     try:
         return path.resolve()

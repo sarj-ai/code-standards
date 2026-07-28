@@ -54,7 +54,7 @@ PRIMARY_OR_UNIQUE_KEYWORD = re.compile(r"\b(PRIMARY\s+KEY|UNIQUE)\b", re.IGNOREC
 def _normalize_name(name: str) -> str:
     clean = name.strip()
     clean = re.sub(r"\s+(?:ASC|DESC|NULLS\s+FIRST|NULLS\s+LAST)\b.*", "", clean, flags=re.IGNORECASE)
-    clean = clean.replace('"', '').strip()
+    clean = clean.replace('"', "").strip()
     return clean.lower()
 
 
@@ -113,7 +113,9 @@ class RequireFkIndex(Rule):
                 if table_match:
                     full_table = _normalize_name(table_match.group(1))
                     base_table = full_table.split(".")[-1]
-                    table_indexes = indexed_cols_by_table.get(full_table, set()) | indexed_cols_by_table.get(base_table, set())
+                    table_indexes = indexed_cols_by_table.get(full_table, set()) | indexed_cols_by_table.get(
+                        base_table, set()
+                    )
                     leading_indexed = {idx[0] for idx in table_indexes if idx}
 
                     ctx = _StmtContext(path, masked, stmt, char_offset, full_table, table_match.end())
@@ -153,11 +155,19 @@ class RequireFkIndex(Rule):
 
         # Mask table-level FK definitions before inspecting inline column references
         body = ctx.stmt[ctx.header_end :]
-        fk_clean_pattern = re.compile(r"\bFOREIGN\s+KEY\s*\([^)]*\)\s*REFERENCES\s+[a-zA-Z0-9_\"\.]+(?:\([^)]*\))?", re.IGNORECASE)
+        fk_clean_pattern = re.compile(
+            r"\bFOREIGN\s+KEY\s*\([^)]*\)\s*REFERENCES\s+[a-zA-Z0-9_\"\.]+(?:\([^)]*\))?", re.IGNORECASE
+        )
         body = fk_clean_pattern.sub(lambda m: " " * len(m.group(0)), body)
 
         for segment in body.split(","):
-            if "REFERENCES" in segment.upper() and not TABLE_FK_PATTERN.search(segment) and not PRIMARY_OR_UNIQUE_KEYWORD.search(segment) and "CONSTRAINT" not in segment.upper() and "FOREIGN KEY" not in segment.upper():
+            if (
+                "REFERENCES" in segment.upper()
+                and not TABLE_FK_PATTERN.search(segment)
+                and not PRIMARY_OR_UNIQUE_KEYWORD.search(segment)
+                and "CONSTRAINT" not in segment.upper()
+                and "FOREIGN KEY" not in segment.upper()
+            ):
                 col_match = INLINE_COLUMN_PATTERN.search(segment)
                 if col_match:
                     col_name = _normalize_name(col_match.group(1))
@@ -177,6 +187,3 @@ class RequireFkIndex(Rule):
                             )
                         )
         return diags
-
-
-

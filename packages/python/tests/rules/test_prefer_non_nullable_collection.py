@@ -38,7 +38,6 @@ def test_flags_nullable_list_fields_on_any_class(annotation: str, default: str) 
     assert diagnostics[0].code == "SARJ082"
     assert diagnostics[0].line == 2
 
-
     assert "default_factory=list" in diagnostics[0].message
 
 

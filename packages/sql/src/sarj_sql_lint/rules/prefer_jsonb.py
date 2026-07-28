@@ -44,8 +44,7 @@ class PreferJsonb(Rule):
                     col=match.start() + 1,
                     code=self.code,
                     message=(
-                        "Use JSONB — plain JSON has no indexing or containment "
-                        "operators and re-parses on every read."
+                        "Use JSONB — plain JSON has no indexing or containment operators and re-parses on every read."
                     ),
                 )
                 for match in PATTERN.finditer(line)

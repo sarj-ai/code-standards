@@ -127,7 +127,6 @@ _PATCHERS = frozenset({"patch"})
 _SPEC_KEYWORDS = frozenset({"spec", "spec_set", "autospec", "new", "new_callable", "wraps"})
 
 
-
 # How many positional arguments a callee must receive before the spec/new
 # parameter is filled. `Mock(spec, wraps, ...)`, `patch(target, new, ...)` and
 # `patch.object(target, attribute, new, ...)` all take it positionally, and that
