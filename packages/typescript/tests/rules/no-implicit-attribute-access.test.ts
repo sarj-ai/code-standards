@@ -18,9 +18,11 @@ const ruleTester = new RuleTester({
 ruleTester.run("no-implicit-attribute-access", rule, {
   valid: [
     { code: "const val = attrs.sipPhoneNumber;" },
-    { code: "const val = myDict.get('foo');" },
-    { code: "const val = myDict['foo'];" },
     { code: "const val = ctx.participant.attributes;" }, // just accessing attributes, not .get or []
+    { code: "const val = process.env.get('FOO');" }, // Excluded base
+    { code: "const val = headers['Authorization'];" }, // Excluded base
+    { code: "const val = myDict.get(dynamicKey);" }, // Dynamic key is allowed
+    { code: "const val = myDict[dynamicKey];" }, // Dynamic key is allowed
   ],
   invalid: [
     {
@@ -36,7 +38,11 @@ ruleTester.run("no-implicit-attribute-access", rule, {
       errors: [{ messageId: "noImplicitAttributeAccess" }],
     },
     {
-      code: "const val = ctx.attributes['foo'];",
+      code: "const val = myDict['foo'];",
+      errors: [{ messageId: "noImplicitAttributeAccess" }],
+    },
+    {
+      code: "const val = someRandomObj.get('price');",
       errors: [{ messageId: "noImplicitAttributeAccess" }],
     },
   ],
