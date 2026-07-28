@@ -50,6 +50,7 @@ import requireEmptyStateProp from "./rules/require-empty-state-prop.js";
 import requireInteractiveStates from "./rules/require-interactive-states.js";
 import requireTextBalance from "./rules/require-text-balance.js";
 import themeNoRawColors from "./rules/theme-no-raw-colors.js";
+import noMonolithicComponents from "./rules/no-monolithic-components.js";
 
 const rules = {
   "enforce-file-structure": enforceFileStructure,
@@ -104,6 +105,7 @@ const rules = {
   "require-interactive-states": requireInteractiveStates,
   "require-text-balance": requireTextBalance,
   "theme-no-raw-colors": themeNoRawColors,
+  "no-monolithic-components": noMonolithicComponents,
 };
 
 const plugin = {
@@ -199,6 +201,7 @@ const plugin = {
         "@sarj/require-interactive-states": "warn",
         "@sarj/require-text-balance": "warn",
         "@sarj/theme-no-raw-colors": "warn",
+        "@sarj/no-monolithic-components": "warn",
       },
     },
     strict: {
@@ -282,6 +285,7 @@ const plugin = {
         "@sarj/require-interactive-states": "error",
         "@sarj/require-text-balance": "error",
         "@sarj/theme-no-raw-colors": "error",
+        "@sarj/no-monolithic-components": "error",
       },
     },
   },
