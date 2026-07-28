@@ -5,7 +5,7 @@
     {
       "name": "sarj-audit",
       "source": "./plugins/sarj-audit",
-      "description": "High-density codebase audit commands for system architecture, security & atomicity, and test strategy (non-overlapping with deterministic lint rules)",
+      "description": "Codebase audit commands (stepdown rule, linting, service layer, security & atomicity, system architecture, testing & modernization, library replacement, stack optimization, Zod types)",
       "version": "2.0.0"
     }
   ]

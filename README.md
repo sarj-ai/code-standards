@@ -1,9 +1,9 @@
 # sarj-ai/standards
 
-The single home for Sarj code standards, in two distinct layers:
+The single home for Sarj code standards, in two complementary layers:
 
 - **Machine-enforced floor** — deterministic AST lint rules + maximally-strict configs for TypeScript + Python + SQL (`@sarj/eslint-plugin`, `sarj-python-lint`, `sarj-sql-lint`, `sarj-iac-lint`, `sarj-lint-configs`). Run automatically in CI.
-- **Judgment layer** — the `sarj-audit` Claude Code plugin: high-density, on-demand audit commands for complex architectural, security, atomicity, and test strategy evaluation that **cannot** be deterministically linted via AST.
+- **Judgment & Audit layer** — the `sarj-audit` Claude Code plugin: on-demand audit commands for standards, architectural, security, atomicity, and test strategy evaluation that complement or extend deterministic linters.
 
 ## Claude Code plugin (`sarj-audit`)
 
@@ -29,12 +29,14 @@ For a one-off personal install instead:
 /plugin install sarj-audit@sarj
 ```
 
-### High-Density Audit Commands
+### Audit Commands
 
+- **`/sarj-audit:stepdown`** — Audits codebase for violations of the Stepdown Rule (newspaper metaphor: public API at top, helpers below callers).
+- **`/sarj-audit:system-architecture`** — High-density audit of service layer boundaries, layer directionality, DI / inversion of control, client→server & app→database logic pushdown, DTO entity leakage, sync-to-async queue offloading, and data contract tiers.
+- **`/sarj-audit:security-and-atomicity`** — High-density audit of multi-tenant isolation & IDOR prevention, RBAC role enforcement, server-derived session identity, TOCTOU race conditions, multi-write transaction boundaries, external network calls inside DB transactions, and idempotent retry keys.
+- **`/sarj-audit:testing-and-modernization`** — High-density audit of test fidelity & mock architecture (4-tier hierarchy promoting `AsyncMock` over-mocking to fakes/DB container fixtures) and identifies complex hand-rolled code candidates for replacement with mature third-party libraries or modern stdlib features.
 - **`/sarj-audit:stack-detection`** — Shared stack-aware Phase-0 detection pass (detects framework, database, ORM, linter authority, tenancy model, and DI conventions before running audits).
-- **`/sarj-audit:system-architecture`** — Audits service layer boundaries, layer directionality, dependency injection / inversion of control, client→server & app→database logic pushdown, DTO entity leakage, sync-to-async queue offloading, and data contract tiers (`BaseModel` vs `@dataclass(frozen=True)`).
-- **`/sarj-audit:security-and-atomicity`** — Audits multi-tenant isolation & IDOR prevention, RBAC role enforcement, server-derived session identity vs client-supplied IDs, TOCTOU race conditions, multi-write transaction boundaries, external network calls inside DB transactions, and idempotent retry keys.
-- **`/sarj-audit:testing-and-modernization`** — Audits test fidelity & mock architecture (4-tier hierarchy promoting `AsyncMock` over-mocking to fakes/DB container fixtures) and identifies complex hand-rolled code candidates for replacement with mature third-party libraries or modern stdlib features.
+- **Granular Audit Suite**: `/sarj-audit:authn-and-authz`, `/sarj-audit:client-server-boundary`, `/sarj-audit:concurrency-and-performance`, `/sarj-audit:data-contracts`, `/sarj-audit:database-schemas-and-migrations`, `/sarj-audit:dead-and-duplicate-code`, `/sarj-audit:decouple-components-with-di`, `/sarj-audit:error-handling`, `/sarj-audit:externalize-configuration-and-secrets`, `/sarj-audit:idempotency-and-atomicity`, `/sarj-audit:libraries`, `/sarj-audit:linting`, `/sarj-audit:magic-values`, `/sarj-audit:observability`, `/sarj-audit:readability-and-naming`, `/sarj-audit:service-layer`, `/sarj-audit:stack`, `/sarj-audit:strengthen-ci-cd-and-tooling`, `/sarj-audit:test-quality-and-strategy`, `/sarj-audit:zod-types`.
 
 The plugin lives in [`plugins/sarj-audit/`](plugins/sarj-audit/); [`commands/stack-detection.md`](plugins/sarj-audit/commands/stack-detection.md) is the shared stack-aware Phase-0 the audits gate on.
 
