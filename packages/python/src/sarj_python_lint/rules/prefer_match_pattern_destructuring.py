@@ -94,16 +94,35 @@ Deliberately NOT flagged:
   two is not) and `handlers[event.kind]` still counts `kind`.
 * **Or-patterns and non-class patterns.** `case [x, y]:`, `case 1 | 2:`,
   `case {"type": "attach"}:`, `case None:`. Mapping patterns have the same
-  reach-back problem in principle, but across all five corpora there are six
-  mapping patterns total and none of them reaches back, so the shape does not
-  earn a detector.
+  reach-back problem in principle, but across bulbul, noura-be, django, fastapi
+  and celery there are ten `MatchMapping` nodes in total — six of them the
+  top-level pattern of an arm, the rest nested — every one in bulbul, and none
+  reaches back. The shape does not earn a detector. (An earlier draft said "six
+  mapping patterns", counting arms; both numbers are given here because the
+  difference is exactly the nested ones.)
 * **Builtins and ABCs.** `case str(): return subject.strip()` is a runtime type
   probe, not a variant of an owned union; `str` has no fields to name.
 * **Fields the pattern already binds.** A partly-destructured arm
-  (`case ChatMessageActionItem(llm_metadata=llm_metadata):` that still reads
-  `message.action`, noura-be `services/chatbot/v3/onboarding.py:365`) is the same
-  shape and does fire, but only over the fields still being reached for; the
-  existing bindings are not re-proposed.
+  (`case ChatMessageActionItem(llm_metadata=llm_metadata):` that still reaches
+  for `message.action`) is the same shape and does fire, over the fields still
+  being reached for. The sub-patterns it already had are **reproduced verbatim**
+  in the suggestion, ahead of the new keyword captures.
+
+  That reproduction is the whole correctness of the message, and it was missing
+  until 0.26.0. Dropping an existing keyword capture proposes a pattern that
+  stops binding a name the body still uses, so applying the advice raises
+  `NameError`. Dropping a positional sub-pattern is worse: `case Point(0, 0)`
+  rewritten keyword-only starts matching *every* `Point`, silently widening what
+  the arm accepts. Positional sub-patterns are rendered back to source with
+  `ast.unparse`, so `case Point(0, 0)` reading `.label` and `.color` is offered
+  as `case Point(0, 0, color=color, label=label)`.
+
+  Relatedly: the field elision is stated in prose rather than as a trailing
+  `, ...` inside the parentheses. A bare `...` is a positional pattern and
+  positional cannot follow keyword, so the old spelling was a syntax error — 10
+  of the 76 findings across the first-party corpora emitted a suggestion that
+  could not be pasted. Every suggestion is now checked to parse; the sweep that
+  found this asserts it over all 76.
 
 An arm that ALSO uses the whole object still fires: `event` stays bound and
 narrowed after a class pattern, so `case Foo(config=config):` loses nothing. An
@@ -239,6 +258,12 @@ class _ReachBack:
     fields: list[str]
     taken: frozenset[str]
     aliased: bool
+    # Sub-patterns the arm already had. Both must be reproduced verbatim in
+    # the suggestion: dropping a positional one widens what the arm matches
+    # (`case Point(0, 0)` would start matching every Point) and dropping a
+    # capture makes the body raise NameError.
+    kept: tuple[tuple[str, str], ...]
+    positional: tuple[str, ...]
 
     def binding(self, field: str) -> str:
         """Choose a capture name for `field` that the arm can actually use.
@@ -263,9 +288,15 @@ def _message(finding: _ReachBack) -> str:
     """
     named = finding.fields[:_MAX_NAMED_FIELDS]
     elided = len(finding.fields) - len(named)
+    # The elision stays OUT of the pattern text. A trailing `, ...` inside the
+    # parentheses is a syntax error — a bare `...` is a positional pattern, and
+    # positional cannot follow keyword — so the suggestion was un-pasteable on
+    # every arm that read more fields than fit. It is stated in prose instead.
     bindings = ", ".join(f"{field}={finding.binding(field)}" for field in named)
-    if elided:
-        bindings += ", ..."
+    kept_text = ", ".join([*finding.positional, *(f"{attr}={name}" for attr, name in finding.kept)])
+    if kept_text:
+        bindings = f"{kept_text}, {bindings}"
+    tail = f", plus the {elided} further field(s) the arm reads" if elided else ""
     suggestion = f"case {finding.cls_name}({bindings})"
     if finding.aliased:
         suggestion += f" as {finding.alias}"
@@ -273,8 +304,9 @@ def _message(finding: _ReachBack) -> str:
     if elided:
         reads += f", and {elided} more"
     return (
-        f"`case {finding.cls_name}()` binds nothing, then the arm reaches back for {reads} — write "
-        f"`{suggestion}:` instead. The keyword pattern is checked against the class's real fields, "
+        f"`case {finding.cls_name}({kept_text})` leaves {reads} unbound, so the arm reaches back "
+        f"into the subject for them — write "
+        f"`{suggestion}:` instead{tail}. The keyword pattern is checked against the class's real fields, "
         "so a renamed field fails the match rather than raising AttributeError inside the body, "
         "and the arm states its data dependencies on the `case` line."
     )
@@ -311,7 +343,35 @@ def _reach_back_arm(case: ast.match_case, subject: str) -> _ReachBack | None:
     )
     if sum(use.reads[attr] for attr in fields) < _MIN_READS:
         return None
-    return _ReachBack(cls_name=cls_name, alias=alias, fields=fields, taken=frozenset(use.taken), aliased=aliased)
+    positional = tuple(ast.unparse(pat) for pat in inner.patterns)
+    kept = tuple(
+        (attr, _capture_name(pat))
+        for attr, pat in zip(inner.kwd_attrs, inner.kwd_patterns, strict=True)
+        if _capture_name(pat) is not None
+    )
+    return _ReachBack(
+        cls_name=cls_name,
+        alias=alias,
+        fields=fields,
+        taken=frozenset(use.taken),
+        aliased=aliased,
+        kept=kept,  # pyright: ignore[reportArgumentType]
+        positional=positional,
+    )
+
+
+def _capture_name(pattern: ast.pattern) -> str | None:
+    """Read the name a keyword sub-pattern captures, if it captures one.
+
+    `case Foo(bar=bar)` binds; `case Foo(bar=1)` constrains and binds nothing.
+
+    Returns:
+        The captured identifier, or None when the sub-pattern is not a capture.
+
+    """
+    if isinstance(pattern, ast.MatchAs) and pattern.pattern is None:
+        return pattern.name
+    return None
 
 
 def _pattern_class_name(cls: ast.expr) -> str | None:

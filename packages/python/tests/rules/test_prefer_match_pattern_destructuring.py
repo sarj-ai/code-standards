@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 import textwrap
 from typing import TYPE_CHECKING
@@ -232,7 +233,12 @@ def test_elides_the_field_list_past_four_fields():
     (message,) = _messages(source)
     assert "and 1 more" in message
     assert message.count("=") == 4
-    assert "..." in message
+    # The remainder is stated in prose, never inside the parentheses: a trailing
+    # `, ...` there is a syntax error, so the suggestion could not be pasted.
+    assert "..." not in message
+    assert "1 further field" in message
+    pattern = message.split("write `")[1].split("` instead")[0]
+    ast.parse(f"match x:\n    {pattern}\n        pass\n")
 
 
 # --------------------------------------------------------------------------- #
@@ -524,24 +530,58 @@ def test_skips_when_the_body_reads_only_already_bound_fields():
     assert _check(source) == []
 
 
-def test_flags_a_partly_destructured_arm_over_the_remaining_fields_only():
+def test_a_partly_destructured_arm_keeps_the_binding_it_already_had():
+    # The suggestion has to reproduce `llm_metadata=llm_metadata`. Dropping it —
+    # which this rule did until 0.26.0 — produces a pattern that stops binding a
+    # name the body still uses, so applying the advice raises NameError.
     source = """
     match message:
         case ChatMessageActionItem(llm_metadata=llm_metadata):
             emit(message.action, message.llm_metadata, message.status)
     """
     (message,) = _messages(source)
-    assert "llm_metadata" not in message
-    assert "`case ChatMessageActionItem(action=action, status=status):`" in message
+    assert "`case ChatMessageActionItem(llm_metadata=llm_metadata, action=action, status=status):`" in message
 
 
-def test_positional_patterns_also_count_as_destructuring_context():
+def test_positional_patterns_are_carried_into_the_suggestion():
+    # `case Point(x, y)` binds x and y through `__match_args__`. A keyword-only
+    # rewrite would drop both, so the sub-patterns are reproduced verbatim ahead
+    # of the new keyword captures.
     source = """
     match point:
         case Point(x, y):
             emit(point.z, point.w)
     """
-    assert len(_check(source)) == 1
+    (message,) = _messages(source)
+    assert "`case Point(x, y, w=w, z=z):`" in message
+
+
+def test_a_positional_constraint_is_not_silently_widened():
+    # `case Point(0, 0)` matches only the origin. Rewriting it to keyword-only
+    # would make the arm match every Point — a semantics change the reader would
+    # not expect from a message about destructuring.
+    source = """
+    match point:
+        case Point(0, 0):
+            emit(point.label, point.color)
+    """
+    (message,) = _messages(source)
+    assert "`case Point(0, 0, color=color, label=label):`" in message
+
+
+def test_every_suggested_pattern_is_valid_python():
+    # The suggestion is meant to be pasted. Until 0.26.0 the field-elision
+    # appended `, ...` inside the parentheses, which is a syntax error (a bare
+    # `...` is positional, and positional cannot follow keyword) — 10 of the 76
+    # findings across the first-party corpora were un-pasteable.
+    source = """
+    match item:
+        case Wide():
+            emit(item.a, item.b, item.c, item.d, item.e, item.f, item.g, item.h)
+    """
+    (message,) = _messages(source)
+    pattern = message.split("write `")[1].split("` instead")[0]
+    ast.parse(f"match x:\n    {pattern}\n        pass\n")
 
 
 # --------------------------------------------------------------------------- #

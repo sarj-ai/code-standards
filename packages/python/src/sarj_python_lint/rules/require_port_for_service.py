@@ -395,8 +395,12 @@ class RequirePortForService(Rule):
     id: str = "require-port-for-service"
     code: str = "SARJ071"
     description: str = (
-        "Concrete `*Service`/`*Store`/`*Client` with injected collaborators and no ABC — consumers "
-        "must depend on the concrete class, so their tests can only mock it."
+        # `*Client` is NOT in the name gate — it was measured and excluded (7 OSS
+        # false positives, 0 first-party gain), because a class whose collaborator
+        # is somebody else's HTTP transport substitutes nothing. Advertising it
+        # here promised a check that does not exist.
+        "Concrete `*Service`/`*Store`/`*DAO`/`*Gateway`/`*Provider` with injected collaborators "
+        "and no ABC — consumers must depend on the concrete class, so their tests can only mock it."
     )
 
     @override
