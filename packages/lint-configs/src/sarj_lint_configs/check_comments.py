@@ -14,18 +14,15 @@ def check_file(path):
                     raw_comment = tok.string
                     comment = raw_comment.lstrip('#').strip().lower()
                     
-                    # Skip top-of-file module summary comments (line 1)
-                    if tok.start[0] == 1:
-                        continue
-
                     # 1. Ban ASCII section banners (e.g. ##### STRINGS ##### or // ====== TITLE =====)
-                    if re.search(r'^[#\*=\-/]{3,}\s*[A-Z0-9_\s]*\s*[#\*=\-/]{3,}$', comment) and len(comment) > 10 and 'test' not in path.lower():
+                    clean_comment = raw_comment.strip()
+                    if (re.search(r'^[#\*=\-/]+\s*[=*\-]{3,}', clean_comment) or re.search(r'[=*\-]{3,}\s*$', clean_comment)) and len(clean_comment) > 10 and 'test' not in os.path.basename(path).lower():
                         issues.append(f"{path}:{tok.start[0]} - ASCII visual banner comment is forbidden in source files: {raw_comment}")
                     
                     # 2. Ban untracked TODO / FIXME markers (strip # noqa directives before checking for issue numbers/links)
-                    comment_no_noqa = re.sub(r'#\s*noqa.*$', '', comment)
-                    if ('todo' in comment_no_noqa or 'fixme' in comment_no_noqa):
-                        has_context = any(k in comment_no_noqa for k in ('http', '#', '(', 'remove when', 'drop', 'python 3.', 'v2', 'v3', 'version', 'ticket', '-'))
+                    comment_no_noqa = re.sub(r'\s*#\s*noqa.*$', '', raw_comment, flags=re.IGNORECASE)
+                    if re.search(r'\b(todo|fixme)\b', comment_no_noqa, re.IGNORECASE):
+                        has_context = any(k in comment_no_noqa.lower() for k in ('http', '(', 'remove when', 'drop', 'python 3.', 'v2', 'v3', 'version', 'ticket', 'jira-', 'gh-')) or bool(re.search(r'#\d+|[a-z]+-\d+', comment_no_noqa, re.IGNORECASE))
                         if not has_context:
                             issues.append(f"{path}:{tok.start[0]} - Untracked TODO/FIXME without issue ticket or context: {raw_comment}")
                         
