@@ -24,10 +24,12 @@ def check_file(path):
                             issues.append(f"{path}:{tok.start[0]} - Untracked TODO/FIXME without issue ticket or context: {raw_comment}")
                         
                     # 3. Ban translational / code restatement comments (only if purely restating and lack explanatory rationale like 'when', 'because', 'if', 'so that')
-                    words = comment.split()
-                    if len(words) <= 5 and not any(w in comment for w in ('when', 'because', 'if', 'so that', 'due to', 'instead of', 'to prevent', 'to avoid')):
-                        if any(comment.startswith(p) for p in ('increment ', 'return ', 'function to ', 'get ', 'set ')):
-                            issues.append(f"{path}:{tok.start[0]} - Useless translational comment restating code: {raw_comment}")
+                    # Exclude docstrings, JSDoc example blocks, and multi-line doc blocks
+                    if not raw_comment.startswith(('"""', "'''", '/*', '*')):
+                        words = comment.split()
+                        if len(words) <= 5 and not any(w in comment for w in ('when', 'because', 'if', 'so that', 'due to', 'instead of', 'to prevent', 'to avoid', '@example')):
+                            if any(comment.startswith(p) for p in ('increment ', 'return ', 'function to ', 'get ', 'set ')):
+                                issues.append(f"{path}:{tok.start[0]} - Useless translational comment restating code: {raw_comment}")
     except Exception:
         pass
     
