@@ -46,7 +46,7 @@ class RequireLockTimeout(Rule):
         diags: list[Diagnostic] = []
         masked = mask_sql(source)
 
-        events: list[tuple[int, str, Any]] = []
+        events: list[tuple[int, str, re.Match[str]]] = []
         for match in ASSIGNMENT_PATTERN.finditer(source):
             start_pos = match.start()
             if masked[start_pos : start_pos + 3].strip():

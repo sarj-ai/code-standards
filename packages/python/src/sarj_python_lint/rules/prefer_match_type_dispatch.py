@@ -32,7 +32,7 @@ Example refactoring:
 from __future__ import annotations
 
 import ast
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, final, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
 from sarj_python_lint.rules._paths import is_generated_source
@@ -185,10 +185,11 @@ def _check_sequential_type_guards(
     return []
 
 
+@final
 class _TypeDispatchVisitor(ast.NodeVisitor):
     def __init__(self, path: Path, code: str) -> None:
-        self.path = path
-        self.code = code
+        self.path: Path = path
+        self.code: str = code
         self.diags: list[Diagnostic] = []
         self.try_stack: list[set[str] | None] = []
 
