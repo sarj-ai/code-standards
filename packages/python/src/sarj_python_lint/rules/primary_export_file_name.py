@@ -17,6 +17,7 @@ Exemptions (Corpus-validated against noura-be, bulbul, fastapi, requests, pydant
   - Entrypoint functions (`main`, `run`, `cli`, `setup`, `teardown`, `execute`, `asyncio_detailed`, `sync_detailed`).
   - Generated source files (`is_generated_source`).
   - Modules with multiple public classes/functions or public `UPPER_SNAKE` constants.
+
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
 from sarj_python_lint.rules._paths import is_generated_source, is_test_path
+
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -101,7 +103,7 @@ class PrimaryExportFileName(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if path.suffix not in (".py", ".pyi"):
+        if path.suffix not in {".py", ".pyi"}:
             return []
         if path.name in _SKIPPED_FILENAMES or path.name.lower() in _FRAMEWORK_CONVENTION_FILENAMES:
             return []

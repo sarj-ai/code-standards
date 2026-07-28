@@ -255,7 +255,7 @@ class PreferMatchTypeDispatch(Rule):
     """Prefer match/case over try/raise control flow and sequential type guards."""
 
     id: str = "prefer-match-type-dispatch"
-    code: str = "SARJ074"
+    code: str = "SARJ080"
     description: str = (
         "Control-flow raise in try block or sequential type guards — prefer Python 3.10+ match/case pattern matching."
     )

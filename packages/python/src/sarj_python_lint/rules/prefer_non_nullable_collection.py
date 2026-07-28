@@ -55,8 +55,7 @@ class PreferNonNullableCollection(Rule):
     id: str = "prefer-non-nullable-collection"
     code: str = "SARJ074"
     description: str = (
-        "List fields should use a non-null list and an empty default instead of "
-        "two equivalent empty states."
+        "List fields should use a non-null list and an empty default instead of two equivalent empty states."
     )
 
     @override
@@ -132,9 +131,7 @@ def _union_members(annotation: ast.expr) -> list[ast.expr] | None:
 
 
 def _is_none_type(node: ast.expr) -> bool:
-    return (isinstance(node, ast.Constant) and node.value is None) or (
-        isinstance(node, ast.Name) and node.id == "None"
-    )
+    return (isinstance(node, ast.Constant) and node.value is None) or (isinstance(node, ast.Name) and node.id == "None")
 
 
 def _is_list_type(node: ast.expr) -> bool:

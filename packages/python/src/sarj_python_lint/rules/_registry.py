@@ -68,7 +68,9 @@ from sarj_python_lint.rules.prefer_non_nullable_collection import (
     PreferNonNullableCollection,
 )
 from sarj_python_lint.rules.prefer_or_pattern import PreferOrPattern
+from sarj_python_lint.rules.prefer_pattern_matching import PreferPatternMatching
 from sarj_python_lint.rules.prefer_real_store_in_tests import PreferRealStoreInTests
+from sarj_python_lint.rules.prefer_self_type_annotation import PreferSelfTypeAnnotation
 from sarj_python_lint.rules.prefer_str_enum import PreferStrEnum
 from sarj_python_lint.rules.prefer_struct_over_namedtuple import (
     PreferStructOverNamedtuple,
@@ -76,15 +78,17 @@ from sarj_python_lint.rules.prefer_struct_over_namedtuple import (
 from sarj_python_lint.rules.prefer_timedelta_for_durations import (
     PreferTimedeltaForDurations,
 )
+from sarj_python_lint.rules.prefer_walrus_comprehension_filter import (
+    PreferWalrusComprehensionFilter,
+)
+from sarj_python_lint.rules.prefer_walrus_regex_match import PreferWalrusRegexMatch
+from sarj_python_lint.rules.prefer_walrus_stream_loop import PreferWalrusStreamLoop
 from sarj_python_lint.rules.primary_export_file_name import (
     PrimaryExportFileName,
 )
 from sarj_python_lint.rules.pydantic_at_boundaries import PydanticAtBoundaries
 from sarj_python_lint.rules.redundant_docstring import RedundantDocstring
 from sarj_python_lint.rules.require_port_for_service import RequirePortForService
-from sarj_python_lint.rules.primary_export_file_name import (
-    PrimaryExportFileName,
-)
 from sarj_python_lint.rules.single_public_export import SinglePublicExport
 from sarj_python_lint.rules.sleep_with_computed_arg_in_test import SleepWithComputedArgInTest
 from sarj_python_lint.rules.stepdown import Stepdown
@@ -105,34 +109,6 @@ from sarj_python_lint.rules.zero_assertion_test import ZeroAssertionTest
 if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Rule
 
-
-# Retired codes — never reuse these for new rules:
-#   SARJ004, SARJ005 (retired before the standards merge),
-#   SARJ027, SARJ029, SARJ030 (dropped in 0.11.1 as too noisy),
-#   SARJ033 httpx-client-requires-timeout, SARJ035 no-import-time-settings
-#   (dropped by user veto after the 0.13.x mined-rules review),
-#   SARJ055 no-filler-success-adverb (built and corpus-validated, then dropped
-#   — but not for the reason first recorded. The headline "4.7% of Airflow's
-#   info/debug logs" is a composition artifact: 237 of those 248 hits are in
-#   `providers/` (contributed vendor operators, heavily copy-pasted — the
-#   template "%s completed successfully." appears 22 times verbatim). Airflow's
-#   maintainer-owned `airflow-core/` sits at 1.15% and Home Assistant at 1.24%,
-#   so the real external baseline is ~1.2%, not 4.7%. The rule was re-measured
-#   and dropped on a stronger basis: the narrow variant — fire only when the
-#   adverb is the sole content beyond a bare verb — has 12 external hits and
-#   ZERO internal ones across all six repos, so it would govern nothing we
-#   write. The broad rule remains opt-in house style, not a defect check.
-#   (Noted for any future revisit: noura-be measures 7.92%, a genuine outlier
-#   against every corpus; that, not the narrow variant, is the case to make.),
-#   SARJ037 no-trivial-single-use-helper (prototyped and dropped for FP rate;
-#   see the 0.13.1 inlining commit for the corpus analysis).
-#   SARJ072 unbound-mock-assertion and SARJ073 raises-needs-specific-error
-#   (built, corpus-measured and dropped before ever being registered, in the
-#   wave that added SARJ058-071). SARJ072 found 0 hits across 16,130 files in
-#   9 repos, including 0 against 8,322 real mock-assertion API uses; ruff B018
-#   covers its bare-statement shape. SARJ073 was a strict superset of ruff
-#   PT011, which this standard already enables — its one real gap,
-#   RuntimeError, is closed by `lint.flake8-pytest-style.raises-require-match-for`.
 REGISTRY: dict[str, type[Rule]] = {
     NoSequentialAwait.id: NoSequentialAwait,
     InefficientStringConcatInLoop.id: InefficientStringConcatInLoop,
@@ -158,7 +134,6 @@ REGISTRY: dict[str, type[Rule]] = {
     NoAggregationInStoreQuery.id: NoAggregationInStoreQuery,
     NoSelectStar.id: NoSelectStar,
     SinglePublicExport.id: SinglePublicExport,
-    PrimaryExportFileName.id: PrimaryExportFileName,
     Stepdown.id: Stepdown,
     NoRepeatedStringLiteral.id: NoRepeatedStringLiteral,
     PreferMatchAssertNever.id: PreferMatchAssertNever,
@@ -196,9 +171,15 @@ REGISTRY: dict[str, type[Rule]] = {
     PreferFstringOverConcat.id: PreferFstringOverConcat,
     PreferMatchPatternDestructuring.id: PreferMatchPatternDestructuring,
     PreferOrPattern.id: PreferOrPattern,
+    PreferPatternMatching.id: PreferPatternMatching,
     RequirePortForService.id: RequirePortForService,
     PreferNonNullableCollection.id: PreferNonNullableCollection,
     PreferMatchTypeDispatch.id: PreferMatchTypeDispatch,
+    PrimaryExportFileName.id: PrimaryExportFileName,
+    PreferWalrusRegexMatch.id: PreferWalrusRegexMatch,
+    PreferWalrusComprehensionFilter.id: PreferWalrusComprehensionFilter,
+    PreferWalrusStreamLoop.id: PreferWalrusStreamLoop,
+    PreferSelfTypeAnnotation.id: PreferSelfTypeAnnotation,
 }
 
 __all__ = ["REGISTRY"]
