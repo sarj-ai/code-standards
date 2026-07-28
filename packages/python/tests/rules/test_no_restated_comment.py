@@ -84,12 +84,7 @@ def test_comment_above_a_block_is_a_region_label(header: str):
 
 
 def test_group_label_over_sibling_calls_is_kept():
-    src = (
-        "def f():\n"
-        "    # register secrets\n"
-        "    register_secret(a)\n"
-        "    register_secret(b)\n"
-    )
+    src = "def f():\n    # register secrets\n    register_secret(a)\n    register_secret(b)\n"
     assert _check(src) == []
 
 

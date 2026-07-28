@@ -362,9 +362,11 @@ def _swap_prone_annotation(args: ast.arguments) -> str | None:
         if isinstance(ann := p.annotation, ast.Name) and ann.id in _PRIMITIVES:
             groups.setdefault(ann.id, []).append(p.arg)
     for name, arg_names in sorted(groups.items(), key=lambda kv: -len(kv[1])):
-        if len(arg_names) >= _MIN_SAME_TYPE and not (
-            _is_symmetric_numbering(arg_names) or _is_conventional_order(arg_names)
-        ) and _is_high_value_group(name, arg_names):
+        if (
+            len(arg_names) >= _MIN_SAME_TYPE
+            and not (_is_symmetric_numbering(arg_names) or _is_conventional_order(arg_names))
+            and _is_high_value_group(name, arg_names)
+        ):
             return name
     return None
 

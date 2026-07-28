@@ -82,17 +82,70 @@ _WORD_RE = re.compile(r"[A-Za-z]+(?:'[a-z]+)?|\d+(?:\.\d+)?")
 
 # Words that name the unit rather than the quantity — the one thing the code
 # does not say, and the reason the fix is a *name*, not a deletion.
-_UNIT_WORDS = frozenset({
-    "bytes", "characters", "chars", "day", "days", "gb", "hour", "hours", "hr",
-    "hrs", "hz", "items", "k", "kb", "khz", "m", "mb", "milliseconds", "min",
-    "mins", "minute", "minutes", "ms", "pct", "percent", "px", "retries",
-    "rows", "s", "sec", "second", "seconds", "secs", "times", "tokens",
-})
+_UNIT_WORDS = frozenset(
+    {
+        "bytes",
+        "characters",
+        "chars",
+        "day",
+        "days",
+        "gb",
+        "hour",
+        "hours",
+        "hr",
+        "hrs",
+        "hz",
+        "items",
+        "k",
+        "kb",
+        "khz",
+        "m",
+        "mb",
+        "milliseconds",
+        "min",
+        "mins",
+        "minute",
+        "minutes",
+        "ms",
+        "pct",
+        "percent",
+        "px",
+        "retries",
+        "rows",
+        "s",
+        "sec",
+        "second",
+        "seconds",
+        "secs",
+        "times",
+        "tokens",
+    }
+)
 
-_STOPWORDS = frozenset({
-    "a", "an", "and", "are", "as", "at", "be", "by", "for", "in", "is", "it",
-    "of", "on", "or", "that", "the", "this", "we", "with",
-})
+_STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "by",
+        "for",
+        "in",
+        "is",
+        "it",
+        "of",
+        "on",
+        "or",
+        "that",
+        "the",
+        "this",
+        "we",
+        "with",
+    }
+)
 
 _DIRECTIVE_RE = re.compile(
     r"^\s*(?:todo|fixme|hack\b|xxx|noqa|sarj-noqa|type:|pragma|pyright|mypy|fmt:|isort|ruff|"
@@ -151,7 +204,5 @@ class TrailingValueNarration(Rule):
             if line > len(lines) or line in nested:
                 continue
             if _narrates_value(body, lines[line - 1][:col]):
-                diags.append(
-                    Diagnostic(path=path, line=line, col=col + 1, code=self.code, message=self.description)
-                )
+                diags.append(Diagnostic(path=path, line=line, col=col + 1, code=self.code, message=self.description))
         return diags

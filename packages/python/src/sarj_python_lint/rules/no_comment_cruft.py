@@ -274,14 +274,49 @@ _META_COMMENTARY_RE = re.compile(
 # demo-gateway, 12 of 12 sampled were true positives. Closed vocabulary on
 # purpose: a one-word comment outside this list ("# Riyadh") is far more likely
 # to be a genuine label for a value.
-_SECTION_LABEL_WORDS = frozenset({
-    "actions", "components", "config", "configuration", "constant", "constants",
-    "enums", "exports", "fixtures", "getters", "globals", "handler", "handlers",
-    "helper", "helpers", "hook", "hooks", "imports", "interfaces", "main",
-    "mocks", "models", "mutations", "props", "queries", "reducers", "routes",
-    "schemas", "selectors", "setters", "setup", "state", "styles", "teardown",
-    "type", "types", "util", "utilities", "utils",
-})
+_SECTION_LABEL_WORDS = frozenset(
+    {
+        "actions",
+        "components",
+        "config",
+        "configuration",
+        "constant",
+        "constants",
+        "enums",
+        "exports",
+        "fixtures",
+        "getters",
+        "globals",
+        "handler",
+        "handlers",
+        "helper",
+        "helpers",
+        "hook",
+        "hooks",
+        "imports",
+        "interfaces",
+        "main",
+        "mocks",
+        "models",
+        "mutations",
+        "props",
+        "queries",
+        "reducers",
+        "routes",
+        "schemas",
+        "selectors",
+        "setters",
+        "setup",
+        "state",
+        "styles",
+        "teardown",
+        "type",
+        "types",
+        "util",
+        "utilities",
+        "utils",
+    }
+)
 _SECTION_LABEL_RE = re.compile(r"^([A-Za-z]+)\s*:?\s*$")
 
 # "Helper function to check if a path is active" — the opener announces the
@@ -670,9 +705,7 @@ class NoCommentCruft(Rule):
             return "Commented-out code — delete it; git history remembers."
         if narration_protected:
             return None
-        if _is_redundant_narration(
-            body, prev_body, isolated_enumeration=isolated_enumeration, nested=nested
-        ):
+        if _is_redundant_narration(body, prev_body, isolated_enumeration=isolated_enumeration, nested=nested):
             return "Comment narrates the code — delete it or say why, not what. Code is self-documenting."
         return None
 

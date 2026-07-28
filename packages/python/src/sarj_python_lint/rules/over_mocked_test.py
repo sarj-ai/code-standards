@@ -625,9 +625,7 @@ def _substitutions(
     subs |= scan.subs
     subs.update((name, name) for name in _mock_parameters(func, len(injected)))
     facets = scan.facets | _injected_facets(func, injected)
-    return frozenset(
-        names.qualify(_resolve(owning, facets)) for target, owning in subs if not _is_infra_target(target)
-    )
+    return frozenset(names.qualify(_resolve(owning, facets)) for target, owning in subs if not _is_infra_target(target))
 
 
 def _resolve(name: str, facets: Mapping[str, str]) -> str:
@@ -688,9 +686,7 @@ def _has_replacement(call: ast.Call, subform: str) -> bool:
     return len(call.args) >= positional or any(kw.arg == "new" for kw in call.keywords)
 
 
-def _injected_facets(
-    func: ast.FunctionDef | ast.AsyncFunctionDef, injected: list[str | None]
-) -> dict[str, str]:
+def _injected_facets(func: ast.FunctionDef | ast.AsyncFunctionDef, injected: list[str | None]) -> dict[str, str]:
     """Alias each `@patch`-injected parameter onto the collaborator it replaced.
 
     Returns:
@@ -725,9 +721,7 @@ def _body_substitutions(func: ast.AST, names: _MockNames) -> _BodyScan:
     return scan
 
 
-def _record_facets(
-    targets: list[ast.expr], value: ast.expr, names: _MockNames, facets: dict[str, str]
-) -> None:
+def _record_facets(targets: list[ast.expr], value: ast.expr, names: _MockNames, facets: dict[str, str]) -> None:
     """Note that a name assigned into another object's attribute is part of that object.
 
     `ctx.room = mock_room` and `mock_call.side_effect = [first, second]` both
@@ -765,9 +759,7 @@ def _assigned_names(value: ast.expr) -> list[str]:
     return []
 
 
-def _record_handle_facet(
-    targets: list[ast.expr], value: ast.expr, names: _MockNames, facets: dict[str, str]
-) -> None:
+def _record_handle_facet(targets: list[ast.expr], value: ast.expr, names: _MockNames, facets: dict[str, str]) -> None:
     """Note that a `patch(...)` handle names the collaborator that patch replaced.
 
     `with patch.object(store, "_call_endpoint") as mock_call:` binds a name to a

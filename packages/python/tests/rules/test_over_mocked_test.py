@@ -708,9 +708,7 @@ def test_an_unimported_bare_name_stays_itself():
     assert len(OverMockedTest().check(Path(TEST_PATH), src)) == 1
 
 
-@pytest.mark.parametrize(
-    "header", ["from . import gateway", "from .app import gateway"], ids=["bare", "dotted"]
-)
+@pytest.mark.parametrize("header", ["from . import gateway", "from .app import gateway"], ids=["bare", "dotted"])
 def test_a_relative_import_does_not_qualify_a_name(header: str):
     # A relative import gives no absolute path to resolve onto: `.app` is not
     # the top-level `app`, so rewriting `gateway` to `app.gateway` would merge

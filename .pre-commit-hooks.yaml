@@ -490,3 +490,10 @@
   entry: sarj-python-lint check --rule require-port-for-service
   language: python
   types: [python]
+
+- id: sarj-prefer-match-type-dispatch
+  name: 'sarj-lint: Prefer match/case over control-flow try/raise and sequential type guards'
+  entry: sarj-python-lint check --rule prefer-match-type-dispatch
+  language: python
+  types: [python]
+

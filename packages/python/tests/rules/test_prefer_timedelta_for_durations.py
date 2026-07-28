@@ -279,7 +279,9 @@ def test_non_duration_numeric_not_flagged(name: str):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("name", ["hour", "hours", "minute", "minutes", "second", "seconds", "day", "days", "week", "month"])
+@pytest.mark.parametrize(
+    "name", ["hour", "hours", "minute", "minutes", "second", "seconds", "day", "days", "week", "month"]
+)
 def test_singular_wall_clock_not_flagged(name: str):
     src = f"def f({name}: int) -> None: ...\n"
     assert _check(src) == []

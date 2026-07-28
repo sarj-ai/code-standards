@@ -57,6 +57,7 @@ from sarj_python_lint.rules.prefer_fstring_over_concat import PreferFstringOverC
 from sarj_python_lint.rules.prefer_library_fake import PreferLibraryFake
 from sarj_python_lint.rules.prefer_match_assert_never import PreferMatchAssertNever
 from sarj_python_lint.rules.prefer_match_pattern_destructuring import PreferMatchPatternDestructuring
+from sarj_python_lint.rules.prefer_match_type_dispatch import PreferMatchTypeDispatch
 from sarj_python_lint.rules.prefer_module_level_constant import (
     PreferModuleLevelConstant,
 )
@@ -190,6 +191,7 @@ REGISTRY: dict[str, type[Rule]] = {
     PreferOrPattern.id: PreferOrPattern,
     RequirePortForService.id: RequirePortForService,
     PreferNonNullableCollection.id: PreferNonNullableCollection,
+    PreferMatchTypeDispatch.id: PreferMatchTypeDispatch,
 }
 
 __all__ = ["REGISTRY"]
