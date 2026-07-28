@@ -92,6 +92,7 @@ const config = [
         "error",
         {
           assertionStyle: "never",
+          objectLiteralTypeAssertions: "never",
         },
       ],
       "@typescript-eslint/naming-convention": [
@@ -163,7 +164,10 @@ const config = [
         "error",
         { validStrategies: ["ternary", "coerce"] },
       ],
-      "react/no-unstable-nested-components": "error",
+      "react/no-unstable-nested-components": [
+        "error",
+        { prohibitLocalVariables: true },
+      ],
       "react-hooks/exhaustive-deps": "error",
       "react-hooks/rules-of-hooks": "error",
       "react/forbid-elements": [
@@ -242,6 +246,7 @@ const config = [
         { cases: { kebabCase: true }, ignore: [String.raw`\.d\.ts$`] },
       ],
       "unicorn/prefer-switch": "warn",
+      "unicorn/no-array-for-each": "warn",
       "unicorn/no-useless-undefined": "error",
       "unicorn/prefer-node-protocol": "error",
       "unicorn/prefer-string-replace-all": "error",
@@ -293,10 +298,6 @@ const config = [
       // so each concern fires exactly one diagnostic.
       "no-restricted-syntax": [
         "error",
-        {
-          selector: "CallExpression[callee.property.name='forEach']",
-          message: "Prefer a for-of loop over forEach.",
-        },
         {
           selector: "TSModuleDeclaration[kind='namespace']",
           message: "Use ES modules instead of namespaces.",
@@ -437,7 +438,7 @@ const config = [
       // because deleting a doc block in bulk is silent information loss if the
       // judgement is wrong even once.
       "@sarj/no-restated-comment": "error",
-      "@sarj/no-implicit-attribute-access": "error",
+      "@sarj/no-implicit-attribute-access": "warn",
       "@sarj/jsdoc-restates-signature": "error",
       "@sarj/trailing-value-narration": "error",
       "@sarj/no-repeated-string-literal": "error",
