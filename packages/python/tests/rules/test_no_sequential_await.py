@@ -55,6 +55,7 @@ async def f(items):
 """
     assert len(_check(src)) == 1
 
+
 def test_fp_iter_expression():
     src = """
 async def f():
@@ -62,6 +63,7 @@ async def f():
         pass
 """
     assert _check(src) == []
+
 
 def test_fp_else_block():
     src = """
@@ -73,6 +75,7 @@ async def f(items):
 """
     assert _check(src) == []
 
+
 def test_fp_async_for_nested():
     src = """
 async def f(items):
@@ -82,6 +85,7 @@ async def f(items):
 """
     assert _check(src) == []
 
+
 def test_fp_gather_in_loop():
     src = """
 async def f(chunks):
@@ -90,6 +94,7 @@ async def f(chunks):
 """
     assert _check(src) == []
 
+
 def test_fp_sleep_in_loop():
     src = """
 async def f(items):
@@ -97,6 +102,7 @@ async def f(items):
         await asyncio.sleep(1)
 """
     assert _check(src) == []
+
 
 def test_fp_early_exit_break():
     src = """
@@ -108,6 +114,7 @@ async def f(items):
 """
     assert _check(src) == []
 
+
 def test_fp_early_exit_return():
     src = """
 async def f(items):
@@ -117,4 +124,3 @@ async def f(items):
             return
 """
     assert _check(src) == []
-

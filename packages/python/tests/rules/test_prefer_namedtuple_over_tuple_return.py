@@ -414,7 +414,7 @@ def test_generic_base_classes_in_inheritance_are_exempt():
     src = """
 class _IncludedRouter(BaseRoute[Scope]):
     def matches(self, scope: Scope) -> tuple[Match, Scope]: ...
-    
+
 class _FrontendRoute(BaseRoute[Scope]):
     def matches(self, scope: Scope) -> tuple[Match, Scope]: ...
 """
