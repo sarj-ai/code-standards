@@ -298,9 +298,9 @@ def _grown_dict_names(tree: ast.Module) -> frozenset[str]:
                 grown.add(name)
             case ast.Assign(targets=targets):
                 grown.update(
-                    subscript.value.id
+                    val.id
                     for subscript in targets
-                    if isinstance(subscript, ast.Subscript) and isinstance(subscript.value, ast.Name)
+                    if isinstance(subscript, ast.Subscript) and isinstance(val := subscript.value, ast.Name)
                 )
             case _:
                 pass
@@ -342,7 +342,7 @@ def _incomplete_dispatch_map(
     if owner is None or owner not in enum_members:
         return None
     declared = enum_members[owner]
-    covered = {key.attr for key in mapping.keys if isinstance(key, ast.Attribute) and key.attr in declared}
+    covered = {attr for key in mapping.keys if isinstance(key, ast.Attribute) and (attr := key.attr) in declared}
     if len(covered) != len(mapping.keys) or not covered < declared:
         return None
     missing = ", ".join(f"{owner}.{name}" for name in sorted(declared - covered))

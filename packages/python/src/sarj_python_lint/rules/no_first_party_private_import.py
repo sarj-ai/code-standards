@@ -148,9 +148,9 @@ def _from_import_hits(node: ast.ImportFrom) -> list[tuple[int, int, str, str]]:
     if private_segment is not None:
         return [(node.lineno, node.col_offset + 1, node.module, private_segment)]
     return [
-        (alias.lineno, alias.col_offset + 1, node.module, alias.name)
+        (alias.lineno, alias.col_offset + 1, node.module, name)
         for alias in node.names
-        if _is_private_name(alias.name)
+        if _is_private_name(name := alias.name)
     ]
 
 

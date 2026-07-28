@@ -693,7 +693,9 @@ def _injected_facets(func: ast.FunctionDef | ast.AsyncFunctionDef, injected: lis
         A wiring edge per injected parameter whose collaborator is known.
 
     """
-    positional = [arg.arg for arg in (*func.args.posonlyargs, *func.args.args) if arg.arg not in _TEST_CASE_RECEIVERS]
+    positional = [
+        name for arg in (*func.args.posonlyargs, *func.args.args) if (name := arg.arg) not in _TEST_CASE_RECEIVERS
+    ]
     return {param: owning for param, owning in zip(positional, injected, strict=False) if owning is not None}
 
 
@@ -754,7 +756,7 @@ def _assigned_names(value: ast.expr) -> list[str]:
     if isinstance(value, ast.Call):
         return [
             *(arg.id for arg in value.args if isinstance(arg, ast.Name)),
-            *(kw.value.id for kw in value.keywords if isinstance(kw.value, ast.Name)),
+            *(val.id for kw in value.keywords if isinstance(val := kw.value, ast.Name)),
         ]
     return []
 
@@ -900,7 +902,7 @@ def _owner_of(target: str) -> str:
 
 
 def _replaced_attributes(call: ast.Call) -> list[str]:
-    return [kw.arg for kw in call.keywords if kw.arg is not None and kw.arg not in _PATCH_CONFIG_KWARGS]
+    return [arg for kw in call.keywords if (arg := kw.arg) is not None and arg not in _PATCH_CONFIG_KWARGS]
 
 
 def _monkeypatch_keys(call: ast.Call, names: _MockNames) -> list[tuple[str, str]]:
@@ -940,7 +942,7 @@ def _mock_parameters(func: ast.FunctionDef | ast.AsyncFunctionDef, injected: int
 
     """
     args = func.args
-    positional = [arg.arg for arg in (*args.posonlyargs, *args.args) if arg.arg not in _TEST_CASE_RECEIVERS]
+    positional = [name for arg in (*args.posonlyargs, *args.args) if (name := arg.arg) not in _TEST_CASE_RECEIVERS]
     candidates = [*positional[injected:], *(arg.arg for arg in args.kwonlyargs)]
     return [name for name in candidates if _is_mock_fixture(name)]
 

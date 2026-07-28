@@ -239,7 +239,7 @@ def _literal_text(value: ast.expr) -> str | None:
     # parenthesised join; read the literal fragments so the match still works.
     if isinstance(value, ast.JoinedStr):
         return "".join(
-            part.value for part in value.values if isinstance(part, ast.Constant) and isinstance(part.value, str)
+            val for part in value.values if isinstance(part, ast.Constant) and isinstance(val := part.value, str)
         )
     if isinstance(value, ast.BinOp) and isinstance(value.op, ast.Add):
         left, right = _literal_text(value.left), _literal_text(value.right)

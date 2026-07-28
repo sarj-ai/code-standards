@@ -901,9 +901,9 @@ def _parametrized_nonempty(node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[
 def _parametrize_names(dec: ast.Call) -> list[str]:
     argnames = dec.args[0] if dec.args else None
     if isinstance(argnames, ast.Constant) and isinstance(argnames.value, str):
-        return [part.strip() for part in argnames.value.split(",") if part.strip()]
+        return [p for part in argnames.value.split(",") if (p := part.strip())]
     if isinstance(argnames, (ast.List, ast.Tuple)):
-        return [elt.value for elt in argnames.elts if isinstance(elt, ast.Constant) and isinstance(elt.value, str)]
+        return [val for elt in argnames.elts if isinstance(elt, ast.Constant) and isinstance(val := elt.value, str)]
     return []
 
 

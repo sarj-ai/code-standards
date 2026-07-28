@@ -54,8 +54,22 @@ def _check_comprehension_node(
     diags: list[Diagnostic] = []
 
     for if_clause in gen.ifs:
+        if any(isinstance(n, ast.NamedExpr) for n in ast.walk(if_clause)):
+            continue
         calls_in_if = [n for n in ast.walk(if_clause) if isinstance(n, ast.Call | ast.Attribute)]
         for call_node in calls_in_if:
+            if (
+                isinstance(call_node, ast.Attribute)
+                and isinstance(call_node.value, ast.Name)
+                and call_node.value.id in {"ast", "typing", "sys", "os", "re", "types"}
+            ):
+                continue
+            if (
+                isinstance(call_node, ast.Call)
+                and isinstance(call_node.func, ast.Name)
+                and call_node.func.id in {"isinstance", "issubclass", "hasattr", "getattr"}
+            ):
+                continue
             for elt in elt_nodes:
                 if any(isinstance(n, ast.Lambda) for n in ast.walk(elt)):
                     continue
