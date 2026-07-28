@@ -67,7 +67,6 @@ def test_require_fk_index() -> None:
     assert rule.check(P, table_pk_sql) == []
 
 
-
 def test_require_fk_index_alter_table_only_and_composite_fk() -> None:
     rule = RequireFkIndex()
 
@@ -101,4 +100,3 @@ def test_set_config_and_session_lock_timeout() -> None:
     sql2 = "SET SESSION lock_timeout = '5s'; ALTER TABLE t ADD COLUMN c INT;"
     assert rule.check(P, sql1) == []
     assert rule.check(P, sql2) == []
-

@@ -84,9 +84,7 @@ def test_every_shared_param_marker_is_detected(source: str):
 
 
 NON_PAGINATION = {
-    "add_column_named_offset": (
-        "ALTER TABLE batch ADD COLUMN offset INTEGER NOT NULL DEFAULT 0;"
-    ),
+    "add_column_named_offset": ("ALTER TABLE batch ADD COLUMN offset INTEGER NOT NULL DEFAULT 0;"),
     "create_table_column_named_offset": "CREATE TABLE t (id BIGINT, offset INTEGER);",
     "bigquery_with_offset": "SELECT x, i FROM UNNEST(arr) AS x WITH OFFSET AS i;",
 }

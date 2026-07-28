@@ -26,21 +26,23 @@ _IDENT_CHAR_RE = re.compile(r"[A-Za-z0-9_]")
 
 
 def is_dump_file(source: str, path: Path | None = None) -> bool:
-    """Return True if the source text or path indicates an auto-generated schema dump file."""
+    """Report whether source text or path indicates an auto-generated schema dump file.
+
+    Returns:
+        True if the file is a schema dump.
+
+    """
     if path is not None:
         name = path.name.lower()
         if name in {"structure.sql", "schema.sql"} or name.endswith("_dump.sql") or "restore" in path.parts:
             return True
     first_chunk = source[:1024].lower()
-    if (
+    return (
         "postgresql database dump" in first_chunk
         or "dumped by pg_dump" in first_chunk
         or "dumped from database" in first_chunk
         or ("set statement_timeout = 0;" in first_chunk and "set lock_timeout = 0;" in first_chunk)
-    ):
-        return True
-    return False
-
+    )
 
 
 def is_suppressed(source_lines: list[str], line: int, code: str) -> bool:

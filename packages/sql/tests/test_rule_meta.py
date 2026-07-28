@@ -1,4 +1,5 @@
 """Every rule must be self-documenting: non-empty id, code, description, and a docstring."""
+
 from __future__ import annotations
 
 import pytest

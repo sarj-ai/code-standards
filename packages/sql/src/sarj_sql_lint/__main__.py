@@ -1,4 +1,5 @@
 """CLI: sarj-sql-lint check --rule <id> [--rule <id2>] <files>."""
+
 from __future__ import annotations
 
 import argparse
@@ -11,9 +12,21 @@ from sarj_sql_lint.rules import REGISTRY
 
 
 SKIP_DIR_NAMES = {
-    "node_modules", ".venv", "venv", ".git", "dist", "build", ".next",
-    "coverage", "__pycache__", ".pytest_cache", ".ruff_cache", ".mypy_cache",
-    ".turbo", ".yarn", ".pnpm-store",
+    "node_modules",
+    ".venv",
+    "venv",
+    ".git",
+    "dist",
+    "build",
+    ".next",
+    "coverage",
+    "__pycache__",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".mypy_cache",
+    ".turbo",
+    ".yarn",
+    ".pnpm-store",
 }
 MAX_FILE_BYTES = 500_000
 
@@ -56,9 +69,7 @@ def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
             continue
         source_lines = source.splitlines()
         for rule in rules:
-            diags.extend(
-                d for d in rule.check(p, source) if not is_suppressed(source_lines, d.line, d.code)
-            )
+            diags.extend(d for d in rule.check(p, source) if not is_suppressed(source_lines, d.line, d.code))
     return diags
 
 

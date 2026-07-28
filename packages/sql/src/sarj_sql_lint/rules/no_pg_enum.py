@@ -49,10 +49,7 @@ class NoPgEnum(Rule):
                         line=line,
                         col=col,
                         code=self.code,
-                        message=(
-                            "Use TEXT + CHECK constraint — PG enums can't be "
-                            "altered transactionally."
-                        ),
+                        message=("Use TEXT + CHECK constraint — PG enums can't be altered transactionally."),
                     )
                 )
         return diags
