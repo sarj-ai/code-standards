@@ -37,7 +37,7 @@ class NoImplicitAttributeAccess(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if _is_test_path(path):
+        if _is_test_path(path) or _is_excluded_path(path):
             return []
         tree = parse_or_none(path, source)
         if tree is None:
@@ -75,3 +75,7 @@ class NoImplicitAttributeAccess(Rule):
 
 def _is_test_path(path: Path) -> bool:
     return path.name.startswith("test_") or "tests" in path.parts
+
+def _is_excluded_path(path: Path) -> bool:
+    excluded = {".uv-cache", ".venv", "venv", "node_modules", "site-packages"}
+    return bool(excluded.intersection(path.parts))
