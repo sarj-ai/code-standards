@@ -1,9 +1,9 @@
 # sarj-ai/standards
 
-The single home for Sarj code standards, in two layers:
+The single home for Sarj code standards, in two distinct layers:
 
-- **Machine-enforced floor** — lint rules + maximally-strict configs for TypeScript + Python + SQL (`@sarj/eslint-plugin`, `sarj-python-lint`, `sarj-sql-lint`, `sarj-lint-configs`). Run in CI.
-- **Judgment layer** — the `sarj-audit` Claude Code plugin: on-demand audit commands for the things that can't be reliably linted. Each audit cites the deterministic rule that backs it where one exists. (Merged here from the retired `sarj-ai/agentic` repo.)
+- **Machine-enforced floor** — deterministic AST lint rules + maximally-strict configs for TypeScript + Python + SQL (`@sarj/eslint-plugin`, `sarj-python-lint`, `sarj-sql-lint`, `sarj-iac-lint`, `sarj-lint-configs`). Run automatically in CI.
+- **Judgment layer** — the `sarj-audit` Claude Code plugin: high-density, on-demand audit commands for complex architectural, security, atomicity, and test strategy evaluation that **cannot** be deterministically linted via AST.
 
 ## Claude Code plugin (`sarj-audit`)
 
@@ -29,7 +29,13 @@ For a one-off personal install instead:
 /plugin install sarj-audit@sarj
 ```
 
-Then run any audit, e.g. `/sarj-audit:data-contracts` or `/sarj-audit:concurrency-and-performance`. The plugin lives in [`plugins/sarj-audit/`](plugins/sarj-audit/); [`commands/stack-detection.md`](plugins/sarj-audit/commands/stack-detection.md) is the shared stack-aware Phase-0 the audits gate on.
+### High-Density Audit Commands
+
+1. **`/sarj-audit:system-architecture`** — Audits service layer boundaries, dependency injection / inversion of control, client→server & app→database logic pushdown, and data contract tiers (`BaseModel` vs `@dataclass(frozen=True)`).
+2. **`/sarj-audit:security-and-atomicity`** — Audits multi-tenant isolation & IDOR prevention, RBAC role enforcement, server-derived session identity, TOCTOU race conditions, multi-write transaction boundaries, and idempotent retry keys.
+3. **`/sarj-audit:testing-and-modernization`** — Audits test fidelity & mock architecture (replacing `AsyncMock` over-mocking with fakes/DB container fixtures) and identifies complex hand-rolled code candidates for replacement with mature third-party libraries.
+
+The plugin lives in [`plugins/sarj-audit/`](plugins/sarj-audit/); [`commands/stack-detection.md`](plugins/sarj-audit/commands/stack-detection.md) is the shared stack-aware Phase-0 the audits gate on.
 
 ## How to use (lint rules)
 
