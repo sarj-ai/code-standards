@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import operator
 import re
-from typing import TYPE_CHECKING, Any, final, override
+from typing import TYPE_CHECKING, final, override
 
 from sarj_sql_lint.rule_base import Diagnostic, Rule, is_dump_file, mask_sql
 
@@ -46,7 +46,7 @@ class RequireLockTimeout(Rule):
         diags: list[Diagnostic] = []
         masked = mask_sql(source)
 
-        events: list[tuple[int, str, Any]] = []
+        events: list[tuple[int, str, re.Match[str]]] = []
         for match in ASSIGNMENT_PATTERN.finditer(source):
             start_pos = match.start()
             if masked[start_pos : start_pos + 3].strip():
