@@ -344,10 +344,7 @@ def _has_str_enum_signal(source: str) -> bool:
     has_string_literal = '"' in source or "'" in source
     if "str" in source and any(name in source.lower() for name in CHOICES_ATTR_NAMES):
         return True
-    return (
-        has_string_literal
-        and ("==" in source or "!=" in source or "case " in source or "match " in source)
-    )
+    return has_string_literal and ("==" in source or "!=" in source or "case " in source or "match " in source)
 
 
 def _cluster_fires(key: str, entry: _ClusterEntry) -> bool:

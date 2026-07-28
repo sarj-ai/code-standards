@@ -64,16 +64,74 @@ if TYPE_CHECKING:
 # Docstring filler that says nothing about *which* thing is being described.
 # `not` / `no` / `none` / `never` are deliberately ABSENT: a docstring that
 # negates the obvious reading of a name is the most useful kind there is.
-_STOPWORDS = frozenset({
-    "a", "all", "an", "and", "are", "as", "at", "based", "be", "been", "being",
-    "by", "class", "current", "do", "does", "false", "for", "from", "function",
-    "get", "gets", "given", "helper", "if", "in", "instance", "instances",
-    "into", "is", "it", "its", "method", "new", "object", "objects", "of", "on",
-    "or", "provided", "return", "returned", "returns", "s", "set", "sets",
-    "should", "specified", "that", "the", "these", "this", "those", "to",
-    "true", "using", "value", "values", "was", "when", "whether", "which",
-    "will", "with",
-})
+_STOPWORDS = frozenset(
+    {
+        "a",
+        "all",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "based",
+        "be",
+        "been",
+        "being",
+        "by",
+        "class",
+        "current",
+        "do",
+        "does",
+        "false",
+        "for",
+        "from",
+        "function",
+        "get",
+        "gets",
+        "given",
+        "helper",
+        "if",
+        "in",
+        "instance",
+        "instances",
+        "into",
+        "is",
+        "it",
+        "its",
+        "method",
+        "new",
+        "object",
+        "objects",
+        "of",
+        "on",
+        "or",
+        "provided",
+        "return",
+        "returned",
+        "returns",
+        "s",
+        "set",
+        "sets",
+        "should",
+        "specified",
+        "that",
+        "the",
+        "these",
+        "this",
+        "those",
+        "to",
+        "true",
+        "using",
+        "value",
+        "values",
+        "was",
+        "when",
+        "whether",
+        "which",
+        "will",
+        "with",
+    }
+)
 
 _WORD_RE = re.compile(r"[A-Za-z][A-Za-z0-9']*")
 
@@ -95,11 +153,33 @@ _VALUE_MARKER_RE = re.compile(
 #     sweep: bulbul's `@router.post("/desk/create-ticket")` handler carries
 #     "Create a ticket in Zoho Desk for the specified organization", which is the
 #     text an API consumer reads.
-_PROMPT_DECORATOR_MARKERS = frozenset({
-    "agent", "api_route", "app", "blueprint", "cli", "click", "command",
-    "delete", "function_tool", "get", "group", "mcp", "option", "patch", "post",
-    "put", "route", "router", "server", "tool", "tools", "typer", "websocket",
-})
+_PROMPT_DECORATOR_MARKERS = frozenset(
+    {
+        "agent",
+        "api_route",
+        "app",
+        "blueprint",
+        "cli",
+        "click",
+        "command",
+        "delete",
+        "function_tool",
+        "get",
+        "group",
+        "mcp",
+        "option",
+        "patch",
+        "post",
+        "put",
+        "route",
+        "router",
+        "server",
+        "tool",
+        "tools",
+        "typer",
+        "websocket",
+    }
+)
 
 
 def _decorator_markers(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef) -> set[str]:
@@ -108,7 +188,7 @@ def _decorator_markers(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassD
         target = decorator.func if isinstance(decorator, ast.Call) else decorator
         try:
             markers.update(part.lower() for part in re.split(r"\W+", ast.unparse(target)) if part)
-        except (AttributeError, ValueError):  # pragma: no cover — unparse is total for these nodes
+        except AttributeError, ValueError:  # pragma: no cover — unparse is total for these nodes
             continue
     return markers
 
@@ -118,7 +198,7 @@ def _annotation_tokens(annotation: ast.expr | None) -> list[str]:
         return []
     try:
         rendered = ast.unparse(annotation)
-    except (AttributeError, ValueError):  # pragma: no cover
+    except AttributeError, ValueError:  # pragma: no cover
         return []
     return [part for token in re.split(r"\W+", rendered) if token for part in split_identifier(token)]
 

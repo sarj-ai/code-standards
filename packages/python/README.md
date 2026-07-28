@@ -222,7 +222,7 @@ disappears — and the query still runs — whenever the filter is empty:
 
 ```python
 where_conditions = []
-if args.organization_ids:                                    # ← optional
+if args.organization_ids:  # ← optional
     where_conditions.append(SQL("organization_id = ANY(%s::uuid[])"))
 ...
 where_clause = SQL(" AND ").join(where_conditions) if where_conditions else SQL("1=1")
@@ -264,12 +264,12 @@ is the assertion whose real condition slid out of the condition slot, because it
 was a working assertion when it was typed:
 
 ```python
-assert {                                              # ← braces, not parentheses
+assert {  # ← braces, not parentheses
     "referencing a non existing `via_device` " in caplog.text
-}                                                     # one-element SET, always truthy
+}  # one-element SET, always truthy
 
-assert [f"No logs found on hdfs for ti={ti}"]         # the `== messages` was lost
-assert True, cover_result_json[0]["success"][...]     # slid into the MESSAGE slot
+assert [f"No logs found on hdfs for ti={ti}"]  # the `== messages` was lost
+assert True, cover_result_json[0]["success"][...]  # slid into the MESSAGE slot
 ```
 
 **The narrowness is the rule.** The obvious generalisation — "flag a comparison

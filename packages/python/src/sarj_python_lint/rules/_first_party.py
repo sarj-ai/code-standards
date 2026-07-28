@@ -50,23 +50,25 @@ _PROJECT_MARKER = "pyproject.toml"
 
 # Never descend into these: a virtualenv or vendored tree holds *third-party*
 # packages, and collecting their names would classify every dependency as ours.
-_SKIP_DIR_NAMES = frozenset({
-    ".git",
-    ".mypy_cache",
-    ".next",
-    ".pytest_cache",
-    ".ruff_cache",
-    ".tox",
-    ".turbo",
-    ".venv",
-    "__pycache__",
-    "build",
-    "coverage",
-    "dist",
-    "node_modules",
-    "site-packages",
-    "venv",
-})
+_SKIP_DIR_NAMES = frozenset(
+    {
+        ".git",
+        ".mypy_cache",
+        ".next",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".tox",
+        ".turbo",
+        ".venv",
+        "__pycache__",
+        "build",
+        "coverage",
+        "dist",
+        "node_modules",
+        "site-packages",
+        "venv",
+    }
+)
 
 # Deep enough for a uv/pnpm-style monorepo (`<root>/packages/python/src/<pkg>`),
 # shallow enough that the scan stays a few hundred `iterdir()` calls.

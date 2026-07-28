@@ -137,9 +137,7 @@ _DIRECTIVE_RE = re.compile(
 # above the assertion that replaced it, and every word of it naturally appears
 # on the line below.
 _CODEY_RE = re.compile(r"^[\w.\[\]'\"]+\s*[:=]\s*\S|^[\w.]+\(")
-_CODE_KEYWORD_RE = re.compile(
-    r"^(?:assert|return|raise|await|yield|del|import|from|print|global|nonlocal)\b"
-)
+_CODE_KEYWORD_RE = re.compile(r"^(?:assert|return|raise|await|yield|del|import|from|print|global|nonlocal)\b")
 _CODE_SIGNAL_RE = re.compile(r"[=()\[\]{}]")
 _BANNERISH_RE = re.compile(r"[=\-─-╿*#~_.]{3,}|^[A-Z0-9 _:-]+$")
 
@@ -202,9 +200,7 @@ _BLOCK_OPENER_RE = re.compile(
 # is followed by a same-indent sibling of the same shape heads a run.
 _IMPORT_SHAPE_RE = re.compile(r"^\s*(?:import\b|from\b)")
 _KV_SHAPE_RE = re.compile(r"""^\s*["'][^"']+["']\s*:""")
-_ASSIGN_SHAPE_RE = re.compile(
-    r"^\s*[\w.\[\]]+\s*(?::[^=]+)?=[^=]|^\s*[\w.\[\]]+\s*:\s*\S+,?\s*$"
-)
+_ASSIGN_SHAPE_RE = re.compile(r"^\s*[\w.\[\]]+\s*(?::[^=]+)?=[^=]|^\s*[\w.\[\]]+\s*:\s*\S+,?\s*$")
 _ELEMENT_SHAPE_RE = re.compile(r"""^\s*["'\[{(].*,?\s*$|^\s*[\w.'"]+,\s*$""")
 # The call and assert shapes were added after the famous-corpus sweep: without
 # them a label heading a run of bare calls or asserts (`# Secrets` over eight
