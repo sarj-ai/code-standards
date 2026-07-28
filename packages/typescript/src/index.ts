@@ -46,6 +46,7 @@ import noTautologicalExpect from "./rules/no-tautological-expect.js";
 import requireInterfaceForInjectedService from "./rules/require-interface-for-injected-service.js";
 import preferNonNullableCollection from "./rules/prefer-non-nullable-collection.js";
 import primaryExportFileName from "./rules/primary-export-file-name.js";
+import noImplicitAttributeAccess from "./rules/no-implicit-attribute-access.js";
 
 const rules = {
   "enforce-file-structure": enforceFileStructure,
@@ -96,6 +97,7 @@ const rules = {
   "no-tautological-expect": noTautologicalExpect,
   "require-interface-for-injected-service": requireInterfaceForInjectedService,
   "prefer-non-nullable-collection": preferNonNullableCollection,
+  "no-implicit-attribute-access": noImplicitAttributeAccess,
 };
 
 const plugin = {
@@ -187,6 +189,7 @@ const plugin = {
         // port, 29 fire, 28 of them true positives.
         "@sarj/require-interface-for-injected-service": "warn",
         "@sarj/prefer-non-nullable-collection": "warn",
+        "@sarj/no-implicit-attribute-access": "warn",
       },
     },
     strict: {
@@ -266,6 +269,7 @@ const plugin = {
         // corpus (175 `implements` clauses vs 29 hits), so strict enforces it.
         "@sarj/require-interface-for-injected-service": "error",
         "@sarj/prefer-non-nullable-collection": "error",
+        "@sarj/no-implicit-attribute-access": "error",
       },
     },
   },

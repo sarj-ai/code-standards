@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from sarj_python_lint.rules.conditional_assertion_in_test import ConditionalAssertionInTest
 from sarj_python_lint.rules.duplicate_test_body import DuplicateTestBody
 from sarj_python_lint.rules.fixture_returns_bare_tuple import FixtureReturnsBareTuple
+from sarj_python_lint.rules.no_implicit_attribute_access import NoImplicitAttributeAccess
 from sarj_python_lint.rules.inefficient_string_concat_in_loop import (
     InefficientStringConcatInLoop,
 )
@@ -116,6 +117,7 @@ REGISTRY: dict[str, type[Rule]] = {
     PreferStrEnum.id: PreferStrEnum,
     NoFatTryBlocks.id: NoFatTryBlocks,
     NoIsinstanceUnionChain.id: NoIsinstanceUnionChain,
+    NoImplicitAttributeAccess.id: NoImplicitAttributeAccess,
     NoOffsetPagination.id: NoOffsetPagination,
     PreferNamedtupleOverTupleReturn.id: PreferNamedtupleOverTupleReturn,
     NoCorsWildcardWithCredentials.id: NoCorsWildcardWithCredentials,
