@@ -56,7 +56,7 @@ const ARBITRARY_COLOR_RE = new RegExp(
 
 /** Call expressions whose string args are className fragments. */
 const CLASS_FNS = new Set<string>(["cn", "clsx", "cva", "tv", "cx", "twMerge", "classnames", "classNames"]);
-const CLASS_NAME_RE = /class/i;
+const CLASS_NAME_RE = /(?:^|[a-z0-9_])(?:[Cc]lass(?:Name|es|Names|names)?)(?:[A-Z_]|$)/;
 
 /** CSS color-bearing properties, in their JSX (camelCase) and SVG-attribute forms. */
 const STYLE_COLOR_PROPS = new Set<string>([
@@ -96,7 +96,6 @@ const DETECTION_FILES = [
 ];
 const semanticTokenCache = new Map<string, boolean>();
 
-/** SVG container elements whose children carry structural (not UI-token) colors. */
 const SVG_DEFS_CONTAINERS = new Set<string>([
   "mask",
   "clipPath",
@@ -104,6 +103,29 @@ const SVG_DEFS_CONTAINERS = new Set<string>([
   "pattern",
   "linearGradient",
   "radialGradient",
+]);
+
+const EXEMPT_JSX_ELEMENTS = new Set([
+  "link",
+  "meta",
+  "svg",
+  "path",
+  "rect",
+  "circle",
+  "ellipse",
+  "line",
+  "polyline",
+  "polygon",
+  "g",
+  "defs",
+  "mask",
+  "clipPath",
+  "pattern",
+  "linearGradient",
+  "radialGradient",
+  "stop",
+  "text",
+  "tspan",
 ]);
 
 /** Neutral fill/stroke literals that are SVG drawing data, never a UI token. */
@@ -243,7 +265,7 @@ export default ESLintUtils.RuleCreator(
         const base = tailwindBase(token);
         if (RAW_PALETTE_RE.test(base)) {
           context.report({ node, messageId: "rawPalette", data: { class: token } });
-        } else if (ARBITRARY_COLOR_RE.test(base)) {
+        } else if (ARBITRARY_COLOR_RE.test(base) && !base.includes("var(")) {
           context.report({ node, messageId: "arbitraryColor", data: { class: token } });
         }
       }
@@ -327,6 +349,13 @@ export default ESLintUtils.RuleCreator(
         if (
           typeof node.value.value === "string" &&
           SVG_EXEMPT_COLOR_VALUES.has(node.value.value.toLowerCase())
+        ) {
+          return;
+        }
+        if (
+          node.parent.type === AST_NODE_TYPES.JSXOpeningElement &&
+          node.parent.name.type === AST_NODE_TYPES.JSXIdentifier &&
+          EXEMPT_JSX_ELEMENTS.has(node.parent.name.name)
         ) {
           return;
         }

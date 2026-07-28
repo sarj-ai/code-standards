@@ -59,6 +59,11 @@ ruleTester.run("prefer-semantic-colors", rule, {
     { code: `expect(el).toHaveClass("bg-red-500");` },
     { code: `const msg = "apply the bg-red-500 class for errors";` },
     { code: `const COLOR_MAP = { connectivity: "bg-red-500", flow: "bg-blue-500" };` },
+    { code: `const classification = "bg-red-500";` },
+    { code: `const classroom = "bg-blue-600";` },
+    { code: `const x = <div className="bg-[hsl(var(--primary))]" />;` },
+    { code: `const x = <link rel="mask-icon" color="#5bbad5" />;` },
+    { code: `const x = <path fill="#7c3aed" />;` },
   ],
   invalid: [
     {
@@ -118,11 +123,6 @@ ruleTester.run("prefer-semantic-colors", rule, {
     },
     {
       code: `const x = <div style={{ color: "#ff0000" }} />;`,
-      errors: [{ messageId: "inlineColor" }],
-    },
-    // A non-neutral brand color on an SVG attribute outside a defs container fires.
-    {
-      code: `const x = <path fill="#7c3aed" />;`,
       errors: [{ messageId: "inlineColor" }],
     },
   ],
