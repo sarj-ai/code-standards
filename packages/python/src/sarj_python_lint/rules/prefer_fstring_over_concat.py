@@ -479,7 +479,7 @@ def _template_text(operands: list[ast.expr]) -> list[str]:
             text.append(operand.value)
         elif isinstance(operand, ast.JoinedStr):
             text += [
-                part.value for part in operand.values if isinstance(part, ast.Constant) and isinstance(part.value, str)
+                val for part in operand.values if isinstance(part, ast.Constant) and isinstance(val := part.value, str)
             ]
     return text
 

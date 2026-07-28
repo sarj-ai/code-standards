@@ -389,10 +389,10 @@ class _ModuleFacts:
 
     def _add_from_import(self, node: ast.ImportFrom) -> None:
         if node.module == "unittest":
-            self.mock_modules.update(a.asname or a.name for a in node.names if a.name == "mock")
+            self.mock_modules.update(a.asname or name for a in node.names if (name := a.name) == "mock")
             return
         if node.module == _MOCK_MODULE:
-            self.patch_aliases.update(a.asname or a.name for a in node.names if a.name == _PATCH)
+            self.patch_aliases.update(a.asname or name for a in node.names if (name := a.name) == _PATCH)
             return
         # A relative import cannot be turned into the absolute dotted path a
         # `patch("...")` target string uses, so it is not usable evidence.

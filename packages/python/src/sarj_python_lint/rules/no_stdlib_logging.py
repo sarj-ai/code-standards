@@ -124,13 +124,13 @@ class NoStdlibLogging(Rule):
         diags = [
             Diagnostic(
                 path=path,
-                line=node.lineno,
+                line=line,
                 col=node.col_offset + 1,
                 code=self.code,
                 message=_MESSAGE,
             )
             for node in _logging_imports(tree)
-            if node.lineno not in type_only
+            if (line := node.lineno) not in type_only
         ]
         diags.sort(key=lambda d: (d.line, d.col))
         return diags

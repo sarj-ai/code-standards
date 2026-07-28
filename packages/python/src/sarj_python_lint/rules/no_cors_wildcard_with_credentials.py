@@ -48,7 +48,7 @@ class NoCorsWildcardWithCredentials(Rule):
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
-            keywords = {kw.arg: kw.value for kw in node.keywords if kw.arg is not None}
+            keywords = {arg: kw.value for kw in node.keywords if (arg := kw.arg) is not None}
             credentials = keywords.get("allow_credentials")
             origins = keywords.get("allow_origins")
             if credentials is None or origins is None:

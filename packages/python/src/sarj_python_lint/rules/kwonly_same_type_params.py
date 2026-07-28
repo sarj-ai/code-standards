@@ -301,9 +301,9 @@ def _calls_super_same_name(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool
 
     """
     return any(
-        isinstance(call.func, ast.Attribute)
-        and call.func.attr == node.name
-        and isinstance(inner := call.func.value, ast.Call)
+        isinstance(func := call.func, ast.Attribute)
+        and func.attr == node.name
+        and isinstance(inner := func.value, ast.Call)
         and isinstance(inner.func, ast.Name)
         and inner.func.id == "super"
         for call in ast.walk(node)

@@ -210,14 +210,14 @@ def gate(measurement: Measurement, baseline: Baseline) -> list[Failure]:
 
     """
     failures = [
-        Failure(dimension="code", key=key, ceiling=baseline.codes.get(key, 0), actual=n)
+        Failure(dimension="code", key=key, ceiling=c, actual=n)
         for key, n in sorted(measurement.codes.items())
-        if n > baseline.codes.get(key, 0)
+        if n > (c := baseline.codes.get(key, 0))
     ]
     failures += [
-        Failure(dimension="package", key=key, ceiling=baseline.packages.get(key, 0), actual=n)
+        Failure(dimension="package", key=key, ceiling=c, actual=n)
         for key, n in sorted(measurement.packages.items())
-        if n > baseline.packages.get(key, 0)
+        if n > (c := baseline.packages.get(key, 0))
     ]
     failures += [
         Failure(dimension="file", key=key, ceiling=ceiling, actual=n)
@@ -337,11 +337,11 @@ def discover_packages(root: Path, excluded_dir_names: frozenset[str] = DEFAULT_E
 
     """
     return sorted(
-        child.name
+        name
         for child in root.iterdir()
-        if child.is_dir()
-        and child.name not in excluded_dir_names
-        and not child.name.startswith(".")
+        if (name := child.name) not in excluded_dir_names
+        and not name.startswith(".")
+        and child.is_dir()
         and any(True for _ in _python_files(child, excluded_dir_names))
     )
 

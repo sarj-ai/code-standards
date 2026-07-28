@@ -132,7 +132,7 @@ class Stepdown(Rule):
 def _check_module_scope(path: Path, tree: ast.Module, code: str) -> list[Diagnostic]:
     defs = [n for n in tree.body if isinstance(n, _SCOPE_NODES)]
     counts = Counter(d.name for d in defs)
-    unique_defs = {d.name: d for d in defs if counts[d.name] == 1}
+    unique_defs = {name: d for d in defs if counts[name := d.name] == 1}
 
     pinned = _module_pinned_names(tree)
     shadowed = _module_assigned_names(tree)
@@ -169,7 +169,7 @@ def _check_module_scope(path: Path, tree: ast.Module, code: str) -> list[Diagnos
 def _check_class_scope(path: Path, cls: ast.ClassDef, code: str, external_callers: frozenset[str]) -> list[Diagnostic]:
     methods = [n for n in cls.body if isinstance(n, _DEF_NODES)]
     counts = Counter(m.name for m in methods)
-    unique = {m.name: m for m in methods if counts[m.name] == 1}
+    unique = {name: m for m in methods if counts[name := m.name] == 1}
 
     pinned = _class_pinned_names(cls)
     shadowed = _class_attr_names(cls)
@@ -474,9 +474,9 @@ def _immediate_def_refs(node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str
     parts.extend(d for d in node.args.kw_defaults if d is not None)
     args = node.args
     parts.extend(
-        a.annotation
+        ann
         for a in (*args.posonlyargs, *args.args, *args.kwonlyargs, args.vararg, args.kwarg)
-        if a is not None and a.annotation is not None
+        if a is not None and (ann := a.annotation) is not None
     )
     if node.returns is not None:
         parts.append(node.returns)
