@@ -16,7 +16,10 @@
   "reportUnusedImport": "error",
   "reportUnusedVariable": "error",
   "reportDeprecated": "error",
+  // Off: FastAPI/Starlette route handler functions (@router.get, etc.) are called
+  // via framework dispatch, not direct module invocations.
   "reportUnusedFunction": false,
+  // Off: third-party untyped SDKs (e.g. google.cloud.pubsub_v1, psycopg) cause workspace-wide noise.
   "reportMissingTypeStubs": false,
 
   "reportUnknownMemberType": "error",
