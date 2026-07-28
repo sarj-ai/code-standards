@@ -9,9 +9,14 @@ CONFIG_SRC := packages/lint-configs/src/sarj_lint_configs/configs
         publish-lint-configs publish-tsconfig
 
 help:
-	@echo "Targets: build | test | lint | typecheck | sync-configs | check-configs-synced"
+	@echo "Targets: build | test | lint | typecheck | sync-configs | check-configs-synced | promote-strict"
 	@echo "         publish-{typescript,python,sql,iac,lint-configs,tsconfig} | publish (all)"
 	@echo "Releases trigger via tag push: typescript-v* python-v* sql-v* iac-v* lint-configs-v* tsconfig-v*"
+
+promote-strict:
+	@echo "Promoting all warning-level standards to errors globally..."
+	@sed -i '' 's/: "warn"/: "error"/g' $(CONFIG_SRC)/eslint.strict.mjs
+	@echo "Done."
 
 build:
 	cd packages/typescript     && npm run build

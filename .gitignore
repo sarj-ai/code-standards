@@ -34,3 +34,4 @@ Thumbs.db
 # Claude Code local state (shared settings.json is tracked)
 .claude/*
 !.claude/settings.json
+.worktrees/
