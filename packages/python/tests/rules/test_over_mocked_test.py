@@ -1254,3 +1254,42 @@ def test_a_real_dependency_test_with_one_boundary_double_is_clean():
             assert result.status == CallStatus.IN_PROGRESS
     """
     assert _check(src) == []
+
+
+# --------------------------------------------------------------------------- #
+# The seam exemption reads the path, so it must read only the part the author   #
+# chose. Tokenising the absolute path let an ancestor directory supplied by     #
+# whoever cloned the repo disable the rule for the whole checkout.              #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "my-container-app/tests/test_billing.py",
+        "/Users/dev/di/svc/tests/test_billing.py",
+        "/home/runner/work/smoke-repo/tests/test_billing.py",
+        "/var/ci/bootstrap-ci/pkg/tests/test_billing.py",
+        "startup-inc/app/tests/test_billing.py",
+    ],
+    ids=["container", "di", "smoke", "bootstrap", "startup"],
+)
+def test_a_seam_token_in_an_ancestor_directory_does_not_exempt(path: str):
+    # Same file, same content: it fires at app/tests/test_billing.py, so a
+    # checkout location must not change the verdict.
+    assert len(_check(_patches(6), path)) == 1
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["t/smoke/test_billing.py", "tests/wiring/test_billing.py", "tests/di/test_billing.py"],
+    ids=["smoke-dir", "wiring-dir", "di-dir"],
+)
+def test_a_seam_token_in_the_immediate_parent_still_exempts(path: str):
+    # celery's `t/smoke/` suite is the motivating case: a composition-root suite
+    # is often a directory rather than a suffixed filename.
+    assert _check(_patches(6), path) == []
+
+
+def test_a_seam_token_in_the_filename_still_exempts():
+    assert _check(_patches(6), "tests/test_main_wiring.py") == []

@@ -294,6 +294,15 @@ class DuplicateTestBody(Rule):
             groups = _duplicate_groups(tree, source)
         except tokenize.TokenError, IndentationError, SyntaxError:
             return []
+        except RecursionError:
+            # Normalisation deep-copies each body and `ast.dump`s it, both of
+            # which recurse once per AST level. A left-nested `+` spine of a few
+            # thousand terms — generated or minified source, never hand-written;
+            # the deepest real test-file AST measured across 43k files is 33 —
+            # exhausts the stack. Returning nothing skips this one file, where
+            # letting it propagate would abort the whole lint run: `check()` is
+            # called per file by a CLI that does not catch it.
+            return []
 
         diags = [
             Diagnostic(

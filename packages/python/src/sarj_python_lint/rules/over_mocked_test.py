@@ -214,6 +214,17 @@ DELIBERATELY NOT COUNTED
   prefect's `test_container_instance.py:2212`, is a name collision: `container`
   there is an Azure Container Instance, not a DI container. The token list is
   the cost of matching on names; it errs toward suppression.
+
+  The path arm reads only from the **test root** down — the first `t` / `test` /
+  `tests` component and everything below it. It used to tokenise the whole
+  absolute path, which meant an ancestor directory nobody chose could exempt a
+  file: the identical test fires at `app/tests/test_billing.py` and was silent
+  at `my-container-app/tests/test_billing.py`, under `~/di/svc/`, or on a CI
+  runner whose workspace directory is `smoke-repo`. That disabled the rule for
+  an entire checkout, and since it reports zero on compliant code the silence
+  was indistinguishable from success. Scoping to the test root keeps every real
+  case (celery's `t/smoke/tests/` still reads `smoke` two levels up) and changes
+  no finding in any corpus.
 * A `test_*` nested inside another function — pytest collects only module-level
   functions and class methods, so a nested one is a callback.
 """
@@ -406,7 +417,7 @@ def _over_mocked_tests(
 
     """
     names = _MockNames.from_tree(tree)
-    path_tokens = _tokens(str(path))
+    path_tokens = _seam_path_tokens(path)
     hits: list[tuple[ast.FunctionDef | ast.AsyncFunctionDef, int]] = []
     for owner, func in _test_functions(tree):
         if _is_seam_test(func, owner, path_tokens):
@@ -440,6 +451,49 @@ def _test_functions(
 
 def _tokens(text: str) -> frozenset[str]:
     return frozenset(word[0].lower() for word in _TOKEN_RE.finditer(text))
+
+
+# The directory a test suite is rooted at. Everything below one of these is the
+# author's organisation of their tests; everything above is where the repo lives.
+_TEST_ROOT_NAMES = frozenset({"t", "test", "tests"})
+
+
+def _seam_path_tokens(path: Path) -> frozenset[str]:
+    """Tokenise the part of `path` that the author chose, not the whole checkout.
+
+    The seam exemption reads the path because a composition-root suite is often
+    a *directory* rather than a suffixed filename — celery's `t/smoke/` is the
+    motivating case. Tokenising `str(path)` reads the absolute path, so any
+    ancestor supplied by whoever cloned the repo counts too: the identical file
+    fires at `app/tests/test_billing.py` and is silent at
+    `my-container-app/tests/test_billing.py`, under `~/di/svc/`, or on a CI
+    runner whose workspace is `smoke-repo`. That turns the rule off for a whole
+    checkout, and because it reports zero on compliant code the silence is
+    indistinguishable from success.
+
+    The dividing line is the test root: everything from the first `t` / `test` /
+    `tests` component downward is how the author organised their suite, and
+    everything above it is where the repository happens to sit on disk. So
+    `t/smoke/tests/test_worker.py` still reads `smoke` (celery's layout, where
+    the marker is two levels up), while `my-container-app/tests/test_billing.py`
+    reads only `test_billing.py`.
+
+    `t` is included as a marker because celery's suite is rooted there. It is
+    short enough to appear as an ordinary directory name, so a repository stored
+    under a path component named exactly `t` would still read its descendants —
+    a much narrower leak than reading the whole path, and one no corpus exhibits.
+
+    Returns:
+        The tokens of the path from its test root down, or of the filename alone
+        when no test root appears.
+
+    """
+    parts = path.parts
+    start = next((i for i, part in enumerate(parts) if part in _TEST_ROOT_NAMES), len(parts) - 1)
+    tokens: set[str] = set()
+    for part in parts[start:]:
+        tokens |= _tokens(part)
+    return frozenset(tokens)
 
 
 def _is_seam_test(

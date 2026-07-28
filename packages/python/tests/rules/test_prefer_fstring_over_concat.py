@@ -649,3 +649,16 @@ def test_implicit_literal_concatenation_alone_is_silent():
 def test_explicit_literal_only_concatenation_is_silent():
     # Ruff's ISC003 owns literal + literal; this rule requires a runtime operand.
     assert _check('msg = "part one " + "part two"') == []
+
+
+def test_a_pathologically_long_chain_does_not_exhaust_the_stack():
+    """`a + b + c + ...` is a left-nested spine one AST level deep per operand.
+
+    A recursive flatten costs a frame per `+` and dies at ~1000 operands, and a
+    `RecursionError` escapes `check()` — only `SyntaxError` is guarded — so it
+    would abort the whole lint run rather than skip one file. CPython's parser
+    builds the spine without recursing, so the rule is the only thing that can
+    fail here.
+    """
+    src = 'x = "a" + ' + " + ".join(f"n{i}" for i in range(5000))
+    assert len(_check(src, "m.py")) == 1

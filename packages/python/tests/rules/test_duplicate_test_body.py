@@ -945,3 +945,20 @@ def test_two():
 """
     [diag] = _check(src)
     assert "True -> 1" in diag.message
+
+
+def test_a_pathologically_deep_body_does_not_exhaust_the_stack():
+    """Normalisation deep-copies and `ast.dump`s each body, both recursive.
+
+    A left-nested `+` spine of a few thousand terms exhausts the stack, and the
+    `RecursionError` would escape `check()` and abort the whole lint run rather
+    than skip the file. Generated source only — the deepest real test-file AST
+    measured across 43k files is 33 levels.
+    """
+    body = "e = " + " + ".join(['"a"'] * 1500)
+    src = f"def test_one():\n    {body}\n    assert e\n\n\ndef test_two():\n    {body}\n    assert e\n"
+    assert _check(src) == []
+
+
+def test_ordinary_duplicates_are_still_found_after_the_recursion_guard():
+    assert len(_check(_COPY_PASTED_PAIR)) == 1
