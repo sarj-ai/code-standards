@@ -49,6 +49,7 @@ import primaryExportFileName from "./rules/primary-export-file-name.js";
 import requireEmptyStateProp from "./rules/require-empty-state-prop.js";
 import requireInteractiveStates from "./rules/require-interactive-states.js";
 import requireTextBalance from "./rules/require-text-balance.js";
+import themeNoRawColors from "./rules/theme-no-raw-colors.js";
 
 const rules = {
   "enforce-file-structure": enforceFileStructure,
@@ -102,6 +103,7 @@ const rules = {
   "require-empty-state-prop": requireEmptyStateProp,
   "require-interactive-states": requireInteractiveStates,
   "require-text-balance": requireTextBalance,
+  "theme-no-raw-colors": themeNoRawColors,
 };
 
 const plugin = {
@@ -196,6 +198,7 @@ const plugin = {
         "@sarj/require-empty-state-prop": "warn",
         "@sarj/require-interactive-states": "warn",
         "@sarj/require-text-balance": "warn",
+        "@sarj/theme-no-raw-colors": "warn",
       },
     },
     strict: {
@@ -278,6 +281,7 @@ const plugin = {
         "@sarj/require-empty-state-prop": "error",
         "@sarj/require-interactive-states": "error",
         "@sarj/require-text-balance": "error",
+        "@sarj/theme-no-raw-colors": "error",
       },
     },
   },
