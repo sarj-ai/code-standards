@@ -21,8 +21,17 @@ with an expression:
   *explicit* concatenation of string LITERALS only — it fired on
   `("long one " + "long two")` and stayed silent on `"prefix" + name`,
   `"id=" + str(x)`, `name + "!"` and `"a" + name + "b" + path + "c"`. Literal +
-  literal is ruff's; literal + expression is nobody's. The two never overlap,
-  because this rule requires at least one NON-literal operand,
+  literal is ruff's; literal + expression is nobody's — **except for one shape,
+  where the two do double-report.** An f-string operand is a runtime expression
+  to this rule and a string literal to ruff, so `f"{name}={value} " + "suffix"`
+  trips both. Measured over four corpora: celery 1 of 89 findings, mlflow 18 of
+  667, saleor 7 of 406, django 0 of 368 — 26 shared lines in 1,530, or 1.7%.
+  `mlflow/mlflow/utils/server_cli_utils.py:29` is the canonical instance. An
+  earlier version of this docstring claimed the two "never overlap"; that was
+  wrong, and the measurement above replaces it. The remedies differ (ruff wants
+  implicit concatenation, this rule wants one f-string), so the reports are
+  complementary rather than contradictory, but a reader seeing both on one line
+  should apply this rule's and let the ISC003 finding fall out with it,
 * `UP031` (`%` → f-string) and `UP032` (`.format` → f-string) fired only on the
   `%`/`.format` spellings; `+` is untouched,
 * `FLY002` fired only on a static `str.join` of literals,
@@ -370,13 +379,31 @@ def _is_logging_call(node: ast.Call) -> bool:
 def _flatten(node: ast.expr) -> list[ast.expr]:
     """Flatten a nested `+` chain into its operands.
 
+    Iterative on purpose. `a + b + c + ...` parses as a left-nested `BinOp`
+    spine one level deep per operand, so a recursive walk costs a Python frame
+    per `+`. CPython's parser builds that spine without recursing and raises
+    nothing, but a recursive flatten hits the default 1000-frame limit at
+    ~1000 operands — and a `RecursionError` here escapes `check()`, which only
+    `SyntaxError` is caught around, taking down the whole lint run rather than
+    skipping one file. The longest real chain measured across 43k files is 27
+    (`dagster-graphql/schema/__init__.py:52`), so this is a guard against a
+    generated or minified file rather than against ordinary source.
+
     Returns:
         The operand expressions, left to right.
 
     """
-    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
-        return _flatten(node.left) + _flatten(node.right)
-    return [node]
+    operands: list[ast.expr] = []
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        if isinstance(current, ast.BinOp) and isinstance(current.op, ast.Add):
+            # Push right first so the left spine is popped first and the
+            # operands come out in source order.
+            stack.extend((current.right, current.left))
+        else:
+            operands.append(current)
+    return operands
 
 
 def _verdict(node: ast.BinOp) -> str | None:
