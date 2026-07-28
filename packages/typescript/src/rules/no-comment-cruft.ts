@@ -62,7 +62,8 @@ type MessageIds =
   | "commentedOutCode"
   | "sectionBanner"
   | "fileHeaderPreamble"
-  | "redundantNarration";
+  | "redundantNarration"
+  | "untrackedTodo";
 type Options = readonly [];
 
 const LEADING_PREAMBLE_MIN = 4;
@@ -71,7 +72,7 @@ const LEADING_PREAMBLE_MIN = 4;
 // trailing comma/colon is required so English adverbs ("finally the invariant
 // holds") aren't mistaken for an enumeration marker.
 const STEP_NARRATION_RE =
-  /^(?:first(?:ly)?|second(?:ly)?|third(?:ly)?|then|next|after(?:wards| that)?|finally|lastly|now)\s*[,:]\s*\S|^step\s+\d+\b/i;
+  /^(?:first(?:ly)?|second(?:ly)?|third(?:ly)?|then|next|after(?:wards| that)?|finally|lastly|now)\s*[,:]\s*\S/i;
 
 // Self-admitted meta-commentary — the "why later", not the why. `TODO`/`FIXME`/
 // `HACK`/`XXX` are handled as directives (kept, with an owner, per convention).
@@ -83,7 +84,7 @@ const META_COMMENTARY_RE =
 // missing here, so `// sarj-noqa: … — <reason>` on its own line was read as
 // prose and could itself be flagged.
 const DIRECTIVE_RE =
-  /^(eslint\b|eslint-|sarj-noqa\b|@ts-|prettier-ignore|prettier\b|biome-|c8\b|v8\b|istanbul\b|@type\b|@vite|webpack|<reference|<amd|global\b|noinspection|todo\b|fixme\b|hack\b|xxx\b)/i;
+  /^(eslint\b|eslint-|sarj-noqa\b|@ts-|prettier-ignore|prettier\b|biome-|c8\b|v8\b|istanbul\b|@type\b|@vite|webpack|<reference|<amd|global\b|noinspection|hack\b|xxx\b)/i;
 
 const LICENSE_RE =
   /copyright|licen[cs]ed?|spdx|permission is hereby granted|all rights reserved/i;
@@ -163,7 +164,10 @@ const LETS_RE =
 // comment this rule exists to protect. JSX-expression comments are exempt
 // wholesale (see `isStandalone`): `{/* Step 1: Select Patient */}` mirrors the
 // literal step labels of a UI wizard.
-const ENUMERATION_RE = /^(?:\d+[.)]\s+\S|phase\s+\d+\b)/i;
+const ENUMERATION_RE = /^(?:\d+[.)]\s+\S|(?:phase|step)\s+\d+\b)/i;
+
+// Dummy translational comments: ultra-short comments that just restate the code.
+const DUMMY_TRANSLATION_RE = /^(?:increment|return|returns|get|gets|set\b(?! up\b)|sets\b(?! up\b)|function to|method to)\b/i;
 
 // An ASCII sequence-diagram arrow. A long rule of dashes that ENDS IN AN ARROW
 // HEAD is drawing a timeline, not separating sections: `req------->res` is the
@@ -302,6 +306,16 @@ function isRedundantNarration(
     if (STEP_NARRATION_RE.test(t)) return true;
     if (META_COMMENTARY_RE.test(t) && !JUSTIFICATION_RE.test(t)) return true;
     if (HELPER_OPENER_RE.test(t) || LETS_RE.test(t)) return true;
+    
+    const words = t.split(/\s+/);
+    if (words.length <= 4 && DUMMY_TRANSLATION_RE.test(t) && !/[():=]/.test(t)) {
+      const lowerT = t.toLowerCase();
+      const rationaleWords = ["when", "because", "if", "so that", "due to", "for", "instead of", "to prevent", "to avoid", "only"];
+      if (!rationaleWords.some(w => lowerT.includes(w))) {
+        if (words.length > 1) return true;
+      }
+    }
+
     if (!nested && isSectionLabel(t)) return true;
     if (isolatedEnumeration && ENUMERATION_RE.test(t)) return true;
   }
@@ -434,6 +448,8 @@ export default ESLintUtils.RuleCreator(
         "File-header comment preamble — use a brief doc comment for the why, not a block of `//` lines.",
       redundantNarration:
         "Comment narrates the code — delete it or say *why*, not *what*. Code is self-documenting.",
+      untrackedTodo:
+        "Untracked TODO/FIXME marker — add an issue ticket or context link.",
     },
   },
   defaultOptions: [],
@@ -507,6 +523,17 @@ export default ESLintUtils.RuleCreator(
             .split("\n")
             .map(stripCommentMarker)
             .filter((l) => l.length > 0 && !isDirective(l));
+
+          if (texts.length > 0 && /^(?:todo|fixme)\b/i.test(texts[0])) {
+            if (!runCitesAReference(comments, i)) {
+              context.report({
+                node: comment,
+                messageId: "untrackedTodo",
+              });
+            }
+            continue;
+          }
+
           if (texts.some(isBanner)) {
             context.report({ node: comment, messageId: "sectionBanner" });
             continue;

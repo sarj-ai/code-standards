@@ -61,7 +61,7 @@ ruleTester.run("no-comment-cruft", rule, {
       code: "/**\n * @fileoverview does a thing\n * with detail\n * across lines\n * and more\n */\nexport const x = 1;",
     },
     // Directive comments are ignored (TODO/FIXME carry an owner elsewhere).
-    { code: "// TODO@nmaswood: return cachedValue();\nconst x = 1;" },
+    { code: "// TODO@nmaswood(JIRA-1234): return cachedValue();\nconst x = 1;" },
     { code: "// prettier-ignore\nconst x = 1;" },
     // A short leading comment block (< 4 lines) is fine.
     { code: "// the entrypoint\nimport x from 'y';" },
@@ -349,6 +349,24 @@ ruleTester.run("no-comment-cruft", rule, {
     // A bare assignment statement, not a declaration.
     {
       code: "// create new room\nroomId = makeRoomId(sessionId);",
+      errors: [{ messageId: "redundantNarration" }],
+    },
+    // Untracked TODO/FIXME markers
+    {
+      code: "// TODO: fix this later\nconst x = 1;",
+      errors: [{ messageId: "untrackedTodo" }],
+    },
+    {
+      code: "// fixme: broken\nconst y = 2;",
+      errors: [{ messageId: "untrackedTodo" }],
+    },
+    // Dummy translational comments
+    {
+      code: "// increment i\nlet i = 0;",
+      errors: [{ messageId: "redundantNarration" }],
+    },
+    {
+      code: "// return the response\nconst x = 1;",
       errors: [{ messageId: "redundantNarration" }],
     },
   ],
