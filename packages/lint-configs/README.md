@@ -7,7 +7,56 @@ uv add --dev sarj-lint-configs
 uv run sarj-lint-configs sync --only ruff      # writes .ruff-strict.toml
 uv run sarj-lint-configs sync --only pyright   # writes .pyright-strict.json
 uv run sarj-lint-configs sync --only eslint    # writes eslint.strict.mjs
+uv run sarj-lint-configs check .                # runs every Python/SQL/IaC custom registry
 ```
+
+Polyglot repositories can route the Python and TypeScript configs to their
+respective tool roots in one canonical sync:
+
+```bash
+uv run sarj-lint-configs sync \
+  --python-dest python \
+  --typescript-dest typescript \
+  --force
+```
+
+Use the same command with `--check` in CI or a Git hook to detect drift without
+writing to the worktree.
+
+The `check` command discovers every rule from the exact registry versions
+installed with this package: `sarj-python-lint==0.26.0`,
+`sarj-sql-lint==0.5.0`, and `sarj-iac-lint==0.3.0`. Files and recursively
+discovered directory contents are routed to the applicable registry by suffix.
+The command is deliberately zero-tolerance: it does not accept suppression
+baselines that a change could inflate to conceal new findings.
+
+For commit-time feedback, pin Lefthook and install the hook during setup:
+
+```bash
+uv add --dev lefthook==2.1.10 sarj-lint-configs==0.9.0
+uv run lefthook install
+```
+
+```yaml
+# lefthook.yml
+min_version: 2.1.10
+assert_lefthook_installed: true
+pre-commit:
+  jobs:
+    - name: strict config drift
+      run: uv run --frozen sarj-lint-configs sync --check
+      fail_text: "Strict configs drifted. Re-run sync --force, stage the result, and retry."
+    - name: sarj standards
+      run: uv run --frozen sarj-lint-configs check -- {staged_files}
+      fail_text: "Standards checks failed. Fix the issue, stage the result, and retry."
+```
+
+Do not copy the runner into consumer repositories. Keeping it inside the wheel
+ensures the CLI implementation and its exact registry dependencies upgrade as
+one tested unit.
+
+The bundled ESLint config requires `@sarj/eslint-plugin@2.16.0`, which contains
+every custom TypeScript rule referenced by the config.
 
 Then reference the synced file:
 

@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING
 from sarj_python_lint.rules.conditional_assertion_in_test import ConditionalAssertionInTest
 from sarj_python_lint.rules.duplicate_test_body import DuplicateTestBody
 from sarj_python_lint.rules.fixture_returns_bare_tuple import FixtureReturnsBareTuple
-from sarj_python_lint.rules.no_implicit_attribute_access import NoImplicitAttributeAccess
 from sarj_python_lint.rules.inefficient_string_concat_in_loop import (
     InefficientStringConcatInLoop,
 )
@@ -28,6 +27,7 @@ from sarj_python_lint.rules.no_first_party_private_import import (
 )
 from sarj_python_lint.rules.no_fstring_in_log import NoFstringInLog
 from sarj_python_lint.rules.no_gen_random_uuid_in_sql import NoGenRandomUuidInSql
+from sarj_python_lint.rules.no_implicit_attribute_access import NoImplicitAttributeAccess
 from sarj_python_lint.rules.no_isinstance_union_chain import NoIsinstanceUnionChain
 from sarj_python_lint.rules.no_offset_pagination import NoOffsetPagination
 from sarj_python_lint.rules.no_optional_tenant_predicate import (

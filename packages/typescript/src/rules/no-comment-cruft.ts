@@ -524,7 +524,8 @@ export default ESLintUtils.RuleCreator(
             .map(stripCommentMarker)
             .filter((l) => l.length > 0 && !isDirective(l));
 
-          if (texts.length > 0 && /^(?:todo|fixme)\b/i.test(texts[0])) {
+          const firstText = texts[0];
+          if (firstText !== undefined && /^(?:todo|fixme)\b/i.test(firstText)) {
             if (!runCitesAReference(comments, i)) {
               context.report({
                 node: comment,

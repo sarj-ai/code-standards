@@ -35,11 +35,13 @@ Then run any audit, e.g. `/sarj-audit:data-contracts` or `/sarj-audit:concurrenc
 
 | Tool | Add this |
 |---|---|
-| **ESLint** | `pnpm add -D @sarj/eslint-plugin` → use `packages/lint-configs/src/sarj_lint_configs/configs/eslint.strict.mjs` directly |
-| **ruff** | `uv add --dev sarj-lint-configs` → `uv run sarj-lint-configs sync --only ruff` → `[tool.ruff] extend = ".ruff-strict.toml"` |
-| **pyright** | `uv run sarj-lint-configs sync --only pyright` → in `pyrightconfig.json`: `{"extends": ".pyright-strict.json"}` |
-| **pre-commit (Python)** | `repo: https://github.com/sarj-ai/standards, rev: python-v0.2.0` |
-| **pre-commit (SQL)** | `repo: https://github.com/sarj-ai/standards, rev: sql-v0.1.0` |
+| **All strict configs** | `uv add --dev sarj-lint-configs==0.9.0` → `uv run --frozen sarj-lint-configs sync --force` |
+| **Python / SQL / IaC rules** | `uv run --frozen sarj-lint-configs check .` |
+| **ESLint rules** | `pnpm add -D --save-exact @sarj/eslint-plugin@2.16.0` → import the synced `eslint.strict.mjs` |
+| **Config drift in CI** | `uv run --frozen sarj-lint-configs sync --check` |
+
+See [`packages/lint-configs/README.md`](packages/lint-configs/README.md) for
+polyglot destination routing and the recommended Lefthook jobs.
 
 ## Where things live
 
@@ -64,9 +66,8 @@ Tag and push — the `release.yml` workflow handles publish via OIDC (PyPI) and 
 | `iac-vX.Y.Z` | `sarj-iac-lint` to PyPI |
 | `lint-configs-vX.Y.Z` | `sarj-lint-configs` to PyPI |
 
-```bash
-git tag python-v0.2.0 && git push --tags
-```
+Normal releases are triggered by merging a manifest version bump to `main`;
+the workflow publishes the changed package and creates its matching version tag.
 
 Local fallback: `NPM_TOKEN=... make publish`.
 
