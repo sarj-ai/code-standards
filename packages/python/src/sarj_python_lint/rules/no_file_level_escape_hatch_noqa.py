@@ -63,12 +63,12 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# The codes whose remediation `ruff.strict.toml` spells as an inline reasoned
-# `# noqa: CODE — <reason>`. TID251 (flake8-tidy-imports banned-api) is ruff's
+# The codes whose remediation `ruff.strict.toml` spells as an inline, reasoned
+# suppression. TID251 (flake8-tidy-imports banned-api) is ruff's
 # only such code; the frozenset is the extension point if that changes.
 ESCAPE_HATCH_CODES = frozenset({"TID251"})
 
-# Matched as ruff itself accepts it: `# ruff: noqa: A, B`, case-insensitive on
+# Matched as ruff accepts a file-level scoped suppression: case-insensitive on
 # the directive head, requiring a colon and at least one code (the code-less
 # form is SARJ038's).
 _RUFF_SCOPED_NOQA_RE = re.compile(

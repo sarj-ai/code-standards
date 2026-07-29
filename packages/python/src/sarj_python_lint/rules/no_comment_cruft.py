@@ -163,6 +163,7 @@ if TYPE_CHECKING:
 
 _LEADING_PREAMBLE_MIN = 4
 _PROSE_MIN_WORDS = 3
+_DUMMY_TRANSLATION_MAX_WORDS = 4
 
 _DIRECTIVE_PREFIXES = (
     "type:",
@@ -533,13 +534,28 @@ def _is_redundant_narration(
     if _HELPER_OPENER_RE.match(c) or _LETS_RE.match(c):
         return True
     words = c.split()
-    if len(words) <= 4 and _DUMMY_TRANSLATION_RE.match(c) and not any(ch in c for ch in "():="):
+    if (
+        len(words) <= _DUMMY_TRANSLATION_MAX_WORDS
+        and _DUMMY_TRANSLATION_RE.match(c)
+        and not any(ch in c for ch in "():=")
+    ):
         # Exclude common rationale words or test markers
         lower_c = c.lower()
-        if not any(w in lower_c for w in ("when", "because", "if", "so that", "due to", "for", "instead of", "to prevent", "to avoid", "only")):
-            # Also exclude single-word labels like `# get` which are often group labels in tests
-            if len(words) > 1:
-                return True
+        rationale_words = (
+            "when",
+            "because",
+            "if",
+            "so that",
+            "due to",
+            "for",
+            "instead of",
+            "to prevent",
+            "to avoid",
+            "only",
+        )
+        # Also exclude single-word labels like `# get` which are often group labels in tests
+        if len(words) > 1 and not any(word in lower_c for word in rationale_words):
+            return True
     if not nested and _is_section_label(c):
         return True
     return isolated_enumeration and bool(_ENUMERATION_RE.match(c))
@@ -607,7 +623,7 @@ def _looks_like_code(body: str) -> bool:
         return _compiles(c + "\ndef _f():\n    pass")
     if _ASSIGN_OR_CALL_RE.match(c):
         # Implicit type condition documentation (e.g. under `else:`)
-        if c.startswith("isinstance(") or c.startswith("issubclass("):
+        if c.startswith(("isinstance(", "issubclass(")):
             return False
         return _is_assign_or_call(c)
     return False

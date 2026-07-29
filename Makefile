@@ -30,7 +30,7 @@ test: check-configs-synced
 	cd packages/python         && uv run pytest -q
 	cd packages/sql            && uv run pytest -q
 	cd packages/iac            && uv run pytest -q
-	cd packages/lint-configs   && uv build --wheel >/dev/null && uv pip install --quiet --reinstall ./dist/*.whl && uv run --no-project pytest -q tests/
+	cd packages/lint-configs   && uv sync --dev && uv build --wheel >/dev/null && uv pip install --quiet --reinstall ./dist/*.whl && uv run --no-project pytest -q tests/
 	cd packages/tsconfig       && node -e "JSON.parse(require('fs').readFileSync('base.json','utf8'))" && node -e "JSON.parse(require('fs').readFileSync('strict.json','utf8'))"
 
 # Dogfooding: every package is linted/formatted by this repo's own strict config.
