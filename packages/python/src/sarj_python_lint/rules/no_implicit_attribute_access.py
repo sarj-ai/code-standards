@@ -83,7 +83,9 @@ class NoImplicitAttributeAccess(Rule):
                 ):
                     value = subscript_value
                     base = subscript_base
-            if value is not None and base is not None and _get_base_name(base) not in _EXCLUDED_BASES:
+                case _:
+                    continue
+            if _get_base_name(base) not in _EXCLUDED_BASES:
                 diags.append(
                     Diagnostic(
                         path=path,
