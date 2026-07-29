@@ -242,7 +242,6 @@ const config = [
         { cases: { kebabCase: true }, ignore: [String.raw`\.d\.ts$`] },
       ],
       "unicorn/prefer-switch": "warn",
-      "unicorn/no-for-each": "warn",
       "unicorn/no-useless-undefined": "error",
       "unicorn/prefer-node-protocol": "error",
       "unicorn/prefer-string-replace-all": "error",
@@ -294,6 +293,10 @@ const config = [
       // so each concern fires exactly one diagnostic.
       "no-restricted-syntax": [
         "error",
+        {
+          selector: "CallExpression[callee.property.name='forEach']",
+          message: "Prefer a for-of loop over forEach.",
+        },
         {
           selector: "TSModuleDeclaration[kind='namespace']",
           message: "Use ES modules instead of namespaces.",

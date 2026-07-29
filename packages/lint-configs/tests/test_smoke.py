@@ -87,11 +87,12 @@ def test_consistent_type_assertions_options_are_schema_compatible() -> None:
         assert "objectLiteralTypeAssertions" not in options
 
 
-def test_eslint_config_uses_current_react_and_unicorn_schemas() -> None:
+def test_eslint_config_avoids_eslint_10_only_unicorn_rules() -> None:
     text = ESLINT_STRICT.read_text()
     assert "prohibitLocalVariables" not in text
     assert '"unicorn/no-array-for-each"' not in text
-    assert '"unicorn/no-for-each"' in text
+    assert '"unicorn/no-for-each"' not in text
+    assert "CallExpression[callee.property.name='forEach']" in text
 
 
 def test_promise_function_async_skips_method_declarations() -> None:
