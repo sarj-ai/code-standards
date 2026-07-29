@@ -1,3 +1,4 @@
+import banLooseTypeGuardsInTests from "./rules/ban-loose-type-guards-in-tests.js";
 import enforceFileStructure from "./rules/enforce-file-structure.js";
 import noClientSideDataFetching from "./rules/no-client-side-data-fetching.js";
 import noCommentCruft from "./rules/no-comment-cruft.js";
@@ -25,6 +26,7 @@ import requireSchemaValidateSearch from "./rules/require-schema-validate-search.
 import noFatTryBlocks from "./rules/no-fat-try-blocks.js";
 import noSecretInLog from "./rules/no-secret-in-log.js";
 import noUnsafeCast from "./rules/no-unsafe-cast.js";
+import noUnsafeMockCasting from "./rules/no-unsafe-mock-casting.js";
 import preferStringLiteralUnion from "./rules/prefer-string-literal-union.js";
 import singlePublicExport from "./rules/single-public-export.js";
 import noOffsetPagination from "./rules/no-offset-pagination.js";
@@ -32,6 +34,7 @@ import noPositionalTupleReturn from "./rules/no-positional-tuple-return.js";
 import noRepeatedStringLiteral from "./rules/no-repeated-string-literal.js";
 import noSelectStar from "./rules/no-select-star.js";
 import noSleepInTestBody from "./rules/no-sleep-in-test-body.js";
+import noConditionalInTest from "./rules/no-conditional-in-test.js";
 import preferConstantTimeSecretCompare from "./rules/prefer-constant-time-secret-compare.js";
 import storeInsertRequiresOnConflict from "./rules/store-insert-requires-on-conflict.js";
 import noDynamicSql from "./rules/no-dynamic-sql.js";
@@ -47,8 +50,13 @@ import requireInterfaceForInjectedService from "./rules/require-interface-for-in
 import preferNonNullableCollection from "./rules/prefer-non-nullable-collection.js";
 import primaryExportFileName from "./rules/primary-export-file-name.js";
 import noImplicitAttributeAccess from "./rules/no-implicit-attribute-access.js";
+import strictTestAssertions from "./rules/strict-test-assertions.js";
+import noAsyncCallbackInWaitFor from "./rules/no-async-callback-in-waitfor.js";
+
+import preferSetupFileMocks from "./rules/prefer-setup-file-mocks.js";
 
 const rules = {
+  "ban-loose-type-guards-in-tests": banLooseTypeGuardsInTests,
   "enforce-file-structure": enforceFileStructure,
   "no-client-side-data-fetching": noClientSideDataFetching,
   "no-comment-cruft": noCommentCruft,
@@ -73,6 +81,7 @@ const rules = {
   "no-fat-try-blocks": noFatTryBlocks,
   "no-secret-in-log": noSecretInLog,
   "no-unsafe-cast": noUnsafeCast,
+  "no-unsafe-mock-casting": noUnsafeMockCasting,
   "prefer-string-literal-union": preferStringLiteralUnion,
   "single-public-export": singlePublicExport,
   "primary-export-file-name": primaryExportFileName,
@@ -84,6 +93,7 @@ const rules = {
   "no-repeated-string-literal": noRepeatedStringLiteral,
   "no-select-star": noSelectStar,
   "no-sleep-in-test-body": noSleepInTestBody,
+  "no-conditional-in-test": noConditionalInTest,
   "prefer-constant-time-secret-compare": preferConstantTimeSecretCompare,
   "store-insert-requires-on-conflict": storeInsertRequiresOnConflict,
   "no-dynamic-sql": noDynamicSql,
@@ -96,8 +106,11 @@ const rules = {
   "trailing-value-narration": trailingValueNarration,
   "no-tautological-expect": noTautologicalExpect,
   "require-interface-for-injected-service": requireInterfaceForInjectedService,
+  "strict-test-assertions": strictTestAssertions,
   "prefer-non-nullable-collection": preferNonNullableCollection,
   "no-implicit-attribute-access": noImplicitAttributeAccess,
+  "no-async-callback-in-waitfor": noAsyncCallbackInWaitFor,
+  "prefer-setup-file-mocks": preferSetupFileMocks,
 };
 
 const plugin = {
@@ -113,6 +126,7 @@ const plugin = {
         "@sarj/zod-naming-convention": "warn",
         "@sarj/require-assert-never": "error",
         "@sarj/require-zod-form-validation": "error",
+        "@sarj/ban-loose-type-guards-in-tests": "error",
         "@sarj/enforce-file-structure": "warn",
         "@sarj/no-client-side-data-fetching": "warn",
         "@sarj/prefer-server-actions": "warn",
@@ -137,6 +151,7 @@ const plugin = {
         "@sarj/no-cors-wildcard-with-credentials": "warn",
         "@sarj/no-secret-in-log": "warn",
         "@sarj/no-unsafe-cast": "warn",
+        "@sarj/no-unsafe-mock-casting": "warn",
         "@sarj/single-public-export": "warn",
         "@sarj/primary-export-file-name": "warn",
         "@sarj/prefer-string-literal-union": "warn",
@@ -153,6 +168,7 @@ const plugin = {
         "@sarj/no-offset-pagination": "warn",
         "@sarj/no-select-star": "warn",
         "@sarj/no-sleep-in-test-body": "warn",
+        "@sarj/no-conditional-in-test": "warn",
         "@sarj/no-repeated-string-literal": "warn",
         "@sarj/no-positional-tuple-return": "warn",
         // Injection guard — low FP, applies to any repo touching SQL.
@@ -190,6 +206,8 @@ const plugin = {
         "@sarj/require-interface-for-injected-service": "warn",
         "@sarj/prefer-non-nullable-collection": "warn",
         "@sarj/no-implicit-attribute-access": "warn",
+        "@sarj/no-async-callback-in-waitfor": "warn",
+        "@sarj/prefer-setup-file-mocks": "warn",
       },
     },
     strict: {
@@ -198,6 +216,7 @@ const plugin = {
         "@sarj/zod-naming-convention": "error",
         "@sarj/require-assert-never": "error",
         "@sarj/require-zod-form-validation": "error",
+        "@sarj/ban-loose-type-guards-in-tests": "error",
         "@sarj/enforce-file-structure": "error",
         "@sarj/no-raw-env": "error",
         "@sarj/prefer-shadcn": "error",
@@ -226,6 +245,7 @@ const plugin = {
         "@sarj/no-cors-wildcard-with-credentials": "error",
         "@sarj/no-secret-in-log": "error",
         "@sarj/no-unsafe-cast": "error",
+        "@sarj/no-unsafe-mock-casting": "error",
         "@sarj/single-public-export": "error",
         "@sarj/primary-export-file-name": "error",
         // Promoted to error 2026-07-25 — strict means strict (user directive).
@@ -240,6 +260,7 @@ const plugin = {
         "@sarj/no-offset-pagination": "error",
         "@sarj/no-select-star": "error",
         "@sarj/no-sleep-in-test-body": "error",
+        "@sarj/no-conditional-in-test": "error",
         "@sarj/no-repeated-string-literal": "error",
         // API-shape advice rather than a runtime defect — a corpus sweep found its
         // only hits are parser `[value, cursor]` returns, which are conventional.
@@ -270,6 +291,8 @@ const plugin = {
         "@sarj/require-interface-for-injected-service": "error",
         "@sarj/prefer-non-nullable-collection": "error",
         "@sarj/no-implicit-attribute-access": "error",
+        "@sarj/no-async-callback-in-waitfor": "error",
+        "@sarj/prefer-setup-file-mocks": "error",
       },
     },
   },

@@ -438,7 +438,7 @@ const config = [
       // because deleting a doc block in bulk is silent information loss if the
       // judgement is wrong even once.
       "@sarj/no-restated-comment": "error",
-      "@sarj/no-implicit-attribute-access": "warn",
+      "@sarj/no-implicit-attribute-access": "error",
       "@sarj/jsdoc-restates-signature": "error",
       "@sarj/trailing-value-narration": "error",
       "@sarj/no-repeated-string-literal": "error",
@@ -452,6 +452,12 @@ const config = [
       // across 11 first-party repos (7,912 files, 229 exported classes): 82%
       // already carry a port, 29 fire, 28 hand-reviewed as true positives.
       "@sarj/require-interface-for-injected-service": "error",
+      "@sarj/ban-loose-type-guards-in-tests": "error",
+      "@sarj/no-conditional-in-test": "error",
+      "@sarj/no-unsafe-mock-casting": "error",
+      "@sarj/prefer-setup-file-mocks": "error",
+      "@sarj/strict-test-assertions": "error",
+      "@sarj/no-async-callback-in-waitfor": "error",
 
       // Deliberately NOT enabled here — these two are architectural rules that
       // are meaningless without per-repo paths, so a shared config cannot set
