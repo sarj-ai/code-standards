@@ -7,6 +7,9 @@ quote-style              = "double"
 indent-style             = "space"
 skip-magic-trailing-comma = false
 line-ending              = "auto"
+# Markdown has its own canonical linter. Ruff 0.16+ otherwise reformats Python
+# fences in existing prose when a repository runs `ruff format .`.
+exclude                  = ["*.md"]
 
 [lint]
 select = ["ALL"]

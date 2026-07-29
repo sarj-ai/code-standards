@@ -51,6 +51,11 @@ def test_ruff_config_is_valid_toml() -> None:
     assert re.search(r'select\s*=\s*\[\s*"ALL"\s*\]', text)
 
 
+def test_ruff_formatter_does_not_rewrite_markdown() -> None:
+    data = tomllib.loads(RUFF_STRICT.read_text())
+    assert data["format"]["exclude"] == ["*.md"]
+
+
 def test_pyright_config_is_valid_jsonc() -> None:
     # pyright loads its config as JSONC; a bare-key .toml is silently ignored by
     # `extends`, so the strict pyright config must ship as JSON(C), not TOML.
@@ -63,6 +68,36 @@ def test_pyright_config_is_valid_jsonc() -> None:
 def test_eslint_config_is_esm() -> None:
     text = ESLINT_STRICT.read_text()
     assert "export default" in text
+
+
+def test_yamllint_accepts_github_actions_on_key() -> None:
+    text = YAMLLINT_STRICT.read_text()
+    assert "check-keys: false" in text
+
+
+def test_taplo_excludes_generated_strict_configs() -> None:
+    data = tomllib.loads(TAPLO_STRICT.read_text())
+    assert data["exclude"] == ["**/.ruff-strict.toml", "**/.taplo.toml"]
+
+
+def test_consistent_type_assertions_options_are_schema_compatible() -> None:
+    text = ESLINT_STRICT.read_text()
+    match = re.search(
+        r'"@typescript-eslint/consistent-type-assertions"\s*:\s*\[\s*"error"\s*,\s*\{(?P<options>[^}]*)\}',
+        text,
+    )
+    assert match is not None
+    options = match.group("options")
+    if 'assertionStyle: "never"' in options:
+        assert "objectLiteralTypeAssertions" not in options
+
+
+def test_eslint_config_avoids_eslint_10_only_unicorn_rules() -> None:
+    text = ESLINT_STRICT.read_text()
+    assert "prohibitLocalVariables" not in text
+    assert '"unicorn/no-array-for-each"' not in text
+    assert '"unicorn/no-for-each"' not in text
+    assert "CallExpression[callee.property.name='forEach']" in text
 
 
 def test_promise_function_async_skips_method_declarations() -> None:

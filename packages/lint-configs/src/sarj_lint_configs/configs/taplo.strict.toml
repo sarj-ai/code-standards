@@ -1,5 +1,6 @@
 # Sarj strict TOML lint & formatting configuration for Taplo
 include = ["**/*.toml"]
+exclude = ["**/.ruff-strict.toml", "**/.taplo.toml"]
 
 [formatting]
 align_entries = false

@@ -1,0 +1,45 @@
+---
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /packages/typescript
+    schedule:
+      interval: weekly
+    groups:
+      typescript-tooling:
+        patterns: ["*"]
+  - package-ecosystem: npm
+    directory: /packages/tsconfig
+    schedule:
+      interval: weekly
+    groups:
+      tsconfig-tooling:
+        patterns: ["*"]
+  - package-ecosystem: pip
+    directory: /packages/python
+    schedule:
+      interval: weekly
+    groups:
+      python-tooling:
+        patterns: ["*"]
+  - package-ecosystem: pip
+    directory: /packages/sql
+    schedule:
+      interval: weekly
+    groups:
+      sql-tooling:
+        patterns: ["*"]
+  - package-ecosystem: pip
+    directory: /packages/iac
+    schedule:
+      interval: weekly
+    groups:
+      iac-tooling:
+        patterns: ["*"]
+  - package-ecosystem: pip
+    directory: /packages/lint-configs
+    schedule:
+      interval: weekly
+    groups:
+      lint-config-tooling:
+        patterns: ["*"]

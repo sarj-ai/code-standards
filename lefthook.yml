@@ -1,0 +1,26 @@
+---
+min_version: 2.1.10
+assert_lefthook_installed: true
+
+pre-commit:
+  parallel: true
+  commands:
+    config-drift:
+      run: make check-configs-synced
+      fail_text: >-
+        Strict configs drifted. Run 'make sync-configs', stage the result,
+        and retry.
+    lint:
+      run: make lint
+      fail_text: >-
+        Standards lint failed. Fix the reported rule implementation and retry.
+    typecheck:
+      run: make typecheck
+      fail_text: "Standards typecheck failed. Fix the reported error and retry."
+
+pre-push:
+  commands:
+    verify:
+      run: make verify
+      fail_text: >-
+        Standards verification failed. Fix the reported failures before pushing.

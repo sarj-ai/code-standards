@@ -4,14 +4,28 @@ MAKEFLAGS += --warn-undefined-variables --no-builtin-rules
 
 CONFIG_SRC := packages/lint-configs/src/sarj_lint_configs/configs
 
-.PHONY: help build test lint typecheck sync-configs check-configs-synced \
+.PHONY: help setup setup-hooks verify build test lint typecheck sync-configs check-configs-synced \
         publish publish-typescript publish-python publish-sql publish-iac \
         publish-lint-configs publish-tsconfig
 
 help:
-	@echo "Targets: build | test | lint | typecheck | sync-configs | check-configs-synced | promote-strict"
+	@echo "Targets: setup | setup-hooks | verify | build | test | lint | typecheck | sync-configs | check-configs-synced | promote-strict"
 	@echo "         publish-{typescript,python,sql,iac,lint-configs,tsconfig} | publish (all)"
 	@echo "Releases trigger via tag push: typescript-v* python-v* sql-v* iac-v* lint-configs-v* tsconfig-v*"
+
+# The first documented contributor command installs hooks before dependency work,
+# so a later package-manager failure cannot leave the checkout unprotected.
+setup: setup-hooks
+	cd packages/typescript && npm ci
+	cd packages/python && uv sync --dev
+	cd packages/sql && uv sync --dev
+	cd packages/iac && uv sync --dev
+	cd packages/lint-configs && uv sync --dev
+
+setup-hooks:
+	./scripts/install-lefthook.sh
+
+verify: lint typecheck test build
 
 promote-strict:
 	@echo "Promoting all warning-level standards to errors globally..."
@@ -30,7 +44,7 @@ test: check-configs-synced
 	cd packages/python         && uv run pytest -q
 	cd packages/sql            && uv run pytest -q
 	cd packages/iac            && uv run pytest -q
-	cd packages/lint-configs   && uv sync --dev && uv build --wheel >/dev/null && uv pip install --quiet --reinstall ./dist/*.whl && uv run --no-project pytest -q tests/
+	cd packages/lint-configs   && uv sync --dev && uv build --wheel >/dev/null && uv pip install --python .venv/bin/python --quiet --reinstall "$$(ls -t dist/*.whl | head -1)" && .venv/bin/pytest -q tests/
 	cd packages/tsconfig       && node -e "JSON.parse(require('fs').readFileSync('base.json','utf8'))" && node -e "JSON.parse(require('fs').readFileSync('strict.json','utf8'))"
 
 # Dogfooding: every package is linted/formatted by this repo's own strict config.
