@@ -23,7 +23,7 @@ setup: setup-hooks
 	cd packages/lint-configs && uv sync --dev
 
 setup-hooks:
-	uvx --from 'lefthook==2.1.10' lefthook install
+	./scripts/install-lefthook.sh
 
 verify: lint typecheck test build
 

@@ -270,12 +270,16 @@ jobs:
       - publish-iac
       - publish-lint-configs
       - publish-tsconfig
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+    if: >-
+      always() && !cancelled() && !failure() &&
+      github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - name: Create version tags for newly published packages
         env:
           PY_OK: ${{ needs.publish-python.result }}
@@ -300,17 +304,17 @@ jobs:
             local prefix="$1" version="$2"
             local tag="${prefix}-v${version}"
             if [ -z "$version" ]; then echo "no version for $prefix, skipping"; return; fi
-            if git rev-parse --verify --quiet "refs/tags/$tag" >/dev/null; then
+            if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
               echo "$tag already exists, skipping"; return
             fi
             git tag -a "$tag" -m "$prefix $version"
             git push origin "$tag"
             echo "created $tag"
           }
-          [ "$PY_CHG" = "true" ]  && [ "$PY_OK" = "success" ]  && maybe_tag python       "$(toml_version packages/python/pyproject.toml)" || true
-          [ "$SQL_CHG" = "true" ] && [ "$SQL_OK" = "success" ] && maybe_tag sql          "$(toml_version packages/sql/pyproject.toml)" || true
-          [ "$IAC_CHG" = "true" ] && [ "$IAC_OK" = "success" ] && maybe_tag iac          "$(toml_version packages/iac/pyproject.toml)" || true
-          [ "$LC_CHG" = "true" ]  && [ "$LC_OK" = "success" ]  && maybe_tag lint-configs "$(toml_version packages/lint-configs/pyproject.toml)" || true
-          [ "$TS_CHG" = "true" ]  && [ "$TS_OK" = "success" ]  && maybe_tag typescript   "$(json_version packages/typescript/package.json)" || true
-          [ "$TSC_CHG" = "true" ] && [ "$TSC_OK" = "success" ] && maybe_tag tsconfig     "$(json_version packages/tsconfig/package.json)" || true
+          if [ "$PY_CHG" = "true" ]; then [ "$PY_OK" = "success" ]; maybe_tag python "$(toml_version packages/python/pyproject.toml)"; fi
+          if [ "$SQL_CHG" = "true" ]; then [ "$SQL_OK" = "success" ]; maybe_tag sql "$(toml_version packages/sql/pyproject.toml)"; fi
+          if [ "$IAC_CHG" = "true" ]; then [ "$IAC_OK" = "success" ]; maybe_tag iac "$(toml_version packages/iac/pyproject.toml)"; fi
+          if [ "$LC_CHG" = "true" ]; then [ "$LC_OK" = "success" ]; maybe_tag lint-configs "$(toml_version packages/lint-configs/pyproject.toml)"; fi
+          if [ "$TS_CHG" = "true" ]; then [ "$TS_OK" = "success" ]; maybe_tag typescript "$(json_version packages/typescript/package.json)"; fi
+          if [ "$TSC_CHG" = "true" ]; then [ "$TSC_OK" = "success" ]; maybe_tag tsconfig "$(json_version packages/tsconfig/package.json)"; fi
           echo "done"

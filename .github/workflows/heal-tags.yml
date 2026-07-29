@@ -1,63 +1,51 @@
-name: heal-tags
+name: verify-tags
 
-# Self-healing git tags. Pre-commit consumers pin Python/SQL/IaC rules by
+# Release-tag integrity check. Pre-commit consumers pin Python/SQL/IaC rules by
 # `<pkg>-v<version>` git tag (installed from source), so if a tag disappears —
 # e.g. history is squashed/rewritten and tags are dropped — every consumer's
 # `rev:` stops resolving and their pre-commit runs fail hard.
 #
-# This job ensures a tag exists for each package's CURRENT manifest version,
-# recreating any that are missing (pointing at the current main HEAD). It is
-# idempotent: a tag that already exists is left untouched.
-#
-# It pushes tags with the default GITHUB_TOKEN, and GitHub does NOT trigger
-# further workflow runs from GITHUB_TOKEN pushes — so re-creating a tag here
-# will NOT fire release.yml's publish jobs (no duplicate-publish noise).
+# release.yml is deliberately the only automation allowed to create tags, and
+# does so only after publication succeeds. This scheduled check reports missing
+# tags without guessing that the current main commit was actually published.
 
 on:
-  push:
-    branches: [main]
   schedule:
-    # Daily safety net so tags self-heal even with no pushes.
+    # Daily integrity check even when there are no pushes.
     - cron: '17 8 * * *'
   workflow_dispatch:
 
 permissions:
-  contents: write
-
-concurrency:
-  group: heal-tags
-  cancel-in-progress: false
+  contents: read
 
 jobs:
-  heal:
+  verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Ensure a version tag exists for every package
+      - name: Verify every current package version has a release tag
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
           toml_version () { sed -n 's/^version = "\(.*\)"/\1/p' "$1" | head -1; }
           json_version () { node -e "process.stdout.write(require('./$1').version)"; }
-          # Create <prefix>-v<version> at HEAD if it does not already exist on
-          # the remote. Checks the remote directly so a shallow checkout without
-          # tags can't fool the existence test.
-          ensure_tag () {
+          missing=0
+          verify_tag () {
             local prefix="$1" version="$2"
             local tag="${prefix}-v${version}"
-            if [ -z "$version" ]; then echo "::warning::no version found for $prefix, skipping"; return; fi
-            if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
-              echo "$tag already exists, ok"; return
+            if [ -z "$version" ]; then
+              echo "::error::no version found for $prefix"
+              missing=1
+            elif git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+              echo "$tag exists"
+            else
+              echo "::error::missing release tag $tag"
+              missing=1
             fi
-            git tag -a "$tag" -m "$prefix $version"
-            git push origin "$tag"
-            echo "healed missing tag $tag"
           }
-          ensure_tag python       "$(toml_version packages/python/pyproject.toml)"
-          ensure_tag sql          "$(toml_version packages/sql/pyproject.toml)"
-          ensure_tag iac          "$(toml_version packages/iac/pyproject.toml)"
-          ensure_tag lint-configs "$(toml_version packages/lint-configs/pyproject.toml)"
-          ensure_tag typescript   "$(json_version packages/typescript/package.json)"
-          ensure_tag tsconfig     "$(json_version packages/tsconfig/package.json)"
-          echo "heal-tags complete"
+          verify_tag python       "$(toml_version packages/python/pyproject.toml)"
+          verify_tag sql          "$(toml_version packages/sql/pyproject.toml)"
+          verify_tag iac          "$(toml_version packages/iac/pyproject.toml)"
+          verify_tag lint-configs "$(toml_version packages/lint-configs/pyproject.toml)"
+          verify_tag typescript   "$(json_version packages/typescript/package.json)"
+          verify_tag tsconfig     "$(json_version packages/tsconfig/package.json)"
+          exit "$missing"

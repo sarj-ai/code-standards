@@ -29,5 +29,8 @@ Issues = "https://github.com/sarj-ai/standards/issues"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[dependency-groups]
+hooks = ["lefthook==2.1.10"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["packages/python/src/sarj_python_lint"]
