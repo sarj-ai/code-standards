@@ -92,6 +92,7 @@ const config = [
         "error",
         {
           assertionStyle: "never",
+          objectLiteralTypeAssertions: "never",
         },
       ],
       "@typescript-eslint/naming-convention": [
@@ -163,7 +164,10 @@ const config = [
         "error",
         { validStrategies: ["ternary", "coerce"] },
       ],
-      "react/no-unstable-nested-components": "error",
+      "react/no-unstable-nested-components": [
+        "error",
+        { prohibitLocalVariables: true },
+      ],
       "react-hooks/exhaustive-deps": "error",
       "react-hooks/rules-of-hooks": "error",
       "react/forbid-elements": [
@@ -242,6 +246,7 @@ const config = [
         { cases: { kebabCase: true }, ignore: [String.raw`\.d\.ts$`] },
       ],
       "unicorn/prefer-switch": "warn",
+      "unicorn/no-array-for-each": "warn",
       "unicorn/no-useless-undefined": "error",
       "unicorn/prefer-node-protocol": "error",
       "unicorn/prefer-string-replace-all": "error",
@@ -293,10 +298,6 @@ const config = [
       // so each concern fires exactly one diagnostic.
       "no-restricted-syntax": [
         "error",
-        {
-          selector: "CallExpression[callee.property.name='forEach']",
-          message: "Prefer a for-of loop over forEach.",
-        },
         {
           selector: "TSModuleDeclaration[kind='namespace']",
           message: "Use ES modules instead of namespaces.",
@@ -451,6 +452,12 @@ const config = [
       // across 11 first-party repos (7,912 files, 229 exported classes): 82%
       // already carry a port, 29 fire, 28 hand-reviewed as true positives.
       "@sarj/require-interface-for-injected-service": "error",
+      "@sarj/ban-loose-type-guards-in-tests": "error",
+      "@sarj/no-conditional-in-test": "error",
+      "@sarj/no-unsafe-mock-casting": "error",
+      "@sarj/prefer-setup-file-mocks": "error",
+      "@sarj/strict-test-assertions": "error",
+      "@sarj/no-async-callback-in-waitfor": "error",
 
       // Deliberately NOT enabled here — these two are architectural rules that
       // are meaningless without per-repo paths, so a shared config cannot set
