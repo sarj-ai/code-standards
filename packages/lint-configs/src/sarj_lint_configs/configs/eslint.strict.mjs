@@ -438,7 +438,7 @@ const config = [
       // because deleting a doc block in bulk is silent information loss if the
       // judgement is wrong even once.
       "@sarj/no-restated-comment": "error",
-      "@sarj/no-implicit-attribute-access": "warn",
+      "@sarj/no-implicit-attribute-access": "error",
       "@sarj/jsdoc-restates-signature": "error",
       "@sarj/trailing-value-narration": "error",
       "@sarj/no-repeated-string-literal": "error",

@@ -184,11 +184,21 @@ jobs:
           packages-dir: packages/iac/dist
 
   publish-lint-configs:
-    needs: detect
+    needs:
+      - detect
+      - publish-typescript
+      - publish-python
+      - publish-sql
+      - publish-iac
     if: >-
-      startsWith(github.ref, 'refs/tags/lint-configs-v') ||
-      github.event.inputs.target == 'lint-configs' || github.event.inputs.target == 'all' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.detect.outputs.lint-configs == 'true')
+      always() &&
+      (needs.publish-typescript.result == 'success' || needs.publish-typescript.result == 'skipped') &&
+      (needs.publish-python.result == 'success' || needs.publish-python.result == 'skipped') &&
+      (needs.publish-sql.result == 'success' || needs.publish-sql.result == 'skipped') &&
+      (needs.publish-iac.result == 'success' || needs.publish-iac.result == 'skipped') &&
+      (startsWith(github.ref, 'refs/tags/lint-configs-v') ||
+       github.event.inputs.target == 'lint-configs' || github.event.inputs.target == 'all' ||
+       (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.detect.outputs.lint-configs == 'true'))
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -202,11 +212,16 @@ jobs:
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
       - run: uv python install 3.14
-      - run: uv build --wheel
+      - name: Build package and exact local dependency wheels
+        run: |
+          uv build --wheel
+          uv build --wheel --project ../python --out-dir dist/deps
+          uv build --wheel --project ../sql --out-dir dist/deps
+          uv build --wheel --project ../iac --out-dir dist/deps
       - name: Test against the built wheel
         run: |
           uv venv --clear --python 3.14 --seed
-          uv pip install ./dist/*.whl pytest ruff
+          uv pip install ./dist/deps/*.whl ./dist/sarj_lint_configs-*.whl pytest ruff
           uv run --no-project pytest -q tests/
       - run: uv build --sdist
       - run: uv publish

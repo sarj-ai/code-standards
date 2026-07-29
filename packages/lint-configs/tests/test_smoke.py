@@ -34,10 +34,13 @@ def test_configs_dir_exists() -> None:
     assert CONFIGS_DIR.is_dir(), f"missing: {CONFIGS_DIR}"
 
 
-def test_all_six_configs_bundled() -> None:
-    for path in (RUFF_STRICT, PYRIGHT_STRICT, ESLINT_STRICT, MARKDOWNLINT_STRICT, TAPLO_STRICT, YAMLLINT_STRICT):
-        assert path.is_file(), f"missing bundled config: {path}"
-        assert path.stat().st_size > 0
+@pytest.mark.parametrize(
+    "path",
+    [RUFF_STRICT, PYRIGHT_STRICT, ESLINT_STRICT, MARKDOWNLINT_STRICT, TAPLO_STRICT, YAMLLINT_STRICT],
+)
+def test_all_six_configs_bundled(path: Path) -> None:
+    assert path.is_file(), f"missing bundled config: {path}"
+    assert path.stat().st_size > 0
 
 
 def test_ruff_config_is_valid_toml() -> None:
@@ -172,7 +175,8 @@ def test_synced_ruff_parses_as_toml(tmp_path: Path) -> None:
          "--only", "ruff", "--dest", str(tmp_path)],
         check=True,
     )
-    tomllib.loads((tmp_path / ".ruff-strict.toml").read_text())
+    parsed = tomllib.loads((tmp_path / ".ruff-strict.toml").read_text())
+    assert "lint" in parsed
 
 
 def test_sync_to_nonexistent_dest_errors(tmp_path: Path) -> None:
@@ -182,6 +186,160 @@ def test_sync_to_nonexistent_dest_errors(tmp_path: Path) -> None:
         capture_output=True, text=True, check=False,
     )
     assert proc.returncode != 0
+
+
+def test_sync_routes_python_and_typescript_configs(tmp_path: Path) -> None:
+    python_dest = tmp_path / "python"
+    typescript_dest = tmp_path / "typescript"
+    python_dest.mkdir()
+    typescript_dest.mkdir()
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "sarj_lint_configs",
+            "sync",
+            "--dest",
+            str(tmp_path),
+            "--python-dest",
+            str(python_dest),
+            "--typescript-dest",
+            str(typescript_dest),
+        ],
+        check=True,
+    )
+    assert (python_dest / ".ruff-strict.toml").is_file()
+    assert (python_dest / ".pyright-strict.json").is_file()
+    assert not (python_dest / "eslint.strict.mjs").exists()
+    assert (typescript_dest / "eslint.strict.mjs").is_file()
+    assert (tmp_path / ".markdownlint.yaml").is_file()
+    assert (tmp_path / ".taplo.toml").is_file()
+    assert (tmp_path / ".yamllint.yaml").is_file()
+
+
+def test_only_routed_destination_must_exist(tmp_path: Path) -> None:
+    python_dest = tmp_path / "python"
+    python_dest.mkdir()
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "sarj_lint_configs",
+            "sync",
+            "--only",
+            "ruff",
+            "--dest",
+            str(tmp_path / "unused-and-missing"),
+            "--python-dest",
+            str(python_dest),
+        ],
+        check=True,
+    )
+    assert (python_dest / ".ruff-strict.toml").is_file()
+
+
+def test_sync_rejects_symlink_destination_file(tmp_path: Path) -> None:
+    victim = tmp_path / "victim.toml"
+    victim.write_text("do not overwrite\n")
+    (tmp_path / ".ruff-strict.toml").symlink_to(victim)
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "sarj_lint_configs",
+            "sync",
+            "--only",
+            "ruff",
+            "--force",
+            "--dest",
+            str(tmp_path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 2
+    assert "invalid:" in proc.stdout
+    assert victim.read_text() == "do not overwrite\n"
+
+
+def test_sync_rejects_non_regular_destination_file(tmp_path: Path) -> None:
+    (tmp_path / ".ruff-strict.toml").mkdir()
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "sarj_lint_configs",
+            "sync",
+            "--only",
+            "ruff",
+            "--force",
+            "--dest",
+            str(tmp_path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 2
+
+
+def test_sync_rejects_symlink_destination_directory(tmp_path: Path) -> None:
+    real_dest = tmp_path / "real"
+    real_dest.mkdir()
+    linked_dest = tmp_path / "linked"
+    linked_dest.symlink_to(real_dest, target_is_directory=True)
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "sarj_lint_configs",
+            "sync",
+            "--only",
+            "ruff",
+            "--dest",
+            str(linked_dest),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode != 0
+
+
+def test_sync_rejects_symlink_in_destination_path(tmp_path: Path) -> None:
+    real_dest = tmp_path / "real"
+    nested_dest = real_dest / "nested"
+    nested_dest.mkdir(parents=True)
+    linked_dest = tmp_path / "linked"
+    linked_dest.symlink_to(real_dest, target_is_directory=True)
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "sarj_lint_configs",
+            "sync",
+            "--only",
+            "ruff",
+            "--force",
+            "--dest",
+            str(linked_dest / "nested"),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode != 0
+    assert not (nested_dest / ".ruff-strict.toml").exists()
+
+
+def test_sync_check_detects_drift(tmp_path: Path) -> None:
+    sync = [sys.executable, "-m", "sarj_lint_configs", "sync", "--dest", str(tmp_path)]
+    subprocess.run(sync, check=True)
+    assert subprocess.run([*sync, "--check"], check=False).returncode == 0
+
+    (tmp_path / ".ruff-strict.toml").write_text("drift\n")
+    assert subprocess.run([*sync, "--check"], check=False).returncode == 1
 
 
 def test_ruff_consumes_synced_extend_file(tmp_path: Path) -> None:
@@ -199,5 +357,6 @@ def test_ruff_consumes_synced_extend_file(tmp_path: Path) -> None:
         ["ruff", "check", "--no-cache", str(tmp_path / "ok.py")],
         capture_output=True, text=True, cwd=tmp_path, check=False,
     )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "error reading config" not in proc.stderr.lower()
     assert "could not resolve" not in proc.stderr.lower()

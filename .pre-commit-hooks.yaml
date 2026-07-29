@@ -377,6 +377,12 @@
   language: python
   types: [python]
 
+- id: sarj-no-implicit-attribute-access
+  name: 'sarj-lint: Known dictionary shapes must use declarative parsing'
+  entry: sarj-python-lint check --rule no-implicit-attribute-access
+  language: python
+  types: [python]
+
 - id: sarj-stepdown
   name: 'sarj-lint: Private helper defined above its only caller'
   entry: sarj-python-lint check --rule stepdown
@@ -544,14 +550,14 @@
   entry: sarj-sql-lint check --rule require-lock-timeout
   language: python
   types: [sql]
-  additional_dependencies: ['sarj-sql-lint==0.4.0']
+  additional_dependencies: ['sarj-sql-lint==0.5.0']
 
 - id: sarj-add-constraint-not-valid
   name: 'sarj-lint: ADD CONSTRAINT (CHECK/FK) without NOT VALID'
   entry: sarj-sql-lint check --rule add-constraint-not-valid
   language: python
   types: [sql]
-  additional_dependencies: ['sarj-sql-lint==0.4.0']
+  additional_dependencies: ['sarj-sql-lint==0.5.0']
 
 - id: sarj-require-fk-index
   name: 'sarj-lint: Foreign key column without index on child table'
@@ -559,5 +565,4 @@
   language: python
   types: [sql]
   additional_dependencies: ['sarj-sql-lint']
-
 
