@@ -51,6 +51,11 @@ def test_ruff_config_is_valid_toml() -> None:
     assert re.search(r'select\s*=\s*\[\s*"ALL"\s*\]', text)
 
 
+def test_ruff_formatter_does_not_rewrite_markdown() -> None:
+    data = tomllib.loads(RUFF_STRICT.read_text())
+    assert data["format"]["exclude"] == ["*.md"]
+
+
 def test_pyright_config_is_valid_jsonc() -> None:
     # pyright loads its config as JSONC; a bare-key .toml is silently ignored by
     # `extends`, so the strict pyright config must ship as JSON(C), not TOML.
