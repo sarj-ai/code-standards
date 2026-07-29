@@ -20,3 +20,6 @@ rules:
   line-length: disable
   truthy:
     allowed-values: ['true', 'false']
+    # GitHub Actions uses `on` as a mapping key; YAML 1.1 must not treat keys as
+    # booleans or reject otherwise-valid workflow files.
+    check-keys: false

@@ -65,6 +65,16 @@ def test_eslint_config_is_esm() -> None:
     assert "export default" in text
 
 
+def test_yamllint_accepts_github_actions_on_key() -> None:
+    text = YAMLLINT_STRICT.read_text()
+    assert "check-keys: false" in text
+
+
+def test_taplo_excludes_generated_strict_configs() -> None:
+    data = tomllib.loads(TAPLO_STRICT.read_text())
+    assert data["exclude"] == ["**/.ruff-strict.toml", "**/.taplo.toml"]
+
+
 def test_consistent_type_assertions_options_are_schema_compatible() -> None:
     text = ESLINT_STRICT.read_text()
     match = re.search(
