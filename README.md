@@ -5,6 +5,13 @@ The single home for Sarj code standards, in two layers:
 - **Machine-enforced floor** — lint rules + maximally-strict configs for TypeScript + Python + SQL (`@sarj/eslint-plugin`, `sarj-python-lint`, `sarj-sql-lint`, `sarj-lint-configs`). Run in CI.
 - **Judgment layer** — the `sarj-audit` Claude Code plugin: on-demand audit commands for the things that can't be reliably linted. Each audit cites the deterministic rule that backs it where one exists. (Merged here from the retired `sarj-ai/agentic` repo.)
 
+## Contributor setup
+
+Run `make setup` once after cloning. It installs Lefthook 2.1.10 before package
+dependencies, so commits receive the same lint, typecheck, config-drift, and test
+feedback as CI. Coding agents must repair reported failures rather than bypassing
+hooks. Run `make verify` before requesting review.
+
 ## Claude Code plugin (`sarj-audit`)
 
 This repo is a Claude Code plugin marketplace. To roll the audit commands out to a whole repo's team, commit this to the repo's `.claude/settings.json` — Claude Code then prompts each engineer once (on folder trust) to install the marketplace and enables the plugin:
@@ -35,7 +42,7 @@ Then run any audit, e.g. `/sarj-audit:data-contracts` or `/sarj-audit:concurrenc
 
 | Tool | Add this |
 |---|---|
-| **All strict configs** | `uv add --dev sarj-lint-configs==0.9.0` → `uv run --frozen sarj-lint-configs sync --force` |
+| **All strict configs** | `uv add --dev sarj-lint-configs==0.9.1` → `uv run --frozen sarj-lint-configs sync --force` |
 | **Python / SQL / IaC rules** | `uv run --frozen sarj-lint-configs check .` |
 | **ESLint rules** | `pnpm add -D --save-exact @sarj/eslint-plugin@2.16.0` → import the synced `eslint.strict.mjs` |
 | **Config drift in CI** | `uv run --frozen sarj-lint-configs sync --check` |
@@ -68,6 +75,14 @@ Tag and push — the `release.yml` workflow handles publish via OIDC (PyPI) and 
 
 Normal releases are triggered by merging a manifest version bump to `main`;
 the workflow publishes the changed package and creates its matching version tag.
+
+For a rule release, keep the change atomic: update the implementation, registry,
+strict config and tests; bump the owning package manifest; update its generated
+lockfile; and, for Python/SQL/IaC rules, bump the exact dependency and version of
+`sarj-lint-configs`. Run `make sync-configs && make verify`. The release workflow
+then publishes and tags every changed package. Consumer repositories use grouped
+dependency updates plus `sarj-lint-configs sync --force` and `sync --check`, so a
+new release cannot silently leave their checked-in configs stale.
 
 Local fallback: `NPM_TOKEN=... make publish`.
 

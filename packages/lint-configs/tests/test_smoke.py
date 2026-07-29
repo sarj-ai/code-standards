@@ -65,6 +65,25 @@ def test_eslint_config_is_esm() -> None:
     assert "export default" in text
 
 
+def test_consistent_type_assertions_options_are_schema_compatible() -> None:
+    text = ESLINT_STRICT.read_text()
+    match = re.search(
+        r'"@typescript-eslint/consistent-type-assertions"\s*:\s*\[\s*"error"\s*,\s*\{(?P<options>[^}]*)\}',
+        text,
+    )
+    assert match is not None
+    options = match.group("options")
+    if 'assertionStyle: "never"' in options:
+        assert "objectLiteralTypeAssertions" not in options
+
+
+def test_eslint_config_uses_current_react_and_unicorn_schemas() -> None:
+    text = ESLINT_STRICT.read_text()
+    assert "prohibitLocalVariables" not in text
+    assert '"unicorn/no-array-for-each"' not in text
+    assert '"unicorn/no-for-each"' in text
+
+
 def test_promise_function_async_skips_method_declarations() -> None:
     # The autofix is destructive on framework-defined methods: React's ReactNode
     # includes Promise<AwaitedReactNode>, so a class component's render() infers
