@@ -13,7 +13,6 @@ This audit flags several categories of hardcoded values and configuration anti-p
 
 ## Phase 0: Discover project structure
 
-Run the shared **[stack-detection](./stack-detection.md)** pass first. **For this rule, detect the config mechanism per runtime:** Cloudflare Workers (`automations`) have **no `process.env`** — config arrives as bindings via `c.env`, so a `process.env` grep finds nothing real; Python services use Pydantic Settings (and `os.environ` is banned via `TID251` in `bulbul`). Do **not** flag the deliberate `.optional().default('')` fail-safe env defaults / `BooleanFlagSchema` transforms as missing-config. Only cite lint rules the package actually runs. Then, add the following skill-specific discovery steps:
 
 1.  **Identify configuration files:** Scan for common config files like `settings.py`, `env.ts`, `config.ts`, `wrangler.toml`, `*.tfvars`, `*.yaml`, and any `.env` files. This helps understand the existing configuration strategy (or lack thereof).
 

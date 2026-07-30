@@ -13,7 +13,6 @@ This audit focuses on common concurrency and data integrity issues in code that 
 
 ## Phase 0: Discover project structure
 
-Run the shared **[stack-detection](./stack-detection.md)** pass first. **For this rule, detect the DB/runtime atomicity primitives:** Postgres + psycopg (`bulbul`, `ai/python`) ⇒ interactive transactions (`async with conn.transaction()`), `INSERT ... ON CONFLICT`, and `jsonb_set` apply. Cloudflare D1 (`automations`) ⇒ there are **no interactive transactions** (use `env.DB.batch()` or a Durable Object for cross-statement atomicity), use `INSERT ... ON CONFLICT` / `INSERT OR IGNORE` and `json_set()` (not `jsonb_set`), and queue-consumer idempotency comes from a message-derived key + read-before-write. Do not assume an ORM (`db.query.findFirst`) — both Python and TS use raw SQL. Then add the skill-specific items:
 
 1.  **Identify Database Clients & ORMs:** Scan `package.json`, `pyproject.toml`, and `requirements.txt` for libraries like `psycopg`, `asyncpg`, `sqlalchemy`, `drizzle-orm`, and `prisma`.
 2.  **Locate Migration Directories:** Find directories named `migrations`, `drizzle`, or containing `.sql` files.

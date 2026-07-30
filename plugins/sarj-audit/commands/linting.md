@@ -33,7 +33,7 @@ Spawn agents for each detected linter. Each agent must:
 
 1. **Read the current config in full** — Parse every rule, extension, override, and plugin
 2. **Research the latest available rules** — For each installed plugin, check what rules exist that are NOT currently enabled. Use web search to find the latest documentation for each plugin.
-3. **Research missing plugins** — Search for well-maintained plugins commonly used with the detected stack that are not installed
+3. **Research missing plugins** — Search for well-maintained plugins relevant to the repository that are not installed
 4. **Check for config presets** — Look for stricter preset configs (e.g., `plugin:@typescript-eslint/strict-type-checked`, `ruff --select ALL`, `golangci-lint` with all linters enabled)
 
 ### Agent assignments by language

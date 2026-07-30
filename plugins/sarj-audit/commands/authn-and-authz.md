@@ -14,7 +14,6 @@ This audit focuses on concrete, high-severity vulnerabilities derived from the r
 
 ## Phase 0: Discover project structure
 
-Run the shared **[stack-detection](./stack-detection.md)** pass first. **Critically for this rule: detect tenancy** — grep the schema/migrations for `organization_id`/`tenant_id`/`workspace_id`. If present (e.g. `bulbul`), the IDOR/ownership-scoping checks below apply in full. If absent (e.g. single-tenant `automations`), **skip the multi-tenant IDOR concern** and instead scope on whatever ownership column exists (token, `user_id`). Also detect the SQL placeholder style (`?` for D1/SQLite vs `%s` for psycopg). Then add the skill-specific items:
 
 1.  **Find route/handler entry points:** Catalog every place that defines an HTTP endpoint (e.g., Python/FastAPI files with `@router.get`, TypeScript/Next.js files in `app/**/route.ts`).
 2.  **Find the auth dependency:** Identify how the codebase declares "this route needs auth" (e.g., FastAPI's `Depends(require_authentication)`, Next.js's `await currentUser()`).

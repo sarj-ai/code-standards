@@ -33,7 +33,7 @@ Spawn agents to search all Python (`.py`) and TypeScript (`.ts`, `.tsx`) files i
 
 3.  **Unhandled Promises & Tasks Agent:**
     - In Python, scan for calls to `asyncio.create_task` where the returned `Task` object is not stored or awaited. This can lead to silently swallowed exceptions. Cite `ruff: RUF006`.
-    - In TypeScript, scan for promises that are not `await`ed or chained with `.then()`/`.catch()`. Check for `@typescript-eslint/no-floating-promises` (ESLint-linted packages) or `noFloatingPromises` (Biome-linted packages) — cite whichever the package actually runs (see the stack-detection preamble).
+    - In TypeScript, scan for promises that are not `await`ed or chained with `.then()`/`.catch()`. Check for `@typescript-eslint/no-floating-promises` (ESLint-linted packages) or `noFloatingPromises` (Biome-linted packages) — cite whichever the package actually runs.
 
 4.  **N+1 Query & Batching Agent:**
     - Scan for loops (`for`, `.map()`) that contain a database query or an API call inside the loop body. This is a classic N+1 problem.

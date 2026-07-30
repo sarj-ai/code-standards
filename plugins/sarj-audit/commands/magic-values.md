@@ -1,4 +1,8 @@
-Audit the codebase for "magic values"—hardcoded literals that obscure intent and create maintenance hazards. Replace them with named constants, enumerations, or configuration variables to improve readability, maintainability, and type safety.
+---
+description: Audit unexplained literals and open-ended values that obscure intent.
+---
+
+Audit the codebase for "magic values"—hardcoded literals that obscure intent and create maintenance hazards. Replace them with named constants, validated value sets, or configuration variables to improve readability, maintainability, and type safety.
 
 ## What this audits
 
@@ -7,15 +11,16 @@ A "magic value" is a number or string in source code with no explanation. It har
 This audit targets:
 - **Unexplained numbers:** Hardcoded numeric literals for timeouts, thresholds, retry counts, status codes, ports, and scaling factors.
 - **Unexplained strings:** Hardcoded string literals for configuration keys, model names, user roles, status slugs, API endpoints, and repeated complex patterns like SQL queries.
-- **Inadequate type definitions:** Using `str` or `Literal[str, ...]` in Python where a more robust `enum.StrEnum` would be safer and more self-documenting.
+- **Open-ended type definitions:** Using raw `str` in Python where the surrounding
+  logic clearly defines a closed domain. A `Literal["a", "b"]` annotation is already
+  a valid closed domain and must not be reported merely because it is not a `StrEnum`.
 
 **Note:** This audit focuses on objective, automatable patterns. It aims to enforce consistency and make the codebase more self-documenting.
 
 ## Phase 0: Discover project structure
 
-Run the shared **[stack-detection](./stack-detection.md)** pass first. **For this rule:** when recommending a fix for stringly-typed sets, never suggest a TypeScript `enum` — `automations` bans it via `@sarj/no-enum`, and the org is zod-first; recommend `z.enum([...])` (zod v4) or an `as const` map instead. On the Python side use `enum.StrEnum`. Then add the skill-specific items:
-
-- Identify Python files using `typing.Literal` with string arguments.
+- Identify raw Python `str` values that are repeatedly compared with a closed set;
+  do not report values already constrained by an inline or aliased `Literal[...]`.
 - Identify `.tsx` / `.jsx` files that contain UI components with `className` or `style` props.
 - Identify files containing common timer/delay functions (`setTimeout`, `asyncio.sleep`, `timedelta`).
 
@@ -39,11 +44,11 @@ Each agent will scan for the following concrete patterns derived from reviewer c
     - **Examples:** `asyncio.sleep(0.5)`, `expires_in * 1000`, `timedelta(hours=1)`, `timeout=900`.
     - **Action:** Flag numeric literals in timer/delay functions, especially those representing non-trivial durations (e.g., > 1 second).
 
-3.  **String or Literal Union Candidate for Enum:**
-    - **Pattern (Python):** Type hints using `str` or `typing.Literal` with two or more string values for a parameter that represents a fixed set of choices.
-    - **Pattern (TypeScript):** Function arguments or object properties typed as `string` where a string literal union, `enum`, or `as const` object would be more appropriate.
-    - **Examples:** `status: Literal["pending", "running"]`, `def validate(status: str)`, `transactionType: z.string()`.
-    - **Action:** Flag these definitions as candidates for conversion to a `enum.StrEnum` (Python) or a `const` object / `enum` (TypeScript).
+3.  **Open String Candidate for a Validated Value Set:**
+    - **Pattern (Python):** Parameters typed as raw `str` whose implementation repeatedly compares them with two or more fixed string choices. Exclude inline and aliased `Literal[...]` annotations because they already form a closed set.
+    - **Pattern (TypeScript):** Function arguments or object properties typed as `string` where a Zod enum, string literal union, or `as const` object would be more appropriate.
+    - **Examples:** `def validate(status: str)` followed by comparisons with `"pending"` and `"running"`; `transactionType: z.string()` followed by fixed-value branching.
+    - **Action:** Recommend `Literal[...]` or `enum.StrEnum` according to the local-vs-shared runtime needs above; recommend `z.enum([...])` / an `as const` object for TypeScript.
 
 4.  **Hardcoded Configuration String:**
     - **Pattern:** String literals that represent external configuration, identifiers, or environment-dependent values.
@@ -70,7 +75,7 @@ After all agents report back, compile a single summary table with columns:
 Sort by severity (high first), then by file path.
 
 - **High Severity:** Repeated SQL lists, magic numbers in core logic (e.g., financial calculations, security checks), hardcoded model names.
-- **Medium Severity:** Magic strings for configuration, `Literal` types that should be `StrEnum`, hardcoded UI styles.
+- **Medium Severity:** Magic strings for configuration, open-ended strings used as closed domains, hardcoded UI styles.
 - **Low Severity:** Magic numbers for timeouts or delays, minor unexplained strings.
 
 ## Phase 3: Generate fix plan
@@ -79,7 +84,7 @@ For each finding, output a concrete remediation plan. Do NOT automatically imple
 
 - **For Numeric Literals:** "The number `403` is a magic value. Extract it to a named constant, e.g., `HTTP_FORBIDDEN = 403`, to clarify its meaning."
 - **For Time Durations:** "The number `900` represents a timeout. Use a named constant to clarify the unit, e.g., `TOKEN_CACHE_TTL = timedelta(minutes=15)` in Python, or `const TOKEN_CACHE_TTL_MS = 900 * 1000;` in TypeScript."
-- **For `Literal` to `StrEnum`:** "The type hint `Literal['internal', 'domestic']` should be a `StrEnum` for better type safety, e.g., `class TransferType(StrEnum): INTERNAL = 'internal'; DOMESTIC = 'domestic'`."
+- **For open string domains:** "This raw `str` is compared with a fixed set of values. Constrain it with `Literal[...]`; use `StrEnum` instead only when callers need a shared runtime enum identity or behavior."
 - **For Configuration Strings:** "The string `'gemini-1.5-pro'` is a magic value. Extract it to a named constant or configuration variable, e.g., `DEFAULT_LLM_MODEL = 'gemini-1.5-pro'`."
 - **For Repeated SQL Columns:** "The SQL column list `'id, name, ...'` is repeated. Define it as a module-level constant `ORGANIZATION_FIELDS = '...'` and reference it in queries."
 - **For UI Styles:** "The `className` `'bg-green-500...'` contains hardcoded styles. Extract these into a component-level `variants` object or a theme file for better maintainability."

@@ -12,7 +12,6 @@ This audit focuses on common pitfalls in database schema design and migration ex
 
 ## Phase 0: Discover project structure
 
-Run the shared **[stack-detection](./stack-detection.md)** pass first. **Critically for this rule: detect the DB dialect and migration tool.** Postgres + dbmate (e.g. `bulbul`, `ai/python`) ⇒ the `CONCURRENTLY`, native-`ENUM`-lock, `ADD COLUMN NOT NULL DEFAULT` rewrite, and reversible `-- migrate:down` checks all apply. D1/SQLite + `wrangler d1` (e.g. `automations`) ⇒ these are **invalid or N/A**: migrations are append-only (no down concept — do **not** flag a missing down-migration), there is no `CONCURRENTLY` and no native `ENUM`, and `CREATE INDEX` is not a concurrency hazard. Name the real tools (`dbmate`, `wrangler d1`), not Alembic/Drizzle. Then add the skill-specific items:
 
 1.  **Detect migration tool and directory** — Check for `alembic.ini`, `drizzle.config.ts`, `database.json` (`db-migrate`), `*.sql` files in a `migrations` or `db/migrations` directory, or other common migration tool configurations to find migration files.
 2.  **Find all migration files** — List all `.sql` or language-specific (`.py`, `.ts`) files within the detected migration directory.

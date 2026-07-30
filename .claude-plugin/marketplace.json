@@ -1,11 +1,12 @@
 {
   "name": "sarj",
+  "description": "Sarj engineering audits for security, configuration, architecture, data, testing, and strict tooling.",
   "owner": { "name": "sarj-ai" },
   "plugins": [
     {
       "name": "sarj-audit",
       "source": "./plugins/sarj-audit",
-      "description": "Codebase audit commands — judgment-layer audits that complement the machine-enforced @sarj lint rules in this repo. Each audit cites the deterministic rule that backs it where one exists.",
+      "description": "Engineering audits for security, configuration, architecture, auth, data contracts, databases, errors, observability, performance, testing, tooling, readability, linting, and dependencies.",
       "version": "1.0.0"
     }
   ]
