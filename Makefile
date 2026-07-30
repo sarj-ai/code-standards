@@ -4,14 +4,19 @@ MAKEFLAGS += --warn-undefined-variables --no-builtin-rules
 
 CONFIG_SRC := packages/lint-configs/src/sarj_lint_configs/configs
 
-.PHONY: help build test lint typecheck sync-configs check-configs-synced \
+.PHONY: help build verify test lint typecheck sync-configs check-configs-synced \
         publish publish-typescript publish-python publish-sql publish-iac \
         publish-lint-configs publish-tsconfig
 
 help:
-	@echo "Targets: build | test | lint | typecheck | sync-configs | check-configs-synced | promote-strict"
+	@echo "Targets: verify | build | test | lint | typecheck | sync-configs | check-configs-synced | promote-strict"
 	@echo "         publish-{typescript,python,sql,iac,lint-configs,tsconfig} | publish (all)"
 	@echo "Releases trigger via tag push: typescript-v* python-v* sql-v* iac-v* lint-configs-v* tsconfig-v*"
+
+# The gate CONTRIBUTING/CLAUDE.md tells contributors to run before review. It did
+# not exist, so `make verify` failed with "No rule to make target" and the
+# documented workflow could not be followed as written.
+verify: lint typecheck test
 
 promote-strict:
 	@echo "Promoting all warning-level standards to errors globally..."
@@ -30,7 +35,18 @@ test: check-configs-synced
 	cd packages/python         && uv run pytest -q
 	cd packages/sql            && uv run pytest -q
 	cd packages/iac            && uv run pytest -q
-	cd packages/lint-configs   && uv build --wheel >/dev/null && uv pip install --quiet --reinstall ./dist/*.whl && uv run --no-project pytest -q tests/
+	# Sibling wheels are built and installed alongside, mirroring lint-configs-ci.yml.
+	# `sarj-lint-configs` pins its siblings exactly, so resolving them from PyPI fails
+	# for the whole window between bumping a pin and publishing that version -- which
+	# is exactly when this target most needs to run. Building them locally keeps
+	# `make test` usable on a version-bump branch.
+	cd packages/lint-configs   && rm -rf dist \
+	  && uv build --wheel >/dev/null \
+	  && uv build --wheel --project ../python --out-dir dist/deps >/dev/null \
+	  && uv build --wheel --project ../sql    --out-dir dist/deps >/dev/null \
+	  && uv build --wheel --project ../iac    --out-dir dist/deps >/dev/null \
+	  && uv pip install --quiet --reinstall ./dist/deps/*.whl ./dist/sarj_lint_configs-*.whl \
+	  && uv run --no-project pytest -q tests/
 	cd packages/tsconfig       && node -e "JSON.parse(require('fs').readFileSync('base.json','utf8'))" && node -e "JSON.parse(require('fs').readFileSync('strict.json','utf8'))"
 
 # Dogfooding: every package is linted/formatted by this repo's own strict config.
