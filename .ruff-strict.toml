@@ -90,20 +90,43 @@ extend-select = [
   "FBT003",
 ]
 
-# Ignore list = intersection of this standard's prior ignores and bulbul's
-# `[tool.ruff.lint] ignore`. Anything bulbul actively enforces (and this config
-# previously silenced) has been REMOVED so the standard is at least as strict as
-# bulbul — notably TRY002/TRY003, EM101/EM102, SLF001, RUF067, and the
-# docstring-punctuation family is NOT enforced -- see the D/DOC block below for
-# the rule and its reasoning. Naming rules (N801/N802/N806/N999) are never
+# The ignore list is NO LONGER derived from any consumer's `[tool.ruff.lint]
+# ignore`. It was once the intersection with bulbul's, which is how a standard
+# that advertises `select = ["ALL"]` ended up silencing three security checks
+# repo-wide; every remaining entry now has to earn its place with a measurement
+# (see the preamble inside the list). Anything a consumer actively enforces (and
+# this config previously silenced) had already been REMOVED — notably
+# TRY002/TRY003, EM101/EM102, SLF001, RUF067. The docstring-punctuation family is
+# deliberately NOT enforced; see the D/DOC block below for that rule and its
+# reasoning. Naming rules (N801/N802/N806/N999) are never
 # ignored here and stay active.
 ignore = [
-  "A002",
-  "A003",
+  # Every entry below is measured: each code was force-enabled over this repo,
+  # bulbul and noura-be, and kept only where the finding is not a defect. Counts
+  # in the comments are `this repo / bulbul / noura-be`, non-test code unless
+  # stated. A002/A003 (builtin shadowing) were dropped from this list — enabling
+  # them costs 0/1/0 — and S101/S105/S106 moved to `per-file-ignores` for test
+  # code, where the exemption is true, instead of silencing three security
+  # checks repo-wide. Do not re-add them here.
 
-  # Complexity is a code-smell heuristic, not a correctness rule. These four are
-  # the subset bulbul also disables; the rest of the PLR09xx family stays active
-  # (this standard is intentionally stricter than bulbul on complexity).
+  # Complexity is a code-smell heuristic, not a correctness rule, and these five
+  # thresholds fight the style this same config mandates:
+  #   C901    (>10 paths)     23 / 57 / 36
+  #   PLR0911 (>6 returns)    29 /  6 /  9
+  #   PLR0912 (>12 branches)   6 / 19 / 23
+  #   PLR0913 (>5 args)        1 / 48 / 99
+  #   PLR0915 (>50 statements) 1 / 24 / 16
+  # PLR0911 is the clearest self-contradiction: RET505-RET508 are ENFORCED here
+  # and rewrite every `else` after a `return` into an early return. All three
+  # repos are 100% RET505-clean, and that same flat guard-clause style is what
+  # puts 44 functions over the 6-return cap. C901/PLR0912 land almost entirely
+  # on this repo's own AST visitors, where the branching IS the algorithm.
+  # PLR0913 counts keyword-only parameters; the harmful case — positional
+  # explosion — is already caught by PLR0917, which this config ENFORCES (118
+  # sites in bulbul, 113 in noura-be) and which both consumers disable locally.
+  # PLR0904/PLR0914/PLR0916/PLR1702/PLR6301 are enforced here too, so complexity
+  # is not unchecked: these five are the specific heuristics with no defect
+  # behind them, and four of the five fire on this repo's own source today.
   "C901",
   "PLR0911",
   "PLR0912",
@@ -167,15 +190,31 @@ ignore = [
   #   DOC502 documented exception that is never raised
   # Also kept: D201/D202/D206-D212/D300/D301 — mechanical whitespace and quote
   # style, formatter-adjacent, no prose implications.
+  # CPY001 missing-copyright-notice — 214 / 838 / 502 findings, one per file.
+  # These are private repositories with no per-file copyright-header policy, so
+  # the rule can only ever report "add a header we do not use".
   "CPY001",
 
+  # COM812 conflicts with the formatter. Reproduced, not assumed: on
+  # packages/iac/src/sarj_iac_lint/_hcl.py — a file `ruff format --check` calls
+  # already formatted — COM812 reports two sites, and applying its fix makes the
+  # same file format-dirty, because the comma it adds is a magic trailing comma
+  # and the formatter then explodes `_parse_body`'s parameters one per line.
+  # `skip-magic-trailing-comma = false` above is what makes that bite.
   "COM812",
-  "E501",
-  "INP001",
-  "S101",
-  "S105",
-  "S106",
 
+  # E501 is the formatter's job. `ruff format` already wraps code at 120; what
+  # survives (3 / 280 / 701) is unsplittable string literals, URLs and messages
+  # inside files the formatter reports as clean, so the rule can only ask for a
+  # hand-mangling that `ruff format` would not perform.
+  "E501",
+
+  # RUF001 ambiguous-unicode-character-string — 0 / 24 / 37, and every finding is
+  # the CORRECT character in an Arabic user-facing string: ARABIC FULL STOP,
+  # ARABIC LETTER ALEF/HEH, ARABIC-INDIC DIGITS, plus EN DASH and RIGHT SINGLE
+  # QUOTATION MARK in copy. `allowed-confusables` cannot rescue it — the
+  # confusable set is most of the Arabic script — and this house ships Arabic
+  # product strings, so the rule is structurally wrong here, not merely noisy.
   "RUF001",
 
   # PLC2701 import-private-name — OFF, replaced by SARJ048
@@ -319,13 +358,38 @@ raises-require-match-for = [
 [lint.per-file-ignores]
 # Tests routinely assert, take boolean params, use magic numbers, and shell out
 # to the binary under test (subprocess) — none of that is a smell in a test.
-# Union of this standard's prior test idioms and bulbul's: subprocess (S404/603/607)
-# for CLI tools that shell out to the binary under test; RUF076 (autouse) and
-# PLR6301 (test methods that never use self) for pytest class/fixture idioms.
-"**/tests/**"     = ["S101", "FBT001", "FBT002", "FBT003", "PLR2004", "S404", "S603", "S607", "RUF076", "PLR6301"]
-"**/test_*.py"    = ["ANN201", "ANN202"]
-"scripts/**"      = ["T201", "S", "BLE001", "TRY002"]
+# subprocess (S404/S603/S607) is for CLI tools that shell out to the binary under
+# test; PLR6301 (test methods that never use self) is a pytest class idiom.
+#
+# S101/S105/S106 live HERE and not in the global `ignore`. Measured with each
+# force-enabled over this repo / bulbul / noura-be, tests vs non-test code:
+#   S101 assert                    18,975 in tests vs 20 in shipped code
+#   S105 hardcoded-password-string      94 in tests vs  5 in shipped code
+#   S106 hardcoded-password-func-arg   121 in tests vs  0 in shipped code
+# The blanket ignore was buying silence on 25 shipped-code sites at the price of
+# switching three security checks off everywhere — including `assert`, which
+# `python -O` deletes outright. Scoping them to test code costs bulbul 25 new
+# findings and this repo and noura-be none.
+#
+# INP001 is here for the same reason: pytest test trees are deliberately not
+# packages (adding `__init__.py` changes conftest/module resolution), and this
+# repo's own 97 INP001 findings are all in test trees. In shipped code the rule
+# is a genuine packaging check, so it is no longer globally ignored.
+#
+# RUF076 was removed from this list because ruff REMOVED the rule: `--select
+# RUF076` now fails with "Rule `RUF076` was removed and cannot be selected", so
+# the entry silenced nothing.
+"**/tests/**"     = ["S101", "S105", "S106", "INP001", "FBT001", "FBT002", "FBT003", "PLR2004", "S404", "S603", "S607", "PLR6301"]
+# A `test_*.py` or `conftest.py` outside a tests/ tree is still test code; one
+# consumer has such a module, carrying 7 asserts and 1 INP001.
+"**/test_*.py"    = ["ANN201", "ANN202", "S101", "S105", "S106", "INP001"]
+"**/conftest.py"  = ["S101", "S105", "S106", "INP001"]
+# Standalone scripts are not importable packages, hence INP001 (7 sites in
+# bulbul, 4 in noura-be, all under a top-level scripts/).
+"scripts/**"      = ["T201", "S", "BLE001", "TRY002", "INP001"]
 # CLI entrypoints print to stdout — that's their job, not stray debug output.
 "**/__main__.py"  = ["T201"]
-"__init__.py"     = []
-"**/settings.py"  = []
+# NOTE: `"__init__.py" = []` and `"**/settings.py" = []` used to sit here. Ruff
+# per-file-ignores are additive and an empty list cannot un-ignore anything, so
+# both entries were no-ops; they are removed rather than left as config that
+# reads like an exemption.
