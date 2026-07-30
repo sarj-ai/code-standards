@@ -55,8 +55,28 @@ Do not copy the runner into consumer repositories. Keeping it inside the wheel
 ensures the CLI implementation and its exact registry dependencies upgrade as
 one tested unit.
 
-The bundled ESLint config requires `@sarj/eslint-plugin@2.16.0`, which contains
-every custom TypeScript rule referenced by the config.
+### Peer version floors for the bundled ESLint config
+
+| Peer | Floor | Why |
+| --- | --- | --- |
+| `@sarj/eslint-plugin` | `3.0.0` | Contains every custom TypeScript rule referenced by the config. |
+| `eslint-plugin-unicorn` | `>= 65` *only* if you pass `checkDirectories` | The option does not exist before 65, and on 64 an unknown option is a **hard config error**, not a soft degrade. |
+
+`@sarj/eslint-plugin@3.0.0` is a **breaking** release: it removes
+`no-unsafe-cast`, `prefer-shadcn`, `no-sequential-await`,
+`require-schema-validate-search` and `single-public-export`. An
+`eslint-disable` naming any of them reports "Definition for rule was not found"
+until the comment is dropped. Do not pin below `2.17.0` — the config references
+`@sarj/prefer-zod-enum`, which does not exist in `2.16.0`.
+
+`unicorn/filename-case` in this config deliberately does **not** pass
+`checkDirectories`, so the config itself imposes no unicorn floor above what
+the rest of the rule set already needs. The floor is recorded here because it
+is the reason the option is absent, and because it is invisible at the call
+site: a consumer that adds `checkDirectories` locally will break on any unicorn
+older than 65. Installed versions across first-party consumers currently span
+`^62.0.0` (hala) through `^72.0.0` (demo-gateway), with bulbul pinned to an
+exact `64.0.0` — i.e. two consumers sit below the floor today.
 
 Then reference the synced file:
 
