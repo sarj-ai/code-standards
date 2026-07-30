@@ -69,7 +69,7 @@ from sarj_python_lint.rules._comments import (
     stem,
     trailing_comments,
 )
-from sarj_python_lint.rules._paths import is_generated_source
+from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
@@ -191,7 +191,7 @@ class TrailingValueNarration(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated_source(source):
+        if is_generated(path, source):
             return []
         try:
             trailing = trailing_comments(source)

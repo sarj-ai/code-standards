@@ -27,6 +27,18 @@ Example refactoring:
         case dict():
             return parse_dict(data)
     return cast(..., data)
+
+## Not reported
+
+* **generated files** (`_paths.is_generated`). This is the exemption that
+  matters most for this rule: the try/raise idiom in the module summary above
+  is *transcribed from* openapi-python-client's `_parse_*` template, and it
+  reproduces once per nullable field. Before the path half of `is_generated`
+  existed, 314 of this rule's 334 findings over two first-party corpora came
+  from a single checked-in SDK — a tree the consuming repo already excludes
+  from ruff, from its pre-commit hook and from its CI invocation. The
+  generator's output is not a refactor anyone can accept; re-running the
+  generator would undo it. The 20 findings that remain are hand-written.
 """
 
 from __future__ import annotations
@@ -35,7 +47,7 @@ import ast
 from typing import TYPE_CHECKING, final, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
-from sarj_python_lint.rules._paths import is_generated_source
+from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
@@ -263,7 +275,7 @@ class PreferMatchTypeDispatch(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated_source(source):
+        if is_generated(path, source):
             return []
         tree = parse_or_none(path, source)
         if tree is None:

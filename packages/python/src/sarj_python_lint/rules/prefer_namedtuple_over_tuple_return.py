@@ -70,7 +70,7 @@ Suppress a deliberate positional return with `# sarj-noqa: SARJ026 — <reason>`
 References:
 - https://docs.python.org/3/library/typing.html#typing.NamedTuple
 
-* **generated files** (`_paths.is_generated_source`). Their layout is the
+* **generated files** (`_paths.is_generated`). Their layout is the
   generator's, and re-running the generator discards any edit, so a finding
   there can never be acted on in place. Measured on the 69 `DO NOT EDIT`
   files git-tracked across bulbul and noura-be — Speakeasy's
@@ -87,7 +87,7 @@ from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
 from sarj_python_lint.rules._ast_index import children, nodes, walk
-from sarj_python_lint.rules._paths import is_generated_source, is_test_path
+from sarj_python_lint.rules._paths import is_generated, is_test_path
 
 
 if TYPE_CHECKING:
@@ -147,7 +147,7 @@ class PreferNamedtupleOverTupleReturn(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated_source(source):
+        if is_generated(path, source):
             return []
         if is_test_path(path):
             return []

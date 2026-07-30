@@ -182,7 +182,7 @@ Deliberately NOT flagged:
 * **short bodies.** A two-statement test is not evidence of copy-paste — call,
   assert, done, and any two tests of the same helper look alike. The 3-statement
   floor is what keeps the rule from firing on every well-factored unit suite,
-* **generated test modules** (`is_generated_source`) — a generator emitting N
+* **generated test modules** (`_paths.is_generated`) — a generator emitting N
   near-identical cases is the generator's business, and the fix would be
   overwritten on the next regeneration,
 * the **first** member of a group. The diagnostic goes on the copies and points
@@ -200,7 +200,7 @@ from typing import TYPE_CHECKING, override
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
 from sarj_python_lint.rules._ast_index import children
 from sarj_python_lint.rules._comments import standalone_comments, trailing_comments
-from sarj_python_lint.rules._paths import is_generated_source, is_test_path
+from sarj_python_lint.rules._paths import is_generated, is_test_path
 
 
 if TYPE_CHECKING:
@@ -286,7 +286,7 @@ class DuplicateTestBody(Rule):
             by position.
 
         """
-        if not is_test_path(path) or is_generated_source(source):
+        if not is_test_path(path) or is_generated(path, source):
             return []
         tree = parse_or_none(path, source)
         if tree is None:

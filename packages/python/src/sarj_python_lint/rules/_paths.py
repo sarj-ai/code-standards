@@ -9,10 +9,19 @@ SARJ034 kwonly-same-type-params) never diverge on what counts as a test file.
 Also the single definition of "is this a generated file?" (SARJ016/034):
 generated code mirrors whatever its generator emits, so style rules cannot be
 acted on there.
+
+That definition is deliberately two-sided. `is_generated_source` reads the
+header, which works for protoc/`@generated` tooling but is useless for the
+generators that emit no banner at all. Measured on a checked-in
+openapi-python-client SDK: 240 generated modules, *zero* carrying a marker in
+their first five lines. `is_generated_path` covers those by looking at where
+the file sits instead of what it says. `is_generated` is the predicate rules
+should call — it is the union, and neither half alone is enough.
 """
 
 from __future__ import annotations
 
+from functools import cache
 import re
 from typing import TYPE_CHECKING
 
@@ -32,6 +41,36 @@ _GENERATED_RE = re.compile(
 
 _GENERATED_HEADER_LINES = 5
 
+_GENERATED_DIR_NAMES = frozenset({"generated", "vendor", "vendored"})
+
+# A directory holding one of these is a code-generator root: the file is the
+# generator's own config or ignore list, and the emitted package is checked in
+# beneath it. Every entry is a filename published by a code generator —
+# OpenAPI Generator, swagger-codegen, openapi-python-client, buf, and
+# graphql-code-generator's `codegen.*` family. None is specific to any one
+# repository's layout.
+_CODEGEN_MARKER_NAMES = (
+    ".openapi-generator",
+    ".openapi-generator-ignore",
+    ".swagger-codegen-ignore",
+    "openapi-python-client.yml",
+    "openapi-python-client.yaml",
+    "codegen.yml",
+    "codegen.yaml",
+    "codegen.config.yml",
+    "codegen.config.yaml",
+    "buf.gen.yaml",
+    "buf.gen.yml",
+)
+
+# Ancestor walks stop at the repository root. Without this a file two levels
+# deep would stat every directory up to `/` looking for a marker.
+_REPO_ROOT_MARKERS = (".git",)
+
+# Guards against a pathological path (or a symlink loop) turning the ancestor
+# walk into an unbounded stat storm. No real source tree is this deep.
+_MAX_ANCESTOR_DEPTH = 40
+
 
 def is_generated_source(source: str) -> bool:
     """Report whether `source` self-identifies as generated code.
@@ -45,6 +84,77 @@ def is_generated_source(source: str) -> bool:
     """
     head = source.splitlines()[:_GENERATED_HEADER_LINES]
     return any(_GENERATED_RE.search(line) for line in head)
+
+
+@cache
+def _is_codegen_root(directory: Path) -> bool:
+    """Report whether `directory` holds a code generator's config or ignore file.
+
+    Cached: a corpus run asks this of the same handful of directories once per
+    file, and the answer is a filesystem probe.
+
+    Returns:
+        True when the directory carries a generator marker file.
+
+    """
+    return any((directory / name).exists() for name in _CODEGEN_MARKER_NAMES)
+
+
+@cache
+def _is_repo_root(directory: Path) -> bool:
+    """Report whether `directory` is a repository root.
+
+    Returns:
+        True when the directory carries a repository marker (`.git`).
+
+    """
+    return any((directory / name).exists() for name in _REPO_ROOT_MARKERS)
+
+
+def is_generated_path(path: Path) -> bool:
+    """Report whether `path` sits in a tree of generated or vendored code.
+
+    Two signals, both about location rather than content:
+
+    * a `generated` / `vendor` / `vendored` directory anywhere in the path, and
+    * a code-generator root among the ancestors — a directory holding an
+      `.openapi-generator-ignore`, `codegen.config.yml` or similar.
+
+    The generator root itself stays linted: the config file's neighbours are
+    the hand-written driver script that invokes the generator, while the
+    emitted package is checked in one level down. Only the subtree below the
+    root is treated as generated.
+
+    Returns:
+        True when the file is machine-written output rather than source.
+
+    """
+    if any(part.lower() in _GENERATED_DIR_NAMES for part in path.parts):
+        return True
+    for depth, ancestor in enumerate(path.parents):
+        if depth >= _MAX_ANCESTOR_DEPTH:
+            break
+        # `depth == 0` is the file's own directory: a generator config sitting
+        # next to the file makes the file the generator, not its output.
+        if depth and _is_codegen_root(ancestor):
+            return True
+        if _is_repo_root(ancestor):
+            break
+    return False
+
+
+def is_generated(path: Path, source: str) -> bool:
+    """Report whether the file is generated, by either header or location.
+
+    The predicate every rule that exempts generated code should call. Checking
+    only the header misses banner-less generators; checking only the path
+    misses a generated file dropped into a hand-written tree.
+
+    Returns:
+        True when the file is machine-written output rather than source.
+
+    """
+    return is_generated_source(source) or is_generated_path(path)
 
 
 def is_test_path(path: Path) -> bool:

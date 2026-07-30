@@ -40,7 +40,7 @@ from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
 from sarj_python_lint.rules._ast_index import walk
-from sarj_python_lint.rules._paths import is_generated_source, is_test_path
+from sarj_python_lint.rules._paths import is_generated, is_test_path
 
 
 if TYPE_CHECKING:
@@ -61,7 +61,7 @@ class PreferNonNullableCollection(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_test_path(path) or _is_generated_or_vendored_path(path) or is_generated_source(source):
+        if is_test_path(path) or is_generated(path, source):
             return []
         tree = parse_or_none(path, source)
         if tree is None:
@@ -92,10 +92,6 @@ class PreferNonNullableCollection(Rule):
                     )
                 )
         return diags
-
-
-def _is_generated_or_vendored_path(path: Path) -> bool:
-    return any(part.lower() in {"generated", "vendor", "vendored"} for part in path.parts)
 
 
 def _qualified_name(node: ast.expr) -> str:

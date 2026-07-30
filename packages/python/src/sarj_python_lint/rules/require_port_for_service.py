@@ -266,7 +266,7 @@ import re
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
-from sarj_python_lint.rules._paths import is_generated_source, is_test_path
+from sarj_python_lint.rules._paths import is_generated, is_test_path
 
 
 if TYPE_CHECKING:
@@ -429,7 +429,7 @@ class RequirePortForService(Rule):
             One diagnostic per unsubstitutable service class, sorted by position.
 
         """
-        if not _is_library_source(path) or is_generated_source(source):
+        if not _is_library_source(path) or is_generated(path, source):
             return []
         tree = parse_or_none(path, source)
         if tree is None:

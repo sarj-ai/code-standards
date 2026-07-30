@@ -66,7 +66,7 @@ comments — `# type:`, `# noqa`, `# sarj-noqa`,
 coding declarations.
 
 Also NOT flagged (famous-repo sweep hardening):
-- generated files (`_paths.is_generated_source`) — their banners are the
+- generated files (`_paths.is_generated`) — their banners are the
   generator's warning header, not hand-written cruft;
 - a punctuation-only "banner" directly beneath a texty comment line — that is
   an RST-style heading underline or an ASCII-diagram row inside a prose comment
@@ -153,7 +153,7 @@ from sarj_python_lint.rules._comments import (
     nested_comment_lines,
     standalone_comments,
 )
-from sarj_python_lint.rules._paths import is_generated_source
+from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
@@ -683,7 +683,7 @@ class NoCommentCruft(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated_source(source):
+        if is_generated(path, source):
             return []
         # A Sphinx `docs/**/conf.py` is quickstart-generated boilerplate whose
         # `# -- Section ----` banners are the tool's own convention.

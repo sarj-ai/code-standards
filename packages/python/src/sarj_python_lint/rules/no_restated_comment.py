@@ -105,7 +105,7 @@ from sarj_python_lint.rules._comments import (
     restates,
     standalone_comments,
 )
-from sarj_python_lint.rules._paths import is_generated_source
+from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
@@ -299,7 +299,7 @@ class NoRestatedComment(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated_source(source):
+        if is_generated(path, source):
             return []
         try:
             standalone, _ = standalone_comments(source)
