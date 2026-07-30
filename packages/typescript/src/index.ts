@@ -44,7 +44,6 @@ import trailingValueNarration from "./rules/trailing-value-narration.js";
 import noTautologicalExpect from "./rules/no-tautological-expect.js";
 import requireInterfaceForInjectedService from "./rules/require-interface-for-injected-service.js";
 import preferNonNullableCollection from "./rules/prefer-non-nullable-collection.js";
-import primaryExportFileName from "./rules/primary-export-file-name.js";
 import noImplicitAttributeAccess from "./rules/no-implicit-attribute-access.js";
 import strictTestAssertions from "./rules/strict-test-assertions.js";
 import noAsyncCallbackInWaitFor from "./rules/no-async-callback-in-waitfor.js";
@@ -77,7 +76,6 @@ const rules = {
   "no-unsafe-mock-casting": noUnsafeMockCasting,
   "prefer-string-literal-union": preferStringLiteralUnion,
   "prefer-zod-enum": preferZodEnum,
-  "primary-export-file-name": primaryExportFileName,
   "no-silent-promise-catch": noSilentPromiseCatch,
   "require-fetch-timeout": requireFetchTimeout,
   "no-offset-pagination": noOffsetPagination,
@@ -108,7 +106,7 @@ const rules = {
 const plugin = {
   meta: {
     name: "@sarj/eslint-plugin",
-    version: "3.0.0",
+    version: "4.0.0",
   },
   rules,
   configs: {
@@ -142,7 +140,6 @@ const plugin = {
         "@sarj/no-cors-wildcard-with-credentials": "warn",
         "@sarj/no-secret-in-log": "warn",
         "@sarj/no-unsafe-mock-casting": "warn",
-        "@sarj/primary-export-file-name": "warn",
         "@sarj/prefer-string-literal-union": "warn",
         "@sarj/prefer-zod-enum": "warn",
         // Mined from 2y of PR review feedback + 5-repo code-smell audit (2026-07).
@@ -232,7 +229,6 @@ const plugin = {
         "@sarj/no-cors-wildcard-with-credentials": "error",
         "@sarj/no-secret-in-log": "error",
         "@sarj/no-unsafe-mock-casting": "error",
-        "@sarj/primary-export-file-name": "error",
         // Promoted to error 2026-07-25 — strict means strict (user directive).
         "@sarj/prefer-string-literal-union": "error",
         "@sarj/prefer-zod-enum": "error",

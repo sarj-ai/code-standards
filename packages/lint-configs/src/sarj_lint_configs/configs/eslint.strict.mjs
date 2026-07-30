@@ -433,7 +433,6 @@ const config = [
       "@sarj/no-fat-try-blocks": "error",
       "@sarj/no-cors-wildcard-with-credentials": "error",
       "@sarj/no-secret-in-log": "error",
-      "@sarj/primary-export-file-name": "error",
       // Mined from 2y of PR review feedback + 5-repo code-smell audit (2026-07).
       "@sarj/require-fetch-timeout": "error",
       "@sarj/no-silent-promise-catch": "error",
