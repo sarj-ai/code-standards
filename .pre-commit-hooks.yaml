@@ -371,11 +371,6 @@
   language: python
   types: [python]
 
-- id: sarj-primary-export-file-name
-  name: 'sarj-lint: A module stem should match its primary public def/class export'
-  entry: sarj-python-lint check --rule primary-export-file-name
-  language: python
-  types: [python]
 
 - id: sarj-no-implicit-attribute-access
   name: 'sarj-lint: Known dictionary shapes must use declarative parsing'
@@ -533,17 +528,7 @@
   language: python
   types: [python]
 
-- id: sarj-prefer-pattern-matching
-  name: 'sarj-lint: Unified pattern matching and match-assignment rule'
-  entry: sarj-python-lint check --rule prefer-pattern-matching
-  language: python
-  types: [python]
 
-- id: sarj-primary-export-file-name
-  name: 'sarj-lint: Single primary export file should be named after the exported symbol'
-  entry: sarj-python-lint check --rule primary-export-file-name
-  language: python
-  types: [python]
 
 - id: sarj-require-lock-timeout
   name: 'sarj-lint: DDL migration missing SET lock_timeout or statement_timeout'

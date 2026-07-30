@@ -69,7 +69,6 @@ from sarj_python_lint.rules.prefer_non_nullable_collection import (
     PreferNonNullableCollection,
 )
 from sarj_python_lint.rules.prefer_or_pattern import PreferOrPattern
-from sarj_python_lint.rules.prefer_pattern_matching import PreferPatternMatching
 from sarj_python_lint.rules.prefer_real_store_in_tests import PreferRealStoreInTests
 from sarj_python_lint.rules.prefer_self_type_annotation import PreferSelfTypeAnnotation
 from sarj_python_lint.rules.prefer_str_enum import PreferStrEnum
@@ -84,9 +83,6 @@ from sarj_python_lint.rules.prefer_walrus_comprehension_filter import (
 )
 from sarj_python_lint.rules.prefer_walrus_regex_match import PreferWalrusRegexMatch
 from sarj_python_lint.rules.prefer_walrus_stream_loop import PreferWalrusStreamLoop
-from sarj_python_lint.rules.primary_export_file_name import (
-    PrimaryExportFileName,
-)
 from sarj_python_lint.rules.pydantic_at_boundaries import PydanticAtBoundaries
 from sarj_python_lint.rules.redundant_docstring import RedundantDocstring
 from sarj_python_lint.rules.require_port_for_service import RequirePortForService
@@ -173,11 +169,9 @@ REGISTRY: dict[str, type[Rule]] = {
     PreferFstringOverConcat.id: PreferFstringOverConcat,
     PreferMatchPatternDestructuring.id: PreferMatchPatternDestructuring,
     PreferOrPattern.id: PreferOrPattern,
-    PreferPatternMatching.id: PreferPatternMatching,
     RequirePortForService.id: RequirePortForService,
     PreferNonNullableCollection.id: PreferNonNullableCollection,
     PreferMatchTypeDispatch.id: PreferMatchTypeDispatch,
-    PrimaryExportFileName.id: PrimaryExportFileName,
     PreferWalrusRegexMatch.id: PreferWalrusRegexMatch,
     PreferWalrusComprehensionFilter.id: PreferWalrusComprehensionFilter,
     PreferWalrusStreamLoop.id: PreferWalrusStreamLoop,
