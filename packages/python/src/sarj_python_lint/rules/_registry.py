@@ -3,7 +3,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from sarj_python_lint.rules.conditional_assertion_in_test import ConditionalAssertionInTest
+from sarj_python_lint.rules.docstring_args_restate_signature import (
+    DocstringArgsRestateSignature,
+)
 from sarj_python_lint.rules.duplicate_test_body import DuplicateTestBody
+from sarj_python_lint.rules.duplicated_override_docstring import (
+    DuplicatedOverrideDocstring,
+)
 from sarj_python_lint.rules.fixture_returns_bare_tuple import FixtureReturnsBareTuple
 from sarj_python_lint.rules.inefficient_string_concat_in_loop import (
     InefficientStringConcatInLoop,
@@ -84,6 +90,7 @@ from sarj_python_lint.rules.prefer_walrus_comprehension_filter import (
 from sarj_python_lint.rules.prefer_walrus_regex_match import PreferWalrusRegexMatch
 from sarj_python_lint.rules.prefer_walrus_stream_loop import PreferWalrusStreamLoop
 from sarj_python_lint.rules.pydantic_at_boundaries import PydanticAtBoundaries
+from sarj_python_lint.rules.redundant_class_docstring import RedundantClassDocstring
 from sarj_python_lint.rules.redundant_docstring import RedundantDocstring
 from sarj_python_lint.rules.require_port_for_service import RequirePortForService
 from sarj_python_lint.rules.single_public_export import SinglePublicExport
@@ -176,6 +183,9 @@ REGISTRY: dict[str, type[Rule]] = {
     PreferWalrusComprehensionFilter.id: PreferWalrusComprehensionFilter,
     PreferWalrusStreamLoop.id: PreferWalrusStreamLoop,
     PreferSelfTypeAnnotation.id: PreferSelfTypeAnnotation,
+    DuplicatedOverrideDocstring.id: DuplicatedOverrideDocstring,
+    RedundantClassDocstring.id: RedundantClassDocstring,
+    DocstringArgsRestateSignature.id: DocstringArgsRestateSignature,
 }
 
 __all__ = ["REGISTRY"]

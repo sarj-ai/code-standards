@@ -70,6 +70,24 @@
   language: python
   types: [python]
 
+- id: sarj-redundant-class-docstring
+  name: 'sarj-lint: class docstring only re-spells the class name'
+  entry: sarj-python-lint check --rule redundant-class-docstring
+  language: python
+  types: [python]
+
+- id: sarj-duplicated-override-docstring
+  name: "sarj-lint: override's docstring is a verbatim copy of the base's"
+  entry: sarj-python-lint check --rule duplicated-override-docstring
+  language: python
+  types: [python]
+
+- id: sarj-docstring-args-restate-signature
+  name: 'sarj-lint: Args: block only re-spells the parameter list'
+  entry: sarj-python-lint check --rule docstring-args-restate-signature
+  language: python
+  types: [python]
+
 - id: sarj-trailing-value-narration
   name: 'sarj-lint: trailing comment restates a literal on the line'
   entry: sarj-python-lint check --rule trailing-value-narration
