@@ -299,136 +299,20 @@ def test_flags_structlog_get_logger_chain():
         'get_logger().bind(request_id=rid).info(f"{x}")\n',
     ],
 )
-def test_flags_bare_name_structlog_factory(source: str):
-    """`from structlog import get_logger` then `get_logger()` — the snake_case factory.
+def test_bare_name_factory_is_suppressed_because_it_is_ambiguous(source: str):
+    """A BARE `get_logger()` could be structlog or a stdlib shim; suppress it.
 
-    The receiver is an `ast.Call` on a bare `ast.Name`, the one shape
-    `_logging.is_logger_expr` used to miss. It must fire here while the
-    camelCase stdlib spelling stays suppressed by
-    `test_ignores_stdlib_getlogger_chain`: `get_logger` is structlog, whose
-    keyword API the advice targets, and `getLogger` is stdlib, whose %-style
-    API the advice would break. That split is the whole reason fixing the
-    shared helper is safe for this rule.
+    An earlier version of this file asserted the opposite. That was wrong, and
+    wrong in the dangerous direction: `def get_logger(n): return
+    logging.getLogger(n)` is a common shim (huggingface_hub, transformers,
+    fastmcp, mcp, speechmatics all ship it), and this rule's advice —
+    `logger.info("msg", key=value)` — raises `TypeError` on a stdlib logger.
+    Worse, it raises only when the record is actually emitted, so the code is
+    green at the default WARNING level and fails once log level reaches INFO.
+
+    A false negative here costs one style nit. A false positive ships a
+    production crash. The name alone cannot distinguish the two, so suppress.
+    `structlog.get_logger()` — DOTTED — is unambiguous and still fires; see
+    `test_flags_structlog_get_logger_chain`.
     """
-    assert len(_check(source)) == 1
-
-
-def test_flags_fstring_concatenated_with_plus():
-    assert len(_check('logger.info(f"{x}" + "!")\n')) == 1
-
-
-def test_ignores_getchild_on_non_logger_receiver():
-    assert _check('widget.getChild("panel").info(f"{x}")\n') == []
-
-
-@pytest.mark.parametrize(
-    "source",
-    [
-        'logging.getLogger(__name__).error(f"boom {x}", exc_info=e)\n',
-        'logging.getLogger("svc").warning(f"slow {dt}")\n',
-        'logging.getLogger("svc").getChild("sub").error(f"{e}")\n',
-        'getLogger(__name__).info(f"{x}")\n',
-    ],
-)
-def test_ignores_stdlib_getlogger_chain(source: str):
     assert _check(source) == []
-
-
-@pytest.mark.parametrize(
-    "kwarg",
-    ["exc_info=e", "stack_info=True", 'extra={"k": 1}'],
-)
-def test_ignores_stdlib_only_kwargs(kwarg: str):
-    assert _check(f'self.logger.error(f"Exception on {{path}}", {kwarg})\n') == []
-
-
-def test_ignores_flask_style_self_logger_with_exc_info():
-    assert _check('self.logger.error(f"Exception on {path}", exc_info=sys.exc_info())\n') == []
-
-
-# --------------------------------------------------------------------------- #
-# FP guard: a stdlib `logging` receiver. The structured-keyword fix raises      #
-# `TypeError` on stdlib, so the rule must stay silent. Corpus: 70 of 94 hits.   #
-# --------------------------------------------------------------------------- #
-
-
-@pytest.mark.parametrize(
-    "call",
-    [
-        'logging.info(f"Using config: {c}")',
-        'logging.debug(f"Checking PR: #{n}")',
-        'logging.error(f"Response was not 200, after: {a}")',
-    ],
-)
-def test_ignores_stdlib_module_level_convenience_functions(call: str):
-    assert _check(f"import logging\n\n{call}\n") == []
-
-
-def test_ignores_aliased_stdlib_logging_module():
-    assert _check('import logging as log\n\nlog.info(f"{x}")\n') == []
-
-
-def test_ignores_submodule_import_binding_of_logging():
-    assert _check('import logging.handlers\n\nlogging.info(f"{x}")\n') == []
-
-
-def test_bare_logging_receiver_without_the_import_still_fires():
-    # The opposite case: the exemption is import-backed, exactly like the
-    # loguru-vs-hand-rolled distinction elsewhere — an unbacked name is a guess.
-    assert len(_check('logging.info(f"{x}")\n')) == 1
-
-
-@pytest.mark.parametrize(
-    "binding",
-    [
-        "LOG = logging.getLogger(__name__)",
-        "LOG: logging.Logger = logging.getLogger(__name__)",
-        "LOG = getLogger(__name__)",
-    ],
-)
-def test_ignores_module_level_logger_assigned_from_getlogger(binding: str):
-    src = f'import logging\n\n{binding}\n\ndef f():\n    LOG.info(f"Cleaning up {{p}}")\n'
-    assert _check(src) == []
-
-
-def test_ignores_builder_chain_on_an_assigned_stdlib_logger():
-    src = 'import logging\n\nLOG = logging.getLogger(__name__)\nLOG.getChild("s").info(f"{x}")\n'
-    assert _check(src) == []
-
-
-def test_same_name_assigned_from_a_non_getlogger_factory_still_fires():
-    src = 'import logging\n\nLOG = loguru.logger.bind(a=1)\nLOG.info(f"{x}")\n'
-    assert len(_check(src)) == 1
-
-
-def test_stdlib_attribute_binding_does_not_poison_an_unrelated_bare_logger():
-    # `self.logger = logging.getLogger(...)` binds `self.logger`, NOT `logger`;
-    # matching on the loose name would silence every loguru call in the file.
-    src = """
-import logging
-from loguru import logger
-
-class C:
-    def __init__(self):
-        self.logger = logging.getLogger("c")
-
-    def go(self):
-        self.logger.info(f"stdlib {x}")
-
-def f():
-    logger.info(f"loguru {x}")
-"""
-    diags = _check(src)
-    assert len(diags) == 1
-    assert diags[0].line == 13
-
-
-def test_flags_loguru_import_and_bare_logger():
-    src = 'from loguru import logger\nlogger.info(f"val {x}")\n'
-    diags = _check(src)
-    assert len(diags) == 1
-    assert diags[0].code == "SARJ017"
-
-
-def test_still_flags_loguru_exception_method_without_stdlib_kwargs():
-    assert len(_check('logger.exception(f"failed for {call_id}")\n')) == 1

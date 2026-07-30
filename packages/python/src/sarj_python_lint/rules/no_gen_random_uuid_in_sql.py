@@ -66,11 +66,6 @@ if TYPE_CHECKING:
 
 _GEN_RANDOM_UUID_RE = re.compile(r"\bgen_random_uuid\s*\(", re.IGNORECASE)
 
-# The whole-source gate in `check`. Deliberately weaker than the pattern above —
-# the identifier alone, no paren — so it cannot exclude a file whose masked SQL
-# would have matched. See the comment at its use site.
-_NAMES_GEN_RANDOM_UUID_RE = re.compile(r"gen_random_uuid", re.IGNORECASE)
-
 # A string only counts as SQL when it carries a structural keyword. Without this
 # the rule fires on prose that names the function — including this module's own
 # docstring.
@@ -116,30 +111,6 @@ class NoGenRandomUuidInSql(Rule):
             The diagnostics, sorted by (line, col).
 
         """
-        # Naming the function is a NECESSARY condition for any finding: the
-        # match runs against `strip_sql_noise(literal)`, and that only ever
-        # removes characters, so text absent from the file cannot appear in the
-        # masked literal. Checking the raw source first skips the parse and the
-        # per-literal SQL masking for the ~100% of files that never mention it.
-        #
-        # This rule is not store-gated and so masked every string literal in
-        # every file, which made it the worst cost-per-finding in the registry
-        # (2 findings across 21 corpora, at ~125 ms each). The gate removes that
-        # for no loss of coverage — verified by measuring the corpus before and
-        # after, not by inspection.
-        #
-        # The gate deliberately tests only the identifier, NOT the full
-        # `_GEN_RANDOM_UUID_RE`, which also requires the open paren. Masking can
-        # delete characters *between* the name and its paren — `gen_random_uuid
-        # /* c */ ()` masks to `gen_random_uuid ()` and matches — so gating on
-        # the stricter pattern would drop a finding the rule would otherwise
-        # report. A gate must be strictly weaker than the predicate it guards.
-        #
-        # It is case-insensitive for the same reason `_GEN_RANDOM_UUID_RE` is: a
-        # `DEFAULT GEN_RANDOM_UUID()` in upper-case SQL is a real finding, and a
-        # plain `"gen_random_uuid" in source` test would silently drop it.
-        if not _NAMES_GEN_RANDOM_UUID_RE.search(source):
-            return []
         if is_generated_source(source):
             return []
         tree = parse_or_none(path, source)

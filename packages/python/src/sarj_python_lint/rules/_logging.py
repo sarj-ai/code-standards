@@ -12,7 +12,10 @@ import ast
 
 _LOGGER_NAMES = frozenset({"logger", "log", "logging", "loguru", "_logger", "_log"})
 
-_LOGGER_FACTORIES = frozenset({"getlogger", "get_logger"})
+# Public: `no_fstring_in_log._chain_has_getlogger` must test the SAME set with
+# the SAME casing, or a factory can be a logger to one and not the other.
+LOGGER_FACTORIES = frozenset({"getlogger", "get_logger"})
+_LOGGER_FACTORIES = LOGGER_FACTORIES
 
 
 def is_logger_expr(expr: ast.expr) -> bool:

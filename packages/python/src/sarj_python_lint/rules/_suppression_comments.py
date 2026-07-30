@@ -57,13 +57,3 @@ def scan_comments(source: str) -> list[Comment]:
         )
         for line, col, body, standalone in ordered
     ]
-
-
-def comment_body(raw: str) -> str:
-    """Strip a comment token down to its directive text.
-
-    Returns:
-        The comment text without its leading `#` markers or surrounding space.
-
-    """
-    return raw.lstrip("#").strip()

@@ -76,7 +76,7 @@ from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
 from sarj_python_lint.rules._ast_index import nodes
-from sarj_python_lint.rules._logging import is_logger_expr
+from sarj_python_lint.rules._logging import LOGGER_FACTORIES, is_logger_expr
 
 
 if TYPE_CHECKING:
@@ -102,6 +102,11 @@ _LOG_METHODS = frozenset(
 # Keyword arguments defined by stdlib `logging` (and never structured fields).
 # Their presence marks the call as a stdlib logger, for which the loguru-style
 # structured-keyword rewrite is wrong.
+# The stdlib factory spelling. `logging.getLogger` is camelCase; structlog uses
+# snake_case `get_logger`, and that difference is the only static signal telling
+# a dotted stdlib factory from a dotted structlog one.
+_STDLIB_FACTORY = "getLogger"
+
 _STDLIB_ONLY_KWARGS = frozenset({"exc_info", "stack_info", "extra"})
 
 
@@ -272,13 +277,45 @@ def _is_stdlib_logging_call(node: ast.Call, stdlib: _StdlibLoggers) -> bool:
 
 
 def _chain_has_getlogger(expr: ast.expr) -> bool:
+    """Report whether a stdlib `logging` factory appears anywhere in the receiver chain.
+
+    Matched against the SAME set and casing as `_logging.is_logger_expr`, and that
+    parity is load-bearing. When `is_logger_expr` learned to recognise a bare
+    `get_logger()` callee, this guard still tested the exact string `"getLogger"`,
+    so a snake_case factory returning a *stdlib* logger became a logger to the
+    rule but not a stdlib logger to the guard — and the rule then advised
+    `logger.info("msg", key=value)` on an API that rejects it.
+
+    That advice fails in the worst possible way: stdlib `Logger._log` raises
+    `TypeError: got an unexpected keyword argument`, but only when the call is
+    actually emitted, so the code is green at the default WARNING level and
+    breaks the moment log level is raised to INFO. The shim that triggers it —
+    `def get_logger(name): return logging.getLogger(name)` — ships in
+    huggingface_hub, transformers, fastmcp, mcp and speechmatics, all present in
+    consumer virtualenvs.
+
+    Returns:
+        True when the chain names a stdlib logging factory.
+
+    """
     node = expr
     while True:
         if isinstance(node, ast.Call):
             called = node.func
-            if isinstance(called, ast.Attribute) and called.attr == "getLogger":
+            # DOTTED callee: only the stdlib spelling counts. `structlog.get_logger()`
+            # must NOT be suppressed — structlog's keyword API is exactly what this
+            # rule's advice targets, and it is the rule's main true positive.
+            if isinstance(called, ast.Attribute) and called.attr == _STDLIB_FACTORY:
                 return True
-            if isinstance(called, ast.Name) and called.id == "getLogger":
+            # BARE callee: `get_logger()` and `getLogger()` are both ambiguous — the
+            # name alone cannot tell `from structlog import get_logger` from a shim
+            # `def get_logger(n): return logging.getLogger(n)`, and such shims ship in
+            # huggingface_hub, transformers, fastmcp, mcp and speechmatics. Suppress
+            # both, because the failure is asymmetric: a false NEGATIVE costs one
+            # style nit, while a false POSITIVE advises `logger.info("m", k=v)` on a
+            # stdlib logger, which raises `TypeError` — and only once log level is
+            # raised to INFO, so it is green in tests and breaks in production.
+            if isinstance(called, ast.Name) and called.id.lower() in LOGGER_FACTORIES:
                 return True
             node = called
         elif isinstance(node, ast.Attribute):
