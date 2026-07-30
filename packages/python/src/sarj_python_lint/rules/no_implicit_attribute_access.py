@@ -44,6 +44,34 @@ _EXCLUDED_BASES = {
 }
 
 
+# Typing constructs subscripted with string literals. `Literal["x"]` is a type,
+# not a lookup, so the rule's advice ("parse declaratively with Pydantic") is
+# nonsensical there -- the annotation already IS the declarative schema.
+_TYPE_SUBSCRIPTS = frozenset(
+    {
+        "Literal",
+        "Annotated",
+        "TypedDict",
+        "NamedTuple",
+        "Field",
+        "Doc",
+        "Required",
+        "NotRequired",
+        "ReadOnly",
+    }
+)
+
+
+def _looks_like_route_or_url(value: str) -> bool:
+    """Report whether a `.get()` argument is a route path or URL rather than a key.
+
+    Returns:
+        True for `"/users/{id}"`-shaped paths and anything carrying a scheme.
+
+    """
+    return value.startswith("/") or "://" in value
+
+
 def _get_base_name(node: ast.expr) -> str | None:
     if isinstance(node, ast.Name):
         return node.id
@@ -100,6 +128,14 @@ def _get_key(node: ast.Call) -> str | None:
     first = node.args[0]
     if not isinstance(first, ast.Constant) or not isinstance(first.value, str):
         return None
+    # `.get()` is also the HTTP verb and the route-registration decorator, and
+    # both take a string first argument, so the method name alone cannot tell
+    # them from a mapping lookup. The ARGUMENT can: a URL or a route path is not
+    # a dictionary key. Measured on bulbul + noura-be, this shape was 168 of the
+    # rule's 1,756 findings (9.6%) -- `@router.get("/available-events")` and
+    # `await self.http_client.get(url)` were reported as implicit schema access.
+    if _looks_like_route_or_url(first.value):
+        return None
     return None if _get_base_name(func.value) in _EXCLUDED_BASES else first.value
 
 
@@ -111,10 +147,25 @@ def _subscript_key(node: ast.Subscript) -> str | None:
         the base is one of the excluded receivers.
 
     """
+    # Writing to a mapping is the opposite of the defect. This rule is about
+    # PLUCKING fields out of a payload whose schema is already known -- building
+    # a dict up key by key (`field_dict["x"] = x`, `params["status"] = ...`) is
+    # ordinary construction, and a Pydantic model does not replace it. Measured
+    # on bulbul + noura-be this was 503 of 1,756 findings (28.6%), the single
+    # largest source, and every sampled instance was an assignment target.
+    if isinstance(node.ctx, (ast.Store, ast.Del)):
+        return None
+    # `Literal["a"]`, `Annotated[T, "..."]` and friends are type expressions that
+    # merely LOOK like subscripts. They are not dictionary access at all, and no
+    # Pydantic model can replace them -- `Literal["user"]` IS the schema. 470 of
+    # 1,756 findings (26.8%) were this, second only to assignment targets.
+    base_name = _get_base_name(node.value)
+    if base_name in _TYPE_SUBSCRIPTS:
+        return None
     index = node.slice
     if not isinstance(index, ast.Constant) or not isinstance(index.value, str):
         return None
-    return None if _get_base_name(node.value) in _EXCLUDED_BASES else index.value
+    return None if base_name in _EXCLUDED_BASES else index.value
 
 
 def _is_test_path(path: Path) -> bool:

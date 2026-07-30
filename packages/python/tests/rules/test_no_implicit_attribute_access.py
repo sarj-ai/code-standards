@@ -53,3 +53,80 @@ def test_allows_valid_access(source: str):
 
 def test_exempt_paths():
     assert _check("val = event.payload.get('id')\n", Path("tests/test_something.py")) == []
+
+
+# --------------------------------------------------------------------------- #
+# Deliberately NOT flagged                                                    #
+# --------------------------------------------------------------------------- #
+#
+# This rule was 1,756 of 4,063 first-party findings (43.2%) -- by far the
+# loudest in the registry -- and 63.5% of its own output was one of the three
+# shapes below. Each guard is measured on bulbul + noura-be, and together they
+# take it to 641 findings whose survivors are the actual defect: reading fields
+# out of a payload nobody parsed (`data.get("results")`, `fields["will_retry"]`).
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param('field_dict["response_body"] = response_body\n', id="store-subscript"),
+        pytest.param('params["status"] = status.value\n', id="store-attr-value"),
+        pytest.param('del payload["cursor"]\n', id="del-subscript"),
+    ],
+)
+def test_writing_to_a_mapping_is_not_implicit_access(source: str):
+    """Building a dict key by key is construction, not unparsed schema access.
+
+    503 of 1,756 findings (28.6%) were assignment targets -- the single largest
+    class. A Pydantic model does not replace `field_dict["x"] = x`; the defect
+    this rule names is PLUCKING from a payload, and writing is its opposite.
+    """
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param('kind: Literal["voice-conversation"] = "voice-conversation"\n', id="literal"),
+        pytest.param('role: Annotated[str, "the speaker"] = "user"\n', id="annotated"),
+        pytest.param('x: Required["Thing"]\n', id="required"),
+    ],
+)
+def test_type_subscripts_are_not_dictionary_access(source: str):
+    """`Literal["user"]` is a type expression, not a lookup.
+
+    470 of 1,756 findings (26.8%). The advice "parse declaratively with
+    Pydantic" is nonsensical here -- the annotation already IS the declarative
+    schema, and there is no dictionary involved at any point.
+    """
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param('@router.get("/available-events")\ndef handler():\n    pass\n', id="route-decorator"),
+        pytest.param('resp = await self.http_client.get("/v1/agents")\n', id="http-path"),
+        pytest.param('resp = requests.get("https://example.com/x")\n', id="absolute-url"),
+    ],
+)
+def test_http_and_route_get_are_not_mapping_lookups(source: str):
+    """`.get()` is also an HTTP verb and a route-registration decorator.
+
+    168 of 1,756 findings (9.6%). The method name cannot distinguish them, but
+    the ARGUMENT can: a route path or URL is not a dictionary key.
+    """
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param('results = data.get("results", [])\n', id="get-with-default"),
+        pytest.param('started = chat_counts["vb_transfer_started"]\n', id="read-subscript"),
+        pytest.param('if fields["will_retry"]:\n    pass\n', id="read-in-condition"),
+    ],
+)
+def test_reading_an_unparsed_payload_still_fires(source: str):
+    """The surviving population -- the defect the rule actually exists for."""
+    assert len(_check(source)) == 1
