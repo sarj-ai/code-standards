@@ -59,6 +59,7 @@ polyglot destination routing and the recommended Lefthook jobs.
 | [`packages/sql/`](packages/sql/) | `sarj-sql-lint` on [PyPI](https://pypi.org/project/sarj-sql-lint/) |
 | [`packages/iac/`](packages/iac/) | `sarj-iac-lint` on [PyPI](https://pypi.org/project/sarj-iac-lint/) |
 | [`packages/lint-configs/`](packages/lint-configs/) | `sarj-lint-configs` on [PyPI](https://pypi.org/project/sarj-lint-configs/) |
+| [`packages/tsconfig/`](packages/tsconfig/) | `@sarj/tsconfig` on [npm](https://www.npmjs.com/package/@sarj/tsconfig) |
 | [`plugins/sarj-audit/`](plugins/sarj-audit/) | `sarj-audit` Claude Code plugin (install via `/plugin marketplace add sarj-ai/standards`) |
 
 ## Release
@@ -72,6 +73,7 @@ Tag and push — the `release.yml` workflow handles publish via OIDC (PyPI) and 
 | `sql-vX.Y.Z` | `sarj-sql-lint` to PyPI |
 | `iac-vX.Y.Z` | `sarj-iac-lint` to PyPI |
 | `lint-configs-vX.Y.Z` | `sarj-lint-configs` to PyPI |
+| `tsconfig-vX.Y.Z` | `@sarj/tsconfig` to npm |
 
 Normal releases are triggered by merging a manifest version bump to `main`;
 the workflow publishes the changed package and creates its matching version tag.

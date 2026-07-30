@@ -39,7 +39,15 @@ const RELATIVE_SLACK_MS = 3;
 
 const ruleNames = Object.keys(plugin.rules);
 
+// Both tests need every rule's timing; measuring 57 rules x 6 verifies twice
+// doubles a ~60s workload, so timings are shared across tests.
+const timingCache = new Map<string, number>();
+
 function bestMs(ruleName: string, repeats = 5): number {
+  const cached = timingCache.get(ruleName);
+  if (cached !== undefined) {
+    return cached;
+  }
   const linter = new Linter();
   const config: Linter.Config[] = [
     {
@@ -61,12 +69,13 @@ function bestMs(ruleName: string, repeats = 5): number {
     linter.verify(SOURCE, config, "synthetic.tsx");
     best = Math.min(best, performance.now() - start);
   }
+  timingCache.set(ruleName, best);
   return best;
 }
 
 // These re-parse a ~2k-line source many times; they are heavy integration timings,
 // not unit tests, so they get a generous timeout (the default 5s is too tight).
-const PERF_TIMEOUT_MS = 30_000;
+const PERF_TIMEOUT_MS = 120_000;
 
 describe("rule performance", () => {
   it("no rule exceeds the absolute ms/1k-LOC budget", () => {
