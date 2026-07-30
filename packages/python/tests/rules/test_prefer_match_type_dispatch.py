@@ -2,6 +2,8 @@ from pathlib import Path
 import textwrap
 from typing import TYPE_CHECKING
 
+import pytest
+
 from sarj_python_lint.rules.prefer_match_type_dispatch import PreferMatchTypeDispatch
 
 
@@ -45,23 +47,6 @@ def test_flags_hideous_parser_helper():
     assert "SARJ080" in codes
 
 
-def test_flags_control_flow_raise_inside_try():
-    source = """
-    def parse_item(val):
-        try:
-            if not isinstance(val, int):
-                raise ValueError()
-            return val * 2
-        except ValueError:
-            return 0
-    """
-    diags = _check(source)
-    assert len(diags) == 1
-    assert diags[0].code == "SARJ080"
-    assert "Control-flow raise in try block" in diags[0].message
-    assert diags[0].line == 5
-
-
 def test_flags_sequential_sentinel_guards():
     source = """
     def _parse_field(val: object):
@@ -77,61 +62,6 @@ def test_flags_sequential_sentinel_guards():
     assert len(diags) == 1
     assert diags[0].code == "SARJ080"
     assert "Sequential sentinel/type guards" in diags[0].message
-
-
-def test_flags_qualified_attribute_exceptions():
-    source = """
-    def parse_mod_exc(val):
-        try:
-            if not isinstance(val, str):
-                raise my_module.CustomTypeError()
-            return val
-        except my_module.CustomTypeError:
-            return None
-    """
-    diags = _check(source)
-    assert len(diags) == 1
-    assert "raise CustomTypeError()" in diags[0].message
-
-
-def test_flags_bare_except_block():
-    source = """
-    def parse_bare(val):
-        try:
-            if not isinstance(val, str):
-                raise Exception()
-            return val
-        except:
-            return None
-    """
-    diags = _check(source)
-    assert len(diags) == 1
-
-
-def test_skips_inner_function_try_block_from_outer_scope():
-    source = """
-    def outer():
-        try:
-            def inner():
-                raise ValueError()
-            inner()
-        except ValueError:
-            pass
-    """
-    assert _check(source) == []
-
-
-def test_skips_legitimate_raise_not_caught_by_local_try():
-    source = """
-    def validate(val):
-        try:
-            if val < 0:
-                raise ValueError("Negative value")
-            process(val)
-        except TypeError:
-            pass
-    """
-    assert _check(source) == []
 
 
 def test_skips_match_case_idiom():
@@ -169,42 +99,6 @@ def test_skips_generated_source():
     assert _check(source) == []
 
 
-def test_flags_raised_exception_attribute_no_call():
-    source = """
-    def parse_item(val):
-        try:
-            raise builtins.ValueError
-        except builtins.ValueError:
-            pass
-    """
-    diags = _check(source)
-    assert len(diags) == 1
-
-
-def test_flags_tuple_exception_handlers():
-    source = """
-    def parse_item(val):
-        try:
-            raise TypeError()
-        except (ValueError, builtins.TypeError):
-            pass
-    """
-    diags = _check(source)
-    assert len(diags) == 1
-
-
-def test_try_star():
-    source = """
-    def parse_item(val):
-        try:
-            raise ValueError()
-        except* ValueError:
-            pass
-    """
-    diags = _check(source)
-    assert len(diags) == 1
-
-
 def test_issubclass_and_eq_sequential_guards():
     source = """
     def _parse_field(val: type):
@@ -219,16 +113,78 @@ def test_issubclass_and_eq_sequential_guards():
     assert "Sequential sentinel" in diags[0].message
 
 
-def test_nested_try_blocks():
-    source = """
-    def foo():
-        try:
-            try:
-                raise ValueError()
-            except ValueError:
-                pass
-        except TypeError:
-            pass
-    """
-    diags = _check(source)
-    assert len(diags) == 1
+# --------------------------------------------------------------------------- #
+# Deliberately NOT flagged: raise-as-goto inside a try                        #
+# --------------------------------------------------------------------------- #
+#
+# This rule used to carry a second detector for `raise` inside a `try` whose own
+# `except` catches it. It was removed: ruff's TRY301 (`raise-within-try`) reports
+# the same defect at the same line AND column, and `ruff.strict.toml` selects
+# `ALL` without ignoring `TRY`, so it is live in every consumer. Across 21
+# corpora the arm produced 1,756 findings, 1,649 of them (93.9%) already flagged
+# by TRY301.
+#
+# These are the exact shapes the deleted tests asserted. They must now stay
+# silent HERE while remaining ruff's job; if a future change re-adds the
+# detector, these fail and the double-reporting is caught before it ships.
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param(
+            """
+            def parse_item(val):
+                try:
+                    if not isinstance(val, int):
+                        raise ValueError()
+                    return val * 2
+                except ValueError:
+                    return 0
+            """,
+            id="plain-raise-caught-locally",
+        ),
+        pytest.param(
+            """
+            def parse_item(val):
+                try:
+                    raise errors.ValidationError()
+                except errors.ValidationError:
+                    return 0
+            """,
+            id="qualified-attribute-exception",
+        ),
+        pytest.param(
+            """
+            def parse_item(val):
+                try:
+                    raise ValueError()
+                except:
+                    return 0
+            """,
+            id="bare-except",
+        ),
+        pytest.param(
+            """
+            def parse_item(val):
+                try:
+                    raise ValueError
+                except (TypeError, ValueError):
+                    return 0
+            """,
+            id="tuple-handler-no-call",
+        ),
+        pytest.param(
+            """
+            def parse_item(val):
+                try:
+                    raise ValueError()
+                except* ValueError:
+                    return 0
+            """,
+            id="try-star",
+        ),
+    ],
+)
+def test_raise_within_try_is_left_to_ruff_try301(source: str):
+    assert _check(source) == []

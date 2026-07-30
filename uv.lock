@@ -17,7 +17,7 @@ wheels = [
 
 [[package]]
 name = "sarj-python-lint"
-version = "0.27.0"
+version = "0.28.0"
 source = { editable = "." }
 
 [package.dev-dependencies]

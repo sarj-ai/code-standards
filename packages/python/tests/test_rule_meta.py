@@ -76,6 +76,22 @@ _RETIRED_CODES = frozenset(
         # Briefly held `no-implicit-attribute-access` (#147) before #154 moved
         # that rule to SARJ083. Retired rather than recycled.
         "SARJ055",
+        # Shipped, then withdrawn as redundant.
+        #
+        # SARJ075 `primary-export-file-name` gave actively harmful advice: it
+        # told you to rename `0001_initial.py` to `migration.py` (breaking
+        # Django's filename-ordered migration graph) and `tests.py` to
+        # `thing_tests.py` (breaking test discovery), and to rename
+        # domain-named modules like `pagination.py` after their one current
+        # export — the exact regression SARJ022 `single-public-export`'s
+        # docstring refuses to make. SARJ022 is silent on all three and covers
+        # the junk-drawer-stem case that is worth flagging.
+        "SARJ075",
+        # SARJ079 `prefer-pattern-matching` was a copy-paste amalgam of
+        # SARJ069/070/081/032 — same positions AND byte-identical message text,
+        # so `# sarj-noqa: SARJ079` was an unreviewable blanket silencing four
+        # independent judgements on one line.
+        "SARJ079",
     }
 )
 

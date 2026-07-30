@@ -154,3 +154,50 @@ def test_a_plain_v4_default_still_fires_in_a_migration():
 def test_applies_to_test_files_too():
     src = 'SQL = "CREATE TABLE t (id UUID DEFAULT gen_random_uuid())"\n'
     assert len(_check(src, Path("svc/tests/test_store.py"))) == 1
+
+
+# --------------------------------------------------------------------------- #
+# The whole-source gate in `check`                                            #
+# --------------------------------------------------------------------------- #
+#
+# `check` returns early unless the raw source names `gen_random_uuid`, which
+# skips the parse and the per-literal SQL masking for files that cannot match.
+# A gate has to be strictly WEAKER than the predicate it guards, and there are
+# two ways to get that wrong here, both of which would be silent:
+#
+#   * matching case-sensitively, when `_GEN_RANDOM_UUID_RE` is case-insensitive;
+#   * requiring the open paren, when masking can delete characters between the
+#     name and its paren, so the masked literal matches where the raw source
+#     does not.
+#
+# These pin both. If the gate is ever tightened to `"gen_random_uuid" in source`
+# or to `_GEN_RANDOM_UUID_RE`, one of them fails.
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param(
+            'SQL = "CREATE TABLE t (id uuid DEFAULT GEN_RANDOM_UUID())"\n',
+            id="upper-case-sql",
+        ),
+        pytest.param(
+            'SQL = "CREATE TABLE t (id uuid DEFAULT Gen_Random_UUID())"\n',
+            id="mixed-case-sql",
+        ),
+        pytest.param(
+            'SQL = "CREATE TABLE t (id uuid DEFAULT gen_random_uuid /* c */ ())"\n',
+            id="comment-between-name-and-paren",
+        ),
+        pytest.param(
+            'SQL = ("CREATE TABLE t (id uuid DEFAULT " "gen_random_uuid())")\n',
+            id="implicit-string-concatenation",
+        ),
+    ],
+)
+def test_gate_does_not_hide_matchable_shapes(source: str):
+    assert len(_check(source)) == 1
+
+
+def test_gate_skips_a_file_that_never_names_the_function():
+    assert _check('SQL = "CREATE TABLE t (id uuid DEFAULT uuidv7())"\n') == []

@@ -397,7 +397,12 @@ def restates(comment_tokens: Sequence[str], code: Iterable[str]) -> bool:
 _LAYOUT_TOKENS = frozenset({tokenize.NL, tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT})
 _NON_CODE_TOKENS = _LAYOUT_TOKENS | frozenset({tokenize.COMMENT, tokenize.ENCODING, tokenize.ENDMARKER})
 
-_Scan = tuple[list[tuple[int, int, str]], list[tuple[int, int, str]], set[int], int]
+# `(line, col0, body, standalone)` for every comment, in source order. This is
+# what `_suppression_comments` needs, and it is a by-product of the pass below
+# rather than a reason to run a second one — see `all_comments`.
+_Ordered = list[tuple[int, int, str, bool]]
+
+_Scan = tuple[list[tuple[int, int, str]], list[tuple[int, int, str]], set[int], int, _Ordered]
 
 _last_scan: tuple[str, _Scan] | None = None
 
@@ -405,6 +410,7 @@ _last_scan: tuple[str, _Scan] | None = None
 def _scan(source: str) -> _Scan:
     standalone: list[tuple[int, int, str]] = []
     trailing: list[tuple[int, int, str]] = []
+    ordered: _Ordered = []
     nested: set[int] = set()
     first_code_line = 1 << 30
     prev_end_row = 0
@@ -412,8 +418,11 @@ def _scan(source: str) -> _Scan:
     readline = io.StringIO(source).readline
     for tok in tokenize.generate_tokens(readline):
         if tok.type == tokenize.COMMENT:
-            entry = (tok.start[0], tok.start[1], tok.string.lstrip("#").strip())
-            (trailing if tok.start[0] == prev_end_row else standalone).append(entry)
+            body = tok.string.lstrip("#").strip()
+            entry = (tok.start[0], tok.start[1], body)
+            is_standalone = tok.start[0] != prev_end_row
+            (standalone if is_standalone else trailing).append(entry)
+            ordered.append((tok.start[0], tok.start[1], body, is_standalone))
             if depth > 0:
                 nested.add(tok.start[0])
         elif tok.type == tokenize.OP:
@@ -425,7 +434,28 @@ def _scan(source: str) -> _Scan:
             prev_end_row = tok.end[0]
         if tok.type not in _NON_CODE_TOKENS:
             first_code_line = min(first_code_line, tok.start[0])
-    return standalone, trailing, nested, first_code_line
+    return standalone, trailing, nested, first_code_line, ordered
+
+
+def all_comments(source: str) -> tuple[_Ordered, int]:
+    """Return every comment as `(line, col0, body, standalone)`, plus the first code line.
+
+    Exists so the suppression rules (SARJ038/054) can share this module's
+    tokenize pass instead of running a second one. Both scanners computed the
+    same three facts — comment text, whether it stands alone on its line, and
+    where the first real code token is — from identical token-class sets, so the
+    second pass was pure duplicated work: SARJ038 alone spent ~4% of total rule
+    time on it.
+
+    `col0` is 0-based, matching this module's other accessors; the suppression
+    layer adds one for its 1-based `Comment.col`.
+
+    Returns:
+        The ordered comments and the first code line's row.
+
+    """
+    _, _, _, first_code_line, ordered = _scan_memo(source)
+    return ordered, first_code_line
 
 
 def _scan_memo(source: str) -> _Scan:
@@ -482,7 +512,7 @@ def standalone_comments(source: str) -> tuple[list[tuple[int, int, str]], int]:
         The standalone comments and the first code line's row.
 
     """
-    standalone, _, _, first_code_line = _scan_memo(source)
+    standalone, _, _, first_code_line, _ = _scan_memo(source)
     return standalone, first_code_line
 
 
