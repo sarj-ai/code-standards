@@ -94,6 +94,9 @@ const DETECTION_FILES = [
   "src/styles/globals.css",
   "styles/globals.css",
 ];
+/** How far up the tree to look for a design-token marker before giving up. */
+const MAX_UPWARD_DEPTH = 8;
+
 const semanticTokenCache = new Map<string, boolean>();
 
 /** SVG container elements whose children carry structural (not UI-token) colors. */
@@ -165,12 +168,42 @@ const isInsideIconFactoryPath = (node: TSESTree.Node): boolean => {
   return false;
 };
 
+/**
+ * Does a design-token system exist at or above `filename`'s directory?
+ *
+ * The cache stores the RESOLVED answer for every directory visited on the way
+ * up, not each directory's own local result. That distinction is the entire bug
+ * this replaced: the previous version wrote `cache[dir] = found` per
+ * intermediate directory, where `found` meant "no marker AT this dir" — but the
+ * question being cached is "is there a marker at or ABOVE this dir". So the
+ * first file linted wrote `cache["…/src"] = false`, and every later file under
+ * `src/**` short-circuited on it and never walked up to the `components.json`
+ * at the repo root.
+ *
+ * The effect was order-dependent and total: linting one file reported normally,
+ * while linting a glob containing that same file reported nothing, because some
+ * other file poisoned the cache first. Measured across 6,774 files of real
+ * TypeScript this rule produced ZERO findings — silently disabled everywhere
+ * despite shipping as "error". It is the only rule in the plugin with a
+ * module-level directory cache, which is why nothing else showed the symptom.
+ *
+ * Caching the resolved answer for all visited directories is sound: every
+ * visited directory sits at or below the one where the marker was found, so the
+ * marker is at-or-above each of them too.
+ */
 const hasSemanticTokenSystem = (filename: string): boolean => {
   let dir = dirname(filename);
   const root = parse(dir).root;
-  for (let depth = 0; depth < 8; depth += 1) {
+  const visited: string[] = [];
+  let answer: boolean | undefined;
+
+  for (let depth = 0; depth < MAX_UPWARD_DEPTH; depth += 1) {
     const cached = semanticTokenCache.get(dir);
-    if (cached !== undefined) return cached;
+    if (cached !== undefined) {
+      answer = cached;
+      break;
+    }
+    visited.push(dir);
 
     let found = false;
     for (const rel of DETECTION_FILES) {
@@ -189,11 +222,25 @@ const hasSemanticTokenSystem = (filename: string): boolean => {
         // Ignore unreadable config files; absence of evidence means no report.
       }
     }
-    semanticTokenCache.set(dir, found);
-    if (found || dir === root) return found;
+    if (found) {
+      answer = true;
+      break;
+    }
+    if (dir === root) {
+      answer = false;
+      break;
+    }
     dir = dirname(dir);
   }
-  return false;
+
+  // `answer` is undefined only when the depth budget ran out before reaching a
+  // marker or the filesystem root. That is inconclusive, not "no" — a directory
+  // higher up could still hold one, reachable within budget from a shallower
+  // file. Memoizing it would make the wrong answer permanent for the process,
+  // so those directories are deliberately left uncached.
+  if (answer === undefined) return false;
+  for (const seen of visited) semanticTokenCache.set(seen, answer);
+  return answer;
 };
 
 const propName = (key: TSESTree.Property["key"]): string | null => {
