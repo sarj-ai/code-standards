@@ -28,6 +28,7 @@ import noSecretInLog from "./rules/no-secret-in-log.js";
 import noUnsafeCast from "./rules/no-unsafe-cast.js";
 import noUnsafeMockCasting from "./rules/no-unsafe-mock-casting.js";
 import preferStringLiteralUnion from "./rules/prefer-string-literal-union.js";
+import preferZodEnum from "./rules/prefer-zod-enum.js";
 import singlePublicExport from "./rules/single-public-export.js";
 import noOffsetPagination from "./rules/no-offset-pagination.js";
 import noPositionalTupleReturn from "./rules/no-positional-tuple-return.js";
@@ -83,6 +84,7 @@ const rules = {
   "no-unsafe-cast": noUnsafeCast,
   "no-unsafe-mock-casting": noUnsafeMockCasting,
   "prefer-string-literal-union": preferStringLiteralUnion,
+  "prefer-zod-enum": preferZodEnum,
   "single-public-export": singlePublicExport,
   "primary-export-file-name": primaryExportFileName,
   "no-silent-promise-catch": noSilentPromiseCatch,
@@ -155,6 +157,7 @@ const plugin = {
         "@sarj/single-public-export": "warn",
         "@sarj/primary-export-file-name": "warn",
         "@sarj/prefer-string-literal-union": "warn",
+        "@sarj/prefer-zod-enum": "warn",
         // Mined from 2y of PR review feedback + 5-repo code-smell audit (2026-07).
         "@sarj/require-fetch-timeout": "warn",
         "@sarj/no-silent-promise-catch": "warn",
@@ -250,6 +253,7 @@ const plugin = {
         "@sarj/primary-export-file-name": "error",
         // Promoted to error 2026-07-25 — strict means strict (user directive).
         "@sarj/prefer-string-literal-union": "error",
+        "@sarj/prefer-zod-enum": "error",
         // Mined from 2y of PR review feedback + 5-repo code-smell audit (2026-07).
         "@sarj/require-fetch-timeout": "error",
         "@sarj/no-silent-promise-catch": "error",
