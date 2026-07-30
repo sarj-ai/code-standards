@@ -51,9 +51,22 @@ def test_message_is_exactly_the_shipped_text() -> None:
         "`ThingService` injects `ThingStore` and exposes 2 public methods, but has no abstract base, "
         "so every consumer has to name the concrete class and the only way to test one is to patch or "
         "mock it. Extract the public methods onto an `abc.ABC` (or a `Protocol`) and have "
-        "`ThingService` implement it, so consumers depend on the port and tests can pass a real or "
-        "purpose-built implementation instead of a mock."
+        "`ThingService` implement it, so consumers depend on the port and tests can pass a "
+        "purpose-built implementation instead of a mock — except for a `*Store`/`*DAO` persistence "
+        "port, where tests should drive the real backend implementation against the test database "
+        "rather than an in-memory double."
     )
+
+
+def test_message_carves_out_the_persistence_ports_sarj058_owns() -> None:
+    # Doing what this rule asks for a `*Store` — writing `InMemoryUserStore(UserStore)` —
+    # trips SARJ058 `prefer-real-store-in-tests`, which forbids an in-memory double of a
+    # persistence port. The contradiction is resolved here, in one clause, so the advice
+    # a reader follows cannot land them on the other rule.
+    message = _check(_SERVICE)[0].message
+    assert "purpose-built implementation instead of a mock" in message
+    assert "except for a `*Store`/`*DAO` persistence port" in message
+    assert "the real backend implementation against the test database" in message
 
 
 def test_message_does_not_cite_another_repos_class_names() -> None:

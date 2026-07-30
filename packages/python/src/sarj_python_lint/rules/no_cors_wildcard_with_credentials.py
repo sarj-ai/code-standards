@@ -24,6 +24,7 @@ import ast
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import nodes, walk
 
 
 if TYPE_CHECKING:
@@ -45,9 +46,7 @@ class NoCorsWildcardWithCredentials(Rule):
         if tree is None:
             return []
         diags: list[Diagnostic] = []
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
-                continue
+        for node in nodes(tree, ast.Call):
             keywords = {arg: kw.value for kw in node.keywords if (arg := kw.arg) is not None}
             credentials = keywords.get("allow_credentials")
             origins = keywords.get("allow_origins")
@@ -95,4 +94,4 @@ def _contains_star_literal(node: ast.expr) -> bool:
         True when a `"*"` literal appears in the subtree.
 
     """
-    return any(isinstance(child, ast.Constant) and child.value == "*" for child in ast.walk(node))
+    return any(isinstance(child, ast.Constant) and child.value == "*" for child in walk(node))

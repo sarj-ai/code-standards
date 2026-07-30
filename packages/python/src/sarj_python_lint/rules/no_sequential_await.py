@@ -52,9 +52,11 @@ import ast
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import children, nodes, walk
 
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
 
 
@@ -81,9 +83,9 @@ class NoSequentialAwait(Rule):
         tree = parse_or_none(path, source)
         if tree is None:
             return []
-        if _imports_non_asyncio_runtime(tree) or _uses_structured_concurrency(tree):
+        if _imports_non_asyncio_runtime(tree, source) or _uses_structured_concurrency(tree, source):
             return []
-        visitor = _SequentialAwaitVisitor(_exempt_awaits(tree))
+        visitor = _SequentialAwaitVisitor(_exempt_awaits(tree, source))
         visitor.visit(tree)
         diags = [
             Diagnostic(
@@ -127,25 +129,26 @@ _CONTROL_FLOW = (
 _NON_ASYNCIO_RUNTIMES = frozenset({"trio", "anyio"})
 
 
-def _imports_non_asyncio_runtime(tree: ast.AST) -> bool:
+def _imports_non_asyncio_runtime(tree: ast.AST, source: str) -> bool:
     """Report whether the module imports a non-asyncio async runtime (trio/anyio).
 
     `asyncio.gather` does not exist under those runtimes, and their structured
     concurrency makes sequential awaits in a loop the deliberate norm.
 
+    Naming either runtime in the text is a precondition for importing it, so the
+    substring test gates the traversal without narrowing what qualifies.
+
     Returns:
         True when trio or anyio is imported anywhere in the module.
 
     """
-    for node in ast.walk(tree):
+    if not any(runtime in source for runtime in _NON_ASYNCIO_RUNTIMES):
+        return False
+    for node in nodes(tree, ast.Import, ast.ImportFrom):
         if isinstance(node, ast.Import):
             if any(alias.name.split(".")[0] in _NON_ASYNCIO_RUNTIMES for alias in node.names):
                 return True
-        elif (
-            isinstance(node, ast.ImportFrom)
-            and node.module is not None
-            and node.module.split(".")[0] in _NON_ASYNCIO_RUNTIMES
-        ):
+        elif node.module is not None and node.module.split(".")[0] in _NON_ASYNCIO_RUNTIMES:
             return True
     return False
 
@@ -167,61 +170,77 @@ _STRUCTURED_CONCURRENCY_NAMES = frozenset(
 )
 
 
-def _uses_structured_concurrency(tree: ast.AST) -> bool:
+def _uses_structured_concurrency(tree: ast.AST, source: str) -> bool:
     """Report whether the module uses a trio/anyio-only concurrency primitive.
 
     trio's and anyio's own modules import their runtime relatively, so the
     import check cannot see it; the primitives they use are the visible proof.
 
+    A name can only be referenced if it is spelled in the text, so the substring
+    test gates the traversal without narrowing what qualifies.
+
     Returns:
         True when a trio/anyio-only name appears anywhere in the module.
 
     """
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Name) and node.id in _STRUCTURED_CONCURRENCY_NAMES:
-            return True
-        if isinstance(node, ast.Attribute) and node.attr in _STRUCTURED_CONCURRENCY_NAMES:
-            return True
-    return False
+    if not any(name in source for name in _STRUCTURED_CONCURRENCY_NAMES):
+        return False
+    return any(
+        node.id in _STRUCTURED_CONCURRENCY_NAMES
+        if isinstance(node, ast.Name)
+        else node.attr in _STRUCTURED_CONCURRENCY_NAMES
+        for node in nodes(tree, ast.Name, ast.Attribute)
+    )
 
 
 def _names(node: ast.AST) -> set[str]:
-    return {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
+    if isinstance(node, ast.Name):
+        return {node.id}
+    return {n.id for n in walk(node) if isinstance(n, ast.Name)}
 
 
-def _walk_same_scope(node: ast.AST) -> list[ast.AST]:
-    """`node` and descendants, NOT descending into nested function/lambda bodies.
+def _reads_any(node: ast.AST, names: set[str]) -> bool:
+    """Report whether `node`'s subtree reads any name in `names`.
+
+    Returns:
+        True on the first matching `Name`, without collecting the rest.
+
+    """
+    return any(isinstance(n, ast.Name) and n.id in names for n in walk(node))
+
+
+def _same_scope_awaits(node: ast.AST) -> Iterator[ast.Await]:
+    """Every `Await` under `node`, NOT descending into nested function/lambda bodies.
 
     A loop's per-iteration work is only the code that runs in the loop's own
     executable scope. An `await` inside a nested `async def`/`lambda` runs when
     *that* callable is invoked, not per loop iteration, so it must not make the
     loop look like a gatherable map.
 
-    Returns:
-        `node` and its same-scope descendants.
+    Yields:
+        The same-scope `Await` descendants of `node`, `node` itself included.
 
     """
-    out: list[ast.AST] = []
     stack: list[ast.AST] = [node]
     while stack:
         current = stack.pop()
-        out.append(current)
-        # A nested function/lambda body runs in its own scope, not per iteration.
-        # Record the def node itself but never descend into it.
-        if isinstance(current, _SCOPES):
+        if isinstance(current, ast.Await):
+            yield current
+        # A nested function/lambda body runs in its own scope, not per iteration,
+        # so never descend into it.
+        elif isinstance(current, _SCOPES):
             continue
-        stack.extend(ast.iter_child_nodes(current))
-    return out
+        stack.extend(children(current))
 
 
-def _exempt_awaits(tree: ast.AST) -> set[int]:
+def _exempt_awaits(tree: ast.AST, source: str) -> set[int]:
     """`id()`s of every await that is not a per-element map step.
 
     Returns:
         The union of the yield-streamed and loop-carried exempt awaits.
 
     """
-    return _yield_exempt_awaits(tree) | _loop_carried_awaits(tree)
+    return _yield_exempt_awaits(tree, source) | _loop_carried_awaits(tree)
 
 
 def _loop_carried_awaits(tree: ast.AST) -> set[int]:
@@ -236,37 +255,41 @@ def _loop_carried_awaits(tree: ast.AST) -> set[int]:
 
     """
     exempt: set[int] = set()
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Assign):
+    for node in nodes(tree, ast.Assign):
+        # An assignment's *value* cannot contain another assignment, so each
+        # await has at most one enclosing assignment to be carried by. Awaits
+        # are collected before the targets so an await-free value — the common
+        # case — costs nothing beyond the scan it needs anyway.
+        awaits = list(_same_scope_awaits(node.value))
+        if not awaits:
             continue
         targets = {name for target in node.targets for name in _names(target)}
-        if not targets:
-            continue
-        for inner in _walk_same_scope(node.value):
-            if isinstance(inner, ast.Await) and _names(inner) & targets:
-                exempt.add(id(inner))
+        exempt.update(id(inner) for inner in awaits if _reads_any(inner, targets))
     return exempt
 
 
-def _yield_exempt_awaits(tree: ast.AST) -> set[int]:
+def _yield_exempt_awaits(tree: ast.AST, source: str) -> set[int]:
     """`id()`s of awaits that are the value yielded by an async generator.
 
     `for x in xs: yield await fetch(x)` streams results one at a time; the yield
     imposes an inherent order, so it is not a gatherable map. Awaits reachable
     from a `yield` value (without crossing a nested scope) are exempt.
 
+    A `Yield` node requires the `yield` keyword in the text, so the substring
+    test gates the traversal without narrowing what qualifies.
+
     Returns:
         The `id()`s of the yield-exempt awaits.
 
     """
-    exempt: set[int] = set()
-    for yield_node in ast.walk(tree):
-        if not isinstance(yield_node, ast.Yield) or yield_node.value is None:
-            continue
-        for inner in _walk_same_scope(yield_node.value):
-            if isinstance(inner, ast.Await):
-                exempt.add(id(inner))
-    return exempt
+    if "yield" not in source:
+        return set()
+    return {
+        id(inner)
+        for yield_node in nodes(tree, ast.Yield)
+        if yield_node.value is not None
+        for inner in _same_scope_awaits(yield_node.value)
+    }
 
 
 def _is_gather_antipattern(node: ast.For, exempt: set[int]) -> bool:
@@ -279,11 +302,11 @@ def _is_gather_antipattern(node: ast.For, exempt: set[int]) -> bool:
     if any(isinstance(stmt, _CONTROL_FLOW) for stmt in node.body):
         return False
     targets = _names(node.target)
-    for stmt in node.body:
-        for inner in _walk_same_scope(stmt):
-            if isinstance(inner, ast.Await) and id(inner) not in exempt and _names(inner) & targets:
-                return True
-    return False
+    return any(
+        id(inner) not in exempt and _reads_any(inner, targets)
+        for stmt in node.body
+        for inner in _same_scope_awaits(stmt)
+    )
 
 
 class _SequentialAwaitVisitor(ast.NodeVisitor):

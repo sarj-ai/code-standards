@@ -1,4 +1,4 @@
-"""SARJ074: prefer assignment expression (`:=`) for regex match assignments immediately preceding an `if` check.
+"""SARJ081: prefer assignment expression (`:=`) for regex match assignments immediately preceding an `if` check.
 
 Assigning a regex match result to a temporary variable on the line immediately preceding an
 `if` statement testing that variable is the canonical use case for Python 3.8+ assignment
@@ -23,6 +23,7 @@ import ast
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, is_suppressed, parse_or_none
+from sarj_python_lint.rules._ast_index import walk
 
 
 if TYPE_CHECKING:
@@ -106,7 +107,7 @@ class PreferWalrusRegexMatch(Rule):
         source_lines = source.splitlines()
         diags: list[Diagnostic] = []
 
-        for node in ast.walk(tree):
+        for node in walk(tree):
             raw_body = getattr(node, "body", None)
             if not isinstance(raw_body, list):
                 continue

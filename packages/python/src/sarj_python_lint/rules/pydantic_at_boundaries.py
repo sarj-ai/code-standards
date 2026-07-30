@@ -83,6 +83,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import children, nodes
 
 
 if TYPE_CHECKING:
@@ -123,9 +124,7 @@ class PydanticAtBoundaries(Rule):
             return []
         diags: list[Diagnostic] = []
         local = _local_function_ids(tree)
-        for node in ast.walk(tree):
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
+        for node in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef):
             if _is_overload(node):
                 continue
             # Private/internal functions are not public boundaries — their
@@ -207,7 +206,7 @@ def _local_function_ids(tree: ast.Module) -> set[int]:
     stack: list[tuple[ast.AST, bool]] = [(tree, False)]
     while stack:
         node, inside = stack.pop()
-        for child in ast.iter_child_nodes(node):
+        for child in children(node):
             child_is_func = isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
             if child_is_func and inside:
                 out.add(id(child))
@@ -265,7 +264,7 @@ def _builds_record_literal(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool
             and _is_record_literal(current.value)
         ):
             record_names.add(current.target.id)
-        stack.extend(ast.iter_child_nodes(current))
+        stack.extend(children(current))
     return any(
         _is_record_literal(value) or (isinstance(value, ast.Name) and value.id in record_names) for value in returned
     )

@@ -227,6 +227,7 @@ import re
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._logging import is_logger_expr
 from sarj_python_lint.rules._paths import is_generated_source
 
@@ -337,7 +338,7 @@ class PreferFstringOverConcat(Rule):
         inner: set[int] = set()
         excluded: set[int] = set()
         adds: list[ast.BinOp] = []
-        for node in ast.walk(tree):
+        for node in nodes(tree, ast.BinOp, ast.Call):
             if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
                 adds.append(node)
                 for side in (node.left, node.right):
@@ -348,7 +349,7 @@ class PreferFstringOverConcat(Rule):
                 excluded.add(id(node.left))
             elif isinstance(node, ast.Call) and _is_logging_call(node):
                 arguments: list[ast.expr] = [*node.args, *(kw.value for kw in node.keywords)]
-                excluded.update(id(sub) for arg in arguments for sub in ast.walk(arg))
+                excluded.update(id(sub) for arg in arguments for sub in walk(arg))
 
         diags: list[Diagnostic] = []
         for node in adds:

@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import ast
 
+from sarj_python_lint.rules._ast_index import walk
+
 
 # The pytest-benchmark fixture: the test measures time, it does not verify.
 _BENCHMARK = "benchmark"
@@ -33,7 +35,7 @@ def uses_benchmark_fixture(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool
     """
     args = node.args
     declared = any(arg.arg == _BENCHMARK for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs))
-    return declared and any(isinstance(child, ast.Name) and child.id == _BENCHMARK for child in ast.walk(node))
+    return declared and any(isinstance(child, ast.Name) and child.id == _BENCHMARK for child in walk(node))
 
 
 def has_benchmark_marker(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:

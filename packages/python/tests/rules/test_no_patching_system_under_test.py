@@ -150,8 +150,19 @@ def test_message_is_reported_verbatim():
     assert diag.message == (
         "this patches `app.billing.apply_discount`, which belongs to the unit this test then "
         "exercises, so the real code path never runs and the assertions only describe the mock. "
-        "Patch at the boundary the unit talks to instead, or exercise the real method."
+        "Adding `spec=`/`autospec=` does not address this — the problem is *what* is patched, not "
+        "how faithfully. Patch at the boundary the unit talks to instead, or exercise the real "
+        "method."
     )
+
+
+def test_message_supersedes_the_spec_advice_of_sarj040():
+    # SARJ040 `mock-without-spec` co-fires at the identical line:column on 1,731 of
+    # this rule's 1,736 corpus findings and tells the author to add `spec=`. Obeying
+    # it cannot satisfy this rule, so the message has to say so at the shared site.
+    [diag] = _check(_SIBLING)
+    assert "`spec=`/`autospec=` does not address this" in diag.message
+    assert "the problem is *what* is patched, not how faithfully" in diag.message
 
 
 def test_reports_line_and_column_of_the_patch_call():

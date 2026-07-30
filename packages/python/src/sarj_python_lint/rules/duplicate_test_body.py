@@ -198,6 +198,7 @@ import tokenize
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import children
 from sarj_python_lint.rules._comments import standalone_comments, trailing_comments
 from sarj_python_lint.rules._paths import is_generated_source, is_test_path
 
@@ -656,7 +657,7 @@ def _decorator_shape(node: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
 
 def _walk(node: ast.AST) -> Iterator[ast.AST]:
     yield node
-    for child in ast.iter_child_nodes(node):
+    for child in children(node):
         yield from _walk(child)
 
 

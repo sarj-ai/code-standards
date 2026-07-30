@@ -67,6 +67,7 @@ import re
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._paths import is_test_path
 
 
@@ -137,9 +138,7 @@ class XfailRequiresStrict(Rule):
 
 def _rotting_bug_pins(tree: ast.Module) -> list[ast.Call]:
     hits: list[ast.Call] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, _FUNC_NODES):
-            continue
+    for node in nodes(tree, *_FUNC_NODES):
         if _has_nondeterministic_marker(node.decorator_list):
             continue
         hits.extend(dec for dec in node.decorator_list if isinstance(dec, ast.Call) and _is_rotting_xfail(dec))
@@ -207,7 +206,7 @@ def _is_environment_gated(dec: ast.Call) -> bool:
 
     """
     for condition in dec.args:
-        for node in ast.walk(condition):
+        for node in walk(condition):
             if isinstance(node, ast.Name) and (node.id in _ENV_PROBE_MODULES or _ENV_PROBE_RE.search(node.id)):
                 return True
             if isinstance(node, ast.Attribute) and _ENV_PROBE_RE.search(node.attr):

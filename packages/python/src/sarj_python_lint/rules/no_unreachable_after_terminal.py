@@ -28,6 +28,7 @@ import ast
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import children
 
 
 if TYPE_CHECKING:
@@ -42,6 +43,13 @@ _FUNCTIONS = (ast.FunctionDef, ast.AsyncFunctionDef)
 
 # The node kinds whose own `body` runs in a different context than they do.
 _CONTEXT_NODES = (*_FUNCTIONS, *_LOOPS, ast.ClassDef)
+
+# The node kinds whose subtree can contain a statement, and so the only ones
+# worth recursing into. `ast.stmt` covers every statement (and every block-owning
+# compound statement); `ExceptHandler` and `match_case` own blocks without being
+# statements themselves; `mod` is the tree root. Everything else is an expression
+# or an expression fragment, and no expression can contain a statement.
+_STATEMENT_BEARING = (ast.stmt, ast.ExceptHandler, ast.match_case, ast.mod)
 
 
 def _block(node: ast.AST, field: str) -> list[ast.stmt]:
@@ -142,7 +150,13 @@ class NoUnreachableAfterTerminal(Rule):
         # Only a function / class / loop changes the context, and then only for
         # the statements in its own `body`; every other child inherits.
         body_ids: set[int] = {id(stmt) for stmt in _block(node, "body")} if isinstance(node, _CONTEXT_NODES) else set()
-        for child in ast.iter_child_nodes(node):
+        for child in children(node):
+            # Recurse only where a statement block can still be found. Python's
+            # grammar gives no expression a statement child, so descending into
+            # one can only ever reach `_flag_block([])` — the walk used to spend
+            # most of its time proving that about every operand in the file.
+            if not isinstance(child, _STATEMENT_BEARING):
+                continue
             field = "body" if id(child) in body_ids else ""
             child_function, child_loop = _child_context(node, field, in_function=in_function, in_loop=in_loop)
             self._visit(child, path, in_function=child_function, in_loop=child_loop, diags=diags)

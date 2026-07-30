@@ -58,6 +58,7 @@ import re
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._sql import is_store_module, sql_string_value, strip_sql_noise
 
 
@@ -181,9 +182,7 @@ class NoAggregationInStoreQuery(Rule):
 
         diags: list[Diagnostic] = []
         consumed: set[int] = set()
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Constant | ast.BinOp):
-                continue
+        for node in nodes(tree, ast.Constant, ast.BinOp):
             if id(node) in consumed:
                 continue
             text = sql_string_value(node)
@@ -196,7 +195,7 @@ class NoAggregationInStoreQuery(Rule):
             # per-Constant subtree walk is pure overhead on large literal-heavy
             # files (the dominant cost here).
             if isinstance(node, ast.BinOp):
-                consumed.update(id(sub) for sub in ast.walk(node))
+                consumed.update(id(sub) for sub in walk(node))
 
             if _AGG_GATE.search(text) is None or _VERB_GATE.search(text) is None:
                 continue

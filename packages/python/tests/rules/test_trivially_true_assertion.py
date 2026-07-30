@@ -18,15 +18,12 @@ def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
     return TriviallyTrueAssertion().check(Path(path), textwrap.dedent(source))
 
 
-_CONSTANT_TEST = """
-def test_thing():
-    assert True
-"""
-
-_ECHO_TEST = """
-def test_thing():
-    payload = EncryptedPayload(jws_signature="sig-456")
-    assert payload.jws_signature == "sig-456"
+# The minimal source that this rule reports: a constructor keyword read straight
+# back out. The finding lands on line 3, column 5, which the position test below
+# pins. `assert True` used to serve this purpose and is now SARJ057's alone.
+_ECHO_TEST = """def test_thing():
+    u = User(name="bo")
+    assert u.name == "bo"
 """
 
 
@@ -37,12 +34,12 @@ def test_thing():
 
 @pytest.mark.parametrize("path", ["test_x.py", "x_test.py", "a/tests/test_y.py"])
 def test_fires_in_test_paths(path: str):
-    assert len(_check(_CONSTANT_TEST, path)) == 1
+    assert len(_check(_ECHO_TEST, path)) == 1
 
 
 @pytest.mark.parametrize("path", ["src/service.py", "a/testing/thing.py"])
 def test_skips_non_test_paths(path: str):
-    assert _check(_CONSTANT_TEST, path) == []
+    assert _check(_ECHO_TEST, path) == []
 
 
 @pytest.mark.parametrize(
@@ -55,17 +52,41 @@ def test_skips_non_test_paths(path: str):
     ],
 )
 def test_skips_modules_pytest_does_not_collect(path: str):
-    assert _check(_CONSTANT_TEST, path) == []
+    assert _check(_ECHO_TEST, path) == []
 
 
 # --------------------------------------------------------------------------- #
-# Shape 1: the condition is a constant ruff has no rule for.                    #
+# The boundary with SARJ057 `no-tautological-expect`. Every literal-only         #
+# tautology below belongs to SARJ057, which reaches further (production code,    #
+# modules pytest never collects, signed constants) and carries carve-outs this   #
+# rule never had for the sole-`except` marker and pytest-benchmark bodies. The   #
+# positives that used to live here now live in                                  #
+# `test_no_tautological_expect.py`; these are the negatives that hold the        #
+# boundary in place.                                                            #
 # --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
     "condition",
-    ["True", "1", "1.5", "...", "b'x'", "[1]", "[compute()]", "{1, 2}", "{'a': 1}", "not False", "not ''", "not 0"],
+    [
+        "True",
+        "1",
+        "1.5",
+        "...",
+        "b'x'",
+        "[1]",
+        "[compute()]",
+        "{1, 2}",
+        "{'a': 1}",
+        "(1, 2)",
+        "not False",
+        "not ''",
+        "not 0",
+        "not None",
+        "-1",
+        "'x'",
+        "1 == 1",
+    ],
     ids=[
         "true",
         "int",
@@ -76,155 +97,41 @@ def test_skips_modules_pytest_does_not_collect(path: str):
         "list-of-calls",
         "set",
         "dict",
+        "tuple",
         "not-false",
         "not-empty-string",
         "not-zero",
+        "not-none",
+        "signed-int",
+        "string",
+        "identical-literal-compare",
     ],
 )
-def test_flags_constant_conditions(condition: str):
-    assert len(_check(f"def test_thing():\n    assert {condition}\n")) == 1
-
-
-def test_flags_constant_condition_with_a_message():
-    assert len(_check('def test_thing():\n    assert True, "we got here"\n')) == 1
-
-
-@pytest.mark.parametrize(
-    "condition",
-    ["False", "None", "0", "[]", "{}", "()", "''"],
-    ids=["false", "none", "zero", "empty-list", "empty-dict", "empty-tuple", "empty-string"],
-)
-def test_falsy_constants_are_someone_elses_problem(condition: str):
-    # An always-failing assertion is loud on every run, so it self-corrects;
-    # `assert False` is ruff's B011/PT015 besides.
+def test_literal_only_conditions_are_left_to_sarj057(condition: str):
     assert _check(f"def test_thing():\n    assert {condition}\n") == []
 
 
-# ---- ruff already owns these; duplicating them would be a defect ---- #
+def test_a_literal_condition_with_a_message_is_left_to_sarj057():
+    # The emulated_hue shape, `assert True, <the thing you meant to check>`: also
+    # SARJ057's, which names the assertion-message slot in its message.
+    assert _check('def test_thing():\n    assert True, "we got here"\n') == []
 
 
-@pytest.mark.parametrize(
-    "condition",
-    ["'x'", "(1, 2)", "1 == 1", "2 > 1", "True is True", "x == x", "m is m", "'a' in ['a', 'b']"],
-    ids=[
-        "string-literal-PLW0129",
-        "tuple-F631",
-        "constant-compare-PLR0133",
-        "constant-inequality-PLR0133",
-        "identity-of-constants-PLR0133",
-        "self-compare-PLR0124",
-        "self-identity-PLR0124",
-        "literal-membership-PLR6201",
-    ],
-)
-def test_shapes_ruff_covers_are_not_duplicated(condition: str):
-    assert _check(f"def test_thing(x, m):\n    assert {condition}\n") == []
-
-
-@pytest.mark.parametrize("condition", ["[*items]", "{**data}"], ids=["list-unpack", "dict-unpack"])
-def test_unpacked_displays_may_still_be_empty(condition: str):
-    assert _check(f"def test_thing(items, data):\n    assert {condition}\n") == []
-
-
-# ---- false-positive guard: a hand-rolled branch check ---- #
-
-
-@pytest.mark.parametrize(
-    "otherwise",
-    ["assert False", "pytest.fail('nope')", "raise AssertionError"],
-    ids=["assert-false", "pytest-fail", "raise"],
-)
-def test_constant_assert_paired_with_a_failing_branch_is_exempt(otherwise: str):
-    # celery t/unit/concurrency/test_prefork.py:429 — clumsy, but the pair can
-    # fail, which is the whole test.
-    src = f"""
-    def test_thing(hub):
-        if hub.ready():
-            assert True
-        else:
-            {otherwise}
-    """
-    assert _check(src) == []
-
-
-def test_constant_assert_in_the_failing_branch_is_also_exempt():
+def test_a_literal_tautology_does_not_consume_the_one_finding_per_test():
+    # The collapse below anchors at the *first* finding, so a ceded literal must
+    # not become that anchor — the constructor echo two lines down is the finding.
     src = """
-    def test_thing(hub):
-        if hub.broken():
-            assert False
-        else:
-            assert True
+    def test_thing():
+        assert True
+        u = User(name="bo")
+        assert u.name == "bo"
     """
-    assert _check(src) == []
-
-
-def test_constant_assert_in_a_branch_with_no_failing_sibling_still_fires():
-    src = """
-    def test_thing(hub):
-        if hub.ready():
-            assert True
-        else:
-            log("not ready")
-    """
-    assert len(_check(src)) == 1
-
-
-def test_constant_assert_under_an_if_without_an_else_still_fires():
-    src = """
-    def test_thing(hub):
-        if hub.ready():
-            assert True
-    """
-    assert len(_check(src)) == 1
-
-
-# ---- false-positive guard: `assert True` marking the success arm of a `match` ---- #
-
-
-@pytest.mark.parametrize(
-    "otherwise",
-    ["raise AssertionError", "pytest.fail('wrong shape')", "assert False"],
-    ids=["raise", "pytest-fail", "assert-false"],
-)
-def test_constant_assert_in_a_match_arm_with_a_failing_arm_is_exempt(otherwise: str):
-    # faris falltime/tests/services/test_pdf_processor.py:96 — the pattern is the
-    # assertion and `case _` is the failure, so the test goes red the moment the
-    # result stops matching.
-    src = f"""
-    def test_with_wrong_password(tmpdir):
-        match PROCESSOR.process(password="not right"):
-            case PDFProcessError(error=DecryptionError.INCORRECT_PASSWORD):
-                assert True
-            case _:
-                {otherwise}
-    """
-    assert _check(src) == []
-
-
-def test_constant_assert_in_a_match_arm_with_no_failing_arm_still_fires():
-    src = """
-    def test_with_wrong_password(tmpdir):
-        match PROCESSOR.process(password="not right"):
-            case PDFProcessError(error=DecryptionError.INCORRECT_PASSWORD):
-                assert True
-            case _:
-                log("unexpected")
-    """
-    assert len(_check(src)) == 1
-
-
-def test_constant_assert_in_the_only_match_arm_still_fires():
-    src = """
-    def test_with_wrong_password(tmpdir):
-        match PROCESSOR.process(password="not right"):
-            case _:
-                assert True
-    """
-    assert len(_check(src)) == 1
+    [diag] = _check(src)
+    assert (diag.line, diag.col) == (5, 5)
 
 
 # --------------------------------------------------------------------------- #
-# Shape 2: reading a constructor keyword straight back out.                     #
+# Shape 1: reading a constructor keyword straight back out.                     #
 # --------------------------------------------------------------------------- #
 
 
@@ -613,7 +520,7 @@ def test_a_tuple_unpacking_target_is_exempt():
 
 
 # --------------------------------------------------------------------------- #
-# Shape 3: isinstance against the class that was just called.                   #
+# Shape 2: isinstance against the class that was just called.                   #
 # --------------------------------------------------------------------------- #
 
 
@@ -696,11 +603,11 @@ def test_empty_source_is_clean(source: str):
 
 
 def test_syntax_error_returns_no_diagnostics():
-    assert _check("def test_x(:\n    assert True\n") == []
+    assert _check('def test_x(:\n    u = User(name="bo")\n    assert u.name == "bo"\n') == []
 
 
 def test_reports_line_column_and_code():
-    [diag] = _check(_CONSTANT_TEST)
+    [diag] = _check(_ECHO_TEST)
     assert (diag.line, diag.col, diag.code) == (3, 5, "SARJ064")
 
 
@@ -728,20 +635,18 @@ def test_each_assertion_is_reported_once():
 def test_diagnostics_are_sorted_by_position():
     src = """
     def test_a():
-        assert True
-
-    def test_b():
         u = User(name="bo")
         assert u.name == "bo"
 
-    def test_c():
-        assert 1
-
-    def test_d():
+    def test_b():
         job = Request(m)
         assert isinstance(job, Request)
+
+    def test_c():
+        p = Payload(kind="sms")
+        assert "sms" == p.kind
     """
-    assert [(d.line, d.col) for d in _check(src)] == [(3, 5), (7, 5), (10, 5), (14, 5)]
+    assert [(d.line, d.col) for d in _check(src)] == [(4, 5), (8, 5), (12, 5)]
 
 
 # --------------------------------------------------------------------------- #
@@ -757,11 +662,6 @@ _SARJ043_ADVICE = (
     "claims to cover, or delete the test"
 )
 
-
-_CONSTANT_DIAGNOSIS = (
-    "this assertion's condition is a constant, so it passes no matter what the code under test does — "
-    "it adds a covered line and nothing else"
-)
 
 _KWARG_DIAGNOSIS = (
     "this reads back the literal the test just handed the constructor, so it can only fail if attribute "
@@ -779,7 +679,6 @@ _SURVIVING_ASSERTION = "    assert clock.now() > 0\n"
 @pytest.mark.parametrize(
     ("source", "diagnosis"),
     [
-        ("def test_thing(clock):\n    assert True\n" + _SURVIVING_ASSERTION, _CONSTANT_DIAGNOSIS),
         (
             'def test_thing(clock):\n    u = User(name="bo")\n    assert u.name == "bo"\n' + _SURVIVING_ASSERTION,
             _KWARG_DIAGNOSIS,
@@ -789,7 +688,7 @@ _SURVIVING_ASSERTION = "    assert clock.now() > 0\n"
             _ISINSTANCE_DIAGNOSIS,
         ),
     ],
-    ids=["constant", "keyword-echo", "isinstance"],
+    ids=["keyword-echo", "isinstance"],
 )
 def test_each_shape_states_its_diagnosis_and_the_ordinary_advice(source: str, diagnosis: str):
     [diag] = _check(source)

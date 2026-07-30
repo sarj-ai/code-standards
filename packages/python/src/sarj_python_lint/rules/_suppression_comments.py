@@ -33,6 +33,9 @@ class Comment:
     before_first_statement: bool = False
 
 
+_last_scan: tuple[str, list[Comment]] | None = None
+
+
 def scan_comments(source: str) -> list[Comment]:
     """Tokenize `source` and describe every comment in it.
 
@@ -43,10 +46,25 @@ def scan_comments(source: str) -> list[Comment]:
     Anything `tokenize` cannot lex propagates as `tokenize.TokenError`,
     `IndentationError` or `SyntaxError`; callers treat that as "no diagnostics".
 
+    Memoized in a single slot, like `_comments._scan_memo` and
+    `rule_base.parse_or_none`: both suppression rules ask the same question about
+    the same file, and the CLI runs rules per file, so one slot removes the
+    second tokenize pass. `Comment` is frozen and the returned list is read-only
+    to callers.
+
     Returns:
         Every comment, in source order.
 
     """
+    global _last_scan  # ruff: ignore[global-statement] — single-slot memo; the CLI runs rules per file sequentially
+    if _last_scan is not None and _last_scan[0] is source:
+        return _last_scan[1]
+    result = _scan(source)
+    _last_scan = (source, result)
+    return result
+
+
+def _scan(source: str) -> list[Comment]:
     comments: list[Comment] = []
     first_statement_line = _NO_STATEMENT_LINE
     prev_end_row = 0

@@ -84,6 +84,7 @@ import re
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import children, nodes, walk
 
 
 if TYPE_CHECKING:
@@ -105,11 +106,14 @@ class NoSentinelReturnOnExcept(Rule):
         tree = parse_or_none(path, source)
         if tree is None:
             return []
+        handlers = nodes(tree, ast.ExceptHandler)
+        if not handlers:
+            return []
+        # Built after the handler check: the parent map spans the whole module,
+        # and a module with no `except` has nothing to look a parent up for.
         parents = _build_parent_map(tree)
         diags: list[Diagnostic] = []
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.ExceptHandler):
-                continue
+        for node in handlers:
             diag = self._check_handler(path, node, parents)
             if diag is not None:
                 diags.append(diag)
@@ -157,8 +161,8 @@ class NoSentinelReturnOnExcept(Rule):
 
 def _build_parent_map(tree: ast.AST) -> ParentMap:
     parents: ParentMap = {}
-    for node in ast.walk(tree):
-        for child in ast.iter_child_nodes(node):
+    for node in nodes(tree, ast.AST):
+        for child in children(node):
             parents[child] = node
     return parents
 
@@ -315,10 +319,10 @@ def _handler_prints_exception(handler: ast.ExceptHandler) -> bool:
     if bound is None or not _is_narrow_handler(_handler_exc_names(handler)):
         return False
     for stmt in handler.body[:-1]:
-        for node in ast.walk(stmt):
+        for node in walk(stmt):
             if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name) or node.func.id != "print":
                 continue
-            if any(isinstance(inner, ast.Name) and inner.id == bound for arg in node.args for inner in ast.walk(arg)):
+            if any(isinstance(inner, ast.Name) and inner.id == bound for arg in node.args for inner in walk(arg)):
                 return True
     return False
 
@@ -545,7 +549,7 @@ def _non_except_returns(node: ast.AST) -> list[ast.Return]:
     found: list[ast.Return] = []
     if isinstance(node, ast.Return):
         found.append(node)
-    for child in ast.iter_child_nodes(node):
+    for child in children(node):
         if isinstance(child, ast.ExceptHandler):
             continue
         found.extend(_non_except_returns(child))
@@ -785,7 +789,7 @@ def _contains_logging_call(node: ast.AST) -> bool:
         return False
     if _is_logging_call(node):
         return True
-    return any(_contains_logging_call(child) for child in ast.iter_child_nodes(node))
+    return any(_contains_logging_call(child) for child in children(node))
 
 
 _LOGGER_NAME_RE = re.compile(r"(?:^|_)(?:log|logger|logging)$", re.IGNORECASE)
@@ -880,4 +884,4 @@ def _contains_raise(node: ast.AST) -> bool:
         return False
     if isinstance(node, ast.Raise):
         return True
-    return any(_contains_raise(child) for child in ast.iter_child_nodes(node))
+    return any(_contains_raise(child) for child in children(node))

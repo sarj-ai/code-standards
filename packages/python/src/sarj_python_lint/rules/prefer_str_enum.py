@@ -107,6 +107,7 @@ import re
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import children, nodes, walk
 
 
 if TYPE_CHECKING:
@@ -266,7 +267,7 @@ class PreferStrEnum(Rule):
                         _accumulate_compare(active, node)
                     elif isinstance(node, ast.Match):
                         _accumulate_match(active, node)
-            stack.extend((child, child_active) for child in ast.iter_child_nodes(node))
+            stack.extend((child, child_active) for child in children(node))
 
         diags: list[Diagnostic] = []
         firing_field_names: set[str] = set()
@@ -453,7 +454,7 @@ def _literal_typed_names(func: ast.FunctionDef | ast.AsyncFunctionDef, alias_nam
             and _is_literal_annotation(node.annotation, alias_names)
         ):
             names.add(node.target.id)
-        stack.extend(ast.iter_child_nodes(node))
+        stack.extend(children(node))
     return frozenset(names)
 
 
@@ -493,7 +494,7 @@ def _close_over_assignments(func: ast.FunctionDef | ast.AsyncFunctionDef, seed: 
     """
     edges: list[tuple[str, frozenset[str]]] = []
     for target, value in _local_bindings(func):
-        sources = {node.id for node in ast.walk(value) if isinstance(node, ast.Name)}
+        sources = {node.id for node in walk(value) if isinstance(node, ast.Name)}
         if sources:
             edges.append((target.id, frozenset(sources)))
     names = set(seed)
@@ -530,7 +531,7 @@ def _local_bindings(
             target, value = node.target, node.value
         if isinstance(target, ast.Name) and value is not None:
             bindings.append((target, value))
-        stack.extend(ast.iter_child_nodes(node))
+        stack.extend(children(node))
     return bindings
 
 
@@ -563,7 +564,7 @@ def _foreign_typed_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> frozen
             and _is_foreign_annotation(node.annotation)
         ):
             names.add(node.target.id)
-        stack.extend(ast.iter_child_nodes(node))
+        stack.extend(children(node))
     return frozenset(names)
 
 
@@ -622,12 +623,8 @@ def _literal_returning_functions(tree: ast.Module) -> frozenset[str]:
 
     """
     names: set[str] = set()
-    for node in ast.walk(tree):
-        if (
-            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and node.returns is not None
-            and _literal_string_values(node.returns) is not None
-        ):
+    for node in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef):
+        if node.returns is not None and _literal_string_values(node.returns) is not None:
             names.add(node.name)
     return frozenset(names)
 
@@ -660,7 +657,7 @@ def _wire_bound_names(func: ast.FunctionDef | ast.AsyncFunctionDef, literal_func
             continue
         if isinstance(node, (ast.For, ast.AsyncFor, ast.comprehension)) and _is_wire_lookup(node.iter):
             names.update(_bound_target_names(node.target))
-        stack.extend(ast.iter_child_nodes(node))
+        stack.extend(children(node))
     return frozenset(names)
 
 
@@ -671,7 +668,7 @@ def _bound_target_names(target: ast.expr) -> set[str]:
         The bound names.
 
     """
-    return {node.id for node in ast.walk(target) if isinstance(node, ast.Name)}
+    return {node.id for node in walk(target) if isinstance(node, ast.Name)}
 
 
 def _is_wire_lookup(value: ast.expr) -> bool:

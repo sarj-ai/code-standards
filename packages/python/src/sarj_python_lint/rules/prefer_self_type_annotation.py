@@ -1,4 +1,4 @@
-"""SARJ077: prefer `Self` type annotation for methods returning instance of enclosing class.
+"""SARJ078: prefer `Self` type annotation for methods returning instance of enclosing class.
 
 Python 3.11 (PEP 673) introduced `typing.Self` to annotate methods that return an instance
 of their enclosing class (fluent interface builders, `__enter__`, `copy`, factory methods,

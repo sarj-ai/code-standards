@@ -56,6 +56,7 @@ import re
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._sql import is_store_module, sql_string_value, strip_sql_noise
 
 
@@ -98,15 +99,13 @@ class NoOffsetPagination(Rule):
 
         diags: list[Diagnostic] = []
         consumed: set[int] = set()
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Constant | ast.BinOp):
-                continue
+        for node in nodes(tree, ast.Constant, ast.BinOp):
             if id(node) in consumed:
                 continue
             text = sql_string_value(node)
             if text is None:
                 continue
-            consumed.update(id(sub) for sub in ast.walk(node))
+            consumed.update(id(sub) for sub in walk(node))
 
             sql = strip_sql_noise(text)
             if _OFFSET_PAGINATION.search(sql) is None:

@@ -34,6 +34,7 @@ import ast
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import nodes
 
 
 if TYPE_CHECKING:
@@ -57,9 +58,7 @@ class PreferClassRow(Rule):
         if tree is None:
             return []
         diags: list[Diagnostic] = []
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.keyword):
-                continue
+        for node in nodes(tree, ast.keyword):
             if node.arg != _ROW_FACTORY_KW:
                 continue
             if _factory_name(node.value) != _BANNED_FACTORY:

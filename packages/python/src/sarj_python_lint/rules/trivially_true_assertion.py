@@ -20,45 +20,30 @@ The test is named `test_encrypted_payload_fields`
 (`noura-be/python/noura/tests/test_vb_auth_generic.py:372`) and it verifies the
 language, not the model.
 
-**Known overlap with SARJ057 `no-tautological-expect`, which landed on `main`
-while this rule was in review.** Both fire on `assert True` and on a truthy
-non-string constant, so a line of that shape draws two diagnostics. They are not
-redundant elsewhere: SARJ057 additionally reads `assertTrue(<literal>)`,
-`assertEqual(<lit>, <lit>)` and the collection-display slips (`assert {…}` as a
-one-element set, `assert [f"…"]` with the `== messages` lost), while this rule
-owns the two shapes that need to see what the test constructed a line earlier —
-the keyword echo and `isinstance`-after-construction — which SARJ057 does not
-model at all.
+**Boundary with SARJ057 `no-tautological-expect`.** Literal-only tautologies are
+deliberately left to SARJ057: bare truthy constants, `not <falsy constant>`,
+non-empty container displays, identical-literal comparisons and the `unittest`
+assertion calls. This rule only reports the tautologies that require linking an
+assertion to an earlier construction — the constructor-keyword echo and
+`isinstance`-after-construction, neither of which SARJ057 models at all.
 
-The overlap is the constant shape only, and it should be resolved by this rule
-ceding it, on two grounds. SARJ057 is the better implementation of that
-particular job — 4 findings over 28,608 files at 0 false positives, with
-carve-outs this rule lacks for `except`-handler markers and pytest-benchmark
-bodies — and the constant shape contributes **0 of this rule's 17 first-party
-findings**, all of which are keyword echoes. Deferred rather than done here
-because the two rules disagree on volume in a way nobody has explained yet: over
-comparable corpora SARJ057 reports 4 and this rule's constant arm reports 41, and
-whether those 37 are true positives SARJ057 misses or false positives it
-correctly avoids decides whether ceding loses anything. Measure that before
-deleting `_is_always_true_constant`.
-
-One thing is already settled: **SARJ057 has a false positive this rule guards
-against.** It reports `faris/python/falltime/falltime/tests/services/test_pdf_processor.py:96`
-and `:112`, where `assert True` marks the success arm of a `match` whose `case _`
-raises — the pattern is the assertion and the test goes red when it stops
-matching. SARJ057's docstring claims 0 false positives, but its corpus did not
-include `faris`. The carve-out is `_is_branch_marker` here and should be ported
-there.
+The two rules used to share the constant shape, and a census over 21
+repositories and 42,761 files priced the redundancy exactly: SARJ064 reported
+726, SARJ057 reported 61, and 42 of those were the *same* assertion at the same
+`line:col` — 69% of everything SARJ057 said. Ceding runs in this direction, not
+the other, because SARJ057 is strictly the stronger owner of the syntax: it
+carries carve-outs this rule never had for the sole-`assert` `except`-handler
+marker and for pytest-benchmark bodies (constructed, this rule emitted on all
+three and SARJ057 correctly stayed silent), it reads signed constants
+(`assert -1`), and it runs in production code and in test-like modules pytest
+never collects, where this rule deliberately does not look. Dropping the arm cost
+**0 uniquely detected sites**: every one of the 42 remains reported, at the same
+position, by SARJ057.
 
 **What ruff already owns, and is therefore NOT duplicated here.** Every shape
 below was checked against `ruff --select ALL --preview`, the configuration this
 standard ships:
 
-* `assert False` — B011 (`assert-false`) and PT015 (`pytest-assert-always-false`),
-* `assert "x"` — PLW0129 (`assert-on-string-literal`),
-* `assert (1, 2)` — F631 (`assert-tuple`),
-* `assert 1 == 1`, `assert 2 > 1`, `assert True is True` — PLR0133
-  (`comparison-of-constant`),
 * `assert x == x`, `assert m is m` — PLR0124 (`comparison-with-itself`). This is
   the brief's "self-comparison of a mock" shape in full; it was implemented,
   found to be a straight duplicate, and **dropped**. It stays dropped: the one
@@ -71,16 +56,11 @@ standard ships:
   an implementation of the always-true membership check found **zero**
   occurrences across all five corpora, so it too was **dropped**.
 
-What survives is the set ruff has no rule for: a truthy non-string constant, a
-non-empty collection display, and the two shapes that need to see what the test
-constructed a line earlier.
+What survives is what neither ruff nor SARJ057 has a rule for: the two shapes
+that need to see what the test constructed a line earlier.
 
-Fires when any of these hold:
+Fires when either of these holds:
 
-* the assertion's condition is a constant that is truthy and is not a string —
-  `assert True`, `assert 1`, `assert ...` — or `not` applied to a falsy
-  constant, or a non-empty list/set/dict display, which is truthy by being
-  written non-empty,
 * a local name is bound exactly once to `SomeClass(..., field=<literal>)` and
   the test then asserts `name.field == <structurally identical literal>` (or
   `is`, the house spelling for a boolean field),
@@ -89,34 +69,37 @@ Fires when any of these hold:
 
 **One diagnostic per test function.** A test that echoes six constructor keywords
 has one defect, not six, and every line of it is repaired by the same decision.
-Reporting each assertion put 1,347 diagnostics on 736 test functions, so 45% of
-the estate-wide finding set was a repeat line inside a test already flagged. The
-rule now reports the *first* unfalsifiable assertion in each function and stays
-quiet about the rest, which loses no test. Note that this is a weaker
+Reporting each assertion puts 1,283 diagnostics on the same 684 test functions,
+so 47% of the estate-wide finding set would be a repeat line inside a test already
+flagged. The rule reports the *first* unfalsifiable assertion in each function and
+stays quiet about the rest, which loses no test. Note that this is a weaker
 collapse than also requiring every assertion in the test to be trivial: that was
-measured and costs 11 of bulbul's 17 findings and 3 of noura-be's 6, because the
-common real shape is one honest assertion surrounded by echoes.
+measured and costs 6 of bulbul's 12 findings and 1 of digital-bank's 2, because
+the common real shape is one honest assertion surrounded by echoes.
 
-**The advice is conditioned on SARJ043.** 402 of the 733 findings are tests in
+**The advice is conditioned on SARJ043.** 362 of the 684 findings are tests in
 which *every* assertion is unfalsifiable, so acting on "drop the assertion" would
 produce a test with no assertions at all — which SARJ043 (`zero-assertion-test`)
 then rejects. Two rules in one suite must not give contradictory instructions, so
 the message detects that case and asks for the behaviour the test name claims, or
 for the test's deletion, instead of for a deletion of the line.
 
-Corpus evidence — 21 repositories: bulbul, noura-be, digital-bank, submissions,
-ai, faris, data and 14 OSS suites. 733 findings, of which the keyword echo
-carries 682, `isinstance` 10 and the constant shape 41: airflow 174, litellm
-187, superset 145, mlflow 70, prefect 69, langchain 29, dagster 27, bulbul 12,
-data 8, sentry-python 4, noura-be 3, celery 3, digital-bank 2, and zero in
-django, fastapi, saleor, zulip, warehouse, submissions, ai and faris. django's
+Corpus evidence — 21 repositories, 42,761 files: bulbul, noura-be, digital-bank,
+submissions, ai, faris, summer and 14 OSS suites. **684 findings**, of which the
+keyword echo carries 674 and `isinstance` 10: airflow 173, litellm 159,
+superset 145, mlflow 70, prefect 67, langchain 28, dagster 21, bulbul 12,
+celery 3, noura-be 3, digital-bank 2, sentry-python 1, and zero in django,
+fastapi, saleor, zulip, warehouse, submissions, ai, faris and summer. django's
 suite is `unittest`-style (70 bare asserts in 2,927 files), so zero there is
 arithmetic, not silence; fastapi's 4,828 bare asserts are almost all about an
 HTTP response the test did not construct, and zero findings on that population
 is the strongest evidence the shape is targeted. An external audit re-derived
 the false-positive rate over 40,336 OSS files and measured ~9%, against the
 7.1% originally claimed from five corpora — the only rule in this wave whose
-claimed rate held at scale.
+claimed rate held at scale. That audit measured the rule with its constant arm
+still attached; the 42 findings the arm contributed were every one of them a
+duplicate of an SARJ057 diagnostic at the same position, so ceding them moved no
+false positive and lost no site.
 
 Deliberately NOT flagged:
 
@@ -167,21 +150,6 @@ Deliberately NOT flagged:
   `assert x.__doc__ == 'foo'` (celery `t/unit/utils/test_local.py:31`) is a real
   test: a lazy proxy resolving `__doc__` goes through descriptor machinery, not
   plain assignment,
-* **`assert True` as one arm of a hand-rolled branch check.** celery writes
-  `if <condition>: assert True; else: assert False`
-  (`t/unit/concurrency/test_prefork.py:429`) — ugly, but the pair can fail, and
-  it was the *only* `assert True` in the original five corpora. A constant
-  assertion whose sibling `if` branch always fails or raises is exempt,
-* **`assert True` marking the success arm of a `match`.** The same idea in the
-  spelling this estate actually writes: faris's
-  `match PROCESSOR.process(...): case PDFProcessError(repair=..., error=...):
-  assert True; case _: raise AssertionError`
-  (`falltime/tests/services/test_pdf_processor.py:96` and `:112`). The *pattern*
-  is the assertion and `case _` is the failure, so "passes no matter what the
-  code does" is simply false — the test goes red the moment the pattern stops
-  matching. A constant assertion in a `match` arm whose sibling arm raises or
-  calls `pytest.fail` is exempt. Measured across all 21 corpora this drops the
-  constant-shape count from 43 to 41 and removes exactly those two findings,
 * **an `isinstance` assertion that narrows for a later one.** basedpyright
   strict needs `assert isinstance(x, T)` to prove the assertions after it are
   well-typed; deleting it breaks the build. Any later assertion in the same
@@ -256,10 +224,6 @@ _ISINSTANCE_ARITY = 2
 
 _DUNDER_PREFIX = "__"
 
-# Displays that are truthy purely by being written non-empty. `ast.Tuple` is
-# absent because ruff's F631 (`assert-tuple`) already owns it.
-_TRUTHY_DISPLAYS = (ast.List, ast.Set)
-
 # Class-name endings that mark a collaborator rather than a record. Such a class
 # does work in `__init__` — celery's cache backends run `expires=` through
 # `prepare_expires` — so reading a constructor argument back out of one is a
@@ -287,19 +251,10 @@ _COLLABORATOR_SUFFIXES = (
     "receiver",
 )
 
-# Calls that end a branch in failure, so a sibling `assert True` is a marker for
-# the branch that did not fail rather than an assertion in its own right.
-_FAILING_CALL_NAMES = frozenset({"fail", "exit"})
-
 # `assert result.passed is False` is the pytest house spelling for a boolean
 # field, and it is the same tautology as `== False`. A non-singleton `is`
 # comparison is ruff's F632 and stays that rule's problem.
 _ECHO_OPS = (ast.Eq, ast.Is)
-
-_CONSTANT_DIAGNOSIS = (
-    "this assertion's condition is a constant, so it passes no matter what the code under test does — "
-    "it adds a covered line and nothing else"
-)
 
 _KWARG_DIAGNOSIS = (
     "this reads back the literal the test just handed the constructor, so it can only fail if attribute "
@@ -349,7 +304,6 @@ class _Index:
     """One traversal's worth of facts about the module."""
 
     parents: dict[int, ast.AST]
-    asserts: list[ast.Assert]
     scopes: list[_Scope]
     owners: dict[int, _Scope]
 
@@ -378,9 +332,6 @@ class TriviallyTrueAssertion(Rule):
 
         index = _index_module(tree)
         findings: dict[int, tuple[ast.Assert, str]] = {}
-        for node in index.asserts:
-            if _is_always_true_constant(node.test) and not _is_branch_marker(node, index.parents):
-                findings[id(node)] = (node, _CONSTANT_DIAGNOSIS)
         for node, diagnosis in _construction_findings(index):
             _ = findings.setdefault(id(node), (node, diagnosis))
 
@@ -440,11 +391,11 @@ def _is_collected_module(path: Path) -> bool:
 
 
 def _index_module(tree: ast.Module) -> _Index:
-    """Walk the module once, recording everything all three shapes need.
+    """Walk the module once, recording everything both shapes need.
 
-    The perf gate is per rule, so the parent links, the assertion list and the
-    per-function name bookkeeping all come out of a single descent rather than
-    four `ast.walk` passes.
+    The perf gate is per rule, so the parent links, the per-function assertion
+    lists and the name bookkeeping all come out of a single descent rather than
+    three `ast.walk` passes.
 
     Names are attributed to the **outermost** enclosing function, never the
     nested one. A closure that mentions a local therefore still disqualifies it,
@@ -455,7 +406,6 @@ def _index_module(tree: ast.Module) -> _Index:
 
     """
     parents: dict[int, ast.AST] = {}
-    asserts: list[ast.Assert] = []
     scopes: list[_Scope] = []
     owners: dict[int, _Scope] = {}
     stack: list[tuple[ast.AST, _Scope | None]] = [(tree, None)]
@@ -464,17 +414,15 @@ def _index_module(tree: ast.Module) -> _Index:
         if scope is None and isinstance(node, _FUNC_NODES):
             scope = _Scope(asserts=[], loads={}, binds={}, calls={}, shadowed=set())
             scopes.append(scope)
-        if isinstance(node, ast.Assert):
-            asserts.append(node)
-            if scope is not None:
-                scope.asserts.append(node)
-                owners[id(node)] = scope
+        if isinstance(node, ast.Assert) and scope is not None:
+            scope.asserts.append(node)
+            owners[id(node)] = scope
         elif scope is not None:
             _record_local(node, scope)
         for child in ast.iter_child_nodes(node):
             parents[id(child)] = node
             stack.append((child, scope))
-    return _Index(parents=parents, asserts=asserts, scopes=scopes, owners=owners)
+    return _Index(parents=parents, scopes=scopes, owners=owners)
 
 
 def _record_local(node: ast.AST, scope: _Scope) -> None:
@@ -493,78 +441,6 @@ def _record_local(node: ast.AST, scope: _Scope) -> None:
             scope.calls[target.id] = node.value
 
 
-# --------------------------------------------------------------------------- #
-# Shape 1: the condition is a constant.                                        #
-# --------------------------------------------------------------------------- #
-
-
-def _is_always_true_constant(test: ast.expr) -> bool:
-    if isinstance(test, ast.Constant):
-        return _is_truthy_literal(test.value)
-    if isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not):
-        return isinstance(test.operand, ast.Constant) and not test.operand.value
-    if isinstance(test, _TRUTHY_DISPLAYS):
-        return bool(test.elts) and not any(isinstance(elt, ast.Starred) for elt in test.elts)
-    # `{**mapping}` can still come out empty, so a `None` key disqualifies.
-    return isinstance(test, ast.Dict) and bool(test.keys) and all(key is not None for key in test.keys)
-
-
-def _is_truthy_literal(value: object) -> bool:
-    # `assert "x"` is ruff's PLW0129 and `assert None` fails loudly every run;
-    # neither is this rule's business.
-    if value is None or isinstance(value, str):
-        return False
-    return bool(value)
-
-
-def _is_branch_marker(node: ast.Assert, parents: dict[int, ast.AST]) -> bool:
-    """Report whether the constant assertion is one arm of a hand-rolled check.
-
-    `if ok: assert True` / `else: assert False` is a clumsy but genuine
-    verification: taken together the two arms can fail. So is the `match` form,
-    where the pattern is the assertion and `case _: raise AssertionError` is the
-    failure — reaching `assert True` at all is the thing being checked.
-
-    Returns:
-        True when a sibling branch of an enclosing `if` or `match` always fails.
-
-    """
-    current: ast.AST = node
-    parent = parents.get(id(current))
-    while parent is not None:
-        if any(_always_fails(stmt) for stmt in _alternative_branch(parent, current)):
-            return True
-        current = parent
-        parent = parents.get(id(current))
-    return False
-
-
-def _alternative_branch(parent: ast.AST, current: ast.AST) -> list[ast.stmt]:
-    """List the statements of the branches this one is an alternative to.
-
-    Returns:
-        The other arm of an `if`, or every other arm of a `match`; empty for any
-        other parent.
-
-    """
-    if isinstance(parent, ast.If):
-        return parent.orelse if any(stmt is current for stmt in parent.body) else parent.body
-    if isinstance(parent, ast.Match) and isinstance(current, ast.match_case):
-        return [stmt for case in parent.cases if case is not current for stmt in case.body]
-    return []
-
-
-def _always_fails(stmt: ast.stmt) -> bool:
-    for node in ast.walk(stmt):
-        if isinstance(node, ast.Raise):
-            return True
-        if isinstance(node, ast.Assert) and isinstance(node.test, ast.Constant) and not node.test.value:
-            return True
-        if isinstance(node, ast.Call) and _called_name(node.func) in _FAILING_CALL_NAMES:
-            return True
-    return False
-
-
 def _called_name(func: ast.expr) -> str | None:
     if isinstance(func, ast.Name):
         return func.id
@@ -572,7 +448,7 @@ def _called_name(func: ast.expr) -> str | None:
 
 
 # --------------------------------------------------------------------------- #
-# Shapes 2 and 3: what the test constructed a line earlier.                    #
+# Both shapes: what the test constructed a line earlier.                       #
 # --------------------------------------------------------------------------- #
 
 

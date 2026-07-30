@@ -62,6 +62,7 @@ from collections import Counter
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._paths import is_test_path
 
 
@@ -166,9 +167,7 @@ class _KwargHeavyVisitor(ast.NodeVisitor):
             The wide constructions that actually have duplication to extract.
 
         """
-        counts = Counter(
-            name for n in ast.walk(tree) if isinstance(n, ast.Call) and (name := _callee_name(n.func)) is not None
-        )
+        counts = Counter(name for n in nodes(tree, ast.Call) if (name := _callee_name(n.func)) is not None)
         return [
             (node, count)
             for node, count in self.hits

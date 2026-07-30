@@ -103,6 +103,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import children, nodes
 from sarj_python_lint.rules._paths import is_generated_source, is_test_path
 
 
@@ -238,9 +239,7 @@ def _iter_functions(tree: ast.Module) -> Iterator[_Function]:
         Each function node in the module.
 
     """
-    for node in ast.walk(tree):
-        if isinstance(node, _FUNCTION_NODES):
-            yield node
+    yield from nodes(tree, *_FUNCTION_NODES)
 
 
 def _hoistable_bindings(func: _Function) -> Iterator[tuple[ast.stmt, str, _Candidate]]:
@@ -288,7 +287,7 @@ def _scope_of(func: _Function) -> _Scope:
         if is_nested:
             nested.add(id(node))
         child_nested = is_nested or isinstance(node, _INNER_SCOPE_NODES)
-        stack.extend((child, node, child_nested) for child in ast.iter_child_nodes(node))
+        stack.extend((child, node, child_nested) for child in children(node))
     return _Scope(nodes=nodes, parents=parents, nested=nested)
 
 

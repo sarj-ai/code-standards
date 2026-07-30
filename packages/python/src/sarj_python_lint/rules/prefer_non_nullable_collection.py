@@ -1,4 +1,4 @@
-"""SARJ074: prefer non-null list fields in declared data shapes.
+"""SARJ082: prefer non-null list fields in declared data shapes.
 
 Nullable list fields create two representations of an empty collection: ``None``
 and ``[]``. When the project convention is that absence means empty, every
@@ -23,7 +23,7 @@ not inspect function defaults: ``None`` is the safe Python idiom there because
 This is an opinionated application convention, not a Python type-system fact.
 When ``None`` is a meaningful third state (for example, "inherit this
 constraint" rather than "allow no values"), keep the union and suppress the
-line with ``# sarj-noqa: SARJ074 — None means ...``.
+line with ``# sarj-noqa: SARJ082 — None means ...``.
 
 Corpus sweep (2026-07-27): FastAPI, Pydantic, SQLModel, Zod, and React Router;
 2,901 Python/TypeScript files total. The final rule reported 30 explicit Python
@@ -39,6 +39,7 @@ import ast
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import walk
 from sarj_python_lint.rules._paths import is_generated_source, is_test_path
 
 
@@ -67,7 +68,7 @@ class PreferNonNullableCollection(Rule):
             return []
 
         diags: list[Diagnostic] = []
-        for cls in (node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)):
+        for cls in (node for node in walk(tree) if isinstance(node, ast.ClassDef)):
             for statement in cls.body:
                 if not isinstance(statement, ast.AnnAssign):
                     continue

@@ -63,6 +63,7 @@ import ast
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._first_party import is_first_party_module, own_top_package
 
 
@@ -132,10 +133,10 @@ def _private_imports(tree: ast.Module) -> list[tuple[int, int, str, str]]:
 
     """
     hits: list[tuple[int, int, str, str]] = []
-    for node in ast.walk(tree):
+    for node in nodes(tree, ast.ImportFrom, ast.Import):
         if isinstance(node, ast.ImportFrom):
             hits.extend(_from_import_hits(node))
-        elif isinstance(node, ast.Import):
+        else:
             hits.extend(_plain_import_hits(node))
     return hits
 

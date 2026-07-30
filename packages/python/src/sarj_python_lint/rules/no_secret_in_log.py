@@ -50,6 +50,7 @@ from typing import TYPE_CHECKING, override
 
 from sarj_python_lint._secret_names import identifier_tokens, is_secret_name
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._logging import is_logger_expr
 
 
@@ -102,9 +103,7 @@ class NoSecretInLog(Rule):
         if tree is None:
             return []
         diags: list[Diagnostic] = []
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
-                continue
+        for node in nodes(tree, ast.Call):
             if not _is_logging_call(node):
                 continue
             for kw in node.keywords:

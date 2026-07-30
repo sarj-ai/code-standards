@@ -148,6 +148,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import walk
 
 
 if TYPE_CHECKING:
@@ -228,7 +229,7 @@ class PreferMatchPatternDestructuring(Rule):
             return []
 
         diags: list[Diagnostic] = []
-        for node in ast.walk(tree):
+        for node in walk(tree):
             if not isinstance(node, ast.Match) or not isinstance(node.subject, ast.Name):
                 continue
             subject = node.subject.id
@@ -422,7 +423,7 @@ def _arm_uses(case: ast.match_case, names: set[str]) -> _ArmUses | None:
     if case.guard is not None:
         roots.append(case.guard)
     for root in roots:
-        for node in ast.walk(root):
+        for node in walk(root):
             if not _record_use(node, names, use):
                 return None
     use.taken -= use.aliases

@@ -117,6 +117,15 @@ LOGGER_RECEIVERS = [
     "logger.opt(lazy=True)",
     "logger.bind(a=1).bind(b=2)",
     "logger.getChild('c')",
+    # Bare-name factories, reached via `from structlog import get_logger` or
+    # `from logging import getLogger`. These sat in NON_LOGGER_RECEIVERS below
+    # and were asserted NOT to fire, which pinned a real secret leak open:
+    # `get_logger().info("auth", token=token)` is structlog's own documented
+    # module-level idiom, and both this rule's docstring and
+    # `_logging.is_logger_expr`'s claimed the factory receiver was covered.
+    "get_logger()",
+    "getLogger(__name__)",
+    "get_logger().bind(request_id=rid)",
 ]
 
 
@@ -139,7 +148,6 @@ NON_LOGGER_RECEIVERS = [
     "metrics",
     "tracer",
     "obj.build()",
-    "get_logger()",
     "widget.getChild('c')",
 ]
 

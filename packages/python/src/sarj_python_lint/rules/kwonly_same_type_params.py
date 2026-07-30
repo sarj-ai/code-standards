@@ -100,6 +100,7 @@ import re
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._paths import is_generated_source, is_test_path
 
 
@@ -200,19 +201,23 @@ class KwonlySameTypeParams(Rule):
         tree = parse_or_none(path, source)
         if tree is None:
             return []
+        # The signature test is a local, allocation-free predicate; the three
+        # name/id tables each scan the whole module. Screening on the signature
+        # first means a module with no swap-prone signature at all — the common
+        # case — never builds a table.
+        candidates = [
+            (node, offending)
+            for node in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef)
+            if not _is_exempt(node) and (offending := _swap_prone_annotation(node.args)) is not None
+        ]
+        if not candidates:
+            return []
         value_referenced = _value_referenced_names(tree)
         overload_names = _overload_stub_names(tree)
         method_ids = _method_node_ids(tree)
         diags: list[Diagnostic] = []
-        for node in ast.walk(tree):
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            if _is_exempt(node):
-                continue
+        for node, offending in candidates:
             if node.name in value_referenced or node.name in overload_names:
-                continue
-            offending = _swap_prone_annotation(node.args)
-            if offending is None:
                 continue
             # Checked last: `_calls_super_same_name` walks the body, so it runs
             # only for the few signatures that would otherwise be reported.
@@ -282,8 +287,7 @@ def _method_node_ids(tree: ast.AST) -> frozenset[int]:
     """
     return frozenset(
         id(child)
-        for node in ast.walk(tree)
-        if isinstance(node, ast.ClassDef)
+        for node in nodes(tree, ast.ClassDef)
         for child in node.body
         if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
     )
@@ -306,7 +310,7 @@ def _calls_super_same_name(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool
         and isinstance(inner := func.value, ast.Call)
         and isinstance(inner.func, ast.Name)
         and inner.func.id == "super"
-        for call in ast.walk(node)
+        for call in walk(node)
         if isinstance(call, ast.Call)
     )
 
@@ -444,11 +448,9 @@ def _value_referenced_names(tree: ast.AST) -> frozenset[str]:
         The set of names loaded outside call position.
 
     """
-    call_funcs = {id(node.func) for node in ast.walk(tree) if isinstance(node, ast.Call)}
+    call_funcs = {id(node.func) for node in nodes(tree, ast.Call)}
     return frozenset(
-        node.id
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and id(node) not in call_funcs
+        node.id for node in nodes(tree, ast.Name) if isinstance(node.ctx, ast.Load) and id(node) not in call_funcs
     )
 
 
@@ -464,9 +466,8 @@ def _overload_stub_names(tree: ast.AST) -> frozenset[str]:
     """
     return frozenset(
         node.name
-        for node in ast.walk(tree)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and any(
+        for node in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef)
+        if any(
             (isinstance(dec, ast.Name) and dec.id == "overload")
             or (isinstance(dec, ast.Attribute) and dec.attr == "overload")
             for dec in node.decorator_list

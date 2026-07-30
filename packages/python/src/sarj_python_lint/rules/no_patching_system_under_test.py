@@ -15,6 +15,26 @@ now pins an *internal* call shape, so refactoring the unit — inlining the help
 renaming it, moving the work — breaks a test that was supposed to be describing
 behaviour.
 
+RELATIONSHIP TO SARJ040 (`mock-without-spec`)
+---------------------------------------------
+
+**This rule supersedes SARJ040 wherever both fire, and they almost always both
+fire.** Measured over the 21-corpus census below, 1,731 of this rule's 1,736
+findings are also a SARJ040 finding at the *identical* line and column — 99.71%.
+The five exceptions (airflow `test_aws.py:87` and `test_s3.py:1141`, litellm
+`test_user_api_key_auth.py:892,938`, langchain `test_summarization.py:1023`)
+already pass `autospec=True`, so SARJ040 is satisfied there while this rule still
+fires.
+
+The two rules give contradictory instructions at a shared site. SARJ040 says keep
+the patch and make the double faithful (`spec=<RealType>`); this rule says the
+patch itself is the defect, because the code path the test claims to cover does
+not run. Obeying SARJ040 cannot satisfy this rule: a perfectly specced mock of
+`Paginator.validate_number` still means `validate_number` never executes. So the
+message says so outright — adding `spec=`/`autospec=` does not address the
+finding, because the problem is *what* is patched rather than how faithfully.
+SARJ040 is the older, broader rule and is left unchanged.
+
 **Cross-file resolution is impossible here, so the rule only fires on shapes it
 can prove from one file.** Both are deliberately narrow.
 
@@ -129,7 +149,20 @@ Deliberately NOT flagged:
   collaborator. Shape 2 requires a call to another attribute *of the patched
   object* in the same function,
 * `patch` reached through a name no `unittest.mock` import backs — a project's own
-  `patch` helper is not this rule's business.
+  `patch` helper is not this rule's business. **pytest-mock's `mocker.patch` /
+  `mocker.patch.object` are deliberately among them**, and that was measured rather
+  than overlooked. superset alone spells 1,290 patches through `mocker` against 355
+  through `mock.patch`, a 3.6:1 majority, so the omission looks large. Teaching
+  `_ModuleFacts.patcher` the `mocker` fixtures (including `module_mocker` /
+  `class_mocker` / `session_mocker`, and dropping the `reaches_mock` gate a file
+  that never imports `unittest.mock` would otherwise fail) takes the census from
+  1,736 to **1,857** — airflow 494 -> 507 and superset 102 -> 210 — and **every one
+  of the 121 additions is in OSS**: bulbul, noura-be, digital-bank, submissions,
+  faris, summer and `ai` are unchanged to the finding. Reading the superset
+  additions, they are concentrated on `_get_query`, RLS and permission helpers —
+  same-module functions that are really datastore lookups, which is precisely the
+  ambiguity recorded under KNOWN LIMIT below. So the spelling buys 121 diagnostics
+  of mixed precision, none of them in a repo that runs this ratchet.
 
 KNOWN LIMIT
 -----------
@@ -147,6 +180,38 @@ seam that this rule flags. A verb-prefix heuristic was measured and rejected: 43
 of all hits are I/O-verb-prefixed (`get_`, `send_`, `read_`, `write_`, `fetch_`),
 so it would take most of the true positives with it. These are what
 `# sarj-noqa: SARJ061` is for.
+
+Shape 2 has a second, narrower limit: it cannot tell a *constructed third-party
+client* from the unit. Bind one to a local and drive it, and the message's claim
+that the target "belongs to the unit this test then exercises" is false:
+
+```python
+client = Redis(host="localhost")     # `_ModuleFacts.origin["Redis"] == "redis"`
+with patch.object(client, "ping"):   # reported as the unit's own logic
+    client.close()
+```
+
+(The literal spelling `patch.object(Redis(...), "ping")` reports nothing, because
+`_method_of_object_under_test` accepts only an `ast.Name` receiver, so the binding
+is what exposes it.) **No guard for it survived measurement, and the reason is that
+the shape does not occur in real code.** Reusing the boundary vocabulary above on
+the *constructor* name removes 4 of the 982 shape-2 findings, all four in
+dagster-cloud's `ecs_tests/test_client.py` (`patch.object(client,
+"_check_for_stopped_tasks")` at lines 439, 506 and 554 plus
+`"_check_all_essential_containers_are_running"` at 440), where `Client` is
+dagster's own ECS wrapper and the unit under test — 4 true positives, 0 false.
+A CamelCase-aware type tail
+(`*Client`, `*Session`, `*Pool`, `*Logger`, `*Cache`, …) removes 39, and they are
+the same mistake at scale: litellm's `WebSearchInterceptionLogger` (10),
+`RedisSemanticCache` (4), `LangsmithLogger`, `S3Logger` and airflow's
+`DataFusionEngine` (6) are all classes their own suites construct and test. A
+library that *implements* clients, caches and loggers names its units that way, so
+the name cannot separate them. Not one of the 43 findings the two guards would
+remove is the Redis shape, and that is structural rather than luck: shape 2
+requires the test to construct the object *and* call another of its methods, which
+is what a suite does to its own unit, not to a client it hands to one. The
+diagnostic is therefore accurate on every finding the corpus contains, and the
+synthetic case is recorded here rather than guarded against.
 
 CORPUS EVIDENCE
 ---------------
@@ -319,8 +384,10 @@ class NoPatchingSystemUnderTest(Rule):
                 code=self.code,
                 message=(
                     f"this patches `{target}`, which belongs to the unit this test then exercises, so "
-                    "the real code path never runs and the assertions only describe the mock. Patch at "
-                    "the boundary the unit talks to instead, or exercise the real method."
+                    "the real code path never runs and the assertions only describe the mock. Adding "
+                    "`spec=`/`autospec=` does not address this — the problem is *what* is patched, not "
+                    "how faithfully. Patch at the boundary the unit talks to instead, or exercise the "
+                    "real method."
                 ),
             )
             for node, target in _self_patches(tree, facts)

@@ -104,6 +104,96 @@ def test_fires_outside_test_files_too():
 
 
 # ---------------------------------------------------------------------------
+# Migrated from SARJ064 `trivially-true-assertion`, which used to report these
+# too. A 21-repository, 42,761-file census found 42 assertions drawing both
+# diagnostics at the same line:col, so SARJ064 dropped its constant arm and this
+# rule owns every literal-only tautology: it reaches production code and modules
+# pytest never collects, reads signed constants, and carries the sole-`except`
+# and pytest-benchmark carve-outs SARJ064 never had.
+# ---------------------------------------------------------------------------
+
+
+def test_flags_every_constant_condition_sarj064_ceded():
+    conditions = ("True", "1", "1.5", "...", "b'x'", "[1]", "[compute()]", "{1, 2}", "{'a': 1}", "(1, 2)")
+    for condition in conditions:
+        assert _count(f"def test_thing():\n    assert {condition}\n") == 1, condition
+
+
+def test_flags_a_constant_condition_carrying_a_message():
+    """SARJ064's `assert True, "we got here"` case; the message slot changes nothing."""
+    diags = _check('def test_thing():\n    assert True, "we got here"\n')
+    assert len(diags) == 1
+    assert "assertion-message slot" in diags[0].message
+
+
+def test_flags_not_applied_to_a_falsy_constant():
+    """The one shape SARJ064 had that this rule lacked, moved rather than dropped."""
+    for condition in ("not False", "not 0", "not ''", "not None", "not 0.0", "not b''"):
+        diags = _check(f"def test_thing():\n    assert {condition}\n")
+        assert len(diags) == 1, condition
+        assert "constant truthy value" in diags[0].message, condition
+
+
+def test_ignores_not_applied_to_a_runtime_value():
+    """`assert not x` is an ordinary assertion — the syntax cannot decide it."""
+    for condition in ("not x", "not x.errors", "not f(x)", "not []", "not [*items]"):
+        assert _count(f"def test_thing(x, items):\n    assert {condition}\n") == 0, condition
+
+
+def test_ignores_not_applied_to_a_truthy_constant():
+    """`assert not True` always fails, which is loud on the first run."""
+    for condition in ("not True", "not 1", "not 'x'"):
+        assert _count(f"def test_thing():\n    assert {condition}\n") == 0, condition
+
+
+def test_ignores_falsy_constant_conditions_sarj064_also_ignored():
+    """An always-failing assertion self-corrects; `assert False` is ruff's B011 besides."""
+    for condition in ("False", "None", "0", "''", "[]", "{}", "()"):
+        assert _count(f"def test_thing():\n    assert {condition}\n") == 0, condition
+
+
+def test_the_moved_not_shape_obeys_the_sole_except_carve_out():
+    src = (
+        "def test_connect_failure(hass):\n"
+        "    try:\n"
+        "        connect()\n"
+        "    except HomeAssistantError:\n"
+        "        assert not False\n"
+    )
+    assert _count(src) == 0
+
+
+def test_the_moved_not_shape_obeys_the_benchmark_fixture_carve_out():
+    src = "def test_speed(benchmark):\n    assert not False\n    benchmark(go)\n"
+    assert _count(src) == 0
+
+
+def test_the_moved_not_shape_obeys_the_benchmark_marker_carve_out():
+    src = "@pytest.mark.benchmark\ndef test_speed():\n    assert not False\n"
+    assert _count(src) == 0
+
+
+def test_the_moved_not_shape_obeys_the_failing_match_arm_carve_out():
+    src = (
+        "def test_wrong_password():\n"
+        "    match go():\n"
+        "        case Err():\n"
+        "            assert not False\n"
+        "        case _:\n"
+        "            raise AssertionError\n"
+    )
+    assert _count(src) == 0
+
+
+def test_the_construction_shapes_stay_sarj064s():
+    """SARJ057 models no cross-statement construction, so it must stay silent."""
+    echo = 'def test_thing():\n    u = User(name="bo")\n    assert u.name == "bo"\n'
+    isinstance_check = "def test_thing():\n    u = User()\n    assert isinstance(u, User)\n"
+    assert _count(echo) == 0
+    assert _count(isinstance_check) == 0
+
+
+# ---------------------------------------------------------------------------
 # Negative: self-comparison of a real value. Measured ~95% false positives —
 # reflexivity, determinism and memoization are exactly what these tests verify.
 # ---------------------------------------------------------------------------

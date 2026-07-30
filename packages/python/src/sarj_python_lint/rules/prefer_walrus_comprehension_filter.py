@@ -1,4 +1,4 @@
-"""SARJ075: prefer walrus operator in comprehension filters to avoid duplicate function evaluation.
+"""SARJ076: prefer walrus operator in comprehension filters to avoid duplicate function evaluation.
 
 Evaluating the exact same non-trivial function call or attribute lookup in both the element
 expression and the `if` clause of a comprehension repeats computation. Using an assignment expression
@@ -19,6 +19,7 @@ import ast
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, is_suppressed, parse_or_none
+from sarj_python_lint.rules._ast_index import nodes, walk
 
 
 if TYPE_CHECKING:
@@ -54,9 +55,9 @@ def _check_comprehension_node(
     diags: list[Diagnostic] = []
 
     for if_clause in gen.ifs:
-        if any(isinstance(n, ast.NamedExpr) for n in ast.walk(if_clause)):
+        if any(isinstance(n, ast.NamedExpr) for n in walk(if_clause)):
             continue
-        calls_in_if = [n for n in ast.walk(if_clause) if isinstance(n, ast.Call | ast.Attribute)]
+        calls_in_if = [n for n in walk(if_clause) if isinstance(n, ast.Call | ast.Attribute)]
         for call_node in calls_in_if:
             if (
                 isinstance(call_node, ast.Attribute)
@@ -71,9 +72,9 @@ def _check_comprehension_node(
             ):
                 continue
             for elt in elt_nodes:
-                if any(isinstance(n, ast.Lambda) for n in ast.walk(elt)):
+                if any(isinstance(n, ast.Lambda) for n in walk(elt)):
                     continue
-                calls_in_elt = [n for n in ast.walk(elt) if isinstance(n, ast.Call | ast.Attribute)]
+                calls_in_elt = [n for n in walk(elt) if isinstance(n, ast.Call | ast.Attribute)]
                 if any(_nodes_equal(call_node, elt_call) for elt_call in calls_in_elt):
                     line = getattr(if_clause, "lineno", 1)
                     col = getattr(if_clause, "col_offset", 0) + 1
@@ -111,9 +112,8 @@ class PreferWalrusComprehensionFilter(Rule):
         source_lines = source.splitlines()
         diags: list[Diagnostic] = []
 
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp):
-                diags.extend(_check_comprehension_node(node, source_lines, self.code, path))
+        for node in nodes(tree, ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp):
+            diags.extend(_check_comprehension_node(node, source_lines, self.code, path))
 
         seen: set[tuple[int, int]] = set()
         unique_diags: list[Diagnostic] = []

@@ -75,6 +75,7 @@ import ast
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._logging import is_logger_expr
 
 
@@ -151,8 +152,8 @@ def _candidates(tree: ast.Module) -> list[tuple[ast.Call, ast.JoinedStr]]:
 
     """
     hits: list[tuple[ast.Call, ast.JoinedStr]] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call) or not node.args or not _is_logging_call(node):
+    for node in nodes(tree, ast.Call):
+        if not node.args or not _is_logging_call(node):
             continue
         offending = _interpolating_fstring(node.args[0])
         if offending is not None:
@@ -188,12 +189,12 @@ class _StdlibLoggers:
 
         """
         found = cls()
-        for node in ast.walk(tree):
+        for node in nodes(tree, ast.Import, ast.Assign, ast.AnnAssign):
             if isinstance(node, ast.Import):
                 found._add_import(node)
             elif isinstance(node, ast.Assign):
                 found._add_assignment(node.targets, node.value)
-            elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            elif node.value is not None:
                 found._add_assignment([node.target], node.value)
         return found
 

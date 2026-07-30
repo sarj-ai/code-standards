@@ -32,11 +32,25 @@ Two shapes dominate, and neither looks wrong at a glance:
 
 Fires on exactly four shapes, all of them syntactically decidable:
 
-1. `assert <always-truthy literal>` — `True`, a nonzero number, a non-empty
-   string, or a non-empty list/set/dict/tuple **display**;
+1. `assert <always-truthy literal>` — `True`, a nonzero number (signed or not), a
+   non-empty string, `not <falsy scalar constant>` (`not False`, `not 0`,
+   `not ""`, `not None`), or a non-empty list/set/dict/tuple **display**;
 2. `assert <literal> == <textually identical literal>` (and `is`);
 3. `assertTrue(<truthy literal>)` / `assertFalse(<falsy literal>)`;
 4. `assertEqual(<literal>, <textually identical literal>)` (and `assertIs`).
+
+**Boundary with SARJ064 `trivially-true-assertion`.** This rule owns every
+assertion whose fixed outcome is visible in the assertion syntax itself: bare
+constants, `not <falsy constant>`, container displays, identical-literal
+comparisons and the `unittest` assertion calls. SARJ064 starts where
+cross-statement construction tracking is required — reading a constructor
+keyword straight back out, or asserting that an object produced by calling a
+class is an instance of that same class. The two rules used to overlap on bare
+truthy constants and non-empty displays, which cost a doubled diagnostic on 42
+positions across a 21-repository, 42,761-file census; SARJ064 ceded the shape
+because this rule reaches further (production code, modules pytest never
+collects, signed constants) and carries carve-outs SARJ064 lacked for the
+`except`-handler marker and pytest-benchmark bodies.
 
 **The narrowness is the rule.** The obvious generalisation — "flag a comparison
 of a thing with itself" — was measured and is ~95% false positives.
@@ -90,6 +104,15 @@ in bulbul, noura-be, kpi-hub, ai and demo-gateway. All 4 are the true positives
 named above; 0 false positives. The `except`/benchmark carve-outs are
 load-bearing rather than defensive: with `_exempt_nodes` neutered the sweep
 gains exactly the two known false positives and nothing else.
+
+Re-measured on the corpus this standard now tracks — 21 repositories and 42,761
+files, first-party bulbul, noura-be, digital-bank, submissions, ai, faris and
+summer plus 14 OSS suites: **61 findings**, spread litellm 29, django 8,
+dagster 7, prefect 7, sentry-python 3, celery 2, superset 2, airflow 1,
+langchain 1, summer 1, and zero in the other eleven. Taking over
+`not <falsy scalar constant>` from SARJ064 added **0** findings to that total —
+the shape is rare enough that nobody in 42,761 files writes it — so it is here as
+a contract this rule now owns rather than as a source of volume.
 """
 
 from __future__ import annotations
@@ -289,7 +312,12 @@ def _fixed_truth_reason(test: ast.expr) -> str | None:
 
 
 def _constant_truth(node: ast.expr) -> bool | None:
-    """Evaluate the truthiness of a scalar constant, `-1` and `+0` included.
+    """Evaluate the truthiness of a scalar constant, `-1`, `+0` and `not 0` included.
+
+    `not <falsy scalar constant>` is the spelling SARJ064 used to own; it arrived
+    here with the literal-only tautologies. A `not` on anything the syntax cannot
+    evaluate — a name, a call, a display — stays unknown, because `assert not x`
+    is an ordinary assertion.
 
     Returns:
         The constant's truth value, or None when `node` is not a scalar constant.
@@ -297,8 +325,12 @@ def _constant_truth(node: ast.expr) -> bool | None:
     """
     if isinstance(node, ast.Constant):
         return bool(node.value)
-    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
-        return _constant_truth(node.operand)
+    if isinstance(node, ast.UnaryOp):
+        if isinstance(node.op, (ast.USub, ast.UAdd)):
+            return _constant_truth(node.operand)
+        if isinstance(node.op, ast.Not):
+            operand_truth = _constant_truth(node.operand)
+            return None if operand_truth is None else not operand_truth
     return None
 
 

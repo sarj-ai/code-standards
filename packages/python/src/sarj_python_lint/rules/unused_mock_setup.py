@@ -122,6 +122,7 @@ import ast
 from typing import TYPE_CHECKING, NamedTuple, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import children, nodes, walk
 from sarj_python_lint.rules._paths import is_test_path
 
 
@@ -207,9 +208,7 @@ class UnusedMockSetup(Rule):
 
         seen: set[tuple[int, int]] = set()
         diags: list[Diagnostic] = []
-        for fn in ast.walk(tree):
-            if not isinstance(fn, _FUNC_NODES):
-                continue
+        for fn in nodes(tree, *_FUNC_NODES):
             for finding in _dead_setups(fn):
                 position = (finding.node.lineno, finding.node.col_offset + 1)
                 if position in seen:
@@ -351,10 +350,10 @@ def _own_expressions(stmt: ast.stmt) -> Iterator[ast.AST]:
         contents are attributed to that block rather than to its header.
 
     """
-    for child in ast.iter_child_nodes(stmt):
+    for child in children(stmt):
         if isinstance(child, (ast.stmt, ast.excepthandler, ast.match_case)):
             continue
-        yield from ast.walk(child)
+        yield from walk(child)
 
 
 def _config_target(stmt: ast.stmt) -> str | None:
@@ -410,7 +409,7 @@ def _is_inert(stmt: ast.stmt) -> bool:
     if not all(isinstance(target, ast.Name) for target in stmt.targets):
         # `obj.attr = 1` can hit a property setter, `d[k] = 1` a `__setitem__`.
         return False
-    return not any(isinstance(node, _EFFECTFUL_NODES) for node in ast.walk(stmt.value))
+    return not any(isinstance(node, _EFFECTFUL_NODES) for node in walk(stmt.value))
 
 
 def _not_called_assertions(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> dict[str, int]:
@@ -445,7 +444,7 @@ def _introspected_paths(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
 
     """
     found: set[str] = set()
-    for node in ast.walk(fn):
+    for node in walk(fn):
         if not isinstance(node, ast.Attribute) or not _is_introspection(node.attr):
             continue
         path = _dotted(node.value)
@@ -471,7 +470,7 @@ def _last_effectful_line(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
 
     """
     last = 0
-    for node in ast.walk(fn):
+    for node in walk(fn):
         if isinstance(node, ast.Call) and not _is_assertion_call(node):
             last = max(last, node.lineno)
     return last
@@ -480,7 +479,7 @@ def _last_effectful_line(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
 def _is_assertion_call(node: ast.Call) -> bool:
     if not isinstance(node.func, ast.Attribute) or not node.func.attr.startswith(_ASSERT_PREFIX):
         return False
-    return not any(isinstance(child, ast.Call) for arg in (*node.args, *node.keywords) for child in ast.walk(arg))
+    return not any(isinstance(child, ast.Call) for arg in (*node.args, *node.keywords) for child in walk(arg))
 
 
 def _is_prefix(prefix: str, path: str) -> bool:

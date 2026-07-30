@@ -236,6 +236,7 @@ import re
 from typing import TYPE_CHECKING, NamedTuple, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._paths import is_test_path
 
 
@@ -536,10 +537,10 @@ class _MockNames:
 
         """
         found = cls()
-        for node in ast.walk(tree):
+        for node in nodes(tree, ast.Import, ast.ImportFrom):
             if isinstance(node, ast.Import):
                 found._add_plain_import(node)
-            elif isinstance(node, ast.ImportFrom):
+            else:
                 found._add_from_import(node)
         return found
 
@@ -761,7 +762,7 @@ def _body_substitutions(func: ast.AST, names: _MockNames) -> _BodyScan:
 
     """
     scan = _BodyScan(subs=set(), facets={})
-    for node in ast.walk(func):
+    for node in walk(func):
         if isinstance(node, ast.Call):
             scan.subs.update(_call_substitutions(node, names))
         elif isinstance(node, ast.Assign):

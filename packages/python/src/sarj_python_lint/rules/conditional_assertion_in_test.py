@@ -189,6 +189,7 @@ import re
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._paths import is_test_path
 
 
@@ -407,7 +408,7 @@ def _is_exempt(node: ast.FunctionDef | ast.AsyncFunctionDef, helpers: frozenset[
     if any(_decorator_name(dec) in _PROPERTY_DECORATORS for dec in node.decorator_list):
         return True
     for stmt in node.body:
-        for child in ast.walk(stmt):
+        for child in walk(stmt):
             # `with self.subTest(...)` drives a table whose emptiness this rule
             # cannot see; a nested `def` holding the assertions may be invoked
             # by a runner (`asyncio.run`, a callback registry) the rule cannot
@@ -592,7 +593,7 @@ def _loop_guarantees(stmt: ast.For | ast.AsyncFor, facts: _Facts) -> bool:
 
 
 def _bound_names(target: ast.expr) -> frozenset[str]:
-    return frozenset(node.id for node in ast.walk(target) if isinstance(node, ast.Name))
+    return frozenset(node.id for node in walk(target) if isinstance(node, ast.Name))
 
 
 def _try_guarantees(stmt: ast.Try, facts: _Facts) -> bool:
@@ -622,7 +623,7 @@ def _is_capability_probe(test: ast.expr) -> bool:
         True when the condition reads a capability flag or calls `hasattr`.
 
     """
-    for node in ast.walk(test):
+    for node in walk(test):
         if isinstance(node, ast.Name) and _CAPABILITY_RE.search(node.id):
             return True
         if isinstance(node, ast.Attribute) and _CAPABILITY_RE.search(node.attr):
@@ -655,7 +656,7 @@ def _expr_names_assertion(expr: ast.expr, helpers: frozenset[str]) -> bool:
 
 
 def _contains_assertion(node: ast.AST, helpers: frozenset[str]) -> bool:
-    return any(_is_assertion(child, helpers) for child in ast.walk(node))
+    return any(_is_assertion(child, helpers) for child in walk(node))
 
 
 def _body_contains_assertion(node: ast.FunctionDef | ast.AsyncFunctionDef, helpers: frozenset[str]) -> bool:
@@ -666,7 +667,7 @@ def _body_contains_assertion(node: ast.FunctionDef | ast.AsyncFunctionDef, helpe
 
 
 def _holds_assertion_call(stmt: ast.stmt, helpers: frozenset[str]) -> bool:
-    return any(_is_assertion(child, helpers) for child in ast.walk(stmt))
+    return any(_is_assertion(child, helpers) for child in walk(stmt))
 
 
 def _is_assertion(child: ast.AST, helpers: frozenset[str]) -> bool:
@@ -711,9 +712,8 @@ def _asserting_helper_names(tree: ast.Module) -> frozenset[str]:
 
     """
     defs: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
-    for node in ast.walk(tree):
-        if isinstance(node, _FUNC_NODES):
-            defs.setdefault(node.name, node)
+    for node in nodes(tree, *_FUNC_NODES):
+        defs.setdefault(node.name, node)
     verifying = {name for name, node in defs.items() if _contains_assertion(node, frozenset())}
     pending = {name: _called_names(node) for name, node in defs.items() if name not in verifying}
     while True:
@@ -726,7 +726,7 @@ def _asserting_helper_names(tree: ast.Module) -> frozenset[str]:
 
 def _called_names(node: ast.AST) -> set[str]:
     names: set[str] = set()
-    for child in ast.walk(node):
+    for child in walk(node):
         if isinstance(child, ast.Call):
             func = child.func
             if isinstance(func, ast.Attribute):
@@ -779,7 +779,7 @@ def _facts_for(
     helpers: frozenset[str],
 ) -> _Facts:
     bindings = dict(module_bindings)
-    bindings.update(_bindings_in(list(ast.walk(node))))
+    bindings.update(_bindings_in(list(walk(node))))
     bindings.update(_default_bindings(node))
     nonempty = _nonempty_claims(node, helpers) | set(module_nonempty) | _parametrized_nonempty(node)
     base = _Facts(nonempty=frozenset(nonempty), bindings=bindings, imported=imported, helpers=helpers)
@@ -827,10 +827,10 @@ def _accumulators_filled(node: ast.FunctionDef | ast.AsyncFunctionDef, facts: _F
 
     """
     filled: set[str] = set()
-    for child in ast.walk(node):
+    for child in walk(node):
         if not isinstance(child, _LOOP_NODES) or not _iterable_is_nonempty(child.iter, facts, frozenset()):
             continue
-        for inner in ast.walk(child):
+        for inner in walk(child):
             if not (isinstance(inner, ast.Call) and isinstance(inner.func, ast.Attribute)):
                 continue
             receiver = inner.func.value
@@ -847,9 +847,8 @@ def _imported_names(tree: ast.Module) -> frozenset[str]:
 
     """
     names: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.Import, ast.ImportFrom)):
-            names.update(alias.asname or alias.name.split(".")[0] for alias in node.names)
+    for node in nodes(tree, ast.Import, ast.ImportFrom):
+        names.update(alias.asname or alias.name.split(".")[0] for alias in node.names)
     return frozenset(names)
 
 
@@ -861,7 +860,7 @@ def _nonempty_claims(node: ast.AST, helpers: frozenset[str]) -> set[str]:
 
     """
     nonempty: set[str] = set()
-    for child in ast.walk(node):
+    for child in walk(node):
         if isinstance(child, ast.Assert):
             nonempty |= _proves_nonempty(child.test)
         elif isinstance(child, ast.Call) and _names_assertion(child.func, helpers):

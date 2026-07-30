@@ -56,6 +56,7 @@ import ast
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import nodes
 
 
 if TYPE_CHECKING:
@@ -126,12 +127,10 @@ class NoIsinstanceUnionChain(Rule):
         tree = parse_or_none(path, source)
         if tree is None:
             return []
-        local_classes = frozenset(node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef))
+        local_classes = frozenset(node.name for node in nodes(tree, ast.ClassDef))
         elif_nodes: set[int] = set()
         diags: list[Diagnostic] = []
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.If):
-                continue
+        for node in nodes(tree, ast.If):
             if len(node.orelse) == 1 and isinstance(node.orelse[0], ast.If):
                 elif_nodes.add(id(node.orelse[0]))
             if id(node) in elif_nodes:

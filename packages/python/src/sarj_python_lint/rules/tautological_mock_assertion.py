@@ -31,6 +31,9 @@ Fires when, inside one `test_*` function body, ALL of these hold:
   `svc.get(1)`, `await svc.get(1)`), not a piece of it,
 * the stubbed value is mentioned exactly twice in the body: the stub and the
   assertion,
+* the stub configures a double the body shows the code under test can *reach* —
+  either the whole double (`m.return_value = X`, or any spelling that installs
+  one), or a sub-object hanging off something the body hands over,
 * and the function contains **no other verification at all** — no
   `mock.assert_called_with(...)`, no `pytest.raises`, no `self.assertEqual`, no
   project-local `_assert_*` helper.
@@ -69,6 +72,39 @@ Deliberately NOT flagged:
   (`assert r.json()["data"]["recording_url"] == "https://signed.example/abc.mp4"`
   with a stubbed `object_store.sign`, driven through a FastAPI `TestClient` —
   a real end-to-end assertion about the serialized envelope),
+* **a stub configured on a *piece* of a double the test never hands over.**
+  `self.cur.fetchall.return_value = rows` followed by
+  `assert rows == self.db_hook.run(sql=query, handler=fetch_all_handler)` is not a
+  mock echo, because the hook has to reach `get_conn().cursor().fetchall()` for the
+  comparison to hold at all — the assertion says the unit navigated the DBAPI
+  correctly, which the stub does not decide. The wiring that connects `self.cur` to
+  `self.db_hook` lives in `setUp`, so a single-file rule cannot see it, and the
+  honest reading of `self.cur.fetchall.return_value = X` alone is "the code gets `X`
+  *if* it walks this chain". Two shapes therefore keep firing: a stub on the whole
+  double (`m.return_value = X`, where nothing has to be navigated), and a stub on a
+  sub-object whose root the body hands to the code under test — `repo.fetch.
+  return_value = X` beside `UserService(repo)`, or `hook._poll.return_value = X`
+  beside `operator._hook = hook`. Aliases that only rename a piece of a double
+  (`get_blob_method = bucket_method.return_value.get_blob`) are followed through, so
+  the spelling cannot dodge the guard, and a chain whose root is a call rather than a
+  name (`mock_get_deploy_client().predict.return_value = X`) can never be shown
+  reachable. **Measured cost: 137 -> 110 over the 21-corpus census, -27 and +0** —
+  airflow 56 -> 35, superset 23 -> 19, mlflow 25 -> 24, dagster 3 -> 2, and litellm
+  (22), prefect (3), warehouse (2), saleor (1) unchanged.
+  Every removal is the external-boundary shape — DBAPI cursors (airflow presto
+  `test_presto.py:293`, trino `test_trino.py:391`, pinot `test_pinot.py:261`, common
+  SQL `test_dbapi.py:600,618`), SDK chains (`test_gcs.py:1874`,
+  `test_display_video.py:117`, `test_asb.py:96`, four in `test_data_lake.py`,
+  superset's `test_celery_task.py:59` SQLAlchemy chain and `screenshot_test.py:74`
+  webdriver chain) and HTTP transports. **No unambiguous true positive is lost**: the
+  most egregious shape — patch a method of the unit, then call that very method
+  (airflow `test_glue_databrew.py:38`, `test_lockbox.py:86,97`,
+  `test_pagerduty.py:77`, `test_bteq.py:265`, dagster's self-named `test_mocks`) —
+  stubs the *whole* double and keeps firing. bulbul stays at 2 and every other
+  first-party repo at 0, so the guard costs nothing first-party in either direction.
+  Two weaker readings were measured and rejected: requiring the receiver to appear in
+  the compared expression drops 59 including airflow `test_openai.py:66`, and applying
+  the requirement to every stub spelling drops 106 including both bulbul findings,
 * **a round trip.** `assert store.save(record) == record` is not a mock echo:
   the value is also handed to the code under test, so the comparison pins a
   passthrough the code could have broken. Detected by counting mentions —
@@ -181,6 +217,10 @@ _EXPECTED_OCCURRENCES = 2
 # on it is usually a real code-path check.
 _TRIVIAL_NUMBERS = frozenset({0, 1})
 
+# Receiver roots that every attribute in a `TestCase` shares, so they prove nothing
+# about which double a stub reaches.
+_IMPLICIT_RECEIVERS = frozenset({"self", "cls"})
+
 
 class TautologicalMockAssertion(Rule):
     """A test whose every assertion echoes a value the test itself stubbed."""
@@ -269,6 +309,7 @@ def _tautology_in(func: ast.FunctionDef | ast.AsyncFunctionDef) -> ast.Assert | 
     """
     asserts: list[ast.Assert] = []
     provided: dict[str, ast.expr] = {}
+    stubbed_on: dict[str, list[ast.expr] | None] = {}
     receivers: set[int] = set()
     assigned: dict[str, ast.expr] = {}
     bindings: Counter[str] = Counter()
@@ -276,7 +317,7 @@ def _tautology_in(func: ast.FunctionDef | ast.AsyncFunctionDef) -> ast.Assert | 
         if isinstance(node, ast.Assert):
             asserts.append(node)
         elif isinstance(node, ast.Assign):
-            _record_attribute_stub(node, provided)
+            _record_attribute_stub(node, provided, stubbed_on)
             _record_alias(node, assigned)
         elif isinstance(node, ast.Name):
             if isinstance(node.ctx, ast.Store):
@@ -286,19 +327,127 @@ def _tautology_in(func: ast.FunctionDef | ast.AsyncFunctionDef) -> ast.Assert | 
         elif isinstance(node, ast.Call):
             if _is_verification_call(node):
                 return None
-            _record_call_stubs(node, provided)
+            _record_call_stubs(node, provided, stubbed_on)
     if not asserts:
         return None
 
     aliases = {name: value for name, value in assigned.items() if bindings[name] == 1}
     signatures = {_signature(value) for value in provided.values()}
+    handed_over: frozenset[str] | None = None
     matched: list[ast.Assert] = []
     for node in asserts:
         target = _echoed_operand(node, provided, signatures, aliases)
         if target is None or not _appears_only_at_the_stub(func, target, receivers):
             return None
+        configured = stubbed_on.get(ast.dump(target))
+        if configured is not None:
+            if handed_over is None:
+                handed_over = _names_handed_to_the_code(func)
+            if not any(_double_reaches_the_code(recv, aliases, handed_over) for recv in configured):
+                return None
         matched.append(node)
     return matched[0]
+
+
+def _double_reaches_the_code(receiver: ast.expr, aliases: dict[str, ast.expr], handed_over: frozenset[str]) -> bool:
+    """Report whether the test body shows the code under test can reach this stub.
+
+    Returns:
+        True when the stub configures a whole double, or when the sub-object it
+        configures hangs off something the body hands to the code under test.
+
+    """
+    keys = _configured_sub_object(receiver, aliases)
+    return keys is None or bool(keys & handed_over)
+
+
+def _configured_sub_object(receiver: ast.expr, aliases: dict[str, ast.expr]) -> frozenset[str] | None:
+    """Name the double whose *sub-object* a `<receiver>.return_value = X` stub configures.
+
+    `m.return_value = X` replaces the whole double, so there is nothing for the
+    code under test to navigate to. `self.cur.fetchall.return_value = rows` and
+    `mock_service.return_value.bucket.return_value.get_blob.return_value = blob`
+    decide what the code gets only *after* it walks a chain, so the comparison
+    also asserts that walk. Single-assignment aliases whose value is itself an
+    attribute chain are followed, because naming a piece of a double
+    (`get_blob_method = bucket_method.return_value.get_blob`) is not handing it
+    over. A bare `self`/`cls` prefix is dropped: every attribute of the test case
+    shares it, so it proves nothing.
+
+    Returns:
+        The dotted prefixes that would prove the body hands that double to the
+        code under test, None when the whole double is being stubbed, or an empty
+        set when the chain's root is not a name at all
+        (`mock_get_deploy_client().predict.return_value = X`).
+
+    """
+    attrs: list[str] = []
+    seen: set[str] = set()
+    current = receiver
+    while True:
+        if isinstance(current, ast.Attribute):
+            attrs.append(current.attr)
+            current = current.value
+        elif (
+            isinstance(current, ast.Name)
+            and current.id not in seen
+            and isinstance(alias := aliases.get(current.id), ast.Attribute)
+        ):
+            seen.add(current.id)
+            current = alias
+        else:
+            break
+    if not isinstance(current, ast.Name):
+        return frozenset()
+    if not attrs:
+        return None
+    parts = [current.id, *reversed(attrs)]
+    first = 2 if parts[0] in _IMPLICIT_RECEIVERS else 1
+    return frozenset(".".join(parts[:count]) for count in range(first, len(parts) + 1))
+
+
+def _names_handed_to_the_code(func: ast.AST) -> frozenset[str]:
+    """Collect the names the body passes to something, rather than merely configures.
+
+    An assignment to an attribute only *configures* a double
+    (`self.cur.fetchall.return_value = rows`, `self.cur.rowcount = -1`), and an
+    assignment *from* an attribute chain only gives part of one a shorter name
+    (`bucket_method = mock_service.return_value.bucket`). Everything else hands it
+    over: `UserService(repo)`, `hook.run(sql)`, `operator._hook = double`.
+
+    Returns:
+        The dotted names read outside those two shapes.
+
+    """
+    configuring: set[int] = set()
+    for node in ast.walk(func):
+        if not isinstance(node, ast.Assign):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Attribute):
+                configuring.update(id(inner) for inner in ast.walk(target))
+        if isinstance(node.value, ast.Attribute | ast.Subscript):
+            configuring.update(id(inner) for inner in ast.walk(node.value))
+    return frozenset(
+        dotted
+        for node in ast.walk(func)
+        if isinstance(node, ast.Name | ast.Attribute)
+        and isinstance(node.ctx, ast.Load)
+        and id(node) not in configuring
+        and (dotted := _dotted_name(node)) is not None
+    )
+
+
+def _dotted_name(node: ast.expr) -> str | None:
+    parts: list[str] = []
+    current = node
+    while isinstance(current, ast.Attribute):
+        parts.append(current.attr)
+        current = current.value
+    if not isinstance(current, ast.Name):
+        return None
+    parts.append(current.id)
+    return ".".join(reversed(parts))
 
 
 def _record_alias(node: ast.Assign, assigned: dict[str, ast.expr]) -> None:
@@ -313,19 +462,24 @@ def _record_alias(node: ast.Assign, assigned: dict[str, ast.expr]) -> None:
             assigned[target.id] = node.value
 
 
-def _record_attribute_stub(node: ast.Assign, provided: dict[str, ast.expr]) -> None:
-    if any(isinstance(target, ast.Attribute) and target.attr in _MOCK_VALUE_ATTRS for target in node.targets):
-        _record(node.value, provided)
+def _record_attribute_stub(
+    node: ast.Assign, provided: dict[str, ast.expr], stubbed_on: dict[str, list[ast.expr] | None]
+) -> None:
+    for target in node.targets:
+        if isinstance(target, ast.Attribute) and target.attr in _MOCK_VALUE_ATTRS:
+            _record(node.value, provided, stubbed_on, target.value)
 
 
-def _record_call_stubs(node: ast.Call, provided: dict[str, ast.expr]) -> None:
+def _record_call_stubs(
+    node: ast.Call, provided: dict[str, ast.expr], stubbed_on: dict[str, list[ast.expr] | None]
+) -> None:
     for kw in node.keywords:
         if kw.arg in _MOCK_VALUE_ATTRS:
-            _record(kw.value, provided)
+            _record(kw.value, provided, stubbed_on, None)
     if _installs_a_replacement(node):
         for arg in node.args:
             if isinstance(arg, ast.Lambda):
-                _record(arg.body, provided)
+                _record(arg.body, provided, stubbed_on, None)
 
 
 def _installs_a_replacement(node: ast.Call) -> bool:
@@ -344,10 +498,29 @@ def _installs_a_replacement(node: ast.Call) -> bool:
     return name in _REPLACEMENT_INSTALLERS
 
 
-def _record(value: ast.expr, provided: dict[str, ast.expr]) -> None:
+def _record(
+    value: ast.expr,
+    provided: dict[str, ast.expr],
+    stubbed_on: dict[str, list[ast.expr] | None],
+    receiver: ast.expr | None,
+) -> None:
+    """Note a stubbed value, and which double's attribute chain it was configured on.
+
+    `receiver` is None for the spellings that *install* the double
+    (`AsyncMock(return_value=X)`, `patch(..., return_value=X)`,
+    `monkeypatch.setattr(mod, "fn", lambda: X)`): those name what they replace, so
+    the double reaches the code under test by construction.
+    """
     if _is_trivial(value) or not _signature(value):
         return
-    provided.setdefault(ast.dump(value), value)
+    key = ast.dump(value)
+    provided.setdefault(key, value)
+    if receiver is None:
+        stubbed_on[key] = None
+    elif key not in stubbed_on:
+        stubbed_on[key] = [receiver]
+    elif (recorded := stubbed_on[key]) is not None:
+        recorded.append(receiver)
 
 
 def _is_trivial(value: ast.expr) -> bool:

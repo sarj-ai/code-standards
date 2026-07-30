@@ -70,6 +70,7 @@ import ast
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._paths import is_test_path
 
 
@@ -162,13 +163,7 @@ def _decorator_calls(tree: ast.Module) -> list[ast.Call]:
         The decorator calls of every function, method and class in the module.
 
     """
-    return [
-        dec
-        for node in ast.walk(tree)
-        if isinstance(node, _DECORATED_NODES)
-        for dec in node.decorator_list
-        if isinstance(dec, ast.Call)
-    ]
+    return [dec for node in nodes(tree, *_DECORATED_NODES) for dec in node.decorator_list if isinstance(dec, ast.Call)]
 
 
 def _is_parametrize(func: ast.expr) -> bool:

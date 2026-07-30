@@ -51,6 +51,7 @@ import ast
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import children, nodes
 from sarj_python_lint.rules._paths import is_test_path
 
 
@@ -108,8 +109,8 @@ class FixtureReturnsBareTuple(Rule):
 
 def _bare_tuple_results(tree: ast.Module) -> list[tuple[ast.expr, int]]:
     hits: list[tuple[ast.expr, int]] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, _FUNC_NODES) or not _is_fixture(node):
+    for node in nodes(tree, *_FUNC_NODES):
+        if not _is_fixture(node):
             continue
         if _returns_distinctly_typed_tuple(node):
             continue
@@ -175,7 +176,7 @@ def _scan_for_results(node: ast.AST) -> list[tuple[ast.expr, int]]:
         count = _bare_tuple_arity(value)
         if count >= _MIN_FIELDS:
             found.append((value, count))
-    for child in ast.iter_child_nodes(node):
+    for child in children(node):
         found.extend(_scan_for_results(child))
     return found
 

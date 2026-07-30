@@ -57,6 +57,7 @@ import ast
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import children, walk
 from sarj_python_lint.rules._paths import is_test_path
 
 
@@ -194,7 +195,7 @@ def _body_opens_a_subtest(node: ast.For | ast.AsyncFor) -> bool:
         isinstance(child, (ast.With, ast.AsyncWith))
         and any(_is_subtest_call(item.context_expr) for item in child.items)
         for stmt in node.body
-        for child in ast.walk(stmt)
+        for child in walk(stmt)
     )
 
 
@@ -217,4 +218,4 @@ def _contains_assert(node: ast.AST) -> bool:
         return False
     if isinstance(node, ast.Assert):
         return True
-    return any(_contains_assert(child) for child in ast.iter_child_nodes(node))
+    return any(_contains_assert(child) for child in children(node))
