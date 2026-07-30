@@ -1,4 +1,4 @@
-import { AST_NODE_TYPES, ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
+import { ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { isTestFile } from "./_paths.js";
 

@@ -1,6 +1,5 @@
 import {
   ESLintUtils,
-  type TSESLint,
   type TSESTree,
   AST_NODE_TYPES,
 } from "@typescript-eslint/utils";
@@ -19,12 +18,10 @@ function isTestCall(node: TSESTree.Statement): node is TSESTree.ExpressionStatem
 }
 
 function getTestBodyStatementCount(node: TSESTree.CallExpression): number | null {
-  const args = node.arguments;
-  if (args.length < 2) return null;
-  const callback = args[1];
+  const callback = node.arguments.at(1);
   if (
-    callback.type === AST_NODE_TYPES.ArrowFunctionExpression ||
-    callback.type === AST_NODE_TYPES.FunctionExpression
+    callback?.type === AST_NODE_TYPES.ArrowFunctionExpression ||
+    callback?.type === AST_NODE_TYPES.FunctionExpression
   ) {
     if (callback.body.type === AST_NODE_TYPES.BlockStatement) {
       return callback.body.body.length;
@@ -56,6 +53,16 @@ export default ESLintUtils.RuleCreator(
       let currentRun: TSESTree.Statement[] = [];
       let currentRunLength: number | null = null;
 
+      function reportCurrentRun(): void {
+        const first = currentRun.at(0);
+        if (currentRun.length >= 3 && first) {
+          context.report({
+            node: first,
+            messageId: "requireParameterized",
+          });
+        }
+      }
+
       for (const statement of statements) {
         if (isTestCall(statement)) {
           const bodyLen = getTestBodyStatementCount(statement.expression);
@@ -63,43 +70,23 @@ export default ESLintUtils.RuleCreator(
             if (currentRunLength === bodyLen) {
               currentRun.push(statement);
             } else {
-              if (currentRun.length >= 3) {
-                context.report({
-                  node: currentRun[0],
-                  messageId: "requireParameterized",
-                });
-              }
+              reportCurrentRun();
               currentRun = [statement];
               currentRunLength = bodyLen;
             }
           } else {
-            if (currentRun.length >= 3) {
-              context.report({
-                node: currentRun[0],
-                messageId: "requireParameterized",
-              });
-            }
+            reportCurrentRun();
             currentRun = [];
             currentRunLength = null;
           }
         } else {
-          if (currentRun.length >= 3) {
-            context.report({
-              node: currentRun[0],
-              messageId: "requireParameterized",
-            });
-          }
+          reportCurrentRun();
           currentRun = [];
           currentRunLength = null;
         }
       }
 
-      if (currentRun.length >= 3) {
-        context.report({
-          node: currentRun[0],
-          messageId: "requireParameterized",
-        });
-      }
+      reportCurrentRun();
     }
 
     return {
