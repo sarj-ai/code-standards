@@ -121,6 +121,7 @@ import ast
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import nodes
 
 
 if TYPE_CHECKING:
@@ -167,7 +168,7 @@ class PreferMatchAssertNever(Rule):
         grown_maps = _grown_dict_names(tree)
         diags: list[Diagnostic] = []
         consumed_elifs: set[int] = set()
-        for node in ast.walk(tree):
+        for node in nodes(tree, ast.Match, ast.If, ast.Assign, ast.AnnAssign):
             if isinstance(node, ast.Match):
                 wildcard = _silent_closed_set_wildcard(node, local_classes, member_owners)
                 if wildcard is not None:
@@ -201,7 +202,7 @@ class PreferMatchAssertNever(Rule):
                             ),
                         )
                     )
-            elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+            else:
                 shortfall = _incomplete_dispatch_map(node, enum_members, grown_maps)
                 if shortfall is not None:
                     enum_name, covered, total, missing = shortfall
@@ -292,7 +293,7 @@ def _grown_dict_names(tree: ast.Module) -> frozenset[str]:
 
     """
     grown: set[str] = set()
-    for node in ast.walk(tree):
+    for node in nodes(tree, ast.Call, ast.Assign):
         match node:
             case ast.Call(func=ast.Attribute(value=ast.Name(id=name), attr=attr)) if attr in _DICT_GROWING_METHODS:
                 grown.add(name)
@@ -403,13 +404,9 @@ def _importfrom_bound_names(tree: ast.Module) -> frozenset[str]:
         The set of from-import bound names.
 
     """
-    names: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom):
-            for alias in node.names:
-                if alias.name != "*":
-                    names.add(alias.asname or alias.name)
-    return frozenset(names)
+    return frozenset(
+        alias.asname or alias.name for node in nodes(tree, ast.ImportFrom) for alias in node.names if alias.name != "*"
+    )
 
 
 def _silent_closed_set_wildcard(

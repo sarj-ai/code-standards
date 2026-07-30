@@ -86,6 +86,7 @@ from types import EllipsisType
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import children, nodes, walk
 from sarj_python_lint.rules._paths import is_generated_source, is_test_path
 
 
@@ -197,9 +198,7 @@ def _module_facts(tree: ast.Module) -> _ModuleFacts:
     """
     local_classes: set[str] = set()
     classes_declaring: dict[str, int] = {}
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.ClassDef):
-            continue
+    for node in nodes(tree, ast.ClassDef):
         local_classes.add(node.name)
         for name in {m.name for m in node.body if isinstance(m, (ast.FunctionDef, ast.AsyncFunctionDef))}:
             classes_declaring[name] = classes_declaring.get(name, 0) + 1
@@ -226,7 +225,7 @@ def _iter_boundary_functions(
             yield node, owner
             continue  # do not descend: everything below is nested in a function
         child_owner = node if isinstance(node, ast.ClassDef) else owner
-        stack.extend((child, child_owner) for child in ast.iter_child_nodes(node))
+        stack.extend((child, child_owner) for child in children(node))
 
 
 def _is_declared_override(
@@ -263,7 +262,7 @@ def _calls_super_method(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
         True when the body delegates to the base implementation.
 
     """
-    for child in ast.walk(node):
+    for child in walk(node):
         match child:
             case ast.Call(func=ast.Attribute(attr=attr, value=ast.Call(func=ast.Name(id="super")))) if (
                 attr == node.name

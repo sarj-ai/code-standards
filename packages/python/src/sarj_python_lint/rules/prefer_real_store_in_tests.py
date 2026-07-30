@@ -159,6 +159,7 @@ import re
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._paths import is_test_path
 
 
@@ -341,8 +342,8 @@ def _is_test_double_path(path: Path) -> bool:
 
 def _rehomed_stores(tree: ast.Module, stem: str) -> list[tuple[ast.ClassDef, str | None]]:
     hits: list[tuple[ast.ClassDef, str | None]] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.ClassDef) or not _is_double_name(node.name):
+    for node in nodes(tree, ast.ClassDef):
+        if not _is_double_name(node.name):
             continue
         bases = [name for base in node.bases if (name := _dotted_tail(base)) is not None]
         port_base = next((b for b in bases if _PORT_TAIL_RE.search(b)), None)
@@ -479,7 +480,7 @@ def _container_attrs(node: ast.ClassDef) -> set[str]:
     for stmt in node.body:
         attrs |= _container_targets(stmt, allow_bare_name=True)
     for method in _methods(node):
-        for child in ast.walk(method):
+        for child in walk(method):
             attrs |= _container_targets(child, allow_bare_name=False)
     return attrs
 
@@ -543,7 +544,7 @@ def _self_attr_access(func: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[set
     write_positions: set[int] = set()
     written: set[str] = set()
     read: set[str] = set()
-    for node in ast.walk(func):
+    for node in walk(func):
         if isinstance(node, ast.Assign):
             for target in node.targets:
                 _mark_write(target, write_positions)

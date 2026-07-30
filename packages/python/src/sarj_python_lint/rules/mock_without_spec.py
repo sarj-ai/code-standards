@@ -108,6 +108,7 @@ import ast
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._paths import is_test_path
 
 
@@ -250,10 +251,10 @@ class _MockNames:
 
         """
         found = cls()
-        for node in ast.walk(tree):
+        for node in nodes(tree, ast.Import, ast.ImportFrom):
             if isinstance(node, ast.Import):
                 found._add_plain_import(node)
-            elif isinstance(node, ast.ImportFrom):
+            else:
                 found._add_from_import(node)
         return found
 
@@ -330,7 +331,7 @@ class _FileFacts:
 
         """
         found = cls()
-        for node in ast.walk(tree):
+        for node in nodes(tree, ast.Assign, ast.AnnAssign, ast.Attribute, ast.Call, ast.ExceptHandler):
             if isinstance(node, ast.Assign):
                 found._bind(node.targets[0] if len(node.targets) == 1 else None, node.value)
             elif isinstance(node, ast.AnnAssign):
@@ -341,8 +342,8 @@ class _FileFacts:
             elif isinstance(node, ast.Call):
                 if isinstance(node.func, ast.Name):
                     found.called.add(node.func.id)
-            elif isinstance(node, ast.ExceptHandler) and _catches_import_failure(node):
-                found.import_fallbacks.update(child for child in ast.walk(node) if isinstance(child, ast.Call))
+            elif _catches_import_failure(node):
+                found.import_fallbacks.update(child for child in walk(node) if isinstance(child, ast.Call))
         return found
 
     def _bind(self, target: ast.expr | None, value: ast.expr | None) -> None:
@@ -378,9 +379,7 @@ def _catches_import_failure(handler: ast.ExceptHandler) -> bool:
 
 def _unspecced_calls(tree: ast.Module, names: _MockNames, facts: _FileFacts) -> list[tuple[ast.Call, str]]:
     hits: list[tuple[ast.Call, str]] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
+    for node in nodes(tree, ast.Call):
         symbol = names.resolve(node.func)
         if symbol is None:
             continue

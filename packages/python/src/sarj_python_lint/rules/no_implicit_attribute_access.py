@@ -22,6 +22,7 @@ import ast
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import nodes
 
 
 if TYPE_CHECKING:
@@ -51,15 +52,6 @@ def _get_base_name(node: ast.expr) -> str | None:
     return None
 
 
-def _get_literal_get_key(node: ast.Call) -> str | None:
-    if not isinstance(node.func, ast.Attribute) or node.func.attr != "get" or not node.args:
-        return None
-    first_arg = node.args[0]
-    if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
-        return first_arg.value
-    return None
-
-
 class NoImplicitAttributeAccess(Rule):
     """Implicit dictionary access with string literals — use declarative parsing."""
 
@@ -76,40 +68,53 @@ class NoImplicitAttributeAccess(Rule):
             return []
 
         diags: list[Diagnostic] = []
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Call):
-                key = _get_literal_get_key(node)
-                if key is not None and isinstance(node.func, ast.Attribute):
-                    base_name = _get_base_name(node.func.value)
-                    if base_name in _EXCLUDED_BASES:
-                        continue
-                    diags.append(
-                        Diagnostic(
-                            path=path,
-                            line=node.lineno,
-                            col=node.col_offset + 1,
-                            code=self.code,
-                            message=f"Imperative `.get('{key}')` lookup — use a declarative Pydantic model instead.",
-                        )
-                    )
-            elif (
-                isinstance(node, ast.Subscript)
-                and isinstance(node.slice, ast.Constant)
-                and isinstance(node.slice.value, str)
-            ):
-                base_name = _get_base_name(node.value)
-                if base_name not in _EXCLUDED_BASES:
-                    diags.append(
-                        Diagnostic(
-                            path=path,
-                            line=node.lineno,
-                            col=node.col_offset + 1,
-                            code=self.code,
-                            message=f"Imperative `['{node.slice.value}']` lookup — use a declarative Pydantic model instead.",
-                        )
-                    )
+        for node in nodes(tree, ast.Call, ast.Subscript):
+            key = _get_key(node) if isinstance(node, ast.Call) else _subscript_key(node)
+            if key is None:
+                continue
+            lookup = f".get('{key}')" if isinstance(node, ast.Call) else f"['{key}']"
+            diags.append(
+                Diagnostic(
+                    path=path,
+                    line=node.lineno,
+                    col=node.col_offset + 1,
+                    code=self.code,
+                    message=f"Imperative `{lookup}` lookup — use a declarative Pydantic model instead.",
+                )
+            )
 
         return diags
+
+
+def _get_key(node: ast.Call) -> str | None:
+    """Read the string key of a `<base>.get("literal")` lookup worth reporting.
+
+    Returns:
+        The literal key, or None when this is not such a lookup or the base is
+        one of the excluded receivers.
+
+    """
+    func = node.func
+    if not isinstance(func, ast.Attribute) or func.attr != "get" or not node.args:
+        return None
+    first = node.args[0]
+    if not isinstance(first, ast.Constant) or not isinstance(first.value, str):
+        return None
+    return None if _get_base_name(func.value) in _EXCLUDED_BASES else first.value
+
+
+def _subscript_key(node: ast.Subscript) -> str | None:
+    """Read the string key of a `<base>["literal"]` lookup worth reporting.
+
+    Returns:
+        The literal key, or None when the subscript is not a string literal or
+        the base is one of the excluded receivers.
+
+    """
+    index = node.slice
+    if not isinstance(index, ast.Constant) or not isinstance(index.value, str):
+        return None
+    return None if _get_base_name(node.value) in _EXCLUDED_BASES else index.value
 
 
 def _is_test_path(path: Path) -> bool:

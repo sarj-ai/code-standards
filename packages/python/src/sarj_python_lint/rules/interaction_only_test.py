@@ -170,6 +170,7 @@ import re
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._paths import is_test_path
 
 
@@ -471,7 +472,7 @@ def _function_defs(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunction
         The definitions, in `ast.walk` order.
 
     """
-    return [node for node in ast.walk(tree) if isinstance(node, _FUNC_NODES)]
+    return nodes(tree, *_FUNC_NODES)
 
 
 def _collectible_tests(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
@@ -531,7 +532,7 @@ def _direct_counts(node: ast.FunctionDef | ast.AsyncFunctionDef, local: frozense
     interaction = 0
     negative = 0
     targets: set[str] = set()
-    for child in ast.walk(node):
+    for child in walk(node):
         kind = _classify(child, local)
         if kind is None:
             continue
@@ -557,7 +558,7 @@ def _interaction_targets(expr: ast.AST) -> set[str]:
 
     """
     targets: set[str] = set()
-    for node in ast.walk(expr):
+    for node in walk(expr):
         if isinstance(node, ast.Attribute) and node.attr in _MOCK_STATE_ATTRS:
             targets.add(_dotted(node.value))
         elif (
@@ -640,7 +641,7 @@ def _call_name(func: ast.expr) -> str | None:
 
 
 def _mentions_mock_state(expr: ast.expr) -> bool:
-    return any(_is_mock_state_read(node) for node in ast.walk(expr))
+    return any(_is_mock_state_read(node) for node in walk(expr))
 
 
 def _is_mock_state_read(node: ast.AST) -> bool:
@@ -702,7 +703,7 @@ def _chain_has_fluent_marker(node: ast.expr) -> bool:
 
 def _called_names(node: ast.AST) -> set[str]:
     names: set[str] = set()
-    for child in ast.walk(node):
+    for child in walk(node):
         if isinstance(child, ast.Call):
             func = child.func
             if isinstance(func, ast.Attribute):

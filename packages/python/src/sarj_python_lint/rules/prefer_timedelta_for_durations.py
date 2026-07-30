@@ -86,6 +86,7 @@ import re
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._paths import is_generated_source, is_test_path
 
 
@@ -172,7 +173,7 @@ class PreferTimedeltaForDurations(Rule):
             return []
         settings_fields = _settings_field_ids(tree)
         diags: list[Diagnostic] = []
-        for node in ast.walk(tree):
+        for node in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef, ast.AnnAssign):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 if _is_overload(node) or _has_cli_decorator(node):
                     continue
@@ -181,7 +182,7 @@ class PreferTimedeltaForDurations(Rule):
                     if _is_forwarded_to_same_name(node, a.arg):
                         continue
                     self._consider(a.arg, a.annotation, a, diags, path)
-            elif isinstance(node, ast.AnnAssign):
+            else:
                 if id(node) in settings_fields:
                     continue
                 name = _target_name(node.target)
@@ -311,7 +312,7 @@ def _settings_field_ids(tree: ast.Module) -> frozenset[int]:
         The `id()`s of the exempt settings-field `AnnAssign` nodes.
 
     """
-    classes = [n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)]
+    classes = nodes(tree, ast.ClassDef)
     settings_classes = _resolve_settings_classes(classes)
     exempt: set[int] = set()
     for node in settings_classes:

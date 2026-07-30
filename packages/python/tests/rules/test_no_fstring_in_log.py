@@ -291,6 +291,28 @@ def test_flags_structlog_get_logger_chain():
     assert len(_check('structlog.get_logger().info(f"{x}")\n')) == 1
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        'get_logger().info(f"{x}")\n',
+        'get_logger(__name__).warning(f"slow {dt}")\n',
+        'get_logger().bind(request_id=rid).info(f"{x}")\n',
+    ],
+)
+def test_flags_bare_name_structlog_factory(source: str):
+    """`from structlog import get_logger` then `get_logger()` — the snake_case factory.
+
+    The receiver is an `ast.Call` on a bare `ast.Name`, the one shape
+    `_logging.is_logger_expr` used to miss. It must fire here while the
+    camelCase stdlib spelling stays suppressed by
+    `test_ignores_stdlib_getlogger_chain`: `get_logger` is structlog, whose
+    keyword API the advice targets, and `getLogger` is stdlib, whose %-style
+    API the advice would break. That split is the whole reason fixing the
+    shared helper is safe for this rule.
+    """
+    assert len(_check(source)) == 1
+
+
 def test_flags_fstring_concatenated_with_plus():
     assert len(_check('logger.info(f"{x}" + "!")\n')) == 1
 

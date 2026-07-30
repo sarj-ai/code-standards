@@ -53,6 +53,7 @@ import re
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import children
 from sarj_python_lint.rules._comments import is_protected, split_identifier, stem
 from sarj_python_lint.rules._paths import is_generated_source
 
@@ -254,7 +255,7 @@ class RedundantDocstring(Rule):
         path: Path,
         diags: list[Diagnostic],
     ) -> None:
-        for child in ast.iter_child_nodes(node):
+        for child in children(node):
             if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 self._check_function(child, class_name, path, diags)
                 self._walk(child, class_name, path, diags)

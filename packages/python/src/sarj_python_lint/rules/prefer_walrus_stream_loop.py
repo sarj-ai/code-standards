@@ -1,4 +1,4 @@
-"""SARJ076: prefer walrus operator in `while` loop conditions for stream/chunk reading.
+"""SARJ077: prefer walrus operator in `while` loop conditions for stream/chunk reading.
 
 Iterating over a stream or chunked reader by initializing an assignment before `while True:`
 followed by an immediate break check creates verbose boilerplate. Placing the assignment directly
@@ -24,6 +24,7 @@ import ast
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, is_suppressed, parse_or_none
+from sarj_python_lint.rules._ast_index import nodes
 
 
 if TYPE_CHECKING:
@@ -88,13 +89,8 @@ class PreferWalrusStreamLoop(Rule):
         source_lines = source.splitlines()
         diags: list[Diagnostic] = []
 
-        for node in ast.walk(tree):
-            if (
-                not isinstance(node, ast.While)
-                or not _is_constant_true(node.test)
-                or node.orelse
-                or len(node.body) < _MIN_BODY_LEN
-            ):
+        for node in nodes(tree, ast.While):
+            if not _is_constant_true(node.test) or node.orelse or len(node.body) < _MIN_BODY_LEN:
                 continue
 
             first_stmt = node.body[0]

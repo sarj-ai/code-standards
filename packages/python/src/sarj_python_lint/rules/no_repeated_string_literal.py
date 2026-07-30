@@ -99,6 +99,7 @@ import re
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import children, walk
 from sarj_python_lint.rules._paths import is_generated_source
 
 
@@ -143,7 +144,7 @@ class NoRepeatedStringLiteral(Rule):
 
         def visit(node: ast.AST, scope: int) -> None:
             for annotation in _annotation_exprs(node):
-                excluded.update(id(child) for child in ast.walk(annotation) if isinstance(child, ast.Constant))
+                excluded.update(id(child) for child in walk(annotation) if isinstance(child, ast.Constant))
             if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
                 body = node.body
                 if (
@@ -160,7 +161,7 @@ class NoRepeatedStringLiteral(Rule):
             elif isinstance(node, ast.Call):
                 for kw in node.keywords:
                     if kw.arg in _SCAFFOLDING_KWARGS:
-                        excluded.update(id(child) for child in ast.walk(kw.value) if isinstance(child, ast.Constant))
+                        excluded.update(id(child) for child in walk(kw.value) if isinstance(child, ast.Constant))
             elif (
                 isinstance(node, ast.Constant)
                 and isinstance(node.value, str)
@@ -170,7 +171,7 @@ class NoRepeatedStringLiteral(Rule):
             ):
                 occurrences[node.value].append(node)
                 scope_of[id(node)] = scope
-            for child in ast.iter_child_nodes(node):
+            for child in children(node):
                 visit(child, scope)
 
         visit(tree, _MODULE_SCOPE)

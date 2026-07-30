@@ -84,6 +84,7 @@ import enum
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import children, nodes
 from sarj_python_lint.rules._logging import is_logger_expr
 from sarj_python_lint.rules._paths import is_generated_source
 
@@ -112,7 +113,7 @@ def _walk_same_scope(node: ast.AST) -> Iterator[ast.AST]:
         current = stack.pop()
         yield current
         skipped_body = _nested_scope_body_ids(current)
-        stack.extend(child for child in ast.iter_child_nodes(current) if id(child) not in skipped_body)
+        stack.extend(child for child in children(current) if id(child) not in skipped_body)
 
 
 def _nested_scope_body_ids(node: ast.AST) -> frozenset[int]:
@@ -335,9 +336,7 @@ class NoFatTryBlocks(Rule):
         if tree is None:
             return []
         diags: list[Diagnostic] = []
-        for node in ast.walk(tree):
-            if not isinstance(node, (ast.Try, ast.TryStar)):
-                continue
+        for node in nodes(tree, ast.Try, ast.TryStar):
             # An `else`/`finally` clause is a deliberate success/cleanup contract
             # that couples the body to the handler — don't fight it on length.
             if node.orelse or node.finalbody:

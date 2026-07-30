@@ -61,11 +61,11 @@ import re
 from typing import TYPE_CHECKING, final, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._paths import is_generated_source, is_test_path
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
     from pathlib import Path
 
 
@@ -115,12 +115,21 @@ class NoStdlibLogging(Rule):
         """
         if is_test_path(path) or _EXEMPT_DIR_NAMES.intersection(path.parts) or is_generated_source(source):
             return []
+        # Every diagnostic comes from an `import logging...` statement, which
+        # cannot exist unless the module name is spelled in the text. Checking
+        # that first keeps the overwhelming majority of files from being parsed.
+        if _LOGGING_ROOT not in source:
+            return []
         tree = parse_or_none(path, source)
         if tree is None:
             return []
-        if _imports_loguru(tree) and _BRIDGE_MARKER_RE.search(source):
+        if _imports_loguru(tree, source) and _BRIDGE_MARKER_RE.search(source):
             return []
-        type_only = _type_checking_lines(tree)
+        imports = _logging_imports(tree)
+        if not imports:
+            return []
+        # Only worth locating the type-only statements once something can be reported.
+        type_only = _type_checking_lines(tree, source)
         diags = [
             Diagnostic(
                 path=path,
@@ -129,31 +138,33 @@ class NoStdlibLogging(Rule):
                 code=self.code,
                 message=_MESSAGE,
             )
-            for node in _logging_imports(tree)
+            for node in imports
             if (line := node.lineno) not in type_only
         ]
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
 
 
-def _logging_imports(tree: ast.Module) -> Iterator[ast.Import | ast.ImportFrom]:
-    """Yield every `import logging...` / `from logging... import ...` node.
+def _logging_imports(tree: ast.Module) -> list[ast.Import | ast.ImportFrom]:
+    """Collect every `import logging...` / `from logging... import ...` node.
 
-    Yields:
-        The importing node, once per statement.
+    Returns:
+        The importing nodes, one per statement, in source order.
 
     """
-    for node in ast.walk(tree):
+    out: list[ast.Import | ast.ImportFrom] = []
+    for node in nodes(tree, ast.Import, ast.ImportFrom):
         match node:
             case ast.Import(names=names) if any(_is_logging_module(alias.name) for alias in names):
-                yield node
+                out.append(node)
             case ast.ImportFrom(module=str(module), level=0) if _is_logging_module(module):
-                yield node
+                out.append(node)
             case _:
                 pass
+    return out
 
 
-def _imports_loguru(tree: ast.Module) -> bool:
+def _imports_loguru(tree: ast.Module, source: str) -> bool:
     """Report whether the module imports loguru anywhere.
 
     Half of the bridge test; the caller pairs it with `_BRIDGE_MARKER_RE` so that
@@ -163,26 +174,30 @@ def _imports_loguru(tree: ast.Module) -> bool:
         True when loguru is imported.
 
     """
+    if _LOGURU_ROOT not in source:
+        return False
     return any(
         (isinstance(node, ast.Import) and any(_is_loguru_module(alias.name) for alias in node.names))
         or (isinstance(node, ast.ImportFrom) and node.module is not None and _is_loguru_module(node.module))
-        for node in ast.walk(tree)
+        for node in nodes(tree, ast.Import, ast.ImportFrom)
     )
 
 
-def _type_checking_lines(tree: ast.Module) -> frozenset[int]:
+def _type_checking_lines(tree: ast.Module, source: str) -> frozenset[int]:
     """Collect the line numbers of every statement guarded by `if TYPE_CHECKING:`.
 
     Returns:
         The 1-based lines that only exist for the type checker.
 
     """
+    if "TYPE_CHECKING" not in source:
+        return frozenset()
     return frozenset(
         inner.lineno
-        for node in ast.walk(tree)
-        if isinstance(node, ast.If) and _is_type_checking_test(node.test)
+        for node in nodes(tree, ast.If)
+        if _is_type_checking_test(node.test)
         for stmt in node.body
-        for inner in ast.walk(stmt)
+        for inner in walk(stmt)
         if isinstance(inner, ast.stmt)
     )
 

@@ -56,6 +56,7 @@ import ast
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import walk
 from sarj_python_lint.rules._paths import is_test_path
 
 
@@ -95,7 +96,7 @@ def _is_conditional_exit(stmt: ast.stmt) -> bool:
 
     """
     return isinstance(stmt, ast.If) and any(
-        isinstance(inner, (ast.Break, ast.Return, ast.Raise)) for inner in ast.walk(stmt)
+        isinstance(inner, (ast.Break, ast.Return, ast.Raise)) for inner in walk(stmt)
     )
 
 

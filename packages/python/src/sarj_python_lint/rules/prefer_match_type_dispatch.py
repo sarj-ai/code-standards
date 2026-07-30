@@ -1,4 +1,4 @@
-"""SARJ074: prefer match/case over control-flow try/raise and sequential type guards.
+"""SARJ080: prefer match/case over control-flow try/raise and sequential type guards.
 
 Parsers and field deserializers often contain hideous type-dispatch idioms:
 sequential `if x is None: return x` / `if isinstance(x, Unset): return x` guards,

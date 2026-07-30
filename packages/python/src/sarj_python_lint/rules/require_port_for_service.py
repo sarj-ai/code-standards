@@ -47,6 +47,24 @@ tahded, noura-be) the output is a description of the design, and the response ow
 decision about the design, not eight small refactors. Turning the rule on in a new repo
 should start with the count, not with the diff.
 
+**Why the message carves out persistence ports.** The advice "tests can pass a
+purpose-built implementation" is wrong for two of this rule's own name tails. Take the
+service this rule reports and do exactly what it asks:
+
+```python
+class InMemoryUserStore(UserStore):    # the port SARJ071 asked for
+    def upsert(self, user: User) -> None: self._rows[user.id] = user
+    def get(self, user_id: str) -> User | None: return self._rows.get(user_id)
+```
+
+and SARJ058 `prefer-real-store-in-tests` fires on the class definition and forbids it,
+because a dict diverges from the backend on unique and foreign-key constraints, `ON
+CONFLICT` upserts, transaction rollback, `ORDER BY` and NULL ordering. Both rules are
+right in their own domain: a purpose-built double is the whole point of a port, *except*
+where a real implementation plus a test database already exists. SARJ058 is unchanged;
+the contradiction is resolved here, in one clause of this rule's message. Note the
+carve-out is advice only — it changes no finding in any corpus.
+
 The port mechanism these repos reach for is `abc.ABC` rather than `typing.Protocol`, by
 150 classes to 23 (bulbul 117/13, noura-be 33/10), so the message names `abc.ABC`
 first. It names `Protocol` as the alternative and cites no repo's class names: the rule
@@ -440,7 +458,9 @@ class RequirePortForService(Rule):
                     "methods, but has no abstract base, so every consumer has to name the concrete class and "
                     "the only way to test one is to patch or mock it. Extract the public methods onto an "
                     f"`abc.ABC` (or a `Protocol`) and have `{node.name}` implement it, so consumers depend on "
-                    "the port and tests can pass a real or purpose-built implementation instead of a mock."
+                    "the port and tests can pass a purpose-built implementation instead of a mock — except "
+                    "for a `*Store`/`*DAO` persistence port, where tests should drive the real backend "
+                    "implementation against the test database rather than an in-memory double."
                 ),
             )
             for node in classes

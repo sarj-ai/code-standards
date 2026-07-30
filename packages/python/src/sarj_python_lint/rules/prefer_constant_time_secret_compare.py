@@ -35,9 +35,11 @@ from typing import TYPE_CHECKING, override
 
 from sarj_python_lint._secret_names import identifier_tokens, is_secret_name
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import children, nodes
 
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
 
 
@@ -95,15 +97,20 @@ class PreferConstantTimeSecretCompare(Rule):
         # not a timing-attack surface — no attacker measures a test's clock.
         if _is_test_path(path):
             return []
+        # Every diagnostic is an `==`/`!=` comparison, so a module spelling
+        # neither operator cannot produce one and need not be parsed.
+        if "==" not in source and "!=" not in source:
+            return []
         tree = parse_or_none(path, source)
         if tree is None:
             return []
-        crypto_module = _imports_crypto(tree)
-        dunder_compares = _equality_dunder_compares(tree)
+        compares = nodes(tree, ast.Compare)
+        if not compares:
+            return []
+        crypto_module = _imports_crypto(tree, source)
+        dunder_compares = _equality_dunder_compares(tree, source)
         diags: list[Diagnostic] = []
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Compare):
-                continue
+        for node in compares:
             # Value equality between two objects the process holds is not an
             # auth gate — nothing is granted on the result.
             if id(node) in dunder_compares:
@@ -147,7 +154,7 @@ def _is_test_path(path: Path) -> bool:
 _EQUALITY_DUNDERS = frozenset({"__eq__", "__ne__"})
 
 
-def _equality_dunder_compares(tree: ast.AST) -> frozenset[int]:
+def _equality_dunder_compares(tree: ast.AST, source: str) -> frozenset[int]:
     """Collect the `id()`s of every `Compare` written directly in an `__eq__`/`__ne__` body.
 
     A nested `def`/`lambda` declared inside the dunder is its own callable and
@@ -157,29 +164,31 @@ def _equality_dunder_compares(tree: ast.AST) -> frozenset[int]:
         The ids of comparisons that implement value equality.
 
     """
-    ids: set[int] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in _EQUALITY_DUNDERS:
-            ids.update(id(inner) for inner in _walk_same_scope(node) if isinstance(inner, ast.Compare))
-    return frozenset(ids)
+    if not any(dunder in source for dunder in _EQUALITY_DUNDERS):
+        return frozenset()
+    return frozenset(
+        id(inner)
+        for node in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef)
+        if node.name in _EQUALITY_DUNDERS
+        for inner in _same_scope_compares(node)
+    )
 
 
-def _walk_same_scope(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.AST]:
-    """Walk a function body without descending into nested `def`/`lambda` scopes.
+def _same_scope_compares(func: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[ast.Compare]:
+    """Yield `func`'s own comparisons, not descending into nested `def`/`lambda` scopes.
 
-    Returns:
-        The nodes of `func`'s own body.
+    Yields:
+        Each `Compare` in `func`'s own body.
 
     """
-    out: list[ast.AST] = []
     stack: list[ast.AST] = list(func.body)
     while stack:
         current = stack.pop()
         if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
             continue
-        out.append(current)
-        stack.extend(ast.iter_child_nodes(current))
-    return out
+        if isinstance(current, ast.Compare):
+            yield current
+        stack.extend(children(current))
 
 
 def _is_secret_operand(node: ast.AST, *, crypto_module: bool) -> bool:
@@ -207,22 +216,23 @@ _CRYPTO_GATED_WORDS = frozenset({"signature", "signatures"})
 _CRYPTO_MODULES = frozenset({"hmac", "hashlib", "secrets", "jwt", "cryptography", "Crypto", "nacl"})
 
 
-def _imports_crypto(tree: ast.AST) -> bool:
+def _imports_crypto(tree: ast.AST, source: str) -> bool:
     """Report whether the module imports crypto machinery anywhere.
+
+    Naming a module is a precondition for importing it, so the substring test
+    gates the traversal without narrowing what qualifies.
 
     Returns:
         True when an import's root module is a known crypto module.
 
     """
-    for node in ast.walk(tree):
+    if not any(module in source for module in _CRYPTO_MODULES):
+        return False
+    for node in nodes(tree, ast.Import, ast.ImportFrom):
         if isinstance(node, ast.Import):
             if any(alias.name.split(".")[0] in _CRYPTO_MODULES for alias in node.names):
                 return True
-        elif (
-            isinstance(node, ast.ImportFrom)
-            and node.module is not None
-            and node.module.split(".")[0] in _CRYPTO_MODULES
-        ):
+        elif node.module is not None and node.module.split(".")[0] in _CRYPTO_MODULES:
             return True
     return False
 

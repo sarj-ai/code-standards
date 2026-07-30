@@ -42,6 +42,7 @@ import re
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import children, nodes, walk
 from sarj_python_lint.rules._paths import is_test_path
 
 
@@ -121,7 +122,7 @@ def _iter_functions(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctio
         All `FunctionDef`/`AsyncFunctionDef` nodes, outermost first.
 
     """
-    return [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    return nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef)
 
 
 def _tenant_fragments(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[tuple[ast.expr, bool]]:
@@ -149,10 +150,10 @@ def _tenant_fragments(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[tupl
             if _mentions_tenant_predicate(fragment)
         )
         nested = conditional or isinstance(node, _CONDITIONAL_NODES)
-        for child in ast.iter_child_nodes(node):
+        for child in children(node):
             visit(child, conditional=nested)
 
-    for child in ast.iter_child_nodes(func):
+    for child in children(func):
         visit(child, conditional=False)
     found.sort(key=lambda pair: (pair[0].lineno, pair[0].col_offset))
     return found
@@ -188,5 +189,5 @@ def _mentions_tenant_predicate(node: ast.expr) -> bool:
         isinstance(child, ast.Constant)
         and isinstance(child.value, str)
         and _TENANT_PREDICATE_RE.search(child.value) is not None
-        for child in ast.walk(node)
+        for child in walk(node)
     )

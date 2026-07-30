@@ -142,6 +142,7 @@ import re
 from typing import TYPE_CHECKING, NamedTuple, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._paths import is_test_path
 
 
@@ -438,10 +439,10 @@ def _imported_roots(tree: ast.Module) -> frozenset[str]:
 
     """
     roots: set[str] = set()
-    for node in ast.walk(tree):
+    for node in nodes(tree, ast.Import, ast.ImportFrom):
         if isinstance(node, ast.Import):
             roots.update(alias.name.split(".", 1)[0] for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module is not None and node.level == 0:
+        elif node.module is not None and node.level == 0:
             roots.add(node.module.split(".", 1)[0])
     return frozenset(roots)
 
@@ -575,7 +576,7 @@ def _has_substance(node: ast.ClassDef, methods: list[_Method]) -> bool:
     span = (node.end_lineno or node.lineno) - node.lineno + 1
     if behaviour < 1 or span < _MIN_LINES:
         return False
-    nested = sum(1 for child in ast.walk(node) if isinstance(child, ast.ClassDef) and child is not node)
+    nested = sum(1 for child in walk(node) if isinstance(child, ast.ClassDef) and child is not node)
     return behaviour + nested >= _MIN_ENTRY_POINTS
 
 

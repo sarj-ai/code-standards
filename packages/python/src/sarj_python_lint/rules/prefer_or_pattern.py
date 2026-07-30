@@ -143,6 +143,7 @@ import ast
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import nodes, walk
 
 
 if TYPE_CHECKING:
@@ -195,8 +196,7 @@ class PreferOrPattern(Rule):
                     f"{_render(run[1].pattern)}:`) so the shared handling is written once."
                 ),
             )
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Match)
+            for node in nodes(tree, ast.Match)
             for run in _mergeable_runs(node, lines)
         ]
         diags.sort(key=lambda d: (d.line, d.col))
@@ -323,7 +323,7 @@ def _bound_names(pattern: ast.pattern) -> frozenset[str]:
 
     """
     names: set[str] = set()
-    for node in ast.walk(pattern):
+    for node in walk(pattern):
         match node:
             case ast.MatchAs(name=str() as name) | ast.MatchStar(name=str() as name):
                 names.add(name)

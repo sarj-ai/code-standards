@@ -1,4 +1,4 @@
-"""SARJ078: comprehensive Python pattern matching and match-assignment rule.
+"""SARJ079: comprehensive Python pattern matching and match-assignment rule.
 
 Combines all pattern-matching and match-expression quality checks into a unified rule:
 
@@ -17,6 +17,7 @@ import ast
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, is_suppressed, parse_or_none
+from sarj_python_lint.rules._ast_index import nodes, walk
 
 
 if TYPE_CHECKING:
@@ -132,7 +133,7 @@ def _check_destructuring(node: ast.Match, path: Path, source_lines: list[str], c
 
         attr_reads: set[str] = set()
         for b_node in case.body:
-            for subnode in ast.walk(b_node):
+            for subnode in walk(b_node):
                 if (
                     isinstance(subnode, ast.Attribute)
                     and isinstance(subnode.value, ast.Name)
@@ -274,7 +275,9 @@ class PreferPatternMatching(Rule):
         source_lines = source.splitlines()
         diags: list[Diagnostic] = []
 
-        for node in ast.walk(tree):
+        # The loop body does Match-specific work *and* a generic scan of every
+        # node that has a statement body, so it needs every node, in walk order.
+        for node in nodes(tree, ast.AST):
             if isinstance(node, ast.Match):
                 for run in _mergeable_runs(node):
                     p1 = _render_pattern(run[0].pattern)

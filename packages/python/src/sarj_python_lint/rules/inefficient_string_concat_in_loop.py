@@ -48,6 +48,7 @@ import ast
 from typing import TYPE_CHECKING, TypeGuard, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import children, walk
 from sarj_python_lint.rules._paths import is_generated_source
 
 
@@ -219,7 +220,7 @@ def _test_names(test: ast.expr) -> set[str]:
         The unparsed reads appearing in the test expression.
 
     """
-    return {ast.unparse(n) for n in ast.walk(test) if isinstance(n, (ast.Name, ast.Attribute))}
+    return {ast.unparse(n) for n in walk(test) if isinstance(n, (ast.Name, ast.Attribute))}
 
 
 def _loop_read_names(loop: ast.For | ast.AsyncFor | ast.While) -> frozenset[str]:
@@ -248,7 +249,7 @@ def _loop_read_names(loop: ast.For | ast.AsyncFor | ast.While) -> frozenset[str]
                 if other is not None:
                     stack.append(other)
                 continue
-        stack.extend(ast.iter_child_nodes(node))
+        stack.extend(children(node))
         if isinstance(node, (ast.Name, ast.Attribute)) and isinstance(node.ctx, ast.Load):
             reads.add(ast.unparse(node))
     return frozenset(reads)
@@ -288,7 +289,7 @@ def _collect_reassignments(node: ast.AST, reassigns: dict[str, list[int]]) -> No
         and not _is_accumulation_assign(node.target, node.value)
     ):
         reassigns.setdefault(ast.unparse(node.target), []).append(node.target.lineno)
-    for child in ast.iter_child_nodes(node):
+    for child in children(node):
         _collect_reassignments(child, reassigns)
 
 
@@ -364,7 +365,7 @@ def _collect_string_targets(node: ast.AST, names: set[str]) -> None:
         and _looks_like_string(node.value)
     ):
         names.add(node.target.id)
-    for child in ast.iter_child_nodes(node):
+    for child in children(node):
         _collect_string_targets(child, names)
 
 

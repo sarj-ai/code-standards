@@ -55,6 +55,7 @@ import re
 from typing import TYPE_CHECKING, final, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._paths import is_generated_source
 from sarj_python_lint.rules._sql import strip_sql_noise
 
@@ -123,8 +124,8 @@ class NoGenRandomUuidInSql(Rule):
                 code=self.code,
                 message=_MESSAGE,
             )
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Constant) and isinstance(node.value, str) and _is_offending_sql(node.value)
+            for node in nodes(tree, ast.Constant)
+            if isinstance(node.value, str) and _is_offending_sql(node.value)
         ]
         diags.sort(key=lambda d: (d.line, d.col))
         return diags

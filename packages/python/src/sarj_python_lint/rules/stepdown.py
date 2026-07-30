@@ -72,6 +72,7 @@ from collections import Counter
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import children
 from sarj_python_lint.rules._paths import is_generated_source
 
 
@@ -91,7 +92,7 @@ _SELF_NAMES = frozenset({"self", "cls"})
 
 
 def _child_nodes(node: ast.AST) -> Iterator[ast.AST]:
-    yield from ast.iter_child_nodes(node)
+    yield from children(node)
 
 
 def _walk(node: ast.AST) -> Iterator[ast.AST]:

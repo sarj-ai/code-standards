@@ -113,6 +113,7 @@ import re
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._paths import is_test_path
 from sarj_python_lint.rules._pytest import uses_benchmark_fixture
 
@@ -217,9 +218,8 @@ def _function_defs(tree: ast.Module) -> dict[str, ast.FunctionDef | ast.AsyncFun
 
     """
     defs: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
-    for node in ast.walk(tree):
-        if isinstance(node, _FUNC_NODES):
-            defs.setdefault(node.name, node)
+    for node in nodes(tree, *_FUNC_NODES):
+        defs.setdefault(node.name, node)
     return defs
 
 
@@ -294,7 +294,7 @@ def _verifies_something(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     # Search the whole subtree, nested functions included: the common
     # `async def _run(): assert ...` + `asyncio.run(_run())` wrapper keeps its
     # assertions one scope down from the test body.
-    return any(_is_verification(child) for child in ast.walk(node))
+    return any(_is_verification(child) for child in walk(node))
 
 
 def _is_verification(child: ast.AST) -> bool:
@@ -344,7 +344,7 @@ def _delegates_verification(
 
 def _called_names(node: ast.AST) -> set[str]:
     names: set[str] = set()
-    for child in ast.walk(node):
+    for child in walk(node):
         if isinstance(child, ast.Call):
             func = child.func
             if isinstance(func, ast.Attribute):

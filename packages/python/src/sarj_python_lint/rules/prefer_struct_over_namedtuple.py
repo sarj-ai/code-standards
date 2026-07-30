@@ -54,6 +54,7 @@ import ast
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._paths import is_test_path
 
 
@@ -85,7 +86,7 @@ class PreferStructOverNamedtuple(Rule):
             return []
         collections_names = {"collections"}
         candidates: list[tuple[ast.AST, str | None]] = []
-        for node in ast.walk(tree):
+        for node in nodes(tree, ast.ImportFrom, ast.Import, ast.Call):
             if isinstance(node, ast.ImportFrom):
                 if node.module == "collections":
                     candidates.extend((node, None) for alias in node.names if alias.name == "namedtuple")
@@ -94,8 +95,7 @@ class PreferStructOverNamedtuple(Rule):
                     if alias.name == "collections":
                         collections_names.add(alias.asname or "collections")
             elif (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
+                isinstance(node.func, ast.Attribute)
                 and node.func.attr == "namedtuple"
                 and isinstance(node.func.value, ast.Name)
             ):

@@ -156,7 +156,7 @@ def test_flags_identity_comparison():
 def test_returns_transcript():
     transcript = Mock()
     adapter.get_transcript.return_value = transcript
-    result = manager.parse()
+    result = manager.parse(adapter)
     assert result is transcript
 """
     assert len(_check(src)) == 1
@@ -264,7 +264,7 @@ def test_the_same_test_without_the_subscript_hop_fires():
     src = """
 def test_recording_url(client):
     object_store.sign.return_value = "https://signed.example/abc.mp4"
-    url = client.signed_url("/calls/1")
+    url = client.signed_url("/calls/1", store=object_store)
     assert url == "https://signed.example/abc.mp4"
 """
     assert len(_check(src)) == 1
@@ -322,7 +322,7 @@ def test_a_rebound_local_is_too_ambiguous_to_resolve():
     src = """
 def test_recording_url(client):
     object_store.sign.return_value = "https://signed.example/abc.mp4"
-    data = client.get("/calls/1")
+    data = client.get("/calls/1", store=object_store)
     data = data.json()["data"]["recording_url"]
     assert data == "https://signed.example/abc.mp4"
 """
@@ -348,6 +348,7 @@ def test_a_circular_alias_pair_terminates():
     src = """
 def test_swap():
     store.get.return_value = {"id": 7}
+    service.run(store)
     a = b
     b = a
     assert a == {"id": 7}
@@ -371,6 +372,129 @@ def test_real_end_to_end_client_assertion_never_fires():
 def test_read_main(client):
     response = client.get("/items/42")
     assert response.json() == {"id": 42, "name": "widget"}
+"""
+    assert _check(src) == []
+
+
+# --------------------------------------------------------------------------- #
+# FP guard: a stub on a *piece* of a double the body never hands over. The      #
+# code has to navigate the chain for the comparison to hold, so the assertion   #
+# also says it navigated correctly. 27 of the 137 census findings were this.    #
+# --------------------------------------------------------------------------- #
+
+
+def test_stub_on_a_sub_object_of_an_unconnected_double_is_exempt():
+    # airflow common SQL `test_dbapi.py:600`. `self.cur` is wired to `self.db_hook`
+    # in `setUp`, so a single-file rule cannot show the hook reaches the cursor —
+    # and `run(...)` really does have to walk connection -> cursor -> fetchall.
+    src = """
+class TestDbApiHook:
+    def test_run_fetch_all_handler_select_1(self):
+        rows = [[1]]
+        self.cur.fetchall.return_value = rows
+        assert rows == self.db_hook.run(sql="SELECT 1", handler=fetch_all_handler)
+"""
+    assert _check(src) == []
+
+
+def test_the_same_stub_fires_once_the_body_hands_the_double_over():
+    src = """
+class TestDbApiHook:
+    def test_run_fetch_all_handler_select_1(self):
+        rows = [[1]]
+        self.cur.fetchall.return_value = rows
+        hook = DbApiHook(cursor=self.cur)
+        assert rows == hook.run(sql="SELECT 1", handler=fetch_all_handler)
+"""
+    assert len(_check(src)) == 1
+
+
+def test_stub_on_the_whole_double_still_fires():
+    # airflow `test_glue_databrew.py:38` — the patch replaces the very method the
+    # test then calls, so there is no chain to navigate and nothing else can hold.
+    src = """
+class TestGlueDataBrewHook:
+    def test_get_job_state(self, get_job_state_mock):
+        get_job_state_mock.return_value = "SUCCEEDED"
+        hook = GlueDataBrewHook()
+        result = hook.get_job_state("job", "run")
+        assert result == "SUCCEEDED"
+"""
+    assert len(_check(src)) == 1
+
+
+def test_double_assigned_onto_the_unit_counts_as_handed_over():
+    # airflow `test_openai.py:66`: `operator.hook = mock_hook_instance` is an
+    # attribute assignment, but the double is on its *value* side, so it is
+    # handed over rather than configured.
+    src = """
+def test_execute_with_input_text():
+    mock_hook_instance = Mock(spec=OpenAIHook)
+    mock_hook_instance.create_embeddings.return_value = [1.0, 2.0, 3.0]
+    operator.hook = mock_hook_instance
+    embeddings = operator.execute(Context())
+    assert embeddings == [1.0, 2.0, 3.0]
+"""
+    assert len(_check(src)) == 1
+
+
+def test_an_alias_naming_a_piece_of_a_double_does_not_dodge_the_guard():
+    # airflow `test_gcs.py:1874`. Each binding only gives part of the double a
+    # shorter name, so following the aliases lands back on `mock_service`, which
+    # the body never hands to the hook.
+    src = """
+class TestGCSHook:
+    def test_object_get_blob(self, mock_service):
+        mock_blob = mock.MagicMock()
+        bucket_method = mock_service.return_value.bucket
+        get_blob_method = bucket_method.return_value.get_blob
+        get_blob_method.return_value = mock_blob
+        response = self.gcs_hook._get_blob(bucket_name="b", object_name="o")
+        assert response == mock_blob
+"""
+    assert _check(src) == []
+
+
+def test_a_chain_rooted_in_a_call_can_never_be_shown_reachable():
+    # mlflow `tests/metrics/genai/test_model_utils.py:523`.
+    src = """
+def test_call_deployments_api_no_endpoint_type():
+    with mock.patch("mlflow.deployments.get_deploy_client") as mock_get_deploy_client:
+        mock_get_deploy_client().predict.return_value = {"result": "ok"}
+        response = call_deployments_api(deployment_uri="my-endpoint")
+        assert response == {"result": "ok"}
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "installer",
+    [
+        'monkeypatch.setattr(main, "load_config", lambda: "prompt-cfg")',
+        'mock.patch("main.load_config", return_value="prompt-cfg")',
+    ],
+)
+def test_a_spelling_that_installs_the_double_names_what_it_replaces(installer: str):
+    # The guard only applies to `<recv>.return_value = X`. An installer call says
+    # which symbol the double stands in for, so reachability is not in doubt.
+    src = f"""
+def test_prompt_config(monkeypatch):
+    {installer}
+    result = load_prompt_config()
+    assert result == "prompt-cfg"
+"""
+    assert len(_check(src)) == 1
+
+
+def test_a_bare_self_prefix_is_not_evidence_of_reach():
+    # Every attribute of a `TestCase` shares `self`, so `self.db_hook` in the
+    # compared call must not license a stub on `self.cur`.
+    src = """
+class TestHook:
+    def test_records(self):
+        rows = [("a",), ("b",)]
+        self.cur.fetchall.return_value = rows
+        assert rows == self.db_hook.get_records("SQL")
 """
     assert _check(src) == []
 
@@ -426,7 +550,7 @@ def test_interrogating_the_double_does_not_count_as_a_third_use():
     src = """
 def test_room():
     rtc.Room.return_value = room
-    result = executor.connect()
+    result = executor.connect(rtc)
     assert result is room
     log(room.name)
 """
@@ -735,17 +859,17 @@ def test_one_diagnostic_per_test_function():
     src = """
 def test_one():
     a.get.return_value = {"id": 1}
-    assert service.a() == {"id": 1}
+    assert service.one(a) == {"id": 1}
 
 def test_two():
     b.get.return_value = {"id": 2}
-    result = service.b()
+    result = service.two(b)
     assert result == {"id": 2}
     b.get.assert_called_once_with(2)
 
 def test_three():
     c.get.return_value = {"id": 3}
-    assert service.c() == {"id": 3}
+    assert service.three(c) == {"id": 3}
 """
     diags = _check(src)
     assert [d.line for d in diags] == [4, 14]
