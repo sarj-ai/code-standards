@@ -94,8 +94,8 @@ extend-select = [
 # `[tool.ruff.lint] ignore`. Anything bulbul actively enforces (and this config
 # previously silenced) has been REMOVED so the standard is at least as strict as
 # bulbul — notably TRY002/TRY003, EM101/EM102, SLF001, RUF067, and the
-# docstring-punctuation family (D205/D209/D400/D401/D403/D413/D415/DOC201/
-# DOC402/DOC501) are now ENFORCED. Naming rules (N801/N802/N806/N999) are never
+# docstring-punctuation family is NOT enforced -- see the D/DOC block below for
+# the rule and its reasoning. Naming rules (N801/N802/N806/N999) are never
 # ignored here and stay active.
 ignore = [
   "A002",
@@ -110,11 +110,63 @@ ignore = [
   "PLR0913",
   "PLR0915",
 
-  # Docstrings are optional (D100-107 off); D203/D213 conflict with D211/D212.
-  # Everything else in the D/DOC families is enforced (matches bulbul).
+  # DOCSTRINGS: the standard is LESS PROSE, NOT MORE. Code documents itself;
+  # a docstring earns its place by saying something the signature cannot.
+  #
+  # The dividing line, applied to every D/DOC rule:
+  #   KEPT     — rules that DELETE prose, or catch a docstring contradicting the code
+  #   IGNORED  — rules that DEMAND prose, or tax the wording of prose already written
+  #
+  # An earlier version of this file enforced the whole family and said so
+  # ("the docstring-punctuation family ... are now ENFORCED"). That put the
+  # config in direct conflict with this repo's own rules: DOC201 REQUIRES a
+  # `Returns:` section restating the return annotation, while SARJ050
+  # `redundant-docstring` and `no-restated-comment` exist to DELETE prose that
+  # restates the signature. The linter was manufacturing the exact noise the
+  # custom rules were written to remove, and every author paid the tax.
+
+  # Missing docstrings are not a defect.
   "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107",
+
+  # Mutually-exclusive pairs: ruff requires one of each to be off.
   "D203",
   "D213",
+
+  # DEMAND MORE PROSE. These make a machine ask for text that the signature,
+  # the type annotations and the `raise` statements already carry.
+  "D417",    # undocumented-param        — describe every argument
+  "DOC201",  # docstring-missing-returns — describe the return
+  "DOC402",  # docstring-missing-yields  — describe the yield
+  "DOC501",  # docstring-missing-exception
+
+  # WORDING AND SECTION CEREMONY. None of these catch a defect; they tax someone
+  # for writing a short useful sentence, which is the sentence most worth having.
+  "D200",    # one-line docstring should fit on one line
+  "D205",    # blank line required between summary and description
+  "D400",    # first line should end with a period
+  "D401",    # first line should be in imperative mood ("gets" -> "Get")
+  "D403",    # first word should be capitalized
+  "D404",    # first word should not be "This"
+  "D405", "D406", "D407", "D408", "D409",  # section name / underline formatting
+  "D410", "D411", "D412", "D413",          # blank lines around sections
+  "D415",    # first line should end with terminal punctuation
+  "D416",    # section name should end with a colon
+  "D420",    # section order
+  "D421",    # property docstring should not start with a verb
+
+  # DELIBERATELY STILL ENFORCED — every one of these REMOVES text or catches a
+  # docstring that lies about the code, so they pull the same direction as the
+  # rules above rather than against them:
+  #   D402  first line is the function's signature      (pure restatement)
+  #   D414  section has no content                      (empty `Returns:`)
+  #   D418  @overload carrying a docstring
+  #   D419  empty docstring
+  #   DOC102 documented parameter not in the signature  (docstring lies)
+  #   DOC202 `Returns:` on a function that returns nothing
+  #   DOC403 `Yields:` on a function that never yields
+  #   DOC502 documented exception that is never raised
+  # Also kept: D201/D202/D206-D212/D300/D301 — mechanical whitespace and quote
+  # style, formatter-adjacent, no prose implications.
   "CPY001",
 
   "COM812",
