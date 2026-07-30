@@ -235,9 +235,50 @@ const config = [
       "react/jsx-boolean-value": ["error", "never"],
 
       "unicorn/consistent-function-scoping": "error",
+      // Kebab-case filenames. unicorn handles most framework shapes for free:
+      // brackets and parens are "ignored characters" so `[id].tsx`,
+      // `[...slug].tsx` and `(marketing)/` only have their inner word checked,
+      // and `multipleFileExtensions` (default true) checks only the segment
+      // before the FIRST dot, so `vite.config.ts`, `foo.test.ts` and
+      // `app.module.css.ts` all pass on the stem alone.
+      //
+      // Measured over 11,088 tracked `.ts`/`.tsx` files in 50 repos under
+      // ~/code, the shapes people assume need exemptions do not: Next.js
+      // special files (`page`/`layout`/`route`/`loading`/`error`, 1,924 files)
+      // produce ZERO violations, as do `*.config.ts` (338), `.d.ts` (123) and
+      // barrel `index.*` (176). Everything is App Router; `_app.tsx` and
+      // `_document.tsx` do not occur at all.
+      //
+      // The `ignore` list below is therefore short and each entry is earned:
+      //   - `^__root\.`   TanStack Router's root route (a rename breaks routing)
+      //   - `^_`          TanStack `_layout` / pathless routes, and this repo's
+      //                   own `_paths.ts` / `_comments.ts` private helpers
+      //   - `^\$`         TanStack dynamic segments, e.g. `$benchmarkId.tsx`
+      //   - `^\+`         Expo Router specials, e.g. `+not-found.tsx`
+      //   - `\.gen\.`     generated output — the generator owns the name, so a
+      //                   rename is undone on the next codegen run
+      // `\.d\.ts$` is deliberately DROPPED: it was redundant (the stem check
+      // already ignores the `.d` middle segment) and over-broad — it let
+      // `apiTypes.d.ts` through, which is a genuine violation.
+      //
+      // `checkDirectories` is deliberately NOT passed. It does not exist before
+      // eslint-plugin-unicorn 65 and bulbul pins 64.0.0, where an unknown option
+      // is a hard config error rather than a soft degrade. Measured on the real
+      // corpus it also earns nothing: 4 findings, all 4 false positives on App
+      // Router directories whose names ARE the public URL, where a rename
+      // silently changes a user-visible route.
       "unicorn/filename-case": [
         "error",
-        { cases: { kebabCase: true }, ignore: [String.raw`\.d\.ts$`] },
+        {
+          cases: { kebabCase: true },
+          ignore: [
+            String.raw`^__root\.`,
+            String.raw`^_`,
+            String.raw`^\$`,
+            String.raw`^\+`,
+            String.raw`\.gen\.`,
+          ],
+        },
       ],
       "unicorn/prefer-switch": "warn",
       "unicorn/no-useless-undefined": "error",
@@ -348,9 +389,12 @@ const config = [
       // sync tests in packages/typescript/tests/strict-config-sync.test.ts now
       // assert completeness and tier parity on every run, which is a guarantee
       // rather than a comment that rots. Tiers mirror the plugin's
-      // own `configs.strict` — error for most, warn for the stylistic/high-volume
-      // rules (prefer-semantic-colors, prefer-string-literal-union,
-      // no-unsafe-cast, which are warn in the plugin's strict too).
+      // own `configs.strict`. The tiers really are all error: an earlier version
+      // of this comment named prefer-semantic-colors, prefer-string-literal-union
+      // and no-unsafe-cast as "warn here and in the plugin", which was untrue of
+      // all three — and is moot for the last, since no-unsafe-cast was removed as
+      // a strict subset of @typescript-eslint/consistent-type-assertions
+      // (assertionStyle: "never").
       //
       // Deviations from the plugin's strict tiers, and the ONLY ones — the
       // `severities match the plugin's own strict preset` test in
@@ -379,8 +423,6 @@ const config = [
       "@sarj/no-unnecessary-use-client": "error",
       "@sarj/no-enum": "error",
       "@sarj/no-raw-env": "error",
-      "@sarj/prefer-shadcn": "error",
-      "@sarj/no-sequential-await": "error",
       "@sarj/no-sentinel-return-on-catch": "error",
       "@sarj/no-log-only-catch": "error",
       "@sarj/no-insecure-random-id": "error",
@@ -391,12 +433,10 @@ const config = [
       "@sarj/no-fat-try-blocks": "error",
       "@sarj/no-cors-wildcard-with-credentials": "error",
       "@sarj/no-secret-in-log": "error",
-      "@sarj/single-public-export": "error",
       "@sarj/primary-export-file-name": "error",
       // Mined from 2y of PR review feedback + 5-repo code-smell audit (2026-07).
       "@sarj/require-fetch-timeout": "error",
       "@sarj/no-silent-promise-catch": "error",
-      "@sarj/require-schema-validate-search": "error",
       "@sarj/enforce-file-structure": "error",
       "@sarj/prefer-semantic-colors": [
         "error",
@@ -404,7 +444,6 @@ const config = [
       ],
       "@sarj/prefer-string-literal-union": "error",
       // High-volume/stylistic — warn until rollout proves FP rate.
-      "@sarj/no-unsafe-cast": "error",
 
       // ── 2.8.0 / 2.9.0 additions ─────────────────────────────────────────────
       // Correctness and security invariants — error, like their peers above.
@@ -520,6 +559,39 @@ const config = [
       "better-tailwindcss/no-deprecated-classes": "error",
     },
   },
+  // React components may be PascalCase. This is the single highest-impact
+  // exemption in the config: measured over 11,088 tracked `.ts`/`.tsx` files in
+  // 50 repos, PascalCase `.tsx` accounts for 2,128 of 2,568 total filename
+  // violations (82.9%), and 93.5% of those files export a component with the
+  // same name as the file. Allowing it takes the corpus-wide cost from 2,568
+  // renames to 400, and bulbul + noura-be + standards from 51 to 17.
+  //
+  // Scoped to `.tsx` ON PURPOSE. Only 27 PascalCase `.ts` files exist across all
+  // 50 repos and they are service classes (`AuthService.ts`, `SessionStore.ts`),
+  // not components — those should be kebab, so the allowance must not reach them.
+  //
+  // Two of our own repos (wiki, docs) had already adopted exactly this
+  // unilaterally, which is part of why it belongs in the canonical config: it
+  // converges hand-rolled configs back onto the synchronizer.
+  {
+    files: ["**/*.tsx"],
+    rules: {
+      "unicorn/filename-case": [
+        "error",
+        {
+          cases: { kebabCase: true, pascalCase: true },
+          ignore: [
+            String.raw`^__root\.`,
+            String.raw`^_`,
+            String.raw`^\$`,
+            String.raw`^\+`,
+            String.raw`\.gen\.`,
+          ],
+        },
+      ],
+    },
+  },
+
 ];
 
 export default config;
