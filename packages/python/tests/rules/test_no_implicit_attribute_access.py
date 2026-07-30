@@ -7,13 +7,16 @@ import pytest
 
 from sarj_python_lint.rules.no_implicit_attribute_access import NoImplicitAttributeAccess
 
+
 if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Diagnostic
 
 _PROD = Path("svc/app/service.py")
 
+
 def _check(source: str, path: Path = _PROD) -> list[Diagnostic]:
     return NoImplicitAttributeAccess().check(path, source)
+
 
 @pytest.mark.parametrize(
     "source",
@@ -29,8 +32,9 @@ def _check(source: str, path: Path = _PROD) -> list[Diagnostic]:
 def test_flags_implicit_access(source: str):
     diags = _check(source)
     assert len(diags) == 1
-    assert diags[0].code == "SARJ055"
+    assert diags[0].code == "SARJ083"
     assert "Pydantic" in diags[0].message
+
 
 @pytest.mark.parametrize(
     "source",
@@ -45,6 +49,7 @@ def test_flags_implicit_access(source: str):
 )
 def test_allows_valid_access(source: str):
     assert _check(source) == []
+
 
 def test_exempt_paths():
     assert _check("val = event.payload.get('id')\n", Path("tests/test_something.py")) == []

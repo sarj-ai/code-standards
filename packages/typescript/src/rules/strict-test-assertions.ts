@@ -27,8 +27,8 @@ export default ESLintUtils.RuleCreator.withoutDocs({
           expr.callee.object.callee.name === "expect" &&
           expr.callee.object.arguments.length === 1
         ) {
-          const arg = expr.callee.object.arguments[0];
-          if (arg.type === AST_NODE_TYPES.MemberExpression) {
+          const arg = expr.callee.object.arguments.at(0);
+          if (arg?.type === AST_NODE_TYPES.MemberExpression) {
             return arg.object;
           }
         }
@@ -36,23 +36,32 @@ export default ESLintUtils.RuleCreator.withoutDocs({
       }
       
       function reportSequence() {
-        if (sequence.length > 1) {
+        const first = sequence.at(0);
+        if (sequence.length > 1 && first) {
           context.report({
-            node: sequence[0],
+            node: first,
             messageId: "combineAssertions",
             fix(fixer) {
               if (!currentObject) return null;
               const objectText = context.sourceCode.getText(currentObject);
               const props = sequence.map(stmt => {
                 if (
-                  stmt.expression.type === AST_NODE_TYPES.CallExpression &&
-                  stmt.expression.callee.type === AST_NODE_TYPES.MemberExpression &&
-                  stmt.expression.callee.object.type === AST_NODE_TYPES.CallExpression &&
-                  stmt.expression.callee.object.arguments[0].type === AST_NODE_TYPES.MemberExpression &&
-                  stmt.expression.callee.object.arguments[0].property.type === AST_NODE_TYPES.Identifier
+                  stmt.expression.type !== AST_NODE_TYPES.CallExpression ||
+                  stmt.expression.callee.type !== AST_NODE_TYPES.MemberExpression ||
+                  stmt.expression.callee.object.type !== AST_NODE_TYPES.CallExpression
                 ) {
-                  const propName = stmt.expression.callee.object.arguments[0].property.name;
-                  const valText = context.sourceCode.getText(stmt.expression.arguments[0]);
+                  return null;
+                }
+
+                const actual = stmt.expression.callee.object.arguments.at(0);
+                const expected = stmt.expression.arguments.at(0);
+                if (
+                  actual?.type === AST_NODE_TYPES.MemberExpression &&
+                  actual.property.type === AST_NODE_TYPES.Identifier &&
+                  expected
+                ) {
+                  const propName = actual.property.name;
+                  const valText = context.sourceCode.getText(expected);
                   return `${propName}: ${valText}`;
                 }
                 return null;
@@ -61,7 +70,7 @@ export default ESLintUtils.RuleCreator.withoutDocs({
               const replacement = `expect(${objectText}).toMatchObject({ ${props.join(", ")} });`;
               
               return [
-                fixer.replaceText(sequence[0], replacement),
+                fixer.replaceText(first, replacement),
                 ...sequence.slice(1).map(stmt => fixer.remove(stmt))
               ];
             }
