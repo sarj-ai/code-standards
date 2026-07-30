@@ -4,14 +4,23 @@ MAKEFLAGS += --warn-undefined-variables --no-builtin-rules
 
 CONFIG_SRC := packages/lint-configs/src/sarj_lint_configs/configs
 
-.PHONY: help build verify test lint typecheck sync-configs check-configs-synced \
-        publish publish-typescript publish-python publish-sql publish-iac \
-        publish-lint-configs publish-tsconfig
+.PHONY: help setup build verify test lint typecheck promote-strict sync-configs \
+        check-configs-synced publish publish-typescript publish-python publish-sql \
+        publish-iac publish-lint-configs publish-tsconfig
 
 help:
-	@echo "Targets: verify | build | test | lint | typecheck | sync-configs | check-configs-synced | promote-strict"
+	@echo "Targets: setup | verify | build | test | lint | typecheck | sync-configs | check-configs-synced | promote-strict"
 	@echo "         publish-{typescript,python,sql,iac,lint-configs,tsconfig} | publish (all)"
 	@echo "Releases trigger via tag push: typescript-v* python-v* sql-v* iac-v* lint-configs-v* tsconfig-v*"
+
+# Lefthook must be installed before the first commit, so hooks come first.
+setup:
+	./scripts/install-lefthook.sh
+	cd packages/python       && uv sync --frozen
+	cd packages/sql          && uv sync --frozen
+	cd packages/iac          && uv sync --frozen
+	cd packages/lint-configs && uv sync --frozen
+	cd packages/typescript   && npm install --no-audit --no-fund
 
 # The gate CONTRIBUTING/CLAUDE.md tells contributors to run before review. It did
 # not exist, so `make verify` failed with "No rule to make target" and the
