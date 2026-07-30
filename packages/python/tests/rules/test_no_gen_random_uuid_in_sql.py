@@ -157,21 +157,54 @@ def test_applies_to_test_files_too():
 
 
 # --------------------------------------------------------------------------- #
-# The whole-source gate in `check`                                            #
+# Why there is no whole-source fast path                                      #
 # --------------------------------------------------------------------------- #
 #
-# `check` returns early unless the raw source names `gen_random_uuid`, which
-# skips the parse and the per-literal SQL masking for files that cannot match.
-# A gate has to be strictly WEAKER than the predicate it guards, and there are
-# two ways to get that wrong here, both of which would be silent:
+# A `if "gen_random_uuid" not in source: return []` gate was added here and then
+# REVERTED, because it silently lost findings. The reasoning behind it was that
+# naming the function is a necessary condition, since `strip_sql_noise` only
+# blanks characters out. That is true of the MASKING step and false of the step
+# before it: the gate reads the RAW SOURCE, while the predicate runs on the
+# decoded `ast.Constant.value`. Source -> literal is not blanking-only — escape
+# decoding, implicit concatenation and line continuation all synthesise text
+# that never appears literally in the file.
 #
-#   * matching case-sensitively, when `_GEN_RANDOM_UUID_RE` is case-insensitive;
-#   * requiring the open paren, when masking can delete characters between the
-#     name and its paren, so the masked literal matches where the raw source
-#     does not.
-#
-# These pin both. If the gate is ever tightened to `"gen_random_uuid" in source`
-# or to `_GEN_RANDOM_UUID_RE`, one of them fails.
+# Each of these produced a finding with the rule as written and NOTHING with the
+# gate in place. They are kept as executable evidence so the optimisation is not
+# reattempted from the same wrong premise.
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param(
+            'SQL = "CREATE TABLE t (id uuid DEFAULT gen_random_\\x75uid())"\n',
+            id="hex-escape-inside-the-identifier",
+        ),
+        pytest.param(
+            'SQL = "CREATE TABLE t (id uuid DEFAULT gen_random_\\u0075uid())"\n',
+            id="unicode-escape",
+        ),
+        pytest.param(
+            'SQL = "CREATE TABLE t (id uuid DEFAULT gen_random_\\165uid())"\n',
+            id="octal-escape",
+        ),
+        pytest.param(
+            'SQL = ("CREATE TABLE t (id uuid DEFAULT gen_ran" "dom_uuid())")\n',
+            id="implicit-concat-SPLITTING-the-identifier",
+        ),
+    ],
+)
+def test_escaped_and_split_identifiers_still_fire(source: str):
+    """The shapes a raw-source gate cannot see. Each must still be reported."""
+    assert len(_check(source)) == 1
+
+
+# These four were the original gate's own tests. They remain valid regardless —
+# they pin real matching behaviour — but note that the implicit-concatenation
+# case here splits at a point where the identifier survives INTACT in the source,
+# which is precisely why it passed under the broken gate and gave false
+# confidence. The split-mid-identifier case above is the one that mattered.
 
 
 @pytest.mark.parametrize(
@@ -191,13 +224,13 @@ def test_applies_to_test_files_too():
         ),
         pytest.param(
             'SQL = ("CREATE TABLE t (id uuid DEFAULT " "gen_random_uuid())")\n',
-            id="implicit-string-concatenation",
+            id="implicit-concat-identifier-intact",
         ),
     ],
 )
-def test_gate_does_not_hide_matchable_shapes(source: str):
+def test_matchable_shapes_fire(source: str):
     assert len(_check(source)) == 1
 
 
-def test_gate_skips_a_file_that_never_names_the_function():
+def test_file_that_never_names_the_function_is_silent():
     assert _check('SQL = "CREATE TABLE t (id uuid DEFAULT uuidv7())"\n') == []
