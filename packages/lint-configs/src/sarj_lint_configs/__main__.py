@@ -7,7 +7,7 @@ import shutil
 import sys
 from typing import Final
 
-from . import CONFIGS_DIR, __version__, runner
+from . import CONFIGS_DIR, __version__, doctor, manifest, runner, scaffold
 
 
 CONFIG_NAMES: Final[dict[str, tuple[str, str]]] = {
@@ -24,6 +24,7 @@ _NEXT_STEPS = (
     "\nnext: in your pyproject.toml, add:\n"
      "  [tool.ruff]\n"
      '  extend = ".ruff-strict.toml"\n'
+     "\n(or run `sarj-lint-configs init`, which writes that and the rest of the wiring)\n"
 )
 
 
@@ -35,21 +36,28 @@ class _Args(argparse.Namespace):
 
     cmd: str = ""
     dest: str = "."
-    only: str | None = None
+    only: list[str]
     force: bool = False
     check: bool = False
+    dry_run: bool = False
     python_dest: str | None = None
     typescript_dest: str | None = None
+    configs: list[str]
     name: str = ""
     files: list[str]
 
     def __init__(self) -> None:
         super().__init__()
+        # `None` and `[]` mean the same thing for a list of choices, so these
+        # default to empty rather than nullable; argparse replaces them when the
+        # flag is given.
         self.files = []
+        self.only = []
+        self.configs = []
 
 
-def cmd_sync(args: _Args) -> int:
-    targets = [args.only] if args.only else list(CONFIG_NAMES)
+def cmd_sync(args: _Args, *, next_steps: bool = True) -> int:
+    targets = _sync_targets(args)
     destinations: dict[str, Path] = {}
 
     def resolve_destination(kind: str, override: str | None) -> Path:
@@ -86,9 +94,33 @@ def cmd_sync(args: _Args) -> int:
         print(f"\nsynced {written}/{len(targets)} config(s); {skipped} skipped; {invalid} invalid.")
         return 2
     print(f"\nsynced {written}/{len(targets)} config(s); {skipped} skipped.")
-    if written and "ruff" in targets:
+    if written and next_steps and "ruff" in targets:
         print(_NEXT_STEPS)
     return 0
+
+
+def _sync_targets(args: _Args) -> list[str]:
+    """Decide which configs a `sync` or `sync --check` run covers.
+
+    `--only` wins; otherwise a repo that ran `init` gets exactly the configs it
+    declared. Falling back to all six matters: without the manifest, a Python
+    repo had to commit `eslint.strict.mjs` and keep it byte-identical forever,
+    or `sync --check` reported permanent drift and CI could never use it.
+
+    Returns:
+        Config names in canonical order.
+
+    """
+    if args.only:
+        return list(dict.fromkeys(args.only))
+    try:
+        found = manifest.load(_resolve_dest(args.dest))
+    except (ValueError, SystemExit):
+        return list(CONFIG_NAMES)
+    if found is None:
+        return list(CONFIG_NAMES)
+    known = [name for name in found.configs if name in CONFIG_NAMES]
+    return known or list(CONFIG_NAMES)
 
 
 def _resolve_dest(dest_arg: str) -> Path:
@@ -133,6 +165,92 @@ def cmd_path(args: _Args) -> int:
     return 0
 
 
+def cmd_peers() -> int:
+    """Print the npm packages `eslint.strict.mjs` needs, at versions that resolve.
+
+    Returns:
+        Zero; the command only reports.
+
+    """
+    peers = manifest.eslint_peers()
+    for name, pin in sorted(peers.items()):
+        print(f"{name:50s} {pin}")
+    print(f"\n{manifest.eslint_install_command()}")
+    return 0
+
+
+def cmd_doctor(args: _Args) -> int:
+    """Report every version pin site in a repo and whether it agrees with the rest.
+
+    Returns:
+        0 when every pin agrees, 1 on drift.
+
+    """
+    root = _resolve_dest(args.dest)
+    findings = doctor.diagnose(root)
+    for finding in findings:
+        print(f"{finding.level.value:6s} {finding.where}  --  {finding.detail}")
+
+    drifted = sum(1 for finding in findings if finding.level is doctor.Level.DRIFT)
+    warned = sum(1 for finding in findings if finding.level is doctor.Level.WARN)
+    print(f"\nchecked {len(findings)} version site(s); {drifted} drifted; {warned} unverified.")
+    if drifted:
+        print("fix: make every site match, then re-run. `init --force` rewrites the ones it owns.")
+    return 1 if drifted else 0
+
+
+def cmd_init(args: _Args) -> int:
+    """Scaffold a repo's whole adoption in one command.
+
+    Returns:
+        0 on success, 1 when nothing could be detected.
+
+    """
+    root = _resolve_dest(args.dest)
+    plan = scaffold.build_plan(root, force=args.force, configs=args.configs)
+
+    detected = [
+        name
+        for name, present in (("python", plan.ecosystems.python), ("typescript", plan.ecosystems.typescript))
+        if present
+    ]
+    print(f"detected: {', '.join(detected) or 'nothing'}")
+    if not plan.ecosystems.any and not args.configs:
+        for note in plan.notes:
+            print(f"note:  {note}")
+        return 1
+
+    print(f"configs: {', '.join(plan.configs)}")
+    if args.dry_run:
+        print("\n-- dry run; nothing is written --")
+        for name in plan.configs:
+            print(f"would sync:  {root / CONFIG_NAMES[name][1]}")
+    else:
+        sync_args = _Args()
+        sync_args.dest = str(root)
+        sync_args.only = list(plan.configs)
+        sync_args.force = args.force
+        _ = cmd_sync(sync_args, next_steps=False)
+
+    verb_write = "would write" if args.dry_run else "wrote"
+    verb_edit = "would append to" if args.dry_run else "appended to"
+    for path, _contents in plan.writes:
+        print(f"{verb_write}: {path}")
+    for path, _addition in plan.edits:
+        print(f"{verb_edit}: {path}")
+    for path, reason in plan.skips:
+        print(f"skip:  {path}  ({reason})")
+
+    if not args.dry_run:
+        scaffold.apply(plan)
+
+    for note in plan.notes:
+        print(f"\nnote:  {note}")
+    print("\nadd this to your CI workflow:\n")
+    print(scaffold.ci_snippet(plan, version=manifest.adopted_version()))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv, namespace=_Args())
     match args.cmd:
@@ -142,6 +260,12 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_list()
         case "path":
             return cmd_path(args)
+        case "peers":
+            return cmd_peers()
+        case "doctor":
+            return cmd_doctor(args)
+        case "init":
+            return cmd_init(args)
         case "check":
             try:
                 return runner.run(args.files)
@@ -174,7 +298,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "--typescript-dest",
         help="destination for the ESLint config (for example: typescript)",
     )
-    p_sync.add_argument("--only", choices=sorted(CONFIG_NAMES), help="sync just one config")
+    p_sync.add_argument(
+        "--only",
+        nargs="+",
+        choices=sorted(CONFIG_NAMES),
+        default=[],
+        help="sync just these configs (default: the set in .sarj-standards.toml, else all)",
+    )
     p_sync.add_argument("--force", action="store_true", help="overwrite existing files")
     p_sync.add_argument(
         "--check",
@@ -186,6 +316,26 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p_path = sub.add_parser("path", help="print the absolute path of a bundled config")
     p_path.add_argument("name", choices=sorted(CONFIG_NAMES))
+
+    sub.add_parser("peers", help="print the npm packages eslint.strict.mjs needs, at tested versions")
+
+    p_doctor = sub.add_parser(
+        "doctor",
+        help="report version drift across pyproject, pre-commit, CI and package.json",
+    )
+    p_doctor.add_argument("--dest", default=".", help="repo root to inspect (default: cwd)")
+
+    p_init = sub.add_parser("init", help="scaffold the whole adoption: configs, wiring, hooks, CI")
+    p_init.add_argument("--dest", default=".", help="repo root to scaffold (default: cwd)")
+    p_init.add_argument("--force", action="store_true", help="overwrite files that already exist")
+    p_init.add_argument("--dry-run", action="store_true", help="print the plan without writing")
+    p_init.add_argument(
+        "--configs",
+        nargs="+",
+        choices=sorted(CONFIG_NAMES),
+        default=[],
+        help="override the auto-detected config set",
+    )
 
     p_check = sub.add_parser(
         "check",
