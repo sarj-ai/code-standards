@@ -6,6 +6,7 @@ consumer repo, not to a hypothetical. The docstrings say which.
 
 from __future__ import annotations
 
+from importlib.metadata import version
 import json
 from pathlib import Path
 import re
@@ -695,3 +696,153 @@ def test_peers_json_documents_why_each_ceiling_exists() -> None:
         assert name in peers
         assert isinstance(reason, str)
         assert len(reason) > 40, f"{name}'s ceiling needs a real explanation"
+
+
+def test_the_manifest_filename_is_the_one_adopted_repos_committed() -> None:
+    """Every other reference to it is symbolic, so a rename is invisible to the suite.
+
+    The filename is the contract: it is what a consumer commits, what `doctor`
+    looks for, what `sync --check` reads its config set from, and what both
+    READMEs tell people to expect. Renaming the constant orphans every adopted
+    repo at once -- `doctor` starts reporting "absent -- run init" everywhere --
+    with no test objecting.
+    """
+    assert manifest.MANIFEST_NAME == ".sarj-standards.toml"
+    assert manifest.MANIFEST_NAME in (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+
+
+def test_the_expected_precommit_rev_names_a_tag_the_release_workflow_publishes() -> None:
+    """The rev namespace is `python-v`, and only the release workflow can confirm it.
+
+    The hooks in `.pre-commit-hooks.yaml` ship from the ROOT package, which is
+    `sarj-python-lint`, so the tag is `python-v<its version>` -- not the
+    `sarj-lint-configs` version a consumer pinned. Existing tests only assert
+    that a WRONG rev drifts, which stays true if the prefix is changed to a
+    namespace that is never tagged: `doctor` would then demand
+    `lint-configs-v0.24.0` from a repo, and no such tag exists to point at.
+    """
+    expected = manifest.expected_precommit_rev()
+    assert expected is not None
+    assert expected == f"python-v{version('sarj-python-lint')}"
+
+    workflow = (REPO_ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    prefix = expected.rsplit("-v", 1)[0]
+    assert f"'{prefix}-v*'" in workflow, f"release.yml never triggers on {prefix}-v* tags"
+    assert f"maybe_tag {prefix} " in workflow, f"release.yml never creates a {prefix}-v tag"
+
+
+def test_sync_check_treats_a_config_that_was_never_synced_as_drift(tmp_path: Path) -> None:
+    """A repo that never ran `sync` must fail `sync --check`, not pass it.
+
+    The check compared bytes only when the destination already existed, so a
+    missing file reported `ok:` and the run exited 0. That is the exact state of
+    a repo that adopted the CI snippet and nothing else, which is the population
+    the gate exists for.
+    """
+    proc = _cli("sync", "--check", "--only", "ruff", "pyright", "--dest", str(tmp_path))
+    assert proc.returncode == 1, proc.stdout
+    assert "2 drifted" in proc.stdout
+    assert "ok:" not in proc.stdout
+
+
+def test_sync_check_reports_drift_after_a_synced_config_is_deleted(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    assert _cli("init", "--dest", str(tmp_path)).returncode == 0
+    (tmp_path / ".ruff-strict.toml").unlink()
+
+    proc = _cli("sync", "--check", "--dest", str(tmp_path))
+    assert proc.returncode == 1, proc.stdout
+    assert "1 drifted" in proc.stdout
+    assert f"drift: {tmp_path / '.ruff-strict.toml'}" in proc.stdout
+
+
+#: Files `init` owns and would otherwise write. Each is given contents a repo
+#: could plausibly have hand-edited, so a clobber is visible rather than a no-op.
+_SCAFFOLDED_FILES = {
+    manifest.MANIFEST_NAME: '# hand-edited\nversion = "0.0.1"\nconfigs = ["ruff"]\n',
+    "pyrightconfig.json": '{ "typeCheckingMode": "standard" }\n',
+    "eslint.config.mjs": "export default [];  // hand-rolled\n",
+}
+
+
+def _repo_with_hand_edited_files(root: Path) -> Path:
+    _ = _python_repo(root)
+    _ = _typescript_repo(root)
+    for name, body in _SCAFFOLDED_FILES.items():
+        _ = (root / name).write_text(body)
+    return root
+
+
+@pytest.mark.parametrize("name", sorted(_SCAFFOLDED_FILES))
+def test_init_never_overwrites_an_existing_file_without_force(tmp_path: Path, name: str) -> None:
+    """`init` is a generator, not a framework: everything it writes is the repo's.
+
+    Only the `pyproject.toml` append path was covered, so dropping the existence
+    check would have silently replaced a repo's tuned `pyrightconfig.json`, its
+    hand-rolled `eslint.config.mjs` and its adopted-version manifest on a re-run
+    that people are told is safe.
+    """
+    _ = _repo_with_hand_edited_files(tmp_path)
+    proc = _cli("init", "--dest", str(tmp_path))
+    assert proc.returncode == 0, proc.stderr
+    assert (tmp_path / name).read_text() == _SCAFFOLDED_FILES[name]
+    assert f"skip:  {tmp_path / name}" in proc.stdout
+
+
+@pytest.mark.parametrize("name", sorted(_SCAFFOLDED_FILES))
+def test_init_force_does_overwrite_the_files_it_owns(tmp_path: Path, name: str) -> None:
+    """The other half of the same guarantee: `--force` has to actually force.
+
+    Without this, `--force` could quietly become a no-op and the documented way
+    to re-sync a repo after an upgrade would leave it on the old wiring.
+    """
+    _ = _repo_with_hand_edited_files(tmp_path)
+    proc = _cli("init", "--force", "--dest", str(tmp_path))
+    assert proc.returncode == 0, proc.stderr
+    assert (tmp_path / name).read_text() != _SCAFFOLDED_FILES[name]
+    assert f"wrote: {tmp_path / name}" in proc.stdout
+
+
+def test_an_existing_precommit_config_is_left_alone_and_the_block_is_printed(tmp_path: Path) -> None:
+    """A repo with hooks of its own gets a merge note, never a replacement.
+
+    `.pre-commit-config.yaml` is the one scaffolded file whose contents a repo
+    almost always already owns, and overwriting it deletes every other hook the
+    repo runs.
+    """
+    _ = _python_repo(tmp_path)
+    existing = (
+        "repos:\n"
+        "  - repo: https://github.com/astral-sh/ruff-pre-commit\n"
+        "    rev: v0.16.0\n"
+        "    hooks:\n"
+        "      - id: ruff\n"
+    )
+    config = tmp_path / ".pre-commit-config.yaml"
+    _ = config.write_text(existing)
+
+    proc = _cli("init", "--dest", str(tmp_path))
+    assert proc.returncode == 0, proc.stderr
+    assert config.read_text() == existing
+    assert "add this to .pre-commit-config.yaml" in proc.stdout
+    assert "sarj-standards-drift" in proc.stdout
+
+
+def test_a_repo_with_its_own_ruff_table_is_told_rather_than_given_a_second_one(tmp_path: Path) -> None:
+    """Two `[tool.ruff]` tables is not valid TOML, so the append would break the repo.
+
+    Only the "already extends" and the "no table at all" paths were covered, and
+    a repo that sets `line-length` and nothing else is the common shape.
+    """
+    _ = _python_repo(tmp_path)
+    pyproject = tmp_path / "pyproject.toml"
+    _ = pyproject.write_text(
+        '[project]\nname = "app"\nversion = "0.1.0"\nrequires-python = ">=3.14"\n\n[tool.ruff]\nline-length = 100\n'
+    )
+
+    proc = _cli("init", "--dest", str(tmp_path))
+    assert proc.returncode == 0, proc.stderr
+    text = pyproject.read_text()
+    assert text.count("[tool.ruff]") == 1
+    assert tomllib.loads(text)["tool"]["ruff"]["line-length"] == 100
+    assert "[tool.ruff] table already" in proc.stdout
