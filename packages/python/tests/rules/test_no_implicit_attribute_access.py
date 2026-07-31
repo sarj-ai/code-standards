@@ -131,3 +131,150 @@ def test_http_and_route_get_are_not_mapping_lookups(source: str):
 def test_reading_an_unparsed_payload_still_fires(source: str):
     """The surviving population -- the defect the rule actually exists for."""
     assert len(_check(source)) == 1
+
+
+# --------------------------------------------------------------------------- #
+# The five classes found by the 19-repo re-read (24% FP over 48,024 findings). #
+# Each pair is one `valid` case that used to fire and one `invalid` case at    #
+# the guard's boundary, so the guard cannot widen without a test noticing.     #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param('def f(router: Optional["Router"] = None) -> None:\n    pass\n', id="param-forward-ref"),
+        pytest.param('def f() -> Optional["Router"]:\n    pass\n', id="return-forward-ref"),
+        pytest.param('handlers: Dict[str, Type["Handler"]] = {}\n', id="annassign-forward-ref"),
+        pytest.param('def f(items: List["Thing"]) -> None:\n    pass\n', id="list-forward-ref"),
+    ],
+)
+def test_a_string_forward_reference_in_an_annotation_is_not_a_lookup(source: str):
+    """`Optional["Router"]` is a `Subscript` over a `Constant`, and nothing else.
+
+    `_TYPE_SUBSCRIPTS` only catches the wrappers whose own name gives them away;
+    a forward reference is written with an ordinary generic. 1,666 of 48,024
+    (3.5%). The guard is positional, so it costs exactly zero recall -- an
+    annotation is never evaluated as a mapping lookup.
+    """
+    assert _check(source) == []
+
+
+def test_a_lookup_beside_an_annotation_still_fires():
+    """The boundary: the guard is the annotation SUBTREE, not the statement."""
+    assert len(_check('def f(router: Optional["Router"] = None) -> None:\n    x = payload["user_id"]\n')) == 1
+
+
+def test_a_typed_dict_receiver_is_already_the_declarative_access():
+    """A TypedDict key is checked by the type checker, so the remedy is taken.
+
+    This is the shape of `pydantic/docs/plugins/algolia.py:166`, where the rule
+    told Pydantic's own docs tooling to use a declarative model instead of the
+    declarative model it was already using. 3,018 of 48,024 (6.3%), of which the
+    same-file half -- all this AST can resolve -- is 499.
+    """
+    source = (
+        "class AlgoliaRecord(TypedDict):\n"
+        "    title: str\n"
+        "\n"
+        "def emit(record: AlgoliaRecord) -> str:\n"
+        '    return record["title"]\n'
+    )
+    assert _check(source) == []
+
+
+def test_a_receiver_typed_as_a_plain_mapping_still_fires():
+    """The boundary: `dict[str, Any]` is the unparsed payload, not a schema."""
+    source = "def emit(record: dict[str, Any]) -> str:\n    return record['title']\n"
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param('errors["attributes"].append(error)\n', id="defaultdict-append"),
+        pytest.param('buckets["ready"].add(item)\n', id="set-add"),
+        pytest.param('index["by_id"].update(rows)\n', id="dict-update"),
+        pytest.param('counts["retries"] += 1\n', id="augmented-assignment"),
+    ],
+)
+def test_building_a_collection_in_place_is_not_plucking(source: str):
+    """`Store` targets are already exempt; these are the `Load`-context spellings.
+
+    `errors["attributes"].append(x)` on a `defaultdict(list)` is the same
+    construction the write guard exempts, written as a method call. 324 of
+    48,024 (0.7%). The augmented-assignment case needs no guard of its own --
+    CPython gives an `AugAssign` target `ctx=Store()`.
+    """
+    assert _check(source) == []
+
+
+def test_reading_a_field_and_then_calling_a_method_on_it_still_fires():
+    """The boundary: `.strip()` is not a collection mutator."""
+    assert len(_check('name = payload["user_name"].strip()\n')) == 1
+
+
+def test_configparser_section_option_get_is_not_a_mapping_lookup():
+    """`conf.get("api", "ssl_cert", fallback="")` is `ConfigParser.get(section, option)`.
+
+    `dict.get` has no `fallback` parameter, so the keyword identifies the call
+    exactly rather than guessing from the receiver's name. 178 of 48,024 (0.4%),
+    0 first-party.
+    """
+    assert _check('secure = bool(conf.get("api", "ssl_cert", fallback=""))\n') == []
+
+
+def test_a_two_argument_get_without_fallback_still_fires():
+    """The boundary: `data.get("key", "default")` is the ordinary `dict.get`."""
+    assert len(_check('value = data.get("api", "default")\n')) == 1
+
+
+def test_a_constant_lookup_table_declared_in_this_file_is_not_a_payload():
+    """A literal table IS the schema; there is no boundary and nothing to parse.
+
+    `zulip/zerver/models/realms.py:722` reads a table declared 29 lines above it
+    in the same class body. 118 of 48,024 (0.2%), 0 first-party.
+    """
+    source = 'GIF_RATING_POLICY_OPTIONS = {"g": {"id": 1}}\ndefault = GIF_RATING_POLICY_OPTIONS["g"]["id"]\n'
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param('default = RESOURCE_MAP["dag"]["prefix"]\n', id="imported-not-declared-here"),
+        pytest.param('options = {"g": {"id": 1}}\nx = options["g"]["id"]\n', id="not-screaming-case"),
+        pytest.param('TABLE = load_table()\nx = TABLE["g"]\n', id="not-a-literal"),
+    ],
+)
+def test_a_table_that_is_not_a_local_literal_still_fires(source: str):
+    """The boundary: all three conditions carry weight.
+
+    The SCREAMING_CASE test alone would be 253 of 48,024 rather than 118, and
+    the 135 it adds are constants imported from elsewhere or built by a call --
+    neither of which this file can see the shape of.
+    """
+    assert _check(source)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param('name = frame.f_globals["__name__"]\n', id="frame-globals"),
+        pytest.param('mod = f_locals["__module__"]\n', id="frame-locals"),
+        pytest.param('cls = globals()["Handler"]\n', id="globals-call"),
+        pytest.param('ret = get_type_hints(fn).get("return", Any)\n', id="type-hints"),
+    ],
+)
+def test_language_reflection_namespaces_are_not_payloads(source: str):
+    """CPython defines these keys; no Pydantic model replaces `__name__`.
+
+    54 dunder keys plus 16 reflection receivers, of 48,024 (0.1%), 0
+    first-party. Recall cost zero.
+    """
+    assert _check(source) == []
+
+
+def test_a_dunder_like_key_on_an_ordinary_payload_is_still_a_reflection_key():
+    """The boundary: the dunder arm keys on the KEY, and a payload key is not one."""
+    assert len(_check('value = payload["user__id"]\n')) == 1

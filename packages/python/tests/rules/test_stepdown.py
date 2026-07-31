@@ -867,3 +867,120 @@ class Runner:
     diags = _check(src)
     assert len(diags) == 1
     assert "_load" in diags[0].message
+
+
+# --------------------------------------------------------------------------- #
+# A duplicate-named def is not flaggable, but it IS a caller.                  #
+# --------------------------------------------------------------------------- #
+
+
+def test_a_caller_fronted_by_overloads_counts_as_a_caller():
+    """An `@overload` group used to be invisible to the caller graph.
+
+    Dropping duplicate names from BOTH roles manufactured false "only caller"
+    claims: `pydantic/pydantic/type_adapter.py:261` has `_init_core_attrs`
+    called from `rebuild` AND from `__init__`, and `__init__` carries two
+    `@overload` stubs, so only `rebuild` was counted. 7 of 5,335 (0.13%).
+    """
+    src = """
+from typing import overload
+
+def _init_core_attrs(x: object) -> object:
+    return x
+
+@overload
+def build(x: int) -> int: ...
+@overload
+def build(x: str) -> str: ...
+def build(x: object) -> object:
+    return _init_core_attrs(x)
+
+def rebuild(x: object) -> object:
+    return _init_core_attrs(x)
+"""
+    assert _check(src) == []
+
+
+def test_a_caller_that_is_a_property_setter_pair_counts_as_a_caller():
+    """The class-scope spelling of the same bug.
+
+    `django/django/contrib/gis/gdal/raster/band.py:26` has `_flush` called from
+    `data` AND from `nodata_value`, which is a getter/setter pair.
+    """
+    src = """
+class Band:
+    def _flush(self) -> None:
+        self._dirty = False
+
+    @property
+    def nodata_value(self) -> int:
+        self._flush()
+        return 1
+
+    @nodata_value.setter
+    def nodata_value(self, value: int) -> None:
+        self._flush()
+
+    def data(self) -> int:
+        self._flush()
+        return 2
+"""
+    assert _check(src) == []
+
+
+def test_a_helper_whose_only_caller_is_overloaded_now_fires():
+    """The boundary, and the recall GAIN half of the same fix.
+
+    Such a helper used to be counted as having ZERO callers and skipped
+    entirely. It now reports against the FIRST def of the caller's name, which
+    is where the overload group starts.
+    `airflow/providers/google/.../hooks/bigquery.py:352` is the corpus
+    instance: `_get_pandas_df` sits above `get_df`, its only caller, which
+    carries two `@overload` stubs. 22 findings gained across the corpus.
+    """
+    src = """
+from typing import overload
+
+def _get_pandas_df(sql: str) -> object:
+    return sql
+
+@overload
+def get_df(sql: str, kind: int) -> object: ...
+@overload
+def get_df(sql: str, kind: str) -> object: ...
+def get_df(sql: str, kind: object) -> object:
+    return _get_pandas_df(sql)
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "_get_pandas_df" in diags[0].message
+    assert "get_df" in diags[0].message
+
+
+def test_a_singledispatch_registration_is_never_a_stepdown_target():
+    """`_` can suppress, but "move it below `_`" names no location.
+
+    `airflow/airflow-core/src/airflow/assets/evaluation.py:45,49` is a class
+    with four methods called `_`; picking one of them as the move target is the
+    same arbitrariness this rule refuses for multi-caller helpers. 2 findings.
+    """
+    src = """
+import functools
+
+class Evaluator:
+    def _resolve_asset_ref(self, o: object) -> object:
+        return o
+
+    @functools.singledispatchmethod
+    def run(self, o: object) -> bool:
+        raise NotImplementedError
+
+    @run.register
+    def _(self, o: int) -> bool:
+        return bool(self._resolve_asset_ref(o))
+
+    @run.register
+    def _(self, o: str) -> bool:
+        return bool(o)
+"""
+    assert _check(src) == []

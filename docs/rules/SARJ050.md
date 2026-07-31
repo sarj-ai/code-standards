@@ -41,6 +41,11 @@ repo's strict ruff config; a half-docstring is not.
   and then contradicts the obvious reading of it, which is the most valuable
   sentence a docstring can contain; `not`, `no` and `never` are therefore NOT
   stopwords here even though they are in the comment tokenizer's list.
+- **Numbers are not words.** `_docstrings.WORD_RE` is `[A-Za-z][A-Za-z0-9']*`, so
+  a token beginning with a digit is not a word at all and can never be a content
+  word — which makes a bare literal value INVISIBLE to the restatement test even
+  when it is the entire point of the sentence. A docstring carrying a digit run
+  that its signature does not carry therefore adds content. See the audit below.
 
 **Measured.** repo A **5**, repo B **105**, pydantic **22**, trio **4**,
 attrs **8** — 144 findings (the two first-party repo labels are stable within
@@ -62,5 +67,33 @@ restates the base, not the signature (SARJ084).
 The stopword list, the value markers, the prompt-decorator set and the
 restatement test moved to `rules/_docstrings` unchanged when those three
 arrived — four rules asking the same question must not answer it four ways.
+
+## 2026-07 false-positive audit — clean
+
+Re-measured on a 19-repo, 24,644-file corpus (6 first-party plus django, celery,
+airflow, litellm, prefect, saleor, zulip, fastapi, pydantic, rich, httpx,
+requests): **2,866 findings**. A seeded random sample of 50 read against source
+gave **46 true positives, 1 false, 3 arguable — a 2% false-positive rate**. One
+free guard landed, taking the rule to **2,835**.
+
+**The digit-not-in-signature guard.** The one false positive was the numeric
+shape above: `prefect/tests/client/schemas/test_concurrency.py:60` is
+`"""Test that grace_period_seconds=60 is valid (minimum boundary)."""` under
+`test_grace_period_seconds_minimum_boundary_valid` — every word is in the name,
+the `=60` is what the test is about, and the rule read it as pure restatement.
+**31 findings of 2,866 (1.1%), 0 of them first-party — free.** Every removal
+reads the same way: django's "the given 1-based page number"
+(`core/paginator.py:133,169`), litellm's "budget_tokens < 1024 should be clamped
+to 1024" and "default embedding dimension is 3072".
+
+The rest of the read produced no new class. Three properties were confirmed
+rather than changed and should stay as they are:
+
+* the docstring-only-body test (`if len(node.body) == 1`) structurally exempts
+  `Protocol` methods and abstract declarations, so **no separate stub guard is
+  needed**;
+* `@override` is 6 findings corpus-wide and 0 first-party, and SARJ084 owns that
+  case;
+* dunder methods are 8 corpus-wide and 0 first-party.
 
 Suppress an intentional case with `# sarj-noqa: SARJ050 — <reason>`.

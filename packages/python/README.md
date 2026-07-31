@@ -187,7 +187,6 @@ duplicated ruff.
     - id: sarj-prefer-real-store-in-tests          # SARJ058
     - id: sarj-prefer-library-fake                 # SARJ059
     - id: sarj-tautological-mock-assertion         # SARJ060
-    - id: sarj-no-patching-system-under-test       # SARJ061
     - id: sarj-over-mocked-test                    # SARJ062
     - id: sarj-interaction-only-test               # SARJ063
     - id: sarj-trivially-true-assertion            # SARJ064

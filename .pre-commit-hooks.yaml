@@ -450,12 +450,6 @@
   language: python
   types: [python]
 
-- id: sarj-no-patching-system-under-test
-  name: 'sarj-lint: Test patches a function/method of the unit it exercises'
-  entry: sarj-python-lint check --rule no-patching-system-under-test
-  language: python
-  types: [python]
-
 - id: sarj-over-mocked-test
   name: 'sarj-lint: Test substitutes too many collaborators'
   entry: sarj-python-lint check --rule over-mocked-test

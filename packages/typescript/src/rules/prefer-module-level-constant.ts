@@ -66,7 +66,12 @@
  *   - **Stateful regexes.** A `/…/g` or `/…/y` regex carries `lastIndex` across
  *     calls to `.test()`/`.exec()`. Hoisting one changes behaviour — the second
  *     call resumes mid-string — so global and sticky regexes are never reported
- *     even though they are the most expensive to recompile.
+ *     even though they are the most expensive to recompile. This check used to
+ *     apply only to a TOP-LEVEL regex literal: an ARRAY of regexes went through
+ *     `isLiteralOnly`, where a `RegExpLiteral` is just an `AST_NODE_TYPES.Literal`,
+ *     so `const patterns = [/a/g, /b/]` was recommended for hoisting and the
+ *     hoist would have changed behaviour. `isLiteralOnly` now rejects a stateful
+ *     regex at any depth. A stateLESS nested regex still qualifies.
  *   - **Test files.** Fixture tables inside a test body are local by design and
  *     hoisting them separates the data from the assertion that explains it.
  *     Exempt by default via `ignoreTestFiles`.
@@ -76,6 +81,23 @@
  * There is no autofix. Hoisting has to pick an insertion point and may collide
  * with an existing module-scope name; both are judgement calls that belong to a
  * human, and a wrong automated hoist is worse than the warning.
+ *
+ * SECOND SWEEP (25,508 deduped TS/TSX files across zod / trpc / dub /
+ * openstatus / formbricks / documenso / unkey / midday / papermark / cal.com /
+ * hono plus six first-party repos, 2026-07): 531 hits, 40 read in a seeded
+ * random sample — 27 true positives, 1 false positive, 12 arguable. At a 2.5%
+ * false-positive rate the rule is clean, and the single class found was drift:
+ * it shipped its OWN test-path list instead of the shared `isTestFile`, so
+ * `.e2e.ts` suites and `playwright/` fixture tables were not exempt — 13 / 531,
+ * e.g. `cal.com/apps/web/playwright/booking-limits.e2e.ts:123`. Delegating to
+ * `isTestFile` (plus `isStoryFile`, which carries the `*.stories.*` case the
+ * local list also held) is a strict superset of the old patterns.
+ *
+ * CONFIRMED AND NOT TO BE CHANGED: the rule never fires on a value that closes
+ * over a parameter or a prop. `isLiteralOnly` structurally rejects Identifier,
+ * MemberExpression, CallExpression, spread, shorthand and computed non-literal
+ * keys, so `new Map([[userId, 1]])` and `[prefix + "-a"]` cannot reach a report.
+ * That gate is load-bearing, not stylistic; do not relax it to raise the count.
  */
 
 import {
@@ -83,6 +105,8 @@ import {
   type TSESTree,
   AST_NODE_TYPES,
 } from "@typescript-eslint/utils";
+
+import { isStoryFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "hoistCollection" | "hoistRegex";
 
@@ -104,14 +128,6 @@ const IGNORE_PATTERNS: readonly RegExp[] = [
   /\.gen\.tsx?$/,
   /\.generated\.tsx?$/,
   /\.d\.ts$/,
-];
-
-const TEST_FILE_PATTERNS: readonly RegExp[] = [
-  /\.(?:test|spec)\.[cm]?[jt]sx?$/,
-  /[\\/]__tests__[\\/]/,
-  /[\\/]__mocks__[\\/]/,
-  /[\\/]tests?[\\/]/,
-  /\.stories\.[cm]?[jt]sx?$/,
 ];
 
 /**
@@ -153,8 +169,13 @@ function isIgnoredFile(filename: string, sourceText: string): boolean {
   return /@generated\b/.test(sourceText.slice(0, 1024));
 }
 
-function isTestFile(filename: string): boolean {
-  return TEST_FILE_PATTERNS.some((re) => re.test(filename));
+/**
+ * A test suite or a story: both keep their fixture tables next to the assertion
+ * (or the story) that explains them. Delegated to `_paths` so this rule cannot
+ * drift away from the other file-kind-scoped rules again.
+ */
+function isLocalFixtureFile(filename: string): boolean {
+  return isTestFile(filename) || isStoryFile(filename);
 }
 
 /** Unwraps `x as const` / `x satisfies T` down to the inner expression. */
@@ -168,6 +189,9 @@ function unwrap(node: TSESTree.Node): TSESTree.Node {
   }
   return node;
 }
+
+/** `g` and `y` carry `lastIndex` between calls, so hoisting changes behaviour. */
+const HAS_STATEFUL_FLAG_RE = /[gy]/;
 
 function isRegexLiteral(node: TSESTree.Node): node is TSESTree.RegExpLiteral {
   return (
@@ -190,7 +214,11 @@ function isLiteralOnly(node: TSESTree.Node, depth: number): boolean {
   const inner = unwrap(node);
   switch (inner.type) {
     case AST_NODE_TYPES.Literal: {
-      return true;
+      // A `RegExpLiteral` is an `AST_NODE_TYPES.Literal`, so without this a
+      // stateful regex nested in a collection — `const patterns = [/a/g, /b/]`
+      // — bypassed the top-level `g`/`y` check and the recommended hoist would
+      // have carried `lastIndex` across calls.
+      return !(isRegexLiteral(inner) && HAS_STATEFUL_FLAG_RE.test(inner.regex.flags));
     }
     case AST_NODE_TYPES.TemplateLiteral: {
       return inner.expressions.length === 0;
@@ -265,8 +293,7 @@ function classify(init: TSESTree.Node, checkRegex: boolean): Candidate | null {
     if (!checkRegex) {
       return null;
     }
-    // `g` and `y` carry `lastIndex` between calls — hoisting changes behaviour.
-    if (/[gy]/.test(node.regex.flags)) {
+    if (HAS_STATEFUL_FLAG_RE.test(node.regex.flags)) {
       return null;
     }
     return { kind: "regex", size: 1 };
@@ -498,7 +525,7 @@ export default ESLintUtils.RuleCreator(
     if (isIgnoredFile(filename, sourceCode.getText())) {
       return {};
     }
-    if (ignoreTestFiles && isTestFile(filename)) {
+    if (ignoreTestFiles && isLocalFixtureFile(filename)) {
       return {};
     }
 

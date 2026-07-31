@@ -78,8 +78,9 @@ pins `mock_client` and `mock_client.return_value.restore_service`,
 thin adapter has no observable output but the call it forwards. One true
 positive goes with them, `celery/t/unit/tasks/test_result.py:504`: `test_get`
 replaces `x.join` and `x.join_native` on the `ResultSet` it is testing and then
-asserts they were called, so both roots are the system under test. That is
-SARJ061 `no-patching-system-under-test`'s shape, not this rule's.
+asserts they were called, so both roots are the system under test — a test
+patching the very object it is exercising, which is a different defect from the
+one this rule names.
 
 Treating a leading `self.` / `cls.` as transparent was tried and rejected: it
 restores 20 findings, all airflow, all the same DBAPI-hook shape

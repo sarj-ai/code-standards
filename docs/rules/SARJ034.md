@@ -97,6 +97,55 @@ not make the call site any less swappable).
 Symmetric functions (`def add(x: int, y: int)`) where order genuinely does not
 matter are suppressed with `# sarj-noqa: SARJ034 — <reason>`.
 
+## 2026-07 false-positive audit
+
+Over the 12-repo corpus: **1,405 findings**, 148 of them first-party. Two
+independent seeded samples of 50 read against source put the false-positive rate
+at **10%**. Three guards landed, taking the rule to **1,349**; a fourth was built,
+measured and declined.
+
+* **Letter-suffix symmetry** — same-typed params differing only by a
+  single-letter suffix (`policy_id_a: str, policy_id_b: str`). `_a`/`_b` labels
+  the two sides of a commutative helper (`compare_versions`) exactly as `_1`/`_2`
+  does, and the numeric arm alone left those firing. **42 of 1,405 (3.0%), no true
+  positive lost.** Bounded to ONE shared stem plus one letter behind an
+  underscore, so `source_id`/`target_id` — different stems — is untouched.
+* **Test-support trees one directory name away from `tests/`.** `is_test_path`
+  recognises exactly the segments `tests` and `test`, so a shared test-helper
+  package named `tests_common/`, `test_utils/` or `system_tests/` was being linted
+  as production code although the existing test exemption is meant to cover it.
+  Matched as a whole DIRECTORY segment against `^tests?_.+$|^.+_tests?$` —
+  segment-anchored so it cannot reach a module named `testing_commands.py`, which
+  contributes 3 legitimate findings. **8 of 1,405 (0.6%), no true positive lost.**
+  Kept local to this rule rather than folded into `_paths.is_test_path`, which
+  several rules with different charters share.
+* **Numbered migration files** — a `migrations/` directory plus an `NNNN_`
+  filename prefix. A migration is an append-only historical artifact: it has
+  already run everywhere, its signature is pinned by the recorded history, and the
+  only edit a lint finding can produce there is a new migration. **6 of 1,405, no
+  true positive lost.**
+
+### DECLINED: a nested-closure guard
+
+A nested closure with a short parameter list whose only call sites are a few lines
+below it accounts for **7 findings**. Not guarded: "the scope is small" is an
+argument about how likely the swap is, not evidence that the signature was never
+swap-prone, and a predicate that broad **has no upper bound**.
+
+### Measured and deliberately NOT changed
+
+Recorded so it is not re-litigated:
+
+* dunder methods: **0 of 1,405**. The exemption is already load-bearing upstream
+  of the count; there is nothing left to guard.
+* `*args`-passthrough signatures: **0 of 1,405**.
+* `start`/`end`, `first`/`last`, `min`/`max`, `host`/`port`: **0 findings each**.
+  These pairs cannot fire, because a group also needs a risky identifier token
+  (`_RISKY_NAME_PART_RE`) to clear `_is_high_value_group` — so adding them to
+  `_CONVENTIONAL_ORDER_GROUPS` would move no finding at all.
+* the `bool` arm is the single largest population at **369 of 1,405**, and reading
+  it returned 4 true positives, 3 arguable and **0 false positives**. It stays.
+
 ## Implementation notes
 
 ### `_overload_stub_names`

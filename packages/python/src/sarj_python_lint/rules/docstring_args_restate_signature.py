@@ -34,8 +34,7 @@ class DocstringArgsRestateSignature(Rule):
     code: str = "SARJ086"
     has_evidence: bool = True
     description: str = (
-        "`Args:` block adds nothing the signature does not already say — delete "
-        "the section and keep the summary."
+        "`Args:` block adds nothing the signature does not already say — delete the section and keep the summary."
     )
 
     @override

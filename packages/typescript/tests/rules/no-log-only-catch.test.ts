@@ -92,6 +92,57 @@ ruleTester.run("no-log-only-catch", rule, {
     {
       code: "try { f(); } catch (e) { /* offline is expected here */ console.error(e); }",
     },
+
+    // --- 2026-07 corpus audit: the recovery can live outside the catch -------
+    // Class 1 — the try returns and the fallback is the statement after it.
+    // Real corpus: hono/src/middleware/timing/timing.ts:30.
+    {
+      code: "const getTime = () => {\n  try {\n    return performance.now();\n  } catch {}\n  return Date.now();\n};",
+    },
+    // The fallback may sit past an enclosing `if`. Real corpus:
+    // papermark/components/ui/timestamp-tooltip.tsx:41.
+    {
+      code: "function tz() {\n  if (typeof Intl !== 'undefined') {\n    try {\n      return Intl.DateTimeFormat().resolvedOptions().timeZone;\n    } catch (e) {}\n  }\n  return 'Local';\n}",
+    },
+    // Class 2 — a binding seeded with an explicit fallback right above the try,
+    // written inside it and read after it. Real corpus:
+    // cal.com/packages/app-store/jelly/api/callback.ts:28.
+    {
+      code: "function h(result, res) {\n  let errorMessage = 'Something is wrong with the Jelly API';\n  try {\n    errorMessage = result.body.error;\n  } catch (e) {}\n  res.status(400).json({ message: errorMessage });\n}",
+    },
+
+    // --- Class 3: the rationale is next to the braces, not inside them -------
+    // Directly above the `try`.
+    {
+      code: "function h() {\n  // best-effort: the row is gone either way\n  try {\n    drop();\n  } catch (err) {\n    console.error(err);\n  }\n}",
+    },
+    // Between the try block's `}` and the `catch`.
+    {
+      code: "function h() {\n  try {\n    drop();\n  }\n  // the resource may already have been reclaimed\n  catch (err) {\n    console.error(err);\n  }\n}",
+    },
+    // Above the `if` whose block holds nothing but the try. Real corpus:
+    // openstatus/packages/api/src/router/page.ts:70 and
+    // dub/apps/web/lib/actions/partners/program-resources/update-program-resource.ts:133.
+    {
+      code: "async function h(domain) {\n  // best-effort: the page is gone either way, a leaked attachment is\n  // recoverable while a failed delete is not\n  if (domain) {\n    try {\n      await release(domain);\n    } catch (err) {\n      console.error('Failed to release domain:', err);\n    }\n  }\n}",
+    },
+
+    // --- test-file exemption now delegates to the shared `_paths.isTestFile` --
+    // The `-spec` / `-test` suffix conventions the local pattern list missed.
+    {
+      code: "try { f(); } catch {}",
+      filename: "/repo/apps/api/test/event-types.controller.e2e-spec.ts",
+    },
+    {
+      code: "try { f(); } catch (e) { console.error(e); }",
+      filename: "/repo/packages/router/lib/router-test.ts",
+    },
+    // A benchmark harness swallows the throw it is timing. Real corpus:
+    // zod/packages/zod/src/v3/benchmarks/object.ts:45.
+    {
+      code: "try { short.parse(null); } catch (_err) {}",
+      filename: "/repo/packages/zod/src/v3/benchmarks/object.ts",
+    },
   ],
   invalid: [
     // Empty catch with a binding — distinct, accurate `emptyCatch` message.
@@ -164,6 +215,50 @@ ruleTester.run("no-log-only-catch", rule, {
     {
       code: "try { f(); } catch (e) { console.error('Failed to fetch manifest patches', e); }",
       errors: [{ messageId: "noLogOnlyCatch" }],
+    },
+
+    // --- upper bounds on the 2026-07 guards ---------------------------------
+    // Class 1 needs BOTH halves. The try ends in a `return`, but nothing follows
+    // it, so there is no fallback for control to fall through to.
+    {
+      code: "function g() {\n  try {\n    return risky();\n  } catch {}\n}",
+      errors: [{ messageId: "emptyCatch" }],
+    },
+    // Something follows the try, but the try does not end in a `return`, so the
+    // statement below runs on the success path too and is not a fallback.
+    {
+      code: "function g() {\n  try {\n    risky();\n  } catch {}\n  commit();\n}",
+      errors: [{ messageId: "emptyCatch" }],
+    },
+    // Class 2: the binding is written in the try but never read after it, so
+    // nothing shows the seed is standing in for the failure.
+    {
+      code: "function g(input) {\n  let parsed = null;\n  try {\n    parsed = JSON.parse(input);\n  } catch {}\n  return other(input);\n}",
+      errors: [{ messageId: "emptyCatch" }],
+    },
+    // Class 2: `let x;` with no seed is not a fallback — reading it after the
+    // try yields `undefined`, which is the swallow this rule exists to name.
+    {
+      code: "function g(input) {\n  let parsed;\n  try {\n    parsed = JSON.parse(input);\n  } catch {}\n  return parsed;\n}",
+      errors: [{ messageId: "emptyCatch" }],
+    },
+    // Class 3: a comment above an enclosing block that holds MORE than the try
+    // is about the block, not about the catch.
+    {
+      code: "function h(domain) {\n  // resolve the domain before releasing it\n  if (domain) {\n    const target = resolve(domain);\n    try {\n      release(target);\n    } catch (err) {\n      console.error(err);\n    }\n  }\n}",
+      errors: [{ messageId: "noLogOnlyCatch" }],
+    },
+    // Class 3: a comment separated from the `try` by a blank line is not
+    // attached to it.
+    {
+      code: "function h() {\n  // unrelated note about the section above\n\n  try {\n    drop();\n  } catch (err) {\n    console.error(err);\n  }\n}",
+      errors: [{ messageId: "noLogOnlyCatch" }],
+    },
+    // Path guard: a `benchmark.ts` FILE is not a `benchmarks/` directory.
+    {
+      code: "try { f(); } catch {}",
+      filename: "/repo/src/benchmark.ts",
+      errors: [{ messageId: "emptyCatch" }],
     },
   ],
 });

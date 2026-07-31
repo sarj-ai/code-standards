@@ -76,6 +76,44 @@ ruleTester.run("prefer-schema-for-api-payload", rule, {
       code: "async function f(r) { const body = await r.json(); if (validate(body)) { return body.value; } }",
     },
 
+    // === The read IS the validation =======================================
+    // FP guard, corpus: trpc/packages/next/src/app-dir/server.ts:200-202 —
+    // `const { cacheTag } = await req.json(); if (typeof cacheTag !== 'string')`
+    // is how most of this corpus validates, and it is a complete check.
+    {
+      code: "async function f(req) { const { cacheTag } = await req.json(); if (typeof cacheTag !== 'string') { return new Response(null, { status: 400 }); } return cacheTag; }",
+    },
+    // The same shape as a field read rather than a destructure.
+    {
+      code: "async function f(r) { const body = await r.json(); if (typeof body.id !== 'string') { throw new Error('bad'); } }",
+    },
+    {
+      code: "async function f(r) { const body = await r.json(); if (!Array.isArray(body.items)) { throw new Error('bad'); } }",
+    },
+    // FP guard, corpus: formbricks/apps/web/modules/ee/license-check/lib/
+    // license.ts:389 — `validateLicenseDetails` is literally
+    // `LicenseDetailsSchema.parse(data)` at :271, so the field read is consumed
+    // by a validator and never trusted.
+    {
+      code: "async function f(r) { const responseJson = await r.json(); return validateLicenseDetails(responseJson.data); }",
+    },
+    {
+      code: "async function f(r) { const body = await r.json(); return decodeToken(body.token); }",
+    },
+
+    // === `.json()` promise chains =========================================
+    // FP guard: `<json()>.catch(f)` / `.then(f)` is a chain link, not a field
+    // read — reporting the `.catch` both landed on the wrong node AND lost
+    // tracking of the value, so the real unvalidated read was missed.
+    // Corpus: midday/packages/workbench/src/ui/lib/api.ts:73.
+    {
+      code: "async function f(r) { const e = await r.json().catch(() => ({})); return e; }",
+    },
+    // A chain terminated by a schema parse is validated.
+    {
+      code: "async function f(r) { const d = await r.json().then(ZUser.parse); return d.name; }",
+    },
+
     // === `JSON.parse` source ==============================================
     // The recommended shape: park it in an `unknown` and validate. Nothing is
     // read off the raw value, so nothing is reported.
@@ -144,6 +182,40 @@ ruleTester.run("prefer-schema-for-api-payload", rule, {
     // Destructuring the raw result.
     {
       code: "const { foo } = JSON.parse(text);",
+      errors: [{ messageId: "unparsedJsonAccess" }],
+    },
+
+    // === Upper bounds on the new guards ===================================
+    // Narrowing ONE field does not bless the rest: the `typeof` read is skipped
+    // without untracking, so the next unguarded read still fires.
+    {
+      code: "async function f(r) { const body = await r.json(); if (typeof body.id !== 'string') { throw new Error('bad'); } return body.email; }",
+      errors: [{ messageId: "unparsedJsonAccess" }],
+    },
+    // A destructure is only exempt when EVERY binding it introduces is narrowed.
+    {
+      code: "async function f(r) { const { id, email } = await r.json(); if (typeof id !== 'string') { throw new Error('bad'); } return email; }",
+      errors: [{ messageId: "unparsedJsonAccess" }],
+    },
+    // The validator-name widening is anchored: `validated` is not `validateX`.
+    {
+      code: "async function f(r) { const body = await r.json(); return validated(body.data); }",
+      errors: [{ messageId: "unparsedJsonAccess" }],
+    },
+    // The `.catch()` chain link is now tracked rather than reported, which moves
+    // the report onto the real unvalidated field read one line down. Corpus:
+    // midday/packages/workbench/src/ui/lib/api.ts:73-74 and
+    // papermark/ee/features/dataroom-freeze/components/freeze-settings.tsx:110-112.
+    {
+      code: "async function f(r) { const error = await r.json().catch(() => ({})); throw new Error(error.error); }",
+      errors: [{ messageId: "unparsedJsonAccess" }],
+    },
+    {
+      code: "async function f(r) { const data = await r.json().catch(() => ({})); throw new Error(data.error || data.message); }",
+      errors: [{ messageId: "unparsedJsonAccess" }],
+    },
+    {
+      code: "async function f(r) { const d = await r.json().then((x) => x); return d.name; }",
       errors: [{ messageId: "unparsedJsonAccess" }],
     },
   ],

@@ -15,6 +15,11 @@ const ruleTester = new RuleTester({
   },
 });
 
+// Most fixtures below carry a statement AFTER the `try`. That is deliberate: it
+// keeps them out of the terminal-error-boundary exemption so they go on pinning
+// what they were written to pin (which statements count toward the limit).
+// Fixtures that exercise the exemption itself are grouped at the end of each
+// list and say so.
 ruleTester.run("no-fat-try-blocks", rule, {
   valid: [
     // Generated request clients are template output, not hand-authored error
@@ -41,6 +46,7 @@ ruleTester.run("no-fat-try-blocks", rule, {
             const b = two();
             const c = three();
           } catch (e) { handle(e); }
+          finish();
         }
       `,
     },
@@ -53,6 +59,7 @@ ruleTester.run("no-fat-try-blocks", rule, {
             const b = await two();
             const c = await three();
           } catch (e) { handle(e); }
+          finish();
         }
       `,
     },
@@ -66,6 +73,7 @@ ruleTester.run("no-fat-try-blocks", rule, {
             const c = two();
             const d = three();
           } catch (e) { handle(e); }
+          finish();
         }
       `,
     },
@@ -82,6 +90,7 @@ ruleTester.run("no-fat-try-blocks", rule, {
             router.refresh();
             onSuccess?.();
           } catch (e) { setError(e); }
+          finish();
         }
       `,
     },
@@ -95,6 +104,7 @@ ruleTester.run("no-fat-try-blocks", rule, {
             notify("c");
             track("d");
           } catch (e) { handle(e); }
+          finish();
         }
       `,
     },
@@ -109,6 +119,7 @@ ruleTester.run("no-fat-try-blocks", rule, {
             const joined = ids.join(",");
             const has = set.has(x);
           } catch (e) { handle(e); }
+          finish();
         }
       `,
     },
@@ -138,6 +149,7 @@ ruleTester.run("no-fat-try-blocks", rule, {
             log(e);
             throw new Error("wrapped", { cause: e });
           }
+          finish();
         }
       `,
     },
@@ -151,6 +163,7 @@ ruleTester.run("no-fat-try-blocks", rule, {
             const c = await three();
             const d = await four();
           } catch (e) { throw e; }
+          finish();
         }
       `,
     },
@@ -179,6 +192,7 @@ ruleTester.run("no-fat-try-blocks", rule, {
             const cb3 = () => gamma();
             const cb4 = () => delta();
           } catch (e) { handle(e); }
+          finish();
         }
       `,
     },
@@ -191,6 +205,7 @@ ruleTester.run("no-fat-try-blocks", rule, {
             for (const x of xs) { const d = d1(x); }
             switch (k) { case 1: { const e = e1(); break; } }
           } catch (e) { handle(e); }
+          finish();
         }
       `,
     },
@@ -207,6 +222,7 @@ ruleTester.run("no-fat-try-blocks", rule, {
             const label = \`Total: \${sum}\`;
             const result = await save(label, joined);
           } catch (e) { handle(e); }
+          finish();
         }
       `,
     },
@@ -223,6 +239,7 @@ ruleTester.run("no-fat-try-blocks", rule, {
             analytics.track("order_created");
             onDone?.();
           } catch (e) { toast.error(String(e)); }
+          finish();
         }
       `,
     },
@@ -253,6 +270,7 @@ ruleTester.run("no-fat-try-blocks", rule, {
             }
             const saved = await persist(acc);
           } catch (e) { handle(e); }
+          finish();
         }
       `,
     },
@@ -267,6 +285,7 @@ ruleTester.run("no-fat-try-blocks", rule, {
             const list = Array.from(keys);
             const data = await load(merged);
           } catch (e) { handle(e); }
+          finish();
         }
       `,
     },
@@ -284,6 +303,7 @@ ruleTester.run("no-fat-try-blocks", rule, {
             const res = new Response(stream);
             return res;
           } catch (e) { handle(e); }
+          return fallback();
         }
       `,
     },
@@ -302,6 +322,7 @@ ruleTester.run("no-fat-try-blocks", rule, {
             if (!parsed) { logEvent('unparsed', { path }); return null; }
             return parsed;
           } catch (e) { handle(e); }
+          return fallback();
         }
       `,
     },
@@ -315,6 +336,83 @@ ruleTester.run("no-fat-try-blocks", rule, {
             if (x) { track('e'); } else { track('f'); }
             if (x) { track('g'); } else { track('h'); }
           } catch (e) { handle(e); }
+          finish();
+        }
+      `,
+    },
+
+    // --- Terminal error-propagating boundary (the 83%-of-findings exemption) ---
+
+    // HTTP route handler: the try is the whole body and the catch turns any
+    // failure into one error response. Nothing is mis-attributed.
+    {
+      code: `
+        export async function POST(req) {
+          try {
+            const rawBody = await req.text();
+            await verifySignature({ req, rawBody });
+            const res = await fetch(RATES_URL);
+            const { data } = await res.json();
+            await redis.hset("fxRates:usd", data);
+            return NextResponse.json(data);
+          } catch (error) {
+            await log({ message: \`Error updating FX rates: \${error.message}\` });
+            return handleAndReturnErrorResponse(error);
+          }
+        }
+      `,
+    },
+    // RPC handler: the handler is a single bare call that converts the error to
+    // the transport's error type.
+    {
+      code: `
+        async function getMaintenance(req, ctx) {
+          try {
+            const rpcCtx = await getRpcContext(ctx);
+            const svcCtx = await toServiceCtx(rpcCtx);
+            const full = await loadMaintenance({ ctx: svcCtx, id: req.id });
+            const ids = await loadComponentIds(full);
+            return { maintenance: toProto(full, ids) };
+          } catch (err) {
+            toConnectError(err);
+          }
+        }
+      `,
+    },
+    // Result-type boundary: logs the error and returns a typed error variant.
+    // Not a success-shaped swallow, so the exemption applies.
+    {
+      code: `
+        async function createContact(input) {
+          try {
+            const parsed = await schema.parseAsync(input);
+            const org = await getOrganization(parsed.orgId);
+            const env = await getEnvironment(org.id);
+            const contact = await db.contact.create({ data: parsed });
+            return ok(contact);
+          } catch (error) {
+            logger.error({ error }, "createContact failed");
+            return err({ type: "internal_server_error" });
+          }
+        }
+      `,
+    },
+    // The exemption reaches through an \`if\` that is itself terminal — nothing
+    // in the function runs after the try either way.
+    {
+      code: `
+        async function handler(req, res) {
+          if (req.method === "POST") {
+            try {
+              const body = await parse(req);
+              const user = await authenticate(req);
+              const saved = await save(user, body);
+              const enriched = await enrich(saved);
+              return res.json(enriched);
+            } catch (e) {
+              errorHandler(e, res);
+            }
+          }
         }
       `,
     },
@@ -331,6 +429,7 @@ ruleTester.run("no-fat-try-blocks", rule, {
             if (!verify(x)) { track('c'); return null; }
             if (!confirm(x)) { track('d'); return null; }
           } catch (e) { handle(e); }
+          finish();
         }
       `,
       errors: [{ messageId: "fatTryBlock" }],
@@ -345,6 +444,7 @@ ruleTester.run("no-fat-try-blocks", rule, {
             if (x) { const c = three(); }
             if (x) { const d = four(); }
           } catch (e) { handle(e); }
+          finish();
         }
       `,
       errors: [{ messageId: "fatTryBlock" }],
@@ -359,6 +459,7 @@ ruleTester.run("no-fat-try-blocks", rule, {
             const c = three();
             const d = four();
           } catch (e) { handle(e); }
+          finish();
         }
       `,
       errors: [{ messageId: "fatTryBlock" }],
@@ -373,6 +474,7 @@ ruleTester.run("no-fat-try-blocks", rule, {
             const c = await three();
             const d = await four();
           } catch (e) { handle(e); }
+          finish();
         }
       `,
       errors: [{ messageId: "fatTryBlock" }],
@@ -387,6 +489,7 @@ ruleTester.run("no-fat-try-blocks", rule, {
             const data = await res.json();
             const out = transform(data);
           } catch (e) { handle(e); }
+          finish();
         }
       `,
       errors: [{ messageId: "fatTryBlock" }],
@@ -401,6 +504,7 @@ ruleTester.run("no-fat-try-blocks", rule, {
             const c = new Gizmo(z);
             const d = new Doohickey(w);
           } catch (e) { handle(e); }
+          finish();
         }
       `,
       errors: [{ messageId: "fatTryBlock" }],
@@ -435,6 +539,7 @@ ruleTester.run("no-fat-try-blocks", rule, {
             if (fatal(e)) throw e;
             log(e);
           }
+          finish();
         }
       `,
       errors: [{ messageId: "fatTryBlock" }],
@@ -451,6 +556,7 @@ ruleTester.run("no-fat-try-blocks", rule, {
             const c = three();
             const d = four();
           } catch (e) { handle(e); }
+          finish();
         }
       `,
       errors: [{ messageId: "fatTryBlock" }],
@@ -468,6 +574,132 @@ ruleTester.run("no-fat-try-blocks", rule, {
             const d = await four();
             const res = new Response(null);
           } catch (e) { handle(e); }
+          finish();
+        }
+      `,
+      errors: [{ messageId: "fatTryBlock" }],
+    },
+
+    // --- Upper bounds on the terminal-error-boundary exemption ---
+    // Each of these is a true positive from the corpus read. They must keep
+    // firing or the exemption has widened into a no-op.
+
+    // Clause (b): the handler INSPECTS the error and falls back to a different
+    // transport. Its last statement is a branch, not a hand-off, so which
+    // statement threw changes what the handler does.
+    {
+      code: `
+        async function sendWelcomeMessage({ channelId, token, webhookUrl }) {
+          try {
+            const client = await createWebClient({ token });
+            await ensureBotInChannel({ client, channelId });
+            const app = await createApp({ token });
+            await app.chat.postMessage({ channel: channelId, text: "hi" });
+          } catch (err) {
+            const isChannelNotFound =
+              typeof err === "object" && err !== null && err.code === "channel_not_found";
+            if (isChannelNotFound) {
+              await postToWebhook(webhookUrl);
+            }
+          }
+        }
+      `,
+      errors: [{ messageId: "fatTryBlock" }],
+    },
+    // Clause (a): the try is NOT terminal — the catch resets state and the
+    // function goes on to retry with another strategy, so a failure in an early
+    // statement silently changes what the retry sees.
+    {
+      code: `
+        async function fetchTransactions(accountId) {
+          let all = [];
+          try {
+            const first = await get(accountId, { strategy: "longest" });
+            const merged = await merge(all, first);
+            const recent = await get(accountId, { strategy: "recent" });
+            const sorted = await sort(merged, recent);
+            all = sorted;
+          } catch (e) {
+            logFailure(e);
+          }
+          const fallback = await get(accountId, { strategy: "default" });
+          return all.concat(fallback);
+        }
+      `,
+      errors: [{ messageId: "fatTryBlock" }],
+    },
+    // Clause (d): a long body whose handler logs and returns an EMPTY ARRAY. A
+    // configuration bug in any one of these statements becomes "no contacts
+    // found" at the call site — the success-shaped swallow the rule exists for.
+    {
+      code: `
+        async function getContacts(emails) {
+          try {
+            const conn = await this.conn;
+            const options = await this.getAppOptions();
+            const fieldNames = await this.getObjectFieldNames(options.record);
+            const soql = await buildSoql(emails, fieldNames);
+            const results = await conn.query(soql);
+            return results.records.map((r) => ({ id: r.Id }));
+          } catch (error) {
+            log.error("Error in getContacts", safeStringify(error));
+            return [];
+          }
+        }
+      `,
+      errors: [{ messageId: "fatTryBlock" }],
+    },
+    // Clause (d), object shape: an empty object is just as success-shaped.
+    {
+      code: `
+        async function loadSettings(orgId) {
+          try {
+            const org = await getOrg(orgId);
+            const prefs = await getPrefs(org.id);
+            const flags = await getFlags(org.id);
+            const theme = await getTheme(org.id);
+            return { ...prefs, ...flags, ...theme };
+          } catch (error) {
+            logger.warn(error);
+            return {};
+          }
+        }
+      `,
+      errors: [{ messageId: "fatTryBlock" }],
+    },
+    // Clause (c): the handler never touches the error. A uniform 500 that
+    // discards the cause is not error propagation, it is a swallow.
+    {
+      code: `
+        export async function GET(req) {
+          try {
+            const session = await getSession(req);
+            const org = await getOrg(session.orgId);
+            const rows = await db.query(org.id);
+            const shaped = await shape(rows);
+            return NextResponse.json(shaped);
+          } catch {
+            return NextResponse.json({ error: "failed" }, { status: 500 });
+          }
+        }
+      `,
+      errors: [{ messageId: "fatTryBlock" }],
+    },
+    // Clause (a): last in the LOOP body is not terminal — the next iteration
+    // runs after the handler.
+    {
+      code: `
+        async function syncAll(ids) {
+          for (const id of ids) {
+            try {
+              const item = await load(id);
+              const norm = await normalize(item);
+              const saved = await save(norm);
+              const indexed = await index(saved);
+            } catch (e) {
+              report(e);
+            }
+          }
         }
       `,
       errors: [{ messageId: "fatTryBlock" }],

@@ -45,6 +45,33 @@
  *       side, so it cannot make `require-zod-form-validation` — which uses the
  *       shared `_zod.ts` recognisers to accept a receiver — reject anything it
  *       previously accepted.
+ *
+ * SECOND SWEEP (25,508 deduped TS/TSX files across zod / trpc / dub /
+ * openstatus / formbricks / documenso / unkey / midday / papermark / cal.com /
+ * hono plus six first-party repos, 2026-07): 536 hits, 39 read in a seeded
+ * random sample — 6 true positives, 2 false positives, 31 arguable. At a 5%
+ * false-positive rate the rule is clean, and one guard (d) closes the only
+ * class found: BENCHMARK FIXTURES, 12 / 536, 10 of them in zod's own repo.
+ * `zod/packages/zod/src/v3/benchmarks/object.ts:9-10` declares `empty` / `short`
+ * / `long` and feeds each to a suite three lines below — verbatim the rationale
+ * for guard (a), on a path the test predicate simply does not reach.
+ *
+ * REFUTED, and worth recording so it is not re-derived: this is NOT the rule
+ * flagging zod's own library source. Only 16 of the 536 findings are in the zod
+ * repo and 10 of those are benchmarks; 489 / 536 (91%) are in four zod
+ * CONSUMERS.
+ *
+ * NOT A DEFECT, NOT A FALSE POSITIVE: 325 of 536 (60.6%) of the names end in
+ * Input / Output / Response / Request / Payload / Params / Shape / Result /
+ * Enum / Config / Query — a third, internally consistent convention, several of
+ * them deliberately declaration-merged with the inferred type of the same name,
+ * which achieves exactly what the `Z` prefix exists for. Those are arguable, not
+ * wrong. If that population is worth accommodating, the shape to add is an
+ * `extraPatterns: string[]` option (or a fourth built-in `"role-suffix"`
+ * convention) that is STRICT OPT-IN and changes nothing by default — a rule
+ * whose accept side widens by default stops being a consistency rule. It is
+ * deliberately not implemented here: no measurement in this sweep showed a
+ * defect behind those names, so there is nothing yet to justify the surface.
  */
 
 import { ESLintUtils, type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
@@ -78,6 +105,19 @@ const CONVENTIONS: Record<
  * this rule tolerates; it never makes the shared recogniser stricter.
  */
 const CONTAINS_SCHEMA_RE = /schema/i;
+
+/**
+ * Guard (d): micro-benchmark trees. A schema declared in a benchmark is a
+ * throwaway local fed to a suite a few lines below — the same "no cross-module
+ * use site for the convention to serve" argument as the test-file guard, on a
+ * path `isTestFile` does not match. Kept local to this rule rather than pushed
+ * into `_paths` because a benchmark is not a test: it is not exempt from
+ * correctness rules, only from naming ones.
+ *
+ * Anchored on a PATH SEGMENT so `workbench/` and `benchmarking-report.ts` are
+ * unaffected.
+ */
+const BENCHMARK_PATH_RE = /(^|[\\/])(?:benchmarks?|bench)[\\/]/;
 
 /**
  * Guard (b): terminal methods on a `z.…` chain whose result is NOT a schema.
@@ -171,8 +211,13 @@ export default ESLintUtils.RuleCreator(
     // explicitly asked for prefix-only — there `userschema` really is off-convention.
     const acceptsSchemaWord = convention !== "prefix";
 
-    // Guard (a): a schema declared in a test is a local fixture, not an API.
-    if (isTestFile(context.filename) || isGeneratedFile(context.filename, context.sourceCode.text)) {
+    // Guard (a) / (d): a schema declared in a test or a benchmark is a local
+    // fixture, not an API.
+    if (
+      isTestFile(context.filename) ||
+      BENCHMARK_PATH_RE.test(context.filename.replaceAll("\\", "/")) ||
+      isGeneratedFile(context.filename, context.sourceCode.text)
+    ) {
       return {};
     }
 

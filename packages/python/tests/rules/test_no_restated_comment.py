@@ -221,3 +221,71 @@ def test_comment_at_end_of_file_is_safe():
 
 def test_comment_above_a_blank_line_is_not_about_the_next_statement():
     assert _check("def f():\n    # update user\n\n    update_user(u)\n") == []
+
+
+# --------------------------------------------------------------------------- #
+# A section label heading a multi-statement region.                           #
+# --------------------------------------------------------------------------- #
+
+
+def test_a_label_heading_a_three_line_region_is_not_narration():
+    """The comment labels the REGION; the first line only shares its vocabulary.
+
+    Same reading the group-label guard gives a syntactic block, given to a
+    blank-line-delimited paragraph. `django/tests/auth_tests/test_hashers.py:57`
+    is `# Blank passwords` over a five-statement second scenario. Removes 98 of
+    1,304 (7.5%); a random 16 of the removal set read at source were 10 false
+    positives, 5 arguable and 1 true positive.
+    """
+    source = (
+        "def f():\n"
+        "    # Create token pair\n"
+        "    tokens = self.jwt_service.create_token_pair(user)\n"
+        "    persist(tokens)\n"
+        "    audit(tokens)\n"
+    )
+    assert _check(source) == []
+
+
+def test_a_label_heading_a_two_line_region_still_fires():
+    """The boundary, and the whole point of the threshold.
+
+    The >=2 spelling was built, measured and rejected: its population is 297,
+    and the extra 199 it admits over >=3 are dominated by the
+    `<action>; assert <result>` pair, where the comment really does narrate one
+    line.
+    """
+    source = "def f():\n    # Create token pair\n    tokens = self.jwt_service.create_token_pair(user)\n    audit(tokens)\n"
+    assert len(_check(source)) == 1
+
+
+def test_a_blank_line_ends_the_region():
+    """The boundary: the region is blank-line-delimited, not "the rest of the body"."""
+    source = (
+        "def f():\n"
+        "    # Create token pair\n"
+        "    tokens = self.jwt_service.create_token_pair(user)\n"
+        "\n"
+        "    persist(tokens)\n"
+        "    audit(tokens)\n"
+    )
+    assert len(_check(source)) == 1
+
+
+def test_the_next_label_ends_the_region():
+    """The boundary that keeps the guard off true positives.
+
+    `# Mock auth_manager` over one line, followed by `# Act` and `# Assert`,
+    heads a region of ONE. Counting through the next label instead removed 149
+    findings rather than 98, and the extra 51 were dominated by this shape.
+    """
+    source = (
+        "def f():\n"
+        "    # Create token pair\n"
+        "    tokens = self.jwt_service.create_token_pair(user)\n"
+        "    # Act\n"
+        "    response = call(tokens)\n"
+        "    # Assert\n"
+        "    check(response)\n"
+    )
+    assert len(_check(source)) == 1

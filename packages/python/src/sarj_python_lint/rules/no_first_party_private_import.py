@@ -7,11 +7,17 @@ Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ048.md
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
 from sarj_python_lint.rules._ast_index import nodes
-from sarj_python_lint.rules._first_party import is_first_party_module, own_top_package
+from sarj_python_lint.rules._first_party import (
+    has_first_party_source,
+    is_first_party_module,
+    own_top_package,
+    same_distribution,
+)
 
 
 if TYPE_CHECKING:
@@ -35,12 +41,44 @@ class NoFirstPartyPrivateImport(Rule):
             return []
         own_top = own_top_package(path)
         diags = [
-            Diagnostic(path=path, line=line, col=col, code=self.code, message=_message(module, name))
-            for line, col, module, name in _private_imports(tree)
-            if _is_ours(module, path, own_top)
+            Diagnostic(path=path, line=hit.line, col=hit.col, code=self.code, message=_message(hit.module, hit.name))
+            for hit in _private_imports(tree)
+            if _is_ours(hit.module, path, own_top) and not _is_our_own_internals(hit, path)
         ]
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
+
+
+@dataclass(frozen=True, slots=True)
+class _PrivateImport:
+    """One private thing imported by one statement."""
+
+    line: int
+    col: int
+    module: str
+    name: str
+    #: The private thing is a segment of the module path, not an imported name.
+    is_segment: bool
+    #: Every name this statement imports is public (vacuously true for `import x._y`).
+    names_public: bool
+
+
+def _is_our_own_internals(hit: _PrivateImport, path: Path) -> bool:
+    """Report whether the private module belongs to the importer's own distribution.
+
+    Only ever true for a private *segment*: reaching a private NAME out of a
+    module is a finding wherever it is written, because the fix — export it — is
+    available to the same authors.
+
+    Returns:
+        True when the finding names an edit the importer cannot make.
+
+    """
+    if not hit.is_segment:
+        return False
+    if not has_first_party_source(hit.module, path):
+        return True
+    return hit.names_public and same_distribution(hit.module, path)
 
 
 def _message(module: str, name: str) -> str:
@@ -59,9 +97,14 @@ def _is_ours(module: str, path: Path, own_top: str | None) -> bool:
     return is_first_party_module(module, path)
 
 
-def _private_imports(tree: ast.Module) -> list[tuple[int, int, str, str]]:
-    """Collect `(line, col, defining module, private name)` for every private import."""
-    hits: list[tuple[int, int, str, str]] = []
+def _private_imports(tree: ast.Module) -> list[_PrivateImport]:
+    """Collect every private symbol or private module segment imported absolutely.
+
+    Returns:
+        One entry per private thing; relative imports are skipped.
+
+    """
+    hits: list[_PrivateImport] = []
     for node in nodes(tree, ast.ImportFrom, ast.Import):
         if isinstance(node, ast.ImportFrom):
             hits.extend(_from_import_hits(node))
@@ -70,26 +113,51 @@ def _private_imports(tree: ast.Module) -> list[tuple[int, int, str, str]]:
     return hits
 
 
-def _from_import_hits(node: ast.ImportFrom) -> list[tuple[int, int, str, str]]:
+def _from_import_hits(node: ast.ImportFrom) -> list[_PrivateImport]:
     # `node.level` > 0 is a relative import: inside its own package by construction.
     if node.level or not node.module:
         return []
     private_segment = _private_segment(node.module)
     if private_segment is not None:
-        return [(node.lineno, node.col_offset + 1, node.module, private_segment)]
+        return [
+            _PrivateImport(
+                line=node.lineno,
+                col=node.col_offset + 1,
+                module=node.module,
+                name=private_segment,
+                is_segment=True,
+                names_public=not any(_is_private_name(alias.name) for alias in node.names),
+            )
+        ]
     return [
-        (alias.lineno, alias.col_offset + 1, node.module, name)
+        _PrivateImport(
+            line=alias.lineno,
+            col=alias.col_offset + 1,
+            module=node.module,
+            name=name,
+            is_segment=False,
+            names_public=False,
+        )
         for alias in node.names
         if _is_private_name(name := alias.name)
     ]
 
 
-def _plain_import_hits(node: ast.Import) -> list[tuple[int, int, str, str]]:
-    hits: list[tuple[int, int, str, str]] = []
+def _plain_import_hits(node: ast.Import) -> list[_PrivateImport]:
+    hits: list[_PrivateImport] = []
     for alias in node.names:
         private_segment = _private_segment(alias.name)
         if private_segment is not None:
-            hits.append((alias.lineno, alias.col_offset + 1, alias.name, private_segment))
+            hits.append(
+                _PrivateImport(
+                    line=alias.lineno,
+                    col=alias.col_offset + 1,
+                    module=alias.name,
+                    name=private_segment,
+                    is_segment=True,
+                    names_public=True,
+                )
+            )
     return hits
 
 

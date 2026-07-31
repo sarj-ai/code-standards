@@ -7,7 +7,9 @@ Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ068.md
 from __future__ import annotations
 
 import ast
+import io
 import re
+import tokenize
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
@@ -130,16 +132,43 @@ class PreferFstringOverConcat(Rule):
                 excluded.update(id(sub) for arg in arguments for sub in walk(arg))
 
         diags: list[Diagnostic] = []
+        comment_lines: frozenset[int] | None = None
         for node in adds:
             if id(node) in inner or id(node) in excluded:
                 continue
             message = _verdict(node)
-            if message is not None:
-                diags.append(
-                    Diagnostic(path=path, line=node.lineno, col=node.col_offset + 1, code=self.code, message=message)
-                )
+            if message is None:
+                continue
+            if node.end_lineno is not None and node.end_lineno > node.lineno:
+                # Tokenizing is the one thing here that costs real time, and it
+                # can only ever REJECT, so it is deferred until a multi-line
+                # chain has already earned a diagnostic.
+                if comment_lines is None:
+                    comment_lines = _comment_lines(source)
+                if any(node.lineno <= line <= node.end_lineno for line in comment_lines):
+                    continue
+            diags.append(
+                Diagnostic(path=path, line=node.lineno, col=node.col_offset + 1, code=self.code, message=message)
+            )
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
+
+
+def _comment_lines(source: str) -> frozenset[int]:
+    """Collect the 1-based line numbers carrying a `#` comment.
+
+    Returns:
+        The comment lines, or an empty set when the source does not tokenize.
+
+    """
+    try:
+        return frozenset(
+            token.start[0]
+            for token in tokenize.generate_tokens(io.StringIO(source).readline)
+            if token.type == tokenize.COMMENT
+        )
+    except tokenize.TokenError, IndentationError, SyntaxError:  # pragma: no cover — parse already succeeded
+        return frozenset()
 
 
 def _is_logging_call(node: ast.Call) -> bool:

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
 from sarj_python_lint.rules._ast_index import nodes
-from sarj_python_lint.rules._paths import is_generated_source
+from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
@@ -48,7 +48,7 @@ class DuplicatedOverrideDocstring(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated_source(source):
+        if is_generated(path, source):
             return []
         tree = parse_or_none(path, source)
         if tree is None:

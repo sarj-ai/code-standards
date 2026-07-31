@@ -566,6 +566,101 @@ def test_vocabularies_do_not_cross_domains():
     assert _check(src) == []
 
 
+# --------------------------------------------------------------------------- #
+# FP-hardening (12-repo corpus, 1,405 findings): symmetric letter suffixes,     #
+# test-support trees, numbered migrations. 63 findings removed, no TP lost.     #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        "policy_id_a: str, policy_id_b: str",
+        "path_a: str, path_b: str",
+        "user_key_a: str, user_key_b: str",
+    ],
+)
+def test_symmetric_letter_suffix_params_are_exempt(params: str):
+    # `_a`/`_b` labels the two sides of a commutative helper exactly as `_1`/`_2`
+    # does. Minimized from a policy registry's `compare_versions(policy_id_a,
+    # policy_id_b)`: swapping the arguments cannot produce a wrong answer.
+    src = f"def compare_versions({params}) -> int: ...\n"
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        # Different stems: this is the bug class the rule exists for.
+        "source_id_a: str, target_id_b: str",
+        # Two letters is not a symmetric label.
+        "path_ab: str, path_cd: str",
+        # The letter must sit behind an underscore to be a label rather than
+        # part of the word.
+        "key_ida: str, key_idb: str",
+    ],
+)
+def test_near_miss_letter_suffixes_still_fire(params: str):
+    src = f"def link({params}) -> None: ...\n"
+    assert len(_check(src)) == 1
+
+
+def test_a_leading_letter_label_is_not_a_symmetric_suffix():
+    src = "def link(a_id: str, b_id: str) -> None: ...\n"
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "devel-common/src/tests_common/test_utils/azure_system_helpers.py",
+        "provider/system_tests/example_dag.py",
+        "src/test_support/fakes.py",
+        "src/integration_test/helpers.py",
+    ],
+)
+def test_test_support_directories_are_exempt(path: str):
+    # `is_test_path` knows the segments `tests` and `test` only, so a shared
+    # test-helper package one directory name away was being linted as
+    # production code although the charter already exempts test helpers.
+    src = "def create_container(bucket_id: str, blob_id: str) -> None: ...\n"
+    assert _check(src, path) == []
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "src/app/testing_commands.py",  # 3 legitimate findings live in this shape
+        "src/app/latest_tester.py",
+        "src/contest_service/handlers.py",
+    ],
+)
+def test_names_merely_containing_test_still_fire(path: str):
+    # The predicate matches a whole DIRECTORY segment; a module whose name
+    # merely contains the letters is production code.
+    src = "def transfer(source_id: str, target_id: str) -> None: ...\n"
+    assert len(_check(src, path)) == 1
+
+
+def test_numbered_migration_is_exempt():
+    # An append-only historical artifact: it has already run everywhere, so the
+    # only edit a finding here can produce is a second migration.
+    src = "def rename_emoji(old_name: str, new_name: str) -> None: ...\n"
+    assert _check(src, "zerver/migrations/0149_realm_emoji_drop_unique.py") == []
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "zerver/migrations/helpers.py",  # not numbered: hand-written support code
+        "zerver/lib/0149_realm_emoji_drop_unique.py",  # numbered, but not a migration
+    ],
+)
+def test_migration_exemption_needs_both_halves(path: str):
+    src = "def rename_emoji(old_name: str, new_name: str) -> None: ...\n"
+    assert len(_check(src, path)) == 1
+
+
 def test_positive_distilled_from_trio_set_result():
     # Distilled TP from trio's _raises_group.ResultHolder.set_result: two
     # same-typed index parameters that are genuinely swap-prone.

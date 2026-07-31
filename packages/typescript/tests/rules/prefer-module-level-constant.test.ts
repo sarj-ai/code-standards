@@ -97,6 +97,16 @@ ruleTester.run("prefer-module-level-constant", rule, {
     // FP mode: stateful regexes carry `lastIndex` across calls.
     { code: "function f(s: string) { const RE = /ab+c/g; return RE.test(s); }" },
     { code: "function f(s: string) { const RE = /ab+c/y; return RE.test(s); }" },
+    // ...including one buried in a collection. `isLiteralOnly` sees a
+    // `RegExpLiteral` as a plain `Literal`, so an ARRAY of regexes bypassed the
+    // top-level `g`/`y` check entirely and the recommended hoist would have
+    // changed behaviour on the second call.
+    {
+      code: "function f(s: string) { const RES = [/a/g, /b/, /c/]; return RES.some((r) => r.test(s)); }",
+    },
+    {
+      code: "function f(s: string) { const RES = { a: /a/y, b: /b/, c: /c/ }; return RES.a.test(s); }",
+    },
     // ...and regex checking is opt-out-able entirely.
     {
       code: "function f(s: string) { const RE = /ab+c/i; return RE.test(s); }",
@@ -111,6 +121,23 @@ ruleTester.run("prefer-module-level-constant", rule, {
     {
       code: "function f() { const CASES = ['a', 'b', 'c']; return CASES.length; }",
       filename: "src/__tests__/thing.ts",
+    },
+    // FP guard: the rule shipped its OWN test-path list instead of the shared
+    // `isTestFile`, so `.e2e.ts` suites and their fixture tables were not
+    // exempt. Corpus: cal.com/apps/web/playwright/booking-limits.e2e.ts:123.
+    {
+      code: "function f() { const CASES = ['a', 'b', 'c']; return CASES.length; }",
+      filename: "/repo/apps/web/playwright/booking-limits.e2e.ts",
+    },
+    {
+      code: "function f() { const CASES = ['a', 'b', 'c']; return CASES.length; }",
+      filename: "/repo/integration/single-fetch-test.ts",
+    },
+    // Story files keep their fixture data next to the story (regression: this
+    // came from the rule's own list and must survive the delegation).
+    {
+      code: "function f() { const CASES = ['a', 'b', 'c']; return CASES.length; }",
+      filename: "/repo/src/Button.stories.tsx",
     },
     // Generated files opt out.
     {
@@ -177,6 +204,12 @@ ruleTester.run("prefer-module-level-constant", rule, {
     {
       code: "function isEmail(s: string) { const RE = /^[^@]+@[^@]+$/; return RE.test(s); }",
       errors: [{ messageId: "hoistRegex", data: { name: "RE" } }],
+    },
+    // UPPER BOUND on the nested-regex fix: only the STATEFUL flags block the
+    // hoist. A table of stateless regexes is exactly what the rule is for.
+    {
+      code: "function f(s: string) { const RES = [/a/i, /b/, /c/]; return RES.some((r) => r.test(s)); }",
+      errors: [{ messageId: "hoistCollection", data: { name: "RES", kind: "array" } }],
     },
     // `as const` wrapper.
     {

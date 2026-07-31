@@ -39,7 +39,6 @@ from sarj_python_lint.rules.no_offset_pagination import NoOffsetPagination
 from sarj_python_lint.rules.no_optional_tenant_predicate import (
     NoOptionalTenantPredicate,
 )
-from sarj_python_lint.rules.no_patching_system_under_test import NoPatchingSystemUnderTest
 from sarj_python_lint.rules.no_query_with_many_joins import NoQueryWithManyJoins
 from sarj_python_lint.rules.no_raw_sql_in_tests import NoRawSqlInTests
 from sarj_python_lint.rules.no_repeated_string_literal import NoRepeatedStringLiteral
@@ -166,7 +165,6 @@ REGISTRY: dict[str, type[Rule]] = {
     PreferRealStoreInTests.id: PreferRealStoreInTests,
     PreferLibraryFake.id: PreferLibraryFake,
     TautologicalMockAssertion.id: TautologicalMockAssertion,
-    NoPatchingSystemUnderTest.id: NoPatchingSystemUnderTest,
     OverMockedTest.id: OverMockedTest,
     InteractionOnlyTest.id: InteractionOnlyTest,
     TriviallyTrueAssertion.id: TriviallyTrueAssertion,

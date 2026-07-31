@@ -34,6 +34,12 @@ conversion migration — uses it solely as the identifier `offset_min` and insid
 comments. So this change
 is pure false-positive prevention with no true positive lost — verified by
 re-running the sweep, not assumed.
+Schema dumps are exempt (`is_dump_file`). A pg_dump snapshot is a rendering of a
+schema that already exists: the diagnostic asks for an edit to a file that the
+next `pg_dump` regenerates, and the defect it names, if real, has to be fixed in a
+migration anyway. This exemption already guarded SARJ102, SARJ108 and SARJ110;
+`is_dump_file` accounted for 41.7% of the pre-dedupe population of the rules that
+were not calling it.
 """
 
 from __future__ import annotations
@@ -41,7 +47,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING, final, override
 
-from sarj_sql_lint.rule_base import Diagnostic, Rule, mask_sql
+from sarj_sql_lint.rule_base import Diagnostic, Rule, is_dump_file, mask_sql
 
 
 if TYPE_CHECKING:
@@ -67,6 +73,9 @@ class NoLimitOffset(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        if is_dump_file(source, path):
+            return []
+
         diags: list[Diagnostic] = []
         for lineno, line in enumerate(mask_sql(source).splitlines(), start=1):
             diags.extend(

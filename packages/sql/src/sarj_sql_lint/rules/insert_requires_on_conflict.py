@@ -67,6 +67,12 @@ This exemption is SQL-only, deliberately. SARJ018 and the TS twin do not need it
 first-party repos and their published SDKs, and neither rule masks or descends into a
 dollar-quoted body in the first place. If embedded PL/pgSQL ever appears there,
 this is the precedent to follow.
+Schema dumps are exempt (`is_dump_file`). A pg_dump snapshot is a rendering of a
+schema that already exists: the diagnostic asks for an edit to a file that the
+next `pg_dump` regenerates, and the defect it names, if real, has to be fixed in a
+migration anyway. This exemption already guarded SARJ102, SARJ108 and SARJ110;
+`is_dump_file` accounted for 41.7% of the pre-dedupe population of the rules that
+were not calling it.
 """
 
 from __future__ import annotations
@@ -74,7 +80,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING, final, override
 
-from sarj_sql_lint.rule_base import Diagnostic, Rule, dollar_quoted_lines, mask_sql, split_statements
+from sarj_sql_lint.rule_base import Diagnostic, Rule, dollar_quoted_lines, is_dump_file, mask_sql, split_statements
 
 
 if TYPE_CHECKING:
@@ -154,6 +160,9 @@ class InsertRequiresOnConflict(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        if is_dump_file(source, path):
+            return []
+
         masked = mask_sql(source)
         exempt = _guarded_dollar_body_lines(masked, source)
         diags: list[Diagnostic] = []
