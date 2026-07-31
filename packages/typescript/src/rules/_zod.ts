@@ -20,3 +20,12 @@ export const ZOD_SUFFIX_RE = /Schema$/;
 
 /** Either accepted convention. */
 export const ZOD_SCHEMA_NAME_RE = /Schema$|^Z[A-Z]/;
+
+/**
+ * Whether an import specifier resolves to Zod — `zod`, `zod/v4`, `zod/mini`,
+ * `@hono/zod-validator`-style re-exports. Shared by `prefer-zod-enum` and
+ * `prefer-zod-infer` so the two cannot disagree about what "imports Zod" means.
+ */
+export function isZodModule(source: string): boolean {
+  return /(^|[/@-])zod([/-]|$)/.test(source);
+}

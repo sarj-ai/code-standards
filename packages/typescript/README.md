@@ -105,6 +105,7 @@ Both distilled from two years of PR-review comments across ~1,065 PRs.
 |---|---|---|
 | `no-zod-native-enum` | `z.nativeEnum(...)` and `z.enum(SomeTsEnum)` — the schema-layer back door around `no-enum`. Autofixes an inline string-literal object to `z.enum([...])`. | warn / error |
 | `prefer-zod-enum` | `z.union([z.literal("a"), z.literal("b")])` — autofixes closed string choices to the shorter, equivalent `z.enum(["a", "b"])`. | warn / error |
+| `prefer-zod-infer` | An `interface`/`type` that restates a Zod schema declared in the same module instead of deriving it with `z.infer`. Options: `ignoreTypeNames`, `requireIdenticalShape` (default `true`). | warn / error |
 | `prefer-module-level-constant` | A literal-only `const` collection (array, object, `Set`, `Map`, `Object.freeze`) or non-global regex declared inside a function body, never mutated and never escaping — hoist it to module scope. Options: `minElements` (default 3), `checkRegex`, `ignoreTestFiles`. | warn / error |
 | `prefer-non-nullable-collection` | An array type explicitly combined with `null`/`undefined`, creating two equivalent empty states. | warn / error |
 
@@ -144,6 +145,26 @@ already recognises. Set `"prefix"` or `"suffix"` to pin one:
 
 ```js
 "@sarj/zod-naming-convention": ["error", { convention: "suffix" }]
+```
+
+### `prefer-zod-infer`: `requireIdenticalShape` / `ignoreTypeNames`
+
+By default the rule only reports a type whose members match its schema's keys
+one for one — same names, same optionality, same nullability, no `.transform()`
+anywhere in the pair. On a 30,759-file, 17-repo sweep that is 5 reports and 5
+true positives. Drop the shape comparison to report on name correlation alone
+(8 reports on the same corpus, 1 of them noise, and it catches twins that have
+already drifted):
+
+```js
+"@sarj/prefer-zod-infer": ["error", { requireIdenticalShape: false }]
+```
+
+`ignoreTypeNames` takes regex sources matched against the declared type name,
+for the pair that is genuinely meant to be maintained by hand:
+
+```js
+"@sarj/prefer-zod-infer": ["error", { ignoreTypeNames: ["^LegacyUser$"] }]
 ```
 
 ### `prefer-string-literal-union`: `ignoreFields`

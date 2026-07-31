@@ -44,7 +44,7 @@ Then run any audit, e.g. `/sarj-audit:data-contracts` or `/sarj-audit:concurrenc
 |---|---|
 | **All strict configs** | `uv add --dev sarj-lint-configs==0.10.0` → `uv run --frozen sarj-lint-configs sync --force` |
 | **Python / SQL / IaC rules** | `uv run --frozen sarj-lint-configs check .` |
-| **ESLint rules** | `pnpm add -D --save-exact @sarj/eslint-plugin@2.16.0` → import the synced `eslint.strict.mjs` |
+| **ESLint rules** | `pnpm add -D --save-exact @sarj/eslint-plugin@4.1.0` → import the synced `eslint.strict.mjs` |
 | **Config drift in CI** | `uv run --frozen sarj-lint-configs sync --check` |
 
 See [`packages/lint-configs/README.md`](packages/lint-configs/README.md) for

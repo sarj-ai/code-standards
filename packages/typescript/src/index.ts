@@ -25,6 +25,7 @@ import noSecretInLog from "./rules/no-secret-in-log.js";
 import noUnsafeMockCasting from "./rules/no-unsafe-mock-casting.js";
 import preferStringLiteralUnion from "./rules/prefer-string-literal-union.js";
 import preferZodEnum from "./rules/prefer-zod-enum.js";
+import preferZodInfer from "./rules/prefer-zod-infer.js";
 import noOffsetPagination from "./rules/no-offset-pagination.js";
 import noPositionalTupleReturn from "./rules/no-positional-tuple-return.js";
 import noRepeatedStringLiteral from "./rules/no-repeated-string-literal.js";
@@ -77,6 +78,7 @@ const rules = {
   "no-unsafe-mock-casting": noUnsafeMockCasting,
   "prefer-string-literal-union": preferStringLiteralUnion,
   "prefer-zod-enum": preferZodEnum,
+  "prefer-zod-infer": preferZodInfer,
   "no-silent-promise-catch": noSilentPromiseCatch,
   "require-fetch-timeout": requireFetchTimeout,
   "no-offset-pagination": noOffsetPagination,
@@ -108,7 +110,7 @@ const rules = {
 const plugin = {
   meta: {
     name: "@sarj/eslint-plugin",
-    version: "4.1.0",
+    version: "4.2.0",
   },
   rules,
   configs: {
@@ -144,6 +146,11 @@ const plugin = {
         "@sarj/no-unsafe-mock-casting": "warn",
         "@sarj/prefer-string-literal-union": "warn",
         "@sarj/prefer-zod-enum": "warn",
+        // A type hand-written beside the Zod schema it restates drifts the
+        // moment the schema gains a field. 30,759-file, 17-repo sweep
+        // (2026-07): 5 reports, 5 true positives, all in public repos.
+        // `requireIdenticalShape: false` widens it to 8 reports, 1 of them noise.
+        "@sarj/prefer-zod-infer": "warn",
         // Mined from 2y of PR review feedback + 5-repo code-smell audit (2026-07).
         "@sarj/require-fetch-timeout": "warn",
         "@sarj/no-silent-promise-catch": "warn",
@@ -239,6 +246,8 @@ const plugin = {
         // Promoted to error 2026-07-25 — strict means strict (user directive).
         "@sarj/prefer-string-literal-union": "error",
         "@sarj/prefer-zod-enum": "error",
+        // See the `recommended` block for the measured counts.
+        "@sarj/prefer-zod-infer": "error",
         // Mined from 2y of PR review feedback + 5-repo code-smell audit (2026-07).
         "@sarj/require-fetch-timeout": "error",
         "@sarj/no-silent-promise-catch": "error",
