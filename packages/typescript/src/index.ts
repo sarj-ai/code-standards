@@ -114,7 +114,7 @@ const rules = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "9.0.0",
+  version: "9.1.0",
 } as const;
 
 const recommendedRules = {

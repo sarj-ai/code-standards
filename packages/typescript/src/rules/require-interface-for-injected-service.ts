@@ -35,6 +35,14 @@ const CONFIGISH_NAME_RE =
 const HTTP_TRANSPORT_TYPE_RE = /^(?:KyInstance|AxiosInstance|Session)$/;
 
 /** Only the `*Client` naming carries the guard; see the transport-wrapper note in the header. */
+/**
+ * TypeScript's own generic containers and mapped helpers. `data: Record<string,
+ * Row>` names no implementation a consumer could swap — it is the same data a
+ * bare `{ … }` annotation is, wearing a nominal name.
+ */
+const BUILTIN_CONTAINER_TYPE_RE =
+  /^(?:Record|Map|WeakMap|Set|WeakSet|Array|ReadonlyArray|ReadonlyMap|ReadonlySet|Promise|Partial|Required|Readonly|Pick|Omit|Exclude|Extract|NonNullable|Awaited|Parameters|ReturnType|InstanceType)$/;
+
 const TRANSPORT_WRAPPER_NAME_RE = /Client$/;
 
 /** `express.Router()` / `Router()` — the router-factory call that marks HTTP wiring. */
@@ -64,19 +72,14 @@ const qualifiedName = (name: TSESTree.EntityName): string =>
       ? `${qualifiedName(name.left)}.${name.right.name}`
       : "";
 
-const typeReferenceName = (annotated: TSESTree.Parameter): Collaborator | null => {
-  let target: TSESTree.Node = annotated;
-  if (target.type === AST_NODE_TYPES.TSParameterProperty) target = target.parameter;
-  if (target.type === AST_NODE_TYPES.AssignmentPattern) target = target.left;
-  if (target.type !== AST_NODE_TYPES.Identifier) return null;
-
-  const annotation = target.typeAnnotation?.typeAnnotation;
+/** The rightmost segment plus the full spelling of a bare type reference, or null for anything else. */
+const readTypeReference = (
+  annotation: TSESTree.TypeNode | undefined,
+): { readonly typeName: string; readonly display: string } | null => {
   // A bare type reference is the only shape that names a nominal collaborator.
-  // An inline `{ a: string }`, a union, an array, or a function type is data or
-  // a callback, never something a consumer would want to swap wholesale.
-  if (annotation === undefined || annotation.type !== AST_NODE_TYPES.TSTypeReference) {
-    return null;
-  }
+  // A union, an array, or a function type is data or a callback, never something
+  // a consumer would want to swap wholesale.
+  if (annotation === undefined || annotation.type !== AST_NODE_TYPES.TSTypeReference) return null;
   const { typeName } = annotation;
   const rightmost =
     typeName.type === AST_NODE_TYPES.Identifier
@@ -85,7 +88,171 @@ const typeReferenceName = (annotated: TSESTree.Parameter): Collaborator | null =
         ? typeName.right.name
         : null;
   if (rightmost === null) return null;
-  return { name: target.name, typeName: rightmost, display: qualifiedName(typeName) };
+  return { typeName: rightmost, display: qualifiedName(typeName) };
+};
+
+const namedParameterCollaborator = (annotated: TSESTree.Parameter): Collaborator | null => {
+  let target: TSESTree.Node = annotated;
+  if (target.type === AST_NODE_TYPES.TSParameterProperty) target = target.parameter;
+  if (target.type === AST_NODE_TYPES.AssignmentPattern) target = target.left;
+  if (target.type !== AST_NODE_TYPES.Identifier) return null;
+  // An inline `{ a: string }` on a NAMED parameter stays out: the bindings the
+  // options-object walk below reads do not exist, so there is no collaborator to
+  // name. `deps: SomeDeps` is covered by the bare-reference path.
+  const reference = readTypeReference(target.typeAnnotation?.typeAnnotation);
+  if (reference === null) return null;
+  return { name: target.name, ...reference };
+};
+
+type TypeReference = { readonly typeName: string; readonly display: string };
+type MemberTypes = ReadonlyMap<string, TypeReference>;
+
+/** Property signatures of a `{ a: A; b: B }` body, keyed by property name. */
+const propertySignatureTypes = (
+  members: readonly TSESTree.TypeElement[],
+): Map<string, TypeReference> => {
+  const types = new Map<string, TypeReference>();
+  for (const member of members) {
+    if (member.type !== AST_NODE_TYPES.TSPropertySignature) continue;
+    if (member.computed || member.key.type !== AST_NODE_TYPES.Identifier) continue;
+    const reference = readTypeReference(member.typeAnnotation?.typeAnnotation);
+    if (reference === null) continue;
+    types.set(member.key.name, reference);
+  }
+  return types;
+};
+
+/**
+ * Every type name this module declares that a collaborator test needs to see
+ * through: object shapes (so an options-object parameter's members can be read)
+ * and aliases to a function type (so a callback wearing a nominal name is still
+ * a callback).
+ *
+ * A bag or an alias declared in ANOTHER module is left alone rather than guessed
+ * at — see the deliberate false negatives in the header.
+ */
+interface FileTypeIndex {
+  /** `interface Deps { … }` / `type Deps = { … }`, by name. */
+  readonly objects: ReadonlyMap<string, MemberTypes>;
+  /** `type Replayer = (e: Event) => void` — a callback with a nominal name. */
+  readonly functionAliases: ReadonlySet<string>;
+}
+
+const fileTypeIndex = (program: TSESTree.Program): FileTypeIndex => {
+  const objects = new Map<string, MemberTypes>();
+  const functionAliases = new Set<string>();
+  for (const statement of program.body) {
+    const declaration =
+      statement.type === AST_NODE_TYPES.ExportNamedDeclaration ? statement.declaration : statement;
+    if (declaration?.type === AST_NODE_TYPES.TSInterfaceDeclaration) {
+      objects.set(declaration.id.name, propertySignatureTypes(declaration.body.body));
+      continue;
+    }
+    if (declaration?.type !== AST_NODE_TYPES.TSTypeAliasDeclaration) continue;
+    const aliased = declaration.typeAnnotation;
+    if (
+      aliased.type === AST_NODE_TYPES.TSFunctionType ||
+      aliased.type === AST_NODE_TYPES.TSConstructorType
+    ) {
+      functionAliases.add(declaration.id.name);
+      continue;
+    }
+    // `type Deps = { … }` and `type Deps = Base & { … }` both resolve; the
+    // intersection form is how a bag is usually extended.
+    const literals =
+      aliased.type === AST_NODE_TYPES.TSTypeLiteral
+        ? [aliased]
+        : aliased.type === AST_NODE_TYPES.TSIntersectionType
+          ? aliased.types.filter((part) => part.type === AST_NODE_TYPES.TSTypeLiteral)
+          : [];
+    if (literals.length === 0) continue;
+    const merged = new Map<string, TypeReference>();
+    for (const literal of literals) {
+      for (const [name, reference] of propertySignatureTypes(literal.members)) {
+        merged.set(name, reference);
+      }
+    }
+    objects.set(declaration.id.name, merged);
+  }
+  return { objects, functionAliases };
+};
+
+/**
+ * Member types of an options-object parameter's annotation: the annotation's own
+ * body when it is written inline, otherwise the declaration it names, resolved
+ * in this file only.
+ */
+const bagMemberTypes = (
+  annotation: TSESTree.TypeNode,
+  declared: () => FileTypeIndex,
+): MemberTypes | null => {
+  if (annotation.type === AST_NODE_TYPES.TSTypeLiteral) {
+    return propertySignatureTypes(annotation.members);
+  }
+  // A qualified `catalog.Deps` names another module by construction.
+  if (
+    annotation.type !== AST_NODE_TYPES.TSTypeReference ||
+    annotation.typeName.type !== AST_NODE_TYPES.Identifier
+  ) {
+    return null;
+  }
+  return declared().objects.get(annotation.typeName.name) ?? null;
+};
+
+/**
+ * Collaborators reached through an options-object constructor,
+ * `constructor({ userRepo, syncClient }: Deps)`. Each destructured binding is a
+ * separate collaborator, because each one is separately stored on a field and
+ * separately substitutable — exactly like a named parameter. Its type comes from
+ * the bag's declaration, so `{ retries, timeoutMs }: HttpOptions` is dropped by
+ * the same primitive-member test that drops `constructor(token: string)`.
+ *
+ * A rest element (`{ a, ...rest }`) and a nested pattern (`{ a: { b } }`) name
+ * no single binding whose substitution a port would protect, so both are
+ * skipped while the siblings beside them are still read.
+ */
+const objectPatternCollaborators = (
+  pattern: TSESTree.ObjectPattern,
+  declared: () => FileTypeIndex,
+): Collaborator[] => {
+  const annotation = pattern.typeAnnotation?.typeAnnotation;
+  if (annotation === undefined) return [];
+  const members = bagMemberTypes(annotation, declared);
+  if (members === null) return [];
+
+  const collaborators: Collaborator[] = [];
+  for (const property of pattern.properties) {
+    if (property.type !== AST_NODE_TYPES.Property || property.computed) continue;
+    if (property.key.type !== AST_NODE_TYPES.Identifier) continue;
+    const key = property.key.name;
+    const bound =
+      property.value.type === AST_NODE_TYPES.AssignmentPattern
+        ? property.value.left
+        : property.value;
+    if (bound.type !== AST_NODE_TYPES.Identifier) continue;
+    // A renamed binding (`{ repo: userRepo }`) offers two names; either one
+    // reading as config-ish is enough to drop it, on the same reasoning that
+    // drops a config-ish parameter name.
+    if (CONFIGISH_NAME_RE.test(key)) continue;
+    const reference = members.get(key);
+    if (reference === undefined) continue;
+    collaborators.push({ name: bound.name, ...reference });
+  }
+  return collaborators;
+};
+
+/** Every collaborator a single constructor parameter contributes: 0, 1, or (destructured) many. */
+const parameterCollaborators = (
+  parameter: TSESTree.Parameter,
+  declared: () => FileTypeIndex,
+): readonly Collaborator[] => {
+  let target: TSESTree.Node = parameter;
+  if (target.type === AST_NODE_TYPES.AssignmentPattern) target = target.left;
+  if (target.type === AST_NODE_TYPES.ObjectPattern) {
+    return objectPatternCollaborators(target, declared);
+  }
+  const named = namedParameterCollaborator(parameter);
+  return named === null ? [] : [named];
 };
 
 interface ConstructorFacts {
@@ -95,7 +262,22 @@ interface ConstructorFacts {
   readonly constructedFields: number;
 }
 
-const readConstructor = (ctor: TSESTree.MethodDefinition): ConstructorFacts => {
+/** Names bound by `class Foo<T>` / `constructor<T>()` — placeholders, not implementations. */
+const typeParameterNames = (
+  ...declarations: readonly (TSESTree.TSTypeParameterDeclaration | undefined)[]
+): ReadonlySet<string> => {
+  const names = new Set<string>();
+  for (const declaration of declarations) {
+    for (const parameter of declaration?.params ?? []) names.add(parameter.name.name);
+  }
+  return names;
+};
+
+const readConstructor = (
+  ctor: TSESTree.MethodDefinition,
+  declared: () => FileTypeIndex,
+  typeParameters: ReadonlySet<string>,
+): ConstructorFacts => {
   const body = ctor.value.body;
   const storedFrom = new Set<string>();
   let constructedFields = 0;
@@ -130,14 +312,20 @@ const readConstructor = (ctor: TSESTree.MethodDefinition): ConstructorFacts => {
 
   const collaborators: Collaborator[] = [];
   for (const parameter of ctor.value.params) {
-    const reference = typeReferenceName(parameter);
-    if (reference === null) continue;
-    const stored =
-      parameter.type === AST_NODE_TYPES.TSParameterProperty || storedFrom.has(reference.name);
-    if (!stored) continue;
-    if (CONFIGISH_TYPE_RE.test(reference.typeName)) continue;
-    if (CONFIGISH_NAME_RE.test(reference.name)) continue;
-    collaborators.push(reference);
+    for (const reference of parameterCollaborators(parameter, declared)) {
+      const stored =
+        parameter.type === AST_NODE_TYPES.TSParameterProperty || storedFrom.has(reference.name);
+      if (!stored) continue;
+      if (CONFIGISH_TYPE_RE.test(reference.typeName)) continue;
+      if (CONFIGISH_NAME_RE.test(reference.name)) continue;
+      // A bare type reference can still be one of three things a port would
+      // protect nothing about, each of them the inline shape this rule already
+      // rejects wearing a nominal name.
+      if (typeParameters.has(reference.typeName)) continue;
+      if (BUILTIN_CONTAINER_TYPE_RE.test(reference.typeName)) continue;
+      if (declared().functionAliases.has(reference.typeName)) continue;
+      collaborators.push(reference);
+    }
   }
 
   return { collaborators, constructedFields };
@@ -265,6 +453,12 @@ export default createRule<Options, MessageIds>({
     if (isTestFile(filename) || isStoryFile(filename) || isScriptFile(filename)) return {};
     if (isGeneratedFile(filename, context.sourceCode.getText())) return {};
 
+    // One pass over the module's top level, and only for a file that actually
+    // has an options-object constructor to read.
+    let declaredTypes: FileTypeIndex | null = null;
+    const objectTypes = (): FileTypeIndex =>
+      (declaredTypes ??= fileTypeIndex(context.sourceCode.ast));
+
     return {
       ClassDeclaration(node: TSESTree.ClassDeclaration): void {
         if (node.id === null) return;
@@ -284,7 +478,11 @@ export default createRule<Options, MessageIds>({
         );
         if (ctor === undefined) return;
 
-        const { collaborators, constructedFields } = readConstructor(ctor);
+        const { collaborators, constructedFields } = readConstructor(
+          ctor,
+          objectTypes,
+          typeParameterNames(node.typeParameters, ctor.value.typeParameters),
+        );
         if (collaborators.length === 0) return;
         // A composition root BUILDS more than it RECEIVES — that is where
         // concrete types are supposed to be named, and a port above it protects
