@@ -304,7 +304,7 @@ dev = [
 
 [[package]]
 name = "sarj-lint-configs"
-version = "0.19.0"
+version = "0.20.0"
 source = { editable = "." }
 dependencies = [
     { name = "sarj-iac-lint" },
