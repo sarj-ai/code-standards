@@ -59,7 +59,7 @@ one tested unit.
 
 | Peer | Floor | Why |
 | --- | --- | --- |
-| `@sarj/eslint-plugin` | `4.1.0` | Contains every custom TypeScript rule referenced by the config. |
+| `@sarj/eslint-plugin` | `4.3.0` | Contains every custom TypeScript rule referenced by the config. |
 | `eslint-plugin-unicorn` | `>= 65` *only* if you pass `checkDirectories` | The option does not exist before 65, and on 64 an unknown option is a **hard config error**, not a soft degrade. |
 | `eslint-plugin-perfectionist` | `>= 4.0.0` | `sort-modules` does not exist before 4. On 3.x this is a **hard config error**, not a soft degrade. |
 
@@ -67,9 +67,11 @@ one tested unit.
 `no-unsafe-cast`, `prefer-shadcn`, `no-sequential-await`,
 `require-schema-validate-search` and `single-public-export`. An
 `eslint-disable` naming any of them reports "Definition for rule was not found"
-until the comment is dropped. Do not pin below `4.1.0` — the config references
+until the comment is dropped. Do not pin below `4.3.0` — the config references
+`@sarj/no-type-member-comment-wall`, added in `4.3.0`,
 `@sarj/prefer-zod-infer`, added in `4.1.0`, and `@sarj/prefer-zod-enum`, which
-does not exist before `2.17.0`.
+does not exist before `2.17.0`. A missing rule is a hard config error on the
+first `eslint` run, not a soft degrade.
 
 `unicorn/filename-case` in this config deliberately does **not** pass
 `checkDirectories`, so the config itself imposes no unicorn floor above what

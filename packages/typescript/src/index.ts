@@ -41,6 +41,7 @@ import preferModuleLevelConstant from "./rules/prefer-module-level-constant.js";
 import jsdocRestatesSignature from "./rules/jsdoc-restates-signature.js";
 import noRestatedComment from "./rules/no-restated-comment.js";
 import trailingValueNarration from "./rules/trailing-value-narration.js";
+import noTypeMemberCommentWall from "./rules/no-type-member-comment-wall.js";
 import noTautologicalExpect from "./rules/no-tautological-expect.js";
 import requireInterfaceForInjectedService from "./rules/require-interface-for-injected-service.js";
 import preferNonNullableCollection from "./rules/prefer-non-nullable-collection.js";
@@ -94,6 +95,7 @@ const rules = {
   "jsdoc-restates-signature": jsdocRestatesSignature,
   "no-restated-comment": noRestatedComment,
   "trailing-value-narration": trailingValueNarration,
+  "no-type-member-comment-wall": noTypeMemberCommentWall,
   "no-tautological-expect": noTautologicalExpect,
   "require-interface-for-injected-service": requireInterfaceForInjectedService,
   "strict-test-assertions": strictTestAssertions,
@@ -104,7 +106,7 @@ const rules = {
 const plugin = {
   meta: {
     name: "@sarj/eslint-plugin",
-    version: "5.0.0",
+    version: "5.1.0",
   },
   rules,
   configs: {
@@ -184,6 +186,14 @@ const plugin = {
         "@sarj/no-restated-comment": "warn",
         "@sarj/jsdoc-restates-signature": "warn",
         "@sarj/trailing-value-narration": "warn",
+        // The VOLUME arm of the same family (2026-07). Its siblings judge one
+        // comment at a time and can only condemn one that adds nothing; this
+        // one judges a TYPE, so it can report ten rows that each add a word.
+        // 33 OSS TS repos / 46,861 files: 22 findings, all read, 0 false; zero
+        // across ten first-party repos, where the generated-file sniff alone
+        // removed 321 of the 407 raw hits. Measurements and the six false
+        // positives that shaped the guards: docs/rules/no-type-member-comment-wall.md
+        "@sarj/no-type-member-comment-wall": "warn",
         // The TS half of SARJ057 (2026-07). Python has caught the
         // assertion-FREE test since 0.15.0 (SARJ043) and had no TS
         // counterpart, which is how `expect(true).toBe(true); // placeholder`
@@ -274,6 +284,7 @@ const plugin = {
         "@sarj/no-restated-comment": "error",
         "@sarj/jsdoc-restates-signature": "error",
         "@sarj/trailing-value-narration": "error",
+        "@sarj/no-type-member-comment-wall": "error",
         // TS half of SARJ057 — see the `recommended` block for the measurement.
         "@sarj/no-tautological-expect": "error",
         // Substitutability: the TS sibling of the Python `prefer-real-store-in-tests`

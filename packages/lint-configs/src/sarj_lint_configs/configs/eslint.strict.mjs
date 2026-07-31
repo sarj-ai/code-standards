@@ -930,6 +930,10 @@ const config = [
       "@sarj/no-restated-comment": "error",
       "@sarj/jsdoc-restates-signature": "error",
       "@sarj/trailing-value-narration": "error",
+      // The VOLUME arm of the same family — judged once per TYPE, so it can
+      // report ten rows that each add one word. See the `recommended` block in
+      // `@sarj/eslint-plugin` for the measurement.
+      "@sarj/no-type-member-comment-wall": "error",
       "@sarj/no-repeated-string-literal": "error",
       // An assertion whose operands are all literals can never fail. The TS
       // half of SARJ057; the Python half is the `sarj-no-tautological-expect`
