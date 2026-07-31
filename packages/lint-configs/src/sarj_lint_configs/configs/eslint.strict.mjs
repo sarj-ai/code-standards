@@ -950,11 +950,27 @@ const config = [
   },
 
   {
-    files: ["**/*.test.ts", "**/*.test.tsx", "**/__tests__/**/*"],
+    files: [
+      "**/*.test.ts",
+      "**/*.test.tsx",
+      "**/test/**/*",
+      "**/tests/**/*",
+      "**/__tests__/**/*",
+    ],
     rules: {
+      // Test doubles and partial external payload fixtures intentionally cross
+      // type boundaries. Production keeps every rule below at error; tests use
+      // runtime assertions to verify the boundary instead of reconstructing an
+      // entire third-party object graph solely to satisfy static analysis.
+      "@typescript-eslint/consistent-type-assertions": "off",
       "@typescript-eslint/no-unsafe-assignment": "off",
+      "@typescript-eslint/no-unsafe-type-assertion": "off",
       "@typescript-eslint/no-unsafe-member-access": "off",
       "@typescript-eslint/no-non-null-assertion": "off",
+      "@typescript-eslint/promise-function-async": "off",
+      "@typescript-eslint/require-await": "off",
+      "no-await-in-loop": "off",
+      "unicorn/consistent-function-scoping": "off",
     },
   },
 
@@ -1001,20 +1017,8 @@ const config = [
       "better-tailwindcss/no-deprecated-classes": "error",
     },
   },
-  // React components may be PascalCase. This is the single highest-impact
-  // exemption in the config: measured over 11,088 tracked `.ts`/`.tsx` files in
-  // 50 repos, PascalCase `.tsx` accounts for 2,128 of 2,568 total filename
-  // violations (82.9%), and 93.5% of those files export a component with the
-  // same name as the file. Allowing it takes the corpus-wide cost from 2,568
-  // renames to 400, and two first-party repos plus this one from 51 to 17.
-  //
-  // Scoped to `.tsx` ON PURPOSE. Only 27 PascalCase `.ts` files exist across all
-  // 50 repos and they are service classes (`AuthService.ts`, `SessionStore.ts`),
-  // not components — those should be kebab, so the allowance must not reach them.
-  //
-  // Two of our own repos had already adopted exactly this
-  // unilaterally, which is part of why it belongs in the canonical config: it
-  // converges hand-rolled configs back onto the synchronizer.
+  // React component IDENTIFIERS must be PascalCase for JSX to distinguish them
+  // from intrinsic elements. Filenames remain kebab-case under the base policy.
   {
     files: ["**/*.tsx"],
     rules: {
@@ -1047,19 +1051,6 @@ const config = [
           selector: "parameter",
           format: ["camelCase", "snake_case"],
           leadingUnderscore: "allow",
-        },
-      ],
-      "unicorn/filename-case": [
-        "error",
-        {
-          cases: { kebabCase: true, pascalCase: true },
-          ignore: [
-            String.raw`^__root\.`,
-            String.raw`^_`,
-            String.raw`^\$`,
-            String.raw`^\+`,
-            String.raw`\.gen\.`,
-          ],
         },
       ],
     },

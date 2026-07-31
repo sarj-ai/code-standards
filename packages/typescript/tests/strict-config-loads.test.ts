@@ -101,8 +101,20 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
     const plainConfig = await configFor("src/index.ts");
     expect(plainConfig.rules?.["@sarj/no-raw-env"]).toEqual([2]);
 
-    // The `.tsx` block widens filename-case to allow PascalCase components; the
-    // base block must NOT. This is the one override whose loss would be silent.
+    const testConfig = await configFor("src/example.test.ts");
+    expect(
+      testConfig.rules?.["@typescript-eslint/consistent-type-assertions"]?.[0],
+    ).toBe(0);
+    expect(
+      testConfig.rules?.["@typescript-eslint/no-unsafe-type-assertion"]?.[0],
+    ).toBe(0);
+    expect(testConfig.rules?.["@typescript-eslint/require-await"]?.[0]).toBe(0);
+    expect(testConfig.rules?.["no-await-in-loop"]?.[0]).toBe(0);
+    expect(plainConfig.rules?.["@typescript-eslint/require-await"]?.[0]).toBe(2);
+    expect(plainConfig.rules?.["no-await-in-loop"]?.[0]).toBe(2);
+
+    // Component identifiers are PascalCase, while component filenames remain
+    // kebab-case under the shared filename policy.
     const tsxConfig = await configFor("src/components/thing.tsx");
     const tsxNaming = tsxConfig.rules?.[
       "@typescript-eslint/naming-convention"
@@ -114,7 +126,8 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
     const tsxFilenameCase = tsxConfig.rules?.["unicorn/filename-case"] as
       | [number, { cases: Record<string, boolean> }]
       | undefined;
-    expect(tsxFilenameCase?.[1].cases.pascalCase).toBe(true);
+    expect(tsxFilenameCase?.[1].cases.kebabCase).toBe(true);
+    expect(tsxFilenameCase?.[1].cases.pascalCase).toBeUndefined();
     const baseFilenameCase = plainConfig.rules?.["unicorn/filename-case"] as
       | [number, { cases: Record<string, boolean> }]
       | undefined;
