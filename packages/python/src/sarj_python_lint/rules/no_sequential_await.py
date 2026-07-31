@@ -53,18 +53,12 @@ from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
 from sarj_python_lint.rules._ast_index import children, nodes, walk
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
-
-
-def _is_test_path(path: Path) -> bool:
-    name = path.name
-    if name == "conftest.py" or name.startswith("test_") or name.endswith("_test.py"):
-        return True
-    return any(part in {"tests", "test"} for part in path.parts)
 
 
 class NoSequentialAwait(Rule):
@@ -76,7 +70,7 @@ class NoSequentialAwait(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if _is_test_path(path):
+        if is_test_path(path):
             return []
         if "await" not in source or "for " not in source:
             return []

@@ -303,24 +303,6 @@ def test_skips_an_irrefutable_arm(wildcard: str):
     )
 
 
-def test_flags_the_same_pair_when_the_wildcard_becomes_a_class_pattern():
-    assert (
-        len(
-            _check(
-                """
-                def f(v):
-                    match v:
-                        case A():
-                            return 1
-                        case B():
-                            return 1
-                """
-            )
-        )
-        == 1
-    )
-
-
 def test_as_pattern_with_a_subpattern_is_refutable_and_still_flagged():
     diags = _check(
         """

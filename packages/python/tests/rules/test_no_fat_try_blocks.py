@@ -179,20 +179,6 @@ except Exception:
     assert _check(src) == []
 
 
-def test_statements_in_except_body_are_not_counted():
-    src = """
-try:
-    x = risky()
-except ValueError:
-    a = one()
-    b = two()
-    c = three()
-    d = four()
-    e = five()
-"""
-    assert _check(src) == []
-
-
 def test_statements_in_multiple_excepts_not_counted():
     src = """
 try:

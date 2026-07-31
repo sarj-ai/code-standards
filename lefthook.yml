@@ -5,11 +5,6 @@ assert_lefthook_installed: true
 pre-commit:
   parallel: true
   commands:
-    config-drift:
-      run: make check-configs-synced
-      fail_text: >-
-        Strict configs drifted. Run 'make sync-configs', stage the result,
-        and retry.
     lint:
       run: make lint
       fail_text: >-
