@@ -52,8 +52,13 @@ done < <(tracked 'packages/typescript/src/**/*.ts' 'packages/typescript/tests/**
 while read -r path; do
   [ -n "$path" ] || continue
   name=$(basename "$path")
-  [[ "$name" =~ ^[a-z0-9]+(-[a-z0-9]+)*\.sh$ ]] ||
-    report "script is not kebab-case: $path"
+  # `.py` as well as `.sh`: a script that has to import a registry or emit JSON
+  # is Python, and forcing it into bash to satisfy a filename rule would trade a
+  # convention for a worse script. The naming rule is what matters here -- a
+  # script is invoked by path, so it is kebab-case like everything else invoked
+  # by path, whatever it is written in.
+  [[ "$name" =~ ^[a-z0-9]+(-[a-z0-9]+)*\.(sh|py)$ ]] ||
+    report "script is not kebab-case .sh or .py: $path"
   [ -x "$path" ] || report "script is not executable: $path"
   head -1 "$path" | grep -q '^#!' || report "script has no shebang: $path"
 done < <(tracked 'scripts/*')

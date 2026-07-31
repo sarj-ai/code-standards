@@ -362,19 +362,44 @@ def test_init_leaves_a_package_json_that_already_has_the_overrides_alone(
     second = _cli("init", "--dest", str(tmp_path))
     assert second.returncode == 0
     assert (tmp_path / "package.json").read_text(encoding="utf-8") == before
-    assert "already carries the ESLint peer overrides" in second.stdout
+    assert "already carries the npm peer overrides" in second.stdout
 
 
-def test_init_prints_the_overrides_when_there_is_no_package_json_to_merge_into(
-    tmp_path: Path,
-) -> None:
-    """Detection finds sub-project package.jsons, so the root may have none."""
+def test_init_wires_the_subproject_that_actually_installs_eslint(tmp_path: Path) -> None:
+    """The repo root is not the project root, and writing there reaches nobody.
+
+    Two of the three layouts measured keep their TypeScript one directory down,
+    so the root has no `package.json`, no `node_modules` and no `tsconfig.json`.
+    `init` wrote `eslint.config.mjs` there anyway and merged the overrides into a
+    root `package.json` that does not exist -- ESLint does not search upward for a
+    flat config, so the file it wrote could never load.
+    """
     (tmp_path / "web").mkdir()
     _ = (tmp_path / "web" / "package.json").write_text('{"name": "web"}\n')
+    _ = (tmp_path / "web" / "package-lock.json").write_text("{}\n")
     proc = _cli("init", "--dest", str(tmp_path))
-    assert proc.returncode == 0
-    assert "no package.json at the repo root" in proc.stdout
-    assert "eslint-plugin-react" in proc.stdout
+    assert proc.returncode == 0, proc.stderr
+
+    assert (tmp_path / "web" / "eslint.config.mjs").is_file()
+    assert (tmp_path / "web" / "eslint.strict.mjs").is_file()
+    assert not (tmp_path / "eslint.config.mjs").exists()
+
+    parsed: object = json.loads((tmp_path / "web" / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny] — untyped stdlib boundary
+    assert "eslint-plugin-react" in manifest.table_field(manifest.as_table(parsed), "overrides")
+
+
+def test_sync_reads_the_subproject_destinations_back_out_of_the_manifest(
+    tmp_path: Path,
+) -> None:
+    """CI runs bare `sync --check`; if it did not know the dests it saw permanent drift."""
+    (tmp_path / "web").mkdir()
+    _ = (tmp_path / "web" / "package.json").write_text('{"name": "web"}\n')
+    _ = (tmp_path / "web" / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n")
+    assert _cli("init", "--dest", str(tmp_path)).returncode == 0
+
+    proc = _cli("sync", "--check", "--dest", str(tmp_path))
+    assert proc.returncode == 0, proc.stdout
+    assert str(tmp_path / "web" / "eslint.strict.mjs") in proc.stdout
 
 
 #: A hook that does not say `pass_filenames: false` receives the staged files
@@ -443,7 +468,10 @@ def test_detection_finds_a_package_json_in_a_subproject(tmp_path: Path) -> None:
     _ = _python_repo(tmp_path)
     (tmp_path / "services" / "web").mkdir(parents=True)
     _ = (tmp_path / "services" / "web" / "package.json").write_text("{}\n")
-    assert scaffold.detect(tmp_path) == scaffold.Ecosystems(python=True, typescript=True)
+    found = scaffold.detect(tmp_path)
+    assert (found.python, found.typescript) == (True, True)
+    assert found.python_root == tmp_path
+    assert found.typescript_root == tmp_path / "services" / "web"
 
 
 def test_detection_ignores_node_modules(tmp_path: Path) -> None:
@@ -497,6 +525,26 @@ def test_doctor_catches_a_stale_precommit_rev(tmp_path: Path) -> None:
     proc = _cli("doctor", "--dest", str(tmp_path))
     assert proc.returncode == 1
     assert "python-v0.19.0" in proc.stdout
+
+
+def test_doctor_catches_a_precommit_rev_pinned_to_a_raw_commit(tmp_path: Path) -> None:
+    """The stalest pin form was the one shape `doctor` could not see.
+
+    A tag-shaped pattern skipped a 40-character SHA entirely, so a repo pinning
+    the hooks to a commit dozens behind main was reported as having nothing to
+    check -- and a SHA is precisely the pin with no version in it for a human to
+    notice going stale either.
+    """
+    _ = _python_repo(tmp_path)
+    _ = (tmp_path / ".pre-commit-config.yaml").write_text(
+        "repos:\n  - repo: https://github.com/sarj-ai/standards\n"
+        "    rev: 9d073e83b24cd5af788a61996cd9238d85d927d4\n"
+        "    hooks:\n      - id: sarj-no-comment-cruft\n"
+    )
+    proc = _cli("doctor", "--dest", str(tmp_path))
+    assert proc.returncode == 1
+    assert "9d073e83b24cd5af788a61996cd9238d85d927d4" in proc.stdout
+    assert "not a release" in proc.stdout
 
 
 def test_doctor_catches_a_stale_eslint_plugin_pin(tmp_path: Path) -> None:
@@ -567,6 +615,19 @@ def test_rev_pattern_reads_quoted_and_bare_tags() -> None:
         "python-v0.19.0",
         "lint-configs-v0.10.0",
     ]
+
+
+@pytest.mark.parametrize(
+    "rev",
+    ["9d073e83b24cd5af788a61996cd9238d85d927d4", "9d073e8", '"9d073e83b24cd5af788a61996cd9238d85d927d4"'],
+)
+def test_rev_pattern_reads_a_commit_pin(rev: str) -> None:
+    assert doctor.parse_revs(f"rev: {rev}\n") == [rev.strip('"')]
+
+
+def test_rev_pattern_is_not_fooled_by_a_version_tag() -> None:
+    """`v6.0.0` is a tag from some other repo, not a commit; reading it as one would cry wolf."""
+    assert doctor.parse_revs("rev: v6.0.0\n") == []
 
 
 #: `doctor`'s own report lines. A README that SHOWS drift has to name stale
