@@ -50,6 +50,39 @@ def test_zero_timeout_is_not_protection() -> None:
     assert len(_check("SET lock_timeout = 0;\nALTER TABLE users ADD COLUMN note TEXT;\n")) == 1
 
 
+@pytest.mark.parametrize(
+    "prologue",
+    [
+        "-- SET lock_timeout = '3s';",  # line comment
+        "/* SET lock_timeout = '3s'; */",  # block comment
+        "INSERT INTO audit (sql) VALUES ('SET lock_timeout = ''3s''');",  # string literal
+    ],
+    ids=["line-comment", "block-comment", "string-literal"],
+)
+def test_a_timeout_that_is_only_mentioned_is_not_a_timeout_that_is_set(prologue: str) -> None:
+    """The liveness check: the pattern runs on raw source, so the *position* must be live.
+
+    `ASSIGNMENT_PATTERN` is deliberately matched against unmasked source — a
+    timeout value is a `'3s'` string literal and the masker would blank it away.
+    The price is that prose matches too, so every match is re-checked against
+    `mask_sql` output at its own offset. Without that check a migration is
+    "protected" by a commented-out line someone left behind.
+    """
+    assert len(_check(f"{prologue}\nALTER TABLE users ADD COLUMN note TEXT;\n")) == 1
+
+
+@pytest.mark.parametrize("value", ["'abc'", "'forever'", "''", "'none'"])
+def test_a_value_that_is_not_an_interval_is_not_protection(value: str) -> None:
+    """`SET lock_timeout = 'abc'` is a runtime error, not a shorter lock wait."""
+    assert len(_check(f"SET lock_timeout = {value};\nALTER TABLE t ADD COLUMN c INT;\n")) == 1
+
+
+@pytest.mark.parametrize("value", ["'3s'", "'250ms'", "'1min'", "5000", "'2.5s'"])
+def test_a_plausible_interval_is_protection(value: str) -> None:
+    """The boundary: the check must reject prose without rejecting real intervals."""
+    assert _check(f"SET lock_timeout = {value};\nALTER TABLE t ADD COLUMN c INT;\n") == []
+
+
 def test_reset_undoes_a_timeout() -> None:
     src = "SET lock_timeout = '3s';\nRESET lock_timeout;\nALTER TABLE users ADD COLUMN note TEXT;\n"
     assert len(_check(src)) == 1
@@ -98,6 +131,36 @@ def test_unprotected_tail_after_commit_is_still_reported() -> None:
     diags = _check(src)
     assert len(diags) == 1
     assert diags[0].line == 6
+
+
+def test_a_rollback_drops_the_local_timeout_just_as_a_commit_does() -> None:
+    """`ROLLBACK` ends the transaction too — `SET LOCAL` does not survive it."""
+    src = """
+    BEGIN;
+    SET LOCAL lock_timeout = '2s';
+    ALTER TABLE a ADD COLUMN x INT;
+    ROLLBACK;
+    ALTER TABLE b ADD COLUMN y INT;
+    """
+    diags = _check(src)
+    assert len(diags) == 1
+    assert diags[0].line == 6
+
+
+@pytest.mark.parametrize(
+    "ddl",
+    [
+        "ALTER TABLE users ADD COLUMN note TEXT;",
+        "CREATE INDEX idx_users_note ON users (note);",
+        "CREATE UNIQUE INDEX idx_users_note ON users (note);",
+        "DROP TABLE legacy_users;",
+    ],
+    ids=["alter-table", "create-index", "create-unique-index", "drop-table"],
+)
+def test_every_ddl_form_needs_a_timeout(ddl: str) -> None:
+    """`DROP TABLE` takes ACCESS EXCLUSIVE like the rest and can queue behind a reader."""
+    assert len(_check(f"{ddl}\n")) == 1
+    assert _check(f"SET lock_timeout = '3s';\n{ddl}\n") == []
 
 
 # --- dialect ---------------------------------------------------------------------
