@@ -25,8 +25,10 @@ number rather than by any test. These three asserts are that test.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import re
+import subprocess
 import sys
 
 import pytest
@@ -51,72 +53,103 @@ _CODE_RE = re.compile(r"^SARJ\d{3}$")
 # The same shape unanchored, for finding the first code mentioned in prose.
 _CODE_IN_TEXT_RE = re.compile(r"SARJ\d{3}")
 
-# Codes that must never be reallocated. Reusing one rewrites history: a
-# `# sarj-noqa: SARJ027` sitting in a consumer repo would begin silently
-# suppressing whatever new rule took the code.
+# Every SARJ code ever allocated or reserved, mapped to the rule that held it
+# (`null` = reserved but never a rule module). THE LEDGER IS APPEND-ONLY AND
+# DELETION NEVER TOUCHES IT: a rule that goes away just leaves its line behind,
+# which is what makes the code retired.
 #
-# THE CRITERION IS "could a consumer hold a suppression for this code", not "was
-# it ever live in a published tag". Those are not the same question, and getting
-# it wrong is silent in both directions.
+# It replaces a hand-kept `_RETIRED_CODES` set that a deletion had to remember to
+# update, and which therefore did not. `SARJ061 no-patching-system-under-test` was
+# deleted in #183 and the set never learned about it, so a new rule could have
+# claimed SARJ061 and inherited every `# sarj-noqa: SARJ061` a consumer had
+# written. Nothing would have objected. The three tests below close that in two
+# independent directions: `test_every_live_rule_is_in_the_code_ledger` fails the
+# moment a rule is ADDED without a ledger line (so the ledger cannot go stale
+# forwards), and `test_ledger_covers_every_deleted_rule_module` derives the
+# deletions from git history and fails if the ledger is missing one (so it cannot
+# have been wrong backwards, and a future deletion cannot quietly erase a line).
 #
-# History, because this list has been wrong in both directions:
+# THE CRITERION FOR RETIREMENT IS "could a consumer hold a suppression for this
+# code", not "was it ever live in a published tag". Those are not the same
+# question, and getting it wrong is silent in both directions. A scan of
+# first-party consumers found a live `# sarj-noqa: SARJ005 — pre-existing, out of
+# scope` for a code no `python-v*` tag ever shipped as a rule module. However that
+# suppression came to be written, it exists, and a new rule claiming SARJ005 would
+# inherit it. So the ledger also carries the codes that were only ever reserved,
+# including `SARJ074`, which `prefer_non_nullable_collection`'s docstring told
+# readers to write for three releases.
 #
-# 1. It first carried eleven codes, conflating "reserved then abandoned" with
-#    "published then withdrawn". That made the gate reject
-#    `no-implicit-attribute-access` (#147), which took SARJ055 legitimately.
-# 2. Fixing that, it was narrowed to the three codes a `python-v*` tag walk
-#    proved were live rule modules. That narrowing was WRONG. A scan of
-#    first-party consumers found a live `# sarj-noqa: SARJ005 — pre-existing,
-#    out of scope` (on a `pydantic.BaseModel` subclass in a store module) for a
-#    code the tag walk says was never a shipped rule module. However that
-#    suppression came to be written, it exists, and a new rule claiming SARJ005
-#    would inherit it.
-#
-# So the tag walk is not sufficient evidence, and burning a code is nearly free:
-# the space is `SARJ000`-`SARJ999` and 71 are allocated. Anything ever written
-# down as retired stays retired.
-#
-# SARJ055 was the one code deliberately let through, because
-# `no-implicit-attribute-access` had claimed it. #154 then renumbered that rule
-# to SARJ083, so SARJ055 is unallocated again and goes back on the list — there
-# is now no rule holding it and no reason to leave it reusable.
-_RETIRED_CODES = frozenset(
-    {
-        # Live in a published tag, withdrawn in 0.11.1 as too noisy.
-        "SARJ027",
-        "SARJ029",
-        "SARJ030",
-        # Reserved and abandoned pre-release. Not provably shipped, but SARJ005
-        # is proof that "not shipped" does not imply "not suppressed anywhere",
-        # so the whole cohort stays burned.
-        "SARJ004",
-        "SARJ005",
-        "SARJ033",
-        "SARJ035",
-        "SARJ037",
-        "SARJ072",
-        "SARJ073",
-        # Briefly held `no-implicit-attribute-access` (#147) before #154 moved
-        # that rule to SARJ083. Retired rather than recycled.
-        "SARJ055",
-        # Shipped, then withdrawn as redundant.
-        #
-        # SARJ075 `primary-export-file-name` gave actively harmful advice: it
-        # told you to rename `0001_initial.py` to `migration.py` (breaking
-        # Django's filename-ordered migration graph) and `tests.py` to
-        # `thing_tests.py` (breaking test discovery), and to rename
-        # domain-named modules like `pagination.py` after their one current
-        # export — the exact regression SARJ022 `single-public-export`'s
-        # docstring refuses to make. SARJ022 is silent on all three and covers
-        # the junk-drawer-stem case that is worth flagging.
-        "SARJ075",
-        # SARJ079 `prefer-pattern-matching` was a copy-paste amalgam of
-        # SARJ069/070/081/032 — same positions AND byte-identical message text,
-        # so `# sarj-noqa: SARJ079` was an unreviewable blanket silencing four
-        # independent judgements on one line.
-        "SARJ079",
-    }
-)
+# Burning a code is nearly free: the space is `SARJ000`-`SARJ999`.
+_LEDGER_PATH = Path(__file__).parent / "code_ledger.json"
+
+# The rules directory, relative to the repo root — the path git history is walked
+# over to recover deleted rule modules.
+_RULES_DIR = "packages/python/src/sarj_python_lint/rules"
+
+
+def _ledger() -> dict[str, str | None]:
+    raw: object = json.loads(  # pyright: ignore[reportAny] — json.loads is an untyped boundary; narrowed below
+        _LEDGER_PATH.read_text(encoding="utf-8")
+    )
+    assert isinstance(raw, dict), "code_ledger.json must be a {SARJ###: rule-id | null} object"
+    entries: dict[str, str | None] = {}
+    for code, rule_id in raw.items():  # pyright: ignore[reportUnknownVariableType] — json.loads yields Any leaves
+        assert isinstance(code, str), f"ledger key {code!r} is not a string"
+        assert _CODE_RE.match(code), f"ledger key {code!r} is not a SARJ### code"
+        assert rule_id is None or isinstance(rule_id, str), f"ledger[{code}] must be a rule id or null"
+        entries[code] = rule_id
+    return entries
+
+
+def _git(*args: str) -> str:
+    """Run git at the repo root, or skip the calling test if history is unavailable."""
+    try:
+        done = subprocess.run(
+            ("git", "-C", str(_REPO_ROOT), *args),
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:  # pragma: no cover — environment, not logic
+        pytest.skip(f"git history unavailable ({exc}); this gate needs a full clone")
+    return done.stdout
+
+
+def _deleted_rule_modules() -> dict[str, str]:
+    """`{SARJ###: module stem}` for every rule module git has ever seen deleted.
+
+    Derived, not declared. `--no-renames` is deliberate: a rule module renamed to a
+    new name retires the old one exactly as a deletion does, and rename detection
+    would hide that.
+    """
+    assert (
+        _git("rev-parse", "--is-shallow-repository").strip() == "false"
+    ), "this gate reads deleted rule modules out of git history; check out with fetch-depth: 0"
+
+    log = _git(
+        "log",
+        "--no-renames",
+        "--diff-filter=D",
+        "--name-only",
+        "--format=%x00%H",
+        "HEAD",
+        "--",
+        _RULES_DIR,
+    )
+    deleted: dict[str, str] = {}
+    commit = ""
+    for raw_line in log.splitlines():
+        line = raw_line.strip()
+        if line.startswith("\x00"):
+            commit = line[1:]
+            continue
+        stem = line.rsplit("/", maxsplit=1)[-1]
+        if not line.endswith(".py") or stem.startswith("_"):
+            continue
+        found = _CODE_IN_TEXT_RE.search(_git("show", f"{commit}^:{line}"))
+        if found is not None:
+            deleted[found.group(0)] = stem[: -len(".py")]
+    return deleted
 
 
 @pytest.mark.parametrize("rule_id", sorted(REGISTRY))
@@ -276,9 +309,56 @@ def test_docstring_header_code_matches_class_code() -> None:
 
 
 def test_no_rule_reuses_a_retired_code() -> None:
-    """A retired code stays burned: an old suppression must never bind to a new rule."""
-    reused = sorted(f"{REGISTRY[r].code} ({r})" for r in REGISTRY if REGISTRY[r].code in _RETIRED_CODES)
+    """A retired code stays burned: an old suppression must never bind to a new rule.
+
+    "Retired" is DERIVED, not listed: it is every ledger code whose recorded holder is
+    not the rule holding it today. Deleting a rule retires its code with no edit
+    anywhere, which is the whole point — the previous hand-kept set missed SARJ061.
+    """
+    ledger = _ledger()
+    reused = sorted(
+        f"{cls.code} was {ledger[cls.code]!r}, now claimed by {rule_id!r}"
+        for rule_id, cls in REGISTRY.items()
+        if cls.code in ledger and ledger[cls.code] != rule_id
+    )
     assert not reused, (
-        f"rule(s) claim a retired code: {reused}. A `# sarj-noqa: <code>` written for the old "
-        "rule would silently suppress the new one; pick the next unallocated code instead."
+        "rule(s) claim a retired code:\n  "
+        + "\n  ".join(reused)
+        + f"\nA `# sarj-noqa: <code>` written for the old rule would silently suppress the new "
+        f"one. Take the next unallocated code instead: SARJ{max(int(c[4:]) for c in ledger) + 1:03d}."
+    )
+
+
+def test_every_live_rule_is_in_the_code_ledger() -> None:
+    """Allocation is recorded at the moment it happens, so the ledger cannot go stale.
+
+    This is the half that makes the append-only ledger self-maintaining. A new rule
+    fails here until its `SARJ###: <rule-id>` line exists, and from then on the line
+    survives the rule itself.
+    """
+    ledger = _ledger()
+    missing = sorted(f"{cls.code} ({rule_id})" for rule_id, cls in REGISTRY.items() if cls.code not in ledger)
+    assert not missing, (
+        f"rule(s) hold a code with no ledger entry: {missing}. Add "
+        f'`"<code>": "<rule-id>"` to {_LEDGER_PATH.name} — it is what stops the code being '
+        "recycled after the rule is deleted."
+    )
+
+
+def test_ledger_covers_every_deleted_rule_module() -> None:
+    """The backstop: git history, not memory, decides which codes have been retired.
+
+    `_RETIRED_CODES` was a list a human had to remember to edit on deletion, and #183
+    deleted `no_patching_system_under_test` (SARJ061) without editing it. Deriving the
+    deletions from history means the next one cannot be skipped, and it also means a
+    ledger line cannot be quietly removed to free a code up again.
+    """
+    ledger = _ledger()
+    unrecorded = sorted(
+        f"{code} ({stem}) deleted from {_RULES_DIR}" for code, stem in _deleted_rule_modules().items() if code not in ledger
+    )
+    assert not unrecorded, (
+        "git history has rule modules whose codes the ledger never recorded:\n  "
+        + "\n  ".join(unrecorded)
+        + f"\nAdd them to {_LEDGER_PATH.name}. A code that held a shipped rule must stay burned."
     )

@@ -55,6 +55,7 @@ import requireZodFormValidation from "./rules/require-zod-form-validation.js";
 import storeInsertRequiresOnConflict from "./rules/store-insert-requires-on-conflict.js";
 import zodNamingConvention from "./rules/zod-naming-convention.js";
 import { renamedRules } from "./rules/_renames.js";
+import { retiredRules } from "./rules/_retired.js";
 
 const rules = {
 "enforce-file-structure": enforceFileStructure,
@@ -113,7 +114,7 @@ const rules = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "7.1.0",
+  version: "7.2.0",
 } as const;
 
 type RuleModule = (typeof rules)[keyof typeof rules];
@@ -266,6 +267,9 @@ type FlatPreset = {
 const plugin = {
   meta,
   rules: allRules,
+  // Withdrawn names travel WITH the plugin so a consumer's migration script and
+  // this repo's gates read one map, not two. See src/rules/_retired.ts.
+  retiredRules,
   configs: {
     recommended: {} as FlatPreset,
     strict: {} as FlatPreset,
@@ -285,4 +289,5 @@ plugin.configs.strict = {
 };
 
 export default plugin;
+export { type RetiredRule, retiredRules } from "./rules/_retired.js";
 export { recommendedRules, renamedRules, rules, strictRules };

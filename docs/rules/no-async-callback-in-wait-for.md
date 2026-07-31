@@ -27,9 +27,21 @@ advisory: a test that cannot fail is worse than no test, because it is counted.
 - **Test files only.** `isTestFile(context.filename)` from `_paths.ts` gates the
   whole rule. `waitFor` is also an ordinary function name in production code — a
   poll helper, a queue drain — and there an `async` callback is normal.
-- **A bare `waitFor` identifier callee only.** A member call
-  (`page.waitFor(...)`, Puppeteer's) is a different API with a different
-  contract, and its callback runs in the browser.
+- **Any non-computed `waitFor` callee, bare or member.** This used to be a bare
+  `Identifier` only, which made `vi.waitFor(async () => ...)` structurally
+  invisible: a probe over the corpus returned 0 messages on it while the same
+  body written as `waitFor(...)` reported. The corpus holds 7 member-form calls
+  (trpc x6, vitest x1). The receiver is not restricted, because the hazard is a
+  property of the polling contract rather than of who owns the function —
+  `vi.waitFor` retries its callback on exactly the same terms.
+
+  The narrowing this replaces was justified by Puppeteer's `page.waitFor`, whose
+  callback runs in the browser. That argument no longer holds up: `page.waitFor`
+  was deprecated in Puppeteer 8 and removed in 14, the corpus contains none, and
+  the surviving `page.waitForFunction` / `waitForSelector` spellings are
+  different property names that this rule does not match. A computed member
+  (`api["waitFor"]`) is still not matched — the name is not statically the callee
+  there.
 - **The FIRST argument only, and only a function.** `waitFor(promise)` and
   `waitFor(fn, { timeout })` are untouched; the second argument is options.
 - **Arrow and function expressions.** A named function passed by reference is not

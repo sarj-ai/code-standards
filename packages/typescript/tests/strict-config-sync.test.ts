@@ -9,19 +9,29 @@
  * is robust and dependency-free.)
  */
 
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import plugin, { rules } from "../src/index.js";
+import plugin, { retiredRules, rules } from "../src/index.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const STRICT_CONFIG_PATH = resolve(
   HERE,
   "../../lint-configs/src/sarj_lint_configs/configs/eslint.strict.mjs",
 );
+const REPO_ROOT = resolve(HERE, "../../..");
+
+/** Run git at the repo root. Throws — a gate that reads history must not go quiet. */
+function gitOutput(...args: readonly string[]): string {
+  return execFileSync("git", ["-C", REPO_ROOT, ...args], {
+    encoding: "utf8",
+    maxBuffer: 32 * 1024 * 1024,
+  });
+}
 
 /**
  * Blank out line and block comments while leaving string and template contents
@@ -239,34 +249,78 @@ describe("lint-configs eslint.strict.mjs stays wired to the plugin", () => {
   });
 
   /**
-   * Names that shipped and were withdrawn. Mirrors `_RETIRED_CODES` in
-   * sarj-python-lint's `test_rule_meta.py`: a withdrawn name is burned, not
-   * recycled, because consumers still carry `eslint-disable` comments and
-   * `eslint-suppressions.json` entries naming it, and reusing the name would
-   * silently re-point those suppressions at a rule that means something else.
+   * A withdrawn name is burned, not recycled: consumers still carry
+   * `eslint-disable` comments and `eslint-suppressions.json` entries naming it,
+   * and reusing the name would silently re-point those suppressions at a rule
+   * that means something else.
    */
-  it("withdrawn rule names are never reused", () => {
-    const RETIRED = new Map([
-      [
-        "primary-export-file-name",
-        // Withdrawn in 4.0.0 for the same reason its Python twin SARJ075 was:
-        // it renames files after one of their exports. Measured over 1,966 TS
-        // files in five repos it produced 316 findings, of which a random
-        // sample of 30 was 11 harmful / 15 useless / 4 valuable, and it told a
-        // `next.config.ts` to become `next-config.ts`, which breaks the Next
-        // build.
-        "renames files after one export; see 4.0.0",
-      ],
-    ]);
-
-    const live = [...RETIRED.keys()].filter((name) => name in rules);
+  it("withdrawn rule names are never reused or left configured", () => {
+    // `plugin.rules`, not `rules`: a retired name must not come back as a live
+    // rule OR as a renamed rule's deprecated alias.
+    const live = Object.keys(retiredRules).filter(
+      (name) => name in plugin.rules,
+    );
     expect(live).toEqual([]);
 
     const text = readFileSync(STRICT_CONFIG_PATH, "utf8");
     const referenced = new Set(referencedRuleNames(text));
-    const stillConfigured = [...RETIRED.keys()].filter((name) =>
+    const stillConfigured = Object.keys(retiredRules).filter((name) =>
       referenced.has(name),
     );
     expect(stillConfigured).toEqual([]);
+  });
+
+  /**
+   * The gate that keeps `src/rules/_retired.ts` honest, because a hand-kept list
+   * is exactly what failed here before.
+   *
+   * The previous version of this test declared ONE name under a doc comment
+   * claiming it mirrored the Python retired-code set — while the plugin had in
+   * fact deleted eleven rules across five releases, including all three removed
+   * in #183 and all five removed in 3.0.0. Nothing noticed, because nothing
+   * derived anything: the list only failed when a human had remembered to edit
+   * it.
+   *
+   * Git history is the derivation. A TypeScript rule's NAME is its filename, so
+   * `--diff-filter=D` over `src/rules/` recovers every name ever withdrawn
+   * without anyone writing it down. The comparison is an exact set equality in
+   * both directions, so a deletion that forgets to add an entry fails, and so
+   * does an entry invented for a rule that was never deleted.
+   *
+   * `--no-renames` is deliberate: a rule file that MOVED still has to be
+   * accounted for, and `_renames.ts` is what distinguishes the two cases — a
+   * renamed rule keeps its old name registered as a deprecated alias, so the old
+   * name is still in `plugin.rules` and is not retired.
+   */
+  it("_retired.ts lists exactly the rule files git has seen deleted", () => {
+    expect(gitOutput("rev-parse", "--is-shallow-repository").trim()).toBe(
+      "false",
+    );
+
+    const log = gitOutput(
+      "log",
+      "--no-renames",
+      "--diff-filter=D",
+      "--name-only",
+      "--format=",
+      "HEAD",
+      "--",
+      "packages/typescript/src/rules",
+    );
+
+    const deleted = new Set<string>();
+    for (const line of log.split("\n")) {
+      const path = line.trim();
+      if (!path.endsWith(".ts") || path.endsWith(".test.ts")) continue;
+      const name = path.slice(path.lastIndexOf("/") + 1, -".ts".length);
+      // `_tailwind.ts` and friends are shared helpers, never rule names.
+      if (name.startsWith("_")) continue;
+      // Still registered — either re-added under the same name, or renamed and
+      // kept as a deprecated alias. Neither is a withdrawal.
+      if (name in plugin.rules) continue;
+      deleted.add(name);
+    }
+
+    expect([...deleted].sort()).toEqual(Object.keys(retiredRules).sort());
   });
 });
