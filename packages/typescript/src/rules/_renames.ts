@@ -1,5 +1,7 @@
 /**
- * @fileoverview _renames — a renamed rule keeps its old name registered as a deprecated alias, because a name that simply vanishes reads as growth to a shrink-only baseline.
+ * @fileoverview _renames — every rule this plugin has renamed, old name to new; the old names no longer resolve, so this map is what says what to write instead.
+ *
+ * It feeds `scripts/sync-rule-ledger.py`, which turns each entry into a `renamed` row of the shipped `rule-ledger.json` that `sarj-lint-configs doctor` reads.
  *
  * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/_renames.md
  */

@@ -45,8 +45,10 @@ alternatives and deliberate-false-negative reasoning go in the `.md`; an example
 becomes a test case. `packages/typescript/tests/rule-docs.test.ts` and
 `packages/python/tests/test_rule_meta.py` enforce both halves.
 
-Renaming a rule is BREAKING. Ship it through `renamedRules` in
-`packages/typescript/src/rules/_renames.ts`, which keeps the old name registered as a
-deprecated alias, and update the strict preset, the shipped `eslint.strict.mjs`,
-the README table and the tests in the same change. Never drop a shipped name: a
-consumer's shrink-only baseline reads a vanished key and a new key as growth.
+Renaming a rule is BREAKING. Record it in `renamedRules` in
+`packages/typescript/src/rules/_renames.ts` and run `make sync-rule-ledger`, which
+writes the row `sarj-lint-configs doctor` reads; update the strict preset, the
+shipped `eslint.strict.mjs`, the README table and the tests in the same change.
+Never let a shipped name vanish unrecorded: it is not a lint failure downstream,
+it is `ESLint: exit 2` on the whole repo, and a consumer's shrink-only baseline
+reads a vanished key and a new key as growth.

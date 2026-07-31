@@ -20,7 +20,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { renamedRules, rules } from "../src/index.js";
+import plugin, { renamedRules, rules } from "../src/index.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const LEDGER_PATH = resolve(
@@ -62,6 +62,19 @@ describe("rule ledger", () => {
       if (entry.kind !== "eslint" || entry.status !== "renamed") continue;
       expect(live.has(entry.replacement ?? "")).toBe(true);
     }
+  });
+
+  it("records a rename only for a name that stopped resolving", () => {
+    // The ledger is what `doctor` reads to say "rewrite this reference". Saying
+    // that about a name the plugin still registers would send a consumer to
+    // change a line that works; saying nothing about one it no longer registers
+    // leaves them with `ESLint: exit 2` and no replacement to reach for.
+    const registered = Object.keys(plugin.rules);
+    const stillLive = ledger.retired
+      .filter((entry) => entry.kind === "eslint" && entry.status === "renamed")
+      .map((entry) => entry.id)
+      .filter((id) => registered.includes(id.replace("@sarj/", "")));
+    expect(stillLive).toEqual([]);
   });
 
   it("records every rename the plugin itself declares", () => {

@@ -90,6 +90,22 @@ def test_every_rename_points_somewhere_live(shipped: ledger.Ledger) -> None:
     )
 
 
+def test_every_deleted_alias_is_recorded(shipped: ledger.Ledger) -> None:
+    recorded = {
+        entry.id: entry.replacement
+        for entry in shipped.retired
+        if entry.status is ledger.Status.RENAMED
+    }
+    missing = {
+        old: new for old, new in _ALIASES_DELETED_IN_9_0_0.items() if recorded.get(old) != new
+    }
+    assert not missing, (
+        f"{sorted(missing)} were registered aliases in 7.0.0 and resolve nowhere in"
+        " 9.0.0. Dropping the ledger row leaves a consumer holding the old name with"
+        " `Could not find <rule> in plugin` and nothing naming the replacement."
+    )
+
+
 def test_every_retired_entry_carries_advice(shipped: ledger.Ledger) -> None:
     assert shipped.retired, "four rules and a code have been retired; the ledger records them"
     unhelpful = [
@@ -110,6 +126,46 @@ def test_doctor_names_a_removed_eslint_rule_in_a_config(tmp_path: Path) -> None:
     assert [finding.level for finding in findings] == [Level.DRIFT]
     assert "@sarj/prefer-setup-file-mocks x1" in findings[0].where
     assert "no longer exists" in findings[0].detail
+
+
+#: The aliases `@sarj/eslint-plugin` 7.0.0 registered and 9.0.0 deleted. Frozen: a
+#: consumer that adopted 7.0.0 may hold any of these, and each is now `ESLint: exit
+#: 2` rather than a deprecation warning, so the ledger is the only thing that can
+#: name the replacement.
+_ALIASES_DELETED_IN_9_0_0 = {
+    "@sarj/jsdoc-restates-signature": "@sarj/no-restated-jsdoc",
+    "@sarj/no-async-callback-in-waitfor": "@sarj/no-async-callback-in-wait-for",
+    "@sarj/strict-test-assertions": "@sarj/prefer-whole-object-assertion",
+    "@sarj/trailing-value-narration": "@sarj/no-trailing-value-narration",
+}
+
+
+@pytest.mark.parametrize(("old", "new"), sorted(_ALIASES_DELETED_IN_9_0_0.items()))
+def test_doctor_points_a_deleted_alias_at_its_replacement(
+    tmp_path: Path, old: str, new: str
+) -> None:
+    _ = (tmp_path / "eslint.config.mjs").write_text(
+        f'export default [{{ rules: {{ "{old}": "error" }} }}];\n', encoding="utf-8"
+    )
+    findings = list(check_retired_rules(tmp_path))
+    assert [finding.level for finding in findings] == [Level.DRIFT], (
+        f"{old} stopped resolving in 9.0.0; a consumer who adopted 7.0.0's alias gets"
+        " a whole unlintable repo, and doctor is what tells them before the upgrade"
+    )
+    assert f"{old} x1" in findings[0].where
+    assert f"renamed to {new}" in findings[0].detail
+    assert "no longer resolves" in findings[0].detail
+
+
+def test_doctor_leaves_the_python_twin_of_a_deleted_eslint_alias_alone(tmp_path: Path) -> None:
+    _ = (tmp_path / ".pre-commit-config.yaml").write_text(
+        "repos:\n  - hooks:\n      - id: sarj-trailing-value-narration\n", encoding="utf-8"
+    )
+    assert not list(check_retired_rules(tmp_path)), (
+        "`trailing-value-narration` is a LIVE sarj-python-lint rule and its hook id;"
+        " only the ESLint rule of that name was renamed, and flagging the hook would"
+        " tell a consumer to delete a check that still exists"
+    )
 
 
 def test_doctor_names_a_stale_disable_directive(tmp_path: Path) -> None:

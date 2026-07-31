@@ -1,9 +1,10 @@
 # `_renames` — evidence
 
-`src/rules/_renames.ts` holds the old-name -> new-name map and nothing else;
-`src/index.ts` reads it and registers each old name as a deprecated alias.
+`src/rules/_renames.ts` holds the old-name -> new-name map and nothing else.
+`scripts/sync-rule-ledger.py` reads it and writes one `renamed` row per entry into
+the shipped `rule-ledger.json`, which is what `sarj-lint-configs doctor` prints.
 
-## Renamed in 7.0.0
+## Renamed in 7.0.0, aliases deleted in 9.0.0
 
 | Old name | New name | Why |
 | --- | --- | --- |
@@ -14,12 +15,14 @@
 
 ## Migrating
 
-Every old name stays REGISTERED as a deprecated alias of the same rule object.
-A config entry, an `eslint-disable` comment or a suppressions file naming the old
-name keeps resolving and keeps reporting; ESLint surfaces the deprecation and
-names the replacement through `meta.deprecated.replacedBy`.
+7.0.0 kept every old name REGISTERED as a deprecated alias of the same rule
+object. 9.0.0 deletes the aliases: the new names are the only names.
 
-Neither preset wires an alias, so nothing double-reports.
+So on 9.0.0 an old name in a config, an `eslint-disable` comment or a suppressions
+baseline is not a deprecation warning — it is `Could not find "@sarj/<rule>" in
+plugin "@sarj"`, ESLint exits 2, and no file in the repo is linted. Run
+`sarj-lint-configs doctor` BEFORE upgrading; it names every file holding an old
+name and the name to write instead. Then:
 
 ```bash
 # In a consumer repo: config files, disable comments and suppression baselines.
@@ -40,21 +43,46 @@ The map is also exported, so a codemod can read it instead of copying it:
 import { renamedRules } from "@sarj/eslint-plugin";
 ```
 
-## Why the old names are not simply dropped
+## Why the aliases went
 
-A `SARJ110 -> SARJ083` renumber in the Python package dropped the old code. Every
-consumer running a shrink-only baseline gate saw the old key fall to zero and the
-new key appear from nothing, and a per-rule shrink-only gate reads an appearing
-key as growth — so a pure rename failed CI in repositories that had not changed a
-line. Keeping the alias registered means the rename is a two-step migration a
-consumer controls: adopt 7.0.0 with the old names still working, rewrite the
-names and the baseline in one commit, done.
+The alias was a migration window, not a permanent second name. Held open, it is a
+name whose only definition is "the other name", carried in the published plugin
+and in every test that has to prove the two stay identical — and a consumer
+reading `plugin.rules` counts four entries that are not rules.
 
-`tests/rule-docs.test.ts` pins all of it: every old name resolves, every alias
-shares the live rule's `create` and `messages`, every alias is deprecated and
-names its replacement, the live rule is not itself deprecated, no preset wires an
-alias, and neither the shipped `eslint.strict.mjs` nor the README's rule table
-still carries an old name.
+What the window was actually protecting against is a name that stops resolving
+with nothing anywhere saying where it went. That protection now lives in
+`rule-ledger.json`, which is stronger than the alias was: the alias only helped a
+repo that had already upgraded and was already failing, while `doctor` reads the
+ledger BEFORE the upgrade and names every stale reference and its replacement. It
+also covers the removals an alias cannot — the ESLint rules dropped in 5.0.0, the
+`SARJ110 -> SARJ083` renumber, a retired pre-commit hook id.
+
+That renumber is the failure worth keeping in mind. It dropped the old code
+outright; every consumer running a per-rule shrink-only baseline gate saw the old
+key fall to zero and the new key appear from nothing, which such a gate reads as
+growth — so a pure rename failed CI in repositories that had not changed a line.
+The fix for that is one commit rewriting the names and the baseline together,
+which is exactly what `doctor` output tells a consumer to write.
+
+`tests/rule-docs.test.ts` pins it: a frozen list, itself pinned at 51 entries, of
+the names 6.1.0 shipped — each of which must be a live rule, a recorded rename or
+a recorded retirement, so an ACCIDENTAL disappearance still fails while these four
+intentional ones pass. Then: no old name registered, every rename target live and
+not itself deprecated, no name in both `_renames.ts` and `_retired.ts`, no old
+name in either preset, and neither the shipped `eslint.strict.mjs` nor the
+README's rule table still carrying an old name.
+
+`tests/rule-ledger.test.ts` and `packages/lint-configs/tests/test_rule_ledger.py`
+pin the other half: the ledger records exactly the renames the plugin declares, a
+`renamed` row may only name a rule that no longer resolves, and `doctor` prints
+the replacement for each.
+
+`tests/strict-config-sync.test.ts` derives the withdrawn set from git history and
+demands set equality with `_retired.ts`. It excuses a deleted rule FILE only when
+`_renames.ts` records where the name went — reading the rename map rather than
+inferring it from a registered alias, which is what the alias used to supply. The
+two maps are held disjoint, so the exclusion cannot launder a real withdrawal.
 
 ## What left `eslint.strict.mjs`
 

@@ -21,7 +21,7 @@ rename moves them.
 
 Presets: `recommended` (warn-first), `strict` (every rule at error), `style-guide` (formatting/naming subset).
 
-## Renamed in 7.0.0 (breaking)
+## Renamed in 7.0.0, aliases deleted in 9.0.0 (breaking)
 
 | Old name | New name |
 | --- | --- |
@@ -30,18 +30,21 @@ Presets: `recommended` (warn-first), `strict` (every rule at error), `style-guid
 | `@sarj/strict-test-assertions` | `@sarj/prefer-whole-object-assertion` |
 | `@sarj/trailing-value-narration` | `@sarj/no-trailing-value-narration` |
 
-Every old name is still REGISTERED, as a deprecated alias of the same rule, so a
-config entry, an `eslint-disable` comment or a suppressions baseline naming it
-keeps working while you migrate; ESLint reports the deprecation and names the
-replacement. Neither preset wires an alias, so nothing double-reports. The map is
+7.0.0 kept each old name registered as a deprecated alias. 9.0.0 deletes them, so
+the new names are the only names — and an old name left in a config, an
+`eslint-disable` comment or a suppressions baseline now makes ESLint exit 2 with
+`Could not find "@sarj/<rule>" in plugin "@sarj"` before it reads a file.
+
+Run `sarj-lint-configs doctor` before upgrading: it reads the shipped rule ledger
+and names every file holding an old name, with the replacement. The map is also
 exported for codemods:
 
 ```js
 import { renamedRules } from "@sarj/eslint-plugin";
 ```
 
-Migration steps, the reasoning behind each name, and why the old keys are kept
-rather than dropped: [`docs/rules/_renames.md`](../../docs/rules/_renames.md).
+Migration steps, the reasoning behind each name, and why the aliases went:
+[`docs/rules/_renames.md`](../../docs/rules/_renames.md).
 
 ## New in 4.1.0 — `no-hand-rolled-sleep`
 

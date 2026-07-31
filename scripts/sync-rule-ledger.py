@@ -65,10 +65,10 @@ def eslint_rules() -> list[str]:
 def eslint_renames() -> dict[str, str]:
     """Read the plugin's own rename map, so the ledger cannot disagree with it.
 
-    A rename is recorded in two places by necessity: the plugin keeps the old name
-    registered as a deprecated alias (so a stale config still resolves), and the
-    ledger tells a consumer what to write instead. Deriving the second from the
-    first is what stops them drifting.
+    A rename is recorded in two places by necessity: `_renames.ts` is what the
+    plugin's own tests hold a renamed name to (it shipped, it is not live, it
+    points somewhere live), and the ledger is what a CONSUMER's `doctor` run
+    reads. Deriving the second from the first is what stops them drifting.
 
     Returns:
         Old rule name to new rule name.
@@ -134,9 +134,10 @@ def main() -> int:
             "status": "renamed",
             "replacement": f"@sarj/{new}",
             "note": (
-                f"renamed to {new}. The old name is still registered as a deprecated"
-                " alias, so a stale config keeps resolving and ESLint reports the"
-                " rename -- but the alias goes away eventually. Rewrite the reference."
+                "the old name no longer resolves: @sarj/eslint-plugin 9.0.0 deleted the"
+                " deprecated aliases 7.0.0 shipped, so a config, an eslint-disable comment"
+                " or a suppression entry naming it now makes ESLint exit 2 on the whole"
+                f" repo. Rewrite every reference to @sarj/{new}."
             ),
         })
     known = {entry["id"] for entry in retired}
