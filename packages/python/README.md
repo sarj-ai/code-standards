@@ -84,6 +84,48 @@ each guard was built from are recorded in the rule module docstrings.
 `redundant-docstring` finds real volume on a codebase that has never had it
 (105 in noura-be), so the same baseline ratchet applies.
 
+### Docstring-ceremony rules (0.31.0)
+
+SARJ050 tests a *function* docstring against its *own signature*. That leaves
+three shapes it cannot reach, each now its own code so a consumer can baseline
+them separately:
+
+```yaml
+    - id: sarj-duplicated-override-docstring       # SARJ084
+    - id: sarj-redundant-class-docstring           # SARJ085
+    - id: sarj-docstring-args-restate-signature    # SARJ086
+```
+
+`SARJ084` flags an override whose docstring is **byte-identical** to the base
+method's, with the base resolved by undotted name inside the same file. There is
+no judgement call — the test is byte equality — and `inspect.getdoc`, `help()`,
+Sphinx and editor hovers all walk the MRO, so deleting the copy changes nothing
+a reader sees. 49 first-party findings, 49 true positives; 137 across 14 OSS
+repos, 18 sampled and read, 0 false positives.
+
+`SARJ085` flags a class docstring that only re-spells the class name — the case
+SARJ050's walker structurally never inspects. Its largest guard is that anything
+whose docstring becomes a **published schema description** (pydantic models,
+enums, `TypedDict`s, `@strawberry.type`) is exempt: that string is emitted as
+the JSON-Schema `description` and reaches OpenAPI documents and LLM tool
+schemas. The exemption costs 28 of 34 first-party findings and is not
+negotiable.
+
+`SARJ086` flags an `Args:` block whose every entry only re-spells its own
+parameter. It fires where SARJ050 cannot: the header word "args" is a content
+word no signature contains, so *any* `Args:` block makes a docstring
+permanently unflaggable by SARJ050 — 126 first-party functions carry one and
+SARJ050 flags none of them. The remedy deletes the section and keeps the
+summary, which was checked against the shipped strict config: ruff's D417 does
+not fire on a docstring with no parameter section.
+
+The sibling `Returns:` shape was measured and **rejected**: deleting a
+`Returns:` section makes DOC201 fire, so the only compliant remedy is deleting a
+docstring whose summary may be the valuable part. Two more were rejected on
+volume — property docstrings restating the property name and reST/epydoc type
+duplication (`:type x: int`, `:rtype:`) both measure **0** first-party findings
+outside generated code.
+
 ### House conventions moved out of consumer repos (0.21.0)
 
 ```yaml

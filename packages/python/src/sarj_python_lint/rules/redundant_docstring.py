@@ -43,188 +43,43 @@ and one was borderline (a test docstring adding "for protected endpoints"), so
 ≥95% precision. The FastAPI-route and docstring-only-body exemptions were both
 found by that read, not predicted.
 
+**Three shapes this rule structurally cannot reach**, each now owned by its own
+code rather than folded in here (a consumer repo pins this package by caret and
+runs SARJ050 at `error`, so widening it would land uncontrolled on a patch
+release):
+a `class` docstring, which this walker never inspects (SARJ085); a docstring
+carrying a Google-style `Args:` block, where the literal word "args" is a
+content word no signature contains and so nothing below it can ever be judged
+(SARJ086); and an override that copies its base's docstring verbatim, which
+restates the base, not the signature (SARJ084).
+
+The stopword list, the value markers, the prompt-decorator set and the
+restatement test moved to `rules/_docstrings` unchanged when those three
+arrived — four rules asking the same question must not answer it four ways.
+
 Suppress an intentional case with `# sarj-noqa: SARJ050 — <reason>`.
 """
 
 from __future__ import annotations
 
 import ast
-import re
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
 from sarj_python_lint.rules._ast_index import children
-from sarj_python_lint.rules._comments import is_protected, split_identifier, stem
+from sarj_python_lint.rules._comments import is_protected
+from sarj_python_lint.rules._docstrings import (
+    PROMPT_DECORATOR_MARKERS,
+    VALUE_MARKER_RE,
+    decorator_markers,
+    restates,
+    signature_stems,
+)
 from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-
-# Docstring filler that says nothing about *which* thing is being described.
-# `not` / `no` / `none` / `never` are deliberately ABSENT: a docstring that
-# negates the obvious reading of a name is the most useful kind there is.
-_STOPWORDS = frozenset(
-    {
-        "a",
-        "all",
-        "an",
-        "and",
-        "are",
-        "as",
-        "at",
-        "based",
-        "be",
-        "been",
-        "being",
-        "by",
-        "class",
-        "current",
-        "do",
-        "does",
-        "false",
-        "for",
-        "from",
-        "function",
-        "get",
-        "gets",
-        "given",
-        "helper",
-        "if",
-        "in",
-        "instance",
-        "instances",
-        "into",
-        "is",
-        "it",
-        "its",
-        "method",
-        "new",
-        "object",
-        "objects",
-        "of",
-        "on",
-        "or",
-        "provided",
-        "return",
-        "returned",
-        "returns",
-        "s",
-        "set",
-        "sets",
-        "should",
-        "specified",
-        "that",
-        "the",
-        "these",
-        "this",
-        "those",
-        "to",
-        "true",
-        "using",
-        "value",
-        "values",
-        "was",
-        "when",
-        "whether",
-        "which",
-        "will",
-        "with",
-    }
-)
-
-_WORD_RE = re.compile(r"[A-Za-z][A-Za-z0-9']*")
-
-# Content the signature cannot carry, so the docstring is earning its place.
-_VALUE_MARKER_RE = re.compile(
-    r"https?://|\bRFC\s?\d|:raises|\bRaises:|>>>|\bExamples?:|^\s*\.\. |"
-    r"\b(?:ms|msec|milliseconds?|seconds?|secs?|minutes?|hours?|days?|bytes?|kb|mb|gb|hz|khz|"
-    r"utc|iso.?8601|e\.?164|base64|utf-?8|px|dbfs?|db)\b|%",
-    re.IGNORECASE | re.MULTILINE,
-)
-
-# Decorators whose docstring is consumed by something other than a reader, so
-# deleting it changes an artefact rather than tidying a file:
-#   - `function_tool` / `tool` hand it to a language model as the tool
-#     description, which is what the agent reasons over;
-#   - click and typer hand it to the terminal as `--help`;
-#   - FastAPI / Starlette / Flask routing decorators hand it to the OpenAPI
-#     schema as the operation description. That last one was found by the corpus
-#     sweep: bulbul's `@router.post("/desk/create-ticket")` handler carries
-#     "Create a ticket in Zoho Desk for the specified organization", which is the
-#     text an API consumer reads.
-_PROMPT_DECORATOR_MARKERS = frozenset(
-    {
-        "agent",
-        "api_route",
-        "app",
-        "blueprint",
-        "cli",
-        "click",
-        "command",
-        "delete",
-        "function_tool",
-        "get",
-        "group",
-        "mcp",
-        "option",
-        "patch",
-        "post",
-        "put",
-        "route",
-        "router",
-        "server",
-        "tool",
-        "tools",
-        "typer",
-        "websocket",
-    }
-)
-
-
-def _decorator_markers(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef) -> set[str]:
-    markers: set[str] = set()
-    for decorator in node.decorator_list:
-        target = decorator.func if isinstance(decorator, ast.Call) else decorator
-        try:
-            markers.update(part.lower() for part in re.split(r"\W+", ast.unparse(target)) if part)
-        except AttributeError, ValueError:  # pragma: no cover — unparse is total for these nodes
-            continue
-    return markers
-
-
-def _annotation_tokens(annotation: ast.expr | None) -> list[str]:
-    if annotation is None:
-        return []
-    try:
-        rendered = ast.unparse(annotation)
-    except AttributeError, ValueError:  # pragma: no cover
-        return []
-    return [part for token in re.split(r"\W+", rendered) if token for part in split_identifier(token)]
-
-
-def _signature_stems(node: ast.FunctionDef | ast.AsyncFunctionDef, class_name: str | None) -> set[str]:
-    tokens = list(split_identifier(node.name))
-    if class_name is not None:
-        tokens.extend(split_identifier(class_name))
-    args = node.args
-    for arg in [*args.posonlyargs, *args.args, *args.kwonlyargs, args.vararg, args.kwarg]:
-        if arg is None:
-            continue
-        if arg.arg not in {"self", "cls"}:
-            tokens.extend(split_identifier(arg.arg))
-        tokens.extend(_annotation_tokens(arg.annotation))
-    tokens.extend(_annotation_tokens(node.returns))
-    return {stem(token) for token in tokens}
-
-
-def _restates_signature(docstring: str, signature: set[str]) -> bool:
-    words = [match.group(0).lower() for match in _WORD_RE.finditer(docstring)]
-    content = [word for word in words if word not in _STOPWORDS]
-    if not words or not content:
-        return False
-    return all(stem(word) in signature for word in content)
 
 
 class RedundantDocstring(Rule):
@@ -272,13 +127,13 @@ class RedundantDocstring(Rule):
         diags: list[Diagnostic],
     ) -> None:
         docstring = ast.get_docstring(node, clean=True)
-        if not docstring or _VALUE_MARKER_RE.search(docstring) or is_protected(docstring):
+        if not docstring or VALUE_MARKER_RE.search(docstring) or is_protected(docstring):
             return
         if len(node.body) == 1:
             return  # the docstring IS the body; deleting it leaves a syntax error
-        if _decorator_markers(node) & _PROMPT_DECORATOR_MARKERS:
+        if decorator_markers(node) & PROMPT_DECORATOR_MARKERS:
             return
-        if not _restates_signature(docstring, _signature_stems(node, class_name)):
+        if not restates(docstring, signature_stems(node, class_name)):
             return
         expr = node.body[0]
         diags.append(
