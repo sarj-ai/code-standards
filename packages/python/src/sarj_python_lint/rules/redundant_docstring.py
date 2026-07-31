@@ -67,13 +67,6 @@ from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
 from sarj_python_lint.rules._ast_index import children
-<<<<<<< HEAD
-from sarj_python_lint.rules._comments import is_protected, split_identifier, stem
-from sarj_python_lint.rules._paths import is_generated
-||||||| parent of a303d90 (feat(python): three docstring-ceremony rules SARJ050 cannot reach)
-from sarj_python_lint.rules._comments import is_protected, split_identifier, stem
-from sarj_python_lint.rules._paths import is_generated_source
-=======
 from sarj_python_lint.rules._comments import is_protected
 from sarj_python_lint.rules._docstrings import (
     PROMPT_DECORATOR_MARKERS,
@@ -82,8 +75,7 @@ from sarj_python_lint.rules._docstrings import (
     restates,
     signature_stems,
 )
-from sarj_python_lint.rules._paths import is_generated_source
->>>>>>> a303d90 (feat(python): three docstring-ceremony rules SARJ050 cannot reach)
+from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:

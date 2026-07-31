@@ -39,7 +39,7 @@ block; SARJ050 flags **0** of them.
   defaults.
 - **An entry with no description at all** — the bare `name (type):` stub. Every
   one of the 8 first-party instances came from an OpenAPI client generator whose
-  output carries no generated-code marker, so `is_generated_source` cannot see
+  output carries no generated-code marker, so a content-only check cannot see
   it; judging a machine-emitted stub tells the author to edit a file that will
   be regenerated. Dropping them is what takes the raw 20 findings to 12.
 - **An empty block, or one no entry parses out of.** Nothing to judge.
@@ -98,7 +98,7 @@ from sarj_python_lint.rules._docstrings import (
     restates,
     signature_stems,
 )
-from sarj_python_lint.rules._paths import is_generated_source
+from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
@@ -117,7 +117,7 @@ class DocstringArgsRestateSignature(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated_source(source):
+        if is_generated(path, source):
             return []
         tree = parse_or_none(path, source)
         if tree is None:

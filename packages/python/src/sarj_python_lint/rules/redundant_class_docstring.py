@@ -98,7 +98,7 @@ from sarj_python_lint.rules._docstrings import (
     identifier_stems,
     restates,
 )
-from sarj_python_lint.rules._paths import is_generated_source
+from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
@@ -161,7 +161,7 @@ class RedundantClassDocstring(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated_source(source):
+        if is_generated(path, source):
             return []
         tree = parse_or_none(path, source)
         if tree is None:
