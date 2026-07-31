@@ -33,7 +33,7 @@ baselines that a change could inflate to conceal new findings.
 For commit-time feedback, pin Lefthook and install the hook during setup:
 
 ```bash
-uv add --dev lefthook==2.1.10 sarj-lint-configs==0.9.1
+uv add --dev lefthook==2.1.10 sarj-lint-configs==0.10.0
 uv run lefthook install
 ```
 
