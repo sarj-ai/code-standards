@@ -253,7 +253,7 @@ const TAILWIND_CONFIG =
 describe("prefer-semantic-colors requireSemanticTokens gate", () => {
   it("accepts a tailwind config whose token vocabulary is not shadcn's", () => {
     // `medusa/packages/admin/dashboard/tailwind.config.cjs` exists, is in
-    // DETECTION_FILES, sits well inside the depth budget — and was REJECTED
+    // PRESENCE_MARKERS, sits well within reach of the walk — and was REJECTED
     // because Medusa names its tokens `bg-ui-button-neutral` / `text-ui-fg-subtle`.
     // The whole repository (34 findings) went silent on a vocabulary mismatch.
     const root = project(
@@ -337,5 +337,192 @@ describe("prefer-semantic-colors requireSemanticTokens gate", () => {
 
     expect(deepFirst).toBe(deepAfterShallow);
     expect(deepFirst).toBe(1);
+  });
+});
+
+/**
+ * The half of `prefer-semantic-colors` that `RuleTester` structurally cannot reach.
+ *
+ * `hasSemanticTokenSystem` reads the FILESYSTEM around `context.filename` and
+ * memoises the answer in a MODULE-LEVEL cache shared by every file in a lint
+ * run. Neither property is expressible as a single-file `RuleTester` case, so
+ * none of them were pinned — and the consequences were not theoretical. The
+ * rule shipped as "error" while producing ZERO findings across 6,774 files,
+ * because an order-dependent negative cache poisoned itself on the first file
+ * linted. That bug was fixed with no test; a mutation run then showed the entire
+ * `requireSemanticTokens` gate could be deleted and `hasSemanticTokenSystem`
+ * forced to either constant with the whole suite still green.
+ *
+ * Every case here therefore builds a real directory tree and lints real
+ * filenames through `Linter`, in an explicit order.
+ *
+ * HARNESS NOTE. `Linter` reports "No matching configuration found for <file>" as
+ * an ordinary `severity: 1` message with `ruleId: null` when the flat config
+ * does not match the path — a lint that executed ZERO rules is indistinguishable
+ * from a clean one if you only count messages. That is exactly how a broken
+ * harness manufactures a confident zero, so `lintFile` asserts that every
+ * message came from this rule, and every case that claims a zero is paired with
+ * a positive control over the same tree and the same file.
+ */
+
+const RULE_ID = "sarj/prefer-semantic-colors";
+
+/** A component with exactly one raw palette class, so counts are unambiguous. */
+const RAW_PALETTE_COMPONENT = `export const Badge = () => <span className="text-red-500" />;`;
+
+interface Options {
+  readonly requireSemanticTokens?: boolean;
+}
+
+function lintFile(root: string, filename: string, options: Options = {}): string[] {
+  // `files` plus a `cwd`-scoped Linter is the only combination that matches an
+  // absolute path outside the package: a bare config, `basePath`, and
+  // `basePath` + `files` all return "No matching configuration found".
+  const linter = new Linter({ cwd: root });
+  const messages = linter.verify(
+    RAW_PALETTE_COMPONENT,
+    {
+      files: ["**/*.tsx"],
+      plugins: { sarj: { rules: { "prefer-semantic-colors": rule as never } } },
+      languageOptions: { parser: tsParser as never, parserOptions: { ecmaFeatures: { jsx: true } } },
+      rules: { [RULE_ID]: ["error", options] },
+    } as never,
+    filename,
+  );
+  const noise = messages.filter((message) => message.ruleId !== RULE_ID);
+  expect(noise, `harness produced non-rule messages: ${JSON.stringify(noise)}`).toEqual([]);
+  return messages.map((message) => message.messageId ?? "?");
+}
+
+/** Create a temp tree; every scenario gets a fresh root so the module cache cannot bleed. */
+function makeRepo(files: Readonly<Record<string, string>>): string {
+  const root = mkdtempSync(join(tmpdir(), "sarj-semantic-"));
+  for (const [rel, contents] of Object.entries(files)) {
+    const abs = join(root, rel);
+    mkdirSync(dirname(abs), { recursive: true });
+    writeFileSync(abs, contents, "utf8");
+  }
+  return root;
+}
+
+const SHADCN_CSS = `:root { --background: 0 0% 100%; --foreground: 222 47% 11%; }`;
+
+describe("requireSemanticTokens gates on a real design system", () => {
+  // Kills: deleting the `options?.requireSemanticTokens === true && …` gate, and
+  // forcing `hasSemanticTokenSystem` to the constant `true`.
+  it("suppresses the rule when the option is on and no design system exists", () => {
+    const root = makeRepo({ "src/badge.tsx": "" });
+    expect(lintFile(root, join(root, "src/badge.tsx"), { requireSemanticTokens: true })).toEqual([]);
+  });
+
+  // Positive control for the case above: the same file, same tree, gate off.
+  // Without this, a harness that ran no rules at all would pass the assertion.
+  it("still reports in that same tree when the option is off", () => {
+    const root = makeRepo({ "src/badge.tsx": "" });
+    expect(lintFile(root, join(root, "src/badge.tsx"), {})).toEqual(["rawPalette"]);
+    expect(lintFile(root, join(root, "src/badge.tsx"), { requireSemanticTokens: false })).toEqual([
+      "rawPalette",
+    ]);
+  });
+
+  // Kills: forcing `hasSemanticTokenSystem` to the constant `false`.
+  it("reports when the option is on and a design system does exist", () => {
+    const root = makeRepo({ "components.json": "{}", "src/badge.tsx": "" });
+    expect(lintFile(root, join(root, "src/badge.tsx"), { requireSemanticTokens: true })).toEqual([
+      "rawPalette",
+    ]);
+  });
+});
+
+describe("design-system detection covers systems that are not shadcn's", () => {
+  const detected: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+    // Presence alone. A config that pulls its theme from a preset never mentions
+    // a token name, so reading it for a vocabulary finds nothing.
+    "a tailwind.config.js with only a preset": {
+      "tailwind.config.js": `module.exports = { presets: [require("@medusajs/ui-preset")] };`,
+    },
+    "a tailwind.config.ts": { "tailwind.config.ts": `export default {};` },
+    "components.json": { "components.json": "{}" },
+    // Vocabulary. Each of these was FOUND and then REJECTED by the shadcn-only regex.
+    "medusa-style ui tokens in a stylesheet": {
+      "app/globals.css": `.x { @apply bg-ui-bg-base text-ui-fg-subtle; }`,
+    },
+    "medusa-style custom properties": { "app/globals.css": `:root { --fg-base: #000; }` },
+    "dub-style content/default tokens": {
+      "src/styles/globals.css": `:root { --content-error: 1 2 3; } .y { @apply bg-default; }`,
+    },
+    "shadcn custom properties": { "app/globals.css": SHADCN_CSS },
+    // Tailwind v4 is CSS-first: no config file exists to find.
+    "a Tailwind v4 @theme block": {
+      "src/index.css": `@import "tailwindcss";\n@theme {\n  --color-brand: oklch(0.7 0.1 200);\n}`,
+    },
+  };
+
+  it.each(Object.entries(detected))("detects %s", (_name, files) => {
+    const root = makeRepo({ ...files, "src/app/badge.tsx": "" });
+    expect(lintFile(root, join(root, "src/app/badge.tsx"), { requireSemanticTokens: true })).toEqual([
+      "rawPalette",
+    ]);
+  });
+
+  // The upper bound: detection must not be "any CSS file at all", or the gate
+  // becomes a no-op and the option may as well be deleted.
+  it("does not treat a stylesheet without tokens as a design system", () => {
+    const root = makeRepo({
+      "app/globals.css": `body { margin: 0; font-family: system-ui; }`,
+      "src/app/badge.tsx": "",
+    });
+    expect(lintFile(root, join(root, "src/app/badge.tsx"), { requireSemanticTokens: true })).toEqual([]);
+  });
+});
+
+describe("the resolved-answer cache is order-independent", () => {
+  /**
+   * The regression this pins is precise: caching each visited directory's LOCAL
+   * result ("no marker AT this dir") instead of the RESOLVED answer ("a marker
+   * exists at or ABOVE this dir"). That variant answers correctly for whichever
+   * file is linted first and then poisons every sibling, which is why linting
+   * one file reported normally while linting the glob containing it reported
+   * nothing.
+   *
+   * A cache keyed on absolute paths cannot be cleared between cases from
+   * outside the module, so each order gets its own tree.
+   */
+  const layout = {
+    "components.json": "{}",
+    "src/shallow.tsx": "",
+    "src/features/nested/deep.tsx": "",
+  };
+  const relatives = ["src/shallow.tsx", "src/features/nested/deep.tsx"] as const;
+
+  function lintInOrder(order: readonly string[]): Record<string, string[]> {
+    const root = makeRepo(layout);
+    const out: Record<string, string[]> = {};
+    for (const rel of order) {
+      out[rel] = lintFile(root, join(root, rel), { requireSemanticTokens: true });
+    }
+    return out;
+  }
+
+  it("gives every file the same answer whichever file warms the cache first", () => {
+    const forward = lintInOrder(relatives);
+    const reversed = lintInOrder([...relatives].reverse());
+
+    expect(forward).toEqual(reversed);
+    // …and that shared answer must be the CORRECT one. Two orders agreeing on
+    // "nothing reports" would satisfy the equality above on its own.
+    for (const rel of relatives) {
+      expect(forward[rel], `${rel} in forward order`).toEqual(["rawPalette"]);
+      expect(reversed[rel], `${rel} in reverse order`).toEqual(["rawPalette"]);
+    }
+  });
+
+  it("keeps a negative answer stable across repeated lints", () => {
+    const root = makeRepo({ "src/a.tsx": "", "src/b.tsx": "" });
+    for (const rel of ["src/a.tsx", "src/b.tsx", "src/a.tsx"]) {
+      expect(lintFile(root, join(root, rel), { requireSemanticTokens: true })).toEqual([]);
+    }
+    // Positive control: the tree really was lintable, the rule really was inert.
+    expect(lintFile(root, join(root, "src/a.tsx"), {})).toEqual(["rawPalette"]);
   });
 });
