@@ -141,6 +141,52 @@ family (`Returns: A new X` — whether the value is a copy is the one thing
 `-> Self` cannot say) now guarded. Three findings on this repo's own source, all
 true, all deleted. Measurements: [docs/rules/SARJ087.md](../../docs/rules/SARJ087.md).
 
+### Test ceremony, and the census it was chosen from (0.38.0)
+
+```yaml
+    - id: sarj-restated-test-docstring              # SARJ088
+    - id: sarj-test-phase-label-comment             # SARJ089
+```
+
+Every comment GROUP in 19 repositories / 45,900 Python files was collected with
+its adjacent code and classified: **451,482 groups, 1,293,022 lines**, of which
+the seven comment/docstring rules that predate this release reached **4.9%**.
+The full census table is in [docs/rules/SARJ088.md](../../docs/rules/SARJ088.md).
+
+The largest precisely-detectable class left in it is the **test docstring**:
+52,894 of them, 10.1% of every comment group, and SARJ050 reached 4.7%. It
+reached so few because SARJ050 measures a docstring against its *signature*, and
+a test's specification is its BODY. `SARJ088` measures it against the signature,
+the identifiers in the test's own body, and the vocabulary a test docstring
+spends on being a test. **5,382 findings; 98 read at source, 0 false positives
+on the shipped predicate.**
+
+`SARJ089` deletes the bare `# given` / `# when` / `# then` / `# Arrange` /
+`# Act` / `# Assert` phase label. 27,714 findings, 36 read, 0 false positives —
+but **94.5% come from one OSS suite**, and none from any first-party repo. It is
+a fence against the convention arriving, not a cleanup; adopt it behind the
+baseline ratchet.
+
+Shipped with them, `_docstrings.STOPWORDS` gained `FILLER_QUALIFIERS`: 31
+qualifiers that narrow nothing (`specific`, `appropriate`, `entire`, `overall`).
+One of these was the commonest single reason a pure restatement survived the
+whole family — `"""Get a specific account by ID."""` over
+`get_account(self, account_id: str)`. **+683 findings across SARJ050/085/086/087,
+-0; 58 of the delta read, ~3.4% false positives.** `main` was tried and rejected:
+as filler it makes `"""Main function."""` content-free, hence unflaggable.
+
+**Three shapes measured on the same census and rejected**, each on a seeded
+12-finding read at source:
+
+| shape | findings | true | why it fails |
+| --- | ---: | ---: | --- |
+| comment restates the `if` / `for` / `with` header below it | 225 | 3/12 | the population is BRANCH LABELS naming a case (`# PIL.Image` over `if isinstance(item, PILImage.Image)`), not narration |
+| comment restates a plain assignment (no call on the RHS) | 308 | 2/12 | the population heads a multi-line literal or a 3-statement block — a section label, which is SARJ016's subject |
+| multi-line comment run restating the block it heads | 119 | 1-2/12 | banners, Sphinx `#:` attribute docs, and worked calculations dominate |
+
+Those three are why SARJ049 still excludes block openers, plain assignments and
+multi-line runs. The exclusions are load-bearing, not unfinished work.
+
 ### House conventions moved out of consumer repos (0.21.0)
 
 ```yaml

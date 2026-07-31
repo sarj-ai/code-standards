@@ -94,6 +94,18 @@
   language: python
   types: [python]
 
+- id: sarj-restated-test-docstring
+  name: 'sarj-lint: test docstring only re-spells the test name and body'
+  entry: sarj-python-lint check --rule restated-test-docstring
+  language: python
+  types: [python]
+
+- id: sarj-test-phase-label-comment
+  name: 'sarj-lint: bare Arrange/Act/Assert phase label in a test'
+  entry: sarj-python-lint check --rule test-phase-label-comment
+  language: python
+  types: [python]
+
 - id: sarj-trailing-value-narration
   name: 'sarj-lint: trailing comment restates a literal on the line'
   entry: sarj-python-lint check --rule trailing-value-narration
