@@ -31,12 +31,16 @@ _DATA_CALLABLES = frozenset({"dict"})
 # object a builder could construct.
 _DATA_METHODS = frozenset({"update"})
 
+# `mock.assert_called_once_with(a=1, ...)` builds nothing: it pins the exact call
+# the code under test made, so defaulting its keywords away deletes the assertion.
+_MOCK_ASSERTION_PREFIX = "assert_"
+
 
 class KwargHeavyConstructionInTest(Rule):
     id: str = "kwarg-heavy-construction-in-test"
     code: str = "SARJ045"
     has_evidence: bool = True
-    description: str = "Object built with many keywords inline in a test — extract a builder with defaults."
+    description: str = "Object built with many keywords inline in a test — extract a helper with defaults."
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
@@ -57,11 +61,11 @@ class KwargHeavyConstructionInTest(Rule):
                 code=self.code,
                 message=(
                     f"this call passes {count} keywords inline, so the one field under test is buried "
-                    "and every other test repeats the same boilerplate. Extract a builder with "
+                    "and every other test repeats the same boilerplate. Extract a helper with "
                     "defaults and override only what this test is about."
                 ),
             )
-            for node, count in visitor.repeated_hits(tree)
+            for node, count in visitor.reportable_hits(tree)
         ]
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
@@ -92,21 +96,33 @@ class _KwargHeavyVisitor(ast.NodeVisitor):
         self._func_names.pop()
 
     def visit_Call(self, node: ast.Call) -> None:
-        if self._in_test_function() and not _is_data_callable(node.func):
+        if self._in_test_function() and not _is_data_callable(node.func) and not _is_mock_assertion(node.func):
             named = [kw for kw in node.keywords if kw.arg is not None]
             if len(named) > _MAX_KEYWORDS:
                 self.hits.append((node, len(named)))
         self.generic_visit(node)
 
-    def repeated_hits(self, tree: ast.Module) -> list[tuple[ast.Call, int]]:
-        """Keep only hits whose callee is constructed more than once in the file."""
+    def reportable_hits(self, tree: ast.Module) -> list[tuple[ast.Call, int]]:
+        """Keep the hits that have duplication to extract and no helper already.
+
+        Two module-wide facts are needed, so this runs after the walk rather
+        than inside `visit_Call`: how often the callee is constructed, and
+        whether the callee is a function this very module defines.
+
+        Returns:
+            The wide constructions worth reporting.
+
+        """
         counts = Counter(name for n in nodes(tree, ast.Call) if (name := _callee_name(n.func)) is not None)
+        local_defs = _locally_defined_names(tree)
         return [
             (node, count)
             for node, count in self.hits
             # A callee with no stable name (a subscript, a call result) cannot be
             # counted, so it can never clear the repetition bar.
-            if (name := _callee_name(node.func)) is not None and counts[name] >= _MIN_CONSTRUCTIONS
+            if (name := _callee_name(node.func)) is not None
+            and counts[name] >= _MIN_CONSTRUCTIONS
+            and not _calls_a_local_helper(node.func, local_defs)
         ]
 
     def _in_test_function(self) -> bool:
@@ -118,6 +134,46 @@ def _is_data_callable(func: ast.expr) -> bool:
     if isinstance(func, ast.Name):
         return func.id in _DATA_CALLABLES
     return isinstance(func, ast.Attribute) and func.attr in _DATA_METHODS
+
+
+def _is_mock_assertion(func: ast.expr) -> bool:
+    """Report whether the callee is a mock assertion rather than a construction.
+
+    `assert_called_once_with` / `assert_called_with` / `assert_awaited_once_with`
+    are the only `assert_*` callees the corpus contains, and none of them builds
+    anything: the keywords ARE the assertion.
+
+    Returns:
+        True when the call asserts on a recorded call instead of making an object.
+
+    """
+    name = _callee_name(func)
+    return name is not None and name.startswith(_MOCK_ASSERTION_PREFIX)
+
+
+def _locally_defined_names(tree: ast.Module) -> frozenset[str]:
+    """Collect every function name this module defines.
+
+    Returns:
+        The names bound by a `def` / `async def` anywhere in the file.
+
+    """
+    return frozenset(node.name for node in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef))
+
+
+def _calls_a_local_helper(func: ast.expr, local_defs: frozenset[str]) -> bool:
+    """Report whether the callee is a plain function defined in this module.
+
+    Such a callee is the factory, fixture-factory or shared assertion helper the
+    rule asks for — its keywords are the parametrized case matrix, not an
+    inlined object. Only a bare `Name` counts: `module.build(...)` or
+    `self.build(...)` reaches something this file does not own.
+
+    Returns:
+        True when the call targets a same-module `def`.
+
+    """
+    return isinstance(func, ast.Name) and func.id in local_defs
 
 
 def _callee_name(func: ast.expr) -> str | None:

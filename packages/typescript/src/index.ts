@@ -1,4 +1,3 @@
-import banLooseTypeGuardsInTests from "./rules/ban-loose-type-guards-in-tests.js";
 import enforceFileStructure from "./rules/enforce-file-structure.js";
 import noClientSideDataFetching from "./rules/no-client-side-data-fetching.js";
 import noCommentCruft from "./rules/no-comment-cruft.js";
@@ -45,15 +44,12 @@ import trailingValueNarration from "./rules/trailing-value-narration.js";
 import noTautologicalExpect from "./rules/no-tautological-expect.js";
 import requireInterfaceForInjectedService from "./rules/require-interface-for-injected-service.js";
 import preferNonNullableCollection from "./rules/prefer-non-nullable-collection.js";
-import noImplicitAttributeAccess from "./rules/no-implicit-attribute-access.js";
 import strictTestAssertions from "./rules/strict-test-assertions.js";
 import noAsyncCallbackInWaitFor from "./rules/no-async-callback-in-waitfor.js";
 
 import noHandRolledSleep from "./rules/no-hand-rolled-sleep.js";
-import preferSetupFileMocks from "./rules/prefer-setup-file-mocks.js";
 
 const rules = {
-  "ban-loose-type-guards-in-tests": banLooseTypeGuardsInTests,
   "enforce-file-structure": enforceFileStructure,
   "no-client-side-data-fetching": noClientSideDataFetching,
   "no-comment-cruft": noCommentCruft,
@@ -102,15 +98,13 @@ const rules = {
   "require-interface-for-injected-service": requireInterfaceForInjectedService,
   "strict-test-assertions": strictTestAssertions,
   "prefer-non-nullable-collection": preferNonNullableCollection,
-  "no-implicit-attribute-access": noImplicitAttributeAccess,
   "no-async-callback-in-waitfor": noAsyncCallbackInWaitFor,
-  "prefer-setup-file-mocks": preferSetupFileMocks,
 };
 
 const plugin = {
   meta: {
     name: "@sarj/eslint-plugin",
-    version: "4.2.0",
+    version: "5.0.0",
   },
   rules,
   configs: {
@@ -120,7 +114,6 @@ const plugin = {
         "@sarj/zod-naming-convention": "warn",
         "@sarj/require-assert-never": "error",
         "@sarj/require-zod-form-validation": "error",
-        "@sarj/ban-loose-type-guards-in-tests": "error",
         "@sarj/enforce-file-structure": "warn",
         "@sarj/no-client-side-data-fetching": "warn",
         "@sarj/prefer-server-actions": "warn",
@@ -205,9 +198,7 @@ const plugin = {
         // port, 29 fire, 28 of them true positives.
         "@sarj/require-interface-for-injected-service": "warn",
         "@sarj/prefer-non-nullable-collection": "warn",
-        "@sarj/no-implicit-attribute-access": "warn",
         "@sarj/no-async-callback-in-waitfor": "warn",
-        "@sarj/prefer-setup-file-mocks": "warn",
       },
     },
     strict: {
@@ -216,7 +207,6 @@ const plugin = {
         "@sarj/zod-naming-convention": "error",
         "@sarj/require-assert-never": "error",
         "@sarj/require-zod-form-validation": "error",
-        "@sarj/ban-loose-type-guards-in-tests": "error",
         "@sarj/enforce-file-structure": "error",
         "@sarj/no-raw-env": "error",
         "@sarj/no-enum": "error",
@@ -291,9 +281,7 @@ const plugin = {
         // corpus (175 `implements` clauses vs 29 hits), so strict enforces it.
         "@sarj/require-interface-for-injected-service": "error",
         "@sarj/prefer-non-nullable-collection": "error",
-        "@sarj/no-implicit-attribute-access": "error",
         "@sarj/no-async-callback-in-waitfor": "error",
-        "@sarj/prefer-setup-file-mocks": "error",
       },
     },
   },

@@ -37,6 +37,11 @@ failure mode, so every one of these guards is load-bearing:
 - **Not a group label.** When the statement below is followed by a same-indent,
   same-shape sibling, the comment heads a run (`# Constants` over eight
   assignments), and deleting it loses the grouping.
+- **Not a section label over a multi-statement region.** The same reading the
+  group-label guard gives a *syntactic* block, given to a blank-line-delimited
+  *paragraph*: when the comment heads a region of three or more same-indent
+  lines, it labels the region and the first line merely happens to share its
+  vocabulary. See the audit below — the threshold is the guard.
 - **Not inside a bracketed expression.** A comment at bracket depth > 0 labels
   an *element* of a list, dict or call — one `State(...)` in a list of test
   cases, one entry in a `__all__` group — and the element's own words are what
@@ -75,14 +80,69 @@ the 47 true ones); three other candidate guards were built, measured and
   restatements in one function usually name the same domain noun; the shared word
   is the subject matter, not a section structure.
 
-The residual **19%** is one shape the tokenizer cannot separate: a section label
-heading a block in a test body (`# test tamper sensor` over the first of six
-asserts, `# Test with domain only` over the first of a three-block series). Read
-as a hit rate that is **0.8% of eligible single-line comments** in both external
-corpora — well under the 4.7%-of-log-calls that got SARJ055 dropped for being a
-professional convention — so the shape is rare, not idiomatic. But a house
-enabling this at `error` is choosing to reject a test-body section label, and
-should say so out loud rather than believe the 0% number.
+The residual **19%** was one shape the tokenizer was said not to be able to
+separate: a section label heading a block in a test body (`# test tamper sensor`
+over the first of six asserts, `# Test with domain only` over the first of a
+three-block series). Read as a hit rate that is **0.8% of eligible single-line
+comments** in both external corpora — well under the 4.7%-of-log-calls that got
+SARJ055 dropped for being a professional convention — so the shape is rare, not
+idiomatic. But a house enabling this at `error` is choosing to reject a test-body
+section label, and should say so out loud rather than believe the 0% number.
+
+## 2026-07 false-positive audit
+
+Re-measured over a 19-repo, 24,644-file corpus (6 first-party plus django,
+celery, airflow, litellm, prefect, saleor, zulip, fastapi, pydantic, rich, httpx,
+requests): **1,304 findings**. A seeded random sample of 50 read against source
+gave **37 true positives, 6 false, 7 arguable — 12%**. One guard landed, taking
+the rule to **1,206**.
+
+**That 12% is NOT a correction of the 21.7% above.** The two intervals overlap
+(the 95% CI at 12% of 50 still contains 21.7%), and the likely cause of the gap
+is corpus composition rather than any change in the detector: litellm supplies
+59% of the findings here and its house style produces the cleanest possible true
+positives. Read the rate as **corpus-dependent** — a house adopting the rule
+should expect somewhere in that band, not the low end of it, and a house enabling
+it at `error` is still choosing to reject an occasional section label.
+
+### The fourth guard, and why the threshold is the whole point
+
+The residual above CAN be separated, by asking how much the comment heads rather
+than what it says — the same question the group-label guard already asks of a
+syntactic block, asked of a blank-line-delimited paragraph instead. When the
+region below the comment runs to three or more same-indent lines, the comment
+labels the region:
+
+* `django/tests/auth_tests/test_hashers.py:57` — `# Blank passwords` heading the
+  five-statement second scenario inside `test_simple`,
+* `django/tests/mail/tests.py:1227` — `# email.message.EmailMessage`, one of three
+  parallel type labels naming which of the docstring's three accepted types each
+  block builds,
+* `zulip/zerver/lib/validator.py:360` — `# Validate as URL.` labelling the
+  `try`/`except` below it,
+* `django/tests/migrations/test_operations.py:3015` — `# Add UUID field.` and
+  `# Remove ID.`, two labels over two parallel migration steps.
+
+**Three, not two.** The ≥2 spelling is the rejected guard listed above
+("*comment heads a blank-line-separated paragraph of ≥2 statements* — 9 FP, 12
+TP") and it fails for the reason recorded there: the ≥2 population is 297, and
+the extra 199 it admits over ≥3 are dominated by the `<action>; assert <result>`
+pair, where the comment really does narrate one line. **Nobody should relax this
+to 2.**
+
+MEASURED: removes **98 of 1,304 (7.5%)**. A random 16 of the removal set read at
+source were 10 false positives, 5 arguable and 1 true positive; only 2 of the 34
+first-party findings are affected.
+
+### TWO FURTHER GUARDS BUILT AND REJECTED ON MEASUREMENT
+
+Recorded so nobody rebuilds them:
+
+* *narration density* — 49 findings; 13 read at source were 4 false positives, 8
+  true and 1 arguable. Worse than the guard it would replace, and it kills
+  airflow's release scripts, which are the purest restatements in the corpus.
+* *a relaxed `_is_group_label`* — removes **369 of 1,304 (28.3%)**. That is not a
+  guard, it is a repeal.
 
 Getting there cost five guards, each added at the site that produced it and each
 with a regression test: the code-keyword arm of the commented-out check (a

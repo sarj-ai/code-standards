@@ -16,18 +16,28 @@ from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Iterator, Mapping, Sequence
     from pathlib import Path
 
 
 _DEF_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 _SCOPE_NODES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 
+type _Def = ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef
+
 #: Decorator names that exempt a method from being flagged: property-like
 #: methods read as attributes, and abstract methods are interface declarations.
 _EXEMPT_METHOD_DECORATORS = frozenset({"property", "cached_property", "abstractmethod", "setter", "getter", "deleter"})
 
 _SELF_NAMES = frozenset({"self", "cls"})
+
+#: The conventional throwaway name for a `@singledispatch.register` /
+#: `@run.register` implementation. It is a caller like any other — it can
+#: suppress — but it can never be a stepdown TARGET: "move this below its only
+#: caller `_`" names a location a reader cannot find, and a scope holding four
+#: defs called `_` has no canonical one, which is the same arbitrariness this
+#: rule refuses for multi-caller helpers.
+_DISCARD_NAME = "_"
 
 
 def _child_nodes(node: ast.AST) -> Iterator[ast.AST]:
@@ -68,30 +78,49 @@ class Stepdown(Rule):
         return diags
 
 
+def _first_by_name[DefT: _Def](defs: Sequence[DefT]) -> dict[str, DefT]:
+    """Index defs by name, keeping the FIRST definition of a repeated name.
+
+    A repeated name is an `@overload` group, a `@property`/`@x.setter` pair or a
+    conditional def. Such a name cannot be FLAGGED — there is no single node to
+    move — but it is still a perfectly good CALLER, and the first def is where
+    its group starts, which is the position a stepdown has to clear.
+
+    Returns:
+        One node per distinct name, the earliest in body order.
+
+    """
+    first: dict[str, DefT] = {}
+    for d in defs:
+        first.setdefault(d.name, d)
+    return first
+
+
 def _check_module_scope(path: Path, tree: ast.Module, code: str) -> list[Diagnostic]:
     defs = [n for n in tree.body if isinstance(n, _SCOPE_NODES)]
     counts = Counter(d.name for d in defs)
     unique_defs = {name: d for d in defs if counts[name := d.name] == 1}
+    all_defs = _first_by_name(defs)
 
     pinned = _module_pinned_names(tree)
     shadowed = _module_assigned_names(tree)
 
     graph: dict[str, set[str]] = {}
     ref_lines: dict[tuple[str, str], int] = {}
-    for name, d in unique_defs.items():
+    for d in defs:
+        name = d.name
         local = _locally_bound_names(d)
-        callees: set[str] = set()
+        callees = graph.setdefault(name, set())
         for n in _runtime_nodes(_deferred_body(d)):
             if (
                 isinstance(n, ast.Name)
                 and isinstance(n.ctx, ast.Load)
-                and n.id in unique_defs
+                and n.id in all_defs
                 and n.id != name
                 and n.id not in local
             ):
                 callees.add(n.id)
                 _record_ref_line(ref_lines, name, n.id, n.lineno)
-        graph[name] = callees
 
     diags: list[Diagnostic] = []
     for name, d in unique_defs.items():
@@ -100,7 +129,7 @@ def _check_module_scope(path: Path, tree: ast.Module, code: str) -> list[Diagnos
         if name in pinned or name in shadowed:
             continue
         diags.extend(
-            _flag_if_above_single_caller(path, code, name, node=d, graph=graph, defs=unique_defs, ref_lines=ref_lines)
+            _flag_if_above_single_caller(path, code, name, node=d, graph=graph, defs=all_defs, ref_lines=ref_lines)
         )
     return diags
 
@@ -109,6 +138,7 @@ def _check_class_scope(path: Path, cls: ast.ClassDef, code: str, external_caller
     methods = [n for n in cls.body if isinstance(n, _DEF_NODES)]
     counts = Counter(m.name for m in methods)
     unique = {name: m for m in methods if counts[name := m.name] == 1}
+    all_methods = _first_by_name(methods)
 
     pinned = _class_pinned_names(cls)
     shadowed = _class_attr_names(cls)
@@ -117,19 +147,19 @@ def _check_class_scope(path: Path, cls: ast.ClassDef, code: str, external_caller
 
     graph: dict[str, set[str]] = {}
     ref_lines: dict[tuple[str, str], int] = {}
-    for name, m in unique.items():
-        callees: set[str] = set()
+    for m in methods:
+        name = m.name
+        callees = graph.setdefault(name, set())
         for n in _runtime_nodes(m.body):
             if (
                 isinstance(n, ast.Attribute)
                 and isinstance(n.ctx, ast.Load)
                 and _is_same_class_ref(n.value, cls.name)
-                and n.attr in unique
+                and n.attr in all_methods
                 and n.attr != name
             ):
                 callees.add(n.attr)
                 _record_ref_line(ref_lines, name, n.attr, n.lineno)
-        graph[name] = callees
 
     diags: list[Diagnostic] = []
     for name, m in unique.items():
@@ -138,7 +168,7 @@ def _check_class_scope(path: Path, cls: ast.ClassDef, code: str, external_caller
         if name in pinned or name in shadowed or name in external_callers or _has_exempt_decorator(m):
             continue
         diags.extend(
-            _flag_if_above_single_caller(path, code, name, node=m, graph=graph, defs=unique, ref_lines=ref_lines)
+            _flag_if_above_single_caller(path, code, name, node=m, graph=graph, defs=all_methods, ref_lines=ref_lines)
         )
     return diags
 
@@ -157,6 +187,8 @@ def _flag_if_above_single_caller(
     if len(callers) != 1:
         return []
     (caller,) = callers
+    if caller == _DISCARD_NAME:
+        return []
     if isinstance(defs[caller], ast.ClassDef):
         return []
     if _reaches(graph, name, caller):

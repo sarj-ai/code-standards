@@ -30,6 +30,25 @@
  * What survives is the shape the rule was written for: application code reading
  * a deployment setting, e.g. zod/packages/docs/loaders/stars.ts:1
  * (`const GITHUB_TOKEN = process.env.GITHUB_TOKEN!`).
+ *
+ * SECOND SWEEP (25,508 deduped TS/TSX files across zod / trpc / dub /
+ * openstatus / formbricks / documenso / unkey / midday / papermark / cal.com /
+ * hono plus six first-party repos, 2026-07): 1,851 hits, 50 read in a seeded
+ * random sample — 43 true positives, 2 false positives, 5 arguable. The rule is
+ * essentially correct; the two false-positive classes both came from the rule
+ * failing to recognise a value it can say nothing about:
+ *
+ *   - **The validated env boundary itself, under a form the sniff missed** —
+ *     55 / 1,851. `isValidatedEnvBoundary` demanded literally `z.object(` AND
+ *     `.parse(`. Across boundary-named files in that corpus, 48 findings use
+ *     `createEnv({...})` (`@t3-oss/env-nextjs`), 5 use `z.object` with
+ *     `.safeParse`, and 2 use `.parse` with no `z.object`.
+ *     `openstatus/apps/web/src/env.ts` alone was 24 findings: a textbook t3-env
+ *     boundary whose `runtimeEnv:` map is REQUIRED by the library to spell
+ *     `process.env.X` once per variable. Widening the sniff to any of the three
+ *     markers costs no measurable recall — 23 boundary-NAMED files in the same
+ *     corpus validate nothing at all and keep firing, correctly.
+ *   - **Platform/runtime markers** — see `PLATFORM_MARKERS`.
  */
 
 import { ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
@@ -50,11 +69,21 @@ const CONFIG_FILE_RE = /(^|[\\/])[\w.-]+\.config\.[cm]?[jt]sx?$/;
 const ENV_BOUNDARY_FILE_RE =
   /(^|[\\/])(?:env|client-env|server-env|client-settings|server-settings)\.[cm]?[jt]sx?$/;
 
+/**
+ * Evidence that a boundary-NAMED module actually validates: a Zod object
+ * schema, a `createEnv({...})` call (`@t3-oss/env-nextjs` and friends, which
+ * validate against the `server`/`client` schemas passed to them), or a
+ * `.parse()` / `.safeParse()` anywhere in the file. Any ONE of the three is
+ * enough — requiring `z.object` AND `.parse` together missed 55 of 1,851
+ * findings, 48 of them the `createEnv` form.
+ */
+const ENV_VALIDATION_MARKER_RE =
+  /\bcreateEnv\s*\(|\bz\.object\s*\(|\.(?:safeParse|parse)\s*\(/;
+
 function isValidatedEnvBoundary(filename: string, sourceText: string): boolean {
   return (
     ENV_BOUNDARY_FILE_RE.test(filename.replaceAll("\\", "/")) &&
-    /\bz\.object\s*\(/.test(sourceText) &&
-    /\.parse\s*\(/.test(sourceText)
+    ENV_VALIDATION_MARKER_RE.test(sourceText)
   );
 }
 
@@ -91,15 +120,42 @@ const BUILD_TIME_CONSTANTS: ReadonlySet<string> = new Set([
   "SSR",
 ]);
 
-/** True when `node` is the base of a build-time-constant access like `process.env.NODE_ENV`. */
-function isBuildTimeConstantAccess(node: TSESTree.MemberExpression): boolean {
+/**
+ * Markers the PLATFORM injects, not values the deployment configures: which
+ * runtime the module was loaded into, whether this is a Vercel build, whether
+ * this is CI. Same family as the already-exempt `NODE_ENV` — always present,
+ * owned by the host, and nothing an app env schema can meaningfully validate or
+ * default. 184 of the 1,851 second-sweep findings were this class, e.g.
+ * `formbricks/apps/web/lib/posthog/server.ts:31`
+ * (`process.env.NEXT_RUNTIME === "nodejs"`) and
+ * `dub/apps/web/lib/middleware/utils/get-final-url.ts:84`
+ * (`process.env.VERCEL === "1"`).
+ *
+ * `VERCEL_URL` (52 findings) and `PORT` (19) are deliberately NOT here: both are
+ * read to BUILD a base URL, which is a deployment value a repo may well want its
+ * env schema to own. A test pins that exclusion.
+ */
+const PLATFORM_MARKERS: ReadonlySet<string> = new Set([
+  "NEXT_RUNTIME",
+  "VERCEL",
+  "VERCEL_ENV",
+  "CI",
+]);
+
+/**
+ * True when `node` is the base of an exempt named access like
+ * `process.env.NODE_ENV` or `process.env.VERCEL` — a bundler-replaced constant
+ * or a platform-injected marker.
+ */
+function isExemptVariableAccess(node: TSESTree.MemberExpression): boolean {
   const parent = node.parent;
   return (
     parent.type === "MemberExpression" &&
     parent.object === node &&
     !parent.computed &&
     parent.property.type === "Identifier" &&
-    BUILD_TIME_CONSTANTS.has(parent.property.name)
+    (BUILD_TIME_CONSTANTS.has(parent.property.name) ||
+      PLATFORM_MARKERS.has(parent.property.name))
   );
 }
 
@@ -162,7 +218,7 @@ export default ESLintUtils.RuleCreator(
       MemberExpression(node: TSESTree.MemberExpression): void {
         if (
           (isProcessEnv(node) || isImportMetaEnv(node)) &&
-          !isBuildTimeConstantAccess(node) &&
+          !isExemptVariableAccess(node) &&
           !isWriteTarget(node) &&
           !isWholeEnvSpread(node)
         ) {

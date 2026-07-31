@@ -531,6 +531,187 @@ class TestThing:
     assert len(_check(src)) == 1
 
 
+# --------------------------------------------------------------------------- #
+# FP guard: an assertion helper whose name CARRIES the token without leading    #
+# with it. The largest class in the 50-finding audit (8 of 50); the token       #
+# search plus the callable slot removed 441 of 2,113 corpus findings (20.9%),   #
+# 310 of them prefect's `invoke_and_assert`.                                    #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        'invoke_and_assert(["work-pool", "create"], expected_code=0)',
+        "run_and_verify(result)",
+        "load_and_validate(payload)",
+        "self.invoke_and_assert(command, expected_output_contains=['ok'])",
+    ],
+)
+def test_assertion_token_anywhere_in_the_name_is_exempt(call: str):
+    src = f"""
+def test_thing():
+    {call}
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize("call", ["revalidate_cache()", "unexpected_state()", "reassert_later()"])
+def test_a_token_buried_inside_a_word_is_not_a_verification(call: str):
+    # The search is over snake_case TOKENS: `revalidate` is not `validate`, and
+    # widening it to a substring would make the rule a no-op.
+    src = f"""
+def test_thing():
+    {call}
+"""
+    assert len(_check(src)) == 1
+
+
+def test_verifier_handed_to_a_runner_is_exempt():
+    # prefect's async CLI tests hand the verifier to a thread runner, so it
+    # never appears in callee position.
+    src = """
+from prefect.testing.cli import invoke_and_assert
+from prefect.utilities.asyncutils import run_sync_in_worker_thread
+
+async def test_create_work_pool_with_empty_name():
+    await run_sync_in_worker_thread(
+        invoke_and_assert,
+        "work-pool create '' -t process",
+        expected_code=1,
+    )
+"""
+    assert _check(src) == []
+
+
+def test_verifier_handed_through_a_module_attribute_is_exempt():
+    src = """
+from prefect.testing import cli
+
+async def test_create_work_pool():
+    await run_sync_in_worker_thread(cli.invoke_and_assert, "work-pool create x")
+"""
+    assert _check(src) == []
+
+
+def test_an_unbound_name_in_the_callable_slot_still_flags():
+    # Nothing in the module imports or defines `assert_ok`, so this is a local
+    # value, not a verifier the reader can follow.
+    src = """
+def test_thing(assert_ok):
+    run_in_thread(assert_ok, "cmd")
+"""
+    assert len(_check(src)) == 1
+
+
+def test_a_local_value_named_like_a_verifier_still_flags():
+    # The bound name has to be module-level: `expected_rows` here is data
+    # computed two lines up, and passing it verifies nothing.
+    src = """
+def test_thing():
+    expected_rows = build_rows()
+    render(expected_rows, style="grid")
+"""
+    assert len(_check(src)) == 1
+
+
+def test_a_verifier_outside_the_callable_slot_still_flags():
+    # Only the first argument is read: every other slot is data.
+    src = """
+from helpers import assert_rows
+
+def test_thing():
+    render(style="grid", rows=assert_rows)
+"""
+    assert len(_check(src)) == 1
+
+
+# --------------------------------------------------------------------------- #
+# FP guard: verification by `raise AssertionError`, not by `assert`. Only 3     #
+# corpus findings, but all 3 first-party — 4.5% of the first-party population.  #
+# --------------------------------------------------------------------------- #
+
+
+def test_match_statement_raising_assertion_error_is_exempt():
+    src = """
+def test_parses_ok():
+    match parse("42"):
+        case Ok():
+            pass
+        case _:
+            raise AssertionError("expected Ok")
+"""
+    assert _check(src) == []
+
+
+def test_bare_raise_of_assertion_error_is_exempt():
+    src = """
+def test_thing():
+    if compute() != 3:
+        raise AssertionError
+"""
+    assert _check(src) == []
+
+
+def test_raising_any_other_exception_is_not_a_verification():
+    # A test that re-raises a domain error states no expectation; only
+    # `AssertionError` is the `raise` spelling of an assertion.
+    src = """
+def test_thing():
+    if not ok():
+        raise ValueError("boom")
+"""
+    assert len(_check(src)) == 1
+
+
+# --------------------------------------------------------------------------- #
+# FP guard: an unconditional `pytest.skip(...)` body — the imperative twin of   #
+# `@pytest.mark.skip`. 32 corpus findings, 1 first-party.                       #
+# --------------------------------------------------------------------------- #
+
+
+def test_unconditional_pytest_skip_body_is_exempt():
+    src = """
+import pytest
+
+async def test_basic_openai_responses_cancel_endpoint():
+    pytest.skip("CANCEL responses is not supported for this provider")
+"""
+    assert _check(src) == []
+
+
+def test_unconditional_pytest_skip_in_a_test_class_is_exempt():
+    src = """
+import pytest
+
+class TestResponsesAPI:
+    async def test_delete_endpoint(self):
+        pytest.skip("DELETE responses is not supported for this provider")
+"""
+    assert _check(src) == []
+
+
+def test_conditional_pytest_skip_still_flags():
+    # The skip is a precondition; everything after it runs and verifies nothing.
+    src = """
+import pytest
+
+def test_thing():
+    if not supported():
+        pytest.skip("unsupported")
+    compute()
+"""
+    assert len(_check(src)) == 1
+
+
+def test_a_skip_that_is_not_pytests_still_flags():
+    src = """
+def test_thing(runner):
+    runner.skip("later")
+"""
+    assert len(_check(src)) == 1
+
+
 def test_fixture_named_test_something_is_exempt():
     # flask/tests/conftest.py defines `test_apps` as a fixture; asserting
     # nothing is exactly right for it.

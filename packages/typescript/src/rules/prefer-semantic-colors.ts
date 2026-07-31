@@ -27,6 +27,36 @@
  *
  * No autofix — use a semantic token, or for charts / standalone pages / 3rd-party
  * config add `// eslint-disable-next-line @sarj/prefer-semantic-colors -- <reason>`.
+ *
+ * MEASURED (2026-07, 25,508 deduped TS/TSX files across 6 first-party repos and
+ * 11 OSS repos). 20,846 findings — by a wide margin the loudest rule in the
+ * plugin. 50 were sampled at two independent seeds and read against source:
+ * **39 true positives, 4 false, 7 arguable — an 8.0% false-positive rate**,
+ * corroborated by a whole-population census of the same classes (8.5%). The
+ * loudness is genuine drift, not noise: `border-neutral-200` occurs 1,167 times
+ * and `text-neutral-500` 943.
+ *
+ * Four guards were added, together suppressing ~1,825 findings (-8.8%) at
+ * approximately zero recall cost; each is documented at its definition with the
+ * class size that justified it. The 14% "arguable" residual is chart/data-viz
+ * series colors (393 findings in chart-named paths) and success/warning states
+ * that shadcn's default token set does not define — both are house-style calls
+ * the fileoverview already answers with "add a disable comment and a reason",
+ * and both were deliberately left firing.
+ *
+ * KNOWN GATE DEFECT, not fixed here. The shipped strict config sets
+ * `requireSemanticTokens: true`, which routes through `hasSemanticTokenSystem`
+ * below. Replaying that gate over all 20,846 findings splits them 9,968 fire /
+ * 10,878 suppressed — but the split tracks naming convention and directory
+ * depth rather than whether a design system exists. One OSS monorepo with a
+ * complete token system is suppressed ENTIRELY, for two independent reasons:
+ * `SEMANTIC_TOKEN_RE` only knows shadcn's vocabulary (that repo names its
+ * tokens `content-default` / `bg-default`), and `MAX_UPWARD_DEPTH = 8` cannot
+ * reach the package root from a 9-deep app-router path. Tailwind v4 CSS-first
+ * setups have no `tailwind.config.*` for `DETECTION_FILES` to find at all. So
+ * at the shipped config, whether this rule runs on a file is partly a function
+ * of how deep it sits. Widening the vocabulary, adding v4 `@theme` detection
+ * and raising the depth budget is a separate change with its own measurement.
  */
 
 import { AST_NODE_TYPES, ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
@@ -48,7 +78,17 @@ const PALETTE =
   "red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|slate|gray|zinc|neutral|stone";
 const COLOR_FN = "rgba?|hsla?|hwb|oklch|oklab|lab|lch|color";
 
-const RAW_PALETTE_RE = new RegExp(`^(?:${COLOR_PREFIXES})-(?:${PALETTE})-\\d{2,3}(?:/\\d{1,3})?$`);
+// The step must be an actual Tailwind palette step. `\d{2,3}` also matched the
+// 1-12 step scales that Radix-style themes use for *semantic* steps, which is
+// the opposite of what this rule wants: measured over 20,846 findings, 777
+// (3.7%) were `text-gray-11` / `text-gray-12` shapes where the step resolves to
+// a theme-aware CSS variable defined once per light/dark block. The rule was
+// also inconsistent about it — sibling steps `gray-9` and `grayA-3` in the very
+// same files never fired, because one digit does not match `\d{2,3}`.
+// Tailwind's default palette has no steps outside this set, so narrowing costs
+// zero recall; a literal hex aliased as `--color-gray-700` still fires.
+const PALETTE_STEP = "50|[1-9]00|950";
+const RAW_PALETTE_RE = new RegExp(`^(?:${COLOR_PREFIXES})-(?:${PALETTE})-(?:${PALETTE_STEP})(?:/\\d{1,3})?$`);
 const ARBITRARY_COLOR_RE = new RegExp(
   `^(?:${COLOR_PREFIXES})-\\[(?:#[0-9a-fA-F]{3,8}|(?:${COLOR_FN})\\([^\\]]*\\))\\]$`,
   "i",
@@ -79,6 +119,17 @@ const STYLE_COLOR_PROPS = new Set<string>([
   "lightingColor",
 ]);
 const RAW_COLOR_VALUE_RE = new RegExp(`#[0-9a-fA-F]{3,8}\\b|\\b(?:${COLOR_FN})\\s*\\(`, "i");
+
+// A color function wrapping a CSS variable IS a semantic token reference. The
+// fileoverview above has always claimed `var(--…)` is allowed; it was not, once
+// wrapped — and wrapping is the only way a Tailwind v3 theme ever writes it
+// (`hsl(var(--primary))`). 63 findings of the 20,846 measured were this shape,
+// every one against code already doing what the rule asks:
+// `unkey/web/apps/dashboard/components/logs/chart/index.tsx:306`
+// (`fill="hsl(var(--chart-selection))"`), plus `hsl(var(--primary))` in
+// documenso and `rgb(var(--content-error))` in dub. This is a straight bug
+// against the documented contract, so the guard costs no recall.
+const CSS_VAR_REFERENCE_RE = /var\(\s*--/;
 
 const STORIES_FILE_RE = /\.stories\.[cm]?[jt]sx?$/i;
 const SEMANTIC_TOKEN_RE = /--(?:background|foreground|primary|secondary|muted|accent|destructive|border|card|popover)\b|(?:bg|text|border)-(?:background|foreground|primary|secondary|muted|accent|destructive|border|card|popover)\b/;
@@ -137,6 +188,54 @@ function jsxElementName(node: TSESTree.JSXElement): string | null {
 function isSvgLikeElementName(name: string): boolean {
   return name === "svg" || SVG_DEFS_CONTAINERS.has(name) || /svg$/i.test(name);
 }
+
+/**
+ * Intrinsic lowercase SVG shape primitives.
+ *
+ * `isInsideSvg` walks ancestors for an `<svg>`-ish element, which misses
+ * artwork under an aliased wrapper: `isSvgLikeElementName` matches `/svg$/i`,
+ * so a component named `<SVGIcon>` is recognised but one named `<…Icon>` is
+ * not, and its `<circle fill="#1877F2">` children fire —
+ * `midday/packages/ui/src/components/icons.tsx:802` is a brand blue on a
+ * `<circle>`. Keying off the element the attribute sits on, rather than off
+ * its ancestry, is both narrower and robust to whatever the wrapper is called.
+ *
+ * A `fill`/`stroke` on a lowercase `<path>` is never a reusable-UI-token
+ * position — real component styling goes through `className` or `style`, which
+ * this guard does not touch — so the recall cost is zero.
+ */
+const SVG_SHAPE_PRIMITIVES = new Set<string>([
+  "circle",
+  "ellipse",
+  "g",
+  "line",
+  "path",
+  "polygon",
+  "polyline",
+  "rect",
+  "stop",
+  "text",
+  "tspan",
+  "use",
+]);
+
+/**
+ * Files rendered by react-email or react-pdf.
+ *
+ * CSS-variable-backed semantic tokens cannot work in either target. `<Tailwind>`
+ * from `@react-email/components` compiles classes to inline styles at render
+ * time, and `hsl(var(--primary))` is undefined in a mail client; react-pdf has
+ * no CSS custom properties at all. Raw palette classes and literal hex are the
+ * correct practice there, so the rule's advice is unfollowable.
+ *
+ * Measured: 985 of the 20,846 findings (4.7%) sit in such templates — e.g.
+ * `dub/packages/email/src/templates/domain-expired.tsx:59` (`text-neutral-800`
+ * inside `<Tailwind>`), `cal.com/packages/emails/src/components/Info.tsx:39`,
+ * `midday/packages/invoice/src/templates/pdf/components/paid-watermark.tsx:33`.
+ * Recall cost is ~0 real defects: token drift cannot occur where tokens cannot
+ * resolve.
+ */
+const EMAIL_OR_PDF_IMPORT_RE = /@react-(?:email|pdf)\//;
 
 const isInsideSvg = (node: TSESTree.Node): boolean => {
   let current: TSESTree.Node | null | undefined = node.parent;
@@ -281,6 +380,7 @@ export default ESLintUtils.RuleCreator(
   defaultOptions: [{}],
   create(context, [options]) {
     if (STORIES_FILE_RE.test(context.filename)) return {};
+    if (EMAIL_OR_PDF_IMPORT_RE.test(context.sourceCode.getText())) return {};
     if (options?.requireSemanticTokens === true && !hasSemanticTokenSystem(context.filename)) {
       return {};
     }
@@ -290,7 +390,7 @@ export default ESLintUtils.RuleCreator(
         const base = tailwindBase(token);
         if (RAW_PALETTE_RE.test(base)) {
           context.report({ node, messageId: "rawPalette", data: { class: token } });
-        } else if (ARBITRARY_COLOR_RE.test(base)) {
+        } else if (ARBITRARY_COLOR_RE.test(base) && !CSS_VAR_REFERENCE_RE.test(base)) {
           context.report({ node, messageId: "arbitraryColor", data: { class: token } });
         }
       }
@@ -334,7 +434,8 @@ export default ESLintUtils.RuleCreator(
       if (
         node.type === AST_NODE_TYPES.Literal &&
         typeof node.value === "string" &&
-        RAW_COLOR_VALUE_RE.test(node.value)
+        RAW_COLOR_VALUE_RE.test(node.value) &&
+        !CSS_VAR_REFERENCE_RE.test(node.value)
       ) {
         context.report({ node, messageId: "inlineColor", data: { value: node.value } });
       }
@@ -371,6 +472,10 @@ export default ESLintUtils.RuleCreator(
       // structural, not UI tokens, so they never fire.
       "JSXAttribute[name.name=/^(fill|stroke|color)$/]"(node: TSESTree.JSXAttribute): void {
         if (node.value?.type !== AST_NODE_TYPES.Literal) return;
+        const owner = node.parent.name;
+        if (owner.type === AST_NODE_TYPES.JSXIdentifier && SVG_SHAPE_PRIMITIVES.has(owner.name)) {
+          return;
+        }
         if (
           typeof node.value.value === "string" &&
           SVG_EXEMPT_COLOR_VALUES.has(node.value.value.toLowerCase())

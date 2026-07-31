@@ -893,6 +893,169 @@ async def sleep(delay: float, ttl: int) -> None:
     assert "`ttl" in diags[0].message
 
 
+# --------------------------------------------------------------------------- #
+# FP-hardening (19-repo sweep): a parameter whose every use is a same-name      #
+# forward belongs to the wrapped API, not to this signature. 1,463 of 2,791     #
+# findings, 13 of 202 first-party.                                              #
+# --------------------------------------------------------------------------- #
+
+
+def test_keyword_forwarded_parameter_is_exempt():
+    # Minimized from airflow/providers/google/cloud/hooks/analytics_admin.py:73:
+    # the google.api_core `retry` / `timeout` / `metadata` triple handed straight
+    # to a gapic client, which documents float seconds.
+    src = """
+def list_accounts(self, retry: Retry = DEFAULT, timeout: float | None = None) -> Pager:
+    return self.get_conn().list_accounts(request={}, retry=retry, timeout=timeout)
+"""
+    assert _check(src) == []
+
+
+def test_forward_through_a_nested_helper_is_exempt():
+    src = """
+def consume(self, poll_timeout: float = 1.0) -> list[Message]:
+    consumer = self.get_consumer()
+    return consumer.consume(num_messages=10, timeout=1) or consumer.poll(poll_timeout=poll_timeout)
+"""
+    assert _check(src) == []
+
+
+def test_constructor_storing_the_parameter_verbatim_is_exempt():
+    # The field's own annotation is a separate AnnAssign this rule still sees,
+    # so the constructor is not where the unit is chosen.
+    src = """
+class Waiter:
+    def __init__(self, waiter_delay: int = 30) -> None:
+        self.waiter_delay = waiter_delay
+"""
+    assert _check(src) == []
+
+
+def test_declared_field_of_a_forwarding_constructor_still_fires():
+    src = """
+class Waiter:
+    waiter_delay: int = 30
+
+    def __init__(self, waiter_delay: int = 30) -> None:
+        self.waiter_delay = waiter_delay
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert diags[0].line == 3
+
+
+def test_arithmetic_on_a_forwarded_parameter_still_fires():
+    # Minimized from prefect/src/prefect/server/orchestration/rules.py:870 — the
+    # body owns the arithmetic, so it owns the unit.
+    src = """
+def set_retry(self, delay_seconds: float) -> None:
+    self.state.scheduled_time = now("UTC") + timedelta(seconds=delay_seconds)
+"""
+    assert len(_check(src)) == 1
+
+
+def test_forward_wrapped_in_arithmetic_still_fires():
+    src = """
+def call(self, timeout: float) -> None:
+    self.client.call(timeout=timeout * 2)
+"""
+    assert len(_check(src)) == 1
+
+
+def test_comparison_on_the_parameter_still_fires():
+    src = """
+def call(self, timeout: float) -> None:
+    if timeout > 0:
+        self.client.call(timeout=timeout)
+"""
+    assert len(_check(src)) == 1
+
+
+def test_forwarding_under_a_different_keyword_still_fires():
+    src = """
+def call(self, poll_interval: float) -> None:
+    self.client.wait(delay=poll_interval)
+"""
+    assert len(_check(src)) == 1
+
+
+def test_positional_forward_still_fires():
+    src = """
+def call(self, retry_delay: float) -> None:
+    self.client.wait(retry_delay)
+"""
+    assert len(_check(src)) == 1
+
+
+def test_store_to_a_differently_named_attribute_still_fires():
+    src = """
+class C:
+    def __init__(self, timeout_seconds: float) -> None:
+        self._deadline = timeout_seconds
+"""
+    assert len(_check(src)) == 1
+
+
+def test_unused_parameter_is_not_a_forward():
+    src = "def schedule(self, timeout_seconds: int) -> None: ...\n"
+    assert len(_check(src)) == 1
+
+
+def test_forwarding_only_exempts_the_forwarded_parameter():
+    src = """
+def submit(self, timeout: float, retry_delay: float) -> None:
+    self.client.call(timeout=timeout, delay=retry_delay)
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "`retry_delay" in diags[0].message
+
+
+# --------------------------------------------------------------------------- #
+# FP-hardening (19-repo sweep): an annotation that already admits `timedelta`   #
+# cannot carry the defect. 20 of 2,791 findings, recall cost zero.              #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        "float | timedelta",
+        "timedelta | float",
+        "float | timedelta | None",
+        "int | datetime.timedelta",
+        "Optional[float | timedelta]",
+        "Annotated[float | timedelta, Field()]",
+    ],
+)
+def test_union_admitting_timedelta_is_exempt(annotation: str):
+    # Minimized from airflow/task-sdk/src/airflow/sdk/bases/sensor.py:145 —
+    # `_coerce_poke_interval(poke_interval: float | timedelta) -> timedelta` is
+    # the function whose whole job is the conversion the rule asks for.
+    src = f"def _coerce_poke_interval(poke_interval: {annotation}) -> timedelta: ...\n"
+    assert _check(src) == []
+
+
+def test_union_admitting_timedelta_as_a_field_is_exempt():
+    src = "class C:\n    timeout: float | timedelta = 60.0\n"
+    assert _check(src) == []
+
+
+def test_union_of_numeric_without_timedelta_still_fires():
+    src = "def f(poke_interval: int | float | None = None) -> None: ...\n"
+    assert len(_check(src)) == 1
+
+
+def test_a_timedelta_named_container_does_not_exempt():
+    """Flag a numeric duration alongside an unrelated `timedelta` mention.
+
+    Only a union/Optional/Annotated MEMBER counts; `timedelta` appearing as a
+    container's element type is not the parameter's own type.
+    """
+    src = "def f(timeout_seconds: int, schedule: list[timedelta]) -> None: ...\n"
+    assert len(_check(src)) == 1
+
+
 _GENERATED_PROBE = """
 def f(timeout_seconds: int = 30) -> None:
     pass

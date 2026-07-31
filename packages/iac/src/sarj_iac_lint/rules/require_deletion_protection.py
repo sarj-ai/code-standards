@@ -24,6 +24,28 @@ Only resources that actually expose a `deletion_protection` argument are checked
 (`PROTECTED_TYPES`). Buckets, secrets, and registries expose no such argument
 and are deliberately absent — SARJ203 covers those via `prevent_destroy`.
 
+Two curation corrections (2026-07)
+----------------------------------
+A 21-finding sample of the rule's 24 findings over 256 deduped `.tf` files read
+TP 8 / FP 9 / arguable 4 — 42.9% wrong, in exactly two classes.
+
+* **BigQuery views are not tables.** 9 of the 24 findings were
+  `google_bigquery_table` blocks, and every one but a single genuine events table
+  carried a `view { query = ... }` block — hand-verified through `_hcl.blocks()`.
+  A BigQuery view stores no data, so there is nothing for deletion protection to
+  protect; worse, the provider *requires* `deletion_protection = false` on a view
+  whose query can change, because updating the query replaces the resource and the
+  replace fails at apply while protection is on. Taking this rule's advice breaks
+  the stack. `google_bigquery_table` blocks with a direct `view` or
+  `materialized_view` child are skipped; the one real table is retained, so recall
+  cost is zero.
+* **`google_redis_instance` does not expose the argument at all** — 4 of the 24.
+  That contradicts this rule's own stated curation criterion two paragraphs up.
+  The provider puts `deletion_protection_enabled` on `google_redis_cluster`, not
+  on `google_redis_instance`, so the advice was unfollowable; and a Memorystore
+  cache is not a system of record in the first place. It is removed from
+  `PROTECTED_TYPES`.
+
 Reads structure, not lines
 --------------------------
 The rule resolves the resource through `_hcl.blocks()` and consults only that
@@ -115,7 +137,10 @@ PROTECTED_TYPES = frozenset(
         "google_spanner_database",
         "google_alloydb_cluster",
         "google_bigtable_instance",
-        "google_redis_instance",
+        # `google_redis_instance` deliberately absent: the provider exposes no
+        # `deletion_protection` argument on it (the flag lives on
+        # `google_redis_cluster` as `deletion_protection_enabled`), so the
+        # diagnostic named a fix that cannot be written.
         # AWS
         "aws_db_instance",
         "aws_rds_cluster",
@@ -140,6 +165,12 @@ PROTECTED_TYPES = frozenset(
 _RESOURCE = "resource"
 _LIFECYCLE = "lifecycle"
 _PREVENT_DESTROY = "prevent_destroy"
+
+# A `google_bigquery_table` carrying one of these children is a view, not a table:
+# it stores no rows, and the provider requires `deletion_protection = false` for a
+# view whose query can be updated, since the update is a replace.
+_BIGQUERY_TABLE = "google_bigquery_table"
+_VIEW_CHILDREN = ("view", "materialized_view")
 
 # Both spellings are legitimate *instance-level* argument names across providers.
 _PROTECTION_ATTRS = ("deletion_protection", "deletion_protection_enabled")
@@ -172,6 +203,8 @@ class RequireDeletionProtection(Rule):
         for block in blocks(source):
             if block.type != _RESOURCE or not block.labels or block.labels[0] not in PROTECTED_TYPES:
                 continue
+            if _is_bigquery_view(block):
+                continue
             detail = _violation(block)
             if detail is None:
                 continue
@@ -190,6 +223,22 @@ class RequireDeletionProtection(Rule):
                 )
             )
         return diags
+
+
+def _is_bigquery_view(block: Block) -> bool:
+    """Report whether `block` is a `google_bigquery_table` that declares a view.
+
+    Only a **direct** `view` / `materialized_view` child counts, for the same
+    reason `_violation` reads only direct attributes: a nested block elsewhere in
+    the resource says nothing about what the resource is.
+
+    Returns:
+        True when the resource is a BigQuery view rather than a stored table.
+
+    """
+    if block.labels[0] != _BIGQUERY_TABLE:
+        return False
+    return any(block.child(name) is not None for name in _VIEW_CHILDREN)
 
 
 def _violation(block: Block) -> str | None:

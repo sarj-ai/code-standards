@@ -41,6 +41,61 @@
  *   - A `catch` handler guaranteed to re-throw (its body's last statement is a
  *     `throw`) makes the wide body uniform error-context wrapping, not an
  *     over-broad swallow — exempt.
+ *
+ * ## Terminal error-propagating boundary (measured)
+ *
+ * A seeded random read of 45 of the rule's 801 findings across 17 repositories
+ * (6 first-party, plus zod, trpc, dub, openstatus, formbricks, documenso, unkey,
+ * midday, papermark, cal.com, hono) put the false-positive rate at 77.8%, and
+ * all 35 false positives were a single class: the `try` is the *tail* of the
+ * function and the handler converts any failure inside it to one uniform error
+ * result — `catch (e) { return handleAndReturnErrorResponse(e) }`,
+ * `catch (e) { toConnectError(e) }`,
+ * `catch (e) { logger.error(...); return err({ type: "internal_error" }) }`.
+ * Nothing can be mis-attributed, because the handler never asks which statement
+ * threw. That is exactly the reasoning the re-throw exemption above already
+ * applies; it simply stopped at `throw` and never considered the HTTP / RPC /
+ * `Result`-type equivalent of re-throwing. Representative:
+ * `dub/apps/web/app/(ee)/api/cron/fx-rates/route.ts:12`,
+ * `openstatus/apps/server/src/routes/rpc/handlers/maintenance/index.ts:102`.
+ *
+ * The exemption therefore requires ALL of:
+ *
+ *   a. the `try` is terminal — nothing in the enclosing function runs after it
+ *      (it is last in its block, and every enclosing block up to the function
+ *      boundary is likewise last; a loop or `switch` in between disqualifies);
+ *   b. the handler's last statement is a `return`, a `throw`, or a bare call —
+ *      the handler ends by handing the failure off, it does not fall through
+ *      into more work;
+ *   c. the handler mentions the caught binding, so the failure is actually
+ *      reported rather than discarded;
+ *   d. the handler never returns a bare `null` / `undefined` / `false` / `[]` /
+ *      `{}` — that is the success-shaped swallow the rule exists to find, and it
+ *      turns a fat body into "some unknown one of these five operations failed,
+ *      and the caller sees an empty result".
+ *
+ * Measured over the same corpus: 801 -> 175 findings (626 suppressed, 78.2%).
+ * The surviving 175 are a strict subset of the original 801 — the exemption
+ * introduces no new reports anywhere in the corpus. Recall cost was zero against
+ * the read sample: each of its true positives survives via a different clause,
+ * and each is pinned as an `invalid` case below —
+ * `midday/apps/api/src/rest/routers/apps/slack/messages.ts:81`, a handler that
+ * inspects the error and falls back to another transport (fails b);
+ * `midday/packages/banking/src/providers/enablebanking/enablebanking-api.ts:404`,
+ * a handler that resets state before the function retries with another strategy,
+ * so the `try` is not terminal (fails a); and
+ * `cal.com/packages/app-store/salesforce/lib/CrmService.ts:550`, a nine-statement
+ * body whose handler logs and returns `[]`, silently turning a configuration bug
+ * into "no contacts found" (fails d). All three still report after the change.
+ *
+ * ## On the threshold — do not reach for it
+ *
+ * `MAX_TRY_BODY_STATEMENTS` is 3 and should stay 3. Body-size counts over all
+ * 801 findings were 4 -> 228, 5 -> 121, 6 -> 112, 7 -> 78, 8 -> 53, tailing to
+ * 27, median 6. Raising the threshold to 5 removes 44% of the volume *uniformly*
+ * across true and false positives — it trades recall for quiet without making
+ * the rule any more correct. The shape of the handler, not the size of the body,
+ * is what separates the two populations.
  */
 
 import {
@@ -122,12 +177,14 @@ function isPureNew(node: TSESTree.NewExpression): boolean {
 }
 
 /**
- * Walk `stmt`'s same-scope subtree (not descending into nested function/arrow
- * bodies) until `predicate` matches a node.
+ * Walk `stmt`'s subtree until `predicate` matches a node. By default the walk
+ * stays in the same scope (it does not descend into nested function/arrow
+ * bodies); pass `descendIntoFunctions` to visit those too.
  */
 function subtreeMatches(
   stmt: TSESTree.Node,
   predicate: (node: TSESTree.Node) => boolean,
+  descendIntoFunctions = false,
 ): boolean {
   let found = false;
 
@@ -143,7 +200,11 @@ function subtreeMatches(
       if (key === "parent") {
         continue;
       }
-      if (NESTED_FUNCTION_TYPES.has(current.type) && key === "body") {
+      if (
+        !descendIntoFunctions &&
+        NESTED_FUNCTION_TYPES.has(current.type) &&
+        key === "body"
+      ) {
         continue;
       }
       const value = (current as unknown as Record<string, unknown>)[key];
@@ -241,6 +302,215 @@ function handlerRethrows(handler: TSESTree.CatchClause | null): boolean {
   return last !== undefined && last.type === AST_NODE_TYPES.ThrowStatement;
 }
 
+/** Statements that hand control straight through to their own parent. */
+const PASS_THROUGH_PARENTS = new Set<AST_NODE_TYPES>([
+  AST_NODE_TYPES.IfStatement,
+  AST_NODE_TYPES.TryStatement,
+  AST_NODE_TYPES.CatchClause,
+  AST_NODE_TYPES.LabeledStatement,
+]);
+
+/**
+ * Clause (a): nothing in the enclosing function runs after `node`. The node must
+ * be last in its block, and every enclosing block must itself be last, up to the
+ * function boundary. A loop, `switch`, or any other construct in between means
+ * the statement can be followed by more work, so it is not terminal.
+ */
+function isTerminalInFunction(node: TSESTree.Node): boolean {
+  let current: TSESTree.Node = node;
+  let parent: TSESTree.Node | undefined = current.parent;
+
+  while (parent !== undefined) {
+    if (parent.type === AST_NODE_TYPES.BlockStatement) {
+      if (parent.body[parent.body.length - 1] !== current) {
+        return false;
+      }
+    } else if (parent.type === AST_NODE_TYPES.Program) {
+      return parent.body[parent.body.length - 1] === current;
+    } else if (NESTED_FUNCTION_TYPES.has(parent.type)) {
+      return true;
+    } else if (!PASS_THROUGH_PARENTS.has(parent.type)) {
+      return false;
+    }
+    current = parent;
+    parent = current.parent;
+  }
+  return false;
+}
+
+/** `await f()` unwrapped to `f()`; everything else unwrapped as usual. */
+function unwrapAwait(expr: TSESTree.Expression): TSESTree.Expression {
+  const inner = unwrap(expr);
+  return inner.type === AST_NODE_TYPES.AwaitExpression
+    ? unwrap(inner.argument)
+    : inner;
+}
+
+/**
+ * Clause (b): the handler ends by handing the failure off — a `return`, a
+ * `throw`, or a bare call (`errorHandler(e, res);`). A handler that ends on
+ * anything else (a branch, an assignment, a loop) is doing recovery work whose
+ * correctness depends on which statement threw.
+ */
+function handlerEndsByHandingOff(handler: TSESTree.CatchClause): boolean {
+  const body = handler.body.body;
+  const last = body[body.length - 1];
+  if (last === undefined) {
+    return false;
+  }
+  if (
+    last.type === AST_NODE_TYPES.ReturnStatement ||
+    last.type === AST_NODE_TYPES.ThrowStatement
+  ) {
+    return true;
+  }
+  return (
+    last.type === AST_NODE_TYPES.ExpressionStatement &&
+    unwrapAwait(last.expression).type === AST_NODE_TYPES.CallExpression
+  );
+}
+
+/**
+ * Every identifier bound by a `catch` parameter pattern. Type annotations are
+ * skipped — `catch (e: Error)` binds `e`, not `Error`, and counting the type
+ * would let a handler that merely constructs an `Error` pass clause (c).
+ */
+function collectBindingNames(
+  pattern: TSESTree.Node,
+  names: Set<string>,
+): void {
+  if (pattern.type === AST_NODE_TYPES.Identifier) {
+    names.add(pattern.name);
+    return;
+  }
+  if (pattern.type === AST_NODE_TYPES.ObjectPattern) {
+    for (const property of pattern.properties) {
+      collectBindingNames(
+        property.type === AST_NODE_TYPES.RestElement
+          ? property.argument
+          : property.value,
+        names,
+      );
+    }
+    return;
+  }
+  if (pattern.type === AST_NODE_TYPES.ArrayPattern) {
+    for (const element of pattern.elements) {
+      if (element !== null) {
+        collectBindingNames(element, names);
+      }
+    }
+    return;
+  }
+  if (
+    pattern.type === AST_NODE_TYPES.AssignmentPattern ||
+    pattern.type === AST_NODE_TYPES.RestElement
+  ) {
+    collectBindingNames(
+      pattern.type === AST_NODE_TYPES.AssignmentPattern
+        ? pattern.left
+        : pattern.argument,
+      names,
+    );
+  }
+}
+
+function caughtBindingNames(handler: TSESTree.CatchClause): ReadonlySet<string> {
+  const names = new Set<string>();
+  if (handler.param !== null) {
+    collectBindingNames(handler.param, names);
+  }
+  return names;
+}
+
+/** A member property / object key spelled `x` is not a reference to `x`. */
+function isPropertyName(node: TSESTree.Identifier): boolean {
+  const parent = node.parent;
+  if (parent.type === AST_NODE_TYPES.MemberExpression) {
+    return parent.property === node && !parent.computed;
+  }
+  if (parent.type === AST_NODE_TYPES.Property) {
+    return parent.key === node && !parent.computed;
+  }
+  return false;
+}
+
+/**
+ * Clause (c): the handler references the caught error somewhere — it reports the
+ * failure rather than discarding it. Nested callbacks count; a handler that logs
+ * the error from inside a `.then()` still reports it.
+ */
+function handlerMentionsCaughtBinding(handler: TSESTree.CatchClause): boolean {
+  const names = caughtBindingNames(handler);
+  if (names.size === 0) {
+    return false;
+  }
+  return subtreeMatches(
+    handler.body,
+    (n) =>
+      n.type === AST_NODE_TYPES.Identifier &&
+      names.has(n.name) &&
+      !isPropertyName(n),
+    true,
+  );
+}
+
+/** `null`, `undefined`, `false`, `void 0`, `[]`, `{}` — a success-shaped value. */
+function isSuccessShapedValue(expr: TSESTree.Expression): boolean {
+  let current: TSESTree.Expression = expr;
+  while (
+    current.type === AST_NODE_TYPES.TSAsExpression ||
+    current.type === AST_NODE_TYPES.TSNonNullExpression
+  ) {
+    current = current.expression;
+  }
+  if (current.type === AST_NODE_TYPES.Literal) {
+    return current.value === null || current.value === false;
+  }
+  if (current.type === AST_NODE_TYPES.Identifier) {
+    return current.name === "undefined";
+  }
+  if (current.type === AST_NODE_TYPES.UnaryExpression) {
+    return current.operator === "void";
+  }
+  if (current.type === AST_NODE_TYPES.ArrayExpression) {
+    return current.elements.length === 0;
+  }
+  if (current.type === AST_NODE_TYPES.ObjectExpression) {
+    return current.properties.length === 0;
+  }
+  return false;
+}
+
+/**
+ * Clause (d): the handler fabricates a success-shaped result. This is the shape
+ * the rule exists for — an unknown one of N operations failed and the caller is
+ * told "nothing found".
+ */
+const handlerReturnsSuccessShaped = (handler: TSESTree.CatchClause): boolean =>
+  subtreeMatches(
+    handler.body,
+    (n) =>
+      n.type === AST_NODE_TYPES.ReturnStatement &&
+      n.argument !== null &&
+      isSuccessShapedValue(n.argument),
+  );
+
+/**
+ * The terminal error-propagating boundary exemption. See the file overview for
+ * the measurement and for what each clause is holding back.
+ */
+function isTerminalErrorBoundary(node: TSESTree.TryStatement): boolean {
+  const handler = node.handler;
+  return (
+    handler !== null &&
+    isTerminalInFunction(node) &&
+    handlerEndsByHandingOff(handler) &&
+    handlerMentionsCaughtBinding(handler) &&
+    !handlerReturnsSuccessShaped(handler)
+  );
+}
+
 export default ESLintUtils.RuleCreator(
   (name) =>
     `https://github.com/sarj-ai/standards/blob/main/packages/typescript/src/rules/${name}.ts`,
@@ -272,6 +542,9 @@ export default ESLintUtils.RuleCreator(
           return;
         }
         if (handlerRethrows(node.handler)) {
+          return;
+        }
+        if (isTerminalErrorBoundary(node)) {
           return;
         }
 

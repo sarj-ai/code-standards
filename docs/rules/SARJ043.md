@@ -22,10 +22,18 @@ its subtree:
   token, which covers `pytest.deprecated_call(...)`, pytest 8.4's
   `pytest.RaisesGroup(pytest.RaisesExc(...))`, and project-local wrappers such
   as pydantic's `pytest_raises_user_error_for_undefined_type(...)`,
-* a call to anything named like an assertion helper — `assert*`, `_assert*`,
-  `self.assertEqual`, `expect*`, `verify*`, `validate*` — or any attribute chain
-  passing through `.expect` (the fluent style used by the LiveKit test harness,
+* a call to anything named like an assertion helper — any snake_case name
+  *carrying* the token `assert`, `expect`, `verify` or `validate`, whether it
+  leads (`assert_matches`, `self.assertEqual`, `_assert_default`) or not
+  (`invoke_and_assert`, `run_and_verify`) — or any attribute chain passing
+  through `.expect` (the fluent style used by the LiveKit test harness,
   `result.expect.contains_function_call(...)`),
+* a **verifier handed to a runner** — a bare reference to an imported or
+  module-level callable, in the callable slot of a call, whose name reads as an
+  assertion helper: `run_sync_in_worker_thread(invoke_and_assert, "...",
+  expected_code=1)`,
+* a `raise AssertionError(...)`, the `match`-statement spelling of a failed
+  expectation (`case _: raise AssertionError(...)`),
 * a call to `pytest.fail(...)`,
 * a call to a **function defined in the same module that itself verifies**,
   directly or through another local helper,
@@ -42,10 +50,18 @@ deliberately searches the whole subtree rather than the top level, because the
 inside a nested function that a top-level-only scan would miss.
 
 Even so, this rule cannot see across a call boundary into a helper defined in
-another module. A test whose only verification is a project-specific assertion
-helper imported from elsewhere will be flagged; `# sarj-noqa: SARJ043` is the
-intended escape, and the residual false-positive rate is the reason the message
-asks rather than asserts.
+another module, and that is its stated, accepted residual. A test whose only
+verification is a project-specific assertion helper imported from elsewhere, or
+inherited from a base test case, will be flagged: saleor's
+`get_graphql_content(...)`, which raises on a GraphQL error (37 occurrences),
+django's inherited `self.check_html(...)` (144), an AWS-CDK-style
+`assertions.Template.has_resource_properties(...)`. Each was examined during the
+audit and every candidate predicate for it — "any call to an imported name", "any
+call on `self`" — is far broader than the shape and would take the rule's
+population with it. `# sarj-noqa: SARJ043` is the intended escape, and this
+residual is the reason the message asks rather than asserts. A
+screenshot/visual-regression test, whose verification happens outside Python
+altogether, is the same case and too rare to be worth a predicate.
 
 Deliberately NOT flagged:
 
@@ -110,6 +126,45 @@ Deliberately NOT flagged:
   collected cannot have a weak assertion, so flagging it is noise; this is the
   one rule where the distinction matters, because "no assertions" is definitional
   for a CLI script.
+
+## 2026-07 false-positive audit
+
+Over a 12-repo corpus: **2,113 findings**, 66 of them first-party. A seeded
+random sample of 50 read against source put the false-positive rate at **34%**.
+The three guards below removed **460 findings (21.8%)** and 5 of the 66
+first-party ones, taking the rule to **1,653**.
+
+The sample contained **no MISSED weak test** — `pytest.raises`/`warns`,
+`self.assert*`, `assert_called_*` and same-module helpers were all already
+handled. 23 of the 50 were "this call does not raise" tests, correctly counted
+arguable rather than wrong: the `# sarj-noqa` escape the message already offers
+is the answer for those.
+
+* **An assertion helper whose name carries the token but does not lead with it.**
+  The largest false-positive class, **8 of the 50 read**. The name pattern used to
+  be anchored, so a project's primary CLI-test verifier — prefect's
+  `invoke_and_assert(...)`, which takes `expected_code=` and
+  `expected_output_contains=` — was invisible to a rule that recognised
+  `assert_invoke` perfectly well. Searching for the token anywhere in the
+  snake_case name (326 findings), and reading the callable slot of a call as well
+  as its callee (a further 113), removed **439 of 2,113 (20.8%)** and only **1 of
+  the 66 first-party** ones. `invoke_and_assert` accounts for 423 of the 439 by
+  itself (`prefect/tests/cli/test_sdk.py:134` and `:487`,
+  `prefect/tests/cli/test_work_pool.py:157`,
+  `prefect/tests/cli/test_flow_run.py:1096`).
+* **Verification by `raise`, not by `assert`.** `match result: case Ok(): pass;
+  case _: raise AssertionError(...)` states an expectation as precisely as an
+  `assert` does. Only **3 findings**, but ALL THREE are first-party — 4.5% of the
+  entire first-party population, and unambiguously wrong before.
+* **An unconditional `pytest.skip(...)` body.** The rule exempted the declarative
+  `@pytest.mark.skip` but not the imperative form, although a body of
+  `pytest.skip("CANCEL responses is not supported...")` asserts nothing for
+  exactly the reason the decorator does (four such methods in
+  `litellm/tests/llm_responses_api_testing/test_google_ai_studio_responses_api.py`).
+  31 flagged tests corpus-wide call `pytest.skip`; requiring the call to stand
+  ALONE as a statement of the body exempts **18** of them (1 first-party) and
+  leaves the other 13 — a conditional skip is a precondition, and everything after
+  it runs and verifies nothing.
 
 ## Implementation notes
 

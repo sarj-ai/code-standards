@@ -662,3 +662,77 @@ def test_a_pathologically_long_chain_does_not_exhaust_the_stack():
     """
     src = 'x = "a" + ' + " + ".join(f"n{i}" for i in range(5000))
     assert len(_check(src, "m.py")) == 1
+
+
+# --------------------------------------------------------------------------- #
+# The 19-repo re-read: 18% FP over 3,401 findings, in two guarded classes.     #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param('pattern = re.compile(re.escape(uri) + r".*")', id="dot-star"),
+        pytest.param(r'found = re.search(r"\b" + re.escape(token) + r"\b", text)', id="word-boundary"),
+        pytest.param(r'pattern = prefix + r"\d+"', id="digit-class"),
+    ],
+)
+def test_a_concatenated_regex_without_braces_is_still_reported(source: str):
+    r"""Recorded on purpose: a regex-metacharacter guard was built and reverted.
+
+    It suppressed 38 findings of 3,401 (1 first-party) and it silenced
+    `test_fires_when_the_braces_are_removed`, the upper-bound test that pins
+    the `{`/`}` guard as narrow. `rf"\\s*{re.escape(key)}\\s*"` is ordinary
+    Python, so a concatenated regex is not a shape where the rewrite is
+    unavailable — only one an author may prefer. See the module docstring.
+    """
+    assert len(_check(source)) == 1
+
+
+def test_a_comment_between_operands_is_not_deletable():
+    """The f-string rewrite would delete the comments the chain is annotated with.
+
+    `prefect/tests/cli/test_deploy.py:3055` and `:6372` interleave
+    `# Enter invalid interval` between the operands of one chain. 58 hits of
+    3,401, 1 first-party.
+    """
+    source = """
+        keystrokes = (
+            "n"  # Enter invalid interval
+            + readchar.key.ENTER
+            + "abc"  # Enter valid interval
+            + readchar.key.ENTER
+        )
+    """
+    assert _check(source) == []
+
+
+def test_a_multi_line_chain_without_a_comment_still_fires():
+    """The boundary: the guard is a COMMENT inside the span, not multi-line-ness."""
+    source = """
+        keystrokes = (
+            "n"
+            + readchar.key.ENTER
+            + "abc"
+        )
+    """
+    assert len(_check(source)) == 1
+
+
+def test_a_trailing_comment_on_a_single_line_chain_still_fires():
+    """The boundary: a comment after a one-line chain annotates the statement.
+
+    Nothing is interleaved between operands, so the f-string rewrite keeps it.
+    """
+    assert len(_check('msg = "user " + name  # who failed')) == 1
+
+
+def test_a_nested_quoted_call_is_still_reported():
+    """Recorded on purpose: the rejected third guard would have silenced this.
+
+    `"django.db.models" + path.removeprefix("django.db.models.fields")` costs 6
+    of 74 first-party true positives to suppress — the same price at which the
+    broader blob-glue spelling was already turned down. See the module
+    docstring.
+    """
+    assert len(_check('path = "django.db.models" + tail.removeprefix("django.db.models.fields")')) == 1

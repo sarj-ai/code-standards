@@ -20,8 +20,10 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# Names that verify something, however the project spells them.
-_ASSERTION_NAME_RE = re.compile(r"^_?(assert|expect|verify|validate)", re.IGNORECASE)
+# Names that verify something, however the project spells them. A snake_case
+# TOKEN search, not a prefix: `invoke_and_assert` is prefect's primary CLI-test
+# verifier and an anchored pattern could not see it.
+_ASSERTION_NAME_RE = re.compile(r"(^|_)(assert|expect|verify|validate)", re.IGNORECASE)
 
 # `raises`/`warns` as a token anywhere in the name: `pytest.deprecated_call`,
 # `pytest.RaisesGroup`, `pytest.RaisesExc`, and project wrappers such as
@@ -36,6 +38,15 @@ _TEST_PREFIX = "test_"
 _FLUENT_ATTRS = frozenset({"expect"})
 
 _SKIP_MARKERS = frozenset({"skip", "skipif", "xfail"})
+
+# The imperative twin of `@pytest.mark.skip`: `pytest.skip("...")` standing
+# alone in the body aborts the test before anything could be asserted.
+_PYTEST = "pytest"
+_SKIP_CALL = "skip"
+
+# `raise AssertionError(...)` states an expectation exactly as `assert` does; it
+# is how a `match` statement spells "no other case is acceptable".
+_ASSERTION_ERROR = "AssertionError"
 
 _FIXTURE = "fixture"
 
@@ -91,15 +102,65 @@ def _is_collected_module(path: Path) -> bool:
 
 def _unverifying_tests(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
     defined_here = _function_defs(tree)
-    verifying_helpers = _verifying_local_names(defined_here)
+    module_callables = _module_level_callables(tree, defined_here)
+    verifying_helpers = _verifying_local_names(defined_here, module_callables)
     hits: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
     for node in _collectible_tests(tree):
         if _is_skipped(node) or _is_fixture(node) or _is_placeholder(node) or uses_benchmark_fixture(node):
             continue
-        if _verifies_something(node) or _delegates_verification(node, defined_here, verifying_helpers):
+        if _skips_at_runtime(node):
+            continue
+        if _verifies_something(node, module_callables) or _delegates_verification(
+            node, defined_here, verifying_helpers
+        ):
             continue
         hits.append(node)
     return hits
+
+
+def _module_level_callables(
+    tree: ast.Module, defined_here: dict[str, ast.FunctionDef | ast.AsyncFunctionDef]
+) -> frozenset[str]:
+    """Collect the names bound by an import or a `def` at module scope.
+
+    Used to tell a callable handed to a runner from a local variable that
+    merely reads like one: `run_sync_in_worker_thread(invoke_and_assert, ...)`
+    passes an imported verifier, while `compare(expected_value, actual)` passes
+    a value computed two lines up.
+
+    Returns:
+        Every name this module imports or defines as a function.
+
+    """
+    imported = {
+        alias.asname or alias.name.split(".")[0]
+        for node in nodes(tree, ast.Import, ast.ImportFrom)
+        for alias in node.names
+    }
+    return frozenset(imported | set(defined_here))
+
+
+def _skips_at_runtime(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Report whether the body unconditionally calls `pytest.skip(...)`.
+
+    The imperative twin of `@pytest.mark.skip`, and exempt for the same reason:
+    everything after it is unreachable, so there was never anything to assert.
+    Only a statement sitting directly in the body counts — a `pytest.skip()`
+    guarded by an `if` leaves the rest of the test running.
+
+    Returns:
+        True when the test aborts itself before it can verify anything.
+
+    """
+    return any(
+        isinstance(stmt, ast.Expr)
+        and isinstance(call := stmt.value, ast.Call)
+        and isinstance(func := call.func, ast.Attribute)
+        and func.attr == _SKIP_CALL
+        and isinstance(func.value, ast.Name)
+        and func.value.id == _PYTEST
+        for stmt in node.body
+    )
 
 
 def _function_defs(tree: ast.Module) -> dict[str, ast.FunctionDef | ast.AsyncFunctionDef]:
@@ -110,9 +171,20 @@ def _function_defs(tree: ast.Module) -> dict[str, ast.FunctionDef | ast.AsyncFun
     return defs
 
 
-def _verifying_local_names(defined_here: dict[str, ast.FunctionDef | ast.AsyncFunctionDef]) -> frozenset[str]:
-    """Find the same-module functions that verify, directly or by delegation."""
-    verifying = {name for name, node in defined_here.items() if _verifies_something(node)}
+def _verifying_local_names(
+    defined_here: dict[str, ast.FunctionDef | ast.AsyncFunctionDef],
+    module_callables: frozenset[str],
+) -> frozenset[str]:
+    """Find the same-module functions that verify, directly or by delegation.
+
+    Transitive because assertion helpers stack: black's `compare_results` calls
+    `check_ast_equivalence`, and only the latter holds the `assert`.
+
+    Returns:
+        Every local function name whose body reaches a verification.
+
+    """
+    verifying = {name for name, node in defined_here.items() if _verifies_something(node, module_callables)}
     pending = {name: _called_names(node) for name, node in defined_here.items() if name not in verifying}
     while True:
         promoted = {name for name, called in pending.items() if called & verifying}
@@ -160,19 +232,66 @@ def _is_inert(stmt: ast.stmt) -> bool:
     return isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant)
 
 
-def _verifies_something(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+def _verifies_something(node: ast.FunctionDef | ast.AsyncFunctionDef, module_callables: frozenset[str]) -> bool:
     # Search the whole subtree, nested functions included: the common
     # `async def _run(): assert ...` + `asyncio.run(_run())` wrapper keeps its
     # assertions one scope down from the test body.
-    return any(_is_verification(child) for child in walk(node))
+    return any(_is_verification(child, module_callables) for child in walk(node))
 
 
-def _is_verification(child: ast.AST) -> bool:
+def _is_verification(child: ast.AST, module_callables: frozenset[str]) -> bool:
     if isinstance(child, ast.Assert):
         return True
+    if isinstance(child, ast.Raise):
+        return _raises_assertion_error(child)
     if isinstance(child, ast.Call):
-        return _names_verification(child.func)
+        return _names_verification(child.func) or _hands_a_verifier_to_a_runner(child, module_callables)
     return False
+
+
+def _raises_assertion_error(node: ast.Raise) -> bool:
+    """Report whether the statement raises `AssertionError`.
+
+    `case _: raise AssertionError("unexpected variant")` is the `match`
+    statement's way of stating an expectation; refusing to count it flagged
+    tests that verify strictly more precisely than an `assert` would.
+
+    Returns:
+        True when the raised exception is an `AssertionError`.
+
+    """
+    exc = node.exc.func if isinstance(node.exc, ast.Call) else node.exc
+    match exc:
+        case ast.Name(id=name) | ast.Attribute(attr=name):
+            return name == _ASSERTION_ERROR
+        case _:
+            return False
+
+
+def _hands_a_verifier_to_a_runner(call: ast.Call, module_callables: frozenset[str]) -> bool:
+    """Report whether the call passes an assertion helper as a bare callable.
+
+    `run_sync_in_worker_thread(invoke_and_assert, "work-pool create ''",
+    expected_code=1)` verifies through the helper it hands over, but the helper
+    never appears in callee position, so reading `Call.func` alone cannot see
+    it. Only the FIRST argument — the callable slot every runner and
+    `functools.partial` uses — is read, and only when the name is one this
+    module imports or defines, which is what separates a callable from a local
+    variable that happens to be named `expected_rows`.
+
+    Returns:
+        True when a verifying callable is being handed to a runner.
+
+    """
+    if not call.args:
+        return False
+    match call.args[0]:
+        case ast.Name(id=name):
+            return name in module_callables and _reads_as_verification(name)
+        case ast.Attribute(value=ast.Name(id=receiver), attr=attr):
+            return receiver in module_callables and _reads_as_verification(attr)
+        case _:
+            return False
 
 
 def _names_verification(func: ast.expr) -> bool:
@@ -188,7 +307,7 @@ def _names_verification(func: ast.expr) -> bool:
 
 
 def _reads_as_verification(name: str) -> bool:
-    return bool(_ASSERTION_NAME_RE.match(name) or _RAISES_TOKEN_RE.search(name))
+    return bool(_ASSERTION_NAME_RE.search(name) or _RAISES_TOKEN_RE.search(name))
 
 
 def _chain_has_fluent_marker(node: ast.expr) -> bool:
@@ -213,6 +332,18 @@ def _delegates_verification(
 
 
 def _called_names(node: ast.AST) -> set[str]:
+    """Collect the names this subtree calls, in callee position.
+
+    Deliberately NOT widened to the callable slot the way `_is_verification` is.
+    These names are resolved against `test_*`-ness as well as against the
+    module's own helpers, and a first argument named `test_client` — a fixture,
+    not a delegate — would otherwise read as "this test re-runs another
+    module's test" and silence the rule.
+
+    Returns:
+        Every name invoked in the subtree.
+
+    """
     names: set[str] = set()
     for child in walk(node):
         if isinstance(child, ast.Call):

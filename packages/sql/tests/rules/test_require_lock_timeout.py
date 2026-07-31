@@ -1,0 +1,119 @@
+"""SARJ110 — the assignment-spelling parser fix, per-state collapse, and dialect guard."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+import pytest
+
+from sarj_sql_lint.rules.require_lock_timeout import RequireLockTimeout
+
+
+if TYPE_CHECKING:
+    from sarj_sql_lint.rule_base import Diagnostic
+
+
+P = Path("migration.sql")
+
+
+def _check(source: str, path: Path = P) -> list[Diagnostic]:
+    return RequireLockTimeout().check(path, source)
+
+
+# --- the parser bug: every spelling of the assignment must be recognised ---------
+#
+# The rule previously required TWO runs of whitespace after `SET` whenever the
+# optional LOCAL/SESSION keyword was absent, so the ordinary single-space form was
+# invisible and the migration below — which already complies — was reported.
+
+
+@pytest.mark.parametrize(
+    "assignment",
+    [
+        "SET LOCAL lock_timeout = '3s';",
+        "SET SESSION lock_timeout = '3s';",
+        "SET  lock_timeout = '3s';",  # two spaces — the only form the old regex matched
+        "SET lock_timeout = '3s';",  # the canonical single-space form
+        "SET statement_timeout = '5s';",
+        "SET lock_timeout TO '3s';",
+        "SET lock_timeout='3s';",
+        "set lock_timeout = '3s';",
+    ],
+)
+def test_every_assignment_spelling_silences_the_rule(assignment: str) -> None:
+    assert _check(f"{assignment}\nALTER TABLE users ADD COLUMN note TEXT;\n") == []
+
+
+def test_zero_timeout_is_not_protection() -> None:
+    """The boundary: the spelling parses, but `0` means "wait forever"."""
+    assert len(_check("SET lock_timeout = 0;\nALTER TABLE users ADD COLUMN note TEXT;\n")) == 1
+
+
+def test_reset_undoes_a_timeout() -> None:
+    src = "SET lock_timeout = '3s';\nRESET lock_timeout;\nALTER TABLE users ADD COLUMN note TEXT;\n"
+    assert len(_check(src)) == 1
+
+
+def test_similarly_named_setting_is_not_lock_timeout() -> None:
+    r"""`\b` after the name: `lock_timeout_ms` is a different GUC."""
+    assert len(_check("SET lock_timeout_ms = '3s';\nALTER TABLE t ADD COLUMN c INT;\n")) == 1
+
+
+# --- session state is a property of the file, not of each statement --------------
+
+
+def test_one_finding_per_unprotected_run_not_per_statement() -> None:
+    src = """
+    ALTER TABLE a ADD COLUMN x INT;
+    ALTER TABLE b ADD COLUMN y INT;
+    CREATE INDEX idx_c ON c (id);
+    DROP TABLE d;
+    """
+    diags = _check(src)
+    assert len(diags) == 1
+    assert diags[0].line == 2
+
+
+def test_one_assignment_protects_every_later_statement() -> None:
+    src = """
+    SET lock_timeout = '3s';
+    ALTER TABLE a ADD COLUMN x INT;
+    ALTER TABLE b ADD COLUMN y INT;
+    CREATE INDEX idx_c ON c (id);
+    """
+    assert _check(src) == []
+
+
+def test_unprotected_tail_after_commit_is_still_reported() -> None:
+    """The boundary: collapsing must not swallow a *second* unprotected region."""
+    src = """
+    BEGIN;
+    SET LOCAL lock_timeout = '2s';
+    ALTER TABLE a ADD COLUMN x INT;
+    COMMIT;
+    ALTER TABLE b ADD COLUMN y INT;
+    ALTER TABLE c ADD COLUMN z INT;
+    """
+    diags = _check(src)
+    assert len(diags) == 1
+    assert diags[0].line == 6
+
+
+# --- dialect ---------------------------------------------------------------------
+
+
+def test_mysql_migration_is_not_asked_for_a_postgres_guc() -> None:
+    src = "ALTER TABLE `users` ADD COLUMN `note` TEXT;\n"
+    assert _check(src) == []
+
+
+def test_sqlite_migration_is_not_asked_for_a_postgres_guc() -> None:
+    src = "CREATE TABLE `t` (`id` integer PRIMARY KEY AUTOINCREMENT);\nCREATE INDEX `i` ON `t` (`id`);\n"
+    assert _check(src) == []
+
+
+def test_postgres_migration_still_fires_next_to_the_dialect_boundary() -> None:
+    """The boundary: same DDL, no dialect marker — the guard must not widen to this."""
+    src = 'ALTER TABLE "users" ADD COLUMN note TEXT;\n'
+    assert len(_check(src)) == 1

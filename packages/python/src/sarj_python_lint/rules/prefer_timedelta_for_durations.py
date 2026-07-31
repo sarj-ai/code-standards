@@ -102,8 +102,9 @@ class PreferTimedeltaForDurations(Rule):
                 if _is_overload(node) or _has_cli_decorator(node):
                     continue
                 args = node.args
+                forwarded = _same_name_forwarded_params(node, _duration_named_params(args))
                 for a in (*args.posonlyargs, *args.args, *args.kwonlyargs):
-                    if _is_forwarded_to_same_name(node, a.arg):
+                    if a.arg in forwarded or _is_forwarded_to_same_name(node, a.arg):
                         continue
                     self._consider(a.arg, a.annotation, a, diags, path)
             else:
@@ -127,6 +128,8 @@ class PreferTimedeltaForDurations(Rule):
         if name.lower() in _BARE_UNIT_NAMES or name.lower().endswith(("_worked", "_elapsed")):
             return
         if not _UNIT_RE.search(name) or _EXCLUDE_RE.search(name):
+            return
+        if _admits_timedelta(annotation):
             return
         numeric = _numeric_annotation(annotation)
         if numeric is None:
@@ -177,6 +180,96 @@ def _is_forwarded_to_same_name(node: ast.FunctionDef | ast.AsyncFunctionDef, par
         return False
     passed = [*call.args, *(kw.value for kw in call.keywords)]
     return any(isinstance(arg, ast.Name) and arg.id == param for arg in passed)
+
+
+def _duration_named_params(args: ast.arguments) -> frozenset[str]:
+    """Collect the annotated parameters whose names read as durations.
+
+    The forwarding walk below costs an `ast.walk` of the whole function, so it
+    only runs when some parameter could be reported in the first place.
+
+    Returns:
+        The candidate parameter names.
+
+    """
+    return frozenset(
+        a.arg
+        for a in (*args.posonlyargs, *args.args, *args.kwonlyargs)
+        if a.annotation is not None and _UNIT_RE.search(a.arg) and not _EXCLUDE_RE.search(a.arg)
+    )
+
+
+def _same_name_forwarded_params(node: ast.FunctionDef | ast.AsyncFunctionDef, params: frozenset[str]) -> frozenset[str]:
+    """Collect the parameters this function only ever forwards under their own name.
+
+    A parameter qualifies when it is used at least once and *every* one of its
+    loads sits directly in a same-name sink — a keyword argument whose keyword is
+    the parameter's own name, or an attribute store to the same name. Requiring
+    the load to be the sink's direct value is what excludes arithmetic,
+    comparisons and subscripts: in `client.call(timeout=timeout * 2)` the
+    keyword's value is the `BinOp`, not the parameter, so the parameter is
+    disqualified and the finding stands.
+
+    An unused parameter never qualifies — `def schedule(timeout_seconds: int)
+    -> None: ...` has no loads at all and is the rule's core finding.
+
+    Returns:
+        The names of the parameters whose every use is a same-name forward.
+
+    """
+    if not params:
+        return frozenset()
+    used: set[str] = set()
+    computed: set[str] = set()
+    for parent in ast.walk(node):
+        for child in ast.iter_child_nodes(parent):
+            if not isinstance(child, ast.Name) or not isinstance(child.ctx, ast.Load):
+                continue
+            if child.id not in params:
+                continue
+            used.add(child.id)
+            if not _is_same_name_sink(parent, child.id):
+                computed.add(child.id)
+    return frozenset(used - computed)
+
+
+def _is_same_name_sink(parent: ast.AST, name: str) -> bool:
+    """Report whether `parent` consumes a load of `name` under that same name.
+
+    Returns:
+        True for `f(<name>=<name>)` and `self.<name> = <name>`.
+
+    """
+    match parent:
+        case ast.keyword(arg=str(keyword)):
+            return keyword == name
+        case ast.Assign(targets=[ast.Attribute(attr=attribute)]) | ast.AnnAssign(target=ast.Attribute(attr=attribute)):
+            return attribute == name
+        case _:
+            return False
+
+
+def _admits_timedelta(node: ast.expr) -> bool:
+    """Report whether the annotation already accepts a `timedelta`.
+
+    Walks the same shapes `_numeric_annotation` does — `|` unions,
+    `Optional[...]`, `Annotated[...]` — so that `float | timedelta | None` is
+    recognised as a signature that already takes what the rule asks for.
+
+    Returns:
+        True when any member of the annotation is `timedelta`.
+
+    """
+    if _trailing_name(node) == "timedelta":
+        return True
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        return _admits_timedelta(node.left) or _admits_timedelta(node.right)
+    if isinstance(node, ast.Subscript) and (_is_named(node.value, "Optional") or _is_named(node.value, "Annotated")):
+        inner = node.slice
+        if isinstance(inner, ast.Tuple) and inner.elts:
+            inner = inner.elts[0]
+        return _admits_timedelta(inner)
+    return False
 
 
 def _is_docstring(stmt: ast.stmt) -> bool:

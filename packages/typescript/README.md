@@ -189,7 +189,7 @@ and every repo gets to name its own.
 
 | Rule | Option | Default | Effect |
 |---|---|---|---|
-| `no-raw-fetch-outside-clients` | `allow` | client/test path patterns | Files exempt from the "no bare `fetch`" rule |
+| `no-raw-fetch-outside-clients` | `allow` | client / vendor-wrapper path patterns | Extra files exempt from the "no bare `fetch`" rule (test files are exempt unconditionally) |
 | `no-dynamic-sql` | `methods` | `["prepare", "exec", "query"]` | Statement-taking methods to inspect |
 | `no-storage-in-stateless-modules` | `modules` | `[]` (rule off) | Directories declared stateless |
 | `no-storage-in-stateless-modules` | `methods` | `["prepare", "put", "getWithMetadata"]` | Storage methods to flag |
@@ -198,7 +198,10 @@ and every repo gets to name its own.
 
 The path options on the first three rules are **regular-expression sources
 matched against the absolute filename**, not globs — so they can express both
-path separators. `allowIn` is the exception, on `no-hand-rolled-sleep` as on
+path separators. Test files no longer need to appear there: the rule delegates
+to the shared `isTestFile` predicate, so supplying `allow` replaces only the
+production exemptions and cannot accidentally un-exempt a test tree.
+`allowIn` is the exception, on `no-hand-rolled-sleep` as on
 `require-fetch-timeout`: it takes minimatch-ish **globs**, also matched against
 the absolute path, so anchor them with a `**/` prefix. Supplying an option
 **replaces** the default rather than extending it.
@@ -219,7 +222,7 @@ export default [
       // This repo keeps its HTTP layer in `lib/api/`, not `clients/`.
       "@sarj/no-raw-fetch-outside-clients": [
         "error",
-        { allow: ["[\\\\/]lib[\\\\/]api[\\\\/]", "\\.test\\.", "\\.spec\\."] },
+        { allow: ["[\\\\/]lib[\\\\/]api[\\\\/]"] },
       ],
       // Declare which modules must stay stateless.
       "@sarj/no-storage-in-stateless-modules": [

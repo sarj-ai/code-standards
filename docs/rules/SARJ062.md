@@ -145,7 +145,7 @@ object. Five is still where honest tests live.
 
 What has changed is the rule's standing in the first-party repositories: at `>5`
 it now finds **nothing** in any of repos A through E,
-so it is a **ratchet** — like `no-patching-system-under-test`. Nothing has to be
+so it is a **ratchet**. Nothing has to be
 fixed to adopt it, and nothing may regress past it. It earns its place on the
 OSS evidence, where 239 findings concentrate in the suites that are mostly mock
 by volume (litellm 113, superset 37, prefect 23, airflow 21, dagster 21) —
