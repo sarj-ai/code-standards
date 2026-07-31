@@ -3,7 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from sarj_iac_lint.rules.require_deletion_protection import RequireDeletionProtection
+import pytest
+
+from sarj_iac_lint.rules.require_deletion_protection import PROTECTED_TYPES, RequireDeletionProtection
 
 
 if TYPE_CHECKING:
@@ -416,3 +418,77 @@ resource "google_bigtable_instance" "main" {
 }
 """
     assert len(_check(src)) == 1
+
+
+# --- HCL keywords are case-insensitive, so the literal test must be too ------------
+
+
+@pytest.mark.parametrize("value", ["FALSE", "False", "fAlSe", '"FALSE"', "( FALSE )"])
+def test_an_uppercase_false_is_still_disabled_protection(value: str):
+    """`_literal` lowercases; without that, `deletion_protection = FALSE` reads as an expression."""
+    src = f'resource "google_sql_database_instance" "main" {{\n  deletion_protection = {value}\n}}\n'
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "deletion_protection = false" in diags[0].message
+
+
+@pytest.mark.parametrize("value", ["TRUE", "True", '"TRUE"'])
+def test_an_uppercase_true_still_protects(value: str):
+    """The other side: lowercasing must not turn a working guard into a finding."""
+    src = f'resource "google_sql_database_instance" "main" {{\n  deletion_protection = {value}\n}}\n'
+    assert _check(src) == []
+
+
+def test_an_uppercase_prevent_destroy_still_protects():
+    src = """
+resource "google_bigquery_dataset" "warehouse" {
+  dataset_id = "warehouse"
+  lifecycle {
+    prevent_destroy = TRUE
+  }
+}
+"""
+    assert _check(src) == []
+
+
+# --- every curated type must be reachable, so no row can be dropped in silence -----
+
+
+@pytest.mark.parametrize("resource_type", sorted(PROTECTED_TYPES))
+def test_every_protected_type_is_wired_in(resource_type: str):
+    """Deleting any single row from PROTECTED_TYPES fails exactly this row's case."""
+    src = f'resource "{resource_type}" "example" {{\n  name = "example"\n}}\n'
+    diags = _check(src)
+    assert len(diags) == 1
+    assert diags[0].code == "SARJ201"
+    assert resource_type in diags[0].message
+
+
+def test_the_curated_set_is_exactly_this():
+    """A parametrize over the set cannot catch a deletion — the case vanishes with the row."""
+    expected = frozenset({
+        "google_sql_database_instance",
+        "google_container_cluster",
+        "google_bigquery_table",
+        "google_bigquery_dataset",
+        "google_spanner_database",
+        "google_alloydb_cluster",
+        "google_bigtable_instance",
+        "aws_db_instance",
+        "aws_rds_cluster",
+        "aws_rds_global_cluster",
+        "aws_redshift_cluster",
+        "aws_dynamodb_table",
+        "aws_elasticache_replication_group",
+        "aws_elasticache_cluster",
+        "aws_docdb_cluster",
+        "aws_neptune_cluster",
+        "azurerm_postgresql_flexible_server",
+        "azurerm_postgresql_server",
+        "azurerm_mysql_flexible_server",
+        "azurerm_mysql_server",
+        "azurerm_mssql_server",
+        "azurerm_mssql_database",
+        "azurerm_cosmosdb_account",
+    })
+    assert expected == PROTECTED_TYPES
