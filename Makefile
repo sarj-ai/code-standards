@@ -78,6 +78,7 @@ typecheck:
 
 check-no-private-refs:
 	@./scripts/check-no-private-refs.sh
+	@./scripts/check-ci-history-depth.sh
 
 # Filename casing, rule<->test pairing, markdown placement, and the ONE-copy rule
 # for the strict configs in $(CONFIG_SRC). The root `.ruff-strict.toml` /

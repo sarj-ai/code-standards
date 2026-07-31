@@ -59,3 +59,5 @@ jobs:
         run: ./scripts/check-file-conventions.sh
       - name: Every version site agrees
         run: make check-versions-synced
+      - name: Every job that runs a suite checks out full history
+        run: ./scripts/check-ci-history-depth.sh
