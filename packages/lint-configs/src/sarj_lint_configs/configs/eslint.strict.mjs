@@ -422,6 +422,19 @@ const withoutReactRules = (rules) =>
 
 /** @type {import("eslint").Linter.Config[]} */
 const config = [
+  {
+    // Global-only ignore block: generated output must never be parsed as source
+    // or acquire type-aware diagnostics after a local build.
+    ignores: [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/build/**",
+      "**/.astro/**",
+      "**/.next/**",
+      "**/.wrangler/**",
+      "**/coverage/**",
+    ],
+  },
   ...tseslint.configs.strictTypeChecked,
   ...tseslint.configs.stylisticTypeChecked,
 

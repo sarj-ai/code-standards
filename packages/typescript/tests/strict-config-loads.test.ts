@@ -61,6 +61,16 @@ async function configFor(filePath: string): Promise<Linter.Config> {
 }
 
 describe("the shipped eslint.strict.mjs actually loads", () => {
+  it("globally ignores generated output", async () => {
+    const eslint = new ESLint({
+      overrideConfigFile: true,
+      overrideConfig: strictConfig as Linter.Config[],
+      cwd: process.cwd(),
+    });
+    expect(await eslint.calculateConfigForFile("dist/generated.js")).toBeUndefined();
+    expect(await eslint.calculateConfigForFile(".astro/generated.d.ts")).toBeUndefined();
+  });
+
   it.each(PROBE_PATHS)(
     "resolves without error for %s",
     async (filePath) => {
