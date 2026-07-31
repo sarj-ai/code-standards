@@ -19,6 +19,29 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+def _src(node: ast.expr) -> str:
+    """`ast.unparse` for the shapes this rule compares, without `ast.unparse`'s cost.
+
+    The rule identifies an accumulator by the SOURCE TEXT of its target, so it unparses
+    once per Name/Attribute in every loop body. `ast.unparse` builds and runs a full
+    unparser on each call. For a bare `Name` the answer is the identifier, and for a
+    dotted chain over one it is the chain — byte-identical, far cheaper. Everything
+    else falls through to `ast.unparse`, so no comparison changes meaning.
+
+    This is why the rule stopped being the registry's performance outlier; see
+    `tests/test_perf.py`.
+
+    Returns:
+        The node's source text.
+
+    """
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute) and isinstance(node.value, (ast.Name, ast.Attribute)):
+        return f"{_src(node.value)}.{node.attr}"
+    return ast.unparse(node)
+
+
 class InefficientStringConcatInLoop(Rule):
     id: str = "inefficient-string-concat-in-loop"
     code: str = "SARJ002"
@@ -99,7 +122,7 @@ class _ConcatVisitor(ast.NodeVisitor):
 
     def _is_probe_target(self, node: ast.AugAssign | ast.Assign) -> bool:
         """Report whether the concat target's intermediate values are consumed."""
-        target_src = ast.unparse(self._accumulation_target(node))
+        target_src = _src(self._accumulation_target(node))
         if any(target_src in names for names in self._while_probe_names):
             return True
         # Only the INNERMOST loop's reads consume the growth per iteration; a
@@ -109,7 +132,7 @@ class _ConcatVisitor(ast.NodeVisitor):
     def _is_loop_local_target(self, node: ast.AugAssign | ast.Assign) -> bool:
         """Report whether the concat target is freshly rebound earlier this iteration."""
         target = self._accumulation_target(node)
-        rebinds = self._loop_reassigns[-1].get(ast.unparse(target), ())
+        rebinds = self._loop_reassigns[-1].get(_src(target), ())
         return any(line < node.lineno for line in rebinds)
 
     def _accumulation_target(self, node: ast.AugAssign | ast.Assign) -> ast.expr:
@@ -149,7 +172,7 @@ class _ConcatVisitor(ast.NodeVisitor):
 
 def _test_names(test: ast.expr) -> set[str]:
     """Collect the source text of every Name/Attribute read in a while test."""
-    return {ast.unparse(n) for n in walk(test) if isinstance(n, (ast.Name, ast.Attribute))}
+    return {_src(n) for n in walk(test) if isinstance(n, (ast.Name, ast.Attribute))}
 
 
 def _loop_read_names(loop: ast.For | ast.AsyncFor | ast.While) -> frozenset[str]:
@@ -170,7 +193,7 @@ def _loop_read_names(loop: ast.For | ast.AsyncFor | ast.While) -> frozenset[str]
                 continue
         stack.extend(children(node))
         if isinstance(node, (ast.Name, ast.Attribute)) and isinstance(node.ctx, ast.Load):
-            reads.add(ast.unparse(node))
+            reads.add(_src(node))
     return frozenset(reads)
 
 
@@ -192,13 +215,13 @@ def _collect_reassignments(node: ast.AST, reassigns: dict[str, list[int]]) -> No
         for target in node.targets:
             for bound in _iter_binding_targets(target):
                 if not _is_accumulation_assign(bound, node.value):
-                    reassigns.setdefault(ast.unparse(bound), []).append(bound.lineno)
+                    reassigns.setdefault(_src(bound), []).append(bound.lineno)
     elif (
         isinstance(node, ast.AnnAssign)
         and node.value is not None
         and not _is_accumulation_assign(node.target, node.value)
     ):
-        reassigns.setdefault(ast.unparse(node.target), []).append(node.target.lineno)
+        reassigns.setdefault(_src(node.target), []).append(node.target.lineno)
     for child in children(node):
         _collect_reassignments(child, reassigns)
 
@@ -222,10 +245,10 @@ def _is_accumulation_assign(target: ast.expr, value: ast.expr) -> bool:
 
 def _other_add_operand(target: ast.expr, binop: ast.BinOp) -> ast.expr | None:
     """Return the non-target operand of `target + x` / `x + target`."""
-    target_src = ast.unparse(target)
-    if ast.unparse(binop.left) == target_src:
+    target_src = _src(target)
+    if _src(binop.left) == target_src:
         return binop.right
-    if ast.unparse(binop.right) == target_src:
+    if _src(binop.right) == target_src:
         return binop.left
     return None
 

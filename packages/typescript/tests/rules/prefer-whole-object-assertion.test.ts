@@ -288,6 +288,10 @@ describe("prefer-whole-object-assertion autofix soundness", () => {
       languageOptions: { parser: tsParser },
       plugins: { local: { rules: { "prefer-whole-object-assertion": rule } } },
       rules: { "local/prefer-whole-object-assertion": "error" },
+      // Off so these cases measure THIS fixer. ESLint's own unused-directive
+      // fixer deletes a stranded `eslint-disable-next-line` on the next pass,
+      // which would hide the orphaning rather than fix it.
+      linterOptions: { reportUnusedDisableDirectives: "off" },
     },
   ] as unknown as Linter.Config[];
 
@@ -316,6 +320,70 @@ describe("prefer-whole-object-assertion autofix soundness", () => {
   it("never rewrites an indexed run, which would add a length assertion", () => {
     const code = `expect(bodies[0]).toEqual("a");\nexpect(bodies[1]).toEqual("b");\n`;
     expect(fix(code)).toBe(code);
+  });
+
+  /**
+   * `__proto__` in an object literal is the prototype setter, not a key, so the
+   * fixer used to DELETE the assertion it claimed to be merging. Pinned three
+   * ways because the original shipped with tests that covered the report and
+   * never applied the fix: the language fact, the fixer's output, and the
+   * runtime consequence.
+   */
+  describe("__proto__ is a prototype setter, not a key", () => {
+    it("Object.keys drops it — the language fact the guard rests on", () => {
+      expect(Object.keys({ __proto__: null, b: 2 })).toStrictEqual(["b"]);
+      // The quoted spelling is the same production, so quoting is not a fix.
+      expect(Object.keys({ "__proto__": null, b: 2 })).toStrictEqual(["b"]);
+    });
+
+    it("the merged form would stop checking the prototype at all", () => {
+      const received: Record<string, unknown> = Object.create({ marker: 1 }) as Record<string, unknown>;
+      received["b"] = 2;
+      // What `expect(o.__proto__).toBe(null)` asserts:
+      expect(Object.getPrototypeOf(received)).not.toBeNull();
+      // What a merged `toMatchObject({ __proto__: null, b: 2 })` would assert:
+      // only `b`. So the failing test would start passing.
+      expect(received["b"]).toBe(2);
+    });
+
+    it("is never merged or rewritten", () => {
+      const code = `expect(o.__proto__).toBe(null);\nexpect(o.b).toBe(2);\n`;
+      expect(fix(code)).toBe(code);
+    });
+
+    it("breaks the run rather than poisoning it, so the rest still merges", () => {
+      expect(fix(`expect(o.__proto__).toBe(null);\nexpect(o.b).toBe(2);\nexpect(o.c).toBe(3);\n`)).toBe(
+        `expect(o.__proto__).toBe(null);\nexpect(o).toMatchObject({ b: 2, c: 3 });\n\n`,
+      );
+    });
+  });
+
+  /**
+   * A removed statement takes its own text but not the comment above it. Worst
+   * case that comment is an `eslint-disable-next-line`, which then points at the
+   * merged assertion and becomes a fresh unused-directive error.
+   */
+  describe("comments inside the run", () => {
+    it("does not orphan a leading comment", () => {
+      const code = `expect(o.a).toBe(1);\n// b matters because the API returns it second\nexpect(o.b).toBe(2);\n`;
+      expect(fix(code)).toBe(code);
+    });
+
+    it("does not strand an eslint-disable directive", () => {
+      const code = `expect(o.a).toBe(1);\n// eslint-disable-next-line local/prefer-whole-object-assertion\nexpect(o.b).toBe(2);\n`;
+      expect(fix(code)).toBe(code);
+    });
+
+    it("does not swallow a comment inside a merged statement", () => {
+      const code = `expect(o.a /* the a */).toBe(1);\nexpect(o.b).toBe(2);\n`;
+      expect(fix(code)).toBe(code);
+    });
+
+    it("still fixes when the comment sits outside the span", () => {
+      expect(fix(`// setup\nexpect(o.a).toBe(1);\nexpect(o.b).toBe(2); // done\n`)).toBe(
+        `// setup\nexpect(o).toMatchObject({ a: 1, b: 2 });\n // done\n`,
+      );
+    });
   });
 
   it("still merges the runs it can merge exactly", () => {

@@ -21,13 +21,26 @@ const NESTED_FUNCTION_TYPES = new Set<AST_NODE_TYPES>([
   AST_NODE_TYPES.ArrowFunctionExpression,
 ]);
 
-/** Non-throwing member methods — array / string / Map / Set data plumbing. */
+/**
+ * Non-throwing member methods, recognised by NAME ALONE — so the set may hold
+ * only names that are not also the vocabulary of an I/O client.
+ *
+ * `get`, `set`, `add`, `delete`, `has`, `clear`, `find`, `keys`, `values` and
+ * `entries` are the `Map` / `Set` API, and they are equally `client.get(url)`,
+ * `redis.set(k, v)`, `repo.find(where)` and `api.delete(id)`. A name-only test
+ * cannot tell those apart, and resolving the ambiguity towards "pure" blinds
+ * the rule to the exact swallow it exists to catch, so they are not here.
+ * `isBareCallStatement` still exempts fire-and-forget `cache.set(k, v);`
+ * structurally, which is the common non-I/O use of the names left out.
+ *
+ * What remains are Array / String / Number members with no I/O reading: nothing
+ * calls `.padStart()` on a database handle.
+ */
 const PURE_METHODS = new Set<string>([
-  "map", "filter", "forEach", "reduce", "reduceRight", "find", "findIndex",
+  "map", "filter", "forEach", "reduce", "reduceRight", "findIndex",
   "findLast", "findLastIndex", "some", "every", "push", "pop", "shift",
   "unshift", "slice", "splice", "concat", "flat", "flatMap", "join", "reverse",
-  "sort", "fill", "includes", "indexOf", "lastIndexOf", "at", "keys", "values",
-  "entries", "has", "get", "set", "add", "delete", "clear", "toString",
+  "sort", "fill", "includes", "indexOf", "lastIndexOf", "at", "toString",
   "toLocaleString", "valueOf", "charAt", "charCodeAt", "codePointAt", "split",
   "padStart", "padEnd", "repeat", "trim", "trimStart", "trimEnd", "toUpperCase",
   "toLowerCase", "toFixed", "toPrecision", "startsWith", "endsWith",
@@ -37,6 +50,18 @@ const PURE_METHODS = new Set<string>([
 const PURE_NAMESPACES = new Set<string>([
   "Object", "Array", "Math", "JSON", "Number", "String", "Boolean", "console",
 ]);
+
+/**
+ * `Namespace.method` pairs that throw despite the namespace being pure.
+ *
+ * `JSON.parse` is the canonical throwing call in JavaScript and the canonical
+ * reason anybody writes `try`/`catch`; calling it non-throwing blinded the rule
+ * to its most common subject. `JSON.stringify` also throws — circular
+ * structures, `BigInt` — but is overwhelmingly called on a value the same
+ * function just built, so it stays pure. That is a recall choice, stated rather
+ * than hidden.
+ */
+const IMPURE_NAMESPACE_METHODS = new Set<string>(["JSON.parse"]);
 
 /** Constructors that do not throw on construction. */
 const PURE_CONSTRUCTORS = new Set<string>([
@@ -68,7 +93,7 @@ function isPureCall(node: TSESTree.CallExpression): boolean {
     callee.object.type === AST_NODE_TYPES.Identifier &&
     PURE_NAMESPACES.has(callee.object.name)
   ) {
-    return true;
+    return !IMPURE_NAMESPACE_METHODS.has(`${callee.object.name}.${property.name}`);
   }
   return PURE_METHODS.has(property.name);
 }

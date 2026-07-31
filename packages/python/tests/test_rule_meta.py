@@ -41,10 +41,16 @@ from sarj_python_lint.rules import REGISTRY
 # repo-relative, so they only resolve from here.
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
-# Content lines allowed in a converted rule's module docstring: the `SARJ### — claim`
-# summary, an optional short rationale, and the two derived link lines. The cap is what
-# stops the 260-line docstring growing back one useful paragraph at a time.
-_MAX_DOCSTRING_LINES = 6
+# Content lines allowed in a rule's module docstring: the `SARJ### — claim` summary, an
+# optional short rationale, and the two derived link lines. The cap is what stops the
+# 260-line docstring growing back one useful paragraph at a time.
+#
+# It is 4 because that is what the sentence above describes. It was 6 while the
+# conversion was in flight, and 6 is two lines of slack PER RULE that nothing would ever
+# have objected to — 71 rules x 2 = 142 lines of prose could have crept back in without
+# a single test going red. Every rule in the registry sits at exactly 3, so the cap
+# costs nothing today and forbids the drift it was written to forbid.
+_MAX_DOCSTRING_LINES = 4
 
 # `SARJ` + exactly three digits. Anything else breaks `# sarj-noqa: SARJ###` parsing and
 # the ruff `external = ["SARJ"]` handoff.

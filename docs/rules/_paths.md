@@ -84,3 +84,54 @@ Finding-level effect over those 92 files, across the 20 rules that consult
 `prefer-discriminated-union` at `immich/packages/sdk/src/fetch-client.ts:579` —
 that rule does not call `isGeneratedFile` at all, which is a separate gap
 recorded here rather than fixed in passing.
+
+## Why the defaults are pinned and the extras are opt-in
+
+`isGeneratedFile` is consulted by 20 rule modules, `isTestFile` by 30,
+`isStoryFile` by 5. Widening one of those regexes therefore silently disables up
+to thirty unrelated rules over whatever the new pattern matches — and that is
+not hypothetical.
+
+PR #180 added `vendor|vendored|external|third-party` to the generated-path
+regex, `fixtures?` (the singular) and the `__…__` fixture spellings to the
+test-path regex, and a whole `stories/` tree to `isStoryFile`, on the evidence
+of six false positives in ONE rule (`no-type-member-comment-wall`). Nothing
+measured the effect on the other 19 and 29. Reproduced afterwards:
+
+- `no-comment-cruft` reported on `src/a.ts` and produced **0** findings on
+  `src/services/external/a.ts` with byte-identical source;
+- `no-raw-env` fired on `src/config.ts` and was silent on `src/fixture/seed.ts`.
+
+`external/` is a routine name for FIRST-PARTY outbound-integration code, which
+is exactly where a raw `process.env` read or an untimed `fetch` matters most.
+
+### The line that is drawn, and where
+
+A path belongs in a **shared default** only if its NAME makes a claim that is
+true for every rule:
+
+| path | shared? | why |
+| --- | --- | --- |
+| `generated/`, `openapi-gen/`, `graphql/types/`, `*.gen.*`, `*.generated.*`, `*.d.ts`, `*.types.ts` | yes | generator output; nobody hand-edits it |
+| `vendor/`, `vendored/`, `third-party/`, `third_party/` | yes | the directory name is the claim that an upstream owns the text. `astro/packages/astro/src/assets/utils/vendor/image-size/types/jpg.ts` is a verbatim copy of the `image-size` package, and every rule's advice about it is equally unactionable. Python's `_paths.is_generated_path` has always held `vendor` / `vendored` |
+| `tests?/`, `__tests__/`, `__mocks__/`, `fixtures/` | yes | pre-existing |
+| `__fixtures__/`, `__testfixtures__/` | yes | the same category as `fixtures/`, spelled the way jscodeshift and Storybook spell it |
+| `*.stories.*` | yes | pre-existing |
+| `external/` | **gate** `externalTree` | `src/services/external/` is first-party outbound integration in most repos |
+| `fixture/` (singular) | **gate** `fixtureTree` | `src/fixture/seed.ts` is a production database seeder in several repos |
+| `stories/` tree | **gate** `storyTree` | plenty of repos keep ordinary components under `stories/` |
+
+`tests/paths.test.ts` pins the defaults path-by-path AND pins which rule modules
+hold which gate, so neither can move without a reviewed diff that says, in one
+place, what every consumer stops seeing. `no-type-member-comment-wall` is the
+only gate holder; its evidence is in `docs/rules/no-type-member-comment-wall.md`.
+
+### Measured
+
+32 OSS TypeScript repos, 145,235 files scanned, fatal-parse count 0 and
+identical across runs, positive control asserted on every sweep. Restoring the
+scoping returned **+63** findings, all of them inside `external/` trees:
+`no-enum` +8, `no-restated-jsdoc` +4, `no-comment-cruft` +1, and the rest inside
+`no-fat-try-blocks`. `tests/paths.test.ts` pins every row of the table above,
+and mutation-testing confirms each row's assertion dies when the corresponding
+default is widened or narrowed.
