@@ -63,48 +63,74 @@ const CSS_VAR_REFERENCE_RE = /var\(\s*--/;
 const STORIES_FILE_RE = /\.stories\.[cm]?[jt]sx?$/i;
 
 /**
- * A design-token vocabulary, in a stylesheet.
+ * Token ROLES, not one vendor's token NAMES.
  *
- * shadcn's names plus Tailwind v4's `@theme` block, which is how a v4 project
- * declares tokens now that there is no `tailwind.config.*` to declare them in.
- * Only stylesheets are content-tested at all (see `CONFIG_IS_SUFFICIENT`), so
- * the vocabulary list no longer decides whether a whole repo is linted.
+ * The previous vocabulary was shadcn's and only shadcn's, so a repo with a
+ * complete, consistently used design system was read as having none and the
+ * `requireSemanticTokens` gate suppressed the rule across the whole repo.
+ * Medusa is the worked example: its system is `bg-ui-bg-base` /
+ * `text-ui-fg-subtle` backed by `--fg-base` / `--bg-base` custom properties, so
+ * its `globals.css` was FOUND and then REJECTED. `dub` names its tokens
+ * `content-default` / `bg-default` and lost the same way.
+ *
+ * Detection errs deliberately towards "a system exists". Guessing yes leaves
+ * the rule RUNNING, and an author can disable any line it reports with a
+ * reason; guessing no silently disables an error-level rule for a whole
+ * repository, and nobody finds out. Those costs are not symmetric, which is why
+ * this is a role vocabulary rather than an exact token list.
  */
-const SEMANTIC_TOKEN_RE = /@theme\b|--(?:background|foreground|primary|secondary|muted|accent|destructive|border|card|popover)\b|(?:bg|text|border)-(?:background|foreground|primary|secondary|muted|accent|destructive|border|card|popover)\b/;
+const TOKEN_ROLES =
+  "background|foreground|primary|secondary|muted|accent|destructive|danger|success|warning|info|border|card|popover|surface|content|base|subtle|default|ring|input|fg|bg";
+const SEMANTIC_TOKEN_RE = new RegExp(
+  `--(?:color-)?(?:${TOKEN_ROLES})\\b|(?:bg|text|border|ring|fill|stroke)-(?:ui-)?(?:${TOKEN_ROLES})\\b`,
+);
 
 /**
- * Files whose mere EXISTENCE proves a design system, with no content test.
- *
- * A `tailwind.config.*` is a token vocabulary by construction — the whole point
- * of the file is to name colors — and the vocabulary it declares is the
- * project's own, not shadcn's. Content-testing it cost whole repositories:
- * `medusa/packages/admin/dashboard/tailwind.config.cjs` exists, sits 5
- * directories above the components that fail the rule, is already in this list,
- * and was REJECTED because Medusa names its tokens `bg-ui-button-neutral` /
- * `text-ui-fg-subtle` rather than shadcn's `bg-primary`, which silenced that
- * whole repository under the shipped `requireSemanticTokens: true`. The content
- * test was answering "does this project use shadcn?" while the option is
- * documented to ask "does this project have design tokens?".
+ * Tailwind v4 is CSS-first: there is no `tailwind.config.*` to find, and the
+ * theme lives in an `@theme` block in the stylesheet. Without this, every v4
+ * setup reads as "no design system" and the gate suppresses the rule.
  */
-const CONFIG_IS_SUFFICIENT = new Set([
-  "components.json",
-  "tailwind.config.cjs",
-  "tailwind.config.js",
-  "tailwind.config.mjs",
-  "tailwind.config.ts",
-]);
+const THEME_BLOCK_RE = /@theme\b/;
 
-const DETECTION_FILES = [
+/**
+ * Files whose PRESENCE alone proves a configured Tailwind design system.
+ *
+ * Reading these for a token vocabulary was the second half of the same defect.
+ * A `tailwind.config.*` frequently defines its theme by importing a preset
+ * (`presets: [require("@medusajs/ui-preset")]`) or by spreading a shared
+ * object, so the token names are not textually present in the file that proves
+ * they exist. `components.json` was already treated this way; the config files
+ * are the same kind of evidence and are now treated the same.
+ */
+const PRESENCE_MARKERS = [
   "components.json",
   "tailwind.config.js",
   "tailwind.config.cjs",
   "tailwind.config.mjs",
   "tailwind.config.ts",
+  "tailwind.config.mts",
+  "tailwind.config.cts",
+];
+
+/**
+ * Stylesheets that only count as evidence if they actually DECLARE tokens.
+ *
+ * Unlike a Tailwind config, the existence of a `globals.css` says nothing — every
+ * app has one. So these are read and matched against `SEMANTIC_TOKEN_RE` or the
+ * v4 `@theme` block.
+ */
+const CSS_DETECTION_FILES = [
   "app/globals.css",
+  "app/global.css",
+  "app/styles/globals.css",
   "src/app/globals.css",
+  "src/app/global.css",
+  "src/global.css",
   "src/index.css",
   "src/styles/globals.css",
+  "src/styles/index.css",
   "styles/globals.css",
+  "styles/index.css",
 ];
 /**
  * Files that mark a directory as the root of a multi-package workspace.
@@ -239,14 +265,15 @@ const isInsideIconFactoryPath = (node: TSESTree.Node): boolean => {
 
 /** Does this one directory carry a design-token marker? */
 const hasMarkerAt = (dir: string): boolean => {
-  for (const rel of DETECTION_FILES) {
+  if (PRESENCE_MARKERS.some((rel) => existsSync(join(dir, rel)))) return true;
+  for (const rel of CSS_DETECTION_FILES) {
     const candidate = join(dir, rel);
     if (!existsSync(candidate)) continue;
-    if (CONFIG_IS_SUFFICIENT.has(rel)) return true;
     try {
-      if (SEMANTIC_TOKEN_RE.test(readFileSync(candidate, "utf8"))) return true;
+      const css = readFileSync(candidate, "utf8");
+      if (SEMANTIC_TOKEN_RE.test(css) || THEME_BLOCK_RE.test(css)) return true;
     } catch {
-      // Ignore unreadable config files; absence of evidence means no report.
+      // Ignore unreadable stylesheets; absence of evidence means no report.
     }
   }
   return false;

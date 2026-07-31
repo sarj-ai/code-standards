@@ -13,47 +13,6 @@ type MessageIds = "missingAssertNever";
 type Options = readonly [];
 
 /**
- * Matches a call to `assertNever(...)` — either the bare identifier form
- * (`assertNever(x)`) or a namespaced member form (`utils.assertNever(x)`).
- */
-const isAssertNeverCall = (expression: TSESTree.Expression): boolean => {
-  if (expression.type !== AST_NODE_TYPES.CallExpression) return false;
-  const callee = expression.callee;
-  if (callee.type === AST_NODE_TYPES.Identifier) {
-    return callee.name === "assertNever";
-  }
-  if (
-    callee.type === AST_NODE_TYPES.MemberExpression &&
-    !callee.computed &&
-    callee.property.type === AST_NODE_TYPES.Identifier
-  ) {
-    return callee.property.name === "assertNever";
-  }
-  return false;
-};
-
-const statementContainsAssertNever = (
-  statement: TSESTree.Statement,
-): boolean => {
-  if (statement.type === AST_NODE_TYPES.ExpressionStatement) {
-    return isAssertNeverCall(statement.expression);
-  }
-  if (statement.type === AST_NODE_TYPES.ThrowStatement) {
-    return isAssertNeverCall(statement.argument);
-  }
-  if (statement.type === AST_NODE_TYPES.ReturnStatement) {
-    return (
-      statement.argument !== null && isAssertNeverCall(statement.argument)
-    );
-  }
-  // Recurse into block-scoped default bodies like `default: { ... }`
-  if (statement.type === AST_NODE_TYPES.BlockStatement) {
-    return statement.body.some(statementContainsAssertNever);
-  }
-  return false;
-};
-
-/**
  * Returns true if the statement performs some runtime work. An empty statement
  * or an empty block does nothing; everything else (`return`, `throw`, `break`,
  * a function call, an `if`, ...) is treated as legitimate runtime handling of
@@ -144,11 +103,11 @@ export default createRule<Options, MessageIds>({
         const defaultCase = node.cases[defaultIndex];
         if (defaultCase === undefined) return;
 
-        // An explicit `assertNever(...)` is the canonical exhaustiveness check.
-        if (defaultCase.consequent.some(statementContainsAssertNever)) return;
-
         // A default that does real runtime work (return a fallback, break,
-        // throw, log, ...) is legitimate — don't demand assertNever there.
+        // throw, log, ...) is legitimate — don't demand assertNever there. That
+        // covers the canonical `assertNever(_)` too: it is a call statement, so
+        // a separate recogniser for it decided nothing this line does not
+        // already decide, and no test could tell the two apart.
         if (defaultCase.consequent.some(isRuntimeHandlingStatement)) return;
 
         // A fallthrough default hands control to a following case, which does

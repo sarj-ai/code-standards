@@ -14,17 +14,12 @@ import { isGeneratedFile } from "./_paths.js";
 type MessageIds = "restatesSignature" | "deleteBlock";
 type Options = readonly [];
 
-// Tags that carry something the signature cannot. Any of them and the block stays.
-const VALUE_TAGS: ReadonlySet<string> = new Set([
-  "alpha", "author", "beta", "category", "copyright", "default", "defaultvalue",
-  "deprecated", "example", "experimental", "fileoverview", "fixme", "group",
-  "inheritdoc", "internal", "license", "link", "module", "override",
-  "packagedocumentation", "remarks", "see", "since", "template", "throws",
-  "todo", "typeparam",
-]);
-
 // Tags this rule models and can therefore judge. Anything else means the block
-// is doing something the rule does not understand, so it is left alone.
+// is doing something the rule does not understand, so it is left alone — which
+// includes every value-carrying tag (`@see`, `@example`, `@deprecated`,
+// `@throws`, …). A separate allowlist of those used to sit above this one; it
+// could be emptied with the whole suite green, because being outside this set
+// is already sufficient and the two sets were disjoint.
 const MODELLED_TAGS: ReadonlySet<string> = new Set([
   "arg", "argument", "async", "description", "param", "return", "returns",
 ]);
@@ -182,7 +177,6 @@ export default createRule<Options, MessageIds>({
           const { description, tags } = parseJsDoc(comment.value);
           if (DIRECTIVE_RE.test(description)) continue;
           const tagNames = new Set(tags.map((tag) => tag.name));
-          if ([...tagNames].some((name) => VALUE_TAGS.has(name))) continue;
           if ([...tagNames].some((name) => !MODELLED_TAGS.has(name))) continue;
           if (isProtected(description)) continue;
 

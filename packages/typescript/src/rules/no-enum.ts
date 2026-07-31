@@ -17,13 +17,6 @@ type Options = readonly [
   }?,
 ];
 
-const DEFAULT_IGNORE_PATTERNS: readonly RegExp[] = [
-  /[\\/]generated[\\/]/,
-  /[\\/]openapi-gen[\\/]/,
-  /\.gen\.tsx?$/,
-  /\.generated\.tsx?$/,
-];
-
 function matchesAnyPattern(
   filename: string,
   patterns: readonly string[],
@@ -40,12 +33,6 @@ function matchesAnyPattern(
     }
   }
   return false;
-}
-
-function hasGeneratedMarker(sourceText: string): boolean {
-  // Look only in the first 1KB to keep this cheap.
-  const head = sourceText.slice(0, 1024);
-  return /@generated\b/.test(head);
 }
 
 export default createRule<Options, MessageIds>({
@@ -80,14 +67,16 @@ export default createRule<Options, MessageIds>({
     const filename = context.filename;
     const sourceText = context.sourceCode.getText();
 
-    const isIgnoredByDefault = DEFAULT_IGNORE_PATTERNS.some((re) =>
-      re.test(filename),
-    );
+    // Generated code opts out through the SHARED `isGeneratedFile` predicate.
+    // This rule used to carry its own narrower copy of all three of its signals
+    // — a four-pattern path list and a 1KB `@generated` sniff — and every one of
+    // them could be neutered with the suite green, because the shared predicate
+    // already answered true for the same files. `ignoreFiles` stays: it names
+    // paths a repo knows about and the shared predicate cannot.
     const isIgnoredByOption =
       ignoreFiles.length > 0 && matchesAnyPattern(filename, ignoreFiles);
-    const isGenerated = hasGeneratedMarker(sourceText) || isGeneratedFile(filename, sourceText);
 
-    if (isIgnoredByDefault || isIgnoredByOption || isGenerated) {
+    if (isIgnoredByOption || isGeneratedFile(filename, sourceText)) {
       return {};
     }
 

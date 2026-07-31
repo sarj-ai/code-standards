@@ -62,8 +62,8 @@ the option was asking "does this project use shadcn?" while documented to ask
 "does this project have design tokens?".
 
 `medusa/packages/admin/dashboard/tailwind.config.cjs` is decisive. It exists, it
-is in `DETECTION_FILES`, it sits 5 directories above the components that fail
-the rule — well inside `MAX_UPWARD_DEPTH = 8` — and it was rejected because
+was already a detection file, it sits 5 directories above the components that
+fail the rule — well within reach of the upward walk — and it was rejected because
 Medusa names its tokens `bg-ui-button-neutral` / `text-ui-fg-subtle`.
 
 A `tailwind.config.*` is a token vocabulary by construction; the whole point of
@@ -88,8 +88,9 @@ that is CORRECT rather than a residual defect: `find` over both repositories
 returns no `tailwind.config.*`, no `components.json` and no token stylesheet
 anywhere, because neither is a Tailwind project — twenty styles with Emotion,
 outline with styled-components. Asking them to use a semantic token names
-nothing that exists. The `MAX_UPWARD_DEPTH` half of the original diagnosis was
-not reproducible on this corpus and was left alone.
+nothing that exists. The directory-depth half of the original diagnosis was not
+reproducible on this corpus; it is addressed separately by the workspace-aware
+walk, which removed the depth budget outright.
 
 ## Evidence relocated from the source
 
@@ -149,3 +150,47 @@ module-level directory cache, which is why nothing else showed the symptom.
 
 Inline style objects: style={{ color: "#111827", backgroundColor: "#fff" }}
 
+
+## The `requireSemanticTokens` gate
+
+The shipped strict config sets `requireSemanticTokens: true`, which routes every
+file through `hasSemanticTokenSystem`. Replaying that gate over all 20,846
+findings split them 9,968 fire / 10,878 suppressed — but the split tracked
+naming convention and directory depth rather than whether a design system
+exists:
+
+- one OSS monorepo with a complete token system was suppressed ENTIRELY, because
+  the detection vocabulary knew only shadcn's names while that repo calls its
+  tokens `content-default` / `bg-default`;
+- Medusa's `bg-ui-*` / `text-ui-fg-*` system was FOUND and then REJECTED for the
+  same reason — the stylesheet was read, and its vocabulary did not match;
+- a `tailwind.config.*` that pulls its theme from a preset
+  (`presets: [require("@medusajs/ui-preset")]`) never mentions a token name, so
+  reading it for one found nothing;
+- Tailwind v4 is CSS-first and has no `tailwind.config.*` to find at all.
+
+Detection now keys off token ROLES rather than one vendor's names, treats the
+presence of `components.json` / `tailwind.config.*` as sufficient on its own,
+and recognises the v4 `@theme` block. Detection errs deliberately towards "a
+system exists": a false positive makes the rule RUN and report drift the author
+can disable case by case, while a false negative disables an error-level rule
+silently for a whole repository.
+
+Reachability is the other half of the same gate and is fixed separately, above:
+the upward walk now runs to the filesystem root and falls back to a sideways
+scan of the workspace's own packages, so there is no depth budget left for this
+change to move.
+
+### Why the detection tests build real directory trees
+
+`hasSemanticTokenSystem` reads the filesystem around `context.filename` and
+memoises the answer in a module-level cache shared by every file in a lint run.
+Neither property is expressible as a `RuleTester` case, so none of them was
+pinned — and a mutation run showed the whole option gate could be deleted and
+`hasSemanticTokenSystem` forced to either constant, with the entire suite
+green. The cache regression those tests exist
+to catch is specific: storing each visited directory's LOCAL result ("no marker
+AT this dir") instead of the RESOLVED answer ("a marker exists at or ABOVE this
+dir") answers correctly for whichever file is linted first and then poisons every
+sibling. That is what produced ZERO findings across 6,774 files while the rule
+shipped as "error".

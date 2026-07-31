@@ -198,6 +198,99 @@ ruleTester.run("prefer-whole-object-assertion", rule, {
         expect(obj.b).toBe(2);
       `,
     },
+
+    // --- The `expect(...)` shape itself. Both halves of the callee check are
+    // load-bearing and neither was pinned: with the NAME check gone any
+    // one-argument call whose result is `.toBe`d would be reported and
+    // "fixed" into an `expect(...).toMatchObject`, and with the ARITY check
+    // gone a two-argument `expect(actual, message)` would lose its message.
+    {
+      filename,
+      code: `
+        foo(obj.a).toBe(1);
+        foo(obj.b).toBe(2);
+      `,
+    },
+    {
+      filename,
+      code: `
+        expect(obj.a, "a must be 1").toBe(1);
+        expect(obj.b, "b must be 2").toBe(2);
+      `,
+    },
+
+    // --- Receiver purity, in the two shapes the corpus actually contains ---
+    // An optional link anywhere in the chain parses as a ChainExpression, not a
+    // MemberExpression, and the merged form would also change what happens when
+    // `a` is nullish.
+    {
+      filename,
+      code: `
+        expect(a?.b.c).toBe(1);
+        expect(a?.b.d).toBe(2);
+      `,
+    },
+    // A computed access through a VARIABLE is not re-evaluable to the same
+    // thing: `k` may be reassigned between the statements. Only a literal
+    // subscript counts as pure.
+    {
+      filename,
+      code: `
+        expect(m[k].c).toBe(1);
+        expect(m[k].d).toBe(2);
+      `,
+    },
+
+    // --- What counts as a primitive literal ---
+    // A template literal with a substitution is a computed value, not a literal.
+    {
+      filename,
+      code: "\n        expect(obj.a).toBe(`x${y}`);\n        expect(obj.b).toBe(`z${y}`);\n      ",
+    },
+    // Only `-` and `+` make a unary expression constant. `!flag` is a computed
+    // boolean, and merging it would be the `toBe`-to-structural-equality
+    // downgrade.
+    {
+      filename,
+      code: `
+        expect(obj.a).toBe(!flag);
+        expect(obj.b).toBe(!other);
+      `,
+    },
+
+    // --- Indexed runs: which subscripts are indices at all ---
+    // A fractional subscript is not an array index, so it is not part of a run
+    // that `expect(rows).toEqual([…])` could replace. The pair is chosen so the
+    // integer check is the ONLY thing suppressing the report: `{0.5, 1}` has as
+    // many members as the run has statements and a maximum of `run.length - 1`,
+    // so it satisfies the "indices are exactly 0..n-1" test and would be
+    // reported — with an array literal missing its first element — the moment
+    // 0.5 is allowed to count as an index.
+    {
+      filename,
+      code: `
+        expect(rows[0.5]).toEqual("a");
+        expect(rows[1]).toEqual("b");
+      `,
+    },
+    // A negative subscript parses as a unary expression rather than a literal,
+    // so it never reaches the index test at all.
+    {
+      filename,
+      code: `
+        expect(rows[-1]).toEqual("a");
+        expect(rows[1]).toEqual("b");
+      `,
+    },
+    // Mixed matchers inside an indexed run: `toEqual` and `toStrictEqual` do not
+    // make the same comparison, so neither one describes the whole array.
+    {
+      filename,
+      code: `
+        expect(rows[0]).toEqual("a");
+        expect(rows[1]).toStrictEqual("b");
+      `,
+    },
   ],
   invalid: [
     // The surviving true positive: the exact shape the fixer can rewrite
@@ -266,6 +359,66 @@ ruleTester.run("prefer-whole-object-assertion", rule, {
       `,
       output: null,
       errors: [{ messageId: "assertArrayOnce" }],
+    },
+
+    // --- THE SHAPE THAT ACTUALLY OCCURS ---
+    // Every case above states its assertions at module top level, which reaches
+    // the rule through the `Program` visitor. Real suites put them in an
+    // `it(…, () => { … })` callback, and that path runs only through
+    // `BlockStatement` — so the entire `BlockStatement` visitor could be deleted
+    // with the whole suite green, and the rule would have reported nothing in
+    // any test file ever written. Both run kinds are pinned in that shape.
+    {
+      filename,
+      code: `it("returns the user", () => {
+  expect(obj.a).toBe(1);
+  expect(obj.b).toBe(2);
+});`,
+      output: 'it("returns the user", () => {\n  expect(obj).toMatchObject({ a: 1, b: 2 });\n  \n});',
+      errors: [{ messageId: "combineAssertions" }],
+    },
+    {
+      filename,
+      code: `describe("rows", () => {
+  it("returns them in order", () => {
+    expect(rows[0]).toEqual("a");
+    expect(rows[1]).toEqual("b");
+  });
+});`,
+      output: null,
+      errors: [{ messageId: "assertArrayOnce" }],
+    },
+
+    // --- Receiver and expected-value shapes that ARE mergeable ---
+    // `this.x` inside a class-based test helper. `ThisExpression` is the one
+    // pure receiver that is not an identifier or a chain over one.
+    {
+      filename,
+      code: `
+        expect(this.a).toBe(1);
+        expect(this.b).toBe(2);
+      `,
+      output: "\n        expect(this).toMatchObject({ a: 1, b: 2 });\n        \n      ",
+      errors: [{ messageId: "combineAssertions" }],
+    },
+    // A template literal with no substitutions is a string literal written with
+    // backticks, and merges verbatim.
+    {
+      filename,
+      code: "\n        expect(obj.a).toBe(`x`);\n        expect(obj.b).toBe(`y`);\n      ",
+      output: "\n        expect(obj).toMatchObject({ a: `x`, b: `y` });\n        \n      ",
+      errors: [{ messageId: "combineAssertions" }],
+    },
+    // A negative number parses as a unary expression rather than a literal, and
+    // is still a constant the merged object can carry.
+    {
+      filename,
+      code: `
+        expect(point.x).toBe(-1);
+        expect(point.y).toBe(+2);
+      `,
+      output: "\n        expect(point).toMatchObject({ x: -1, y: +2 });\n        \n      ",
+      errors: [{ messageId: "combineAssertions" }],
     },
   ],
 });

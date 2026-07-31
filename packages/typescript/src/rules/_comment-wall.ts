@@ -62,8 +62,10 @@ export const WALL_SCHEMA = {
   },
 } as const;
 
-// Tags that carry what the signature cannot — kept in step with
-// `no-restated-jsdoc`'s VALUE_TAGS.
+// Tags that carry what the signature cannot. `no-restated-jsdoc` reaches the
+// same verdict by a different route — anything outside the small set of tags it
+// models leaves the block alone — so there is no shared list to drift against,
+// and this one stands on its own.
 const VALUE_TAG_RE =
   /@(?:deprecated|see|example|throws|remarks|since|default|defaultvalue|link|internal|alpha|beta|experimental|template|typeparam|inheritdoc|todo|fixme|override)\b/i;
 
