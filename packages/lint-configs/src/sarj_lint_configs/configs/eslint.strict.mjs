@@ -699,6 +699,56 @@ const config = [
       "perfectionist/sort-classes": "error",
       "perfectionist/sort-jsx-props": "error",
       "perfectionist/sort-union-types": "error",
+      // Public API first, private machinery below — a file should read
+      // newspaper-style. This is the ALREADY-INSTALLED rule for that job; it was
+      // simply never switched on. It is enabled here instead of growing a
+      // `@sarj` rule, because building in-house what an available plugin rule
+      // already does is this repo's repeated failure mode.
+      //
+      // WARN, not error: this introduces an opinion rather than ratcheting an
+      // existing one. Adoption where the rule can fire is 20.6% for function
+      // declarations (4.0% counting all member kinds), and OSS agrees (20.8% /
+      // 3.4%). The narrowest variant shipped here still produces 5,280 reports
+      // across first-party code, so it is a migration; 75% of violating files
+      // need exactly one move, so it is cheap per file.
+      //
+      // The two options are load-bearing, not cosmetic:
+      //   - `type: "unsorted"` drops the default ALPHABETICAL constraint. Left
+      //     on, it demands `apple` before `zebra` among two exported functions —
+      //     an enormous reordering unrelated to the public-API-first question.
+      //   - the explicit `groups` correct the default order, which lists
+      //     `declare-class, class, export-class` and therefore REQUIRES a
+      //     non-exported class ABOVE an exported one — the exact opposite of the
+      //     intent. Verified by running it: `export class Apple {} / class Zebra {}`
+      //     reports "Expected Zebra (class) to come before Apple (export-class)".
+      //
+      // Two known blind spots, deliberately accepted and recorded so they are
+      // not re-litigated: `const` arrow functions are invisible to this rule
+      // (it has no variable group), and any top-level `const` partitions the
+      // module so members either side are never compared. Together those are why
+      // it covers ~70% rather than 100% of the convention. They are also exactly
+      // the members that are TDZ-UNSAFE to move: `function` declarations hoist,
+      // so reordering them can never throw, whereas moving a `const`/`class`
+      // below a module-initialisation-time use is a live `ReferenceError` at
+      // import. Measured: 0 unsafe moves for declarations in either corpus,
+      // against 31 first-party + 23 OSS for const arrows and 1,114 + 432 for all
+      // member kinds. The blind spots and the safety boundary coincide, so the
+      // scope stops at declarations on purpose.
+      //
+      // Not covered by `@sarj/enforce-file-structure`, which orders only
+      // imports-first and `use server`-first and deliberately PERMITS both
+      // public-first and private-first layouts. This is additive.
+      "perfectionist/sort-modules": [
+        "warn",
+        {
+          type: "unsorted",
+          groups: [
+            ["declare-enum", "declare-interface", "declare-type", "declare-class", "declare-function"],
+            ["export-enum", "export-interface", "export-type", "export-class", "export-function"],
+            ["enum", "interface", "type", "class", "function"],
+          ],
+        },
+      ],
       "simple-import-sort/imports": "error",
       "simple-import-sort/exports": "error",
 
