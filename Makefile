@@ -4,7 +4,7 @@ MAKEFLAGS += --warn-undefined-variables --no-builtin-rules
 
 CONFIG_SRC := packages/lint-configs/src/sarj_lint_configs/configs
 
-.PHONY: help setup build verify test lint typecheck promote-strict check-versions-synced publish publish-typescript publish-python publish-sql \
+.PHONY: help setup build verify test lint typecheck check-no-private-refs promote-strict check-versions-synced publish publish-typescript publish-python publish-sql \
         publish-iac publish-lint-configs publish-tsconfig
 
 help:
@@ -24,7 +24,7 @@ setup:
 # The gate CONTRIBUTING/CLAUDE.md tells contributors to run before review. It did
 # not exist, so `make verify` failed with "No rule to make target" and the
 # documented workflow could not be followed as written.
-verify: lint typecheck test
+verify: lint typecheck test check-no-private-refs
 
 promote-strict:
 	@echo "Promoting all warning-level standards to errors globally..."
@@ -80,6 +80,9 @@ typecheck:
 # What remains here is the version check that lived alongside them, which is a
 # genuinely different invariant: pre-commit consumers install the ROOT package, so
 # a root version lagging packages/python ships a stale linter under a fresh number.
+check-no-private-refs:
+	@./scripts/check-no-private-refs.sh
+
 check-versions-synced:
 	@root=$$(grep -m1 '^version' pyproject.toml) && pkg=$$(grep -m1 '^version' packages/python/pyproject.toml) && [ "$$root" = "$$pkg" ] || { echo "error: root pyproject.toml version out of sync with packages/python (pre-commit consumers install the root package)"; exit 1; }
 	@echo "root and package versions agree ✓"
