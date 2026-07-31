@@ -10,6 +10,9 @@ name: repo CI
 # in a local pre-commit hook, which is exactly the thing a rushed contributor
 # skips. `check-versions-synced` was in the same position for every package
 # except Python.
+#
+# Two of these gates also need to see the merge base, so this job checks out
+# full history. A gate that cannot see the base FAILS here; it does not skip.
 
 on:
   push:
@@ -27,10 +30,32 @@ jobs:
   gates:
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 is load-bearing, not caution. Two gates below need
+      # history: the private-refs guard reads the messages of the commits this
+      # PR adds, and the evidence-retention gate diffs `docs/rules/` against the
+      # merge base. The default depth-1 checkout resolves neither, and both are
+      # written to FAIL LOUD rather than skip when they cannot see the base.
       - uses: actions/checkout@v7
-      - name: No private repo/client names or conflict markers
+        with:
+          fetch-depth: 0
+      - name: No private repo/client names or conflict markers (tree)
         run: make check-no-private-refs
+      # Separate step, and pull_request-only: `github.event.pull_request.base.sha`
+      # does not exist on a push event, and 53 of the 156 commit messages already
+      # on main name a private repo. Re-scanning them on every push to main would
+      # fail main permanently. What must be stopped is adding a 54th.
+      - name: No private repo/client names in the commit messages this PR adds
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: ./scripts/check-no-private-refs.sh --commits "$BASE..$HEAD"
       - name: Filenames, rule/test pairing, one copy of each strict config
         run: make check-file-conventions
-      - name: Root and package versions agree
+      - name: A deleted rule's evidence document is retained, not deleted
+        if: github.event_name == 'pull_request'
+        env:
+          EVIDENCE_RETENTION_BASE: ${{ github.event.pull_request.base.sha }}
+        run: ./scripts/check-file-conventions.sh
+      - name: Every version site agrees
         run: make check-versions-synced

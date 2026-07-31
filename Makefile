@@ -96,11 +96,14 @@ sync-rule-ledger:
 check-file-conventions:
 	@./scripts/check-file-conventions.sh
 
-# Pre-commit consumers install the ROOT package, so a root version lagging
-# packages/python ships a stale linter under a fresh number.
+# Every one of the 21 places a version is written, not just the two this target
+# used to compare. Pre-commit consumers install the ROOT package, so a root
+# version lagging packages/python ships a stale linter under a fresh number --
+# but that was the only case covered, which is why #183 could bump
+# `packages/typescript/package.json` and leave `package-lock.json` two minor
+# versions behind, and why the root `uv.lock` sat two versions stale on main.
 check-versions-synced:
-	@root=$$(grep -m1 '^version' pyproject.toml) && pkg=$$(grep -m1 '^version' packages/python/pyproject.toml) && [ "$$root" = "$$pkg" ] || { echo "error: root pyproject.toml version out of sync with packages/python (pre-commit consumers install the root package)"; exit 1; }
-	@echo "root and package versions agree ✓"
+	@./scripts/check-versions-synced.sh
 
 publish-typescript:
 	@test -n "$$NPM_TOKEN" || (echo "error: NPM_TOKEN unset"; exit 1)

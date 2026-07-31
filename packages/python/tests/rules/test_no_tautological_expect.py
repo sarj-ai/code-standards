@@ -350,7 +350,7 @@ def test_ignores_empty_source():
 
 
 def test_ignores_assert_true_marking_a_match_arm_beside_a_raising_arm():
-    """Faris falltime/tests/services/test_pdf_processor.py:96 — the pattern is the assertion."""
+    """First-party PDF-processor suite — the matched pattern IS the assertion."""
     src = (
         "def test_wrong_password(tmpdir):\n"
         "    match PROCESSOR.process(source_file=protected, password='not right'):\n"

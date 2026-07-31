@@ -20,10 +20,23 @@ canonical path directly drops the `"**/tests/**"` exemptions — 239 new finding
 in `packages/python` alone. `make check-file-conventions` fails if either link
 becomes a real file.
 
+Deleting a rule does NOT delete its evidence. `docs/rules/<name>.md` is the only
+record of what was measured and why, so when a rule is withdrawn its evidence
+document moves to `docs/rules/retired/<name>.md` — `check-file-conventions`
+fails on a doc that left `docs/rules/` without arriving there. The code itself is
+already burned for you — `code_ledger.json` is append-only — but the evidence is
+not, and nothing but this gate stops it going out with the rule.
+
 Every problem gets a gate, not a one-off fix. `make verify` runs
 `check-no-private-refs`, `check-file-conventions` and `check-versions-synced`;
 add to them rather than relying on review. A new guard is not finished until you
 have mutated the thing it guards and watched it fail.
+
+That bar is not rhetorical. Three of the four regressions `check-no-private-refs`
+exists to catch arrived through CI while the guard ran only in a local hook, and
+a fourth sat in the tree the whole time because the guard scanned six
+hand-listed directories. A gate must run where the failure travels, must see the
+whole tree, and must fail loud rather than skip when an input is missing.
 
 A rule module's `@fileoverview` is a one-line `<name> — <claim>` plus the two
 DERIVED links (its tests, and `docs/rules/<name>.md`). Six content lines is the
