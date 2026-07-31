@@ -17,6 +17,12 @@ pre-commit:
       fail_text: >-
         A private repo/client name or a conflict marker reached the tree.
         This regresses on rebases onto the scrub commit — re-anonymise and retry.
+    file-conventions:
+      run: make check-file-conventions
+      fail_text: >-
+        A file is misnamed, a rule has no test module named after it, markdown
+        landed outside the four allowed locations, or a strict config was copied
+        instead of symlinked. Fix the reported path and retry.
 
     lint:
       run: make lint

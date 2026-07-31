@@ -212,6 +212,13 @@
   files: '\.(tf|hcl|tfvars)$'
   additional_dependencies: ['sarj-iac-lint']
 
+- id: sarj-require-prevent-destroy-on-irreplaceable
+  name: 'sarj-lint(iac): irreplaceable resource without lifecycle prevent_destroy'
+  entry: sarj-iac-lint check --rule require-prevent-destroy-on-irreplaceable
+  language: python
+  files: '\.(tf|hcl)$'
+  additional_dependencies: ['sarj-iac-lint']
+
 - id: sarj-mock-without-spec
   name: 'sarj-lint: mock built without spec= accepts any attribute'
   entry: sarj-python-lint check --rule mock-without-spec
@@ -389,7 +396,6 @@
   language: python
   types: [python]
 
-
 - id: sarj-no-implicit-attribute-access
   name: 'sarj-lint: Known dictionary shapes must use declarative parsing'
   entry: sarj-python-lint check --rule no-implicit-attribute-access
@@ -540,21 +546,19 @@
   language: python
   types: [python]
 
-
-
 - id: sarj-require-lock-timeout
   name: 'sarj-lint: DDL migration missing SET lock_timeout or statement_timeout'
   entry: sarj-sql-lint check --rule require-lock-timeout
   language: python
   types: [sql]
-  additional_dependencies: ['sarj-sql-lint==0.5.0']
+  additional_dependencies: ['sarj-sql-lint']
 
 - id: sarj-add-constraint-not-valid
   name: 'sarj-lint: ADD CONSTRAINT (CHECK/FK) without NOT VALID'
   entry: sarj-sql-lint check --rule add-constraint-not-valid
   language: python
   types: [sql]
-  additional_dependencies: ['sarj-sql-lint==0.5.0']
+  additional_dependencies: ['sarj-sql-lint']
 
 - id: sarj-require-fk-index
   name: 'sarj-lint: Foreign key column without index on child table'

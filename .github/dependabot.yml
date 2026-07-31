@@ -43,3 +43,13 @@ updates:
     groups:
       lint-config-tooling:
         patterns: ["*"]
+  # Without this, every `uses:` pin in .github/workflows/ is updated by hand or
+  # not at all — which is how a repo ends up on an action major that no longer
+  # receives security fixes while every language ecosystem above stays current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

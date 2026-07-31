@@ -260,6 +260,6 @@ Several rules are ports of the Python linter's SARJ rules, retuned for TypeScrip
 | `single-public-export` | SARJ022 | Modules with no single obvious entry point. |
 | `prefer-string-literal-union` | SARJ006 | An open `string` where a closed set is intended. |
 
-Shared helpers live in `src/rules/_*.ts` (`_secret_names.ts`, `_sql.ts`, `_logging.ts`, `_paths.ts`, `_tailwind.ts`) so related rules cannot diverge on what counts as a secret, a SQL statement, a logging call, or a test file.
+Shared helpers live in `src/rules/_*.ts` (`_secret-names.ts`, `_sql.ts`, `_logging.ts`, `_paths.ts`, `_tailwind.ts`) so related rules cannot diverge on what counts as a secret, a SQL statement, a logging call, or a test file.
 
 Deliberately **not** ported: `no-unreachable-after-terminal` (SARJ010) is already covered by `allowUnreachableCode: false` in `@sarj/tsconfig` plus ESLint core `no-unreachable`; `no-aggregation-in-store-query` (SARJ020) assumes a Postgres-OLTP / columnar-mirror split that D1 does not have; `no-query-with-many-joins` (SARJ019), `stepdown` (SARJ023), `prefer-class-row`, `prefer-struct-over-namedtuple`, `prefer-timedelta-for-durations`, and `no-fstring-in-log` have no TypeScript defect class or target API; `prefer-str-enum` is covered by `prefer-string-literal-union` + `no-enum`.

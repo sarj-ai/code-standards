@@ -41,7 +41,7 @@
 
 import { AST_NODE_TYPES, ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
 
-import { isAuthSecretName } from "./_secret_names.js";
+import { isAuthSecretName } from "./_secret-names.js";
 import { isTestFile } from "./_paths.js";
 
 type MessageIds = "preferConstantTimeSecretCompare";

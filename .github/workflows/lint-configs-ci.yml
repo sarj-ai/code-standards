@@ -6,10 +6,20 @@ on:
     paths:
       - 'packages/lint-configs/**'
       - '.github/workflows/lint-configs-ci.yml'
+      # test_code_allocation.py compares all three sibling registries against each
+      # other and against the hooks file; a code claimed in another package must
+      # fail here, where the whole namespace is importable at once.
+      - 'packages/*/src/*/rules/_registry.py'
+      - '.pre-commit-hooks.yaml'
   pull_request:
     paths:
       - 'packages/lint-configs/**'
       - '.github/workflows/lint-configs-ci.yml'
+      # test_code_allocation.py compares all three sibling registries against each
+      # other and against the hooks file; a code claimed in another package must
+      # fail here, where the whole namespace is importable at once.
+      - 'packages/*/src/*/rules/_registry.py'
+      - '.pre-commit-hooks.yaml'
 
 permissions:
   contents: read

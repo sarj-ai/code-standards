@@ -4,11 +4,12 @@ MAKEFLAGS += --warn-undefined-variables --no-builtin-rules
 
 CONFIG_SRC := packages/lint-configs/src/sarj_lint_configs/configs
 
-.PHONY: help setup build verify test lint typecheck check-no-private-refs promote-strict check-versions-synced publish publish-typescript publish-python publish-sql \
+.PHONY: help setup build verify test lint typecheck check-no-private-refs check-file-conventions promote-strict check-versions-synced publish publish-typescript publish-python publish-sql \
         publish-iac publish-lint-configs publish-tsconfig
 
 help:
 	@echo "Targets: setup | verify | build | test | lint | typecheck | promote-strict"
+	@echo "         check-{versions-synced,no-private-refs,file-conventions}"
 	@echo "         publish-{typescript,python,sql,iac,lint-configs,tsconfig} | publish (all)"
 	@echo "Releases trigger via tag push: typescript-v* python-v* sql-v* iac-v* lint-configs-v* tsconfig-v*"
 
@@ -24,7 +25,7 @@ setup:
 # The gate CONTRIBUTING/CLAUDE.md tells contributors to run before review. It did
 # not exist, so `make verify` failed with "No rule to make target" and the
 # documented workflow could not be followed as written.
-verify: lint typecheck test check-no-private-refs
+verify: lint typecheck test check-no-private-refs check-file-conventions
 
 promote-strict:
 	@echo "Promoting all warning-level standards to errors globally..."
@@ -75,18 +76,21 @@ typecheck:
 	cd packages/lint-configs   && uv run basedpyright
 	cd packages/typescript     && npm run typecheck
 
-# There is exactly ONE copy of each strict config, in $(CONFIG_SRC); every package
-# extends it by relative path. The repo used to keep a second, `cp`-synced copy at
-# the root for packages to extend, which bought nothing (the two were identical by
-# construction) and cost a sync target, a check target, a CI workflow and a class
-# of "out of sync" failure that fired whenever the two drifted by a single edit.
-#
-# What remains here is the version check that lived alongside them, which is a
-# genuinely different invariant: pre-commit consumers install the ROOT package, so
-# a root version lagging packages/python ships a stale linter under a fresh number.
 check-no-private-refs:
 	@./scripts/check-no-private-refs.sh
 
+# Filename casing, rule<->test pairing, markdown placement, and the ONE-copy rule
+# for the strict configs in $(CONFIG_SRC). The root `.ruff-strict.toml` /
+# `.pyright-strict.json` are SYMLINKS into that directory and must stay symlinks:
+# ruff anchors `per-file-ignores` globs at the directory of the config that
+# declares them, so pointing a package at the canonical path directly silently
+# drops the whole `"**/tests/**"` exemption -- 239 new findings in packages/python
+# alone. A `cp` in place of either link does the same job and then drifts.
+check-file-conventions:
+	@./scripts/check-file-conventions.sh
+
+# Pre-commit consumers install the ROOT package, so a root version lagging
+# packages/python ships a stale linter under a fresh number.
 check-versions-synced:
 	@root=$$(grep -m1 '^version' pyproject.toml) && pkg=$$(grep -m1 '^version' packages/python/pyproject.toml) && [ "$$root" = "$$pkg" ] || { echo "error: root pyproject.toml version out of sync with packages/python (pre-commit consumers install the root package)"; exit 1; }
 	@echo "root and package versions agree ✓"
