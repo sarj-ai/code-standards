@@ -12,9 +12,46 @@ import sarj from "@sarj/eslint-plugin";
 export default [...sarj.configs.recommended];
 ```
 
-46 rules. Each rule's source under `src/rules/` carries its own `@fileoverview` rationale plus `meta.docs.description` + `meta.messages` — read the file for the full reasoning, including the false positives it deliberately does not fire on.
+51 rules. Each rule's source under `src/rules/` carries its own `@fileoverview` rationale plus `meta.docs.description` + `meta.messages` — read the file for the full reasoning, including the false positives it deliberately does not fire on.
 
 Presets: `recommended` (warn-first), `strict` (every rule at error), `style-guide` (formatting/naming subset).
+
+## New in 4.1.0 — `no-hand-rolled-sleep`
+
+`new Promise((resolve) => setTimeout(resolve, ms))` is `node:timers/promises`'s
+`setTimeout` rewritten by hand, minus the `AbortSignal` — so it is a capability
+loss, not verbosity. The hand-rolled sleep holds a live timer that nothing can
+clear, and its mirror image, the `Promise.race([work, rejectAfter(ms)])` timeout
+arm, leaks the timer the other way: when `work` wins, nothing clears it and it
+keeps the event loop alive until it fires.
+
+Shipped only after confirming nothing already enabled reports this position. The
+enabled set was resolved with `ESLint#calculateConfigForFile` against the shipped
+`eslint.strict.mjs` (204 rules before this one) and a file containing every
+shape was linted through it: no report. `eslint-plugin-unicorn` 72 has no
+promisified-timer rule among its 341; `unicorn/prefer-abort-signal-timeout` covers the
+`AbortController` + `setTimeout` idiom and not the race arm; core
+`no-promise-executor-return` fires on the concise-arrow spelling only and its
+remedy ("add braces") entrenches the hand-rolled sleep. The polling-loop variant
+(`while (!done) await sleep(ms)`) is deliberately absent — core `no-await-in-loop`
+is already enabled and reports that exact position.
+
+Measured over 1,471 files containing `setTimeout` across 15 OSS repos (hono,
+tRPC, drizzle-orm, undici, vitest, got, cal.com, documenso, dub, formbricks,
+midday, openstatus, papermark, unkey, zod) and seven internal ones: 85 + 11
+sleeps and 2 + 1 leaky race arms at the default settings, **0 false positives**.
+
+`checkClientModules` is the option that matters. A browser or React Native
+bundle cannot import `node:timers/promises` and the web platform ships no
+equivalent, so client modules are skipped by default — 79% of the internal
+corpus's occurrences live in `.tsx` components where the fix cannot be applied.
+Turn it on only in a tree where every file resolves `node:` builtins. The race
+message is reported everywhere regardless: `AbortSignal.timeout` is on the web
+platform too.
+
+| Rule | What it catches | Preset |
+|---|---|---|
+| `no-hand-rolled-sleep` | `new Promise((r) => setTimeout(r, ms))` in any spelling, and an uncleared `Promise.race`/`Promise.any` timeout arm. Options: `checkClientModules` (default `false`), `allowIn`. | warn / error |
 
 ## New in 2.14.0 — `no-tautological-expect`
 
@@ -125,7 +162,7 @@ Glob patterns whose files opt out (generated code already opts out by default).
 
 ## Configurable rules
 
-Most rules take no options. These three do, because they encode a codebase's
+Most rules take no options. These do, because they encode a codebase's
 architecture rather than a language fact — the defaults describe one convention
 and every repo gets to name its own.
 
@@ -135,10 +172,15 @@ and every repo gets to name its own.
 | `no-dynamic-sql` | `methods` | `["prepare", "exec", "query"]` | Statement-taking methods to inspect |
 | `no-storage-in-stateless-modules` | `modules` | `[]` (rule off) | Directories declared stateless |
 | `no-storage-in-stateless-modules` | `methods` | `["prepare", "put", "getWithMetadata"]` | Storage methods to flag |
+| `no-hand-rolled-sleep` | `checkClientModules` | `false` | Also report the sleep form in browser/React Native modules |
+| `no-hand-rolled-sleep` | `allowIn` | `[]` | Glob patterns for a sanctioned sleep wrapper module |
 
-Every option value is a **regular-expression source matched against the absolute
-filename**, not a glob — so it can express both path separators. Supplying an
-option **replaces** the default rather than extending it.
+The path options on the first three rules are **regular-expression sources
+matched against the absolute filename**, not globs — so they can express both
+path separators. `allowIn` is the exception, on `no-hand-rolled-sleep` as on
+`require-fetch-timeout`: it takes minimatch-ish **globs**, also matched against
+the absolute path, so anchor them with a `**/` prefix. Supplying an option
+**replaces** the default rather than extending it.
 
 `no-storage-in-stateless-modules` is a **no-op until `modules` is set**. The
 method names alone (`put`, `prepare`) carry no type information, so the rule is
