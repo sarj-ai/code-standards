@@ -70,6 +70,66 @@ Deliberately NOT flagged:
   `anyio/src/anyio/_core/_eventloop.py:88` all mirror stdlib `sleep`. A body
   that computes with the parameter (`deadline = current_time() + delay`) is not
   a pass-through and still fires.
+- **Same-name keyword forwarding** — a parameter whose every use in the enclosing
+  function is either `<callee>(<name>=<name>)` or `self.<name> = <name>`, and
+  which never appears in arithmetic, a comparison or a subscript. The name is a
+  duration but the type is the wrapped API's: the value is handed to a third
+  party that documents float/int seconds, so the author cannot switch it to
+  `timedelta` without converting at a boundary the wrapper does not own. A body
+  that *computes* with the parameter is not forwarding and still fires
+  (`prefect/src/prefect/server/orchestration/rules.py:870` survives). A
+  constructor that only stores the parameter verbatim is likewise not where the
+  unit is chosen: the field's own annotation is a separate `AnnAssign` this rule
+  still inspects.
+- **annotations that already admit `timedelta`** — `timeout: float | timedelta`
+  fires only because the union walk returns on its first numeric member, yet the
+  API already accepts exactly what the rule is asking for, so the defect cannot
+  be present. The reductio is
+  `airflow/task-sdk/src/airflow/sdk/bases/sensor.py:145`,
+  `def _coerce_poke_interval(poke_interval: float | timedelta) -> timedelta` —
+  the function whose entire job is the conversion the rule demands (also
+  `airflow/providers/google/cloud/hooks/cloud_storage_transfer_service.py:480`).
+
+## 2026-07 false-positive audit
+
+Measured on a 19-repo corpus (seven first-party repos plus django, celery,
+airflow, litellm, prefect, saleor, zulip, fastapi, pydantic, rich, httpx,
+requests, deduped by content hash): **2,791 findings**, 202 of them first-party.
+A seeded random sample of 50 read against source put the false-positive rate at
+**50%**. The two guards below take the rule to **1,308** and first-party 202 →
+**188**.
+
+* **Same-name keyword forwarding** — the dominant class, **20 of the 50 sampled**.
+  Removes **1,467 of 2,791 (53%)** at a cost of **13 of 202 first-party findings
+  (6.4%)**. That cost was accepted deliberately over two narrower predicates that
+  cost no first-party recall at all — `timeout` beside sibling parameters `retry`
+  AND `metadata` (635 findings), and `waiter_*` beside a sibling `waiter_max_*`
+  (81) — because both are shape-matching against two specific third-party SDKs
+  and neither generalises to the next wrapper. The `google.api_core` triple
+  (`retry: Retry | _MethodDefault, timeout: float | None, metadata: Sequence`)
+  forwarded verbatim into a gapic client is the single biggest shape —
+  `airflow/providers/google/cloud/hooks/analytics_admin.py:73`,
+  `.../hooks/managed_kafka.py:445`, `.../hooks/alloy_db.py:398`,
+  `.../operators/dlp.py:2830`, `.../operators/tasks.py:204`,
+  `.../operators/stackdriver.py:101` — with `waiter_delay` into botocore's
+  `WaiterConfig` (`airflow/providers/amazon/aws/operators/glue.py:696`,
+  `.../emr.py:1655`) and `poll_timeout` into `confluent_kafka.Consumer.consume`
+  (`airflow/providers/apache/kafka/operators/consume.py:167`) next.
+* **`timedelta` already in the union** — **19 of 2,791**, 1 of them first-party.
+  **Recall cost is zero by construction**: a signature that already takes a
+  `timedelta` cannot be forcing its callers to count seconds.
+
+Two classes are deliberately left to `# sarj-noqa` rather than guarded, because
+both are real judgement calls rather than impossible edits:
+
+* wire-format DTO fields, where an integer count of seconds is what the protocol
+  puts on the wire (`expires_in: int` in an OAuth2 token response is RFC 6749's
+  spelling; `delay_seconds: int` in
+  `prefect/src/prefect/server/schemas/responses.py:88` is a public REST response
+  schema), and
+* numeric and statistical helpers whose parameter feeds arithmetic rather than a
+  clock (`prefect/src/prefect/utilities/math.py:6`,
+  `poisson_interval(average_interval: float)` feeding `math.log`).
 
 Suppress an intentional raw-numeric duration with `# sarj-noqa: SARJ014 — <reason>`.
 

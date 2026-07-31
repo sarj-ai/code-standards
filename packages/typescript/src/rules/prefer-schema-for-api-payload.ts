@@ -42,6 +42,30 @@
  *     `react-router/integration/request-test.ts` that no path predicate sees.
  *   - **JSON read off local disk**, 4 hits — see `isLocalFileRead`.
  *
+ * SECOND SWEEP (25,508 deduped TS/TSX files across zod / trpc / dub /
+ * openstatus / formbricks / documenso / unkey / midday / papermark / cal.com /
+ * hono plus six first-party repos, 2026-07): 1,013 hits, 45 read in a seeded
+ * random sample — 22 true positives, 6 false positives, 17 arguable. Three
+ * fixes, each measured on that corpus:
+ *
+ *   - **The read IS the validation** — see `isValidationRead`.
+ *   - **A `.json()` promise chain reported as a property access** — 60 / 1,013.
+ *     The MemberExpression visitor saw `<rawPayload>.catch` and reported it,
+ *     exempting only `.parse`/`.safeParse`; the `.catch` result was then NOT
+ *     tracked, so the real unvalidated read one line down was MISSED and the
+ *     report landed on the wrong node. `then`/`catch`/`finally` are now exempt
+ *     properties AND propagate the raw-payload taint, which strictly MOVES the
+ *     report to the true field read. Verified against
+ *     `midday/packages/workbench/src/ui/lib/api.ts:73-74` and
+ *     `papermark/ee/features/dataroom-freeze/components/freeze-settings.tsx:110-112`,
+ *     both of which still fire, at the corrected line.
+ *   - **A field read consumed solely by a validator** — see `GUARD_NAME_RE`.
+ *
+ * DELIBERATELY NOT GUARDED: the error-envelope shape
+ * (`if (!res.ok) { const { error } = await res.json() }`), ~12% of the volume in
+ * three literal strings. Rendering an unvalidated `error.message` straight into
+ * a toast is a real, if benign, defect and the house call is to keep reporting it.
+ *
  * References:
  *   - https://zod.dev/?id=parse
  *   - https://www.totaltypescript.com/parse-don-t-validate
@@ -88,6 +112,30 @@ const unwrap = (
 };
 
 /**
+ * Promise-chain links that pass the payload along unchanged. `.parse` /
+ * `.safeParse` are NOT here — those are the validation the rule is asking for.
+ */
+const PROMISE_CHAIN_METHODS: ReadonlySet<string> = new Set([
+  "then",
+  "catch",
+  "finally",
+]);
+
+/** True for `ZUser.parse` / `ZUser.safeParse` handed to a chain link as a callback. */
+const isSchemaParseReference = (
+  node: TSESTree.Node | null | undefined,
+): boolean => {
+  const inner = unwrap(node);
+  return (
+    inner !== null &&
+    inner.type === AST_NODE_TYPES.MemberExpression &&
+    !inner.computed &&
+    inner.property.type === AST_NODE_TYPES.Identifier &&
+    (inner.property.name === "parse" || inner.property.name === "safeParse")
+  );
+};
+
+/**
  * Returns true if the expression is (optionally awaited) a raw payload source:
  * `<x>.json()` (a fetch/Request body) or `JSON.parse(<x>)`.
  *
@@ -118,6 +166,16 @@ const isRawPayloadSource = (
   }
   if (property.name === "json") {
     return true;
+  }
+  // A promise-chain link does not change what the value IS: the result of
+  // `res.json().catch(() => ({}))` is still an unvalidated payload, and before
+  // this the binding went untracked so the real field read below it was missed.
+  // Unless the chain ends in a schema parse, in which case it is validated.
+  if (PROMISE_CHAIN_METHODS.has(property.name)) {
+    return (
+      !current.arguments.some(isSchemaParseReference) &&
+      isRawPayloadSource(callee.object)
+    );
   }
   // `JSON.parse(...)` specifically — not any `.parse()`, which is usually the
   // schema validation we are asking for.
@@ -248,8 +306,81 @@ const findVariable = (
   return null;
 };
 
-/** User-defined type-guard predicate names, e.g. `isProtectedResourceMetadata`. */
-const GUARD_NAME_RE = /^is[A-Z]/;
+/**
+ * Calls that CHECK their argument rather than trust it: a type-guard predicate
+ * (`isProtectedResourceMetadata`) or a named validator.
+ *
+ * The validator verbs were added after the second sweep found the pattern the
+ * `is`-only spelling missed:
+ * `formbricks/apps/web/modules/ee/license-check/lib/license.ts:389` passes
+ * `responseJson.data` to `validateLicenseDetails`, which at :271 is literally
+ * `LicenseDetailsSchema.parse(data)` — the exact thing the rule is asking for,
+ * behind a name the predicate could not see. Recall cost 0 of the 45 findings
+ * read. The regex stays anchored and requires a capital after the verb, so
+ * `validated(...)` and `parser(...)` are unaffected.
+ */
+const GUARD_NAME_RE = /^(?:is|validate|parse|assert|decode|coerce)[A-Z]/;
+
+/**
+ * True when the read is being TYPE-TESTED rather than trusted — the operand of
+ * a `typeof`, the sole argument of `Array.isArray(...)`, or an argument to a
+ * guard/validator call.
+ *
+ * The rule already untracked on a guard CALL, but not on the inline narrowing
+ * that is how most of this corpus actually validates. 4 of the 45 findings read
+ * in the second sweep were this, e.g.
+ * `trpc/packages/next/src/app-dir/server.ts:200-202`:
+ * `const { cacheTag } = await req.json(); if (typeof cacheTag !== 'string')
+ * return 400;` — a complete check on the one field the handler uses.
+ *
+ * This SKIPS the report without untracking the variable, so a later unguarded
+ * read of a different field still fires. Recall cost 0 of 45.
+ */
+const isValidationRead = (node: TSESTree.Node): boolean => {
+  let current: TSESTree.Node = node;
+  let parent: TSESTree.Node | null | undefined = current.parent;
+  while (
+    parent !== null &&
+    parent !== undefined &&
+    (parent.type === AST_NODE_TYPES.TSAsExpression ||
+      parent.type === AST_NODE_TYPES.TSTypeAssertion ||
+      parent.type === AST_NODE_TYPES.TSNonNullExpression ||
+      parent.type === AST_NODE_TYPES.TSSatisfiesExpression ||
+      parent.type === AST_NODE_TYPES.ChainExpression)
+  ) {
+    current = parent;
+    parent = parent.parent;
+  }
+  if (parent === null || parent === undefined) return false;
+
+  if (
+    parent.type === AST_NODE_TYPES.UnaryExpression &&
+    parent.operator === "typeof" &&
+    parent.argument === current
+  ) {
+    return true;
+  }
+  if (
+    parent.type !== AST_NODE_TYPES.CallExpression ||
+    !parent.arguments.some((arg): boolean => arg === current)
+  ) {
+    return false;
+  }
+  const callee = parent.callee;
+  if (
+    callee.type === AST_NODE_TYPES.MemberExpression &&
+    !callee.computed &&
+    callee.object.type === AST_NODE_TYPES.Identifier &&
+    callee.object.name === "Array" &&
+    callee.property.type === AST_NODE_TYPES.Identifier &&
+    callee.property.name === "isArray"
+  ) {
+    return parent.arguments.length === 1;
+  }
+  return (
+    callee.type === AST_NODE_TYPES.Identifier && GUARD_NAME_RE.test(callee.name)
+  );
+};
 
 /**
  * True when a call sits in a boolean-test position (`if`/`while`/`for`/`?:`),
@@ -318,6 +449,25 @@ export default ESLintUtils.RuleCreator(
 
     const unvalidatedVariables = new Set<Scope.Variable>();
 
+    /**
+     * True when every binding a destructuring pattern introduces is type-tested
+     * somewhere. Requiring EVERY binding (not any) keeps the report when one
+     * field is checked and another is used unvalidated.
+     */
+    const isFullyNarrowedPattern = (
+      declarator: TSESTree.VariableDeclarator,
+    ): boolean => {
+      const declared = context.sourceCode.getDeclaredVariables(declarator);
+      return (
+        declared.length > 0 &&
+        declared.every((variable) =>
+          variable.references.some((reference) =>
+            isValidationRead(reference.identifier),
+          ),
+        )
+      );
+    };
+
     const trackInitializer = (
       declarator: TSESTree.VariableDeclarator,
     ): void => {
@@ -343,7 +493,12 @@ export default ESLintUtils.RuleCreator(
           node.id.type === AST_NODE_TYPES.ArrayPattern
         ) {
           if (isRawPayloadSource(node.init)) {
-            context.report({ node: node.id, messageId: "unparsedJsonAccess" });
+            // `const { cacheTag } = await req.json()` where EVERY binding the
+            // pattern introduces is then type-tested is the same "the read IS
+            // the validation" case as `isValidationRead`, one node up.
+            if (!isFullyNarrowedPattern(node)) {
+              context.report({ node: node.id, messageId: "unparsedJsonAccess" });
+            }
             return;
           }
           if (
@@ -408,20 +563,26 @@ export default ESLintUtils.RuleCreator(
       MemberExpression(node): void {
         // The read is inside an assertion — the assertion IS the validation.
         if (isInsideAssertion(node)) return;
+        // The read is being type-tested, not trusted. Skipping WITHOUT
+        // untracking leaves a later unguarded read of another field reportable.
+        if (isValidationRead(node)) return;
         const scope = context.sourceCode.getScope(node);
         const obj = unwrap(node.object);
 
         if (isRawPayloadSource(obj)) {
           // Direct `.foo` access on `(await r.json()).foo` is always bad,
-          // unless the parent call is a `.parse()`/`.safeParse()` — in which
-          // case it's a validation, not an unvalidated read.
+          // unless the parent call is a `.parse()`/`.safeParse()` (a
+          // validation) or a `.then()`/`.catch()`/`.finally()` (a promise-chain
+          // link, not a field read — `isRawPayloadSource` carries the taint
+          // through it so the real read below still fires).
           const parent = node.parent;
           if (
             parent.type === AST_NODE_TYPES.CallExpression &&
             parent.callee === node &&
             node.property.type === AST_NODE_TYPES.Identifier &&
             (node.property.name === "parse" ||
-              node.property.name === "safeParse")
+              node.property.name === "safeParse" ||
+              PROMISE_CHAIN_METHODS.has(node.property.name))
           ) {
             return;
           }

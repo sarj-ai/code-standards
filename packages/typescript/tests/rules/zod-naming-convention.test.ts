@@ -19,6 +19,18 @@ ruleTester.run("zod-naming-convention", rule, {
       code: 'const a = z.lazy(() => z.string());',
       filename: "/repo/src/v4/classic/tests/index.test.ts",
     },
+    // FP guard (d), corpus: zod/packages/zod/src/v3/benchmarks/object.ts:9-10 —
+    // a micro-benchmark declares `empty`/`short`/`long` and feeds them to a
+    // suite three lines below. Verbatim the rationale for guard (a), on a path
+    // the test predicate does not reach. 12 of the 536 findings, 10 of them here.
+    {
+      code: "const short = z.object({ string: z.string() });",
+      filename: "/repo/packages/zod/src/v3/benchmarks/object.ts",
+    },
+    {
+      code: "const long = z.object({ a: z.string() });",
+      filename: "/repo/packages/bench/index.ts",
+    },
     // Generated clients choose names from upstream specs/codegen templates.
     {
       code: 'export const userResponse = z.object({ id: z.string() });',
@@ -78,6 +90,19 @@ ruleTester.run("zod-naming-convention", rule, {
     },
   ],
   invalid: [
+    // UPPER BOUND on guard (d): `bench`/`benchmarks` has to be a PATH SEGMENT.
+    // A source file that merely starts with the word is still held to the
+    // convention — otherwise the guard would quietly grow into a name filter.
+    {
+      code: "const user = z.object({ a: z.string() });",
+      filename: "/repo/src/benchmarking-report.ts",
+      errors: [{ messageId: "zodSchemaName" }],
+    },
+    {
+      code: "const user = z.object({ a: z.string() });",
+      filename: "/repo/src/lib/workbench/schemas.ts",
+      errors: [{ messageId: "zodSchemaName" }],
+    },
     // Guard (c) must not over-fire: still off-convention with no "schema" in it.
     {
       code: 'const user = z.object({ a: z.string() });',

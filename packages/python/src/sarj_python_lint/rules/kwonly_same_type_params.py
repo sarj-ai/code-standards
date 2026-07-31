@@ -87,6 +87,16 @@ _CONVENTIONAL_ORDER_GROUPS = (
     frozenset({"start", "stop", "step"}),
 )
 
+#: A DIRECTORY named `tests_common`, `test_utils`, `system_tests`, ... — a
+#: test-support tree that `_paths.is_test_path` (segments `tests`/`test` only)
+#: does not recognise. Anchored at both ends so it matches a whole segment: a
+#: module named `testing_commands.py` is production code and stays linted.
+_TEST_SUPPORT_DIR_RE = re.compile(r"tests?_.+|.+_tests?", re.IGNORECASE)
+
+#: A numbered migration: an append-only artifact that has already run.
+_MIGRATIONS_DIR = "migrations"
+_MIGRATION_FILE_RE = re.compile(r"\d{4}_")
+
 _EXEMPT_NAME_PREFIXES = ("visit_", "test_")
 _RISKY_NAME_PART_RE = re.compile(
     r"(?:^|_)(?:id|key|token|secret|password|signature|hash|email|url|uri|path|file|"
@@ -106,7 +116,7 @@ class KwonlySameTypeParams(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_test_path(path) or is_generated(path, source):
+        if is_test_path(path) or is_generated(path, source) or _is_exempt_path(path):
             return []
         tree = parse_or_none(path, source)
         if tree is None:
@@ -148,6 +158,24 @@ class KwonlySameTypeParams(Rule):
             )
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
+
+
+def _is_exempt_path(path: Path) -> bool:
+    """Report whether the file is exempt on location alone.
+
+    Two shapes `_paths` does not cover, both of them this rule's own business:
+    a test-support tree whose directory is named `tests_common` / `test_utils` /
+    `system_tests` rather than plain `tests`, and a numbered migration, which is
+    an append-only record of something that has already run everywhere.
+
+    Returns:
+        True when the file's location exempts it.
+
+    """
+    directories = path.parts[:-1]
+    if any(_TEST_SUPPORT_DIR_RE.fullmatch(part) for part in directories):
+        return True
+    return _MIGRATIONS_DIR in directories and _MIGRATION_FILE_RE.match(path.name) is not None
 
 
 def _is_exempt(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
@@ -211,7 +239,28 @@ def _is_route_decorator(dec: ast.expr) -> bool:
 
 
 def _swap_prone_annotation(args: ast.arguments) -> str | None:
-    """Find a primitive annotation shared by >= 2 swap-prone positional parameters."""
+    """Find a primitive annotation shared by >= 2 swap-prone positional parameters.
+
+    A leading `self`/`cls` is excluded. Only bare-`Name` primitive annotations
+    participate — `str | None`, `Literal[...]`, and domain types never group.
+    Only `args.args` (positional-or-keyword) parameters count: keyword-only
+    parameters (behind `*`) cannot be swapped positionally, and positional-only
+    parameters (before `/`) are a deliberate positional API. A `*`/`*args`/`/`
+    marker therefore exempts exactly the parameters it protects — never the
+    same-type pair sitting in front of it.
+
+    A parameter named `__x` is positional-only by the PEP 484 spelling and so
+    cannot be made keyword-only at all; it never groups.
+
+    A group whose parameter names differ only by a symmetric suffix on one
+    shared stem (`value_1`/`value_2`, `policy_id_a`/`policy_id_b`) or are drawn
+    entirely from a conventional ordered vocabulary (`x`/`y`, `width`/`height`)
+    is not swap-prone and never groups.
+
+    Returns:
+        The offending primitive name, or None when the signature is fine.
+
+    """
     params = list(args.args)
     if params and params[0].arg in {"self", "cls"}:
         params = params[1:]
@@ -251,11 +300,38 @@ def _is_conventional_order(arg_names: list[str]) -> bool:
 
 _NUMERIC_SUFFIX_RE = re.compile(r"_?\d+$")
 
+#: `policy_id_a` / `policy_id_b` — the alphabetic spelling of the same symmetry.
+#: The underscore is required, so `a`/`b` and `s`/`d` keep firing: there the
+#: whole name is the label and the call site really cannot tell them apart.
+_LETTER_SUFFIX_RE = re.compile(r"_[a-z]$")
+
 
 def _is_symmetric_numbering(arg_names: list[str]) -> bool:
-    """Report whether every name in the group is one stem plus a numeric suffix."""
-    stems = {_NUMERIC_SUFFIX_RE.sub("", name) for name in arg_names}
-    return len(stems) == 1 and all(_NUMERIC_SUFFIX_RE.search(name) for name in arg_names)
+    """Report whether the group is one stem plus a symmetric per-parameter label.
+
+    `value_1`/`value_2` (or `x1`/`x2`) and `policy_id_a`/`policy_id_b` both
+    declare a symmetric function — argument order genuinely does not matter, so
+    the group is not swap-prone. Requires ONE shared stem: `source_id`/
+    `target_id` have different stems and stay flagged.
+
+    Returns:
+        True when all names share one stem and differ only by that label.
+
+    """
+    return _shares_one_stem(arg_names, _NUMERIC_SUFFIX_RE) or _shares_one_stem(arg_names, _LETTER_SUFFIX_RE)
+
+
+def _shares_one_stem(arg_names: list[str], suffix: re.Pattern[str]) -> bool:
+    """Report whether every name is the same stem plus a match of `suffix`.
+
+    Returns:
+        True when the stems collapse to one non-empty name.
+
+    """
+    if not all(suffix.search(name) for name in arg_names):
+        return False
+    stems = {suffix.sub("", name) for name in arg_names}
+    return len(stems) == 1 and bool(next(iter(stems)))
 
 
 def _value_referenced_names(tree: ast.AST) -> frozenset[str]:

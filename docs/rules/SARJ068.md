@@ -223,6 +223,78 @@ the f-string adds nothing. Guarding it would require knowing the constant is a
 character set, which the AST cannot tell from any other module-level string
 constant; suppress it with `# sarj-noqa: SARJ068 — <reason>`.
 
+## 2026-07 false-positive audit
+
+Re-swept over 24,644 deduped files across 19 repos (6 first-party plus django,
+celery, airflow, litellm, prefect, saleor, zulip, fastapi, pydantic, rich, httpx,
+requests): **3,401 findings**, 76 of them first-party. A seeded random sample of
+50 read against source gave **19 true positives, 9 false and 22 arguable — an 18%
+false-positive rate**.
+
+**Exactly ONE guard survived that read.** Two more were built, measured and
+rejected; they are recorded below so nobody rebuilds them.
+
+### The guard that landed: a multi-line chain with a comment inside its span
+
+`prefect`'s deployment CLI tests interleave `# Enter invalid interval` /
+`# Enter valid interval` between the operands of one chain
+(`tests/cli/test_deploy.py:3055` and `:6372`); collapsing it to an f-string
+DELETES those comments, which is a loss of information rather than a restyle. The
+test is positional — a COMMENT token whose line falls between the chain's first
+and last — so a trailing comment on a single-line chain is untouched. Tokenizing
+is deferred until a multi-line chain has already earned a diagnostic, so files
+without one pay nothing. **58 findings, 1 first-party. 3,401 → 3,343**,
+first-party 76 → 75.
+
+### REJECTED: a regex-metacharacter guard
+
+Exempting a chain whose literals carry regex metacharacters (`\d`, `.*`, `[^`,
+`(?`, an anchor) was implemented and then reverted.
+
+It suppressed **38 findings of 3,401 (1.1%, 1 first-party)** — and it collided
+head on with `test_fires_when_the_braces_are_removed`, an *upper-bound* test whose
+whole job is to pin the `{`/`}` guard narrow. That test asserts
+`pattern = r"\s*" + re.escape(key) + r"\s*"` still reports, and the guard made it
+stop. **Overriding an upper bound is how a guard silently widens into a no-op**,
+which is the failure mode this rule's tests exist to prevent.
+
+The premise was also weaker than it looked: `rf"\s*{re.escape(key)}\s*"` is
+ordinary, idiomatic Python, so a concatenated regex is not a shape where the
+rewrite is unavailable — merely one where an author might reasonably prefer the
+concatenation. That is a style preference, not a false positive, and 1.1% of
+volume does not buy the right to retire a deliberate test.
+
+### REJECTED: a nested-quoted-call guard
+
+For a two-operand chain whose single dynamic operand's call spine carries a
+string-literal argument, drop `_is_blob_glue`'s "every literal is whitespace"
+requirement and suppress. The argument for it is real —
+`django/django/db/models/fields/__init__.py:654` is
+`"django.db.models" + path.removeprefix("django.db.models.fields")`, whose
+f-string form buries a quoted call carrying a nearly identical string next to the
+literal it duplicates, and `django/tests/modeladmin/models.py:52`
+(`strftime("%Y")[:3] + "0's"`) additionally drags an apostrophe into the template.
+
+It is rejected on cost. **165 findings, 6 of the 75 first-party (8%).** That is
+the same price this file already refused once: the broader blob-glue spelling was
+measured at 170 hits for 6 first-party true positives and turned down, and taking
+this one would be deciding the opposite thing for the same number. The wider "any
+operand count" spelling is worse still — **195 findings, 13 of 75 first-party
+(17%)**. The two-operand shape is also already pinned as FIRING by an explicit
+unit test (`dotted-path`), which is the house saying out loud that it wants the
+report.
+
+### The largest cluster, deliberately left firing
+
+1,309 findings (38.5%) are the two-operand `<expr> + "<literal with no
+whitespace>"` suffix append — `file_path + ".original"`. None of the four
+justifications at the top of this file applies to it: there is no coercion to
+delete, no invisible spacing, no chain to misread as arithmetic. It is
+nonetheless NOT a false positive — it is a house-style call about whether a
+one-fragment template is worth an f-string — and it is deliberately not guarded.
+A house that disagrees should say so with a per-file suppression, not by
+narrowing the rule.
+
 ## Implementation notes
 
 ### `_flatten`

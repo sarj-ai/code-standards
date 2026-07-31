@@ -73,6 +73,39 @@ ruleTester.run("no-raw-env", rule, {
       `,
       filename: "/repo/src/client-settings.ts",
     },
+    // FP guard, corpus: openstatus/apps/web/src/env.ts — a `@t3-oss/env-nextjs`
+    // boundary. `createEnv` validates with the `server`/`client` schemas and its
+    // `runtimeEnv` map is REQUIRED to spell `process.env.X` once per variable,
+    // so the raw reads are the boundary doing its job. That one file was 24 of
+    // the 1,851 findings.
+    {
+      code: `
+        import { createEnv } from "@t3-oss/env-nextjs";
+        import { z } from "zod";
+        export const env = createEnv({
+          server: { TINYBIRD_URL: z.string() },
+          runtimeEnv: { TINYBIRD_URL: process.env.TINYBIRD_URL },
+        });
+      `,
+      filename: "/repo/apps/web/src/env.ts",
+    },
+    // The same boundary validated with `.safeParse()` rather than `.parse()`.
+    {
+      code: `
+        import { z } from "zod";
+        const ZEnv = z.object({ API_KEY: z.string() });
+        export const env = ZEnv.safeParse({ API_KEY: process.env.API_KEY });
+      `,
+      filename: "/repo/src/server-env.ts",
+    },
+    // --- Platform/runtime markers -------------------------------------------
+    // Injected by the host, not by the app's own deployment config. Corpus:
+    // formbricks/apps/web/lib/posthog/server.ts:31 and
+    // dub/apps/web/lib/middleware/utils/get-final-url.ts:84.
+    { code: "if (process.env.NEXT_RUNTIME === 'nodejs') {}" },
+    { code: "const ip = process.env.VERCEL === '1' ? real : local;" },
+    { code: "if (process.env.VERCEL_ENV === 'production') {}" },
+    { code: "const retries = process.env.CI ? 2 : 0;" },
   ],
   invalid: [
     {
@@ -115,6 +148,25 @@ ruleTester.run("no-raw-env", rule, {
     {
       code: "const host = process.env.HOST;",
       filename: "src/config.ts",
+      errors: [{ messageId: "noRawEnv" }],
+    },
+    // UPPER BOUND on the boundary widening: a boundary-NAMED module that
+    // validates nothing is exactly what the rule is for. 23 such files in the
+    // corpus keep firing after the widening.
+    {
+      code: "export const apiKey = process.env.API_KEY;",
+      filename: "/repo/src/env.ts",
+      errors: [{ messageId: "noRawEnv" }],
+    },
+    // UPPER BOUND on the platform-marker exemption. `VERCEL_URL` (52 findings)
+    // and `PORT` (19) are used to BUILD base URLs — a deployment value a repo
+    // may well want validated — so they are deliberately NOT exempt.
+    {
+      code: "const base = `https://${process.env.VERCEL_URL}`;",
+      errors: [{ messageId: "noRawEnv" }],
+    },
+    {
+      code: "const port = process.env.PORT;",
       errors: [{ messageId: "noRawEnv" }],
     },
   ],

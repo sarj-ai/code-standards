@@ -52,6 +52,46 @@
  * <verb>`, Unicode box-drawing banners, and an ISOLATED numbered/`Phase N:`
  * marker. JSX-expression comments stay categorically exempt: `{/* Step 1:
  * Select Patient *\/}` mirrors the literal step labels a wizard renders.
+ *
+ * A 2026-07 audit re-ran the shipped rule over 25,508 deduped TS/TSX files (six
+ * first-party repos plus zod, trpc, dub, openstatus, formbricks, documenso,
+ * unkey, midday, papermark, cal.com, hono): 4,148 findings — sectionBanner
+ * 1,436, commentedOutCode 1,278, redundantNarration 894, untrackedTodo 538,
+ * fileHeaderPreamble 2 — of which 59 were read at random, stratified by message
+ * id, at a ~9% false-positive rate. The banner and dead-code detectors held up
+ * (9/9 and 8/9 true positives on independent second samples) and are untouched.
+ * All three FP classes sat in `redundantNarration` or in one branch of
+ * `looksLikeCode`, and each is now guarded at the point that produced it:
+ *
+ *   1. `restatesWholeStatement` — the `DUMMY_TRANSLATION_RE` branch reported a
+ *      short `get`/`set`/`return` comment on the LEXICAL match alone, with no
+ *      reference to the code beneath it, in a rule whose whole narration design
+ *      is "total corroboration or nothing". 402 lexical candidates corpus-wide,
+ *      340 of them corroborated by nothing at all — that is where the class
+ *      lived (`// Set initial value` above `handleChange();`,
+ *      papermark/lib/hooks/use-breakpoint.ts:21, where the comment is the only
+ *      thing saying why the handler runs eagerly; `// Get access token` above
+ *      `const urlParams = new URLSearchParams({`, dub/apps/web/app/(ee)/api/
+ *      partners/platforms/callback/route.ts:97, heading the whole token
+ *      exchange). Recall cost, stated plainly: the 62 corroborated hits stay and
+ *      the 340 uncorroborated ones go, of which roughly half were genuine block
+ *      labels worth deleting. It trades ~170 weak true positives for ~170 false
+ *      positives and makes the branch obey the contract the file documents.
+ *   2. `JUSTIFICATION_RE` now guards the step-narration branch as well as the
+ *      meta-commentary one, and knows the bare-pronoun connectives.
+ *   3. `TYPE_MEMBER_CONTAINERS` — a call-shaped comment inside an interface body
+ *      or type literal is a label for the overload below it, not commented-out
+ *      code, because the statement it resembles could not have parsed there.
+ *
+ * NOT changed, deliberately: 1,128 findings (27%) sit within two lines of a
+ * same-message sibling, because a three-line ASCII box is two `sectionBanner`
+ * reports and a three-line TODO is three `untrackedTodo` reports. Collapsing a
+ * contiguous `//` run to one report would cut the headline count ~25% without
+ * removing one false positive — it changes report granularity, not precision,
+ * and would make a reporting change indistinguishable from a precision win in
+ * exactly the number this audit is measured by. Per-line reporting is also
+ * deliberate: each line of a commented-out block is separately deletable, which
+ * is why the test suite pins two reports for a two-line block.
  */
 
 import { AST_NODE_TYPES, ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
@@ -167,6 +207,8 @@ const LETS_RE =
 const ENUMERATION_RE = /^(?:\d+[.)]\s+\S|(?:phase|step)\s+\d+\b)/i;
 
 // Dummy translational comments: ultra-short comments that just restate the code.
+// Corroborated against the statement below by `restatesWholeStatement` — the
+// lexical match alone is NOT evidence. See that function.
 const DUMMY_TRANSLATION_RE = /^(?:increment|return|returns|get|gets|set\b(?! up\b)|sets\b(?! up\b)|function to|method to)\b/i;
 
 // An ASCII sequence-diagram arrow. A long rule of dashes that ENDS IN AN ARROW
@@ -188,8 +230,8 @@ const CODE_TAIL_RE = /[;{}()]\s*$|=>\s*$|,\s*$/;
 // The assignment branch additionally requires a code-tail — the line must end
 // with `;`, `)`, `}` or `]` — so plain prose like `count = number of items`
 // (which has no code-tail) is not mistaken for commented-out code.
-const CALL_OR_ASSIGN_RE =
-  /^[A-Za-z_$][\w.$[\]]*\s*(?:=(?![=>])|\+=|-=|\*=)\s*\S.*[;)}\]]\s*$|^[A-Za-z_$][\w.$]*\([^)]*\)\s*;?\s*$/;
+const ASSIGN_RE = /^[A-Za-z_$][\w.$[\]]*\s*(?:=(?![=>])|\+=|-=|\*=)\s*\S.*[;)}\]]\s*$/;
+const CALL_RE = /^[A-Za-z_$][\w.$]*\([^)]*\)\s*;?\s*$/;
 
 // Placeholders that only appear in grammar productions / desugaring examples,
 // never in real code: `%sent%`, `[opt]`, a standalone `<FunctionBody>`, `…` / `...`.
@@ -212,11 +254,16 @@ function isBanner(text: string): boolean {
   return BANNER_RUN_RE.test(t) && !DIAGRAM_ARROW_RE.test(t);
 }
 
-function looksLikeCode(text: string): boolean {
+/**
+ * `allowCall` is false where a bare statement cannot legally appear — inside an
+ * interface body or a type literal. See `TYPE_MEMBER_CONTAINERS`.
+ */
+function looksLikeCode(text: string, allowCall = true): boolean {
   const t = text.trim();
   if (!t) return false;
   if (CODE_KEYWORD_RE.test(t) && CODE_TAIL_RE.test(t)) return true;
-  return CALL_OR_ASSIGN_RE.test(t);
+  if (ASSIGN_RE.test(t)) return true;
+  return allowCall && CALL_RE.test(t);
 }
 
 function hasPseudocode(text: string): boolean {
@@ -273,8 +320,47 @@ function isProse(text: string): boolean {
 // async until v7` (react-router/.../__tests__/router/lazy-discovery-test.ts:2412,
 // and :2505) is the reason the sleep exists, which is exactly what the rule wants
 // a comment to carry. A bare `// quick fix for now` still fires.
+//
+// The 2026-07 corpus audit (25,508 deduped TS/TSX files, 894 narration findings
+// of which 73 were step markers and 39 meta commentary) found the escape wired
+// into the META_COMMENTARY_RE branch only, so a step marker that stated its own
+// reason was flagged anyway — the branch and the rationale it is supposed to
+// respect never met. Both branches now share the escape.
+//
+// The list also missed the bare-pronoun forms of the connective it already knew:
+// dub/apps/web/lib/actions/partners/update-discount.ts:68 reads "we only cache
+// default group pages for now so we need to invalidate them", and `so that` was
+// in the list while `so we` was not. Recall cost: a bare `// First, do X` and a
+// bare `// quick fix for now` still fire, because neither states a reason.
 const JUSTIFICATION_RE =
-  /\b(?:because|since|until|due to|so that|otherwise|which is why|in order to|to avoid|to work around|to prevent)\b/i;
+  /\b(?:because|since|until|due to|so that|so we|so it|so the|otherwise|which is why|in order to|to avoid|to work around|to prevent|backwards? compat(?:ibility)?|for compatibility)\b/i;
+
+/**
+ * The same total-corroboration test as `restatesStatementHead`, widened from the
+ * statement's HEAD to the whole statement.
+ *
+ * `restatesStatementHead` reads only the text before the first `(` — it wants
+ * the comment to restate what the statement *computes*, not what it passes as an
+ * argument. Flattening every `(` to whitespace hands that function the whole
+ * statement as its own head; the tokeniser reads identifiers, so the
+ * substitution changes nothing else. Reusing it rather than copying it keeps one
+ * definition of "restates".
+ *
+ * WHY the wider form here: this shape is already pinned down to a <=4-word
+ * comment opening with `get`/`set`/`return`/`increment`, and for that shape an
+ * argument IS the object of the verb. Measured over the 2026-07 corpus, the
+ * `DUMMY_TRANSLATION_RE` branch had 402 lexical candidates: head-only
+ * corroboration keeps 40 of them, whole-statement corroboration keeps 62, and
+ * all 22 of the difference are unambiguous restatements — `// Set mobile
+ * viewport` above `await page.setViewportSize(MOBILE_VIEWPORT)` (documenso, 4
+ * sites), `// Return hex digest` above `return hmac.digest("hex")`
+ * (papermark/lib/utils/generate-checksum.ts:11), `// Get current session token`
+ * above `const currentToken = await getCookie(UNKEY_SESSION_COOKIE)` (unkey).
+ * Head-only would have thrown all 22 away for nothing.
+ */
+function restatesWholeStatement(body: string, statement: string | null): boolean {
+  return statement !== null && restatesStatementHead(body, statement.replaceAll("(", " "));
+}
 
 /**
  * Whether a single-line comment merely narrates the code rather than explaining
@@ -303,16 +389,17 @@ function isRedundantNarration(
   const t = body.trim();
   if (!t || looksLikeCode(t) || hasPseudocode(t)) return false;
   if (standalone) {
-    if (STEP_NARRATION_RE.test(t)) return true;
-    if (META_COMMENTARY_RE.test(t) && !JUSTIFICATION_RE.test(t)) return true;
+    const justified = JUSTIFICATION_RE.test(t);
+    if (STEP_NARRATION_RE.test(t) && !justified) return true;
+    if (META_COMMENTARY_RE.test(t) && !justified) return true;
     if (HELPER_OPENER_RE.test(t) || LETS_RE.test(t)) return true;
-    
+
     const words = t.split(/\s+/);
-    if (words.length <= 4 && DUMMY_TRANSLATION_RE.test(t) && !/[():=]/.test(t)) {
+    if (words.length > 1 && words.length <= 4 && DUMMY_TRANSLATION_RE.test(t) && !/[():=]/.test(t)) {
       const lowerT = t.toLowerCase();
       const rationaleWords = ["when", "because", "if", "so that", "due to", "for", "instead of", "to prevent", "to avoid", "only"];
-      if (!rationaleWords.some(w => lowerT.includes(w))) {
-        if (words.length > 1) return true;
+      if (!rationaleWords.some((w) => lowerT.includes(w)) && restatesWholeStatement(t, statementBelow)) {
+        return true;
       }
     }
 
@@ -336,6 +423,33 @@ const STATEMENT_CONTAINERS: ReadonlySet<string> = new Set([
   AST_NODE_TYPES.SwitchCase,
   AST_NODE_TYPES.TSModuleBlock,
   AST_NODE_TYPES.TSInterfaceBody,
+]);
+
+/**
+ * Containers whose only legal children are TYPE MEMBERS. A call-shaped comment
+ * here cannot be commented-out code, because the statement it looks like would
+ * not have parsed in that position — it is a label naming the overload or
+ * property beneath it.
+ *
+ * Measured on the 2026-07 corpus (25,508 deduped TS/TSX files): 76 of the 4,148
+ * findings (1.8% of the rule, 5.9% of `commentedOutCode`) were this shape, and
+ * 60 of them sat in ONE file — `hono/src/types.ts`, where each `// app.get(path,
+ * handler x5)` names the call signature directly below it. That made a single
+ * pattern the rule's second-noisiest file corpus-wide.
+ *
+ * `TSModuleBlock` is deliberately absent even though a comment there is also
+ * "inside a type-ish container": `namespace N { drop(); }` is legal, so a
+ * call-shaped comment there CAN be commented-out code, and this rule already
+ * treats a module block as a statement position (see `STATEMENT_CONTAINERS`).
+ *
+ * Recall cost ~zero: a commented-out interface MEMBER (`// name: string;`) never
+ * matched the call branch anyway — the `: T;` tail defeats it — and the
+ * assignment and keyword branches are untouched, so `// const a = 1;` inside a
+ * type literal still fires.
+ */
+const TYPE_MEMBER_CONTAINERS: ReadonlySet<string> = new Set([
+  AST_NODE_TYPES.TSInterfaceBody,
+  AST_NODE_TYPES.TSTypeLiteral,
 ]);
 
 /**
@@ -415,10 +529,11 @@ function hasIllustrationLeadInAbove(
 function hasCommentedOutCode(
   texts: readonly string[],
   precedingProse: boolean,
+  allowCall: boolean,
 ): boolean {
   for (let i = 0; i < texts.length; i++) {
     const line = texts[i];
-    if (line === undefined || !looksLikeCode(line) || hasPseudocode(line)) {
+    if (line === undefined || !looksLikeCode(line, allowCall) || hasPseudocode(line)) {
       continue;
     }
     const prev = i > 0 ? texts[i - 1] : undefined;
@@ -546,8 +661,10 @@ export default ESLintUtils.RuleCreator(
             prev.type === "Line" &&
             prev.loc.end.line === comment.loc.start.line - 1 &&
             isProse(stripCommentMarker(prev.value));
+          const container = sourceCode.getNodeByRangeIndex(comment.range[0]);
+          const inTypeMembers = container !== null && TYPE_MEMBER_CONTAINERS.has(container.type);
           if (
-            hasCommentedOutCode(texts, precedingProse) &&
+            hasCommentedOutCode(texts, precedingProse, !inTypeMembers) &&
             !hasIllustrationLeadInAbove(comments, i)
           ) {
             context.report({ node: comment, messageId: "commentedOutCode" });
@@ -559,7 +676,6 @@ export default ESLintUtils.RuleCreator(
             const body = texts[0];
             const statement = restatableStatementBelow(comment, sourceCode);
             const standalone = !isInsideCommentRun(comments, i);
-            const container = sourceCode.getNodeByRangeIndex(comment.range[0]);
             const nested = container !== null && !STATEMENT_CONTAINERS.has(container.type);
             if (
               body !== undefined &&

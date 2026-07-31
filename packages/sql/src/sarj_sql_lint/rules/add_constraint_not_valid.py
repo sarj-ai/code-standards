@@ -3,6 +3,12 @@
 Adding CHECK or FOREIGN KEY constraints on existing tables blocks writes during full-table validation.
 Use `ADD CONSTRAINT ... NOT VALID;` followed by a separate `VALIDATE CONSTRAINT` step.
 Note: Postgres does not support NOT VALID for UNIQUE, PRIMARY KEY, or EXCLUDE constraints.
+Schema dumps are exempt (`is_dump_file`). A pg_dump snapshot is a rendering of a
+schema that already exists: the diagnostic asks for an edit to a file that the
+next `pg_dump` regenerates, and the defect it names, if real, has to be fixed in a
+migration anyway. This exemption already guarded SARJ102, SARJ108 and SARJ110;
+`is_dump_file` accounted for 41.7% of the pre-dedupe population of the rules that
+were not calling it.
 """
 
 from __future__ import annotations
@@ -10,7 +16,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING, final, override
 
-from sarj_sql_lint.rule_base import Diagnostic, Rule, mask_sql
+from sarj_sql_lint.rule_base import Diagnostic, Rule, is_dump_file, mask_sql
 
 
 if TYPE_CHECKING:
@@ -35,6 +41,9 @@ class AddConstraintNotValid(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        if is_dump_file(source, path):
+            return []
+
         diags: list[Diagnostic] = []
         masked = mask_sql(source)
 

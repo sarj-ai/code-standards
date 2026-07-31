@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from functools import lru_cache
 from pathlib import Path
 import re
 
@@ -43,6 +44,144 @@ def is_dump_file(source: str, path: Path | None = None) -> bool:
         or "dumped from database" in first_chunk
         or ("set statement_timeout = 0;" in first_chunk and "set lock_timeout = 0;" in first_chunk)
     )
+
+
+# Tokens that exist in MySQL / MariaDB / SQLite and cannot appear in Postgres DDL.
+# Backtick-quoted identifiers are the strongest single signal: Postgres has no
+# backtick quoting at all, and both MySQL and SQLite (including everything Drizzle
+# emits for either) use it by default.
+_NON_POSTGRES_RE = re.compile(
+    r"`[^`\n]+`"  # backtick-quoted identifier — MySQL, MariaDB, SQLite
+    r"|\bAUTO_INCREMENT\b"  # MySQL column attribute
+    r"|\bAUTOINCREMENT\b"  # SQLite column attribute
+    r"|\bENGINE\s*="  # MySQL table option (`ENGINE=InnoDB`)
+    r"|\bCOLLATE\s+utf8"  # MySQL collation family (`utf8mb4_unicode_ci`)
+    r"|\bUNSIGNED\b",  # MySQL integer modifier
+    re.IGNORECASE,
+)
+
+# Tokens exclusive to MySQL / MariaDB. Deliberately narrower than
+# `_NON_POSTGRES_RE`: SQLite is *not* MySQL, and a rule whose premise fails only
+# under MySQL (SARJ102 — SQLite does support `CREATE TABLE/INDEX IF NOT EXISTS`)
+# must not be silenced by a backtick that only proves "not Postgres".
+_MYSQL_RE = re.compile(
+    r"\bAUTO_INCREMENT\b"
+    r"|\bENGINE\s*="
+    r"|\bCOLLATE\s+utf8"
+    r"|\bUNSIGNED\b"
+    r"|\bON\s+DUPLICATE\s+KEY\b"
+    r"|\bMODIFY\s+COLUMN\b",
+    re.IGNORECASE,
+)
+
+# Drizzle writes this separator between statements in every migration it emits.
+_GENERATED_MIGRATION_SENTINEL = "--> statement-breakpoint"
+
+# A directory holding one of these is the root of a generator-owned migration
+# tree: Prisma writes `migration_lock.toml`, Drizzle writes `meta/_journal.json`,
+# Atlas writes `atlas.sum`.
+_GENERATED_MIGRATION_MARKERS = ("migration_lock.toml", "atlas.sum")
+
+_MAX_MARKER_ASCENT = 12
+
+
+def is_postgres(source: str) -> bool:
+    """Report whether `source` is free of any non-Postgres dialect marker.
+
+    Several rules encode a *Postgres* fact — `SET lock_timeout` (SARJ110),
+    `CREATE INDEX CONCURRENTLY` (SARJ108), "VARCHAR(n) buys nothing over TEXT"
+    (SARJ104). None of those is true of MySQL or SQLite, where the same advice is
+    at best a no-op and at worst a syntax error or actively harmful (MySQL `TEXT`
+    cannot carry a `DEFAULT`, is stored off-page, and has an index-prefix limit).
+
+    Corpus measurement over 2,134 deduped `.sql` files: 337 carry at least one
+    marker above, and **zero of those 337 also carry a Postgres-only token**
+    (`JSONB`, `SERIAL`/`BIGSERIAL`, a `::` cast, `TIMESTAMPTZ`,
+    `gen_random_uuid`, `uuid_generate_v4`, `USING gin|gist|btree|hash|brin`,
+    `CREATE EXTENSION`, `TEXT[]`). The two populations are disjoint, so treating a
+    marker as decisive costs no Postgres recall — it is a partition, not a
+    heuristic. 288 of the 337 are caught by the backtick alone.
+
+    Pass `mask_sql` output, or raw source when the rule has not masked yet; a
+    backtick inside a comment or a `'...'` literal is blanked by the masker and so
+    cannot fake a dialect.
+
+    Returns:
+        True when nothing in `source` contradicts Postgres.
+
+    """
+    return _NON_POSTGRES_RE.search(source) is None
+
+
+def is_mysql(source: str) -> bool:
+    """Report whether `source` carries a MySQL/MariaDB-exclusive token.
+
+    Narrower than `not is_postgres(...)` on purpose — see `_MYSQL_RE`. Corpus:
+    143 of 2,134 deduped `.sql` files, none of which carries a Postgres-only
+    token.
+
+    Returns:
+        True when `source` is MySQL/MariaDB.
+
+    """
+    return _MYSQL_RE.search(source) is not None
+
+
+@lru_cache(maxsize=2048)
+def _has_generated_marker(directory: Path) -> bool:
+    """Report whether `directory` or an ancestor is a generator-owned migration root.
+
+    Returns:
+        True when a Prisma/Drizzle/Atlas marker file is found at or above `directory`.
+
+    """
+    for depth, parent in enumerate((directory, *directory.parents)):
+        if depth > _MAX_MARKER_ASCENT:
+            return False
+        try:
+            if any((parent / marker).is_file() for marker in _GENERATED_MIGRATION_MARKERS):
+                return True
+            if (parent / "meta" / "_journal.json").is_file():
+                return True
+            if (parent / ".git").exists():
+                return False
+        except OSError:
+            return False
+    return False
+
+
+def is_generated_migration(path: Path, source: str) -> bool:
+    """Report whether `path` is a migration emitted by a schema-migration generator.
+
+    Prisma, Drizzle and Atlas compile a *model* (`schema.prisma`, a Drizzle schema
+    module, an Atlas HCL schema) down to SQL. For a rule whose fix lives in that
+    model — column type, enum choice, JSON vs JSONB, UUID default — the `.sql`
+    file is a build artifact: hand-editing it is reverted by the next
+    `prisma migrate` / `drizzle-kit generate`, and applied migrations are immutable
+    by construction (Prisma checksums them in `_prisma_migrations` and
+    `migrate deploy` errors on drift). Pointing a diagnostic there asks for a
+    change that cannot be made and would not survive if it were.
+
+    Detection is a marker file at or above the migration directory
+    (`migration_lock.toml`, `meta/_journal.json`, `atlas.sum`) plus Drizzle's
+    `--> statement-breakpoint` content sentinel for trees checked out without
+    their metadata. Measured coverage: 9,799 of 12,614 pre-dedupe SQL findings.
+
+    Deliberately **not** applied to SARJ108, SARJ110, SARJ111 or SARJ112. Those
+    name a production lock or outage risk that survives regeneration, and a
+    reviewer fixes them by hand-editing a `--create-only` migration *before* it
+    ships — the diagnostic is actionable exactly when it matters. The generic
+    Python `_paths.is_generated` is no substitute here: it matches 0 of these
+    files, because Prisma and Drizzle emit no generated-file banner and their
+    directories are not in `_GENERATED_DIR_NAMES`.
+
+    Returns:
+        True when `path` is inside a generator-owned migration tree.
+
+    """
+    if _GENERATED_MIGRATION_SENTINEL in source:
+        return True
+    return _has_generated_marker(path.parent)
 
 
 def is_suppressed(source_lines: list[str], line: int, code: str) -> bool:
@@ -359,6 +498,39 @@ class Diagnostic:
 
     def format(self) -> str:
         return f"{self.path}:{self.line}:{self.col}: {self.code} {self.message}"
+
+
+_MODEL_OWNED_SUFFIX = (
+    " This migration is generator-owned, so the edit belongs in the schema model "
+    "(`schema.prisma`, the Drizzle schema module, the Atlas HCL) followed by a new "
+    "migration — editing this file directly is reverted by the next generate."
+)
+
+
+def redirect_to_model(diags: list[Diagnostic], *, model_owned: bool) -> list[Diagnostic]:
+    """Point a schema diagnostic at the model when the migration is generated.
+
+    This deliberately REDIRECTS rather than suppresses. A wrong column type, a
+    native enum, a `VARCHAR(n)` cap, a `json` column or a v4 UUID default is a
+    property of the deployed database, and it survives regeneration exactly as
+    the lock and outage risks in SARJ108/110/111/112 do — those are not exempted
+    either, for the same reason.
+
+    Suppressing instead was measured and rejected. On the 2,133-file corpus it
+    took SARJ101 from 770 to 12, SARJ102 from 3,079 to 246 and SARJ103 from 283
+    to **0** — while the genuine false-positive guards on those same rules were
+    worth only 23, 79 and 0 findings respectively. Sampling had put SARJ101 at
+    ~3% false positives and SARJ102 at 4.2%, so all but a sliver of what the
+    exemption removed was true. A rule that fires zero times on 2,133 files is
+    not precise, it is off.
+
+    Returns:
+        `diags` unchanged, or with the model-redirect note appended to each.
+
+    """
+    if not model_owned:
+        return diags
+    return [replace(d, message=d.message + _MODEL_OWNED_SUFFIX) for d in diags]
 
 
 class Rule(ABC):

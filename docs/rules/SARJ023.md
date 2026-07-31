@@ -68,6 +68,66 @@ Never fires on:
   there can never be acted on in place. Measured on the 69 `DO NOT EDIT`
   files git-tracked across two first-party repos — a single Speakeasy-generated
   SDK package accounts for all of them.
+- A caller named `_` is excluded from being a stepdown TARGET, but not from the
+  caller graph. `_` is the throwaway name a `@singledispatch.register`
+  implementation is given, and "move it below its only caller `_`" names no
+  location — a scope holding four defs called `_` has no canonical one, which is
+  the same arbitrariness this rule refuses for multi-caller helpers.
+  `airflow/airflow-core/src/airflow/assets/evaluation.py:45` and `:49` are the
+  two findings this costs.
+
+## 2026-07 false-positive audit — clean, and the count went UP
+
+Swept over 24,644 deduped files across 19 repos (6 first-party plus django,
+celery, airflow, litellm, prefect, saleor, zulip, fastapi, pydantic, rich, httpx,
+requests): **5,335 findings**. A seeded random sample of 50 was read against
+source: **50 true positives, 0 false — a 0% false-positive rate.** No guard was
+added, because the read produced no false-positive class to guard.
+
+The three structural guards were re-verified over the WHOLE population rather
+than the sample: 0 of the 2,720 module-level findings reference the flagged name
+in a decorator, default argument, class base or any module-level statement, so
+`_module_pinned_names` is not merely a heuristic here; an `if TYPE_CHECKING:`
+body can only suppress; and 2,608 of the 2,615 class-scope findings independently
+confirm exactly one same-class caller.
+
+**The audit's one change was a correctness fix to the caller graph, and it made
+the number go UP: 5,335 → 5,348.** That is the correct direction and it is worth
+recording why, because a precision audit whose headline number rises reads like a
+regression and is not one.
+
+**The seven that did not confirm.** Duplicate-named defs used to be dropped from
+the caller graph as well as from the flaggable set, so an overload group or a
+property/setter pair could not be COUNTED as a caller — which manufactured a
+false "only caller" claim whenever the second caller happened to be one.
+`pydantic/pydantic/type_adapter.py:261` is the clearest: `_init_core_attrs` is
+called from `rebuild` (:394) *and* from `__init__` (:242), but `__init__` has two
+`@overload` stubs above it and was therefore invisible.
+`django/django/contrib/gis/gdal/raster/band.py:26` is the property/setter
+spelling — `_flush` is called from `data` (:254) and from `nodata_value` (:170),
+which is a getter/setter pair. Five more, all class-scope, all hand-confirmed:
+`airflow/.../hooks/hive.py:1074`, `airflow/.../hooks/sql.py:963`,
+`litellm/litellm/proxy/utils.py:1050`,
+`litellm/.../converse_transformation.py:1140`,
+`pydantic/pydantic/_internal/_generate_schema.py:942`. 7 of 5,335 (0.13%).
+
+**The fix and its arithmetic.** The caller graph is now built from every def in
+the scope, and the duplicate-name restriction stays on the flaggable set alone —
+it has to be there, because an overload group has no single node to move, so
+there is no such thing as stepping it down. Adding callers can only suppress, so
+it costs no recall. It is a small recall GAIN in the other direction: a helper
+whose sole caller is a duplicate-named def used to be counted as having zero
+callers and skipped entirely, and now reports against the first def of that name.
+
+* **9 removed** — the 7 above plus `airflow/.../configuration/parser.py:630` and
+  `litellm/litellm/main.py:1115`, found by the same mechanism.
+* **24 gained** — `@overload`-fronted callers, of which
+  `airflow/providers/google/.../hooks/bigquery.py:352` and `:366` are typical:
+  `_get_pandas_df` and `_get_polars_df` sit above `get_df`, their only caller,
+  which carries two `@overload` stubs.
+* **2 given back** by the `_`-target exclusion above.
+
+Net **5,335 − 9 + 24 − 2 = 5,348**, a gain of 13.
 
 ## Implementation notes
 

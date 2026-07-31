@@ -327,3 +327,92 @@ def test_reports_the_resource_line_and_column():
     src = 'resource "google_sql_database_instance" "main" {\n  name = "prod"\n}\n'
     (diag,) = _check(src)
     assert (diag.line, diag.col) == (1, 1)
+
+
+# --- BigQuery views are not tables ------------------------------------------------
+#
+# 9 of the rule's 24 corpus findings were `google_bigquery_table` blocks, and all
+# but one carried a `view { query = ... }`. A view stores no data, and the provider
+# REQUIRES deletion_protection = false for a view whose query can change — updating
+# the query is a replace, and the replace fails at apply while protection is on.
+
+
+def test_allows_bigquery_view_without_deletion_protection():
+    src = """
+resource "google_bigquery_table" "daily_active_users" {
+  dataset_id = "analytics"
+  table_id   = "daily_active_users"
+  view {
+    query          = "SELECT user_id FROM `proj.analytics.events`"
+    use_legacy_sql = false
+  }
+}
+"""
+    assert _check(src) == []
+
+
+def test_allows_bigquery_materialized_view_without_deletion_protection():
+    src = """
+resource "google_bigquery_table" "rollup" {
+  dataset_id = "analytics"
+  materialized_view {
+    query = "SELECT 1"
+  }
+}
+"""
+    assert _check(src) == []
+
+
+def test_flags_bigquery_table_that_stores_data():
+    """The boundary: a real table is retained — the guard keys on the view block."""
+    src = """
+resource "google_bigquery_table" "events" {
+  dataset_id = "analytics"
+  table_id   = "events"
+  schema     = file("schema.json")
+}
+"""
+    assert len(_check(src)) == 1
+
+
+def test_flags_bigquery_table_whose_view_block_is_nested_elsewhere():
+    """The boundary: only a DIRECT `view` child says the resource is a view."""
+    src = """
+resource "google_bigquery_table" "events" {
+  dataset_id = "analytics"
+  external_data_configuration {
+    view {
+      query = "SELECT 1"
+    }
+  }
+}
+"""
+    assert len(_check(src)) == 1
+
+
+# --- google_redis_instance exposes no deletion_protection argument ----------------
+
+
+def test_ignores_redis_instance_which_has_no_such_argument():
+    """The provider puts `deletion_protection_enabled` on `google_redis_cluster`.
+
+    Flagging the instance named a fix that cannot be written, contradicting the
+    rule's own curation criterion.
+    """
+    src = """
+resource "google_redis_instance" "cache" {
+  name           = "session-cache"
+  memory_size_gb = 4
+}
+"""
+    assert _check(src) == []
+
+
+def test_still_flags_a_curated_type_next_to_the_removed_one():
+    """The boundary: removing one type must not disturb the rest of the set."""
+    src = """
+resource "google_bigtable_instance" "main" {
+  name = "prod"
+}
+"""
+    assert len(_check(src)) == 1

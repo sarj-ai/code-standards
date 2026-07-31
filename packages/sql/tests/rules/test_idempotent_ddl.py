@@ -187,3 +187,59 @@ END
 $$ LANGUAGE plpgsql;
 """
     assert _check(src) == []
+
+
+# --- MySQL implements only some of the IF [NOT] EXISTS forms ----------------------
+#
+# MySQL has no `CREATE INDEX IF NOT EXISTS`, no `ADD COLUMN IF NOT EXISTS` and no
+# `DROP INDEX IF EXISTS`, so demanding them there demands a syntax error. It DOES
+# have `CREATE TABLE IF NOT EXISTS`, `CREATE SCHEMA IF NOT EXISTS` and
+# `DROP TABLE IF EXISTS`, and so does SQLite — which is why the gate is `is_mysql`
+# and not `not is_postgres`.
+
+_MYSQL_MARKER = "CREATE TABLE IF NOT EXISTS `k` (`id` int UNSIGNED) ENGINE=InnoDB;\n"
+
+
+def test_allows_mysql_add_column_without_if_not_exists():
+    assert _check(_MYSQL_MARKER + "ALTER TABLE `orders` ADD COLUMN `note` text;") == []
+
+
+def test_allows_mysql_create_index_without_if_not_exists():
+    assert _check(_MYSQL_MARKER + "CREATE INDEX `idx` ON `orders` (`user_id`);") == []
+
+
+def test_allows_mysql_drop_index_without_if_exists():
+    assert _check(_MYSQL_MARKER + "DROP INDEX `idx` ON `orders`;") == []
+
+
+def test_flags_mysql_create_table_without_if_not_exists():
+    """The boundary: MySQL *does* support this one, so the gate must not reach it."""
+    src = "CREATE TABLE `orders` (`id` int UNSIGNED NOT NULL) ENGINE=InnoDB;"
+    assert len(_check(src)) == 1
+
+
+def test_flags_mysql_drop_table_without_if_exists():
+    """The boundary: MySQL *does* support `DROP TABLE IF EXISTS`."""
+    assert len(_check(_MYSQL_MARKER + "DROP TABLE `orders`;")) == 1
+
+
+def test_flags_sqlite_create_index_without_if_not_exists():
+    """The boundary: SQLite supports `CREATE INDEX IF NOT EXISTS`, so it is a real finding.
+
+    Backticks alone prove "not Postgres" — they must not be read as "MySQL".
+    """
+    src = "CREATE INDEX `idx` ON `orders` (`user_id`);"
+    assert len(_check(src)) == 1
+
+
+def test_generated_migration_is_redirected_not_silenced(tmp_path: Path) -> None:
+    root = tmp_path / "prisma" / "migrations"
+    (root / "20240101000000_init").mkdir(parents=True)
+    (root / "migration_lock.toml").write_text('provider = "postgresql"\n')
+    migration = root / "20240101000000_init" / "migration.sql"
+    src = 'CREATE TABLE "User" ("id" TEXT NOT NULL);'
+    migration.write_text(src)
+
+    diags = IdempotentDdl().check(migration, src)
+    assert len(diags) == 1
+    assert "generator-owned" in diags[0].message

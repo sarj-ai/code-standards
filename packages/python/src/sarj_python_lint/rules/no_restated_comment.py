@@ -37,6 +37,11 @@ _MAX_ASCII = 127
 # (`# Constants`, `# Helpers`) is already SARJ016's.
 _MIN_CONTENT_TOKENS = 2
 
+# A comment heading a region of this many same-indent lines is a SECTION LABEL,
+# not narration of the one line under it. The threshold is the whole guard --
+# see the "fourth guard" paragraph in the module docstring for why 2 fails.
+_SECTION_REGION_LINES = 3
+
 # Directive comments, in the broad spelling — this rule sees Python only, but the
 # list is kept in step with the TypeScript twin so the two cannot drift.
 _DIRECTIVE_RE = re.compile(
@@ -146,12 +151,14 @@ def _indent_of(line: str) -> int:
     return len(line) - len(line.lstrip())
 
 
-def _is_group_label(lines: list[str], index: int) -> bool:
-    """Report whether the statement at `index` is the head of a run of siblings."""
-    first = lines[index]
-    shape = _statement_shape(first)
-    if shape is None:
-        return False
+def _statement_end(lines: list[str], index: int) -> int:
+    """Find the last line of the statement starting at `index`, by bracket balance.
+
+    Returns:
+        The 0-based index of the statement's final line, so a multi-line call is
+        skipped whole.
+
+    """
     balance = 0
     cursor = index
     while cursor < len(lines):
@@ -161,13 +168,61 @@ def _is_group_label(lines: list[str], index: int) -> bool:
         if balance <= 0:
             break
         cursor += 1
-    following = cursor + 1
+    return cursor
+
+
+def _is_group_label(lines: list[str], index: int) -> bool:
+    """Report whether the statement at `index` is the head of a run of siblings."""
+    first = lines[index]
+    shape = _statement_shape(first)
+    if shape is None:
+        return False
+    following = _statement_end(lines, index) + 1
     if following >= len(lines):
         return False
     nxt = lines[following]
     if not nxt.strip():
         return False
     return _indent_of(nxt) == _indent_of(first) and _statement_shape(nxt) == shape
+
+
+def _region_size(lines: list[str], index: int) -> int:
+    """Count the same-indent lines of the blank-line-delimited region at `index`.
+
+    The region runs from `index` until a blank line, a dedent, the NEXT
+    same-indent comment, or end of file. Nested block bodies and the
+    continuation lines of a multi-line statement are stepped over rather than
+    counted, so the number is the count of logical lines at the label's own
+    indent — which is what "how much does this comment head?" means.
+
+    The next comment is a terminator, not a transparent line, and that is what
+    keeps the guard from swallowing true positives: `# Mock auth_manager` above
+    one line, followed by `# Act` and `# Assert`, heads a region of ONE
+    (`airflow/.../routes/public/test_import_error.py:241`), and so does
+    `# Remove the replacement node.` above a four-line call followed by
+    `# Ensure graph is consistent…` (`django/tests/migrations/test_graph.py:391`).
+    Counting across the next label turned both into three-line regions and
+    suppressed them; measured over the corpus, treating comments as transparent
+    removed 149 findings instead of 98, and the extra 51 were dominated by
+    exactly that shape.
+
+    Returns:
+        The number of same-indent, non-comment lines in the region.
+
+    """
+    indent = _indent_of(lines[index])
+    size = 0
+    cursor = index
+    while cursor < len(lines):
+        line = lines[cursor]
+        if not line.strip() or _indent_of(line) < indent:
+            break
+        if _indent_of(line) == indent:
+            if cursor != index and line.lstrip().startswith("#"):
+                break
+            size += 1
+        cursor = _statement_end(lines, cursor) + 1
+    return size
 
 
 def _has_non_ascii_prose(body: str) -> bool:
@@ -255,5 +310,7 @@ class NoRestatedComment(Rule):
         if not _ACTION_STMT_RE.search(code):
             return False
         if _is_group_label(lines, index):
+            return False
+        if _region_size(lines, index) >= _SECTION_REGION_LINES:
             return False
         return restates(tokens, code_tokens(code))

@@ -323,3 +323,139 @@ def test_two():
     assert Call({_NINE_KWARGS})
 """
     assert _check(src) == []
+
+
+# --------------------------------------------------------------------------- #
+# FP guard: a mock assertion constructs nothing. 276 of 2,064 corpus findings   #
+# (13.4%), no true positive among them — and only three callee names occur      #
+# corpus-wide, none of which can build an object.                               #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "method",
+    ["assert_called_once_with", "assert_called_with", "assert_awaited_once_with"],
+)
+def test_mock_assertion_is_not_a_construction(method: str):
+    # Defaulting these keywords away would delete the assertion: the whole
+    # point is to pin the exact call the code under test made.
+    src = f"""
+def test_one(mock_hook):
+    mock_hook.{method}({_NINE_KWARGS})
+
+def test_two(mock_hook):
+    mock_hook.{method}({_NINE_KWARGS})
+"""
+    assert _check(src) == []
+
+
+def test_construction_beside_a_mock_assertion_still_fires():
+    # The shape the guard was written for, inverted: one third-party operator
+    # test flagged the assertion and missed the real construction above it.
+    src = f"""
+def test_one(mock_hook):
+    op = ListJobsOperator({_NINE_KWARGS})
+    op.execute(context=None)
+    mock_hook.assert_called_once_with({_NINE_KWARGS})
+
+def test_two(mock_hook):
+    op = ListJobsOperator({_NINE_KWARGS})
+    op.execute(context=None)
+    mock_hook.assert_called_once_with({_NINE_KWARGS})
+"""
+    diags = _check(src)
+    assert len(diags) == 2
+    assert [d.line for d in diags] == [3, 8]
+
+
+def test_a_callee_merely_beginning_with_the_letters_assert_still_fires():
+    # The guard is the prefix `assert_`, not the substring "assert":
+    # `assertion_bundle(...)` really does build an object.
+    src = f"""
+def test_one():
+    assert assertion_bundle({_NINE_KWARGS})
+
+def test_two():
+    assert assertion_bundle({_NINE_KWARGS})
+"""
+    assert len(_check(src)) == 2
+
+
+# --------------------------------------------------------------------------- #
+# FP guard: the callee IS the helper this rule asks for — a `def` in the same    #
+# module. 89 of 2,064 corpus findings (4.3%) across 9 callees, every one a      #
+# factory, fixture-factory or shared assertion helper.                          #
+# --------------------------------------------------------------------------- #
+
+
+def test_call_to_a_same_module_helper_is_exempt():
+    # The keywords are a hand-rolled parametrize table, not an inlined object.
+    src = f"""
+def verify(**case):
+    assert run(**case)
+
+def test_one():
+    verify({_NINE_KWARGS})
+
+def test_two():
+    verify({_NINE_KWARGS})
+"""
+    assert _check(src) == []
+
+
+def test_call_to_a_same_module_fixture_factory_is_exempt():
+    src = f"""
+import pytest
+
+@pytest.fixture
+def make_order():
+    def _make(**overrides):
+        return Order(**overrides)
+    return _make
+
+def _order(**overrides):
+    return Order(**overrides)
+
+def test_one():
+    assert _order({_NINE_KWARGS})
+
+def test_two():
+    assert _order({_NINE_KWARGS})
+"""
+    assert _check(src) == []
+
+
+def test_call_to_a_callee_this_module_does_not_define_still_fires():
+    # A domain type imported from production code is exactly the target case.
+    src = f"""
+from app.models import Order
+
+def test_one():
+    assert Order({_NINE_KWARGS})
+
+def test_two():
+    assert Order({_NINE_KWARGS})
+"""
+    assert len(_check(src)) == 2
+
+
+def test_dotted_callee_sharing_a_local_def_name_still_fires():
+    # Only a bare `Name` resolves to this module's `def`; `helpers.build(...)`
+    # reaches something the file does not own, whatever it is called here.
+    src = f"""
+def build(**overrides):
+    return Order(**overrides)
+
+def test_one():
+    assert helpers.build({_NINE_KWARGS})
+
+def test_two():
+    assert helpers.build({_NINE_KWARGS})
+"""
+    assert len(_check(src)) == 2
+
+
+def test_message_says_helper_not_builder():
+    # The largest arguable class is a test invoking the system under test with
+    # its full parameter list; "builder" was wrong advice for it, "helper" is not.
+    assert "extract a helper with defaults" in _check(_WIDE_IN_TEST)[0].message.lower()

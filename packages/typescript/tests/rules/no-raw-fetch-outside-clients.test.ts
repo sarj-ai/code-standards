@@ -44,6 +44,78 @@ ruleTester.run("no-raw-fetch-outside-clients", rule, {
       code: "async function t() { await fetch('/x'); }",
       filename: "/repo/src/v5/__testfixtures__/bug-reports.input.tsx",
     },
+    // --- The flagged file IS the client layer, under another name -----------
+    // Vendor wrapper modules: every fetch in them is an absolute-URL call to one
+    // third-party origin, i.e. they ARE the module the rule wants the fetch to
+    // live in. Corpus:
+    // cal.com/packages/app-store/office365calendar/lib/CalendarService.ts:265.
+    {
+      code: "export const listEvents = () => fetch('https://graph.microsoft.com/v1.0/me/events');",
+      filename: "/repo/packages/app-store/office365calendar/lib/CalendarService.ts",
+    },
+    // formbricks/apps/web/lib/googleSheet/service.ts:164
+    {
+      code: "export const appendRows = () => fetch('https://sheets.googleapis.com/v4/x');",
+      filename: "/repo/apps/web/lib/googleSheet/service.ts",
+    },
+    {
+      code: "export const run = () => fetch('https://api.example.test/v1/x');",
+      filename: "/repo/packages/engineering/src/lib/services/google-directory/auth.ts",
+    },
+    // openstatus/packages/notifications/telegram/src/index.ts:81
+    {
+      code: "export const send = () => fetch('https://api.telegram.org/botX/sendMessage');",
+      filename: "/repo/packages/notifications/telegram/src/index.ts",
+    },
+    {
+      code: "export const sync = () => fetch('https://api.attio.com/v2/objects');",
+      filename: "/repo/worker/connectors/attio.ts",
+    },
+    {
+      code: "export const importChecks = () => fetch('https://api.checklyhq.com/v1/checks');",
+      filename: "/repo/packages/importers/src/providers/checkly/checkly.ts",
+    },
+    {
+      code: "export const postMessage = () => fetch('https://slack.com/api/chat.postMessage');",
+      filename: "/repo/apps/web/lib/integrations/slack/commands.ts",
+    },
+    {
+      code: "export const readText = () => fetch(url);",
+      filename: "/repo/packages/utils/src/functions/text-fetcher.ts",
+    },
+    {
+      code: "export const push = () => fetch('https://api.example.test/x');",
+      filename: "/repo/packages/sync/src/hubspot-connector.ts",
+    },
+    // --- Test-path drift ----------------------------------------------------
+    // The rule hand-rolled its own test-path list and so missed `playwright/`
+    // and `.e2e.ts`. Corpus: cal.com/apps/web/playwright/oauth-provider.e2e.ts
+    // was the single loudest file in the sweep (16 findings).
+    {
+      code: "async function t() { await fetch('/api/x'); }",
+      filename: "/repo/apps/web/playwright/oauth-provider.e2e.ts",
+    },
+    {
+      code: "export const inbox = () => fetch('http://localhost:8025/api/v2/messages');",
+      filename: "/repo/apps/web/playwright/mailhog.ts",
+    },
+    {
+      code: "export const seed = () => fetch('/api/x');",
+      filename: "/repo/apps/web/cypress/support/commands.ts",
+    },
+    // --- Asset / passthrough handoff ---------------------------------------
+    // A lone constructed `URL`/`Request` argument is an asset load or an
+    // inbound request being forwarded, not a call to a service API that a
+    // client wrapper could own. Corpus:
+    // documenso/apps/remix/app/routes/_share+/share.$slug.opengraph.tsx:33.
+    {
+      code: "export const font = () => fetch(new URL('/fonts/inter.ttf', import.meta.url));",
+      filename: "/repo/app/routes/share.opengraph.tsx",
+    },
+    {
+      code: "export const proxy = (request) => fetch(new Request(request));",
+      filename: "/repo/app/routes/ingest.tsx",
+    },
     // --- Allowed by the default path patterns -------------------------------
     {
       code: "export const get = () => fetch(url);",
@@ -111,6 +183,30 @@ ruleTester.run("no-raw-fetch-outside-clients", rule, {
     {
       code: "async function load() { const r = await fetch('/api/todos'); return r.json(); }",
       filename: "/repo/src/pages/index.tsx",
+      errors: [{ messageId: "rawFetch" }],
+    },
+    // UPPER BOUND on the vendor-path widening. Every true positive in the
+    // 50-finding read was a component/page/modal or a React hook — none lived in
+    // a vendor path. `providers/` is a vendor directory, but a `-provider.tsx`
+    // BASENAME is usually a React context/modal provider, so that suffix is
+    // deliberately absent from the allow list. Corpus:
+    // dub/apps/web/ui/modals/modal-provider.tsx:134, which calls its OWN api.
+    {
+      code: "export const M = (id) => { fetch(`/api/links/sync?workspaceId=${id}`, { method: 'POST' }); };",
+      filename: "/repo/apps/web/ui/modals/modal-provider.tsx",
+      errors: [{ messageId: "rawFetch" }],
+    },
+    // A name that merely contains "service" is not a service module.
+    {
+      code: "export const Page = () => { fetch('/api/me'); };",
+      filename: "/repo/apps/web/app/settings/service-page.tsx",
+      errors: [{ messageId: "rawFetch" }],
+    },
+    // UPPER BOUND on the handoff guard: only a LONE constructed argument is a
+    // handoff. Add an init and it is an ordinary service call again.
+    {
+      code: "const r = await fetch(new URL('/api/x', base), { method: 'POST' });",
+      filename: HANDLER,
       errors: [{ messageId: "rawFetch" }],
     },
     // Bare global fetch in a route handler.

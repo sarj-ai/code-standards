@@ -136,3 +136,40 @@ def test_fastapi_route_docstring_is_the_openapi_description():
         "    return None\n"
     )
     assert _check(src) == []
+
+
+# --------------------------------------------------------------------------- #
+# Numbers are not words.                                                      #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "docstring",
+    [
+        pytest.param("Test that retry_limit=5 is valid.", id="boundary-value"),
+        pytest.param("Create a version tag, capped at 200 characters.", id="cap"),
+    ],
+)
+def test_a_literal_value_the_signature_does_not_carry_is_content(docstring: str):
+    """`WORD_RE` is `[A-Za-z][A-Za-z0-9']*`, so a bare number is not a word at all.
+
+    A docstring whose only addition is a literal value is therefore INVISIBLE to
+    the restatement test even when the value is the entire point of the
+    sentence -- `prefect/tests/client/schemas/test_concurrency.py:60` reads
+    "grace_period_seconds=60 is valid (minimum boundary)" under
+    `test_grace_period_seconds_minimum_boundary_valid`. 41 findings of 2,866,
+    0 first-party.
+    """
+    assert _fn("test_retry_limit_valid(retry_limit: int)", docstring) == []
+
+
+def test_a_number_the_signature_already_carries_still_fires():
+    """The boundary: the guard is "a digit the SIGNATURE does not have"."""
+    diags = _fn("test_retry_limit_5_valid(retry_limit: int)", "Test that retry_limit=5 is valid.")
+    assert len(diags) == 1
+    assert diags[0].code == "SARJ050"
+
+
+def test_an_annotation_carrying_the_number_counts_as_the_signature():
+    """The boundary on the other side: annotations are part of what a reader reads."""
+    assert len(_fn("cap(value: Literal[5], flag: bool)", "Cap the value at 5.")) == 1

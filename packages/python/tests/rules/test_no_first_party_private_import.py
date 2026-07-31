@@ -37,12 +37,15 @@ def project(tmp_path: Path) -> Path:
     root = tmp_path / "repo"
     (root / ".git").mkdir(parents=True)
 
+    # One packaging manifest per workspace member: `svc` and `core` are separate
+    # distributions, and each member's `tests/` tree is inside its own.
     for member, package in (("svc", "svc"), ("core", "core")):
         pkg = root / "python" / member / package
         pkg.mkdir(parents=True)
         (pkg / "__init__.py").touch()
         (pkg / "helpers.py").touch()
         (pkg / "_internals.py").touch()
+        (root / "python" / member / "pyproject.toml").write_text(f'[project]\nname = "{member}"\n', encoding="utf-8")
 
     # A namespace subpackage (no __init__.py), as first-party nested trees are.
     nested = root / "python" / "svc" / "svc" / "adapters"
@@ -197,3 +200,83 @@ def test_private_top_level_package_name_is_exempt(project: Path):
 
 def test_syntax_error_yields_no_diagnostics(project: Path):
     assert _check(project, _TEST_FILE, "from core.helpers import (") == []
+
+
+# --------------------------------------------------------------------------- #
+# FP-hardening (19-repo sweep): a private module SEGMENT of our own             #
+# DISTRIBUTION, imported for a public name, is our own internals however the    #
+# importer's directory is arranged. 4,064 of 6,285 findings, 3,936 in tests;    #
+# zero first-party recall cost, because a private NAME still fires.             #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        # Shaped after django/tests/utils_tests/test_os_utils.py:9,
+        # `from django.utils._os import safe_join` — exempt at
+        # django/django/views/static.py:12 before this guard, flagged here.
+        "from svc._internals import Thing",
+        "from svc._internals import Thing, Other",
+        "import svc._internals",
+        "import svc._internals as internals",
+    ],
+)
+def test_private_segment_of_our_own_distribution_is_exempt(project: Path, source: str):
+    assert _check(project, _TEST_FILE, source) == []
+
+
+def test_private_name_from_our_own_distribution_still_fires(project: Path):
+    # The upper bound on the guard: only the SEGMENT is exempt. Exporting
+    # `_redact` is an edit these authors can make, so the finding stands.
+    assert len(_check(project, _TEST_FILE, "from svc._internals import _redact")) == 1
+
+
+def test_mixed_public_and_private_names_from_our_own_segment_still_fires(project: Path):
+    assert len(_check(project, _TEST_FILE, "from svc._internals import Thing, _redact")) == 1
+
+
+def test_private_segment_of_another_distribution_still_fires(project: Path):
+    # The reach this guard must keep: shaped after prefect_dbt ->
+    # prefect._internal (31 findings) and an airflow provider ->
+    # airflow.sdk._shared (12), which cross a packaging boundary.
+    assert len(_check(project, _TEST_FILE, "from core._internals import Thing")) == 1
+
+
+def test_file_outside_any_distribution_is_not_exempted(project: Path):
+    # A repo-level script belongs to no manifest, so nothing is "its own"
+    # distribution and the reach still reports.
+    assert len(_check(project, "scripts/backfill.py", "from svc._internals import Thing")) == 1
+
+
+# --------------------------------------------------------------------------- #
+# FP-hardening: a private submodule with no `.py` in the tree is a compiled     #
+# extension behind a stub — "export it publicly" names an edit that does not    #
+# exist. Shaped after pydantic/pydantic/version.py:39, `from                    #
+# pydantic_core._pydantic_core import ...` across a distribution boundary.      #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture
+def extension_package(project: Path) -> Path:
+    """Add a second distribution whose private submodule is a compiled artifact.
+
+    Returns:
+        The repo root.
+
+    """
+    pkg = project / "python" / "ext" / "ext"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").touch()
+    (pkg / "_ext.pyi").touch()
+    (pkg / "_pure.py").touch()
+    (project / "python" / "ext" / "pyproject.toml").write_text('[project]\nname = "ext"\n', encoding="utf-8")
+    return project
+
+
+def test_compiled_extension_submodule_is_exempt(extension_package: Path):
+    assert _check(extension_package, _TEST_FILE, "from ext._ext import ArgsKwargs") == []
+
+
+def test_compiled_extension_exemption_does_not_cover_a_sibling_with_source(extension_package: Path):
+    assert len(_check(extension_package, _TEST_FILE, "from ext._pure import Thing")) == 1

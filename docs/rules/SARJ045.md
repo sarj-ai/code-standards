@@ -59,6 +59,49 @@ Deliberately NOT flagged:
   `table.box.__dict__.update(top_left="a", top="b", ...)`, which relabels box
   characters wholesale.
 
+## 2026-07 false-positive audit
+
+Measured on a 12-repo corpus: **2,064 findings**. A seeded random sample of 50
+read against source put the false-positive rate at **20%**. The two guards below
+removed **365 of 2,064 (17.7%)**, taking the rule to **1,699**.
+
+* **A mock assertion — a callee named `assert_*`.** Nothing is constructed, and
+  "extract a helper with defaults" is the *opposite* of what the call wants: the
+  assertion exists to pin the exact, complete call the code under test made, so
+  hiding its keywords behind a default-carrying helper would delete the thing
+  being asserted. The repetition premise was also satisfied spuriously here,
+  because `_callee_name` collapses a dotted path to its last segment and every
+  unrelated mock in the file then votes for every other one. **276 of 2,064
+  (13.4%)**, and reading a seeded random sample of them turned up **no true
+  positive**. Only three names occur corpus-wide — `assert_called_once_with`
+  (268), `assert_called_with` (4), `assert_awaited_once_with` (4) — none of which
+  can construct anything, so the guard is exact rather than heuristic. It also
+  repaired 88 of the 104 spurious-repetition findings for free. The sharpest
+  single case: one third-party operator test flagged the 12-keyword
+  `mock.assert_called_once_with(...)` while leaving the genuine 12-keyword
+  `ListHyperparameterTuningJobOperator(...)` sixteen lines above it alone, because
+  that construction was unique in the file. The rule was firing on the assertion
+  and missing the construction.
+* **A call to a function this module defines** — `node.func` is a bare `Name`
+  bound to a `def` in the same file. That callee IS the helper this rule asks for:
+  a factory, a fixture-factory, or a shared assertion helper whose keywords are
+  the parametrized case matrix. The exemption above covers calls made *inside*
+  such a helper; without this one the rule nags at calls *to* one, which is
+  already-refactored code. **89 of 2,064 (4.3%)** across 9 distinct callees, every
+  one a factory, fixture or assertion helper, and no true positive among them.
+  Bounded on purpose: a callee the module does not define is a domain type
+  imported from production code and still fires.
+
+**The message was reworded from "builder" to "helper".** The largest remaining
+ARGUABLE class — roughly a third of what is left — is a test invoking the system
+under test with its full parameter list. That is deliberately still reported: the
+duplication complaint is correct there, the words just have to fit.
+
+**Deliberately NOT implemented, having been measured:** counting repetitions by
+the full dotted path rather than the trailing attribute. The miscount is real, but
+88 of the 104 findings it affects are mock assertions that the `assert_*` guard
+already removes, and the incremental 16 include true positives.
+
 ## Implementation notes
 
 ### `_KwargHeavyVisitor`

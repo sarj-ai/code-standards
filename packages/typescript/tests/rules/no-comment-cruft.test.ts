@@ -171,6 +171,36 @@ ruleTester.run("no-comment-cruft", rule, {
     {
       code: "// Example:\n//\n// <Routes>\n//   <Route path=\"blog\" element={<Blog />} />\n// </Routes>\n//\n// function Blog() {\n//   return null;\n// }\nconst x = 1;",
     },
+
+    // --- 2026-07 audit, class 1: a short get/set/return label heading a BLOCK -
+    // The `DUMMY_TRANSLATION_RE` branch used to fire on the lexical match alone,
+    // with nothing corroborating it. Real corpus:
+    // papermark/lib/hooks/use-breakpoint.ts:21 — the comment is the only thing
+    // saying why the handler is invoked eagerly.
+    {
+      code: "function useBreakpoint() {\n  const handleChange = () => {};\n  // Set initial value\n  handleChange();\n}",
+    },
+    // Real corpus: dub/apps/web/app/(ee)/api/partners/platforms/callback/
+    // route.ts:97 — the label heads a whole token-exchange block.
+    {
+      code: "// Get access token\nconst urlParams = new URLSearchParams({\n  grant_type: 'authorization_code',\n});",
+    },
+    // --- class 2: a step marker that states its own reason ------------------
+    {
+      code: "// First, warm the cache so we do not pay the cold read twice\nwarm();",
+    },
+    // Real corpus: dub/apps/web/lib/actions/partners/update-discount.ts:68 —
+    // `so that` was in the connective list and `so we` was not.
+    {
+      code: "const a = 1;\n\n// we only cache default group pages for now so we need to invalidate them\nconst paths = [];",
+    },
+    // --- class 3: a call-shaped label on a TS overload ----------------------
+    // Real corpus: hono/src/types.ts:440 — 60 of the file's findings were this
+    // one pattern, making it the rule's second-noisiest file corpus-wide.
+    {
+      code: "export interface HandlerInterface {\n  // app.get(path, handler x5)\n  <P extends string>(path: P, handler: H): void;\n}",
+    },
+    { code: "type Router = {\n  // app.use(middleware)\n  use(m: M): void;\n};" },
   ],
   invalid: [
     // --- region marker shapes still fire ---
@@ -360,14 +390,50 @@ ruleTester.run("no-comment-cruft", rule, {
       code: "// fixme: broken\nconst y = 2;",
       errors: [{ messageId: "untrackedTodo" }],
     },
-    // Dummy translational comments
+    // Dummy translational comments. Both cases below USED to be written against
+    // a statement that corroborates nothing (`// increment i` above `let i = 0;`
+    // and `// return the response` above `const x = 1;`) — they encoded exactly
+    // the uncorroborated firing the 2026-07 audit removed, so they are restated
+    // here against code that does corroborate them. The shape still fires; what
+    // no longer fires is the shape with no code backing it.
     {
-      code: "// increment i\nlet i = 0;",
+      code: "// increment i\ni += 1;",
       errors: [{ messageId: "redundantNarration" }],
     },
     {
-      code: "// return the response\nconst x = 1;",
+      code: "// return the response\nreturn response;",
       errors: [{ messageId: "redundantNarration" }],
+    },
+    // --- upper bounds on the 2026-07 guards ---------------------------------
+    // Class 1: corroboration may come from an ARGUMENT for this shape, because a
+    // <=4-word `set`/`get` comment's object is what the call is passed. Real
+    // corpus: documenso e2e specs (4 sites) and
+    // papermark/lib/utils/generate-checksum.ts:11.
+    {
+      code: "// Set mobile viewport\nawait page.setViewportSize(MOBILE_VIEWPORT);",
+      errors: [{ messageId: "redundantNarration" }],
+    },
+    {
+      code: "function digest(hmac) {\n  // Return hex digest\n  return hmac.digest('hex');\n}",
+      errors: [{ messageId: "redundantNarration" }],
+    },
+    // Class 2: the justification escape needs a stated reason, not the mere
+    // presence of the word "so" or a trailing noun phrase.
+    {
+      code: "// First, verify the key exists\nverifyKey(keyId);",
+      errors: [{ messageId: "redundantNarration" }],
+    },
+    // Class 3: the suppression is scoped to the CALL branch inside a type
+    // container. A commented-out declaration there is still dead code.
+    {
+      code: "export interface Routes {\n  // const a = 1;\n  get(path: string): void;\n}",
+      errors: [{ messageId: "commentedOutCode" }],
+    },
+    // And a call-shaped comment in a STATEMENT position is untouched — including
+    // inside a namespace body, where a statement is legal.
+    {
+      code: "namespace N {\n  // drop(table);\n  export const x = 1;\n}",
+      errors: [{ messageId: "commentedOutCode" }],
     },
   ],
 });
