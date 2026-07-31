@@ -179,7 +179,7 @@ resource "google_dns_record_set" "a" {}
 
 
 def test_banner_detection_is_unaffected_by_run_dominance():
-    """Banners are a house-style call and are judged per line, not per run."""
+    """A prose-dominant comment run does not stop its banner lines being banners."""
     src = """
 # ============================================================
 # Networking — VPC, subnets and the private service connection
@@ -187,8 +187,51 @@ def test_banner_detection_is_unaffected_by_run_dominance():
 resource "google_compute_network" "vpc" {}
 """
     diags = _check(src)
-    assert len(diags) == 2
-    assert all("Section-banner" in d.message for d in diags)
+    # ONE banner, so one finding. This used to assert 2, because the top and
+    # bottom rules of the same banner were reported separately -- the same
+    # defect, twice. Measured over 1,424 content-unique `.tf` files, 748 banner
+    # findings covered 406 banners and 83% of them were double-counted.
+    assert len(diags) == 1
+    assert "Section-banner" in diags[0].message
+    # Anchored at the FIRST rule line, which is where a reader looks.
+    assert diags[0].line == 2
+
+
+def test_each_banner_in_a_file_is_reported_once():
+    """Two banners are two findings: the collapse is per banner, not per file."""
+    src = """
+################
+# A
+################
+
+resource "x" "y" {}
+
+################
+# B
+################
+"""
+    diags = _check(src)
+    assert [d.line for d in diags] == [2, 8]
+
+
+def test_a_lone_divider_with_no_title_is_still_one_finding():
+    """A single rule line is its own banner group; nothing to collapse."""
+    src = """
+# ------------------------------------------------------------
+resource "x" "y" {}
+"""
+    assert len(_check(src)) == 1
+
+
+def test_a_blank_line_between_rules_starts_a_new_banner():
+    """A blank line breaks the comment run, so these are two banners."""
+    src = """
+# ============================================================
+
+# ============================================================
+resource "x" "y" {}
+"""
+    assert [d.line for d in _check(src)] == [2, 4]
 
 
 # --- the banner half: the run length, and which regex earns each shape ------------

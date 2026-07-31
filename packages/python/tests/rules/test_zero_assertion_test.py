@@ -724,3 +724,52 @@ def test_apps(monkeypatch):
     yield
 """
     assert _check(src) == []
+
+
+# --------------------------------------------------------------------------- #
+# Library assertion helpers whose names carry none of the four name tokens.    #
+# 59.7% of this rule's corpus findings were tests asserting through these.     #
+# --------------------------------------------------------------------------- #
+
+
+def test_pytester_line_matcher_counts_as_an_assertion():
+    # `fnmatch_lines` raises `Failed` on a mismatch; it is how pytest's own
+    # suite -- and any repo testing a console script via `pytester` -- asserts.
+    src = """
+def test_run_without_stepwise(stepwise_pytester):
+    result = stepwise_pytester.runpytest("-v")
+    result.stdout.fnmatch_lines(["*test_success_before_fail PASSED*"])
+"""
+    assert _check(src) == []
+
+
+def test_no_fnmatch_line_counts_as_an_assertion():
+    src = """
+def test_output_is_quiet(pytester):
+    result = pytester.runpytest("-q")
+    result.stdout.no_fnmatch_line("*Traceback*")
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize("helper", ["eq_", "ne_", "is_", "is_true", "in_", "eq_regex"])
+def test_sqlalchemy_testing_assertions_count(helper: str):
+    # The trailing underscore exists to dodge a Python keyword, which is exactly
+    # why the `assert|expect|verify|validate` token search cannot see them.
+    src = f"""
+from sqlalchemy.testing.assertions import {helper}
+
+def test_repr_params_unknown_list():
+    {helper}(repr(_repr_params([1, 2], None)), "[1, 2]")
+"""
+    assert _check(src) == []
+
+
+def test_a_similarly_named_local_function_still_does_not_rescue_a_bare_test():
+    # The set is closed on purpose: a test whose only call is an unrelated
+    # function must stay flagged, or the rule stops finding anything.
+    src = """
+def test_thing(client):
+    client.equals(3)
+"""
+    assert len(_check(src)) == 1
