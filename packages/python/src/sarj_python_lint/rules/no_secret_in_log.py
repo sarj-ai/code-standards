@@ -13,15 +13,12 @@ from typing import TYPE_CHECKING, override
 from sarj_python_lint._secret_names import identifier_tokens, is_secret_name
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
 from sarj_python_lint.rules._ast_index import nodes
-from sarj_python_lint.rules._logging import is_logger_expr
+from sarj_python_lint.rules._logging import LOG_METHODS, is_logger_expr
 
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-
-# Logging method names (the `.attr` of the call's func).
-_LOG_METHODS = frozenset({"debug", "info", "warning", "warn", "error", "exception", "critical"})
 
 # A redaction marker (`token_prefix`, `password_hash`, `secret_masked`,
 # `api_key_tag`) means the keyword carries a masked/derived value, not the raw
@@ -88,6 +85,6 @@ def _is_logging_call(node: ast.Call) -> bool:
     func = node.func
     if not isinstance(func, ast.Attribute):
         return False
-    if func.attr not in _LOG_METHODS:
+    if func.attr not in LOG_METHODS:
         return False
     return is_logger_expr(func.value)
