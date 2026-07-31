@@ -934,6 +934,7 @@ const config = [
       "@sarj/prefer-non-nullable-collection": "error",
       "@sarj/no-sleep-in-test-body": "error",
       "@sarj/no-positional-tuple-return": "error",
+      "@sarj/no-raw-fetch-outside-clients": "error",
       "@sarj/no-restated-comment": "error",
       "@sarj/no-restated-jsdoc": "error",
       "@sarj/no-trailing-value-narration": "error",
@@ -946,13 +947,13 @@ const config = [
       "@sarj/no-unsafe-mock-casting": "error",
       "@sarj/prefer-whole-object-assertion": "error",
       "@sarj/no-async-callback-in-wait-for": "error",
-      // Deliberately NOT enabled here — these two are architectural rules that
-      // are meaningless without per-repo paths, so a shared config cannot set
-      // them. `no-storage-in-stateless-modules` defaults to `modules: []` and is
-      // inert until a consumer names its stateless modules;
-      // `no-raw-fetch-outside-clients` needs an `allow` list matching that
-      // repo's client-layer convention (the default assumes `clients/`). Opt in
-      // per repo:
+      "@sarj/no-storage-in-stateless-modules": "error",
+      // Both architectural rules stay enabled in the shared baseline. The
+      // fetch rule ships conservative client/service defaults; consumers can
+      // replace its `allow` list. The storage rule is intentionally inert until
+      // a consumer declares its stateless module paths, but keeping it present
+      // guarantees that the canonical config never silently omits a shipped
+      // custom rule:
       //   "@sarj/no-storage-in-stateless-modules": ["error", { modules: [...] }],
       //   "@sarj/no-raw-fetch-outside-clients": ["error", { allow: [...] }],
     }),
