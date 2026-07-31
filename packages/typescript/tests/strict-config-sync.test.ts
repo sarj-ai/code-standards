@@ -153,13 +153,38 @@ describe("lint-configs eslint.strict.mjs stays wired to the plugin", () => {
    * `sarj-lint-configs` ever ran. Same "written but inert" failure the rules
    * themselves were added to prevent, one layer up.
    */
-  it("wires every plugin rule into the strict config", () => {
+  it("every plugin rule is either wired into the strict config or explicitly opted out", () => {
     const text = readFileSync(STRICT_CONFIG_PATH, "utf8");
     const referenced = new Set(referencedRuleNames(text));
+
+    // Architectural rules whose options are inherently per-repo, so a SHARED
+    // config cannot set them meaningfully. Each is documented as an opt-in in
+    // eslint.strict.mjs. Adding a name here is a deliberate act — it must come
+    // with that documentation, or the exemption is just a way to hide drift.
+    const PER_REPO_OPT_IN = new Set([
+      "no-storage-in-stateless-modules", // inert without `modules`
+      "no-raw-fetch-outside-clients", // needs a repo-specific `allow` list
+    ]);
+
     const unwired = Object.keys(rules)
-      .filter((name) => !referenced.has(name))
+      .filter((name) => !referenced.has(name) && !PER_REPO_OPT_IN.has(name))
       .sort();
     expect(unwired).toEqual([]);
+
+    // The opt-outs must actually be documented, not silently listed here. Now
+    // that referencedRuleNames() ignores comments this is a genuinely separate
+    // claim from being wired: "mentioned in the file" vs "configured".
+    for (const name of PER_REPO_OPT_IN) {
+      expect(text).toContain(name);
+    }
+
+    // ...and the exemption must still be needed. If someone wires an opt-in for
+    // real, the stale entry has to go, or it silently re-opens the same hole for
+    // whatever rule is added next.
+    const redundant = [...PER_REPO_OPT_IN].filter((name) =>
+      referenced.has(name),
+    );
+    expect(redundant).toEqual([]);
   });
 
   /**

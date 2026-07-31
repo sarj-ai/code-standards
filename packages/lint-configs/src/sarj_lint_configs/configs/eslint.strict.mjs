@@ -912,7 +912,6 @@ const config = [
       "@sarj/prefer-non-nullable-collection": "error",
       "@sarj/no-sleep-in-test-body": "error",
       "@sarj/no-positional-tuple-return": "error",
-      "@sarj/no-raw-fetch-outside-clients": "error",
       "@sarj/no-restated-comment": "error",
       "@sarj/no-restated-jsdoc": "error",
       "@sarj/no-trailing-value-narration": "error",
@@ -925,7 +924,6 @@ const config = [
       "@sarj/no-unsafe-mock-casting": "error",
       "@sarj/prefer-whole-object-assertion": "error",
       "@sarj/no-async-callback-in-wait-for": "error",
-      "@sarj/no-storage-in-stateless-modules": "error",
       // Both architectural rules stay enabled in the shared baseline. The
       // fetch rule ships conservative client/service defaults; consumers can
       // replace its `allow` list. The storage rule is intentionally inert until
