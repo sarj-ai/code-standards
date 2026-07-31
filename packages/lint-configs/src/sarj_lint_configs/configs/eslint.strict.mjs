@@ -840,16 +840,6 @@ const config = [
           selector: "TSModuleDeclaration[kind='namespace']",
           message: "Use ES modules instead of namespaces.",
         },
-        {
-          selector: "CallExpression[callee.name='useCallback']",
-          message:
-            "Don't memoize by hand — the React Compiler handles it. Remove useCallback.",
-        },
-        {
-          selector: "CallExpression[callee.name='useMemo']",
-          message:
-            "Don't memoize by hand — the React Compiler handles it. Remove useMemo (extract a plain function or compute inline).",
-        },
       ],
       "no-restricted-imports": [
         "error",
@@ -1028,6 +1018,37 @@ const config = [
   {
     files: ["**/*.tsx"],
     rules: {
+      // PascalCase function and variable names are the React component
+      // convention. The base TypeScript policy remains camelCase-only; widen
+      // it only for TSX instead of rejecting every valid component or assuming
+      // a particular framework/compiler setup.
+      "@typescript-eslint/naming-convention": [
+        "error",
+        {
+          selector: "default",
+          format: ["camelCase", "PascalCase"],
+          leadingUnderscore: "allow",
+          trailingUnderscore: "allow",
+          filter: { regex: "^(UNSAFE_|__)", match: false },
+        },
+        {
+          selector: "variable",
+          format: ["camelCase", "UPPER_CASE", "PascalCase"],
+          leadingUnderscore: "allow",
+        },
+        { selector: "typeLike", format: ["PascalCase"] },
+        {
+          selector: "import",
+          format: ["camelCase", "PascalCase", "UPPER_CASE"],
+        },
+        { selector: "objectLiteralProperty", format: null },
+        { selector: "typeProperty", format: null },
+        {
+          selector: "parameter",
+          format: ["camelCase", "snake_case"],
+          leadingUnderscore: "allow",
+        },
+      ],
       "unicorn/filename-case": [
         "error",
         {

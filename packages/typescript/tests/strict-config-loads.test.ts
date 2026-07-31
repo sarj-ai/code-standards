@@ -104,6 +104,13 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
     // The `.tsx` block widens filename-case to allow PascalCase components; the
     // base block must NOT. This is the one override whose loss would be silent.
     const tsxConfig = await configFor("src/components/thing.tsx");
+    const tsxNaming = tsxConfig.rules?.[
+      "@typescript-eslint/naming-convention"
+    ] as [number, ...Array<{ selector?: string; format?: string[] | null }>];
+    const tsxDefaultNaming = tsxNaming
+      .slice(1)
+      .find((option) => option.selector === "default");
+    expect(tsxDefaultNaming?.format).toContain("PascalCase");
     const tsxFilenameCase = tsxConfig.rules?.["unicorn/filename-case"] as
       | [number, { cases: Record<string, boolean> }]
       | undefined;

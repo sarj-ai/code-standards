@@ -166,6 +166,12 @@ def test_naming_convention_allows_framework_names() -> None:
     )
 
 
+def test_eslint_config_does_not_assume_react_compiler() -> None:
+    text = ESLINT_STRICT.read_text()
+    assert "CallExpression[callee.name='useMemo']" not in text
+    assert "CallExpression[callee.name='useCallback']" not in text
+
+
 def test_cli_list(tmp_path: Path) -> None:
     proc = subprocess.run(
         [sys.executable, "-m", "sarj_lint_configs", "list"],

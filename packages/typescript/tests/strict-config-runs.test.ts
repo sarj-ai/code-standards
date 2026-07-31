@@ -64,6 +64,13 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
     ).toBe(true);
   });
 
+  it("accepts PascalCase React component names", async () => {
+    const namingFindings = (await lint("widget.tsx")).filter(
+      (message) => message.ruleId === "@typescript-eslint/naming-convention",
+    );
+    expect(namingFindings).toEqual([]);
+  });
+
   /**
    * The react guard is a workaround with an expiry date. When
    * eslint-plugin-react ships ESLint 10 support this test fails, which is the
