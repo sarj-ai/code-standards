@@ -1,9 +1,45 @@
-# SARJ083 `no-implicit-attribute-access` — evidence
+# SARJ083 `no-implicit-attribute-access` — evidence (RETIRED)
 
-Behaviour is specified by [the tests](../../packages/python/tests/rules/test_no_implicit_attribute_access.py); every guard below
-has a named test asserting it. This file holds what a test cannot carry: the
-measurements that chose each threshold, and the false-positive family each
-guard exists to stop.
+> **This rule was deleted in `sarj-python-lint` 0.37.0.** The module, its tests,
+> its registry entry and the `sarj-no-implicit-attribute-access` pre-commit hook
+> are gone. `SARJ083` stays burned: `packages/python/tests/code_ledger.json` is
+> append-only and still records it as `no-implicit-attribute-access`, so
+> `test_no_rule_reuses_a_retired_code` derives the retirement without anyone
+> having to remember it, and `test_ledger_covers_every_deleted_rule_module`
+> recovers the deletion from git history if the line is ever removed. The removal
+> is also recorded in `rule-ledger.json`, so `sarj-lint-configs doctor` names it
+> for any repo whose pre-commit config, `sarj-noqa` comments or
+> `.sarj-python-baseline.json` still reference it.
+>
+> **This file is deliberately retained**, archived under `docs/rules/retired/`
+> rather than deleted with the rule. It is the first withdrawal to use the
+> retention convention #200 built after #183 deleted `docs/rules/SARJ061.md`
+> along with SARJ061 — taking with it the identity of the three findings that
+> commit called true positives, which is not recoverable from the tree.
+> `scripts/check-file-conventions.sh` enforces it in both directions: a doc
+> naming no live rule must be under `retired/` rather than absent, and a diff
+> gate against the merge base fails if an evidence file leaves `docs/rules/`
+> without arriving there.
+>
+> **What decided it:** the 2026-07-31 re-audit below. A seeded sample of 30
+> findings read at source, *after* three new guards shipped: **10 hard false
+> positives, 5 weak true positives, 15 arguable**, against a corpus total of
+> **46,089 findings over 4,783 files**. The bar this repo applies is that a rule
+> must not fire on correct code, and `df["class"]`, argparse `**options`, Django
+> `error_messages`, Streamlit `session_state`, SQLAlchemy `_annotations` and
+> `.get()` on a dict produced by `.model_dump()` one line above are all correct
+> code. Its TypeScript twin `@sarj/no-implicit-attribute-access` was deleted in
+> #183 for scoring 0 true positives in 50 reads; this is the same answer at a
+> different sample size.
+>
+> Everything below is the record as it stood at deletion, unedited. The link to
+> the tests is dead by design — the tests went with the rule; they are recoverable
+> at tag `python-v0.36.0`, `packages/python/tests/rules/test_no_implicit_attribute_access.py`.
+
+Behaviour was specified by the tests (removed with the rule; see
+`python-v0.36.0`); every guard below had a named test asserting it. This file
+holds what a test cannot carry: the measurements that chose each threshold, and
+the false-positive family each guard existed to stop.
 
 The anti-pattern:
     price = foo.get("price")

@@ -402,12 +402,6 @@
   language: python
   types: [python]
 
-- id: sarj-no-implicit-attribute-access
-  name: 'sarj-lint: Known dictionary shapes must use declarative parsing'
-  entry: sarj-python-lint check --rule no-implicit-attribute-access
-  language: python
-  types: [python]
-
 - id: sarj-stepdown
   name: 'sarj-lint: Private helper defined above its only caller'
   entry: sarj-python-lint check --rule stepdown

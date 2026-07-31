@@ -98,7 +98,6 @@
       "no-first-party-private-import",
       "no-fstring-in-log",
       "no-gen-random-uuid-in-sql",
-      "no-implicit-attribute-access",
       "no-isinstance-union-chain",
       "no-offset-pagination",
       "no-optional-tenant-predicate",
@@ -240,7 +239,6 @@
       "SARJ080",
       "SARJ081",
       "SARJ082",
-      "SARJ083",
       "SARJ084",
       "SARJ085",
       "SARJ086",
@@ -319,9 +317,9 @@
     {
       "id": "SARJ055",
       "kind": "code",
-      "status": "renamed",
-      "replacement": "SARJ083",
-      "note": "renumbered in sarj-python-lint 0.26.0 when two waves of rules claimed the same code. Update `sarj-noqa` comments and any suppression baseline to SARJ083."
+      "status": "removed",
+      "replacement": null,
+      "note": "renumbered to SARJ083 in sarj-python-lint 0.26.0, and SARJ083 was itself removed in 0.37.0 -- so there is nothing to renumber to. Delete the `sarj-noqa` comment and any suppression-baseline key. Measurement: docs/rules/retired/SARJ083.md."
     },
     {
       "id": "SARJ061",
@@ -329,6 +327,20 @@
       "status": "removed",
       "replacement": null,
       "note": "removed in sarj-python-lint 0.34.0 with the no-patching-system-under-test rule: 25 corpus findings read, 3 true positives."
+    },
+    {
+      "id": "SARJ083",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "removed in sarj-python-lint 0.37.0 with the no-implicit-attribute-access rule: 30 corpus findings read, 10 hard false positives and 5 weak true positives. Delete every `# sarj-noqa: SARJ083` comment and every SARJ083 key in `.sarj-python-baseline.json`; a dead baseline key never fails, but it hides how large the baseline really is. Measurement: docs/rules/retired/SARJ083.md."
+    },
+    {
+      "id": "no-implicit-attribute-access",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "removed in sarj-python-lint 0.37.0: 30 corpus findings read, 10 hard false positives and 5 weak true positives. Delete the `sarj-no-implicit-attribute-access` pre-commit hook. Measurement: docs/rules/retired/SARJ083.md."
     },
     {
       "id": "no-patching-system-under-test",
