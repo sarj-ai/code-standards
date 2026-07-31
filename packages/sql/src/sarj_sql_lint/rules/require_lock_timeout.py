@@ -103,7 +103,7 @@ class RequireLockTimeout(Rule):
 
         diags: list[Diagnostic] = []
         masked = mask_sql(source)
-        if not is_postgres(masked):
+        if not is_postgres(source):
             return []
 
         events: list[tuple[int, str, re.Match[str]]] = []

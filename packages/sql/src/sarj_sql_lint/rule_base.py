@@ -74,6 +74,32 @@ _MYSQL_RE = re.compile(
     re.IGNORECASE,
 )
 
+_DIALECT_DIRECTIVE_RE = re.compile(
+    r"^\s*--\s*(?:sql-)?dialect\s*:\s*(postgres(?:ql)?|sqlite|mysql|mariadb)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+_SQLITE_RE = re.compile(r"\bAUTOINCREMENT\b", re.IGNORECASE)
+
+
+def declared_dialect(source: str) -> str | None:
+    """Return an explicit dialect declared in a leading SQL line comment.
+
+    A narrow directive lets hand-written migrations state their dialect without
+    relying on vendor-specific syntax happening to appear in every file. Free-form
+    comments remain ignored, so prose cannot accidentally change rule scope.
+
+    """
+    match = _DIALECT_DIRECTIVE_RE.search(source)
+    if match is None:
+        return None
+    dialect = match.group(1).lower()
+    if dialect in {"postgres", "postgresql"}:
+        return "postgresql"
+    if dialect == "mariadb":
+        return "mysql"
+    return dialect
+
+
 # Drizzle writes this separator between statements in every migration it emits.
 _GENERATED_MIGRATION_SENTINEL = "--> statement-breakpoint"
 
@@ -110,6 +136,9 @@ def is_postgres(source: str) -> bool:
         True when nothing in `source` contradicts Postgres.
 
     """
+    dialect = declared_dialect(source)
+    if dialect is not None:
+        return dialect == "postgresql"
     return _NON_POSTGRES_RE.search(source) is None
 
 
@@ -124,7 +153,18 @@ def is_mysql(source: str) -> bool:
         True when `source` is MySQL/MariaDB.
 
     """
+    dialect = declared_dialect(source)
+    if dialect is not None:
+        return dialect == "mysql"
     return _MYSQL_RE.search(source) is not None
+
+
+def is_sqlite(source: str) -> bool:
+    """Report whether source explicitly declares or syntactically signals SQLite."""
+    dialect = declared_dialect(source)
+    if dialect is not None:
+        return dialect == "sqlite"
+    return _SQLITE_RE.search(source) is not None
 
 
 @lru_cache(maxsize=2048)
