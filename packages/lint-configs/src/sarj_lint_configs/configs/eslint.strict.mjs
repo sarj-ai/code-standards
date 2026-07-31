@@ -10,7 +10,6 @@ import betterTailwindcss from "eslint-plugin-better-tailwindcss";
 import sarj from "@sarj/eslint-plugin";
 import zod from "eslint-plugin-zod";
 
-// ── eslint-plugin-unicorn ───────────────────────────────────────────────────
 // unicorn ships 341 rules; this config used to run 12 of them. The set below
 // was chosen by RUNNING every non-deprecated unicorn 72 rule over 4,356 deduped
 // first-party production `.ts`/`.tsx` files (deduped by content hash — two of
@@ -721,7 +720,6 @@ const config = [
       // name correlation alone (8 reports, 1 of them noise).
       "@sarj/prefer-zod-infer": "error",
 
-      // ── eslint-plugin-zod: enabled rather than reimplemented ────────────────
       // Two candidate in-house rules were dropped in favour of these, because a
       // maintained upstream rule that already reports the exact position beats a
       // local copy of it. Measured over 30,546 .ts/.tsx files in 17 repos
@@ -885,37 +883,18 @@ const config = [
       "no-shadow": "off",
       "@typescript-eslint/no-shadow": "error",
 
-      // The COMPLETE @sarj/eslint-plugin strict ruleset — deliberately not
-      // pinned to a version number here. A hand-written "@2.7.0" claim went
-      // stale twice and was wrong both times (12 rules unwired at 2.9.0); the
-      // sync tests in packages/typescript/tests/strict-config-sync.test.ts now
-      // assert completeness and tier parity on every run, which is a guarantee
-      // rather than a comment that rots. Tiers mirror the plugin's
-      // own `configs.strict`. The tiers really are all error: an earlier version
-      // of this comment named prefer-semantic-colors, prefer-string-literal-union
-      // and no-unsafe-cast as "warn here and in the plugin", which was untrue of
-      // all three — and is moot for the last, since no-unsafe-cast was removed as
-      // a strict subset of @typescript-eslint/consistent-type-assertions
-      // (assertionStyle: "never").
+      // The COMPLETE @sarj/eslint-plugin strict ruleset, every rule at `error`.
       //
-      // Deviations from the plugin's strict tiers, and the ONLY ones — the
-      // `severities match the plugin's own strict preset` test in
-      // packages/typescript/tests/strict-config-sync.test.ts fails on any other:
-      //   - enforce-file-structure: warn here, error in the plugin. Structural
-      //     moves are high-churn for existing consumers, so it stays advisory.
-      //   - no-repeated-string-literal: warn here, error in the plugin. It flags
-      //     duplicated structured literals, which lands in bulk on first
-      //     adoption; warn until a rollout proves the signal.
-      //   - no-storage-in-stateless-modules and no-raw-fetch-outside-clients are
-      //     error in the plugin's strict but not enabled here at all; both are
-      //     meaningless without per-repo paths. See the opt-in block below.
+      // No version pin and no per-rule notes: a hand-written "@2.7.0" claim went
+      // stale twice, and a declared list of tier deviations outlived the last
+      // deviation it described. Both are now assertions instead of prose —
+      // packages/typescript/tests/strict-config-sync.test.ts fails if this block
+      // omits a shipped rule, names one that does not exist, or sets a tier the
+      // plugin's own `configs.strict` does not. Each rule's measurements live in
+      // docs/rules/<rule>.md, which its `meta.docs.url` points at.
       //
-      // A `files:`-scoped block further down deliberately turns no-raw-env off
-      // for env source-of-truth files; that is an override, not a tier change.
-      //
-      // no-enum / no-fat-try-blocks / no-raw-env are the single owners of the
-      // enum / oversized-try / process.env concerns (the native no-restricted-*
-      // equivalents were removed above).
+      // A `files:`-scoped block further down turns no-raw-env off for env
+      // source-of-truth files; that is an override, not a tier change.
       "@sarj/zod-naming-convention": "error",
       "@sarj/require-assert-never": "error",
       "@sarj/require-zod-form-validation": "error",
@@ -935,15 +914,6 @@ const config = [
       "@sarj/no-fat-try-blocks": "error",
       "@sarj/no-cors-wildcard-with-credentials": "error",
       "@sarj/no-secret-in-log": "error",
-      // Mined from 2y of PR review feedback + 5-repo code-smell audit (2026-07).
-      // Uncancellable hand-rolled timers: `new Promise((r) => setTimeout(r, ms))`
-      // and the leaky `Promise.race` timeout arm. Nothing in the enabled set
-      // reports this position (resolved with ESLint#calculateConfigForFile over
-      // the 204 rules enabled before it);
-      // eslint-plugin-unicorn 72 has no promisified-timer rule at all.
-      // Client modules are skipped by default — a browser bundle cannot
-      // import `node:timers/promises`. Set `checkClientModules: true` in an
-      // all-Node tree to cover them too.
       "@sarj/no-hand-rolled-sleep": "error",
       "@sarj/require-fetch-timeout": "error",
       "@sarj/no-silent-promise-catch": "error",
@@ -953,10 +923,6 @@ const config = [
         { requireSemanticTokens: true },
       ],
       "@sarj/prefer-string-literal-union": "error",
-      // High-volume/stylistic — warn until rollout proves FP rate.
-
-      // ── 2.8.0 / 2.9.0 additions ─────────────────────────────────────────────
-      // Correctness and security invariants — error, like their peers above.
       "@sarj/prefer-constant-time-secret-compare": "error",
       "@sarj/no-dynamic-sql": "error",
       "@sarj/store-insert-requires-on-conflict": "error",
@@ -964,56 +930,21 @@ const config = [
       "@sarj/no-select-star": "error",
       "@sarj/no-zod-native-enum": "error",
       "@sarj/prefer-module-level-constant": "error",
-      // Its Zod sibling. `prefer-module-level-constant` cannot reach a schema:
-      // its hoist gate requires every leaf of the initializer to be a LITERAL,
-      // and `z.object({ id: z.string() })` is a call. Measured over the same
-      // 17-repo corpus: 1,885 factory calls sit inside a function, 596 in
-      // non-test non-generated source, and the free-variable / `this` gates
-      // hold back the 82 that close over something the function owns.
       "@sarj/prefer-module-level-schema": "error",
       "@sarj/prefer-non-nullable-collection": "error",
       "@sarj/no-sleep-in-test-body": "error",
-      // High-volume/stylistic, so warn — same treatment as prefer-semantic-colors
-      // and prefer-string-literal-union above. Measured on a 1,578-file
-      // third-party corpus: every hit was the conventional `[value, cursor]`
-      // parser idiom, i.e. style rather than defect.
       "@sarj/no-positional-tuple-return": "error",
-
-      // ── anti-comment-verbosity family (2026-07) ─────────────────────────────
-      // From a 37,918-comment, nine-repo measurement study. All three are
-      // deletion-class, so each was validated against pydantic / trio / attrs as
-      // well as the maintained repos: `no-restated-comment` fires 0 times in the
-      // flagship first-party repo and 4 times across the three famous corpora
-      // combined (every one a
-      // genuine `// set_inheritable` over `s1.set_inheritable(False)`);
-      // `trailing-value-narration` 18 hits, 18 true positives, all `staleTime`
-      // and cookie-age lines; `jsdoc-restates-signature` 36 hits and 0 measured
-      // false positives, and it offers a SUGGESTION rather than a `--fix`
-      // because deleting a doc block in bulk is silent information loss if the
-      // judgement is wrong even once.
       "@sarj/no-restated-comment": "error",
-      "@sarj/jsdoc-restates-signature": "error",
-      "@sarj/trailing-value-narration": "error",
-      // The VOLUME arm of the same family — judged once per TYPE, so it can
-      // report ten rows that each add one word. See the `recommended` block in
-      // `@sarj/eslint-plugin` for the measurement.
+      "@sarj/no-restated-jsdoc": "error",
+      "@sarj/no-trailing-value-narration": "error",
       "@sarj/no-type-member-comment-wall": "error",
       "@sarj/no-repeated-string-literal": "error",
-      // An assertion whose operands are all literals can never fail. The TS
-      // half of SARJ057; the Python half is the `sarj-no-tautological-expect`
-      // pre-commit hook.
       "@sarj/no-tautological-expect": "error",
-      // Substitutability. An exported class that stores injected collaborators
-      // and implements no interface forces every consumer onto the concrete
-      // type, so the only way to test a consumer is to mock the class. Measured
-      // across 11 first-party repos (7,912 files, 229 exported classes): 82%
-      // already carry a port, 29 fire, 28 hand-reviewed as true positives.
       "@sarj/require-interface-for-injected-service": "error",
       "@sarj/no-conditional-in-test": "error",
       "@sarj/no-unsafe-mock-casting": "error",
-      "@sarj/strict-test-assertions": "error",
-      "@sarj/no-async-callback-in-waitfor": "error",
-
+      "@sarj/prefer-whole-object-assertion": "error",
+      "@sarj/no-async-callback-in-wait-for": "error",
       // Deliberately NOT enabled here — these two are architectural rules that
       // are meaningless without per-repo paths, so a shared config cannot set
       // them. `no-storage-in-stateless-modules` defaults to `modules: []` and is

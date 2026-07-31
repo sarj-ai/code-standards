@@ -3,7 +3,7 @@ import { RuleTester } from "@typescript-eslint/rule-tester";
 import { Linter } from "eslint";
 import { afterAll, describe, expect, it } from "vitest";
 
-import rule from "../../src/rules/strict-test-assertions.js";
+import rule from "../../src/rules/prefer-whole-object-assertion.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -19,7 +19,7 @@ const ruleTester = new RuleTester({
 /** The rule only runs in test files, so every case has to look like one. */
 const filename = "src/user.test.ts";
 
-ruleTester.run("strict-test-assertions", rule, {
+ruleTester.run("prefer-whole-object-assertion", rule, {
   valid: [
     // Already the combined form.
     { filename, code: `expect(obj).toMatchObject({ a: 1, b: 2 });` },
@@ -280,14 +280,14 @@ ruleTester.run("strict-test-assertions", rule, {
  * what is being pinned is the *end state of a real fix pass*: if a future edit
  * reintroduces a matcher-blind fixer, this fails.
  */
-describe("strict-test-assertions autofix soundness", () => {
+describe("prefer-whole-object-assertion autofix soundness", () => {
   const linter = new Linter();
   const config = [
     {
       files: ["**/*.ts"],
       languageOptions: { parser: tsParser },
-      plugins: { local: { rules: { "strict-test-assertions": rule } } },
-      rules: { "local/strict-test-assertions": "error" },
+      plugins: { local: { rules: { "prefer-whole-object-assertion": rule } } },
+      rules: { "local/prefer-whole-object-assertion": "error" },
     },
   ] as unknown as Linter.Config[];
 

@@ -1,15 +1,20 @@
-import { AST_NODE_TYPES, ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
+/**
+ * @fileoverview no-async-callback-in-wait-for — an async `waitFor` callback swallows its own rejection, so the assertion inside it can never fail the test.
+ *
+ * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-async-callback-in-wait-for.test.ts
+ * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-async-callback-in-wait-for.md
+ */
 
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+
+import { createRule } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
 
 type MessageIds = "noAsyncCallbackInWaitFor";
 type Options = readonly [];
 
-export default ESLintUtils.RuleCreator(
-  (name) =>
-    `https://github.com/sarj-ai/standards/blob/main/packages/typescript/src/rules/${name}.ts`,
-)<Options, MessageIds>({
-  name: "no-async-callback-in-waitfor",
+export default createRule<Options, MessageIds>({
+  name: "no-async-callback-in-wait-for",
   meta: {
     type: "problem",
     docs: {

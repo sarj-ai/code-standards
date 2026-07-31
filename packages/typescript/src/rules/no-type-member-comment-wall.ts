@@ -1,26 +1,13 @@
 /**
- * @fileoverview An object type whose member comments mostly re-spell the
- * members' own names and types — the VOLUME arm of the comment family, judged
- * once per TYPE rather than once per comment.
- *
- *     interface SapCredentials {
- *       // Database host.
- *       host?: string;
- *       // Database host port.
- *       port?: number;
- *       // Database username.
- *       username?: string;
- *     }
- *
- * `jsdoc-restates-signature` needs every content word covered, so it deletes
- * the first row and cannot touch the second. That is the right verdict for one
- * line and the wrong one for ten, so the unit of judgement here is the type.
+ * @fileoverview no-type-member-comment-wall — an object type whose member comments mostly re-spell the members is a wall the reader pays for by the block.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-type-member-comment-wall.test.ts
  * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-type-member-comment-wall.md
  */
 
-import { AST_NODE_TYPES, ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+
+import { createRule } from "./_docs.js";
 
 import { isProtected, splitIdentifier, stem } from "./_comments.js";
 import { isGeneratedFile, isStoryFile, isTestFile } from "./_paths.js";
@@ -45,14 +32,14 @@ const DEFAULTS: RuleOptions = {
   // Room for one substantive row in four; a type where a quarter of the comments
   // say something real is a type someone was documenting, not decorating.
   minRestatedRatio: 0.75,
-  // One word beyond the member's own text. Zero is `jsdoc-restates-signature`'s
+  // One word beyond the member's own text. Zero is `no-restated-jsdoc`'s
   // test and is already covered there; two admits definitions ("Partial match"
   // beside "Exact match"), which the evidence file counts.
   maxNovelWords: 1,
 };
 
 // Tags that carry what the signature cannot — kept in step with
-// `jsdoc-restates-signature`'s VALUE_TAGS.
+// `no-restated-jsdoc`'s VALUE_TAGS.
 const VALUE_TAG_RE =
   /@(?:deprecated|see|example|throws|remarks|since|default|defaultvalue|link|internal|alpha|beta|experimental|template|typeparam|inheritdoc|todo|fixme|override)\b/i;
 
@@ -78,7 +65,7 @@ const NON_ASCII_LETTER_RE = /[^\p{ASCII}\p{N}\p{P}\p{Z}]/u;
 
 /**
  * Filler that says nothing about *which* member is being described. Wider than
- * `_comments.STOPWORDS` for the same reason `jsdoc-restates-signature`'s list
+ * `_comments.STOPWORDS` for the same reason `no-restated-jsdoc`'s list
  * is: member documentation conventionally repeats the vocabulary of the type
  * system itself ("the optional callback value") without that being a claim.
  *
@@ -88,6 +75,7 @@ const NON_ASCII_LETTER_RE = /[^\p{ASCII}\p{N}\p{P}\p{Z}]/u;
  * "parameter". The tag words `param` and `arg` stay: block punctuation, not
  * prose.
  */
+
 const STOPWORDS: ReadonlySet<string> = new Set(
   `the a an of to for in on with and or as at by is are was be been being
    this that it its if whether when where which what will would can could should
@@ -169,10 +157,7 @@ function novelWords(body: string, known: ReadonlySet<string>): number {
   return novel;
 }
 
-export default ESLintUtils.RuleCreator(
-  (name) =>
-    `https://github.com/sarj-ai/standards/blob/main/packages/typescript/src/rules/${name}.ts`,
-)<Options, MessageIds>({
+export default createRule<Options, MessageIds>({
   name: "no-type-member-comment-wall",
   meta: {
     type: "suggestion",

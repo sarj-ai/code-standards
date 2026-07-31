@@ -1,30 +1,13 @@
 /**
- * @fileoverview TS port of SARJ021 (`no-select-star`). `SELECT *` over-fetches
- * every column (including large JSON/text blobs the caller never reads) and,
- * more importantly, makes the row shape implicit: the moment a column is added,
- * renamed, or reordered, the zod schema that parses the row starts failing — or
- * worse, silently accepts extra keys — and nothing in the query says which
- * columns the code actually depends on. Naming the columns makes the dependency
- * explicit and pins the row contract at the query.
+ * @fileoverview no-select-star — `SELECT *` over-fetches and leaves the row contract implicit, so a schema change breaks row parsing silently.
  *
- * The rule reads statically-resolvable SQL strings (literals, template literals,
- * `+` concatenations, `[...].join(" ")` fragment arrays), neutralizes string
- * values and `--` / comment bodies first (so a `'*'` value is never mistaken for
- * a star), and flags a query — a string with a real `SELECT ... FROM` shape —
- * whose projection list holds a `*` in any position: bare (`SELECT *`,
- * `SELECT id, *`) or qualified (`c.*`, `main.runs.*`).
- *
- * Deliberately NOT flagged, matching the Python rule's tuning:
- * - `COUNT(*)` and other aggregate stars — the star is a function argument, not
- *   a projection.
- * - `a * b` arithmetic — an operand follows the star.
- * - `EXISTS (SELECT * ...)` — the projection is unused by definition.
- * - Prose that merely contains the words "select" and "from".
- * - Test files, where a `SELECT *` assertion over a fixture table is fine.
+ * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-select-star.test.ts
+ * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-select-star.md
  */
 
-import { ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
+import { type TSESTree } from "@typescript-eslint/utils";
 
+import { createRule } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
 import { createSqlListener } from "./_sql.js";
 
@@ -39,7 +22,6 @@ const EXISTS_BEFORE = /\bEXISTS\s*\(\s*$/i;
 /** A `word.` immediately preceding a `*` marks a qualified star (`c.*`, `main.runs.*`). */
 const QUALIFIED_PREFIX = /\w\.$/;
 
-/** Cheap substring gate; a file with no star and no SELECT can never produce a finding. */
 const SELECT_GATE = /select/i;
 
 /**
@@ -86,10 +68,7 @@ function hasRealSelectStar(sql: string): boolean {
   return false;
 }
 
-export default ESLintUtils.RuleCreator(
-  (name) =>
-    `https://github.com/sarj-ai/standards/blob/main/packages/typescript/src/rules/${name}.ts`,
-)<Options, MessageIds>({
+export default createRule<Options, MessageIds>({
   name: "no-select-star",
   meta: {
     type: "problem",

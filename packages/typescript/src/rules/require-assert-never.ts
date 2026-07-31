@@ -1,9 +1,13 @@
-import {
-  ESLintUtils,
-  type TSESLint,
-  type TSESTree,
-  AST_NODE_TYPES,
-} from "@typescript-eslint/utils";
+/**
+ * @fileoverview require-assert-never — a switch over a union whose `default` does no runtime work stops being exhaustive the day the union grows.
+ *
+ * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/require-assert-never.test.ts
+ * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/require-assert-never.md
+ */
+
+import { type TSESLint, type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
+
+import { createRule } from "./_docs.js";
 
 type MessageIds = "missingAssertNever";
 type Options = readonly [];
@@ -113,10 +117,7 @@ const isCommentOnlyNoopDefault = (
   return false;
 };
 
-export default ESLintUtils.RuleCreator(
-  (name) =>
-    `https://github.com/sarj-ai/linting/blob/main/packages/typescript/src/rules/${name}.ts`,
-)<Options, MessageIds>({
+export default createRule<Options, MessageIds>({
   name: "require-assert-never",
   meta: {
     type: "problem",

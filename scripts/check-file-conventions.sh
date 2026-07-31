@@ -99,7 +99,10 @@ while read -r path; do
       report "docs/rules/$stem.md documents a code no rule claims"
     continue
   fi
-  if [[ "$stem" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] &&
+  # A leading `_` marks a shared non-rule helper; it still has to name a module,
+  # because the doc-diet convention gives every module under src/rules an
+  # evidence file and `rule-docs.test.ts` walks the modules to require them.
+  if [[ "$stem" =~ ^_?[a-z0-9]+(-[a-z0-9]+)*$ ]] &&
     [ -f "packages/typescript/src/rules/$stem.ts" ]; then
     continue
   fi

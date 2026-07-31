@@ -1,4 +1,4 @@
-# SARJ051 `trailing-value-narration` — evidence
+# SARJ051 `no-trailing-value-narration` — evidence
 
 Behaviour is specified by [the tests](../../packages/python/tests/rules/test_trailing_value_narration.py); every guard below
 has a named test asserting it. This file holds what a test cannot carry: the

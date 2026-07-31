@@ -1,16 +1,13 @@
 /**
- * @fileoverview Disallow TypeScript `enum` declarations. Use string-literal
- * union types (e.g. `type Status = "active" | "inactive"`) or `as const`
- * objects instead — enums generate runtime code, have unintuitive numeric
- * defaults, and don't tree-shake cleanly.
+ * @fileoverview no-enum — a TypeScript `enum` emits runtime code, defaults to numbers, and does not tree-shake.
  *
- * Generated files can opt out either by living under a path matched by
- * `ignoreFiles` (default: `**\/generated/**`, `**\/*.gen.ts`, `**\/*.generated.ts`)
- * or by including a `@generated` marker comment near the top of the file.
+ * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-enum.test.ts
+ * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-enum.md
  */
 
-import { ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
+import { type TSESTree } from "@typescript-eslint/utils";
 
+import { createRule } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
 
 type MessageIds = "noEnum";
@@ -51,10 +48,7 @@ function hasGeneratedMarker(sourceText: string): boolean {
   return /@generated\b/.test(head);
 }
 
-export default ESLintUtils.RuleCreator(
-  (name) =>
-    `https://github.com/sarj-ai/linting/blob/main/packages/typescript/src/rules/${name}.ts`,
-)<Options, MessageIds>({
+export default createRule<Options, MessageIds>({
   name: "no-enum",
   meta: {
     type: "suggestion",

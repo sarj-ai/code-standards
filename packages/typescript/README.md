@@ -12,9 +12,36 @@ import sarj from "@sarj/eslint-plugin";
 export default [...sarj.configs.recommended];
 ```
 
-51 rules. Each rule's source under `src/rules/` carries its own `@fileoverview` rationale plus `meta.docs.description` + `meta.messages` — read the file for the full reasoning, including the false positives it deliberately does not fire on.
+51 rules. Each rule's source under `src/rules/` opens with a one-line claim and
+two links: its tests, which are the examples, and `docs/rules/<rule>.md`, which
+holds the measurements, the false-positive family behind every guard, and the
+alternatives that were rejected. `meta.docs.url` points at the same document, so
+`--format=stylish` prints it. Both links are derived from the rule's name, so a
+rename moves them.
 
 Presets: `recommended` (warn-first), `strict` (every rule at error), `style-guide` (formatting/naming subset).
+
+## Renamed in 7.0.0 (breaking)
+
+| Old name | New name |
+| --- | --- |
+| `@sarj/jsdoc-restates-signature` | `@sarj/no-restated-jsdoc` |
+| `@sarj/no-async-callback-in-waitfor` | `@sarj/no-async-callback-in-wait-for` |
+| `@sarj/strict-test-assertions` | `@sarj/prefer-whole-object-assertion` |
+| `@sarj/trailing-value-narration` | `@sarj/no-trailing-value-narration` |
+
+Every old name is still REGISTERED, as a deprecated alias of the same rule, so a
+config entry, an `eslint-disable` comment or a suppressions baseline naming it
+keeps working while you migrate; ESLint reports the deprecation and names the
+replacement. Neither preset wires an alias, so nothing double-reports. The map is
+exported for codemods:
+
+```js
+import { renamedRules } from "@sarj/eslint-plugin";
+```
+
+Migration steps, the reasoning behind each name, and why the old keys are kept
+rather than dropped: [`docs/rules/_renames.md`](../../docs/rules/_renames.md).
 
 ## New in 4.1.0 — `no-hand-rolled-sleep`
 
@@ -88,14 +115,14 @@ an abandoned placeholder.
 
 From a 37,918-comment, nine-repo measurement study. All three are
 deletion-class, so each was validated against zod / swr / zustand / TanStack
-Query as well as the maintained repos. Read the `@fileoverview` in each rule for
-the hit counts and the false-positive class every guard was built from.
+Query as well as the maintained repos. `docs/rules/<rule>.md` carries the hit
+counts and the false-positive class every guard was built from.
 
 | Rule | What it catches | Preset |
 |---|---|---|
 | `no-restated-comment` | A single-line comment whose every content word already appears on the statement below it. Defers to `no-comment-cruft` for the verb-led shape, so a comment is never reported twice. | warn / error |
-| `jsdoc-restates-signature` | A JSDoc block whose description and `@param`/`@returns` only re-spell the signature. Offers a delete SUGGESTION, never an auto-`--fix`. | warn / error |
-| `trailing-value-narration` | `staleTime: 5 * 60 * 1000, // 5 minutes` — the unit belongs in the name, where it cannot drift. | warn / error |
+| `no-restated-jsdoc` | A JSDoc block whose description and `@param`/`@returns` only re-spell the signature. Offers a delete SUGGESTION, never an auto-`--fix`. | warn / error |
+| `no-trailing-value-narration` | `staleTime: 5 * 60 * 1000, // 5 minutes` — the unit belongs in the name, where it cannot drift. | warn / error |
 | `no-type-member-comment-wall` | An object type whose member comments mostly re-spell the members' own names and types — the VOLUME arm of the family, reported once for the type. | warn / error |
 
 ## New in 2.9.0

@@ -24,3 +24,16 @@ Every problem gets a gate, not a one-off fix. `make verify` runs
 `check-no-private-refs`, `check-file-conventions` and `check-versions-synced`;
 add to them rather than relying on review. A new guard is not finished until you
 have mutated the thing it guards and watched it fail.
+
+A rule module's `@fileoverview` is a one-line `<name> — <claim>` plus the two
+DERIVED links (its tests, and `docs/rules/<name>.md`). Six content lines is the
+cap and there is no exemption file. Measurements, corpus counts, rejected
+alternatives and deliberate-false-negative reasoning go in the `.md`; an example
+becomes a test case. `packages/typescript/tests/rule-docs.test.ts` and
+`packages/python/tests/test_rule_meta.py` enforce both halves.
+
+Renaming a rule is BREAKING. Ship it through `renamedRules` in
+`packages/typescript/src/rules/_renames.ts`, which keeps the old name registered as a
+deprecated alias, and update the strict preset, the shipped `eslint.strict.mjs`,
+the README table and the tests in the same change. Never drop a shipped name: a
+consumer's shrink-only baseline reads a vanished key and a new key as growth.

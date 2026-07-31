@@ -6,7 +6,10 @@
 # Review did not catch any of the three. A grep does.
 set -uo pipefail
 
-PATHS=(packages/ Makefile CLAUDE.md lefthook.yml .github/ README.md)
+# `docs/` is in the list because the doc-diet convention moved every rule's
+# corpus evidence there. Prose that used to sit in a scanned source comment
+# would otherwise have escaped this check by moving one directory over.
+PATHS=(packages/ docs/ Makefile CLAUDE.md lefthook.yml .github/ README.md)
 PRIVATE='bulbul|noura[-_]?be|noura|vision[ _-]?bank|visionbank|digital-bank|kpi-hub|demo-gateway|sarj-demos|\bhala\b|\bnajm\b|\bkashta\b|\btamr\b|\bfarwa\b|\bpericles\b|\bmojaz\b|aljazira|alinma|momah|absher|mngha|lucidya'
 MARKERS='^<<<<<<< |^>>>>>>> |^\|\|\|\|\|\|\| '
 

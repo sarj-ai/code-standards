@@ -1,41 +1,13 @@
 /**
- * @fileoverview Disallow data fetching inside `useEffect` / `useLayoutEffect`.
+ * @fileoverview no-client-side-data-fetching — fetching in `useEffect` is a render -> effect -> fetch -> re-render waterfall with no server cache.
  *
- * Anti-pattern:
- *
- *   useEffect(() => { fetch('/data').then(setData); }, []);
- *
- * Causes a client-side waterfall (render → effect → fetch → re-render),
- * forfeits server-side caching, and produces layout shift. In Next.js App
- * Router, prefer:
- *   - a React Server Component that fetches at render time, or
- *   - a Server Action invoked from a form / onClick handler, or
- *   - client-side caching libraries like SWR or React Query.
- *
- * Detection covers:
- *   - `fetch(...)` (default + when explicit `method: "GET"`)
- *   - `axios.<method>(...)` for actual HTTP verbs only:
- *     get / post / put / delete / patch / request / head / options
- *     (i.e. NOT `axios.create` / `axios.defaults`)
- *   - `ky.<method>(...)` / `superagent.<method>(...)` (same verbs)
- *   - bare `axios(...)` / `ky(...)` calls (when treated as a GET)
- *
- * Analytics / telemetry endpoints whose URL has a whole path segment of
- * `track` / `log` / `ping` / `event` / ... are intentionally exempt because
- * they aren't render-blocking data fetches. (Matched per-segment, so
- * `/api/login`, `/blog`, `/api/events`, `/catalog`, `/api/shipping` are NOT
- * exempt.)
- *
- * References:
- *   - https://nextjs.org/docs/app/building-your-application/data-fetching
- *   - https://react.dev/reference/react/useEffect#fetching-data-with-effects
+ * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-client-side-data-fetching.test.ts
+ * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-client-side-data-fetching.md
  */
 
-import {
-  AST_NODE_TYPES,
-  ESLintUtils,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+
+import { createRule } from "./_docs.js";
 
 type MessageIds = "noClientFetch";
 type Options = readonly [];
@@ -204,10 +176,7 @@ function isAnalyticsCall(node: TSESTree.CallExpression): boolean {
     .some((segment) => ANALYTICS_SEGMENTS.has(segment));
 }
 
-export default ESLintUtils.RuleCreator(
-  (name) =>
-    `https://github.com/sarj-ai/linting/blob/main/packages/typescript/src/rules/${name}.ts`,
-)<Options, MessageIds>({
+export default createRule<Options, MessageIds>({
   name: "no-client-side-data-fetching",
   meta: {
     type: "problem",

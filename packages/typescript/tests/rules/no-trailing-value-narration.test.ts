@@ -1,7 +1,7 @@
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/trailing-value-narration.js";
+import rule from "../../src/rules/no-trailing-value-narration.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -10,7 +10,7 @@ RuleTester.itOnly = it.only;
 
 const ruleTester = new RuleTester();
 
-ruleTester.run("trailing-value-narration", rule, {
+ruleTester.run("no-trailing-value-narration", rule, {
   valid: [
     // A conversion the reader cannot do in their head is the comment worth having.
     { code: "const timeout = 300000; // ~3.5 days" },
