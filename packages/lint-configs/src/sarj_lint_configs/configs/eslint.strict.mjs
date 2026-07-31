@@ -824,6 +824,15 @@ const config = [
       "@sarj/no-cors-wildcard-with-credentials": "error",
       "@sarj/no-secret-in-log": "error",
       // Mined from 2y of PR review feedback + 5-repo code-smell audit (2026-07).
+      // Uncancellable hand-rolled timers: `new Promise((r) => setTimeout(r, ms))`
+      // and the leaky `Promise.race` timeout arm. Nothing in the enabled set
+      // reports this position (resolved with ESLint#calculateConfigForFile over
+      // the 204 rules enabled before it);
+      // eslint-plugin-unicorn 72 has no promisified-timer rule at all.
+      // Client modules are skipped by default — a browser bundle cannot
+      // import `node:timers/promises`. Set `checkClientModules: true` in an
+      // all-Node tree to cover them too.
+      "@sarj/no-hand-rolled-sleep": "error",
       "@sarj/require-fetch-timeout": "error",
       "@sarj/no-silent-promise-catch": "error",
       "@sarj/enforce-file-structure": "error",

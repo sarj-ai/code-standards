@@ -48,6 +48,7 @@ import noImplicitAttributeAccess from "./rules/no-implicit-attribute-access.js";
 import strictTestAssertions from "./rules/strict-test-assertions.js";
 import noAsyncCallbackInWaitFor from "./rules/no-async-callback-in-waitfor.js";
 
+import noHandRolledSleep from "./rules/no-hand-rolled-sleep.js";
 import preferSetupFileMocks from "./rules/prefer-setup-file-mocks.js";
 
 const rules = {
@@ -83,6 +84,7 @@ const rules = {
   "no-repeated-string-literal": noRepeatedStringLiteral,
   "no-select-star": noSelectStar,
   "no-sleep-in-test-body": noSleepInTestBody,
+  "no-hand-rolled-sleep": noHandRolledSleep,
   "no-conditional-in-test": noConditionalInTest,
   "prefer-constant-time-secret-compare": preferConstantTimeSecretCompare,
   "store-insert-requires-on-conflict": storeInsertRequiresOnConflict,
@@ -106,7 +108,7 @@ const rules = {
 const plugin = {
   meta: {
     name: "@sarj/eslint-plugin",
-    version: "4.0.0",
+    version: "4.1.0",
   },
   rules,
   configs: {
@@ -153,6 +155,10 @@ const plugin = {
         "@sarj/store-insert-requires-on-conflict": "warn",
         "@sarj/no-offset-pagination": "warn",
         "@sarj/no-select-star": "warn",
+        // Uncancellable hand-rolled timers. Verified against the shipped
+        // strict config (205 enabled rules) that nothing already reports this
+        // position; `unicorn` 72 has no promisified-timer rule at all.
+        "@sarj/no-hand-rolled-sleep": "warn",
         "@sarj/no-sleep-in-test-body": "warn",
         "@sarj/no-conditional-in-test": "warn",
         "@sarj/no-repeated-string-literal": "warn",
@@ -241,6 +247,10 @@ const plugin = {
         "@sarj/store-insert-requires-on-conflict": "error",
         "@sarj/no-offset-pagination": "error",
         "@sarj/no-select-star": "error",
+        // Uncancellable hand-rolled timers. Verified against the shipped
+        // strict config (205 enabled rules) that nothing already reports this
+        // position; `unicorn` 72 has no promisified-timer rule at all.
+        "@sarj/no-hand-rolled-sleep": "error",
         "@sarj/no-sleep-in-test-body": "error",
         "@sarj/no-conditional-in-test": "error",
         "@sarj/no-repeated-string-literal": "error",
