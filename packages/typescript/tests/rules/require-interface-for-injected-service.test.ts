@@ -401,6 +401,357 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         }
       `,
     },
+
+    // OPTIONS-OBJECT CONSTRUCTORS — the shapes the walk must NOT fire on.
+    //
+    // Destructured but never retained: an argument read once is not a
+    // collaborator, exactly as for a named parameter.
+    {
+      filename: SRC,
+      code: `
+        interface OrgSyncDeps { userRepo: UserRepo; syncClient: SyncClient; }
+        export class OrgSyncService {
+          private readonly count: number;
+          constructor({ userRepo, syncClient }: OrgSyncDeps) {
+            this.count = userRepo.count() + syncClient.count();
+          }
+          async sync(): Promise<void> {}
+        }
+      `,
+    },
+    // A config bag is a config bag whether it arrives whole or destructured:
+    // the `*Options` suffix that filters `options: HttpClientOptions` has to
+    // filter every binding pulled out of it too.
+    {
+      filename: SRC,
+      code: `
+        interface HttpClientOptions { retries: number; timeoutMs: number; }
+        export class HttpClient {
+          private readonly retries: number;
+          private readonly timeoutMs: number;
+          constructor({ retries, timeoutMs }: HttpClientOptions) {
+            this.retries = retries;
+            this.timeoutMs = timeoutMs;
+          }
+          async get(url: string): Promise<Response> { return null as never; }
+        }
+      `,
+    },
+    // Config-ish BINDING names carry the same signal from the other side.
+    {
+      filename: SRC,
+      code: `
+        interface ReporterDeps { logger: Logger; config: ReporterConfig; }
+        export class Reporter {
+          private readonly logger: Logger;
+          private readonly config: ReporterConfig;
+          constructor({ logger, config }: ReporterDeps) {
+            this.logger = logger;
+            this.config = config;
+          }
+          report(): void {}
+        }
+      `,
+    },
+    // Renamed onto a config-ish LOCAL name.
+    {
+      filename: SRC,
+      code: `
+        interface RenamedDeps { appLogger: AppLogger; logger: AppLogger; }
+        export class RenamedLocal {
+          private readonly logger: AppLogger;
+          constructor({ appLogger: logger }: RenamedDeps) { this.logger = logger; }
+          run(): void {}
+        }
+      `,
+    },
+    // Renamed off a config-ish KEY name. Either side reading as config-ish is
+    // enough to drop the binding.
+    {
+      filename: SRC,
+      code: `
+        interface RenamedDeps { appLogger: AppLogger; logger: AppLogger; }
+        export class RenamedKey {
+          private readonly appLogger: AppLogger;
+          constructor({ logger: appLogger }: RenamedDeps) { this.appLogger = appLogger; }
+          run(): void {}
+        }
+      `,
+    },
+    // Inline type literal whose members are primitives: a data record, not a
+    // set of collaborators. The member types are visible here, so the rule uses
+    // them rather than falling back to the annotation's name.
+    {
+      filename: SRC,
+      code: `
+        export class Cursor {
+          private readonly token: string;
+          private readonly limit: number;
+          constructor({ token, limit }: { token: string; limit: number }) {
+            this.token = token;
+            this.limit = limit;
+          }
+          encode(): string { return this.token; }
+        }
+      `,
+    },
+    // A rest element names no single binding a port could protect.
+    {
+      filename: SRC,
+      code: `
+        interface OrgSyncDeps { userRepo: UserRepo; }
+        export class RestOnly {
+          private readonly rest: unknown;
+          constructor({ ...rest }: OrgSyncDeps) { this.rest = rest; }
+          run(): void {}
+        }
+      `,
+    },
+    // A nested pattern is not a single binding either.
+    {
+      filename: SRC,
+      code: `
+        interface OrgSyncDeps { nested: NestedBag; }
+        export class NestedOnly {
+          private readonly inner: Inner;
+          constructor({ nested: { inner } }: OrgSyncDeps) { this.inner = inner; }
+          run(): void {}
+        }
+      `,
+    },
+    // A computed key names nothing statically.
+    {
+      filename: SRC,
+      code: `
+        interface OrgSyncDeps { KEY: UserRepo; userRepo: UserRepo; }
+        export class ComputedKey {
+          private readonly value: UserRepo;
+          constructor({ [KEY]: value }: OrgSyncDeps) { this.value = value; }
+          run(): void {}
+        }
+      `,
+    },
+    // A string-literal key is not an identifier the rule can match to a member.
+    {
+      filename: SRC,
+      code: `
+        interface OrgSyncDeps { userRepo: UserRepo; }
+        export class StringKey {
+          private readonly userRepo: UserRepo;
+          constructor({ "user-repo": userRepo }: OrgSyncDeps) { this.userRepo = userRepo; }
+          run(): void {}
+        }
+      `,
+    },
+    // No annotation at all: nothing names the collaborator's type.
+    {
+      filename: SRC,
+      code: `
+        export class Untyped {
+          private readonly userRepo: UserRepo;
+          constructor({ userRepo }) { this.userRepo = userRepo; }
+          run(): void {}
+        }
+      `,
+    },
+    // A union annotation is not a bare reference, the same rule a named
+    // parameter is held to.
+    {
+      filename: SRC,
+      code: `
+        interface OrgSyncDeps { userRepo: UserRepo; }
+        interface LegacyDeps { userRepo: UserRepo; }
+        export class UnionBag {
+          private readonly userRepo: UserRepo;
+          constructor({ userRepo }: OrgSyncDeps | LegacyDeps) { this.userRepo = userRepo; }
+          run(): void {}
+        }
+      `,
+    },
+    // Destructuring changes nothing about the other guards: a class that
+    // already implements a port stays silent.
+    {
+      filename: SRC,
+      code: `
+        interface OrgSyncDeps { userRepo: UserRepo; }
+        export class OrgSyncService implements IOrgSyncService {
+          private readonly userRepo: UserRepo;
+          constructor({ userRepo }: OrgSyncDeps) { this.userRepo = userRepo; }
+          async sync(): Promise<void> {}
+        }
+      `,
+    },
+    // A GENERIC TYPE PARAMETER is a placeholder, not an implementation. Two
+    // public-corpus classes were reported for one: a tree node holding
+    // `{ value }: { value: T }` and an audit helper holding two
+    // `z.ZodTypeAny`-constrained schema parameters.
+    {
+      filename: SRC,
+      code: `
+        export class TreeNode<T> {
+          public readonly value: T;
+          constructor({ value }: { value: T; parent: TreeNode<T> | null }) { this.value = value; }
+          addChild(child: TreeNode<T>): void {}
+        }
+      `,
+    },
+    // The constructor's own type parameter counts the same way.
+    {
+      filename: SRC,
+      code: `
+        export class Boxed {
+          private readonly item: unknown;
+          constructor<TItem>(item: TItem) { this.item = item; }
+          unwrap(): unknown { return this.item; }
+        }
+      `,
+    },
+    // A BUILT-IN CONTAINER is the same data an inline `{ … }` annotation is,
+    // wearing a nominal name — one public-corpus form model stored three
+    // `Record<…>` fields and was reported for them.
+    {
+      filename: SRC,
+      code: `
+        interface FormDeps { formState: Record<string, unknown>; columnsById: Map<string, Column>; }
+        export class FormFilters {
+          private readonly formState: Record<string, unknown>;
+          private readonly columnsById: Map<string, Column>;
+          constructor({ formState, columnsById }: FormDeps) {
+            this.formState = formState;
+            this.columnsById = columnsById;
+          }
+          apply(): void {}
+        }
+      `,
+    },
+    {
+      filename: SRC,
+      code: `
+        export class RowCache {
+          private readonly rows: Map<string, Row>;
+          constructor(rows: Map<string, Row>) { this.rows = rows; }
+          get(id: string): Row | undefined { return this.rows.get(id); }
+        }
+      `,
+    },
+    // A FUNCTION TYPE behind a nominal alias is still a callback. Three
+    // public-corpus classes were reported for one: a timer holding a
+    // `type HandlerType = (t: Timer) => Promise<void>`, a manager-api store
+    // holding `SetState` / `GetState`, and an event dispatcher holding a
+    // `type Replayer = (e: EventInfoWrapper[]) => void`.
+    {
+      filename: SRC,
+      code: `
+        type HandlerType = (timer: Timer) => Promise<void>;
+        export class Timer {
+          private readonly handler: HandlerType;
+          constructor({ handler }: { handler: HandlerType; time: number }) { this.handler = handler; }
+          start(): void {}
+        }
+      `,
+    },
+    {
+      filename: SRC,
+      code: `
+        type SetState = (s: State) => void;
+        export class Store {
+          private readonly setState: SetState;
+          constructor(setState: SetState) { this.setState = setState; }
+          update(s: State): void { this.setState(s); }
+        }
+      `,
+    },
+    // A bag declared in ANOTHER module cannot be read, and is left alone rather
+    // than guessed at — the documented false negative in the header. Guessing
+    // here is what a first cut did, and it invented four false positives in the
+    // public corpus (a boolean, two numbers and a pair of `setState`/`getState`
+    // functions, all of them bindings out of an unresolvable bag).
+    {
+      filename: SRC,
+      code: `
+        import type { OrgSyncDeps } from "./deps.js";
+        export class OrgSyncService {
+          private readonly userRepo: UserRepo;
+          constructor({ userRepo }: OrgSyncDeps) { this.userRepo = userRepo; }
+          async sync(): Promise<void> {}
+        }
+      `,
+    },
+    // A qualified bag names another module by construction.
+    {
+      filename: SRC,
+      code: `
+        export class CatalogFacade {
+          private readonly client: catalog.Client;
+          constructor({ client }: catalog.Deps) { this.client = client; }
+          lookup(id: string): void {}
+        }
+      `,
+    },
+    // An alias to something that is not an object literal resolves to no members.
+    {
+      filename: SRC,
+      code: `
+        type LooseDeps = Record<string, unknown>;
+        export class LooseService {
+          private readonly userRepo: UserRepo;
+          constructor({ userRepo }: LooseDeps) { this.userRepo = userRepo; }
+          async run(): Promise<void> {}
+        }
+      `,
+    },
+    // A bag member that is a FUNCTION type is a callback, not a collaborator —
+    // the shape one public-corpus store used for `setState` / `getState`.
+    {
+      filename: SRC,
+      code: `
+        interface UpstreamDeps { setState: (s: State) => void; getState: () => State; }
+        export class Store {
+          private readonly setState: (s: State) => void;
+          private readonly getState: () => State;
+          constructor({ setState, getState }: UpstreamDeps) {
+            this.setState = setState;
+            this.getState = getState;
+          }
+          update(s: State): void { this.setState(s); }
+        }
+      `,
+    },
+    // A bag member with a config-ish TYPE keeps the suffix guard.
+    {
+      filename: SRC,
+      code: `
+        interface RunnerDeps { tuning: RunnerSettings; }
+        export class Runner {
+          private readonly tuning: RunnerSettings;
+          constructor({ tuning }: RunnerDeps) { this.tuning = tuning; }
+          run(): void {}
+        }
+      `,
+    },
+    // A bag member the destructuring does not name contributes nothing.
+    {
+      filename: SRC,
+      code: `
+        interface PartialDeps { userRepo: UserRepo; retries: number; }
+        export class PartialService {
+          private readonly retries: number;
+          constructor({ retries }: PartialDeps) { this.retries = retries; }
+          run(): void {}
+        }
+      `,
+    },
+    // Nor does it change the value-object rule: no public method, no report.
+    {
+      filename: SRC,
+      code: `
+        interface OrgSyncDeps { userRepo: UserRepo; }
+        export class OrgSyncPlan {
+          private readonly userRepo: UserRepo;
+          constructor({ userRepo }: OrgSyncDeps) { this.userRepo = userRepo; }
+        }
+      `,
+    },
   ],
 
   invalid: [
@@ -752,6 +1103,263 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         {
           messageId: "requireInterface",
           data: { name: "ApiClient", deps: "jobStore: JobStore", methods: "listJobs" },
+        },
+      ],
+    },
+
+    // OPTIONS-OBJECT CONSTRUCTORS. `constructor({ a, b }: Deps)` is the same
+    // seam as `constructor(a: A, b: B)`; the parameter walk used to see only the
+    // second spelling.
+    {
+      filename: SRC,
+      code: `
+        interface OrgSyncDeps { userRepo: UserRepo; syncClient: SyncClient; }
+        export class OrgSyncService {
+          private readonly userRepo: UserRepo;
+          private readonly syncClient: SyncClient;
+          constructor({ userRepo, syncClient }: OrgSyncDeps) {
+            this.userRepo = userRepo;
+            this.syncClient = syncClient;
+          }
+          async syncOrg(orgId: string): Promise<void> {}
+        }
+      `,
+      errors: [
+        {
+          messageId: "requireInterface",
+          data: {
+            name: "OrgSyncService",
+            deps: "userRepo: UserRepo, syncClient: SyncClient",
+            methods: "syncOrg",
+          },
+        },
+      ],
+    },
+    // A `#private` field is storage too.
+    {
+      filename: SRC,
+      code: `
+        interface OrgSyncDeps { userRepo: UserRepo; }
+        export class OrgSyncService {
+          readonly #userRepo: UserRepo;
+          constructor({ userRepo }: OrgSyncDeps) { this.#userRepo = userRepo; }
+          async syncOrg(orgId: string): Promise<void> {}
+        }
+      `,
+      errors: [
+        {
+          messageId: "requireInterface",
+          data: {
+            name: "OrgSyncService",
+            deps: "userRepo: UserRepo",
+            methods: "syncOrg",
+          },
+        },
+      ],
+    },
+    // A DEFAULTED binding is still a retained collaborator; the default sits
+    // between the key and the identifier the body stores.
+    {
+      filename: SRC,
+      code: `
+        interface OrgSyncDeps { userRepo: UserRepo; }
+        export class OrgSyncService {
+          private readonly userRepo: UserRepo;
+          constructor({ userRepo = defaultUserRepo }: OrgSyncDeps) { this.userRepo = userRepo; }
+          async syncOrg(orgId: string): Promise<void> {}
+        }
+      `,
+      errors: [
+        {
+          messageId: "requireInterface",
+          data: {
+            name: "OrgSyncService",
+            deps: "userRepo: UserRepo",
+            methods: "syncOrg",
+          },
+        },
+      ],
+    },
+    // A REST element next to a real binding drops only itself.
+    {
+      filename: SRC,
+      code: `
+        interface OrgSyncDeps { userRepo: UserRepo; }
+        export class OrgSyncService {
+          private readonly userRepo: UserRepo;
+          private readonly rest: unknown;
+          constructor({ userRepo, ...rest }: OrgSyncDeps) {
+            this.userRepo = userRepo;
+            this.rest = rest;
+          }
+          async syncOrg(orgId: string): Promise<void> {}
+        }
+      `,
+      errors: [
+        {
+          messageId: "requireInterface",
+          data: {
+            name: "OrgSyncService",
+            deps: "userRepo: UserRepo",
+            methods: "syncOrg",
+          },
+        },
+      ],
+    },
+    // A RENAMED binding: storage is checked against the local name, the type
+    // against the contract's own key.
+    {
+      filename: SRC,
+      code: `
+        interface OrgSyncDeps { userRepo: UserRepo; }
+        export class OrgSyncService {
+          private readonly repository: UserRepo;
+          constructor({ userRepo: repository }: OrgSyncDeps) { this.repository = repository; }
+          async syncOrg(orgId: string): Promise<void> {}
+        }
+      `,
+      errors: [
+        {
+          messageId: "requireInterface",
+          data: {
+            name: "OrgSyncService",
+            deps: "repository: UserRepo",
+            methods: "syncOrg",
+          },
+        },
+      ],
+    },
+    // An INLINE TYPE LITERAL annotation names each member's type outright, so
+    // the message reports the collaborator's own type rather than the bag's.
+    {
+      filename: SRC,
+      code: `
+        export class OrgSyncService {
+          private readonly userRepo: UserRepo;
+          private readonly limit: number;
+          constructor({ userRepo, limit }: { userRepo: UserRepo; limit: number }) {
+            this.userRepo = userRepo;
+            this.limit = limit;
+          }
+          async syncOrg(orgId: string): Promise<void> {}
+        }
+      `,
+      errors: [
+        {
+          messageId: "requireInterface",
+          data: { name: "OrgSyncService", deps: "userRepo: UserRepo", methods: "syncOrg" },
+        },
+      ],
+    },
+    // A `type` alias bag resolves the same way an `interface` bag does, and a
+    // member's own namespace qualifier survives into the message.
+    {
+      filename: SRC,
+      code: `
+        type CatalogDeps = { client: catalog.Client; pageSize: number };
+        export class CatalogFacade {
+          private readonly client: catalog.Client;
+          constructor({ client }: CatalogDeps) { this.client = client; }
+          lookup(id: string): Promise<void> { return this.client.get(id); }
+        }
+      `,
+      errors: [
+        {
+          messageId: "requireInterface",
+          data: { name: "CatalogFacade", deps: "client: catalog.Client", methods: "lookup" },
+        },
+      ],
+    },
+    // An INTERSECTION alias (`type Deps = Base & { … }`) is how a bag is usually
+    // extended; the literal arm still resolves.
+    {
+      filename: SRC,
+      code: `
+        type SyncDeps = BaseDeps & { userRepo: UserRepo };
+        export class IntersectionService {
+          private readonly userRepo: UserRepo;
+          constructor({ userRepo }: SyncDeps) { this.userRepo = userRepo; }
+          async run(): Promise<void> {}
+        }
+      `,
+      errors: [
+        {
+          messageId: "requireInterface",
+          data: { name: "IntersectionService", deps: "userRepo: UserRepo", methods: "run" },
+        },
+      ],
+    },
+    // An EXPORTED bag declaration resolves too.
+    {
+      filename: SRC,
+      code: `
+        export interface ExportedDeps { userRepo: UserRepo; }
+        export class ExportedBagService {
+          private readonly userRepo: UserRepo;
+          constructor({ userRepo }: ExportedDeps) { this.userRepo = userRepo; }
+          async run(): Promise<void> {}
+        }
+      `,
+      errors: [
+        {
+          messageId: "requireInterface",
+          data: { name: "ExportedBagService", deps: "userRepo: UserRepo", methods: "run" },
+        },
+      ],
+    },
+    // The three name-hiding guards are narrow, not a blanket. A collaborator
+    // whose type merely SHARES a name with a type parameter of a different
+    // class, an alias to an object type, and a type whose name only starts with
+    // a container's, all still fire.
+    {
+      filename: SRC,
+      code: `
+        type UserRepo = { find(id: string): Promise<User | null> };
+        export class Unrelated<TResult> {
+          private readonly userRepo: UserRepo;
+          private readonly records: RecordSet;
+          constructor({ userRepo, records }: { userRepo: UserRepo; records: RecordSet }) {
+            this.userRepo = userRepo;
+            this.records = records;
+          }
+          async run(): Promise<TResult> { return null as never; }
+        }
+      `,
+      errors: [
+        {
+          messageId: "requireInterface",
+          data: {
+            name: "Unrelated",
+            deps: "userRepo: UserRepo, records: RecordSet",
+            methods: "run",
+          },
+        },
+      ],
+    },
+    // A destructured bag ALONGSIDE a named parameter: both spellings feed the
+    // same list.
+    {
+      filename: SRC,
+      code: `
+        interface OrgSyncDeps { userRepo: UserRepo; }
+        export class MixedService {
+          private readonly userRepo: UserRepo;
+          private readonly svc: ServiceRegistry;
+          constructor(svc: ServiceRegistry, { userRepo }: OrgSyncDeps) {
+            this.svc = svc;
+            this.userRepo = userRepo;
+          }
+          async run(): Promise<void> {}
+        }
+      `,
+      errors: [
+        {
+          messageId: "requireInterface",
+          data: {
+            name: "MixedService",
+            deps: "svc: ServiceRegistry, userRepo: UserRepo",
+            methods: "run",
+          },
         },
       ],
     },
