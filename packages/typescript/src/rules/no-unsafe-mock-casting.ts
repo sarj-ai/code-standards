@@ -1,6 +1,14 @@
-import { ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
+/**
+ * @fileoverview no-unsafe-mock-casting — a cast to `vi.Mock` / `jest.Mock` asserts a mock that may not exist; `vi.mocked()` checks it.
+ *
+ * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-unsafe-mock-casting.test.ts
+ * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-unsafe-mock-casting.md
+ */
+
+import { type TSESTree } from "@typescript-eslint/utils";
 import { AST_NODE_TYPES } from "@typescript-eslint/utils";
 
+import { createRule } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
 
 type MessageIds = "unsafeMockCast";
@@ -25,10 +33,7 @@ function isMockTypeReference(node: TSESTree.TypeNode): boolean {
   return false;
 }
 
-export default ESLintUtils.RuleCreator(
-  (name) =>
-    `https://github.com/sarj-ai/linting/blob/main/packages/typescript/src/rules/${name}.ts`,
-)<[], MessageIds>({
+export default createRule<[], MessageIds>({
   name: "no-unsafe-mock-casting",
   meta: {
     type: "problem",

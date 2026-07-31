@@ -1,7 +1,7 @@
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/jsdoc-restates-signature.js";
+import rule from "../../src/rules/no-restated-jsdoc.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -10,7 +10,7 @@ RuleTester.itOnly = it.only;
 
 const ruleTester = new RuleTester();
 
-ruleTester.run("jsdoc-restates-signature", rule, {
+ruleTester.run("no-restated-jsdoc", rule, {
   valid: [
     // One word the signature does not carry and the block earns its place.
     { code: "/** Get the user, bypassing the read replica. */\nexport function getUser(id: string) { return id; }" },

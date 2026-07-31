@@ -1,23 +1,7 @@
 /**
- * @fileoverview Shared comment analysis for the comment-hygiene rules
- * (`no-comment-cruft`, `no-restated-comment`, `jsdoc-restates-signature`,
- * `trailing-value-narration`) — the TypeScript twin of the Python
- * `rules/_comments.py`, kept signal-for-signal identical so the two languages
- * cannot drift on what counts as a comment worth keeping.
+ * @fileoverview _comments — shared comment analysis for the comment-hygiene rules, kept signal-for-signal identical to Python's `_comments.py`.
  *
- * **The protected class.** Nine deterministic signals that mark a comment as
- * carrying something the code cannot: an external reference, a version pin, a
- * number with a unit, a causal connective, a negation of the obvious, an
- * upstream-quirk word, a concurrency/invariant term, security reasoning, or a
- * vendor proper noun with *ascribed behaviour*. Measured over a 37,918-comment
- * corpus from nine repos: the nine protect 40/40 hand-picked best comments and
- * leak ~1% of the hand-classified cruft list.
- *
- * The class is an **EXEMPTION FLOOR, never a test**. `isProtected` returning
- * false says nothing about a comment — across pydantic / trio / attrs it matches
- * only 18-35% of the comments a human called valuable. Every use is of the form
- * "if protected, do not flag". Inverting it into "unprotected, therefore delete"
- * would condemn two thirds of the best comments in those libraries.
+ * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/_comments.md
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
@@ -56,9 +40,6 @@ const INVARIANT_RE =
 const SECURITY_RE =
   /\b(?:timing attack|constant-?time|replay|PII\b|redact|secret|injection|spoof|fail-?closed|fail-?open|auth bypass|early-?exit timing)\b/i;
 
-// S9 — a vendor proper noun with *ascribed behaviour*. A vendor name as the mere
-// object of a narration verb ("Create the prompt for Gemini") is NOT protected;
-// that distinction is what holds the leak rate at ~1%.
 const VENDOR_RE =
   /\b(?:GitHub|Slack|Twilio|LiveKit|Kamailio|Groq|OpenAI|Anthropic|Cloudflare|FastAPI|Starlette|Sentry|Zoho|Salla|Ashby|Linear|BigQuery|Postgres|Neon|Drizzle|Vertex|Gemini|Firestore|Stripe|Next\.js|React Compiler|pydantic|ruff|loguru|Lexical|Farasa|Orpheus|Whisper|schemathesis)(?:'s\b|\s+(?:requires?|returns?|expects?|allows?|rejects?|accepts?|sends?|caps?|limits?|wraps?|silently|outputs?|stores?|treats?|doesn'?t|does not|won'?t|can'?t|only|models)\b)/;
 
@@ -77,18 +58,16 @@ const PROTECTED_SIGNALS: readonly RegExp[] = [
 /**
  * True when a comment carries any of the nine protected-class signals.
  *
- * EXEMPTION FLOOR ONLY — a false result is not evidence the comment is
- * worthless. See the file overview.
+ * EXEMPTION FLOOR ONLY — a false result is not evidence the comment is worthless.
  */
 export function isProtected(body: string): boolean {
   return PROTECTED_SIGNALS.some((signal) => signal.test(body));
 }
 
 /**
- * True when a comment cites a ticket, URL, RFC/PEP/CVE, or issue number
- * (signal S1 alone). Naming where a decision is recorded is the one thing code
- * cannot do, and it separates an owned scoping note ("EN-only for now — AR needs
- * audio (PROJ-249)") from an unowned admission ("hacky, fix later").
+ * True when a comment cites a ticket, URL, RFC/PEP/CVE or issue number (signal
+ * S1 alone). Naming where a decision is recorded is the one thing code cannot
+ * do, and it separates an owned scoping note from an unowned admission.
  */
 export function hasExternalReference(body: string): boolean {
   return REF_RE.test(body);
@@ -169,13 +148,7 @@ export function codeTokens(text: string): Set<string> {
   return tokens;
 }
 
-/**
- * True when every content token of a comment already appears in the code.
- *
- * Exact or stemmed match only. Prefix matching is deliberately absent: it is
- * what sank the first attempt at this shape (PR #98), where `service` matched
- * `locationService` and drove the false-positive rate to ~60%.
- */
+/** True when every content token of a comment already appears in the code. */
 export function restates(commentTokens: readonly string[], code: ReadonlySet<string>): boolean {
   const stems = new Set<string>();
   for (const token of code) stems.add(stem(token));
@@ -283,6 +256,11 @@ export function restatableStatementBelow(comment: TSESTree.Comment, sourceCode: 
  * True when a short verb-led comment adds nothing to the statement beneath it:
  * every content word after the opening verb already appears in that statement's
  * head — its assignment target or its callee.
+ *
+ * Corroboration is TOTAL: one unmatched word means the comment carries
+ * something the code does not, so it stays. Only the head counts — everything
+ * up to the first `(` — so the comment must restate what the statement
+ * *computes*, not something it merely passes as an argument.
  */
 export function restatesStatementHead(body: string, statement: string | null): boolean {
   if (statement === null) return false;

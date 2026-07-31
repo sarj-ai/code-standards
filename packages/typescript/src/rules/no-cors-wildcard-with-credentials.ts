@@ -1,37 +1,13 @@
 /**
- * @fileoverview TS port of Python SARJ028
- * (`no-cors-wildcard-with-credentials`). Flags CORS configuration that reflects
- * ANY origin (`"*"`) while ALSO allowing credentials. The browser treats
- * `Access-Control-Allow-Origin: *` together with
- * `Access-Control-Allow-Credentials: true` as a directive to reflect the
- * request's Origin and expose authenticated (cookie/session) responses — which
- * lets any website read them cross-origin. That is a credential-theft surface.
+ * @fileoverview no-cors-wildcard-with-credentials — `Access-Control-Allow-Origin: *` together with credentials lets any site read authenticated responses.
  *
- * Two shapes are detected, and BOTH the wildcard origin and credentials=true
- * must co-occur before the rule fires (a `"*"` origin without credentials, or
- * credentials with a specific origin, is safe and is NOT reported):
- *
- *   1. A `cors(...)` / `new Cors(...)` call whose options `ObjectExpression`
- *      has `credentials: true` AND an `origin` property whose value subtree
- *      contains a `"*"` string literal anywhere — the bare `"*"`, the `["*"]`
- *      array, or a `flag ? origins : "*"` conditional branch. Reported at the
- *      call.
- *
- *   2. Manual header setting where, within the SAME function (or module) scope,
- *      `Access-Control-Allow-Origin` is set to `"*"` AND
- *      `Access-Control-Allow-Credentials` is set to `"true"` — via
- *      `res.setHeader(...)`, `headers.set(...)` / `.append(...)` (covers
- *      `NextResponse` header objects), or a single object literal
- *      `{ "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Credentials": "true" }`.
- *      Header-name matching is case-insensitive. The object-literal form is
- *      reported at the object; the split `setHeader`/`set` form is reported at
- *      the wildcard-origin call.
- *
- * References:
- * - https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS#credentialed_requests_and_wildcards
+ * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-cors-wildcard-with-credentials.test.ts
+ * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-cors-wildcard-with-credentials.md
  */
 
-import { ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
+import { type TSESTree } from "@typescript-eslint/utils";
+
+import { createRule } from "./_docs.js";
 
 type MessageIds = "corsWildcardWithCredentials";
 type Options = readonly [];
@@ -270,10 +246,7 @@ interface ScopeHeaderSets {
   credentialsNodes: TSESTree.CallExpression[];
 }
 
-export default ESLintUtils.RuleCreator(
-  (name) =>
-    `https://github.com/sarj-ai/linting/blob/main/packages/typescript/src/rules/${name}.ts`,
-)<Options, MessageIds>({
+export default createRule<Options, MessageIds>({
   name: "no-cors-wildcard-with-credentials",
   meta: {
     type: "problem",

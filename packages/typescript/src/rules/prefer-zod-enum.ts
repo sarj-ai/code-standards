@@ -1,30 +1,19 @@
 /**
- * @fileoverview Prefer `z.enum(["a", "b"])` over a union of Zod string
- * literals. The enum form is shorter, exposes the permitted values directly,
- * and infers the same string-literal union.
+ * @fileoverview prefer-zod-enum — a union of `z.literal` strings infers exactly what `z.enum` does, in more syntax that hides the permitted values.
  *
- * The fix is deliberately limited to direct, non-empty arrays containing only
- * `z.literal(<string>)` calls. Spreads, identifiers, non-string literals, and
- * commented arrays are reported without an automatic rewrite because moving or
- * discarding their syntax would not be mechanical.
+ * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/prefer-zod-enum.test.ts
+ * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/prefer-zod-enum.md
  */
 
-import {
-  AST_NODE_TYPES,
-  ESLintUtils,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
+import { createRule } from "./_docs.js";
 import { isZodModule } from "./_zod.js";
 
 type MessageIds = "preferEnum";
 type Options = readonly [];
 
-export default ESLintUtils.RuleCreator(
-  (name) =>
-    `https://github.com/sarj-ai/standards/tree/main/packages/typescript#${name}`,
-)<Options, MessageIds>({
+export default createRule<Options, MessageIds>({
   name: "prefer-zod-enum",
   meta: {
     type: "suggestion",

@@ -1,83 +1,14 @@
 /**
- * @fileoverview Don't access `response.json()` / `JSON.parse()` fields without a
- * Zod parse first.
+ * @fileoverview prefer-schema-for-api-payload — reading a field off `response.json()` propagates `any` inward from the network boundary.
  *
- * Pattern flagged:
- *   const data = await response.json();
- *   doSomething(data.foo);  // <-- unvalidated property access
- *
- *   const body = JSON.parse(raw);
- *   doSomething(body.foo);  // <-- same `any` leak, different source
- *
- * Encouraged:
- *   const data = MySchema.parse(await response.json());
- *   doSomething(data.foo);  // typed + validated
- *
- *   const raw: unknown = JSON.parse(text);   // never flagged: nothing read off it
- *   const data = MySchema.parse(raw);
- *
- * Heuristic:
- *   - Track variables initialized to `await someCall.json()` or `JSON.parse(x)`
- *     using ESLint's scope manager.
- *   - Untrack if reassigned to anything other than another raw payload source.
- *   - Untrack when passed to a user-defined type-guard predicate — a call whose
- *     callee name matches `/^is[A-Z]/`, or any call used in an `if`/`?:` test
- *     position (`if (guard(body)) { … body.foo … }`). Hand-written guards validate
- *     the payload just as a Zod `.parse()` does.
- *   - Flag MemberExpression reads and destructuring off tracked variables.
- *   - `.parse()` / `.safeParse()` chained directly on the json call are legit
- *     and never produce a tracked binding in the first place.
- *
- * NOT FLAGGED (corpus sweep, 2220 files across zod / TanStack Query /
- * react-router / swr / zustand, 2026-07 — 86 raw hits, 50 of them these):
- *   - **Test files**, 46 hits. A test parses a payload it produced itself and
- *     immediately asserts on it:
- *     `react-router/integration/request-test.ts:120-121`
- *     (`loaderData = JSON.parse(await page.locator("#loader-data").innerHTML());
- *     expect(loaderData.method).toEqual("GET")`). Routing that through a schema
- *     would assert the schema instead of the subject, and the assertion IS the
- *     validation.
- *   - **Reads inside an assertion** (`expect(payload.method)`) — see
- *     `isInsideAssertion`. This catches hyphen-named suites such as
- *     `react-router/integration/request-test.ts` that no path predicate sees.
- *   - **JSON read off local disk**, 4 hits — see `isLocalFileRead`.
- *
- * SECOND SWEEP (25,508 deduped TS/TSX files across zod / trpc / dub /
- * openstatus / formbricks / documenso / unkey / midday / papermark / cal.com /
- * hono plus six first-party repos, 2026-07): 1,013 hits, 45 read in a seeded
- * random sample — 22 true positives, 6 false positives, 17 arguable. Three
- * fixes, each measured on that corpus:
- *
- *   - **The read IS the validation** — see `isValidationRead`.
- *   - **A `.json()` promise chain reported as a property access** — 60 / 1,013.
- *     The MemberExpression visitor saw `<rawPayload>.catch` and reported it,
- *     exempting only `.parse`/`.safeParse`; the `.catch` result was then NOT
- *     tracked, so the real unvalidated read one line down was MISSED and the
- *     report landed on the wrong node. `then`/`catch`/`finally` are now exempt
- *     properties AND propagate the raw-payload taint, which strictly MOVES the
- *     report to the true field read. Verified against
- *     `midday/packages/workbench/src/ui/lib/api.ts:73-74` and
- *     `papermark/ee/features/dataroom-freeze/components/freeze-settings.tsx:110-112`,
- *     both of which still fire, at the corrected line.
- *   - **A field read consumed solely by a validator** — see `GUARD_NAME_RE`.
- *
- * DELIBERATELY NOT GUARDED: the error-envelope shape
- * (`if (!res.ok) { const { error } = await res.json() }`), ~12% of the volume in
- * three literal strings. Rendering an unvalidated `error.message` straight into
- * a toast is a real, if benign, defect and the house call is to keep reporting it.
- *
- * References:
- *   - https://zod.dev/?id=parse
- *   - https://www.totaltypescript.com/parse-don-t-validate
+ * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/prefer-schema-for-api-payload.test.ts
+ * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/prefer-schema-for-api-payload.md
  */
 
-import {
-  AST_NODE_TYPES,
-  ESLintUtils,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import type { RuleContext, Scope } from "@typescript-eslint/utils/ts-eslint";
 
+import { createRule } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "unparsedJsonAccess";
@@ -201,15 +132,6 @@ const FILE_READ_RE = /^(readFile|readFileSync|readJson|readJsonSync|readJSON)$/;
  * `JSON.parse(readFileSync("package.json", "utf8"))` is neither: the bytes ship
  * with the repo, nobody else can write them, and a Zod schema over a file the
  * build already depends on adds a second place to update.
- *
- * Corpus evidence (2220 files across zod / TanStack Query / react-router / swr /
- * zustand, 2026-07): `zod/scripts/check-versions.ts:13-14`
- * (`const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
- * const packageJsonVersion = packageJson.version as string;` — and the very next
- * line is a `typeof` check), `zod/scripts/check-semver.ts:10-11`, and
- * `zod/packages/docs/app/llms-full.txt/route.ts:13-17`
- * (`JSON.parse(await fs.readFile(metaPath, "utf-8"))` over the docs' own
- * `meta.json`). A `response.json()` — the actual trust boundary — is unaffected.
  */
 const isLocalFileRead = (node: TSESTree.Node | null | undefined): boolean => {
   let found = false;
@@ -259,15 +181,6 @@ const ASSERTION_CALLEE_RE = /^(expect|assert|should|invariant)$/;
  * it is neither: the assertion states what the value must be, which is the same
  * check a schema would perform, and a schema parse would move the failure away
  * from the assertion that explains it.
- *
- * Corpus evidence (2220 files across zod / TanStack Query / react-router / swr /
- * zustand, 2026-07): after the test-file exemption, 15 of the 45 remaining hits
- * were this — react-router names its Playwright suites `integration/request-test.ts`
- * (hyphen), which no `*.test.ts` path predicate can recognise, so the shape
- * check is what catches them.
- * `react-router/integration/request-test.ts:120-121`:
- * `loaderData = JSON.parse(await page.locator("#loader-data").innerHTML());
- * expect(loaderData.method).toEqual("GET");`
  */
 const isInsideAssertion = (node: TSESTree.Node): boolean => {
   for (
@@ -309,15 +222,6 @@ const findVariable = (
 /**
  * Calls that CHECK their argument rather than trust it: a type-guard predicate
  * (`isProtectedResourceMetadata`) or a named validator.
- *
- * The validator verbs were added after the second sweep found the pattern the
- * `is`-only spelling missed:
- * `formbricks/apps/web/modules/ee/license-check/lib/license.ts:389` passes
- * `responseJson.data` to `validateLicenseDetails`, which at :271 is literally
- * `LicenseDetailsSchema.parse(data)` — the exact thing the rule is asking for,
- * behind a name the predicate could not see. Recall cost 0 of the 45 findings
- * read. The regex stays anchored and requires a capital after the verb, so
- * `validated(...)` and `parser(...)` are unaffected.
  */
 const GUARD_NAME_RE = /^(?:is|validate|parse|assert|decode|coerce)[A-Z]/;
 
@@ -325,13 +229,6 @@ const GUARD_NAME_RE = /^(?:is|validate|parse|assert|decode|coerce)[A-Z]/;
  * True when the read is being TYPE-TESTED rather than trusted — the operand of
  * a `typeof`, the sole argument of `Array.isArray(...)`, or an argument to a
  * guard/validator call.
- *
- * The rule already untracked on a guard CALL, but not on the inline narrowing
- * that is how most of this corpus actually validates. 4 of the 45 findings read
- * in the second sweep were this, e.g.
- * `trpc/packages/next/src/app-dir/server.ts:200-202`:
- * `const { cacheTag } = await req.json(); if (typeof cacheTag !== 'string')
- * return 400;` — a complete check on the one field the handler uses.
  *
  * This SKIPS the report without untracking the variable, so a later unguarded
  * read of a different field still fires. Recall cost 0 of 45.
@@ -423,10 +320,7 @@ const isUnvalidatedVariableRef = (
   return variable !== null && tracked.has(variable);
 };
 
-export default ESLintUtils.RuleCreator(
-  (name) =>
-    `https://github.com/sarj-ai/linting/blob/main/packages/typescript/src/rules/${name}.ts`,
-)<Options, MessageIds>({
+export default createRule<Options, MessageIds>({
   name: "prefer-schema-for-api-payload",
   meta: {
     type: "problem",

@@ -1,31 +1,13 @@
 /**
- * @fileoverview Prefer Next.js Server Actions over /api/* mutations.
+ * @fileoverview prefer-server-actions — an internal `/api/*` mutation hand-rolls the transport, types and error path a Server Action gets from the framework.
  *
- * Flags mutations against internal `/api/*` URLs (POST/PUT/DELETE/PATCH) via
- * `fetch`, axios-style helpers, or direct axios/request calls. GET requests
- * and external URLs are ignored. Tests, scripts, and Next.js route handlers
- * are skipped because Server Actions don't apply there.
- *
- * The member branch (`api.post('/api/x')`) intentionally skips calls that pass
- * a function argument (e.g. `router.post('/api/x', handler)`) so Express-style
- * route *definitions* aren't mistaken for client-side mutations.
- *
- * NON-REACT FRAMEWORKS ARE SKIPPED. "Use a Server Action" is not advice an
- * Angular, Vue, Svelte or Solid module can act on — the feature does not exist
- * outside React/Next. Corpus sweep (2220 files across zod / TanStack Query /
- * react-router / swr / zustand, 2026-07): 9 hits, of which 3 were Angular
- * services —
- * `query/examples/angular/auto-refetching/src/app/services/tasks.service.ts:38`
- * (`lastValueFrom(this.#http.post('/api/tasks', task))`, an `HttpClient`
- * injection) — and 4 were jscodeshift input/output fixtures under
- * `__testfixtures__/`, which are text a codemod transforms rather than code that
- * runs. Both are now skipped; the 2 genuine React hits still fire.
- *
- * References:
- *   - https://nextjs.org/docs/app/building-your-application/data-fetching/server-actions-and-mutations
+ * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/prefer-server-actions.test.ts
+ * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/prefer-server-actions.md
  */
 
-import { ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
+import { type TSESTree } from "@typescript-eslint/utils";
+
+import { createRule } from "./_docs.js";
 import type { RuleContext, Scope } from "@typescript-eslint/utils/ts-eslint";
 
 type MessageIds = "preferServerAction";
@@ -37,10 +19,6 @@ const AXIOS_MUTATION_METHODS = new Set(["post", "put", "delete", "patch"]);
 const SKIP_FILE_REGEX =
   /(?:\.test\.[jt]sx?$|\.spec\.[jt]sx?$|-(?:test|spec)\.[jt]sx?$|\/tests?\/|\/__tests__\/|\/__testfixtures__\/|\/scripts?\/|\/app\/api\/.*\/route\.[jt]sx?$|\/pages\/api\/)/;
 
-/**
- * Import sources that prove the module belongs to a framework where Server
- * Actions do not exist. See @fileoverview for the corpus evidence.
- */
 const NON_REACT_FRAMEWORK_RE =
   /^(?:@angular\/|@nestjs\/|vue$|vue\/|svelte$|svelte\/|solid-js$|solid-js\/|@ember\/|rxjs$|rxjs\/)/;
 
@@ -173,10 +151,7 @@ function getPropertyNode(
   return null;
 }
 
-export default ESLintUtils.RuleCreator(
-  (name) =>
-    `https://github.com/sarj-ai/linting/blob/main/packages/typescript/src/rules/${name}.ts`,
-)<Options, MessageIds>({
+export default createRule<Options, MessageIds>({
   name: "prefer-server-actions",
   meta: {
     type: "suggestion",

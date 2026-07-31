@@ -61,9 +61,22 @@ describe("configs.recommended / configs.strict are flat config", () => {
     // the "every rule at error" preset -- a rule missing from it is a rule
     // that shipped and runs nowhere, which is the same written-but-inert
     // failure the rules themselves exist to catch, one layer up.
-    const known = Object.keys(plugin.rules).map((rule) => `@sarj/${rule}`);
+    //
+    // Deprecated aliases are the one exception, and they are exempt because
+    // wiring one would report the same defect twice under two names. That they
+    // stay resolvable, deprecated and out of both presets is asserted in
+    // `rule-docs.test.ts`.
+    const known = Object.entries(plugin.rules)
+      .filter(([, rule]) => rule.meta.deprecated === undefined)
+      .map(([rule]) => `@sarj/${rule}`);
     const missing = known.filter((rule) => !(rule in strictRules));
     expect(missing).toEqual([]);
+
+    const wiredAliases = Object.entries(plugin.rules)
+      .filter(([, rule]) => rule.meta.deprecated !== undefined)
+      .map(([rule]) => `@sarj/${rule}`)
+      .filter((rule) => rule in strictRules);
+    expect(wiredAliases).toEqual([]);
   });
 
   it("recommended is a subset of strict, never the other way round", () => {

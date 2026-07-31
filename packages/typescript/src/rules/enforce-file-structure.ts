@@ -1,14 +1,13 @@
 /**
- * @fileoverview Require imports to come first, then allow step-down ordering for
- * the rest of the file, and require a `use server` directive to be the first
- * statement.
+ * @fileoverview enforce-file-structure — imports come first, then step-down order; a `use server` directive that is not the first statement is inert.
  *
- * Reporting is per-DEFECT, not per-import: see the `inMisplacedRun` note in
- * `create` for the corpus measurement behind that.
+ * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/enforce-file-structure.test.ts
+ * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/enforce-file-structure.md
  */
 
-import { ESLintUtils, type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
+import { type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
 
+import { createRule } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "importsFirst" | "useServerDirective";
@@ -69,10 +68,7 @@ const isUseServerDirective = (
   return expr.value === "use server";
 };
 
-export default ESLintUtils.RuleCreator(
-  (name) =>
-    `https://github.com/sarj-ai/linting/blob/main/packages/typescript/src/rules/${name}.ts`,
-)<Options, MessageIds>({
+export default createRule<Options, MessageIds>({
   name: "enforce-file-structure",
   meta: {
     type: "suggestion",
@@ -109,14 +105,6 @@ export default ESLintUtils.RuleCreator(
         }
 
         let seenBody = false;
-        // One misplacement is one defect. A single interleaved statement pushes
-        // every later import "after the body", and reporting each of them turns
-        // one `const nodeRequire = createRequire(...)` between two import blocks
-        // into 18 messages — measured at
-        // react-router/packages/react-router-dev/vite/plugin.ts:41, which alone
-        // produced 18 of the 33 corpus hits. Report the head of each contiguous
-        // run of misplaced imports instead, so a file with two separate
-        // interleavings still gets two messages.
         let inMisplacedRun = false;
 
         for (const statement of body) {

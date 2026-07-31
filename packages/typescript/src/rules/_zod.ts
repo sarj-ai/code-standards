@@ -1,15 +1,7 @@
 /**
- * @fileoverview The single source of truth for "does this name read as a Zod
- * schema?". Shared by `zod-naming-convention` (which ENFORCES a convention) and
- * `require-zod-form-validation` (which RECOGNISES a schema receiver), because
- * the two disagreeing is a bug: a plugin that accepts `SubmitFormSchema` as a
- * validator in one rule must not call the same symbol non-conforming in another.
+ * @fileoverview _zod — the single source of truth for "does this name read as a Zod schema?".
  *
- * Two conventions are recognised, and both are correct:
- *   - PREFIX (`ZUser`) — lets a schema and its inferred type share a base name
- *     (`type User = z.infer<typeof ZUser>`) without collision.
- *   - SUFFIX (`userSchema`, `SubmitFormDataSchema`) — the dominant convention in
- *     the wider Zod ecosystem and in most existing codebases.
+ * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/_zod.md
  */
 
 /** The `Z<Capital>` prefix convention: `ZUser`, `ZSubmitForm`. */

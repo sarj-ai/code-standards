@@ -20,7 +20,7 @@ interface SapCredentials {
 }
 ```
 
-`jsdoc-restates-signature` already deletes `// Database host.` — every word is
+`no-restated-jsdoc` already deletes `// Database host.` — every word is
 covered by the member. It cannot touch `// Database host port.`, which survives
 on one extra word. Correct for one line, wrong for the wall: the reader pays for
 the block, not for any single row of it. So the unit of judgement is the TYPE,

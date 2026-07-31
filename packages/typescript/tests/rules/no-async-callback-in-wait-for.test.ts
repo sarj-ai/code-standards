@@ -2,7 +2,7 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-async-callback-in-waitfor.js";
+import rule from "../../src/rules/no-async-callback-in-wait-for.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -17,7 +17,7 @@ const ruleTester = new RuleTester({
 
 const TEST_FILE = "/repo/src/component.test.ts";
 
-ruleTester.run("no-async-callback-in-waitfor", rule, {
+ruleTester.run("no-async-callback-in-wait-for", rule, {
   valid: [
     {
       filename: TEST_FILE,
