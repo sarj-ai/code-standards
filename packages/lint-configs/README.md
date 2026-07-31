@@ -71,10 +71,10 @@ a third locally, and pass its own build.
 installed wheel:
 
 ```
-ok     .sarj-standards.toml  --  version 0.30.0
+ok     .sarj-standards.toml  --  version 0.32.0
 drift  .github/workflows/ci.yml: sarj-python-lint==0.12.2  --  installed sarj-python-lint is 0.37.0
 drift  pyproject.toml: sarj-python-lint==0.25.0  --  installed sarj-python-lint is 0.37.0
-ok     pyproject.toml: sarj-lint-configs==0.30.0  --  matches the installed wheel
+ok     pyproject.toml: sarj-lint-configs==0.32.0  --  matches the installed wheel
 drift  package.json: @sarj/eslint-plugin@2.16.0  --  the bundled eslint.strict.mjs is tested against 9.0.0
 ```
 
@@ -84,7 +84,7 @@ The sibling linter versions are not yours to pick. `sarj-lint-configs` pins
 `sarj-python-lint`, `sarj-sql-lint` and `sarj-iac-lint` exactly, so `doctor`
 reads them out of the wheel you already installed and derives what every other
 site should say — including the pre-commit tag, which lives in a different
-namespace (`python-v0.37.0` for `sarj-lint-configs` 0.30.0) that nobody should
+namespace (`python-v0.37.0` for `sarj-lint-configs` 0.32.0) that nobody should
 have to translate by hand.
 
 The block `init` writes has no `rev:` at all. A `repo: local` hook runs the CLI
