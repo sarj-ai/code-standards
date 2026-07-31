@@ -1,16 +1,7 @@
-"""SARJ076: prefer walrus operator in comprehension filters to avoid duplicate function evaluation.
+"""SARJ076 — Prefer walrus operator in comprehension filters to avoid duplicate function evaluation.
 
-Evaluating the exact same non-trivial function call or attribute lookup in both the element
-expression and the `if` clause of a comprehension repeats computation. Using an assignment expression
-`(res := expr)` inside the `if` filter captures the result in a single evaluation.
-
-    # flagged
-    [parse(x) for x in items if parse(x) is not None]
-
-    # preferred
-    [res for x in items if (res := parse(x)) is not None]
-
-Corpus evidence. Sweep across 7 repositories revealed 28 redundant comprehension evaluations with 0 false positives.
+Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_walrus_comprehension_filter.py
+Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ076.md
 """
 
 from __future__ import annotations
@@ -36,12 +27,7 @@ def _check_comprehension_node(
     code: str,
     path: Path,
 ) -> list[Diagnostic]:
-    """Check a single comprehension node for duplicate calls in filter and element.
-
-    Returns:
-        List of diagnostics found in the comprehension node.
-
-    """
+    """Check a single comprehension node for duplicate calls in filter and element."""
     if len(node.generators) != 1:
         return []
 
@@ -97,10 +83,9 @@ def _check_comprehension_node(
 
 
 class PreferWalrusComprehensionFilter(Rule):
-    """Prefer walrus operator in comprehension filters to avoid duplicate function call evaluation."""
-
     id: str = "prefer-walrus-comprehension-filter"
     code: str = "SARJ076"
+    has_evidence: bool = True
     description: str = "repeated expression in comprehension filter and element — use `(val := ...)` to evaluate once."
 
     @override

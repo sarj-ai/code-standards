@@ -130,9 +130,6 @@ def identifier_tokens(identifier: str) -> list[str]:
     mixed-case single word like `ToKeN` (which camel-splitting shreds into
     `to`/`ke`/`n`) still surfaces its intended `token` form.
 
-    Returns:
-        The ordered lowercase tokens decomposed from `identifier`.
-
     """
     tokens: list[str] = []
     for segment in _SEGMENT_RE.split(identifier):
@@ -152,10 +149,6 @@ def leading_word(identifier: str) -> str | None:
     useless `hassecret` rather than `has`. Splitting the leading segment with the
     same camel regex makes `has_secret` and `hasSecret` both yield `has`.
 
-    Returns:
-        The lowercased leading word, or None when `identifier` has no word
-        characters at all.
-
     """
     for segment in _SEGMENT_RE.split(identifier):
         if not segment:
@@ -166,12 +159,7 @@ def leading_word(identifier: str) -> str | None:
 
 
 def is_secret_name(identifier: str) -> bool:
-    """Report whether `identifier` names raw secret material (a credential, not metadata).
-
-    Returns:
-        True when `identifier` denotes a credential rather than metadata.
-
-    """
+    """Report whether `identifier` names raw secret material (a credential, not metadata)."""
     tokens = identifier_tokens(identifier)
     if tokens and tokens[-1] in _INNOCUOUS_WORDS:
         return False
@@ -183,10 +171,5 @@ def is_secret_name(identifier: str) -> bool:
 
 
 def _has_api_key(tokens: list[str]) -> bool:
-    """Report whether `api` is immediately followed by `key` (the split form of `api_key`).
-
-    Returns:
-        True when an `api` token is directly followed by a `key` token.
-
-    """
+    """Report whether `api` is immediately followed by `key` (the split form of `api_key`)."""
     return any(a == "api" and b == "key" for a, b in pairwise(tokens))

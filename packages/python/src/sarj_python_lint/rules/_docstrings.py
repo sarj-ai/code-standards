@@ -181,9 +181,6 @@ def sections(docstring: str) -> dict[str, str]:
     A docstring with no recognised header is all summary. Two blocks under the
     same header (which a hand-edited docstring does produce) concatenate.
 
-    Returns:
-        The summary and every recognised section body, keyed by header name.
-
     """
     marks = [(match.start(), match.end(), match.group("name")) for match in _SECTION_RE.finditer(docstring)]
     if not marks:
@@ -196,12 +193,7 @@ def sections(docstring: str) -> dict[str, str]:
 
 
 def arg_section(docstring: str) -> str | None:
-    """Return the parameter-documentation block of `docstring`, if it has one.
-
-    Returns:
-        The section body, or None when the docstring documents no parameters.
-
-    """
+    """Return the parameter-documentation block of `docstring`, if it has one."""
     found = sections(docstring)
     for name in ARG_SECTIONS:
         if name in found:
@@ -217,9 +209,6 @@ def arg_entries(block: str) -> list[tuple[str, str, str]]:
     it the continuation row vanishes, and an entry whose informative half sits
     on the second line reads as a bare restatement.
 
-    Returns:
-        One triple per documented parameter, in source order.
-
     """
     entries: list[list[str]] = []
     for raw in block.splitlines():
@@ -232,22 +221,12 @@ def arg_entries(block: str) -> list[tuple[str, str, str]]:
 
 
 def identifier_stems(text: str) -> set[str]:
-    """Collect the stemmed word parts of every identifier in `text`.
-
-    Returns:
-        The stems, lowercased.
-
-    """
+    """Collect the stemmed word parts of every identifier in `text`."""
     return {stem(part) for match in _IDENTIFIER_RE.finditer(text) for part in split_identifier(match.group(0))}
 
 
 def decorator_markers(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef) -> set[str]:
-    """Collect the lowercase word parts of every decorator on `node`.
-
-    Returns:
-        The decorator name parts, for matching against `PROMPT_DECORATOR_MARKERS`.
-
-    """
+    """Collect the lowercase word parts of every decorator on `node`."""
     markers: set[str] = set()
     for decorator in node.decorator_list:
         target = decorator.func if isinstance(decorator, ast.Call) else decorator
@@ -259,12 +238,7 @@ def decorator_markers(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDe
 
 
 def annotation_tokens(annotation: ast.expr | None) -> list[str]:
-    """Split an annotation's rendered source into lowercase word parts.
-
-    Returns:
-        The word parts, or an empty list when there is no annotation.
-
-    """
+    """Split an annotation's rendered source into lowercase word parts."""
     if annotation is None:
         return []
     try:
@@ -279,9 +253,6 @@ def signature_stems(node: ast.FunctionDef | ast.AsyncFunctionDef, class_name: st
 
     The function name, the owning class name, every parameter name that is not
     `self`/`cls`, and every annotation — parameter and return.
-
-    Returns:
-        The stems the signature already carries.
 
     """
     tokens = list(split_identifier(node.name))
@@ -304,9 +275,6 @@ def restates(text: str, known: Iterable[str]) -> bool:
     A text with no content words at all (pure stopwords, or no words) returns
     False: "says nothing" and "says only what the code says" are different
     findings, and only the caller knows which one it wants.
-
-    Returns:
-        True when `text` adds no word the identifier set does not carry.
 
     """
     known_stems = set(known)

@@ -41,10 +41,6 @@ def scan_comments(source: str) -> list[Comment]:
     sets, which cost SARJ038 ~4% of total rule time for no additional
     information. The memo now lives in one place rather than two.
 
-    Returns:
-        Every comment, in source order. `Comment` is frozen and the list is
-        read-only to callers.
-
     """
     ordered, first_statement_line = all_comments(source)
     return [

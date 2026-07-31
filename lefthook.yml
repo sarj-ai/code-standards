@@ -12,6 +12,12 @@ pre-commit:
       fail_text: >-
         Root pyproject.toml version is out of sync with packages/python.
         Bump both and retry.
+    private-refs:
+      run: make check-no-private-refs
+      fail_text: >-
+        A private repo/client name or a conflict marker reached the tree.
+        This regresses on rebases onto the scrub commit — re-anonymise and retry.
+
     lint:
       run: make lint
       fail_text: >-

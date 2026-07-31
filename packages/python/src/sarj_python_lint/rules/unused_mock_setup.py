@@ -1,119 +1,7 @@
-"""SARJ067: mock setup the test can never exercise is a lie about what is covered.
+"""SARJ067 — Mock setup the test can never exercise is a lie about what is covered.
 
-An arrange block that configures a collaborator the test never reaches misleads
-every later reader — it says "this test depends on `refund` returning a receipt"
-when the assertion has nothing to do with `refund`. It is also what a refactor
-leaves behind: the call is deleted from the code under test, the `return_value`
-line stays, and the test still passes while covering strictly less than its name
-claims.
-
-The rule only fires where deadness is **provable from the test itself**:
-
-* **overwritten before use** — the same `<mock>.<attr>.return_value` /
-  `.side_effect` target is assigned twice in one block with nothing in between
-  that can execute code (other mock configuration, literal assignments, `pass`,
-  imports). Nothing can have observed the first value, so it is dead,
-* **asserted never called** — the test configures `<mock>.<attr>` and then
-  asserts `<mock>.<attr>.assert_not_called()` (or `assert_not_awaited()`) on
-  that path or a dotted prefix of it, with no further code afterwards that could
-  invoke it. If the assertion passes, the configured return was never observed
-  — the two statements contradict each other.
-
-**Why the obvious version of this rule is not here.** The tempting formulation
-is "a configured path that the function never mentions again": `gateway.refund.
-return_value = X` where nothing else says `refund`. That was implemented and
-measured first, and it is unusable. A mock reaches the code under test in ways
-the test body does not spell out — it is handed over whole (`billing.charge(
-gateway, 100)` and the SUT picks `.refund` off it), or it is installed by
-`patch`, where the test never passes it anywhere at all. On the five audited
-corpora that formulation produced 493 hits (repo A 70, django 37, celery 386,
-repo B 0, fastapi 0; repo labels are stable within this docstring only), of
-which 17 were read line by line across all three
-corpora that produced any: **17 false positives, 0 true**. The census explains
-why — 196 of the 493 configured bases are `@patch`-decorator parameters, 29 are
-`with patch(...) as m` bindings and 38 are fixture parameters, all wired into
-the SUT where the test cannot see it, and the 126 locally constructed mocks are
-handed to the SUT whole. Named examples, all false:
-`django/tests/queries/test_sqlcompiler.py:31` (`cursor.execute.side_effect`, and
-the cursor is patched onto the connection two lines later),
-`django/tests/decorators/test_cache.py:147` (`mocked_time.return_value` — the
-view calls `time.time()`), `celery/t/unit/app/test_app.py:1328`
-(`router.route.return_value`, and `router` is passed to `send_task`),
-`celery/t/unit/fixups/test_django.py:408`, and three sites in repo A — an
-agent-tool test (`mock_datetime.now.return_value`), a generation-service test
-(`llm_provider` is the injected fixture mock) and a
-public-API test. The narrower salvage (fire only when the base
-mock is a locally constructed `Mock()`/`MagicMock()` that escapes nowhere) is
-sound but empty: of 966 locally constructed mocks and 982 configuration
-statements across the same corpora, **0** were configured without the mock being
-used elsewhere. A mock nobody hands to anything is a mock nobody writes.
-
-The two shapes that survived are rare and always right: 5 hits across five
-corpora, 1 in repo A (an audit-middleware test), 4 in
-celery (`t/unit/utils/test_platforms.py:952` and `:981`, literally duplicated
-`grp_module.getgrgid.return_value = [group_name]` lines;
-`t/unit/backends/test_elasticsearch.py:340` and `:375`,
-`x._server.update.return_value = {...}` under an `x._server.update.
-assert_not_called()`), 0 in django, fastapi and repo B, 0 false positives.
-
-**Not duplicated from ruff.** `select = ["ALL"]` already covers the whole
-"never used at all" family: `F841` flags `gateway = MagicMock()` with no later
-use *and* `with patch(...) as m` with no use of `m`, `ARG001` flags an unused
-`@patch`-injected parameter, and `PGH005` flags `mock.assert_called_once`
-without parentheses. What none of them see is a mock that *is* used — used only
-to configure something the test then throws away. That gap is this rule.
-
-Deliberately NOT flagged:
-
-* **a configured path the test simply never mentions again.** The dominant
-  shape, and unknowable: see above,
-* **a mid-test `assert_not_called()` checkpoint.** `pool_close.side_effect =
-  ...` / `pool_close.assert_not_awaited()` / `await shutdown()` /
-  `pool_close.assert_awaited_once()` asserts the collaborator has not fired
-  *yet* — the setup is exercised two lines later
-  (one first-party settings test). Any positive call
-  assertion or call introspection (`assert_called*`, `assert_awaited*`,
-  `assert_has_calls`, `.called`, `.call_count`, `.call_args`, `reset_mock`) on
-  the same path, its prefix or its extension, anywhere in the function,
-  suppresses the diagnostic. Two of the six raw shape-B hits were this:
-  `celery/t/unit/tasks/test_result.py:150` (`assert_not_called()` then
-  `assert_called()` after a second act) and
-  `celery/t/unit/worker/test_consumer.py:313`,
-* **anything after the `assert_not_called()` that can run code.** A second act
-  makes the configuration live again, so the rule requires no effectful call
-  after the assertion line — only further `assert*` calls whose arguments do not
-  themselves call anything,
-* **a conditional or looped overwrite.** `m.get.return_value = A` followed by
-  `if x: m.get.return_value = B` configures two different runs; only
-  reassignments in the *same* block pair up,
-* **a reassignment separated by anything that executes** — a call, an `await`,
-  an attribute load, a subscript, a nested `def`. Celery's
-  `t/unit/utils/test_platforms.py:230` sets `setuid.side_effect` inside a nested
-  `raise_on_second_call` closure and again at module scope below it; the closure
-  runs later, so the pair is not dead,
-* **`side_effect = None` followed by `return_value = ...`.** Clearing
-  `side_effect` re-enables `return_value`, so the two are not competing
-  configurations of the same thing (`celery/t/unit/backends/test_gcs.py:414`).
-  Only assignments to the *identical* target pair up,
-* **anything paired across a scope boundary.** A nested `def` or `class` inside a
-  test is its own scope, and the rule never pairs a configuration in one with an
-  assertion in the other — in *either* direction. It cannot know when the helper
-  runs relative to the act, and guessing is how the unusable first formulation
-  went wrong. The cost is symmetric and real: a helper that only calls
-  `assert_not_called()` does not condemn the outer arrange block, and a helper
-  that only configures a mock is not condemned by the outer test's
-  `assert_not_called()`,
-* **a configuration on the same physical line as the assertion.** Ordering is by
-  line number, so `m.get.assert_not_called(); m.get.return_value = X` and its
-  reverse both stay silent. The comparison is strict on purpose: the reverse
-  spelling is the far commoner one and there the configuration genuinely is for
-  whatever the test does next,
-* **`configure_mock(...)` / `attach_mock(...)` / `Mock(**{"a.return_value": …})`
-  key strings.** Measured across the five corpora: 15 `configure_mock` /
-  `attach_mock` calls and 116 `**{...}` call sites, none of which the two sound
-  shapes above could be extended to reach without re-introducing the
-  unknowable-reachability problem,
-* non-test files.
+Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_unused_mock_setup.py
+Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ067.md
 """
 
 from __future__ import annotations
@@ -186,20 +74,14 @@ class _Finding(NamedTuple):
 
 
 class UnusedMockSetup(Rule):
-    """Mock configuration the test provably never exercises."""
-
     id: str = "unused-mock-setup"
     code: str = "SARJ067"
+    has_evidence: bool = True
     description: str = "Mock setup the test can never exercise — overwritten before use, or asserted never called."
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        """Flag mock configuration statements that nothing in the test can observe.
-
-        Returns:
-            One diagnostic per dead configuration statement, sorted by position.
-
-        """
+        """Flag mock configuration statements that nothing in the test can observe."""
         if not is_test_path(path):
             return []
         tree = parse_or_none(path, source)
@@ -233,13 +115,7 @@ def _dead_setups(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[_Findin
 
 
 def _overwritten_before_use(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[_Finding]:
-    """Find configurations reassigned before anything could read them.
-
-    Yields:
-        A finding per configuration statement whose value is replaced with no
-        executable statement in between.
-
-    """
+    """Find configurations reassigned before anything could read them."""
     for block in _blocks(fn):
         pending: dict[str, ast.stmt] = {}
         for stmt in block:
@@ -262,12 +138,7 @@ def _overwritten_before_use(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> Itera
 
 
 def _asserted_never_called(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[_Finding]:
-    """Find configurations of a path the test then asserts was never called.
-
-    Yields:
-        A finding per configuration contradicted by an `assert_not_called`.
-
-    """
+    """Find configurations of a path the test then asserts was never called."""
     not_called = _not_called_assertions(fn)
     if not not_called:
         return
@@ -294,13 +165,7 @@ def _asserted_never_called(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterat
 
 
 def _blocks(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[list[ast.stmt]]:
-    """Walk the statement blocks belonging to this function's own scope.
-
-    Yields:
-        Each list of statements, skipping bodies of nested functions and
-        classes, which are processed as their own scopes.
-
-    """
+    """Walk the statement blocks belonging to this function's own scope."""
     stack: list[ast.AST] = [fn]
     while stack:
         node = stack.pop()
@@ -310,12 +175,7 @@ def _blocks(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[list[ast.stm
 
 
 def _child_blocks(node: ast.AST) -> list[list[ast.stmt]]:
-    """List the statement blocks a compound statement owns.
-
-    Returns:
-        Every non-empty block, `except` handlers and `match` cases included.
-
-    """
+    """List the statement blocks a compound statement owns."""
     blocks: list[list[ast.stmt]] = []
     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
         blocks.append(node.body)
@@ -332,24 +192,13 @@ def _child_blocks(node: ast.AST) -> list[list[ast.stmt]]:
 
 
 def _scope_statements(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[ast.stmt]:
-    """Walk every statement in the function's own scope.
-
-    Yields:
-        Statements, nested function and class bodies excluded.
-
-    """
+    """Walk every statement in the function's own scope."""
     for block in _blocks(fn):
         yield from block
 
 
 def _own_expressions(stmt: ast.stmt) -> Iterator[ast.AST]:
-    """Walk the expressions a statement owns, without descending into other statements.
-
-    Yields:
-        Every expression node belonging to `stmt` itself, so a nested block's
-        contents are attributed to that block rather than to its header.
-
-    """
+    """Walk the expressions a statement owns, without descending into other statements."""
     for child in children(stmt):
         if isinstance(child, (ast.stmt, ast.excepthandler, ast.match_case)):
             continue
@@ -357,12 +206,7 @@ def _own_expressions(stmt: ast.stmt) -> Iterator[ast.AST]:
 
 
 def _config_target(stmt: ast.stmt) -> str | None:
-    """Read the dotted target of a mock configuration assignment.
-
-    Returns:
-        `"m.get.return_value"` for `m.get.return_value = ...`, else None.
-
-    """
+    """Read the dotted target of a mock configuration assignment."""
     if not isinstance(stmt, ast.Assign) or len(stmt.targets) != 1:
         return None
     target = stmt.targets[0]
@@ -372,12 +216,7 @@ def _config_target(stmt: ast.stmt) -> str | None:
 
 
 def _dotted(node: ast.expr) -> str | None:
-    """Render a `Name`-rooted attribute chain as a dotted string.
-
-    Returns:
-        The dotted path, or None when the chain is rooted in a call or literal.
-
-    """
+    """Render a `Name`-rooted attribute chain as a dotted string."""
     parts: list[str] = []
     current = node
     while isinstance(current, ast.Attribute):
@@ -390,16 +229,7 @@ def _dotted(node: ast.expr) -> str | None:
 
 
 def _is_inert(stmt: ast.stmt) -> bool:
-    """Report whether a statement provably cannot execute user code.
-
-    An inert statement between two configurations cannot have read the first
-    one. Anything that calls, awaits, subscripts or reads an attribute is not
-    inert: a property getter or a `__getitem__` can reach the mock.
-
-    Returns:
-        True when the statement runs no user code.
-
-    """
+    """Report whether a statement provably cannot execute user code."""
     if isinstance(stmt, (ast.Pass, ast.Import, ast.ImportFrom)):
         return True
     if isinstance(stmt, ast.Expr):
@@ -413,12 +243,7 @@ def _is_inert(stmt: ast.stmt) -> bool:
 
 
 def _not_called_assertions(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> dict[str, int]:
-    """Collect `x.y.assert_not_called()` calls made in this function's scope.
-
-    Returns:
-        Asserted dotted path to the line of its last such assertion.
-
-    """
+    """Collect `x.y.assert_not_called()` calls made in this function's scope."""
     found: dict[str, int] = {}
     for stmt in _scope_statements(fn):
         for node in _own_expressions(stmt):
@@ -433,16 +258,7 @@ def _not_called_assertions(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> dict[s
 
 
 def _introspected_paths(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
-    """Collect every path the function reads the call record of.
-
-    Searches the whole subtree, nested helpers included: a positive call
-    assertion anywhere means the test does expect the call, so an
-    `assert_not_called` on the same path is a mid-test checkpoint.
-
-    Returns:
-        Dotted paths carrying a call assertion or call-record read.
-
-    """
+    """Collect every path the function reads the call record of."""
     found: set[str] = set()
     for node in walk(fn):
         if not isinstance(node, ast.Attribute) or not _is_introspection(node.attr):
@@ -460,15 +276,7 @@ def _is_introspection(attr: str) -> bool:
 
 
 def _last_effectful_line(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
-    """Find the last line of the function that can invoke a mock.
-
-    Assertion calls are excluded — `m.assert_called_with(3)` inspects the mock
-    rather than driving it — but only when their own arguments call nothing.
-
-    Returns:
-        The greatest such line number, or 0 when the function makes no calls.
-
-    """
+    """Find the last line of the function that can invoke a mock."""
     last = 0
     for node in walk(fn):
         if isinstance(node, ast.Call) and not _is_assertion_call(node):

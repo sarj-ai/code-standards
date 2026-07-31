@@ -1,166 +1,7 @@
-"""SARJ060: a test whose only assertion is the value it fed the mock verifies nothing.
+"""SARJ060 — A test whose only assertion is the value it fed the mock verifies nothing.
 
-```python
-def test_prompt_config_awaits_pool_then_loads(monkeypatch):
-    monkeypatch.setattr(main, "load_config_or_empty", AsyncMock(return_value="prompt-cfg"))
-    result = await _load_prompt_config_after_pool(pool_task=done, global_prompt_service=Mock())
-    assert result == "prompt-cfg"
-```
-
-The test's name promises it awaits the pool *and then* loads. Nothing in the body
-checks either half: the sole assertion says the string handed to the stub came
-back out of it. Nobody is told when the ordering breaks, when the pool task is
-dropped, or when the service is never consulted — the assertion holds for every
-one of those regressions. That is the shape this rule looks for, and only that
-shape: a test in which **every** assertion is a mock echo and **nothing else**
-is verified.
-
-Fires when, inside one `test_*` function body, ALL of these hold:
-
-* the body configures a stub value — `m.get.return_value = X`,
-  `patch(..., return_value=X)`, `AsyncMock(side_effect=X)`, or a hand-rolled
-  `monkeypatch.setattr(mod, "fn", lambda: X)`,
-* the stubbed value is **non-trivial** (not `None`/`True`/`False`/`0`/`1`/`""`/
-  `[]`/`{}`) — `return_value = None` followed by `assert result is None` pins a
-  code path that genuinely could have returned something else,
-* every `assert` in the function is a single `==`/`is` comparison whose one side
-  is structurally identical to that stubbed value (compared by `ast.dump`, so
-  dict/list/tuple literals match cheaply) — or is a bare read of
-  `<mock>.return_value`,
-* the other side of the comparison is the **whole** result (`result`,
-  `svc.get(1)`, `await svc.get(1)`), not a piece of it,
-* the stubbed value is mentioned exactly twice in the body: the stub and the
-  assertion,
-* the stub configures a double the body shows the code under test can *reach* —
-  either the whole double (`m.return_value = X`, or any spelling that installs
-  one), or a sub-object hanging off something the body hands over,
-* and the function contains **no other verification at all** — no
-  `mock.assert_called_with(...)`, no `pytest.raises`, no `self.assertEqual`, no
-  project-local `_assert_*` helper.
-
-**The guards are the rule, and the last one is most of it.** Measured over
-22,388 collected test functions in two first-party repos, django, fastapi and
-celery:
-958 tests configure a stub in their own body, 866 with a non-trivial value, 462
-of those also assert — yet only 44 assertions structurally compare against the
-stubbed value at all. Narrowing those 44 to the ones that are genuinely
-zero-value takes four separate guards and leaves 2. A version of this rule
-without them would be wrong roughly four times in five.
-
-Deliberately NOT flagged:
-
-* **an assertion that reaches into the result**, whether it does so inline or
-  through a local. `assert result.name == X` or
-  `assert response.json()["data"]["url"] == X` asserts *where the value ended
-  up*, which is behaviour the stub does not decide — the code could have put it
-  in the wrong field, dropped it, or transformed it. The same is true written
-  across two statements, so a local bound exactly once to an attribute or
-  subscript expression is resolved back to it before the exemption is applied
-  (`data = content["data"]["shop"][...]` / `assert data == external_auths`).
-  A name the function binds more than once is left alone: the alias is then
-  ambiguous and the rule does not guess. Measured over 19 repositories this
-  costs one finding — saleor's
-  `saleor/graphql/shop/tests/queries/test_shop.py:515`, a full GraphQL round
-  trip through `user_api_client.post_graphql` whose parametrized
-  `external_auths` list is stubbed onto `PluginsManager` and then compared
-  against the serialized envelope — and it is a false positive; total 138 -> 137,
-  with repo A unchanged at 2 and repo B at 0 (repo labels are stable within this
-  docstring only). 16 of the 44 structural
-  matches are this shape and every one was a real assertion, including one
-  first-party navigation test
-  (`assert tool._last_send_time == post_send_sentinel` after patching
-  `time.time` — it checks the debounce timestamp was recorded) and one
-  first-party public-API test
-  (`assert r.json()["data"]["recording_url"] == "https://signed.example/abc.mp4"`
-  with a stubbed `object_store.sign`, driven through a FastAPI `TestClient` —
-  a real end-to-end assertion about the serialized envelope),
-* **a stub configured on a *piece* of a double the test never hands over.**
-  `self.cur.fetchall.return_value = rows` followed by
-  `assert rows == self.db_hook.run(sql=query, handler=fetch_all_handler)` is not a
-  mock echo, because the hook has to reach `get_conn().cursor().fetchall()` for the
-  comparison to hold at all — the assertion says the unit navigated the DBAPI
-  correctly, which the stub does not decide. The wiring that connects `self.cur` to
-  `self.db_hook` lives in `setUp`, so a single-file rule cannot see it, and the
-  honest reading of `self.cur.fetchall.return_value = X` alone is "the code gets `X`
-  *if* it walks this chain". Two shapes therefore keep firing: a stub on the whole
-  double (`m.return_value = X`, where nothing has to be navigated), and a stub on a
-  sub-object whose root the body hands to the code under test — `repo.fetch.
-  return_value = X` beside `UserService(repo)`, or `hook._poll.return_value = X`
-  beside `operator._hook = hook`. Aliases that only rename a piece of a double
-  (`get_blob_method = bucket_method.return_value.get_blob`) are followed through, so
-  the spelling cannot dodge the guard, and a chain whose root is a call rather than a
-  name (`mock_get_deploy_client().predict.return_value = X`) can never be shown
-  reachable. **Measured cost: 137 -> 110 over the 21-corpus census, -27 and +0** —
-  airflow 56 -> 35, superset 23 -> 19, mlflow 25 -> 24, dagster 3 -> 2, and litellm
-  (22), prefect (3), warehouse (2), saleor (1) unchanged.
-  Every removal is the external-boundary shape — DBAPI cursors (airflow presto
-  `test_presto.py:293`, trino `test_trino.py:391`, pinot `test_pinot.py:261`, common
-  SQL `test_dbapi.py:600,618`), SDK chains (`test_gcs.py:1874`,
-  `test_display_video.py:117`, `test_asb.py:96`, four in `test_data_lake.py`,
-  superset's `test_celery_task.py:59` SQLAlchemy chain and `screenshot_test.py:74`
-  webdriver chain) and HTTP transports. **No unambiguous true positive is lost**: the
-  most egregious shape — patch a method of the unit, then call that very method
-  (airflow `test_glue_databrew.py:38`, `test_lockbox.py:86,97`,
-  `test_pagerduty.py:77`, `test_bteq.py:265`, dagster's self-named `test_mocks`) —
-  stubs the *whole* double and keeps firing. repo A stays at 2 and every other
-  first-party repo at 0, so the guard costs nothing first-party in either direction.
-  Two weaker readings were measured and rejected: requiring the receiver to appear in
-  the compared expression drops 59 including airflow `test_openai.py:66`, and applying
-  the requirement to every stub spelling drops 106 including both repo A findings,
-* **a round trip.** `assert store.save(record) == record` is not a mock echo:
-  the value is also handed to the code under test, so the comparison pins a
-  passthrough the code could have broken. Detected by counting mentions —
-  exactly two means stub-then-assert. Uses as the receiver of an attribute or
-  subscript do not count towards it, because
-  `participant.identity = "caller-1"` and `room.disconnect.assert_awaited()`
-  configure or interrogate the double rather than feed it to the code,
-* **a test that also verifies what the code did.** A `mock.assert_called_once_with(user_id)`
-  next to the echo pins the arguments the code passed, and a
-  `pytest.raises` pins a failure path; neither is decided by the stub, so the
-  test is not zero-value even if one of its assertions is redundant. Also
-  covers the *delegation* test, where the passthrough itself is the behaviour
-  under test — `celery/t/unit/app/test_app.py:2075`
-  (`test_acquire_connection_without_pool`: `assert result == mock_conn.return_value`
-  next to `mock_conn.assert_called_once()`, checking that `pool=False` takes the
-  non-pooled branch) and `celery/t/unit/backends/test_elasticsearch.py:922`
-  (`test_decode_not_dict`) are exactly this, as is
-  `fastapi/tests/test_tutorial/test_dependencies/test_tutorial007.py:23`, whose
-  `dbsession_moock.close.assert_called_once()` checks the dependency closes the
-  session. All three would otherwise be false positives, one of them in mature
-  OSS,
-* **a test with a real assertion alongside the echo.** Every assertion must be
-  an echo. One first-party test
-  (`test_builds_request_and_returns_response`) opens with `assert result is
-  sip_response` and then checks `request.sip_call_to` and
-  `request.headers["X-S-CallId"]` off the captured call args — the echo is a
-  redundant first line in a test that does real work,
-* **`return_value = None` / `= []` / `= 0`** and the other trivial stubs, where
-  the assertion usually distinguishes a real code path,
-* an `==` comparison with a value the body never stubbed (a `parametrize`
-  `expected` column, a fixture, a hand-built expectation) — only a structural
-  match against the stubbed value counts,
-* a chained or non-equality comparison (`a < b < c`, `x in y`), and any
-  assertion that is not a comparison at all,
-* a `test_*` nested inside another function, a non-collected module, and
-  anything under `scripts/` — pytest runs none of them.
-
-**Known limit: precedence claims.** A test that stubs two collaborators and
-asserts the result equals *one* of them is asserting which source wins, not
-echoing a stub — mlflow's
-`tests/tracking/_model_registry/test_utils.py:172`
-(`test_registry_uri_from_spark_session_overrides_databricks_default`) stubs both
-`get_tracking_uri` and `_get_registry_uri_from_spark_session` and asserts the
-Spark URI is the one that comes back. The rule reports it. No narrow predicate
-separates it from a genuine echo: "two or more stubbed values exempts" was
-measured over the 137 surviving findings and would silence 33 of them (24%),
-most of which stub the same value twice or stub an unrelated collaborator, so
-the cure is far worse than the disease. The shape is left firing and recorded
-here.
-
-Note that this standard's own ruff config bans `unittest.mock` outright, so the
-`return_value` spelling is rare in the audited first-party code by construction;
-the `monkeypatch.setattr(..., lambda: X)` spelling is the one it will meet most
-often, and it is treated identically.
+Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_tautological_mock_assertion.py
+Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ060.md
 """
 
 from __future__ import annotations
@@ -225,20 +66,14 @@ _IMPLICIT_RECEIVERS = frozenset({"self", "cls"})
 
 
 class TautologicalMockAssertion(Rule):
-    """A test whose every assertion echoes a value the test itself stubbed."""
-
     id: str = "tautological-mock-assertion"
     code: str = "SARJ060"
+    has_evidence: bool = True
     description: str = "Test's only assertion compares against the value it configured the mock to return."
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        """Flag tests that verify nothing but their own stub.
-
-        Returns:
-            One diagnostic per tautological test, sorted by position.
-
-        """
+        """Flag tests that verify nothing but their own stub."""
         if not is_test_path(path) or not _is_collected_module(path):
             return []
         tree = parse_or_none(path, source)
@@ -280,15 +115,7 @@ def _tautological_assertions(tree: ast.Module) -> list[ast.Assert]:
 
 
 def _collectible_tests(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
-    """Collect the `test_*` functions pytest would actually run.
-
-    Only module-level functions and methods of a class qualify; a `test_*`
-    nested inside another function is a callback, not a test.
-
-    Returns:
-        The test functions, in source order.
-
-    """
+    """Collect the `test_*` functions pytest would actually run."""
     found: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
     containers: list[ast.Module | ast.ClassDef] = [tree]
     while containers:
@@ -302,13 +129,7 @@ def _collectible_tests(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunc
 
 
 def _tautology_in(func: ast.FunctionDef | ast.AsyncFunctionDef) -> ast.Assert | None:
-    """Decide whether every assertion in `func` merely echoes a stubbed value.
-
-    Returns:
-        The first tautological assertion, or None when the test verifies
-        anything the code under test could get wrong.
-
-    """
+    """Decide whether every assertion in `func` merely echoes a stubbed value."""
     asserts: list[ast.Assert] = []
     provided: dict[str, ast.expr] = {}
     stubbed_on: dict[str, list[ast.expr] | None] = {}
@@ -352,37 +173,13 @@ def _tautology_in(func: ast.FunctionDef | ast.AsyncFunctionDef) -> ast.Assert | 
 
 
 def _double_reaches_the_code(receiver: ast.expr, aliases: dict[str, ast.expr], handed_over: frozenset[str]) -> bool:
-    """Report whether the test body shows the code under test can reach this stub.
-
-    Returns:
-        True when the stub configures a whole double, or when the sub-object it
-        configures hangs off something the body hands to the code under test.
-
-    """
+    """Report whether the test body shows the code under test can reach this stub."""
     keys = _configured_sub_object(receiver, aliases)
     return keys is None or bool(keys & handed_over)
 
 
 def _configured_sub_object(receiver: ast.expr, aliases: dict[str, ast.expr]) -> frozenset[str] | None:
-    """Name the double whose *sub-object* a `<receiver>.return_value = X` stub configures.
-
-    `m.return_value = X` replaces the whole double, so there is nothing for the
-    code under test to navigate to. `self.cur.fetchall.return_value = rows` and
-    `mock_service.return_value.bucket.return_value.get_blob.return_value = blob`
-    decide what the code gets only *after* it walks a chain, so the comparison
-    also asserts that walk. Single-assignment aliases whose value is itself an
-    attribute chain are followed, because naming a piece of a double
-    (`get_blob_method = bucket_method.return_value.get_blob`) is not handing it
-    over. A bare `self`/`cls` prefix is dropped: every attribute of the test case
-    shares it, so it proves nothing.
-
-    Returns:
-        The dotted prefixes that would prove the body hands that double to the
-        code under test, None when the whole double is being stubbed, or an empty
-        set when the chain's root is not a name at all
-        (`mock_get_deploy_client().predict.return_value = X`).
-
-    """
+    """Name the double whose *sub-object* a `<receiver>.return_value = X` stub configures."""
     attrs: list[str] = []
     seen: set[str] = set()
     current = receiver
@@ -409,18 +206,7 @@ def _configured_sub_object(receiver: ast.expr, aliases: dict[str, ast.expr]) -> 
 
 
 def _names_handed_to_the_code(func: ast.AST) -> frozenset[str]:
-    """Collect the names the body passes to something, rather than merely configures.
-
-    An assignment to an attribute only *configures* a double
-    (`self.cur.fetchall.return_value = rows`, `self.cur.rowcount = -1`), and an
-    assignment *from* an attribute chain only gives part of one a shorter name
-    (`bucket_method = mock_service.return_value.bucket`). Everything else hands it
-    over: `UserService(repo)`, `hook.run(sql)`, `operator._hook = double`.
-
-    Returns:
-        The dotted names read outside those two shapes.
-
-    """
+    """Collect the names the body passes to something, rather than merely configures."""
     configuring: set[int] = set()
     for node in ast.walk(func):
         if not isinstance(node, ast.Assign):
@@ -453,12 +239,7 @@ def _dotted_name(node: ast.expr) -> str | None:
 
 
 def _record_alias(node: ast.Assign, assigned: dict[str, ast.expr]) -> None:
-    """Note that `x = <expr>` binds a local to an expression.
-
-    Only plain-name targets are recorded — a tuple unpack binds a piece of the
-    value, not the value. The caller then discards every name the function binds
-    more than once, so what survives is an unambiguous alias.
-    """
+    """Note that `x = <expr>` binds a local to an expression."""
     for target in node.targets:
         if isinstance(target, ast.Name):
             assigned[target.id] = node.value
@@ -485,16 +266,7 @@ def _record_call_stubs(
 
 
 def _installs_a_replacement(node: ast.Call) -> bool:
-    """Report whether this call swaps a real callable for a stand-in.
-
-    `monkeypatch.setattr(mod, "fn", lambda: X)` and `patch("mod.fn", lambda: X)`
-    are the mock-free spelling of `return_value=X`, and this standard's ruff
-    config bans `unittest.mock`, so it is the spelling the rule meets most.
-
-    Returns:
-        True for `setattr`/`setitem`/`patch`-shaped installers.
-
-    """
+    """Report whether this call swaps a real callable for a stand-in."""
     func = node.func
     name = func.attr if isinstance(func, ast.Attribute) else func.id if isinstance(func, ast.Name) else ""
     return name in _REPLACEMENT_INSTALLERS
@@ -506,13 +278,7 @@ def _record(
     stubbed_on: dict[str, list[ast.expr] | None],
     receiver: ast.expr | None,
 ) -> None:
-    """Note a stubbed value, and which double's attribute chain it was configured on.
-
-    `receiver` is None for the spellings that *install* the double
-    (`AsyncMock(return_value=X)`, `patch(..., return_value=X)`,
-    `monkeypatch.setattr(mod, "fn", lambda: X)`): those name what they replace, so
-    the double reaches the code under test by construction.
-    """
+    """Note a stubbed value, and which double's attribute chain it was configured on."""
     if _is_trivial(value) or not _signature(value):
         return
     key = ast.dump(value)
@@ -526,15 +292,7 @@ def _record(
 
 
 def _is_trivial(value: ast.expr) -> bool:
-    """Report whether a stubbed value is too weak to build a tautology on.
-
-    `return_value = None` followed by `assert result is None` genuinely pins a
-    code path that could have returned something; so does an empty list.
-
-    Returns:
-        True for None, bools, 0/1, empty strings and empty containers.
-
-    """
+    """Report whether a stubbed value is too weak to build a tautology on."""
     if isinstance(value, ast.Constant):
         literal = value.value
         if literal is None or isinstance(literal, bool):
@@ -555,12 +313,7 @@ def _echoed_operand(
     signatures: set[str],
     aliases: dict[str, ast.expr],
 ) -> ast.expr | None:
-    """Find the operand of `node` that the test itself stubbed.
-
-    Returns:
-        The stubbed operand, or None when the assertion checks something else.
-
-    """
+    """Find the operand of `node` that the test itself stubbed."""
     test = node.test
     if not isinstance(test, ast.Compare) or len(test.ops) != 1:
         return None
@@ -578,21 +331,7 @@ def _echoed_operand(
 
 
 def _reaches_into_the_result(node: ast.expr, aliases: dict[str, ast.expr]) -> bool:
-    """Report whether `node` is a local bound to a piece of something bigger.
-
-    `data = content["data"]["shop"]["availableExternalAuthentications"]` followed by
-    `assert data == external_auths` is the subscript exemption written across two
-    statements — the assertion still says *where the value ended up*, which is
-    behaviour the stub does not decide. Resolving the alias is what lets the
-    exemption see it (saleor
-    `saleor/graphql/shop/tests/queries/test_shop.py:515`, a full GraphQL round
-    trip through `user_api_client.post_graphql`).
-
-    Returns:
-        True when following single-assignment aliases lands on an attribute or
-        subscript read.
-
-    """
+    """Report whether `node` is a local bound to a piece of something bigger."""
     seen: set[str] = set()
     while isinstance(node, ast.Name) and node.id in aliases and node.id not in seen:
         seen.add(node.id)
@@ -615,20 +354,7 @@ def _reads_a_stub_attribute(node: ast.expr) -> bool:
 
 
 def _appears_only_at_the_stub(func: ast.AST, target: ast.expr, receivers: set[int]) -> bool:
-    """Report whether `target` occurs only twice: the stub and the assertion.
-
-    A third occurrence means the value is also handed to the code under test —
-    `assert store.save(record) == record` is a round trip, and the stub is not
-    the sole reason the comparison holds. Uses as the receiver of an attribute
-    or subscript (`participant.identity = "caller-1"`,
-    `room.disconnect.assert_awaited_once()`) do not count: those configure or
-    interrogate the double, they do not feed it to the code under test.
-
-    Returns:
-        True when the value is mentioned exactly twice, or is a `.return_value`
-        read, which has no separate setup site to count.
-
-    """
+    """Report whether `target` occurs only twice: the stub and the assertion."""
     if _reads_a_stub_attribute(target):
         return True
     signature = _signature(target)
@@ -651,12 +377,7 @@ def _is_read(node: ast.expr) -> bool:
 
 
 def _signature(node: ast.expr) -> str:
-    """Summarize `node` cheaply so full `ast.dump` comparisons stay rare.
-
-    Returns:
-        A short discriminator, or "" for expression kinds this rule ignores.
-
-    """
+    """Summarize `node` cheaply so full `ast.dump` comparisons stay rare."""
     if isinstance(node, ast.Name):
         return f"N:{node.id}"
     if isinstance(node, ast.Constant):
@@ -680,22 +401,7 @@ def _signature(node: ast.expr) -> str:
 
 
 def _is_verification_call(node: ast.Call) -> bool:
-    """Report whether this call checks something the stub does not decide.
-
-    `mock.assert_called_once_with(user_id)` pins the arguments the code passed,
-    `pytest.raises(ValueError)` pins a failure path, `self.assertEqual(a, b)`
-    and a project-local `_assert_shape(result)` pin whatever they were written
-    to pin. A test carrying any of them is not zero-value, even if one of its
-    assertions is a redundant echo. Bare call-count checks
-    (`mock.assert_called_once()`) count too: on the audited corpora they mark
-    *delegation* tests, where the passthrough is itself the behaviour under
-    test, and treating them as noise produced false positives in celery and
-    fastapi.
-
-    Returns:
-        True when the call verifies behaviour independently of the stub value.
-
-    """
+    """Report whether this call checks something the stub does not decide."""
     func = node.func
     if isinstance(func, ast.Attribute):
         name = func.attr

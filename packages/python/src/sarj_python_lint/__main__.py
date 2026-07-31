@@ -84,6 +84,9 @@ def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
 class _Args(argparse.Namespace):
     cmd: str | None
     rule: list[str]
+    # `explain` takes exactly one rule, so it cannot share `--rule`'s list slot
+    # without widening the type and losing the check on every `check` call site.
+    which: str
     files: list[Path]
     baseline: Path | None
     update_baseline: Path | None
@@ -92,9 +95,31 @@ class _Args(argparse.Namespace):
         super().__init__()
         self.cmd = None
         self.rule = []
+        self.which = ""
         self.files = []
         self.baseline = None
         self.update_baseline = None
+
+
+def _explain(wanted: str) -> int:
+    """Print a rule's summary plus the derived links to its examples and evidence.
+
+    This is the runtime consumer of the one-line module docstring: it is what
+    makes an inaccurate summary visible rather than merely unread.
+
+    """
+    key = wanted.strip()
+    cls = REGISTRY.get(key) or next((c for c in REGISTRY.values() if c.code.upper() == key.upper()), None)
+    if cls is None:
+        sys.stderr.write(f"unknown rule: {wanted}\navailable: {', '.join(sorted(REGISTRY))}\n")
+        return 2
+    summary = (sys.modules[cls.__module__].__doc__ or "").strip().splitlines()
+    sys.stdout.write(
+        f"{cls.code}  {cls.id}\n{summary[0] if summary else cls.description}\nexamples: {cls.examples_url()}\n"
+    )
+    if cls.has_evidence:
+        sys.stdout.write(f"evidence: {cls.evidence_url()}\n")
+    return 0
 
 
 def _baseline_counts(diags: list[Diagnostic]) -> dict[str, dict[str, int]]:
@@ -111,9 +136,6 @@ def _read_baseline(path: Path) -> dict[str, dict[str, int]]:
     `json.loads` returns `Any`, so the shape is narrowed here rather than
     asserted — a hand-edited baseline should degrade to "not baselined" rather
     than crash the run or silently suppress on a malformed entry.
-
-    Returns:
-        The baseline counts, with any entry of the wrong shape dropped.
 
     """
     raw: object = json.loads(  # pyright: ignore[reportAny] — json.loads is an untyped stdlib boundary; the shape is narrowed below
@@ -134,12 +156,7 @@ def _read_baseline(path: Path) -> dict[str, dict[str, int]]:
 
 
 def _apply_baseline(diags: list[Diagnostic], baseline: dict[str, dict[str, int]]) -> list[Diagnostic]:
-    """Suppress up to the baselined count per (path, code); excess diags survive.
-
-    Returns:
-        The diagnostics that exceed the baselined count for their (path, code).
-
-    """
+    """Suppress up to the baselined count per (path, code); excess diags survive."""
     seen: Counter[tuple[str, str]] = Counter()
     out: list[Diagnostic] = []
     for d in diags:
@@ -179,6 +196,9 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("list-rules", help="List available rule IDs.")
 
+    explain_p = sub.add_parser("explain", help="Print one rule's summary and the links to its examples and evidence.")
+    explain_p.add_argument("which", metavar="rule", help="Rule ID or SARJ code.")
+
     args = parser.parse_args(argv, namespace=_Args())
 
     if args.cmd == "list-rules":
@@ -186,6 +206,9 @@ def main(argv: list[str] | None = None) -> int:
             inst = cls()
             sys.stdout.write(f"{inst.code:8}  {rid:40}  {inst.description}\n")
         return 0
+
+    if args.cmd == "explain":
+        return _explain(args.which)
 
     diags = _check(args.rule, args.files)
     if args.update_baseline is not None:

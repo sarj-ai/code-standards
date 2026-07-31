@@ -1,81 +1,7 @@
-"""SARJ026: flag public functions returning a bare positional `tuple[A, B, ...]`.
+"""SARJ026 — Public functions returning a bare positional `tuple[A, B, ...]`.
 
-A multi-field value returned across a boundary — from a public function (name not
-starting `_`) — must be a `NamedTuple` (or a frozen pydantic model when it needs
-validation), never a positional `tuple[A, B]` the caller has to unpack by position.
-A bare `tuple[bytes, dict, str | None]` return forces every caller to remember which
-slot is which; a typo swaps two fields silently. A named result gives each field a
-name and lets pyright catch a wrong-order access.
-
-    # flagged
-    def download_to_memory(...) -> tuple[bytes, dict[str, str], str | None]:
-        ...
-
-    # preferred
-    class Download(NamedTuple):
-        body: bytes
-        headers: dict[str, str]
-        content_type: str | None
-
-    def download_to_memory(...) -> Download:
-        ...
-
-The three tuple uses CLAUDE.md permits are deliberately NOT flagged:
-- `tuple[X, ...]` — an immutable homogeneous sequence (Ellipsis form),
-- `tuple[X, X]` — structurally homogeneous (every element identical, e.g.
-  `tuple[int, int]`), a pair of the same thing rather than distinct fields,
-- `tuple[Literal["both"], A, B]` — a discriminated-union tag (first element a
-  `Literal[...]`).
-
-Also NOT flagged: private (`_`-prefixed) functions, single-element `tuple[X]`,
-a bare unsubscripted `tuple`, and any non-tuple / unannotated return.
-
-Famous-repo sweep hardening also exempts:
-- test files (`_paths.is_test_path`) — test helpers returning ad-hoc pairs
-  (`make_pipe() -> tuple[Send, Receive]`) are local scaffolding, not a public
-  boundary;
-- interface stubs whose body only raises `NotImplementedError` (plus a
-  docstring), `@overload` stubs, and `@abstractmethod` declarations with no
-  implementation — the tuple shape mirrors an external protocol (trio's
-  `SocketType.accept` mirrors stdlib `socket.accept`;
-  `anyio/src/anyio/abc/_sockets.py:230` `receive_fds` mirrors
-  `socket.recvmsg`) and cannot change unilaterally. A bare `...` body on an
-  *undecorated* function is NOT exempt — it is also the shorthand for an
-  ordinary unwritten function;
-- **nested functions.** A closure has no callers outside its enclosing
-  function, so it never crosses the boundary this rule protects, and the pair
-  it returns is usually mandated by the consumer: 2 of the 3 sweep hits are
-  `sorted(key=...)` functions that MUST return a tuple
-  (`rich/rich/_inspect.py:128`, `rich/rich/scope.py:45`), the third a local
-  stack popper (`rich/rich/markup.py:146`);
-- **declared overrides.** A method implementing an inherited contract does not
-  own its signature. Recognised, in order of directness: an `@override`
-  decorator; a `super().<same name>(...)` call in the body
-  (`fastapi/fastapi/routing.py:825`, `:1244`); a base whose trailing name
-  repeats the class's own name, the "concrete implementation of my ABC" idiom
-  (`anyio/src/anyio/_backends/_trio.py:514` `class UNIXSocketStream(SocketStream,
-  abc.UNIXSocketStream)`, `:617`, `_asyncio.py:1502`, `:1693`); and an imported
-  (non-structural) base combined with a sibling class in the same module
-  declaring the same method name — one shared shape across sibling classes is a
-  contract, not a local design choice (`fastapi/fastapi/routing.py` declares
-  `matches(scope) -> tuple[Match, Scope]`, starlette's `BaseRoute` protocol, on
-  6 classes).
-
-An override of a third-party base that carries none of those marks is still
-flagged; adding `@override` (which the type checker wants anyway) both
-documents the inheritance and silences the rule.
-
-Suppress a deliberate positional return with `# sarj-noqa: SARJ026 — <reason>`.
-
-References:
-- https://docs.python.org/3/library/typing.html#typing.NamedTuple
-
-* **generated files** (`_paths.is_generated`). Their layout is the
-  generator's, and re-running the generator discards any edit, so a finding
-  there can never be acted on in place. Measured on the 69 `DO NOT EDIT`
-  files git-tracked across two first-party repos — a single Speakeasy-generated
-  SDK package accounts for all of them.
-
+Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_namedtuple_over_tuple_return.py
+Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ026.md
 """
 
 from __future__ import annotations
@@ -136,10 +62,9 @@ _MSG = (
 
 
 class PreferNamedtupleOverTupleReturn(Rule):
-    """Public function returning a bare positional `tuple[A, B, ...]` — prefer a NamedTuple."""
-
     id: str = "prefer-namedtuple-over-tuple-return"
     code: str = "SARJ026"
+    has_evidence: bool = True
     description: str = (
         "public function returning a bare positional tuple[A, B, ...] — prefer a "
         "NamedTuple or frozen pydantic model so callers don't unpack by position."
@@ -190,12 +115,7 @@ class _ModuleFacts:
 
 
 def _module_facts(tree: ast.Module) -> _ModuleFacts:
-    """Collect the module-wide facts the override heuristics need.
-
-    Returns:
-        The names of classes defined here and the per-method-name class counts.
-
-    """
+    """Collect the module-wide facts the override heuristics need."""
     local_classes: set[str] = set()
     classes_declaring: dict[str, int] = {}
     for node in nodes(tree, ast.ClassDef):
@@ -208,16 +128,7 @@ def _module_facts(tree: ast.Module) -> _ModuleFacts:
 def _iter_boundary_functions(
     tree: ast.Module,
 ) -> Iterator[tuple[ast.FunctionDef | ast.AsyncFunctionDef, ast.ClassDef | None]]:
-    """Walk every module-level or class-level function, paired with its owning class.
-
-    Functions nested inside another function are skipped outright: a closure has
-    no callers outside the frame that defines it, so its return shape never
-    crosses the boundary this rule guards.
-
-    Yields:
-        Each boundary function and the class that declares it, if any.
-
-    """
+    """Walk every module-level or class-level function, paired with its owning class."""
     stack: list[tuple[ast.AST, ast.ClassDef | None]] = [(tree, None)]
     while stack:
         node, owner = stack.pop()
@@ -233,15 +144,7 @@ def _is_declared_override(
     owner: ast.ClassDef | None,
     facts: _ModuleFacts,
 ) -> bool:
-    """Report whether the method implements a contract inherited from a base class.
-
-    An override does not own its signature: the tuple shape is pinned by the
-    base, so changing it here is not an option this module has.
-
-    Returns:
-        True when the method is a recognised override.
-
-    """
+    """Report whether the method implements a contract inherited from a base class."""
     if any(_name_of(dec) == "override" for dec in node.decorator_list):
         return True
     if _calls_super_method(node):
@@ -256,12 +159,7 @@ def _is_declared_override(
 
 
 def _calls_super_method(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Report whether the body calls `super().<this method's name>(...)`.
-
-    Returns:
-        True when the body delegates to the base implementation.
-
-    """
+    """Report whether the body calls `super().<this method's name>(...)`."""
     for child in walk(node):
         match child:
             case ast.Call(func=ast.Attribute(attr=attr, value=ast.Call(func=ast.Name(id="super")))) if (
@@ -274,16 +172,7 @@ def _calls_super_method(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
 
 
 def _is_abstract_declaration(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Report whether the node is an `@abstractmethod` with no implementation.
-
-    Like the `NotImplementedError` stub, such a declaration states a contract
-    whose shape usually mirrors something external (anyio's `receive_fds`
-    mirrors `socket.recvmsg`), and the concrete side is elsewhere.
-
-    Returns:
-        True for an abstract declaration whose body is only a docstring / `...` / `pass`.
-
-    """
+    """Report whether the node is an `@abstractmethod` with no implementation."""
     if not any(_name_of(dec) == "abstractmethod" for dec in node.decorator_list):
         return False
     return all(_is_empty_statement(stmt) for stmt in node.body)
@@ -300,16 +189,7 @@ def _is_empty_statement(stmt: ast.stmt) -> bool:
 
 
 def _is_interface_stub(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Report whether the body only raises `NotImplementedError` (+ docstring).
-
-    Such a function declares an interface pinned elsewhere; its tuple shape is
-    not this module's to change. A bare `...` body is NOT a stub here — it is
-    also the shorthand for an ordinary unwritten function.
-
-    Returns:
-        True when the body is a NotImplementedError stub.
-
-    """
+    """Report whether the body only raises `NotImplementedError` (+ docstring)."""
     has_raise = False
     for stmt in node.body:
         if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str):
@@ -340,15 +220,7 @@ def _is_overload(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
 
 
 def _is_bare_positional_tuple(annotation: ast.expr) -> bool:
-    """Report whether `annotation` is `tuple[A, B, ...]` with >=2 heterogeneous elements.
-
-    Exempts the three permitted forms: `tuple[X, ...]` (Ellipsis), structurally
-    homogeneous `tuple[X, X]`, and the `tuple[Literal[...], ...]` discriminated tag.
-
-    Returns:
-        True when the annotation is a bare positional heterogeneous tuple.
-
-    """
+    """Report whether `annotation` is `tuple[A, B, ...]` with >=2 heterogeneous elements."""
     if not isinstance(annotation, ast.Subscript):
         return False
     if _name_of(annotation.value) not in _TUPLE_NAMES:
@@ -366,12 +238,7 @@ def _is_bare_positional_tuple(annotation: ast.expr) -> bool:
 
 
 def _all_equal(elements: list[ast.expr]) -> bool:
-    """Report whether every element is structurally identical (a homogeneous pair/tuple).
-
-    Returns:
-        True when all elements are structurally equal.
-
-    """
+    """Report whether every element is structurally identical (a homogeneous pair/tuple)."""
     first = elements[0]
     return all(_ast_equal(el, first) for el in elements[1:])
 
@@ -381,22 +248,12 @@ def _is_ellipsis(node: ast.expr) -> bool:
 
 
 def _is_literal(node: ast.expr) -> bool:
-    """Report whether `node` is a `Literal[...]` subscript (discriminated-union tag).
-
-    Returns:
-        True when the node is a `Literal[...]` subscript.
-
-    """
+    """Report whether `node` is a `Literal[...]` subscript (discriminated-union tag)."""
     return isinstance(node, ast.Subscript) and _name_of(node.value) in _LITERAL_NAMES
 
 
 def _name_of(node: ast.expr) -> str | None:
-    """Return the trailing name of a reference: `tuple` / `typing.Tuple` -> the trailing id.
-
-    Returns:
-        The trailing identifier, or None when `node` is neither a Name nor Attribute.
-
-    """
+    """Return the trailing name of a reference: `tuple` / `typing.Tuple` -> the trailing id."""
     if isinstance(node, ast.Name):
         return node.id
     if isinstance(node, ast.Attribute):
@@ -405,10 +262,5 @@ def _name_of(node: ast.expr) -> str | None:
 
 
 def _ast_equal(a: ast.expr, b: ast.expr) -> bool:
-    """Compare `a` and `b` structurally, ignoring source positions.
-
-    Returns:
-        True when the two trees are structurally equal.
-
-    """
+    """Compare `a` and `b` structurally, ignoring source positions."""
     return ast.dump(a) == ast.dump(b)

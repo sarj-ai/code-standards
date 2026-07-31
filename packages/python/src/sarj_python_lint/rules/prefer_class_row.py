@@ -1,31 +1,7 @@
-"""SARJ013: psycopg `row_factory=dict_row` where a validated model row is intended.
+"""SARJ013 — Psycopg `row_factory=dict_row` where a validated model row is intended.
 
-The repo standard is to map each DB row straight into a pydantic model with
-`class_row(Model)`, so every row is validated at the database boundary and the
-cursor is typed `Cursor[Model]`. `dict_row` instead hands back an unvalidated
-`dict[str, Any]` that callers then feed to `Model.model_validate(...)` by hand —
-an extra step that is easy to forget and leaves the value untyped in between.
-
-Flags any `row_factory=dict_row` keyword argument (typically on
-`conn.cursor(...)`). If you genuinely need a plain mapping — an ad-hoc
-aggregate, a `COUNT(*)`, or a dynamic projection with no model — suppress with
-`# sarj-noqa: SARJ013 — <reason>`.
-
-Replace:
-    async with conn.cursor(row_factory=dict_row) as cur:
-        await cur.execute(..., RETURNING id, status)
-        row = await cur.fetchone()
-        return Task.model_validate(row)
-
-with:
-    async with conn.cursor(row_factory=class_row(Task)) as cur:
-        await cur.execute(..., RETURNING id, status)
-        return one(await cur.fetchone())
-
-References:
-- https://www.psycopg.org/psycopg3/docs/api/rows.html#psycopg.rows.class_row
-- https://docs.pydantic.dev/latest/concepts/models/#validating-data
-
+Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_class_row.py
+Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ013.md
 """
 
 from __future__ import annotations
@@ -46,10 +22,9 @@ _BANNED_FACTORY = "dict_row"
 
 
 class PreferClassRow(Rule):
-    """`row_factory=dict_row` returns unvalidated dicts — prefer `class_row(Model)`."""
-
     id: str = "prefer-class-row"
     code: str = "SARJ013"
+    has_evidence: bool = True
     description: str = "psycopg row_factory=dict_row returns unvalidated dicts — prefer class_row(Model)."
 
     @override
@@ -81,12 +56,7 @@ class PreferClassRow(Rule):
 
 
 def _factory_name(node: ast.expr) -> str | None:
-    """Resolve a `row_factory=` value to its callable name (`dict_row`, …).
-
-    Returns:
-        The callable name, or None when it cannot be resolved.
-
-    """
+    """Resolve a `row_factory=` value to its callable name (`dict_row`, …)."""
     if isinstance(node, ast.NamedExpr):
         node = node.value
     if isinstance(node, ast.Name):

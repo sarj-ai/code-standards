@@ -1,68 +1,7 @@
-"""SARJ023: stepdown rule — a single-caller private helper belongs below its caller.
+"""SARJ023 — Stepdown rule — a single-caller private helper belongs below its caller.
 
-A file should read top-to-bottom like a newspaper: public API first, then the
-private helpers it uses. This rule encodes only the fully unambiguous core of
-that convention.
-
-The rule is deliberately restricted to helpers with EXACTLY ONE same-scope
-caller. For a single-caller helper there is one canonical stepdown position —
-immediately below its sole caller — so a violation ("helper sits above its only
-caller") has a single, non-arbitrary fix and the reorder is a clear readability
-win. Helpers with two or more callers are OUT OF SCOPE: a shared helper has no
-canonical "below which caller?" answer (stepping below one caller reads wrong
-relative to the others), and the verdict would flip whenever a caller moves.
-That multi-caller arbitrariness is exactly the disputed-churn class this
-redesign removes.
-
-Fires on:
-1. **Module-level helper above its one caller** — a private top-level function
-   (`_name`) referenced at call time by EXACTLY ONE top-level function/class,
-   and defined above that caller.
-2. **Class-level private method above its one caller** — a private, non-dunder
-   method referenced via `self._name` / `cls._name` by EXACTLY ONE sibling
-   method, and defined above it.
-
-Never fires on:
-- Public defs and private top-level classes (declarations, not helpers).
-- Unused helpers (no same-scope caller).
-- Helpers with two or more same-scope callers (no canonical stepdown target).
-- Helpers whose sole caller is a CLASS. A class is a scope, not a call site:
-  the real caller is a method inside it, and no module-level position sits
-  "directly below" that method — the helper would land after the class's
-  closing line, which for a large class is hundreds of lines past the
-  reference (`fastapi/routing.py:214`, `_wrap_gen_lifespan_context`, whose
-  only "caller" is `APIRouter` spanning lines 2219-6405). Collapsing a whole
-  class into one caller also hides genuine multi-caller ambiguity —
-  `pydantic/_internal/_generate_schema.py:286` is referenced from three
-  different `GenerateSchema` methods yet counted once, exactly the arbitrary
-  "below which caller?" case this rule excludes elsewhere. Classes still
-  COUNT as callers, so a helper shared by a class and a function stays
-  suppressed as multi-caller (31 corpus hits removed, e.g.
-  `httpx/_models.py:67`, `rich/console.py:505`, `requests/adapters.py:85`).
-- Mutual / indirect / two-node recursion — cycles have no valid stepdown order.
-- Names that are position-pinned by an import-time / class-creation-time
-  reference: module-level statements, decorator lists, default arguments,
-  annotations, class-body attribute values. Moving those breaks runtime.
-- Names referenced inside `if TYPE_CHECKING:` blocks (pinned, not call sites).
-- Names defined more than once in the scope (`@overload`, `@x.setter`,
-  conditional defs), reassigned at module/class scope, or locally rebound
-  inside the calling function itself — the reference there resolves to the
-  local, so that function is not counted as a caller. A local binding in some
-  OTHER (non-calling) function does not suppress the helper.
-- Methods decorated `@property` / `@cached_property` (read as attributes) and
-  `@abstractmethod` (interface contracts conventionally sit together).
-- Methods reached through inheritance: a private method is not flagged when an
-  in-module ancestor or descendant class references it via
-  `self` / `cls` / `super()`. Same-class caller counting alone would report a
-  false "only caller"; the actual caller may live in a sub/superclass (SQLAlchemy
-  `_code_str`). Siblings are excluded — an identically-named sibling method is a
-  different method. Callers in classes outside the module remain invisible to
-  syntactic analysis.
-* **generated files** (`_paths.is_generated`). Their layout is the
-  generator's, and re-running the generator discards any edit, so a finding
-  there can never be acted on in place. Measured on the 69 `DO NOT EDIT`
-  files git-tracked across two first-party repos — a single Speakeasy-generated
-  SDK package accounts for all of them.
+Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_stepdown.py
+Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ023.md
 """
 
 from __future__ import annotations
@@ -104,10 +43,9 @@ def _walk(node: ast.AST) -> Iterator[ast.AST]:
 
 
 class Stepdown(Rule):
-    """Single-caller private helper defined above its only caller — move it below."""
-
     id: str = "stepdown"
     code: str = "SARJ023"
+    has_evidence: bool = True
     description: str = "Private helper defined above its only caller — move it below the code that calls it."
 
     @override
@@ -249,25 +187,7 @@ def _record_ref_line(ref_lines: dict[tuple[str, str], int], caller: str, callee:
 
 
 def _family_external_refs(classes: list[ast.ClassDef]) -> dict[int, frozenset[str]]:
-    """Map each class to method names its inheritance relatives reference via self/cls/super.
-
-    A private method can be called through inheritance — a subclass's
-    `self._m()` / `super()._m()`, or a base method's `self._m()` that dispatches
-    to a descendant's override. Counting only same-class call sites therefore
-    undercounts callers and produces false "only caller" claims (SQLAlchemy
-    `_code_str`). For each class this walks its in-module ancestors and
-    descendants (by base-name matching) and returns the self/cls/super method
-    references those relatives make. A method named here has a caller reachable
-    through dispatch from outside its own class body and must not be flagged as
-    single-caller. Siblings share an ancestor but not dispatch, so they are
-    excluded — a sibling's identically-named private method is a different
-    method, and lumping them would wrongly suppress genuine single-caller
-    helpers.
-
-    Returns:
-        Mapping of `id(ClassDef)` to the inheritance-reachable method references.
-
-    """
+    """Map each class to method names its inheritance relatives reference via self/cls/super."""
     name_to_ids: dict[str, list[int]] = {}
     for c in classes:
         name_to_ids.setdefault(c.name, []).append(id(c))
@@ -322,12 +242,7 @@ def _base_name(base: ast.expr) -> str | None:
 
 
 def _class_self_method_refs(cls: ast.ClassDef) -> set[str]:
-    """Collect method names this class references via `self` / `cls` / `super()` / its own name.
-
-    Returns:
-        The set of self-like method references made in the class's method bodies.
-
-    """
+    """Collect method names this class references via `self` / `cls` / `super()` / its own name."""
     out: set[str] = set()
     for m in cls.body:
         if not isinstance(m, _DEF_NODES):
@@ -372,16 +287,7 @@ def _has_exempt_decorator(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
 
 
 def _deferred_body(node: ast.stmt) -> list[ast.stmt]:
-    """Collect statements that execute only when the def is invoked, not at import.
-
-    For a function that is its body; for a class it is the bodies of its
-    (recursively nested) methods — class-body statements run at class-creation
-    time and are handled as pinning references instead.
-
-    Returns:
-        The deferred-execution statements for `node`.
-
-    """
+    """Collect statements that execute only when the def is invoked, not at import."""
     if isinstance(node, _DEF_NODES):
         return node.body
     if isinstance(node, ast.ClassDef):
@@ -395,18 +301,7 @@ def _deferred_body(node: ast.stmt) -> list[ast.stmt]:
 
 
 def _runtime_nodes(stmts: list[ast.stmt]) -> Iterator[ast.expr]:
-    """Yield expression nodes reachable at call time within `stmts`.
-
-    Skips decorator lists / defaults / annotations of the given defs' nested
-    defs only where they run at definition time relative to the enclosing
-    scope; inside an already-deferred body, nested decorators and defaults DO
-    run at call time and are included. Annotations and `if TYPE_CHECKING:`
-    bodies are never included.
-
-    Yields:
-        Each call-time-reachable expression node.
-
-    """
+    """Yield expression nodes reachable at call time within `stmts`."""
     stack: list[ast.AST] = list(stmts)
     while stack:
         node = stack.pop()
@@ -446,12 +341,7 @@ def _module_pinned_names(tree: ast.Module) -> set[str]:
 
 
 def _class_pinned_names(cls: ast.ClassDef) -> set[str]:
-    """Collect bare names referenced at class-creation time inside the class body.
-
-    Returns:
-        The set of class-creation-time pinned names.
-
-    """
+    """Collect bare names referenced at class-creation time inside the class body."""
     pinned: set[str] = set()
     for stmt in cls.body:
         if isinstance(stmt, _DEF_NODES):
@@ -464,12 +354,7 @@ def _class_pinned_names(cls: ast.ClassDef) -> set[str]:
 
 
 def _immediate_def_refs(node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
-    """Collect names evaluated at `def` time: decorators, defaults, annotations.
-
-    Returns:
-        The set of def-time evaluated names.
-
-    """
+    """Collect names evaluated at `def` time: decorators, defaults, annotations."""
     parts: list[ast.expr] = list(node.decorator_list)
     parts.extend(node.args.defaults)
     parts.extend(d for d in node.args.kw_defaults if d is not None)
@@ -495,17 +380,7 @@ def _immediate_class_header_refs(cls: ast.ClassDef) -> set[str]:
 
 
 def _name_loads(node: ast.AST) -> set[str]:
-    """Collect load-context bare names evaluated where `node` sits at import/def time.
-
-    A lambda body is deferred — it runs only when the lambda is later invoked,
-    not at the point the lambda literal is created — so names inside it are not
-    import-time pins. Lambda argument defaults DO evaluate at creation time and
-    are kept.
-
-    Returns:
-        The set of import/def-time load names.
-
-    """
+    """Collect load-context bare names evaluated where `node` sits at import/def time."""
     out: set[str] = set()
     stack: list[ast.AST] = [node]
     while stack:
