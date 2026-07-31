@@ -201,6 +201,26 @@ ruleTester.run("no-comment-cruft", rule, {
       code: "export interface HandlerInterface {\n  // app.get(path, handler x5)\n  <P extends string>(path: P, handler: H): void;\n}",
     },
     { code: "type Router = {\n  // app.use(middleware)\n  use(m: M): void;\n};" },
+    // --- a JSDoc block is still where the "why" lives ---
+    // One shouted line does not make the block a signpost; the prose beneath it
+    // is what the reader came for.
+    {
+      code: "class C {\n  /**\n   * HANDLERS\n   * Kept in one table so the router stays readable.\n   */\n  a() { return 1; }\n}",
+    },
+    // A shouted WARNING is protected-class prose, not a section title.
+    { code: "class C {\n  /** DOES NOT RETRY */\n  a() { return 1; }\n}" },
+    // One shouted word is an acronym carrying a fact the name cannot: a unit, a
+    // timezone, an encoding.
+    { code: "interface T {\n  /** UTC */\n  at: string;\n}" },
+    // A shouted SENTENCE is prose someone chose to shout.
+    { code: "class C {\n  /** ALWAYS RUN THIS BEFORE THE SEED STEP */\n  a() { return 1; }\n}" },
+    // Trailing, so it annotates the code beside it rather than heading a region.
+    { code: "const a = 1; /** HELPERS */" },
+    // A short lowercase phrase is a description of the member, not a signpost —
+    // shouting is what separates the two.
+    { code: "interface T {\n  /** the retry budget */\n  retries: number;\n}" },
+    // An empty block says nothing, so it is not saying a section title either.
+    { code: "/**\n *\n */\nconst x = 1;" },
 
     // --- 2026-07-31 sweep: `for now` is not evidence on its own -------------
     // It was an alternative inside META_COMMENTARY_RE, so any comment
@@ -227,6 +247,25 @@ ruleTester.run("no-comment-cruft", rule, {
     },
   ],
   invalid: [
+    // --- a section signpost fires whichever comment syntax carries it ---
+    // JSDoc used to be exempt wholesale, so this was the one spelling of a
+    // banner nothing measured.
+    {
+      code: "class C {\n  /**\n   * REMOVE METHODS\n   */\n  remove() { return 1; }\n}",
+      errors: [{ messageId: "sectionBanner" }],
+    },
+    {
+      code: "const x = 1;\n/** Helpers */\nfunction help() { return 1; }",
+      errors: [{ messageId: "sectionBanner" }],
+    },
+    {
+      code: "const x = 1;\n/**\n * ----------------\n */\nconst y = 2;",
+      errors: [{ messageId: "sectionBanner" }],
+    },
+    {
+      code: "const x = 1;\n/** CART START */\nconst y = 2;",
+      errors: [{ messageId: "sectionBanner" }],
+    },
     // --- region marker shapes still fire ---
     {
       code: "const x = 1;\n// region helpers\nconst y = 2;",

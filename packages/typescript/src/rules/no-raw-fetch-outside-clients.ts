@@ -59,7 +59,6 @@ const GLOBAL_RECEIVERS: ReadonlySet<string> = new Set([
 
 const PRESIGNED_URL_NAME_RE = /(?:pre-?signed|signed|upload|download)Url$/i;
 
-/** True when `node` is a call to the global `fetch`. */
 function isGlobalFetchCall(node: TSESTree.CallExpression): boolean {
   const callee = node.callee;
 

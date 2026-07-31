@@ -8,7 +8,12 @@
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule } from "./_docs.js";
-import { hasExternalReference, restatableStatementBelow, restatesStatementHead } from "./_comments.js";
+import {
+  hasExternalReference,
+  isProtected,
+  restatableStatementBelow,
+  restatesStatementHead,
+} from "./_comments.js";
 import { isGeneratedFile } from "./_paths.js";
 
 type MessageIds =
@@ -130,6 +135,11 @@ function isSectionLabel(text: string): boolean {
   const match = SECTION_LABEL_RE.exec(text);
   return match !== null && SECTION_LABEL_WORDS.has((match[1] ?? "").toLowerCase());
 }
+
+// A SHOUTED label — `REMOVE METHODS`, `PUBLIC API`. Two words minimum, so a
+// one-word acronym beside a member (`UTC`, `ISO`) keeps the fact it carries;
+// digits are excluded for the same reason, a standard number being a citation.
+const SHOUTED_LABEL_RE = /^[A-Z]{2,}(?:[ -][A-Z]{2,}){1,3}$/;
 
 const HELPER_OPENER_RE = /^(?:a\s+)?helper\s+(?:function|method|component|hook|class|type|util(?:ity)?)\b/i;
 
@@ -439,6 +449,24 @@ export default createRule<Options, MessageIds>({
       return comment.type === "Block" && /^\*/.test(comment.value);
     }
 
+    /** True when every content line of a JSDoc block is a banner or a section title. */
+    function isSectionJsDoc(comment: TSESTree.Comment): boolean {
+      const texts = comment.value
+        .split("\n")
+        .map(stripCommentMarker)
+        .filter((line) => line.length > 0 && !isDirective(line));
+      return (
+        texts.length > 0 &&
+        texts.every(
+          (text) =>
+            !isProtected(text) &&
+            (isBanner(text) ||
+              isSectionLabel(text) ||
+              SHOUTED_LABEL_RE.test(text.replace(/[.:]$/, ""))),
+        )
+      );
+    }
+
     function reportLeadingPreamble(
       comments: readonly TSESTree.Comment[],
       firstCodeLine: number,
@@ -480,7 +508,18 @@ export default createRule<Options, MessageIds>({
         for (let i = 0; i < comments.length; i++) {
           const comment = comments[i];
           if (comment === undefined) continue;
-          if (isJsDoc(comment) || !isStandalone(comment)) continue;
+          if (isJsDoc(comment)) {
+            // A JSDoc block is otherwise left alone — it is where the "why"
+            // conventionally lives. A block whose WHOLE body is a rule of dashes
+            // or a shouted section title is not documenting the declaration
+            // beneath it; it is the same signpost `sectionBanner` already names,
+            // wearing the one comment syntax this rule used to skip wholesale.
+            if (isStandalone(comment) && isSectionJsDoc(comment)) {
+              context.report({ node: comment, messageId: "sectionBanner" });
+            }
+            continue;
+          }
+          if (!isStandalone(comment)) continue;
           if (LICENSE_RE.test(comment.value)) continue;
           const texts = comment.value
             .split("\n")
