@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
 from sarj_python_lint.rules._ast_index import nodes, walk
-from sarj_python_lint.rules._logging import is_logger_expr
+from sarj_python_lint.rules._logging import LOG_METHODS, is_logger_expr
 from sarj_python_lint.rules._paths import is_generated
 
 
@@ -24,21 +24,6 @@ if TYPE_CHECKING:
 
 # Method names that make a logger-receiver call a logging call. Kept in sync by
 # construction with SARJ017's list; the receiver test is the shared helper.
-_LOG_METHODS = frozenset(
-    {
-        "debug",
-        "info",
-        "warning",
-        "warn",
-        "error",
-        "exception",
-        "critical",
-        "fatal",
-        "trace",
-        "success",
-        "log",
-    }
-)
 
 # A literal ENDING in an UPPERCASE SQL keyword is a query fragment awaiting
 # interpolation — ruff's S608 and SARJ021 own that shape. Anchored at the end,
@@ -174,7 +159,7 @@ def _comment_lines(source: str) -> frozenset[int]:
 def _is_logging_call(node: ast.Call) -> bool:
     """Report whether `node` is a logging call, using SARJ017's receiver resolver."""
     func = node.func
-    if not isinstance(func, ast.Attribute) or func.attr not in _LOG_METHODS:
+    if not isinstance(func, ast.Attribute) or func.attr not in LOG_METHODS:
         return False
     return is_logger_expr(func.value)
 
