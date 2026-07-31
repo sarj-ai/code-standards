@@ -4,12 +4,11 @@ MAKEFLAGS += --warn-undefined-variables --no-builtin-rules
 
 CONFIG_SRC := packages/lint-configs/src/sarj_lint_configs/configs
 
-.PHONY: help setup build verify test lint typecheck promote-strict sync-configs \
-        check-configs-synced publish publish-typescript publish-python publish-sql \
+.PHONY: help setup build verify test lint typecheck promote-strict check-versions-synced publish publish-typescript publish-python publish-sql \
         publish-iac publish-lint-configs publish-tsconfig
 
 help:
-	@echo "Targets: setup | verify | build | test | lint | typecheck | sync-configs | check-configs-synced | promote-strict"
+	@echo "Targets: setup | verify | build | test | lint | typecheck | promote-strict"
 	@echo "         publish-{typescript,python,sql,iac,lint-configs,tsconfig} | publish (all)"
 	@echo "Releases trigger via tag push: typescript-v* python-v* sql-v* iac-v* lint-configs-v* tsconfig-v*"
 
@@ -39,7 +38,7 @@ build:
 	cd packages/iac            && uv build --wheel --sdist
 	cd packages/lint-configs   && uv build --wheel --sdist
 
-test: check-configs-synced
+test: check-versions-synced
 	cd packages/typescript     && npm test
 	cd packages/python         && uv run pytest -q
 	cd packages/sql            && uv run pytest -q
@@ -72,17 +71,18 @@ typecheck:
 	cd packages/lint-configs   && uv run basedpyright
 	cd packages/typescript     && npm run typecheck
 
-# Root .ruff-strict.toml / .pyright-strict.json are the synced consumer artifacts the
-# packages extend; they must stay byte-identical to the published source of truth.
-sync-configs:
-	cp $(CONFIG_SRC)/ruff.strict.toml    .ruff-strict.toml
-	cp $(CONFIG_SRC)/pyright.strict.json .pyright-strict.json
-
-check-configs-synced:
-	@cmp -s $(CONFIG_SRC)/ruff.strict.toml    .ruff-strict.toml    || { echo "error: .ruff-strict.toml out of sync — run 'make sync-configs'"; exit 1; }
-	@cmp -s $(CONFIG_SRC)/pyright.strict.json .pyright-strict.json || { echo "error: .pyright-strict.json out of sync — run 'make sync-configs'"; exit 1; }
+# There is exactly ONE copy of each strict config, in $(CONFIG_SRC); every package
+# extends it by relative path. The repo used to keep a second, `cp`-synced copy at
+# the root for packages to extend, which bought nothing (the two were identical by
+# construction) and cost a sync target, a check target, a CI workflow and a class
+# of "out of sync" failure that fired whenever the two drifted by a single edit.
+#
+# What remains here is the version check that lived alongside them, which is a
+# genuinely different invariant: pre-commit consumers install the ROOT package, so
+# a root version lagging packages/python ships a stale linter under a fresh number.
+check-versions-synced:
 	@root=$$(grep -m1 '^version' pyproject.toml) && pkg=$$(grep -m1 '^version' packages/python/pyproject.toml) && [ "$$root" = "$$pkg" ] || { echo "error: root pyproject.toml version out of sync with packages/python (pre-commit consumers install the root package)"; exit 1; }
-	@echo "root configs in sync with source ✓"
+	@echo "root and package versions agree ✓"
 
 publish-typescript:
 	@test -n "$$NPM_TOKEN" || (echo "error: NPM_TOKEN unset"; exit 1)
