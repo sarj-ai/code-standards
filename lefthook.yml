@@ -5,6 +5,13 @@ assert_lefthook_installed: true
 pre-commit:
   parallel: true
   commands:
+    # Pre-commit consumers install the ROOT package, so a root version lagging
+    # packages/python ships a stale linter under a fresh number.
+    version-sync:
+      run: make check-versions-synced
+      fail_text: >-
+        Root pyproject.toml version is out of sync with packages/python.
+        Bump both and retry.
     lint:
       run: make lint
       fail_text: >-

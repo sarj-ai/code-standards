@@ -50,13 +50,21 @@
     "@typescript-eslint/utils": "^8.65.0"
   },
   "devDependencies": {
+    "@eslint-community/eslint-plugin-eslint-comments": "^4.7.2",
     "@types/node": "latest",
     "@typescript-eslint/parser": "latest",
     "@typescript-eslint/rule-tester": "latest",
     "@typescript-eslint/utils": "latest",
-    "eslint": "latest",
+    "eslint": "^10.8.0",
+    "eslint-plugin-better-tailwindcss": "^4.7.0",
+    "eslint-plugin-perfectionist": "^5.10.0",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-simple-import-sort": "^14.0.0",
+    "eslint-plugin-unicorn": "^72.0.0",
     "tsup": "latest",
     "typescript": "latest",
+    "typescript-eslint": "^8.65.0",
     "vitest": "latest"
   },
   "peerDependencies": {
@@ -72,6 +80,9 @@
     }
   },
   "overrides": {
-    "esbuild": "^0.28.1"
+    "esbuild": "^0.28.1",
+    "eslint-plugin-react": {
+      "eslint": "$eslint"
+    }
   }
 }
