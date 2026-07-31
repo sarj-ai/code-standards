@@ -236,17 +236,3 @@ def parse_revs(text: str) -> list[str]:
 
     """
     return [match.group("rev") for match in _REV.finditer(text)]
-
-
-def worst(findings: Sequence[Finding]) -> Level:
-    """Reduce a report to the level that should decide the exit status.
-
-    Returns:
-        The most severe level present, or `OK` for an empty report.
-
-    """
-    if any(finding.level is Level.DRIFT for finding in findings):
-        return Level.DRIFT
-    if any(finding.level is Level.WARN for finding in findings):
-        return Level.WARN
-    return Level.OK

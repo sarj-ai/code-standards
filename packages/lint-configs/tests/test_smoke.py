@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import importlib
+import importlib.metadata
 import json
+from pathlib import Path
 import re
 import subprocess
 import sys
 import tomllib
-from typing import TYPE_CHECKING
 
 import pytest
 
@@ -18,16 +20,51 @@ from sarj_lint_configs import (
     TAPLO_STRICT,
     YAMLLINT_STRICT,
     __version__,
+    _meta,  # sarj-noqa: SARJ048 — the source-tree version fallback is the subject of a test below
 )
 
 
-if TYPE_CHECKING:
-    from pathlib import Path
+_PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+
+#: The version an uninstalled source checkout reports. Written out rather than
+#: read from `_meta`, because reading it from the module under test would make
+#: the assertion true for any value the module happened to hold.
+_SOURCE_TREE_VERSION = "0.0.0.dev0"
 
 
 def test_version_string() -> None:
-    assert __version__.count(".") == 2
-    assert all(part.isdigit() for part in __version__.split("."))
+    """The shipped version has to BE the pyproject version, not merely look like one.
+
+    `__version__` is what `init` writes into `.sarj-standards.toml`, what
+    `doctor` compares every consumer pin against, and what the generated CI
+    snippet types after `uvx --from sarj-lint-configs==`. A shape-only
+    assertion left all three free to advertise a number that was never
+    published.
+    """
+    declared = tomllib.loads((_PACKAGE_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    assert __version__ == declared["project"]["version"]
+
+
+def test_an_uninstalled_source_tree_reports_a_dev_version() -> None:
+    """The fallback branch never runs under test, so its literal was unpinned.
+
+    A source checkout that has not been installed has no distribution metadata;
+    the version it reports must still be a version, because `doctor` and the
+    manifest renderer format it into files either way.
+    """
+    real = importlib.metadata.version
+
+    def _absent(distribution_name: str) -> str:
+        raise importlib.metadata.PackageNotFoundError(distribution_name)
+
+    importlib.metadata.version = _absent
+    try:
+        _ = importlib.reload(_meta)
+    finally:
+        importlib.metadata.version = real
+    assert _meta.__version__ == _SOURCE_TREE_VERSION
+    _ = importlib.reload(_meta)
+    assert _meta.__version__ == __version__
 
 
 def test_configs_dir_exists() -> None:
