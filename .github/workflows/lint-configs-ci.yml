@@ -35,7 +35,15 @@ jobs:
       run:
         working-directory: packages/lint-configs
     steps:
+      # Full history. This job runs the package suite, and the retired-identifier
+      # gates in it DERIVE the withdrawn rule set from `git log --diff-filter=D`
+      # rather than trusting a hand-kept list, so a shallow checkout fails them.
+      # `scripts/check-ci-history-depth.sh` requires it of every job that runs a
+      # suite: "runs the tests" and "can read git history" were two independent
+      # facts about a job, and a release was lost to the gap between them.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
