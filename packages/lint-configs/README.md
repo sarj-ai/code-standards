@@ -72,8 +72,8 @@ installed wheel:
 
 ```
 ok     .sarj-standards.toml  --  version 0.30.0
-drift  .github/workflows/ci.yml: sarj-python-lint==0.12.2  --  installed sarj-python-lint is 0.36.0
-drift  pyproject.toml: sarj-python-lint==0.25.0  --  installed sarj-python-lint is 0.36.0
+drift  .github/workflows/ci.yml: sarj-python-lint==0.12.2  --  installed sarj-python-lint is 0.37.0
+drift  pyproject.toml: sarj-python-lint==0.25.0  --  installed sarj-python-lint is 0.37.0
 ok     pyproject.toml: sarj-lint-configs==0.30.0  --  matches the installed wheel
 drift  package.json: @sarj/eslint-plugin@2.16.0  --  the bundled eslint.strict.mjs is tested against 9.0.0
 ```
@@ -84,7 +84,7 @@ The sibling linter versions are not yours to pick. `sarj-lint-configs` pins
 `sarj-python-lint`, `sarj-sql-lint` and `sarj-iac-lint` exactly, so `doctor`
 reads them out of the wheel you already installed and derives what every other
 site should say — including the pre-commit tag, which lives in a different
-namespace (`python-v0.36.0` for `sarj-lint-configs` 0.30.0) that nobody should
+namespace (`python-v0.37.0` for `sarj-lint-configs` 0.30.0) that nobody should
 have to translate by hand.
 
 The block `init` writes has no `rev:` at all. A `repo: local` hook runs the CLI
@@ -138,7 +138,8 @@ them:
 ```
 drift  eslint.config.mjs: @sarj/prefer-setup-file-mocks x1  --  no longer exists -- removed in @sarj/eslint-plugin 5.0.0: 50 corpus findings read, 0 true positives. Delete the rule entry and any eslint-disable naming it.
 drift  src/legacy.ts: @sarj/no-implicit-attribute-access x1  --  no longer exists -- ...
-drift  service.py: SARJ055 x1  --  renamed to SARJ083 -- renumbered in sarj-python-lint 0.26.0 ...
+drift  .pre-commit-config.yaml: no-implicit-attribute-access x1  --  no longer exists -- removed in sarj-python-lint 0.37.0 ...
+drift  .sarj-python-baseline.json: SARJ083 x1  --  no longer exists -- removed in sarj-python-lint 0.37.0 ...
 drift  eslint.config.mjs: @sarj/strict-test-assertions x1  --  renamed to @sarj/prefer-whole-object-assertion -- the old name no longer resolves: @sarj/eslint-plugin 9.0.0 deleted the deprecated aliases 7.0.0 shipped ...
 ```
 

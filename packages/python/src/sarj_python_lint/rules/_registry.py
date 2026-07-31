@@ -36,7 +36,6 @@ from sarj_python_lint.rules.no_first_party_private_import import (
 )
 from sarj_python_lint.rules.no_fstring_in_log import NoFstringInLog
 from sarj_python_lint.rules.no_gen_random_uuid_in_sql import NoGenRandomUuidInSql
-from sarj_python_lint.rules.no_implicit_attribute_access import NoImplicitAttributeAccess
 from sarj_python_lint.rules.no_isinstance_union_chain import NoIsinstanceUnionChain
 from sarj_python_lint.rules.no_offset_pagination import NoOffsetPagination
 from sarj_python_lint.rules.no_optional_tenant_predicate import (
@@ -122,7 +121,6 @@ REGISTRY: dict[str, type[Rule]] = {
     PreferStrEnum.id: PreferStrEnum,
     NoFatTryBlocks.id: NoFatTryBlocks,
     NoIsinstanceUnionChain.id: NoIsinstanceUnionChain,
-    NoImplicitAttributeAccess.id: NoImplicitAttributeAccess,
     NoOffsetPagination.id: NoOffsetPagination,
     PreferNamedtupleOverTupleReturn.id: PreferNamedtupleOverTupleReturn,
     NoCorsWildcardWithCredentials.id: NoCorsWildcardWithCredentials,

@@ -80,7 +80,7 @@ def test_no_retired_identifier_is_live_again(shipped: ledger.Ledger) -> None:
 def test_every_rename_points_somewhere_live(shipped: ledger.Ledger) -> None:
     live = shipped.active_ids()
     renames = [entry for entry in shipped.retired if entry.status is ledger.Status.RENAMED]
-    assert renames, "SARJ055 -> SARJ083 happened; a ledger with no rename has lost it"
+    assert renames, "four ESLint rules have been renamed; a ledger with no rename has lost them"
     broken = [
         entry.id for entry in renames if entry.replacement is None or entry.replacement not in live
     ]
@@ -190,23 +190,43 @@ def test_doctor_names_a_removed_precommit_hook(tmp_path: Path) -> None:
     assert "no-patching-system-under-test" in findings[0].where
 
 
-def test_doctor_points_a_renamed_code_at_its_replacement(tmp_path: Path) -> None:
+def test_doctor_tells_a_chained_retirement_to_delete_rather_than_renumber(
+    tmp_path: Path,
+) -> None:
+    """SARJ055 was renumbered to SARJ083, and then SARJ083 was removed outright.
+
+    A `renamed` entry whose replacement has since been retired is the one shape
+    that turns `doctor` into a liar: it would send a consumer to rewrite a
+    suppression into a code that no longer resolves either. The fix is to
+    collapse the chain when the far end goes, and this pins that it happened.
+    """
     _ = (tmp_path / "service.py").write_text(
         "value = data['k']  # sarj-noqa: SARJ055\n", encoding="utf-8"
     )
     findings = list(check_retired_rules(tmp_path))
     assert len(findings) == 1
-    assert "renamed to SARJ083" in findings[0].detail
+    assert "no longer exists" in findings[0].detail
+    assert "SARJ083" not in findings[0].detail.split("--")[0]
 
 
-def test_doctor_leaves_a_live_rule_alone(tmp_path: Path) -> None:
+def test_doctor_names_a_removed_python_hook_and_its_code(tmp_path: Path) -> None:
+    """A consumer on SARJ083 holds both spellings, and both have to be named.
+
+    The hook id is what makes `pre-commit` fail outright on the next upgrade; the
+    baseline key is survivable but silent, which is why nothing else would report
+    it.
+    """
     _ = (tmp_path / ".pre-commit-config.yaml").write_text(
         "repos:\n  - hooks:\n      - id: sarj-no-implicit-attribute-access\n", encoding="utf-8"
     )
-    assert not list(check_retired_rules(tmp_path)), (
-        "the Python rule of that name still exists; only the ESLint rule was removed,"
-        " and conflating the two namespaces would send consumers to delete a live hook"
+    _ = (tmp_path / ".sarj-python-baseline.json").write_text(
+        '{"src/api.py": {"SARJ083": 4}}\n', encoding="utf-8"
     )
+    findings = sorted(finding.where for finding in check_retired_rules(tmp_path))
+    assert findings == [
+        ".pre-commit-config.yaml: no-implicit-attribute-access x1",
+        ".sarj-python-baseline.json: SARJ083 x1",
+    ]
 
 
 def test_doctor_does_not_flag_prose_that_merely_contains_a_rule_name(tmp_path: Path) -> None:
