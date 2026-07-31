@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from sarj_lint_configs._meta import (
     CONFIGS_DIR,
+    ESLINT_PEERS,
     ESLINT_STRICT,
     MARKDOWNLINT_STRICT,
     PYRIGHT_STRICT,
@@ -14,6 +15,7 @@ from sarj_lint_configs._meta import (
 
 __all__ = [
     "CONFIGS_DIR",
+    "ESLINT_PEERS",
     "ESLINT_STRICT",
     "MARKDOWNLINT_STRICT",
     "PYRIGHT_STRICT",

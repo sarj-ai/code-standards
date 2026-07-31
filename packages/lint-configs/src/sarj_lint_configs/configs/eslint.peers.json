@@ -1,0 +1,40 @@
+{
+  "$comment": [
+    "Every npm package `eslint.strict.mjs` imports, at the exact versions this repo",
+    "installs and tests. The set was a hidden contract: a consumer following the",
+    "README hit `Cannot find package 'typescript-eslint'`, installed it, hit the next",
+    "one, and after nine rounds discovered the set does not resolve at all.",
+    "",
+    "It still does not resolve without `overrides` -- see `npmOverrides` below. That",
+    "is not a stale note: the config's unicorn floor (72) pulls `eslint >= 10.4`,",
+    "while `eslint-plugin-react@7.37.5`, the newest published release, peers",
+    "`eslint <= ^9.7`. npm refuses the tree outright. Copying the config and deleting",
+    "imports was the only path that worked, which is why consumers vendor.",
+    "",
+    "`sarj-lint-configs init` writes the overrides block and prints the install",
+    "command. `packages/typescript` installs exactly this set, so CI proves it",
+    "resolves and that ESLint can load the config with it."
+  ],
+  "peers": {
+    "@eslint-community/eslint-plugin-eslint-comments": "4.7.2",
+    "@sarj/eslint-plugin": "5.0.0",
+    "eslint": "10.8.0",
+    "eslint-plugin-better-tailwindcss": "4.7.0",
+    "eslint-plugin-perfectionist": "5.10.0",
+    "eslint-plugin-react": "7.37.5",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "eslint-plugin-simple-import-sort": "14.0.0",
+    "eslint-plugin-unicorn": "72.0.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.65.0"
+  },
+  "npmOverrides": {
+    "eslint-plugin-react": {
+      "eslint": "$eslint"
+    }
+  },
+  "ceilings": {
+    "eslint-plugin-react": "7.37.5 is the newest release; it peers `eslint <= ^9.7` AND calls the `context.getFilename()` removed in ESLint 10, so on the ESLint 10 this config requires it fails to install without `npmOverrides` and then throws on the first file linted. eslint.strict.mjs therefore skips its 18 rules on ESLint 10+; `tests/strict-config-runs.test.ts` fails when a release fixes this, so the workaround cannot outlive the bug.",
+    "typescript": "typescript-eslint@8 peers `>=4.8.4 <6.1.0`, so TypeScript 7 is rejected."
+  }
+}

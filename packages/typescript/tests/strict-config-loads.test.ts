@@ -82,11 +82,21 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
     expect(envConfig.rules?.["@sarj/no-raw-env"]).toEqual([0]);
 
     // A severity-only override keeps the options the earlier block set, so
-    // compare the severity slot rather than the whole entry.
+    // compare the severity slot rather than the whole entry. The design-system
+    // block turns off a `react/*` rule and nothing else, so it is empty while
+    // the eslint-plugin-react guard is active (see eslint.strict.mjs) -- assert
+    // whichever is true rather than deleting the check, so it comes back on its
+    // own when the guard expires.
     const designSystemConfig = await configFor("src/components/ui/button.tsx");
-    expect(
-      (designSystemConfig.rules?.["react/forbid-elements"] as unknown[])[0],
-    ).toBe(0);
+    const forbidElements = designSystemConfig.rules?.["react/forbid-elements"];
+    if (forbidElements === undefined) {
+      const reactKeys = Object.keys(designSystemConfig.rules ?? {}).filter(
+        (rule) => rule.startsWith("react/"),
+      );
+      expect(reactKeys).toEqual([]);
+    } else {
+      expect((forbidElements as unknown[])[0]).toBe(0);
+    }
 
     const plainConfig = await configFor("src/index.ts");
     expect(plainConfig.rules?.["@sarj/no-raw-env"]).toEqual([2]);

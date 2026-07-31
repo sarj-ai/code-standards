@@ -38,17 +38,44 @@ For a one-off personal install instead:
 
 Then run any audit, e.g. `/sarj-audit:data-contracts` or `/sarj-audit:concurrency-and-performance`. The plugin lives in [`plugins/sarj-audit/`](plugins/sarj-audit/); [`commands/stack-detection.md`](plugins/sarj-audit/commands/stack-detection.md) is the shared stack-aware Phase-0 the audits gate on.
 
-## How to use (lint rules)
+## Adopt (two commands)
 
-| Tool | Add this |
+```bash
+uv add --dev sarj-lint-configs
+uv run --frozen sarj-lint-configs init
+```
+
+`init` detects whether the repo is Python, TypeScript or both; syncs only the
+configs that ecosystem uses; wires them into `pyproject.toml`,
+`pyrightconfig.json` and `eslint.config.mjs`; writes a pre-commit block; records
+the adopted version in `.sarj-standards.toml`; and prints the CI snippet plus, for
+TypeScript, the one `npm install` command whose versions actually resolve
+together. `--dry-run` shows the plan first; nothing existing is overwritten
+without `--force`.
+
+Deliberately no version literal above. Pinning a version in prose is how the
+previous instructions came to pin `sarj-lint-configs` at 0.10.0 five minor
+versions after 0.10.0, and to name a peer floor of `@sarj/eslint-plugin` 2.16.0
+for a config that needed 2.17.0 or newer — anyone who followed them got a stale
+toolchain or a broken config. `uv add` resolves the current version; `.sarj-standards.toml` records it;
+`doctor` proves everything else agrees. Both READMEs are now asserted against the
+shipping versions by a test, so this section cannot rot silently again.
+
+## Keep current (three commands, run them in CI)
+
+| Command | Answers |
 |---|---|
-| **All strict configs** | `uv add --dev sarj-lint-configs==0.10.0` → `uv run --frozen sarj-lint-configs sync --force` |
-| **Python / SQL / IaC rules** | `uv run --frozen sarj-lint-configs check .` |
-| **ESLint rules** | `pnpm add -D --save-exact @sarj/eslint-plugin@4.1.0` → import the synced `eslint.strict.mjs` |
-| **Config drift in CI** | `uv run --frozen sarj-lint-configs sync --check` |
+| `uv run --frozen sarj-lint-configs doctor` | Do the pyproject pin, the pre-commit rev, the CI pin and the `@sarj/eslint-plugin` pin all agree? |
+| `uv run --frozen sarj-lint-configs sync --check` | Has anyone edited a synced config? |
+| `uv run --frozen sarj-lint-configs check .` | Do the custom Python/SQL/IaC rules pass? |
 
-See [`packages/lint-configs/README.md`](packages/lint-configs/README.md) for
-polyglot destination routing and the recommended Lefthook jobs.
+For TypeScript, `uv run --frozen sarj-lint-configs peers` prints every npm package
+`eslint.strict.mjs` needs at versions that install together — there is no
+`@latest` combination that does.
+
+See [`packages/lint-configs/README.md`](packages/lint-configs/README.md) for how
+to extend the configs without forking them, polyglot destination routing, and the
+generated pre-commit block.
 
 ## Where things live
 
@@ -82,9 +109,14 @@ For a rule release, keep the change atomic: update the implementation, registry,
 strict config and tests; bump the owning package manifest; update its generated
 lockfile; and, for Python/SQL/IaC rules, bump the exact dependency and version of
 `sarj-lint-configs`. Run `make verify`. The release workflow
-then publishes and tags every changed package. Consumer repositories use grouped
-dependency updates plus `sarj-lint-configs sync --force` and `sync --check`, so a
-new release cannot silently leave their checked-in configs stale.
+then publishes and tags every changed package. Consumer repositories run
+`sarj-lint-configs doctor` and `sync --check` in CI, so a new release cannot
+silently leave them stale.
+
+Adding an npm import to `eslint.strict.mjs` also means adding its pin to
+`eslint.peers.json` and to `packages/typescript`'s devDependencies — a test fails
+otherwise, and `packages/typescript` installing that exact set is what proves the
+set resolves and that ESLint can load the config.
 
 Local fallback: `NPM_TOKEN=... make publish`.
 

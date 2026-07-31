@@ -1,5 +1,6 @@
 import tseslint from "typescript-eslint";
 import react from "eslint-plugin-react";
+import { ESLint } from "eslint";
 import reactHooks from "eslint-plugin-react-hooks";
 import unicorn from "eslint-plugin-unicorn";
 import eslintComments from "@eslint-community/eslint-plugin-eslint-comments";
@@ -388,6 +389,37 @@ if (missingUnicornRules.length > 0) {
 //    prefer-dom-node-dataset. `prefer-explicit-viewport-units` is a CSS-language
 //    rule and cannot be enabled in a JS config at all.
 
+
+// eslint-plugin-react is UNUSABLE on ESLint 10, and this config's own unicorn
+// floor requires ESLint 10.
+//
+// 7.37.5 is the newest published release. Its `lib/util/version.js` calls
+// `context.getFilename()`, removed in ESLint 10, so every react rule dies with
+// `TypeError: contextOrFilename.getFilename is not a function` the moment it
+// lints a file. Not at config load -- `calculateConfigForFile` normalises the
+// config without ever loading a rule's implementation, so the config-load test
+// passed while the config could not lint a single file. Only running ESLint
+// finds it, which is exactly the failure mode that ends with a consumer copying
+// the file and hacking on the copy.
+//
+// So the 18 react rules below are opt-out rather than removed: they run on
+// ESLint 9, and are skipped with a `plugins`-level omission on 10+ so the rest
+// of the config (including the 199 unicorn rules that forced the 10 floor) is
+// usable today. Delete this guard when eslint-plugin-react ships ESLint 10
+// support; `tests/strict-config-runs.test.ts` fails if the guard stops being
+// needed, so it cannot outlive the bug.
+const ESLINT_MAJOR = Number.parseInt(ESLint.version.split(".")[0] ?? "0", 10);
+const REACT_PLUGIN_WORKS = ESLINT_MAJOR < 10;
+const reactPlugins = REACT_PLUGIN_WORKS ? { react } : {};
+
+/** Drop `react/*` keys when the plugin cannot run, so ESLint sees no unknown rule. */
+const withoutReactRules = (rules) =>
+  REACT_PLUGIN_WORKS
+    ? rules
+    : Object.fromEntries(
+        Object.entries(rules).filter(([name]) => !name.startsWith("react/")),
+      );
+
 /** @type {import("eslint").Linter.Config[]} */
 const config = [
   ...tseslint.configs.strictTypeChecked,
@@ -400,7 +432,7 @@ const config = [
     },
     plugins: {
       "@typescript-eslint": tseslint.plugin,
-      react,
+      ...reactPlugins,
       "react-hooks": reactHooks,
       unicorn,
       "@eslint-community/eslint-comments": eslintComments,
@@ -417,7 +449,7 @@ const config = [
       },
     },
     settings: { react: { version: "detect" } },
-    rules: {
+    rules: withoutReactRules({
       "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/no-non-null-assertion": "error",
       "@typescript-eslint/no-deprecated": "error",
@@ -958,7 +990,7 @@ const config = [
       // per repo:
       //   "@sarj/no-storage-in-stateless-modules": ["error", { modules: [...] }],
       //   "@sarj/no-raw-fetch-outside-clients": ["error", { allow: [...] }],
-    },
+    }),
   },
 
   {
@@ -972,9 +1004,9 @@ const config = [
 
   {
     files: ["**/components/ui/**", "**/components/design-system/**"],
-    rules: {
+    rules: withoutReactRules({
       "react/forbid-elements": "off",
-    },
+    }),
   },
 
   {
