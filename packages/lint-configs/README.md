@@ -61,6 +61,7 @@ one tested unit.
 | --- | --- | --- |
 | `@sarj/eslint-plugin` | `4.1.0` | Contains every custom TypeScript rule referenced by the config. |
 | `eslint-plugin-unicorn` | `>= 65` *only* if you pass `checkDirectories` | The option does not exist before 65, and on 64 an unknown option is a **hard config error**, not a soft degrade. |
+| `eslint-plugin-perfectionist` | `>= 4.0.0` | `sort-modules` does not exist before 4. On 3.x this is a **hard config error**, not a soft degrade. |
 
 `@sarj/eslint-plugin@3.0.0` is a **breaking** release: it removes
 `no-unsafe-cast`, `prefer-shadcn`, `no-sequential-await`,
