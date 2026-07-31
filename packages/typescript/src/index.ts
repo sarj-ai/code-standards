@@ -1,5 +1,5 @@
 /**
- * @fileoverview index — the plugin's rule registry and its two presets; the rename map lives in `rules/_renames.ts`.
+ * @fileoverview index — the plugin's rule registry and its two presets; the historical rename map lives in `rules/_renames.ts`.
  */
 
 import enforceFileStructure from "./rules/enforce-file-structure.js";
@@ -114,38 +114,8 @@ const rules = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "8.0.0",
+  version: "9.0.0",
 } as const;
-
-type RuleModule = (typeof rules)[keyof typeof rules];
-
-/**
- * The rename map, checked against the live registry: a target that is not a rule
- * is a typo that would register an alias of `undefined`.
- */
-const renames: Readonly<Record<string, keyof typeof rules>> = renamedRules;
-
-const deprecatedAliases = Object.fromEntries(
-  Object.entries(renames).map(([from, to]) => {
-    const rule = rules[to] as RuleModule;
-    return [
-      from,
-      {
-        ...rule,
-        meta: {
-          ...rule.meta,
-          deprecated: {
-            message: `Renamed to \`@sarj/${to}\`.`,
-            replacedBy: [{ rule: { name: `@sarj/${to}` } }],
-            deprecatedSince: meta.version,
-          },
-        },
-      },
-    ];
-  }),
-) as Record<keyof typeof renamedRules, RuleModule>;
-
-const allRules = { ...rules, ...deprecatedAliases };
 
 const recommendedRules = {
 "@sarj/enforce-file-structure": "warn",
@@ -266,7 +236,7 @@ type FlatPreset = {
  */
 const plugin = {
   meta,
-  rules: allRules,
+  rules,
   // Withdrawn names travel WITH the plugin so a consumer's migration script and
   // this repo's gates read one map, not two. See src/rules/_retired.ts.
   retiredRules,

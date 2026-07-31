@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import plugin, { retiredRules, rules } from "../src/index.js";
+import plugin, { renamedRules, retiredRules, rules } from "../src/index.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const STRICT_CONFIG_PATH = resolve(
@@ -255,8 +255,8 @@ describe("lint-configs eslint.strict.mjs stays wired to the plugin", () => {
    * that means something else.
    */
   it("withdrawn rule names are never reused or left configured", () => {
-    // `plugin.rules`, not `rules`: a retired name must not come back as a live
-    // rule OR as a renamed rule's deprecated alias.
+    // `plugin.rules`, not `rules`: a retired name must not come back under any
+    // registration the plugin publishes.
     const live = Object.keys(retiredRules).filter(
       (name) => name in plugin.rules,
     );
@@ -288,9 +288,12 @@ describe("lint-configs eslint.strict.mjs stays wired to the plugin", () => {
    * does an entry invented for a rule that was never deleted.
    *
    * `--no-renames` is deliberate: a rule file that MOVED still has to be
-   * accounted for, and `_renames.ts` is what distinguishes the two cases — a
-   * renamed rule keeps its old name registered as a deprecated alias, so the old
-   * name is still in `plugin.rules` and is not retired.
+   * accounted for, and `_renames.ts` is what distinguishes the two cases. It has
+   * to be read directly rather than inferred from `plugin.rules`, because 9.0.0
+   * deleted the deprecated aliases 7.0.0 registered — the four renamed-away
+   * filenames are gone from the registry too, and a rename is still not a
+   * withdrawal. `rule-docs.test.ts` keeps the two maps disjoint, so a name can
+   * be excused by exactly one of them.
    */
   it("_retired.ts lists exactly the rule files git has seen deleted", () => {
     expect(gitOutput("rev-parse", "--is-shallow-repository").trim()).toBe(
@@ -315,9 +318,9 @@ describe("lint-configs eslint.strict.mjs stays wired to the plugin", () => {
       const name = path.slice(path.lastIndexOf("/") + 1, -".ts".length);
       // `_tailwind.ts` and friends are shared helpers, never rule names.
       if (name.startsWith("_")) continue;
-      // Still registered — either re-added under the same name, or renamed and
-      // kept as a deprecated alias. Neither is a withdrawal.
-      if (name in plugin.rules) continue;
+      // Still accounted for — re-added under the same name, or renamed, with
+      // `_renames.ts` saying where it went. Neither is a withdrawal.
+      if (name in plugin.rules || name in renamedRules) continue;
       deleted.add(name);
     }
 

@@ -203,16 +203,16 @@ describe("the evidence lives where the links point", () => {
 
 describe("a rename ships a map, not a hole", () => {
   /**
-   * Every rule name the last published major shipped. Frozen — a name is added
-   * when a rule ships and never edited afterwards.
+   * Every rule name the 6.1.0 major shipped. Frozen — a name is added when a
+   * rule ships and never edited afterwards.
    *
    * This is the assertion the `renamedRules` map cannot make about itself:
    * deleting an entry from that map deletes the only thing that knew the old
    * name existed, so the test that walks it passes on an empty map. Consumers
    * hold these names in configs, disable comments and suppression baselines, and
    * a name that simply stops resolving is the failure the SARJ110 renumber
-   * caused. A name may be RETIRED, which is a separate, deliberate act; it may
-   * not quietly vanish.
+   * caused. A name may be RETIRED or RENAMED, which are separate, deliberate
+   * acts; it may not quietly vanish.
    *
    * "Retired" is not restated here. It is read from `retiredRules`, the same map
    * `strict-config-sync.test.ts` derives from git history — so a withdrawal is
@@ -272,15 +272,28 @@ describe("a rename ships a map, not a hole", () => {
     "zod-naming-convention",
   ];
 
-  it("still resolves every name the previous major shipped, unless retired", () => {
-    const gone = SHIPPED_IN_6_1_0.filter(
-      (name) => !(name in plugin.rules) && !(name in retiredRules),
+  it("froze the whole list, so a name cannot be dropped from the guard itself", () => {
+    // Editing an entry OUT of this list would let the rule it names vanish with
+    // nothing failing — the guard would delete its own evidence. The length is
+    // the cheapest thing that notices.
+    expect(SHIPPED_IN_6_1_0).toHaveLength(51);
+    expect(new Set(SHIPPED_IN_6_1_0).size).toBe(SHIPPED_IN_6_1_0.length);
+  });
+
+  it("accounts for every name the previous major shipped", () => {
+    // A shipped name is either still a rule, or recorded as renamed, or recorded
+    // as retired. What it may never be is absent from all three, which is a name
+    // that stopped resolving with nothing anywhere saying what to do instead.
+    const unaccounted = SHIPPED_IN_6_1_0.filter(
+      (name) =>
+        !(name in plugin.rules) && !(name in renamedRules) && !(name in retiredRules),
     );
     expect(
-      gone,
-      "a shipped rule name stopped resolving. Rename it through `renamedRules`, " +
-        "which keeps the old name registered as a deprecated alias — or retire it " +
-        "deliberately by deleting the rule, which `src/rules/_retired.ts` records.",
+      unaccounted,
+      "a shipped rule name stopped resolving with no record of where it went. " +
+        "Record it in `renamedRules` (which `make sync-rule-ledger` turns into the " +
+        "ledger row `doctor` reads) — or retire it deliberately by deleting the " +
+        "rule, which `src/rules/_retired.ts` records.",
     ).toEqual([]);
   });
 
@@ -305,9 +318,13 @@ describe("a rename ships a map, not a hole", () => {
     expect(orphaned).toEqual([]);
   });
 
-  it("keeps every old name resolvable", () => {
+  it("registers no old name — 9.0.0 deleted the deprecated aliases", () => {
+    // 7.0.0 kept each old name registered as a deprecated alias. 9.0.0 deletes
+    // them: the new names are the only names, and a config still naming an old
+    // one gets `Could not find "@sarj/<rule>" in plugin "@sarj"` — which is why
+    // the ledger has to carry the replacement (`rule-ledger.test.ts`).
     for (const from of Object.keys(renamedRules)) {
-      expect(Object.keys(plugin.rules)).toContain(from);
+      expect(Object.keys(plugin.rules)).not.toContain(from);
     }
   });
 
@@ -317,31 +334,15 @@ describe("a rename ships a map, not a hole", () => {
     }
   });
 
-  it("runs the same implementation under both names", () => {
-    for (const [from, to] of Object.entries(renamedRules)) {
-      const alias = plugin.rules[from as keyof typeof plugin.rules];
-      const target = rules[to];
-      expect(alias.create).toBe(target.create);
-      expect(alias.meta.messages).toBe(target.meta.messages);
-    }
-  });
-
-  it("marks every old name deprecated, naming its replacement", () => {
-    for (const [from, to] of Object.entries(renamedRules)) {
-      const alias = plugin.rules[from as keyof typeof plugin.rules];
-      const deprecated = alias.meta.deprecated;
-      expect(typeof deprecated).toBe("object");
-      expect(deprecated).toMatchObject({
-        replacedBy: [{ rule: { name: `@sarj/${to}` } }],
-      });
-      // The live rule must NOT be deprecated, or the map points at a dead end.
+  it("deprecates no live rule, so no name points at a dead end", () => {
+    for (const to of Object.values(renamedRules)) {
       expect(rules[to].meta.deprecated).toBeUndefined();
     }
   });
 
   it("keeps the old names out of both presets", () => {
-    // Wiring an alias would double-report the same defect under two names, and
-    // a consumer's shrink-only baseline would read the second as growth.
+    // A preset naming a rule the plugin does not define is `Could not find
+    // "@sarj/<rule>" in plugin "@sarj"` for every consumer of that preset.
     for (const from of Object.keys(renamedRules)) {
       expect(plugin.configs.strict.rules).not.toHaveProperty(`@sarj/${from}`);
       expect(plugin.configs.recommended.rules).not.toHaveProperty(`@sarj/${from}`);
