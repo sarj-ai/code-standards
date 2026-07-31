@@ -646,13 +646,12 @@ const config = [
       // already ignores the `.d` middle segment) and over-broad — it let
       // `apiTypes.d.ts` through, which is a genuine violation.
       //
-      // `checkDirectories` is deliberately NOT passed. It does not exist before
-      // eslint-plugin-unicorn 65 and one first-party consumer pins 64.0.0, where
-      // an unknown option
-      // is a hard config error rather than a soft degrade. Measured on the real
-      // corpus it also earns nothing: 4 findings, all 4 false positives on App
-      // Router directories whose names ARE the public URL, where a rename
-      // silently changes a user-visible route.
+      // `checkDirectories` is deliberately NOT passed. The version argument for
+      // withholding it is moot now that this config carries a hard `>= 72`
+      // floor. The surviving reason is the measured one: on the real corpus it
+      // earns nothing — 4 findings, all 4 false positives on App Router
+      // directories whose names ARE the public URL, where a rename silently
+      // changes a user-visible route.
       "unicorn/filename-case": [
         "error",
         {
