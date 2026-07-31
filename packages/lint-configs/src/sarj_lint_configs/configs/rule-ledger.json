@@ -55,6 +55,7 @@
       "no-tautological-expect",
       "no-trailing-value-narration",
       "no-type-member-comment-wall",
+      "no-union-in-comment",
       "no-unnecessary-use-client",
       "no-unsafe-mock-casting",
       "no-zod-native-enum",
@@ -138,12 +139,14 @@
       "redundant-class-docstring",
       "redundant-docstring",
       "require-port-for-service",
+      "restated-test-docstring",
       "single-public-export",
       "sleep-with-computed-arg-in-test",
       "stepdown",
       "store-insert-requires-on-conflict",
       "tautological-mock-assertion",
       "test-loops-over-literal-cases",
+      "test-phase-label-comment",
       "trailing-value-narration",
       "trivially-true-assertion",
       "unused-mock-setup",
@@ -242,7 +245,9 @@
       "SARJ084",
       "SARJ085",
       "SARJ086",
-      "SARJ087"
+      "SARJ087",
+      "SARJ088",
+      "SARJ089"
     ],
     "sql": [
       "SARJ101",

@@ -100,6 +100,53 @@ exactly the number this audit is measured by. Per-line reporting is also
 deliberate: each line of a commented-out block is separately deletable, which
 is why the test suite pins two reports for a two-line block.
 
+## The `sectionBanner` arm reaches JSDoc (2026-07)
+
+A JSDoc block used to be exempt from this rule wholesale — `isJsDoc(comment)`
+short-circuited before every check. That exemption is right for the thing it was
+protecting (a JSDoc block is where the "why" conventionally lives) and wrong for
+one shape: a block whose ENTIRE body is a signpost.
+
+    /**
+     * REMOVE METHODS
+     */
+    override remove(entities: T[], options?: RemoveOptions) { … }
+
+That is the same section banner the rule already names in `//` form, wearing the
+one comment syntax nothing measured. The doc-diet ratchet
+(`tests/rule-docs.test.ts`) says the same thing about this repo's own source:
+"none of this plugin's own comment rules could see it — `no-comment-cruft` and
+friends exempt JSDoc, so the one place in the repo where prose grew without
+limit was the one place nothing measured."
+
+**Measured.** 80 candidate blocks over four OSS corpora (medusa, twenty, nest,
+typescript-eslint; 37,208 files), **80 of 80 true positives, 0 false**; the
+protected-class guard below then withholds one, so the shipped rule reports 79.
+They are
+`/** * STATE */`, `/** * MUTATIONS */`, `/** * HOOKS */`, `/** CART START */` /
+`/** CART END */` bracket pairs around type members, and a full ladder of
+`/** * FIND METHODS */` … `/** * PRIVATE METHODS */` down one repository class.
+Zero findings on the four first-party repos (4,054 files) and zero on this
+repo's own source: first-party spells its banners with `//`, which this rule
+already caught 2,796 times.
+
+### The three conditions, and the family each stops
+
+- **EVERY content line must be a signpost.** One shouted line above a paragraph
+  of prose is a heading for documentation the reader came for, not a signpost.
+- **Not protected-class prose.** A shouted line that carries a
+  protected-class signal is a warning someone chose to shout —
+  `/** DOES NOT RETRY */` — and stays. This also spares `/** DEPRECATED … */`,
+  which is a value tag; that is the one candidate of the 80 it withholds.
+- **A shouted label is two to four ALL-CAPS words.** One word is an acronym
+  carrying the fact the name cannot (`/** UTC */`, `/** ISO */`) and is spared;
+  five or more is a sentence someone shouted. Digits are excluded for the same
+  reason — `ISO 8601` is a citation, not a heading. Lowercase is excluded
+  outright: `/** the retry budget */` describes the member below it.
+
+A trailing JSDoc is left alone, as everywhere else in this rule: it annotates
+the code beside it rather than heading a region.
+
 ## Evidence relocated from the source
 
 ### `REGION_TITLE_MAX_WORDS`
@@ -250,3 +297,62 @@ react-router/scripts/release-comments.ts:1, a six-step description of
 what the script does ("1. get all tags sorted by creation date", …) —
 documentation, not a stack of content-free labels.
 
+
+## `for now` is not self-admitted meta-commentary (2026-07-31 sweep)
+
+`for now` was an alternative inside `META_COMMENTARY_RE`, so the phrase alone
+made a comment "self-admitted meta-commentary". Every other alternative in that
+regex NAMES the debt — "is a hack", "keeping it simple", "could be refactored",
+"not sure if", "quick fix", "temporary workaround". `for now` names nothing; it
+is an ordinary temporal qualifier that appears inside genuine scope and
+rationale comments.
+
+Measured over **175,852 content-deduplicated `.ts/.tsx/.js/.jsx` files** from
+four first-party repos and 61 OSS repos, build output excluded: the phrase drove
+**134** of the rule's 2,179 `redundantNarration` findings. Fourteen were read at
+source:
+
+| verdict | n | example (verbatim corpus line) |
+| --- | --- | --- |
+| false positive | 6 | `// our svg icons break if we use data urls, so disable inline assets for now` |
+| | | `// skipping utils for now, as it has independent release process` |
+| | | `// We don't need the recipient here for now, but if we want to push feed notifications to a specific user we could add it.` |
+| | | `// [Joshen] Default to false for now, only used for SQL editor to dynamically invalidate` |
+| | | `// Hero only for now; the release feed lands below it as its port arrives.` |
+| | | `// This is the only hard-coded actor type, as API keys have special handling for now.` |
+| arguable | 6 | `// We only allow DELETE requests for now` (a scope statement) |
+| true positive | 2 | `// Empty for now.`, `// Mock data for now - in real implementation …` |
+
+`JUSTIFICATION_RE` rescued none of them: its connective list is narrow, and
+`as`, `so <verb>` and `intentionally` are not on it.
+
+`isBareDeferral` replaces the alternative. It fires only when the comment
+carries at most **2** content words besides the phrase — deferral with no
+substance. Applied to the same 134 findings it keeps **14** and drops **120**.
+The 14 kept are, in full: five `Empty for now.`, two `Not needed for now`,
+`Internal for now`, `for now client only`, `Nothing to rollback for now`, three
+`login manually for now`, and `only track panels for now` — every one of them a
+deferral that says nothing about what or why. The threshold is 2 rather than 1
+so that `login manually for now` and `only track panels for now` stay flagged;
+raising it to 9 re-admits four of the false positives above, which is what the
+mutation test in `no-comment-cruft.test.ts` pins.
+
+Cost of the guard: two-word scope statements such as `// Mock data for now` lose
+their report. Recorded rather than tuned away — the alternative is 120 wrong
+reports on comments that are doing exactly what the rule asks for.
+
+## Rules that were measured and left alone
+
+The same sweep sized the other `redundantNarration` shapes so they are not
+re-litigated. Of 2,179 findings: 1,325 restatement (corroborated against the
+code below, the heavily guarded path), 228 step-narration, 224 the
+`Helper function to …` opener, 172 the remaining meta-commentary, 167 dummy
+translation, 52 enumeration, 9 `Let's …`.
+
+The `Helper function to …` opener was read at 14 findings: 8 true positives, 5
+arguable, 1 false positive
+(`// Helper type exports - infer directly from schemas for Zod v4 compatibility`,
+where the opener is followed by a real *why*). At ~7% it is inside tolerance, so
+it is left uncorroborated. It is the one shape in `isRedundantNarration` that
+consults neither `JUSTIFICATION_RE` nor the statement below, and that is where a
+future guard belongs if the class grows.

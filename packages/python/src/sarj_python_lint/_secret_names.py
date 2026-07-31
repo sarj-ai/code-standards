@@ -42,7 +42,7 @@ from itertools import pairwise
 import re
 
 
-_SECRET_WORDS = frozenset(
+SECRET_WORDS = frozenset(
     {
         "token",
         "secret",
@@ -59,8 +59,15 @@ _SECRET_WORDS = frozenset(
         "digest",
         "hash",
         "apikey",
+        # `bearer` is in the TypeScript twin's SECRET_WORDS and was in neither
+        # Python set, so `bearer == provided` was a flagged timing attack in one
+        # engine and silent in the other. The lists are otherwise identical,
+        # which is exactly what made the gap invisible.
+        "bearer",
     }
 )
+
+_SECRET_WORDS = SECRET_WORDS
 
 # Tokens that mark a counter, row-id, feature flag, or boolean presence/state
 # marker. As the TRAILING token they mean the identifier is metadata *about* a
@@ -165,7 +172,7 @@ def is_secret_name(identifier: str) -> bool:
         return False
     if leading_word(identifier) in _FLAG_PREFIXES:
         return False
-    if any(tok in _SECRET_WORDS for tok in tokens):
+    if any(tok in SECRET_WORDS for tok in tokens):
         return True
     return _has_api_key(tokens)
 

@@ -1,6 +1,6 @@
 [project]
 name = "sarj-lint-configs"
-version = "0.32.0"
+version = "0.37.0"
 description = "Maximally-strict ruff + pyright + ESLint configs for sarj-ai Python/TypeScript projects."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -15,8 +15,8 @@ classifiers = [
   "Topic :: Software Development :: Quality Assurance",
 ]
 dependencies = [
-    "sarj-iac-lint==0.4.0",
-    "sarj-python-lint==0.37.0",
+    "sarj-iac-lint==0.5.0",
+    "sarj-python-lint==0.40.0",
     "sarj-sql-lint==0.6.0",
 ]
 

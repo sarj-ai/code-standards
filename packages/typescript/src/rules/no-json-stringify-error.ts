@@ -96,7 +96,6 @@ function memberSuggestsError(
   return false;
 }
 
-/** The subject `x` of an `x instanceof Error` test, or null. */
 function instanceofErrorSubject(
   test: TSESTree.Expression,
 ): TSESTree.Expression | null {

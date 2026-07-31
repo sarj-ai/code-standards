@@ -64,14 +64,57 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
     ).toBe(true);
   });
 
-  it("accepts PascalCase React component names", async () => {
-    const namingFindings = (await lint("widget.tsx")).filter(
-      (message) => message.ruleId === "@typescript-eslint/naming-convention",
+  /**
+   * The config shipped with no `ignores`, so `eslint .` linted build output.
+   *
+   * Measured over 175,852 deduplicated files: 24.4% of all `@sarj/*` findings
+   * landed on generated paths. The two fixtures below are byte-identical and
+   * both violate; only their directory differs, so a pass here means the
+   * ignore is doing the work and nothing else is.
+   */
+  it("ignores build output and still lints the identical authored file", async () => {
+    const eslint = new ESLint({
+      cwd: FIXTURE_DIR,
+      overrideConfigFile: true,
+      overrideConfig: strictConfig as Linter.Config[],
+      warnIgnored: false,
+    });
+
+    const [authored] = await eslint.lintFiles([
+      resolve(FIXTURE_DIR, "src/authored.ts"),
+    ]);
+    const authoredRules = (authored?.messages ?? []).map((m) => m.ruleId);
+    expect(authoredRules).toContain("@sarj/no-enum");
+
+    // Same bytes under `lib/`. `lintFiles` on an explicitly named ignored path
+    // returns a result with zero messages, so assert on the messages rather
+    // than on the result count.
+    const compiled = await eslint.lintFiles([
+      resolve(FIXTURE_DIR, "lib/compiled.ts"),
+    ]);
+    expect(compiled.flatMap((r) => r.messages)).toEqual([]);
+
+    // The ignore must be a GLOBAL ignore: an entry that grows a `files` key
+    // stops ignoring anything, and nothing else in the config would notice.
+    const globalIgnores = (strictConfig as Linter.Config[]).filter(
+      (entry) => entry.ignores !== undefined && entry.files === undefined,
     );
-    expect(namingFindings).toEqual([]);
+    expect(globalIgnores.length).toBe(1);
   });
 
-  it("keeps every configured react rule active on ESLint 10", async () => {
+  /**
+   * The 18 react rules were dropped wholesale because eslint-plugin-react calls
+   * `context.getFilename()`, removed in ESLint 10. Dropping them swapped a crash
+   * for silence: every consumer got zero React coverage. `@eslint/compat`'s
+   * `fixupPluginRules` restores the removed context APIs, so the rules run.
+   */
+  it("keeps every react/* key live through the compat adapter", async () => {
+    const major = Number.parseInt(ESLint.version.split(".")[0] ?? "0", 10);
+    if (major < 10) return; // guard inactive on ESLint 9; nothing to assert
+
+    // A react/* key is only safe when the plugin is registered AND its removed
+    // context APIs are restored -- otherwise it is "Definition for rule not
+    // found", or a crash, at consumer lint time.
     const eslint = new ESLint({
       cwd: FIXTURE_DIR,
       overrideConfigFile: true,
@@ -81,15 +124,41 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
       const resolved = await eslint.calculateConfigForFile(
         resolve(FIXTURE_DIR, probe),
       );
-      const leftovers = Object.keys(resolved.rules ?? {}).filter((rule) =>
+      const live = Object.keys(resolved.rules ?? {}).filter((rule) =>
         rule.startsWith("react/"),
       );
-      expect(leftovers.length).toBeGreaterThan(0);
+      expect(
+        live.length,
+        `${probe}: react rules were dropped again -- consumers lose React coverage silently`,
+      ).toBeGreaterThan(0);
     }
   });
 
-  it("runs a React rule through the ESLint compatibility layer", async () => {
-    const messages = await lint("widget.tsx");
-    expect(messages.every((message) => message.fatal !== true)).toBe(true);
+  it("fails once eslint-plugin-react supports ESLint 10, so the adapter expires", async () => {
+    const major = Number.parseInt(ESLint.version.split(".")[0] ?? "0", 10);
+    if (major < 10) return;
+
+    // `lib/util/version.js` is what calls the removed `context.getFilename()`.
+    // This probes the RAW plugin, not the fixed-up one, so it is an honest
+    // upstream check: when a release fixes it this stops throwing, this test
+    // fails, and the @eslint/compat wrapper gets deleted rather than living on.
+    const { default: react } = await import("eslint-plugin-react");
+    const eslint = new ESLint({
+      cwd: FIXTURE_DIR,
+      overrideConfigFile: true,
+      overrideConfig: [
+        {
+          files: ["**/*.tsx"],
+          plugins: { react },
+          rules: { "react/no-unstable-nested-components": "error" },
+        },
+      ] as Linter.Config[],
+    });
+    const [result] = await eslint.lintFiles([resolve(FIXTURE_DIR, "widget.tsx")]);
+    const fatal = (result?.messages ?? []).filter((m) => m.fatal === true);
+    expect(
+      fatal.length > 0,
+      "eslint-plugin-react now runs on ESLint 10 -- drop fixupPluginRules from eslint.strict.mjs",
+    ).toBe(true);
   });
 });

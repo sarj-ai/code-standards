@@ -99,7 +99,6 @@ function readMethodProperty(
 function isFetchCall(node: TSESTree.CallExpression): boolean {
   const callee = node.callee;
 
-  // fetch(url, options?)
   if (
     callee.type === AST_NODE_TYPES.Identifier &&
     callee.name === "fetch"

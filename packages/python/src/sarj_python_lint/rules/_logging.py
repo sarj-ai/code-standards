@@ -17,6 +17,29 @@ _LOGGER_NAMES = frozenset({"logger", "log", "logging", "loguru", "_logger", "_lo
 LOGGER_FACTORIES = frozenset({"getlogger", "get_logger"})
 _LOGGER_FACTORIES = LOGGER_FACTORIES
 
+# Public: the `.attr` of a logging call. SARJ012 (secret-in-log) once carried a
+# SHORTER list than SARJ017 (f-string-in-log) -- 7 names against 11 -- so
+# `logger.success("auth", token=token)` was a log call to one rule and not to
+# the other, and the SECURITY rule was the one that could not see it. `success`,
+# `trace` and `log` are documented loguru levels and `loguru` is already in
+# `_LOGGER_NAMES`, so the omission was a silent false negative on a real idiom.
+# One set, imported everywhere, is what stops that recurring.
+LOG_METHODS = frozenset(
+    {
+        "critical",
+        "debug",
+        "error",
+        "exception",
+        "fatal",
+        "info",
+        "log",
+        "success",
+        "trace",
+        "warn",
+        "warning",
+    }
+)
+
 
 def is_logger_expr(expr: ast.expr) -> bool:
     """Report whether `expr` evaluates to a logger.

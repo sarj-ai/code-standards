@@ -82,7 +82,13 @@ def test_flags_on_each_log_method(method: str):
     assert _codes(src) == ["SARJ012"]
 
 
-NON_LOG_METHODS = ["send", "write", "log", "emit", "handle", "flush", "trace", "notice"]
+# `log` and `trace` were here until the vocabulary unification. Both are real
+# sinks -- `trace` is a documented loguru level and `loguru` is in _LOGGER_NAMES;
+# `logger.log(level, msg, ...)` writes exactly like `.info`. SARJ012 matches
+# KEYWORD arguments, which are position-independent, so `.log`'s leading level
+# argument never affected the analysis. Listing them here asserted a leak was
+# not a leak, and SARJ017 disagreed with this rule about both.
+NON_LOG_METHODS = ["send", "write", "emit", "handle", "flush", "notice"]
 
 
 @pytest.mark.parametrize("method", NON_LOG_METHODS)
@@ -511,9 +517,9 @@ def test_flags_bind_chain_on_self_logger():
     assert _codes('self.logger.bind(request_id=rid).info("m", secret=s)\n') == ["SARJ012"]
 
 
-def test_skips_logger_log_with_positional_level():
-    """`.log(level, ...)` is not a recognised level method, even with a positional level."""
-    assert _check('logger.log(logging.INFO, "m", token=t)\n') == []
+def test_flags_logger_log_with_positional_level():
+    """`.log(level, ...)` writes to the same sinks; the level argument is not a shield."""
+    assert _codes('logger.log(logging.INFO, "m", token=t)\n') == ["SARJ012"]
 
 
 # --------------------------------------------------------------------------- #
