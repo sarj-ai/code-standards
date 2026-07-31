@@ -32,6 +32,56 @@ _RAISES_TOKEN_RE = re.compile(r"(^|_)(raises|warns|deprecated_call)", re.IGNOREC
 
 _RAISES_NAMES = frozenset({"raises", "warns", "fail"})
 
+# Library assertion helpers whose names contain none of the four tokens above.
+# The name heuristic is a good default and it has a blind spot: a widely used
+# assertion API is free to spell itself without the word "assert".
+#
+# MEASURED, 2026-07-31, over 39,893 content-deduplicated `.py` files: 4,386 of
+# this rule's 7,352 findings — 59.7% — were on test functions whose body calls
+# one of these, i.e. tests that assert perfectly well through a helper this rule
+# could not see. Three read at source (`test_run_without_stepwise`,
+# `test_repr_params_unknown_list`, `test_terminal_report_failedfirst`) are
+# assertion-complete; the flag was wrong in each.
+#
+# Two vocabularies, both exact names rather than a pattern, because the shapes
+# are too generic to match loosely:
+#
+#   * pytest's own `LineMatcher` (`_pytest.pytester`). `result.stdout
+#     .fnmatch_lines([...])` RAISES `Failed` on a mismatch — it is the canonical
+#     way to assert on CLI output, and any repo that tests a console script with
+#     the `pytester` fixture uses it. 438 findings.
+#   * `sqlalchemy.testing.assertions`, whose trailing underscore exists to dodge
+#     Python keywords (`is_`, `in_`). 3,948 findings.
+#
+# Kept as a closed set: a wildcard for "ends in an underscore" or "starts with
+# eq" would swallow unrelated user functions, and the whole point of this rule
+# is that a test which really does assert nothing stays flagged.
+_LIBRARY_ASSERTION_NAMES = frozenset({
+    # _pytest.pytester.LineMatcher
+    "fnmatch_lines",
+    "fnmatch_lines_random",
+    "no_fnmatch_line",
+    "no_re_match_line",
+    "re_match_lines",
+    "re_match_lines_random",
+    # sqlalchemy.testing.assertions
+    "eq_",
+    "eq_ignore_whitespace",
+    "eq_regex",
+    "in_",
+    "is_",
+    "is_false",
+    "is_instance_of",
+    "is_none",
+    "is_not",
+    "is_not_",
+    "is_not_none",
+    "is_true",
+    "ne_",
+    "not_in",
+    "not_in_",
+})
+
 _TEST_PREFIX = "test_"
 
 # Fluent verification DSLs reached through an attribute rather than a call name.
@@ -307,7 +357,9 @@ def _names_verification(func: ast.expr) -> bool:
 
 
 def _reads_as_verification(name: str) -> bool:
-    return bool(_ASSERTION_NAME_RE.search(name) or _RAISES_TOKEN_RE.search(name))
+    return name in _LIBRARY_ASSERTION_NAMES or bool(
+        _ASSERTION_NAME_RE.search(name) or _RAISES_TOKEN_RE.search(name)
+    )
 
 
 def _chain_has_fluent_marker(node: ast.expr) -> bool:

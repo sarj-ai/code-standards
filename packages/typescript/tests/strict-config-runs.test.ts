@@ -65,6 +65,44 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
   });
 
   /**
+   * The config shipped with no `ignores`, so `eslint .` linted build output.
+   *
+   * Measured over 175,852 deduplicated files: 24.4% of all `@sarj/*` findings
+   * landed on generated paths. The two fixtures below are byte-identical and
+   * both violate; only their directory differs, so a pass here means the
+   * ignore is doing the work and nothing else is.
+   */
+  it("ignores build output and still lints the identical authored file", async () => {
+    const eslint = new ESLint({
+      cwd: FIXTURE_DIR,
+      overrideConfigFile: true,
+      overrideConfig: strictConfig as Linter.Config[],
+      warnIgnored: false,
+    });
+
+    const [authored] = await eslint.lintFiles([
+      resolve(FIXTURE_DIR, "src/authored.ts"),
+    ]);
+    const authoredRules = (authored?.messages ?? []).map((m) => m.ruleId);
+    expect(authoredRules).toContain("@sarj/no-enum");
+
+    // Same bytes under `lib/`. `lintFiles` on an explicitly named ignored path
+    // returns a result with zero messages, so assert on the messages rather
+    // than on the result count.
+    const compiled = await eslint.lintFiles([
+      resolve(FIXTURE_DIR, "lib/compiled.ts"),
+    ]);
+    expect(compiled.flatMap((r) => r.messages)).toEqual([]);
+
+    // The ignore must be a GLOBAL ignore: an entry that grows a `files` key
+    // stops ignoring anything, and nothing else in the config would notice.
+    const globalIgnores = (strictConfig as Linter.Config[]).filter(
+      (entry) => entry.ignores !== undefined && entry.files === undefined,
+    );
+    expect(globalIgnores.length).toBe(1);
+  });
+
+  /**
    * The react guard is a workaround with an expiry date. When
    * eslint-plugin-react ships ESLint 10 support this test fails, which is the
    * prompt to delete the guard rather than leave 18 rules quietly disabled
