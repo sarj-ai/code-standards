@@ -206,7 +206,7 @@ Deliberately NOT flagged:
   f-string" would restyle an injection instead of fixing it, and this rule must
   not become a competing SQL rule. The keyword match is case-SENSITIVE, so
   prose like `"copied from " + src` is not mistaken for a query. 7 hits,
-* **generated files** (`_paths.is_generated_source`). Re-running the generator
+* **generated files** (`_paths.is_generated`). Re-running the generator
   discards any edit, so a style finding there can never be acted on — the same
   exemption SARJ002 makes. 5 hits, all in bulbul's Speakeasy
   `python/sdk/src/sarj_platform_sdk/`.
@@ -229,7 +229,7 @@ from typing import TYPE_CHECKING, override
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
 from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._logging import is_logger_expr
-from sarj_python_lint.rules._paths import is_generated_source
+from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
@@ -326,7 +326,7 @@ class PreferFstringOverConcat(Rule):
             One diagnostic per outermost offending concatenation, sorted by position.
 
         """
-        if "+" not in source or is_generated_source(source):
+        if "+" not in source or is_generated(path, source):
             return []
         tree = parse_or_none(path, source)
         if tree is None:

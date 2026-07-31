@@ -84,7 +84,7 @@ duplicate can be suppressed per-line with `# sarj-noqa: SARJ024 — <reason>`.
 
 Skipped entirely: `conftest.py`, test files (`test_*.py` or under a `tests/`
 directory) — fixtures legitimately repeat literal payloads.
-* **generated files** (`_paths.is_generated_source`). Their layout is the
+* **generated files** (`_paths.is_generated`). Their layout is the
   generator's, and re-running the generator discards any edit, so a finding
   there can never be acted on in place. Measured on the 69 `DO NOT EDIT`
   files git-tracked across bulbul and noura-be — Speakeasy's
@@ -100,7 +100,7 @@ from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
 from sarj_python_lint.rules._ast_index import children, walk
-from sarj_python_lint.rules._paths import is_generated_source
+from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
@@ -130,7 +130,7 @@ class NoRepeatedStringLiteral(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated_source(source):
+        if is_generated(path, source):
             return []
         if _is_skipped_path(path):
             return []

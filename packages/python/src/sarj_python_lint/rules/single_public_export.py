@@ -39,7 +39,7 @@ a `tests/` directory), and framework-convention filenames whose stem is fixed by
 a framework/tool and cannot be renamed (`models.py`, `views.py`, `base.py`, ...).
 Modules whose single export already snake-cases to the stem are not flagged
 (there is nothing to improve).
-* **generated files** (`_paths.is_generated_source`). Their layout is the
+* **generated files** (`_paths.is_generated`). Their layout is the
   generator's, and re-running the generator discards any edit, so a finding
   there can never be acted on in place. Measured on the 69 `DO NOT EDIT`
   files git-tracked across bulbul and noura-be — Speakeasy's
@@ -53,7 +53,7 @@ import re
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
-from sarj_python_lint.rules._paths import is_generated_source
+from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
@@ -134,7 +134,7 @@ class SinglePublicExport(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated_source(source):
+        if is_generated(path, source):
             return []
         if _is_skipped_path(path):
             return []

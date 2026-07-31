@@ -62,7 +62,7 @@ from typing import TYPE_CHECKING, final, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
 from sarj_python_lint.rules._ast_index import nodes, walk
-from sarj_python_lint.rules._paths import is_generated_source, is_test_path
+from sarj_python_lint.rules._paths import is_generated, is_test_path
 
 
 if TYPE_CHECKING:
@@ -113,7 +113,7 @@ class NoStdlibLogging(Rule):
             The diagnostics, sorted by (line, col).
 
         """
-        if is_test_path(path) or _EXEMPT_DIR_NAMES.intersection(path.parts) or is_generated_source(source):
+        if is_test_path(path) or _EXEMPT_DIR_NAMES.intersection(path.parts) or is_generated(path, source):
             return []
         # Every diagnostic comes from an `import logging...` statement, which
         # cannot exist unless the module name is spelled in the text. Checking

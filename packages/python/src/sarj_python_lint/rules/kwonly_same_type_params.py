@@ -42,7 +42,7 @@ Never flags — these signatures cannot or should not change:
   `black/scripts/diff_shades_gha_helper.py:167`),
 * test files (`_paths.is_test_path`) — test fakes and helpers mirror the
   signatures of the code under test and cannot unilaterally change them,
-* generated files (`_paths.is_generated_source`) — the signature mirrors
+* generated files (`_paths.is_generated`) — the signature mirrors
   whatever the generator emits (found via trio's `_generated_io_kqueue.py`),
 * functions whose name is referenced as a VALUE anywhere in the module
   (passed to a registry, returned, stored) — the signature is a callback
@@ -101,7 +101,7 @@ from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
 from sarj_python_lint.rules._ast_index import nodes, walk
-from sarj_python_lint.rules._paths import is_generated_source, is_test_path
+from sarj_python_lint.rules._paths import is_generated, is_test_path
 
 
 if TYPE_CHECKING:
@@ -196,7 +196,7 @@ class KwonlySameTypeParams(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_test_path(path) or is_generated_source(source):
+        if is_test_path(path) or is_generated(path, source):
             return []
         tree = parse_or_none(path, source)
         if tree is None:
