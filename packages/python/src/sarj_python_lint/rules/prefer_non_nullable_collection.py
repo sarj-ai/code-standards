@@ -1,36 +1,7 @@
-"""SARJ082: prefer non-null list fields in declared data shapes.
+"""SARJ082 — Prefer non-null list fields in declared data shapes.
 
-Nullable list fields create two representations of an empty collection: ``None``
-and ``[]``. When the project convention is that absence means empty, every
-consumer inherits an unnecessary nullable type and null guard.
-
-    # flagged
-    class CallSettings(BaseModel):
-        organization_ids: list[OrganizationId] | None = None
-
-    # preferred when omission means "empty"
-    class CallSettings(BaseModel):
-        organization_ids: list[OrganizationId] = Field(default_factory=list)
-
-The rule applies to annotated fields on every class data shape, including
-Pydantic models, dataclasses, attrs classes, and ordinary typed classes. It does
-not inspect function defaults: ``None`` is the safe Python idiom there because
-``[]`` would be shared mutable state. Tests and generated sources are exempt.
-``Optional[list[T]]`` and ``Union[list[T], None]`` are recognized alongside PEP
-604 unions. A field is reported whether it defaults to ``None``, uses
-``Field(default=None)``, or has no default at all.
-
-This is an opinionated application convention, not a Python type-system fact.
-When ``None`` is a meaningful third state (for example, "inherit this
-constraint" rather than "allow no values"), keep the union and suppress the
-line with ``# sarj-noqa: SARJ082 — None means ...``.
-
-Corpus sweep (2026-07-27): FastAPI, Pydantic, SQLModel, Zod, and React Router;
-2,901 Python/TypeScript files total. The final rule reported 30 explicit Python
-nullable-list fields. Every match had the advertised AST shape; the sweep also
-confirmed the meaningful-third-state suppression boundary on public framework
-contracts such as Pydantic's ``UrlConstraints.allowed_schemes``.
-
+Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_non_nullable_collection.py
+Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ082.md
 """
 
 from __future__ import annotations
@@ -51,10 +22,9 @@ _UNION_NAMES = frozenset({"Optional", "Union"})
 
 
 class PreferNonNullableCollection(Rule):
-    """Nullable list field -- use a non-null list with an empty default."""
-
     id: str = "prefer-non-nullable-collection"
     code: str = "SARJ082"
+    has_evidence: bool = True
     description: str = (
         "List fields should use a non-null list and an empty default instead of two equivalent empty states."
     )

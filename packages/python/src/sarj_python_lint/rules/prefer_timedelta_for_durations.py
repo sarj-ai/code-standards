@@ -1,82 +1,7 @@
-"""SARJ014: flag a duration named in time units but typed as a raw `int`/`float`.
+"""SARJ014 — Duration named in time units but typed as a raw `int`/`float`.
 
-A parameter or field whose name carries a time unit (`timeout_seconds`,
-`retry_interval_ms`, `ttl`, `backoff_minutes`, ...) but is annotated `int` or
-`float` forces every call site to remember the unit and invites the
-`_seconds` / `_ms` / `_minutes` naming-collision class of bugs. `datetime.timedelta`
-makes the unit explicit at the call site and lets the type checker catch
-mismatches.
-
-    # flagged
-    def schedule(self, timeout_seconds: int) -> None: ...
-    class Settings(BaseModel):
-        retry_interval_ms: float = 250.0
-        api_timeout_s: NonNegativeFloat = 30.0   # constrained brands too
-
-    # preferred
-    def schedule(self, timeout: timedelta) -> None: ...
-    class Settings(BaseModel):
-        retry_interval: timedelta = timedelta(milliseconds=250)
-
-Scope is deliberately narrow to keep false positives low: only annotated
-function parameters and annotated assignments (`AnnAssign`, i.e. class/module
-fields) are inspected, and only when the annotation resolves to a numeric type —
-bare `int`/`float`, a pydantic constrained brand (`PositiveInt`,
-`NonNegativeFloat`, ...), or any of those under `| None` / `Optional[...]` /
-`Annotated[...]`. Plain local assignments are not flagged.
-
-Deliberately NOT flagged:
-- count-like names (`*_count`, `num_*`, `n_*`, `*_size`, `*_limit`),
-- wall-clock components, which are positions not durations — only plural/abbrev
-  unit names match (`*_minutes`, `*_secs`), so a bare `hour`/`minute`/`second` is
-  left alone,
-- percentages and rates (`*_percentage`, `*_pct`, `*_rate`, `*_ratio`),
-- calendar units that `timedelta` cannot express cleanly (`*_months`, `*_years`),
-- absolute instants (`*_timestamp`, `*_epoch`, `expires_at`, `*_at`),
-- anything already annotated `timedelta`,
-- fields declared directly on a pydantic-settings class (any base name ending in
-  `Settings`, e.g. `BaseSettings` / `pydantic_settings.BaseSettings` / a
-  `...Settings` subclass): these are populated from environment variables, whose
-  bare-numeric wire values `timedelta` cannot parse, so a raw `int`/`float` is
-  the only workable type at that boundary. Ordinary `BaseModel` domain fields are
-  still flagged.
-- test files (`_paths.is_test_path`): test fakes and helpers mirror the
-  signatures of stdlib/third-party APIs under test (`Lock.acquire(timeout=-1)`,
-  seconds-based subprocess helpers) and cannot change them — the trio sweep's
-  false positives were all of this shape.
-- `@overload` stubs. The overload set restates one implementation's signature N
-  times, so reporting each is N-1 duplicates of the same finding; the
-  implementation that follows is still flagged. Six of the famous-repo sweep's
-  21 hits were this
-  (`anyio/src/anyio/_core/_sockets.py:82`, `:97`, `:113`, `:129`, `:141` all
-  restating `happy_eyeballs_delay` for `connect_tcp` at `:155`, plus
-  `anyio/src/anyio/functools.py:282` restating `ttl` for `:303`).
-- **CLI parameters** — a parameter of a function decorated with `click` /
-  `typer` (`@click.option`, `@click.argument`, ...). Same boundary argument as
-  pydantic-settings: the value is parsed out of `argv` by the framework
-  (`type=float`), and `timedelta` is not a shape argv can carry
-  (`httpx/httpx/_main.py:464`, `timeout: float` behind `@click.option("--timeout",
-  type=float, default=5.0)`).
-- **Same-name delegation wrappers** — a body that does nothing but forward the
-  parameter to a callee of the same name (`async def sleep(delay: float): await
-  trio.sleep(delay)`). The unit belongs to the wrapped API, not to the wrapper:
-  `anyio/src/anyio/_backends/_trio.py:1115`,
-  `anyio/src/anyio/_backends/_asyncio.py:2532`, and
-  `anyio/src/anyio/_core/_eventloop.py:88` all mirror stdlib `sleep`. A body
-  that computes with the parameter (`deadline = current_time() + delay`) is not
-  a pass-through and still fires.
-
-Suppress an intentional raw-numeric duration with `# sarj-noqa: SARJ014 — <reason>`.
-
-References:
-- https://docs.python.org/3/library/datetime.html#timedelta-objects
-
-* **generated files** (`_paths.is_generated`). Their layout is the
-  generator's, and re-running the generator discards any edit, so a finding
-  there can never be acted on in place. Measured on the 69 `DO NOT EDIT`
-  files git-tracked across two first-party repos — a single Speakeasy-generated
-  SDK package accounts for all of them.
-
+Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_timedelta_for_durations.py
+Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ014.md
 """
 
 from __future__ import annotations
@@ -153,10 +78,9 @@ _CONSTRAINED_NUMERIC = {
 
 
 class PreferTimedeltaForDurations(Rule):
-    """Duration named in time units but typed as a raw int/float — prefer timedelta."""
-
     id: str = "prefer-timedelta-for-durations"
     code: str = "SARJ014"
+    has_evidence: bool = True
     description: str = (
         "Duration named in time units (timeout_seconds, ttl, ...) typed as raw "
         "int/float — use datetime.timedelta so the unit is explicit and checked."
@@ -222,25 +146,12 @@ class PreferTimedeltaForDurations(Rule):
 
 
 def _is_overload(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Report whether the function is an `@overload` restatement of another signature.
-
-    Returns:
-        True when an `overload` decorator is present.
-
-    """
+    """Report whether the function is an `@overload` restatement of another signature."""
     return any(_trailing_name(dec) == "overload" for dec in node.decorator_list)
 
 
 def _has_cli_decorator(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Report whether the function is a `click` / `typer` command entry point.
-
-    Its parameters are parsed out of `argv` by the framework, which knows how to
-    build an `int`/`float` and not a `timedelta`.
-
-    Returns:
-        True when any decorator comes from a CLI framework.
-
-    """
+    """Report whether the function is a `click` / `typer` command entry point."""
     for dec in node.decorator_list:
         target = dec.func if isinstance(dec, ast.Call) else dec
         dotted = _dotted_name(target)
@@ -253,16 +164,7 @@ def _has_cli_decorator(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
 
 
 def _is_forwarded_to_same_name(node: ast.FunctionDef | ast.AsyncFunctionDef, param: str) -> bool:
-    """Report whether the body only forwards `param` to a callee of the function's own name.
-
-    `async def sleep(delay: float) -> None: await trio.sleep(delay)` is a
-    pass-through: the unit is the wrapped API's, and this signature exists to
-    mirror it.
-
-    Returns:
-        True when the body is a single same-name call that receives `param`.
-
-    """
+    """Report whether the body only forwards `param` to a callee of the function's own name."""
     body = [stmt for stmt in node.body if not _is_docstring(stmt)]
     if len(body) != 1:
         return False
@@ -282,12 +184,7 @@ def _is_docstring(stmt: ast.stmt) -> bool:
 
 
 def _dotted_name(node: ast.expr) -> str | None:
-    """Render a `Name` / `Attribute` chain as a dotted string.
-
-    Returns:
-        The dotted name, or None when the expression is not a plain chain.
-
-    """
+    """Render a `Name` / `Attribute` chain as a dotted string."""
     match node:
         case ast.Name(id=ident):
             return ident
@@ -299,19 +196,7 @@ def _dotted_name(node: ast.expr) -> str | None:
 
 
 def _settings_field_ids(tree: ast.Module) -> frozenset[int]:
-    """`id()` of every `AnnAssign` declared directly on a pydantic-settings class.
-
-    A class is treated as pydantic-settings when it derives from a `...Settings`
-    base — either directly (`BaseSettings`, `pydantic_settings.BaseSettings`, a
-    project `...Settings` class) or transitively through an intermediate base
-    defined in the same module (e.g. `class _Base(BaseSettings)` →
-    `class Foo(_Base)`). Such fields come from environment variables, whose
-    bare-numeric wire form `timedelta` cannot parse, so they are exempt.
-
-    Returns:
-        The `id()`s of the exempt settings-field `AnnAssign` nodes.
-
-    """
+    """`id()` of every `AnnAssign` declared directly on a pydantic-settings class."""
     classes = nodes(tree, ast.ClassDef)
     settings_classes = _resolve_settings_classes(classes)
     exempt: set[int] = set()
@@ -362,15 +247,7 @@ def _target_name(target: ast.expr) -> str | None:
 
 
 def _numeric_annotation(node: ast.expr) -> str | None:
-    """Return 'int'/'float' if the annotation resolves to a numeric duration type.
-
-    Handles bare `int`/`float`, pydantic constrained brands (`PositiveInt`,
-    `NonNegativeFloat`, ...), `x | None`, `Optional[x]`, and `Annotated[x, ...]`.
-
-    Returns:
-        'int'/'float' for a numeric annotation, or None otherwise.
-
-    """
+    """Return 'int'/'float' if the annotation resolves to a numeric duration type."""
     direct = _bare_numeric(node)
     if direct is not None:
         return direct

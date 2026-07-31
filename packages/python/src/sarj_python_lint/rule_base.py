@@ -43,9 +43,6 @@ def is_suppressed(source_lines: Sequence[str], line: int, code: str) -> bool:
 
     `line` is 1-based to match Diagnostic.line.
 
-    Returns:
-        True when the line is suppressed for `code`.
-
     """
     if line < 1 or line > len(source_lines):
         return False
@@ -72,12 +69,7 @@ class Diagnostic:
     message: str
 
     def format(self) -> str:
-        """Render the finding ruff-compatibly as `path:line:col: CODE message`.
-
-        Returns:
-            The formatted single-line diagnostic string.
-
-        """
+        """Render the finding ruff-compatibly as `path:line:col: CODE message`."""
         return f"{self.path}:{self.line}:{self.col}: {self.code} {self.message}"
 
 
@@ -131,12 +123,7 @@ _last_parse: tuple[str, str, ast.Module | None] | None = None
 
 
 def parse_or_none(path: Path, source: str) -> ast.Module | None:
-    """Parse `source`, memoizing the most recent file so N rules share one parse.
-
-    Returns:
-        The parsed module, or None when `source` has a syntax error.
-
-    """
+    """Parse `source`, memoizing the most recent file so N rules share one parse."""
     global _last_parse  # ruff:ignore[global-statement] — single-slot memo; the CLI runs rules per file sequentially
     path_key = str(path)
     if _last_parse is not None and _last_parse[0] == path_key and _last_parse[1] is source:

@@ -94,12 +94,7 @@ class Measurement:
 
     @property
     def total(self) -> int:
-        """Total suppressions counted.
-
-        Returns:
-            The sum over every code key.
-
-        """
+        """Total suppressions counted."""
         return sum(self.codes.values())
 
 
@@ -123,12 +118,7 @@ class Failure:
     actual: int
 
     def format(self) -> str:
-        """Render the failure with the remediation for its dimension.
-
-        Returns:
-            A multi-sentence message naming the key, both numbers and the fix.
-
-        """
+        """Render the failure with the remediation for its dimension."""
         head = f"FAIL[{self.dimension}] {self.key}: {self.actual} suppressions, ceiling {self.ceiling}."
         return f"{head} {_REMEDIATION[self.dimension]}"
 
@@ -164,9 +154,6 @@ def measure(
     contributes 0 rather than raising, so a baseline outliving a rename fails
     loudly on the package's disappearance rather than crashing.
 
-    Returns:
-        The measurement.
-
     """
     codes: Counter[str] = Counter()
     package_counts: Counter[str] = Counter()
@@ -189,12 +176,7 @@ def measure(
 
 
 def count_source(source: str) -> Counter[str]:
-    """Count the suppressions in one file's text, keyed by dialect and code.
-
-    Returns:
-        The per-key counts for this file.
-
-    """
+    """Count the suppressions in one file's text, keyed by dialect and code."""
     counts: Counter[str] = Counter()
     for line in source.splitlines():
         _count_line(line, counts)
@@ -202,13 +184,7 @@ def count_source(source: str) -> Counter[str]:
 
 
 def gate(measurement: Measurement, baseline: Baseline) -> list[Failure]:
-    """Compare a measurement against the baseline's three ceilings.
-
-    Returns:
-        Every exceeded ceiling, ordered code → package → file, each dimension
-        sorted by key so output is stable across runs.
-
-    """
+    """Compare a measurement against the baseline's three ceilings."""
     failures = [
         Failure(dimension="code", key=key, ceiling=c, actual=n)
         for key, n in sorted(measurement.codes.items())
@@ -228,13 +204,7 @@ def gate(measurement: Measurement, baseline: Baseline) -> list[Failure]:
 
 
 def improvements(measurement: Measurement, baseline: Baseline) -> dict[str, tuple[int, int]]:
-    """Find the code keys now below their ceiling — the wins worth locking in.
-
-    Returns:
-        `{key: (ceiling, actual)}` for every code that shrank, including codes
-        that reached zero and are no longer present at all.
-
-    """
+    """Find the code keys now below their ceiling — the wins worth locking in."""
     out: dict[str, tuple[int, int]] = {}
     for key, ceiling in baseline.codes.items():
         actual = measurement.codes.get(key, 0)
@@ -249,9 +219,6 @@ def seed(measurement: Measurement, baseline: Baseline) -> Baseline:
     Per-file grandfathering is preserved only where it is still needed: a file
     that dropped to or below the global ceiling loses its exception, so the
     allowance cannot outlive the debt it was granted for.
-
-    Returns:
-        The re-seeded baseline.
 
     """
     exceptions = {path: n for path, n in measurement.files.items() if n > baseline.per_file_ceiling}
@@ -268,9 +235,6 @@ def load_baseline(path: Path) -> Baseline:
 
     A hand-edited baseline degrades to "not baselined" (ceiling 0) for the
     malformed entry rather than crashing the gate or silently passing.
-
-    Returns:
-        The parsed baseline.
 
     """
     raw: object = json.loads(  # pyright: ignore[reportAny] — json.loads is an untyped stdlib boundary; every read below narrows
@@ -289,24 +253,14 @@ def load_baseline(path: Path) -> Baseline:
 
 
 def _get(mapping: object, key: str) -> object:
-    """Read one key out of a value that may or may not be a JSON object.
-
-    Returns:
-        The value at `key`, or None when `mapping` is not an object or lacks it.
-
-    """
+    """Read one key out of a value that may or may not be a JSON object."""
     if not isinstance(mapping, dict):
         return None
     return mapping.get(key)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType] — json leaves are Any
 
 
 def dump_baseline(baseline: Baseline, packages: Iterable[str]) -> str:
-    """Render a baseline as the JSON text to write.
-
-    Returns:
-        The serialized baseline, newline-terminated.
-
-    """
+    """Render a baseline as the JSON text to write."""
     payload = {
         "_comment": (
             "Suppression ceilings, written by `sarj-ratchet --update`. Counts may "
@@ -332,9 +286,6 @@ def discover_packages(root: Path, excluded_dir_names: frozenset[str] = DEFAULT_E
     Used when neither `--package` nor a baseline names the packages, so the
     first run needs no configuration.
 
-    Returns:
-        The package names, sorted.
-
     """
     return sorted(
         name
@@ -347,12 +298,7 @@ def discover_packages(root: Path, excluded_dir_names: frozenset[str] = DEFAULT_E
 
 
 def _int_map(value: object) -> dict[str, int]:
-    """Narrow a JSON value to `{str: int}`, dropping anything else.
-
-    Returns:
-        The well-formed entries only.
-
-    """
+    """Narrow a JSON value to `{str: int}`, dropping anything else."""
     if not isinstance(value, dict):
         return {}
     return {
@@ -363,12 +309,7 @@ def _int_map(value: object) -> dict[str, int]:
 
 
 def _python_files(root: Path, excluded_dir_names: frozenset[str]) -> Iterator[Path]:
-    """Yield every `.py` file under `root`, skipping excluded directories.
-
-    Yields:
-        Each Python file path.
-
-    """
+    """Yield every `.py` file under `root`, skipping excluded directories."""
     if not root.is_dir():
         return
     for path in sorted(root.rglob("*.py")):
@@ -377,12 +318,7 @@ def _python_files(root: Path, excluded_dir_names: frozenset[str]) -> Iterator[Pa
 
 
 def _read(path: Path) -> str:
-    """Read a source file, treating undecodable bytes as empty.
-
-    Returns:
-        The file text, or `""` when it cannot be decoded.
-
-    """
+    """Read a source file, treating undecodable bytes as empty."""
     try:
         return path.read_text(encoding="utf-8")
     except UnicodeDecodeError, OSError:

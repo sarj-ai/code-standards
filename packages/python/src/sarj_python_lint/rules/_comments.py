@@ -136,9 +136,6 @@ def is_protected(body: str) -> bool:
     EXEMPTION FLOOR ONLY — see the module docstring. A False result is not
     evidence that the comment is worthless.
 
-    Returns:
-        True when at least one of the nine signals matches.
-
     """
     return any(pattern.search(body) for pattern in _SIGNALS.values())
 
@@ -150,9 +147,6 @@ def has_external_reference(body: str) -> bool:
     doing the one thing the code cannot, and it is the signal that separates a
     scoping note with an owner ("EN-only for now — AR needs audio (PROJ-249)")
     from an unowned admission ("hacky, fix later").
-
-    Returns:
-        True when the comment carries an external reference.
 
     """
     return bool(_REF_RE.search(body))
@@ -302,12 +296,7 @@ STOPWORDS: frozenset[str] = frozenset(
 
 
 def split_identifier(token: str) -> list[str]:
-    """Split `snake_case` / `camelCase` / `SCREAMING_CASE` into lowercase parts.
-
-    Returns:
-        The identifier's word parts, lowercased.
-
-    """
+    """Split `snake_case` / `camelCase` / `SCREAMING_CASE` into lowercase parts."""
     parts: list[str] = []
     for chunk in token.split("_"):
         parts.extend(match.group(0).lower() for match in _CAMEL_RE.finditer(chunk))
@@ -324,9 +313,6 @@ def stem(word: str) -> str:
     Deliberately crude otherwise. A real stemmer would conflate more pairs, and
     every extra conflation is a chance to call a novel word a restatement.
 
-    Returns:
-        The stemmed word.
-
     """
     base = word
     for suffix in ("ing", "ied", "ies", "ers", "er", "ed", "es", "s"):
@@ -341,12 +327,7 @@ def stem(word: str) -> str:
 
 
 def content_tokens(text: str) -> list[str]:
-    """Split prose into lowercase content words, dropping stopwords.
-
-    Returns:
-        The comment's content tokens, in order.
-
-    """
+    """Split prose into lowercase content words, dropping stopwords."""
     tokens: list[str] = []
     for match in _WORD_RE.finditer(text):
         tokens.extend(split_identifier(match.group(0)))
@@ -354,12 +335,7 @@ def content_tokens(text: str) -> list[str]:
 
 
 def code_tokens(text: str) -> set[str]:
-    """Collect every identifier part appearing in a slice of source.
-
-    Returns:
-        The lowercase identifier parts, as a set.
-
-    """
+    """Collect every identifier part appearing in a slice of source."""
     tokens: set[str] = set()
     for match in _WORD_RE.finditer(text):
         tokens.update(split_identifier(match.group(0)))
@@ -372,9 +348,6 @@ def restates(comment_tokens: Sequence[str], code: Iterable[str]) -> bool:
     Exact or stemmed match only. Prefix matching is deliberately absent: it is
     what sank the first attempt at this shape (PR #98), where `service` matched
     `locationService` and drove the false-positive rate to ~60%.
-
-    Returns:
-        True when the comment adds no token the code does not already carry.
 
     """
     present = set(code)
@@ -440,9 +413,6 @@ def all_comments(source: str) -> tuple[_Ordered, int]:
     `col0` is 0-based, matching this module's other accessors; the suppression
     layer adds one for its 1-based `Comment.col`.
 
-    Returns:
-        The ordered comments and the first code line's row.
-
     """
     _, _, _, first_code_line, ordered = _scan_memo(source)
     return ordered, first_code_line
@@ -463,9 +433,6 @@ def trailing_comments(source: str) -> list[tuple[int, int, str]]:
     Raises out of here when `source` cannot be tokenized; see
     `standalone_comments`.
 
-    Returns:
-        The trailing comments, in source order.
-
     """
     return _scan_memo(source)[1]
 
@@ -477,9 +444,6 @@ def nested_comment_lines(source: str) -> set[int]:
     call — `# config` inside pydantic's `__all__` groups the names beneath it —
     rather than signposting the structure of the file. Both readings produce the
     same one-word comment, and only the depth tells them apart.
-
-    Returns:
-        The line numbers of comments nested inside brackets.
 
     """
     return _scan_memo(source)[2]
@@ -498,21 +462,13 @@ def standalone_comments(source: str) -> tuple[list[tuple[int, int, str]], int]:
     diagnostics, because a rule has nothing useful to say about a file that does
     not parse.
 
-    Returns:
-        The standalone comments and the first code line's row.
-
     """
     standalone, _, _, first_code_line, _ = _scan_memo(source)
     return standalone, first_code_line
 
 
 def comment_runs(standalone: Sequence[tuple[int, int, str]]) -> list[list[tuple[int, int, str]]]:
-    """Group standalone comments into runs of consecutive lines.
-
-    Returns:
-        One list per contiguous `#` block, in source order.
-
-    """
+    """Group standalone comments into runs of consecutive lines."""
     runs: list[list[tuple[int, int, str]]] = []
     for entry in sorted(standalone):
         if runs and entry[0] == runs[-1][-1][0] + 1:

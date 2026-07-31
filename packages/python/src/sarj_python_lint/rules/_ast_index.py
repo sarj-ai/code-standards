@@ -61,9 +61,6 @@ def children(node: ast.AST) -> list[ast.AST]:
     extends a stack with it, and the hand-rolled walkers in this package call
     this once per node, where the generator's setup cost dominates the work.
 
-    Returns:
-        The child nodes, in field-declaration order.
-
     """
     out: list[ast.AST] = []
     for name in node._fields:
@@ -80,9 +77,6 @@ def walk(node: ast.AST) -> Iterator[ast.AST]:
 
     Identical in order to `ast.walk`, but reads each node's fields directly
     instead of routing every node through two intermediate generators.
-
-    Yields:
-        `node` first, then its descendants breadth-first.
 
     """
     queue: list[ast.AST] = [node]
@@ -129,12 +123,7 @@ class _NodeIndex:
         self._queries: dict[tuple[type[ast.AST], ...], list[ast.AST]] = {}
 
     def query(self, types: tuple[type[ast.AST], ...]) -> list[ast.AST]:
-        """Return every node matching `isinstance(node, types)`, breadth-first.
-
-        Returns:
-            The match list, cached per `types` and shared — treat as read-only.
-
-        """
+        """Return every node matching `isinstance(node, types)`, breadth-first."""
         hit = self._queries.get(types)
         if hit is not None:
             return hit
@@ -164,10 +153,6 @@ def nodes[NodeT: ast.AST](tree: ast.AST, *types: type[NodeT]) -> list[NodeT]:
     `[n for n in ast.walk(tree) if isinstance(n, types)]`. Pass the *module*
     tree: the index is per-file, so calling this with a subtree builds a fresh
     index and evicts the module's. Use `walk` for subtrees.
-
-    Returns:
-        The matching nodes, breadth-first. A fresh list per call; the partition
-        it is drawn from is what gets cached.
 
     """
     global _last_index  # ruff: ignore[global-statement] — single-slot memo, mirroring `parse_or_none`

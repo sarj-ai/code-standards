@@ -1,30 +1,7 @@
-"""SARJ011: detect `==`/`!=` comparisons on secret-like values.
+"""SARJ011 — `==`/`!=` comparisons on secret-like values.
 
-Comparing secrets (tokens, signatures, HMACs, password hashes, API keys) with
-`==`/`!=` is timing-attack-prone: short-circuiting on the first differing byte
-leaks information about how many leading bytes matched. Use
-`hmac.compare_digest(a, b)`, which compares in constant time.
-
-`signature` is polysemous: in crypto code it is a MAC to verify, but in
-reflection-heavy code it is a *function* signature (`inspect.signature`,
-`default_model_signature`). A name whose only secret token is `signature`
-therefore fires only when the module imports crypto machinery (`hmac`,
-`hashlib`, `secrets`, `jwt`, `cryptography`, ...) — code verifying a MAC
-computes the expected value with exactly those modules (pydantic's signature
-merging was the sweep false positive).
-
-A comparison inside an `__eq__` / `__ne__` method is exempt. Those dunders
-implement *value equality* between two objects the process already holds; they
-are not an authentication gate, and nothing grants access on their result. A
-2,657-file third-party sweep produced 8 findings and 2 were exactly this shape
-(requests' `HTTPBasicAuth.__eq__` / `HTTPDigestAuth.__eq__`, which compare
-`self.password == getattr(other, "password", None)` so two auth objects can be
-compared for identity). A real credential check (`if token != expected:`) sits
-in a request handler, not in a dunder, and still fires.
-
-References:
-- https://docs.python.org/3/library/hmac.html#hmac.compare_digest
-
+Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_constant_time_secret_compare.py
+Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ011.md
 """
 
 from __future__ import annotations
@@ -85,10 +62,9 @@ _AUTH_WORDS = frozenset(
 
 
 class PreferConstantTimeSecretCompare(Rule):
-    """Direct `==`/`!=` on a secret-like value — prefer hmac.compare_digest."""
-
     id: str = "prefer-constant-time-secret-compare"
     code: str = "SARJ011"
+    has_evidence: bool = True
     description: str = "Direct `==`/`!=` on a secret — prefer `hmac.compare_digest(a, b)`."
 
     @override
@@ -155,15 +131,7 @@ _EQUALITY_DUNDERS = frozenset({"__eq__", "__ne__"})
 
 
 def _equality_dunder_compares(tree: ast.AST, source: str) -> frozenset[int]:
-    """Collect the `id()`s of every `Compare` written directly in an `__eq__`/`__ne__` body.
-
-    A nested `def`/`lambda` declared inside the dunder is its own callable and
-    can be invoked from anywhere, so it is not covered by the exemption.
-
-    Returns:
-        The ids of comparisons that implement value equality.
-
-    """
+    """Collect the `id()`s of every `Compare` written directly in an `__eq__`/`__ne__` body."""
     if not any(dunder in source for dunder in _EQUALITY_DUNDERS):
         return frozenset()
     return frozenset(
@@ -175,12 +143,7 @@ def _equality_dunder_compares(tree: ast.AST, source: str) -> frozenset[int]:
 
 
 def _same_scope_compares(func: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[ast.Compare]:
-    """Yield `func`'s own comparisons, not descending into nested `def`/`lambda` scopes.
-
-    Yields:
-        Each `Compare` in `func`'s own body.
-
-    """
+    """Yield `func`'s own comparisons, not descending into nested `def`/`lambda` scopes."""
     stack: list[ast.AST] = list(func.body)
     while stack:
         current = stack.pop()
@@ -192,13 +155,7 @@ def _same_scope_compares(func: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterat
 
 
 def _is_secret_operand(node: ast.AST, *, crypto_module: bool) -> bool:
-    """Report whether the operand's identifier names an auth secret worth constant-time compare.
-
-    Returns:
-        True when `node`'s identifier denotes an authenticator (not a category,
-        integrity hash, or boolean flag that merely reads as secret-shaped).
-
-    """
+    """Report whether the operand's identifier names an auth secret worth constant-time compare."""
     if isinstance(node, ast.NamedExpr):
         node = node.target
     if isinstance(node, ast.Name):
@@ -217,15 +174,7 @@ _CRYPTO_MODULES = frozenset({"hmac", "hashlib", "secrets", "jwt", "cryptography"
 
 
 def _imports_crypto(tree: ast.AST, source: str) -> bool:
-    """Report whether the module imports crypto machinery anywhere.
-
-    Naming a module is a precondition for importing it, so the substring test
-    gates the traversal without narrowing what qualifies.
-
-    Returns:
-        True when an import's root module is a known crypto module.
-
-    """
+    """Report whether the module imports crypto machinery anywhere."""
     if not any(module in source for module in _CRYPTO_MODULES):
         return False
     for node in nodes(tree, ast.Import, ast.ImportFrom):
@@ -238,25 +187,7 @@ def _imports_crypto(tree: ast.AST, source: str) -> bool:
 
 
 def _is_auth_secret_name(identifier: str, *, crypto_module: bool) -> bool:
-    """Report whether `identifier` names an authenticator (an access-gating secret).
-
-    Narrows the shared `is_secret_name` for SARJ011: strips category/handle
-    descriptors, `type`/`kind` discriminators, and integrity-only hashes, none
-    of which are a timing-attack surface. A name whose only auth token is the
-    polysemous `signature` needs the module to import crypto machinery —
-    otherwise it is a function signature, not a MAC.
-
-    Boolean flags (`is_token`, `hasSecret`) are NOT handled here: the shared
-    `is_secret_name` now rejects a leading flag word for both SARJ011 and
-    SARJ012, so the gate above has already returned. A duplicate local check
-    used to live here and was dead once that landed — worse, it read
-    `tokens[0]`, which is the whole snake segment (`"hassecret"`), so it never
-    matched a camelCase flag in the first place.
-
-    Returns:
-        True when comparing `identifier` in non-constant time leaks an auth secret.
-
-    """
+    """Report whether `identifier` names an authenticator (an access-gating secret)."""
     if not is_secret_name(identifier):
         return False
     tokens = identifier_tokens(identifier)
@@ -275,17 +206,7 @@ def _is_auth_secret_name(identifier: str, *, crypto_module: bool) -> bool:
 
 
 def _is_excluded_operand(node: ast.AST) -> bool:
-    """Report whether the operand makes the comparison a non-timing-attack surface.
-
-    Covers `None`/`True`/`False`, numeric literals, any str/bytes literal, and an
-    ALL-CAPS constant reference (`TOKEN_TYPE_SYSTEM`, `HTTP_DIGEST_AUTHENTICATION`,
-    `PASSWORD_NOT_CHANGED`) — all compile-time sentinels/enum members, not a
-    runtime secret an attacker can extract by timing the compare.
-
-    Returns:
-        True when `node` excludes the comparison from timing-attack concern.
-
-    """
+    """Report whether the operand makes the comparison a non-timing-attack surface."""
     if isinstance(node, ast.Constant):
         value = node.value
         if value is None or isinstance(value, bool):
@@ -302,10 +223,5 @@ def _is_excluded_operand(node: ast.AST) -> bool:
 
 
 def _is_constant_reference(identifier: str) -> bool:
-    """Report whether `identifier` is an ALL-CAPS named constant (a compile-time sentinel).
-
-    Returns:
-        True when every cased character is upper-case and at least one letter exists.
-
-    """
+    """Report whether `identifier` is an ALL-CAPS named constant (a compile-time sentinel)."""
     return identifier.isupper() and any(c.isalpha() for c in identifier)

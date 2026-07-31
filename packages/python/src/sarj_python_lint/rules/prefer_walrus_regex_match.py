@@ -1,20 +1,7 @@
-"""SARJ081: prefer assignment expression (`:=`) for regex match assignments immediately preceding an `if` check.
+"""SARJ081 — Prefer assignment expression (`:=`) for regex match assignments immediately preceding an `if` check.
 
-Assigning a regex match result to a temporary variable on the line immediately preceding an
-`if` statement testing that variable is the canonical use case for Python 3.8+ assignment
-expressions (`:=`). Using `:=` scopes the match object inside the condition block and avoids
-floating single-use temporaries in the enclosing block.
-
-    # flagged
-    match = re.search(pattern, text)
-    if match:
-        process(match.group(1))
-
-    # preferred
-    if match := re.search(pattern, text):
-        process(match.group(1))
-
-Corpus evidence. Evaluation across 7 repositories produced 34 high-value findings with 0 false positives.
+Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_walrus_regex_match.py
+Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ081.md
 """
 
 from __future__ import annotations
@@ -31,12 +18,7 @@ if TYPE_CHECKING:
 
 
 def _is_regex_call(node: ast.AST) -> bool:
-    """Check if node is a call to re.search/match/fullmatch or pattern.search/match.
-
-    Returns:
-        True when call matches a regex method.
-
-    """
+    """Check if node is a call to re.search/match/fullmatch or pattern.search/match."""
     if not isinstance(node, ast.Call):
         return False
     func = node.func
@@ -51,12 +33,7 @@ def _is_regex_call(node: ast.AST) -> bool:
 
 
 def _is_simple_truthy_test(test_node: ast.AST, var_name: str) -> bool:
-    """Check if test_node is `if var_name:` or `if var_name is not None:`.
-
-    Returns:
-        True when test is a simple truthy check.
-
-    """
+    """Check if test_node is `if var_name:` or `if var_name is not None:`."""
     if isinstance(test_node, ast.Name) and test_node.id == var_name:
         return True
     if (
@@ -90,10 +67,9 @@ def _is_name_used_after(stmts: list[ast.stmt], start_idx: int, name: str) -> boo
 
 
 class PreferWalrusRegexMatch(Rule):
-    """Prefer walrus operator `:=` for regex match assignments before `if` checks."""
-
     id: str = "prefer-walrus-regex-match"
     code: str = "SARJ081"
+    has_evidence: bool = True
     description: str = (
         "regex match assignment immediately followed by an `if` check — combine into `if (match := re.search(...)):`."
     )
