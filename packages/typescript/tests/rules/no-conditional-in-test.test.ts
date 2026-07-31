@@ -19,6 +19,38 @@ const TEST_FILE = "/repo/src/component.test.ts";
 
 ruleTester.run("no-conditional-in-test", rule, {
   valid: [
+    // A lifecycle hook reached through the test object is still a hook. The
+    // caller walk resolves `test.afterAll` to its root `test`, so teardown was
+    // linted as a test body — `grafana/e2e-playwright/journey-tracking/
+    // dashboard-edit.spec.ts:36`.
+    {
+      filename: TEST_FILE,
+      code: `test.afterAll(async ({ request }) => {
+        if (dashboardUID) {
+          await request.delete('/api/dashboards/uid/' + dashboardUID);
+        }
+      });`,
+    },
+    {
+      filename: TEST_FILE,
+      code: `test.beforeEach(() => {
+        if (fs.existsSync(tsconfig)) {
+          fs.unlinkSync(tsconfig);
+        }
+      });`,
+    },
+    // Guard 5, the shape it was actually built for: the branch does nothing but
+    // rewrite a field before a snapshot. From
+    // `trpc/packages/tests/server/adapters/standalone.test.ts:252`.
+    {
+      filename: TEST_FILE,
+      code: `test('matches the snapshot', () => {
+        if (json.error.data.stack) {
+          json.error.data.stack = '[redacted]';
+        }
+        expect(json).toMatchSnapshot();
+      });`,
+    },
     {
       filename: TEST_FILE,
       code: "it('works without conditionals', () => { expect(1).toBe(1); });",
@@ -245,6 +277,23 @@ ruleTester.run("no-conditional-in-test", rule, {
           test.skip();
         }
         expect(await call()).toBe('ok');
+      });`,
+      errors: [{ messageId: "noConditionalInTest" }],
+    },
+    // A branch full of ACTIONS is not "state normalization". Guard 5 asked only
+    // "no assertion, no escape", and a UI branch satisfies both while making one
+    // test take two different paths — `tldraw/apps/examples/e2e/tests/
+    // test-shapes.spec.ts:70,100,131`, silently lost in #183.
+    {
+      filename: TEST_FILE,
+      code: `test('creates shapes', async ({ page, toolbar }) => {
+        for (const tool of tools) {
+          if (!(await page.getByTestId(\`tools.\${tool}\`).isVisible())) {
+            await toolbar.moreToolsButton.click();
+            await page.getByTestId(\`tools.more.\${tool}\`).click();
+          }
+          await expect(page.getByTestId(\`tools.\${tool}\`)).toHaveAttribute('aria-pressed', 'true');
+        }
       });`,
       errors: [{ messageId: "noConditionalInTest" }],
     },

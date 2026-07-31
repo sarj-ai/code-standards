@@ -44,6 +44,20 @@ code-dominant — at least half of the run's non-empty, non-directive lines matc
 prose-dominant runs and are dropped, 19 sit in code-dominant runs and survive, and
 every hand-checked genuine dead-code finding is in the surviving 19.
 
+**Independently re-measured, 2026-07-31.** The code-dominance guard was measured
+on 256 deduped `.tf` files, which is thin. Re-run over **1,373 content-unique
+`.tf` files** (terraform-aws-vpc, terraform-aws-eks, terraform-aws-components,
+litellm, airflow), the registry goes 941 -> 862 (-8.4%), all of it this rule
+(937 -> 859). 24 files clear entirely, 66 findings. Sampled removals read as the
+documented class: indented usage examples inside prose documentation headers
+(`litellm/terraform/litellm/gcp/examples/default/main.tf:12`,
+`aws/examples/default/providers.tf:22`) and commented-out `object({...})` type
+declarations interleaved with per-field prose in
+`terraform-aws-components/modules/glue/*/variables.tf`. The second group is the
+guard's honest cost: those runs really are commented-out HCL, kept as a shape
+reference for a `variable` typed `any`, and the ~50% threshold reads them as
+documentation. Recorded rather than tuned away.
+
 The banner half (133 of the 164) is deliberately untouched. It is a house-style
 call rather than a detection question, and no guard quietens it without abandoning
 the policy.

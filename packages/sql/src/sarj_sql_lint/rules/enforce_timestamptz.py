@@ -24,6 +24,20 @@ The rule also stops reporting on pg_dump snapshots (`is_dump_file`) and on
 generator-owned migrations (`is_generated_migration`): the fix for a Prisma-emitted
 naive timestamp is `@db.Timestamptz` in `schema.prisma`, and an edit to the
 migration is reverted by the next `prisma migrate`.
+
+**The `redirect_to_model` decision, independently verified 2026-07-31.** #183
+built and REJECTED a generated-migration suppression for the schema rules, on
+the grounds that it took this rule from 770 to 12 and SARJ103 to zero while the
+genuine precision guards were worth 23 and 0. Re-measured over 1,792
+content-unique `.sql` files from a disjoint corpus, that decision held exactly:
+SARJ101 moves 769 -> 759 and SARJ103 195 files -> 195 files, 283 -> 283
+findings. The 10 SARJ101 removals are all one file
+(`prefect/tests/scripts/populate_database.sql:23,42,59,95`), where a CTE column
+list literally named `timestamp` (`WITH states (TYPE, name, timestamp, ...)`)
+was read as a `TIMESTAMP` column type — a parser false positive, correctly gone.
+The surviving findings carry the redirect: "the edit belongs in the schema model
+(`schema.prisma`, the Drizzle schema module, the Atlas HCL) followed by a new
+migration".
 """
 
 from __future__ import annotations

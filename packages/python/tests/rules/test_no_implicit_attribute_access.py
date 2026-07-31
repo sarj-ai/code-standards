@@ -23,7 +23,6 @@ def _check(source: str, path: Path = _PROD) -> list[Diagnostic]:
     [
         pytest.param("val = ctx.participant.attributes.get('sip.phoneNumber')\n", id="get-call"),
         pytest.param("val = event.payload.get('user_id')\n", id="payload-get"),
-        pytest.param("val = event.meta['user_id']\n", id="meta-subscript"),
         pytest.param("val = ctx.attributes['foo']\n", id="attributes-subscript"),
         pytest.param("val = some_random_dict.get('price')\n", id="random-dict-get"),
         pytest.param("val = any_obj['price']\n", id="random-dict-subscript"),
@@ -118,6 +117,86 @@ def test_http_and_route_get_are_not_mapping_lookups(source: str):
     the ARGUMENT can: a route path or URL is not a dictionary key.
     """
     assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param('@router.get("")\ndef handler():\n    pass\n', id="empty-route"),
+        pytest.param('@app.get("", response_model=X)\nasync def h():\n    pass\n', id="empty-route-kwargs"),
+    ],
+)
+def test_empty_route_decorator_is_not_a_mapping_lookup(source: str):
+    """The router-root registration `@router.get("")` is still a decorator.
+
+    The argument test above cannot see it -- `""` neither starts with `/` nor
+    contains `://` -- so 23 findings across airflow, litellm and prefect landed
+    on a decorator line. Position answers it exactly: nothing in `decorator_list`
+    is a payload field read, so the guard costs no recall.
+    """
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param("val = request.meta['download_maxsize']\n", id="meta-subscript"),
+        pytest.param("val = request.meta.get('proxy')\n", id="meta-get"),
+    ],
+)
+def test_open_extension_bags_are_not_unparsed_payloads(source: str):
+    """`meta` is a framework-guaranteed mapping with author-invented keys.
+
+    Scrapy documents `Request.meta` as the per-request extension dict; the keys
+    come from third-party middlewares, so no model can enumerate them.
+    """
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param(
+            "from litellm.types import AllMessageValues\n"
+            "def f(msg: AllMessageValues):\n"
+            "    return msg.get('tool_calls')\n",
+            id="imported-typeddict-get",
+        ),
+        pytest.param(
+            "from openai.types import ChatCompletionFileObject\n"
+            "def f(part: ChatCompletionFileObject):\n"
+            "    return part['file']\n",
+            id="imported-typeddict-subscript",
+        ),
+    ],
+)
+def test_imported_declared_types_are_already_declarative(source: str):
+    """A receiver typed with an IMPORTED name has been given a schema already.
+
+    `_typed_dict_class_names` only ever saw `class X(TypedDict)` written in the
+    SAME file, so every cross-module TypedDict was invisible and its subscripts
+    -- the declarative form for a TypedDict -- were reported as the absence of a
+    schema. `litellm/…/prompt_templates/factory.py:2080` and `:3216` are the
+    measured shape.
+    """
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param(
+            "from typing import Any\ndef f(payload: Any):\n    return payload['id']\n",
+            id="typing-any-declares-nothing",
+        ),
+        pytest.param("def f(payload: dict):\n    return payload['id']\n", id="bare-dict"),
+    ],
+)
+def test_structureless_annotations_still_fire(source: str):
+    """`Any` and `dict` are not schemas, so the guard above must not reach them."""
+    diags = _check(source)
+    assert len(diags) == 1
+    assert diags[0].code == "SARJ083"
 
 
 @pytest.mark.parametrize(

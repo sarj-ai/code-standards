@@ -83,12 +83,94 @@ it shape (4). Spot-checked recall on the cited files: the three true positives
 above still report at exactly those lines, and the five false-positive sites
 are silent.
 
+## The recall trade #183 did not disclose
+
+PR #183 cut this rule harder than its body says. Over the corpus that PR
+measured it went 2,344 → 359; over the 26,538 test files of the 63-repo audit
+corpus it went **1,544 → 466 (−69.8%)** — the second-largest proportional cut in
+the PR — and **the PR body does not mention this rule at all**. A cut that size,
+reported only as part of a registry-wide total, reads as "false positives
+removed" when part of it was not.
+
+Seven removed findings were re-read against source in the 2026-07-31 follow-up
+audit:
+
+| finding | verdict |
+| --- | --- |
+| 4 narrowing guards pinned by the assertion above them | correct removal |
+| 2 `??` / `\|\|` defaults in fixture construction | arguable, left removed |
+| `tldraw/apps/examples/e2e/tests/test-shapes.spec.ts:131` | **true positive, lost** |
+
+The lost one is
+
+```ts
+if (!(await page.getByTestId(`tools.${tool}`).isVisible())) {
+  await toolbar.moreToolsButton.click()
+  await page.getByTestId(`tools.more.${tool}`).click()
+  await toolbar.moreToolsButton.click()
+}
+```
+
+— one test taking two different paths through the UI depending on viewport
+width, which is exactly the defect the rule is named for. It was swallowed by
+guard 5 ("state normalization with no assertion and no escape"), because a
+branch full of ACTIONS also contains no assertion and no escape.
+
+## The fix, and its cost in the other direction
+
+Guard 5 now additionally requires that the branch only REWRITES state —
+assignment, update, `delete`, or a local declaration. That is what "state
+normalization" always meant: the finding it was built for is
+`trpc/packages/tests/server/adapters/standalone.test.ts:252`
+(`if (json.error.data.stack) { json.error.data.stack = "[redacted]"; }` before a
+snapshot), and that shape is still exempt.
+
+A second, separate defect fell out of reading the recovered findings: a lifecycle
+hook reached through the test object. `testCallerName` walks a member chain down
+to its ROOT identifier, so `test.afterAll(cb)` resolved to `test` and its
+callback was linted as a test body — contradicting the fileoverview's own
+"conditionals in `beforeEach` / `beforeAll` are deliberately NOT reported".
+`grafana/e2e-playwright/journey-tracking/dashboard-edit.spec.ts:36` is
+`test.afterAll(async ({ request }) => { if (dashboardUID) { await
+request.delete(…) } })` — conditional teardown, with no assertion in it to hide.
+
+Measured over 26,538 test files in 63 OSS repositories:
+
+| | findings |
+| --- | --- |
+| origin/main | 2,030 |
+| + guard-5 narrowed to true normalization | 2,523 |
+| + lifecycle hooks exempted | **2,459** |
+
+Net **+429**. Ten of the recovered findings were read against source: five true
+positives (`nx/e2e/module-federation/src/rsbuild.test.ts:66` and
+`nx/e2e/angular/src/module-federation-lib.test.ts:89` wrap an ENTIRE test body in
+`if (await runE2ETests())`, so the test passes asserting nothing when the flag is
+off; `grafana/…/ScopesDashboardsTreeFolderItem.test.tsx:282`;
+`grafana/…/barchart/bars.test.ts:673`;
+`ant-design/components/upload/__tests__/uploadlist.test.tsx:254`, where a
+snapshot differs depending on whether the branch ran), three arguable
+(mode-flag-gated setup), and two false — both lifecycle hooks, which is what the
+second guard above is for. Seven findings that origin/main reported are now
+suppressed, all of them hook teardown.
+
+## Coverage this rule does NOT have
+
+`isTestFile` decides whether the rule runs at all. It does not recognise a
+`test/` (singular) directory holding `*_test.ts`-style siblings, nor
+`e2e_playwright/`-style directories — both appear in the corpus. That is a
+`_paths.ts` question rather than a question about this rule, and widening
+`isTestFile` re-scopes 30 consumer rules at once, so it is recorded here rather
+than done in passing.
+
 ## Evidence relocated from the source
 
 ### `isExemptIfStatement`
 
-Guard 5 — state normalization. The branch has no assertion to skip and no way
-out of the test, so it cannot hide anything. Deliberately narrow: a branch
-that returns, breaks, continues, or calls `.skip(` is exactly the true
-positive this rule exists for and is NOT exempt.
+Guard 5 — state normalization. The branch has no assertion to skip, no way out
+of the test, and does nothing but REWRITE state (assign / update / `delete` /
+declare). Deliberately narrow: a branch that returns, breaks, continues, calls
+`.skip(`, or DOES something is exactly the true positive this rule exists for
+and is NOT exempt. The last clause was added on 2026-07-31; see "The recall
+trade #183 did not disclose" above for what its absence cost.
 

@@ -28,6 +28,13 @@ _EXCLUDED_BASES = {
     "config",
     "kwargs",
     "env",
+    # A deliberately OPEN extension bag: the framework guarantees the mapping
+    # exists and guarantees nothing about its keys, because third-party code is
+    # what puts them there. `scrapy/core/downloader/handlers/http11.py:531`
+    # (`request.meta.get("download_maxsize", self._maxsize)`) is the shape --
+    # Scrapy documents `Request.meta` as the per-request extension dict, and no
+    # model can enumerate keys that downstream middlewares invent.
+    "meta",
     "os",
     "sys",
 }
@@ -114,6 +121,7 @@ class _FileFacts:
     """The whole-file context a single subscript cannot answer for itself."""
 
     annotation_nodes: frozenset[int]
+    decorator_nodes: frozenset[int]
     mutation_receivers: frozenset[int]
     schema_bound_names: frozenset[str]
     constant_tables: frozenset[str]
@@ -242,6 +250,8 @@ def _is_exempt(node: ast.Call | ast.Subscript, key: str, facts: _FileFacts) -> b
         return True
     if id(node) in facts.annotation_nodes:
         return True
+    if id(node) in facts.decorator_nodes:
+        return True
     if isinstance(node, ast.Subscript) and id(node) in facts.mutation_receivers:
         return True
     receiver = _receiver(node)
@@ -278,9 +288,10 @@ def _file_facts(tree: ast.Module) -> _FileFacts:
         The four indexes, each built from the memoized per-file node index.
 
     """
-    typed_dicts = _typed_dict_class_names(tree)
+    typed_dicts = _typed_dict_class_names(tree) | _declared_type_names(tree)
     return _FileFacts(
         annotation_nodes=_annotation_nodes(tree),
+        decorator_nodes=_decorator_nodes(tree),
         mutation_receivers=_mutation_receivers(tree),
         schema_bound_names=_schema_bound_names(tree, typed_dicts) if typed_dicts else frozenset(),
         constant_tables=_constant_tables(tree),
@@ -305,6 +316,27 @@ def _annotation_nodes(tree: ast.Module) -> frozenset[int]:
                 roots.append(returns)
             case _:
                 pass
+    return frozenset(id(inner) for root in roots for inner in walk(root))
+
+
+def _decorator_nodes(tree: ast.Module) -> frozenset[int]:
+    """Collect the identity of every node inside a decorator expression.
+
+    A decorator is never a mapping lookup, so `@router.get("")` is not one --
+    but `_looks_like_route_or_url` only recognises a value starting with `/` or
+    containing `://`, and the EMPTY-STRING route (the router-root registration
+    FastAPI projects write) slips through both. 23 findings across airflow,
+    litellm and prefect were exactly `@<router>.get("")` on the decorator line.
+    Position answers it exactly where the argument cannot, and costs no recall:
+    nothing in `decorator_list` is a payload field read.
+
+    Returns:
+        `id()` of each node in a decorator subtree.
+
+    """
+    roots: list[ast.expr] = []
+    for node in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef):
+        roots.extend(node.decorator_list)
     return frozenset(id(inner) for root in roots for inner in walk(root))
 
 
@@ -401,6 +433,40 @@ def _parse_type_text(text: str) -> ast.expr | None:
         return ast.parse(text, mode="eval").body
     except SyntaxError, ValueError:
         return None
+
+
+# Modules whose exports are containers and escape hatches rather than schemas.
+# `from typing import Any` followed by `payload: Any` declares nothing.
+_STRUCTURELESS_IMPORT_MODULES = frozenset(
+    {"builtins", "collections", "collections.abc", "typing", "typing_extensions"}
+)
+
+
+def _declared_type_names(tree: ast.Module) -> frozenset[str]:
+    """Collect names imported into this module that could name a declared shape.
+
+    A receiver annotated with a type this file IMPORTS has already been given a
+    schema by its author -- most often a TypedDict, which subscripts by design:
+    `AllMessageValues` in `litellm/…/prompt_templates/factory.py` is OpenAI's
+    message TypedDict, and `current_message["role"]` is the DECLARATIVE form,
+    not a substitute for one. `_typed_dict_class_names` sees only `class X
+    (TypedDict)` written in the same file, so every cross-module TypedDict --
+    which is nearly all of them -- was invisible.
+
+    This cannot resolve the import to check what it really is, so it is
+    deliberately generous: `typing`/`collections` exports are excluded because
+    `Any` and `dict` declare nothing, and everything else is taken at its word.
+
+    Returns:
+        The imported names usable as an annotation head.
+
+    """
+    declared: set[str] = set()
+    for node in nodes(tree, ast.Import, ast.ImportFrom):
+        if isinstance(node, ast.ImportFrom) and node.module in _STRUCTURELESS_IMPORT_MODULES:
+            continue
+        declared.update(alias.asname or alias.name.split(".")[0] for alias in node.names)
+    return frozenset(name for name in declared if name[:1].isupper())
 
 
 def _schema_bound_names(tree: ast.Module, typed_dicts: frozenset[str]) -> frozenset[str]:

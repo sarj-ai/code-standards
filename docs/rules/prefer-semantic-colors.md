@@ -51,19 +51,45 @@ that shadcn's default token set does not define — both are house-style calls
 the fileoverview already answers with "add a disable comment and a reason",
 and both were deliberately left firing.
 
-KNOWN GATE DEFECT, not fixed here. The shipped strict config sets
-`requireSemanticTokens: true`, which routes through `hasSemanticTokenSystem`
-below. Replaying that gate over all 20,846 findings splits them 9,968 fire /
-10,878 suppressed — but the split tracks naming convention and directory
-depth rather than whether a design system exists. One OSS monorepo with a
-complete token system is suppressed ENTIRELY, for two independent reasons:
-`SEMANTIC_TOKEN_RE` only knows shadcn's vocabulary (that repo names its
-tokens `content-default` / `bg-default`), and `MAX_UPWARD_DEPTH = 8` cannot
-reach the package root from a 9-deep app-router path. Tailwind v4 CSS-first
-setups have no `tailwind.config.*` for `DETECTION_FILES` to find at all. So
-at the shipped config, whether this rule runs on a file is partly a function
-of how deep it sits. Widening the vocabulary, adding v4 `@theme` detection
-and raising the depth budget is a separate change with its own measurement.
+## The `requireSemanticTokens` gate — fixed 2026-07-31
+
+The shipped strict config sets `requireSemanticTokens: true`, which routes
+through `hasSemanticTokenSystem`. The gate was previously recorded here as a
+known defect attributed to naming convention AND directory depth. Re-measured,
+**the binding constraint is vocabulary alone**: a `tailwind.config.*` was found
+and then REJECTED unless its CONTENTS happened to use shadcn's token names, so
+the option was asking "does this project use shadcn?" while documented to ask
+"does this project have design tokens?".
+
+`medusa/packages/admin/dashboard/tailwind.config.cjs` is decisive. It exists, it
+is in `DETECTION_FILES`, it sits 5 directories above the components that fail
+the rule — well inside `MAX_UPWARD_DEPTH = 8` — and it was rejected because
+Medusa names its tokens `bg-ui-button-neutral` / `text-ui-fg-subtle`.
+
+A `tailwind.config.*` is a token vocabulary by construction; the whole point of
+the file is to name colours. Its mere existence is now sufficient, as
+`components.json` already was, and `SEMANTIC_TOKEN_RE` additionally recognises
+Tailwind v4's `@theme` block for CSS-first projects that have no config file at
+all.
+
+Measured over 11,143 `.tsx` files in 63 OSS repositories:
+
+| | findings |
+| --- | --- |
+| ungated | 735 |
+| gated, as shipped | 433 |
+| gated, after this change | **609** |
+
+`ts/medusa` goes 0 → 34 and `ts/ui` 433 → 575. The ungated number is unchanged
+at 735 in both builds, which is the check that this touched only the gate.
+
+`ts/twenty` (93 ungated) and `ts/outline` (2) remain zero under the gate, and
+that is CORRECT rather than a residual defect: `find` over both repositories
+returns no `tailwind.config.*`, no `components.json` and no token stylesheet
+anywhere, because neither is a Tailwind project — twenty styles with Emotion,
+outline with styled-components. Asking them to use a semantic token names
+nothing that exists. The `MAX_UPWARD_DEPTH` half of the original diagnosis was
+not reproducible on this corpus and was left alone.
 
 ## Evidence relocated from the source
 

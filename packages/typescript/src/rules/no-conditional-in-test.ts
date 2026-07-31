@@ -15,6 +15,21 @@ type Options = readonly [];
 
 const TEST_CALLERS: ReadonlySet<string> = new Set(["it", "test"]);
 
+/**
+ * Lifecycle hooks reached through the test object — `test.beforeEach(…)`,
+ * `test.afterAll(…)`. `testCallerName` walks a member chain down to its ROOT
+ * identifier, so these resolved to `test` and their callbacks were linted as
+ * test bodies, contradicting the documented "conditionals in `beforeEach` /
+ * `beforeAll` are deliberately NOT reported". Teardown is conditional by
+ * nature, and there is no assertion in a teardown to hide.
+ */
+const HOOK_MEMBERS: ReadonlySet<string> = new Set([
+  "afterAll",
+  "afterEach",
+  "beforeAll",
+  "beforeEach",
+]);
+
 const FUNCTION_TYPES: ReadonlySet<AST_NODE_TYPES> = new Set([
   AST_NODE_TYPES.FunctionDeclaration,
   AST_NODE_TYPES.FunctionExpression,
@@ -68,6 +83,14 @@ function isTestBody(fn: TSESTree.Node): boolean {
   if (
     call?.type !== AST_NODE_TYPES.CallExpression ||
     !call.arguments.some((argument) => argument === fn)
+  ) {
+    return false;
+  }
+  if (
+    call.callee.type === AST_NODE_TYPES.MemberExpression &&
+    !call.callee.computed &&
+    call.callee.property.type === AST_NODE_TYPES.Identifier &&
+    HOOK_MEMBERS.has(call.callee.property.name)
   ) {
     return false;
   }
@@ -319,10 +342,45 @@ const isInertBranch = (branch: TSESTree.Statement): boolean =>
   !containsEscape(branch) &&
   !containsSkipCall(branch);
 
-function isInertNormalization(node: TSESTree.IfStatement): boolean {
+/**
+ * Does the branch only REWRITE state — assign, update, delete, declare?
+ *
+ * Guard 5 is named "state normalization", and "no assertion and no escape" is a
+ * strictly weaker test than that name implies: a branch full of ACTIONS asserts
+ * nothing and escapes nothing either, and it is precisely the branch that makes
+ * one test take two paths through the UI.
+ */
+function isNormalizationStatement(statement: TSESTree.Statement): boolean {
+  if (statement.type === AST_NODE_TYPES.VariableDeclaration) {
+    return true;
+  }
+  if (statement.type === AST_NODE_TYPES.BlockStatement) {
+    return statement.body.every(isNormalizationStatement);
+  }
+  if (statement.type !== AST_NODE_TYPES.ExpressionStatement) {
+    return false;
+  }
+  const { expression } = statement;
   return (
-    isInertBranch(node.consequent) &&
-    (node.alternate === null || isInertBranch(node.alternate))
+    expression.type === AST_NODE_TYPES.AssignmentExpression ||
+    expression.type === AST_NODE_TYPES.UpdateExpression ||
+    (expression.type === AST_NODE_TYPES.UnaryExpression &&
+      expression.operator === "delete")
+  );
+}
+
+/**
+ * Guard 5 — state normalization. The branch has no assertion to skip, no way
+ * out of the test, and does nothing but rewrite state. Deliberately narrow: a
+ * branch that returns, breaks, continues, calls `.skip(`, or DOES something is
+ * exactly the defect this rule exists for and is NOT exempt.
+ */
+function isInertNormalization(node: TSESTree.IfStatement): boolean {
+  const branches = [node.consequent, node.alternate].filter(
+    (branch): branch is TSESTree.Statement => branch !== null,
+  );
+  return branches.every(
+    (branch) => isInertBranch(branch) && isNormalizationStatement(branch),
   );
 }
 

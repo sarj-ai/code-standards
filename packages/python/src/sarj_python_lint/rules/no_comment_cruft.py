@@ -56,6 +56,22 @@ _LICENSE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# A licence header is a legally required block of text a contributor cannot
+# restructure, and the `# ---------` rules that box it in are part of it. The
+# rule already knows this -- `_flag_leading_preamble` returns early on
+# `_LICENSE_RE` -- but the BANNER branch did not, so "structure code with
+# functions, not ASCII rules" was reported against the one comment in the file
+# that is not about structure at all. 831 findings across 590 corpus files sat
+# on a punctuation rule in the first 8 lines of a file whose header carries a
+# copyright or SPDX line: `bokeh/docs/bokeh/docserver.py:1`,
+# `bokeh/release/checks.py:1`, `bokeh/release/__main__.py:1` are the shape --
+# `# ---…---` immediately above `# Copyright (c) Anaconda, Inc.`.
+#
+# Scoped to the file HEADER, not to every copyright mention: a banner beside a
+# licence reference in the middle of a file is an ordinary section rule.
+_LICENSE_HEADER_MAX_LINE = 8
+_LICENSE_HEADER_RADIUS = 4
+
 _BANNER_FULL_RE = re.compile(r"^[-=#*~_+.\s]{4,}$")
 # `[\u2500-\u257f]` is the Unicode box-drawing block. A `────────` rule is the
 # same section separator as `--------`, just prettier; 34 of them were sitting in
@@ -441,6 +457,24 @@ def _is_assign_or_call(snippet: str) -> bool:
     return isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call)
 
 
+def _license_header_lines(standalone: list[tuple[int, int, str]]) -> frozenset[int]:
+    """Collect the lines belonging to a file-header licence block.
+
+    Returns:
+        Every line within `_LICENSE_HEADER_RADIUS` of a licence comment that
+        sits in the first `_LICENSE_HEADER_MAX_LINE` lines of the file.
+
+    """
+    anchors = [
+        line for line, _, body in standalone if line <= _LICENSE_HEADER_MAX_LINE and _LICENSE_RE.search(body)
+    ]
+    return frozenset(
+        line
+        for anchor in anchors
+        for line in range(anchor - _LICENSE_HEADER_RADIUS, anchor + _LICENSE_HEADER_RADIUS + 1)
+    )
+
+
 class NoCommentCruft(Rule):
     id: str = "no-comment-cruft"
     code: str = "SARJ016"
@@ -468,6 +502,7 @@ class NoCommentCruft(Rule):
         referenced = _externally_referenced_lines(standalone)
         nested = nested_comment_lines(source)
         enumerated = [line for line, _, body in standalone if _ENUMERATION_RE.match(body)]
+        license_header = _license_header_lines(standalone)
         for line, col, body in standalone:
             if _is_directive(body) or _is_coding_cookie(body) or line in skip:
                 continue
@@ -478,6 +513,7 @@ class NoCommentCruft(Rule):
                 narration_protected=line in referenced,
                 isolated_enumeration=enumerated == [line],
                 nested=line in nested,
+                in_license_header=line in license_header,
             )
             if msg is not None:
                 diags[line] = Diagnostic(path=path, line=line, col=col + 1, code=self.code, message=msg)
@@ -492,6 +528,7 @@ class NoCommentCruft(Rule):
         narration_protected: bool,
         isolated_enumeration: bool,
         nested: bool,
+        in_license_header: bool,
     ) -> str | None:
         if _CODE_REGEN_CALL_RE.match(body):
             return None
@@ -500,7 +537,7 @@ class NoCommentCruft(Rule):
                 return "Untracked TODO/FIXME marker — add an issue ticket or context link."
             return None
         if _is_banner(body):
-            if _is_heading_underline(body, prev_body):
+            if _is_heading_underline(body, prev_body) or in_license_header:
                 return None
             return "Section-banner / region comment — structure code with functions, not ASCII rules."
         if _looks_like_code(body):

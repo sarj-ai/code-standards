@@ -142,6 +142,31 @@ break a consumer's CI on a patch release):
 
 Suppress an intentional case with `# sarj-noqa: SARJ016 — <reason>`.
 
+## 2026-07-31 follow-up: the licence header
+
+`_flag_leading_preamble` has always returned early on `_LICENSE_RE`, on the
+grounds that a copyright block is not a preamble a module docstring could
+replace. The BANNER branch did not, so the `# -----------` rules that box that
+same block in were reported as "Section-banner / region comment — structure code
+with functions, not ASCII rules" — advice a contributor cannot follow, on the
+one comment in the file that is not about structure at all.
+
+Measured over 37,358 Python files in 33 OSS repositories: **831 of the rule's
+15,876 findings (5.2%), across 590 files**, were a punctuation-only banner in the
+first 8 lines of a file whose header carries a copyright, SPDX or licence line.
+`bokeh/docs/bokeh/docserver.py:1`, `bokeh/release/checks.py:1` and
+`bokeh/release/__main__.py:1` are all the same shape:
+
+    # -----------------------------------------------------------------------------
+    # Copyright (c) Anaconda, Inc., and Bokeh Contributors.
+    ...
+
+A banner within `_LICENSE_HEADER_RADIUS = 4` lines of a licence comment that sits
+in the first `_LICENSE_HEADER_MAX_LINE = 8` lines is now exempt. Both bounds are
+load-bearing and both have a test that dies without them: the exemption is scoped
+to a file HEADER, so a `# =====` beside a mid-file mention of the word
+"copyright" still reports.
+
 ## Implementation notes
 
 ### `_is_prose_line`
