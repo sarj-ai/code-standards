@@ -42,11 +42,11 @@ a third locally, and pass its own build.
 installed wheel:
 
 ```
-ok     .sarj-standards.toml  --  version 0.22.0
+ok     .sarj-standards.toml  --  version 0.23.0
 drift  .github/workflows/ci.yml: sarj-python-lint==0.12.2  --  installed sarj-python-lint is 0.34.0
 drift  pyproject.toml: sarj-python-lint==0.25.0  --  installed sarj-python-lint is 0.34.0
-ok     pyproject.toml: sarj-lint-configs==0.22.0  --  matches the installed wheel
-drift  package.json: @sarj/eslint-plugin@2.16.0  --  the bundled eslint.strict.mjs is tested against 6.0.0
+ok     pyproject.toml: sarj-lint-configs==0.23.0  --  matches the installed wheel
+drift  package.json: @sarj/eslint-plugin@2.16.0  --  the bundled eslint.strict.mjs is tested against 6.1.0
 ```
 
 It reports; it never rewrites. Exit 1 on drift.
@@ -55,7 +55,7 @@ The sibling linter versions are not yours to pick. `sarj-lint-configs` pins
 `sarj-python-lint`, `sarj-sql-lint` and `sarj-iac-lint` exactly, so `doctor`
 reads them out of the wheel you already installed and derives what every other
 site should say — including the pre-commit tag, which lives in a different
-namespace (`python-v0.34.0` for `sarj-lint-configs` 0.22.0) that nobody should
+namespace (`python-v0.34.0` for `sarj-lint-configs` 0.23.0) that nobody should
 have to translate by hand.
 
 The block `init` writes has no `rev:` at all. A `repo: local` hook runs the CLI
@@ -114,7 +114,7 @@ on the two a repo had no use for, and so never made it into anyone's CI.
 
 ## ESLint peers
 
-`eslint.strict.mjs` imports nine npm packages, and the set does not resolve on its
+`eslint.strict.mjs` imports ten npm packages, and the set does not resolve on its
 own. The unicorn floor (72) pulls `eslint >= 10.4`, while `eslint-plugin-react@7.37.5`
 — the newest published release — peers `eslint <= ^9.7`. **`npm install` exits
 ERESOLVE**, so the config is unreachable until you add an `overrides` entry:
@@ -140,9 +140,20 @@ Three of the pins are load-bearing floors rather than just "current":
 
 | Peer | Why the pin is a floor |
 | --- | --- |
-| `@sarj/eslint-plugin` | Every custom rule the config names has to exist. `no-type-member-comment-wall` arrived in 5.1.0, `prefer-zod-infer` in 4.1.0 and `prefer-zod-enum` in 2.17.0; naming a rule the installed plugin lacks is "Definition for rule was not found", once per file. |
+| `@sarj/eslint-plugin` | Every custom rule the config names has to exist. `prefer-module-level-schema` arrived in 6.1.0, `no-type-member-comment-wall` in 5.1.0, `prefer-zod-infer` in 4.1.0 and `prefer-zod-enum` in 2.17.0; naming a rule the installed plugin lacks is "Definition for rule was not found", once per file. |
 | `eslint-plugin-unicorn` | The config enables 213 unicorn rules; most do not exist below 72. |
+| `eslint-plugin-zod` | The config **imports** it, so a missing or older install is a hard config error rather than a skipped rule. `zod/prefer-nullish` and `zod/no-any-schema` both land in 4.9.0. |
 | `eslint-plugin-perfectionist` | `sort-modules` does not exist before 4. On 3.x an unknown rule is a **hard config error**, not a soft degrade. |
+
+`eslint-plugin-zod` returns to the config after being dropped in #155, when the
+one rule taken from it (`zod/prefer-enum-over-literal-union`) was replaced by
+`@sarj/prefer-zod-enum` and the import went with it. Two of its rules are worth
+the dependency on their own measured evidence — `zod/prefer-nullish` (691 hits
+across 12 of 17 audited repos, autofixable) and `zod/no-any-schema` (159 hits
+across 10) — and enabling a maintained upstream rule beats keeping a local copy
+of it. The rest of the plugin stays off: most of it is Zod v3 → v4 migration
+advice (`no-number-schema-with-int`, `prefer-top-level-string-formats`, the
+`no-schema-with-is-*` deprecations) that would misfire on a v3 consumer.
 
 **On ESLint 10 the config skips `eslint-plugin-react`'s 18 rules.** 7.37.5, the
 newest release, calls the `context.getFilename()` removed in ESLint 10, so every
@@ -163,7 +174,7 @@ export default [sarj.configs.strict];
 
 That preset carries the `@sarj` rules only — not the typescript-eslint, unicorn,
 react or perfectionist layers the shipped config adds — but it needs one npm
-package and no Python. It is flat-config shaped as of `@sarj/eslint-plugin@6.0.0`;
+package and no Python. It is flat-config shaped as of `@sarj/eslint-plugin` 6.0.0;
 before that both presets declared `plugins` in eslintrc array form and ESLint
 threw on sight, which is the other reason people copied the file.
 

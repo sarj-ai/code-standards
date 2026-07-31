@@ -49,6 +49,7 @@ import strictTestAssertions from "./rules/strict-test-assertions.js";
 import noAsyncCallbackInWaitFor from "./rules/no-async-callback-in-waitfor.js";
 
 import noHandRolledSleep from "./rules/no-hand-rolled-sleep.js";
+import preferModuleLevelSchema from "./rules/prefer-module-level-schema.js";
 
 const rules = {
   "enforce-file-structure": enforceFileStructure,
@@ -101,11 +102,12 @@ const rules = {
   "strict-test-assertions": strictTestAssertions,
   "prefer-non-nullable-collection": preferNonNullableCollection,
   "no-async-callback-in-waitfor": noAsyncCallbackInWaitFor,
+  "prefer-module-level-schema": preferModuleLevelSchema,
 };
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "6.0.0",
+  version: "6.1.0",
 } as const;
 
 const recommendedRules = {
@@ -205,6 +207,14 @@ const recommendedRules = {
   "@sarj/require-interface-for-injected-service": "warn",
   "@sarj/prefer-non-nullable-collection": "warn",
   "@sarj/no-async-callback-in-waitfor": "warn",
+  // A Zod schema built inside a function is rebuilt on every call, every
+  // request, every render. Zod sibling of `prefer-module-level-constant`,
+  // which cannot reach it: that rule's hoist gate requires literal leaves and
+  // `z.object({...})` is a call. 378 reports over 30,546 .ts/.tsx files in 17
+  // repos; the free-variable, chain and `this` gates are what keep the schema
+  // FACTORY case (closes over a parameter, a type parameter, or a local type)
+  // silent.
+  "@sarj/prefer-module-level-schema": "warn",
   // `strict-test-assertions` shipped in `rules` but in NEITHER preset, so a
   // consumer using `configs.recommended`/`configs.strict` instead of the shared
   // `eslint.strict.mjs` had silently never run it. `flat-presets.test.ts`
@@ -292,6 +302,8 @@ const strictRules = {
   "@sarj/require-interface-for-injected-service": "error",
   "@sarj/prefer-non-nullable-collection": "error",
   "@sarj/no-async-callback-in-waitfor": "error",
+  // Zod sibling of `prefer-module-level-constant` -- see `recommended`.
+  "@sarj/prefer-module-level-schema": "error",
   // See the `recommended` block.
   "@sarj/strict-test-assertions": "error",
 } as const;
