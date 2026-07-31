@@ -416,8 +416,90 @@ ruleTester.run("no-fat-try-blocks", rule, {
         }
       `,
     },
+    // The purity model, negative side. These must STAY silent after `JSON.parse`
+    // and the Map/Set verbs stopped counting as pure by name.
+    {
+      code: `
+        function h(xs) {
+          try {
+            const a = xs.map(String);
+            const b = xs.filter(Boolean);
+            const c = xs.join(",");
+            const d = Object.keys(xs);
+            use(a, b, c, d);
+          } catch (e) { handle(e); }
+          finish();
+        }
+      `,
+    },
+    // `JSON.stringify` stays pure: it is overwhelmingly called on a value the
+    // same function just built. A recall choice, not an oversight.
+    {
+      code: `
+        function j(a, b, c, d) {
+          try {
+            const w = JSON.stringify(a);
+            const x = JSON.stringify(b);
+            const y = JSON.stringify(c);
+            const z = JSON.stringify(d);
+            use(w, x, y, z);
+          } catch (e) { handle(e); }
+          finish();
+        }
+      `,
+    },
+    // Fire-and-forget `cache.set(...)` is still exempt structurally, so dropping
+    // `set` from the name-only pure list did not resurrect the class that
+    // `isBareCallStatement` exists to suppress.
+    {
+      code: `
+        function m(cache) {
+          try {
+            cache.set("a", 1);
+            cache.set("b", 2);
+            cache.set("c", 3);
+            cache.set("d", 4);
+          } catch (e) { handle(e); }
+          finish();
+        }
+      `,
+    },
   ],
   invalid: [
+    // `JSON.parse` is the canonical throwing call and the canonical reason to
+    // write try/catch, and it was on the "pure, non-throwing" list.
+    {
+      code: `
+        function f(a, b, c, d) {
+          try {
+            const w = JSON.parse(a);
+            const x = JSON.parse(b);
+            const y = JSON.parse(c);
+            const z = JSON.parse(d);
+            use(w, x, y, z);
+          } catch (e) { handle(e); }
+          finish();
+        }
+      `,
+      errors: [{ messageId: "fatTryBlock" }],
+    },
+    // `PURE_METHODS` matched by method NAME only, so every I/O client that
+    // borrows the Map/Set vocabulary read as pure data plumbing.
+    {
+      code: `
+        function g(client, redis, repo, api) {
+          try {
+            const a = client.get("/1");
+            const b = redis.set("k", 1);
+            const c = repo.find({});
+            const d = api.delete("id");
+            use(a, b, c, d);
+          } catch (e) { handle(e); }
+          finish();
+        }
+      `,
+      errors: [{ messageId: "fatTryBlock" }],
+    },
     // FP-3 must not over-suppress: a call whose RESULT is branched on still
     // counts, even though the guard body is bare fire-and-forget.
     {

@@ -103,3 +103,43 @@ into "no contacts found" (fails d). All three still report after the change.
 across true and false positives — it trades recall for quiet without making
 the rule any more correct. The shape of the handler, not the size of the body,
 is what separates the two populations.
+
+## `JSON.parse` was on the "pure, non-throwing" list
+
+`PURE_NAMESPACES` held `JSON`, and the rule's own prose called the JSON helpers
+"pure, non-throwing". `JSON.parse` is the canonical throwing call in JavaScript
+and the canonical reason anybody writes `try`/`catch` at all, so the one shape
+this rule most needed to see was the one it could not.
+
+Reproduced: four `JSON.parse` calls in a `try` with a swallowing `catch`
+produced **0** reports; the identical shape written with `parseA()` reported
+correctly.
+
+`JSON.stringify` also throws — circular structures, `BigInt` — but is
+overwhelmingly called on a value the same function just built, so it stays pure.
+That is a recall choice, stated rather than hidden.
+
+## `PURE_METHODS` matched by method NAME alone
+
+`get`, `set`, `add`, `delete`, `has`, `clear`, `find`, `keys`, `values` and
+`entries` are the `Map` / `Set` API. They are also `client.get(url)`,
+`redis.set(k, v)`, `repo.find(where)`, `api.delete(id)` and `bucket.has(key)` —
+every one of which does network or disk I/O and throws. A name-only test cannot
+tell those apart, and it resolved the ambiguity towards "pure", which is the
+unsafe direction for a rule whose entire job is to find over-broad `catch`
+handlers. Four `client.get`-shaped statements in a `try` with a swallowing
+`catch` produced **0** reports.
+
+Those names are out of the name-only set. What remains are Array / String /
+Number members with no I/O reading: nothing calls `.padStart()` on a database
+handle. The failure mode of what is left is a false NEGATIVE (a genuine array
+method on a receiver that also does I/O), not a false negative on the exact
+swallow the rule exists to catch.
+
+`isBareCallStatement` continues to exempt fire-and-forget `cache.set(k, v);`
+statements structurally, which is the common non-I/O use of the removed names —
+pinned as a `valid` case so the change did not resurrect that false-positive
+class.
+
+Corpus effect: 277 -> 315 findings over 32 OSS TypeScript repos / 145,235 files
+(+13.7%), of which the scoping restoration in `_paths` is a part.

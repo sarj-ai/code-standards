@@ -34,6 +34,24 @@ const ARRAY_MATCHERS: ReadonlySet<string> = new Set(["toEqual", "toStrictEqual"]
  */
 const COLLECTION_PROPERTIES: ReadonlySet<string> = new Set(["length", "size"]);
 
+/**
+ * Property names whose meaning as an OBJECT-LITERAL KEY is not "a property of
+ * this name". There is exactly one in JavaScript.
+ *
+ * `__proto__: v` in a literal is the prototype SETTER, so the key never exists
+ * and `toMatchObject` never checks it — the fix would DELETE the assertion it
+ * claims to be merging. Quoting does not help: `"__proto__": v` is the same
+ * production. The whole run is dropped rather than the one key, because there
+ * is no `toMatchObject` literal that says what the run says.
+ *
+ * Audited for siblings: `constructor`, `toString`, `valueOf` and every other
+ * inherited name ARE plain own keys in a literal, and jest's `subsetEquality`
+ * walks the prototype chain when reading them off the received value, so those
+ * merge faithfully. `get x() {}` / `async x() {}` are different PRODUCTIONS,
+ * not different key names, and this fixer only ever emits `key: value`.
+ */
+const LITERAL_KEY_HAZARDS: ReadonlySet<string> = new Set(["__proto__"]);
+
 /** `-1` parses as a unary expression, not a literal, but it is still constant. */
 const NUMERIC_SIGNS: ReadonlySet<string> = new Set(["-", "+"]);
 
@@ -174,7 +192,11 @@ export default createRule<Options, MessageIds>({
         }
         key = { kind: "index", index };
       } else {
-        if (actual.property.type !== AST_NODE_TYPES.Identifier || COLLECTION_PROPERTIES.has(actual.property.name)) {
+        if (
+          actual.property.type !== AST_NODE_TYPES.Identifier ||
+          COLLECTION_PROPERTIES.has(actual.property.name) ||
+          LITERAL_KEY_HAZARDS.has(actual.property.name)
+        ) {
           return null;
         }
         key = { kind: "property", name: actual.property.name };
@@ -199,6 +221,26 @@ export default createRule<Options, MessageIds>({
         expectedText: literal ?? sourceCode.getText(expected),
         expectedIsLiteral: literal !== null,
       };
+    }
+
+    /**
+     * True when a comment sits inside the span the fix rewrites — between two
+     * statements of the run, or inside one of them.
+     *
+     * Such a comment cannot survive: the statements after the first are DELETED,
+     * so their leading comments are left dangling above the merged assertion,
+     * describing a statement that no longer exists. Worst case the dangling line
+     * is an `eslint-disable-next-line`, which then becomes a fresh unused-directive
+     * error the author did not write. Dropping a comment is also not "exactly
+     * equivalent to the code it replaces", so the report stands and the fix is
+     * withheld for a human.
+     */
+    function hasInterveningComment(run: readonly Assertion[]): boolean {
+      return run.some(
+        (assertion, index) =>
+          sourceCode.getCommentsInside(assertion.statement).length > 0 ||
+          (index > 0 && sourceCode.getCommentsBefore(assertion.statement).length > 0),
+      );
     }
 
     /**
@@ -235,10 +277,12 @@ export default createRule<Options, MessageIds>({
         node: first.statement,
         messageId: "combineAssertions",
         data: { count: String(run.length), receiver: receiverText },
-        fix: (fixer) => [
-          fixer.replaceText(first.statement, `expect(${receiverText}).toMatchObject({ ${properties} });`),
-          ...run.slice(1).map((assertion) => fixer.remove(assertion.statement)),
-        ],
+        fix: hasInterveningComment(run)
+          ? null
+          : (fixer) => [
+              fixer.replaceText(first.statement, `expect(${receiverText}).toMatchObject({ ${properties} });`),
+              ...run.slice(1).map((assertion) => fixer.remove(assertion.statement)),
+            ],
       });
     }
 

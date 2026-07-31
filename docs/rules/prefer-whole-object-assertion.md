@@ -149,3 +149,66 @@ audit found in the false-positive classes fails here: a spy matcher, a
 `toBeDefined`, a `.not.` chain, `await expect(...)`, `expect.soft(...)`,
 chai's `.to.equal`, or an expected value that is not a literal.
 
+
+## `__proto__`: the autofix silently deleted an assertion
+
+The guard above ("the rule reports a property run only where its own fix is
+exactly equivalent to the code it replaces") had one hole, and it was the
+sharpest possible instance of the invariant it claims.
+
+Input, in a test file:
+
+```ts
+it("proto", () => { expect(o.__proto__).toBe(null); expect(o.b).toBe(2); });
+```
+
+`--fix` output, from the shipped build:
+
+```ts
+it("proto", () => { expect(o).toMatchObject({ __proto__: null, b: 2 }); });
+```
+
+`__proto__:` in an object literal is the prototype SETTER, not a property
+definition. `Object.keys({ __proto__: null, b: 2 })` is `["b"]`, so
+`toMatchObject` checks `b` and nothing else — the `__proto__` assertion is gone.
+Quoting does not help: per the spec `"__proto__": v` is the same production, and
+only a computed key `["__proto__"]` would define an own property.
+
+Verified under vitest with `const o = Object.create({ marker: 1 }); o.b = 2;` —
+the original pair THROWS and the rewritten form PASSES. `COLLECTION_PROPERTIES`
+excluded `length` and `size` but not this.
+
+This is the same class PR #183 was written to eliminate. It survived because
+every test covered the REPORT and none applied the FIX; the applied-fix suite in
+`tests/rules/prefer-whole-object-assertion.test.ts` now pins the language fact,
+the fixer's output, and the runtime consequence.
+
+**Audited for siblings.** `constructor`, `toString`, `valueOf`,
+`hasOwnProperty` and every other inherited name ARE plain own keys in an object
+literal, and jest's `subsetEquality` walks the prototype chain when reading them
+off the received value, so those merge faithfully. `get x() {}` / `set x() {}` /
+`async x() {}` are different PRODUCTIONS, not different key names, and this
+fixer only ever emits `key: value`. `__proto__` is the only name in the language
+whose meaning changes between a member expression and a literal key.
+
+A `__proto__` assertion now BREAKS the run rather than poisoning it, so
+`expect(o.__proto__).toBe(null); expect(o.b).toBe(2); expect(o.c).toBe(3);`
+still merges `b` and `c` and leaves the prototype assertion alone.
+
+Corpus effect: 4 findings withdrawn over 32 OSS TypeScript repos / 145,235
+files.
+
+## Comments inside the run: the report stands, the fix is withheld
+
+The fixer replaced the first statement and `fixer.remove`d the rest, which takes
+each removed statement's text but not the comment above it. The comment is left
+dangling over the merged assertion, describing a statement that no longer
+exists. Worst case that dangling line is an
+`// eslint-disable-next-line @sarj/prefer-whole-object-assertion`, which then
+becomes a fresh `reportUnusedDisableDirectives` error the author never wrote.
+
+Deleting a comment is also not "exactly equivalent to the code it replaces", so
+the rule now reports without a fix whenever a comment sits inside the span it
+would rewrite — between two statements of the run, or inside one of them. A
+comment before the first statement or after the last is outside the span and
+survives, so the common `// setup` / trailing-comment shapes still autofix.

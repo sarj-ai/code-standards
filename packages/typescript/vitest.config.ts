@@ -14,5 +14,14 @@ export default defineConfig({
   test: {
     include: ["tests/**/*.test.ts"],
     globals: false,
+    // A timeout is a hang watchdog, not a performance budget — the budgets live
+    // in `tests/perf.test.ts` and are ratios, not wall clock. Vitest's 5 s
+    // default is below what a COLD type-aware program build costs inside
+    // `@typescript-eslint/rule-tester`, so eight test files failed with
+    // "Test timed out in 5000ms" in a full parallel run and passed one at a
+    // time — a failure that says nothing about the code under test. Raising the
+    // watchdog is the fix; raising a budget would not have been.
+    testTimeout: 60_000,
+    hookTimeout: 60_000,
   },
 });

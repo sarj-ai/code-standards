@@ -114,7 +114,7 @@ const rules = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "7.2.0",
+  version: "8.0.0",
 } as const;
 
 type RuleModule = (typeof rules)[keyof typeof rules];

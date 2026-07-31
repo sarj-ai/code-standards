@@ -86,3 +86,24 @@ innermost loop body starts empty each pass, so its growth is bounded.
 A target read by an enclosing while test, or read inside a loop body
 outside its own accumulation, is a probe (unique-name generation):
 every intermediate value matters, so `join` cannot replace the growth.
+
+## Performance: `ast.unparse` is not free
+
+The rule identifies an accumulator by the SOURCE TEXT of its target, so it
+called `ast.unparse` once per `Name`/`Attribute` in every loop body, plus once
+per operand of every `+` it examined. `ast.unparse` constructs and runs a full
+unparser on each call.
+
+On the `test_perf.py` benchmark that made this rule the registry's worst
+outlier: 153 ms against a median of 15 ms (~10x, the gate's own limit) and
+80 ms/1k LOC against the documented 50 ms/1k LOC target.
+
+`_src()` answers the same question directly for the two shapes that account for
+essentially all of the calls — a bare `Name` is its identifier, and a dotted
+chain over one is the chain — and falls through to `ast.unparse` for anything
+else, so no comparison changes meaning. 153 ms -> 43 ms.
+
+Verified equivalent, not merely tested: the old and new rule were run
+side-by-side over 35,288 `.py` files from an OSS Python corpus. Both produced
+452 findings and **0** files differed in either the set or the positions of
+their diagnostics.

@@ -96,23 +96,33 @@ exempt, and no true positive was lost — the finding set after the fix is the
 3. `nest/packages/microservices/external/mqtt-options.interface.ts:116` — a
    vendored copy of the MQTT.js typings, `@see https://github.com/mqttjs/MQTT.js/`
    at the top of the file. Editing its prose desynchronises the copy.
-   → `external/`, `vendor/`, `vendored/`, `third-party/` and `third_party/`
-   joined `generated/` in `isGeneratedFile`. Python's `_paths.is_generated_path`
-   has always held `vendor` / `vendored`; this is the TS side catching up.
+   → `vendor/`, `vendored/` and `third-party/` joined `generated/` in the SHARED
+   `isGeneratedFile` default: the directory name is itself the claim that an
+   upstream owns the text, and it is as true for `no-comment-cruft` as it is
+   here. `external/` is NOT, and this rule opts into it through the
+   `externalTree` gate. It shipped as a widening of the shared regex, which was
+   a mistake: `isGeneratedFile` is consulted by 20 rule modules, so six false
+   positives here silently disabled twenty other rules over every `external/`
+   tree in every consumer repo. `external/` is a routine name for FIRST-PARTY
+   outbound-integration code. See `docs/rules/_paths.md`.
 4. `storybook/code/renderers/react/src/componentManifest/__testfixtures__/ForwardRef.tsx:3`
    — a docgen-extractor FIXTURE whose three prop comments are the input under
    test; `componentMetaExtractor.qa.test.ts:448` asserts their exact strings.
    `isTestFile` matched `fixtures/` but not `__testfixtures__/`.
-   → `__fixtures__/` and `__testfixtures__/` added to `isTestFile`.
+   → `__fixtures__/` and `__testfixtures__/` joined `fixtures/` in the SHARED
+   `isTestFile` default — same category, different spelling. The SINGULAR
+   `fixture/` did not: `src/fixture/seed.ts` is a production database seeder in
+   several repos, so it is the `fixtureTree` gate, which this rule holds.
 5. `storybook/code/renderers/vue3/template/stories_vue3-vite-default-ts/component-meta/reference-type-props/my-props.ts:31`
    and 6. `storybook/test-storybooks/mcp/stories/other/card/Card.tsx:4` — demo
    components in story trees. Prop JSDoc there is not commentary but OUTPUT:
    docgen renders it as the args-table description the reader of the storybook
    sees, and in `my-props.ts` it is also the expected value of a component-meta
    test.
-   → `isStoryFile` now matches a `stories/` directory (and Storybook's
-   `stories_<framework>/` spelling), not only a `*.stories.*` basename, and this
-   rule consults it.
+   → this rule opts into the `storyTree` gate of `isStoryFile`, which matches a
+   `stories/` directory (and Storybook's `stories_<framework>/` spelling) as
+   well as the `*.stories.*` basename that is the shared default. Not a default:
+   plenty of repos keep ordinary first-party components under `stories/`.
 
 **The 22 that remain, all read.** cal.com ×8 (four repository/port interfaces
 whose method JSDoc is the method name in prose plus a bare `@param`, four
@@ -187,9 +197,9 @@ killed:
 `maxNovelWords` 1→99 and 1→0 · `minCommentedMembers` 3→2 ·
 `minCommentedRatio` 0.6→0 · `minRestatedRatio` 0.75→0.1 · own-line check ·
 leading-comment standalone check · trailing-comment position check · claim set ·
-`isTestFile` gate · `isGeneratedFile` gate (whole, and the vendored directories
-alone) · `isStoryFile` gate (whole, and the `stories/` directory alone) ·
-`__testfixtures__` alone · `isProtected` · `VALUE_TAG_RE` · `DEFAULT_RE` ·
+`isTestFile` gate · `isGeneratedFile` gate (whole, and the `externalTree` gate
+alone) · `isStoryFile` gate (whole, and the `storyTree` gate alone) · the
+`fixtureTree` gate alone · `isProtected` · `VALUE_TAG_RE` · `DEFAULT_RE` ·
 `DIGIT_RE` · `UNIT_WORD_RE` · `EXAMPLE_RE` · `BANNER_RE` · non-ASCII ·
 computed-member filter · group label (whole, its own-name test, its region
 evidence, its bare-word shape) · the STOPWORDS trim.
