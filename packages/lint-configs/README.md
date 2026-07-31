@@ -59,29 +59,25 @@ one tested unit.
 
 | Peer | Floor | Why |
 | --- | --- | --- |
-| `@sarj/eslint-plugin` | `3.0.0` | Contains every custom TypeScript rule referenced by the config. |
-| `eslint-plugin-unicorn` | `>= 72` | **Hard floor since 0.16.0.** The config enables 199 unicorn rules; 121 of them do not exist in unicorn 64 and 96 do not exist in 65. |
-| `eslint` | `>= 10.4` | Transitive: it is `eslint-plugin-unicorn@72`'s own peer floor. |
+| `@sarj/eslint-plugin` | `4.1.0` | Contains every custom TypeScript rule referenced by the config. |
+| `eslint-plugin-unicorn` | `>= 65` *only* if you pass `checkDirectories` | The option does not exist before 65, and on 64 an unknown option is a **hard config error**, not a soft degrade. |
 
 `@sarj/eslint-plugin@3.0.0` is a **breaking** release: it removes
 `no-unsafe-cast`, `prefer-shadcn`, `no-sequential-await`,
 `require-schema-validate-search` and `single-public-export`. An
 `eslint-disable` naming any of them reports "Definition for rule was not found"
-until the comment is dropped. Do not pin below `2.17.0` — the config references
-`@sarj/prefer-zod-enum`, which does not exist in `2.16.0`.
+until the comment is dropped. Do not pin below `4.1.0` — the config references
+`@sarj/prefer-zod-infer`, added in `4.1.0`, and `@sarj/prefer-zod-enum`, which
+does not exist before `2.17.0`.
 
-The unicorn floor used to be advisory: the config ran 12 unicorn rules, all of
-which exist as far back as 64, and the only thing needing a newer plugin was the
-`checkDirectories` option that `unicorn/filename-case` deliberately does not
-pass. Since 0.16.0 the floor is real and load-bearing.
-
-Upgrading is not optional and it is not silent. `eslint.strict.mjs` re-derives
-the rule names it needs from its own rule objects and **throws at config load**
-with the count and the first few missing names if the installed plugin is too
-old, rather than emitting "Definition for rule ... was not found" once per rule
-per file. One first-party consumer is pinned to an exact `64.0.0` and must move
-to `>= 72` (and therefore `eslint >= 10.4`) before taking `0.16.0`; the others
-are already on 72.
+`unicorn/filename-case` in this config deliberately does **not** pass
+`checkDirectories`, so the config itself imposes no unicorn floor above what
+the rest of the rule set already needs. The floor is recorded here because it
+is the reason the option is absent, and because it is invisible at the call
+site: a consumer that adds `checkDirectories` locally will break on any unicorn
+older than 65. Installed versions across first-party consumers currently span
+`^62.0.0` (hala) through `^72.0.0` (demo-gateway), with bulbul pinned to an
+exact `64.0.0` — i.e. two consumers sit below the floor today.
 
 Then reference the synced file:
 

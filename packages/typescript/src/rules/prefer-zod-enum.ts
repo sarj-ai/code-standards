@@ -16,12 +16,10 @@ import {
   type TSESTree,
 } from "@typescript-eslint/utils";
 
+import { isZodModule } from "./_zod.js";
+
 type MessageIds = "preferEnum";
 type Options = readonly [];
-
-function isZodModule(source: string): boolean {
-  return /(^|[/@-])zod([/-]|$)/.test(source);
-}
 
 export default ESLintUtils.RuleCreator(
   (name) =>
