@@ -90,7 +90,7 @@ jobs:
         working-directory: packages/typescript
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
@@ -118,7 +118,7 @@ jobs:
         working-directory: packages/python
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v8.2.0
+      - uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
@@ -126,7 +126,7 @@ jobs:
       - run: uv sync --dev
       - run: uv run pytest -q
       - run: uv build --wheel --sdist
-      - uses: pypa/gh-action-pypi-publish@v1.14.0
+      - uses: pypa/gh-action-pypi-publish@v1.14.1
         with:
           packages-dir: packages/python/dist
 
@@ -144,7 +144,7 @@ jobs:
         working-directory: packages/sql
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v8.2.0
+      - uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
@@ -171,7 +171,7 @@ jobs:
         working-directory: packages/iac
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v8.2.0
+      - uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
@@ -179,7 +179,7 @@ jobs:
       - run: uv sync --dev
       - run: uv run pytest -q
       - run: uv build --wheel --sdist
-      - uses: pypa/gh-action-pypi-publish@v1.14.0
+      - uses: pypa/gh-action-pypi-publish@v1.14.1
         with:
           packages-dir: packages/iac/dist
 
@@ -207,7 +207,7 @@ jobs:
         working-directory: packages/lint-configs
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v8.2.0
+      - uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
@@ -243,7 +243,7 @@ jobs:
         working-directory: packages/tsconfig
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
