@@ -1,13 +1,11 @@
 /**
- * @fileoverview no-type-member-comment-wall — an object type whose member comments mostly re-spell the members is a wall the reader pays for by the block.
+ * @fileoverview no-declaration-comment-wall — an enum body or class body whose member comments mostly re-spell the members is a wall the reader pays for by the block.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-type-member-comment-wall.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-type-member-comment-wall.md
+ * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-declaration-comment-wall.test.ts
+ * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-declaration-comment-wall.md
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
-
-import { createRule } from "./_docs.js";
 
 import {
   BARE_LABEL_RE,
@@ -16,40 +14,53 @@ import {
   type WallOptions,
   carriesValue,
   commentBody,
+  declarationRange,
+  isLabel,
+  isTagsOnly,
   isWall,
   knownTokens,
   labelStems,
   novelWords,
 } from "./_comment-wall.js";
+import { createRule } from "./_docs.js";
 import { isGeneratedFile, isStoryFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "commentWall";
 
 type Options = readonly [Partial<WallOptions>?];
 
-/** A member the rule can judge: a named property or method signature. */
-type NamedMember = TSESTree.TSPropertySignature | TSESTree.TSMethodSignature;
+/** A member this rule can judge: something with a name and a source range. */
+interface Judged {
+  readonly node: TSESTree.Node;
+  readonly key: TSESTree.Node;
+}
 
-function isNamedMember(node: TSESTree.TypeElement): node is NamedMember {
-  return (
-    (node.type === AST_NODE_TYPES.TSPropertySignature ||
-      node.type === AST_NODE_TYPES.TSMethodSignature) &&
-    !node.computed
-  );
+function named(node: TSESTree.Node): Judged | undefined {
+  switch (node.type) {
+    case AST_NODE_TYPES.TSEnumMember:
+      return { node, key: node.id };
+    case AST_NODE_TYPES.PropertyDefinition:
+    case AST_NODE_TYPES.TSAbstractPropertyDefinition:
+    case AST_NODE_TYPES.MethodDefinition:
+    case AST_NODE_TYPES.TSAbstractMethodDefinition:
+      return node.computed ? undefined : { node, key: node.key };
+    default:
+      return undefined;
+  }
 }
 
 export default createRule<Options, MessageIds>({
-  name: "no-type-member-comment-wall",
+  name: "no-declaration-comment-wall",
   meta: {
     type: "suggestion",
     docs: {
       description:
-        "Flag an object type whose member comments mostly re-spell the members' own names and types.",
+        "Flag an enum body or class body whose member comments mostly re-spell the members' own names.",
     },
     schema: [WALL_SCHEMA],
     messages: {
       commentWall:
-        "{{restated}} of this type's {{commented}} member comments only re-spell the member's own name and type — delete them, and keep the rows that say what the name cannot.",
+        "{{restated}} of this declaration's {{commented}} member comments only re-spell the member's own name — delete them, and keep the rows that say what the name cannot.",
     },
   },
   defaultOptions: [WALL_DEFAULTS],
@@ -80,12 +91,11 @@ export default createRule<Options, MessageIds>({
      * above it, or the one trailing its last row.
      *
      * A leading comment counts only when the MEMBER starts its own line, and
-     * only when the comment is alone on ITS line; a trailing comment counts
-     * only when it sits after the member it is read against. All three keep a
-     * one-line type literal under a doc block from reading as three members
-     * documented three times with the same words.
+     * only when the comment is alone on ITS line; a trailing comment counts only
+     * when it sits after the member it is read against. Between them no comment
+     * can document two members, which is why this rule needs no claim set.
      */
-    function documentingComment(member: NamedMember): TSESTree.Comment | undefined {
+    function documentingComment(member: TSESTree.Node): TSESTree.Comment | undefined {
       const beforeMember = sourceCode.getTokenBefore(member, { includeComments: false });
       const ownsItsLine =
         beforeMember === null || beforeMember.loc.end.line < member.loc.start.line;
@@ -99,22 +109,13 @@ export default createRule<Options, MessageIds>({
     }
 
     /**
-     * True when a comment heads a REGION of the type instead of describing the
-     * member under it — the exemption this rule documents and, before this
-     * check, leaked on.
-     *
-     * Three conditions. The body is ONE bare identifier word; it names
-     * something OTHER than the member below it (the decisive one — `// links`
-     * over `LinkDescriptors` heads a group, `// links` over `links` restates a
-     * name); and it shows region evidence, heading a run of members of which
-     * only the first is commented, or set off by a blank line.
+     * True when a comment heads a REGION instead of describing the member under
+     * it. The body is ONE bare identifier word; it names something OTHER than
+     * the member below it; and it shows region evidence, heading a run of
+     * members of which only the first is commented, or set off by a blank line.
      */
-    function isGroupLabel(
-      comment: TSESTree.Comment,
-      member: NamedMember,
-      headsRun: boolean,
-    ): boolean {
-      if (comment.loc.end.line >= member.loc.start.line) return false;
+    function isGroupLabel(comment: TSESTree.Comment, member: Judged, headsRun: boolean): boolean {
+      if (comment.loc.end.line >= member.node.loc.start.line) return false;
       const body = commentBody(comment);
       if (!BARE_LABEL_RE.test(body)) return false;
       if (labelStems(body) === labelStems(sourceCode.getText(member.key))) return false;
@@ -122,33 +123,36 @@ export default createRule<Options, MessageIds>({
       return headsRun || (lineAbove !== undefined && lineAbove.trim().length === 0);
     }
 
-    function check(node: TSESTree.TSInterfaceBody | TSESTree.TSTypeLiteral): void {
-      const members = node.type === AST_NODE_TYPES.TSInterfaceBody ? node.body : node.members;
-      const named = members.filter(isNamedMember);
-      if (named.length === 0) return;
+    function check(node: TSESTree.Node, members: readonly TSESTree.Node[]): void {
+      const judged = members.map(named).filter((member): member is Judged => member !== undefined);
+      if (judged.length === 0) return;
 
-      const documented = named.map((member) => ({ member, comment: documentingComment(member) }));
+      const documented = judged.map((member) => ({
+        member,
+        comment: documentingComment(member.node),
+      }));
       let commented = 0;
       let restated = 0;
-      // A comment documents at most one member, so a shared block cannot be
-      // counted once per member that happens to sit next to it.
-      const claimed = new Set<TSESTree.Comment>();
       for (const [index, { member, comment }] of documented.entries()) {
-        if (comment === undefined || claimed.has(comment)) continue;
+        if (comment === undefined) continue;
         const next = documented[index + 1];
         if (isGroupLabel(comment, member, next !== undefined && next.comment === undefined)) {
           continue;
         }
-        claimed.add(comment);
         commented += 1;
         const body = commentBody(comment);
-        if (body.length === 0 || carriesValue(body)) continue;
-        if (novelWords(body, knownTokens(sourceCode.getText(member))) <= options.maxNovelWords) {
+        // A tag block is a directive to a documentation generator, and one
+        // content word is a label; neither is a re-spelling of the name.
+        if (body.length === 0 || carriesValue(body) || isTagsOnly(body) || isLabel(body)) {
+          continue;
+        }
+        const [start, end] = declarationRange(member.node);
+        if (novelWords(body, knownTokens(sourceCode.text.slice(start, end))) <= options.maxNovelWords) {
           restated += 1;
         }
       }
 
-      if (!isWall(named.length, commented, restated, options)) return;
+      if (!isWall(judged.length, commented, restated, options)) return;
       context.report({
         node,
         loc: {
@@ -161,8 +165,12 @@ export default createRule<Options, MessageIds>({
     }
 
     return {
-      TSInterfaceBody: check,
-      TSTypeLiteral: check,
+      ClassBody: (node: TSESTree.ClassBody) => {
+        check(node, node.body);
+      },
+      TSEnumDeclaration: (node: TSESTree.TSEnumDeclaration) => {
+        check(node, node.body.members);
+      },
     };
   },
 });

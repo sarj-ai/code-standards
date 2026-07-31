@@ -119,12 +119,27 @@ SARJ050 flags none of them. The remedy deletes the section and keeps the
 summary, which was checked against the shipped strict config: ruff's D417 does
 not fire on a docstring with no parameter section.
 
-The sibling `Returns:` shape was measured and **rejected**: deleting a
-`Returns:` section makes DOC201 fire, so the only compliant remedy is deleting a
-docstring whose summary may be the valuable part. Two more were rejected on
-volume — property docstrings restating the property name and reST/epydoc type
-duplication (`:type x: int`, `:rtype:`) both measure **0** first-party findings
-outside generated code.
+Two more shapes were rejected on volume — property docstrings restating the
+property name and reST/epydoc type duplication (`:type x: int`, `:rtype:`) both
+measure **0** first-party findings outside generated code.
+
+### The `Returns:` half (0.36.0)
+
+```yaml
+    - id: sarj-docstring-returns-restate-signature  # SARJ087
+```
+
+`SARJ087` is the `Returns:` sibling of SARJ086, and it was **rejected once**:
+deleting a `Returns:` section used to make ruff's DOC201 fire, so the only
+compliant remedy was deleting the whole docstring. #164 then removed DOC201 from
+`ruff.strict.toml` as a rule that DEMANDS prose, and the premise expired — under
+the shipped config the section goes and the summary stays.
+
+756 findings over 33 OSS repos / 35,254 files; two seeded samples of 40 and 20
+read against source gave **~2%** false positives, the whole of which was one
+family (`Returns: A new X` — whether the value is a copy is the one thing
+`-> Self` cannot say) now guarded. Three findings on this repo's own source, all
+true, all deleted. Measurements: [docs/rules/SARJ087.md](../../docs/rules/SARJ087.md).
 
 ### House conventions moved out of consumer repos (0.21.0)
 

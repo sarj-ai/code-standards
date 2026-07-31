@@ -30,6 +30,7 @@
       "no-comment-cruft",
       "no-conditional-in-test",
       "no-cors-wildcard-with-credentials",
+      "no-declaration-comment-wall",
       "no-dynamic-sql",
       "no-enum",
       "no-fat-try-blocks",
@@ -79,6 +80,7 @@
     "python": [
       "conditional-assertion-in-test",
       "docstring-args-restate-signature",
+      "docstring-returns-restate-signature",
       "duplicate-test-body",
       "duplicated-override-docstring",
       "fixture-returns-bare-tuple",
@@ -241,7 +243,8 @@
       "SARJ083",
       "SARJ084",
       "SARJ085",
-      "SARJ086"
+      "SARJ086",
+      "SARJ087"
     ],
     "sql": [
       "SARJ101",

@@ -15,12 +15,7 @@ _SARJ_NOQA_RE = re.compile(
 
 
 def is_suppressed(source_lines: list[str], line: int, code: str) -> bool:
-    """Report whether the diagnostic's line carries a `# sarj-noqa[: CODE]` comment.
-
-    Returns:
-        True when the line is suppressed for `code`.
-
-    """
+    """Report whether the diagnostic's line carries a `# sarj-noqa[: CODE]` comment."""
     if line < 1 or line > len(source_lines):
         return False
     m = _SARJ_NOQA_RE.search(source_lines[line - 1])
