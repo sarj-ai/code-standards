@@ -8,7 +8,7 @@ The single home for Sarj code standards, in two layers:
 ## Contributor setup
 
 Run `make setup` once after cloning. It installs Lefthook 2.1.10 before package
-dependencies, so commits receive the same lint, typecheck, config-drift, and test
+dependencies, so commits receive the same lint, typecheck, and test
 feedback as CI. Coding agents must repair reported failures rather than bypassing
 hooks. Run `make verify` before requesting review.
 
@@ -81,7 +81,7 @@ the workflow publishes the changed package and creates its matching version tag.
 For a rule release, keep the change atomic: update the implementation, registry,
 strict config and tests; bump the owning package manifest; update its generated
 lockfile; and, for Python/SQL/IaC rules, bump the exact dependency and version of
-`sarj-lint-configs`. Run `make sync-configs && make verify`. The release workflow
+`sarj-lint-configs`. Run `make verify`. The release workflow
 then publishes and tags every changed package. Consumer repositories use grouped
 dependency updates plus `sarj-lint-configs sync --force` and `sync --check`, so a
 new release cannot silently leave their checked-in configs stale.

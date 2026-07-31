@@ -12,7 +12,4 @@ fork canonical strict files when the synchronizer can own them.
 
 Inside this repo there is exactly ONE copy of each strict config, under
 `packages/lint-configs/src/sarj_lint_configs/configs/`. Every package extends it
-by relative path. Do not reintroduce a `cp`-synced duplicate at the repo root. Inside this repo
-there is exactly ONE copy of each strict config, under
-`packages/lint-configs/src/sarj_lint_configs/configs/`; every package extends it
-by relative path. Do not reintroduce a synced duplicate at the repo root.
+by relative path. Do not reintroduce a `cp`-synced duplicate at the repo root.

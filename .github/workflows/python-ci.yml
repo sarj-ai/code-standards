@@ -33,7 +33,7 @@ jobs:
       # runs from the repo root, which this job never does.
       - name: Check root/package versions are in sync
         working-directory: .
-        run: make check-configs-synced
+        run: make check-versions-synced
       - uses: astral-sh/setup-uv@v8.2.0
         with:
           enable-cache: true

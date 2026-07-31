@@ -130,16 +130,6 @@ _SIGNALS: dict[str, re.Pattern[str]] = {
 }
 
 
-def protecting_signals(body: str) -> frozenset[str]:
-    """Name every protected-class signal that matches `body`.
-
-    Returns:
-        The set of signal names; empty when nothing protects the comment.
-
-    """
-    return frozenset(name for name, pattern in _SIGNALS.items() if pattern.search(body))
-
-
 def is_protected(body: str) -> bool:
     """Report whether a comment carries any protected-class signal.
 
