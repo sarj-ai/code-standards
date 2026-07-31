@@ -1,49 +1,7 @@
-"""SARJ001: detect the `for x in xs: await f(x)` gather antipattern.
+"""SARJ001 — `for x in xs: await f(x)` gather antipattern.
 
-Sequential `await` in a for-loop serializes I/O that could be parallelized
-with `asyncio.gather([f(x) for x in xs])`. The performance gap is often 10-100x
-for network-bound work (HTTP, DB queries, LLM calls).
-
-Deliberately narrow, to flag the textbook antipattern and almost nothing else —
-an over-broad version drowned real signal under suppressions. The rule fires
-only for:
-
-* a `for` loop whose body is **straight-line** (no `if`/`try`/`with`/`return`/
-  `break`/`continue`/`raise`/nested loop — those signal conditional or ordered
-  logic, not a parallel map) and awaits a call that **uses the loop variable**
-  (so each iteration is a distinct, independent call); or
-* a comprehension / generator expression with an `await` in its element or a
-  per-element `if` (those have no ordered side effects).
-
-It does NOT fire for: `while` loops (pagination, polling, queue drains — length
-unknown, inherently sequential), a loop's once-evaluated iterable
-(`for x in await fetch()`), `async for`, test modules (intentional ordering),
-a `for` body containing control flow, or modules that import `trio`/`anyio` —
-those runtimes have no `asyncio.gather`; their structured-concurrency style
-makes a sequential-await loop the deliberate norm (channel sends, ordered
-finalization), so the suggested fix does not exist there. Those were the
-false-positive sources.
-
-Two further exemptions, both minimized from a 2,657-file third-party sweep:
-
-* **A loop-carried result** — `value = await function(value, element)` — is a
-  fold, not a map: iteration N+1 consumes iteration N's result, so there is
-  nothing to run concurrently and `gather` cannot express it (anyio's
-  `functools.reduce`). Only an `Assign` whose own target is read inside the
-  awaited expression qualifies; `results.append(await f(x))` is still a map and
-  still fires.
-* **Structured-concurrency primitives used without an absolute import** —
-  `CancelScope`, `create_task_group`, `start_soon`, `open_nursery`,
-  `checkpoint`, `fail_after`, `move_on_after`. trio's and anyio's *own* modules
-  reach their runtime through relative imports (`from .. import
-  create_task_group`), so the import check above cannot see it and every
-  ordered `await listener.aclose()` in their cleanup paths was flagged with a
-  fix (`asyncio.gather`) that does not exist in that codebase. `asyncio` has no
-  such names, so an asyncio module is unaffected.
-
-References:
-- https://docs.python.org/3/library/asyncio-task.html#running-tasks-concurrently
-
+Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_sequential_await.py
+Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ001.md
 """
 
 from __future__ import annotations
@@ -62,10 +20,9 @@ if TYPE_CHECKING:
 
 
 class NoSequentialAwait(Rule):
-    """Sequential await calls in a loop that could be parallelized."""
-
     id: str = "no-sequential-await"
     code: str = "SARJ001"
+    has_evidence: bool = True
     description: str = "Sequential `await` in a for-loop — prefer asyncio.gather."
 
     @override
@@ -124,18 +81,7 @@ _NON_ASYNCIO_RUNTIMES = frozenset({"trio", "anyio"})
 
 
 def _imports_non_asyncio_runtime(tree: ast.AST, source: str) -> bool:
-    """Report whether the module imports a non-asyncio async runtime (trio/anyio).
-
-    `asyncio.gather` does not exist under those runtimes, and their structured
-    concurrency makes sequential awaits in a loop the deliberate norm.
-
-    Naming either runtime in the text is a precondition for importing it, so the
-    substring test gates the traversal without narrowing what qualifies.
-
-    Returns:
-        True when trio or anyio is imported anywhere in the module.
-
-    """
+    """Report whether the module imports a non-asyncio async runtime (trio/anyio)."""
     if not any(runtime in source for runtime in _NON_ASYNCIO_RUNTIMES):
         return False
     for node in nodes(tree, ast.Import, ast.ImportFrom):
@@ -165,18 +111,7 @@ _STRUCTURED_CONCURRENCY_NAMES = frozenset(
 
 
 def _uses_structured_concurrency(tree: ast.AST, source: str) -> bool:
-    """Report whether the module uses a trio/anyio-only concurrency primitive.
-
-    trio's and anyio's own modules import their runtime relatively, so the
-    import check cannot see it; the primitives they use are the visible proof.
-
-    A name can only be referenced if it is spelled in the text, so the substring
-    test gates the traversal without narrowing what qualifies.
-
-    Returns:
-        True when a trio/anyio-only name appears anywhere in the module.
-
-    """
+    """Report whether the module uses a trio/anyio-only concurrency primitive."""
     if not any(name in source for name in _STRUCTURED_CONCURRENCY_NAMES):
         return False
     return any(
@@ -194,27 +129,12 @@ def _names(node: ast.AST) -> set[str]:
 
 
 def _reads_any(node: ast.AST, names: set[str]) -> bool:
-    """Report whether `node`'s subtree reads any name in `names`.
-
-    Returns:
-        True on the first matching `Name`, without collecting the rest.
-
-    """
+    """Report whether `node`'s subtree reads any name in `names`."""
     return any(isinstance(n, ast.Name) and n.id in names for n in walk(node))
 
 
 def _same_scope_awaits(node: ast.AST) -> Iterator[ast.Await]:
-    """Every `Await` under `node`, NOT descending into nested function/lambda bodies.
-
-    A loop's per-iteration work is only the code that runs in the loop's own
-    executable scope. An `await` inside a nested `async def`/`lambda` runs when
-    *that* callable is invoked, not per loop iteration, so it must not make the
-    loop look like a gatherable map.
-
-    Yields:
-        The same-scope `Await` descendants of `node`, `node` itself included.
-
-    """
+    """Every `Await` under `node`, NOT descending into nested function/lambda bodies."""
     stack: list[ast.AST] = [node]
     while stack:
         current = stack.pop()
@@ -228,26 +148,12 @@ def _same_scope_awaits(node: ast.AST) -> Iterator[ast.Await]:
 
 
 def _exempt_awaits(tree: ast.AST, source: str) -> set[int]:
-    """`id()`s of every await that is not a per-element map step.
-
-    Returns:
-        The union of the yield-streamed and loop-carried exempt awaits.
-
-    """
+    """`id()`s of every await that is not a per-element map step."""
     return _yield_exempt_awaits(tree, source) | _loop_carried_awaits(tree)
 
 
 def _loop_carried_awaits(tree: ast.AST) -> set[int]:
-    """`id()`s of awaits whose result feeds the next iteration through the same name.
-
-    `value = await function(value, element)` is a fold: the awaited call reads
-    the very name the assignment rebinds, so iteration N+1 cannot start before
-    N finishes and `gather` cannot express it.
-
-    Returns:
-        The `id()`s of the loop-carried awaits.
-
-    """
+    """`id()`s of awaits whose result feeds the next iteration through the same name."""
     exempt: set[int] = set()
     for node in nodes(tree, ast.Assign):
         # An assignment's *value* cannot contain another assignment, so each
@@ -263,19 +169,7 @@ def _loop_carried_awaits(tree: ast.AST) -> set[int]:
 
 
 def _yield_exempt_awaits(tree: ast.AST, source: str) -> set[int]:
-    """`id()`s of awaits that are the value yielded by an async generator.
-
-    `for x in xs: yield await fetch(x)` streams results one at a time; the yield
-    imposes an inherent order, so it is not a gatherable map. Awaits reachable
-    from a `yield` value (without crossing a nested scope) are exempt.
-
-    A `Yield` node requires the `yield` keyword in the text, so the substring
-    test gates the traversal without narrowing what qualifies.
-
-    Returns:
-        The `id()`s of the yield-exempt awaits.
-
-    """
+    """`id()`s of awaits that are the value yielded by an async generator."""
     if "yield" not in source:
         return set()
     return {
@@ -287,12 +181,7 @@ def _yield_exempt_awaits(tree: ast.AST, source: str) -> set[int]:
 
 
 def _is_gather_antipattern(node: ast.For, exempt: set[int]) -> bool:
-    """Report whether `node` is `for x in xs: <straight-line body awaiting a call that uses x>`.
-
-    Returns:
-        True when the loop is a gatherable-map antipattern.
-
-    """
+    """Report whether `node` is `for x in xs: <straight-line body awaiting a call that uses x>`."""
     if any(isinstance(stmt, _CONTROL_FLOW) for stmt in node.body):
         return False
     targets = _names(node.target)
@@ -304,13 +193,7 @@ def _is_gather_antipattern(node: ast.For, exempt: set[int]) -> bool:
 
 
 class _SequentialAwaitVisitor(ast.NodeVisitor):
-    """Single O(n) pass: flag the first per-iteration `await` of each loop.
-
-    Maintains a stack of enclosing loops within the current function. The stack
-    resets at function boundaries so a loop in an outer function never claims an
-    `await` in a nested one. Each loop is flagged at most once. A loop's
-    once-evaluated iterable is excluded (see module comment).
-    """
+    """Single O(n) pass: flag the first per-iteration `await` of each loop."""
 
     def __init__(self, exempt: set[int]) -> None:
         super().__init__()

@@ -1,26 +1,7 @@
-"""SARJ078: prefer `Self` type annotation for methods returning instance of enclosing class.
+"""SARJ078 — Prefer `Self` type annotation for methods returning instance of enclosing class.
 
-Python 3.11 (PEP 673) introduced `typing.Self` to annotate methods that return an instance
-of their enclosing class (fluent interface builders, `__enter__`, `copy`, factory methods,
-classmethod constructors, etc.).
-
-Using string literal forward references like `"MyClass"` or explicit class name annotations
-in return position is less accurate (fails on subclasses) and unnecessary in modern Python.
-
-    # flagged
-    class ConfigBuilder:
-        def set_timeout(self, seconds: int) -> "ConfigBuilder":
-            self.timeout = seconds
-            return self
-
-    # preferred
-    from typing import Self
-
-    class ConfigBuilder:
-        def set_timeout(self, seconds: int) -> Self:
-            self.timeout = seconds
-            return self
-
+Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_self_type_annotation.py
+Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ078.md
 """
 
 from __future__ import annotations
@@ -36,22 +17,12 @@ if TYPE_CHECKING:
 
 
 def _is_classmethod(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Check if function node is decorated with @classmethod.
-
-    Returns:
-        True when decorated with @classmethod.
-
-    """
+    """Check if function node is decorated with @classmethod."""
     return any(isinstance(dec, ast.Name) and dec.id == "classmethod" for dec in node.decorator_list)
 
 
 def _is_return_self_or_cls(outer_func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Return True if node directly returns `self` or `cls(...)` (excluding inner functions/classes).
-
-    Returns:
-        True when method body contains return self or return cls.
-
-    """
+    """Return True if node directly returns `self` or `cls(...)` (excluding inner functions/classes)."""
     target_name = "cls" if _is_classmethod(outer_func) else "self"
 
     class ReturnVisitor(ast.NodeVisitor):
@@ -82,10 +53,9 @@ def _is_return_self_or_cls(outer_func: ast.FunctionDef | ast.AsyncFunctionDef) -
 
 
 class PreferSelfTypeAnnotation(Rule):
-    """Prefer `typing.Self` for method return type annotations matching enclosing class."""
-
     id: str = "prefer-self-type-annotation"
     code: str = "SARJ078"
+    has_evidence: bool = True
     description: str = (
         "prefer `Self` return type annotation instead of explicit class name "
         "or string literal reference when returning self/instance."

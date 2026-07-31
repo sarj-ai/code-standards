@@ -29,9 +29,6 @@ def uses_benchmark_fixture(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool
     just declared, keeps an unrelated parameter that happens to be called
     `benchmark` from silencing the rule.
 
-    Returns:
-        True when the function is a pytest-benchmark test.
-
     """
     args = node.args
     declared = any(arg.arg == _BENCHMARK for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs))
@@ -43,9 +40,6 @@ def has_benchmark_marker(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
 
     The marker form is the other half of pytest-benchmark's surface: a test can
     take the fixture, wear the marker, or both.
-
-    Returns:
-        True when a `pytest.mark.benchmark` decorator is present.
 
     """
     return any(_decorator_attr(dec) == _BENCHMARK for dec in node.decorator_list)

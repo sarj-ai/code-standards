@@ -1,19 +1,7 @@
-"""SARJ083: Forbid implicit dictionary accesses using string literals.
+"""SARJ083 — Forbid implicit dictionary accesses using string literals.
 
-The anti-pattern:
-    price = foo.get("price")
-    user_id = event["user_id"]
-
-Accessing dictionaries with hardcoded string literals implies the object has a known schema.
-This should be parsed declaratively with Pydantic instead of plucked manually.
-
-Define a Pydantic model and parse the payload at the boundary instead:
-    class Payload(BaseModel):
-        price: int
-        user_id: str
-
-    data = Payload.model_validate(foo)
-    price = data.price
+Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_implicit_attribute_access.py
+Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ083.md
 """
 
 from __future__ import annotations
@@ -63,12 +51,7 @@ _TYPE_SUBSCRIPTS = frozenset(
 
 
 def _looks_like_route_or_url(value: str) -> bool:
-    """Report whether a `.get()` argument is a route path or URL rather than a key.
-
-    Returns:
-        True for `"/users/{id}"`-shaped paths and anything carrying a scheme.
-
-    """
+    """Report whether a `.get()` argument is a route path or URL rather than a key."""
     return value.startswith("/") or "://" in value
 
 
@@ -81,10 +64,9 @@ def _get_base_name(node: ast.expr) -> str | None:
 
 
 class NoImplicitAttributeAccess(Rule):
-    """Implicit dictionary access with string literals — use declarative parsing."""
-
     id: str = "no-implicit-attribute-access"
     code: str = "SARJ083"
+    has_evidence: bool = True
     description: str = "Implicit dictionary access with string literals — parse declaratively with Pydantic."
 
     @override
@@ -115,13 +97,7 @@ class NoImplicitAttributeAccess(Rule):
 
 
 def _get_key(node: ast.Call) -> str | None:
-    """Read the string key of a `<base>.get("literal")` lookup worth reporting.
-
-    Returns:
-        The literal key, or None when this is not such a lookup or the base is
-        one of the excluded receivers.
-
-    """
+    """Read the string key of a `<base>.get("literal")` lookup worth reporting."""
     func = node.func
     if not isinstance(func, ast.Attribute) or func.attr != "get" or not node.args:
         return None
@@ -140,13 +116,7 @@ def _get_key(node: ast.Call) -> str | None:
 
 
 def _subscript_key(node: ast.Subscript) -> str | None:
-    """Read the string key of a `<base>["literal"]` lookup worth reporting.
-
-    Returns:
-        The literal key, or None when the subscript is not a string literal or
-        the base is one of the excluded receivers.
-
-    """
+    """Read the string key of a `<base>["literal"]` lookup worth reporting."""
     # Writing to a mapping is the opposite of the defect. This rule is about
     # PLUCKING fields out of a payload whose schema is already known -- building
     # a dict up key by key (`field_dict["x"] = x`, `params["status"] = ...`) is
