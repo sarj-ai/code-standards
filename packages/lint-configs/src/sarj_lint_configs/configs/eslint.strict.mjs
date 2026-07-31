@@ -8,6 +8,7 @@ import perfectionist from "eslint-plugin-perfectionist";
 import simpleImportSort from "eslint-plugin-simple-import-sort";
 import betterTailwindcss from "eslint-plugin-better-tailwindcss";
 import sarj from "@sarj/eslint-plugin";
+import zod from "eslint-plugin-zod";
 
 // ── eslint-plugin-unicorn ───────────────────────────────────────────────────
 // unicorn ships 341 rules; this config used to run 12 of them. The set below
@@ -439,6 +440,7 @@ const config = [
       perfectionist,
       "simple-import-sort": simpleImportSort,
       "@sarj": sarj,
+      zod,
     },
     languageOptions: {
       parser: tseslint.parser,
@@ -719,6 +721,29 @@ const config = [
       // name correlation alone (8 reports, 1 of them noise).
       "@sarj/prefer-zod-infer": "error",
 
+      // ── eslint-plugin-zod: enabled rather than reimplemented ────────────────
+      // Two candidate in-house rules were dropped in favour of these, because a
+      // maintained upstream rule that already reports the exact position beats a
+      // local copy of it. Measured over 30,546 .ts/.tsx files in 17 repos
+      // (7 first-party + zod, trpc, dub, openstatus, formbricks, documenso,
+      // unkey, midday, papermark, cal.com), non-test source only:
+      //
+      //   prefer-nullish  691 hits in 12 of the 17 repos. `.nullable().optional()`
+      //     IS `.nullish()` by Zod's own definition, so the rewrite is exact and
+      //     the rule ships an autofix. Collapsing the two spellings to one also
+      //     makes the tri-state `T | null | undefined` legible at review time
+      //     instead of hiding behind a two-word chain.
+      //   no-any-schema   159 hits in 10 of the 17 repos. `z.any()` puts `any`
+      //     into the INFERRED type, which is the one place
+      //     `@typescript-eslint/no-explicit-any` cannot see it: there is no
+      //     `any` keyword to flag. `z.unknown()` accepts the same inputs and
+      //     forces the narrowing that was skipped.
+      //
+      // Verified with ESLint#calculateConfigForFile against this file: of the
+      // 204 rules it resolved as enabled, none reported at either position.
+      "zod/prefer-nullish": "error",
+      "zod/no-any-schema": "error",
+
       // Deterministic ordering (incorporated from a first-party config).
       // perfectionist sorts
       // structural members; simple-import-sort owns import/export ordering
@@ -939,6 +964,13 @@ const config = [
       "@sarj/no-select-star": "error",
       "@sarj/no-zod-native-enum": "error",
       "@sarj/prefer-module-level-constant": "error",
+      // Its Zod sibling. `prefer-module-level-constant` cannot reach a schema:
+      // its hoist gate requires every leaf of the initializer to be a LITERAL,
+      // and `z.object({ id: z.string() })` is a call. Measured over the same
+      // 17-repo corpus: 1,885 factory calls sit inside a function, 596 in
+      // non-test non-generated source, and the free-variable / `this` gates
+      // hold back the 82 that close over something the function owns.
+      "@sarj/prefer-module-level-schema": "error",
       "@sarj/prefer-non-nullable-collection": "error",
       "@sarj/no-sleep-in-test-body": "error",
       // High-volume/stylistic, so warn — same treatment as prefer-semantic-colors

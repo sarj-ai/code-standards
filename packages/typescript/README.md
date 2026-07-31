@@ -108,6 +108,7 @@ Both distilled from two years of PR-review comments across ~1,065 PRs.
 | `prefer-zod-enum` | `z.union([z.literal("a"), z.literal("b")])` — autofixes closed string choices to the shorter, equivalent `z.enum(["a", "b"])`. | warn / error |
 | `prefer-zod-infer` | An `interface`/`type` that restates a Zod schema declared in the same module instead of deriving it with `z.infer`. Options: `ignoreTypeNames`, `requireIdenticalShape` (default `true`). | warn / error |
 | `prefer-module-level-constant` | A literal-only `const` collection (array, object, `Set`, `Map`, `Object.freeze`) or non-global regex declared inside a function body, never mutated and never escaping — hoist it to module scope. Options: `minElements` (default 3), `checkRegex`, `ignoreTestFiles`. | warn / error |
+| `prefer-module-level-schema` | A Zod schema built inside a function body that closes over nothing the function owns — hoist it to module scope instead of rebuilding it per call, per request, per render. Silent when it references a parameter, local, type parameter, local type, or `this` (that is a schema FACTORY), when it is already memoized, and inside `z.lazy`. Options: `factories` (default: the object-like composites), `minProperties` (default 1), `ignoreTestFiles`. | warn / error |
 | `prefer-non-nullable-collection` | An array type explicitly combined with `null`/`undefined`, creating two equivalent empty states. | warn / error |
 
 ## Options
