@@ -13,7 +13,7 @@ This audit targets:
 
 ## Phase 0: Discover project structure
 
-Run the shared **[stack-detection](./stack-detection.md)** pass first. **For this rule:** when recommending a fix for stringly-typed sets, never suggest a TypeScript `enum` — `automations` bans it via `@sarj/no-enum`, and the org is zod-first; recommend `z.enum([...])` (zod v4) or an `as const` map instead. On the Python side use `enum.StrEnum`. Then add the skill-specific items:
+Run the shared **[stack-detection](./stack-detection.md)** pass first. **For this rule:** when recommending a fix for stringly-typed sets, never suggest a TypeScript `enum` — the internal Workers app bans it via `@sarj/no-enum`, and the org is zod-first; recommend `z.enum([...])` (zod v4) or an `as const` map instead. On the Python side use `enum.StrEnum`. Then add the skill-specific items:
 
 - Identify Python files using `typing.Literal` with string arguments.
 - Identify `.tsx` / `.jsx` files that contain UI components with `className` or `style` props.

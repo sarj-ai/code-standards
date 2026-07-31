@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Diagnostic
 
 
-SRC_PATH = "python/bulbul/services/render.py"
+SRC_PATH = "python/app/services/render.py"
 
 
 def _check(source: str, path: str = SRC_PATH) -> list[Diagnostic]:

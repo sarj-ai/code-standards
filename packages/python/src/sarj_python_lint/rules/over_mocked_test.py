@@ -47,10 +47,9 @@ a measured false positive:
 * an attribute chain assigned a double collapses to its root, because
   `ctx.api.room.delete_room = AsyncMock()` does not add a collaborator — it
   fills in one more corner of the double already bound to `ctx`. Without this,
-  `bulbul/agent/tests/test_main_helpers.py:138`
-  (`test_timeout_marks_call_failed_with_no_answer`) scored 6 for building out a
-  single `mock.Mock(spec=JobContext)` in six statements, while using a **real**
-  `PsqlCallStore` against a real database — the exact test this rule wants
+  one first-party call-timeout test scored 6 for building out a single
+  `mock.Mock(spec=SessionContext)` in six statements, while using a **real**
+  `PsqlOrderStore` against a real database — the exact test this rule wants
   people to write. Five of its sibling tests scored 6 the same way. It now
   scores 1. `self`/`cls` is the exception: it is the test case, not a double, so
   `self.client` and `self.session` stay two collaborators,
@@ -88,15 +87,15 @@ MEASURED DISTRIBUTION, AND WHERE THE THRESHOLD CAME FROM
 --------------------------------------------------------
 
 Distinct collaborators per collected test function, over 170,354 collected
-tests in 19 repositories (bulbul, noura-be, digital-bank, submissions, ai and
-14 large OSS Python suites):
+tests in 19 repositories (five first-party repos and 14 large OSS Python
+suites; repo labels are stable within this docstring only):
 
     corpus         tests       0      1     2     3     4    5   6  7  8 9+  >5
-    bulbul         4,279   3,989    201    64    20     3    2   -  -  -  -   0
-    noura-be       2,861   2,593    264     4     -     -    -   -  -  -  -   0
-    digital-bank     521     485     36     -     -     -    -   -  -  -  -   0
-    submissions      113     112      1     -     -     -    -   -  -  -  -   0
-    ai               259     198     50     7     1     2    1   -  -  -  -   0
+    repo A         4,279   3,989    201    64    20     3    2   -  -  -  -   0
+    repo B         2,861   2,593    264     4     -     -    -   -  -  -  -   0
+    repo C           521     485     36     -     -     -    -   -  -  -  -   0
+    repo D           113     112      1     -     -     -    -   -  -  -  -   0
+    repo E           259     198     50     7     1     2    1   -  -  -  -   0
     airflow       27,827  15,573  8,657 2,678   668   172   58  16  4  1  -  21
     dagster       11,196   9,971    976   143    60    14   11  14  7  -  -  21
     litellm       32,880  22,328  6,168 2,751 1,003   362  155  61 28 12 12 113
@@ -129,19 +128,18 @@ Re-deriving the threshold from the corrected distribution:
     fire above   findings   % of tests   first-party findings
     >6                 99      0.058%    0
     >5                239      0.140%    0
-    >4                621      0.365%    3  (bulbul 2, ai 1)
-    >3              1,675      0.983%    8  (bulbul 5, ai 3)
+    >4                621      0.365%    3  (repo A 2, repo E 1)
+    >3              1,675      0.983%    8  (repo A 5, repo E 3)
 
 `>5` survives, for a reason the corrected data still supports: firing above
 four drags in honest tests. django's only test in the 5 band is
 `tests/backends/sqlite/test_creation.py:47`, which uses a *real* connection and
 a real creation class and mocks the three `sqlite3.connect` calls under it;
-bulbul's are `test_agent_tools.py:662` and `test_collect_digits_tool.py:598`,
-five doubles apiece around a real tool object. Five is still where honest tests
-live.
+repo A's two are agent-tool tests, five doubles apiece around a real tool
+object. Five is still where honest tests live.
 
 What has changed is the rule's standing in the first-party repositories: at `>5`
-it now finds **nothing** in bulbul, noura-be, digital-bank, submissions or ai,
+it now finds **nothing** in any of repos A through E,
 so it is a **ratchet** — like `no-patching-system-under-test`. Nothing has to be
 fixed to adopt it, and nothing may regress past it. It earns its place on the
 OSS evidence, where 239 findings concentrate in the suites that are mostly mock
@@ -151,7 +149,7 @@ exactly the population the rule exists to name. celery's worst,
 `connection`, `consumer`, `blueprint`, `hub`, `qos`, `heartbeat` and `clock`,
 and then an assertion that `synloop` called them.
 
-The two bulbul findings that used to justify the threshold were both counting
+The two repo A findings that used to justify the threshold were both counting
 one hoisted object graph twice — the shape this docstring says must collapse,
 merely written with the mock hoisted. They are correctly gone.
 
@@ -206,8 +204,9 @@ DELIBERATELY NOT COUNTED
 * **Composition-root tests.** A test whose name, class, or path says `wiring`,
   `startup`, `lifespan`, `bootstrap`, `container`, `di` or `smoke` must stub
   every adapter — that is the point of it. This exempts 1,133 tests across the
-  corpora (celery's whole `t/smoke/` suite, bulbul's `test_main_wiring.py`,
-  `test_logto_smoke.py` and `TestCollectDigitsToolWiring`, fastapi's lifespan
+  corpora (celery's whole `t/smoke/` suite, three first-party composition-root
+  suites — a `test_main_wiring.py`, an auth-provider smoke test and a
+  `TestWidgetToolWiring` class — and fastapi's lifespan
   tests). Four of the 1,133 would otherwise fire, and three are the guard
   working as intended — litellm's `test_proxy_cli.py:518`, `:1814` and `:1881`
   stub the world around the proxy's startup path. The fourth,

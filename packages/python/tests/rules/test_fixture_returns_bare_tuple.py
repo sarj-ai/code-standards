@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Diagnostic
 
 
-TEST_PATH = "python/bulbul/tests/fixtures/stores.py"
+TEST_PATH = "python/app/tests/fixtures/stores.py"
 
 
 def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
@@ -264,13 +264,13 @@ def a_fix(flag):
 
 
 # --------------------------------------------------------------------------- #
-# FP guard from bulbul PR #4111: distinct static types make a reorder a type    #
-# error, which is the same protection a NamedTuple buys.                       #
+# FP guard from a first-party review regression: distinct static types make a  #
+# reorder a type error, which is the same protection a NamedTuple buys.        #
 # --------------------------------------------------------------------------- #
 
 
 def test_distinctly_typed_tuple_annotation_is_exempt():
-    # bulbul/tests/fixtures/stores.py:421 — swapping these is a pyright error.
+    # A first-party fixture typed this way — swapping these is a pyright error.
     src = """
 import pytest
 

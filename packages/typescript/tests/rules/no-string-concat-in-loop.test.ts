@@ -124,8 +124,7 @@ ruleTester.run("no-string-concat-in-loop", rule, {
         }
       `,
     },
-    // bulbul PR #4111,
-    // typescript/packages/app/src/lib/lexical/plugins/utils/serializes-state-to-text.ts:16
+    // From a first-party review regression — one editor-serializer site
     // — the accumulator is DECLARED INSIDE the body, so it is a fresh string
     // every pass, appended to at most once, and the parts are already collected
     // into `textParts` for a `join` after the loop. Nothing quadratic to remove.

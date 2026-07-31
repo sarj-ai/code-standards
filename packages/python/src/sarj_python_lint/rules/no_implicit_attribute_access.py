@@ -131,7 +131,7 @@ def _get_key(node: ast.Call) -> str | None:
     # `.get()` is also the HTTP verb and the route-registration decorator, and
     # both take a string first argument, so the method name alone cannot tell
     # them from a mapping lookup. The ARGUMENT can: a URL or a route path is not
-    # a dictionary key. Measured on bulbul + noura-be, this shape was 168 of the
+    # a dictionary key. Measured on two first-party repos, this shape was 168 of the
     # rule's 1,756 findings (9.6%) -- `@router.get("/available-events")` and
     # `await self.http_client.get(url)` were reported as implicit schema access.
     if _looks_like_route_or_url(first.value):
@@ -151,7 +151,7 @@ def _subscript_key(node: ast.Subscript) -> str | None:
     # PLUCKING fields out of a payload whose schema is already known -- building
     # a dict up key by key (`field_dict["x"] = x`, `params["status"] = ...`) is
     # ordinary construction, and a Pydantic model does not replace it. Measured
-    # on bulbul + noura-be this was 503 of 1,756 findings (28.6%), the single
+    # on two first-party repos this was 503 of 1,756 findings (28.6%), the single
     # largest source, and every sampled instance was an assignment target.
     if isinstance(node.ctx, (ast.Store, ast.Del)):
         return None

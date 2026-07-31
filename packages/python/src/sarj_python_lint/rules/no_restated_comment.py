@@ -1,7 +1,7 @@
 """SARJ049: a one-line comment that only re-spells the statement beneath it.
 
-    # Get profile by national ID
-    profile = await self._store.get_profile_by_national_id(national_id, bank_id)
+    # Get order by reference
+    order = await self._store.get_order_by_reference(reference, tenant_id)
 
 Every content word of the comment is already an identifier on the line below.
 It cannot go out of date usefully — it can only go out of date silently, and a
@@ -9,13 +9,14 @@ reader who scans it learns nothing they would not have learned from the code.
 Delete it, or replace it with the *why* (what the caller must know, what breaks
 if the order changes, which ticket decided the shape).
 
-This is deliberately NOT part of SARJ016. bulbul enforces SARJ016 at `error`
+This is deliberately NOT part of SARJ016. One first-party repo enforces SARJ016
+at `error`
 through a caret pin, so folding a new detector into it would land uncontrolled
 in a consumer's CI on the next patch release; a separate code can be enabled,
 baselined and dropped on its own.
 
-**What makes it safe.** The first attempt at this shape (PR #98, TypeScript)
-corroborated by substring — `service` matched `locationService` — and produced
+**What makes it safe.** The first attempt at this shape (an earlier TypeScript
+prototype) corroborated by substring — `service` matched `locationService` — and produced
 933 hits at a ~60% false-positive rate. Coincidental token overlap is the
 failure mode, so every one of these guards is load-bearing:
 
@@ -47,8 +48,9 @@ failure mode, so every one of these guards is load-bearing:
   (the tokenizer cannot read Arabic, so the zero-information test would be
   vacuously true), no commented-out code (SARJ016 owns that), no banner shapes.
 
-**Measured** (this implementation, not the prototype). bulbul **0**; noura-be
+**Measured** (this implementation, not the prototype). repo A **0**; repo B
 **29** over 20 distinct comment texts; pydantic **2**, trio **2**, attrs **0** —
+(repo labels are stable within this docstring only)
 and those four are genuine (`# set_inheritable` above `s1.set_inheritable(False)`,
 `# get_inheritable` above `assert not s1.get_inheritable()`).
 
@@ -82,7 +84,7 @@ with a regression test: the code-keyword arm of the commented-out check (a
 disabled `assert` above the assertion that replaced it), the call/assert
 statement shapes (a label heading a run of bare calls), modality / lead-in /
 emphasis, `_ACTION_STMT_RE` (a label over a data declaration — every remaining
-noura false positive), and the two-content-token floor (`# Hashing.` over an
+repo B false positive), and the two-content-token floor (`# Hashing.` over an
 assertion group in attrs).
 
 Suppress an intentional case with `# sarj-noqa: SARJ049 — <reason>`.
@@ -180,13 +182,12 @@ _SIMPLE_STMT_RE = re.compile(
     r"[\w.\[\]\"'()]+\s*(?:[:+\-*/|&]?=)\s*\S|[\w.]+\(|await\s+[\w.]+\()"
 )
 # The statement must *do* something — invoke a callable, or hand a value back.
-# A comment above a plain data declaration is labelling the datum, and the noura
-# corpus showed that shape is a series of group labels rather than narration:
-# `# Profile` over `PROFILE_NOT_FOUND = "PROFILE_NOT_FOUND"` sits between
-# `# MFA/OTP` and `# Account` in the same enum
-# (digital-bank/banking-be/banking_api/core/enums.py:35), and `# Onboarding` over
-# a lone `final_onboarding_stage=...` kwarg sits under `# Provider info` in the
-# same call (python/voice/services/session_analytics.py:127). Requiring a call
+# A comment above a plain data declaration is labelling the datum, and the
+# first-party corpus showed that shape is a series of group labels rather than
+# narration: `# Profile` over `PROFILE_NOT_FOUND = "PROFILE_NOT_FOUND"` sits
+# between `# MFA/OTP` and `# Account` in the same enum at one first-party site,
+# and `# Onboarding` over a lone `final_onboarding_stage=...` kwarg sits under
+# `# Provider info` in the same call at another. Requiring a call
 # removed all four of those without touching a single narration hit — the
 # distinguishing feature was never the label, it was what it labels.
 _ACTION_STMT_RE = re.compile(r"[\w.\]\)]\s*\(|^\s*(?:return|raise|yield|await|del)\b")

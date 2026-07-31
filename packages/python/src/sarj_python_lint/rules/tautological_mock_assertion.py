@@ -39,7 +39,8 @@ Fires when, inside one `test_*` function body, ALL of these hold:
   project-local `_assert_*` helper.
 
 **The guards are the rule, and the last one is most of it.** Measured over
-22,388 collected test functions in bulbul, noura-be, django, fastapi and celery:
+22,388 collected test functions in two first-party repos, django, fastapi and
+celery:
 958 tests configure a stub in their own body, 866 with a non-trivial value, 462
 of those also assert — yet only 44 assertions structurally compare against the
 stubbed value at all. Narrowing those 44 to the ones that are genuinely
@@ -63,12 +64,13 @@ Deliberately NOT flagged:
   trip through `user_api_client.post_graphql` whose parametrized
   `external_auths` list is stubbed onto `PluginsManager` and then compared
   against the serialized envelope — and it is a false positive; total 138 -> 137,
-  with bulbul unchanged at 2 and noura-be at 0. 16 of the 44 structural
-  matches are this shape and every one was a real assertion, including
-  `bulbul/python/agent/tests/test_ivr_navigation.py:163`
+  with repo A unchanged at 2 and repo B at 0 (repo labels are stable within this
+  docstring only). 16 of the 44 structural
+  matches are this shape and every one was a real assertion, including one
+  first-party navigation test
   (`assert tool._last_send_time == post_send_sentinel` after patching
-  `time.time` — it checks the debounce timestamp was recorded) and
-  `bulbul/python/webserver/tests/public_api/test_calls.py:608`
+  `time.time` — it checks the debounce timestamp was recorded) and one
+  first-party public-API test
   (`assert r.json()["data"]["recording_url"] == "https://signed.example/abc.mp4"`
   with a stubbed `object_store.sign`, driven through a FastAPI `TestClient` —
   a real end-to-end assertion about the serialized envelope),
@@ -100,11 +102,11 @@ Deliberately NOT flagged:
   most egregious shape — patch a method of the unit, then call that very method
   (airflow `test_glue_databrew.py:38`, `test_lockbox.py:86,97`,
   `test_pagerduty.py:77`, `test_bteq.py:265`, dagster's self-named `test_mocks`) —
-  stubs the *whole* double and keeps firing. bulbul stays at 2 and every other
+  stubs the *whole* double and keeps firing. repo A stays at 2 and every other
   first-party repo at 0, so the guard costs nothing first-party in either direction.
   Two weaker readings were measured and rejected: requiring the receiver to appear in
   the compared expression drops 59 including airflow `test_openai.py:66`, and applying
-  the requirement to every stub spelling drops 106 including both bulbul findings,
+  the requirement to every stub spelling drops 106 including both repo A findings,
 * **a round trip.** `assert store.save(record) == record` is not a mock echo:
   the value is also handed to the code under test, so the comparison pins a
   passthrough the code could have broken. Detected by counting mentions —
@@ -127,7 +129,7 @@ Deliberately NOT flagged:
   session. All three would otherwise be false positives, one of them in mature
   OSS,
 * **a test with a real assertion alongside the echo.** Every assertion must be
-  an echo. `bulbul/python/agent/tests/test_main_helpers.py:260`
+  an echo. One first-party test
   (`test_builds_request_and_returns_response`) opens with `assert result is
   sip_response` and then checks `request.sip_call_to` and
   `request.headers["X-S-CallId"]` off the captured call args — the echo is a

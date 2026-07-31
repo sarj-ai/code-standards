@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Diagnostic
 
 
-SRC_PATH = "python/bulbul/bulbul/calls/service.py"
+SRC_PATH = "python/app/app/calls/service.py"
 
 
 def _check(source: str, path: str = SRC_PATH) -> list[Diagnostic]:
@@ -451,7 +451,7 @@ _HIT = "def handle(payload):\n    allowed = ['a', 'b', 'c']\n    return payload 
         "test_service.py",
         "service_test.py",
         "conftest.py",
-        "python/bulbul/tests/helpers/seed.py",
+        "python/app/tests/helpers/seed.py",
     ],
 )
 def test_skips_test_paths(path: str):

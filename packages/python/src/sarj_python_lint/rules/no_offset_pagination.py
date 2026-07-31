@@ -33,10 +33,10 @@ three times — here, in `packages/sql/src/sarj_sql_lint/rules/no_limit_offset.p
     `OFFSET` match, so it fired on `ALTER TABLE t ADD COLUMN offset INTEGER`.
     Fixed there.
 
-Corpus delta of the `?` addition over bulbul + noura-be + django/fastapi/celery:
-0 new findings (the first-party Python stores are psycopg/`%s`, so the gap was
-latent rather than active) and 0 lost — the 4 existing findings, all in
-`noura-be/python/dashboard/stores/`, are unchanged.
+Corpus delta of the `?` addition over two first-party repos plus
+django/fastapi/celery: 0 new findings (the first-party Python stores are
+psycopg/`%s`, so the gap was latent rather than active) and 0 lost — the 4
+existing findings, all in one repo's dashboard store package, are unchanged.
 
     # flagged
     "SELECT id, status FROM call ORDER BY created_at LIMIT %s OFFSET %s"

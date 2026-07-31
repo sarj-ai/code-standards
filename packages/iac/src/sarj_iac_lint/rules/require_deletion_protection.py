@@ -48,12 +48,13 @@ two reproduced false negatives:
   wide-open `aws_db_instance`. Only a direct `lifecycle` child counts now.
 
 Both real Cloud SQL instances in the audited corpus declare *both* switches —
-`bulbul/iac/bulbul/sql/main.tf:16` (`deletion_protection = true` on :21,
-`lifecycle.prevent_destroy` on :26, `settings.deletion_protection_enabled` on
-:34) and `noura-iac/backend/sql/main.tf:9` (var-gated on :14, nested on :19) —
-so both stay clean. The nesting bugs were latent, not endemic: corpus counts are
-unchanged (0 in `bulbul/iac`, 18 in `noura-iac`) and no finding of either new
-kind appeared. They are pinned by fixture instead.
+one in repo A's IaC tree (a literal `deletion_protection = true`, a
+`lifecycle.prevent_destroy`, and a nested `settings.deletion_protection_enabled`
+on the same resource) and one in repo B's (var-gated at the top level, nested
+flag below) — so both stay clean. The nesting bugs were latent, not endemic:
+corpus counts are unchanged (0 in repo A, 18 in repo B) and no finding of either
+new kind appeared. They are pinned by fixture instead. (The two IaC corpora are
+written as repo A and repo B throughout this docstring.)
 
 Multi-line values
 -----------------
@@ -70,16 +71,16 @@ Guards, all deliberate
 * **an expression-valued flag is protection, not a violation.** Anything not
   literally `false` passes: `deletion_protection = var.enable_deletion_protection`
   is the standard per-environment pattern and is how nearly every protected
-  resource in both corpora is written — `noura-iac/backend/sql/main.tf:14`,
-  `noura-iac/backend/voice-cluster/main.tf:6`, `bulbul/iac/bulbul/gke/main.tf:46`,
-  `bulbul/iac/bulbul/gke-data/logto.tf:13`. A rule demanding a literal `true`
+  resource in both corpora is written — four such sites, two in repo B (a Cloud
+  SQL instance and a media-processing cluster) and two in repo A (a GKE cluster
+  and a GKE data-plane service). A rule demanding a literal `true`
   would be wrong on 4 of the 7 protected resources in the corpus,
 * `"false"` (quoted) and `( false )` (parenthesised) still read as `false`,
 * `lifecycle { prevent_destroy = true }` protects on its own — it is the only
-  guard `google_bigquery_dataset` has, and it is how
-  `bulbul/iac/bulbul/sql/main.tf:247` protects its dataset. Terraform requires
-  `prevent_destroy` to be a literal, so only literal `true` counts;
-  `prevent_destroy = false` (`bulbul/iac/bulbul/main.tf:149`) does not,
+  guard `google_bigquery_dataset` has, and it is how repo A protects its one
+  dataset. Terraform requires
+  `prevent_destroy` to be a literal, so only literal `true` counts; a
+  `prevent_destroy = false` (one site in repo A) does not,
 * comments and heredoc bodies never reach the parser, so a `}` inside a string
   or a `deletion_protection = false` inside a heredoc script can neither shear
   the block nor fake a value.

@@ -5,17 +5,16 @@
  * under test. It is not a weak assertion, it is a *non*-assertion.
  *
  * This is the placeholder that never got replaced. Every hit found in the
- * internal sweep is one:
+ * first-party sweep is one:
  *
- * - `apps/internal-automations/test/customer-bridge-disambiguation-handler.test.ts:37`
- *   — `expect(true).toBe(true); // placeholder`, in a suite whose name promises
- *   it disambiguates customer bridges,
- * - `packages/precedent-node/src/tests/dummy.test.ts:5` — `expect(true).toBe(true)`,
- * - `packages/precedent-iso/src/tests/dummy.test.ts:4` — `expect(1).toEqual(1)`.
+ * - a worker's handler test — `expect(true).toBe(true); // placeholder`, in a
+ *   suite whose name promises it disambiguates customer records,
+ * - a `dummy.test.ts` in a shared node package — `expect(true).toBe(true)`,
+ * - a `dummy.test.ts` in its isomorphic sibling package — `expect(1).toEqual(1)`.
  *
  * The Python side (SARJ043 `zero-assertion-test`) has caught the assertion-free
  * version of this since 0.15.0 and has no TypeScript counterpart, which is
- * precisely why the `automations` placeholder went uncaught for as long as it
+ * precisely why that first placeholder went uncaught for as long as it
  * did: the file *has* an assertion, so nothing was looking at it.
  *
  * Fires on exactly two shapes:
@@ -47,8 +46,8 @@
  * - anything outside a test file.
  *
  * Measured before shipping: 3 hits across 5,819 `.ts`/`.tsx` files (1,003 of
- * them test files, where the rule is active) — bulbul, noura-be, kpi-hub, ai,
- * automations and demo-gateway plus got / hono / swr / trpc. 3 true positives,
+ * them test files, where the rule is active) — six first-party repos plus
+ * got / hono / swr / trpc. 3 true positives,
  * 0 false positives; all three are the placeholders listed above.
  */
 

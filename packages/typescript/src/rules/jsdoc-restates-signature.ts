@@ -27,8 +27,8 @@
  * in bulk is silent information loss if the judgement is wrong once; a
  * suggestion makes a human accept each one.
  *
- * **Measured.** 40 hits across the maintained repos (noura-be 11, demo-gateway
- * 29, bulbul / portal / automations 0) and 5 across zod / swr / TanStack Query
+ * **Measured.** 40 hits across the five maintained repos (11 in one, 29 in
+ * another, 0 in the remaining three) and 5 across zod / swr / TanStack Query
  * (zustand 0). All 45 were read; the only debatable one is zod's
  * `/** The input data *\/` on `readonly input: unknown`, which is a published
  * API doc that nonetheless says nothing the field does not. Everything else is

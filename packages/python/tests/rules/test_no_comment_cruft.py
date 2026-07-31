@@ -327,7 +327,7 @@ def test_preamble_message_reports_line_count():
 # Shared spec with the TS twin's `fileHeaderPreamble` arm. The naive
 # 4-consecutive-comment-lines test penalises syntax rather than content, so it
 # flags a module header precisely when someone bothered to write one. Measured
-# over bulbul + noura-be + django/fastapi/celery: 7 hits, 7 false positives.
+# over two first-party repos + django/fastapi/celery: 7 hits, 7 false positives.
 # Each case below is minimized from one of them.
 
 
@@ -877,8 +877,8 @@ def test_region_marker_shapes_flag(body: str):
 @pytest.mark.parametrize(
     "body",
     [
-        # demo-gateway/demos/momah-furas-anas/pipeline/matching.py:159 — a prose
-        # comment whose first word happens to be "region".
+        # One first-party site carries a prose comment whose first word
+        # happens to be "region".
         "region, sector AND facility_type are HARD constraints when the investor names them",
         "region is derived from the caller's IP, which the CDN rewrites",
         "regions are resolved lazily",
@@ -893,7 +893,7 @@ def test_prose_opening_with_region_is_not_a_marker(body: str):
 
 
 def test_meta_commentary_with_a_ticket_is_exempt():
-    assert _standalone("EN-only for now; add an AR variant once AR audio exists (PROD-249)") == []
+    assert _standalone("EN-only for now; add an AR variant once AR audio exists (PROJ-249)") == []
 
 
 def test_meta_commentary_with_a_url_is_exempt():
@@ -903,8 +903,8 @@ def test_meta_commentary_with_a_url_is_exempt():
 def test_ticket_anywhere_in_the_run_exempts_the_whole_run():
     src = (
         "x = 1\n"
-        "# Zoho freshness canary: the sink writes Description so Modified_Time advances.\n"
-        "# EN-only for now (PROD-249).\n"
+        "# Stripe returns a stale timestamp, so the sink writes a field to advance it.\n"
+        "# EN-only for now (PROJ-249).\n"
         "y = 2\n"
     )
     assert _check(src) == []
@@ -978,8 +978,8 @@ def test_isolated_phase_marker_flags():
 
 
 def test_region_prose_with_a_full_stop_is_not_a_marker():
-    # demo-gateway/.../voice/action/route.ts:1187 — a short noun phrase that
-    # would pass the title shape if a sentence-final period were allowed.
+    # One first-party site carries a short noun phrase that would pass the
+    # title shape if a sentence-final period were allowed.
     assert _standalone("Region centroids for map_pan.") == []
 
 

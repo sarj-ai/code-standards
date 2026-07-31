@@ -1,6 +1,6 @@
 """SARJ045: a domain object built with many kwargs inline belongs in a builder.
 
-A test that constructs `SarjBeneficiary(id=..., name=..., iban=..., bank=...,
+A test that constructs `Beneficiary(id=..., name=..., iban=..., bank=...,
 status=..., created_at=..., updated_at=..., owner=..., currency=...)` in its own
 body states nine facts, and typically only one of them is the thing under test.
 The other eight are noise the reader must scan past to find the interesting
@@ -25,9 +25,9 @@ Scoped to calls directly in a test body, the population drops to 17.
 The threshold is deliberately high. Eight keywords is well past the point where
 a constructor call is self-explanatory, and it was chosen so the rule fires only
 where the audited corpora showed a genuine builder was missing — in at least
-three cases (`digital-bank/banking-ai/chat/tests/test_chat_store.py`) the fix is
-a one-line import of a `build_sarj_beneficiary` helper that already exists in
-`common/testing/builders.py`.
+three cases, all in one first-party store test module, the fix is a one-line
+import of a `build_beneficiary` helper that already exists in that repo's
+shared test-builders module.
 
 Deliberately NOT flagged:
 
@@ -36,10 +36,10 @@ Deliberately NOT flagged:
   premise instead of asserting it. A single construction of a domain model with
   many required fields has no duplication to extract, and telling the author to
   build a factory for one call site trades real ceremony for nothing. Found in
-  bulbul PR #4111: removing one `# pyright: ignore` forced
-  `python/bulbul/tests/observability/test_analytics_events.py:227` to build a
-  real `Batch(...)` with 12 required fields — the only `Batch(` in the file —
-  and the rule blocked CI over it. Two or more constructions of the same callee
+  a first-party review regression: removing one `# pyright: ignore` forced an
+  observability test to build a real `Batch(...)` with 12 required fields — the
+  only `Batch(` in the file — and the rule blocked CI over it. Two or more
+  constructions of the same callee
   still fire: that is the shape a builder actually fixes.
 * calls inside a fixture, a `_make_*` helper, or any non-test function — that is
   the factory, and it is allowed to be verbose exactly once,

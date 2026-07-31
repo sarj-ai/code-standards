@@ -16,7 +16,7 @@ const ruleTester = new RuleTester({
   },
 });
 
-const SRC = "/repo/src/talent/name-healer/service.ts";
+const SRC = "/repo/src/domain/record-normalizer/service.ts";
 
 ruleTester.run("require-interface-for-injected-service", rule, {
   valid: [
@@ -25,9 +25,9 @@ ruleTester.run("require-interface-for-injected-service", rule, {
     {
       filename: SRC,
       code: `
-        export class NameHealerService implements INameHealerService {
-          private readonly svc: Services;
-          constructor(svc: Services) { this.svc = svc; }
+        export class RecordNormalizerService implements IRecordNormalizerService {
+          private readonly svc: ServiceRegistry;
+          constructor(svc: ServiceRegistry) { this.svc = svc; }
           async run(): Promise<void> {}
         }
       `,
@@ -69,7 +69,7 @@ ruleTester.run("require-interface-for-injected-service", rule, {
     {
       filename: "/repo/src/components/boundary.tsx",
       code: `
-        export default class PhoneMockupBoundary extends React.Component<Props, State> {
+        export default class WidgetErrorBoundary extends React.Component<Props, State> {
           private readonly reporter: ErrorReporter;
           constructor(reporter: ErrorReporter) { super(reporter); this.reporter = reporter; }
           render(): JSX.Element { return null as never; }
@@ -93,9 +93,9 @@ ruleTester.run("require-interface-for-injected-service", rule, {
     {
       filename: SRC,
       code: `
-        class NameHealerService {
-          private readonly svc: Services;
-          constructor(svc: Services) { this.svc = svc; }
+        class RecordNormalizerService {
+          private readonly svc: ServiceRegistry;
+          constructor(svc: ServiceRegistry) { this.svc = svc; }
           async run(): Promise<void> {}
         }
       `,
@@ -104,9 +104,9 @@ ruleTester.run("require-interface-for-injected-service", rule, {
     {
       filename: SRC,
       code: `
-        export class HealPlan {
-          private readonly candidates: HealCandidate;
-          constructor(candidates: HealCandidate) { this.candidates = candidates; }
+        export class NormalizationPlan {
+          private readonly candidates: NormalizationCandidate;
+          constructor(candidates: NormalizationCandidate) { this.candidates = candidates; }
         }
       `,
     },
@@ -126,8 +126,8 @@ ruleTester.run("require-interface-for-injected-service", rule, {
       filename: SRC,
       code: `
         export class Hidden {
-          private readonly svc: Services;
-          constructor(svc: Services) { this.svc = svc; }
+          private readonly svc: ServiceRegistry;
+          constructor(svc: ServiceRegistry) { this.svc = svc; }
           private helper(): void {}
           protected other(): void {}
           static make(): void {}
@@ -157,8 +157,8 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         }
       `,
     },
-    // Config bag by TYPE suffix — real FP:
-    // automations/packages/shared/src/http-client.ts:25 `JsonHttpClient`.
+    // Config bag by TYPE suffix — real FP: one first-party HTTP-client site
+    // whose `JsonHttpClient` takes an all-primitive options record.
     {
       filename: SRC,
       code: `
@@ -180,13 +180,13 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         }
       `,
     },
-    // Callback/observer bag — real FP:
-    // noura-be/.../voice/domain/LiveKitManager.ts:42.
+    // Callback/observer bag — real FP: one first-party realtime-session
+    // manager that takes an OUTBOUND observer bag.
     {
       filename: SRC,
       code: `
-        export class LiveKitManager {
-          constructor(private readonly callbacks: LiveKitCallbacks) {}
+        export class RealtimeSessionManager {
+          constructor(private readonly callbacks: RealtimeSessionCallbacks) {}
           async connect(): Promise<void> {}
         }
       `,
@@ -211,8 +211,8 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         }
       `,
     },
-    // Composition root — real FP: najm/src/services/service-factory.ts:15,
-    // which receives one `db` and `new`s eleven services onto its own fields.
+    // Composition root — real FP: one first-party service factory that
+    // receives one `db` and `new`s eleven services onto its own fields.
     // A class that BUILDS more than it RECEIVES is where concrete types are
     // supposed to be named.
     {
@@ -268,21 +268,21 @@ ruleTester.run("require-interface-for-injected-service", rule, {
     // Path gating — the same firing source is silent in a test, a story, a
     // script, and a generated file.
     {
-      filename: "/repo/tests/name-healer.test.ts",
+      filename: "/repo/tests/record-normalizer.test.ts",
       code: `
         export class FakeStore {
-          private readonly svc: Services;
-          constructor(svc: Services) { this.svc = svc; }
+          private readonly svc: ServiceRegistry;
+          constructor(svc: ServiceRegistry) { this.svc = svc; }
           run(): void {}
         }
       `,
     },
     {
-      filename: "/repo/src/talent/service.stories.ts",
+      filename: "/repo/src/domain/service.stories.ts",
       code: `
         export class StoryHarness {
-          private readonly svc: Services;
-          constructor(svc: Services) { this.svc = svc; }
+          private readonly svc: ServiceRegistry;
+          constructor(svc: ServiceRegistry) { this.svc = svc; }
           run(): void {}
         }
       `,
@@ -291,8 +291,8 @@ ruleTester.run("require-interface-for-injected-service", rule, {
       filename: "/repo/scripts/backfill.ts",
       code: `
         export class Backfiller {
-          private readonly svc: Services;
-          constructor(svc: Services) { this.svc = svc; }
+          private readonly svc: ServiceRegistry;
+          constructor(svc: ServiceRegistry) { this.svc = svc; }
           run(): void {}
         }
       `,
@@ -308,7 +308,7 @@ ruleTester.run("require-interface-for-injected-service", rule, {
       `,
     },
     {
-      filename: "/repo/src/talent/client.ts",
+      filename: "/repo/src/domain/client.ts",
       code: `
         // @generated by protoc-gen-es. do not edit.
         export class GeneratedClient {
@@ -318,10 +318,8 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         }
       `,
     },
-    // FRAMEWORK ROUTERS. Three copies of one template across the estate —
-    // summer/.../eight-job-runner/src/router.ts:11,
-    // farwa/.../farwa-job-runner/src/router.ts:11 and
-    // tamr/.../tamr-job-runner/src/router.ts:7 — a class the server's bootstrap
+    // FRAMEWORK ROUTERS. Three copies of one job-runner template across three
+    // first-party repos — a class the server's bootstrap
     // mounts and nothing ever injects. The original docstring already called the
     // first one its single borderline false positive.
     {
@@ -369,17 +367,17 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         }
       `,
     },
-    // TRANSPORT WRAPPERS. money2020/src/lib/http-client.ts:34 and
-    // banking-demo/src/lib/http-client.ts:39, verbatim in shape. The Python twin
+    // TRANSPORT WRAPPERS. Two first-party `ky`-wrapper sites, verbatim in
+    // shape as each other. The Python twin
     // excludes `*Client` for exactly this reason: an ABC over a class whose only
     // collaborator is somebody else's HTTP transport substitutes nothing, and a
     // consumer's test fakes the transport rather than the wrapper.
     {
       filename: "/repo/src/lib/http-client.ts",
       code: `
-        export class Money2020HttpClient {
+        export class LedgerHttpClient {
           constructor(private readonly client: KyInstance) {}
-          async inbound(input: Money2020CallInput): Promise<ConnectionDetails> {
+          async inbound(input: LedgerCallInput): Promise<ConnectionDetails> {
             return null as never;
           }
         }
@@ -388,7 +386,7 @@ ruleTester.run("require-interface-for-injected-service", rule, {
     {
       filename: "/repo/src/lib/http-client.ts",
       code: `
-        export class AshbyClient {
+        export class ApiClient {
           constructor(private readonly http: AxiosInstance) {}
           async listJobs(): Promise<Job[]> { return []; }
         }
@@ -406,21 +404,20 @@ ruleTester.run("require-interface-for-injected-service", rule, {
   ],
 
   invalid: [
-    // GROUND TRUTH — the class the user pointed at, verbatim:
-    // automations/apps/internal-automations/src/talent/name-healer/service.ts:28
-    // (commit 5c5830aa, PR #241). Its sibling in the same directory tree,
-    // talent/referral-tracker/service.ts:129, does have `IReferralTrackerService`.
+    // GROUND TRUTH — the origin case raised in review on a first-party repo,
+    // verbatim in shape. Its sibling in the same directory tree does declare an
+    // `ITaskTrackerService` port.
     {
       filename: SRC,
       code: `
-        export class NameHealerService {
-          private readonly svc: Services;
+        export class RecordNormalizerService {
+          private readonly svc: ServiceRegistry;
 
-          constructor(svc: Services) {
+          constructor(svc: ServiceRegistry) {
             this.svc = svc;
           }
 
-          async run(queue: Queue<TaskMessage>, nowMs: number, maxPerRun: number): Promise<NameHealerRunResult> {
+          async run(queue: Queue<TaskMessage>, nowMs: number, maxPerRun: number): Promise<RecordNormalizerRunResult> {
             return null as never;
           }
         }
@@ -429,39 +426,38 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         {
           messageId: "requireInterface",
           data: {
-            name: "NameHealerService",
-            deps: "svc: Services",
+            name: "RecordNormalizerService",
+            deps: "svc: ServiceRegistry",
             methods: "run",
           },
         },
       ],
     },
-    // Parameter properties are storage too — kashta/.../segments/.../patient-service.ts:24.
+    // Parameter properties are storage too — one first-party service site.
     {
       filename: SRC,
       code: `
-        export class PatientService {
-          constructor(private patientStore: PatientStore) {}
-          async getPatientById(id: string): Promise<Patient | null> { return null; }
-          async listPatients(): Promise<Patient[]> { return []; }
+        export class ProfileService {
+          constructor(private profileStore: ProfileStore) {}
+          async getProfileById(id: string): Promise<Profile | null> { return null; }
+          async listProfiles(): Promise<Profile[]> { return []; }
         }
       `,
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "PatientService", deps: "patientStore: PatientStore", methods: "getPatientById, listPatients" },
+          data: { name: "ProfileService", deps: "profileStore: ProfileStore", methods: "getProfileById, listProfiles" },
         },
       ],
     },
-    // `readonly` parameter property with no accessibility keyword —
-    // summer/typescript/packages/credit/src/app/api/document-parser.ts:116,
-    // where `interface DocumentParser` is declared three lines above and the
-    // `*Impl` class never says `implements`.
+    // `readonly` parameter property with no accessibility keyword — one
+    // first-party site where `interface ReportParser` is declared three lines
+    // above and the `*Impl` class never says `implements`.
     {
       filename: SRC,
       code: `
-        export interface DocumentParser { parse(args: ParseArgs): Promise<Parsed>; }
-        export class DocumentParserImpl {
+        export interface ReportParser { parse(args: ParseArgs): Promise<Parsed>; }
+        export class ReportParserImpl {
           constructor(readonly axios: AxiosInstance) {}
           async parse(args: ParseArgs): Promise<Parsed> { return null as never; }
         }
@@ -469,20 +465,20 @@ ruleTester.run("require-interface-for-injected-service", rule, {
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "DocumentParserImpl", deps: "axios: AxiosInstance", methods: "parse" },
+          data: { name: "ReportParserImpl", deps: "axios: AxiosInstance", methods: "parse" },
         },
       ],
     },
-    // A dependency BAG spread onto fields is still a collaborator seam —
-    // automations/.../channel-archiver/empty-channel-report.ts:37. `Deps` is
+    // A dependency BAG spread onto fields is still a collaborator seam — one
+    // first-party reporting site. `Deps` is
     // deliberately not in the config-ish suffix list.
     {
       filename: SRC,
       code: `
-        export class EmptyChannelReportService {
+        export class DigestReportService {
           private readonly lister: ChannelLister;
           private readonly alerts: AlertsClient;
-          constructor(deps: EmptyChannelReportDeps) {
+          constructor(deps: DigestReportDeps) {
             this.lister = deps.lister;
             this.alerts = deps.alerts;
           }
@@ -492,7 +488,7 @@ ruleTester.run("require-interface-for-injected-service", rule, {
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "EmptyChannelReportService", deps: "deps: EmptyChannelReportDeps", methods: "runDaily" },
+          data: { name: "DigestReportService", deps: "deps: DigestReportDeps", methods: "runDaily" },
         },
       ],
     },
@@ -501,10 +497,10 @@ ruleTester.run("require-interface-for-injected-service", rule, {
     {
       filename: SRC,
       code: `
-        export class TakeHomeGitHubSyncHandler {
-          private readonly svc: Services;
+        export class ArtifactSyncHandler {
+          private readonly svc: ServiceRegistry;
           private readonly bucket: R2Bucket;
-          constructor(services: Services, bucket: R2Bucket, owner: string, tuning: SyncOptions) {
+          constructor(services: ServiceRegistry, bucket: R2Bucket, owner: string, tuning: SyncOptions) {
             this.svc = services;
             this.bucket = bucket;
             this.owner = owner;
@@ -516,24 +512,24 @@ ruleTester.run("require-interface-for-injected-service", rule, {
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "TakeHomeGitHubSyncHandler", deps: "services: Services, bucket: R2Bucket", methods: "handle" },
+          data: { name: "ArtifactSyncHandler", deps: "services: ServiceRegistry, bucket: R2Bucket", methods: "handle" },
         },
       ],
     },
-    // A qualified type name (`ashby.Client`) is still a nominal collaborator.
+    // A qualified type name (`catalog.Client`) is still a nominal collaborator.
     {
       filename: SRC,
       code: `
-        export class AshbyFacade {
-          private readonly client: ashby.Client;
-          constructor(client: ashby.Client) { this.client = client; }
+        export class CatalogFacade {
+          private readonly client: catalog.Client;
+          constructor(client: catalog.Client) { this.client = client; }
           lookup(id: string): Promise<void> { return this.client.get(id); }
         }
       `,
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "AshbyFacade", deps: "client: ashby.Client", methods: "lookup" },
+          data: { name: "CatalogFacade", deps: "client: catalog.Client", methods: "lookup" },
         },
       ],
     },
@@ -541,16 +537,16 @@ ruleTester.run("require-interface-for-injected-service", rule, {
     {
       filename: SRC,
       code: `
-        export default class ReferralProcessor {
-          private readonly svc: Services;
-          constructor(svc: Services) { this.svc = svc; }
+        export default class TaskProcessor {
+          private readonly svc: ServiceRegistry;
+          constructor(svc: ServiceRegistry) { this.svc = svc; }
           async process(): Promise<void> {}
         }
       `,
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "ReferralProcessor", deps: "svc: Services", methods: "process" },
+          data: { name: "TaskProcessor", deps: "svc: ServiceRegistry", methods: "process" },
         },
       ],
     },
@@ -578,26 +574,25 @@ ruleTester.run("require-interface-for-injected-service", rule, {
     },
     // Building ONE internal helper while receiving a real collaborator is an
     // ordinary service, not a wiring class. The first cut of the composition-root
-    // guard exempted any `new` in a constructor and silently lost these two:
-    // automations/.../talent/referral-message-handler.ts:5 and
-    // .../talent/referral-reaction-handler.ts:5.
+    // guard exempted any `new` in a constructor and silently lost two sibling
+    // message handlers in one first-party repo.
     {
       filename: SRC,
       code: `
-        export class ReferralMessageHandler {
-          private readonly processor: ReferralProcessor;
-          private readonly svc: Services;
-          constructor(svc: Services, enqueue: (task: TaskMessage) => Promise<void>) {
+        export class TaskMessageHandler {
+          private readonly processor: TaskProcessor;
+          private readonly svc: ServiceRegistry;
+          constructor(svc: ServiceRegistry, enqueue: (task: TaskMessage) => Promise<void>) {
             this.svc = svc;
-            this.processor = new ReferralProcessor(svc, enqueue);
+            this.processor = new TaskProcessor(svc, enqueue);
           }
-          async handle(task: ProcessReferralMessageTask): Promise<void> {}
+          async handle(task: ProcessTaskMessage): Promise<void> {}
         }
       `,
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "ReferralMessageHandler", deps: "svc: Services", methods: "handle" },
+          data: { name: "TaskMessageHandler", deps: "svc: ServiceRegistry", methods: "handle" },
         },
       ],
     },
@@ -665,55 +660,55 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         },
       ],
     },
-    // TRUE POSITIVES the transport guard must not swallow. kashta
-    // .../precedent-node/src/services/call-service.ts:50 wraps an `AxiosInstance`
+    // TRUE POSITIVES the transport guard must not swallow. One first-party
+    // site wraps an `AxiosInstance`
     // in a DOMAIN operation, and its consumers do have something to substitute —
     // the `*Client` arm of the guard is what keeps it firing.
     {
-      filename: "/repo/src/services/call-service.ts",
+      filename: "/repo/src/services/message-service.ts",
       code: `
-        export class HttpCallService {
+        export class HttpMessageService {
           constructor(private readonly client: AxiosInstance) {}
-          async call(body: CallRequest) { return (await this.client.post("/v1/calls", body)).data; }
+          async send(body: MessageRequest) { return (await this.client.post("/v1/messages", body)).data; }
         }
       `,
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "HttpCallService", deps: "client: AxiosInstance", methods: "call" },
+          data: { name: "HttpMessageService", deps: "client: AxiosInstance", methods: "send" },
         },
       ],
     },
-    // summer/.../credit/src/app/api/document-parser.ts:116 — `interface
-    // DocumentParser` sits three lines above and the class never says
-    // `implements`. That is the drift this rule exists for.
+    // Another first-party site — `interface ReportParser` sits three lines
+    // above and the class never says `implements`. That is the drift this rule
+    // exists for.
     {
-      filename: "/repo/src/app/api/document-parser.ts",
+      filename: "/repo/src/app/api/report-parser.ts",
       code: `
-        export interface DocumentParser {
-          parse(args: ParseArgs): Promise<CreditDocumentParseResponse>;
+        export interface ReportParser {
+          parse(args: ParseArgs): Promise<ParsedReport>;
         }
-        export class DocumentParserImpl {
+        export class ReportParserImpl {
           constructor(readonly axios: AxiosInstance) {}
-          async parse(args: ParseArgs): Promise<CreditDocumentParseResponse> { return null as never; }
+          async parse(args: ParseArgs): Promise<ParsedReport> { return null as never; }
         }
       `,
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "DocumentParserImpl", deps: "axios: AxiosInstance", methods: "parse" },
+          data: { name: "ReportParserImpl", deps: "axios: AxiosInstance", methods: "parse" },
         },
       ],
     },
     // The `unless a same-file interface shares the stem` arm, on a `*Client` name:
-    // an in-file `IAshbyClient` the class fails to implement is real drift.
+    // an in-file `IApiClient` the class fails to implement is real drift.
     {
-      filename: "/repo/src/lib/ashby-client.ts",
+      filename: "/repo/src/lib/api-client.ts",
       code: `
-        export interface IAshbyClient {
+        export interface IApiClient {
           listJobs(): Promise<Job[]>;
         }
-        export class AshbyClient {
+        export class ApiClient {
           constructor(private readonly http: AxiosInstance) {}
           async listJobs(): Promise<Job[]> { return []; }
         }
@@ -721,15 +716,15 @@ ruleTester.run("require-interface-for-injected-service", rule, {
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "AshbyClient", deps: "http: AxiosInstance", methods: "listJobs" },
+          data: { name: "ApiClient", deps: "http: AxiosInstance", methods: "listJobs" },
         },
       ],
     },
     // A transport alongside a real collaborator is not a lone transport.
     {
-      filename: "/repo/src/lib/ashby-client.ts",
+      filename: "/repo/src/lib/api-client.ts",
       code: `
-        export class AshbyClient {
+        export class ApiClient {
           constructor(
             private readonly http: AxiosInstance,
             private readonly cache: JobCache,
@@ -740,15 +735,15 @@ ruleTester.run("require-interface-for-injected-service", rule, {
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "AshbyClient", deps: "http: AxiosInstance, cache: JobCache", methods: "listJobs" },
+          data: { name: "ApiClient", deps: "http: AxiosInstance, cache: JobCache", methods: "listJobs" },
         },
       ],
     },
     // A `*Client` whose single collaborator is a domain port, not a transport.
     {
-      filename: "/repo/src/lib/ashby-client.ts",
+      filename: "/repo/src/lib/api-client.ts",
       code: `
-        export class AshbyClient {
+        export class ApiClient {
           constructor(private readonly jobStore: JobStore) {}
           async listJobs(): Promise<Job[]> { return []; }
         }
@@ -756,7 +751,7 @@ ruleTester.run("require-interface-for-injected-service", rule, {
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "AshbyClient", deps: "jobStore: JobStore", methods: "listJobs" },
+          data: { name: "ApiClient", deps: "jobStore: JobStore", methods: "listJobs" },
         },
       ],
     },

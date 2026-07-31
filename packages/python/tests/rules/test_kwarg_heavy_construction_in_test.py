@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Diagnostic
 
 
-TEST_PATH = "python/bulbul/tests/store/test_call_store.py"
+TEST_PATH = "python/app/tests/store/test_call_store.py"
 
 _NINE_KWARGS = ", ".join(f"f{i}={i}" for i in range(9))
 _EIGHT_KWARGS = ", ".join(f"f{i}={i}" for i in range(8))
@@ -262,13 +262,14 @@ def test_style_again():
 
 
 # --------------------------------------------------------------------------- #
-# FP guard from bulbul PR #4111: the message promises "every other test repeats  #
-# the same boilerplate", so the rule checks that premise rather than asserting.  #
+# FP guard from a first-party review regression: the message promises "every     #
+# other test repeats the same boilerplate", so the rule checks that premise      #
+# rather than asserting.                                                         #
 # --------------------------------------------------------------------------- #
 
 
 def test_single_construction_in_the_file_is_exempt():
-    # test_analytics_events.py:227 built the only `Batch(` in the file, with 12
+    # One first-party test built the only `Batch(` in its file, with 12
     # required fields. There is no duplication for a builder to remove.
     src = f"""
 def test_thing():

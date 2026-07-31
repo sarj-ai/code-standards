@@ -18,18 +18,18 @@ Resolution is filesystem-based and deliberately conservative:
   missed finding, while the failure mode of guessing "first-party" is exactly
   the impossible-edit demand these rules exist to avoid.
 
-The `__init__.py` requirement is load-bearing, not incidental: bulbul carries a
-`python/bulbul/livekit/` directory of SIP trunk JSON, and a name-only match
-would have classified the `livekit` dependency as first-party and re-flagged
-the very imports this distinction exists to exempt. Requiring an importable
-package makes a top-level name collide only when a real first-party package
-shadows the distribution — at which point flagging it is correct.
+The `__init__.py` requirement is load-bearing, not incidental: one first-party
+repo carries a `python/app/livekit/` directory of SIP trunk JSON, and a
+name-only match would have classified the `livekit` dependency as first-party
+and re-flagged the very imports this distinction exists to exempt. Requiring an
+importable package makes a top-level name collide only when a real first-party
+package shadows the distribution — at which point flagging it is correct.
 
 The project root is the nearest ancestor holding `.git`, falling back to the
 topmost contiguous run of ancestors holding `pyproject.toml` (worktrees,
 sdist checkouts, and vendored trees all resolve). Scanning stops at the first
 package directory on each branch, so only *top-level* package names are
-collected — `agent.lk.custom_models` contributes `agent`, never `lk`.
+collected — `app.lk.custom_models` contributes `app`, never `lk`.
 """
 
 from __future__ import annotations
@@ -103,9 +103,9 @@ def own_top_package(path: Path) -> str | None:
 
     The OUTERMOST importable ancestor wins rather than the outermost of an
     unbroken `__init__.py` run, because PEP 420 namespace subpackages are
-    routine — bulbul's `agent/agent/lk/custom_models/` carries no `__init__.py`
-    while `agent/agent/` does, and a break-on-first-gap walk would report the
-    file as belonging to no package at all.
+    routine — a first-party repo's `app/app/lk/custom_models/` carries no
+    `__init__.py` while `app/app/` does, and a break-on-first-gap walk would
+    report the file as belonging to no package at all.
 
     Returns:
         The top-level package name, or None when `path` is not inside a package.

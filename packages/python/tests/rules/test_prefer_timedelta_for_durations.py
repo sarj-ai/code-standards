@@ -790,7 +790,7 @@ def test_conftest_is_exempt():
 
 def test_production_file_still_fires():
     src = "def schedule(timeout_seconds: int) -> None: ...\n"
-    assert len(_check_at(src, "bulbul/calls/service.py")) == 1
+    assert len(_check_at(src, "app/calls/service.py")) == 1
 
 
 # --------------------------------------------------------------------------- #
@@ -902,7 +902,7 @@ def f(timeout_seconds: int = 30) -> None:
 # --------------------------------------------------------------------------- #
 # FP guard: generated files. Their layout is the generator's and re-running it  #
 # discards any edit, so a finding there can never be acted on in place.        #
-# Measured on 69 `DO NOT EDIT` files across bulbul and noura-be.               #
+# Measured on 69 `DO NOT EDIT` files across two first-party repos.             #
 # --------------------------------------------------------------------------- #
 
 

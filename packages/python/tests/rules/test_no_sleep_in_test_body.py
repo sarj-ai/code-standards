@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Diagnostic
 
 
-TEST_PATH = "python/bulbul/tests/stores/test_call_flag_store.py"
+TEST_PATH = "python/app/tests/stores/test_call_flag_store.py"
 
 
 def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
@@ -37,7 +37,7 @@ async def test_thing():
         "call_store_test.py",
         "tests/conftest.py",
         "conftest.py",
-        "python/bulbul/tests/stores/seed.py",
+        "python/app/tests/stores/seed.py",
         "a/b/test/helper.py",
         "deeply/nested/tests/data/factory.py",
     ],
@@ -49,7 +49,7 @@ def test_fires_in_test_paths(path: str):
 @pytest.mark.parametrize(
     "path",
     [
-        "python/bulbul/bulbul/calls/call_store.py",
+        "python/app/app/calls/call_store.py",
         "src/service.py",
         "a/testing/thing.py",
         "a/contest.py",

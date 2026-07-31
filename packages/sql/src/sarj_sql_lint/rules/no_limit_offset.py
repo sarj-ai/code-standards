@@ -28,10 +28,10 @@ value token excludes three shapes that are not pagination at all:
 
 A word-boundary keyword match already tolerated `offset_min`-style identifiers
 (`_` is a word character), which is why the corpus never caught this: over the
-239 `.sql` files of bulbul + noura-be the rule yields **0 findings both before
-and after**, and the only file containing the token
-(`bulbul/svcs/db/db/migrations/20260510190000_convert_batch_window_hours_to_local.sql`)
-uses it solely as the identifier `offset_min` and inside comments. So this change
+239 `.sql` files of two first-party repos the rule yields **0 findings both
+before and after**, and the only file containing the token — a timezone-
+conversion migration — uses it solely as the identifier `offset_min` and inside
+comments. So this change
 is pure false-positive prevention with no true positive lost — verified by
 re-running the sweep, not assumed.
 """

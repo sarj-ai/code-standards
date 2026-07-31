@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Diagnostic
 
 
-TEST_PATH = "python/bulbul/tests/stores/test_call_store.py"
+TEST_PATH = "python/app/tests/stores/test_call_store.py"
 
 
 def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
@@ -179,7 +179,7 @@ _SQL_CALL = 'async def f(conn):\n    await conn.execute("INSERT INTO call (id) V
         "tests/stores/test_call_store.py",
         "test_call_store.py",
         "call_store_test.py",
-        "python/bulbul/tests/helpers/seed.py",
+        "python/app/tests/helpers/seed.py",
     ],
 )
 def test_fires_in_test_paths(path: str):
@@ -189,11 +189,11 @@ def test_fires_in_test_paths(path: str):
 @pytest.mark.parametrize(
     "path",
     [
-        "python/bulbul/bulbul/calls/call_store.py",
+        "python/app/app/calls/call_store.py",
         "scripts/backfill.py",
         "conftest.py",
         "tests/conftest.py",
-        "python/bulbul/tests/stores/conftest.py",
+        "python/app/tests/stores/conftest.py",
         "tests/migrations/test_0042.py",
         "migrations/0042_add_column.py",
     ],

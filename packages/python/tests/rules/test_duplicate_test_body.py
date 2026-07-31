@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Diagnostic
 
 
-TEST_PATH = "python/bulbul/tests/unit/test_permissions.py"
+TEST_PATH = "python/app/tests/unit/test_permissions.py"
 
 
 def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
@@ -73,7 +73,7 @@ def test_flags_the_copy_and_not_the_original():
 def test_flags_a_group_once_on_its_first_copy():
     # One diagnostic per group, not per copy. A module that repeats one body N
     # times is a single `parametrize` refactor, and N-1 diagnostics for one
-    # decision reads as N-1 problems: `vb-landing`'s test_text_chunker.py emitted
+    # decision reads as N-1 problems: one first-party chunker test emitted
     # eight, all naming the same original.
     src = """
 def test_one():
@@ -136,7 +136,7 @@ def test_two():
     # varying argument to lift — so the advice has to differ from the ordinary
     # case. Every byte-for-byte pair read across the corpora was a copy-paste
     # that never got its edit: `prefect`'s test_unset_async is test_unset, and
-    # bulbul's test_superadmin_can_delete_any_scenario has no superadmin in it.
+    # one first-party `test_admin_can_delete_any_record` has no admin in it.
     [diag] = _check(src)
     assert "is a verbatim copy of" in diag.message
     assert "never got its edit" in diag.message
@@ -180,8 +180,8 @@ def test_differing_docstrings_suppress_a_duplicate():
     # suppresses when two arms carry different comments, because merging forces
     # one of them to be deleted. Stripping the docstring here said the opposite.
     #
-    # SARJ070's guard is measured on two independent sites — bulbul's
-    # analytics_service.py:172 (`# 7 data points` / `# 30-31 data points`) and
+    # SARJ070's guard is measured on two independent sites — one first-party
+    # analytics site (`# 7 data points` / `# 30-31 data points`) and
     # litellm's user_api_key_auth_mcp.py:776 (`# Unreachable: kept for match
     # exhaustiveness`) — and on the standards repo's own suite 29 of 125
     # findings paired tests whose differing documentation is provenance no
@@ -232,7 +232,7 @@ def test_one():
 
 
 def test_two():
-    # pins bulbul/agent/tests/test_collect_digits_tool.py:598
+    # pins app/tests/test_digit_collection.py:598
     u = make_user(role="editor")
     allowed = can_delete(u)
     assert allowed is True

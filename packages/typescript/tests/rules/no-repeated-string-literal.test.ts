@@ -136,7 +136,7 @@ ruleTester.run("no-repeated-string-literal", rule, {
     // functions" is the ONLY count threshold, in BOTH packages. This rule
     // carried an abandoned three-occurrence gate, so a literal used exactly
     // twice fired in `.py` and was clean in `.ts`. Minimized from
-    // `noura-be/.../modules/onboarding/store.py:631`, where one
+    // one first-party store module, where one
     // `SELECT stage ... FOR UPDATE` is repeated between two store methods.
     // If this fails, someone re-introduced a total-occurrence threshold —
     // re-run both corpus sweeps before changing the test. ---

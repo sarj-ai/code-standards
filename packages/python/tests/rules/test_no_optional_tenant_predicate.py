@@ -24,7 +24,7 @@ def _count(source: str) -> int:
 
 
 def test_flags_conditional_tenant_predicate_with_tautology_fallback():
-    """The exact bulbul shape that leaked `POST /v1/calls/list` across tenants."""
+    """The exact first-party shape that leaked a list endpoint across tenants."""
     src = (
         "def _build_filter_conditions(args):\n"
         "    where_conditions = []\n"

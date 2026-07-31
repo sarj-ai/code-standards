@@ -43,7 +43,7 @@ Deliberately NOT flagged:
   AsyncMock(return_value=...)`) — see exemption 4 below.
 
 The import-backed name check is the load-bearing false-positive guard. Test
-suites routinely define their own `Mock`-suffixed fakes (`MockVisionBankClient`,
+suites routinely define their own `Mock`-suffixed fakes (`MockPaymentGatewayClient`,
 `MockSession`); those are hand-written doubles implementing a real interface,
 which is precisely the pattern this rule steers toward, and flagging them would
 invert the rule's intent.
@@ -95,7 +95,7 @@ of this rule reported 137 hits, of which 38 were false positives:
    handler.
 
 4. **A canned callable stub bound to an attribute (146 hits, 18.8%).** Measured
-   over the two first-party repos (bulbul + noura-be, 777 hits), the single
+   over the two first-party repos (777 hits), the single
    largest shape was `receiver.method = Mock(...)` — 283 hits, 36.4%. It is not
    an unspecced *collaborator*; it replaces one callable on a receiver that
    already exists, and the contract this rule protects belongs to that receiver.
@@ -103,14 +103,12 @@ of this rule reported 137 hits, of which 38 were false positives:
    a renamed attribute raises `AttributeError` off the specced parent and the
    test fails loudly, which is exactly the rot this rule wants — or the receiver
    is itself flagged here at its own construction, and reporting the leaf as
-   well says the same thing twice. Evidence:
-   `bulbul/python/agent/tests/conftest.py:167-170`, where
-   `backchanneler = mock.Mock(spec=Backchanneler)` is followed by
-   `backchanneler.start_audio = mock.AsyncMock()` / `.run = ...` / `.stop = ...`
-   — model spec discipline, and three findings; and
-   `bulbul/python/bulbul/tests/integrations/test_zoho_notifications_handler.py:86`
-   (`crm_service.get_record = mock.AsyncMock(return_value=record)`), where the
-   only thing the file reads off `crm_service.get_record` is
+   well says the same thing twice. Evidence: one first-party conftest where
+   `receiver = mock.Mock(spec=AudioReceiver)` is followed by
+   `receiver.start_audio = mock.AsyncMock()` / `.run = ...` / `.stop = ...`
+   — model spec discipline, and three findings; and one first-party integration
+   test where `crm_service.get_record = mock.AsyncMock(return_value=record)`,
+   and the only thing the file reads off `crm_service.get_record` is
    `assert_awaited_once_with`. `AsyncMock` dominates the shape (164 of 283)
    because `Mock(spec=X)` children are not awaitable, so a specced double *must*
    have its async methods stubbed this way to be usable at all.
@@ -118,14 +116,13 @@ of this rule reported 137 hits, of which 38 were false positives:
    The guard demands POSITIVE evidence of callability — a canned
    `return_value=`/`side_effect=`, a mock-API read off the path
    (`recv.method.assert_called_once_with(...)`), or an invocation — on top of
-   the absence of any domain-attribute read. Absence alone is not enough:
-   `agent/tests/test_for_call_settings.py:64` (`room.local_participant =
-   mock.Mock()`) is an object double this file never happens to walk, and it
-   stays flagged, as do the 60 namespace doubles the corpus does walk —
-   `test_for_call_settings.py:71,74,76` (`api.room` / `api.sip` / `api.egress`,
-   read back as `.delete_room`, `.create_sip_participant`,
-   `.start_room_composite_egress`) and `agent/tests/conftest.py:246-247`
-   (`job_context.api`, `job_context.api.sip`).
+   the absence of any domain-attribute read. Absence alone is not enough: one
+   first-party site assigning `room.local_participant = mock.Mock()` is an
+   object double that file never happens to walk, and it stays flagged, as do
+   the 60 namespace doubles the corpus does walk — three further sites in the
+   same file (`api.room` / `api.sip` / `api.egress`, read back as
+   `.delete_room`, `.create_sip_participant`, `.start_room_composite_egress`)
+   and two in a conftest (`job_context.api`, `job_context.api.sip`).
 
    What this gives up is arity: `AsyncMock(spec=Store.get)` would reject a call
    whose signature no longer matches, and the exempted stubs will not. That is

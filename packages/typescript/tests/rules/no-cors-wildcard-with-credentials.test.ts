@@ -18,7 +18,7 @@ const ruleTester = new RuleTester({
 ruleTester.run("no-cors-wildcard-with-credentials", rule, {
   valid: [
     // Wildcard origin WITHOUT credentials — safe (browser blocks credentialed
-    // wildcard anyway). This is the real demo-gateway CORS shape.
+    // wildcard anyway). This is a real first-party CORS shape.
     { code: "app.use(cors({ origin: '*' }));" },
     {
       code: "const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, GET, OPTIONS' };",

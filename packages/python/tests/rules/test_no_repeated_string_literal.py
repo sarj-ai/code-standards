@@ -512,9 +512,9 @@ def c():
 def test_exactly_two_occurrences_in_two_functions_fires():
     """Two copies across two functions is a finding.
 
-    Minimized from `noura-be/.../modules/onboarding/store.py:631`, where one
-    `SELECT stage ... FOR UPDATE` is repeated between `submit_financial_info_atomic`
-    and `submit_legal_info_atomic`.
+    Minimized from one first-party onboarding store, where one
+    `SELECT stage ... FOR UPDATE` is repeated between two sibling
+    submit-and-advance methods.
     """
     src = f'''
 def submit_financial_info():

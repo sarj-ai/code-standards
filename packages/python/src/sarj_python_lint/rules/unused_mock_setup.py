@@ -26,8 +26,9 @@ measured first, and it is unusable. A mock reaches the code under test in ways
 the test body does not spell out — it is handed over whole (`billing.charge(
 gateway, 100)` and the SUT picks `.refund` off it), or it is installed by
 `patch`, where the test never passes it anywhere at all. On the five audited
-corpora that formulation produced 493 hits (bulbul 70, django 37, celery 386,
-noura-be 0, fastapi 0), of which 17 were read line by line across all three
+corpora that formulation produced 493 hits (repo A 70, django 37, celery 386,
+repo B 0, fastapi 0; repo labels are stable within this docstring only), of
+which 17 were read line by line across all three
 corpora that produced any: **17 false positives, 0 true**. The census explains
 why — 196 of the 493 configured bases are `@patch`-decorator parameters, 29 are
 `with patch(...) as m` bindings and 38 are fixture parameters, all wired into
@@ -38,23 +39,22 @@ the cursor is patched onto the connection two lines later),
 `django/tests/decorators/test_cache.py:147` (`mocked_time.return_value` — the
 view calls `time.time()`), `celery/t/unit/app/test_app.py:1328`
 (`router.route.return_value`, and `router` is passed to `send_task`),
-`celery/t/unit/fixups/test_django.py:408`, and in bulbul
-`agent/tests/test_agent_tools.py:1092` (`mock_datetime.now.return_value`),
-`bulbul/tests/scenario_generation/test_scenario_generation_service.py:236`
-(`llm_provider` is the injected fixture mock) and
-`webserver/tests/public_api/test_calls.py:218`. The narrower salvage (fire only when the base
+`celery/t/unit/fixups/test_django.py:408`, and three sites in repo A — an
+agent-tool test (`mock_datetime.now.return_value`), a generation-service test
+(`llm_provider` is the injected fixture mock) and a
+public-API test. The narrower salvage (fire only when the base
 mock is a locally constructed `Mock()`/`MagicMock()` that escapes nowhere) is
 sound but empty: of 966 locally constructed mocks and 982 configuration
 statements across the same corpora, **0** were configured without the mock being
 used elsewhere. A mock nobody hands to anything is a mock nobody writes.
 
 The two shapes that survived are rare and always right: 5 hits across five
-corpora, 1 in bulbul (`webserver/tests/audit/test_middleware.py:213`), 4 in
+corpora, 1 in repo A (an audit-middleware test), 4 in
 celery (`t/unit/utils/test_platforms.py:952` and `:981`, literally duplicated
 `grp_module.getgrgid.return_value = [group_name]` lines;
 `t/unit/backends/test_elasticsearch.py:340` and `:375`,
 `x._server.update.return_value = {...}` under an `x._server.update.
-assert_not_called()`), 0 in django/fastapi/noura-be, 0 false positives.
+assert_not_called()`), 0 in django, fastapi and repo B, 0 false positives.
 
 **Not duplicated from ruff.** `select = ["ALL"]` already covers the whole
 "never used at all" family: `F841` flags `gateway = MagicMock()` with no later
@@ -71,7 +71,7 @@ Deliberately NOT flagged:
   ...` / `pool_close.assert_not_awaited()` / `await shutdown()` /
   `pool_close.assert_awaited_once()` asserts the collaborator has not fired
   *yet* — the setup is exercised two lines later
-  (`bulbul/agent/tests/test_for_call_settings.py:1061`). Any positive call
+  (one first-party settings test). Any positive call
   assertion or call introspection (`assert_called*`, `assert_awaited*`,
   `assert_has_calls`, `.called`, `.call_count`, `.call_args`, `reset_mock`) on
   the same path, its prefix or its extension, anywhere in the function,

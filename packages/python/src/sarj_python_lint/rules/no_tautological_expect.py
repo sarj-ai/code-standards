@@ -80,10 +80,9 @@ Deliberately NOT flagged:
 
   the *pattern* is the assertion: the test goes red the moment the result stops
   matching, so the marker records which arm ran rather than claiming a literal is
-  true. Found against `faris`
-  (`falltime/tests/services/test_pdf_processor.py:96` and `:112`), a first-party
-  repo that was not in this rule's original 28,608-file corpus — so the "0 false
-  positives" measured there held only because `faris` was absent. A `match` with
+  true. Found against two sites in one first-party repo that was not in this
+  rule's original 28,608-file corpus — so the "0 false
+  positives" measured there held only because that repo was absent. A `match` with
   no failing arm proves nothing and still fires, as does a constant assertion
   outside the `match`;
 * **anything inside a pytest-benchmark test**, whether it takes the `benchmark`
@@ -100,16 +99,16 @@ Deliberately NOT flagged:
 
 Measured before shipping: **4 findings across 28,608 files** — 26,346 of
 pydantic, trio, attrs, Airflow and Home Assistant plus 2,262 first-party files
-in bulbul, noura-be, kpi-hub, ai and demo-gateway. All 4 are the true positives
+across five first-party repos. All 4 are the true positives
 named above; 0 false positives. The `except`/benchmark carve-outs are
 load-bearing rather than defensive: with `_exempt_nodes` neutered the sweep
 gains exactly the two known false positives and nothing else.
 
 Re-measured on the corpus this standard now tracks — 21 repositories and 42,761
-files, first-party bulbul, noura-be, digital-bank, submissions, ai, faris and
-summer plus 14 OSS suites: **61 findings**, spread litellm 29, django 8,
-dagster 7, prefect 7, sentry-python 3, celery 2, superset 2, airflow 1,
-langchain 1, summer 1, and zero in the other eleven. Taking over
+files, seven first-party repos plus 14 OSS suites: **61 findings**, spread
+litellm 29, django 8, dagster 7, prefect 7, sentry-python 3, celery 2,
+superset 2, airflow 1, langchain 1, one first-party repo 1, and zero in the
+other eleven. Taking over
 `not <falsy scalar constant>` from SARJ064 added **0** findings to that total —
 the shape is rare enough that nobody in 42,761 files writes it — so it is here as
 a contract this rule now owns rather than as a source of volume.

@@ -22,10 +22,10 @@ Deliberately NOT flagged:
   subclassing `logging.Handler`, a `logging.basicConfig` call that installs it,
   a third-party library's logger being re-pointed. That is the one legitimate
   reason to touch stdlib logging in a loguru house. Measured across the two
-  production corpora the exemption is exact: bulbul's three sites
-  (`bulbul/__init__.py`, `configure_logging.py`, `agent/main.py`) and noura-be's
-  one (`common/logging.py`) are all bridges, all import loguru, and no other
-  module in either repo imports stdlib logging.
+  production corpora the exemption is exact: one repo's three sites (a package
+  `__init__.py`, a `configure_logging.py`, and a service `main.py`) and the
+  other's one (`common/logging.py`) are all bridges, all import loguru, and no
+  other module in either repo imports stdlib logging.
 
   Importing loguru is **not on its own** enough, though, and the first version of
   this rule made it so. A file-wide pass keyed on one import means that the day

@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Diagnostic
 
 
-TEST_PATH = "python/noura/tests/test_known_auth_bugs_xfail.py"
+TEST_PATH = "python/app/tests/test_known_auth_bugs_xfail.py"
 
 
 def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
@@ -97,8 +97,8 @@ def test_thing():
 
 # --------------------------------------------------------------------------- #
 # FP guard: strict pins, nondeterministic markers, and environment gates.      #
-# The real_llm exemption is mandatory — every non-strict xfail in noura-be     #
-# sits on a live-model eval that legitimately cannot be strict.                #
+# The real_llm exemption is mandatory — every non-strict xfail in one          #
+# first-party repo sits on a live-model eval that cannot be strict.            #
 # --------------------------------------------------------------------------- #
 
 

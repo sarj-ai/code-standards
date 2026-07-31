@@ -39,7 +39,8 @@ Deliberately NOT flagged:
 * file-level exemptions for every other code (`# ruff: noqa: E501`,
   `# ruff: noqa: F401, F403`) — mechanical whole-file properties, and measured
   across five repos they are exactly what the population consists of
-  (`UP035` in pydantic's `main.py`, `RUF067`/`F403` in bulbul's `__init__.py`s).
+  (`UP035` in pydantic's `main.py`, `RUF067`/`F403` in a first-party repo's
+  `__init__.py`s).
 * the unscoped blanket `# ruff: noqa`, which is SARJ038's finding, not this one.
   A file carrying both gets one diagnostic from each rule, which is correct:
   they are two different mistakes.

@@ -15,7 +15,7 @@
  * against the statement *head*. This rule defers to it — `restatesStatementHead`
  * is imported and used as an exemption — so a comment is never reported twice.
  * What is left for this rule is the noun-phrase label whose every word appears
- * anywhere on the line: `// VB Environment badge`, `// OTP schemas`,
+ * anywhere on the line: `// Env badge`, `// OTP schemas`,
  * `// Language enum`.
  *
  * **What makes it safe.** The first attempt at this shape (PR #98) corroborated
@@ -30,16 +30,17 @@
  * was every false positive left in the Python corpus sweep); and the whole
  * nine-signal protected class from `_comments` is exempt.
  *
- * **Measured.** 1 hit across the maintained repos (bulbul 0, noura-be 0,
- * portal 0, automations 0, demo-gateway 1) and 8 across zod / swr / TanStack
+ * **Measured.** 1 hit across the five maintained repos (four of them 0, the
+ * fifth 1) and 8 across zod / swr / TanStack
  * Query, of which one — zod's `// no issues with confirmPassword or password`
  * over `return payload.issues.every(…)` — was the last false positive and is
  * now guarded by `NEGATION_WORD_RE`. The single-line-statement requirement is
- * what keeps the sarj count at zero: noura-be's `// VB Environment badge` sits
- * over a multi-line `const renderVBEnvironmentBadge = () => (`, i.e. it labels
+ * what keeps the first-party count at zero: a `// Env badge` comment sits
+ * over a multi-line `const renderEnvBadge = () => (`, i.e. it labels
  * a REGION, so this rule leaves it to `no-comment-cruft`'s section-label check.
  * That makes it a preventive ratchet on TypeScript with essentially no
- * migration cost, unlike its Python twin (SARJ049, 29 hits in noura-be).
+ * migration cost, unlike its Python twin (SARJ049, 29 hits in one first-party
+ * repo).
  */
 
 import { AST_NODE_TYPES, ESLintUtils, type TSESTree } from "@typescript-eslint/utils";

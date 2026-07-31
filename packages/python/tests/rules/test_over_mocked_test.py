@@ -371,8 +371,8 @@ def test_distinct_modules_are_distinct_collaborators():
 
 
 def test_building_out_one_mocks_object_graph_is_one_collaborator():
-    # bulbul/agent/tests/test_main_helpers.py:138 — a real `PsqlCallStore`
-    # against a real database, with one `mock.Mock(spec=JobContext)`.
+    # A first-party test site: a real store against a real database, with one
+    # `mock.Mock(spec=JobContext)`.
     src = """
         async def test_timeout_marks_call_failed(call_store, test_organization, test_user):
             ctx = mock.Mock(spec=JobContext)
@@ -1198,10 +1198,10 @@ def test_an_ordinary_name_in_an_ordinary_file_is_not_exempt():
 # --------------------------------------------------------------------------- #
 
 
-def test_bulbul_collect_digits_on_exit_is_clean():
-    # bulbul/agent/tests/test_collect_digits_tool.py:598. This used to score 6
-    # and was one of the two findings that justified the old threshold; the
-    # sixth was `mock_room`, hoisted out of `mock_job_ctx`. It scores 5.
+def test_collect_digits_on_exit_is_clean():
+    # A first-party test site. This used to score 6 and was one of the two
+    # findings that justified the old threshold; the sixth was `mock_room`,
+    # hoisted out of `mock_job_ctx`. It scores 5.
     src = """
         async def test_on_exit_unregisters_local_user_state_listener(self) -> None:
             task = self._task()

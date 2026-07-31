@@ -44,10 +44,10 @@ _CODE_IN_TEXT_RE = re.compile(r"SARJ\d{3}")
 # 2. Fixing that, it was narrowed to the three codes a `python-v*` tag walk
 #    proved were live rule modules. That narrowing was WRONG. A scan of
 #    first-party consumers found a live `# sarj-noqa: SARJ005 — pre-existing,
-#    out of scope` (`bulbul/python/bulbul/bulbul/calls/batch_call_store.py`, on
-#    a `pydantic.BaseModel` subclass) for a code the tag walk says was never a
-#    shipped rule module. However that suppression came to be written, it exists,
-#    and a new rule claiming SARJ005 would inherit it.
+#    out of scope` (on a `pydantic.BaseModel` subclass in a store module) for a
+#    code the tag walk says was never a shipped rule module. However that
+#    suppression came to be written, it exists, and a new rule claiming SARJ005
+#    would inherit it.
 #
 # So the tag walk is not sufficient evidence, and burning a code is nearly free:
 # the space is `SARJ000`-`SARJ999` and 71 are allocated. Anything ever written

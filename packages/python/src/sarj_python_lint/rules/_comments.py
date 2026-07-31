@@ -148,7 +148,7 @@ def has_external_reference(body: str) -> bool:
 
     Signal S1 on its own. A comment that names where the decision is recorded is
     doing the one thing the code cannot, and it is the signal that separates a
-    scoping note with an owner ("EN-only for now — AR needs audio (PROD-249)")
+    scoping note with an owner ("EN-only for now — AR needs audio (PROJ-249)")
     from an unowned admission ("hacky, fix later").
 
     Returns:

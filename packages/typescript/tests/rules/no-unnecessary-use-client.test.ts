@@ -73,9 +73,9 @@ ruleTester.run("no-unnecessary-use-client", rule, {
     {
       code: "'use client'; class Thing {} export default function X() { return <div />; }",
     },
-    // FP guard 3, bulbul PR #4111:
-    // typescript/packages/app/src/app/dashboard/call-volume-chart-lazy.tsx:1 and
-    // .../components/rich-text-editor/rich-text-editor-lazy.tsx:1 — `ssr: false`
+    // FP guard 3, from a first-party review regression: two lazy-wrapper
+    // modules, one deferring a charting bundle and one the editor bundle
+    // — `ssr: false`
     // is a BUILD ERROR in a Server Component, so this module has no legal form
     // without the directive. It is also maximally "unnecessary"-looking: one
     // `dynamic()` call, no JSX, no hooks, no handlers.
@@ -104,9 +104,8 @@ ruleTester.run("no-unnecessary-use-client", rule, {
       ].join("\n"),
       filename: "/repo/components/editor-lazy.tsx",
     },
-    // bulbul PR #4111,
-    // typescript/packages/app/src/app/scenarios/organization-selector-wrapper.tsx:1
-    // (and the batch-calls twin). The hook is PASSED, not called, so
+    // From the same first-party review regression: a selector-wrapper module
+    // (and its twin). The hook is PASSED, not called, so
     // `markIfHookOrContext` never sees it — but indicator 2 already exempts the
     // file because the exported declaration reads imported bindings. Pinned so a
     // future narrowing of indicator 2 cannot silently reintroduce the report;

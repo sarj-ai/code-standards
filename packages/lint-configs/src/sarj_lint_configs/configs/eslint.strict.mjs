@@ -123,7 +123,7 @@ const config = [
         },
       ],
 
-      // Additional type-aware strictness incorporated from bulbul's base config.
+      // Additional type-aware strictness incorporated from a first-party base config.
       "@typescript-eslint/prefer-as-const": "error",
       "@typescript-eslint/no-unnecessary-condition": "error",
       "@typescript-eslint/prefer-nullish-coalescing": [
@@ -262,7 +262,8 @@ const config = [
       // `apiTypes.d.ts` through, which is a genuine violation.
       //
       // `checkDirectories` is deliberately NOT passed. It does not exist before
-      // eslint-plugin-unicorn 65 and bulbul pins 64.0.0, where an unknown option
+      // eslint-plugin-unicorn 65 and one first-party consumer pins 64.0.0, where
+      // an unknown option
       // is a hard config error rather than a soft degrade. Measured on the real
       // corpus it also earns nothing: 4 findings, all 4 false positives on App
       // Router directories whose names ARE the public URL, where a rename
@@ -293,7 +294,8 @@ const config = [
 
       "@sarj/prefer-zod-enum": "error",
 
-      // Deterministic ordering (incorporated from bulbul). perfectionist sorts
+      // Deterministic ordering (incorporated from a first-party config).
+      // perfectionist sorts
       // structural members; simple-import-sort owns import/export ordering
       // (chosen over eslint-plugin-import to avoid Next.js resolver conflicts).
       "perfectionist/sort-objects": [
@@ -464,8 +466,9 @@ const config = [
       // ── anti-comment-verbosity family (2026-07) ─────────────────────────────
       // From a 37,918-comment, nine-repo measurement study. All three are
       // deletion-class, so each was validated against pydantic / trio / attrs as
-      // well as the maintained repos: `no-restated-comment` fires 0 times in
-      // bulbul and 4 times across the three famous corpora combined (every one a
+      // well as the maintained repos: `no-restated-comment` fires 0 times in the
+      // flagship first-party repo and 4 times across the three famous corpora
+      // combined (every one a
       // genuine `// set_inheritable` over `s1.set_inheritable(False)`);
       // `trailing-value-narration` 18 hits, 18 true positives, all `staleTime`
       // and cookie-age lines; `jsdoc-restates-signature` 36 hits and 0 measured
@@ -563,13 +566,13 @@ const config = [
   // 50 repos, PascalCase `.tsx` accounts for 2,128 of 2,568 total filename
   // violations (82.9%), and 93.5% of those files export a component with the
   // same name as the file. Allowing it takes the corpus-wide cost from 2,568
-  // renames to 400, and bulbul + noura-be + standards from 51 to 17.
+  // renames to 400, and two first-party repos plus this one from 51 to 17.
   //
   // Scoped to `.tsx` ON PURPOSE. Only 27 PascalCase `.ts` files exist across all
   // 50 repos and they are service classes (`AuthService.ts`, `SessionStore.ts`),
   // not components — those should be kebab, so the allowance must not reach them.
   //
-  // Two of our own repos (wiki, docs) had already adopted exactly this
+  // Two of our own repos had already adopted exactly this
   // unilaterally, which is part of why it belongs in the canonical config: it
   // converges hand-rolled configs back onto the synchronizer.
   {

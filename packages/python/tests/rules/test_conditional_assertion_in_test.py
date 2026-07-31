@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Diagnostic
 
 
-TEST_PATH = "python/bulbul/tests/unit/test_conditions.py"
+TEST_PATH = "python/app/tests/unit/test_conditions.py"
 
 
 def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
@@ -488,8 +488,8 @@ def test_size_claim_after_the_loop_is_exempt():
 
 # A size claim made in a *sibling* test is the case that exercises the machinery
 # — an inline `assert len(rows) == 3` would clear the test by being an
-# unconditional assertion in its own right. bulbul's
-# integration/tests/unit/test_corpus.py is written exactly this way.
+# unconditional assertion in its own right. A first-party corpus test is
+# written exactly this way.
 _SIBLING_CLAIM = """
 rows = build_rows()
 
@@ -924,7 +924,7 @@ def test_bindings_that_refer_to_each_other_terminate_and_still_flag():
 
 
 def test_loop_over_an_imported_function_call_still_flags():
-    # bulbul tests/scenario_generation/test_schema_generator.py:44 — the
+    # One first-party site loops over a registry lookup this way — the
     # registry could come back empty and the test would go green.
     src = """
     from tools import get_all_tool_classes

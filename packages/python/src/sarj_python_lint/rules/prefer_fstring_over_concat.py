@@ -69,9 +69,10 @@ Fires on the OUTERMOST `+` chain (never once per operand) when ALL hold:
 CORPUS EVIDENCE
 ---------------
 
-Swept over 6,155 Python files — bulbul (1,179), noura-be (502), django (2,927),
-fastapi (1,130), celery (417). 717 raw candidates; the guards below removed 181
-of them (25%), leaving 536: bulbul 24, noura-be 15, django 379, fastapi 29,
+Swept over 6,155 Python files — two first-party repos, repo A (1,179) and repo B
+(502), plus django (2,927), fastapi (1,130), celery (417). 717 raw candidates;
+the guards below removed 181 of them (25%), leaving 536: repo A 24, repo B 15,
+django 379, fastapi 29,
 celery 89. A 25-hit manual sample spread across all five corpora classified 24
 true positives and 1 false positive (4%) — the survivor is noted under the
 character-set bullet below. Separately, 773 chains were rejected outright by the
@@ -80,12 +81,13 @@ concatenation reaching a `+` with a literal in it); without that test the rule
 would have fired on more arithmetic than string building.
 
 A later external audit re-swept 40,336 files across 20 repos (the five above
-plus digital-bank, submissions, ai, this repo, airflow, dagster, litellm,
+plus three more first-party repos, this repo, airflow, dagster, litellm,
 saleor, mlflow, langchain, superset, zulip, prefect, warehouse, sentry-python)
 and confirmed the sampled FP rate at 4.5%. That sweep found four residual FP
 shapes, each now guarded and each measured at **zero** true-positive cost on the
-first-party repos (bulbul 24, noura-be 15, digital-bank 23, submissions 7, ai 8
-before and after): `or`/`and` operands (12 hits), ORM expression operands (3),
+first-party repos (repo A 24, repo B 15, repo C 23, repo D 7, repo E 8
+before and after; repo labels are stable within this docstring only):
+`or`/`and` operands (12 hits), ORM expression operands (3),
 `%`-format template literals (10) and whitespace-only blob gluing (12; one hit
 is shared with the ORM guard). Total 4,882 → 4,846 across the 20 repos, with no
 hit gained; 574 → 565 across the eight repos of the standard sweep, whose
@@ -107,23 +109,20 @@ Deliberately NOT flagged:
   logging boundary. 4 hits,
 * **a literal containing `{` or `}`.** The f-string rewrite has to double every
   brace, which is exactly the transcription error the rule is meant to prevent.
-  This is what regex assembly and format templates look like in practice:
-  noura-be's `voice/agents/tts_pronunciation.py:23,35,45,57` builds four
-  `re.compile` patterns as `r"(\d{4,6})(?!\s*" + CURRENCY_TERMS + r")"`, and
-  `common/logging.py:336` returns `format_string + "\n{exception}"` — a loguru
-  template whose braces are *meant* to survive. bulbul's
-  `sdk/src/sarj_platform_sdk/utils/url.py:44` (`path.replace("{" + key + "}",
-  ...)`) is the same shape. 12 hits,
+  This is what regex assembly and format templates look like in practice: one
+  first-party pronunciation module builds four `re.compile` patterns as
+  `r"(\d{4,6})(?!\s*" + CURRENCY_TERMS + r")"`, and a first-party logging
+  helper returns `format_string + "\n{exception}"` — a loguru
+  template whose braces are *meant* to survive. A first-party URL helper
+  (`path.replace("{" + key + "}", ...)`) is the same shape. 12 hits,
 * **an operand that is a `.join(...)` call.** `"header\n" + "\n".join(rows)`
   becomes `f"header\n{'\n'.join(rows)}"` — a quoted, backslash-bearing
   expression nested inside the f-string, which was a syntax error before 3.12
   and is unreadable after. The `+` spelling is the better one. This is the
-  dominant assertion-message idiom in both house repos:
-  `bulbul/python/webserver/tests/test_webserver_route_coverage.py:31,42,52`,
-  `worker/tests/test_worker_route_coverage.py:28,37,45`,
-  `integration/tests/test_integration_route_coverage.py:28,37,45`, and
-  noura-be's `dashboard/stores/user_store.py:399`
-  (`"WHERE " + " AND ".join(conditions)`). 43 hits — the single largest guard
+  dominant assertion-message idiom in both house repos: three route-coverage
+  test modules in one first-party repo, three sites apiece, and a query builder
+  in another (`"WHERE " + " AND ".join(conditions)`).
+  43 hits — the single largest guard
   after string repetition,
 * **a chain that only glues opaque blobs together with whitespace**: every
   literal fragment in it is whitespace — including the constant parts of any
@@ -140,19 +139,19 @@ Deliberately NOT flagged:
   `"\n" + f" {title} ".center(length, "=") + "\n"`. 12 hits. The broader
   spelling — *any* 3-or-more-operand chain whose only literals are whitespace —
   was measured and rejected: it removes 170 hits but costs 6 first-party true
-  positives (noura-be's `services/chatbot/v3/handlers/general.py:113,172` and
+  positives (two sites in one first-party request-handler module and their
   siblings, which do carry prose inside their f-string operands),
 * **an operand that is string repetition** (`"A" * N + " tail"`,
   `"x" + "\n" * 51 + "y"`). `f"{'A' * N} tail"` is strictly worse than the
-  original. Found in bulbul's
-  `tests/store/test_scenario_generation_log_store.py:160,436,445` and
-  noura-be's `noura/tests/test_chatbot_v3_chat.py:732,734`, plus django's
+  original. Found at three sites in one first-party store test and two in
+  another first-party conversation test, plus django's
   padding and separator-bar helpers. 67 hits, the largest single guard,
 * **a two-operand chain whose only literal is whitespace** — `payload + "\n"`,
   `"\n" + body`. Appending a terminator is not string building, and
   `f"{json.dumps(payload, indent=2)}\n"` is not an improvement on
-  `json.dumps(payload, indent=2) + "\n"`. Found identically in five bulbul and
-  four noura-be ratchet scripts (`scripts/check_coverage_ratchet.py:72` and
+  `json.dumps(payload, indent=2) + "\n"`. Found identically in five ratchet
+  scripts in one first-party repo and four in another
+  (`scripts/check_coverage_ratchet.py:72` and
   siblings). Three or more operands still fire, because `a + " " + b` really is
   clearer as `f"{a} {b}"` — unless the blob-gluing bullet above applies. 32 hits,
 * **a chain that is the left operand of `%`.** `("%0" + width + "d") % (i, line)`
@@ -208,12 +207,12 @@ Deliberately NOT flagged:
   prose like `"copied from " + src` is not mistaken for a query. 7 hits,
 * **generated files** (`_paths.is_generated`). Re-running the generator
   discards any edit, so a style finding there can never be acted on — the same
-  exemption SARJ002 makes. 5 hits, all in bulbul's Speakeasy
-  `python/sdk/src/sarj_platform_sdk/`.
+  exemption SARJ002 makes. 5 hits, all inside one first-party repo's
+  Speakeasy-generated SDK package.
 
 Known and accepted (the 1 false positive in the 25-hit sample): a module-level
-character-set constant composed from another constant —
-`noura-be/python/common/tests/test_validator_properties.py:60`,
+character-set constant composed from another constant — one first-party
+validator-property test,
 `_DIGITS_AND_LETTERS = _DIGITS + "abXY"`. There `+` reads as alphabet union and
 the f-string adds nothing. Guarding it would require knowing the constant is a
 character set, which the AST cannot tell from any other module-level string

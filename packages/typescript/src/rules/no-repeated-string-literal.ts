@@ -13,17 +13,19 @@
  * and TS moved to Python's rule; **"two distinct functions" is the only count
  * threshold.** Evidence:
  *   - Requiring three occurrences would drop 15 of the 18 findings over the
- *     first-party Python corpora (bulbul `python/` + `sdks/python`, noura-be) and
+ *     first-party Python corpora (the `python/` and `sdks/python` trees of one
+ *     repo, plus one back-end repo) and
  *     the django/fastapi/celery FP controls, and the dropped ones are true
  *     positives of exactly the shape this rule exists for:
- *     `noura-be/.../modules/onboarding/store.py:631` repeats one
- *     `SELECT stage FROM onboarding_profiles WHERE onboarding_token = %s FOR
- *     UPDATE` verbatim between `submit_financial_info_atomic` and
- *     `submit_legal_info_atomic`, and `.../modules/card/store.py:287` repeats a
- *     10-column `SELECT … JOIN card_types …` between two methods. Two copies is
+ *     one first-party store module repeats one
+ *     `SELECT stage FROM signup_profiles WHERE signup_token = %s FOR
+ *     UPDATE` verbatim between two sibling submit methods, and a second store
+ *     module repeats a
+ *     10-column `SELECT … JOIN plan_types …` between two methods. Two copies is
  *     where column-list drift *begins*; the third was arbitrary.
  *   - Dropping the gate costs the TS side nothing. Over 748 first-party TS/TSX
- *     files (bulbul `typescript/` + `sdks/typescript`, noura-fe) the rule yields
+ *     files (the `typescript/` and `sdks/typescript` trees of one repo, plus
+ *     one front-end repo) the rule yields
  *     0 findings at BOTH thresholds. Over the 2,186-file third-party corpus
  *     (zod / TanStack Query / react-router / swr / zustand) it yields 0 at three
  *     and 5 at two — and all 5 were react-router `*-test.ts` fixtures that the

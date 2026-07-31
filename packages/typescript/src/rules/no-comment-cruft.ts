@@ -46,7 +46,8 @@
  * protected-class signal S1 now exempts narration at RUN granularity. The same
  * pass added `sarj-noqa` to `DIRECTIVE_RE` (this repo's own suppression syntax
  * was missing, so a suppression comment could itself be flagged) and four
- * detectors that are all ZERO-hit on bulbul, the repo that runs this rule at
+ * detectors that are all ZERO-hit on the flagship first-party repo, the one
+ * that runs this rule at
  * `error`: bare section labels, the `Helper function to …` opener, `Let's
  * <verb>`, Unicode box-drawing banners, and an ISOLATED numbered/`Phase N:`
  * marker. JSX-expression comments stay categorically exempt: `{/* Step 1:
@@ -107,10 +108,9 @@ const BANNER_RUN_RE = /={4,}|-{4,}|#{4,}|\*{4,}|~{4,}|[\u2500-\u257f]{4,}/;
 // A VS Code / Visual Studio folding marker: `//#region`, `// region helpers`,
 // `// endregion`. The title must be short and unpunctuated. Matching the bare
 // word alone flagged running prose that merely opens with it — six sites across
-// the corpus, the clearest being
-// demo-gateway/demos/momah-furas-anas/pipeline/matching.py:159 ("region, sector
-// AND facility_type are HARD constraints when the investor names them — …") and
-// its five TypeScript siblings. A marker *names* a region; a sentence discusses
+// the corpus, the clearest being a first-party matching pipeline whose comment
+// reads "region, sector AND facility_type are HARD constraints when the
+// investor names them — …", plus its five TypeScript siblings. A marker *names* a region; a sentence discusses
 // one, and a sentence has punctuation (a full stop included — `// Region
 // centroids for map_pan.` is prose) and more than a handful of words.
 const REGION_MARKER_RE = /^#?(?:end)?region\b(.*)$/i;
@@ -343,8 +343,9 @@ const STATEMENT_CONTAINERS: ReadonlySet<string> = new Set([
  * some line cites a ticket, URL, RFC or issue number (protected-class signal
  * S1, applied at run granularity).
  *
- * A scoping note puts its owner at the end — bulbul's Zoho-canary comment ends
- * "EN-only for now — add an AR variant once AR audio exists (PROD-249)" — so
+ * A scoping note puts its owner at the end — one first-party four-line canary
+ * comment ends
+ * "EN-only for now — add an AR variant once AR audio exists (PROJ-249)" — so
  * judging the last line alone read "for now" as an unowned admission. A comment
  * that names where the decision is recorded is doing the one thing code cannot.
  */

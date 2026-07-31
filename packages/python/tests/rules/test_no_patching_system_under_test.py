@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Diagnostic
 
 
-TEST_PATH = "python/bulbul/tests/unit/test_billing.py"
+TEST_PATH = "python/app/tests/unit/test_billing.py"
 
 
 def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
@@ -831,7 +831,7 @@ def test_patch_object_with_a_positional_replacement_is_exempt():
 
 # --------------------------------------------------------------------------- #
 # FP guard: monkeypatch always installs an author-written substitute.          #
-# 464 call sites across bulbul and noura-be; flagging them would bury the      #
+# 464 call sites across two first-party repos; flagging them would bury the    #
 # signal, and a hand-rolled fake is what this rule steers toward anyway.       #
 # --------------------------------------------------------------------------- #
 

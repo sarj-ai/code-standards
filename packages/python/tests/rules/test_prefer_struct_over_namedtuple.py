@@ -567,7 +567,7 @@ def test_tests_directory_is_exempt():
 
 def test_production_file_still_fires():
     src = "from collections import namedtuple\nPoint = namedtuple('Point', ['x', 'y'])\n"
-    assert len(_check(src, path="bulbul/calls/rows.py")) == 1
+    assert len(_check(src, path="app/calls/rows.py")) == 1
 
 
 # --------------------------------------------------------------------------- #

@@ -16,12 +16,11 @@ When invoked to create a new lint rule, follow this workflow:
 
 2. **Draft the Rules**:
    - Create a deterministic Python AST rule and a TypeScript ESLint rule targeting the described anti-pattern.
-   - Save these rules into the `standards` repository located at `/Users/nasrmaswood/code/standards`.
+   - Save these rules into your local checkout of the `standards` repository.
 
 3. **Evaluate Against Codebases**:
    - Run the newly created lint rules against the following repositories to gather matches and evaluate false positives:
-     - `noura-be`
-     - `bulbul`
+     - at least two first-party repos you have checked out locally (prefer the largest, most actively developed ones).
      - 10 top open-source TypeScript and Python repositories.
 
 4. **Analyze and Refine**:

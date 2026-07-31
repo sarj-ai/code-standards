@@ -31,7 +31,7 @@ def test_flags_bare_wildcard_list():
 
 
 def test_flags_ifexp_else_wildcard_branch():
-    """The real bulbul pattern: `allowed if flag else ["*"]`."""
+    """The real first-party pattern: `allowed if flag else ["*"]`."""
     src = (
         "app.add_middleware(\n"
         "    CORSMiddleware,\n"
@@ -111,7 +111,7 @@ def test_allows_dynamic_origins_variable():
 
 
 def test_allows_dynamic_origins_comprehension_no_star():
-    """The noura-be shape: `[str(o) for o in allowed_origins]` — no `"*"` literal."""
+    """The first-party comprehension shape: `[str(o) for o in allowed_origins]` — no `"*"` literal."""
     src = "add_middleware(allow_origins=[str(o) for o in allowed_origins], allow_credentials=True)\n"
     assert _check(src) == []
 

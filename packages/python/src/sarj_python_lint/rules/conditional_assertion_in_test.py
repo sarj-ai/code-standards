@@ -36,15 +36,17 @@ finding, not this one, and is left alone.
 **The guards are the rule.** The naive version reported 148 findings across the
 five corpora, 73 of them in django, and almost every django hit was a loop over
 a fixture table the suite has always populated. Successive guards took the
-population to 29 without losing a single bulbul or noura-be finding:
+population to 29 without losing a single first-party finding:
 
 | corpus | naive | shipped |
 |---|---|---|
-| bulbul | 32 | 6 |
-| noura-be | 13 | 6 |
+| repo A | 32 | 6 |
+| repo B | 13 | 6 |
 | django | 73 | 5 |
 | fastapi | 1 | 1 |
 | celery | 29 | 11 |
+
+(repo labels are stable within this docstring only.)
 
 Every one of the 29 was read. One is a clear false positive (fastapi's
 `tests/test_operations_signatures.py:8`, whose inner loop walks
@@ -53,14 +55,14 @@ nothing in the source says so). Roughly five celery hits in
 `t/unit/tasks/test_canvas.py` are true by the letter — `g = group(Mock(),
 Mock())` then `for task in g.tasks: task.set_immutable.assert_called_with(...)`
 does pass vacuously if `group` drops its children, which is the very thing the
-test claims to check — but few teams would act on them. The bulbul and
-noura-be findings are all worth reading.
+test claims to check — but few teams would act on them. The repo A and
+repo B findings are all worth reading.
 
 A later sweep over 19 corpora (the five above plus airflow, dagster, litellm,
 saleor, mlflow, langchain, superset, zulip, prefect, warehouse, sentry-python
 and three more first-party repos) reported 751, and the failure-aggregator
 guard below took that to 669. All 82 removals were the same shape and none of
-them was first-party: bulbul 6, noura-be 6, django 5, celery 11 and fastapi 1
+them was first-party: repo A 6, repo B 6, django 5, celery 11 and fastapi 1
 are unchanged by it.
 
 Deliberately NOT flagged:
@@ -81,8 +83,8 @@ Deliberately NOT flagged:
   anywhere in the test makes the following loop guaranteed. This is the fix the
   message asks for, so the rule must recognise it. Module-level tables get the
   claim pooled across the file, because it is routinely a *sibling* test that
-  states the size: bulbul's `integration/tests/unit/test_corpus.py:31` asserts
-  `len(TEST_CASES) == 4` and three later tests loop over it,
+  states the size: one first-party test module asserts `len(TEST_CASES) == 4`
+  near the top and three later tests loop over it,
 * **a loop over a literal collection** — `[1, 2, 3]`, `("a", "b")`, a non-empty
   dict, `range(6)`, `range(len(rows))`, `range(n + 1)`, a comprehension with no
   `if` over a non-empty iterable, `zip(...)` where either leg is non-empty,
@@ -95,9 +97,7 @@ Deliberately NOT flagged:
 * **a loop over a `@pytest.mark.parametrize` column whose every row is a
   non-empty literal.** `parametrize("present", [["a"], ["b", "c"]])` then
   `for fragment in present:` is a literal loop written one indirection away.
-  Found against bulbul's `test_salla_merchant_store.py:100` and
-  `test_collect_digits_tool.py:391`, and noura-be's
-  `test_cache_redis_client.py:146`,
+  Found against three first-party sites — two in repo A, one in repo B,
 * **a loop over a fixed table rather than a computed result** — a capitalised
   name (`for role in UserRole:` walks an enum's members; PEP 8 reserves
   CapWords and SCREAMING_CASE for things declared once), a call-free attribute
@@ -109,16 +109,14 @@ Deliberately NOT flagged:
   imported name (`for s in srlist:`). This is the rule's known blind spot: a
   loop over `MyService().compute()` reads the same way and is exempted too. An
   imported *function* called here is not covered — `for tool_class in
-  get_all_tool_classes():` still fires, which is bulbul's
-  `test_schema_generator.py:44`,
+  get_all_tool_classes():` still fires, which is one first-party site,
 * **an inner loop reached through an outer loop that is proven to run.**
   `for c in countries: for ring in c.mpoly: assertAlmostEqual(...)` — once the
   outer collection is known non-empty, each element's own sub-collections are
   the item's structure, and "assert `c.mpoly` is non-empty first" is not a
   request anyone would act on. The largest residual class in the sweep: django's
   `test_functions.py:827`, `servers/test_basehttp.py:29`,
-  `validation/test_unique.py:51` and bulbul's
-  `test_batch_call_service.py:302`, all false positives,
+  `validation/test_unique.py:51` and one first-party site, all false positives,
 * **a branch that bails out.** In `if cond: pytest.skip(...) else: assert ...`
   the skipping arm owes no assertion — the arm that falls through is the one
   that has to check. `return`, `raise`, `continue`, `break`, `pytest.xfail(...)`,
@@ -170,8 +168,7 @@ Measured and rejected, so that the next auditor does not re-raise them:
   class-method tests, celery 96%. A pytest-fixture suite that loops over a
   lowercase fixture parameter gets no exemption at all. Reading a test's own
   parameters as non-empty removes 93 of the 669 hits — but three of them are
-  half of noura-be's findings, including
-  `common/tests/test_function_calls_v3.py:35`, where three consecutive tests
+  half of repo B's findings, including one module where three consecutive tests
   loop over a `tools` fixture and all three go green if the tool registry ever
   regresses to empty. That is precisely the failure this rule exists to catch,
   so the exemption costs more than it saves,

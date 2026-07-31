@@ -8,7 +8,7 @@ forever, and the test silently stops guarding anything. With `strict=True` an
 XPASS is a hard failure that says "the bug is fixed, delete this marker", which
 is the entire value of the pin.
 
-Both audited repos already invented this convention independently — noura-be has
+Both audited repos already invented this convention independently — one has
 a family of `test_known_*_bugs_xfail.py` modules whose docstrings spell out the
 strict contract, and 45 of 52 `xfail` markers across the two repos already pass
 `strict=True`. This rule locks in a practice the codebase chose, rather than
@@ -22,7 +22,7 @@ Fires when ALL of these hold:
 * and `strict=` is absent or literally `False`.
 
 **Exempting genuinely nondeterministic markers is not optional.** Of the five
-non-strict `xfail`s found in noura-be, all five sit on `@pytest.mark.real_llm`
+non-strict `xfail`s found in that repo, all five sit on `@pytest.mark.real_llm`
 evals whose reasons say "intermittently" — a live model that answers differently
 run to run legitimately cannot be strict, and forcing it would make CI flake on
 every provider drift. A rule without this guard would have been 100% wrong on
@@ -37,7 +37,7 @@ Deliberately NOT flagged:
   expands into many generated cases, and a documented bug is typically tripped
   by only a subset of them — the rest legitimately XPASS. `strict=True` there
   turns every passing generated input into a failure, which is why these suites
-  set `strict=False` deliberately. Found against bulbul's
+  set `strict=False` deliberately. Found against the other first-party repo's
   `test_calls_fuzz_known_bugs`, where the unroutable-id shapes trip the bug and
   the other generated ids do not,
 * `xfail` with no `reason=`, or a reason describing an environment gate rather

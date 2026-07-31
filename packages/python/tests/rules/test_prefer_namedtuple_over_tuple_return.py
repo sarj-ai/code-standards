@@ -413,7 +413,7 @@ def f() -> tuple[str, int]:
 # --------------------------------------------------------------------------- #
 # FP guard: generated files. Their layout is the generator's and re-running it  #
 # discards any edit, so a finding there can never be acted on in place.        #
-# Measured on 69 `DO NOT EDIT` files across bulbul and noura-be.               #
+# Measured on 69 `DO NOT EDIT` files across two first-party repos.             #
 # --------------------------------------------------------------------------- #
 
 

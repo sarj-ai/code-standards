@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Diagnostic
 
 
-SRC_PATH = "python/bulbul/observability/setup.py"
+SRC_PATH = "python/app/observability/setup.py"
 
 
 def _check(source: str, path: str = SRC_PATH) -> list[Diagnostic]:
@@ -176,13 +176,13 @@ def test_flags_multi_statement_identical_bodies():
         """
         def f(err):
             match err:
-                case VBErrorCode.INVITATION_CODE_INVALID:
-                    error_type = VBErrorType.INVALID_INVITATION_CODE
-                    localization_slug = "error_vb_invalid_invitation_code"
+                case PartnerErrorCode.INVITATION_CODE_INVALID:
+                    error_type = PartnerErrorType.INVALID_INVITATION_CODE
+                    localization_slug = "error_invalid_invitation_code"
                     ui_type = "simple"
-                case VBErrorCode.INVITATION_CODE_NOT_EXIST:
-                    error_type = VBErrorType.INVALID_INVITATION_CODE
-                    localization_slug = "error_vb_invalid_invitation_code"
+                case PartnerErrorCode.INVITATION_CODE_NOT_EXIST:
+                    error_type = PartnerErrorType.INVALID_INVITATION_CODE
+                    localization_slug = "error_invalid_invitation_code"
                     ui_type = "simple"
             return error_type
         """
@@ -867,8 +867,8 @@ def test_a_very_long_pattern_is_elided_in_the_message():
 
 # `_MAX_RENDERED_PATTERN` is 48; these two names render to exactly 48 and 49
 # characters, pinning both the constant's value and the `>` in the comparison.
-_RENDERS_TO_48 = "SarjCartesiaDeepgramElevenLabsHamsaTTSSettings()"
-_RENDERS_TO_49 = "SarjCartesiaDeepgramElevenLabsHamsaXTTSSettings()"
+_RENDERS_TO_48 = "CompositeMultiProviderSpeechRuntimeTTSSettings()"
+_RENDERS_TO_49 = "CompositeMultiProviderSpeechRuntimeXTTSSettings()"
 
 
 def test_a_pattern_at_exactly_the_render_limit_is_kept_whole():

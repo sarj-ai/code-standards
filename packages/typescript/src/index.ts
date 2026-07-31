@@ -169,7 +169,8 @@ const plugin = {
         // Anti-comment-verbosity family (2026-07), from a 37,918-comment,
         // nine-repo measurement study. Each is a deletion-class finding, so each
         // was validated against pydantic / trio / attrs as well as the maintained
-        // repos: `no-restated-comment` 0 hits in bulbul and 4 in the three famous
+        // repos: `no-restated-comment` 0 hits in the flagship first-party
+        // repo and 4 in the three famous
         // corpora combined; `trailing-value-narration` 18 hits, 18 true
         // positives; `jsdoc-restates-signature` 36 hits, 0 measured false
         // positives, and it offers a suggestion rather than a `--fix` because a
@@ -180,7 +181,7 @@ const plugin = {
         // The TS half of SARJ057 (2026-07). Python has caught the
         // assertion-FREE test since 0.15.0 (SARJ043) and had no TS
         // counterpart, which is how `expect(true).toBe(true); // placeholder`
-        // survived in internal-automations: the file HAS an assertion.
+        // survived in a first-party repo: the file HAS an assertion.
         // Measured across 5,819 .ts/.tsx files (1,003 of them test files) in
         // six internal repos plus got / hono / swr / trpc: 3 hits, 3 true
         // positives, 0 false positives.

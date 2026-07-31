@@ -62,20 +62,21 @@ def test_fires_in_ordinary_test_paths(path: str):
         "app/fakes.py",
         "app/mocks.py",
         "app/stubs.py",
-        "bulbul/observability/langfuse_stub.py",
+        "app/observability/langfuse_stub.py",
         "app/llm_fakes.py",
     ],
 )
 def test_reaches_shared_double_modules_that_is_test_path_misses(path: str):
-    # noura-be keeps its shared fakes in `common/testing/fakes.py` and bulbul keeps
-    # one in `bulbul/observability/langfuse_stub.py`; neither lives under `tests/`.
+    # One first-party repo keeps its shared fakes in `common/testing/fakes.py`
+    # and another keeps one in `app/observability/langfuse_stub.py`; neither
+    # lives under `tests/`.
     assert len(_check(_FAKE_S3, path)) == 1
 
 
 @pytest.mark.parametrize("path", ["src/service.py", "app/adapters/s3_client.py", "app/main.py"])
 def test_skips_production_paths(path: str):
-    # bulbul's `bulbul/services/message_enqueuer.py` ships a production
-    # `MockMessageEnqueuer`; a dev-mode stand-in is not a test double.
+    # One first-party service module ships a production `MockMessageEnqueuer`;
+    # a dev-mode stand-in is not a test double.
     assert _check(_FAKE_S3, path) == []
 
 
@@ -191,7 +192,7 @@ class _FakeRedisCache:
 
 
 def test_service_token_may_come_from_a_base_class():
-    # noura-be `common/testing/fakes.py:66` — `FakeLLMClient(OpenAILLMClient)`. The
+    # One first-party site declares `FakeLLMClient(OpenAILLMClient)`. The
     # name alone carries no brand; the base does.
     src = """
 class FakeLLMClient(OpenAILLMClient):
@@ -224,7 +225,7 @@ class FakeThing(openai_sdk.OpenAIClient):
 
 
 # --------------------------------------------------------------------------- #
-# FP guard: pytest's own collection classes. bulbul's                          #
+# FP guard: pytest's own collection classes. A first-party                     #
 # `TestGeminiNullDataCollected` was a real finding of the first draft.         #
 # --------------------------------------------------------------------------- #
 
@@ -262,7 +263,7 @@ class MockGeminiClient:
 
 # --------------------------------------------------------------------------- #
 # FP guard: doubles of the project's own domain ports. ~60 of these exist in   #
-# bulbul and noura-be; none of them has a library and none should fire.        #
+# two first-party repos; none of them has a library and none should fire.      #
 # --------------------------------------------------------------------------- #
 
 
@@ -355,8 +356,8 @@ class FakeChatOpenAI(ChatOpenAI):
 
 
 # --------------------------------------------------------------------------- #
-# FP guard: recording decorators around the real client. bulbul's              #
-# `worker/tests/fakes/object_store.py` RecordingObjectStore is the motivator.  #
+# FP guard: recording decorators around the real client. A first-party         #
+# `RecordingObjectStore` in a test-fakes package is the motivator.             #
 # --------------------------------------------------------------------------- #
 
 
@@ -616,7 +617,7 @@ class FakeS3Response:
 
 
 def test_two_method_double_is_below_the_floor():
-    # noura-be `website_server/testing/fakes.py:5` FakeSmtpSender is exactly this.
+    # A first-party `FakeSmtpSender` in a shared testing package is exactly this.
     src = """
 class FakeSmtpSender:
     def __init__(self, error=None):

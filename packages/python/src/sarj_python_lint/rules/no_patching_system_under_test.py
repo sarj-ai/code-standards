@@ -63,14 +63,12 @@ Deliberately NOT flagged:
   `patch("app.billing.stripe_client")`. The target string names the SUT module but
   the attribute is a third-party import the SUT happens to hold, and patching it is
   correct practice. This is the dominant population: relaxing shape 1 to "any
-  attribute of an imported module" produced 86 celery, 14 django and 12 bulbul
-  extra hits, and every one sampled was this idiom — `patch(
-  "integration.task_executor.rtc")` (livekit's `rtc` module,
-  `bulbul/integration/tests/unit/test_task_executor.py:188`), `patch(
-  "agent.lk.call_manager.add_span_attributes")` (a telemetry helper,
-  `bulbul/agent/tests/test_call_manager.py:475`), `patch(
-  "bulbul.services.message_enqueuer.inject")` (a DI decorator,
-  `bulbul/tests/services/test_message_enqueuer.py:49`), `patch(
+  attribute of an imported module" produced 86 celery, 14 django and 12
+  first-party extra hits, and every one sampled was this idiom — `patch(
+  "app.task_executor.rtc")` (livekit's `rtc` module, one first-party site),
+  `patch("app.call_manager.add_span_attributes")` (a telemetry helper, a second
+  first-party site), `patch("app.services.message_enqueuer.inject")` (a DI
+  decorator, a third first-party site), `patch(
   "django.contrib.auth.hashers.get_random_string")` (imported from
   `django.utils.crypto`, `django/tests/auth_tests/test_hashers.py:469`), `patch(
   "celery.backends.database.session.sessionmaker")` (SQLAlchemy,
@@ -99,10 +97,10 @@ Deliberately NOT flagged:
 * **classes and constants.** Only a plain function-shaped name (`snake_case`,
   optionally one leading underscore) is a candidate. A CapWords target is a
   collaborator *type* being swapped for a double — the ordinary seam, e.g. `patch(
-  "agent.lk.agent_tools.data_capture.collect_via_dtmf_tool._CollectViaDtmfTask")`
-  in `bulbul/agent/tests/test_collect_digits_tool.py:663`, which stands in for a
+  "app.agent_tools.data_capture.collect_tool._CollectTask")` at one first-party
+  site, which stands in for a
   LiveKit task — and an ALL_CAPS target is a config knob, e.g. `monkeypatch.setattr(
-  "bulbul.calls.batch_call_store.MAX_CONCURRENT_OUTBOUND_CALLS_PER_ORG", 2)`.
+  "app.orders.batch_order_store.MAX_CONCURRENT_OUTBOUND_PER_ORG", 2)`.
   Dunders (`__call__`, `__init__`) fall out of the same check: they are framework
   hooks, not the unit's logic,
 * **boundary-shaped attribute names** — `*_client`, `*_session`, `connection`,
@@ -131,7 +129,7 @@ Deliberately NOT flagged:
 * **`monkeypatch.setattr` in every spelling.** pytest's `setattr` requires a
   replacement value, so it is *always* the concrete-replacement case above — a
   hand-written fake, which is the practice this rule steers toward. It is also the
-  house idiom in the audited repos (464 call sites across bulbul and noura-be
+  house idiom in the audited repos (464 call sites across two first-party repos
   against 243 `mock.patch*` calls); flagging it would bury the signal,
 * **stdlib types.** `out = StringIO(); patch.object(out, "flush")` while
   `management.call_command(...)` runs (`django/tests/user_commands/tests.py:454`)
@@ -157,8 +155,8 @@ Deliberately NOT flagged:
   `class_mocker` / `session_mocker`, and dropping the `reaches_mock` gate a file
   that never imports `unittest.mock` would otherwise fail) takes the census from
   1,736 to **1,857** — airflow 494 -> 507 and superset 102 -> 210 — and **every one
-  of the 121 additions is in OSS**: bulbul, noura-be, digital-bank, submissions,
-  faris, summer and `ai` are unchanged to the finding. Reading the superset
+  of the 121 additions is in OSS**: all seven first-party repos are unchanged to
+  the finding. Reading the superset
   additions, they are concentrated on `_get_query`, RLS and permission helpers —
   same-module functions that are really datastore lookups, which is precisely the
   ambiguity recorded under KNOWN LIMIT below. So the spelling buys 121 diagnostics
@@ -216,18 +214,18 @@ synthetic case is recorded here rather than guarded against.
 CORPUS EVIDENCE
 ---------------
 
-Measured over 19 repos — bulbul, noura-be, digital-bank, submissions, ai and the
-14 OSS corpora, 40,336 Python files. `before` is the rule as first written;
-`after` is with the three guards above (function-local evidence, module
-singletons, `side_effect=<Exception>`):
+Measured over 19 repos — five first-party repos and the 14 OSS corpora, 40,336
+Python files. `before` is the rule as first written; `after` is with the three
+guards above (function-local evidence, module singletons,
+`side_effect=<Exception>`). Repo labels are stable within this docstring only:
 
 | corpus        | before | after |
 |---------------|--------|-------|
-| bulbul        | 0      | 0     |
-| noura-be      | 0      | 0     |
-| digital-bank  | 0      | 0     |
-| submissions   | 0      | 0     |
-| ai            | 1      | 1     |
+| repo A        | 0      | 0     |
+| repo B        | 0      | 0     |
+| repo C        | 0      | 0     |
+| repo D        | 0      | 0     |
+| repo E        | 1      | 1     |
 | airflow       | 512    | 494   |
 | dagster       | 34     | 26    |
 | litellm       | 755    | 645   |
@@ -244,8 +242,8 @@ singletons, `side_effect=<Exception>`):
 | celery        | 78     | 71    |
 | **total**     | 1968   | 1736  |
 
-**Every guard costs zero first-party hits** — bulbul, noura-be, digital-bank and
-submissions are 0 before and after, and `ai`'s single hit survives all three, so
+**Every guard costs zero first-party hits** — repo A, repo B, repo C and
+repo D are 0 before and after, and repo E's single hit survives all three, so
 all 232 removals are OSS. Applied on its own to the unguarded rule, the
 function-local guard removes 196, the singleton guard 76 and the tripwire guard
 30; they overlap heavily (63 of the singleton removals are also pooled-evidence
@@ -293,7 +291,7 @@ there, not noise, but a codebase adopting it mid-flight should expect to
 `# sarj-noqa: SARJ061` the deliberate cases — a sibling that really is slow or
 privileged (`celery.platforms.setuid`) is exactly what suppression is for.
 
-The rule finds nothing in bulbul or noura-be today. Both reach for
+The rule finds nothing in repo A or repo B today. Both reach for
 `monkeypatch.setattr` with a hand-written replacement (464 sites) rather than an
 auto-generated `MagicMock`, which is the practice this rule exists to protect, so
 zero is the right answer there rather than evidence the rule is dead.

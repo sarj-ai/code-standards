@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Diagnostic
 
 
-TEST_PATH = "python/bulbul/tests/stores/test_call_flag_store.py"
+TEST_PATH = "python/app/tests/stores/test_call_flag_store.py"
 
 
 def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
@@ -38,7 +38,7 @@ def test_thing():
         "call_store_test.py",
         "tests/conftest.py",
         "conftest.py",
-        "python/bulbul/tests/stores/seed.py",
+        "python/app/tests/stores/seed.py",
         "deeply/nested/tests/data/factory.py",
     ],
 )
@@ -49,7 +49,7 @@ def test_fires_in_test_paths(path: str):
 @pytest.mark.parametrize(
     "path",
     [
-        "python/bulbul/bulbul/calls/call_store.py",
+        "python/app/app/calls/call_store.py",
         "src/service.py",
         "a/testing/thing.py",
         "attestation.py",
@@ -346,14 +346,14 @@ def test_thing():
 
 def test_hand_rolled_fake_implementing_an_abc_is_not_flagged():
     src = """
-from agent.ports import VisionBankClient
+from agent.ports import PaymentGatewayClient
 
-class MockVisionBankClient(VisionBankClient):
+class MockPaymentGatewayClient(PaymentGatewayClient):
     async def fetch(self, key: str) -> str:
         return "canned"
 
 def test_thing():
-    assert MockVisionBankClient()
+    assert MockPaymentGatewayClient()
 """
     assert _check(src) == []
 

@@ -30,17 +30,16 @@ not covered by anything already in the pipeline.
     }
 
 This codifies a convention the audited repos already chose rather than
-importing an outside opinion: 5 of bulbul's 6 `google_storage_bucket`s and its
+importing an outside opinion: 5 of repo A's 6 `google_storage_bucket`s and its
 one `google_artifact_registry_repository` already carry `prevent_destroy = true`
-(`bulbul/iac/bulbul/blob/main.tf:25` and `:54`,
-`bulbul/iac/bulbul/ci/artifact-registry.tf:32`), as does its shared secret
-family (`bulbul/iac/bulbul/secrets.tf:1`, guard on :11). The rule makes the
-outliers visible.
+(two blob buckets and the CI artifact registry), as does its shared secret
+family. The rule makes the outliers visible. (The two IaC corpora are written as
+repo A and repo B throughout this docstring.)
 
 Measured
 --------
-29 resources of these types across the two corpora; 15 fire — 1 in `bulbul/iac`
-and 14 in `noura-iac` — every one hand-checked below. The remaining 14 are
+29 resources of these types across the two corpora; 15 fire — 1 in repo A
+and 14 in repo B — every one hand-checked below. The remaining 14 are
 either already guarded or hit a guard.
 
 Guards, each derived from a finding that would otherwise have been wrong
@@ -49,8 +48,8 @@ Guards, each derived from a finding that would otherwise have been wrong
   resource.** `force_destroy = true` is an unambiguous "wipe this, contents and
   all"; an *expression* is an environment-gated destroy policy, and
   `prevent_destroy` cannot express it because Terraform requires that
-  meta-argument to be a literal. `noura-iac/backend/livekit/storage.tf:1` writes
-  `force_destroy = !var.enable_deletion_protection` (:32) on a recordings bucket
+  meta-argument to be a literal. One bucket in repo B writes
+  `force_destroy = !var.enable_deletion_protection` on a media-recordings bucket
   whose own `lifecycle_rule`s delete objects after 90 days — demanding a literal
   `prevent_destroy = true` there would break the non-prod teardown the author
   deliberately built. An explicit `force_destroy = false` is the provider
@@ -62,16 +61,12 @@ Guards, each derived from a finding that would otherwise have been wrong
   after a destroy and nothing is lost — the rule's whole predicate fails. This
   is not hypothetical: it accounts for 6 of the 21 resources that the guard-free
   version of this rule flagged, and every one would have been a false positive.
-  `bulbul/iac/bulbul/services/integration_async.tf:43` is fed from
-  `random_password.integration_db.result` (:53), which is stable in state;
-  `bulbul/iac/bulbul/iam/service-account-key.tf:5` from a
-  `google_service_account_key` (:15);
-  `bulbul/iac/bulbul/gke-data/langfuse/main.tf:132` and `:145` from a
-  `google_storage_hmac_key` (:141, :154);
-  `noura-iac/backend/secrets/main.tf:158` and `:171` from a composed database
-  URL (:221, :226). The 14 noura secrets that DO fire have no version resource
-  anywhere — they are third-party API keys and LiveKit TLS material populated
-  out of band, so a destroy is unrecoverable from code,
+  In repo A one service secret is fed from a `random_password.<name>.result`,
+  which is stable in state; one IAM secret from a `google_service_account_key`;
+  and two data-plane secrets from a `google_storage_hmac_key`. In repo B two
+  secrets are fed from a composed database URL. The 14 repo-B secrets that DO
+  fire have no version resource anywhere — they are third-party API keys and TLS
+  material populated out of band, so a destroy is unrecoverable from code,
 * the lookup is **per file**, like every rule in this package. A version
   declared in a different file than its secret is not seen, so that shape
   over-reports; suppress it with `# sarj-noqa: SARJ203 — <reason>` on the

@@ -371,7 +371,7 @@ def test_the_same_arm_with_public_attributes_fires():
 def test_skips_method_calls():
     source = """
     match error:
-        case VisionBankAPIError():
+        case PaymentAPIError():
             code = error.get_primary_error_code()
             message = error.get_primary_error_message()
     """
@@ -381,13 +381,13 @@ def test_skips_method_calls():
 def test_a_method_name_is_dropped_but_real_fields_still_count():
     source = """
     match error:
-        case VisionBankAPIError():
+        case PaymentAPIError():
             code = error.get_primary_error_code()
             emit(error.service_code, error.response)
     """
     (message,) = _messages(source)
     assert "get_primary_error_code" not in message
-    assert "`case VisionBankAPIError(response=response, service_code=service_code):`" in message
+    assert "`case PaymentAPIError(response=response, service_code=service_code):`" in message
 
 
 def test_an_attribute_that_is_both_read_and_called_is_dropped():

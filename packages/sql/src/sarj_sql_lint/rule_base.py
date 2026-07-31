@@ -212,20 +212,20 @@ def mask_sql(source: str) -> str:
     every rule. The body is re-scanned by this same masker, so strings and comments
     *inside* it are still masked and a nested `$inner$ ... $inner$` is handled.
 
-    Corpus evidence (bulbul + noura-be, 239 tracked `.sql` files, 9,108 lines).
-    Blanking the bodies hid **26 live DDL/DML keywords across 12 files** from all
-    8 rules — 19 `UPDATE`, 3 `ALTER TABLE`, 2 `DELETE FROM`, 2 `INSERT INTO`.
-    Named examples:
+    Corpus evidence (two first-party repos, 239 tracked `.sql` files, 9,108
+    lines). Blanking the bodies hid **26 live DDL/DML keywords across 12 files**
+    from all 8 rules — 19 `UPDATE`, 3 `ALTER TABLE`, 2 `DELETE FROM`,
+    2 `INSERT INTO`. Named examples:
 
-    * `bulbul/.../20250817124731_migrate_rewaa_calls_to_their_org.sql:21,31,60,70`
-      — four `UPDATE public.batch` / `UPDATE public.call` re-owning statements
+    * a tenant-reassignment data migration, 4 lines — four
+      `UPDATE public.<parent>` / `UPDATE public.<child>` re-owning statements
       inside a `DO $$ ... $$` block,
-    * `bulbul/.../20251214112241_delete_batch_and_related_calls.sql:18,22`
-      — `DELETE FROM batch` / `DELETE FROM call` inside a `DO $$ ... $$` block,
-    * `bulbul/.../20260112190150_add_character_count_to_kb_files.sql:32`
-      — `ALTER TABLE knowledge_base_file ADD CONSTRAINT ...` inside a `DO` block,
-    * `noura-be/digital-bank/banking-be/migrations/028_seed_ajb_bank.sql:21`
-      — `INSERT INTO banks (...)` inside a `DO $$ ... $$` block.
+    * a cascade-cleanup migration, 2 lines — `DELETE FROM <parent>` /
+      `DELETE FROM <child>` inside a `DO $$ ... $$` block,
+    * an add-column migration, 1 line —
+      `ALTER TABLE <table> ADD CONSTRAINT ...` inside a `DO` block,
+    * a reference-data seed migration, 1 line — `INSERT INTO <table> (...)`
+      inside a `DO $$ ... $$` block.
 
     A raw-vs-masked keyword diff reports a larger 50 for the same corpus, but 24 of
     those are prose inside `--` comments *within* the bodies (`-- Step 1: Update the
@@ -242,10 +242,10 @@ def mask_sql(source: str) -> str:
     SARJ101 23 -> 23, SARJ102 250 -> 250, SARJ103 0 -> 0, SARJ104 140 -> 140,
     SARJ106 0 -> 0, SARJ107 0 -> 0, SARJ108 334 -> 334, and **SARJ105
     insert-requires-on-conflict 17 -> 19**. Nothing is lost anywhere. The two new
-    SARJ105 hits — `noura-be/.../022_seed_banks.sql:34` and
-    `noura-be/.../028_seed_ajb_bank.sql:21` — are both **false positives**: each
+    SARJ105 hits — both reference-data seed migrations in one first-party repo
+    — are both **false positives**: each
     `INSERT` sits in a `DO $$ ... $$` seed block already guarded by
-    `IF EXISTS (SELECT 1 FROM banks WHERE code = ...) THEN CONTINUE/RETURN`, which
+    `IF EXISTS (SELECT 1 FROM <table> WHERE code = ...) THEN CONTINUE/RETURN`, which
     is a perfectly good replay guard, and `ON CONFLICT` there would be redundant.
     That is 2 of 2 new hits wrong, so SARJ105 wants a function-body exemption to
     go with this change — `if diagnostic_line in dollar_quoted_lines(source)`
@@ -281,7 +281,7 @@ def dollar_quoted_lines(source: str) -> frozenset[int]:
     replay, but a `DO $$ ... $$` seed block guards its own replay with
     `IF EXISTS (...) THEN CONTINUE/RETURN` instead of `ON CONFLICT`, and both new
     SARJ105 findings unlocked by keeping bodies visible are that shape
-    (`noura-be/.../022_seed_banks.sql:34`, `noura-be/.../028_seed_ajb_bank.sql:21`)
+    (two reference-data seed migrations in one first-party repo)
     — 2 of 2 wrong. Applying this exemption there takes SARJ105 from 19 back to 17
     over the corpus, removing exactly those two and nothing else. The other seven
     rules are line-local type/DDL checks that are equally true inside a body, and
