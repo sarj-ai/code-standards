@@ -71,11 +71,11 @@ a third locally, and pass its own build.
 installed wheel:
 
 ```
-ok     .sarj-standards.toml  --  version 0.26.0
-drift  .github/workflows/ci.yml: sarj-python-lint==0.12.2  --  installed sarj-python-lint is 0.35.0
-drift  pyproject.toml: sarj-python-lint==0.25.0  --  installed sarj-python-lint is 0.35.0
-ok     pyproject.toml: sarj-lint-configs==0.26.0  --  matches the installed wheel
-drift  package.json: @sarj/eslint-plugin@2.16.0  --  the bundled eslint.strict.mjs is tested against 7.0.0
+ok     .sarj-standards.toml  --  version 0.27.0
+drift  .github/workflows/ci.yml: sarj-python-lint==0.12.2  --  installed sarj-python-lint is 0.36.0
+drift  pyproject.toml: sarj-python-lint==0.25.0  --  installed sarj-python-lint is 0.36.0
+ok     pyproject.toml: sarj-lint-configs==0.27.0  --  matches the installed wheel
+drift  package.json: @sarj/eslint-plugin@2.16.0  --  the bundled eslint.strict.mjs is tested against 7.1.0
 ```
 
 It reports; it never rewrites. Exit 1 on drift.
@@ -84,7 +84,7 @@ The sibling linter versions are not yours to pick. `sarj-lint-configs` pins
 `sarj-python-lint`, `sarj-sql-lint` and `sarj-iac-lint` exactly, so `doctor`
 reads them out of the wheel you already installed and derives what every other
 site should say — including the pre-commit tag, which lives in a different
-namespace (`python-v0.35.0` for `sarj-lint-configs` 0.26.0) that nobody should
+namespace (`python-v0.36.0` for `sarj-lint-configs` 0.27.0) that nobody should
 have to translate by hand.
 
 The block `init` writes has no `rev:` at all. A `repo: local` hook runs the CLI
@@ -206,7 +206,7 @@ Three of the pins are load-bearing floors rather than just "current":
 
 | Peer | Why the pin is a floor |
 | --- | --- |
-| `@sarj/eslint-plugin` | Every custom rule the config names has to exist. four rules were renamed in 7.0.0 (old names stay registered as deprecated aliases), `prefer-module-level-schema` arrived in 6.1.0, `no-type-member-comment-wall` in 5.1.0, `prefer-zod-infer` in 4.1.0 and `prefer-zod-enum` in 2.17.0; naming a rule the installed plugin lacks is "Definition for rule was not found", once per file. |
+| `@sarj/eslint-plugin` | Every custom rule the config names has to exist. `no-declaration-comment-wall` arrived in 7.1.0, four rules were renamed in 7.0.0 (old names stay registered as deprecated aliases), `prefer-module-level-schema` arrived in 6.1.0, `no-type-member-comment-wall` in 5.1.0, `prefer-zod-infer` in 4.1.0 and `prefer-zod-enum` in 2.17.0; naming a rule the installed plugin lacks is "Definition for rule was not found", once per file. |
 | `eslint-plugin-unicorn` | The config enables 213 unicorn rules; most do not exist below 72. |
 | `eslint-plugin-zod` | The config **imports** it, so a missing or older install is a hard config error rather than a skipped rule. `zod/prefer-nullish` and `zod/no-any-schema` both land in 4.9.0. |
 | `eslint-plugin-perfectionist` | `sort-modules` does not exist before 4. On 3.x an unknown rule is a **hard config error**, not a soft degrade. |

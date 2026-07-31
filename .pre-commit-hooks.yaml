@@ -88,6 +88,12 @@
   language: python
   types: [python]
 
+- id: sarj-docstring-returns-restate-signature
+  name: 'sarj-lint: Returns: block only re-spells the return annotation'
+  entry: sarj-python-lint check --rule docstring-returns-restate-signature
+  language: python
+  types: [python]
+
 - id: sarj-trailing-value-narration
   name: 'sarj-lint: trailing comment restates a literal on the line'
   entry: sarj-python-lint check --rule trailing-value-narration

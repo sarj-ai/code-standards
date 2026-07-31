@@ -31,6 +31,7 @@ import noStorageInStatelessModules from "./rules/no-storage-in-stateless-modules
 import noStringConcatInLoop from "./rules/no-string-concat-in-loop.js";
 import noTautologicalExpect from "./rules/no-tautological-expect.js";
 import noTrailingValueNarration from "./rules/no-trailing-value-narration.js";
+import noDeclarationCommentWall from "./rules/no-declaration-comment-wall.js";
 import noTypeMemberCommentWall from "./rules/no-type-member-comment-wall.js";
 import noUnnecessaryUseClient from "./rules/no-unnecessary-use-client.js";
 import noUnsafeMockCasting from "./rules/no-unsafe-mock-casting.js";
@@ -85,6 +86,7 @@ const rules = {
   "no-string-concat-in-loop": noStringConcatInLoop,
   "no-tautological-expect": noTautologicalExpect,
   "no-trailing-value-narration": noTrailingValueNarration,
+  "no-declaration-comment-wall": noDeclarationCommentWall,
   "no-type-member-comment-wall": noTypeMemberCommentWall,
   "no-unnecessary-use-client": noUnnecessaryUseClient,
   "no-unsafe-mock-casting": noUnsafeMockCasting,
@@ -111,7 +113,7 @@ const rules = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "7.0.0",
+  version: "7.1.0",
 } as const;
 
 type RuleModule = (typeof rules)[keyof typeof rules];
@@ -170,6 +172,7 @@ const recommendedRules = {
   "@sarj/no-string-concat-in-loop": "warn",
   "@sarj/no-tautological-expect": "warn",
   "@sarj/no-trailing-value-narration": "warn",
+  "@sarj/no-declaration-comment-wall": "warn",
   "@sarj/no-type-member-comment-wall": "warn",
   "@sarj/no-unnecessary-use-client": "warn",
   "@sarj/no-unsafe-mock-casting": "warn",
@@ -224,6 +227,7 @@ const strictRules = {
   "@sarj/no-string-concat-in-loop": "error",
   "@sarj/no-tautological-expect": "error",
   "@sarj/no-trailing-value-narration": "error",
+  "@sarj/no-declaration-comment-wall": "error",
   "@sarj/no-type-member-comment-wall": "error",
   "@sarj/no-unnecessary-use-client": "error",
   "@sarj/no-unsafe-mock-casting": "error",

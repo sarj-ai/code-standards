@@ -6,6 +6,9 @@ from sarj_python_lint.rules.conditional_assertion_in_test import ConditionalAsse
 from sarj_python_lint.rules.docstring_args_restate_signature import (
     DocstringArgsRestateSignature,
 )
+from sarj_python_lint.rules.docstring_returns_restate_signature import (
+    DocstringReturnsRestateSignature,
+)
 from sarj_python_lint.rules.duplicate_test_body import DuplicateTestBody
 from sarj_python_lint.rules.duplicated_override_docstring import (
     DuplicatedOverrideDocstring,
@@ -184,6 +187,7 @@ REGISTRY: dict[str, type[Rule]] = {
     DuplicatedOverrideDocstring.id: DuplicatedOverrideDocstring,
     RedundantClassDocstring.id: RedundantClassDocstring,
     DocstringArgsRestateSignature.id: DocstringArgsRestateSignature,
+    DocstringReturnsRestateSignature.id: DocstringReturnsRestateSignature,
 }
 
 __all__ = ["REGISTRY"]

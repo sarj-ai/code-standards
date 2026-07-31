@@ -104,9 +104,6 @@ def detect(
     measured ships the strict config at its root while only a fraction of its
     sub-projects wire it in, and a root-only check would call that repo done.
 
-    Returns:
-        The detected ecosystems and their roots.
-
     """
     python_root = _override(root, python_dest) or _python_root(root)
     typescript_root = _override(root, typescript_dest) or _typescript_root(root)
@@ -470,8 +467,8 @@ def precommit_block(*, python: bool, version: str) -> str:
     This is the whole "one version, not three" fix. The documented block used
     `repo: https://github.com/sarj-ai/standards` with `rev: python-v<x>`, which
     is a SECOND version string a human has to keep equal to the pyproject pin,
-    expressed in a different namespace (`python-v0.35.0` for
-    `sarj-lint-configs==0.26.0`). Nobody kept them equal.
+    expressed in a different namespace (`python-v0.36.0` for
+    `sarj-lint-configs==0.27.0`). Nobody kept them equal.
 
     A `repo: local` hook has no `rev:`. It runs the CLI from the environment the
     pyproject pin already fixed, so upgrading is a single-line change and the
