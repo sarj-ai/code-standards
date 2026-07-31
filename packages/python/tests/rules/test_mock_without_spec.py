@@ -408,6 +408,132 @@ def test_thing():
 
 
 # --------------------------------------------------------------------------- #
+# FP guard: `receiver.method = Mock(...)` is a canned stub for one callable,   #
+# not an unspecced collaborator — the contract belongs to the receiver.        #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "stub",
+    [
+        "mock.Mock(return_value=1)",
+        "mock.AsyncMock(return_value=1)",
+        "mock.MagicMock(side_effect=ValueError)",
+    ],
+)
+def test_canned_method_stub_on_an_attribute_is_exempt(stub: str):
+    # `Mock(spec=X)` children are not awaitable, so a *correctly* specced double
+    # must stub its async methods this way to be usable at all.
+    src = f"""
+from unittest import mock
+
+def test_thing():
+    store = mock.Mock(spec=Store)
+    store.get = {stub}
+    run(store)
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "evidence",
+    [
+        "    store.get.assert_awaited_once_with('id')",
+        "    assert store.get.call_count == 1",
+        "    store.get('id')",
+    ],
+)
+def test_attribute_stub_proved_callable_by_use_is_exempt(evidence: str):
+    src = f"""
+from unittest import mock
+
+def test_thing():
+    store = mock.Mock(spec=Store)
+    store.get = mock.AsyncMock()
+    run(store)
+{evidence}
+"""
+    assert _check(src) == []
+
+
+def test_attribute_double_with_no_callable_evidence_is_still_flagged():
+    # Absence of attribute reads is not evidence of callability. `room.local_participant`
+    # is an object double; production can attribute-walk it where this file cannot see.
+    src = """
+from unittest import mock
+
+def test_thing():
+    room = mock.Mock(spec=Room)
+    room.local_participant = mock.Mock()
+    run(room)
+"""
+    assert len(_check(src)) == 1
+
+
+def test_attribute_double_read_back_through_a_domain_attribute_is_still_flagged():
+    # A namespace double: the file walks it, so `spec=` has a real referent.
+    # The domain read outranks the canned `return_value=`.
+    src = """
+from unittest import mock
+
+def test_thing():
+    api = mock.Mock(spec=LiveKitAPI)
+    api.room = mock.Mock(return_value=1)
+    api.room.delete_room("r")
+"""
+    assert len(_check(src)) == 1
+
+
+def test_every_namespace_level_of_a_walked_chain_is_still_flagged():
+    # `ctx.api` and `ctx.api.sip` are namespace doubles; only the leaf stub goes.
+    src = """
+from unittest import mock
+
+def test_thing():
+    ctx = mock.Mock(spec=JobContext)
+    ctx.api = mock.Mock()
+    ctx.api.sip = mock.Mock()
+    ctx.api.sip.create_sip_participant = mock.AsyncMock(return_value=1)
+    run(ctx)
+"""
+    assert len(_check(src)) == 2
+
+
+@pytest.mark.parametrize(
+    "target",
+    ["rooms[0].get", "make_room().get", "room.get = other.get"],
+)
+def test_stub_on_a_non_dotted_target_is_still_flagged(target: str):
+    # Two occurrences of `rooms[0]` need not denote the same object, and a
+    # chained assignment binds the one double to several places at once, so
+    # neither can be reasoned about by path.
+    src = f"""
+from unittest import mock
+
+def test_thing(rooms, other):
+    {target} = mock.AsyncMock(return_value=1)
+"""
+    assert len(_check(src)) == 1
+
+
+def test_collaborator_shapes_still_fire_alongside_the_stub_guard():
+    # The shapes the rule exists for, in one file, so a future widening of the
+    # attribute guard breaks here: a bare bound double, a constructor kwarg, a
+    # `patch` context manager, and a `monkeypatch.setattr` replacement.
+    src = """
+from unittest import mock
+
+def test_thing(monkeypatch):
+    session = mock.AsyncMock()
+    service = Service(store=mock.Mock())
+    monkeypatch.setattr(module, "fetch", mock.AsyncMock(return_value=1))
+    with mock.patch("module.send"):
+        run(session, service)
+"""
+    assert len(_check(src)) == 4
+
+
+# --------------------------------------------------------------------------- #
 # Edge cases: empty / syntax error / multiple hits / position / sort order.    #
 # --------------------------------------------------------------------------- #
 

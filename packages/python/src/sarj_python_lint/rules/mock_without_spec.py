@@ -38,7 +38,9 @@ Deliberately NOT flagged:
 * `create_autospec(...)`, `mock.ANY`, `mock.sentinel`, `mock.call` — specced by
   construction or not doubles at all,
 * bare `Mock` referenced without being called (annotations, `isinstance`
-  checks) — only a construction can carry a spec argument.
+  checks) — only a construction can carry a spec argument,
+* a canned callable stub bound to an attribute (`receiver.method =
+  AsyncMock(return_value=...)`) — see exemption 4 below.
 
 The import-backed name check is the load-bearing false-positive guard. Test
 suites routinely define their own `Mock`-suffixed fakes (`MockVisionBankClient`,
@@ -91,6 +93,45 @@ of this rule reported 137 hits, of which 38 were false positives:
    `except ImportError` arm of the uvloop/winloop probe). Guard: exempt
    constructions lexically inside an `ImportError`/`ModuleNotFoundError`
    handler.
+
+4. **A canned callable stub bound to an attribute (146 hits, 18.8%).** Measured
+   over the two first-party repos (bulbul + noura-be, 777 hits), the single
+   largest shape was `receiver.method = Mock(...)` — 283 hits, 36.4%. It is not
+   an unspecced *collaborator*; it replaces one callable on a receiver that
+   already exists, and the contract this rule protects belongs to that receiver.
+   Either the receiver carries `spec=` — in which case production's call through
+   a renamed attribute raises `AttributeError` off the specced parent and the
+   test fails loudly, which is exactly the rot this rule wants — or the receiver
+   is itself flagged here at its own construction, and reporting the leaf as
+   well says the same thing twice. Evidence:
+   `bulbul/python/agent/tests/conftest.py:167-170`, where
+   `backchanneler = mock.Mock(spec=Backchanneler)` is followed by
+   `backchanneler.start_audio = mock.AsyncMock()` / `.run = ...` / `.stop = ...`
+   — model spec discipline, and three findings; and
+   `bulbul/python/bulbul/tests/integrations/test_zoho_notifications_handler.py:86`
+   (`crm_service.get_record = mock.AsyncMock(return_value=record)`), where the
+   only thing the file reads off `crm_service.get_record` is
+   `assert_awaited_once_with`. `AsyncMock` dominates the shape (164 of 283)
+   because `Mock(spec=X)` children are not awaitable, so a specced double *must*
+   have its async methods stubbed this way to be usable at all.
+
+   The guard demands POSITIVE evidence of callability — a canned
+   `return_value=`/`side_effect=`, a mock-API read off the path
+   (`recv.method.assert_called_once_with(...)`), or an invocation — on top of
+   the absence of any domain-attribute read. Absence alone is not enough:
+   `agent/tests/test_for_call_settings.py:64` (`room.local_participant =
+   mock.Mock()`) is an object double this file never happens to walk, and it
+   stays flagged, as do the 60 namespace doubles the corpus does walk —
+   `test_for_call_settings.py:71,74,76` (`api.room` / `api.sip` / `api.egress`,
+   read back as `.delete_room`, `.create_sip_participant`,
+   `.start_room_composite_egress`) and `agent/tests/conftest.py:246-247`
+   (`job_context.api`, `job_context.api.sip`).
+
+   What this gives up is arity: `AsyncMock(spec=Store.get)` would reject a call
+   whose signature no longer matches, and the exempted stubs will not. That is
+   the narrower half of the defect, and it is the half `patch.object(mod,
+   "func")` still gets flagged for, since `autospec=True` is a one-word fix
+   there and there is no equivalent for a raw attribute assignment.
 
 The 99 survivors are true positives: unspecced `MagicMock()` doubles for real
 types (`black/tests/test_black.py:2933`, a `MagicMock()` standing in for `Path`
@@ -174,6 +215,11 @@ _MOCK_API_ATTRS = frozenset(
 
 # An import that failed leaves nothing importable to spec against.
 _IMPORT_FAILURES = frozenset({"ImportError", "ModuleNotFoundError"})
+
+# Keywords that canned-answer a *call*. You only say what a double returns, or
+# raises, when something is going to invoke it — so their presence is positive
+# evidence that the double stands in for one callable rather than an object.
+_CANNED_RESULT_KEYWORDS = frozenset({"return_value", "side_effect"})
 
 
 class MockWithoutSpec(Rule):
@@ -321,6 +367,9 @@ class _FileFacts:
         self.reads: dict[str, set[str]] = {}
         self.called: set[str] = set()
         self.import_fallbacks: set[ast.Call] = set()
+        self.attribute_target: dict[ast.Call, str] = {}
+        self.path_reads: dict[str, set[str]] = {}
+        self.path_calls: set[str] = set()
 
     @classmethod
     def from_tree(cls, tree: ast.Module) -> _FileFacts:
@@ -339,16 +388,39 @@ class _FileFacts:
             elif isinstance(node, ast.Attribute):
                 if isinstance(node.value, ast.Name):
                     found.reads.setdefault(node.value.id, set()).add(node.attr)
+                found._record_path_read(node)
             elif isinstance(node, ast.Call):
                 if isinstance(node.func, ast.Name):
                     found.called.add(node.func.id)
+                found._record_path_call(node)
             elif _catches_import_failure(node):
                 found.import_fallbacks.update(child for child in walk(node) if isinstance(child, ast.Call))
         return found
 
     def _bind(self, target: ast.expr | None, value: ast.expr | None) -> None:
-        if isinstance(target, ast.Name) and isinstance(value, ast.Call):
+        if not isinstance(value, ast.Call):
+            return
+        if isinstance(target, ast.Name):
             self.bound_name[value] = target.id
+        elif isinstance(target, ast.Attribute):
+            path = _dotted_path(target)
+            if path is not None:
+                self.attribute_target[value] = path
+
+    def _record_path_read(self, node: ast.Attribute) -> None:
+        # Load context only. `recv.method = Mock()` is a *store* through
+        # `recv.method`; counting it would make every stub look like a namespace
+        # double read back through its own name.
+        if not isinstance(node.ctx, ast.Load):
+            return
+        path = _dotted_path(node.value)
+        if path is not None:
+            self.path_reads.setdefault(path, set()).add(node.attr)
+
+    def _record_path_call(self, node: ast.Call) -> None:
+        path = _dotted_path(node.func)
+        if path is not None:
+            self.path_calls.add(path)
 
     def is_call_recorder(self, node: ast.Call) -> bool:
         """Report whether the double bound by `node` is only ever called and introspected.
@@ -368,6 +440,58 @@ class _FileFacts:
             return False
         return self.reads.get(name, set()) <= _MOCK_API_ATTRS
 
+    def is_method_stub(self, node: ast.Call) -> bool:
+        """Report whether `node` is a canned stub for one method of some receiver.
+
+        `receiver.method = AsyncMock(return_value=...)` replaces a single
+        callable, not an object. The contract this rule protects belongs to the
+        *receiver* — it is the receiver's construction that either carries
+        `spec=` or is itself flagged here — and a callable has no attribute
+        surface for `spec=` to fence. Two conditions must hold:
+
+        * nothing but the mock API is read back off the assigned path, so the
+          double is not standing in for an object the test walks, and
+        * something positively marks it as a callable — a canned
+          `return_value=`/`side_effect=`, an `assert_called*`-style read, or an
+          invocation of the path.
+
+        The second condition is what keeps `room.local_participant = Mock()`
+        flagged: absence of attribute reads is not evidence of callability, and
+        a namespace double that this file happens never to walk is exactly the
+        case `spec=` exists for.
+
+        Returns:
+            True when the double is a canned callable stub bound to an attribute.
+
+        """
+        path = self.attribute_target.get(node)
+        if path is None:
+            return False
+        seen = self.path_reads.get(path, set())
+        if not seen <= _MOCK_API_ATTRS:
+            return False
+        canned = any(kw.arg in _CANNED_RESULT_KEYWORDS for kw in node.keywords)
+        return canned or bool(seen) or path in self.path_calls
+
+
+def _dotted_path(expr: ast.expr) -> str | None:
+    """Render a pure `name.attr.attr` chain as a dotted string.
+
+    Returns:
+        The dotted path, or None when the chain is rooted in anything other than
+        a bare name (a subscript, a call, a literal), where two occurrences of
+        the same text need not denote the same object.
+
+    """
+    parts: list[str] = []
+    while isinstance(expr, ast.Attribute):
+        parts.append(expr.attr)
+        expr = expr.value
+    if not isinstance(expr, ast.Name):
+        return None
+    parts.append(expr.id)
+    return ".".join(reversed(parts))
+
 
 def _catches_import_failure(handler: ast.ExceptHandler) -> bool:
     caught = handler.type
@@ -386,7 +510,7 @@ def _unspecced_calls(tree: ast.Module, names: _MockNames, facts: _FileFacts) -> 
         label = _render_callee(node.func, symbol)
         if _has_spec_argument(node) or _has_positional_replacement(node, label):
             continue
-        if node in facts.import_fallbacks or facts.is_call_recorder(node):
+        if node in facts.import_fallbacks or facts.is_call_recorder(node) or facts.is_method_stub(node):
             continue
         hits.append((node, label))
     return hits
