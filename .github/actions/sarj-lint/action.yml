@@ -1,0 +1,22 @@
+name: Sarj canonical lint
+description: Run the canonical Sarj config drift and polyglot rule checks
+
+inputs:
+  working-directory:
+    description: Repository directory to audit, relative to GITHUB_WORKSPACE
+    required: false
+    default: '.'
+
+runs:
+  using: composite
+  steps:
+    - name: Verify canonical config and custom rules
+      shell: bash
+      env:
+        SARJ_AUDIT_ROOT: ${{ github.workspace }}/${{ inputs.working-directory }}
+        SARJ_LINT_PROJECT: ${{ github.action_path }}/../../../packages/lint-configs
+      run: |
+        set -euo pipefail
+        uv run --project "$SARJ_LINT_PROJECT" sarj-lint-configs sync \
+          --check --typescript-dest "$SARJ_AUDIT_ROOT" --only eslint
+        uv run --project "$SARJ_LINT_PROJECT" sarj-lint-configs check "$SARJ_AUDIT_ROOT"
