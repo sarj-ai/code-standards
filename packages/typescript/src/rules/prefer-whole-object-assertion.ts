@@ -99,6 +99,16 @@ function literalText(node: TSESTree.Node, getText: (node: TSESTree.Node) => stri
  * True for a receiver that can be evaluated twice with the same effect: an
  * identifier, `this`, or a member chain over one. A call anywhere in the chain
  * makes the merged form invoke it fewer times than the run did.
+ *
+ * The `node.optional` guard below — and its twin on `actual` in
+ * `parseAssertion` — cannot be reached by any input, and no test pins them:
+ * every optional link wraps the whole expression in a `ChainExpression`, which
+ * `parseAssertion` has already rejected, and a parenthesised `(a?.b).c` leaves a
+ * `ChainExpression` in the object position where this function's `default` arm
+ * catches it. They are kept as belt and braces against a parser that stops
+ * emitting `ChainExpression`, not because anything currently depends on them —
+ * recorded here so the next reader does not spend an afternoon writing the test
+ * that would prove them live.
  */
 function isPureReceiver(node: TSESTree.Node): boolean {
   switch (node.type) {
