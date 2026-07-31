@@ -5,7 +5,7 @@ MAKEFLAGS += --warn-undefined-variables --no-builtin-rules
 CONFIG_SRC := packages/lint-configs/src/sarj_lint_configs/configs
 
 .PHONY: help setup build verify test lint typecheck check-no-private-refs check-file-conventions promote-strict check-versions-synced publish publish-typescript publish-python publish-sql \
-        publish-iac publish-lint-configs publish-tsconfig
+        publish-iac publish-lint-configs publish-tsconfig sync-rule-ledger
 
 help:
 	@echo "Targets: setup | verify | build | test | lint | typecheck | promote-strict"
@@ -86,6 +86,13 @@ check-no-private-refs:
 # declares them, so pointing a package at the canonical path directly silently
 # drops the whole `"**/tests/**"` exemption -- 239 new findings in packages/python
 # alone. A `cp` in place of either link does the same job and then drifts.
+# Regenerate the shipped record of every rule identifier and what became of it.
+# It never deletes: a rule that leaves a registry is moved to `retired`, because
+# a consumer config naming a removed rule makes ESLint exit 2 on the whole repo
+# and `doctor` needs the record to warn before the upgrade rather than after.
+sync-rule-ledger:
+	python3 scripts/sync-rule-ledger.py
+
 check-file-conventions:
 	@./scripts/check-file-conventions.sh
 

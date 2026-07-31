@@ -17,15 +17,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 import json
+import os
+from pathlib import Path
 import re
 from typing import TYPE_CHECKING, Final
 
-from . import manifest
+from . import ledger, manifest
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence
-    from pathlib import Path
 
 
 class Level(StrEnum):
@@ -50,11 +51,33 @@ _PIN = re.compile(
     r"(?P<name>sarj-(?:python|sql|iac)-lint|sarj-lint-configs)\s*(?P<op>==|>=|~=)\s*(?P<version>[0-9][0-9A-Za-z.\-]*)"
 )
 
-#: `rev: python-v0.19.0`, `rev: "lint-configs-v0.10.0"`.
-_REV = re.compile(r"""rev:\s*['"]?(?P<rev>[a-z-]+-v[0-9][0-9A-Za-z.\-]*)['"]?""")
+#: `rev: python-v0.19.0`, `rev: "lint-configs-v0.10.0"`, `rev: 9d073e83b2...`.
+#:
+#: The bare-SHA alternative is not a nicety. A repo that pins the hooks by commit
+#: instead of by tag is the one MOST likely to be stale -- there is no version in
+#: the string to notice going out of date -- and a tag-only pattern silently
+#: skipped it, so `doctor` reported a clean pre-commit config for a repo running
+#: hooks dozens of commits behind. A SHA cannot be compared to a version, so it is
+#: reported as unverifiable-by-construction rather than as agreement.
+_REV = re.compile(
+    r"""rev:\s*['"]?(?P<rev>[a-z-]+-v[0-9][0-9A-Za-z.\-]*|[0-9a-f]{7,40})['"]?"""
+)
+
+#: A `rev:` that is a raw commit, not a release tag.
+_SHA_REV = re.compile(r"^[0-9a-f]{7,40}$")
 
 _ESLINT_PLUGIN: Final = "@sarj/eslint-plugin"
 _LOCAL_SPECIFIERS: Final = ("file:", "link:", "workspace:", "portal:")
+
+#: Where a rule identifier can be written: configs and suppression baselines, but
+#: also ordinary source, because an `eslint-disable-next-line @sarj/<rule>` for a
+#: rule that no longer exists is its own error under the shipped strict config's
+#: `reportUnusedDisableDirectives: "error"`, and a `sarj-noqa: SARJnnn` comment
+#: outlives the code it named.
+_REFERENCE_SUFFIXES: Final = (
+    ".cjs", ".cts", ".js", ".json", ".jsx", ".mjs", ".mts",
+    ".py", ".toml", ".ts", ".tsx", ".yaml", ".yml",
+)
 
 _SKIP_DIRS: Final = frozenset({
     ".git",
@@ -79,11 +102,43 @@ def diagnose(root: Path) -> list[Finding]:
 
     """
     installed = manifest.installed_versions()
+    files = _walk(root)
     findings = [*_check_manifest(root)]
-    findings.extend(_check_pin_files(root, installed))
-    findings.extend(_check_precommit_revs(root))
-    findings.extend(_check_eslint_plugin(root))
+    findings.extend(_check_pin_files(root, files, installed))
+    findings.extend(_check_precommit_revs(root, files))
+    findings.extend(_check_eslint_plugin(root, files))
+    findings.extend(check_retired_rules(root, files))
     return findings
+
+
+def check_retired_rules(root: Path, files: Sequence[Path] | None = None) -> Iterator[Finding]:
+    """Name every reference to a rule that no longer exists.
+
+    This is the check that has to run BEFORE an upgrade rather than after it.
+    Once the new plugin is installed, a config naming a deleted rule makes ESLint
+    exit 2 on the whole repo -- no file is linted, and the message names the rule
+    but not the fact that it was deliberately removed, nor what to do. Same for a
+    pre-commit hook id, and for a `sarj-noqa` code that was renumbered.
+
+    Every finding is DRIFT, because none of them is survivable: a stale reference
+    is not a rule that fires, it is a toolchain that refuses to start.
+
+    Yields:
+        One finding per file per retired identifier, with the count in it.
+
+    """
+    retired = ledger.load().retired
+    if not retired:
+        return
+    for path in _candidate_files(files if files is not None else _walk(root), _REFERENCE_SUFFIXES):
+        text = _read(path)
+        if "sarj" not in text.lower():
+            continue
+        for entry in retired:
+            hits = len(entry.pattern.findall(text))
+            if hits:
+                where = f"{path.relative_to(root)}: {entry.id} x{hits}"
+                yield Finding(Level.DRIFT, where, entry.advice)
 
 
 def _check_manifest(root: Path) -> Iterator[Finding]:
@@ -113,8 +168,10 @@ def _check_manifest(root: Path) -> Iterator[Finding]:
     )
 
 
-def _check_pin_files(root: Path, installed: Mapping[str, str]) -> Iterator[Finding]:
-    for path in _candidate_files(root, (".toml", ".yml", ".yaml", ".cfg", ".txt", ".sh")):
+def _check_pin_files(
+    root: Path, files: Sequence[Path], installed: Mapping[str, str]
+) -> Iterator[Finding]:
+    for path in _candidate_files(files, (".toml", ".yml", ".yaml", ".cfg", ".txt", ".sh")):
         for match in _PIN.finditer(_read(path)):
             name = match.group("name")
             pinned = match.group("version")
@@ -128,16 +185,23 @@ def _check_pin_files(root: Path, installed: Mapping[str, str]) -> Iterator[Findi
                 yield Finding(Level.DRIFT, where, f"installed {name} is {current}")
 
 
-def _check_precommit_revs(root: Path) -> Iterator[Finding]:
+def _check_precommit_revs(root: Path, files: Sequence[Path]) -> Iterator[Finding]:
     expected = manifest.expected_precommit_rev()
-    for path in _candidate_files(root, (".yml", ".yaml")):
+    for path in _candidate_files(files, (".yml", ".yaml")):
         text = _read(path)
         if "sarj-ai/standards" not in text:
             continue
         for match in _REV.finditer(text):
             rev = match.group("rev")
             where = f"{path.relative_to(root)}: rev {rev}"
-            if expected is None:
+            if _SHA_REV.match(rev):
+                yield Finding(
+                    Level.DRIFT,
+                    where,
+                    "pins the hooks to a commit, not a release, so no tool can tell"
+                    f" whether it is current -- pin {expected or 'the release tag'} instead",
+                )
+            elif expected is None:
                 yield Finding(Level.WARN, where, "sarj-python-lint is not installed, so the rev is unverified")
             elif rev == expected:
                 yield Finding(Level.OK, where, "matches the installed hook package")
@@ -150,13 +214,13 @@ def _check_precommit_revs(root: Path) -> Iterator[Finding]:
                 )
 
 
-def _check_eslint_plugin(root: Path) -> Iterator[Finding]:
+def _check_eslint_plugin(root: Path, files: Sequence[Path]) -> Iterator[Finding]:
     # The peer manifest ships inside this wheel, so a missing or malformed one is
     # a packaging bug in THIS package, not a condition a consumer repo can be in.
     # Letting it raise is the point: swallowing it would turn "we shipped a broken
     # wheel" into "your package.json is fine".
     floor = manifest.eslint_peers()[_ESLINT_PLUGIN]
-    for path in _candidate_files(root, (".json",)):
+    for path in _candidate_files(files, (".json",)):
         if path.name != "package.json":
             continue
         pinned = _package_json_pin(path)
@@ -190,15 +254,35 @@ def _package_json_pin(path: Path) -> str | None:
     return None
 
 
-def _candidate_files(root: Path, suffixes: Sequence[str]) -> Iterator[Path]:
+def _candidate_files(files: Sequence[Path], suffixes: Sequence[str]) -> Iterator[Path]:
     wanted = frozenset(suffixes)
-    for path in sorted(root.rglob("*")):
-        if any(part in _SKIP_DIRS for part in path.relative_to(root).parts):
-            continue
-        if path.is_symlink() or not path.is_file():
-            continue
+    for path in files:
         if path.suffix.lower() in wanted:
             yield path
+
+
+def _walk(root: Path) -> tuple[Path, ...]:
+    """List a repo's files once, pruning the directories nothing is ever found in.
+
+    Both halves matter for a repo big enough to need `doctor`. `rglob` descends
+    into `node_modules` and only discards the results afterwards, so the cost of
+    ignoring a directory was the cost of reading it; and every check wants its own
+    slice of the same tree, which used to mean walking it once per check.
+
+    Returns:
+        Every regular, non-symlinked file under `root`, in reading order.
+
+    """
+    found: list[Path] = []
+    for parent, directories, names in os.walk(root):
+        directories[:] = sorted(name for name in directories if name not in _SKIP_DIRS)
+        here = Path(parent)
+        found.extend(
+            path
+            for name in sorted(names)
+            if not (path := here / name).is_symlink() and path.is_file()
+        )
+    return tuple(found)
 
 
 def _read(path: Path) -> str:

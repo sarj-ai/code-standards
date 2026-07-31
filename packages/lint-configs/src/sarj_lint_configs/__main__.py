@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 import shutil
 import sys
 from typing import Final
 
-from . import CONFIGS_DIR, __version__, doctor, manifest, runner, scaffold
+from . import CONFIGS_DIR, __version__, doctor, manifest, packagemanager, runner, scaffold
 
 
 CONFIG_NAMES: Final[dict[str, tuple[str, str]]] = {
@@ -59,10 +60,13 @@ class _Args(argparse.Namespace):
 def cmd_sync(args: _Args, *, next_steps: bool = True) -> int:
     targets = _sync_targets(args)
     destinations: dict[str, Path] = {}
+    declared = _declared_dests(args)
 
     def resolve_destination(kind: str, override: str | None) -> Path:
         if kind not in destinations:
-            destinations[kind] = _resolve_dest(override or args.dest)
+            recorded = declared.get(kind)
+            base = args.dest if recorded is None else str(Path(args.dest) / recorded)
+            destinations[kind] = _resolve_dest(override or base)
         return destinations[kind]
 
     results: list[str] = []
@@ -97,6 +101,27 @@ def cmd_sync(args: _Args, *, next_steps: bool = True) -> int:
     if written and next_steps and "ruff" in targets:
         print(_NEXT_STEPS)
     return 0
+
+
+def _declared_dests(args: _Args) -> dict[str, str]:
+    """Read the per-project destinations `init` recorded, so CI need not restate them.
+
+    Without this, a repo whose TypeScript lives in a subdirectory had to spell
+    `--typescript-dest` into every `sync` and `sync --check` invocation, and the
+    one that forgot -- CI -- compared the strict config against a path where it
+    was never written and reported permanent drift.
+
+    Returns:
+        Destination kind to a repo-root-relative path, empty when unknown.
+
+    """
+    try:
+        found = manifest.load(_resolve_dest(args.dest))
+    except (TypeError, ValueError, SystemExit):
+        return {}
+    if found is None:
+        return {}
+    return {"python": found.python_dest, "typescript": found.typescript_dest}
 
 
 def _sync_targets(args: _Args) -> list[str]:
@@ -165,7 +190,7 @@ def cmd_path(args: _Args) -> int:
     return 0
 
 
-def cmd_peers() -> int:
+def cmd_peers(args: _Args) -> int:
     """Print the npm packages `eslint.strict.mjs` needs, at versions that resolve.
 
     Returns:
@@ -175,7 +200,13 @@ def cmd_peers() -> int:
     peers = manifest.eslint_peers()
     for name, pin in sorted(peers.items()):
         print(f"{name:50s} {pin}")
-    print(f"\n{manifest.eslint_install_command()}")
+    client = packagemanager.detect(_resolve_dest(args.dest))
+    overrides = packagemanager.overrides_for(client)
+    print(f"\ndetected {client}; install with:\n{packagemanager.install_command(client)}")
+    print(
+        f"\n{client} also needs this in package.json, or the tree does not resolve:\n"
+        f"{json.dumps(overrides.as_document(), indent=2)}"
+    )
     return 0
 
 
@@ -207,7 +238,13 @@ def cmd_init(args: _Args) -> int:
 
     """
     root = _resolve_dest(args.dest)
-    plan = scaffold.build_plan(root, force=args.force, configs=args.configs)
+    plan = scaffold.build_plan(
+        root,
+        force=args.force,
+        configs=args.configs,
+        python_dest=args.python_dest,
+        typescript_dest=args.typescript_dest,
+    )
 
     detected = [
         name
@@ -221,13 +258,22 @@ def cmd_init(args: _Args) -> int:
         return 1
 
     print(f"configs: {', '.join(plan.configs)}")
+    python_dest = scaffold.dest_of(root, plan.ecosystems.python_root)
+    typescript_dest = scaffold.dest_of(root, plan.ecosystems.typescript_root)
     if args.dry_run:
         print("\n-- dry run; nothing is written --")
         for name in plan.configs:
-            print(f"would sync:  {root / CONFIG_NAMES[name][1]}")
+            destination = _init_dest(
+                root, name, python_dest=python_dest, typescript_dest=typescript_dest
+            )
+            print(f"would sync:  {destination}")
     else:
         sync_args = _Args()
         sync_args.dest = str(root)
+        # Absolute, because `--python-dest` is read relative to the CWD while
+        # these are relative to the repo root `init` was pointed at.
+        sync_args.python_dest = str(root / python_dest)
+        sync_args.typescript_dest = str(root / typescript_dest)
         sync_args.only = list(plan.configs)
         sync_args.force = args.force
         _ = cmd_sync(sync_args, next_steps=False)
@@ -251,6 +297,22 @@ def cmd_init(args: _Args) -> int:
     return 0
 
 
+def _init_dest(root: Path, name: str, *, python_dest: str, typescript_dest: str) -> Path:
+    """Locate one config's destination the same way `cmd_sync` will.
+
+    Returns:
+        The absolute path `sync` would write.
+
+    """
+    if name == "eslint":
+        base = root / typescript_dest
+    elif name in _PYTHON_CONFIGS:
+        base = root / python_dest
+    else:
+        base = root
+    return base / CONFIG_NAMES[name][1]
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv, namespace=_Args())
     match args.cmd:
@@ -261,7 +323,7 @@ def main(argv: list[str] | None = None) -> int:
         case "path":
             return cmd_path(args)
         case "peers":
-            return cmd_peers()
+            return cmd_peers(args)
         case "doctor":
             return cmd_doctor(args)
         case "init":
@@ -317,7 +379,12 @@ def _build_parser() -> argparse.ArgumentParser:
     p_path = sub.add_parser("path", help="print the absolute path of a bundled config")
     p_path.add_argument("name", choices=sorted(CONFIG_NAMES))
 
-    sub.add_parser("peers", help="print the npm packages eslint.strict.mjs needs, at tested versions")
+    p_peers = sub.add_parser(
+        "peers", help="print the npm packages eslint.strict.mjs needs, at tested versions"
+    )
+    p_peers.add_argument(
+        "--dest", default=".", help="project whose package manager to speak (default: cwd)"
+    )
 
     p_doctor = sub.add_parser(
         "doctor",
@@ -327,6 +394,14 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p_init = sub.add_parser("init", help="scaffold the whole adoption: configs, wiring, hooks, CI")
     p_init.add_argument("--dest", default=".", help="repo root to scaffold (default: cwd)")
+    p_init.add_argument(
+        "--python-dest",
+        help="the directory that owns pyproject.toml (default: detected)",
+    )
+    p_init.add_argument(
+        "--typescript-dest",
+        help="the directory that owns the npm lockfile (default: detected)",
+    )
     p_init.add_argument("--force", action="store_true", help="overwrite files that already exist")
     p_init.add_argument("--dry-run", action="store_true", help="print the plan without writing")
     p_init.add_argument(

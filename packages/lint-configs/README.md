@@ -20,6 +20,35 @@ uses, wires them up (`[tool.ruff] extend`, `pyrightconfig.json`,
 overwrites a file that already exists unless you pass `--force`, so it is safe to
 re-run and safe on a repo that is already half-adopted.
 
+### Your TypeScript does not have to be at the repo root
+
+`init` writes each ecosystem's configs into the directory that owns it, not into
+the repo root: the ESLint config goes beside the npm lockfile, the ruff and
+pyright configs beside the `pyproject.toml`. That is not cosmetic. A repo whose
+TypeScript lives in `frontend/` has no `node_modules` and no `tsconfig.json` at
+its root, and ESLint does not search upward for a flat config — a root-level
+`eslint.config.mjs` is a file that can never load, written by a tool that reports
+success.
+
+The project root is found by **lockfile**, not by `package.json`: a repo can carry
+a root `package.json` declaring nothing but `packageManager` while the real
+project is a directory down.
+
+The detected destinations are recorded in `.sarj-standards.toml`, so plain `sync`
+and `sync --check` find them again without CI having to restate them. Override
+detection with `init --python-dest` / `--typescript-dest`.
+
+### npm, pnpm, Yarn and Bun
+
+The peer set below does not install without an override block, and every client
+spells that block differently: npm and Bun nest it under `overrides`, pnpm wants
+`pnpm.overrides` with a `parent>child` selector, Yarn wants `resolutions` with a
+`parent/child` path and no `$dep` indirection. `init` detects the client from the
+lockfile (or a `packageManager` field, which Corepack enforces), writes the right
+one, and prints the matching install command. Writing npm's spelling everywhere
+was worse than writing nothing: pnpm and Yarn ignore a stray `overrides` key, so
+the install failed identically while `package.json` looked fixed.
+
 ## Keep current
 
 ```bash
@@ -42,10 +71,10 @@ a third locally, and pass its own build.
 installed wheel:
 
 ```
-ok     .sarj-standards.toml  --  version 0.25.0
-drift  .github/workflows/ci.yml: sarj-python-lint==0.12.2  --  installed sarj-python-lint is 0.34.0
-drift  pyproject.toml: sarj-python-lint==0.25.0  --  installed sarj-python-lint is 0.34.0
-ok     pyproject.toml: sarj-lint-configs==0.25.0  --  matches the installed wheel
+ok     .sarj-standards.toml  --  version 0.26.0
+drift  .github/workflows/ci.yml: sarj-python-lint==0.12.2  --  installed sarj-python-lint is 0.35.0
+drift  pyproject.toml: sarj-python-lint==0.25.0  --  installed sarj-python-lint is 0.35.0
+ok     pyproject.toml: sarj-lint-configs==0.26.0  --  matches the installed wheel
 drift  package.json: @sarj/eslint-plugin@2.16.0  --  the bundled eslint.strict.mjs is tested against 7.0.0
 ```
 
@@ -55,7 +84,7 @@ The sibling linter versions are not yours to pick. `sarj-lint-configs` pins
 `sarj-python-lint`, `sarj-sql-lint` and `sarj-iac-lint` exactly, so `doctor`
 reads them out of the wheel you already installed and derives what every other
 site should say — including the pre-commit tag, which lives in a different
-namespace (`python-v0.34.0` for `sarj-lint-configs` 0.25.0) that nobody should
+namespace (`python-v0.35.0` for `sarj-lint-configs` 0.26.0) that nobody should
 have to translate by hand.
 
 The block `init` writes has no `rev:` at all. A `repo: local` hook runs the CLI
@@ -84,6 +113,43 @@ hook with `uvx --from sarj-lint-configs==<version>` instead of `uv run --frozen`
 sarj-lint-configs`, exit 2, on every commit — and no `check` hook, because
 `check` runs the Python/SQL/IaC registries and a TypeScript repo has nothing to
 feed them.
+
+### Removed and renamed rules — the upgrade that crashes
+
+Deleting a rule is not a lint-level change for the repo that uses it. A flat
+config still naming it makes ESLint exit **2** before it reads a single file:
+
+```
+TypeError: Key "rules": Key "@sarj/prefer-setup-file-mocks": Could not find
+"prefer-setup-file-mocks" in plugin "@sarj".
+```
+
+The whole repo stops linting. A pre-commit hook id that no longer exists fails
+the same way, and because the strict config sets
+`reportUnusedDisableDirectives: "error"`, every orphaned
+`// eslint-disable-next-line @sarj/<removed-rule>` is an error of its own.
+
+`rule-ledger.json` ships inside the wheel and records every rule identifier this
+toolchain has ever shipped, along with what became of it. `doctor` reads it and
+names every stale reference — in configs, in suppression baselines, in
+pre-commit, and in ordinary source — **before** the upgrade that would break
+them:
+
+```
+drift  eslint.config.mjs: @sarj/prefer-setup-file-mocks x1  --  no longer exists -- removed in @sarj/eslint-plugin 5.0.0: 50 corpus findings read, 0 true positives. Delete the rule entry and any eslint-disable naming it.
+drift  src/legacy.ts: @sarj/no-implicit-attribute-access x1  --  no longer exists -- ...
+drift  service.py: SARJ055 x1  --  renamed to SARJ083 -- renumbered in sarj-python-lint 0.26.0 ...
+```
+
+A *renamed* ESLint rule does not crash: the plugin keeps the old name registered
+as a deprecated alias, so a stale config entry still resolves and ESLint reports
+the rename. The ledger is for the cases with no alias to fall back on — a rule
+that was deleted, or a `SARJnnn` code that was renumbered.
+
+The ledger is generated by `make sync-rule-ledger`, which never deletes: a rule
+that leaves a registry is *retired*, and tests in both this package and the
+plugin fail until the ledger matches the live registries again. So the next
+removal is recorded whether or not its author thought about consumers.
 
 ### `sync --check` — the synced configs are unmodified
 
