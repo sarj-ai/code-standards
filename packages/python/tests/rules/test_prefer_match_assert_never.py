@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Diagnostic
 
 
-def _check(source: str, path: str = "python/bulbul/bulbul/calls/dispatch.py") -> list[Diagnostic]:
+def _check(source: str, path: str = "python/app/app/calls/dispatch.py") -> list[Diagnostic]:
     return PreferMatchAssertNever().check(Path(path), source)
 
 

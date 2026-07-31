@@ -16,8 +16,8 @@ out::
     assert payload.jws_signature == "sig-456"
 
 Nothing in those three lines can fail unless pydantic stops assigning fields.
-The test is named `test_encrypted_payload_fields`
-(`noura-be/python/noura/tests/test_vb_auth_generic.py:372`) and it verifies the
+The test is named `test_encrypted_payload_fields` (one first-party
+authentication test) and it verifies the
 language, not the model.
 
 **Boundary with SARJ057 `no-tautological-expect`.** Literal-only tautologies are
@@ -47,9 +47,9 @@ standard ships:
 * `assert x == x`, `assert m is m` — PLR0124 (`comparison-with-itself`). This is
   the brief's "self-comparison of a mock" shape in full; it was implemented,
   found to be a straight duplicate, and **dropped**. It stays dropped: the one
-  self-comparison bug in the whole estate is faris's
+  self-comparison bug in the whole estate is one first-party site's
   `case Error(error=error): assert error == error`
-  (`falltime/tests/services/test_validate_iban.py:34`), where the capture pattern
+  in an IBAN-validation test, where the capture pattern
   shadows the `parametrize` argument and the whole `BAD_IBANS` table therefore
   verifies nothing — and PLR0124 was run against that file and does report it,
 * `assert "a" in ["a", "b"]` — PLR6201 (`literal-membership`) fires on it, and
@@ -74,7 +74,7 @@ so 47% of the estate-wide finding set would be a repeat line inside a test alrea
 flagged. The rule reports the *first* unfalsifiable assertion in each function and
 stays quiet about the rest, which loses no test. Note that this is a weaker
 collapse than also requiring every assertion in the test to be trivial: that was
-measured and costs 6 of bulbul's 12 findings and 1 of digital-bank's 2, because
+measured and costs 6 of repo A's 12 findings and 1 of repo C's 2, because
 the common real shape is one honest assertion surrounded by echoes.
 
 **The advice is conditioned on SARJ043.** 362 of the 684 findings are tests in
@@ -84,12 +84,13 @@ then rejects. Two rules in one suite must not give contradictory instructions, s
 the message detects that case and asks for the behaviour the test name claims, or
 for the test's deletion, instead of for a deletion of the line.
 
-Corpus evidence — 21 repositories, 42,761 files: bulbul, noura-be, digital-bank,
-submissions, ai, faris, summer and 14 OSS suites. **684 findings**, of which the
+Corpus evidence — 21 repositories, 42,761 files: seven first-party repos
+(repos A through G, labels stable within this docstring only) and 14 OSS suites.
+**684 findings**, of which the
 keyword echo carries 674 and `isinstance` 10: airflow 173, litellm 159,
-superset 145, mlflow 70, prefect 67, langchain 28, dagster 21, bulbul 12,
-celery 3, noura-be 3, digital-bank 2, sentry-python 1, and zero in django,
-fastapi, saleor, zulip, warehouse, submissions, ai, faris and summer. django's
+superset 145, mlflow 70, prefect 67, langchain 28, dagster 21, repo A 12,
+celery 3, repo B 3, repo C 2, sentry-python 1, and zero in django,
+fastapi, saleor, zulip, warehouse, repo D, repo E, repo F and repo G. django's
 suite is `unittest`-style (70 bare asserts in 2,927 files), so zero there is
 arithmetic, not silence; fastapi's 4,828 bare asserts are almost all about an
 HTTP response the test did not construct, and zero findings on that population
@@ -106,21 +107,19 @@ Deliberately NOT flagged:
 * **anything but a class constructor.** The keyword-echo shape was originally
   written for any call, and 12 of the first 49 findings — a quarter — were
   functions whose *job* is to map their arguments onto a result, where the
-  pass-through is exactly the behaviour under test: noura-be's
+  pass-through is exactly the behaviour under test: four first-party sites —
   `make_settings(monkeypatch, ENV="staging", ...)` then
-  `assert settings.ENV == "staging"` reads an environment variable back through
-  pydantic-settings (`noura/tests/test_core_config.py:52`),
+  `assert settings.ENV == "staging"`, which reads an environment variable back
+  through pydantic-settings;
   `service.get_onboarding_error_details(limit=25, offset=5)` then
-  `assert result.limit == 25` checks a service echoes pagination into its
-  response envelope (`dashboard/tests/test_bigquery_inline_service.py:534`),
-  `collector.get_analytics(duration_ms=1234)`
-  (`voice/tests/test_voice_services.py:371`),
-  `factory.create_client(language="ar")`
-  (`common/tests/test_vb_onboarding_client.py:638`), celery's
+  `assert result.limit == 25`, which checks a service echoes pagination into its
+  response envelope;
+  `collector.get_analytics(duration_ms=1234)`; and
+  `factory.create_client(language="ar")` — plus celery's
   `event.get_exchange(conn, name='custom')`
-  (`t/unit/events/test_events.py:540`), and bulbul's `_worker_options(...)`
-  (`agent/tests/test_main_wiring.py:53`) and `create_global_variables(...)`
-  (`bulbul/tests/unit/test_formatter.py:212`). Only a callee whose final name
+  (`t/unit/events/test_events.py:540`), and two more first-party sites,
+  `_worker_options(...)` and `create_global_variables(...)`.
+  Only a callee whose final name
   component is capitalised — `Foo(...)`, `mod.Foo(...)`, `self.Backend(...)` —
   is treated as a constructor,
 * **collaborator classes**, whose `__init__` normalises the configuration it is
@@ -135,11 +134,11 @@ Deliberately NOT flagged:
   `assert r.accept == {'app/foo'}` (`t/unit/events/test_events.py:349`) coerces
   through `prepare_accept_content`. Measured across all 21 corpora the suffix
   removes exactly that one finding and no other,
-* **a field the same module proves is transformed.** bulbul's
+* **a field the same module proves is transformed.** One first-party
   `GeminiLLMSettings` rewrites `model="lite"` to `"flash-lite-3.1"`; three
   functions down, `test_valid_model_unchanged` constructs it with
-  `model="flash"` and asserts `settings.model == "flash"`
-  (`bulbul/tests/unit/test_gemini_settings.py:17`). That assertion *can* fail —
+  `model="flash"` and asserts `settings.model == "flash"`. That assertion *can*
+  fail —
   it is the negative half of a validator test — and only the sibling test four
   lines up reveals it. So when any construction of the same class in the same
   module asserts a field against a literal **different** from the one it was
@@ -189,7 +188,7 @@ SARJ064` material:
   that a pydantic model accepts both wire spellings, so the construction is the
   assertion. The obvious guard — suppress a `(class, field)` echoed with two or
   more *different* literals in one module — was implemented and measured: it
-  removes 149 of the 733 findings, including 3 of bulbul's 12, to buy this one
+  removes 149 of the 733 findings, including 3 of repo A's 12, to buy this one
   false positive. **Rejected**; the shape is far too common among genuine
   echoes to trade on.
 """

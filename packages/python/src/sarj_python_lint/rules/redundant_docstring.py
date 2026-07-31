@@ -37,8 +37,9 @@ repo's strict ruff config; a half-docstring is not.
   sentence a docstring can contain; `not`, `no` and `never` are therefore NOT
   stopwords here even though they are in the comment tokenizer's list.
 
-**Measured.** bulbul **5**, noura-be **105**, pydantic **22**, trio **4**,
-attrs **8** — 144 findings. 40 were hand-read across the two maintained repos
+**Measured.** repo A **5**, repo B **105**, pydantic **22**, trio **4**,
+attrs **8** — 144 findings (the two first-party repo labels are stable within
+this docstring only). 40 were hand-read across the two maintained repos
 and one was borderline (a test docstring adding "for protected endpoints"), so
 ≥95% precision. The FastAPI-route and docstring-only-body exemptions were both
 found by that read, not predicted.

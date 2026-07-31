@@ -75,8 +75,8 @@ the rest of the rule set already needs. The floor is recorded here because it
 is the reason the option is absent, and because it is invisible at the call
 site: a consumer that adds `checkDirectories` locally will break on any unicorn
 older than 65. Installed versions across first-party consumers currently span
-`^62.0.0` (hala) through `^72.0.0` (demo-gateway), with bulbul pinned to an
-exact `64.0.0` — i.e. two consumers sit below the floor today.
+`^62.0.0` through `^72.0.0`, with one consumer pinned to an exact `64.0.0` —
+i.e. two consumers sit below the floor today.
 
 Then reference the synced file:
 

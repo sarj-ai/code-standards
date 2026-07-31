@@ -26,14 +26,13 @@ false-positive patterns that dominated real-world suppressions:
   was asking for a change that cannot be made. A statement mixing a real call
   with logging still counts.
 
-  Evidence, bulbul PR #4111 (all suppressed at PR head, none a defect):
-  `python/agent/agent/lk/cache_primer.py:47` and `:110` — both suppressions read
-  "success-only bookkeeping (elapsed/metrics/log) must stay inside try so it does
-  not run on the except path"; of the 6 and 5 statements counted there, only 2
-  and 1 were real operations (`get_static_prompt`, `llm.chat`), the rest were
-  `time.monotonic()`, two `cache_primer_*.labels(...).inc()/.observe()` recorders
-  and a `logger.info`. Likewise
-  `python/agent/agent/lk/builder/tool_builder.py:118` (4 counted, the 4th a
+  Evidence from a first-party review regression (all suppressed at the reviewed
+  head, none a defect): two sites in one cache-priming module — both suppressions
+  read "success-only bookkeeping (elapsed/metrics/log) must stay inside try so it
+  does not run on the except path"; of the 6 and 5 statements counted there, only
+  2 and 1 were real operations (a prompt fetch and an LLM call), the rest were
+  `time.monotonic()`, two `<metric>.labels(...).inc()/.observe()` recorders and a
+  `logger.info`. Likewise a third site in a builder module (4 counted, the 4th a
   `logger.info`).
 * `try` blocks that carry an `else` or `finally` clause are exempt. Those
   clauses are a deliberate success/cleanup contract that couples the body to
@@ -72,8 +71,8 @@ References:
 * **generated files** (`_paths.is_generated`). Their layout is the
   generator's, and re-running the generator discards any edit, so a finding
   there can never be acted on in place. Measured on the 69 `DO NOT EDIT`
-  files git-tracked across bulbul and noura-be — Speakeasy's
-  `python/sdk/src/sarj_platform_sdk/` accounts for all of them.
+  files git-tracked across two first-party repos — a single Speakeasy-generated
+  SDK package under `python/sdk/src/` accounts for all of them.
 
 """
 

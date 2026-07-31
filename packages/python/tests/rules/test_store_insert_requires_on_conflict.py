@@ -333,7 +333,7 @@ def test_plus_concat_runtime_value_between_keywords_is_missed() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# bulbul PR #4111 regression: a test file is never a store module.              #
+# First-party review regression: a test file is never a store module.           #
 #                                                                               #
 # `test_<x>_store.py` ends in `_store.py`, so the store-layer naming test used   #
 # to sweep in the tests FOR the store layer. A fixture that seeds one row per    #
@@ -352,7 +352,7 @@ def test_plus_concat_runtime_value_between_keywords_is_missed() -> None:
     ],
 )
 def test_test_files_are_not_store_modules(path: str) -> None:
-    """Evidence: bulbul `python/bulbul/tests/store/test_sip_connection_store.py:37`."""
+    """Evidence: a first-party store test that seeds one row per test."""
     src = 'q = "INSERT INTO phone_provider (provider_name) VALUES (%s) RETURNING id::text"'
     assert _count(src, path) == 0
 

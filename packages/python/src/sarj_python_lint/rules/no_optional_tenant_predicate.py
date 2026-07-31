@@ -14,10 +14,11 @@ other tenant's rows, guarding it with `if` makes the scoping **fail open**: the
 query still executes, just without the predicate. A caller that passes an empty
 or missing organization list silently reads the whole table.
 
-This is not hypothetical. In bulbul, `PsqlCallStore._build_filter_conditions`
-had exactly this shape, and `POST /v1/calls/list` reached it with
-`organization_ids=[]` for any user whose `organization_id` was NULL — composing
-`SELECT ... FROM call WHERE 1=1`, i.e. every tenant's calls.
+This is not hypothetical. In one first-party service,
+`PsqlOrderStore._build_filter_conditions` had exactly this shape, and
+`POST /v1/orders/list` reached it with `organization_ids=[]` for any user whose
+`organization_id` was NULL — composing `SELECT ... FROM orders WHERE 1=1`, i.e.
+every tenant's rows.
 
 The rule fires when, within a single function, *every* WHERE-fragment that
 mentions a tenant column is nested inside a conditional. The safe idiom seeds
@@ -50,8 +51,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# Columns that scope a row to a tenant. `org_id` is included because bulbul's
-# older stores use it; `tenant_id`/`account_id`/`workspace_id` are the common
+# Columns that scope a row to a tenant. `org_id` is included because some
+# first-party legacy stores use it; `tenant_id`/`account_id`/`workspace_id` are the common
 # names the same pattern takes in other multi-tenant codebases.
 _TENANT_COLUMNS = ("organization_id", "org_id", "tenant_id", "account_id", "workspace_id")
 

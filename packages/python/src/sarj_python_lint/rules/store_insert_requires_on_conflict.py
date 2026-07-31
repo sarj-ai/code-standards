@@ -46,9 +46,9 @@ detection strength. Two changes landed here:
    produced a finding, because `insert into` … `values` is a match once `.*?`
    may span anything. The rule now requires the TS twin's shape — keyword, table
    identifier, optional column list, then the verb — which is exactly what keeps
-   prose out. Zero corpus delta on bulbul + noura-be (22 findings before and
-   after, all genuine bare `INSERT ... VALUES` store writes such as
-   `bulbul/python/bulbul/bulbul/stores/api_key_store.py:69`); this is
+   prose out. Zero corpus delta on the two first-party repos (22 findings before
+   and after, all genuine bare `INSERT ... VALUES` store writes such as an
+   API-key store's insert); this is
    false-positive prevention, not a count change.
 
 DELIBERATE, DOCUMENTED DIVERGENCES from SARJ105, both structural rather than
@@ -62,7 +62,8 @@ drift — do not "fix" them:
     `DO $$ ... $$` block that guards its own replay with `IF EXISTS (...)`,
     because PL/pgSQL seed blocks in migrations do that instead of using
     `ON CONFLICT`. That exemption is deliberately not ported here: `DO $$`
-    appears in **zero** Python files across bulbul, its SDKs and noura-be, and
+    appears in **zero** Python files across the two first-party repos and their
+    SDKs, and
     this rule neither masks nor descends into a dollar-quoted body. If embedded
     PL/pgSQL ever appears in a store module, SARJ105 is the precedent to follow.
 """

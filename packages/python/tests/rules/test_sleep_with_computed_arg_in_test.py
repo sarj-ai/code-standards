@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Diagnostic
 
 
-TEST_PATH = "python/agent/tests/test_silence_monitor.py"
+TEST_PATH = "python/agent/tests/test_idle_monitor.py"
 
 
 def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:

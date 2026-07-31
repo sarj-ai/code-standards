@@ -4,11 +4,11 @@ A class pattern that binds nothing and then reads the subject's attributes in th
 body throws away the best part of structural pattern matching:
 
     match event:
-        case AttachLiveKit():                 # binds nothing
+        case AttachSession():                 # binds nothing
             setup(event.config, event.room)   # reaches back for the fields
 
     match event:
-        case AttachLiveKit(config=config, room=room):   # preferred
+        case AttachSession(config=config, room=room):   # preferred
             setup(config, room)
 
 Three concrete things the keyword pattern buys, all of which the reach-back form
@@ -26,7 +26,7 @@ loses:
 * **The body works on plain locals.** `config` is narrowed exactly once, at the
   pattern; `event.config` is re-narrowed at every mention and any intervening
   call can invalidate the narrowing.
-* **The arm documents what it consumes.** `case AttachLiveKit(config=config,
+* **The arm documents what it consumes.** `case AttachSession(config=config,
   room=room):` states the arm's entire data dependency on one line. A reader
   chasing a field has to read the whole body otherwise.
 
@@ -47,17 +47,18 @@ Fires when ALL of these hold:
 The message names the fields and writes the replacement `case` line out in full,
 because "destructure this" without the field list is a nag. Capture names follow
 the field name, except where that would collide with something the arm already
-uses (`case FlowPass(flaky=flaky)` would shadow the `flaky` counter dict the arm
-indexes, noura-be `integration/stats.py:67`) or shadow a builtin
-(`case CustomScenario(id=id)`, bulbul `services/batch_call_service.py:206`); both
-get the subject name as a prefix, `outcome_flaky` and `scenario_id`. An
+uses (`case RunPass(flaky=flaky)` would shadow the `flaky` counter dict the arm
+indexes — one first-party site) or shadow a builtin
+(`case CustomRecord(id=id)` — a second first-party site); both
+get the subject name as a prefix, `outcome_flaky` and `record_id`. An
 `x = subj.x` line in the arm is NOT a collision — it is the statement the fix
 deletes.
 
-Corpus evidence (bulbul, noura-be, django, fastapi, celery — 286 `match`
+Corpus evidence (two first-party repos, django, fastapi, celery — 286 `match`
 statements, 385 class-pattern arms, 239 of them binding nothing): 84 arms reach
-back into the subject, 57 after the two-read floor below (bulbul 31, noura-be
-26). Zero findings in fastapi and celery, which support Python versions without
+back into the subject, 57 after the two-read floor below (repo A 31, repo B
+26; repo labels are stable within this docstring only). Zero findings in fastapi
+and celery, which support Python versions without
 `match` and contain no `match` statement at all; django has five `match`
 statements in total and, after the two-read floor, zero findings — its single
 candidate is the reason that floor exists. Thirty of the 57 findings were read
@@ -66,16 +67,16 @@ against the source: no false positives.
 Deliberately NOT flagged:
 
 * **One field, read once.** `case ChoicesType(): return value.choices`
-  (django `utils/choices.py:83`) and `case FlowFail(): return f"quarantined:
-  {outcome.reason}"` (noura-be `integration/junit.py:54`) are whole arms. The
+  (django `utils/choices.py:83`) and `case RunFail(): return f"quarantined:
+  {outcome.reason}"` (one first-party site) are whole arms. The
   pattern would grow by exactly what the body shrinks by, no local is reused,
   and there is no body to summarise, so the documentation argument is nil.
   Requiring two reads keeps the rule to the arms where destructuring actually
-  pays. Two distinct fields, or one field read twice (noura-be
-  `integration/junit.py:42`, which mentions `outcome.reason` in both statements
+  pays. Two distinct fields, or one field read twice (a sibling arm in the same
+  first-party module, which mentions `outcome.reason` in both statements
   of the arm), still fire.
-* **Private and dunder attributes.** `case hamsa_stt.STT(): stt._opts.language
-  = target_language` (bulbul `agent/lk/agent_tools/meta/code_switching.py:401`)
+* **Private and dunder attributes.** `case stt_plugin.STT(): stt._opts.language
+  = target_language` (one first-party site)
   reaches into a third-party plugin's private state and already carries an
   `SLF001` waiver; hoisting `_opts` into the pattern would drag that waiver onto
   the `case` line and dress up private access as a field contract. `__class__` /
@@ -86,24 +87,24 @@ Deliberately NOT flagged:
   or the arm mutates the very field that would have been copied out, so
   destructuring is not behaviour-preserving.
 * **Method calls.** `event.serialize()` is not a field, and an attribute called
-  anywhere in the arm is dropped from the field list entirely — noura-be's
-  `case VisionBankAPIError():` arm (`utils/error_handler/v3.py:224`) mixes
+  anywhere in the arm is dropped from the field list entirely — one first-party
+  `case PaymentAPIError():` arm in an error-handler module mixes
   `error.get_primary_error_code()` with `error.service_code`, and only the
   latter is proposed. Only the *receiver* of a call is excluded, so
   `event.meta.trace_id` still counts `meta` (one level of destructuring is safe,
   two is not) and `handlers[event.kind]` still counts `kind`.
 * **Or-patterns and non-class patterns.** `case [x, y]:`, `case 1 | 2:`,
   `case {"type": "attach"}:`, `case None:`. Mapping patterns have the same
-  reach-back problem in principle, but across bulbul, noura-be, django, fastapi
-  and celery there are ten `MatchMapping` nodes in total — six of them the
-  top-level pattern of an arm, the rest nested — every one in bulbul, and none
+  reach-back problem in principle, but across the two first-party repos, django,
+  fastapi and celery there are ten `MatchMapping` nodes in total — six of them the
+  top-level pattern of an arm, the rest nested — every one in repo A, and none
   reaches back. The shape does not earn a detector. (An earlier draft said "six
   mapping patterns", counting arms; both numbers are given here because the
   difference is exactly the nested ones.)
 * **Builtins and ABCs.** `case str(): return subject.strip()` is a runtime type
   probe, not a variant of an owned union; `str` has no fields to name.
 * **Fields the pattern already binds.** A partly-destructured arm
-  (`case ChatMessageActionItem(llm_metadata=llm_metadata):` that still reaches
+  (`case MessageActionItem(llm_metadata=llm_metadata):` that still reaches
   for `message.action`) is the same shape and does fire, over the fields still
   being reached for. The sub-patterns it already had are **reproduced verbatim**
   in the suggestion, ahead of the new keyword captures.
@@ -126,7 +127,7 @@ Deliberately NOT flagged:
 
 An arm that ALSO uses the whole object still fires: `event` stays bound and
 narrowed after a class pattern, so `case Foo(config=config):` loses nothing. An
-existing `as` alias is preserved in the suggestion (`case Foo(id=scenario_id) as
+existing `as` alias is preserved in the suggestion (`case Foo(id=record_id) as
 scenario:`).
 
 The rule cannot see whether an attribute is a plain field or a property with
@@ -200,7 +201,7 @@ _BUILTIN_TYPE_NAMES = frozenset(
 )
 
 # A capture named after the field is the ideal spelling, but not when it would
-# shadow a builtin: `case CustomScenario(id=id)` trips ruff's A001. Taken from
+# shadow a builtin: `case CustomRecord(id=id)` trips ruff's A001. Taken from
 # the interpreter so the set never drifts.
 _BUILTIN_NAMES = frozenset(dir(builtins))
 
@@ -269,9 +270,9 @@ class _ReachBack:
     def binding(self, field: str) -> str:
         """Choose a capture name for `field` that the arm can actually use.
 
-        `case FlowPass(flaky=flaky)` would shadow a `flaky` dict the arm already
-        indexes, and `case CustomScenario(id=id)` shadows a builtin; both get the
-        subject name as a prefix instead (`outcome_flaky`, `scenario_id`).
+        `case RunPass(flaky=flaky)` would shadow a `flaky` dict the arm already
+        indexes, and `case CustomRecord(id=id)` shadows a builtin; both get the
+        subject name as a prefix instead (`outcome_flaky`, `record_id`).
 
         Returns:
             The capture name to suggest.

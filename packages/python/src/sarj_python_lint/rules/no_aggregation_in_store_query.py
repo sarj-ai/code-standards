@@ -27,25 +27,24 @@ query and is out of scope. A file-level BigQuery-SDK import exempts only queries
 that carry no Postgres-specific signal — a psycopg `%s` placeholder marks a real
 Postgres store query even in a mixed analytics module.
 
-EXEMPTIONS ADDED FROM bulbul PR #4111 (11 suppressed hits at PR head; none was a
-defect):
+EXEMPTIONS ADDED FROM A FIRST-PARTY REVIEW REGRESSION (11 suppressed hits at the
+reviewed head; none was a defect):
 
 * `IS [NOT] DISTINCT FROM` is Postgres' NULL-SAFE COMPARISON OPERATOR, not the
   set-deduplicating `DISTINCT`. It is a per-row predicate that does exactly what
   `=` does except on NULLs, so it costs nothing this rule cares about; it merely
   shares a keyword with `SELECT DISTINCT`. The operator is blanked before the
   aggregation scan, so the rest of the query is still judged normally.
-  Evidence: `python/bulbul/bulbul/stores/provisioned_number_store.py:375` — an
-  `INSERT ... ON CONFLICT DO UPDATE ... WHERE provisioned_number.organization_id
+  Evidence: one first-party store site — an
+  `INSERT ... ON CONFLICT DO UPDATE ... WHERE orders.organization_id
   IS NOT DISTINCT FROM EXCLUDED.organization_id` upsert containing no aggregation
   at all.
 * TEST FILES are not store modules (`_sql.is_store_module`). `test_<x>_store.py`
   ends in `_store.py`, so the store-layer naming test used to sweep in the tests
   *for* the store layer. A `COUNT(*)` in a test asserts over a handful of
   per-test fixture rows and never runs on the OLTP primary, so the rule's whole
-  premise is absent. Evidence:
-  `python/bulbul/tests/store/test_batch_call_store.py:2092`, `:2538` and
-  `python/bulbul/tests/store/test_global_prompt_store.py:67`.
+  premise is absent. Evidence: three first-party sites across two store test
+  modules.
 
 If an aggregate genuinely must run on Postgres (e.g. a tiny bounded admin
 count), suppress with `# sarj-noqa: SARJ020 — <reason>`.
@@ -119,9 +118,9 @@ _POSTGRES_SQL = re.compile(r"%\(\w+\)s|%s")
 # DISTINCT ...)`, the set-deduplicating constructs this rule exists to find,
 # which is why the bare `\bDISTINCT\b` scan mis-read it. Blanked before the
 # aggregation scan so the surrounding query is still judged on its real content.
-# Evidence: bulbul PR #4111 `python/bulbul/stores/provisioned_number_store.py:375`
-# — an `INSERT ... ON CONFLICT DO UPDATE ... WHERE organization_id IS NOT
-# DISTINCT FROM EXCLUDED.organization_id` upsert with no aggregation anywhere.
+# Evidence from a first-party review regression: an `INSERT ... ON CONFLICT DO
+# UPDATE ... WHERE organization_id IS NOT DISTINCT FROM EXCLUDED.organization_id`
+# upsert with no aggregation anywhere.
 _NULL_SAFE_COMPARISON = re.compile(r"\bIS\s+(?:NOT\s+)?DISTINCT\s+FROM\b", re.IGNORECASE)
 
 _AGGREGATIONS: tuple[tuple[str, re.Pattern[str]], ...] = (

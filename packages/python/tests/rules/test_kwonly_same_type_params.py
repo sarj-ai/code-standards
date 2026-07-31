@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Diagnostic
 
 
-def _check(source: str, path: str = "python/bulbul/bulbul/calls/service.py") -> list[Diagnostic]:
+def _check(source: str, path: str = "python/app/app/calls/service.py") -> list[Diagnostic]:
     return KwonlySameTypeParams().check(Path(path), source)
 
 
@@ -238,7 +238,7 @@ def f(source_id: str, target_id: str) -> None: ...
         "tests/test_call_store.py",
         "test_helpers.py",
         "call_store_test.py",
-        "python/bulbul/tests/helpers/fakes.py",
+        "python/app/tests/helpers/fakes.py",
         "conftest.py",
     ],
 )
@@ -249,7 +249,7 @@ def test_skips_test_paths(path: str):
 
 def test_fires_in_non_test_paths():
     src = "def transfer(source_id: str, target_id: str) -> None: ...\n"
-    assert len(_check(src, "python/bulbul/bulbul/calls/service.py")) == 1
+    assert len(_check(src, "python/app/app/calls/service.py")) == 1
 
 
 # --------------------------------------------------------------------------- #

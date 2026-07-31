@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Diagnostic
 
 
-TEST_PATH = "python/bulbul/tests/integrations/test_zoho_notifications_handler.py"
+TEST_PATH = "python/app/tests/integrations/test_crm_notifications_handler.py"
 
 
 def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
@@ -170,7 +170,7 @@ class TestThing(TestCase):
 
 
 def test_an_outcome_assertion_alongside_the_interaction_is_exempt():
-    # The sibling of the flagged test in the same bulbul class does exactly
+    # The sibling of the flagged test in the same first-party class does exactly
     # this: it reads `call_args.kwargs` *and* asserts on the payload.
     src = """
 def test_create_contact_uses_webhook_data_directly():
@@ -178,7 +178,7 @@ def test_create_contact_uses_webhook_data_directly():
     call_service.outbound.assert_called_once()
     crm_service.get_record.assert_called_once()
     variables = call_service.outbound.call_args.kwargs["call_input"].scenario.variables
-    assert variables["zoho_module"] == "Contacts"
+    assert variables["crm_module"] == "Contacts"
 """
     assert _check(src) == []
 
@@ -477,7 +477,7 @@ def {name}():
 
 # --------------------------------------------------------------------------- #
 # FP guard: callback registration has no observable result.                    #
-# celery/t/unit/fixups/test_django.py:183, bulbul test_silence_monitor.py:79.  #
+# celery/t/unit/fixups/test_django.py:183, and one first-party monitor test.   #
 # --------------------------------------------------------------------------- #
 
 
@@ -505,11 +505,11 @@ def test_thing():
 
 
 def test_one_non_registration_target_alongside_a_registration_still_fires():
-    # bulbul agent/tests/test_collect_digits_tool.py:598 — deregistering the
-    # listener is un-observable, but asserting `super().on_exit()` was awaited
-    # is pinning the implementation.
+    # One first-party site pairs the two — deregistering the listener is
+    # un-observable, but asserting `super().on_exit()` was awaited is pinning
+    # the implementation.
     src = """
-async def test_on_exit_unregisters_local_user_state_listener():
+async def test_on_exit_unregisters_state_listener():
     await task.on_exit()
     mock_session.off.assert_any_call("user_state_changed", task._on_user_state_changed_local)
     mock_super_on_exit.assert_awaited_once()

@@ -21,11 +21,10 @@ in others. Two changes landed here to make them agree:
    migrations. A real insert *write* is now required: the keyword, a table
    identifier, an optional column list, then `VALUES` / `SELECT` /
    `DEFAULT VALUES`. `INSERT INTO t;` (no write verb) no longer fires. Zero
-   corpus delta: all 17 findings over the 239 `.sql` files of bulbul + noura-be
-   are genuine `INSERT ... VALUES` / `INSERT ... SELECT` writes, e.g.
-   `bulbul/svcs/clickhouse/migrations/20260619000004_audit_log_backfill.sql:2`
-   (`INSERT INTO ... (cols) SELECT ...`) and
-   `bulbul/svcs/db/db/schema.sql:2758` (dbmate's `schema_migrations` seed).
+   corpus delta: all 17 findings over the 239 `.sql` files of two first-party
+   repos are genuine `INSERT ... VALUES` / `INSERT ... SELECT` writes, e.g. an
+   analytics backfill migration (`INSERT INTO ... (cols) SELECT ...`) and a
+   dumped `schema.sql` (dbmate's `schema_migrations` seed).
 
 2. **One definition of "already idempotent."** `ON CONFLICT` was the only form
    recognised, so a MySQL `ON DUPLICATE KEY UPDATE` upsert and SQLite/D1's
@@ -48,24 +47,24 @@ DOLLAR-QUOTED SEED BLOCKS. `mask_sql` keeps `DO $$ ... $$` and
 rules see the DML inside them. For this rule that surfaced two false positives,
 because a seed block guards its own replay procedurally instead of with
 `ON CONFLICT`:
-  - `noura-be/digital-bank/banking-be/migrations/022_seed_banks.sql:34` —
-    `FOREACH ... LOOP / IF EXISTS (SELECT 1 FROM banks WHERE code = b[2]) THEN
-    CONTINUE; END IF;` around the `INSERT INTO banks`.
-  - `noura-be/digital-bank/banking-be/migrations/028_seed_ajb_bank.sql:21` — the
-    same shape with `RETURN` instead of `CONTINUE`.
+  - a reference-data seed migration —
+    `FOREACH ... LOOP / IF EXISTS (SELECT 1 FROM t WHERE code = b[2]) THEN
+    CONTINUE; END IF;` around the `INSERT INTO t`.
+  - a second seed migration inserting a single row — the same shape with
+    `RETURN` instead of `CONTINUE`.
 An `ON CONFLICT` clause there would be dead code. A dollar-quoted body is
 therefore exempt **only when it carries such a guard** (`IF EXISTS (` /
 `IF NOT EXISTS (`, read from the masked text so a commented-out guard does not
 count). Exempting every dollar body unconditionally — the obvious one-liner —
 would silently stop flagging an *unguarded* `INSERT` inside a `DO` block, which
 is the very defect this rule exists to catch and is not something the corpus
-justifies. Measured: 19 → 17 over bulbul + noura-be, dropping exactly the two
+justifies. Measured: 19 → 17 over the two first-party repos, dropping exactly the two
 lines above and nothing else, with an unguarded insert in a `DO` block still
 flagged.
 
 This exemption is SQL-only, deliberately. SARJ018 and the TS twin do not need it:
-`DO $$` appears in **zero** Python and **zero** TypeScript files across bulbul,
-its SDKs, noura-be and noura-fe, and neither rule masks or descends into a
+`DO $$` appears in **zero** Python and **zero** TypeScript files across three
+first-party repos and their published SDKs, and neither rule masks or descends into a
 dollar-quoted body in the first place. If embedded PL/pgSQL ever appears there,
 this is the precedent to follow.
 """

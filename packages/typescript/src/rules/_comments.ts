@@ -88,7 +88,7 @@ export function isProtected(body: string): boolean {
  * True when a comment cites a ticket, URL, RFC/PEP/CVE, or issue number
  * (signal S1 alone). Naming where a decision is recorded is the one thing code
  * cannot do, and it separates an owned scoping note ("EN-only for now — AR needs
- * audio (PROD-249)") from an unowned admission ("hacky, fix later").
+ * audio (PROJ-249)") from an unowned admission ("hacky, fix later").
  */
 export function hasExternalReference(body: string): boolean {
   return REF_RE.test(body);

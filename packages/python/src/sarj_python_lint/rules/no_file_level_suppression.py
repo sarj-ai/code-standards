@@ -6,7 +6,7 @@ checker off for the file, including the rules that do not exist yet. The next
 person adds a function to the file and their new violations are pre-silenced by
 a decision someone else made months ago, in a comment they will never scroll
 past. Nothing in review or CI says a word. This is the file-level-suppression
-escape hatch raised in review (`sarj-ai/bulbul#2881`).
+escape hatch raised in review on a first-party repo.
 
 A SCOPED suppression is the opposite: naming the codes it silences makes it a
 reviewed, legible, bounded decision, and it keeps working exactly as intended

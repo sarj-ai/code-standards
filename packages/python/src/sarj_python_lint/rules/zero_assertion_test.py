@@ -97,7 +97,8 @@ Deliberately NOT flagged:
 * a helper, or any function not named `test_*`,
 * an abstract or stub body (`...`, `pass`, docstring only) — an intentionally
   empty placeholder is a different problem from a half-written test,
-* anything under a `scripts/` directory. `digital-bank/banking-ai/chat/scripts/`
+* anything under a `scripts/` directory. One first-party service's
+  `chat/scripts/` directory
   holds four `test_*.py` files that are manual CLI probes run as
   `uv run python chat/scripts/test_llm_providers.py`, not pytest modules — they
   sit outside every `testpaths` and are never collected. A file that is not

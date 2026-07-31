@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Diagnostic
 
 
-PROD_PATH = "python/bulbul/bulbul/calls/call_store.py"
+PROD_PATH = "python/app/app/calls/call_store.py"
 
 
 def _check(source: str, path: str = PROD_PATH) -> list[Diagnostic]:
@@ -47,7 +47,7 @@ async def f(items):
         "call_store_test.py",
         "tests/conftest.py",
         "conftest.py",
-        "python/bulbul/tests/stores/seed.py",
+        "python/app/tests/stores/seed.py",
         "a/b/test/helper.py",
         "deeply/nested/tests/data/factory.py",
     ],

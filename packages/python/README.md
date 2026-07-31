@@ -58,7 +58,7 @@ package inside your own project. Third-party privates are never flagged.
 
 **It replaces ruff's `PLC2701 import-private-name`,** whose only exemption is
 *same top-level package* — a different question, and one that cannot separate
-`from bulbul.stores.task_store import _row_to_task` (real; export it) from
+`from app.stores.order_store import _row_to_order` (real; export it) from
 `from livekit.agents.inference_runner import _InferenceRunner` (no fix exists).
 `sarj-lint-configs` ≥ 0.8.0 ships `PLC2701` in its ignore list for exactly this
 reason; if you take that config, turn this hook on, or you lose the check
@@ -82,7 +82,7 @@ each guard was built from are recorded in the rule module docstrings.
 ```
 
 `redundant-docstring` finds real volume on a codebase that has never had it
-(105 in noura-be), so the same baseline ratchet applies.
+(105 in one first-party repo), so the same baseline ratchet applies.
 
 ### Docstring-ceremony rules (0.31.0)
 
@@ -143,10 +143,11 @@ to WARNING — usually vanish in production while looking fine locally.
 The one legitimate reason to touch stdlib logging in a loguru house is to
 *bridge* it, and the bridge cannot be written without naming both loggers, so a
 module importing loguru is exempt. Measured across two production repos that
-exemption is exact: all four sites that import stdlib logging
-(`bulbul/__init__.py`, `bulbul/configure_logging.py`, `agent/main.py`,
-noura-be's `common/logging.py`) are bridges, all four import loguru, and no
-other module in either repo imports stdlib logging at all. Tests, `scripts/`,
+exemption is exact: all four sites that import stdlib logging (three in the
+first repo — its package `__init__.py`, a dedicated `configure_logging.py`, and
+a service entrypoint `main.py` — plus a `common/logging.py` in the second) are
+bridges, all four import loguru, and no other module in either repo imports
+stdlib logging at all. Tests, `scripts/`,
 `notebooks/`, generated files and `if TYPE_CHECKING:` imports are also exempt.
 
 **This is a house-convention rule, not a universal one.** A *library* should log
@@ -158,7 +159,8 @@ UUIDv4 keys scatter B-tree inserts across every leaf page, where `uuidv7()`
 (Postgres 18) is time-ordered and appends. It is the embedded-SQL third of a
 policy the stack already states twice — `ruff.strict.toml` bans `uuid.uuid4`,
 and `sarj-sql-lint`'s SARJ109 `prefer-uuidv7-default` covers `.sql` migration
-files (41 sites in bulbul, 14 in noura-be, all of them a primary-key `DEFAULT`).
+files (41 sites in one first-party repo, 14 in another, all of them a
+primary-key `DEFAULT`).
 A literal only counts when it is SQL-shaped, so prose naming the function is not
 a finding.
 
@@ -177,7 +179,7 @@ flagged — measured across five repos those are the entire population.
 The second test-quality wave. Where the 0.15.0 family asks "does this test assert
 anything?", this one asks "does it exercise anything real?" — it pushes suites off
 hand-rolled doubles and onto the real store, the real database and a maintained fake
-library. Measured against bulbul, noura-be, five other first-party repos and fourteen
+library. Measured against seven first-party repos and fourteen
 OSS corpora; two candidates were dropped outright when the corpus showed they only
 duplicated ruff.
 
@@ -237,8 +239,8 @@ file falls back under the global cap, so an allowance cannot outlive its debt.
 pygrep hooks, not SARJ rules, and both need a `files:`/`exclude:` from the
 consumer. An AST port of each was built and measured, and the boundary each
 encodes turned out to be repo-specific rather than shared: "shared fake" flagged
-9/9 single-use test doubles in noura-be that are idiomatic where they sit, and
-"raw connection in a test" flagged 46 sites in bulbul of which every one is
+9/9 single-use test doubles in one first-party repo that are idiomatic where
+they sit, and "raw connection in a test" flagged 46 sites in another of which every one is
 already an intentional exemption (store tests asserting DB state, pool-lifecycle
 tests, retention tests where physical deletion is the subject). SARJ036
 `no-raw-sql-in-tests` remains the corpus-validated shared rule for raw SQL in
@@ -285,11 +287,11 @@ an omitted filter.
 
 Measured before shipping: **0 findings across 26,345 files** of pydantic, trio,
 attrs, Airflow and Home Assistant — single-tenant codebases have no tenant
-column, so the rule is silent by construction — and 0 in noura-be, ai, kpi-hub
-and demo-gateway. In bulbul it finds 10 sites, all genuine fail-open
+column, so the rule is silent by construction — and 0 across four other
+first-party repos. In the fifth it finds 10 sites, all genuine fail-open
 compositions, two of which were reachable cross-tenant reads at the time of
-writing (`POST /v1/calls/list` and `POST /v1/calls/batch/list`, both of which
-composed `WHERE 1=1` for a user whose `organization_id` was NULL).
+writing (two paginated list endpoints, both of which composed `WHERE 1=1` for a
+user whose `organization_id` was NULL).
 
 ### Assertions that can never fail (0.23.0)
 
@@ -325,7 +327,7 @@ ran* — as is anything inside a pytest-benchmark test.
 
 Measured before shipping: **4 findings across 28,608 files** — 26,346 of
 pydantic, trio, attrs, Airflow and Home Assistant plus 2,262 first-party files
-in bulbul, noura-be, kpi-hub, ai and demo-gateway. All 4 are true positives
+across five first-party repos. All 4 are true positives
 (Home Assistant `tests/helpers/test_device_registry.py:3711` and `:3777`,
 `tests/components/emulated_hue/test_hue_api.py:1078`, Airflow
 `providers/apache/hdfs/.../log/test_hdfs_task_handler.py:170`); 0 false

@@ -99,8 +99,8 @@ def test_multi_line_comment_run_is_a_paragraph():
 
 
 def test_data_declaration_is_a_labelled_group_not_narration():
-    # digital-bank/banking-be/banking_api/core/enums.py:35 — `# Profile` sits
-    # between `# MFA/OTP` and `# Account` labelling one enum member each.
+    # One first-party enum module — `# Profile` sits between `# MFA/OTP` and
+    # `# Account`, labelling one enum member each.
     assert _check('class E:\n    # profile not found\n    PROFILE_NOT_FOUND = "PROFILE_NOT_FOUND"\n') == []
 
 
@@ -163,7 +163,7 @@ def test_negation_in_the_code_makes_a_positive_comment_informative(code: str):
 @pytest.mark.parametrize(
     "comment",
     [
-        "update last login (PROD-249)",
+        "update last login (PROJ-249)",
         "update last login — see https://example.com/docs",
         "update last login every 30 seconds",
         "update last login because the session store is authoritative",

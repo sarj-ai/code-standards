@@ -239,9 +239,9 @@ def _handler_service(parameter: str) -> str:
     ],
 )
 def test_route_handler_signatures_suppress(parameter: str) -> None:
-    # summer's `ReceiptService` is `ReceiptRouter`'s body: a router that happens to be
-    # named `*Service`, so the name gate cannot see it. An ABC over an HTTP boundary
-    # substitutes nothing.
+    # A first-party `ReceiptService` is `ReceiptRouter`'s body: a router that happens
+    # to be named `*Service`, so the name gate cannot see it. An ABC over an HTTP
+    # boundary substitutes nothing.
     assert _check(_handler_service(parameter)) == []
 
 
@@ -996,7 +996,7 @@ def test_library_path_fires() -> None:
 
 
 def test_module_with_a_main_guard_is_a_program() -> None:
-    # bulbul's `LogtoAdminClient` lives in an argparse provisioning script that
+    # A first-party `AdminApiClient` lives in an argparse provisioning script that
     # nothing imports; there is no consumer to decouple.
     program = (
         f'{_SERVICE}\n\ndef main() -> None:\n    ThingService(store=None)\n\n\nif __name__ == "__main__":\n    main()\n'

@@ -27,14 +27,14 @@
  * four branches. This matches the one-report-per-loop policy `no-sequential-await`
  * already follows.
  *
- * EXEMPTION — AN ACCUMULATOR DECLARED INSIDE THE LOOP BODY (bulbul PR #4111).
+ * EXEMPTION — AN ACCUMULATOR DECLARED INSIDE THE LOOP BODY, from a first-party
+ * review regression.
  * The O(n^2) claim requires the accumulator to survive across iterations. A
  * `let s = "..."` declared *inside* the body is rebound to a fresh string every
  * pass, so the `+=` runs a bounded number of times on a string that is discarded
  * at the end of the iteration — there is no quadratic growth for `join` to
  * remove, and the parts are typically already being collected into an array.
- * Evidence:
- * `typescript/packages/app/src/lib/lexical/plugins/utils/serializes-state-to-text.ts:16`,
+ * Evidence: one first-party editor-serializer site,
  * where `let sectionText = \`## ${…}\`` is declared in the body, appended to at
  * most once behind an `if (body)`, and then pushed onto `textParts` for a
  * `textParts.join()` after the loop. The disable there reads "single conditional
@@ -283,7 +283,7 @@ export default ESLintUtils.RuleCreator(
         // The O(n^2) claim requires the accumulator to SURVIVE across iterations.
         // One declared inside the loop body is a fresh string every pass, so its
         // length is bounded by one iteration's work and `join` cannot replace it.
-        // See @fileoverview for the PR #4111 evidence.
+        // See @fileoverview for the first-party regression evidence.
         if (isDeclaredInsideLoop(variable, loop)) {
           return;
         }

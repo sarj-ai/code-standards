@@ -42,7 +42,8 @@
  * missing in another. `%s` is inert in TypeScript today; it is present so the
  * three patterns are literally identical and a diff between them is a bug.
  * Corpus delta here: 0 findings before and after over 748 first-party TS/TSX
- * files (bulbul `typescript/` + `sdks/typescript`, noura-fe).
+ * files (the `typescript/` and `sdks/typescript` trees of one repo, plus one
+ * front-end repo).
  */
 
 import { ESLintUtils, type TSESTree } from "@typescript-eslint/utils";

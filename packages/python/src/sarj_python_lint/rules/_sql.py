@@ -38,13 +38,13 @@ def is_store_module(path: Path) -> bool:
     the per-test database reset provides). Raw SQL in tests already has its own
     rule, SARJ036 no-raw-sql-in-tests, which judges it on test-appropriate terms.
 
-    Evidence, bulbul PR #4111 (all suppressed at PR head, none a defect):
-      - SARJ020 `python/bulbul/tests/store/test_batch_call_store.py:2092`, `:2538`
-        ("test assertion count over per-test fixture rows"),
-        `python/bulbul/tests/store/test_global_prompt_store.py:67`
-        ("test asserts exactly one row exists after the upsert").
-      - SARJ018 `python/bulbul/tests/store/test_sip_connection_store.py:37`
-        (`_insert_test_provider` seeding one `phone_provider` row per test).
+    Evidence from a first-party review regression (all suppressed at PR head,
+    none a defect):
+      - SARJ020, three sites across two store test modules — two counting rows
+        ("test assertion count over per-test fixture rows") and one asserting
+        exactly one row exists after an upsert.
+      - SARJ018, one site where a seed helper inserts a single provider row per
+        test.
 
     Returns:
         True when `path` belongs to the store layer.

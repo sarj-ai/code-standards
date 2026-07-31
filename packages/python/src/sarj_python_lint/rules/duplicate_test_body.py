@@ -60,11 +60,12 @@ and `assert normalize_email(x)` are different shapes; `assert f(x) == CANONICAL`
 and `assert f(x) == LEGACY` are different shapes. Only a difference that a
 `parametrize` argument could actually carry is erased.
 
-Corpus evidence. Measured over five populations — bulbul (3,472 substantive test
-functions), noura-be (2,307), django (13,499), fastapi (2,076), celery (2,692) —
-holding the group threshold at 2:
+Corpus evidence. Measured over five populations — repo A (3,472 substantive test
+functions), repo B (2,307), django (13,499), fastapi (2,076), celery (2,692) —
+holding the group threshold at 2 (repo labels are stable within this docstring
+only):
 
-    bulbul 61 (1.8% of its tests)   noura-be 33 (1.4%)   django 0
+    repo A 61 (1.8% of its tests)   repo B 33 (1.4%)   django 0
     fastapi 387 (18.6%)             celery 40 (1.5%)
 
 Before the `unittest.TestCase` guard the same run fired 983 times; that one
@@ -73,16 +74,14 @@ manual sample spread across all five corpora then classified 21 true positives
 and 0 false positives, and it turned up five *byte-for-byte* duplicate tests
 that are latent bugs rather than mere noise:
 
-* `bulbul/python/agent/tests/test_agent_tools.py:2785` —
-  `test_handles_none_activity_without_error` never sets up an activity, so it is
-  literally `test_sets_session_stt` under a different name and asserts nothing
-  about the None-activity path it is named for,
-* `bulbul/python/bulbul/tests/store/test_custom_scenario_store.py:461` —
-  `test_superadmin_can_delete_any_scenario` is `test_delete_scenario` verbatim,
-  with no superadmin actor anywhere in it,
-* `bulbul/python/agent/tests/test_custom_api_tool.py:876` — `test_roundtrip_list`
-  repeats `test_list_of_strings_roundtrip` with the locals renamed, which is the
-  case the local-name canonicalization exists to catch,
+* one repo A site — a test named for a None-input edge case never sets that
+  input up, so it is byte-for-byte its sibling happy-path test under a different
+  name and asserts nothing about the path it is named for,
+* a second repo A site — `test_superadmin_can_delete_any_record` is
+  `test_delete_record` verbatim, with no superadmin actor anywhere in it,
+* a third repo A site — a list round-trip test repeats an earlier round-trip
+  test with the locals renamed, which is the case the local-name
+  canonicalization exists to catch,
 * `fastapi/tests/test_compat.py:118` — the "pipe union" variant of
   `test_serialize_sequence_value_with_optional_list` uses the same
   `list[str] | None` annotation as the test it is supposed to contrast with,
@@ -107,9 +106,9 @@ Until then the honest statement is that this rule is noisy on literal-driven
 suites, not that fastapi is unusual.
 
 Reporting is **one diagnostic per group**, placed on the group's first copy, not
-one per copy. `vb-landing/agent/tests/test_text_chunker.py` emitted eight
-diagnostics all naming `test_split_at_period` as the original — eight findings
-for one `parametrize` refactor, which reads as eight problems.
+one per copy. One first-party test module emitted eight diagnostics all naming
+the same first copy as the original — eight findings for one `parametrize`
+refactor, which reads as eight problems.
 
 A group whose members are **byte-for-byte identical** gets a different message,
 because there is no varying argument to lift into a `parametrize` column: the
@@ -125,14 +124,14 @@ Deliberately NOT flagged:
   `prefer-or-pattern`**, which suppresses on exactly this signal for `match`
   arms; the two took opposite positions on the same question until this guard
   was ported across, since an earlier design stripped the docstring before
-  comparing. SARJ070's guard is measured on two independent sites —
-  `bulbul/python/webserver/webserver/services/analytics_service.py:172`
-  (`# 7 data points` / `# 30-31 data points`) and litellm's
+  comparing. SARJ070's guard is measured on two independent sites — one
+  first-party site where two `case` arms have identical bodies but differing
+  trailing comments (`# 7 data points` / `# 30-31 data points`) and litellm's
   `user_api_key_auth_mcp.py:776` (`# Unreachable: kept for match exhaustiveness`)
   — and on this repo's own suite 29 of 125 findings paired tests whose differing
   documentation is provenance no `ids=` could carry: two different corpus
   citations (`tests/rules/test_over_mocked_test.py:788` and `:797`, one citing
-  celery and one bulbul), or two regression pins naming the separate historical
+  celery and one a first-party repo), or two regression pins naming the separate historical
   bugs they hold down (`packages/iac/tests/rules/test_require_deletion_protection.py:192`
   and `:286`). Identical documentation on both members still groups them,
 

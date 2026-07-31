@@ -248,7 +248,7 @@ async def delete_org(org_id: str):
 def test_skips_test_files():
     src = "def f() -> dict[str, Any]:\n    return {'id': 1}\n"
     assert _check(src, path="test_calls.py") == []
-    assert _check(src, path="python/bulbul/tests/helpers.py") == []
+    assert _check(src, path="python/app/tests/helpers.py") == []
 
 
 def test_skips_overload_stubs():
@@ -650,7 +650,7 @@ def test_syntax_errors_return_empty(src: str):
     [
         "test_calls.py",
         "tests/test_calls.py",
-        "python/bulbul/tests/helpers.py",
+        "python/app/tests/helpers.py",
         "a/tests/b/c.py",
         "tests/conftest.py",
     ],

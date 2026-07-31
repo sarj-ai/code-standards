@@ -758,21 +758,21 @@ except ValueError:
 
 
 # --------------------------------------------------------------------------- #
-# bulbul PR #4111 regressions: observability statements are free.               #
+# First-party review regressions: observability statements are free.             #
 #                                                                               #
 # Success-path bookkeeping — a logger call, a Prometheus/statsd/OTel recorder,   #
 # a monotonic clock read, a value-shaping builtin in a log argument — does not   #
 # obscure which statement the handler was written for, and cannot be hoisted     #
 # out of the try without running on the except path. The rule was demanding a    #
-# change that could not be made, which is why both cache_primer sites suppressed #
-# it with "success-only bookkeeping ... must stay inside try".                   #
+# change that could not be made, which is why both cache-priming sites           #
+# suppressed it with "success-only bookkeeping ... must stay inside try".        #
 # --------------------------------------------------------------------------- #
 
 
-def test_cache_primer_shape_is_clean():
+def test_cache_priming_shape_is_clean():
     """One real await plus four instrumentation statements.
 
-    Evidence: bulbul `python/agent/agent/lk/cache_primer.py:110` (5 counted).
+    Evidence: one first-party cache-priming site (5 counted).
     """
     src = """
 start_time = time.monotonic()
@@ -781,8 +781,8 @@ try:
         break
 
     elapsed = time.monotonic() - start_time
-    cache_primer_total.labels(result="success", phase="scenario").inc()
-    cache_primer_duration.labels(phase="scenario").observe(elapsed)
+    cache_warm_total.labels(result="success", phase="scenario").inc()
+    cache_warm_duration.labels(phase="scenario").observe(elapsed)
     logger.info(
         "[CACHE] Primed LLM cache (scenario)",
         prefix_length=len(prefix),
@@ -794,21 +794,21 @@ except Exception:
     assert _check(src) == []
 
 
-def test_cache_primer_static_shape_is_clean():
+def test_cache_priming_static_shape_is_clean():
     """Two real awaits plus four instrumentation statements.
 
-    Evidence: bulbul `python/agent/agent/lk/cache_primer.py:47` (6 counted).
+    Evidence: a second first-party cache-priming site (6 counted).
     """
     src = """
 try:
-    static_prompt = await global_prompt_service.get_static_prompt(language=language)
+    static_prompt = await global_config_service.get_static_prompt(language=language)
 
     async for _ in llm.chat(chat_ctx=ctx):
         break
 
     elapsed = time.monotonic() - start_time
-    cache_primer_total.labels(result="success", phase="static").inc()
-    cache_primer_duration.labels(phase="static").observe(elapsed)
+    cache_warm_total.labels(result="success", phase="static").inc()
+    cache_warm_duration.labels(phase="static").observe(elapsed)
     logger.info("[CACHE] Primed", prompt_length=len(static_prompt))
 except Exception:
     logger.warning("failed")
@@ -816,10 +816,10 @@ except Exception:
     assert _check(src) == []
 
 
-def test_tool_builder_shape_is_clean():
+def test_builder_shape_is_clean():
     """Three real statements plus a trailing logger.info.
 
-    Evidence: bulbul `python/agent/agent/lk/builder/tool_builder.py:118` (4 counted).
+    Evidence: one first-party tool-builder site (4 counted).
     """
     src = """
 try:
@@ -911,9 +911,9 @@ except ValueError:
 
 
 def test_genuinely_fat_try_still_fires():
-    """The 16-statement code_switching block must remain a finding.
+    """The 16-statement first-party handler block must remain a finding.
 
-    Evidence: bulbul `python/agent/agent/lk/agent_tools/meta/code_switching.py:154`.
+    Evidence: one first-party site, 16 statements under a single `try`.
     """
     src = """
 try:

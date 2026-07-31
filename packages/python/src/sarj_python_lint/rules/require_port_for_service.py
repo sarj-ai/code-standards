@@ -1,6 +1,6 @@
 """SARJ071: a concrete service with injected collaborators and no ABC above it is not substitutable.
 
-`class ZohoDeskService:` that takes a `ZohoDeskDAO` in its constructor and exposes
+`class TicketingService:` that takes a `TicketingDAO` in its constructor and exposes
 five public methods is a seam that cannot be moved. Every consumer has to name the
 concrete class in its own annotations, so the only way to test a consumer is to
 `patch` the class or hand it a `MagicMock` — which is the disease the SARJ058 /
@@ -12,38 +12,39 @@ to be patched.
 
 **What this rule is, given the evidence.** An earlier version of this docstring said the
 rule "flags stragglers against an established convention" and quoted 89% adoption. That
-number was bulbul's, and the convention it describes is bulbul's. Counting public,
+number was one repo's — repo C in the table below — and the convention it
+describes is repo C's. Counting public,
 non-test classes whose name ends in a service-family token (`*Service`, `*Store`,
 `*DAO`, `*Gateway`, `*Provider`) and asking how many have no base class at all, across
 every first-party Python repo on the machine:
 
 | repo | service-family classes | no base | already have a base |
 |---|---|---|---|
-| faris | 16 | 0 | 100% |
-| docs | 12 | 0 | 100% |
-| bulbul | 140 | 8 | 94% |
-| summer | 18 | 1 | 94% |
-| bell | 23 | 4 | 83% |
-| ai | 14 | 3 | 79% |
-| noura-be | 26 | 8 | 69% |
-| tahded | 4 | 2 | 50% |
-| digital-bank | 26 | 16 | 38% |
+| repo A | 16 | 0 | 100% |
+| repo B | 12 | 0 | 100% |
+| repo C | 140 | 8 | 94% |
+| repo D | 18 | 1 | 94% |
+| repo E | 23 | 4 | 83% |
+| repo F | 14 | 3 | 79% |
+| repo G | 26 | 8 | 69% |
+| repo H | 4 | 2 | 50% |
+| repo I | 26 | 16 | 38% |
 
-(submissions is absent because it has no service-family classes at all.)
+(Repo labels are stable within this docstring only. A tenth first-party repo,
+repo J, is absent from the table because it has no service-family classes at all.)
 
-bulbul is where the convention is strongest and where the rule was written; it is not
-where the findings are. **`digital-bank` alone accounts for 15 of the 30 first-party
-findings** — `banking_api/modules/{card,auth,bank,transfer,mfa,beneficiary,account,
-onboarding}/{store,service}.py`, uniformly `class XStore: def __init__(self, pool:
-AsyncConnectionPool)` paired with `class XService: def __init__(self, store: XStore)`,
+repo C is where the convention is strongest and where the rule was written; it is not
+where the findings are. **repo I alone accounts for 15 of the 30 first-party
+findings** — eight feature modules, each a `class XStore: def __init__(self, pool:
+AsyncConnectionPool)` paired with a `class XService: def __init__(self, store: XStore)`,
 no base anywhere. Every one is a true positive by this rule's definition — nothing in
 that service layer is substitutable, and its tests can only mock — but they are not
 stragglers behind a local convention. They are the repo's architecture.
 
 So the framing the data supports is: **this rule reports service layers with no seam.**
-Where ports are already the norm (faris, docs, bulbul, summer) the output is a short
-list of exceptions and reads as "you missed these". Where they are not (digital-bank,
-tahded, noura-be) the output is a description of the design, and the response owed is a
+Where ports are already the norm (repos A, B, C and D) the output is a short
+list of exceptions and reads as "you missed these". Where they are not (repos I,
+H and G) the output is a description of the design, and the response owed is a
 decision about the design, not eight small refactors. Turning the rule on in a new repo
 should start with the count, not with the diff.
 
@@ -66,10 +67,10 @@ the contradiction is resolved here, in one clause of this rule's message. Note t
 carve-out is advice only — it changes no finding in any corpus.
 
 The port mechanism these repos reach for is `abc.ABC` rather than `typing.Protocol`, by
-150 classes to 23 (bulbul 117/13, noura-be 33/10), so the message names `abc.ABC`
+150 classes to 23 (repo C 117/13, repo G 33/10), so the message names `abc.ABC`
 first. It names `Protocol` as the alternative and cites no repo's class names: the rule
 also runs on code that has never seen this codebase, and "follow the convention used for
-`TaskStore` / `PsqlTaskStore`" is not an instruction litellm can act on.
+`OrderStore` / `PsqlOrderStore`" is not an instruction litellm can act on.
 
 Fires when ALL of these hold:
 
@@ -97,15 +98,15 @@ Fires when ALL of these hold:
   default.
 
 Corpus evidence. Measured over **42,996 files in twenty-four repositories**. Ten
-first-party — bulbul (1,179), noura-be (502), digital-bank (267), submissions (194), ai
-(179), tahded (88), summer (81), docs (76), faris (67), bell (42), 2,675 files — and
+first-party — repo C (1,179), repo G (502), repo I (267), repo J (194), repo F
+(179), repo H (88), repo D (81), repo B (76), repo A (67), repo E (42), 2,675 files — and
 fourteen open-source: airflow (7,655), dagster (5,982), litellm (5,054), saleor (4,301),
 django (2,927), mlflow (2,594), langchain (2,536), superset (2,440), zulip (2,012),
 prefect (1,887), fastapi (1,130), warehouse (888), sentry-python (498), celery (417),
 40,321 files.
 
-**Thirty-two findings**: 30 first-party — digital-bank 15, bulbul 5, bell 4, noura-be 3,
-ai 3, and zero in submissions, faris, docs, tahded and summer — and **2 in the 40,321
+**Thirty-two findings**: 30 first-party — repo I 15, repo C 5, repo E 4, repo G 3,
+repo F 3, and zero in repos J, A, B, H and D — and **2 in the 40,321
 open-source files**, both in litellm, with zero in the other thirteen, django and
 fastapi among them. Candidate hits were read at source across successive tightenings and
 classified by hand; the survivors are 31 true positives by the rule's own definition and
@@ -123,15 +124,15 @@ rejected. warehouse alone contributes 25 of those 59 and loses every one of them
 Every threshold was re-measured against these 42,996 files rather than carried over:
 
 * public-method floor **1**: 32 -> 42 findings, +10 and -0. Five of the additions are
-  first-party one-method wrappers — `TranslationService` in both noura-be and
-  digital-bank, noura-be's `EmailService`, bulbul's `VoicePreviewService`, tahded's
+  first-party one-method wrappers — `TranslationService` in both repo G and
+  repo I, repo G's `EmailService`, repo C's `MediaPreviewService`, repo H's
   `ModelService` — and five are OSS. A one-method class is a function in a trenchcoat
   and an ABC over it is ceremony,
 * public-method floor **2** (shipped): 32 findings,
 * floor **3**: 32 -> 23, +0 and -9. It removes the one known false positive
-  (`LazyPerUserOAuthTokenStore`) at a cost of eight true positives: all four of bell's
-  `*ProvisioningService`s, digital-bank's `AuthService` and `MfaService`, and bulbul's
-  `ScenarioGenerationService` and `ZohoOAuthService`. Not a trade worth making,
+  (`LazyPerUserOAuthTokenStore`) at a cost of eight true positives: all four of repo E's
+  `*ProvisioningService`s, repo I's `AuthService` and `MfaService`, and repo C's
+  `ReportGenerationService` and `VendorOAuthService`. Not a trade worth making,
 * adding **`Client`** to the name gate: 32 -> 39. All seven additions are OSS and all
   are the vendor-SDK-wrapper family — airflow's `Client`, dagster's `GithubClient`,
   `ClaudeSDKClient` and `DagsterCloudAgentHttpClient`, litellm's `PrismaClient` and
@@ -142,7 +143,7 @@ Every threshold was re-measured against these 42,996 files rather than carried o
   findings, because no first-party repo names a class `*Repository` at all,
 * adding **`Manager`/`Adapter`/`Handler`/`Router`**: 32 -> 58, +26, ten of them
   first-party and every one of those a FastAPI router (`OrganizationRouter`,
-  `SipConnectionRouter`, `PhoneNumberRouter`, `SallaRouter`, `CustomScenarioRouter`), a
+  `SipConnectionRouter`, `PhoneNumberRouter`, `CommerceRouter`, `CustomRecordRouter`), a
   lifecycle helper (`IntegrationsManager`, `RunManager`, two `AgentStateManager`s) or
   `ChatAdapter`. This is the widening the route-handler guard below exists to survive,
 * adding **`Proposer`/`Processor`**: 32 -> 33 — see the false-negative note at the end,
@@ -159,20 +160,18 @@ Deliberately NOT flagged:
   It costs recall (a concrete service that subclasses another concrete service is not
   flagged) and buys a whole category of false positives never happening,
 * **`@dataclass` and `@attrs.define` classes.** They are records, and the two in the
-  corpus that reach every other gate (`Client` and `AuthenticatedClient`,
-  `bulbul/python/platform_client/platform_client/client.py:12`) are generated OpenAPI
+  corpus that reach every other gate (`Client` and `AuthenticatedClient`, in a
+  first-party generated OpenAPI client package) are generated OpenAPI
   transport structs,
-* **FastAPI routers, middleware, and DI wiring.** `OrganizationRouter`
-  (`webserver/webserver/organization_router.py:54`) injects seven stores and
-  `SipConnectionRouter` (`webserver/webserver/routers/sip_connection_router.py:191`)
+* **FastAPI routers, middleware, and DI wiring.** One first-party
+  `OrganizationRouter` injects seven stores and its
+  `SipConnectionRouter`
   injects seven services — they are the composition root, the place concrete types are
   *supposed* to be named, and putting an ABC over an HTTP router substitutes nothing.
-  Same for `AuthorizationMiddleware`
-  (`webserver/webserver/middleware/authorization_middleware.py:13`). The name gate
+  Same for the same repo's `AuthorizationMiddleware`. The name gate
   excludes all six routers plus the middleware,
 * **routers that call themselves services**, which the name gate cannot help with.
-  summer's `ReceiptService`
-  (`sarj/applications/receipts/receipt_service.py:42`) is `ReceiptRouter`'s body: its
+  repo D's `ReceiptService` is `ReceiptRouter`'s body: its
   two public methods are the route handlers, taking `Request`, `BackgroundTasks`,
   `Annotated[list[str] | None, Header()]` and `Annotated[UploadFile, File()]`, and
   `ReceiptRouter.get_router` forwards to them argument for argument. A signature
@@ -184,8 +183,8 @@ Deliberately NOT flagged:
   repo. Only the *call* form of `Path`/`File` counts, so `path: Path` stays a value and
   `Annotated[str, Path()]` is a route; and only public methods are consulted, so a
   private `_log(self, request: Request)` helper does not exempt a real service,
-* **entry-point scripts.** `LogtoAdminClient`
-  (`webserver/webserver/scripts/logto_provision.py:139`) passes every shape test — an
+* **entry-point scripts.** One first-party `AdminApiClient`
+  in a provisioning script passes every shape test — an
   injected `httpx.Client`, four public methods, no base — and was a measured false
   positive. It is a class inside a one-file `argparse` provisioning script that
   nothing imports, so there is no consumer to decouple. A module with a
@@ -203,7 +202,7 @@ Deliberately NOT flagged:
   declared in the same module is a value, not a port,
 * **private classes.** A leading underscore says nobody outside the module injects it,
 * **test files and shared test doubles** (`tests/`, `conftest.py`, `testing/`,
-  `fakes/`, `mock*.py`), which is what keeps the rule off noura-be's
+  `fakes/`, `mock*.py`), which is what keeps the rule off a first-party
   `common/testing/llm_judge.py`, and **generated code**,
 * **classes that are already abstract without saying so** — any `@abstractmethod` or
   `@overload` in the body, or a class-level `@implementer(IThingService)`. warehouse
@@ -217,7 +216,7 @@ Deliberately NOT flagged:
 * **structural `Protocol` conformance.** `typing.Protocol` is structural, so a class
   can satisfy a port without inheriting it, and a rule that demanded *nominal*
   inheritance would be wrong on every Protocol-first codebase. litellm spells this the
-  way this codebase spells `PsqlTaskStore` : `TaskStore` — `CachedOAuthTokenStore`
+  way this codebase spells `PsqlOrderStore` : `OrderStore` — `CachedOAuthTokenStore`
   satisfies `class OAuthTokenStore(Protocol)` declared in the same module — so a class
   whose name is a qualified form of a service-shaped name already in scope (defined or
   imported) is exempt. This is the rule's known limit: litellm's
@@ -276,7 +275,7 @@ if TYPE_CHECKING:
 # Name tails that mark a class as a service in this codebase's own vocabulary. Measured
 # across ten first-party repos: 279 public non-test classes match, 42 of them with no
 # base class — see the per-repo spread in the module docstring, which varies from 100%
-# adoption (faris, docs) to 38% (digital-bank).
+# adoption (repos A and B) to 38% (repo I).
 # Case-sensitive CamelCase tails, so `Restore`, `Bookstore` and `Rediscover` miss.
 # `Manager`, `Adapter`, `Builder`, `Router` and `Middleware` are deliberately absent —
 # adding them turned six FastAPI routers and two LiveKit lifecycle helpers into hits.
@@ -494,7 +493,7 @@ def _has_main_guard(tree: ast.Module) -> bool:
 
     A top-level `if __name__ == "__main__":` marks a program. Its classes are
     wiring for one process, not a seam other modules depend on — the rule's one
-    measured false positive, `LogtoAdminClient`, was exactly this.
+    measured false positive, `AdminApiClient`, was exactly this.
 
     Returns:
         True when a top-level `__main__` guard is present.
@@ -532,8 +531,7 @@ def _handles_http_requests(node: ast.ClassDef) -> bool:
     """Report whether the class's public methods are HTTP route handlers.
 
     The name gate can exclude `*Router`, but not a router that calls itself a
-    service — summer's `ReceiptService`
-    (`sarj/applications/receipts/receipt_service.py:42`) is `ReceiptRouter`'s body,
+    service — one first-party `ReceiptService` is `ReceiptRouter`'s body,
     and its two public methods take `Request`, `BackgroundTasks` and
     `Annotated[..., Header()]`. A signature written in a web framework's vocabulary
     is a transport boundary, not a port: an ABC over it substitutes nothing, because

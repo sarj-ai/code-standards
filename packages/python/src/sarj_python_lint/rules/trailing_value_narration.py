@@ -34,14 +34,14 @@ than none.
 
 A comment carrying a ticket or URL is exempt (protected-class signal S1).
 
-**Measured.** 19 hits across the maintained repos, 19 of 19 true positives —
-noura-be's `typescript/dashboard-fe/src/hooks/use-analytics.ts` alone holds 14
-`staleTime` lines, and `automations/apps/sarj-ai-worker/src/config.ts:3` carries
+**Measured.** 19 hits across the maintained repos, 19 of 19 true positives — one
+first-party dashboard's analytics hook alone holds 14
+`staleTime` lines, and an internal Workers repo's config module carries
 `export const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 90;  // 90 days`. TanStack
 Query adds 24 more of the same `gcTime: 1000 * 60 * 60 * 24, // 24 hours` idiom.
 
 Every one of those is TypeScript. **This Python rule ships with ZERO hits across
-bulbul, noura-be, pydantic, trio and attrs** — it is a ratchet against the shape
+two first-party repos, pydantic, trio and attrs** — it is a ratchet against the shape
 appearing, not a cleanup of one that has, and it is listed here rather than
 quietly dropped so the two languages cannot diverge on the same judgement.
 

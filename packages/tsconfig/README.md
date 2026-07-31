@@ -1,7 +1,7 @@
 # @sarj/tsconfig
 
 Hyper-modern, maximally-strict TypeScript configs for sarj-ai projects.
-Covers every type-safety flag in bulbul's `tsconfig.base.json` and `integration-client/tsconfig.json`. Per-project flags (`composite`, `noEmit`, `outDir`, `jsx`, `types`) and bundler-specific module resolution are intentionally omitted — see [What's NOT in the preset](#whats-not-in-the-preset-and-why) below.
+Covers every type-safety flag in the flagship first-party monorepo's `tsconfig.base.json` and in its published integration SDK's `tsconfig.json`. Per-project flags (`composite`, `noEmit`, `outDir`, `jsx`, `types`) and bundler-specific module resolution are intentionally omitted — see [What's NOT in the preset](#whats-not-in-the-preset-and-why) below.
 
 ## Requires
 
@@ -37,7 +37,7 @@ For libraries that need to be less strict (e.g. mid-migration), extend the base:
 
 ## What's enabled
 
-### `base.json` — modern defaults + bulbul-parity strict-safety
+### `base.json` — modern defaults + first-party-parity strict-safety
 
 **Module / target (TS 6 + Node 24 LTS):**
 
@@ -50,7 +50,7 @@ For libraries that need to be less strict (e.g. mid-migration), extend the base:
 - `esModuleInterop` / `allowSyntheticDefaultImports`
 - `resolveJsonModule: true`
 
-**Type-safety hygiene (matches bulbul base):**
+**Type-safety hygiene (matches the first-party base config):**
 
 - `strict: true`
 - `noUncheckedIndexedAccess: true` — `arr[0]` is `T | undefined`
@@ -123,6 +123,6 @@ Semver. Major-bump on TypeScript major releases (currently TS 6.x). The package 
 
 These configs were authored by comparing against:
 
-- bulbul's `tsconfig.base.json` (Next.js + lib monorepo baseline) and `integration-client/tsconfig.json` (published SDK)
+- a first-party `tsconfig.base.json` (Next.js + lib monorepo baseline) and the `tsconfig.json` of its published integration SDK
 - `@tsconfig/strictest`, `@total-typescript/tsconfig`, `sindresorhus/tsconfig`, `@swan-io/tsconfig`, `vercel/style-guide`
 - TypeScript handbook strict-mode reference and the full TS 5.0 → 6.0 changelog

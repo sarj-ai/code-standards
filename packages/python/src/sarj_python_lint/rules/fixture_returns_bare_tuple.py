@@ -39,9 +39,9 @@ Deliberately NOT flagged:
   syntactically distinct.** The rule's whole argument is that a reorder fails
   silently — and with distinct static types it does not: swapping the elements
   is a type error the checker reports at the call site, which is the same
-  protection a `NamedTuple` would buy. Found in bulbul PR #4111 on
-  `python/bulbul/bulbul/tests/fixtures/stores.py:421`, which returns
-  `-> tuple[PsqlOrganizationStore, PsqlUserStore]`. A repeated type
+  protection a `NamedTuple` would buy. Found in a first-party review regression
+  on a shared store-fixtures module, on a fixture returning
+  `-> tuple[PsqlOrderStore, PsqlWidgetStore]`. A repeated type
   (`tuple[str, str]`) still fires: there the reorder really is silent.
 """
 

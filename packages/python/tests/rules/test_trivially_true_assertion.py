@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Diagnostic
 
 
-TEST_PATH = "python/noura/tests/test_vb_auth_generic.py"
+TEST_PATH = "python/app/tests/test_auth_generic.py"
 
 
 def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
@@ -176,8 +176,8 @@ def test_the_same_two_echoes_split_across_two_tests_are_reported_twice():
 
 def test_an_honest_assertion_alongside_an_echo_does_not_suppress_the_echo():
     # A stricter collapse — flag only when *every* assertion in the test is
-    # trivial — was measured and costs 11 of bulbul's 17 findings, because one
-    # honest assertion surrounded by echoes is the common real shape.
+    # trivial — was measured and costs 11 of a first-party repo's 17 findings,
+    # because one honest assertion surrounded by echoes is the common real shape.
     src = """
     def test_thing(clock):
         payload = EncryptedPayload(jws_signature="sig-456")
@@ -188,8 +188,8 @@ def test_an_honest_assertion_alongside_an_echo_does_not_suppress_the_echo():
 
 
 def test_flags_identity_spelling_of_a_boolean_field():
-    # bulbul integration/tests/unit/test_verifier_base.py:31 —
-    # `assert result.passed is False` after `VerifyResult(passed=False, ...)`.
+    # A first-party integration test — `assert result.passed is False` after
+    # `VerifyResult(passed=False, ...)`.
     src = """
     def test_thing():
         result = VerifyResult(passed=False)
@@ -235,9 +235,9 @@ def test_flags_echoed_collection_and_signed_literals(literal: str):
     ids=["module-helper", "private-helper", "service-method", "factory-method"],
 )
 def test_a_function_that_maps_its_arguments_is_not_a_constructor(call: str):
-    # noura-be test_core_config.py:52 reads an env var back through
-    # pydantic-settings; test_bigquery_inline_service.py:534 checks a service
-    # echoes pagination into its response envelope. Both are real behaviour.
+    # One first-party test reads an env var back through pydantic-settings;
+    # another checks that a service echoes pagination into its response
+    # envelope. Both are real behaviour.
     field, value = ("ENV", "'staging'") if "ENV" in call else ("limit", "25")
     src = f"""
     def test_thing(service, factory):
@@ -288,7 +288,7 @@ def test_a_record_class_with_the_same_field_still_fires():
 
 
 def test_a_field_another_test_shows_coercing_is_exempt():
-    # bulbul tests/unit/test_gemini_settings.py — `model="lite"` is rewritten to
+    # A first-party settings test — `model="lite"` is rewritten to
     # "flash-lite-3.1", so `test_valid_model_unchanged` is the negative half of
     # a validator test and genuinely can fail.
     src = """
@@ -731,7 +731,7 @@ def test_fires_inside_a_test_class():
 
 
 def test_fires_inside_a_loop_body():
-    # bulbul tests/calls/test_batch_file_utils.py:1156 — the loop varies `name`,
+    # A first-party test site — the loop varies `name`,
     # so asserting the unvaried `phone_number` is still pure echo.
     src = """
     def test_thing(names):

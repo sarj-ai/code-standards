@@ -11,13 +11,14 @@ concurrent writes. A suite built on the dict is green by construction: it assert
 the fake behaves the way its author believed the database behaves. The bug is not
 caught in the test — it is *encoded* in it.
 
-The tell is that the fakes read like a second implementation. bulbul's
+The tell is that the fakes read like a second implementation. One first-party
 `InMemoryOrganizationStore` docstring says it "mirrors the PsqlOrganizationStore
 upsert" and hand-lowers domains "matching the real store's COALESCE/LOWER handling";
-`InMemoryUserStore` reproduces upsert-on-email conflict resolution in Python. Every
+its sibling `InMemoryUserStore` reproduces upsert-on-email conflict resolution in
+Python. Every
 line of that is a claim about SQL that nothing verifies. Both repos already run real
-Postgres in tests — bulbul has a `db_pool` fixture in `integration/tests/conftest.py`
-and test subclasses of `PsqlTaskStore` / `PsqlScenarioIssueStore` that inject faults
+Postgres in tests — one has a `db_pool` fixture in its integration `conftest.py`
+and test subclasses of `PsqlTaskStore` / `PsqlOrderStore` that inject faults
 into the *real* store — so the real thing is available and the pattern for using it is
 already established.
 
@@ -26,7 +27,8 @@ Fires when ALL of these hold:
 * the file is a test file or a test-double module — `tests/`, `conftest.py`, a
   `testing/` / `fakes/` / `mocks/` / `test_fakes/` directory, or a `fake*.py`,
   `mock*.py`, `stub*.py` stem. This deliberately reaches past `is_test_path`, which
-  misses noura-be's `common/testing/fakes.py` and bulbul's `webserver/test_fakes/`,
+  misses the shared first-party fake modules such as a `common/testing/fakes.py`
+  or a `test_fakes/` directory beside the web server,
 * the class name carries a test-double marker (`InMemory`, `Mock`, `Fake`, `Stub`,
   `Dummy`) as a prefix or suffix,
 * the class name ends in a persistence-port token (`Store`, `Repository`, `Repo`,
@@ -45,15 +47,15 @@ defect: a **hand-written class** whose name carries a double marker and a
 persistence-port tail. The other spelling — a `unittest.mock` object standing in for a
 port, `MagicMock(spec=AudioFileStore)` in a conftest or a bare `AsyncMock()` assigned
 into a worker's store slot by a factory — is invisible to it, because there is no class
-to name and no body to classify. The `ai` repo carries the defect in that form (roughly
-a hundred candidate sites) and this rule reports zero there. Reaching it needs
+to name and no body to classify. One first-party repo carries the defect in that form
+(roughly a hundred candidate sites) and this rule reports zero there. Reaching it needs
 type-directed resolution of what the mock is standing in for, which is a different rule;
 do not read a clean run as "no dict-backed ports here".
 
-Corpus evidence. Swept over 42,657 files in 19 repositories: bulbul
-(`/Users/nasrmaswood/code/bulbul/python`, 1,179 files, 6 hits), noura-be
-(`/Users/nasrmaswood/code/noura-be/python`, 502 files, 2 hits), digital-bank (267, 0),
-submissions (194, 0), ai (179, 0), and 40,336 files of mature OSS Python — airflow,
+Corpus evidence. Swept over 42,657 files in 19 repositories: five first-party repos —
+repo A (1,179 files, 6 hits), repo B (502 files, 2 hits), repo C (267, 0),
+repo D (194, 0), repo E (179, 0), labels stable within this docstring only — and
+40,336 files of mature OSS Python — airflow,
 dagster, litellm, saleor, django, mlflow, langchain, superset, zulip, prefect, fastapi,
 warehouse, sentry-python, celery — with **0 hits**. Exactly ten classes in the two
 first-party repos match the name gate; the body gates accept eight and reject two, and
@@ -65,7 +67,7 @@ corpus it fired five times and all five were false positives: langchain's shippe
 `InMemoryVectorStore`, litellm's `FakeRedisLockStore`, mlflow's
 `MockAbstractStore(AbstractStore)` and two airflow `FakeTaskStateStore`s. The two guards
 below — non-relational port qualifiers, and the port-under-test module — remove all five
-and cost nothing: bulbul stays at 6 and noura-be at 2.
+and cost nothing: repo A stays at 6 and repo B at 2.
 
 Deliberately NOT flagged:
 
@@ -76,37 +78,37 @@ Deliberately NOT flagged:
   `Queue` are deliberately absent from that token list. This was measured, not
   assumed: re-running the identical body gates with those five tails added produces
   three extra hits and all three are false positives — django's
-  `DummyStorage` (`tests/messages_tests/utils.py:4`), noura-be's
-  `FakeCache(CacheClient)` (`dashboard/tests/test_coalescing_cache.py:10`) and its
-  `FakeAgentSession` (`voice/tests/fakes.py:163`). A cache with no durability
+  `DummyStorage` (`tests/messages_tests/utils.py:4`), a first-party
+  `FakeCache(CacheClient)` and a first-party
+  `FakeAgentSession`. A cache with no durability
   contract, a message-storage backend and a live agent session are not stores,
-* **a double whose backing really is a real backend.** noura-be's
-  `MockDataStore` (`common/adapters/vision_bank/v2/mock_data_store.py:104`) is
+* **a double whose backing really is a real backend.** One first-party
+  `MockDataStore` in a third-party adapter package is
   named like a fake and lives under a `mock_*.py` stem, but it is a Redis-backed
   store of demo-mode session data — a shipped product feature, not a test double.
   It binds `self.cache = cache_client` and every method goes through it, so the
   container-literal requirement rejects it. This is the guard that keeps the rule
   off "mock mode" features,
-* **recording spies and canned-response doubles.** bulbul's
-  `FakeAnalyticsStore` (`webserver/tests/fakes/analytics_fakes.py:26`) holds
-  `self.kpi_calls: list[...] = []` and `self._kpi_returns`, so it is superficially
+* **recording spies and canned-response doubles.** One first-party
+  `FakeAnalyticsStore` holds
+  `self.metric_calls: list[...] = []` and `self._metric_returns`, so it is superficially
   list-backed — but each list is touched by exactly one method: it records the call
   and replays a canned row. Nothing is stored and read back, so there is no second
   implementation of the port to diverge. Requiring a writer method and a *distinct*
   reader method is what separates "keeps the rows" from "remembers the call", and it
   is why `__init__` is excluded from the writers,
-* **the never-touched port.** bulbul's `_UnusedTaskStore(TaskStore)`
-  (`integration/tests/router/test_mcp_discovery.py:44`) raises `NotImplementedError`
+* **the never-touched port.** One first-party `_UnusedTaskStore(TaskStore)`
+  in a route-discovery test raises `NotImplementedError`
   from *every* method, which is an assertion that route discovery never invokes a
   handler. That is good practice, so the hollow shape additionally requires at least
   one live method,
-* **fault injectors built on the real store.** `DeadlockOnMergeScenarioIssueStore(
-  PsqlScenarioIssueStore)`, `RaisingCreateTaskStore(PsqlTaskStore)`,
-  `_GatedAgentProfileStore(PsqlAgentProfileStore)` — a subclass of a `Psql*` /
+* **fault injectors built on the real store.** `DeadlockOnMergeOrderStore(
+  PsqlOrderStore)`, `RaisingCreateTaskStore(PsqlTaskStore)`,
+  `_GatedUserProfileStore(PsqlUserProfileStore)` — a subclass of a `Psql*` /
   `ClickHouse*` / `Redis*` / `Gcs*` base already drives the real implementation and
   only overrides the failure it wants. Any such base suppresses the diagnostic,
 * **ports that are not persistence.** `MockMessageEnqueuer`, `FakeEventPublisher`,
-  `FakeClerk`, `FakeSallaAPIService`, `StubVerifier` — a queue, a pub/sub topic and a
+  `FakeClerk`, `FakeCommerceAPIService`, `StubVerifier` — a queue, a pub/sub topic and a
   third-party HTTP API have no SQL implementation to prefer, and an in-memory double
   of them is the right call. Only `Store`/`Repository`/`Repo`/`Dao`/`Db`/`Database`
   tails fire; `Client`, `Service`, `Api`, `Gateway`, `Publisher`, `Enqueuer` and
@@ -125,7 +127,7 @@ Deliberately NOT flagged:
   `Vector`, `Lock` and `State` are the ones the corpus exercises; the rest are there
   because the same argument applies to them, and all ten together cost zero first-party
   hits. `Key` and `Object` are deliberately absent: adding them was measured and it
-  kills bulbul's `InMemoryApiKeyStore` and `InMemoryObjectStore`, both true positives,
+  kills a first-party `InMemoryApiKeyStore` and `InMemoryObjectStore`, both true positives,
 * **the port under test.** mlflow's `MockAbstractStore(AbstractStore)` lives in
   `tests/store/model_registry/test_abstract_store.py`: it is the minimal concrete
   subclass needed to exercise the ABC's template methods, and the ABC is the system
@@ -136,7 +138,7 @@ Deliberately NOT flagged:
   live in files that import the port and nothing else,
 * **abstract bases, `Protocol`s and `TypedDict`s**, and any class with an
   `@abstractmethod` — those are the port, not a re-implementation of it,
-* **null objects.** `NullUpsertCredentialStore`, `NoopStore` — the null-object pattern
+* **null objects.** `NullUpsertTokenStore`, `NoopStore` — the null-object pattern
   is a deliberate no-op, not a claim to behave like the database, so `Null` and `Noop`
   are not double markers here.
 

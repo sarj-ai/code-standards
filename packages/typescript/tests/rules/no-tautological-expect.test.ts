@@ -97,9 +97,9 @@ ruleTester.run("no-tautological-expect", rule, {
   invalid: [
     // --- The three known real hits, verbatim. ---
     {
-      filename: "/repo/apps/internal-automations/test/handler.test.ts",
+      filename: "/repo/apps/worker/test/handler.test.ts",
       code: [
-        "it('disambiguates a customer bridge', () => {",
+        "it('disambiguates a customer record', () => {",
         "  expect(true).toBe(true); // placeholder",
         "});",
       ].join("\n"),

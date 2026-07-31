@@ -27,7 +27,7 @@ readability audit, not this rule):
    write one. TS measured this first on a 42k-LOC codebase: 11 of 15 hits were
    the repo's best documentation and exactly 1 was genuine (an ASCII banner
    `sectionBanner` already covers). Python shipped the naive test for longer, and
-   re-measuring it in 2026-07 over bulbul + noura-be + django/fastapi/celery
+   re-measuring it in 2026-07 over two first-party repos + django/fastapi/celery
    reproduced the same result even more starkly: **7 hits, 7 false positives,
    0 true positives.** Every one was a prose header a module docstring should
    simply absorb, not delete:
@@ -112,19 +112,18 @@ no-space-around-`=` shape would have taken 9 genuinely dead lines with it
 
 Two live false positives were found by running the shipped rule over the
 corpus and are fixed here:
-- the region check matched the bare WORD `region`, so
-  `# region, sector AND facility_type are HARD constraints when the investor
-  names them — ...` (demo-gateway/demos/momah-furas-anas/pipeline/matching.py:159,
-  plus six TypeScript siblings) read as a folding marker. It now requires the
-  marker SHAPE: no title, or a short unpunctuated one.
+- the region check matched the bare WORD `region`, so a prose comment opening
+  `# region, sector and type are HARD constraints when ...` (one first-party
+  site, plus six TypeScript siblings) read as a folding marker. It now requires
+  the marker SHAPE: no title, or a short unpunctuated one.
 - `for now` fired on a ticket-bearing scoping note. A comment naming where the
   decision is recorded is doing the one thing code cannot, so protected-class
   signal S1 (ticket / URL / RFC / issue number) now exempts narration — at RUN
   granularity, because a scoping note puts its owner on the last line.
 
-Extensions added in the same pass, each measured ZERO-hit on bulbul (which
-enforces this rule at `error`, so an extension that fires there would break a
-consumer's CI on a patch release):
+Extensions added in the same pass, each measured ZERO-hit on the first-party
+repo that enforces this rule at `error` (an extension that fires there would
+break a consumer's CI on a patch release):
 - bare one-word section labels from a closed vocabulary (`# Constants`,
   `# Helpers`, `# Types`) — 22 corpus hits, 12 of 12 sampled were true;
 - the `Helper function to ...` opener — 6 of 6;
@@ -200,9 +199,8 @@ _BANNER_RUN_RE = re.compile(r"={4,}|-{4,}|#{4,}|\*{4,}|~{4,}|[\u2500-\u257f]{4,}
 # A VS Code / Visual Studio folding marker: `# region`, `# region helpers`,
 # `#region Types`, `# endregion`. The title must be short and unpunctuated.
 # Matching the bare word alone flagged running prose that merely opens with it —
-# `# region, sector AND facility_type are HARD constraints when the investor
-# names them — ...` at demo-gateway/demos/momah-furas-anas/pipeline/matching.py:159,
-# plus five TypeScript siblings. A marker names a region; a sentence discusses
+# `# region, sector and type are HARD constraints when ...` at one first-party
+# site, plus five TypeScript siblings. A marker names a region; a sentence discusses
 # one, and a sentence has punctuation and more than a handful of words.
 _REGION_MARKER_RE = re.compile(r"^#?(?:end)?region\b(?P<title>.*)$", re.IGNORECASE)
 _REGION_TITLE_RE = re.compile(r"^[\s:\-\u2013\u2014]*\w[\w \-/&+]*$")
@@ -269,8 +267,8 @@ _META_COMMENTARY_RE = re.compile(
 
 # A bare one-word signpost naming a region of the file (`# Constants`,
 # `# Helpers`, `# Types`). It is a table of contents for a file that should have
-# been split, and it goes stale silently. 22 corpus hits across noura-be and
-# demo-gateway, 12 of 12 sampled were true positives. Closed vocabulary on
+# been split, and it goes stale silently. 22 corpus hits across two first-party
+# repos, 12 of 12 sampled were true positives. Closed vocabulary on
 # purpose: a one-word comment outside this list ("# Riyadh") is far more likely
 # to be a genuine label for a value.
 _SECTION_LABEL_WORDS = frozenset(
@@ -415,8 +413,8 @@ def _externally_referenced_lines(standalone: Sequence[tuple[int, int, str]]) -> 
     """Collect every line of a comment run that cites a ticket, URL, RFC or issue.
 
     Protected-class signal S1, applied at run granularity because a scoping note
-    puts its owner at the end: bulbul's four-line Zoho-canary comment ends
-    "EN-only for now — add an AR variant once AR audio exists (PROD-249)", and
+    puts its owner at the end: one first-party four-line canary comment ends
+    "EN-only for now — add an AR variant once AR audio exists (PROJ-249)", and
     judging the last line alone read "for now" as an unowned admission. A comment
     that names where the decision is recorded is doing the one thing code cannot.
 

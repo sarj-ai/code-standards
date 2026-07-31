@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 def project(tmp_path: Path) -> Path:
     """Build a two-package project with a vendored dependency tree.
 
-    Layout mirrors bulbul's: a repo root holding a `python/` workspace whose
+    Layout mirrors a first-party repo's: a repo root holding a `python/` workspace whose
     members each carry one package, plus a `.venv` that must never contribute
     first-party names.
 
@@ -44,7 +44,7 @@ def project(tmp_path: Path) -> Path:
         (pkg / "helpers.py").touch()
         (pkg / "_internals.py").touch()
 
-    # A namespace subpackage (no __init__.py), as bulbul's agent/lk/* are.
+    # A namespace subpackage (no __init__.py), as first-party nested trees are.
     nested = root / "python" / "svc" / "svc" / "adapters"
     nested.mkdir()
     (nested / "outbound.py").touch()
@@ -118,10 +118,10 @@ def test_unresolvable_project_yields_nothing(tmp_path: Path):
 
 
 def test_flags_first_party_private_symbol(project: Path):
-    diags = _check(project, _TEST_FILE, "from core.helpers import _row_to_task")
+    diags = _check(project, _TEST_FILE, "from core.helpers import _row_to_order")
     assert len(diags) == 1
     assert diags[0].code == "SARJ048"
-    assert "_row_to_task" in diags[0].message
+    assert "_row_to_order" in diags[0].message
     assert "core.helpers" in diags[0].message
 
 

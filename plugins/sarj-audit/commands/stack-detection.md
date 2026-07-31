@@ -6,9 +6,9 @@ rule, detect the stack of the code under audit and **gate dialect-specific check
 what you find** — do not flag a pattern that is correct for that repo's runtime, or
 cite a linter/rule the repo does not run.
 
-## The known Sarj stacks (verify, don't assume)
+## The known Sarj stack archetypes (verify, don't assume)
 
-| Dimension | `bulbul` (flagship product) | `automations` (internal Workers) | `ai/python` (ML services) |
+| Dimension | Flagship product (Postgres + dbmate) | Internal Workers app (Cloudflare D1) | ML services repo (Postgres + dbmate) |
 |---|---|---|---|
 | Python web | FastAPI | — (TypeScript only) | FastAPI |
 | TS runtime | Next.js 16 SSR (on Cloudflare) | Cloudflare Workers + Hono | — |
@@ -34,11 +34,11 @@ drift). Detect each dimension from the repo itself:
 - **Python logger** → `loguru` ⇒ `logger.exception()` (no `exc_info=` kwarg); stdlib `logging` ⇒ `exc_info=True` is valid.
 - **zod major** → read the installed version from the lockfile/catalog, not the range. v4 ⇒ `.loose()`/`.looseObject()` (not `.passthrough()`), two-arg `z.record(K, V)`, `z.enum([...])` for fixed sets.
 - **Already-enforced rules** → if the repo runs ruff `select=ALL` or a strict ESLint/Biome config, do **not** re-report what CI already blocks; surface only gaps beyond it.
-- **CI / IaC present?** → Terraform/Cloud Build/Dockerfiles present (e.g. bulbul) ⇒ IaC + container + action-pinning checks apply; absent ⇒ skip them.
+- **CI / IaC present?** → Terraform/Cloud Build/Dockerfiles present (e.g. the flagship product) ⇒ IaC + container + action-pinning checks apply; absent ⇒ skip them.
 
 ## Respect deliberate conventions (do NOT flag)
 
-- `automations` bans TS `enum` via `@sarj/no-enum` — never recommend a TS `enum`; recommend `z.enum([...])` / `as const` maps.
+- The internal Workers app bans TS `enum` via `@sarj/no-enum` — never recommend a TS `enum`; recommend `z.enum([...])` / `as const` maps.
 - SQLite booleans as `INTEGER` (0/1) and validation via Zod/`CHECK` rather than native types are intentional on D1.
 - `.optional().default('')` fail-safe env defaults and `BooleanFlagSchema` transforms are intentional.
 - Concrete-class constructor injection via a hand-rolled `container.ts` is the chosen DI style — do not demand an interface per dependency.

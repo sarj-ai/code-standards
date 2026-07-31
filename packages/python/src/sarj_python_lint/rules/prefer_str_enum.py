@@ -24,7 +24,7 @@ to two corroborated triggers only:
    `x == "a"` plus `x != "b"` pair is two independent guards, not a dispatch
    over a domain. Four of the famous-repo sweep's 31 hits were that pair
    (`fastapi/docs_src/dependencies/tutorial008c_py310.py:19` and its three
-   siblings: `if item_id == "portal-gun": ... if item_id != "plumbus": ...`).
+   siblings: `if item_id == "laser-gun": ... if item_id != "plumbus": ...`).
 
 Deliberately NOT flagged (real-world false positives the sweep surfaced):
 - Attribute comparands whose root the module does not own (`url.scheme`,

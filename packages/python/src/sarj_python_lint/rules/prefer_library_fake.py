@@ -14,8 +14,8 @@ Fires when ALL of these hold:
 * the file is a test file or a test-double module (`tests/`, `conftest.py`, a
   `testing/` or `test_fakes/` directory, or a `fakes.py` / `mocks.py` / `*_stub.py`
   stem) — this rule deliberately reaches the shared fake modules that
-  `is_test_path` alone misses (noura-be's `common/testing/fakes.py`, bulbul's
-  `bulbul/observability/langfuse_stub.py`),
+  `is_test_path` alone misses (a first-party `common/testing/fakes.py`, and an
+  observability `*_stub.py` module that sits outside any test directory),
 * a module-level class name carries a test-double marker (`Mock`, `Fake`, `Stub`,
   `Dummy`, `InMemory`, `Scripted`, `Recording`, `Spy`),
 * the class name — or the name of a base class it inherits — names a recognised
@@ -33,23 +33,23 @@ The message names the specific library per service, because that is the entire v
 of the rule: `moto` for S3, `fakeredis` for Redis, `respx`/`vcrpy` for an LLM
 provider, `aiosmtpd` for SMTP, a `testcontainers` emulator for the rest.
 
-Corpus evidence. Measured over 16 repositories, ~48,000 Python files: bulbul
-(`/Users/nasrmaswood/code/bulbul/python`), noura-be
-(`/Users/nasrmaswood/code/noura-be/python`), django, fastapi, celery, litellm,
+Corpus evidence. Measured over 16 repositories, ~48,000 Python files: two
+first-party repos — repo A (the flagship product) and repo B — plus django,
+fastapi, celery, litellm,
 langchain, prefect, sentry-python, airflow, mlflow, warehouse, superset, zulip,
-dagster and saleor. Final counts: litellm 6, noura-be 2, warehouse 1, and **zero**
+dagster and saleor. Final counts: litellm 6, repo B 2, warehouse 1, and **zero**
 on the other thirteen — including airflow and mlflow, whose provider suites are
 dense with cloud-service doubles but keep them small or already depend on `moto`.
 Every one of the 9 findings was read against its source and classified a true
 positive (0% FP). Each guard below marked *(FP found)* removed a real finding
-during hardening. bulbul fires zero times: its doubles are all of its own ports or
-of LiveKit plugin ABCs, and its `_StubGeminiClient` is a three-line namespace
-holder.
+during hardening. repo A fires zero times: its doubles are all of its own ports or
+of LiveKit plugin ABCs, and its one brand-named LLM stub is a three-line
+namespace holder.
 
 The design is dominated by what the corpora actually contain: the overwhelming
 majority of hand-written doubles in both first-party repos are doubles of the
-project's *own* ports (`InMemoryUserStore`, `FakeCallService`,
-`RecordingKnowledgeBaseService`, `FakeSubjectService`, ~60 of them), for which no
+project's *own* ports (`InMemoryUserStore`, `FakeOrderService`,
+`RecordingDocumentService`, `FakeWidgetService`, ~60 of them), for which no
 library exists and none should. Only a recognised external-service token fires.
 
 **The complementary `monkeypatch`/`mock.patch` shape is deliberately out of scope.**
@@ -59,26 +59,25 @@ dominated, on django and celery, by a library patching the `datetime` or `boto3`
 symbol *inside its own module under test* (celery's `t/unit/backends/test_elasticsearch.py`
 alone does it 13 times, django's `tests/schema/tests.py:5476`, `tests/utils_tests/test_http.py:414`).
 Those are not hand-rolled service doubles, and nothing in the AST distinguishes them
-from bulbul's genuine `mock.patch("agent.lk.silence_monitor.time.time")` clock
+from repo A's genuine `mock.patch("app.audio.silence_monitor.time.time")` clock
 patches. Adding the shape would have traded a 0% FP rate for a majority-FP one.
 
 Deliberately NOT flagged:
 
 * **pytest's collection classes** *(FP found)*. `Test` is not a double marker, it is
-  pytest's class-collection convention. bulbul and noura-be contain 150+
+  pytest's class-collection convention. The two first-party repos contain 150+
   `class TestFoo:` grouping classes and zero `Test`-prefixed doubles. The first
-  version of this rule reported bulbul's
-  `worker/tests/test_post_call_service_data_extraction.py:216`
-  `class TestGeminiNullDataCollected` — a plain pytest group that happened to contain
+  version of this rule reported one first-party data-extraction test's
+  `class TestGeminiNullResults` — a plain pytest group that happened to contain
   the words "Gemini" and "Null". Any class whose name starts with `test` is skipped,
   which also covers celery's lowercase spelling (`class test_MongoBackend_no_mock`),
-* **doubles of the project's own domain types.** `FakeSubjectService`,
-  `InMemoryUserStore`, `RecordingCronMonitor`, `FakeCallCapacityService` — a fake of
+* **doubles of the project's own domain types.** `FakeWidgetService`,
+  `InMemoryUserStore`, `RecordingCronMonitor`, `FakeOrderCapacityService` — a fake of
   your own port is the correct design and has no library. Only the branded external
   tokens in `_SERVICES` fire,
 * **doubles of a framework's own extension point** *(FP found)*. LiveKit's `FakeRoom`,
   `FakeJobContext`, `FakeAgentSession`, `FakeSTT`, `FakeTTS`, `FakeVAD` and
-  `ScriptedLLM` (noura-be `voice/tests/fakes.py`, bulbul `agent/tests/_infra/fakes.py`)
+  `ScriptedLLM` (the shared `fakes.py` module of each of two first-party repos)
   implement plugin ABCs that no library fakes. Two defences. First, the LLM tokens are
   provider *brands* (`openai`, `anthropic`, `gemini`, `groq`, …) and never the generic
   `llm`, `completion`, `chat`, `session`, `room` or `job`, so `ScriptedLLM(lk_llm.LLM)`
@@ -90,8 +89,8 @@ Deliberately NOT flagged:
   `_MockBedrockChatModel(BaseChatModel)` both fired before that guard, and both are
   plugin implementations whose brand names describe which provider they *imitate*,
   not an HTTP double `respx` could replace,
-* **recording spies that delegate to the real client.** bulbul's
-  `worker/tests/fakes/object_store.py:7` `RecordingObjectStore` forwards 8 of its 10
+* **recording spies that delegate to the real client.** One first-party site's
+  `RecordingObjectStore` forwards 8 of its 10
   methods straight to an injected `GCSObjectStore` — it hand-rolls nothing, it
   observes. Any class where at least half the methods, and at least two of them, are
   single-statement forwards to a same-named method on a `self.<attr>` is a decorator,
@@ -310,7 +309,7 @@ _MARKER_INFIXES = ("mock", "fake", "stub", "dummy", "inmemory", "scripted", "rec
 _MARKER_WORDS = frozenset({"spy"})
 
 # pytest's own collection prefix, in both spellings the corpora use
-# (`TestGeminiNullDataCollected` in bulbul, `test_MongoBackend_no_mock` in celery).
+# (`TestGeminiNullResults` in a first-party repo, `test_MongoBackend_no_mock` in celery).
 _COLLECTED_PREFIX = "test"
 
 # Bases that mean "canned value object" or "test case", never "protocol implementation".
@@ -587,7 +586,7 @@ def _is_dunder(method: _Method) -> bool:
 def _is_delegating_spy(methods: list[_Method]) -> bool:
     """Report whether the class mostly forwards to an injected real client.
 
-    A recording decorator (bulbul's `RecordingObjectStore`, which wraps a real
+    A recording decorator (a first-party `RecordingObjectStore`, which wraps a real
     `GCSObjectStore`) hand-rolls no protocol at all — it observes one. Replacing
     it with a library fake would defeat its purpose.
 

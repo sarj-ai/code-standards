@@ -158,20 +158,20 @@ DO $$
 DECLARE
     raw_key TEXT;
 BEGIN
-    IF EXISTS (SELECT 1 FROM banks WHERE code = 'ajb') THEN
+    IF EXISTS (SELECT 1 FROM partner WHERE code = 'exp') THEN
         RETURN;
     END IF;
 
-    INSERT INTO banks (name, code, api_key)
-    VALUES ('Aljazira Bank', 'ajb', raw_key);
+    INSERT INTO partner (name, code, api_key)
+    VALUES ('Example Partner', 'exp', raw_key);
 END $$;
 """
 
 _UNGUARDED_SEED = """
 DO $$
 BEGIN
-    INSERT INTO banks (name, code)
-    VALUES ('Aljazira Bank', 'ajb');
+    INSERT INTO partner (name, code)
+    VALUES ('Example Partner', 'exp');
 END $$;
 """
 
@@ -179,8 +179,8 @@ END $$;
 def test_guarded_dollar_quoted_seed_block_is_exempt():
     """A block that guards its own replay needs no ON CONFLICT.
 
-    Evidence: `noura-be/digital-bank/banking-be/migrations/028_seed_ajb_bank.sql:21`
-    and `022_seed_banks.sql:34` (the `CONTINUE` variant inside a `FOREACH` loop).
+    Evidence: two first-party reference-data seed migrations — one using
+    `RETURN`, one the `CONTINUE` variant inside a `FOREACH` loop.
     An `ON CONFLICT` clause there would be dead code.
     """
     assert _check(_GUARDED_SEED) == []
@@ -204,8 +204,8 @@ def test_commented_out_guard_does_not_excuse_the_block():
     src = """
 DO $$
 BEGIN
-    -- IF EXISTS (SELECT 1 FROM banks WHERE code = 'ajb') THEN RETURN; END IF;
-    INSERT INTO banks (name, code) VALUES ('Aljazira Bank', 'ajb');
+    -- IF EXISTS (SELECT 1 FROM partner WHERE code = 'exp') THEN RETURN; END IF;
+    INSERT INTO partner (name, code) VALUES ('Example Partner', 'exp');
 END $$;
 """
     assert len(_check(src)) == 1

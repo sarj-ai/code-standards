@@ -322,8 +322,8 @@ def test_clickhouse_flavored_query_is_exempt(source: str) -> None:
 # --------------------------------------------------------------------------- #
 # Exempt: BigQuery analytics files and BigQuery-flavored queries — analytics and
 # reporting reads against the columnar mirror LEGITIMATELY aggregate. Mirrors the
-# ClickHouse exemption above. (FP class found on noura-be's inline analytics
-# services, e.g. `SELECT id AS session_id FROM \`{source_table}\``.)
+# ClickHouse exemption above. (FP class found on one first-party repo's inline
+# analytics services, e.g. `SELECT id AS session_id FROM \`{source_table}\``.)
 # --------------------------------------------------------------------------- #
 
 
@@ -578,11 +578,11 @@ def test_bigquery_import_file_with_real_postgres_query_is_over_broad() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# bulbul PR #4111 regressions.                                                  #
+# First-party review regressions.                                               #
 #                                                                               #
 # `IS [NOT] DISTINCT FROM` is Postgres' null-safe comparison OPERATOR, and a     #
 # `test_<x>_store.py` is a test, not a store module. Both classes were 100%      #
-# suppressed at PR head with no defect behind any of them.                      #
+# suppressed at review head with no defect behind any of them.                   #
 # --------------------------------------------------------------------------- #
 
 
@@ -610,13 +610,13 @@ def test_bigquery_import_file_with_real_postgres_query_is_over_broad() -> None:
 def test_null_safe_comparison_operator_is_not_aggregation(source: str) -> None:
     """`IS [NOT] DISTINCT FROM` is a per-row predicate that merely shares a keyword with `SELECT DISTINCT`.
 
-    Evidence: bulbul `python/bulbul/bulbul/stores/provisioned_number_store.py:375`.
+    Evidence: one first-party store module that uses it as an upsert guard.
     """
     assert _check(source) == []
 
 
 def test_provisioned_number_upsert_shape_is_clean() -> None:
-    """The exact PR #4111 site: an ON CONFLICT upsert guarded by a null-safe comparison."""
+    """The exact regression site: an ON CONFLICT upsert guarded by a null-safe comparison."""
     src = (
         'q = """\n'
         "    INSERT INTO provisioned_number (phone_number_id, organization_id)\n"
@@ -645,8 +645,8 @@ def test_count_still_fires_alongside_a_null_safe_comparison() -> None:
 @pytest.mark.parametrize(
     "filename",
     [
-        pytest.param("tests/store/test_batch_call_store.py", id="test-prefixed-store-name"),
-        pytest.param("tests/store/test_global_prompt_store.py", id="test-prefixed-store-name-2"),
+        pytest.param("tests/store/test_batch_order_store.py", id="test-prefixed-store-name"),
+        pytest.param("tests/store/test_global_config_store.py", id="test-prefixed-store-name-2"),
         pytest.param("call_store_test.py", id="test-suffixed-store-name"),
         pytest.param("tests/helpers.py", id="under-tests-dir"),
         pytest.param("stores/conftest.py", id="conftest-under-stores"),
@@ -655,8 +655,8 @@ def test_count_still_fires_alongside_a_null_safe_comparison() -> None:
 def test_test_files_are_not_store_modules(filename: str) -> None:
     """A COUNT(*) asserting over per-test fixture rows never runs on the OLTP primary.
 
-    Evidence: bulbul `python/bulbul/tests/store/test_batch_call_store.py:2092`,
-    `:2538` and `python/bulbul/tests/store/test_global_prompt_store.py:67`.
+    Evidence: three first-party sites — two in one store test module and one in
+    another.
     """
     src = 'q = "SELECT COUNT(*) FROM batch_call WHERE batch_id = %s::uuid"\n'
     assert _check(src, filename=filename) == []

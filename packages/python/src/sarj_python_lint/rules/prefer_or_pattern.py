@@ -16,41 +16,42 @@ tried.
             tts_voice = voice
         case DeepgramTTSSettings(voice=voice):
             tts_voice = voice
-        case SarjF5TTSSettings(voice=voice):
+        case InHouseTTSSettings(voice=voice):
             tts_voice = voice
 
     # preferred
         case (
             CartesiaTTSSettings(voice=voice)
             | DeepgramTTSSettings(voice=voice)
-            | SarjF5TTSSettings(voice=voice)
+            | InHouseTTSSettings(voice=voice)
         ):
             tts_voice = voice
 
 Corpus evidence. A survey of every `match` statement in six codebases — 329 of
-them (bulbul 161, noura-be 120, this repo 43, django 5, celery 0, fastapi 0) —
-produced 15 findings: bulbul 4, noura-be 1, this repo 10, django 0, celery 0,
+them (repo A 161, repo B 120, this repo 43, django 5, celery 0, fastapi 0;
+repo labels are stable within this docstring only) — produced 15 findings:
+repo A 4, repo B 1, this repo 10, django 0, celery 0,
 fastapi 0. All 15 were read at the cited line and classified by hand; all 15
 were true positives, a 0% false-positive rate on a 100% sample.
 
-Widening to 20 corpora (the six above plus digital-bank, submissions, ai and 14
+Widening to 20 corpora (the six above plus three more first-party repos and 14
 OSS repos — airflow, dagster, litellm, saleor, mlflow, langchain, superset,
 zulip, prefect, warehouse, sentry-python, django, fastapi, celery), 42,732 files
 in all, gives 31 findings and still no false positive: dagster 11, this repo 11,
-bulbul 4, mlflow 2, noura-be 1, digital-bank 1, superset 1. Ten of the eleven
+repo A 4, mlflow 2, repo B 1, repo C 1, superset 1. Ten of the eleven
 findings in this repo are on rule modules that predate this rule (`stepdown.py`,
 `prefer_module_level_constant.py`, and so on) and the eleventh is on a rule
 module added alongside it; all are genuine and none is fixed here, so the rule
 currently reports on its own repository.
 
 The strongest evidence is that the offending files *already know the idiom*.
-`bulbul/bulbul/observability/setup.py` opens the very same `match` with
+One first-party observability setup module opens the very same `match` with
 `case OpenAITTSSettings(voice=voice) | GroqTTSSettings(voice=voice):` and
 `case AzureTTSSettings() | AWSTTSSettings():`, then four arms later spells out
-Cartesia / Deepgram / SarjF5 / SarjOmni one per arm with the identical
-`tts_voice = voice` body (setup.py:595). The same file does it again for STT
-(`SarjGroqSTTSettings()` / `SarjCustomSTTSettings()`, both `stt_model = None`,
-setup.py:576) directly below a five-way or-pattern. This rule enforces a
+four further providers one per arm with the identical
+`tts_voice = voice` body. The same file does it again for STT
+(two in-house STT settings classes, both `stt_model = None`)
+directly below a five-way or-pattern. This rule enforces a
 convention the codebase picked and then applied unevenly, which is why it does
 not read as an imported opinion. Ten further findings are in this repo's own
 rule modules — `stepdown.py:588` and `no_isinstance_union_chain.py:221` both
@@ -76,8 +77,8 @@ of these hold:
 
 Deliberately NOT flagged:
 
-* **arms whose bodies carry different comments.** `bulbul/webserver/webserver/
-  services/analytics_service.py:172` dispatches `TimePeriod.WEEK` and
+* **arms whose bodies carry different comments.** One first-party analytics
+  site dispatches `TimePeriod.WEEK` and
   `TimePeriod.MONTH` to the same `granularity = TimeGranularity.DAY`, but each
   line ends in a different trailing comment (`# 7 data points` /
   `# 30-31 data points`) explaining why that period lands on that granularity.
@@ -88,8 +89,8 @@ Deliberately NOT flagged:
   all: it takes that sweep from 15 findings to 16, and the extra one is exactly
   this site — without the guard the rule would ship at a 6% FP rate (1 in 16)
   instead of 0%. Re-measured over all 20 corpora the guard costs no true
-  positive and suppresses exactly two sites, 31 findings becoming 33: the bulbul
-  one above and `litellm/litellm/proxy/_experimental/mcp_server/auth/
+  positive and suppresses exactly two sites, 31 findings becoming 33: the
+  first-party one above and `litellm/litellm/proxy/_experimental/mcp_server/auth/
   user_api_key_auth_mcp.py:776`, where `SessionBearerInvalid()` and
   `NotSessionBearer()` both `raise _aggregate_gateway_dcr_challenge(...)` but the
   second arm carries a two-line comment recording that it is unreachable and
@@ -107,11 +108,11 @@ Deliberately NOT flagged:
   together would not be a safe rewrite. Only runs that are already consecutive
   are reported,
 * **arms whose bodies match only after renaming a captured name.** The next arm
-  after the merged Cartesia/Deepgram run in `setup.py:589` is
-  `case HamsaTTSSettings(speaker=speaker): tts_voice = speaker` — the same body
+  after that merged Cartesia/Deepgram run is
+  `case UpstreamTTSSettings(speaker=speaker): tts_voice = speaker` — the same body
   modulo `voice` -> `speaker`. Merging demands renaming the capture, and the
-  author named it `speaker` because that is what the Hamsa provider calls the
-  field; the rename destroys that. Eight such alpha-renamable pairs exist across
+  author named it `speaker` because that is what the upstream speech provider
+  calls the field; the rename destroys that. Eight such alpha-renamable pairs exist across
   the corpora and none is reported: the rule only ever proposes a rewrite that
   moves no other code,
 * **arms whose shared body is a bare `pass` / `...`.** Enumerating variants that

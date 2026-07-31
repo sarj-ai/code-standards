@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Diagnostic
 
 
-TEST_PATH = "python/bulbul/tests/unit/test_conditions.py"
+TEST_PATH = "python/app/tests/unit/test_conditions.py"
 
 
 def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
@@ -41,7 +41,7 @@ def test_skips_non_test_paths(path: str):
 @pytest.mark.parametrize(
     "path",
     [
-        "digital-bank/banking-ai/chat/scripts/test_llm_providers.py",
+        "app/chat/scripts/test_llm_providers.py",
         "scripts/test_probe.py",
     ],
 )

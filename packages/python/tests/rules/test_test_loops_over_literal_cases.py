@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Diagnostic
 
 
-TEST_PATH = "python/bulbul/tests/stores/test_call_flag_store.py"
+TEST_PATH = "python/app/tests/stores/test_call_flag_store.py"
 
 
 def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:

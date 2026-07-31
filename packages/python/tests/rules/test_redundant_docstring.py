@@ -127,7 +127,7 @@ def test_nested_function_is_checked():
 
 
 def test_fastapi_route_docstring_is_the_openapi_description():
-    # bulbul's `@router.post("/desk/create-ticket")` handler — the text is what
+    # A first-party `@router.post("/desk/create-ticket")` handler — the text is what
     # an API consumer reads in the generated schema.
     src = (
         '@router.post("/desk/create-ticket")\n'

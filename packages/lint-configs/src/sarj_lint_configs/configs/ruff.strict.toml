@@ -1,3 +1,6 @@
+# Measured evidence in the comments below cites the two large first-party
+# consumer repos it was taken from as `repo A` and `repo B`; those labels are
+# stable throughout this file.
 line-length = 120
 target-version = "py314"
 extend-exclude = ["sdk"]
@@ -15,10 +18,10 @@ exclude                  = ["*.md"]
 select = ["ALL"]
 external = ["SARJ"]
 preview = true
-logger-objects = ["loguru.logger"]  # treat loguru as a logger so G004/G010 fire on it (bulbul house logger)
+logger-objects = ["loguru.logger"]  # treat loguru as a logger so G004/G010 fire on it (the house logger)
 # TC001/2/3 stay advisory but are NEVER auto-applied: the rewrite is an *unsafe*
 # fix that silently moves runtime-needed FastAPI/pydantic/livekit annotation
-# imports into `TYPE_CHECKING`, breaking them under PEP 649 (bulbul shipped two
+# imports into `TYPE_CHECKING`, breaking them under PEP 649 (repo A shipped two
 # prod outages this way). Marking them unfixable removes the foot-gun while
 # leaving the advisory warning intact.
 unfixable = ["TC001", "TC002", "TC003"]
@@ -91,7 +94,7 @@ extend-select = [
 ]
 
 # The ignore list is NO LONGER derived from any consumer's `[tool.ruff.lint]
-# ignore`. It was once the intersection with bulbul's, which is how a standard
+# ignore`. It was once the intersection with repo A's, which is how a standard
 # that advertises `select = ["ALL"]` ended up silencing three security checks
 # repo-wide; every remaining entry now has to earn its place with a measurement
 # (see the preamble inside the list). Anything a consumer actively enforces (and
@@ -102,8 +105,8 @@ extend-select = [
 # ignored here and stay active.
 ignore = [
   # Every entry below is measured: each code was force-enabled over this repo,
-  # bulbul and noura-be, and kept only where the finding is not a defect. Counts
-  # in the comments are `this repo / bulbul / noura-be`, non-test code unless
+  # repo A and repo B, and kept only where the finding is not a defect. Counts
+  # in the comments are `this repo / repo A / repo B`, non-test code unless
   # stated. A002/A003 (builtin shadowing) were dropped from this list — enabling
   # them costs 0/1/0 — and S101/S105/S106 moved to `per-file-ignores` for test
   # code, where the exemption is true, instead of silencing three security
@@ -123,7 +126,7 @@ ignore = [
   # on this repo's own AST visitors, where the branching IS the algorithm.
   # PLR0913 counts keyword-only parameters; the harmful case — positional
   # explosion — is already caught by PLR0917, which this config ENFORCES (118
-  # sites in bulbul, 113 in noura-be) and which both consumers disable locally.
+  # sites in repo A, 113 in repo B) and which both consumers disable locally.
   # PLR0904/PLR0914/PLR0916/PLR1702/PLR6301 are enforced here too, so complexity
   # is not unchecked: these five are the specific heuristics with no defect
   # behind them, and four of the five fire on this repo's own source today.
@@ -222,7 +225,7 @@ ignore = [
   #
   # PLC2701 cannot tell OUR private names from a DEPENDENCY's. Its only
   # exemption is "same top-level package", which is not the same question.
-  # Measured over bulbul's five packages it produced 74 sites (80 diagnostics),
+  # Measured over repo A's five packages it produced 74 sites (80 diagnostics),
   # of which 3 are reaches into livekit-agents internals
   # (`livekit.agents.inference_runner._InferenceRunner` and friends, private
   # since 1.6.6). For those three there is no edit that satisfies the rule —
@@ -249,7 +252,7 @@ ignore = [
 # `session._stt` (livekit AgentSession, no public accessor) and `widget._cache`
 # (ours) are indistinguishable to it. SARJ048 deliberately does not attempt
 # this: resolving the receiver's type needs a type checker, and the AST
-# approximations tried against bulbul (constructor calls, parameter
+# approximations tried against repo A (constructor calls, parameter
 # annotations) mis-resolved factory returns — `llm = get_llm(...)` is built by
 # a first-party function and returns a livekit object.
 #
@@ -314,7 +317,7 @@ runtime-evaluated-decorators = [
 # PT011's default list omits RuntimeError, which is the one ambiguous builtin this
 # house raises deliberately — a `pytest.raises(RuntimeError)` with no `match=` cannot
 # tell "the code correctly refused" from "it crashed on the way there". A corpus sweep
-# over bulbul, noura-be, django, fastapi and celery found 32 such sites, none of which
+# over repo A, repo B, django, fastapi and celery found 32 such sites, none of which
 # PT011 reports. The other names here are ruff's defaults, restated because setting the
 # key replaces the list rather than extending it.
 #
@@ -362,14 +365,14 @@ raises-require-match-for = [
 # test; PLR6301 (test methods that never use self) is a pytest class idiom.
 #
 # S101/S105/S106 live HERE and not in the global `ignore`. Measured with each
-# force-enabled over this repo / bulbul / noura-be, tests vs non-test code:
+# force-enabled over this repo / repo A / repo B, tests vs non-test code:
 #   S101 assert                    18,975 in tests vs 20 in shipped code
 #   S105 hardcoded-password-string      94 in tests vs  5 in shipped code
 #   S106 hardcoded-password-func-arg   121 in tests vs  0 in shipped code
 # The blanket ignore was buying silence on 25 shipped-code sites at the price of
 # switching three security checks off everywhere — including `assert`, which
-# `python -O` deletes outright. Scoping them to test code costs bulbul 25 new
-# findings and this repo and noura-be none.
+# `python -O` deletes outright. Scoping them to test code costs repo A 25 new
+# findings and this repo and repo B none.
 #
 # INP001 is here for the same reason: pytest test trees are deliberately not
 # packages (adding `__init__.py` changes conftest/module resolution), and this
@@ -385,7 +388,7 @@ raises-require-match-for = [
 "**/test_*.py"    = ["ANN201", "ANN202", "S101", "S105", "S106", "INP001"]
 "**/conftest.py"  = ["S101", "S105", "S106", "INP001"]
 # Standalone scripts are not importable packages, hence INP001 (7 sites in
-# bulbul, 4 in noura-be, all under a top-level scripts/).
+# repo A, 4 in repo B, all under a top-level scripts/).
 "scripts/**"      = ["T201", "S", "BLE001", "TRY002", "INP001"]
 # CLI entrypoints print to stdout — that's their job, not stray debug output.
 "**/__main__.py"  = ["T201"]

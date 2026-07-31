@@ -266,7 +266,7 @@ def test_allows_secret_vs_string_or_bytes_literal(op: str, literal: str):
 
 
 def test_allows_password_vs_placeholder_sentinel():
-    """The real noura-be case: `password == "PLACEHOLDER"` is a sentinel check."""
+    """The real first-party case: `password == "PLACEHOLDER"` is a sentinel check."""
     src = 'def f(password, password_confirmation):\n    return password == "PLACEHOLDER" or password_confirmation == "PLACEHOLDER"\n'
     assert _check(src) == []
 

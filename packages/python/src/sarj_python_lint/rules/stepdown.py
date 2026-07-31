@@ -61,8 +61,8 @@ Never fires on:
 * **generated files** (`_paths.is_generated`). Their layout is the
   generator's, and re-running the generator discards any edit, so a finding
   there can never be acted on in place. Measured on the 69 `DO NOT EDIT`
-  files git-tracked across bulbul and noura-be — Speakeasy's
-  `python/sdk/src/sarj_platform_sdk/` accounts for all of them.
+  files git-tracked across two first-party repos — a single Speakeasy-generated
+  SDK package accounts for all of them.
 """
 
 from __future__ import annotations

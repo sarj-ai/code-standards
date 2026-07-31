@@ -61,9 +61,10 @@ def test_exempt_paths():
 #
 # This rule was 1,756 of 4,063 first-party findings (43.2%) -- by far the
 # loudest in the registry -- and 63.5% of its own output was one of the three
-# shapes below. Each guard is measured on bulbul + noura-be, and together they
-# take it to 641 findings whose survivors are the actual defect: reading fields
-# out of a payload nobody parsed (`data.get("results")`, `fields["will_retry"]`).
+# shapes below. Each guard is measured on two first-party repos, and together
+# they take it to 641 findings whose survivors are the actual defect: reading
+# fields out of a payload nobody parsed (`data.get("results")`,
+# `fields["will_retry"]`).
 
 
 @pytest.mark.parametrize(
@@ -123,7 +124,7 @@ def test_http_and_route_get_are_not_mapping_lookups(source: str):
     "source",
     [
         pytest.param('results = data.get("results", [])\n', id="get-with-default"),
-        pytest.param('started = chat_counts["vb_transfer_started"]\n', id="read-subscript"),
+        pytest.param('started = chat_counts["transfer_started"]\n', id="read-subscript"),
         pytest.param('if fields["will_retry"]:\n    pass\n', id="read-in-condition"),
     ],
 )

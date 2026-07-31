@@ -50,19 +50,21 @@ indefensible: 61 of django's 62 raw findings are legitimate. The funnel:
 
 | corpus   |   raw | ≥2 roots | non-negative |  name | registration | free fn |
 |----------|-------|----------|--------------|-------|--------------|---------|
-| bulbul   |   107 |       16 |            7 |     7 |            5 |       5 |
-| noura-be |     3 |        0 |            0 |     0 |            0 |       0 |
+| repo A   |   107 |       16 |            7 |     7 |            5 |       5 |
+| repo B   |     3 |        0 |            0 |     0 |            0 |       0 |
 | django   |    62 |        6 |            2 |     2 |            2 |       1 |
 | fastapi  |     4 |        0 |            0 |     0 |            0 |       0 |
 | celery   |   473 |       78 |           52 |    50 |           50 |      38 |
 | airflow  | 3,712 |      757 |          540 |   521 |          521 |     293 |
 
+(repo labels are stable within this docstring only.)
+
 Counting *root objects* rather than dotted target paths at the second stage is
 what makes the funnel hold on a large corpus. Before that reduction the rule
 returned 1,261 findings over the 14-repo OSS sweep plus the first-party repos;
 after it, 462 — 799 removed, 63%. It cost nothing on the calibration corpus
-(bulbul 5→5, noura-be 0→0, django 1→1, fastapi 0→0, and 0→0 across
-digital-bank, submissions and ai); airflow went 999→293. The removals are
+(repo A 5→5, repo B 0→0, django 1→1, fastapi 0→0, and 0→0 across three
+further first-party repos); airflow went 999→293. The removals are
 adapter passthroughs asking one collaborator several questions —
 `airflow/providers/google/tests/unit/google/cloud/hooks/test_dataproc_metastore.py:265`
 pins `mock_client` and `mock_client.return_value.restore_service`,
@@ -81,7 +83,7 @@ restores 20 findings, all airflow, all the same DBAPI-hook shape
 else. Those are the adapter passthroughs the guard exists to remove, so the
 plain root split is the calibrated behaviour.
 
-Manual read of 22 findings (5 bulbul, 1 django, 16 celery) classed 20 true
+Manual read of 22 findings (5 repo A, 1 django, 16 celery) classed 20 true
 positives and 2 false positives (9%). The root reduction took one of those two
 with it: `celery/t/unit/utils/test_debug.py:16` (`test_blockdetection`) pins
 `signals.arm_alarm`, `signals.__setitem__` and `signals.reset_alarm`, one
@@ -120,7 +122,7 @@ Deliberately NOT flagged:
   *routing* claim — `django/tests/check_framework/test_multi_db.py:23` asserts
   `mock_check_field_default.called` and `not mock_check_field_other.called`,
   which is the only way to say "this went to the default database". 13 findings
-  across bulbul and django, all legitimate,
+  across repo A and django, all legitimate,
 * **a test whose name says the interaction is the contract** — `publish`,
   `emit`, `dispatch`, `broadcast`, `retry`, `backoff`, `cache`, `idempoten`,
   `debounce`, `throttl`, `not_called`, `only_once`. Measured, not guessed: this
@@ -129,14 +131,14 @@ Deliberately NOT flagged:
   *is* the contract) and 19 airflow ones — `retry`, `dispatch` and `emit`
   wrappers such as `airflow/providers/git/tests/unit/git/bundles/
   test_git.py:1348` (`test_clone_bare_repo_invalid_repository_error_retry`) —
-  and none in bulbul, noura-be, django or fastapi. Any wider and it guts the
+  and none in repo A, repo B, django or fastapi. Any wider and it guts the
   rule — an earlier draft that also matched `never`, `does_not`, `lazy` and
   `memo` was cut back for that reason,
 * **a test that only pins callback registration** — every target ends in
   `connect`, `on`, `off`, `subscribe`, `register`, `add_listener`, … Wiring a
   handler onto a collaborator returns nothing and changes nothing until the event
-  fires, so the registration is the only checkable fact. bulbul's
-  `agent/tests/test_silence_monitor.py:79`/`:95` (`room.on`/`session.on`, then
+  fires, so the registration is the only checkable fact. Two first-party sites
+  that register then deregister on two objects (`room.on`/`session.on`, then
   `room.off`/`session.off`) are the shape, and the only two findings this guard
   still removes across the six repos: `celery/t/unit/fixups/test_django.py:183`
   (`test_install` asserts four `sigs.*.connect` calls) used to reach it and is

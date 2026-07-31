@@ -42,11 +42,10 @@ genuine bug, never on coincidentally-equal prose. Three filters combine:
    abandoned three-occurrence gate, so a literal used exactly twice fired here
    and was clean in `.ts` — the same code judged differently by file extension.
    Re-measured and converged 2026-07: requiring three occurrences would drop 15
-   of the 18 findings over bulbul + noura-be + django/fastapi/celery, and the
-   dropped ones are true positives — `noura-be/.../onboarding/store.py:631`
-   repeats one `SELECT stage FROM onboarding_profiles … FOR UPDATE` verbatim
-   between `submit_financial_info_atomic` and `submit_legal_info_atomic`, and
-   `.../card/store.py:287` repeats a 10-column `SELECT … JOIN card_types …`
+   of the 18 findings over two first-party repos + django/fastapi/celery, and the
+   dropped ones are true positives — one first-party store module repeats a
+   `SELECT stage FROM … FOR UPDATE` verbatim between two sibling atomic-submit
+   methods, and another repeats a 10-column `SELECT … JOIN …`
    between two methods. TS dropped its gate instead; its corpus delta was 0.
    Do not re-introduce a total-occurrence threshold in either package without
    re-running both sweeps.
@@ -87,8 +86,8 @@ directory) — fixtures legitimately repeat literal payloads.
 * **generated files** (`_paths.is_generated`). Their layout is the
   generator's, and re-running the generator discards any edit, so a finding
   there can never be acted on in place. Measured on the 69 `DO NOT EDIT`
-  files git-tracked across bulbul and noura-be — Speakeasy's
-  `python/sdk/src/sarj_platform_sdk/` accounts for all of them.
+  files git-tracked across two first-party repos — a single Speakeasy-generated
+  SDK package under `python/sdk/src/` accounts for all of them.
 """
 
 from __future__ import annotations

@@ -13,23 +13,23 @@ const ruleTester = new RuleTester();
 ruleTester.run("no-comment-cruft", rule, {
   valid: [
     // --- region markers vs prose that opens with the word "region" ---
-    // demo-gateway/demos/momah-furas-anas/pipeline/matching.py:159 and five TS
-    // siblings: a prose comment whose first word happens to be "region".
+    // One first-party matching pipeline and five TS siblings: a prose comment
+    // whose first word happens to be "region".
     {
       code: "const x = 1;\n// region, sector AND facility_type are HARD constraints when the investor names them\nconst y = 2;",
     },
     { code: "const x = 1;\n// region is derived from the caller's IP, which the CDN rewrites\nconst y = 2;" },
     { code: "const x = 1;\n// regions are resolved lazily\nconst y = 2;" },
     // A short noun phrase that would pass the title shape if a sentence-final
-    // period were allowed (demo-gateway/.../voice/action/route.ts:1187).
+    // period were allowed (one first-party route module).
     { code: "const x = 1;\n// Region centroids for map_pan.\nconst y = 2;" },
     // --- a ticket/URL turns a scoping note into an owned decision ---
-    { code: "// EN-only for now; add an AR variant once AR audio exists (PROD-249)\nconst langs = ['en'];" },
+    { code: "// EN-only for now; add an AR variant once AR audio exists (PROJ-249)\nconst langs = ['en'];" },
     { code: "// hacky — mirrors https://example.com/api/quirk until they fix it\nconst x = 1;" },
-    // The reference may sit on any line of the run (bulbul's Zoho canary puts it
-    // last), so the whole run is exempt.
+    // The reference may sit on any line of the run (a first-party freshness
+    // canary puts it last), so the whole run is exempt.
     {
-      code: "// Zoho freshness canary: the sink writes Description so Modified_Time advances.\n// EN-only for now (PROD-249).\nconst config = load();",
+      code: "// Stripe returns a stale timestamp, so the sink writes a field to advance it.\n// EN-only for now (PROJ-249).\nconst config = load();",
     },
     // A one-word label inside an expression groups the elements beneath it —
     // the TS twin of `# config` inside pydantic's `__all__`.

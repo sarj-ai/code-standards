@@ -228,7 +228,7 @@ def test_the_exact_message_text():
 
 
 def test_attribute_of_the_result_is_exempt():
-    # bulbul test_ivr_navigation.py:163 — patching `time.time` and asserting the
+    # A first-party test site — patching `time.time` and asserting the
     # debounce timestamp was recorded is real behaviour, not a mock echo.
     src = """
 def test_last_send_time_updated():
@@ -250,7 +250,7 @@ def test_last_send_time_updated():
 
 
 def test_subscript_of_the_result_is_exempt():
-    # bulbul test_calls.py:608 — a FastAPI TestClient envelope assertion.
+    # A first-party test site — a FastAPI TestClient envelope assertion.
     src = """
 def test_recording_url(client):
     object_store.sign.return_value = "https://signed.example/abc.mp4"
@@ -641,7 +641,7 @@ def test_get_db():
 
 
 def test_real_assertion_alongside_the_echo_is_exempt():
-    # bulbul test_main_helpers.py:260 — the echo is a redundant first line in a
+    # A first-party test site — the echo is a redundant first line in a
     # test that then checks the request it built.
     src = """
 async def test_builds_request_and_returns_response():

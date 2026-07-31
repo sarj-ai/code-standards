@@ -36,7 +36,7 @@
  *      That is a re-export written the long way, and `export … from` was already
  *      treated as an indicator; the two spellings now agree.
  *
- * ONE MORE INDICATOR FROM bulbul PR #4111:
+ * ONE MORE INDICATOR FROM A FIRST-PARTY REVIEW REGRESSION:
  *
  *   3. **Importing `next/dynamic`.** In the App Router, `dynamic(…, { ssr: false })`
  *      is a hard BUILD ERROR inside a Server Component — Next.js rejects it with
@@ -46,10 +46,9 @@
  *      available response was a disable comment. These wrappers also look
  *      maximally "unnecessary" to the old predicate: one `dynamic()` call, no
  *      hooks, no handlers, no browser globals.
- *      `typescript/packages/app/src/app/dashboard/call-volume-chart-lazy.tsx:1`
- *      (deferring the recharts bundle off the server dashboard page) and
- *      `typescript/packages/app/src/components/rich-text-editor/rich-text-editor-lazy.tsx:1`
- *      (deferring the Lexical bundle off /agents and /admin/global-prompts).
+ *      Two first-party lazy-wrapper modules are the shape: one defers the
+ *      recharts bundle off a server-rendered dashboard page, the other defers
+ *      the Lexical bundle off two server-rendered admin routes.
  *
  *      HONEST SCOPE: both of those files also happen to be covered by indicator
  *      2, since each EXPORTS a const whose initializer reads the imported
@@ -59,11 +58,10 @@
  *      Page() { return <Editor />; }`), where indicator 2 does not reach and the
  *      framework constraint is identical. The test suite pins exactly that shape.
  *
- * All FOUR of the repo's `no-unnecessary-use-client` disables are consequently
- * stale rather than live false positives — including
- * `app/src/app/scenarios/organization-selector-wrapper.tsx:1` and its batch-calls
- * twin, which pass a hook adapter as a function prop and are already exempt via
- * indicator 2. The valid-case suite pins all of them so a future narrowing of
+ * All FOUR of that repo's `no-unnecessary-use-client` disables are consequently
+ * stale rather than live false positives — including a selector-wrapper module
+ * and its twin, which pass a hook adapter as a function prop and are already
+ * exempt via indicator 2. The valid-case suite pins all of them so a future narrowing of
  * indicator 2 cannot silently reintroduce the reports.
  *
  * References:

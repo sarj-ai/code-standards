@@ -21,9 +21,9 @@
  * carrying a ticket or URL is exempt (protected-class signal S1).
  *
  * **Measured.** 18 hits across the nine-repo corpus, 18 of 18 true positives.
- * They cluster hard: `noura-be/typescript/dashboard-fe/src/hooks/use-analytics.ts`
- * alone holds 12 `staleTime` lines, `lib/query-client.ts` two more, and
- * `automations/apps/sarj-ai-worker/src/config.ts:3` carries
+ * They cluster hard: one first-party analytics-hooks module
+ * alone holds 12 `staleTime` lines, its sibling `lib/query-client.ts` two more,
+ * and a first-party Worker config module carries
  * `export const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 90; // 90 days`.
  */
 

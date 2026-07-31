@@ -161,7 +161,7 @@ def test_flags_create_table_inside_dollar_quoted_body():
 
     This previously asserted the opposite. `mask_sql` blanked dollar-quoted bodies
     as though they were string literals, which hid 26 live DDL/DML keywords across
-    12 files of the bulbul + noura-be corpus from all 8 rules. A `CREATE TABLE`
+    12 files of the two-repo first-party corpus from all 8 rules. A `CREATE TABLE`
     without `IF NOT EXISTS` inside a function body is exactly as non-idempotent as
     one at the top level — the second call fails — so it must be flagged.
     """

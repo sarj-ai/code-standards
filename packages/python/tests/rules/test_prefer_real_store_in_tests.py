@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Diagnostic
 
 
-TEST_PATH = "python/bulbul/tests/fakes/user_store.py"
+TEST_PATH = "python/app/tests/fakes/user_store.py"
 
 
 def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
@@ -66,7 +66,7 @@ def test_fires_in_test_and_test_double_paths(path: str):
 @pytest.mark.parametrize(
     "path",
     [
-        "bulbul/stores/user_store.py",
+        "app/stores/user_store.py",
         "src/service.py",
         "app/adapters/postgres.py",
         "app/attestation/store.py",
@@ -294,9 +294,9 @@ def test_thing():
 
 
 # --------------------------------------------------------------------------- #
-# Positive: the hollow re-implementation. noura-be's `StubUserStore`            #
-# (dashboard/tests/test_auth_service.py:37) answers three calls from preset     #
-# fields and abandons seven more.                                              #
+# Positive: the hollow re-implementation. One first-party site's                #
+# `StubUserStore` answers three calls from preset fields and abandons           #
+# seven more.                                                                  #
 # --------------------------------------------------------------------------- #
 
 
@@ -427,9 +427,9 @@ class {name}:
 
 
 # --------------------------------------------------------------------------- #
-# Guard: a double whose backing really is a real backend. noura-be's            #
-# `MockDataStore` (common/adapters/vision_bank/v2/mock_data_store.py:104) is a  #
-# Redis-backed demo-mode feature, not a test double.                            #
+# Guard: a double whose backing really is a real backend. A first-party         #
+# `MockDataStore` in a production adapter package is a Redis-backed             #
+# demo-mode feature, not a test double.                                         #
 # --------------------------------------------------------------------------- #
 
 
@@ -466,9 +466,9 @@ class MockDataStore:
 
 
 # --------------------------------------------------------------------------- #
-# Guard: recording spies and canned-response doubles. bulbul's                  #
-# `FakeAnalyticsStore` (webserver/tests/fakes/analytics_fakes.py:26) records a  #
-# call and replays a canned row; each list is touched by exactly one method.    #
+# Guard: recording spies and canned-response doubles. A first-party             #
+# `FakeAnalyticsStore` in a shared test-fakes module records a call and         #
+# replays a canned row; each list is touched by exactly one method.             #
 # --------------------------------------------------------------------------- #
 
 
@@ -588,9 +588,9 @@ class FakeUserStore(UserStore):
 
 
 # --------------------------------------------------------------------------- #
-# Guard: the never-touched port. bulbul's `_UnusedTaskStore(TaskStore)`         #
-# (integration/tests/router/test_mcp_discovery.py:44) raises from every method  #
-# to assert that route discovery never invokes a handler.                       #
+# Guard: the never-touched port. A first-party `_UnusedTaskStore(TaskStore)`    #
+# in an integration test raises from every method to assert that route          #
+# discovery never invokes a handler.                                            #
 # --------------------------------------------------------------------------- #
 
 
@@ -688,7 +688,7 @@ class StubTaskStore(TaskStore):
 
 # --------------------------------------------------------------------------- #
 # Guard: fault injectors built on the real store. This is the practice the rule #
-# is asking for — bulbul has a dozen of them subclassing `Psql*`.               #
+# is asking for — one first-party repo has a dozen subclassing `Psql*`.         #
 # --------------------------------------------------------------------------- #
 
 
@@ -844,18 +844,18 @@ class FakeMessageStore:
 
 # --------------------------------------------------------------------------- #
 # Guard: null objects and behaviour injectors are not doubles of the store.     #
-# bulbul's `NullUpsertCredentialStore`, `RecordingZohoCRMDAO`,                  #
-# `AlwaysFailingProductsDAO` and `_NoneModelSettingsCallStore` all live in the  #
-# test tree and are all correct as written.                                     #
+# Four first-party doubles — `NullUpsertTokenStore`, `RecordingCrmDAO`,         #
+# `AlwaysFailingProductsDAO` and `_NoneModelSettingsCallStore` — all live       #
+# in the test tree and are all correct as written.                              #
 # --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
     "name",
     [
-        "NullUpsertCredentialStore",
+        "NullUpsertTokenStore",
         "NoopUserStore",
-        "RecordingZohoCRMDAO",
+        "RecordingCrmDAO",
         "CountingGlobalPromptStore",
         "RaisingObjectStore",
         "AlwaysFailingProductsDAO",
@@ -945,8 +945,8 @@ class {name}({base}):
 @pytest.mark.parametrize("name", ["InMemoryApiKeyStore", "InMemoryObjectStore"])
 def test_key_and_object_qualifiers_still_fire(name: str):
     # `Key` and `Object` are deliberately absent from the qualifier list: adding
-    # them was measured and it kills these two bulbul true positives
-    # (tests/fakes/api_key_store.py:10, tests/fakes/object_store.py:17).
+    # them was measured and it kills these two first-party true positives,
+    # both shared in-memory doubles living in a test-fakes package.
     src = f"""
 class {name}:
     def __init__(self) -> None:
