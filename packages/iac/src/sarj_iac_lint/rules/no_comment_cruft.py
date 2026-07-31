@@ -58,9 +58,26 @@ guard's honest cost: those runs really are commented-out HCL, kept as a shape
 reference for a `variable` typed `any`, and the ~50% threshold reads them as
 documentation. Recorded rather than tuned away.
 
-The banner half (133 of the 164) is deliberately untouched. It is a house-style
-call rather than a detection question, and no guard quietens it without abandoning
-the policy.
+The banner half is deliberately untouched as POLICY. It is a house-style call
+rather than a detection question, and no guard quietens it without abandoning the
+policy. What was wrong was the reporting GRANULARITY -- see below.
+
+One banner, one finding (2026-07-31)
+------------------------------------
+The canonical Terraform banner is three lines, a rule / a title / a rule, and
+only the two rules are banner-shaped. So the rule reported the same defect twice,
+once at the top and once at the bottom, and 21 findings read at source were
+14 true positives spread over roughly half that many actual banners.
+
+Re-measured over **1,424 content-unique `.tf` files** (terraform-aws-vpc,
+terraform-aws-eks, terraform-aws-components and a first-party IaC tree): 748
+banner findings covering 406 banners, with 338 of the 406 (83%) double-counted.
+The second report carries no information the first did not, and volume is what
+gets a rule switched off. `_banner_group_leaders` now reports the FIRST rule line
+of each banner group -- maximal banner lines separated only by comment lines, so
+the title between the two rules keeps them one banner while real HCL or a blank
+line starts a new one. Detection is unchanged: every banner still reports, and
+two banners in a file are still two findings.
 """
 
 from __future__ import annotations
@@ -136,6 +153,7 @@ class NoCommentCruft(Rule):
         # element type is unknown and widens the whole binding.
         empty: frozenset[int] = frozenset()
         code_run = _code_dominant_lines(lines, in_heredoc) if detect_code else empty
+        banner_leaders = _banner_group_leaders(lines, in_heredoc)
         diags: list[Diagnostic] = []
         for lineno, raw in enumerate(lines, start=1):
             if in_heredoc[lineno - 1]:
@@ -147,16 +165,19 @@ class NoCommentCruft(Rule):
             if not body or _is_directive(body):
                 continue
             msg = _classify(body, in_code_run=lineno in code_run)
-            if msg is not None:
-                diags.append(
-                    Diagnostic(
-                        path=path,
-                        line=lineno,
-                        col=len(indent) + 1,
-                        code=self.code,
-                        message=msg,
-                    )
+            if msg is None:
+                continue
+            if _is_banner(body) and lineno not in banner_leaders:
+                continue
+            diags.append(
+                Diagnostic(
+                    path=path,
+                    line=lineno,
+                    col=len(indent) + 1,
+                    code=self.code,
+                    message=msg,
                 )
+            )
         return diags
 
 
@@ -207,6 +228,42 @@ def _code_dominant_lines(lines: list[str], in_heredoc: list[bool]) -> frozenset[
         if code * 2 >= len(voting):
             dominant.update(lineno for lineno, _ in voting)
     return frozenset(dominant)
+
+
+def _banner_group_leaders(lines: list[str], in_heredoc: list[bool]) -> frozenset[int]:
+    """The first rule line of each banner, so one banner is one finding.
+
+    The canonical Terraform banner is three lines — a rule, a title, a rule:
+
+        ################################################################
+        # Cluster
+        ################################################################
+
+    Only the two rules are banner-shaped, so the rule reported the SAME defect
+    twice, at the top and at the bottom. MEASURED over 1,424 content-unique
+    `.tf` files: 748 banner findings over 406 actual banners, with 338 of the
+    406 (83%) double-counted. Nothing about the second report is new
+    information, and volume is what gets a rule switched off.
+
+    A banner group is a maximal set of banner lines separated only by comment
+    lines — the title between the rules keeps them one banner, while real HCL
+    or a blank line starts a new one. That is deliberately the same "run"
+    notion `_comment_runs` uses for the commented-out half.
+
+    Returns:
+        The 1-based line number of the first banner line in each group.
+
+    """
+    leaders: set[int] = set()
+    for run in _comment_runs(lines, in_heredoc):
+        seen_banner = False
+        for lineno, body in run:
+            if not body or _is_directive(body) or not _is_banner(body):
+                continue
+            if not seen_banner:
+                leaders.add(lineno)
+                seen_banner = True
+    return frozenset(leaders)
 
 
 def _classify(body: str, *, in_code_run: bool) -> str | None:

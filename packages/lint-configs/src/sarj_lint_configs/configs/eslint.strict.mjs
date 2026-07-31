@@ -420,8 +420,61 @@ const withoutReactRules = (rules) =>
         Object.entries(rules).filter(([name]) => !name.startsWith("react/")),
       );
 
+// Build output is not authored code, and this config had NO `ignores` at all —
+// the single string "ignores" in the whole file was a word in a comment. ESLint
+// 9/10 ignore only `node_modules/` and `.git/` by default, so `eslint .` in an
+// adopting repo lints its own compiled output at `error` severity.
+//
+// MEASURED, 2026-07-31, over 175,852 content-deduplicated `.ts/.tsx/.js/.jsx`
+// files from four first-party repos and 61 OSS repos: 30,498 of the 125,037
+// `@sarj/*` findings — 24.4% — landed on generated paths, and 32,670 of the
+// files (18.6%) were build output. One published component library alone
+// contributed 21,284 `no-unnecessary-use-client` reports, every one of them on a
+// compiled `lib/**/*.js` carrying `_interopRequireDefault` and
+// `Object.defineProperty(exports, "__esModule")`. That is the first thing a team
+// sees after adopting this config, and none of it is actionable.
+//
+// The Python CLI has skipped exactly these directories since it shipped
+// (`SKIP_DIR_NAMES` in `sarj_python_lint/__main__.py`), so the two halves of the
+// same standard disagreed; this closes that gap rather than inventing a policy.
+//
+// `lib/` is included deliberately and is the only entry that can shadow authored
+// code. It is the conventional Babel/tsc output directory for a published
+// package, which is where the 21,284 came from. A repo that keeps SOURCE in
+// `lib/` re-enables it in its own `eslint.config.mjs` override block, which is
+// what that block is for:
+//     { ignores: ["!lib/**"] }
+const BUILD_OUTPUT_IGNORES = [
+  "**/dist/**",
+  "**/build/**",
+  "**/lib/**",
+  "**/out/**",
+  "**/esm/**",
+  "**/cjs/**",
+  "**/umd/**",
+  "**/coverage/**",
+  "**/.next/**",
+  "**/.nuxt/**",
+  "**/.output/**",
+  "**/.turbo/**",
+  "**/.svelte-kit/**",
+  "**/.astro/**",
+  "**/.wrangler/**",
+  "**/storybook-static/**",
+  "**/__generated__/**",
+  "**/generated/**",
+  "**/*.min.js",
+  "**/*.min.mjs",
+  "**/*.min.cjs",
+];
+
 /** @type {import("eslint").Linter.Config[]} */
 const config = [
+  // A config entry carrying ONLY `ignores` is a global ignore — it must stay
+  // first and must not grow a `files` key, or it silently degrades into a
+  // per-file entry that ignores nothing.
+  { ignores: BUILD_OUTPUT_IGNORES },
+
   ...tseslint.configs.strictTypeChecked,
   ...tseslint.configs.stylisticTypeChecked,
 
