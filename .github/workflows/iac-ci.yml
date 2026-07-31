@@ -6,10 +6,26 @@ on:
     paths:
       - 'packages/iac/**'
       - '.github/workflows/iac-ci.yml'
+      # The strict configs these jobs lint against live in packages/lint-configs and
+      # are reached through the root symlinks, so a change there changes this job's
+      # result without touching this package.
+      - 'packages/lint-configs/src/sarj_lint_configs/configs/**'
+      - '.ruff-strict.toml'
+      - '.pyright-strict.json'
+      # test_hook_sync.py reads it: a deleted hook must fail this job, not ship.
+      - '.pre-commit-hooks.yaml'
   pull_request:
     paths:
       - 'packages/iac/**'
       - '.github/workflows/iac-ci.yml'
+      # The strict configs these jobs lint against live in packages/lint-configs and
+      # are reached through the root symlinks, so a change there changes this job's
+      # result without touching this package.
+      - 'packages/lint-configs/src/sarj_lint_configs/configs/**'
+      - '.ruff-strict.toml'
+      - '.pyright-strict.json'
+      # test_hook_sync.py reads it: a deleted hook must fail this job, not ship.
+      - '.pre-commit-hooks.yaml'
 
 permissions:
   contents: read

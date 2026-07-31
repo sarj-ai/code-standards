@@ -21,7 +21,7 @@
  * token is a counter / row-id / flag marker (`tokenCount`, `apiKeyId`,
  * `passwordEnabled`) or whose LEADING word is a boolean predicate (`hasSecret`,
  * `is_token`), so metadata *about* a secret is not mistaken for the secret
- * itself. Both guards live in the shared `_secret_names` predicate. Redaction
+ * itself. Both guards live in the shared `_secret-names` predicate. Redaction
  * markers (prefix/mask/hash/redact/tag) are exempt on top of that.
  *
  * ## The raw-blob arm (`noRawBodyInLog`)
@@ -91,7 +91,7 @@ import {
   isSecretName,
   leadingWord,
   tokenize,
-} from "./_secret_names.js";
+} from "./_secret-names.js";
 
 type MessageIds = "noSecretInLog" | "noRawBodyInLog";
 type Options = readonly [LoggingOptions?];

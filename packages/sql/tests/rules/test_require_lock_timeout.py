@@ -117,3 +117,25 @@ def test_postgres_migration_still_fires_next_to_the_dialect_boundary() -> None:
     """The boundary: same DDL, no dialect marker — the guard must not widen to this."""
     src = 'ALTER TABLE "users" ADD COLUMN note TEXT;\n'
     assert len(_check(src)) == 1
+
+
+# --- assignment forms the regex cannot see, and the dump exemption ----------------
+
+
+def test_set_config_call_counts_as_an_assignment() -> None:
+    """`set_config(...)` is the function spelling of `SET`, and protects just as well."""
+    src = "SELECT set_config('lock_timeout', '5s', false); ALTER TABLE t ADD COLUMN c INT;"
+    assert _check(src) == []
+
+
+def test_a_schema_dump_is_not_asked_for_a_lock_timeout() -> None:
+    """A dump replays a whole database offline; there is no concurrent traffic to lock out."""
+    src = """
+    -- PostgreSQL database dump
+    SET statement_timeout = 0;
+    SET lock_timeout = 0;
+    CREATE TABLE users (id int primary key);
+    CREATE INDEX idx_users ON users (id);
+    """
+    assert _check(src, Path("structure.sql")) == []
+    assert _check(src) == []

@@ -13,3 +13,14 @@ fork canonical strict files when the synchronizer can own them.
 Inside this repo there is exactly ONE copy of each strict config, under
 `packages/lint-configs/src/sarj_lint_configs/configs/`. Every package extends it
 by relative path. Do not reintroduce a `cp`-synced duplicate at the repo root.
+The root `.ruff-strict.toml` / `.pyright-strict.json` are SYMLINKS into that
+directory and must stay symlinks. Ruff anchors `per-file-ignores` globs at the
+directory of the config that declares them, so pointing a package at the
+canonical path directly drops the `"**/tests/**"` exemptions — 239 new findings
+in `packages/python` alone. `make check-file-conventions` fails if either link
+becomes a real file.
+
+Every problem gets a gate, not a one-off fix. `make verify` runs
+`check-no-private-refs`, `check-file-conventions` and `check-versions-synced`;
+add to them rather than relying on review. A new guard is not finished until you
+have mutated the thing it guards and watched it fail.

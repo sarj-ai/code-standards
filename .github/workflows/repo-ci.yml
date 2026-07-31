@@ -1,0 +1,36 @@
+name: repo CI
+
+# The repo-level gates, on every pull request, with NO `paths:` filter.
+#
+# Every other workflow here is scoped to one package, so until this existed a PR
+# that touched only the Makefile, scripts/, docs/, .pre-commit-hooks.yaml,
+# lefthook.yml, .github/ or the root configs ran zero checks — including
+# `check-no-private-refs.sh`, which was written precisely because the leak it
+# catches has recurred three times and is invisible to review. It only ever ran
+# in a local pre-commit hook, which is exactly the thing a rushed contributor
+# skips. `check-versions-synced` was in the same position for every package
+# except Python.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: No private repo/client names or conflict markers
+        run: make check-no-private-refs
+      - name: Filenames, rule/test pairing, one copy of each strict config
+        run: make check-file-conventions
+      - name: Root and package versions agree
+        run: make check-versions-synced

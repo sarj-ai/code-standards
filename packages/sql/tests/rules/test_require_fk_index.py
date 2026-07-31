@@ -153,3 +153,39 @@ def test_non_dump_findings_keep_the_plain_message() -> None:
     diags = _check(src)
     assert len(diags) == 1
     assert "schema dump" not in diags[0].message
+
+
+# --- index spellings that already cover the FK ------------------------------------
+
+
+def test_multiline_using_btree_index_covers_the_fk() -> None:
+    src = """
+    CREATE TABLE orders (user_id UUID REFERENCES users(id));
+    CREATE INDEX idx_orders
+      ON orders USING btree (user_id);
+    """
+    assert _check(src) == []
+
+
+def test_table_level_primary_key_covers_the_fk() -> None:
+    """A PRIMARY KEY is an index; demanding a second one on the same column is noise."""
+    src = """
+    CREATE TABLE profiles (
+        user_id UUID,
+        PRIMARY KEY (user_id),
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+    """
+    assert _check(src) == []
+
+
+def test_alter_table_only_composite_fk_is_covered_by_a_concurrent_index() -> None:
+    """The leading columns of the concurrent index match the composite FK, so it is covered."""
+    src = """
+    CREATE INDEX CONCURRENTLY idx_pdi ON public.pdi (team_id, person_id);
+
+    ALTER TABLE ONLY public.pdi
+        ADD CONSTRAINT pdi_person_id_fkey
+        FOREIGN KEY (team_id, person_id) REFERENCES person_new(team_id, id) NOT VALID;
+    """
+    assert _check(src) == []

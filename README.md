@@ -2,7 +2,7 @@
 
 The single home for Sarj code standards, in two layers:
 
-- **Machine-enforced floor** — lint rules + maximally-strict configs for TypeScript + Python + SQL (`@sarj/eslint-plugin`, `sarj-python-lint`, `sarj-sql-lint`, `sarj-lint-configs`). Run in CI.
+- **Machine-enforced floor** — lint rules + maximally-strict configs for TypeScript + Python + SQL + Terraform (`@sarj/eslint-plugin`, `sarj-python-lint`, `sarj-sql-lint`, `sarj-iac-lint`, `sarj-lint-configs`). Run in CI.
 - **Judgment layer** — the `sarj-audit` Claude Code plugin: on-demand audit commands for the things that can't be reliably linted. Each audit cites the deterministic rule that backs it where one exists. (Merged here from a retired first-party repo.)
 
 ## Contributor setup
@@ -36,7 +36,7 @@ For a one-off personal install instead:
 /plugin install sarj-audit@sarj
 ```
 
-Then run any audit, e.g. `/sarj-audit:data-contracts` or `/sarj-audit:concurrency-and-performance`. The plugin lives in [`plugins/sarj-audit/`](plugins/sarj-audit/); [`commands/stack-detection.md`](plugins/sarj-audit/commands/stack-detection.md) is the shared stack-aware Phase-0 the audits gate on.
+Then run any audit, e.g. `/sarj-audit:data-contracts` or `/sarj-audit:concurrency-and-performance`. The plugin lives in [`plugins/sarj-audit/`](plugins/sarj-audit/); [`commands/stack-detection.md`](plugins/sarj-audit/commands/stack-detection.md) is the shared stack-aware Phase-0 the audits gate on, and [`skills/`](plugins/sarj-audit/skills/) ships the lint-rule authoring and ratcheting skills alongside it — they used to sit in a top-level `skills/` directory that nothing loaded them from.
 
 ## Adopt (two commands)
 
