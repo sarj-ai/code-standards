@@ -38,7 +38,7 @@ if TYPE_CHECKING:
 # Docstring filler that says nothing about *which* thing is being described.
 # `not` / `no` / `none` / `never` are deliberately ABSENT: a docstring that
 # negates the obvious reading of a name is the most useful kind there is.
-STOPWORDS = frozenset(
+_BASE_STOPWORDS = frozenset(
     {
         "a",
         "all",
@@ -106,6 +106,50 @@ STOPWORDS = frozenset(
         "with",
     }
 )
+
+# Qualifiers that NARROW NOTHING. "a specific account", "the appropriate
+# config", "the entire widget" — strip the adjective and the sentence means
+# exactly what it meant. Kept as its own name because a single one of these
+# was the commonest reason a pure restatement survived the whole family; see
+# docs/rules/SARJ088.md for the measurement. `main`, `new`, `same` and `copy`
+# are NOT here: they name the thing or its identity, which is content.
+FILLER_QUALIFIERS = frozenset(
+    {
+        "actual",
+        "already",
+        "appropriate",
+        "associated",
+        "available",
+        "basic",
+        "correct",
+        "correctly",
+        "corresponding",
+        "default",
+        "desired",
+        "entire",
+        "existing",
+        "full",
+        "general",
+        "necessary",
+        "optional",
+        "overall",
+        "particular",
+        "properly",
+        "relevant",
+        "required",
+        "simple",
+        "single",
+        "specific",
+        "standard",
+        "successfully",
+        "suitable",
+        "supported",
+        "various",
+        "whole",
+    }
+)
+
+STOPWORDS = _BASE_STOPWORDS | FILLER_QUALIFIERS
 
 WORD_RE = re.compile(r"[A-Za-z][A-Za-z0-9']*")
 

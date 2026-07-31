@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint.rules._docstrings import FILLER_QUALIFIERS
 from sarj_python_lint.rules.redundant_docstring import RedundantDocstring
 
 
@@ -173,3 +174,57 @@ def test_a_number_the_signature_already_carries_still_fires():
 def test_an_annotation_carrying_the_number_counts_as_the_signature():
     """The boundary on the other side: annotations are part of what a reader reads."""
     assert len(_fn("cap(value: Literal[5], flag: bool)", "Cap the value at 5.")) == 1
+
+
+# A qualifier that narrows nothing ("a SPECIFIC account", "the APPROPRIATE
+# config") was the single commonest reason a pure restatement survived. The
+# words live in `_docstrings.FILLER_QUALIFIERS`, so every rule in the family
+# reads the same list; the measurement is in docs/rules/SARJ088.md.
+
+
+# Spelled out rather than read from the source set, so DROPPING a word fails a
+# case instead of deleting one. Parametrizing over the live set would make the
+# vocabulary vouch for itself.
+EXPECTED_FILLER = [
+    "actual", "already", "appropriate", "associated", "available", "basic",
+    "correct", "correctly", "corresponding", "default", "desired", "entire",
+    "existing", "full", "general", "necessary", "optional", "overall",
+    "particular", "properly", "relevant", "required", "simple", "single",
+    "specific", "standard", "successfully", "suitable", "supported", "various",
+    "whole",
+]
+
+
+def test_the_filler_vocabulary_is_pinned():
+    assert sorted(FILLER_QUALIFIERS) == sorted(EXPECTED_FILLER)
+
+
+@pytest.mark.parametrize("filler", EXPECTED_FILLER)
+def test_every_filler_qualifier_is_discounted(filler: str):
+    diags = _fn("get_account(account_id: str)", f"Get the {filler} account by ID.")
+    assert len(diags) == 1, f"{filler!r} rescued a pure restatement"
+    assert diags[0].code == "SARJ050"
+
+
+FILLER_RESTATEMENTS = [
+    ("get_account(account_id: str)", "Get a specific account by ID."),
+    ("get_model_config(model: str)", "Get the appropriate model config."),
+    ("list_tags(graph: Graph)", "The tags associated with the graph."),
+    ("update_preview(chart: Chart)", "Update the chart preview correctly."),
+    ("get_file_metadata(file_id: str)", "Get metadata for a specific file."),
+    ("load_defaults(config: Config)", "Load the default config values."),
+    ("render(widget: Widget)", "Render the entire widget."),
+]
+
+
+@pytest.mark.parametrize(("signature", "docstring"), FILLER_RESTATEMENTS)
+def test_a_filler_qualifier_does_not_rescue_a_restatement(signature: str, docstring: str):
+    """The shapes the vocabulary was drawn from, each read at source in the corpus sweep."""
+    diags = _fn(signature, docstring)
+    assert len(diags) == 1
+    assert diags[0].code == "SARJ050"
+
+
+def test_main_is_not_filler():
+    """`main` NAMES the thing. Treating it as filler made `Main function.` unflaggable."""
+    assert len(_check('def main():\n    """Main function."""\n    return None\n')) == 1

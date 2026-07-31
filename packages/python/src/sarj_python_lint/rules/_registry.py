@@ -57,6 +57,7 @@ from sarj_python_lint.rules.no_unreachable_after_terminal import (
 )
 from sarj_python_lint.rules.over_mocked_test import OverMockedTest
 from sarj_python_lint.rules.parametrize_case_needs_id import ParametrizeCaseNeedsId
+from sarj_python_lint.rules.phase_label_comment import TestPhaseLabelComment
 from sarj_python_lint.rules.prefer_class_row import PreferClassRow
 from sarj_python_lint.rules.prefer_constant_time_secret_compare import (
     PreferConstantTimeSecretCompare,
@@ -94,6 +95,7 @@ from sarj_python_lint.rules.pydantic_at_boundaries import PydanticAtBoundaries
 from sarj_python_lint.rules.redundant_class_docstring import RedundantClassDocstring
 from sarj_python_lint.rules.redundant_docstring import RedundantDocstring
 from sarj_python_lint.rules.require_port_for_service import RequirePortForService
+from sarj_python_lint.rules.restated_test_docstring import RestatedTestDocstring
 from sarj_python_lint.rules.single_public_export import SinglePublicExport
 from sarj_python_lint.rules.sleep_with_computed_arg_in_test import SleepWithComputedArgInTest
 from sarj_python_lint.rules.stepdown import Stepdown
@@ -186,6 +188,8 @@ REGISTRY: dict[str, type[Rule]] = {
     RedundantClassDocstring.id: RedundantClassDocstring,
     DocstringArgsRestateSignature.id: DocstringArgsRestateSignature,
     DocstringReturnsRestateSignature.id: DocstringReturnsRestateSignature,
+    RestatedTestDocstring.id: RestatedTestDocstring,
+    TestPhaseLabelComment.id: TestPhaseLabelComment,
 }
 
 __all__ = ["REGISTRY"]
