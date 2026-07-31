@@ -1,21 +1,7 @@
-"""SARJ077: prefer walrus operator in `while` loop conditions for stream/chunk reading.
+"""SARJ077 — Prefer walrus operator in `while` loop conditions for stream/chunk reading.
 
-Iterating over a stream or chunked reader by initializing an assignment before `while True:`
-followed by an immediate break check creates verbose boilerplate. Placing the assignment directly
-inside the `while` condition using `:=` unifies the stream read logic.
-
-    # flagged
-    while True:
-        chunk = stream.read(8192)
-        if not chunk:
-            break
-        process(chunk)
-
-    # preferred
-    while chunk := stream.read(8192):
-        process(chunk)
-
-Corpus evidence. Sweep across 7 repositories identified 19 stream/reader loops with 0 false positives.
+Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_walrus_stream_loop.py
+Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ077.md
 """
 
 from __future__ import annotations
@@ -34,22 +20,12 @@ _MIN_BODY_LEN = 2
 
 
 def _is_constant_true(node: ast.AST) -> bool:
-    """Check if node represents the constant True.
-
-    Returns:
-        True when node is True.
-
-    """
+    """Check if node represents the constant True."""
     return (isinstance(node, ast.Constant) and node.value is True) or (isinstance(node, ast.Name) and node.id == "True")
 
 
 def _is_falsy_break_check(test_node: ast.AST, var_name: str) -> bool:
-    """Check if test_node is `not var_name` or `var_name is None`.
-
-    Returns:
-        True when test is a strict falsy break check.
-
-    """
+    """Check if test_node is `not var_name` or `var_name is None`."""
     if (
         isinstance(test_node, ast.UnaryOp)
         and isinstance(test_node.op, ast.Not)
@@ -71,10 +47,9 @@ def _is_falsy_break_check(test_node: ast.AST, var_name: str) -> bool:
 
 
 class PreferWalrusStreamLoop(Rule):
-    """Prefer walrus operator `:=` in `while` loop conditions for stream reading."""
-
     id: str = "prefer-walrus-stream-loop"
     code: str = "SARJ077"
+    has_evidence: bool = True
     description: str = (
         "stream read loop using `while True:` with assignment and break — combine "
         "into `while (chunk := stream.read(...)):`."

@@ -107,9 +107,6 @@ def _explain(wanted: str) -> int:
     This is the runtime consumer of the one-line module docstring: it is what
     makes an inaccurate summary visible rather than merely unread.
 
-    Returns:
-        0 when the rule was found, 2 otherwise.
-
     """
     key = wanted.strip()
     cls = REGISTRY.get(key) or next((c for c in REGISTRY.values() if c.code.upper() == key.upper()), None)
@@ -140,9 +137,6 @@ def _read_baseline(path: Path) -> dict[str, dict[str, int]]:
     asserted — a hand-edited baseline should degrade to "not baselined" rather
     than crash the run or silently suppress on a malformed entry.
 
-    Returns:
-        The baseline counts, with any entry of the wrong shape dropped.
-
     """
     raw: object = json.loads(  # pyright: ignore[reportAny] — json.loads is an untyped stdlib boundary; the shape is narrowed below
         path.read_text(encoding="utf-8")
@@ -162,12 +156,7 @@ def _read_baseline(path: Path) -> dict[str, dict[str, int]]:
 
 
 def _apply_baseline(diags: list[Diagnostic], baseline: dict[str, dict[str, int]]) -> list[Diagnostic]:
-    """Suppress up to the baselined count per (path, code); excess diags survive.
-
-    Returns:
-        The diagnostics that exceed the baselined count for their (path, code).
-
-    """
+    """Suppress up to the baselined count per (path, code); excess diags survive."""
     seen: Counter[tuple[str, str]] = Counter()
     out: list[Diagnostic] = []
     for d in diags:

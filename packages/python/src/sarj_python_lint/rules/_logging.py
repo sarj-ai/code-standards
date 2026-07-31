@@ -26,9 +26,6 @@ def is_logger_expr(expr: ast.expr) -> bool:
     `logging.getLogger(__name__).info(...)`, `self.logger.error(...)`, and the
     bare-name factory `get_logger().info(...)`.
 
-    Returns:
-        True when `expr` resolves to a logger receiver.
-
     """
     if isinstance(expr, ast.Name):
         return expr.id.lower() in _LOGGER_NAMES

@@ -16,7 +16,6 @@ from sarj_python_lint.__main__ import main
 from sarj_python_lint.rule_base import EVIDENCE_DIR, REPO_BLOB, TESTS_DIR, Diagnostic, Rule
 from sarj_python_lint.rules import REGISTRY
 from sarj_python_lint.rules.no_fstring_in_log import NoFstringInLog
-from sarj_python_lint.rules.stepdown import Stepdown
 
 
 if TYPE_CHECKING:
@@ -69,16 +68,26 @@ def test_explain_accepts_a_code_or_an_id(spelling: str, capsys: pytest.CaptureFi
     assert f"examples: {NoFstringInLog.examples_url()}" in out
 
 
-def test_explain_prints_the_evidence_link_only_when_there_is_evidence(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
+def test_explain_prints_the_evidence_link_when_there_is_evidence(capsys: pytest.CaptureFixture[str]) -> None:
     assert NoFstringInLog.has_evidence
     assert main(["explain", "no-fstring-in-log"]) == 0
     assert f"evidence: {NoFstringInLog.evidence_url()}" in capsys.readouterr().out
 
-    assert not Stepdown.has_evidence
-    assert main(["explain", "stepdown"]) == 0
-    assert "evidence:" not in capsys.readouterr().out
+
+def test_explain_omits_the_evidence_link_when_there_is_none(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every shipped rule carries evidence today, so the negative case is forced.
+
+    A new rule starts at `has_evidence = False` and must print no evidence line until
+    someone writes `docs/rules/<CODE>.md` — patching the flag is the only way to pin
+    that without adding a rule whose sole purpose is to be undocumented.
+    """
+    monkeypatch.setattr(NoFstringInLog, "has_evidence", False)
+    assert main(["explain", "no-fstring-in-log"]) == 0
+    out = capsys.readouterr().out
+    assert "evidence:" not in out
+    assert "examples:" in out
 
 
 def test_explain_reports_an_unknown_rule_without_raising(capsys: pytest.CaptureFixture[str]) -> None:

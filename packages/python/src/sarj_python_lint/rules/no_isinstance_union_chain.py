@@ -1,53 +1,7 @@
-"""SARJ003: flag `if/elif isinstance(...)` chains that dispatch over a *local* closed union.
+"""SARJ003 — `if/elif isinstance(...)` chains that dispatch over a *local* closed union.
 
-A chain of `if isinstance(x, A): ... elif isinstance(x, B): ... else: raise` where every
-`A`, `B`, ... is a class **defined in this same module** and the chain terminates
-exhaustively is dispatch over a locally-owned discriminated union. `match`/`case` with
-`assert_never` in the fallthrough is strictly better: pyright reports an error the moment a
-new variant is added and a branch is missed — a plain `isinstance` chain silently falls
-through.
-
-    # flagged
-    class ApiKeySubject: ...
-    class JwtSubject: ...
-
-    if isinstance(subject, ApiKeySubject):
-        ...
-    elif isinstance(subject, JwtSubject):
-        ...
-    else:
-        assert_never(subject)
-
-    # preferred
-    match subject:
-        case ApiKeySubject():
-            ...
-        case JwtSubject():
-            ...
-        case _:
-            assert_never(subject)
-
-The rule fires ONLY when both gates hold, because only then is a mechanical rewrite to an
-exhaustive `match` both correct and beneficial:
-
-1. **Local-union gate.** Every `isinstance` arm tests a bare `ast.Name` that resolves to an
-   `ast.ClassDef` in this module — not an imported name, not a dotted `pkg.Cls`, not a
-   builtin/stdlib type. Probing open-set types the module does not own
-   (`property`, `cached_property`, `Path`, `Decimal`, `dataclasses.Field`, ...) is a
-   legitimate runtime check, not closed-union dispatch, and is never flagged.
-2. **Exhaustiveness gate.** The chain ends in a terminal `else`/final branch that raises,
-   returns, asserts, or calls an `assert_never`-style helper. An *open* chain — no `else`,
-   or a permissive `else` that silently falls through — is not equivalent to an exhaustive
-   `match` and must not be flagged, since converting it would change behavior.
-
-This is still a heuristic (a locally-defined class could be re-exported, an imported class
-could be the real union member). Suppress a deliberate boundary chain with
-`# sarj-noqa: SARJ003 — <reason>`.
-
-References:
-- https://docs.python.org/3/library/typing.html#typing.assert_never
-- https://typing.python.org/en/latest/spec/narrowing.html#assert-never-and-exhaustiveness-checking
-
+Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_isinstance_union_chain.py
+Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ003.md
 """
 
 from __future__ import annotations
@@ -113,10 +67,9 @@ _EXCLUDED_TYPE_NAMES = frozenset(
 
 
 class NoIsinstanceUnionChain(Rule):
-    """`if/elif isinstance` chains over local classes — prefer match/case + assert_never."""
-
     id: str = "no-isinstance-union-chain"
     code: str = "SARJ003"
+    has_evidence: bool = True
     description: str = (
         "if/elif isinstance chain over locally-defined classes with an exhaustive "
         "terminal — prefer match/case with assert_never for compile-time exhaustiveness."
@@ -153,15 +106,7 @@ class NoIsinstanceUnionChain(Rule):
 
 
 def _qualifying_chain_length(head: ast.If, local_classes: frozenset[str]) -> int:
-    """Count the arms if `head` is a local-closed-union dispatch chain, else 0.
-
-    Requires every arm to be `isinstance(<same target>, <local ClassDef name>)` and the
-    chain to end in an exhaustive terminal `else` (raise / return / assert / assert_never).
-
-    Returns:
-        The number of qualifying arms, or 0 when the chain does not qualify.
-
-    """
+    """Count the arms if `head` is a local-closed-union dispatch chain, else 0."""
     first_target: ast.expr | None = None
     count = 0
     current: ast.If | None = head
@@ -191,15 +136,7 @@ def _qualifying_chain_length(head: ast.If, local_classes: frozenset[str]) -> int
 
 
 def _is_exhaustive_terminal(orelse: list[ast.stmt]) -> bool:
-    """Report whether the trailing `else` block terminates instead of falling through.
-
-    An open chain (no `else`) or a permissive `else` that just does work and continues is
-    NOT equivalent to an exhaustive `match`, so it does not qualify.
-
-    Returns:
-        True when the `else` block terminates.
-
-    """
+    """Report whether the trailing `else` block terminates instead of falling through."""
     if not orelse:
         return False
     return any(_stmt_terminates(stmt) for stmt in orelse)
@@ -226,25 +163,12 @@ def _is_assert_never(func: ast.expr) -> bool:
 
 
 def _ast_equal(a: ast.expr, b: ast.expr) -> bool:
-    """Compare `a` and `b` structurally, ignoring source positions.
-
-    Returns:
-        True when the two trees are structurally equal.
-
-    """
+    """Compare `a` and `b` structurally, ignoring source positions."""
     return ast.dump(a) == ast.dump(b)
 
 
 def _isinstance_single_type(test: ast.expr) -> tuple[ast.expr, ast.expr] | None:
-    """Parse `test` as `isinstance(x, T)` with a single (non-tuple) type argument.
-
-    Tuple-form `isinstance(x, (A, B))` returns a Tuple type_node, which the caller
-    rejects (not an `ast.Name`).
-
-    Returns:
-        The (target, type_node) pair, or None if `test` is not a single-type isinstance.
-
-    """
+    """Parse `test` as `isinstance(x, T)` with a single (non-tuple) type argument."""
     if not isinstance(test, ast.Call):
         return None
     if not (isinstance(test.func, ast.Name) and test.func.id == "isinstance"):

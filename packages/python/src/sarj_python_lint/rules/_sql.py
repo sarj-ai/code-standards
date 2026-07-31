@@ -46,9 +46,6 @@ def is_store_module(path: Path) -> bool:
       - SARJ018, one site where a seed helper inserts a single provider row per
         test.
 
-    Returns:
-        True when `path` belongs to the store layer.
-
     """
     if is_test_path(path):
         return False
@@ -56,12 +53,7 @@ def is_store_module(path: Path) -> bool:
 
 
 def sql_string_value(node: ast.expr) -> str | None:
-    """Reconstruct a (possibly `+`-concatenated) string literal, else None.
-
-    Returns:
-        The reconstructed string, or None when `node` is not a string literal.
-
-    """
+    """Reconstruct a (possibly `+`-concatenated) string literal, else None."""
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
@@ -82,9 +74,6 @@ def strip_sql_noise(text: str) -> str:
     preserved so line offsets — and therefore diagnostic positions — do not
     shift. Doubled quotes (`''` / `""`) are SQL's in-string escape and keep the
     scanner inside the literal.
-
-    Returns:
-        `text` with string-literal contents and comment bodies blanked out.
 
     """
     out = list(text)

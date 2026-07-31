@@ -49,12 +49,7 @@ class _Args(argparse.Namespace):
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    """Assemble the argument parser.
-
-    Returns:
-        The configured parser.
-
-    """
+    """Assemble the argument parser."""
     parser = argparse.ArgumentParser(
         prog="sarj-ratchet",
         description=(
@@ -99,12 +94,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the ratchet.
-
-    Returns:
-        0 when every ceiling holds (or the baseline was re-seeded), 1 otherwise.
-
-    """
+    """Run the ratchet."""
     args = _build_parser().parse_args(argv, namespace=_Args())
     root = args.root.resolve()
     baseline_path = args.baseline if args.baseline is not None else root / _DEFAULT_BASELINE_NAME
@@ -162,12 +152,7 @@ def _update(
     *,
     allow_increase: bool,
 ) -> int:
-    """Re-seed the baseline, refusing raises unless they were explicitly reviewed.
-
-    Returns:
-        0 when the baseline was written, 1 when the re-seed was refused.
-
-    """
+    """Re-seed the baseline, refusing raises unless they were explicitly reviewed."""
     would_raise = gate(measurement, baseline)
     if would_raise and not allow_increase:
         sys.stderr.write("REFUSED: --update would raise ceilings; pass --allow-increase if this was reviewed:\n")

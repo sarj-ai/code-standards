@@ -1,25 +1,7 @@
-"""SARJ010: detect unreachable code after a terminal statement.
+"""SARJ010 — Unreachable code after a terminal statement.
 
-A terminal statement (`return`, `raise`, `break`, `continue`) ends control
-flow for the enclosing block. Any statement that immediately follows it in the
-same statement list can never execute — it is dead code, almost always a
-logic error (e.g. a `return` placed before cleanup, or a stray statement after
-a `break`).
-
-This is a near-pure structural check: for every statement-list field on every
-node (the `body`/`orelse`/`finalbody` lists of Module, FunctionDef, If, For,
-While, With, Try, ExceptHandler, etc.), if a terminal appears before the last
-element of that list, the statement immediately after it is unreachable.
-
-A terminal only ends control flow where Python actually allows it, so the check
-tracks context: `return` counts only inside a function, and `break`/`continue`
-only inside a loop (a loop's `else:` clause is outside the loop for that
-purpose, matching Python's own binding). `raise` is terminal anywhere. A
-module-scope `return` is a `SyntaxError` — the file could never execute at all —
-so treating the statements after it as "dead" says nothing true about the code.
-A 2,657-file third-party sweep produced 10 findings and 5 of them were exactly
-that shape (black's formatter fixtures under `tests/data/cases/`, which hold
-statement fragments lifted out of their functions).
+Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_unreachable_after_terminal.py
+Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ010.md
 """
 
 from __future__ import annotations
@@ -53,12 +35,7 @@ _STATEMENT_BEARING = (ast.stmt, ast.ExceptHandler, ast.match_case, ast.mod)
 
 
 def _block(node: ast.AST, field: str) -> list[ast.stmt]:
-    """Read a node's `body` / `orelse` / `finalbody` statement list.
-
-    Returns:
-        The statements in that block, or an empty list when the node has none.
-
-    """
+    """Read a node's `body` / `orelse` / `finalbody` statement list."""
     raw = getattr(node, field, None)
     if not isinstance(raw, list):
         return []
@@ -73,17 +50,7 @@ def _block(node: ast.AST, field: str) -> list[ast.stmt]:
 
 
 def _is_terminal(stmt: ast.stmt, *, in_function: bool, in_loop: bool) -> bool:
-    """Report whether `stmt` ends control flow for its block IN THIS CONTEXT.
-
-    `raise` is terminal anywhere. `return` is only legal — and therefore only
-    terminal — inside a function, and `break`/`continue` only inside a loop.
-    Outside those contexts the statement is a `SyntaxError` that no interpreter
-    would ever run, so nothing after it is meaningfully dead.
-
-    Returns:
-        True when the statement terminates its enclosing block here.
-
-    """
+    """Report whether `stmt` ends control flow for its block IN THIS CONTEXT."""
     if isinstance(stmt, ast.Raise):
         return True
     if isinstance(stmt, ast.Return):
@@ -92,17 +59,7 @@ def _is_terminal(stmt: ast.stmt, *, in_function: bool, in_loop: bool) -> bool:
 
 
 def _child_context(node: ast.AST, field: str, *, in_function: bool, in_loop: bool) -> tuple[bool, bool]:
-    """Compute the `(in_function, in_loop)` context for a node's child field.
-
-    A function body opens a function scope and closes any enclosing loop (a
-    `break` inside a nested `def` does not bind to the outer loop); a class body
-    closes both. A loop's `body` is inside the loop, but its `orelse` is not —
-    `break` in a `for ... else:` binds to the *enclosing* loop, matching Python.
-
-    Returns:
-        The context to use for the children of `field`.
-
-    """
+    """Compute the `(in_function, in_loop)` context for a node's child field."""
     if isinstance(node, _FUNCTIONS):
         return (True, False) if field == "body" else (in_function, in_loop)
     if isinstance(node, ast.ClassDef):
@@ -127,10 +84,9 @@ def _is_generator_marker(stmt: ast.stmt) -> bool:
 
 
 class NoUnreachableAfterTerminal(Rule):
-    """Code following a `return`/`raise`/`break`/`continue` is unreachable."""
-
     id: str = "no-unreachable-after-terminal"
     code: str = "SARJ010"
+    has_evidence: bool = True
     description: str = "Unreachable code after a terminal statement (`return`/`raise`/`break`/`continue`)."
 
     @override

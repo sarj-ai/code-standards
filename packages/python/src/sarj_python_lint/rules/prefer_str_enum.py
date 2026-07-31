@@ -1,103 +1,7 @@
-"""SARJ006: raw `str` used where a closed enumeration is clearly intended.
+"""SARJ006 — Raw `str` used where a closed enumeration is clearly intended.
 
-`Literal["a", "b", "c"]` is acceptable — that's a proper closed set. After a
-real-world sweep (Flask, requests, httpx, FastAPI, Django) the rule was tightened
-to two corroborated triggers only:
-
-1. **Sibling choices attribute** — a class with a string-collection attribute
-   named `choices`/`states`/`statuses`/`values`/`allowed` flags its raw-`str`
-   fields (the collection is the enum that should exist). A bare `status: str`
-   with no such corroboration does NOT fire: a field name alone is too weak a
-   signal (a free-form HTTP `status` string is still `str`).
-2. **Equality comparison cluster** — within one function, the same *plain
-   variable* (not an attribute of a value the module doesn't own) is compared
-   with `==`/`!=` (or matched with `case`) against 2+ distinct short lowercase
-   string literals. A lone `x in {...}` / `x not in {...}` membership test is
-   NOT enough on its own — it is usually a guard over an external vocabulary
-   (URL schemes, file modes, reflection keys), not an app-owned enum. A field
-   whose name matches such a cluster is corroborated and also flagged.
-
-   The 2+ literals must be enumerated by ONE operator (`x == "a" ... elif
-   x == "b"`, or `x != "a" and x != "b"`), optionally corroborated by a
-   membership set over the same variable (`assert x in ("a", "b")` next to
-   `if x == "a"`). `==` and `!=` literals are never summed with each other: an
-   `x == "a"` plus `x != "b"` pair is two independent guards, not a dispatch
-   over a domain. Four of the famous-repo sweep's 31 hits were that pair
-   (`fastapi/docs_src/dependencies/tutorial008c_py310.py:19` and its three
-   siblings: `if item_id == "laser-gun": ... if item_id != "plumbus": ...`).
-
-Deliberately NOT flagged (real-world false positives the sweep surfaced):
-- Attribute comparands whose root the module does not own (`url.scheme`,
-  `field.mode`, `self.__dict__` reflection keys) — you cannot turn someone
-  else's attribute into a StrEnum.
-- Lone membership guards over external vocabularies.
-- Single-character tokenizer scans (`last_char == "g"`) and language-keyword
-  tokenizers (`token in ("is", "not", "in")`).
-- Variables that are already a closed `Literal` — either annotated inline
-  (`x: Literal["a", "b"]`) or via a module-level alias (`Mode = Literal[...]`;
-  `x: Mode`), or whose compared literals are all members of such an in-module
-  alias (Rich's `align = self.align` where `AlignMethod = Literal[...]`). The
-  closed set already exists; recommending a StrEnum is redundant.
-- Open-domain code variables (`language`, `country`, `currency`, `timezone`,
-  `locale`, `region`, `code`, ...): special-casing a few ISO codes is not a
-  closed enum.
-- Variables bound from a subscript or `.get(...)` lookup in the same function
-  (`schema_type = schema['type']`, `extra = cfg.get('behavior')`): the value
-  comes off a dict-shaped wire format owned by someone else (pydantic-core
-  schemas were the motivating sweep case) — you cannot impose a StrEnum on
-  another system's payload keys.
-
-The famous-repo sweep (31 hits over fastapi / pydantic / rich / flask / black)
-retired four more classes, all of them "the domain is not this comparison's to
-define":
-
-- **Separately-typed variables.** Anything annotated with a named type other
-  than `str` — `justify: JustifyMethod` (`rich/rich/containers.py:129`),
-  `align: AlignMethod` (`rich/rich/text.py:955`),
-  `vertical: VerticalAlignMethod` (`rich/rich/table.py:859`),
-  `mode: FieldValidatorModes` (`pydantic/pydantic/_internal/_decorators.py:563`).
-  All four are `Literal` aliases the rule cannot see, because they are declared
-  in the module that owns them and imported here; what it CAN see is that the
-  domain already has a name and a definition site. Opacity propagates through
-  assignment, so `_overflow = overflow or self.overflow or DEFAULT_OVERFLOW`
-  (`rich/rich/text.py:874`) is opaque too. Same for a local bound from a
-  same-module function that returns a `Literal`
-  (`pydantic/pydantic/_internal/_generate_schema.py:2833`).
-- **Foreign reads, extended to loops and attributes.** The direct form
-  (`token.type == "text"`) never fired; binding it to a local first must not
-  change the answer. So `node_type = token.type` (`rich/rich/markdown.py:605`),
-  `v = leaf.value` (`black/src/black/nodes.py:940`),
-  `copy_on_model_validation = cls.__config__.copy_on_model_validation`
-  (`pydantic/pydantic/v1/main.py:711`, a chain that has left `self`),
-  `event = os.getenv("GITHUB_EVENT_NAME")`
-  (`black/scripts/diff_shades_gha_helper.py:125`), `word = next(words, "")`
-  (`rich/rich/style.py:522`, a token scan) and every `for` target over somebody
-  else's mapping or attribute — `for k, v in obj.items()`
-  (`pydantic/pydantic/_internal/_core_utils.py:117`), `for ann_name, _ in
-  type_hints.items()` (`.../_fields.py:273`), `for arg, name in zip(expr.args,
-  expr.arg_names)` (`pydantic/pydantic/mypy.py:1096`,
-  `pydantic/pydantic/v1/mypy.py:616`), `for field in sorted(node._fields)`
-  (`black/src/black/parsing.py:218`) — are all reflection over an external
-  vocabulary.
-- **`open()` modes.** A variable named `mode` / `_mode` / `*_mode` compared only
-  against 1-3 characters drawn from `rwxab+t` is the stdlib file-mode
-  vocabulary (`flask/src/flask/app.py:437`,
-  `flask/src/flask/blueprints.py:120`, `rich/rich/progress.py:1345`). Matching
-  on the name AND the shape keeps single-character enums elsewhere
-  (`grade == "a"` / `grade == "b"`) firing.
-- **`self` / `cls`**, added to `EXTERNAL_VOCAB`: comparing against those
-  inspects a function signature (`pydantic/pydantic/v1/class_validators.py:268`),
-  it does not dispatch over a domain.
-
-Replace a genuine hit with:
-    class Status(StrEnum):
-        ACTIVE = "active"
-        INACTIVE = "inactive"
-
-References:
-- https://docs.python.org/3/library/enum.html#enum.StrEnum
-- https://docs.pydantic.dev/latest/concepts/types/#enums
-
+Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_str_enum.py
+Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ006.md
 """
 
 from __future__ import annotations
@@ -228,10 +132,9 @@ _FOREIGN_CHAIN_DEPTH = 2
 
 
 class PreferStrEnum(Rule):
-    """Choice-shaped str field or literal equality cluster — prefer StrEnum."""
-
     id: str = "prefer-str-enum"
     code: str = "SARJ006"
+    has_evidence: bool = True
     description: str = "Corroborated choice-like str field or equality cluster — prefer StrEnum."
 
     @override
@@ -336,12 +239,7 @@ class PreferStrEnum(Rule):
 
 
 def _has_str_enum_signal(source: str) -> bool:
-    """Cheap source gate for files that cannot contain this rule's triggers.
-
-    Returns:
-        True when the source contains enough lexical signal to justify parsing.
-
-    """
+    """Cheap source gate for files that cannot contain this rule's triggers."""
     has_string_literal = '"' in source or "'" in source
     if "str" in source and any(name in source.lower() for name in CHOICES_ATTR_NAMES):
         return True
@@ -376,16 +274,7 @@ def _cluster_is_already_closed(
     literal_typed: frozenset[str],
     alias_valuesets: list[frozenset[str]],
 ) -> bool:
-    """Report whether a cluster is on a variable whose domain is already closed.
-
-    Suppressed when the variable is an open-domain code name, is annotated as a
-    `Literal` (inline or via a module alias), or its compared literals are all
-    members of an in-module `Literal` alias's value set.
-
-    Returns:
-        True when the cluster should be suppressed as already-closed.
-
-    """
+    """Report whether a cluster is on a variable whose domain is already closed."""
     if key.lower() in OPEN_DOMAIN_CODE_NAMES:
         return True
     if key in literal_typed:
@@ -395,12 +284,7 @@ def _cluster_is_already_closed(
 
 
 def _module_literal_aliases(tree: ast.Module) -> tuple[frozenset[str], list[frozenset[str]]]:
-    """Collect module-level `X = Literal[...]` aliases.
-
-    Returns:
-        The alias names, plus each alias's set of string-literal values.
-
-    """
+    """Collect module-level `X = Literal[...]` aliases."""
     names: set[str] = set()
     valuesets: list[frozenset[str]] = []
     for stmt in tree.body:
@@ -428,16 +312,7 @@ def _module_literal_aliases(tree: ast.Module) -> tuple[frozenset[str], list[froz
 
 
 def _literal_typed_names(func: ast.FunctionDef | ast.AsyncFunctionDef, alias_names: frozenset[str]) -> frozenset[str]:
-    """Collect names in `func` annotated as a `Literal` (inline or via a module alias).
-
-    Covers the function's own parameters and `x: <literal>` annotated locals in
-    its body (not descending into nested functions/classes, which own their
-    scope).
-
-    Returns:
-        The set of such names.
-
-    """
+    """Collect names in `func` annotated as a `Literal` (inline or via a module alias)."""
     names: set[str] = set()
     args = func.args
     for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs):
@@ -463,35 +338,13 @@ def _opaque_names(
     alias_names: frozenset[str],
     literal_funcs: frozenset[str],
 ) -> frozenset[str]:
-    """Collect the names in `func` a StrEnum recommendation cannot apply to.
-
-    Three families, then closed under assignment (a name derived from an opaque
-    name is itself opaque — Rich's `_overflow = overflow or self.overflow or
-    DEFAULT_OVERFLOW`):
-
-    * already-closed domains — a `Literal` annotation, or a call to a
-      same-module function that returns one;
-    * separately-typed names — anything annotated with a named type other than
-      `str` (`justify: JustifyMethod`): the domain already has a home, and it
-      is not this comparison's to redefine;
-    * wire-bound names — read off a payload, an iteration over somebody else's
-      mapping/attribute, an environment variable, or a token stream.
-
-    Returns:
-        The set of names whose clusters must not fire.
-
-    """
+    """Collect the names in `func` a StrEnum recommendation cannot apply to."""
     base = _literal_typed_names(func, alias_names) | _foreign_typed_names(func) | _wire_bound_names(func, literal_funcs)
     return _close_over_assignments(func, base)
 
 
 def _close_over_assignments(func: ast.FunctionDef | ast.AsyncFunctionDef, seed: frozenset[str]) -> frozenset[str]:
-    """Propagate opacity along `x = <expr mentioning an opaque name>`.
-
-    Returns:
-        The seed set plus every name derived from it.
-
-    """
+    """Propagate opacity along `x = <expr mentioning an opaque name>`."""
     edges: list[tuple[str, frozenset[str]]] = []
     for target, value in _local_bindings(func):
         sources = {node.id for node in walk(value) if isinstance(node, ast.Name)}
@@ -509,14 +362,7 @@ def _close_over_assignments(func: ast.FunctionDef | ast.AsyncFunctionDef, seed: 
 def _local_bindings(
     func: ast.FunctionDef | ast.AsyncFunctionDef,
 ) -> list[tuple[ast.Name, ast.expr]]:
-    """Collect `x = <value>` / `x: T = <value>` / `(x := <value>)` bindings in `func`'s own scope.
-
-    Nested functions/classes own their scope and are not descended into.
-
-    Returns:
-        The bound names paired with their initializers.
-
-    """
+    """Collect `x = <value>` / `x: T = <value>` / `(x := <value>)` bindings in `func`'s own scope."""
     bindings: list[tuple[ast.Name, ast.expr]] = []
     stack: list[ast.AST] = list(func.body)
     while stack:
@@ -536,18 +382,7 @@ def _local_bindings(
 
 
 def _foreign_typed_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> frozenset[str]:
-    """Collect names annotated with a named type other than `str`.
-
-    Rich's `justify: JustifyMethod` / pydantic's `mode: FieldValidatorModes` are
-    already closed sets — declared as `Literal` aliases in the module that owns
-    them — but the alias is imported, so it cannot be resolved from here. What
-    IS visible is that the value is not a bare `str`: its domain has a name and
-    a definition site, and "define a StrEnum" belongs there, not here.
-
-    Returns:
-        The set of such names.
-
-    """
+    """Collect names annotated with a named type other than `str`."""
     names: set[str] = set()
     args = func.args
     for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs):
@@ -569,15 +404,7 @@ def _foreign_typed_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> frozen
 
 
 def _is_foreign_annotation(annotation: ast.expr | None) -> bool:
-    """Report whether the annotation names a type other than `str`.
-
-    `str`, `str | None` and `Optional[str]` are the shapes this rule is about
-    and are NOT foreign; a bare name or dotted reference to anything else is.
-
-    Returns:
-        True when the annotation is a named non-`str` type.
-
-    """
+    """Report whether the annotation names a type other than `str`."""
     if annotation is None:
         return False
     if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
@@ -594,12 +421,7 @@ def _is_foreign_annotation(annotation: ast.expr | None) -> bool:
 
 
 def _strip_optional(annotation: ast.expr) -> ast.expr:
-    """Unwrap `X | None` and `Optional[X]` down to `X`.
-
-    Returns:
-        The annotation with its optionality removed.
-
-    """
+    """Unwrap `X | None` and `Optional[X]` down to `X`."""
     match annotation:
         case ast.BinOp(op=ast.BitOr(), left=left, right=ast.Constant(value=None)):
             return _strip_optional(left)
@@ -612,16 +434,7 @@ def _strip_optional(annotation: ast.expr) -> ast.expr:
 
 
 def _literal_returning_functions(tree: ast.Module) -> frozenset[str]:
-    """Collect the names of functions in this module that return a `Literal[...]`.
-
-    A local bound from such a call already has a closed domain, declared at the
-    function that produced it (pydantic's `_inlining_behavior(...) ->
-    Literal['inline', 'keep', 'preserve_metadata']`).
-
-    Returns:
-        The function names.
-
-    """
+    """Collect the names of functions in this module that return a `Literal[...]`."""
     names: set[str] = set()
     for node in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef):
         if node.returns is not None and _literal_string_values(node.returns) is not None:
@@ -630,22 +443,7 @@ def _literal_returning_functions(tree: ast.Module) -> frozenset[str]:
 
 
 def _wire_bound_names(func: ast.FunctionDef | ast.AsyncFunctionDef, literal_funcs: frozenset[str]) -> frozenset[str]:
-    """Collect names in `func` bound from a value the module does not own.
-
-    `schema_type = schema['type']` / `extra = cfg.get('behavior')` read a value
-    off a dict-shaped wire format; `for k, v in obj.items()` and
-    `for arg, name in zip(expr.args, expr.arg_names)` iterate somebody else's
-    keys; `event = os.getenv(...)` reads the environment; `word = next(words,
-    "")` pulls a token off a scan. Clusters on such names are
-    external-vocabulary dispatch, not an app enum — and the direct form
-    (`obj.attr == "a"`) never fired either, so binding it to a local first must
-    not change the answer. Nested functions/classes own their scope and are not
-    descended into.
-
-    Returns:
-        The set of such names.
-
-    """
+    """Collect names in `func` bound from a value the module does not own."""
     names: set[str] = set()
     for target, value in _local_bindings(func):
         if _is_wire_lookup(value) or (isinstance(value, ast.Call) and _trailing_name(value.func) in literal_funcs):
@@ -662,26 +460,12 @@ def _wire_bound_names(func: ast.FunctionDef | ast.AsyncFunctionDef, literal_func
 
 
 def _bound_target_names(target: ast.expr) -> set[str]:
-    """Collect every name bound by an assignment target, nested unpacking included.
-
-    Returns:
-        The bound names.
-
-    """
+    """Collect every name bound by an assignment target, nested unpacking included."""
     return {node.id for node in walk(target) if isinstance(node, ast.Name)}
 
 
 def _is_wire_lookup(value: ast.expr) -> bool:
-    """Report whether `value` reads from something the module does not own.
-
-    Subscripts, `.get()` / `.items()` / `next()` / `os.getenv()` style reads,
-    attribute reads off another object, and any of those behind one iterable
-    wrapper (`zip(...)`, `sorted(...)`, `enumerate(...)`).
-
-    Returns:
-        True for a foreign read.
-
-    """
+    """Report whether `value` reads from something the module does not own."""
     match value:
         case ast.Subscript():
             return True
@@ -699,15 +483,7 @@ def _is_wire_lookup(value: ast.expr) -> bool:
 
 
 def _is_foreign_attribute(node: ast.Attribute) -> bool:
-    """Report whether an attribute chain reads a value off an object the module does not own.
-
-    `token.type` is somebody else's field; `self.mode` is this class's own, but
-    `self._config_wrapper.extra` has left `self` and reached a collaborator.
-
-    Returns:
-        True when the chain root is foreign, or the chain is deep enough to have left it.
-
-    """
+    """Report whether an attribute chain reads a value off an object the module does not own."""
     depth = 0
     current: ast.expr = node
     while isinstance(current, ast.Attribute):
@@ -719,12 +495,7 @@ def _is_foreign_attribute(node: ast.Attribute) -> bool:
 
 
 def _trailing_name(node: ast.AST) -> str | None:
-    """Return the trailing identifier of a `Name` / `Attribute` chain.
-
-    Returns:
-        The trailing name, or None when the node is neither.
-
-    """
+    """Return the trailing identifier of a `Name` / `Attribute` chain."""
     match node:
         case ast.Name(id=ident):
             return ident
@@ -748,15 +519,7 @@ def _is_literal_annotation(annotation: ast.expr | None, alias_names: frozenset[s
 
 
 def _literal_string_values(node: ast.expr) -> list[str] | None:
-    """Return the string members of a `Literal[...]` subscript, or None if not one.
-
-    A `Literal[...]` with only non-string members yields an empty list (still a
-    Literal); a non-`Literal` node yields None.
-
-    Returns:
-        The string members, or None when `node` is not a `Literal[...]`.
-
-    """
+    """Return the string members of a `Literal[...]` subscript, or None if not one."""
     if not isinstance(node, ast.Subscript):
         return None
     head = node.value
@@ -770,12 +533,7 @@ def _literal_string_values(node: ast.expr) -> list[str] | None:
 
 
 def _is_file_mode_key(key: str) -> bool:
-    """Report whether the variable holds an `open()` mode (`mode`, `_mode`, `file_mode`).
-
-    Returns:
-        True when the name marks a file mode.
-
-    """
+    """Report whether the variable holds an `open()` mode (`mode`, `_mode`, `file_mode`)."""
     segment = key.rsplit(".", 1)[-1].lstrip("_").lower()
     return segment in _FILE_MODE_KEYS or segment.endswith("_mode")
 
@@ -838,12 +596,7 @@ def _merge_cluster(
 
 
 def _match_pattern_literals(pattern: ast.pattern) -> list[str]:
-    """Collect string-constant literals from a `case` pattern (`MatchValue` / `MatchOr`).
-
-    Returns:
-        The string literals found in the pattern.
-
-    """
+    """Collect string-constant literals from a `case` pattern (`MatchValue` / `MatchOr`)."""
     if isinstance(pattern, ast.MatchValue):
         value = _str_const(pattern.value)
         return [value] if value is not None else []
@@ -856,12 +609,7 @@ def _match_pattern_literals(pattern: ast.pattern) -> list[str]:
 
 
 def _annotation_text(annotation: ast.expr | None) -> str:
-    """Unparse the annotation, unwrapping a stringized forward-ref (`x: "str"`).
-
-    Returns:
-        The unparsed annotation text, or "" when the annotation is None.
-
-    """
+    """Unparse the annotation, unwrapping a stringized forward-ref (`x: "str"`)."""
     if annotation is None:
         return ""
     if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
@@ -870,20 +618,7 @@ def _annotation_text(annotation: ast.expr | None) -> str:
 
 
 def _extract_compare(node: ast.Compare) -> tuple[str, list[str], str] | None:
-    """Return (variable key, string literals, operator kind) for an enum-shaped compare.
-
-    Handles `x == "a"`, `"a" == x` (yoda), `x != "a"`, and
-    `x in ("a", "b")` / `x not in {...}` where every element is a string
-    constant. The compared variable must be a plain *name* — subscripts (dict
-    keys), calls, f-strings, and attribute chains (`url.scheme`, `field.mode`,
-    reflection keys) are excluded: the module cannot turn a value it doesn't
-    own into a StrEnum. `is_equality` is True only for `==` / `!=`; a bare
-    membership test is not on its own strong enough to fire.
-
-    Returns:
-        The (key, literals, operator) triple, or None for a non-enum-shaped compare.
-
-    """
+    """Return (variable key, string literals, operator kind) for an enum-shaped compare."""
     if len(node.ops) != 1 or len(node.comparators) != 1:
         return None
     op = node.ops[0]
@@ -917,12 +652,7 @@ def _extract_compare(node: ast.Compare) -> tuple[str, list[str], str] | None:
 
 
 def _name_key(node: ast.AST) -> str | None:
-    """Return a stable key for a plain name; attribute chains and everything else -> None.
-
-    Returns:
-        The name's identifier, or None when `node` is not a plain name.
-
-    """
+    """Return a stable key for a plain name; attribute chains and everything else -> None."""
     if isinstance(node, ast.Name):
         return node.id
     return None

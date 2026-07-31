@@ -1,39 +1,7 @@
-"""SARJ056: a tenant predicate that only appears inside a conditional branch.
+"""SARJ056 — A tenant predicate that only appears inside a conditional branch.
 
-Multi-tenant stores compose a WHERE clause by accumulating fragments in a list::
-
-    where_conditions: list[Composable] = []
-    if args.organization_ids:
-        where_conditions.append(SQL("organization_id = ANY(%s::uuid[])"))
-    if args.status:
-        where_conditions.append(SQL("status = ANY(%s)"))
-    where_clause = SQL(" AND ").join(where_conditions) if where_conditions else SQL("1=1")
-
-When the tenant fragment is the *only* thing standing between a caller and every
-other tenant's rows, guarding it with `if` makes the scoping **fail open**: the
-query still executes, just without the predicate. A caller that passes an empty
-or missing organization list silently reads the whole table.
-
-This is not hypothetical. In one first-party service,
-`PsqlOrderStore._build_filter_conditions` had exactly this shape, and
-`POST /v1/orders/list` reached it with `organization_ids=[]` for any user whose
-`organization_id` was NULL — composing `SELECT ... FROM orders WHERE 1=1`, i.e.
-every tenant's rows.
-
-The rule fires when, within a single function, *every* WHERE-fragment that
-mentions a tenant column is nested inside a conditional. The safe idiom seeds
-the fragment list with the tenant predicate unconditionally::
-
-    conditions: list[Composable] = [SQL("organization_id = %s")]   # always applied
-
-so that form never fires. A function with no tenant fragment at all does not
-fire either — an intentionally cross-tenant admin query is not this rule's
-business; only *attempted-but-optional* scoping is.
-
-Scope note: only fragments participating in list composition (a list literal, or
-an argument to `.append()` / `.extend()`) are considered, so an unrelated inline
-`WHERE organization_id = %s` elsewhere in the same function neither triggers nor
-masks a finding.
+Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_optional_tenant_predicate.py
+Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ056.md
 """
 
 from __future__ import annotations
@@ -68,10 +36,9 @@ _CONDITIONAL_NODES = (ast.If, ast.IfExp)
 
 
 class NoOptionalTenantPredicate(Rule):
-    """Tenant scoping that disappears when a filter is absent."""
-
     id: str = "no-optional-tenant-predicate"
     code: str = "SARJ056"
+    has_evidence: bool = True
     description: str = (
         "A tenant predicate reachable only inside a conditional makes tenant scoping fail open — "
         "the query still runs, unscoped, when the filter is absent."
@@ -117,29 +84,12 @@ class NoOptionalTenantPredicate(Rule):
 
 
 def _iter_functions(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
-    """Collect every function and method in the module.
-
-    Returns:
-        All `FunctionDef`/`AsyncFunctionDef` nodes, outermost first.
-
-    """
+    """Collect every function and method in the module."""
     return nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef)
 
 
 def _tenant_fragments(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[tuple[ast.expr, bool]]:
-    """Find WHERE-fragments in `func` that carry a tenant predicate.
-
-    Only fragments taking part in list composition count: elements of a list
-    literal, or arguments to `.append()` / `.extend()`. Each is paired with
-    whether it sits inside a conditional *within this function*.
-
-    One recursive pass carries the "am I under an `If`/`IfExp`?" flag down the
-    tree, so the cost is linear in the function's node count.
-
-    Returns:
-        `(node, is_conditional)` pairs in source order.
-
-    """
+    """Find WHERE-fragments in `func` that carry a tenant predicate."""
     found: list[tuple[ast.expr, bool]] = []
 
     def visit(node: ast.AST, *, conditional: bool) -> None:
@@ -161,14 +111,7 @@ def _tenant_fragments(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[tupl
 
 
 def _composition_fragments(node: ast.AST) -> list[ast.expr]:
-    """Yield the expressions `node` itself accumulates into a WHERE-fragment list.
-
-    Shallow by design — the caller recurses — so each node is inspected once.
-
-    Returns:
-        List-literal elements, or `.append()`/`.extend()` arguments.
-
-    """
+    """Yield the expressions `node` itself accumulates into a WHERE-fragment list."""
     if isinstance(node, ast.List):
         return list(node.elts)
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in {"append", "extend"}:
@@ -177,15 +120,7 @@ def _composition_fragments(node: ast.AST) -> list[ast.expr]:
 
 
 def _mentions_tenant_predicate(node: ast.expr) -> bool:
-    """Report whether `node`'s subtree contains a tenant-column predicate string.
-
-    Walking the subtree catches `SQL("organization_id = %s")` and the
-    `SQL("...").format(...)` form alike.
-
-    Returns:
-        True when a tenant predicate literal appears in the subtree.
-
-    """
+    """Report whether `node`'s subtree contains a tenant-column predicate string."""
     return any(
         isinstance(child, ast.Constant)
         and isinstance(child.value, str)

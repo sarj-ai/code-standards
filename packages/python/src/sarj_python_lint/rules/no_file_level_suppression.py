@@ -1,51 +1,7 @@
-"""SARJ038: module-scope unscoped suppression blanket — scope it or fix the findings.
+"""SARJ038 — Module-scope unscoped suppression blanket — scope it or fix the findings.
 
-A per-line suppression is a claim about one line. A module-scope *unscoped*
-blanket is a claim about every line in the file, forever: it switches the whole
-checker off for the file, including the rules that do not exist yet. The next
-person adds a function to the file and their new violations are pre-silenced by
-a decision someone else made months ago, in a comment they will never scroll
-past. Nothing in review or CI says a word. This is the file-level-suppression
-escape hatch raised in review on a first-party repo.
-
-A SCOPED suppression is the opposite: naming the codes it silences makes it a
-reviewed, legible, bounded decision, and it keeps working exactly as intended
-when new rules land. Scoped forms are NEVER flagged by this rule.
-
-Fires on exactly three shapes:
-
-1. Bare `# ruff: noqa` — anywhere in the file, since ruff honours the
-   file-level exemption wherever the comment appears. A trailing prose reason
-   (`# ruff: noqa — legacy module`) is still unscoped: it names no codes.
-2. Standalone `# type: ignore` (mypy) appearing BEFORE the module's first
-   statement — that position is what makes it file-level rather than per-line.
-3. Standalone `# pyright: ignore` before the module's first statement.
-
-"Standalone" means the comment is the only thing on its line. "Before the first
-statement" means above the line of the first token that is not a comment or
-layout — a module docstring IS a statement, so a `# type: ignore` under the
-docstring is not file-level.
-
-Deliberately NOT flagged:
-
-* every scoped counterpart — `# ruff: noqa: E501`, `# ruff: noqa: E501, F401`,
-  `# type: ignore[attr-defined]`, `# pyright: ignore[reportUnusedImport]`;
-* trailing per-line suppressions — `x = foo()  # type: ignore`,
-  `y = bar()  # pyright: ignore` — these bind to one line by construction, and
-  their position in the file is irrelevant;
-* a bare per-line `# noqa` with no `ruff:` prefix: it silences one line, not the
-  file, and belongs to a different rule;
-* other `ruff:` directives that are not `noqa` (`# ruff:ignore[...]`), and
-  pyright's configuration comments (`# pyright: strict`);
-* shebangs, encoding cookies (`# -*- coding: utf-8 -*-`) and license headers,
-  which legitimately precede the first statement.
-
-The rule is token-based rather than AST-based because comments do not survive
-`ast.parse`. Malformed input yields no diagnostics rather than an exception.
-
-A file-level blanket that is genuinely justified (vendored code, a generated
-module) is suppressed with `# sarj-noqa: SARJ038 — <reason>`, which puts the
-reason in the diff where a reviewer sees it.
+Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_file_level_suppression.py
+Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ038.md
 """
 
 from __future__ import annotations
@@ -95,10 +51,9 @@ _PYRIGHT_IGNORE_MESSAGE = (
 
 
 class NoFileLevelSuppression(Rule):
-    """Module-scope unscoped suppression blanket — scope it to the codes it silences."""
-
     id: str = "no-file-level-suppression"
     code: str = "SARJ038"
+    has_evidence: bool = True
     description: str = (
         "An unscoped file-level suppression (`# ruff: noqa`, `# type: ignore`, "
         "`# pyright: ignore`) switches a whole checker off for the file, "
@@ -107,15 +62,7 @@ class NoFileLevelSuppression(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        """Report every unscoped module-scope suppression blanket in `source`.
-
-        Input that cannot be lexed (unterminated string, bad indentation)
-        yields no diagnostics rather than an exception.
-
-        Returns:
-            The diagnostics, sorted by (line, col).
-
-        """
+        """Report every unscoped module-scope suppression blanket in `source`."""
         try:
             comments = scan_comments(source)
         except tokenize.TokenError, IndentationError, SyntaxError:
@@ -130,16 +77,7 @@ class NoFileLevelSuppression(Rule):
 
 
 def _blanket_message(comment: Comment) -> str | None:
-    """Classify a comment as one of the three unscoped blankets.
-
-    A bare `# ruff: noqa` counts wherever it sits; the mypy and pyright forms
-    only count when they stand alone above the module's first statement, since
-    anywhere else they are per-line suppressions.
-
-    Returns:
-        The diagnostic message, or None when the comment is not a blanket.
-
-    """
+    """Classify a comment as one of the three unscoped blankets."""
     if _is_unscoped(comment.body, _RUFF_NOQA_RE, _RUFF_CODES_RE):
         return _RUFF_MESSAGE
     if not (comment.standalone and comment.before_first_statement):
@@ -152,12 +90,7 @@ def _blanket_message(comment: Comment) -> str | None:
 
 
 def _is_unscoped(body: str, directive: re.Pattern[str], codes: re.Pattern[str]) -> bool:
-    """Report whether `body` is `directive` with no code list after it.
-
-    Returns:
-        True when the directive matches and names no codes.
-
-    """
+    """Report whether `body` is `directive` with no code list after it."""
     match = directive.match(body)
     if match is None:
         return False

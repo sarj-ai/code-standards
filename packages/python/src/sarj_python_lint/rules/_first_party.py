@@ -83,12 +83,7 @@ _MAX_ANCESTORS = 24
 
 
 def is_first_party_module(module: str, path: Path) -> bool:
-    """Report whether dotted `module` is declared inside `path`'s own project.
-
-    Returns:
-        True when the module's top-level name resolves to a first-party package.
-
-    """
+    """Report whether dotted `module` is declared inside `path`'s own project."""
     top = module.partition(".")[0]
     if not top or top in sys.stdlib_module_names:
         return False
@@ -106,9 +101,6 @@ def own_top_package(path: Path) -> str | None:
     routine — a first-party repo's `app/app/lk/custom_models/` carries no
     `__init__.py` while `app/app/` does, and a break-on-first-gap walk would
     report the file as belonging to no package at all.
-
-    Returns:
-        The top-level package name, or None when `path` is not inside a package.
 
     """
     resolved = _resolved(path)
@@ -137,12 +129,7 @@ def _resolved(path: Path) -> Path | None:
 
 @lru_cache(maxsize=256)
 def _project_root(path: Path) -> Path | None:
-    """Locate the project boundary above `path`, memoized per file path.
-
-    Returns:
-        The project root directory, or None when no marker is found.
-
-    """
+    """Locate the project boundary above `path`, memoized per file path."""
     resolved = _resolved(path)
     if resolved is None:
         return None
@@ -164,12 +151,7 @@ def _project_root(path: Path) -> Path | None:
 
 @lru_cache(maxsize=32)
 def _first_party_roots(root: Path) -> frozenset[str]:
-    """Collect the top-level package names declared anywhere under `root`.
-
-    Returns:
-        Every directory name under `root` that is an importable package.
-
-    """
+    """Collect the top-level package names declared anywhere under `root`."""
     names: set[str] = set()
     queue: list[tuple[Path, int]] = [(root, 0)]
     scanned = 0

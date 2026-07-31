@@ -1,22 +1,7 @@
-"""SARJ019: a SQL query with 3+ JOINs is too entangled — split or denormalize.
+"""SARJ019 — A SQL query with 3+ JOINs is too entangled — split or denormalize.
 
-Three years of store reviews repeatedly push back on multi-table joins inside a
-single store query ("can we remove the joins?", "do the join at the application
-layer", "whenever I see a join my ears perk up"). A query fanning across many
-tables couples models that should stay separate, is hard to index well, and
-usually wants either denormalization or splitting into per-store reads joined in
-application code.
-
-This rule walks SQL string literals embedded in `.py` (the raw queries in
-`*_store.py`) and flags any single query string containing **3 or more** `JOIN`
-keywords. `LEFT/RIGHT/INNER/FULL/CROSS JOIN` each count as one. SQL string-literal
-values and `--` / `/* */` comments are neutralized first, so a `'join'` value or
-a `--` inside a quoted value never affects the count. Only strings that actually
-look like a query (they contain a `FROM`) are considered, keeping false positives
-low.
-
-If a join-heavy read is genuinely the right call, suppress with
-`# sarj-noqa: SARJ019 — <reason>`.
+Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_query_with_many_joins.py
+Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ019.md
 """
 
 from __future__ import annotations
@@ -45,10 +30,9 @@ _MAX_JOINS = 2
 
 
 class NoQueryWithManyJoins(Rule):
-    """A SQL query with 3+ JOINs is too entangled — split it or denormalize."""
-
     id: str = "no-query-with-many-joins"
     code: str = "SARJ019"
+    has_evidence: bool = True
     description: str = (
         "SQL query with 3 or more JOINs — split the query or denormalize instead of fanning across many tables."
     )

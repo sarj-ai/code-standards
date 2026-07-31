@@ -1,27 +1,7 @@
-"""SARJ021: no `SELECT *` in a store query — list the columns you need.
+"""SARJ021 — No `SELECT *` in a store query — list the columns you need.
 
-`SELECT *` over-fetches: it pulls every column (including large JSONB / text
-blobs the caller never reads), breaks `class_row(Model)` mapping the moment a
-column is added or reordered, and hides which columns a query actually depends
-on. The recurring review ask is to name the columns explicitly.
-
-This rule walks SQL string literals embedded in `.py` (`*_store.py`) and flags
-any query (a string containing `FROM`) whose projection list holds a `*` in any
-position — bare (`SELECT *`, `SELECT id, *`), qualified (`c.*`, `public.call.*`),
-or after `DISTINCT ON (...)`. SQL string-literal values and `--` / `/* */`
-comments are neutralized first, so a `'*'` value is never mistaken for a star.
-`COUNT(*)` is NOT flagged (the star is a function argument, not a projection),
-`a * b` arithmetic is NOT flagged, and `EXISTS (SELECT * ...)` is exempt (the
-columns are unused).
-
-    # flagged
-    "SELECT * FROM call WHERE id = %s"
-    "SELECT c.* FROM call c"
-
-    # preferred
-    "SELECT id, status, created_at FROM call WHERE id = %s"
-
-Suppress a deliberate case with `# sarj-noqa: SARJ021 — <reason>`.
+Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_select_star.py
+Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ021.md
 """
 
 from __future__ import annotations
@@ -49,16 +29,7 @@ _QUALIFIED_PREFIX = re.compile(r"\w\.$")
 
 
 def _is_projection_star(sql: str, pos: int) -> bool:
-    """Report whether the `*` at `pos` is a column-projection star.
-
-    A projection star expands columns: bare (`SELECT *`, `id, *`), qualified
-    (`c.*`, `public.call.*`), or after `DISTINCT ON (...)`. It is NOT a
-    `COUNT(*)` argument (`(*)`) nor an `a * b` multiply (an operand follows).
-
-    Returns:
-        True when the `*` at `pos` projects columns.
-
-    """
+    """Report whether the `*` at `pos` is a column-projection star."""
     if _QUALIFIED_PREFIX.search(sql[:pos]) is not None:
         return True
     before = pos - 1
@@ -87,10 +58,9 @@ def _has_real_select_star(sql: str) -> bool:
 
 
 class NoSelectStar(Rule):
-    """`SELECT *` in a store query — list the columns explicitly."""
-
     id: str = "no-select-star"
     code: str = "SARJ021"
+    has_evidence: bool = True
     description: str = (
         "SELECT * in a store query — name the columns; * over-fetches and breaks "
         "class_row mapping when the schema changes."
