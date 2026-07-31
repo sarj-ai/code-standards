@@ -103,18 +103,18 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
   });
 
   /**
-   * The react guard is a workaround with an expiry date. When
-   * eslint-plugin-react ships ESLint 10 support this test fails, which is the
-   * prompt to delete the guard rather than leave 18 rules quietly disabled
-   * forever — the exact "written but inert" failure the rule set exists to catch.
+   * The 18 react rules were dropped wholesale because eslint-plugin-react calls
+   * `context.getFilename()`, removed in ESLint 10. Dropping them swapped a crash
+   * for silence: every consumer got zero React coverage. `@eslint/compat`'s
+   * `fixupPluginRules` restores the removed context APIs, so the rules run.
    */
-  it("drops every react/* key while the guard is active", async () => {
+  it("keeps every react/* key live through the compat adapter", async () => {
     const major = Number.parseInt(ESLint.version.split(".")[0] ?? "0", 10);
     if (major < 10) return; // guard inactive on ESLint 9; nothing to assert
 
-    // A leftover `react/*` key with the plugin unregistered is "Definition for
-    // rule not found" at consumer lint time -- swapping one broken config for
-    // another.
+    // A react/* key is only safe when the plugin is registered AND its removed
+    // context APIs are restored -- otherwise it is "Definition for rule not
+    // found", or a crash, at consumer lint time.
     const eslint = new ESLint({
       cwd: FIXTURE_DIR,
       overrideConfigFile: true,
@@ -124,21 +124,24 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
       const resolved = await eslint.calculateConfigForFile(
         resolve(FIXTURE_DIR, probe),
       );
-      const leftovers = Object.keys(resolved.rules ?? {}).filter((rule) =>
+      const live = Object.keys(resolved.rules ?? {}).filter((rule) =>
         rule.startsWith("react/"),
       );
-      expect(leftovers).toEqual([]);
+      expect(
+        live.length,
+        `${probe}: react rules were dropped again -- consumers lose React coverage silently`,
+      ).toBeGreaterThan(0);
     }
   });
 
-  it("fails once eslint-plugin-react supports ESLint 10, so the guard expires", async () => {
+  it("fails once eslint-plugin-react supports ESLint 10, so the adapter expires", async () => {
     const major = Number.parseInt(ESLint.version.split(".")[0] ?? "0", 10);
     if (major < 10) return;
 
     // `lib/util/version.js` is what calls the removed `context.getFilename()`.
-    // Running one react rule for real is the only honest expiry check: when a
-    // release fixes it this stops throwing, this test fails, and the guard --
-    // plus 18 quietly disabled rules -- gets deleted instead of living forever.
+    // This probes the RAW plugin, not the fixed-up one, so it is an honest
+    // upstream check: when a release fixes it this stops throwing, this test
+    // fails, and the @eslint/compat wrapper gets deleted rather than living on.
     const { default: react } = await import("eslint-plugin-react");
     const eslint = new ESLint({
       cwd: FIXTURE_DIR,
@@ -155,7 +158,7 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
     const fatal = (result?.messages ?? []).filter((m) => m.fatal === true);
     expect(
       fatal.length > 0,
-      "eslint-plugin-react now runs on ESLint 10 -- delete the guard in eslint.strict.mjs",
+      "eslint-plugin-react now runs on ESLint 10 -- drop fixupPluginRules from eslint.strict.mjs",
     ).toBe(true);
   });
 });

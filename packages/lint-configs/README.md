@@ -182,7 +182,7 @@ on the two a repo had no use for, and so never made it into anyone's CI.
 
 ## ESLint peers
 
-`eslint.strict.mjs` imports ten npm packages, and the set does not resolve on its
+`eslint.strict.mjs` imports eleven npm packages, and the set does not resolve on its
 own. The unicorn floor (72) pulls `eslint >= 10.4`, while `eslint-plugin-react@7.37.5`
 — the newest published release — peers `eslint <= ^9.7`. **`npm install` exits
 ERESOLVE**, so the config is unreachable until you add an `overrides` entry:
@@ -223,12 +223,10 @@ of it. The rest of the plugin stays off: most of it is Zod v3 → v4 migration
 advice (`no-number-schema-with-int`, `prefer-top-level-string-formats`, the
 `no-schema-with-is-*` deprecations) that would misfire on a v3 consumer.
 
-**On ESLint 10 the config skips `eslint-plugin-react`'s 18 rules.** 7.37.5, the
-newest release, calls the `context.getFilename()` removed in ESLint 10, so every
-react rule throws on the first file linted — and the unicorn floor above means
-ESLint 10 is not optional. The rules come back automatically on ESLint 9, and a
-test fails as soon as a fixed eslint-plugin-react ships, so the workaround cannot
-quietly become permanent.
+**All 18 `eslint-plugin-react` rules remain active on ESLint 10.** Version 7.37.5
+calls rule-context APIs removed by ESLint 10, so the config wraps it with
+ESLint's official `@eslint/compat` adapter. Runtime tests lint real TSX and fail
+if the adapter or any configured React rule becomes inert.
 
 You do not have to install Python to get the ESLint config. If your repo is
 TypeScript-only, either run `init` once from `uvx` and commit the result, or skip

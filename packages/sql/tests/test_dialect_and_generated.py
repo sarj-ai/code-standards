@@ -14,9 +14,11 @@ import pytest
 
 from sarj_sql_lint.rule_base import (
     Diagnostic,
+    declared_dialect,
     is_generated_migration,
     is_mysql,
     is_postgres,
+    is_sqlite,
     mask_sql,
     redirect_to_model,
 )
@@ -64,6 +66,27 @@ def test_a_backtick_inside_a_comment_does_not_change_the_dialect() -> None:
 def test_a_backtick_inside_a_string_literal_does_not_change_the_dialect() -> None:
     source = "INSERT INTO doc (body) VALUES ('see `users`');"
     assert is_postgres(mask_sql(source))
+
+
+@pytest.mark.parametrize(
+    ("directive", "expected"),
+    [
+        ("-- dialect: sqlite", "sqlite"),
+        ("-- sql-dialect: PostgreSQL", "postgresql"),
+        ("-- dialect: mariadb", "mysql"),
+    ],
+)
+def test_explicit_dialect_directive(directive: str, expected: str) -> None:
+    source = f"{directive}\nCREATE TABLE example (id INTEGER);"
+    assert declared_dialect(source) == expected
+    assert is_postgres(source) is (expected == "postgresql")
+    assert is_sqlite(source) is (expected == "sqlite")
+
+
+def test_free_form_dialect_prose_is_not_a_directive() -> None:
+    source = "-- This migration also runs on sqlite\nCREATE TABLE example (id BIGSERIAL);"
+    assert declared_dialect(source) is None
+    assert is_postgres(source)
 
 
 # --- is_mysql is narrower than "not Postgres" -------------------------------------

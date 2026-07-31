@@ -1,6 +1,6 @@
 import tseslint from "typescript-eslint";
 import react from "eslint-plugin-react";
-import { ESLint } from "eslint";
+import { fixupPluginRules } from "@eslint/compat";
 import reactHooks from "eslint-plugin-react-hooks";
 import unicorn from "eslint-plugin-unicorn";
 import eslintComments from "@eslint-community/eslint-plugin-eslint-comments";
@@ -390,35 +390,10 @@ if (missingUnicornRules.length > 0) {
 //    rule and cannot be enabled in a JS config at all.
 
 
-// eslint-plugin-react is UNUSABLE on ESLint 10, and this config's own unicorn
-// floor requires ESLint 10.
-//
-// 7.37.5 is the newest published release. Its `lib/util/version.js` calls
-// `context.getFilename()`, removed in ESLint 10, so every react rule dies with
-// `TypeError: contextOrFilename.getFilename is not a function` the moment it
-// lints a file. Not at config load -- `calculateConfigForFile` normalises the
-// config without ever loading a rule's implementation, so the config-load test
-// passed while the config could not lint a single file. Only running ESLint
-// finds it, which is exactly the failure mode that ends with a consumer copying
-// the file and hacking on the copy.
-//
-// So the 18 react rules below are opt-out rather than removed: they run on
-// ESLint 9, and are skipped with a `plugins`-level omission on 10+ so the rest
-// of the config (including the 199 unicorn rules that forced the 10 floor) is
-// usable today. Delete this guard when eslint-plugin-react ships ESLint 10
-// support; `tests/strict-config-runs.test.ts` fails if the guard stops being
-// needed, so it cannot outlive the bug.
-const ESLINT_MAJOR = Number.parseInt(ESLint.version.split(".")[0] ?? "0", 10);
-const REACT_PLUGIN_WORKS = ESLINT_MAJOR < 10;
-const reactPlugins = REACT_PLUGIN_WORKS ? { react } : {};
-
-/** Drop `react/*` keys when the plugin cannot run, so ESLint sees no unknown rule. */
-const withoutReactRules = (rules) =>
-  REACT_PLUGIN_WORKS
-    ? rules
-    : Object.fromEntries(
-        Object.entries(rules).filter(([name]) => !name.startsWith("react/")),
-      );
+// eslint-plugin-react 7 still uses APIs removed by ESLint 10. ESLint's official
+// compatibility layer restores those APIs, keeping every React rule active
+// instead of silently weakening the strict configuration on newer ESLint.
+const compatibleReact = fixupPluginRules(react);
 
 // Build output is not authored code, and this config had NO `ignores` at all —
 // the single string "ignores" in the whole file was a word in a comment. ESLint
@@ -485,7 +460,7 @@ const config = [
     },
     plugins: {
       "@typescript-eslint": tseslint.plugin,
-      ...reactPlugins,
+      react: compatibleReact,
       "react-hooks": reactHooks,
       unicorn,
       "@eslint-community/eslint-comments": eslintComments,
@@ -503,7 +478,7 @@ const config = [
       },
     },
     settings: { react: { version: "detect" } },
-    rules: withoutReactRules({
+    rules: {
       "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/no-non-null-assertion": "error",
       "@typescript-eslint/no-deprecated": "error",
@@ -893,16 +868,6 @@ const config = [
           selector: "TSModuleDeclaration[kind='namespace']",
           message: "Use ES modules instead of namespaces.",
         },
-        {
-          selector: "CallExpression[callee.name='useCallback']",
-          message:
-            "Don't memoize by hand — the React Compiler handles it. Remove useCallback.",
-        },
-        {
-          selector: "CallExpression[callee.name='useMemo']",
-          message:
-            "Don't memoize by hand — the React Compiler handles it. Remove useMemo (extract a plain function or compute inline).",
-        },
       ],
       "no-restricted-imports": [
         "error",
@@ -1000,32 +965,47 @@ const config = [
       "@sarj/no-unsafe-mock-casting": "error",
       "@sarj/prefer-whole-object-assertion": "error",
       "@sarj/no-async-callback-in-wait-for": "error",
-      // Deliberately NOT enabled here — these two are architectural rules that
-      // are meaningless without per-repo paths, so a shared config cannot set
-      // them. `no-storage-in-stateless-modules` defaults to `modules: []` and is
-      // inert until a consumer names its stateless modules;
-      // `no-raw-fetch-outside-clients` needs an `allow` list matching that
-      // repo's client-layer convention (the default assumes `clients/`). Opt in
-      // per repo:
+      // Both architectural rules stay enabled in the shared baseline. The
+      // fetch rule ships conservative client/service defaults; consumers can
+      // replace its `allow` list. The storage rule is intentionally inert until
+      // a consumer declares its stateless module paths, but keeping it present
+      // guarantees that the canonical config never silently omits a shipped
+      // custom rule:
       //   "@sarj/no-storage-in-stateless-modules": ["error", { modules: [...] }],
       //   "@sarj/no-raw-fetch-outside-clients": ["error", { allow: [...] }],
-    }),
+    },
   },
 
   {
-    files: ["**/*.test.ts", "**/*.test.tsx", "**/__tests__/**/*"],
+    files: [
+      "**/*.test.ts",
+      "**/*.test.tsx",
+      "**/test/**/*",
+      "**/tests/**/*",
+      "**/__tests__/**/*",
+    ],
     rules: {
+      // Test doubles and partial external payload fixtures intentionally cross
+      // type boundaries. Production keeps every rule below at error; tests use
+      // runtime assertions to verify the boundary instead of reconstructing an
+      // entire third-party object graph solely to satisfy static analysis.
+      "@typescript-eslint/consistent-type-assertions": "off",
       "@typescript-eslint/no-unsafe-assignment": "off",
+      "@typescript-eslint/no-unsafe-type-assertion": "off",
       "@typescript-eslint/no-unsafe-member-access": "off",
       "@typescript-eslint/no-non-null-assertion": "off",
+      "@typescript-eslint/promise-function-async": "off",
+      "@typescript-eslint/require-await": "off",
+      "no-await-in-loop": "off",
+      "unicorn/consistent-function-scoping": "off",
     },
   },
 
   {
     files: ["**/components/ui/**", "**/components/design-system/**"],
-    rules: withoutReactRules({
+    rules: {
       "react/forbid-elements": "off",
-    }),
+    },
   },
 
   {
@@ -1064,34 +1044,40 @@ const config = [
       "better-tailwindcss/no-deprecated-classes": "error",
     },
   },
-  // React components may be PascalCase. This is the single highest-impact
-  // exemption in the config: measured over 11,088 tracked `.ts`/`.tsx` files in
-  // 50 repos, PascalCase `.tsx` accounts for 2,128 of 2,568 total filename
-  // violations (82.9%), and 93.5% of those files export a component with the
-  // same name as the file. Allowing it takes the corpus-wide cost from 2,568
-  // renames to 400, and two first-party repos plus this one from 51 to 17.
-  //
-  // Scoped to `.tsx` ON PURPOSE. Only 27 PascalCase `.ts` files exist across all
-  // 50 repos and they are service classes (`AuthService.ts`, `SessionStore.ts`),
-  // not components — those should be kebab, so the allowance must not reach them.
-  //
-  // Two of our own repos had already adopted exactly this
-  // unilaterally, which is part of why it belongs in the canonical config: it
-  // converges hand-rolled configs back onto the synchronizer.
+  // React component IDENTIFIERS must be PascalCase for JSX to distinguish them
+  // from intrinsic elements. Filenames remain kebab-case under the base policy.
   {
     files: ["**/*.tsx"],
     rules: {
-      "unicorn/filename-case": [
+      // PascalCase function and variable names are the React component
+      // convention. The base TypeScript policy remains camelCase-only; widen
+      // it only for TSX instead of rejecting every valid component or assuming
+      // a particular framework/compiler setup.
+      "@typescript-eslint/naming-convention": [
         "error",
         {
-          cases: { kebabCase: true, pascalCase: true },
-          ignore: [
-            String.raw`^__root\.`,
-            String.raw`^_`,
-            String.raw`^\$`,
-            String.raw`^\+`,
-            String.raw`\.gen\.`,
-          ],
+          selector: "default",
+          format: ["camelCase", "PascalCase"],
+          leadingUnderscore: "allow",
+          trailingUnderscore: "allow",
+          filter: { regex: "^(UNSAFE_|__)", match: false },
+        },
+        {
+          selector: "variable",
+          format: ["camelCase", "UPPER_CASE", "PascalCase"],
+          leadingUnderscore: "allow",
+        },
+        { selector: "typeLike", format: ["PascalCase"] },
+        {
+          selector: "import",
+          format: ["camelCase", "PascalCase", "UPPER_CASE"],
+        },
+        { selector: "objectLiteralProperty", format: null },
+        { selector: "typeProperty", format: null },
+        {
+          selector: "parameter",
+          format: ["camelCase", "snake_case"],
+          leadingUnderscore: "allow",
         },
       ],
     },

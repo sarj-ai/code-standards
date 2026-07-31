@@ -106,7 +106,7 @@ class IndexConcurrently(Rule):
             return []
 
         masked = mask_sql(source)
-        if not is_postgres(masked):
+        if not is_postgres(source):
             return []
 
         created: dict[str, int] = {}

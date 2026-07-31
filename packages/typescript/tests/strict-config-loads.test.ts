@@ -61,6 +61,16 @@ async function configFor(filePath: string): Promise<Linter.Config> {
 }
 
 describe("the shipped eslint.strict.mjs actually loads", () => {
+  it("globally ignores generated output", async () => {
+    const eslint = new ESLint({
+      overrideConfigFile: true,
+      overrideConfig: strictConfig as Linter.Config[],
+      cwd: process.cwd(),
+    });
+    expect(await eslint.calculateConfigForFile("dist/generated.js")).toBeUndefined();
+    expect(await eslint.calculateConfigForFile(".astro/generated.d.ts")).toBeUndefined();
+  });
+
   it.each(PROBE_PATHS)(
     "resolves without error for %s",
     async (filePath) => {
@@ -82,32 +92,41 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
     expect(envConfig.rules?.["@sarj/no-raw-env"]).toEqual([0]);
 
     // A severity-only override keeps the options the earlier block set, so
-    // compare the severity slot rather than the whole entry. The design-system
-    // block turns off a `react/*` rule and nothing else, so it is empty while
-    // the eslint-plugin-react guard is active (see eslint.strict.mjs) -- assert
-    // whichever is true rather than deleting the check, so it comes back on its
-    // own when the guard expires.
+    // compare the severity slot rather than the whole entry.
     const designSystemConfig = await configFor("src/components/ui/button.tsx");
     const forbidElements = designSystemConfig.rules?.["react/forbid-elements"];
-    if (forbidElements === undefined) {
-      const reactKeys = Object.keys(designSystemConfig.rules ?? {}).filter(
-        (rule) => rule.startsWith("react/"),
-      );
-      expect(reactKeys).toEqual([]);
-    } else {
-      expect((forbidElements as unknown[])[0]).toBe(0);
-    }
+    expect((forbidElements as unknown[])[0]).toBe(0);
 
     const plainConfig = await configFor("src/index.ts");
     expect(plainConfig.rules?.["@sarj/no-raw-env"]).toEqual([2]);
 
-    // The `.tsx` block widens filename-case to allow PascalCase components; the
-    // base block must NOT. This is the one override whose loss would be silent.
+    const testConfig = await configFor("src/example.test.ts");
+    expect(
+      testConfig.rules?.["@typescript-eslint/consistent-type-assertions"]?.[0],
+    ).toBe(0);
+    expect(
+      testConfig.rules?.["@typescript-eslint/no-unsafe-type-assertion"]?.[0],
+    ).toBe(0);
+    expect(testConfig.rules?.["@typescript-eslint/require-await"]?.[0]).toBe(0);
+    expect(testConfig.rules?.["no-await-in-loop"]?.[0]).toBe(0);
+    expect(plainConfig.rules?.["@typescript-eslint/require-await"]?.[0]).toBe(2);
+    expect(plainConfig.rules?.["no-await-in-loop"]?.[0]).toBe(2);
+
+    // Component identifiers are PascalCase, while component filenames remain
+    // kebab-case under the shared filename policy.
     const tsxConfig = await configFor("src/components/thing.tsx");
+    const tsxNaming = tsxConfig.rules?.[
+      "@typescript-eslint/naming-convention"
+    ] as [number, ...Array<{ selector?: string; format?: string[] | null }>];
+    const tsxDefaultNaming = tsxNaming
+      .slice(1)
+      .find((option) => option.selector === "default");
+    expect(tsxDefaultNaming?.format).toContain("PascalCase");
     const tsxFilenameCase = tsxConfig.rules?.["unicorn/filename-case"] as
       | [number, { cases: Record<string, boolean> }]
       | undefined;
-    expect(tsxFilenameCase?.[1].cases.pascalCase).toBe(true);
+    expect(tsxFilenameCase?.[1].cases.kebabCase).toBe(true);
+    expect(tsxFilenameCase?.[1].cases.pascalCase).toBeUndefined();
     const baseFilenameCase = plainConfig.rules?.["unicorn/filename-case"] as
       | [number, { cases: Record<string, boolean> }]
       | undefined;

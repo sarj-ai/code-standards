@@ -73,7 +73,7 @@ class PreferTextOverVarchar(Rule):
             return []
         model_owned = is_generated_migration(path, source)
         masked = mask_sql(source)
-        if not is_postgres(masked):
+        if not is_postgres(source):
             return []
 
         diags: list[Diagnostic] = []

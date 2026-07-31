@@ -232,6 +232,16 @@ def test_flags_sqlite_create_index_without_if_not_exists():
     assert len(_check(src)) == 1
 
 
+def test_allows_sqlite_add_column_without_unsupported_if_not_exists():
+    src = "-- dialect: sqlite\nALTER TABLE orders ADD COLUMN note TEXT;"
+    assert _check(src) == []
+
+
+def test_explicit_sqlite_still_requires_idempotent_create_index():
+    src = "-- dialect: sqlite\nCREATE INDEX idx ON orders (user_id);"
+    assert len(_check(src)) == 1
+
+
 def test_generated_migration_is_redirected_not_silenced(tmp_path: Path) -> None:
     root = tmp_path / "prisma" / "migrations"
     (root / "20240101000000_init").mkdir(parents=True)

@@ -40,6 +40,7 @@ from sarj_sql_lint.rule_base import (
     is_dump_file,
     is_generated_migration,
     is_mysql,
+    is_sqlite,
     mask_sql,
     redirect_to_model,
 )
@@ -113,7 +114,13 @@ class IdempotentDdl(Rule):
         model_owned = is_generated_migration(path, source)
 
         masked = mask_sql(source)
-        checks = [c for c in _CHECKS if c[2]] if is_mysql(masked) else list(_CHECKS)
+        if is_mysql(source):
+            checks = [check for check in _CHECKS if check[2]]
+        elif is_sqlite(source):
+            # SQLite has no `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` syntax.
+            checks = [check for index, check in enumerate(_CHECKS) if index != 1]
+        else:
+            checks = list(_CHECKS)
 
         diags: list[Diagnostic] = []
 
