@@ -938,6 +938,7 @@ const config = [
       "@sarj/no-restated-jsdoc": "error",
       "@sarj/no-trailing-value-narration": "error",
       "@sarj/no-declaration-comment-wall": "error",
+      "@sarj/no-union-in-comment": "error",
       "@sarj/no-type-member-comment-wall": "error",
       "@sarj/no-repeated-string-literal": "error",
       "@sarj/no-tautological-expect": "error",

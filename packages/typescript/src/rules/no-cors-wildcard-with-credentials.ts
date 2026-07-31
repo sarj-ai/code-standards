@@ -40,9 +40,6 @@ function isCredentialsTrueValue(node: TSESTree.Node): boolean {
   return false;
 }
 
-/**
- * True if `node` is the string literal `"*"`.
- */
 function isStarLiteral(node: TSESTree.Node): boolean {
   return node.type === "Literal" && node.value === "*";
 }

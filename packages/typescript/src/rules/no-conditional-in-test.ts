@@ -50,7 +50,6 @@ const TYPE_ASSERTION_ROOTS: ReadonlySet<string> = new Set([
   "assertType",
 ]);
 
-/** The nearest enclosing function of `node`. */
 function nearestEnclosingFunction(node: TSESTree.Node): TSESTree.Node | null {
   for (let current = node.parent; current != null; current = current.parent) {
     if (FUNCTION_TYPES.has(current.type)) {

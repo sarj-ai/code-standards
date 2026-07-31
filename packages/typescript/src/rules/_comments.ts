@@ -73,8 +73,6 @@ export function hasExternalReference(body: string): boolean {
   return REF_RE.test(body);
 }
 
-// --- tokenisation shared by the restatement detectors ----------------------
-
 /**
  * Words that say nothing about *which* code a comment describes. Kept in step
  * with `_comments.py`: shrinking the list costs recall, growing it costs
@@ -154,8 +152,6 @@ export function restates(commentTokens: readonly string[], code: ReadonlySet<str
   for (const token of code) stems.add(stem(token));
   return commentTokens.every((token) => code.has(token) || stems.has(stem(token)));
 }
-
-// --- the verb-opener restatement shape (shared with `no-comment-cruft`) ------
 
 const NARRATION_MAX_WORDS = 6;
 const NARRATION_MIN_CONTENT = 1;

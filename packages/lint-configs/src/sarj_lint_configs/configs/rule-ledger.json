@@ -55,6 +55,7 @@
       "no-tautological-expect",
       "no-trailing-value-narration",
       "no-type-member-comment-wall",
+      "no-union-in-comment",
       "no-unnecessary-use-client",
       "no-unsafe-mock-casting",
       "no-zod-native-enum",

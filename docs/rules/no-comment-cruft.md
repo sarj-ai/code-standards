@@ -100,6 +100,53 @@ exactly the number this audit is measured by. Per-line reporting is also
 deliberate: each line of a commented-out block is separately deletable, which
 is why the test suite pins two reports for a two-line block.
 
+## The `sectionBanner` arm reaches JSDoc (2026-07)
+
+A JSDoc block used to be exempt from this rule wholesale — `isJsDoc(comment)`
+short-circuited before every check. That exemption is right for the thing it was
+protecting (a JSDoc block is where the "why" conventionally lives) and wrong for
+one shape: a block whose ENTIRE body is a signpost.
+
+    /**
+     * REMOVE METHODS
+     */
+    override remove(entities: T[], options?: RemoveOptions) { … }
+
+That is the same section banner the rule already names in `//` form, wearing the
+one comment syntax nothing measured. The doc-diet ratchet
+(`tests/rule-docs.test.ts`) says the same thing about this repo's own source:
+"none of this plugin's own comment rules could see it — `no-comment-cruft` and
+friends exempt JSDoc, so the one place in the repo where prose grew without
+limit was the one place nothing measured."
+
+**Measured.** 80 candidate blocks over four OSS corpora (medusa, twenty, nest,
+typescript-eslint; 37,208 files), **80 of 80 true positives, 0 false**; the
+protected-class guard below then withholds one, so the shipped rule reports 79.
+They are
+`/** * STATE */`, `/** * MUTATIONS */`, `/** * HOOKS */`, `/** CART START */` /
+`/** CART END */` bracket pairs around type members, and a full ladder of
+`/** * FIND METHODS */` … `/** * PRIVATE METHODS */` down one repository class.
+Zero findings on the four first-party repos (4,054 files) and zero on this
+repo's own source: first-party spells its banners with `//`, which this rule
+already caught 2,796 times.
+
+### The three conditions, and the family each stops
+
+- **EVERY content line must be a signpost.** One shouted line above a paragraph
+  of prose is a heading for documentation the reader came for, not a signpost.
+- **Not protected-class prose.** A shouted line that carries a
+  protected-class signal is a warning someone chose to shout —
+  `/** DOES NOT RETRY */` — and stays. This also spares `/** DEPRECATED … */`,
+  which is a value tag; that is the one candidate of the 80 it withholds.
+- **A shouted label is two to four ALL-CAPS words.** One word is an acronym
+  carrying the fact the name cannot (`/** UTC */`, `/** ISO */`) and is spared;
+  five or more is a sentence someone shouted. Digits are excluded for the same
+  reason — `ISO 8601` is a citation, not a heading. Lowercase is excluded
+  outright: `/** the retry budget */` describes the member below it.
+
+A trailing JSDoc is left alone, as everywhere else in this rule: it annotates
+the code beside it rather than heading a region.
+
 ## Evidence relocated from the source
 
 ### `REGION_TITLE_MAX_WORDS`
