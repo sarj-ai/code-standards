@@ -238,4 +238,35 @@ describe("lint-configs eslint.strict.mjs stays wired to the plugin", () => {
     expect(plugin.meta.version).toBe(packageJson.version);
   });
 
+  /**
+   * Names that shipped and were withdrawn. Mirrors `_RETIRED_CODES` in
+   * sarj-python-lint's `test_rule_meta.py`: a withdrawn name is burned, not
+   * recycled, because consumers still carry `eslint-disable` comments and
+   * `eslint-suppressions.json` entries naming it, and reusing the name would
+   * silently re-point those suppressions at a rule that means something else.
+   */
+  it("withdrawn rule names are never reused", () => {
+    const RETIRED = new Map([
+      [
+        "primary-export-file-name",
+        // Withdrawn in 4.0.0 for the same reason its Python twin SARJ075 was:
+        // it renames files after one of their exports. Measured over 1,966 TS
+        // files in five repos it produced 316 findings, of which a random
+        // sample of 30 was 11 harmful / 15 useless / 4 valuable, and it told a
+        // `next.config.ts` to become `next-config.ts`, which breaks the Next
+        // build.
+        "renames files after one export; see 4.0.0",
+      ],
+    ]);
+
+    const live = [...RETIRED.keys()].filter((name) => name in rules);
+    expect(live).toEqual([]);
+
+    const text = readFileSync(STRICT_CONFIG_PATH, "utf8");
+    const referenced = new Set(referencedRuleNames(text));
+    const stillConfigured = [...RETIRED.keys()].filter((name) =>
+      referenced.has(name),
+    );
+    expect(stillConfigured).toEqual([]);
+  });
 });
