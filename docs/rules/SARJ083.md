@@ -28,6 +28,110 @@ either no mapping is involved at all, or the mapping's schema is already
 declared and statically checked, in which case the rule's own advice has already
 been taken.
 
+## 2026-07-31 re-audit — and a recommendation to DELETE this rule
+
+> **Verdict: SARJ083 does not clear the bar this repo applies to its own rules,
+> and it should be deleted.** The three guards below are shipped anyway, because
+> they are exact and reduce harm while the decision is taken. They do not change
+> the verdict.
+
+### The measurement
+
+Swept over **37,358 Python files across 33 OSS repositories** (a corpus disjoint
+from the one above, and 1.5x larger):
+
+| | findings | files |
+| --- | --- | --- |
+| as shipped | 54,326 | 4,783 |
+| after the three guards below | 46,089 | — |
+
+Decomposed: the decorator and `meta` guards are worth 235 together (54,326 ->
+54,091); the imported-declared-type guard is worth 8,002 (54,091 -> 46,089).
+
+Two seeded random samples of 30 findings each were read against source — one
+before the guards, one after. The post-guard sample of 30 classified:
+
+* **10 hard false positives (33%)** — a mapping is not involved, or the
+  declarative schema the rule asks for is already there:
+  * `bokeh/examples/basic/annotations/whisker.py:17` — `df["class"]` is a
+    **pandas column selection**.
+  * `sqlalchemy/lib/sqlalchemy/orm/bulk_persistence.py:1966` —
+    `statement.table._annotations["parententity"]`, SQLAlchemy's own internal
+    annotation namespace.
+  * `zulip/zerver/webhooks/gocd/view.py:62` — `material["git-configuration"]
+    ["branch"].tame(check_string)`, zulip's `WildValue` declarative validator.
+  * `litellm/litellm/proxy/common_request_processing.py:2873` — `d.get("content",
+    "")` where `d = chunk.model_dump(...)`. The advice is inverted: a Pydantic
+    model was just dumped to produce this dict.
+  * `ansible/lib/ansible/modules/file.py:371` and
+    `airflow/dev/breeze/.../constraints_version_check.py:397` — dicts built by
+    the same function a few lines above.
+  * `zulip/zerver/management/commands/create_realm.py:53` — `options["realm_name"]`,
+    argparse's `**options`, a framework API.
+  * `django/django/contrib/postgres/forms/array.py:215` —
+    `self.error_messages["required"]`, Django's documented extension point.
+  * `streamlit/e2e_playwright/st_chat_input.py:50` — `st.session_state.get(...)`,
+    Streamlit's key-value store.
+  * `streamlit/e2e_playwright/websocket_reconnects_test.py:196` — a counter dict
+    in a test file that `_is_test_path` does not recognise (`*_test.py` outside a
+    `tests/` directory).
+* **5 plausible true positives (17%)** — `litellm/litellm/integrations/
+  langsmith.py:458`, `airflow/dev/registry/extract_metadata.py:783`,
+  `airflow/providers/amazon/.../hooks/comprehend.py:61`,
+  `airflow/providers/apache/livy/.../hooks/livy.py:552`,
+  `streamlit/scripts/log_agent_metrics.py:236`. Every one is "an external JSON /
+  YAML / REST payload that could in principle be modelled", so the fix is an
+  architecture change, not a local edit.
+* **15 arguable (50%)** — provider payloads, kwargs bags, locally built dicts.
+
+The pre-guard sample of 30 read the same way: 9 hard false positives, 1–2 clear
+true positives.
+
+### Why that is a deletion, not a tuning problem
+
+* **Its TypeScript twin was deleted in #183 on this exact evidence** —
+  `@sarj/no-implicit-attribute-access`, read at 50 findings, **0 true positives**.
+  The Python rule scores 5/30 weak true positives. That is not a different
+  answer, it is the same answer at a different sample size.
+* **46,089 findings across 4,783 files is not actionable at any severity.** It
+  ships as a pre-commit hook (`sarj-no-implicit-attribute-access`). The only
+  realistic consumer response is to turn it off.
+* **The residual FP classes are open-ended, not enumerable.** pandas DataFrames,
+  argparse `**options`, Django `error_messages`, Streamlit `session_state`,
+  SQLAlchemy `_annotations`, zulip's `WildValue`, `.model_dump()` output, dicts
+  built four lines above the read — each needs its own guard, and the next corpus
+  will supply more. `d["k"]` is one of Python's most common expressions; syntax
+  cannot tell "unparsed payload" from "mapping" without types the rule cannot see.
+
+### The three guards shipped anyway
+
+Each is exact, each has a named test, and each test dies when the guard is
+mutated out.
+
+* **A `.get(...)` in `decorator_list` position.** `_looks_like_route_or_url` only
+  exempts a value starting with `/` or containing `://`, so the router-root
+  registration `@task_state_store_router.get("")` slipped through both. **23
+  findings** across airflow (`connections.py:185`, `dag_versions.py:80`,
+  `event_logs.py:84`, `import_error.py:133`, `providers.py:33`, `tasks.py:59`,
+  `xcom.py:141`, `ui/dags.py:87`, and 13 more), litellm and prefect. Position
+  answers it where the argument cannot; a decorator is never a mapping lookup, so
+  **recall cost is zero**.
+* **`meta` in `_EXCLUDED_BASES`.** A deliberately OPEN extension bag whose keys
+  third-party middlewares invent — `scrapy/core/downloader/handlers/
+  http11.py:531`, `request.meta.get("download_maxsize", self._maxsize)`. No model
+  can enumerate them.
+* **A receiver annotated with a type IMPORTED from another module.** This
+  **reverses** the "structural residual, recorded rather than guessed at"
+  decision above, which left 2,519 findings on cross-module TypedDicts
+  unguarded. The reversal is justified by a fact the earlier note missed: a
+  string subscript on a receiver whose annotation is a non-mapping class does not
+  type-check, so the annotation heads that actually survive to a subscript are
+  mapping-like by construction — TypedDicts, `dict` subclasses, and open bags.
+  `litellm/…/prompt_templates/factory.py:2080` (`current_message.get("tool_calls")`
+  where `current_message: AllMessageValues`) and `:3216` are the measured shape.
+  `typing` / `collections` exports are excluded, because `Any` and `dict` declare
+  nothing, and a test asserts that `payload: Any` and `payload: dict` still fire.
+
 ## 2026-07 false-positive audit
 
 The first round of guards (write targets, type subscripts, route/URL `.get`) was

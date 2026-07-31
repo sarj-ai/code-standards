@@ -994,3 +994,45 @@ def test_section_label_at_module_level_still_flags():
     diags = _check("import os\n\n# Constants\nMAX = 1\n")
     assert len(diags) == 1
     assert "narrates" in diags[0].message
+
+
+_LICENSE_HEADER = (
+    "# -----------------------------------------------------------------\n"
+    "# Copyright (c) Anaconda, Inc., and Bokeh Contributors.\n"
+    "# All rights reserved.\n"
+    "#\n"
+    "# The full license is in the file LICENSE.txt, distributed with this software.\n"
+    "# -----------------------------------------------------------------\n"
+)
+
+
+def test_license_header_rules_are_not_section_banners():
+    """A contributor cannot restructure a legally required header.
+
+    `bokeh/docs/bokeh/docserver.py:1`, `release/checks.py:1` and
+    `release/__main__.py:1` are all `# ---…---` immediately above
+    `# Copyright (c) Anaconda, Inc.`, told to "structure code with functions,
+    not ASCII rules". 831 findings across 590 corpus files were this shape.
+    `_flag_leading_preamble` already exempted licence headers; the banner branch
+    did not.
+    """
+    assert _check(_LICENSE_HEADER + "import os\n") == []
+
+
+def test_section_banner_below_a_license_header_still_flags():
+    """The exemption is scoped to the header, not to the whole file."""
+    diags = _check(_LICENSE_HEADER + "import os\n\n\n" + "# =========\n" + "MAX = 1\n")
+    assert len(diags) == 1
+    assert "Section-banner" in diags[0].message
+
+
+def test_banner_without_a_license_header_still_flags():
+    diags = _check("# -----------------------------------------\n# Setup\n# ------------\nimport os\n")
+    assert any("Section-banner" in d.message for d in diags)
+
+
+def test_copyright_mentioned_mid_file_does_not_exempt_a_banner():
+    """The anchor must be a file HEADER, not any copyright mention."""
+    src = "import os\n" * 10 + "# =========\n# Copyright notice handling below.\nMAX = 1\n"
+    diags = _check(src)
+    assert any("Section-banner" in d.message for d in diags)

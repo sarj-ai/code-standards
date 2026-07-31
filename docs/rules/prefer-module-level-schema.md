@@ -59,7 +59,21 @@ DELIBERATELY NOT FLAGGED, each an FP class that was measured, not imagined:
     as a placeholder shape, or a one-key `z.object({ reason: z.string()
     }).parse(body)` written inline at its only use, reads better where it is.
     `dub/apps/web/lib/ai/create-support-ticket.ts:28` (`inputSchema:
-    z.object({})`) is the empty case; the default of 1 excludes it.
+    z.object({})`) is the empty case. The default is 2, so BOTH are excluded;
+    it was 1 for a while, which excluded only `z.object({})` while this list
+    promised otherwise, and that gap was 33.8% of the rule's output.
+  - **It renders text in the active locale.** A tagged template, a call to
+    `t` / `$t` / `msg` / `translate` / `gettext`, or a method on `i18n` /
+    `intl` inside the schema means the message is built when the factory runs,
+    after `i18n.activate(...)`. Hoisting it freezes every validation message in
+    the boot locale — a behaviour change, not a refactor, and the one class here
+    where following the advice makes the program WRONG.
+  - **It is a fragment of a schema that cannot itself move.** Reporting is
+    anchored at the outermost enclosing Zod construct, `.extend(...)` /
+    `.merge(...)` / `z.preprocess(...)` / `z.array(...)` included. When that
+    outer expression closes over the function, prising one key's value out of it
+    to module scope saves nothing: the object literal around it is rebuilt per
+    call regardless.
   - **Test files** (`ignoreTestFiles`, default true) and **generated files**.
     A schema inside a `describe` block is fixture data that belongs next to
     the assertion, and codegen re-emits its own layout on every run.
@@ -146,3 +160,93 @@ Its hoist gate requires every leaf of the initializer to be a LITERAL, and
 1,885 factory calls sit inside a function, 596 in non-test non-generated source,
 and the free-variable / `this` gates hold back the 82 that close over something
 the function owns.
+
+
+## 2026-07-31 re-audit — three defects, one of them a correctness bug
+
+Re-measured over a second, disjoint corpus: **105,551 `.ts`/`.tsx` files across
+63 OSS repositories**, of which 2,517 mention Zod. **219 findings as previously
+shipped, 145 now.**
+
+### 1. The rule advised a change that BREAKS i18n
+
+`twenty/packages/twenty-front/src/modules/auth/sign-in-up/hooks/
+useTwoFactorAuthenticationForm.ts:7`:
+
+```ts
+import { t } from '@lingui/core/macro';
+
+const createOtpValidationSchema = () =>
+  z.object({ otp: z.string().trim().length(6, t`OTP must be exactly 6 digits`) });
+```
+
+`t` is a Lingui macro and the zero-argument factory exists precisely so the
+message is rendered AFTER `i18n.activate(locale)`. `closesOverNothing` skips
+`ImportBinding` definitions, so `t` was invisible and the rule advised a hoist
+that freezes every validation message in whatever locale happened to be active
+at module-eval time. Shipped at `error`. This is the only class here where
+following the rule makes the program wrong rather than merely noisier.
+
+Three fixes were available: bail on a `TaggedTemplateExpression`, bail on a call
+to an i18n-named binding, or drop the `ImportBinding` skip for callables. The
+third was rejected on measurement — it would also bail on `z.object({ a:
+nonEmptyString() })`, where an imported helper is invoked and the schema hoists
+perfectly well. The shipped guard is the first two together, and it costs
+exactly 1 finding over the corpus.
+
+### 2. 33.8% false positive against this file's own promise
+
+The bullet above has always said a one-key `z.object({ reason: z.string()
+}).parse(body)` inline at its only use is deliberately not flagged, and that
+"the default of 1 excludes it". It did not: the gate is `shape.properties.length
+< minProperties`, so a default of 1 excludes `z.object({})` and nothing else.
+Measured: 219 findings at the old default, **145** at `minProperties: 2` — 74
+findings, 33.8%, were the class this document said was already excluded. 54 of
+them are zulip, all `z.object({k: …}).parse(response)` inline at the callback
+that consumes it; `twenty/…/application-registration-claim.service.ts:342`,
+`:376`, `:411` and `zulip/web/src/message_summary.ts:63` were read individually.
+The default is now the value the documentation always promised.
+
+### 3. Reporting a fragment of a schema that is itself unhoistable
+
+`astro/packages/astro/src/core/config/schemas/relative.ts:31` reported the
+`z.union([z.boolean(), z.literal('jsx')])` under the `compressHTML` key of
+`AstroConfigSchema.extend({ … })`, whose SIBLING keys close over the
+`fileProtocolRoot` parameter and the `originalBuildClient` local. `isCovered`
+only walked to ancestors that are Zod factories in `factories`; `.extend(...)`
+and `z.preprocess(...)` are neither, so the fragment was reported on its own.
+Prising one key's value out to module scope saves nothing — the object literal
+around it is rebuilt per call regardless. Same shape at `:102`, at
+`medusa/packages/medusa/src/api/utils/validators.ts:23`
+(`originalSchema.extend({ … })` where `originalSchema` is a parameter).
+
+The climb is committed only past a genuine Zod construct. Walking out of a shape
+object is provisional until the call wrapping it turns out to be one, because
+`tool({ inputSchema: z.object({…}), execute })` also puts a schema in an object
+literal — treating that literal as the schema inherits `execute`'s free
+variables and suppressed five real findings in
+`novu/libs/agent-evals/src/core/tools.ts` in the first draft of this guard.
+
+### A recall bug found while measuring, and fixed
+
+`closesOverNothing` counted a definition as "owned by the enclosing function"
+whenever it fell inside that function's source range. A refinement callback's
+OWN parameters do — `z.object({…}).refine((options) => …)` declares `options`
+inside the schema — so **any schema carrying a `.refine` / `.superRefine` /
+`.transform` / `z.preprocess` callback was unreportable**. Definitions inside
+the schema's own range now travel with it. Three findings came back, each read
+and confirmed true: `astro/packages/integrations/sitemap/src/
+validate-options.ts:9`, `medusa/packages/core/utils/src/product/
+validators.ts:5`, `medusa/…/common-validators/common.ts:69`. The documented
+`documenso` case still bails, because its `superRefine` callback reads a
+component PROP, which resolves outside the schema.
+
+### Net
+
+| | findings |
+| --- | --- |
+| as shipped | 219 |
+| `minProperties: 2` | −74 |
+| i18n + unhoistable-fragment guards | −4 (all four read, all four false) |
+| refinement-callback recall fix | +3 (all three read, all three true) |
+| **now** | **145** |

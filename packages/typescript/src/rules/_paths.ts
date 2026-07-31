@@ -13,8 +13,11 @@ const STORY_FILE_RE = /\.stories\.[cm]?[jt]sx?$/i;
 const STORY_DIR_RE = /(^|\/)stories(?:[_-][^/]*)?\//i;
 const GENERATED_FILE_RE =
   /([\\/](?:generated|openapi-gen|graphql[\\/]types|vendor|vendored|external|third[-_]?party)[\\/])|(\.gen\.[cm]?[jt]sx?$)|(\.generated\.[cm]?[jt]sx?$)|(\.d\.[cm]?ts$)|(\.types\.[cm]?ts$)/;
+// A BANNER match is safe and universal in a way a PATH match is not: no
+// hand-written file claims to be generator output. Subject-scoped on purpose —
+// the file itself has to be what the claim is ABOUT. See the evidence file.
 const GENERATED_MARKER_RE =
-  /(?:@generated\b|generated (?:with|by)|generated (?:graphql )?types|do not edit(?: directly| manually)?)/i;
+  /(?:@generated\b|this file (?:is|was|has been)[\w\s,'-]{0,40}?generated|auto-?generated file\b|generated (?:with|by)|generated (?:graphql )?types|do not edit(?: directly| manually)?|do not (?:modify|change) this file)/i;
 
 /**
  * True for a test file: a `*.test.*` / `*.spec.*` basename, the `-test` /

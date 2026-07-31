@@ -42,6 +42,20 @@ deliberately left that way — each `CREATE INDEX` needs its own `CONCURRENTLY`.
 (25.5%) were against non-Postgres migrations, where the advice is unfollowable.
 See `is_postgres`; the marker and Postgres-only token populations are disjoint
 across the corpus, so the guard costs no Postgres recall.
+
+**Independently re-measured, 2026-07-31.** The three corrections above were
+originally measured on a corpus with almost no SQL in it, which made the whole
+44.5% SQL cut of #183 the least-evidenced change in that PR. Re-run over
+**1,792 content-unique `.sql` files** sourced from cal.com, unkey, documenso,
+formbricks, midday, papermark, openstatus, litellm, prefect, typeorm and
+airflow, this rule goes **3,791 -> 1,045 (-72.4%)** and stays ALIVE: 1,040 of
+the 1,156 files that reported before still report, and the maximum per file
+falls from 76 to 4. 116 files clear entirely. Sampled removals read as the three
+documented classes — subsequent DDL under one already-set timeout
+(`cal.com/packages/prisma/migrations/20220628190334_adds_missing_oncascades/
+migration.sql:11`, `documenso/.../20260604143030_add_email_transports/
+migration.sql:8`) and ClickHouse/MySQL migrations where `SET lock_timeout` does
+not exist (`unkey/pkg/clickhouse/migrations/20260429000000.sql:19`).
 """
 
 from __future__ import annotations

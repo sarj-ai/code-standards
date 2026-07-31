@@ -1,6 +1,10 @@
+import { Linter } from "eslint";
+import { mkdirSync, mkdtempSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
 import rule from "../../src/rules/prefer-semantic-colors.js";
 
@@ -187,4 +191,67 @@ ruleTester.run("prefer-semantic-colors", rule, {
       errors: [{ messageId: "rawPalette" }],
     },
   ],
+});
+
+/**
+ * `requireSemanticTokens` reads the FILESYSTEM, so RuleTester cannot exercise
+ * it: every one of these cases is a claim about which marker files count as
+ * proof that a design system exists, and the shipped strict config turns the
+ * option on. It was untested, and the untested half is what silenced whole
+ * repositories.
+ */
+const SOURCE = `const x = <div className="text-neutral-800" />;\n`;
+
+function countIn(root: string, relative: string): number {
+  const linter = new Linter({ configType: "flat", cwd: root });
+  const filename = join(root, relative);
+  const messages = linter.verify(SOURCE, [
+    {
+      files: ["**/*.tsx"],
+      plugins: { local: { rules: { "prefer-semantic-colors": rule } } },
+      languageOptions: {
+        parser: tsParser,
+        parserOptions: { ecmaFeatures: { jsx: true } },
+      },
+      rules: {
+        "local/prefer-semantic-colors": ["error", { requireSemanticTokens: true }],
+      },
+    },
+  ], filename);
+  return messages.filter((m) => m.ruleId).length;
+}
+
+function project(marker: string | null, contents = ""): string {
+  const root = mkdtempSync(join(tmpdir(), "sarj-psc-"));
+  mkdirSync(join(root, "src", "components"), { recursive: true });
+  if (marker !== null) writeFileSync(join(root, marker), contents);
+  return root;
+}
+
+describe("prefer-semantic-colors requireSemanticTokens gate", () => {
+  it("accepts a tailwind config whose token vocabulary is not shadcn's", () => {
+    // `medusa/packages/admin/dashboard/tailwind.config.cjs` exists, is in
+    // DETECTION_FILES, sits well inside the depth budget — and was REJECTED
+    // because Medusa names its tokens `bg-ui-button-neutral` / `text-ui-fg-subtle`.
+    // The whole repository (34 findings) went silent on a vocabulary mismatch.
+    const root = project(
+      "tailwind.config.cjs",
+      "module.exports = { theme: { extend: { colors: { 'ui-fg-subtle': 'var(--fg-subtle)' } } } };\n",
+    );
+    expect(countIn(root, "src/components/Thing.tsx")).toBe(1);
+  });
+
+  it("accepts a Tailwind v4 @theme stylesheet, which has no config file at all", () => {
+    const root = project("src/index.css", '@import "tailwindcss";\n@theme {\n  --color-brand: #123456;\n}\n');
+    expect(countIn(root, "src/components/Thing.tsx")).toBe(1);
+  });
+
+  it("still stays silent in a project with no design-system marker anywhere", () => {
+    // Not a regression to fix: `twenty` and `outline` carry no tailwind config,
+    // no components.json and no token stylesheet, because neither is a Tailwind
+    // project. The option is documented to ask whether tokens exist, and the
+    // answer there is no.
+    const root = project(null);
+    expect(countIn(root, "src/components/Thing.tsx")).toBe(0);
+  });
 });

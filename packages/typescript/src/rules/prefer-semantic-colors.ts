@@ -61,7 +61,39 @@ const RAW_COLOR_VALUE_RE = new RegExp(`#[0-9a-fA-F]{3,8}\\b|\\b(?:${COLOR_FN})\\
 const CSS_VAR_REFERENCE_RE = /var\(\s*--/;
 
 const STORIES_FILE_RE = /\.stories\.[cm]?[jt]sx?$/i;
-const SEMANTIC_TOKEN_RE = /--(?:background|foreground|primary|secondary|muted|accent|destructive|border|card|popover)\b|(?:bg|text|border)-(?:background|foreground|primary|secondary|muted|accent|destructive|border|card|popover)\b/;
+
+/**
+ * A design-token vocabulary, in a stylesheet.
+ *
+ * shadcn's names plus Tailwind v4's `@theme` block, which is how a v4 project
+ * declares tokens now that there is no `tailwind.config.*` to declare them in.
+ * Only stylesheets are content-tested at all (see `CONFIG_IS_SUFFICIENT`), so
+ * the vocabulary list no longer decides whether a whole repo is linted.
+ */
+const SEMANTIC_TOKEN_RE = /@theme\b|--(?:background|foreground|primary|secondary|muted|accent|destructive|border|card|popover)\b|(?:bg|text|border)-(?:background|foreground|primary|secondary|muted|accent|destructive|border|card|popover)\b/;
+
+/**
+ * Files whose mere EXISTENCE proves a design system, with no content test.
+ *
+ * A `tailwind.config.*` is a token vocabulary by construction — the whole point
+ * of the file is to name colors — and the vocabulary it declares is the
+ * project's own, not shadcn's. Content-testing it cost whole repositories:
+ * `medusa/packages/admin/dashboard/tailwind.config.cjs` exists, sits 5
+ * directories above the components that fail the rule, is already in this list,
+ * and was REJECTED because Medusa names its tokens `bg-ui-button-neutral` /
+ * `text-ui-fg-subtle` rather than shadcn's `bg-primary`, which silenced that
+ * whole repository under the shipped `requireSemanticTokens: true`. The content
+ * test was answering "does this project use shadcn?" while the option is
+ * documented to ask "does this project have design tokens?".
+ */
+const CONFIG_IS_SUFFICIENT = new Set([
+  "components.json",
+  "tailwind.config.cjs",
+  "tailwind.config.js",
+  "tailwind.config.mjs",
+  "tailwind.config.ts",
+]);
+
 const DETECTION_FILES = [
   "components.json",
   "tailwind.config.js",
@@ -215,7 +247,7 @@ const hasSemanticTokenSystem = (filename: string): boolean => {
     for (const rel of DETECTION_FILES) {
       const candidate = join(dir, rel);
       if (!existsSync(candidate)) continue;
-      if (rel === "components.json") {
+      if (CONFIG_IS_SUFFICIENT.has(rel)) {
         found = true;
         break;
       }

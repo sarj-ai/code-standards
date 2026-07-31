@@ -84,10 +84,38 @@ ruleTester.run("prefer-module-level-schema", rule, {
 
     // NOT FLAGGED — below `minProperties`. An empty placeholder shape, and a
     // one-key schema written inline at its only use, read better where they are.
+    // The one-key case needs NO option: the default is 2, which is what the
+    // fileoverview always claimed and what `minProperties: 1` never delivered.
     { code: `${IMPORT}export function handle(raw: unknown) { return z.object({}).parse(raw); }` },
     {
       code: `${IMPORT}export function handle(raw: unknown) { return z.object({ reason: z.string() }).parse(raw); }`,
-      options: [{ minProperties: 2 }],
+    },
+
+    // NOT FLAGGED — the message is rendered by an i18n macro, so the schema is
+    // built AFTER locale activation on purpose. Hoisting freezes every message
+    // in the boot locale: a behaviour change, not a refactor. From
+    // `twenty/…/useTwoFactorAuthenticationForm.ts:7`.
+    {
+      code: `${IMPORT}import { t } from "@lingui/core/macro";\nconst make = () => z.object({ otp: z.string().length(6, t\`OTP must be exactly 6 digits\`), pin: z.string() });\nexport default make;`,
+    },
+    {
+      code: `${IMPORT}import { t } from "i18next";\nexport const make = () => z.object({ a: z.string(t("a.label")), b: z.string() });`,
+    },
+    {
+      code: `${IMPORT}import { i18n } from "@lingui/core";\nexport const make = () => z.object({ a: z.string(i18n._("a.label")), b: z.string() });`,
+    },
+
+    // NOT FLAGGED — a FRAGMENT of a schema that cannot itself move. The sibling
+    // keys of the `.extend({…})` close over a parameter, so the object literal
+    // around this `z.union` is rebuilt per call whatever happens to the union.
+    // From `astro/…/core/config/schemas/relative.ts:31`.
+    {
+      code: `${IMPORT}import { Base } from "./base.js";\nexport function make(root: string) { return Base.extend({ compressHTML: z.union([z.boolean(), z.literal("jsx")]), root: z.string().transform((v) => v + root) }); }`,
+    },
+    // Same, one level deeper: the fragment sits inside a `z.preprocess` inside
+    // the unhoistable `.extend`. From the same file, line 102.
+    {
+      code: `${IMPORT}import { Base } from "./base.js";\nexport function make(root: string) { return Base.extend({ server: z.preprocess((v) => v, z.object({ host: z.string(), port: z.number() })), root: z.string().transform((v) => v + root) }); }`,
     },
 
     // NOT FLAGGED — `z.array` / `z.enum` are outside the default factory list.
@@ -185,6 +213,44 @@ ruleTester.run("prefer-module-level-schema", rule, {
       code: `${IMPORT}export function build() { return z.array(z.object({ a: z.string(), b: z.string() })); }`,
       options: [{ factories: ["array", "object"] }],
       errors: [{ messageId: "hoistSchema", data: { factory: "z.array", owner: "build" } }],
+    },
+
+    // A schema in a NON-Zod options object still fires. Walking out of a shape
+    // literal is only valid when the call around it is a Zod construct;
+    // `tool({ inputSchema, execute })` is not, and treating the whole options
+    // object as the schema would inherit `execute`'s free variables. Five real
+    // findings in `novu/libs/agent-evals/src/core/tools.ts` turn on this.
+    {
+      code: `${IMPORT}declare function tool(o: unknown): unknown;\nexport function make(ctx: { log: (s: string) => void }) { return tool({ inputSchema: z.object({ a: z.string(), b: z.string() }), execute: () => ctx.log("x") }); }`,
+      errors: [{ messageId: "hoistSchema", data: { factory: "z.object", owner: "make" } }],
+    },
+
+    // A refinement callback's OWN parameters are part of the schema and travel
+    // with it. Treating them as bindings the function owns made every refined
+    // schema unreportable — `astro/packages/integrations/sitemap/src/
+    // validate-options.ts:9` and two Medusa `booleanString()` factories were
+    // silently lost to it.
+    {
+      code: `${IMPORT}export function build() { return z.object({ a: z.string(), b: z.string() }).refine((options) => options.a !== options.b); }`,
+      errors: [{ messageId: "hoistSchema", data: { factory: "z.object", owner: "build" } }],
+    },
+    {
+      code: `${IMPORT}export const booleanString = () => z.union([z.boolean(), z.string()]).transform((value) => value.toString());`,
+      errors: [{ messageId: "hoistSchema", data: { factory: "z.union", owner: "booleanString" } }],
+    },
+
+    // An enclosing Zod construct that IS hoistable does not suppress: the whole
+    // `z.preprocess(…)` moves, and the report anchors the part that can be named.
+    {
+      code: `${IMPORT}export function build() { return z.preprocess((v) => v, z.array(z.object({ a: z.string(), b: z.string() }))).catch([]); }`,
+      errors: [{ messageId: "hoistSchema", data: { factory: "z.object", owner: "build" } }],
+    },
+
+    // `minProperties: 1` opts the one-key inline schema back in.
+    {
+      code: `${IMPORT}export function handle(raw: unknown) { return z.object({ reason: z.string() }).parse(raw); }`,
+      options: [{ minProperties: 1 }],
+      errors: [{ messageId: "hoistSchema" }],
     },
 
     // Test files fire when the exemption is switched off.
