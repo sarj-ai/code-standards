@@ -73,11 +73,11 @@ const STORIES_FILE_RE = /\.stories\.[cm]?[jt]sx?$/i;
  * its `globals.css` was FOUND and then REJECTED. `dub` names its tokens
  * `content-default` / `bg-default` and lost the same way.
  *
- * Detection errs deliberately towards "a system exists": a false positive here
- * makes the rule RUN (and report drift the author can disable case by case),
- * whereas a false negative disables an error-level rule silently for an entire
- * repository. Those are not symmetric costs, which is why this is a role
- * vocabulary rather than an exact token list.
+ * Detection errs deliberately towards "a system exists". Guessing yes leaves
+ * the rule RUNNING, and an author can disable any line it reports with a
+ * reason; guessing no silently disables an error-level rule for a whole
+ * repository, and nobody finds out. Those costs are not symmetric, which is why
+ * this is a role vocabulary rather than an exact token list.
  */
 const TOKEN_ROLES =
   "background|foreground|primary|secondary|muted|accent|destructive|danger|success|warning|info|border|card|popover|surface|content|base|subtle|default|ring|input|fg|bg";
