@@ -17,6 +17,7 @@
   ],
   "peers": {
     "@eslint-community/eslint-plugin-eslint-comments": "4.7.2",
+    "@eslint/compat": "2.1.0",
     "@sarj/eslint-plugin": "9.2.0",
     "eslint": "10.8.0",
     "eslint-plugin-better-tailwindcss": "4.7.0",
@@ -35,7 +36,7 @@
     }
   },
   "ceilings": {
-    "eslint-plugin-react": "7.37.5 is the newest release; it peers `eslint <= ^9.7` AND calls the `context.getFilename()` removed in ESLint 10, so on the ESLint 10 this config requires it fails to install without `npmOverrides` and then throws on the first file linted. eslint.strict.mjs therefore skips its 18 rules on ESLint 10+; `tests/strict-config-runs.test.ts` fails when a release fixes this, so the workaround cannot outlive the bug.",
+    "eslint-plugin-react": "7.37.5 is the newest release and peers `eslint <= ^9.7`; the npm override permits ESLint 10 and @eslint/compat restores its removed rule-context APIs so all React rules remain active.",
     "typescript": "typescript-eslint@8 peers `>=4.8.4 <6.1.0`, so TypeScript 7 is rejected."
   }
 }
