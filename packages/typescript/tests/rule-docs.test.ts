@@ -24,7 +24,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import plugin, { renamedRules, rules } from "../src/index.js";
+import plugin, { renamedRules, retiredRules, rules } from "../src/index.js";
 import {
   EVIDENCE_DIR,
   evidencePath,
@@ -211,8 +211,12 @@ describe("a rename ships a map, not a hole", () => {
    * name existed, so the test that walks it passes on an empty map. Consumers
    * hold these names in configs, disable comments and suppression baselines, and
    * a name that simply stops resolving is the failure the SARJ110 renumber
-   * caused. A name may be RETIRED (see `strict-config-sync.test.ts`), which is a
-   * separate, deliberate act; it may not quietly vanish.
+   * caused. A name may be RETIRED, which is a separate, deliberate act; it may
+   * not quietly vanish.
+   *
+   * "Retired" is not restated here. It is read from `retiredRules`, the same map
+   * `strict-config-sync.test.ts` derives from git history — so a withdrawal is
+   * recorded in exactly one place and this list never has to be edited for one.
    */
   const SHIPPED_IN_6_1_0: readonly string[] = [
     "enforce-file-structure",
@@ -268,14 +272,23 @@ describe("a rename ships a map, not a hole", () => {
     "zod-naming-convention",
   ];
 
-  it("still resolves every name the previous major shipped", () => {
-    const gone = SHIPPED_IN_6_1_0.filter((name) => !(name in plugin.rules));
+  it("still resolves every name the previous major shipped, unless retired", () => {
+    const gone = SHIPPED_IN_6_1_0.filter(
+      (name) => !(name in plugin.rules) && !(name in retiredRules),
+    );
     expect(
       gone,
       "a shipped rule name stopped resolving. Rename it through `renamedRules`, " +
         "which keeps the old name registered as a deprecated alias — or retire it " +
-        "deliberately in `strict-config-sync.test.ts`.",
+        "deliberately by deleting the rule, which `src/rules/_retired.ts` records.",
     ).toEqual([]);
+  });
+
+  it("never both renames and retires the same name", () => {
+    // The two maps answer opposite questions about one name; an entry in both is
+    // a contradiction a consumer's migration script cannot resolve.
+    const both = Object.keys(renamedRules).filter((name) => name in retiredRules);
+    expect(both).toEqual([]);
   });
 
   it("renames exactly the shipped names it claims to", () => {
@@ -287,7 +300,7 @@ describe("a rename ships a map, not a hole", () => {
     // ...and every shipped name that is no longer a live rule must be in it.
     const live = new Set(ruleNames);
     const orphaned = SHIPPED_IN_6_1_0.filter(
-      (name) => !live.has(name) && !(name in renamedRules),
+      (name) => !live.has(name) && !(name in renamedRules) && !(name in retiredRules),
     );
     expect(orphaned).toEqual([]);
   });

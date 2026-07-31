@@ -1,7 +1,7 @@
 import { Linter } from "eslint";
 import { mkdirSync, mkdtempSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
-import { join } from "path";
+import { dirname, join } from "path";
 import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, expect, it } from "vitest";
@@ -228,6 +228,28 @@ function project(marker: string | null, contents = ""): string {
   return root;
 }
 
+/**
+ * A project of arbitrary SHAPE, for the cases about reachability rather than
+ * vocabulary: which directories the walk can see, not which markers it accepts.
+ *
+ * Each case builds its own tree. The rule's directory caches are module-level and
+ * process-wide, so sharing a root between cases would let one case answer
+ * another's question — which is exactly the defect the order test below pins.
+ */
+function tree(files: Readonly<Record<string, string>>): string {
+  const root = mkdtempSync(join(tmpdir(), "sarj-psc-"));
+  for (const [relative, contents] of Object.entries(files)) {
+    const absolute = join(root, relative);
+    mkdirSync(dirname(absolute), { recursive: true });
+    writeFileSync(absolute, contents);
+  }
+  return root;
+}
+
+/** A shadcn-shaped Tailwind v3 theme. */
+const TAILWIND_CONFIG =
+  'export default { theme: { extend: { colors: { primary: "hsl(var(--primary))" } } } };\n';
+
 describe("prefer-semantic-colors requireSemanticTokens gate", () => {
   it("accepts a tailwind config whose token vocabulary is not shadcn's", () => {
     // `medusa/packages/admin/dashboard/tailwind.config.cjs` exists, is in
@@ -253,5 +275,67 @@ describe("prefer-semantic-colors requireSemanticTokens gate", () => {
     // answer there is no.
     const root = project(null);
     expect(countIn(root, "src/components/Thing.tsx")).toBe(0);
+  });
+
+  // --- Reachability. `hasSemanticTokenSystem` decides whether the rule runs at
+  // all under the shipped config, and the cases above only ever ask it about a
+  // marker sitting directly above the file. These ask it about the two shapes it
+  // got wrong: a marker in a sibling package, and a marker further up than the
+  // walk was willing to go.
+
+  it("finds a token config in a SIBLING workspace package", () => {
+    // `dub`'s only detection file is packages/tailwind-config/tailwind.config.ts
+    // and every source file lives under apps/*, so no upward walk from a source
+    // file ever passes through it. The rule reported nothing across the repo.
+    const root = tree({
+      "apps/web/app/(dashboard)/settings/badge.tsx": SOURCE,
+      "apps/web/package.json": '{"name":"web"}\n',
+      "package.json": '{"name":"root","workspaces":["apps/*","packages/*"]}\n',
+      "packages/tailwind-config/package.json": '{"name":"tailwind-config"}\n',
+      "packages/tailwind-config/tailwind.config.ts": TAILWIND_CONFIG,
+    });
+    expect(countIn(root, "apps/web/app/(dashboard)/settings/badge.tsx")).toBe(1);
+  });
+
+  it("finds a sibling token config declared through pnpm-workspace.yaml", () => {
+    const root = tree({
+      "apps/site/src/badge.tsx": SOURCE,
+      "packages/ui/components.json": '{"style":"default"}\n',
+      "pnpm-workspace.yaml": "packages:\n  - 'apps/*'\n  - 'packages/*'\n",
+    });
+    expect(countIn(root, "apps/site/src/badge.tsx")).toBe(1);
+  });
+
+  it("reaches a marker more than eight directories up", () => {
+    const deep = "a/b/c/d/e/f/g/h/i/badge.tsx";
+    const root = tree({ [deep]: SOURCE, "components.json": '{"style":"default"}\n' });
+    expect(countIn(root, deep)).toBe(1);
+  });
+
+  it("gives the same answer whichever file is linted first", () => {
+    // The two files share ancestors on purpose: that is what made the defect
+    // reproduce. Linting `shallow` first resolved and cached `a/b/c`, and `deep`
+    // — which could not reach the root inside an eight-step budget on its own —
+    // then short-circuited on that entry and reported. Lint `deep` first and it
+    // reported nothing. Same file, same tree, different answer depending on what
+    // ESLint happened to visit before it.
+    const deep = "a/b/c/d/e/f/g/h/i/deep.tsx";
+    const shallow = "a/b/c/shallow.tsx";
+    const files = {
+      [deep]: SOURCE,
+      [shallow]: SOURCE,
+      "components.json": '{"style":"default"}\n',
+    };
+
+    const deepFirstRoot = tree(files);
+    const deepFirst = countIn(deepFirstRoot, deep);
+    countIn(deepFirstRoot, shallow);
+
+    const shallowFirstRoot = tree(files);
+    countIn(shallowFirstRoot, shallow);
+    const deepAfterShallow = countIn(shallowFirstRoot, deep);
+
+    expect(deepFirst).toBe(deepAfterShallow);
+    expect(deepFirst).toBe(1);
   });
 });

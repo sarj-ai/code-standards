@@ -6,7 +6,7 @@
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readdirSync, readFileSync } from "fs";
 import { dirname, join, parse } from "path";
 
 import { createRule } from "./_docs.js";
@@ -106,10 +106,34 @@ const DETECTION_FILES = [
   "src/styles/globals.css",
   "styles/globals.css",
 ];
-/** How far up the tree to look for a design-token marker before giving up. */
-const MAX_UPWARD_DEPTH = 8;
+/**
+ * Files that mark a directory as the root of a multi-package workspace.
+ *
+ * `package.json` is handled separately: only a `workspaces` field counts, since
+ * every package has a `package.json` and treating it as a root would stop the
+ * sideways scan at the nearest leaf package.
+ */
+const WORKSPACE_ROOT_FILES = [
+  "pnpm-workspace.yaml",
+  "pnpm-workspace.yml",
+  "turbo.json",
+  "lerna.json",
+];
 
-const semanticTokenCache = new Map<string, boolean>();
+/** Where workspace packages live when the root declares no globs, or none parse. */
+const DEFAULT_WORKSPACE_GLOBS = ["packages/*", "apps/*"];
+
+/** Upper bound on the sideways scan, so a huge monorepo cannot stall a lint run. */
+const MAX_WORKSPACE_PACKAGES = 512;
+
+/** "Is there a detection file at or above this directory?" — a pure ancestry fact. */
+const ancestryCache = new Map<string, boolean>();
+
+/** "Does any package of this workspace carry a detection file?", keyed by root. */
+const workspaceScanCache = new Map<string, boolean>();
+
+/** Nearest workspace root at or above a directory, `null` if there is none. */
+const workspaceRootCache = new Map<string, string | null>();
 
 /** SVG container elements whose children carry structural (not UI-token) colors. */
 const SVG_DEFS_CONTAINERS = new Set<string>([
@@ -213,72 +237,198 @@ const isInsideIconFactoryPath = (node: TSESTree.Node): boolean => {
   return false;
 };
 
+/** Does this one directory carry a design-token marker? */
+const hasMarkerAt = (dir: string): boolean => {
+  for (const rel of DETECTION_FILES) {
+    const candidate = join(dir, rel);
+    if (!existsSync(candidate)) continue;
+    if (CONFIG_IS_SUFFICIENT.has(rel)) return true;
+    try {
+      if (SEMANTIC_TOKEN_RE.test(readFileSync(candidate, "utf8"))) return true;
+    } catch {
+      // Ignore unreadable config files; absence of evidence means no report.
+    }
+  }
+  return false;
+};
+
 /**
- * Does a design-token system exist at or above `filename`'s directory?
+ * Is there a marker at or above `startDir`? Walks to the filesystem root.
  *
- * The cache stores the RESOLVED answer for every directory visited on the way
- * up, not each directory's own local result. That distinction is the entire bug
- * this replaced: the previous version wrote `cache[dir] = found` per
- * intermediate directory, where `found` meant "no marker AT this dir" — but the
- * question being cached is "is there a marker at or ABOVE this dir". So the
- * first file linted wrote `cache["…/src"] = false`, and every later file under
- * `src/**` short-circuited on it and never walked up to the `components.json`
- * at the repo root.
+ * There is deliberately no depth budget. A budget introduces a third answer —
+ * "ran out" — which has to be reported as one of the other two, and reporting it
+ * as "no design system" made this gate's result depend on the ORDER files were
+ * linted in.
  *
- * Caching the resolved answer for all visited directories is sound: every
- * visited directory sits at or below the one where the marker was found, so the
- * marker is at-or-above each of them too.
+ * Every visited directory is memoised, so the walk runs once per tree. Caching
+ * the resolved answer for all of them is sound: each sits at or below wherever
+ * the answer was settled, so "at or above" holds for each of them too.
  */
-const hasSemanticTokenSystem = (filename: string): boolean => {
-  let dir = dirname(filename);
+const hasMarkerAtOrAbove = (startDir: string): boolean => {
+  let dir = startDir;
   const root = parse(dir).root;
   const visited: string[] = [];
-  let answer: boolean | undefined;
+  let answer: boolean;
 
-  for (let depth = 0; depth < MAX_UPWARD_DEPTH; depth += 1) {
-    const cached = semanticTokenCache.get(dir);
+  for (;;) {
+    const cached = ancestryCache.get(dir);
     if (cached !== undefined) {
       answer = cached;
       break;
     }
     visited.push(dir);
-
-    let found = false;
-    for (const rel of DETECTION_FILES) {
-      const candidate = join(dir, rel);
-      if (!existsSync(candidate)) continue;
-      if (CONFIG_IS_SUFFICIENT.has(rel)) {
-        found = true;
-        break;
-      }
-      try {
-        if (SEMANTIC_TOKEN_RE.test(readFileSync(candidate, "utf8"))) {
-          found = true;
-          break;
-        }
-      } catch {
-        // Ignore unreadable config files; absence of evidence means no report.
-      }
-    }
-    if (found) {
+    if (hasMarkerAt(dir)) {
       answer = true;
       break;
     }
-    if (dir === root) {
+    const parent = dirname(dir);
+    if (dir === root || parent === dir) {
       answer = false;
       break;
     }
-    dir = dirname(dir);
+    dir = parent;
   }
 
-  // `answer` is undefined only when the depth budget ran out before reaching a
-  // marker or the filesystem root. That is inconclusive, not "no" — a directory
-  // higher up could still hold one, reachable within budget from a shallower
-  // file. Memoizing it would make the wrong answer permanent for the process,
-  // so those directories are deliberately left uncached.
-  if (answer === undefined) return false;
-  for (const seen of visited) semanticTokenCache.set(seen, answer);
+  for (const seen of visited) ancestryCache.set(seen, answer);
   return answer;
+};
+
+/**
+ * The workspace globs a root declares, from `package.json` or `pnpm-workspace.yaml`.
+ *
+ * The YAML is read with a line regex rather than a parser: a dependency-free rule
+ * cannot pull one in, and the only shape that matters is the flat `packages:`
+ * list every pnpm workspace writes.
+ */
+const readWorkspaceGlobs = (dir: string): string[] => {
+  const globs: string[] = [];
+
+  const packageJson = join(dir, "package.json");
+  if (existsSync(packageJson)) {
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(packageJson, "utf8"));
+      const declared =
+        typeof parsed === "object" && parsed !== null && "workspaces" in parsed
+          ? (parsed as { workspaces?: unknown }).workspaces
+          : undefined;
+      const list = Array.isArray(declared)
+        ? declared
+        : typeof declared === "object" &&
+            declared !== null &&
+            Array.isArray((declared as { packages?: unknown }).packages)
+          ? (declared as { packages: unknown[] }).packages
+          : [];
+      for (const entry of list) if (typeof entry === "string") globs.push(entry);
+    } catch {
+      // A malformed package.json is not this rule's problem to report.
+    }
+  }
+
+  for (const name of ["pnpm-workspace.yaml", "pnpm-workspace.yml"]) {
+    const yaml = join(dir, name);
+    if (!existsSync(yaml)) continue;
+    try {
+      for (const line of readFileSync(yaml, "utf8").split("\n")) {
+        const match = /^\s*-\s*["']?([^"'#\s]+)["']?\s*$/u.exec(line);
+        if (match?.[1] !== undefined) globs.push(match[1]);
+      }
+    } catch {
+      // Same.
+    }
+  }
+
+  return globs;
+};
+
+/** Expand a workspace glob one level: `packages/*`, `packages/**`, or a literal path. */
+const expandWorkspaceGlob = (root: string, glob: string): string[] => {
+  const star = glob.indexOf("*");
+  if (star === -1) return [join(root, glob)];
+
+  const prefix = glob.slice(0, star).replace(/\/$/u, "");
+  const parent = prefix === "" ? root : join(root, prefix);
+  try {
+    return readdirSync(parent, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+      .map((entry) => join(parent, entry.name));
+  } catch {
+    return [];
+  }
+};
+
+/** Nearest directory at or above `startDir` that declares a multi-package workspace. */
+const findWorkspaceRoot = (startDir: string): string | null => {
+  let dir = startDir;
+  const root = parse(dir).root;
+  const visited: string[] = [];
+  let answer: string | null;
+
+  for (;;) {
+    const cached = workspaceRootCache.get(dir);
+    if (cached !== undefined) {
+      answer = cached;
+      break;
+    }
+    visited.push(dir);
+    if (
+      WORKSPACE_ROOT_FILES.some((name) => existsSync(join(dir, name))) ||
+      readWorkspaceGlobs(dir).length > 0
+    ) {
+      answer = dir;
+      break;
+    }
+    const parent = dirname(dir);
+    if (dir === root || parent === dir) {
+      answer = null;
+      break;
+    }
+    dir = parent;
+  }
+
+  for (const seen of visited) workspaceRootCache.set(seen, answer);
+  return answer;
+};
+
+/**
+ * Does any package of this workspace carry a design-token marker?
+ *
+ * An upward walk alone silences a whole monorepo whose token config lives in a
+ * sibling package: no ancestor chain from a source file passes through it. A
+ * token system in a sibling package is still a token system — that is what a
+ * workspace IS — so the scan goes sideways from the workspace root when, and only
+ * when, the upward walk has already come back empty.
+ */
+const workspaceHasMarker = (root: string): boolean => {
+  const cached = workspaceScanCache.get(root);
+  if (cached !== undefined) return cached;
+
+  const globs = readWorkspaceGlobs(root);
+  const candidates = new Set<string>();
+  for (const glob of globs.length > 0 ? globs : DEFAULT_WORKSPACE_GLOBS) {
+    for (const dir of expandWorkspaceGlob(root, glob)) {
+      candidates.add(dir);
+      if (candidates.size >= MAX_WORKSPACE_PACKAGES) break;
+    }
+    if (candidates.size >= MAX_WORKSPACE_PACKAGES) break;
+  }
+
+  let found = false;
+  for (const dir of candidates) {
+    if (hasMarkerAt(dir)) {
+      found = true;
+      break;
+    }
+  }
+  workspaceScanCache.set(root, found);
+  return found;
+};
+
+/** Does a design-token system exist anywhere this file's project can see? */
+const hasSemanticTokenSystem = (filename: string): boolean => {
+  const dir = dirname(filename);
+  if (hasMarkerAtOrAbove(dir)) return true;
+  const root = findWorkspaceRoot(dir);
+  return root !== null && workspaceHasMarker(root);
 };
 
 const propName = (key: TSESTree.Property["key"]): string | null => {
