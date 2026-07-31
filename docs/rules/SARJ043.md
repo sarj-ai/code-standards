@@ -178,3 +178,44 @@ collects it — so descending into function bodies would invent findings.
 
 Transitive because assertion helpers stack: black's `compare_results` calls
 `check_ast_equivalence`, and only the latter holds the `assert`.
+
+## Library assertion helpers (2026-07-31 sweep)
+
+The name heuristic — a snake_case token search for `assert`, `expect`, `verify`
+or `validate` — is a good default with one blind spot: a widely used assertion
+API is free to spell itself without any of those words.
+
+Measured over **39,893 content-deduplicated `.py` files** from four first-party
+repos and 33 OSS Python repos: **4,386 of this rule's 7,352 findings (59.7%)**
+were on test functions whose body calls such a helper. They assert perfectly
+well; the rule simply could not see it.
+
+| helper family | findings | why the token search misses it |
+| --- | --- | --- |
+| `_pytest.pytester.LineMatcher` — `fnmatch_lines`, `no_fnmatch_line`, `re_match_lines`, … | 438 | the name describes the MATCH, not the assertion; `fnmatch_lines` raises `Failed` on a mismatch |
+| `sqlalchemy.testing.assertions` — `eq_`, `ne_`, `is_`, `is_true`, `is_false`, `in_`, `eq_regex`, `eq_ignore_whitespace` | 3,948 | the trailing underscore exists to dodge a Python keyword |
+
+Three read at source, all assertion-complete and all wrongly flagged:
+
+- `pytest/testing/test_stepwise.py:99` `test_run_without_stepwise` — three
+  consecutive `result.stdout.fnmatch_lines([...])` calls.
+- `pytest/testing/test_cacheprovider.py:501` `test_terminal_report_failedfirst`.
+- `sqlalchemy/test/engine/test_logging.py:138` `test_repr_params_unknown_list` —
+  `eq_(repr(...), "[[1, 2, 3], 5]")`.
+
+`_LIBRARY_ASSERTION_NAMES` is a **closed set of exact names**, not a pattern. A
+wildcard for "ends in an underscore" or "starts with `eq`" would swallow
+unrelated user functions, and a test that really asserts nothing must stay
+flagged — that is the whole rule. The closed-set choice is pinned by
+`test_a_similarly_named_local_function_still_does_not_rescue_a_bare_test`.
+
+Corpus effect, same 39,893 files: **7,352 -> 2,613 (-64.5%)**. The extra 353
+beyond the 4,386 counted directly come from `_verifying_local_names`, whose
+transitive promotion now reaches a local helper that asserts through one of
+these. No other rule in the registry moved.
+
+Concentration note: 3,944 of the 4,386 are in one repo (SQLAlchemy's own test
+suite) and 438 in another (pytest's). First-party impact today is nil. The class
+is fixed anyway because `fnmatch_lines` is what any repo testing a console
+script through the `pytester` fixture uses, and that repo would see the rule
+fire on every one of its CLI tests.

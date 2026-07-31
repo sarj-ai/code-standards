@@ -34,8 +34,59 @@ const STEP_NARRATION_RE =
 
 // Self-admitted meta-commentary — the "why later", not the why. `TODO`/`FIXME`/
 // `HACK`/`XXX` are handled as directives (kept, with an owner, per convention).
+//
+// Every alternative here NAMES the debt: "is a hack", "keeping it simple", "not
+// sure if", "could be refactored". A bare `for now` used to be on the list and
+// is not, because it names nothing — it is an ordinary English temporal
+// qualifier that sits inside genuine scope and rationale comments. See
+// `isBareDeferral` below, which keeps the half of it that is really cruft.
 const META_COMMENTARY_RE =
-  /\b(?:for now|keeping (?:it|this) simple|could be (?:refactored|improved|cleaned up|simplified)|refactor(?:ed|ing)? (?:later|this)|not sure (?:if|whether|why|how)|quick[- ](?:and[- ]dirty|fix)|(?:a |bit of a )?hacky|is a hack|temporary (?:solution|workaround|fix|hack)|revisit (?:this|later|below)|clean (?:this|it) up|not ideal|placeholder for now)\b/i;
+  /\b(?:keeping (?:it|this) simple|could be (?:refactored|improved|cleaned up|simplified)|refactor(?:ed|ing)? (?:later|this)|not sure (?:if|whether|why|how)|quick[- ](?:and[- ]dirty|fix)|(?:a |bit of a )?hacky|is a hack|temporary (?:solution|workaround|fix|hack)|revisit (?:this|later|below)|clean (?:this|it) up|not ideal|placeholder for now)\b/i;
+
+const FOR_NOW_RE = /\bfor now\b/i;
+
+// Words that carry no information about WHAT is deferred, so they do not count
+// as substance around a `for now`.
+const DEFERRAL_STOPWORDS: ReadonlySet<string> = new Set([
+  "a", "an", "and", "are", "as", "at", "be", "but", "by", "can", "could", "do",
+  "does", "for", "from", "had", "has", "have", "here", "i", "in", "is", "it",
+  "its", "just", "may", "might", "no", "not", "now", "of", "on", "only", "our",
+  "shall", "should", "so", "still", "that", "the", "then", "there", "this",
+  "to", "us", "was", "we", "were", "will", "with", "would", "you", "your",
+]);
+
+/** Most content words a `for now` comment may carry and still be pure deferral. */
+const DEFERRAL_MAX_CONTENT_WORDS = 2;
+
+/**
+ * A `for now` comment that defers without saying anything: `// Empty for now.`,
+ * `// Not needed for now`, `// login manually for now`.
+ *
+ * `for now` used to be an alternative inside `META_COMMENTARY_RE`, which made
+ * the phrase evidence on its own. It is not. Every other alternative there NAMES
+ * the debt; `for now` is two ordinary English words that sit just as happily
+ * inside the *why* this rule's own message asks for:
+ *
+ *     // our svg icons break if we use data urls, so disable inline assets for now
+ *     // skipping utils for now, as it has independent release process
+ *     // Empty for now.                                    <- the real cruft
+ *
+ * The distinguishing fact is substance, not the phrase: a comment that defers
+ * AND explains is a why-comment. Requiring the rest of the comment to be
+ * near-empty keeps the contentless deferrals and drops the ones carrying a scope
+ * limit, a reason, or an owner tag. `JUSTIFICATION_RE` does not rescue those —
+ * its connective list is narrow, and "as", "so <verb>" and "intentionally" are
+ * not on it, which is why they were reported at all. Numbers in
+ * `docs/rules/no-comment-cruft.md`.
+ */
+function isBareDeferral(text: string): boolean {
+  if (!FOR_NOW_RE.test(text)) return false;
+  const rest = text.replace(FOR_NOW_RE, " ");
+  const content = (rest.match(/[A-Za-z][\w']*/g) ?? []).filter(
+    (word) => !DEFERRAL_STOPWORDS.has(word.toLowerCase()),
+  );
+  return content.length <= DEFERRAL_MAX_CONTENT_WORDS;
+}
 
 // `sarj-noqa` is this repo's own suppression syntax (see `rule_base.py`). It was
 // missing here, so `// sarj-noqa: … — <reason>` on its own line was read as
@@ -224,6 +275,7 @@ function isRedundantNarration(
     const justified = JUSTIFICATION_RE.test(t);
     if (STEP_NARRATION_RE.test(t) && !justified) return true;
     if (META_COMMENTARY_RE.test(t) && !justified) return true;
+    if (isBareDeferral(t) && !justified) return true;
     if (HELPER_OPENER_RE.test(t) || LETS_RE.test(t)) return true;
 
     const words = t.split(/\s+/);

@@ -86,5 +86,7 @@
   "SARJ084": "duplicated-override-docstring",
   "SARJ085": "redundant-class-docstring",
   "SARJ086": "docstring-args-restate-signature",
-  "SARJ087": "docstring-returns-restate-signature"
+  "SARJ087": "docstring-returns-restate-signature",
+  "SARJ088": "restated-test-docstring",
+  "SARJ089": "test-phase-label-comment"
 }

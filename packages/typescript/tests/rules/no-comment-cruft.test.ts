@@ -221,6 +221,30 @@ ruleTester.run("no-comment-cruft", rule, {
     { code: "interface T {\n  /** the retry budget */\n  retries: number;\n}" },
     // An empty block says nothing, so it is not saying a section title either.
     { code: "/**\n *\n */\nconst x = 1;" },
+
+    // --- 2026-07-31 sweep: `for now` is not evidence on its own -------------
+    // It was an alternative inside META_COMMENTARY_RE, so any comment
+    // containing the phrase was "self-admitted meta-commentary". Measured over
+    // 175,852 deduplicated files it produced 134 findings; 14 read at source
+    // gave 6 plainly-why comments against 2 contentless ones. The five below
+    // are verbatim corpus lines. `JUSTIFICATION_RE` rescues none of them --
+    // "as", "so <verb>" and "intentionally" are not on its connective list,
+    // which is exactly why they were reported.
+    {
+      code: "// our svg icons break if we use data urls, so disable inline assets for now\nconst assetsInlineLimit = 0;",
+    },
+    {
+      code: "// skipping utils for now, as it has independent release process\nconst PACKAGES = ['common'];",
+    },
+    {
+      code: "// We only expose the jest compatible API for now\nexport interface Assertion { a: string }",
+    },
+    {
+      code: "// Intentionally disable package cache for now as consumers do not need it\nconst opts = { packageCache: undefined };",
+    },
+    {
+      code: "// Hero only for now; the release feed lands below it as its port arrives.\nexport function ReleasesPage() { return null; }",
+    },
   ],
   invalid: [
     // --- a section signpost fires whichever comment syntax carries it ---
@@ -347,6 +371,21 @@ ruleTester.run("no-comment-cruft", rule, {
     },
     {
       code: "// hardcoded for now\nconst limit = 10;",
+      errors: [{ messageId: "redundantNarration" }],
+    },
+    // The half of `for now` that really is cruft: it defers and says nothing
+    // about what or why. These are corpus lines too, and they must stay
+    // flagged or the narrowing above has simply deleted the shape.
+    {
+      code: "// Empty for now.\nconst cfg = {};",
+      errors: [{ messageId: "redundantNarration" }],
+    },
+    {
+      code: "// Not needed for now\nconst handler = null;",
+      errors: [{ messageId: "redundantNarration" }],
+    },
+    {
+      code: "// login manually for now\nconst session = null;",
       errors: [{ messageId: "redundantNarration" }],
     },
     {
