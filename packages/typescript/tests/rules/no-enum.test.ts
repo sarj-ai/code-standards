@@ -46,6 +46,23 @@ ruleTester.run("no-enum", rule, {
       code: "// Generated GraphQL types, do not edit manually.\nenum Status { A, B }",
       filename: "/repo/src/workspace/types/GraphRoot.types.ts",
     },
+    // A custom `ignoreFiles` glob suppresses. The invalid list holds the same
+    // option against a NON-matching path, so between them the glob is the only
+    // difference and the option cannot be deleted unnoticed. Both halves are
+    // needed: only the non-matching case existed, and it passes just as well
+    // with the option ignored entirely.
+    {
+      code: "enum Status { Active }",
+      filename: "/repo/src/codegen/api.ts",
+      options: [{ ignoreFiles: ["**/codegen/**"] }],
+    },
+    // `**` spans directory separators and `*` does not — the two halves of the
+    // glob translation, neither of which any test exercised.
+    {
+      code: "enum Status { Active }",
+      filename: "/repo/src/a/b/c/api.ts",
+      options: [{ ignoreFiles: ["**/a/**/*.ts"] }],
+    },
   ],
   invalid: [
     {
@@ -60,11 +77,23 @@ ruleTester.run("no-enum", rule, {
       code: "const enum Direction { Up, Down, Left, Right }",
       errors: [{ messageId: "noEnum" }],
     },
-    // Honors a custom ignoreFiles glob.
+    // Honors a custom ignoreFiles glob. This is the NEGATIVE half — a file the
+    // glob does not match still reports. Its positive twin is in the valid
+    // list; without both, no test proves a glob suppresses anything, and the
+    // whole option could be deleted with the suite green.
     {
       code: "enum Status { Active }",
       filename: "/repo/src/normal.ts",
       options: [{ ignoreFiles: ["**/codegen/**"] }],
+      errors: [{ messageId: "noEnum" }],
+    },
+    // A single `*` must NOT cross a directory separator. Without this the glob
+    // translation collapses to "everything is `.*`" and any pattern naming the
+    // right directory suppresses its whole subtree.
+    {
+      code: "enum Status { Active }",
+      filename: "/repo/src/codegen/deep/api.ts",
+      options: [{ ignoreFiles: ["**/codegen/*.ts"] }],
       errors: [{ messageId: "noEnum" }],
     },
   ],

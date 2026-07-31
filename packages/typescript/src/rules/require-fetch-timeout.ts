@@ -10,9 +10,6 @@ import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/util
 import { createRule } from "./_docs.js";
 import { isScriptFile, isTestFile } from "./_paths.js";
 
-/** jscodeshift's fixture directory — input/output text, not code that runs. */
-const CODEMOD_FIXTURE_RE = /[\\/]__testfixtures__[\\/]/;
-
 type MessageIds = "missingSignal";
 type Options = readonly [
   {
@@ -111,11 +108,9 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [{}],
   create(context, [optionsArg]) {
-    if (
-      isTestFile(context.filename) ||
-      isScriptFile(context.filename) ||
-      CODEMOD_FIXTURE_RE.test(context.filename)
-    ) {
+    // `isTestFile` knows jscodeshift's `__testfixtures__/` spelling, so the
+    // local pattern this rule used to keep for it decided nothing.
+    if (isTestFile(context.filename) || isScriptFile(context.filename)) {
       return {};
     }
     const allowIn = optionsArg?.allowIn ?? [];
