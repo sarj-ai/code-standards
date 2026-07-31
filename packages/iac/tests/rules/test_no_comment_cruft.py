@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 from sarj_iac_lint.rules.no_comment_cruft import NoCommentCruft
 
 
@@ -187,3 +189,116 @@ resource "google_compute_network" "vpc" {}
     diags = _check(src)
     assert len(diags) == 2
     assert all("Section-banner" in d.message for d in diags)
+
+
+# --- the banner half: the run length, and which regex earns each shape ------------
+#
+# Two regexes decide "banner". `_BANNER_FULL_RE` matches a body made entirely of
+# rule characters, `_BANNER_RUN_RE` matches a 4+ run of ONE character anywhere in
+# the body. Every banner in the tests above satisfies both, so either could be
+# deleted in silence. The two cases below are each caught by exactly one.
+
+
+def test_a_mixed_character_rule_is_a_banner():
+    """`# -=-=-=-=` has no 4-run of any single character — only the full-body regex sees it."""
+    src = '# -=-=-=-=\nresource "google_compute_network" "vpc" {}\n'
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "Section-banner" in diags[0].message
+
+
+def test_a_rule_with_a_title_after_it_is_a_banner():
+    """`# ==== Section ====` has letters, so the full-body regex cannot see it."""
+    src = '# ==== Networking ====\nresource "google_compute_network" "vpc" {}\n'
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "Section-banner" in diags[0].message
+
+
+def test_four_characters_is_already_a_banner():
+    """The lower boundary: the threshold is four, and four must fire."""
+    assert len(_check('# ====\nresource "google_compute_network" "vpc" {}\n')) == 1
+
+
+@pytest.mark.parametrize("body", ["==", "---"])
+def test_a_run_shorter_than_four_is_not_a_banner(body: str):
+    """The other side of the boundary: two or three characters do not read as a rule."""
+    assert _check(f'# {body}\nresource "google_compute_network" "vpc" {{}}\n') == []
+
+
+# --- directives are excluded, both where the line is judged and where it votes ----
+
+
+def test_a_directive_that_happens_to_contain_a_rule_is_not_a_banner():
+    """A `# TODO` about banners is a directive first — otherwise SARJ202 flags its own fix."""
+    src = '# TODO: replace the ==== dividers in this file with real blocks\nresource "google_storage_bucket" "b" {}\n'
+    assert _check(src) == []
+
+
+def test_directives_do_not_vote_on_whether_a_run_is_code():
+    """Directives are neither prose nor code; counting them as prose hides real dead code."""
+    src = """
+# tflint-ignore: terraform_unused_declarations
+# checkov:skip=CKV_GCP_1: justified
+# TODO: remove after the migration lands
+# bucket        = "legacy-artifacts"
+# force_destroy = true
+resource "google_storage_bucket" "new" {}
+"""
+    diags = _check(src)
+    assert [d.line for d in diags] == [5, 6]
+    assert all("Commented-out Terraform" in d.message for d in diags)
+
+
+# --- heredoc bodies are data, and are never judged --------------------------------
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "# ==========================================\n    # bootstrap\n    # ==========================================",
+        '# bucket        = "legacy"\n    # force_destroy = true',
+    ],
+    ids=["banner-shaped", "code-shaped"],
+)
+def test_a_heredoc_body_is_never_comment_cruft(body: str):
+    """A shell script's `#` lines are the script, not a disabled Terraform block."""
+    src = f"""
+resource "google_compute_instance" "node" {{
+  metadata_startup_script = <<-EOT
+    {body}
+    set -euo pipefail
+  EOT
+}}
+"""
+    assert _check(src) == []
+
+
+def test_the_same_lines_outside_a_heredoc_are_still_judged():
+    """The boundary: the heredoc is what excuses them, not their content."""
+    src = '# bucket        = "legacy"\n# force_destroy = true\nresource "google_storage_bucket" "new" {}\n'
+    assert len(_check(src)) == 2
+
+
+# --- code-dominance is decided per run, so the runs must be segmented -------------
+
+
+@pytest.mark.parametrize(
+    "separator",
+    ['resource "google_compute_network" "vpc" {}', ""],
+    ids=["real-hcl", "blank-line"],
+)
+def test_a_prose_run_does_not_dilute_a_neighbouring_dead_code_run(separator: str):
+    """Merge the two runs and the file's five voting lines are only 40% code — silence."""
+    src = f"""
+# Networking module.
+# See the README for the supported regions and the private service
+# connection prerequisites before enabling this.
+{separator}
+# name          = "legacy"
+# force_destroy = true
+resource "google_storage_bucket" "new" {{}}
+"""
+    diags = _check(src)
+    assert [d.line for d in diags] == [6, 7]
+    assert all("Commented-out Terraform" in d.message for d in diags)

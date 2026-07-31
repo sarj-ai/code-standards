@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 from sarj_iac_lint.rules.require_deletion_protection import PROTECTED_TYPES
 from sarj_iac_lint.rules.require_prevent_destroy import (
     IRREPLACEABLE_TYPES,
@@ -195,3 +197,69 @@ resource "google_storage_bucket" "c" {
 }
 """
     assert [d.line for d in _check(src)] == [2, 11]
+
+
+# --- every curated type must be reachable, so no row can be dropped in silence -----
+
+
+@pytest.mark.parametrize("resource_type", sorted(IRREPLACEABLE_TYPES))
+def test_every_irreplaceable_type_is_wired_in(resource_type: str):
+    """Deleting any single row from IRREPLACEABLE_TYPES fails exactly this row's case.
+
+    Only the three GCP rows were reachable from a test before this, so the AWS and
+    Azure halves of the set were decoration: removing `aws_s3_bucket` changed no
+    result.
+    """
+    src = f'resource "{resource_type}" "example" {{\n  name = "example"\n}}\n'
+    diags = _check(src)
+    assert len(diags) == 1
+    assert diags[0].code == "SARJ203"
+    assert resource_type in diags[0].message
+
+
+@pytest.mark.parametrize("resource_type", sorted(IRREPLACEABLE_TYPES))
+def test_prevent_destroy_guards_every_irreplaceable_type(resource_type: str):
+    """The other direction: the guard must be honoured for every row, not just the GCP ones."""
+    src = f'resource "{resource_type}" "example" {{\n  name = "example"\n  lifecycle {{\n    prevent_destroy = true\n  }}\n}}\n'
+    assert _check(src) == []
+
+
+def test_the_curated_set_is_exactly_this():
+    """Parametrizing over the set cannot catch a *deletion* — the case vanishes with the row.
+
+    So the set is also pinned literally. Adding or removing a cloud's row is a
+    policy change and must be a deliberate edit here, not a silent one.
+    """
+    expected = frozenset({
+        "google_storage_bucket",
+        "google_secret_manager_secret",
+        "google_artifact_registry_repository",
+        "aws_s3_bucket",
+        "aws_secretsmanager_secret",
+        "aws_ecr_repository",
+        "azurerm_storage_account",
+        "azurerm_key_vault",
+        "azurerm_container_registry",
+    })
+    assert expected == IRREPLACEABLE_TYPES
+
+
+# --- HCL keywords are case-insensitive, so the literal test must be too ------------
+
+
+def test_an_uppercase_prevent_destroy_still_guards():
+    src = """
+resource "aws_s3_bucket" "artifacts" {
+  bucket = "artifacts"
+  lifecycle {
+    prevent_destroy = TRUE
+  }
+}
+"""
+    assert _check(src) == []
+
+
+def test_an_uppercase_force_destroy_false_still_does_not_exempt():
+    """The other side: `FALSE` is the provider default, not a disposability statement."""
+    src = 'resource "aws_s3_bucket" "blob" {\n  bucket        = "blob"\n  force_destroy = FALSE\n}\n'
+    assert len(_check(src)) == 1
