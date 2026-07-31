@@ -3,9 +3,15 @@
 The docstring gate used to read `assert cls.__doc__`, and it was measuring the wrong
 thing. It could be satisfied by one restated sentence and it was equally satisfied by
 260 lines of corpus tables, so it exerted upward pressure on prose and none at all on
-whether the rule was actually documented. 45.5% of this package's rule source was
-docstrings and comments, and none of the docstring-ceremony rules this repo ships
+whether the rule was actually documented. 43.0% of this package's rule source was
+docstrings and comments — 10,958 docstring lines and 1,243 comment lines in 28,390 —
+and none of the docstring-ceremony rules this repo ships
 (SARJ049/050/051/084/085/086) flagged a line of it.
+
+(That figure was published as 45.5% / 11,674 docstring lines. It was wrong by
+exactly one line per docstring across 716 docstrings: 11,674 - 716 = 10,958,
+giving (10,958 + 1,243) / 28,390 = 43.0%. Re-measured from the blobs at the
+commit the sentence describes: 715 docstrings, 10,949 lines, 42.96%.)
 
 What replaced it: a rule is documented when its behaviour is pinned by a test module
 and its links to that module resolve. `test_every_rule_has_an_examples_module` is the
