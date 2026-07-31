@@ -931,17 +931,9 @@ const config = [
       "@sarj/no-implicit-attribute-access": "error",
       "@sarj/jsdoc-restates-signature": "error",
       "@sarj/trailing-value-narration": "error",
-      // The VOLUME arm of the same family: an object type whose member
-      // comments mostly re-spell the members' own names and types, reported
-      // once for the type rather than once per row. The siblings above judge a
-      // single comment and can only condemn one that adds NOTHING; this one can
-      // report ten rows that each add a word, which is the wall a reader
-      // actually pays for. 12 OSS TS repos: 8 findings, 8 read, 8 true
-      // positives, 0 false. Zero across ten first-party repos and this repo's
-      // own source: the raw predicate found 407 there and every one was removed
-      // by a guard a corpus read justified, 321 of them by the generated-file
-      // sniff alone (one `types.gen.ts` per repo). A preventive ratchet, like
-      // SARJ051.
+      // The VOLUME arm of the same family — judged once per TYPE, so it can
+      // report ten rows that each add one word. See the `recommended` block in
+      // `@sarj/eslint-plugin` for the measurement.
       "@sarj/no-type-member-comment-wall": "error",
       "@sarj/no-repeated-string-literal": "error",
       // An assertion whose operands are all literals can never fail. The TS

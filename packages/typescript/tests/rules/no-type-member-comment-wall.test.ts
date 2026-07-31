@@ -14,16 +14,51 @@ ruleTester.run("no-type-member-comment-wall", rule, {
   valid: [
     // No member comments at all — 79% of the OSS corpus.
     { code: "interface Credentials { host: string; port: number; username: string; }" },
-    // Every comment says something the name and the type cannot.
+    // Every comment says something the name and the type cannot. Nothing here
+    // is protected, quoted, numbered or tagged: the ONLY thing keeping this
+    // valid is that each comment adds more than `maxNovelWords` content words,
+    // so raising the default makes this case flag.
     {
       code: [
         "interface Credentials {",
-        "  // resolved from the VPC DNS name, not the public one",
+        "  // the pooler address, which failover swaps under a live process",
         "  host: string;",
-        "  // the pooler port, not the direct one",
+        "  // the pooler listens here; the writer listens elsewhere",
         "  port: number;",
-        "  // rotated nightly by the secret manager",
+        "  // rotated nightly by the credential vault",
         "  username: string;",
+        "}",
+      ].join("\n"),
+    },
+    // Exactly two content words past the member's own text — the boundary the
+    // default sits on. `// Partial match` beside `// Exact match` is the pair
+    // that kept `maxNovelWords` at 1: the matching MODE is precisely what
+    // neither `name` nor `string` can state.
+    {
+      code: [
+        "interface Filters {",
+        "  // Partial match",
+        "  name?: string;",
+        "  // Exact match",
+        "  slug?: string;",
+        "  // Fuzzy match",
+        "  title?: string;",
+        "}",
+      ].join("\n"),
+    },
+    // One substantive row in four is enough: `minRestatedRatio` is 0.75 and
+    // this type restates one comment of four.
+    {
+      code: [
+        "interface Session {",
+        "  // Session token",
+        "  token: string;",
+        "  // rotated when the browser fingerprint changes",
+        "  fingerprint: string;",
+        "  // trimmed to the shortest prefix that stays unique",
+        "  prefix: string;",
+        "  // sent by the caller on every hop of the redirect chain",
+        "  hop: string;",
         "}",
       ].join("\n"),
     },
@@ -38,10 +73,10 @@ ruleTester.run("no-type-member-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
-    // GROUP LABELS: a minority of members commented, each introducing a run.
-    // `excalidraw/packages/excalidraw/types.ts:221` and `typescript-eslint`'s
-    // `BinaryOperatorToText.ts:4` are this shape, and deleting the labels loses
-    // the grouping.
+    // GROUP LABELS, minority form: a minority of members commented, each
+    // introducing a run. `excalidraw/packages/excalidraw/types.ts:221` and
+    // `typescript-eslint`'s `BinaryOperatorToText.ts:4` are this shape, and
+    // deleting the labels loses the grouping.
     {
       code: [
         "interface AppState {",
@@ -58,18 +93,46 @@ ruleTester.run("no-type-member-comment-wall", rule, {
         "  croppingElementId: string;",
         "  croppingBounds: number[];",
         "}",
+        ].join("\n"),
+    },
+    // GROUP LABELS, majority form — `react-router/packages/react-router/lib/
+    // types/route-module-annotations.ts:212`, which the first version of this
+    // rule flagged. Every label names a ROUTE MODULE EXPORT (`links`, `meta`)
+    // and sits over a member named for the TYPE derived from it
+    // (`LinkDescriptors`, `MetaArgs`); the comment is heading a region, not
+    // describing the row under it, and 13 of the 14 runs are one member long
+    // so `minCommentedRatio` never sees them.
+    {
+      code: [
+        "type GetAnnotations = {",
+        "  // links",
+        "  LinkDescriptors: unknown;",
+        "  LinksFunction: unknown;",
+        "",
+        "  // meta",
+        "  MetaArgs: unknown;",
+        "  MetaDescriptors: unknown;",
+        "",
+        "  // middleware",
+        "  MiddlewareFunction: unknown;",
+        "",
+        "  // loader",
+        "  LoaderArgs: unknown;",
+        "};",
       ].join("\n"),
     },
     // A documented default is the one fact an optional member's type cannot
     // hold — `vite/packages/plugin-legacy/src/types.ts:1` is eight of these.
+    // Each row here restates its member apart from the default, so DEFAULT_RE
+    // is the only thing keeping the type unflagged.
     {
       code: [
         "interface LegacyOptions {",
-        "  // default: true",
+        "  // The polyfills; defaults to true",
         "  polyfills: boolean;",
-        "  // default: false",
+        "  // The legacy chunks; defaults to false",
         "  renderLegacyChunks: boolean;",
-        "  // defaults to the browserslist query",
+        "  // The targets; defaults to null",
         "  targets: string;",
         "}",
       ].join("\n"),
@@ -88,15 +151,16 @@ ruleTester.run("no-type-member-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
-    // A unit word is the same fact spelled without a digit.
+    // A unit word is the same fact spelled without a digit. Strip the unit and
+    // every row here is a restatement, so UNIT_WORD_RE is load-bearing.
     {
       code: [
         "interface Effort {",
-        "  // Estimated effort in days",
+        "  // The effort in days",
         "  effort: number;",
-        "  // Elapsed time in seconds",
-        "  elapsed: number;",
-        "  // Payload size in bytes",
+        "  // The wait in seconds",
+        "  wait: number;",
+        "  // The size in bytes",
         "  size: number;",
         "}",
       ].join("\n"),
@@ -114,29 +178,67 @@ ruleTester.run("no-type-member-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
-    // A JSDoc value tag means the block is doing something else.
+    // A JSDoc value tag means the block is doing something else. The prose is
+    // a restatement in all three rows and the tags carry no words the member
+    // does not, so VALUE_TAG_RE is what this case turns on. (`@deprecated`,
+    // `@see` and `@example` are deliberately absent: each is independently
+    // exempt through `isProtected` or EXAMPLE_RE, so a case built on them
+    // tests those instead.)
     {
       code: [
-        "interface Legacy {",
-        "  /** Database host. @deprecated use `endpoint` */",
+        "interface Surface {",
+        "  /** The host. @alpha */",
         "  host: string;",
-        "  /** Database port. @see https://example.com/ports */",
+        "  /** The port. @beta */",
         "  port: number;",
-        "  /** Database user. @example admin */",
+        "  /** The user. @internal */",
         "  user: string;",
         "}",
       ].join("\n"),
     },
+    // A rule of dashes is a banner; `no-comment-cruft` owns that shape. Take
+    // the dashes away and each comment is the member's own name.
+    {
+      code: [
+        "interface Section {",
+        "  // --- header ---",
+        "  header: string;",
+        "  // --- body ---",
+        "  body: string;",
+        "  // --- footer ---",
+        "  footer: string;",
+        "}",
+      ].join("\n"),
+    },
     // The nine-signal protected class is an exemption floor here as everywhere.
+    // Each row adds exactly one content word, so without `isProtected` all
+    // three would count as restatements.
     {
       code: [
         "interface Retry {",
-        "  // Retry count — otherwise the queue redelivers forever",
-        "  retries: number;",
-        "  // Backoff base (RFC 9110)",
-        "  backoff: number;",
-        "  // Deadline; must be monotonic",
+        "  // The deadline; must be monotonic",
         "  deadline: number;",
+        "  // The counter; must be atomic",
+        "  counter: number;",
+        "  // The handler; must be idempotent",
+        "  handler: () => void;",
+        "}",
+      ].join("\n"),
+    },
+    // Reflection and decorator metadata: "class" and "parameter" are the whole
+    // claim, not filler. `typeorm/src/metadata-args/
+    // TransactionEntityMetadataArgs.ts:4`, a false positive until those two
+    // words came out of STOPWORDS — `Function` cannot say "class" and `number`
+    // cannot say "parameter".
+    {
+      code: [
+        "interface TransactionEntityMetadataArgs {",
+        "  /** Target class on which decorator is used. */",
+        "  readonly target: Function;",
+        "  /** Method on which decorator is used. */",
+        "  readonly methodName: string;",
+        "  /** Index of the parameter on which decorator is used. */",
+        "  readonly index: number;",
         "}",
       ].join("\n"),
     },
@@ -199,19 +301,70 @@ ruleTester.run("no-type-member-comment-wall", rule, {
       ].join("\n"),
       filename: "src/api/schema.ts",
     },
+    // A VENDORED copy of someone else's declarations: the same exemption, by
+    // path. `nest/packages/microservices/external/mqtt-options.interface.ts`
+    // is the MQTT.js typings with an `@see` back to the upstream repo, and
+    // editing its prose desynchronises the copy.
+    {
+      code: [
+        "interface MqttWill {",
+        "  /** the topic to publish */",
+        "  topic: string;",
+        "  /** the QoS */",
+        "  qos: number;",
+        "  /** the retain flag */",
+        "  retain: boolean;",
+        "}",
+      ].join("\n"),
+      filename: "packages/microservices/external/mqtt-options.interface.ts",
+    },
     // Test files: a table of identical case labels is not a documentation wall.
     {
       code: [
         "interface Cases {",
-        "  // it should return the numeric keys",
-        "  a: string;",
-        "  // it should return the numeric keys",
-        "  b: string;",
-        "  // it should return the numeric keys",
-        "  c: string;",
+        "  // The label.",
+        "  label: string;",
+        "  // The expected.",
+        "  expected: string;",
+        "  // The actual.",
+        "  actual: string;",
         "}",
       ].join("\n"),
-      filename: "src/path.test.ts",
+      filename: "src/table.test.ts",
+    },
+    // A FIXTURE is the input to a test, and its comments are usually the thing
+    // asserted. `storybook/code/renderers/react/src/componentManifest/
+    // __testfixtures__/ForwardRef.tsx` documents three props whose exact
+    // strings `componentMetaExtractor.qa.test.ts:448` compares against, and
+    // `fixtures/` alone did not match that directory.
+    {
+      code: [
+        "interface TextInputProps {",
+        "  /** Input label */",
+        "  label: string;",
+        "  /** Placeholder text */",
+        "  placeholder?: string;",
+        "  /** Change handler */",
+        "  onChange?: (value: string) => void;",
+        "}",
+      ].join("\n"),
+      filename: "src/componentManifest/__testfixtures__/ForwardRef.tsx",
+    },
+    // A demo story: prop JSDoc in a `stories/` tree is not commentary, it is
+    // OUTPUT — docgen renders it as the args-table description.
+    // `storybook/test-storybooks/mcp/stories/other/card/Card.tsx`.
+    {
+      code: [
+        "interface CardProps {",
+        "  /** Card title */",
+        "  title: string;",
+        "  /** Image URL */",
+        "  imageUrl: string;",
+        "  /** Image alt text */",
+        "  imageAlt?: string;",
+        "}",
+      ].join("\n"),
+      filename: "src/stories/other/card/Card.tsx",
     },
     // A TRAILING comment belongs to its own member, not to the one below it.
     // Without the standalone check this reads as three commented members.
@@ -225,6 +378,23 @@ ruleTester.run("no-type-member-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
+    // …and a comment that sits BEFORE its member on the member's own line is a
+    // leading comment, not that member's trailing one. Count `/* gamma */` as
+    // gamma's and this type is three restated rows out of three.
+    {
+      code: [
+        "interface Doc {",
+        "  alpha: string; // alpha",
+        "  beta: string; // beta",
+        "  /* gamma */ gamma: string;",
+        "}",
+      ].join("\n"),
+    },
+    // One comment documents ONE member. A trailing comment on a one-line type
+    // literal is claimed once, not once per member that ends on its line.
+    {
+      code: "type Row = { id: string; label: string; href: string }; // the record",
+    },
     // A one-line type literal under a doc block: the three members do NOT each
     // own that block. This shape was 100% of the first-party findings before
     // `documentingComment` required the member to start its own line — a React
@@ -235,6 +405,20 @@ ruleTester.run("no-type-member-comment-wall", rule, {
         "export default function Logo({ d, cids, styles }: { d: LogoData; cids: string[]; styles: LogoStyles }) {",
         "  return null;",
         "}",
+      ].join("\n"),
+    },
+    // …and the same rule with the members spread over several lines: `id`
+    // shares the type's opening line, so the block above the type is not its
+    // documentation. Give it to `id` and this becomes three restated rows.
+    {
+      code: [
+        "/** The row. */",
+        "type Row = { id: string;",
+        "  // The label.",
+        "  label: string;",
+        "  // The href.",
+        "  href: string;",
+        "};",
       ].join("\n"),
     },
     // The same shape with a block comment that really does precede a one-line
@@ -264,35 +448,59 @@ ruleTester.run("no-type-member-comment-wall", rule, {
       ].join("\n"),
       errors: [{ messageId: "commentWall" }],
     },
-    // react-router/packages/react-router/lib/types/route-module-annotations.ts:212
-    // — the comment IS the member's name.
+    // A comment that IS its member's name, blank-line separated exactly like
+    // the react-router valid case above. The difference is the only thing the
+    // label exemption turns on: there the comment named a different identifier
+    // from the member it preceded, here it names the member.
     {
       code: [
         "type RouteModule = {",
         "  // links",
         "  links: unknown;",
+        "",
         "  // meta",
         "  meta: unknown;",
+        "",
         "  // clientLoader",
         "  clientLoader: unknown;",
+        "",
         "  // errorBoundary",
         "  errorBoundary: unknown;",
         "}",
       ].join("\n"),
       errors: [{ messageId: "commentWall" }],
     },
-    // JSDoc form, and the whole-type report survives one substantive row:
-    // three of four comments restate, which is exactly `minRestatedRatio`.
+    // A one-word restatement per row is still a wall: no blank lines, no runs,
+    // nothing heading a region — just `count` written over `itemCount`.
+    {
+      code: [
+        "interface Cart {",
+        "  // count",
+        "  itemCount: number;",
+        "  // total",
+        "  itemTotal: number;",
+        "  // label",
+        "  itemLabel: string;",
+        "}",
+      ].join("\n"),
+      errors: [{ messageId: "commentWall" }],
+    },
+    // JSDoc form, blank-line separated as typeorm writes it, and the
+    // whole-type report survives one substantive row: three of four comments
+    // restate, which is exactly `minRestatedRatio`.
     // typeorm/src/driver/cordova/CordovaDataSourceOptions.ts:6 is this shape.
     {
       code: [
         "interface CordovaOptions {",
         "  /** Database type. */",
         "  type: string;",
+        "",
         "  /** Database name. */",
         "  database: string;",
+        "",
         "  /** Storage Location */",
         "  location: string;",
+        "",
         "  /** The driver object, which the platform resolves lazily at connect time. */",
         "  driver: unknown;",
         "}",
@@ -343,7 +551,8 @@ ruleTester.run("no-type-member-comment-wall", rule, {
       errors: [{ messageId: "commentWall" }],
     },
     // The option loosens the per-comment test for a team that wants it. Every
-    // row here adds exactly two words beyond its member.
+    // row here adds exactly two words beyond its member — the same shape as
+    // the `// Partial match` valid case, which is what the default protects.
     {
       code: [
         "interface Timestamps {",

@@ -1,7 +1,7 @@
 /**
- * @fileoverview Flag an object type whose members each carry a comment that says
- * only the member's own name and type — a wall of documentation with nothing in
- * it, reported once for the type rather than once per line.
+ * @fileoverview An object type whose member comments mostly re-spell the
+ * members' own names and types — the VOLUME arm of the comment family, judged
+ * once per TYPE rather than once per comment.
  *
  *     interface SapCredentials {
  *       // Database host.
@@ -10,113 +10,20 @@
  *       port?: number;
  *       // Database username.
  *       username?: string;
- *       // Database password.
- *       password?: string;
  *     }
  *
- * This is the **volume** rule of the comment family. Its siblings judge one
- * comment at a time and can only condemn a comment that adds *nothing*;
- * `jsdoc-restates-signature` needs every content word covered by the member's
- * name, so "Database host." on `host` is already gone but "Database host port."
- * on `port` survives on the strength of one extra word. That is the right
- * verdict for one line and the wrong verdict for ten of them: a reader scrolling
- * a forty-line interface pays for the wall, not for any single row of it. So the
- * unit of judgement here is the TYPE, and the per-comment test is deliberately
- * *looser* than a single-comment rule could justify — a comment may add up to
- * `maxNovelWords` word beyond the member's own source text and still count as
- * low-information, because it is the repetition that is being reported.
+ * `jsdoc-restates-signature` needs every content word covered, so it deletes
+ * the first row and cannot touch the second. That is the right verdict for one
+ * line and the wrong one for ten, so the unit of judgement here is the type.
  *
- * **How the thresholds were set.** Comment density on object-type members is
- * strongly bimodal across 12 OSS TypeScript repos (excalidraw, nest, TanStack
- * Query, react-hook-form, react-router, redux-toolkit, slate, tRPC, typeorm,
- * typescript-eslint, vite, zod — 7,340 object types with 2+ members): 79% carry
- * no member comments at all and 8.6% comment EVERY member. Almost nothing sits
- * in between. "Some members are commented" is therefore not a signal — the
- * threshold that matters is not *how many* comments there are but *what they
- * say*, which is why `minRestatedRatio` and `maxNovelWords` do the work and
- * `minCommentedMembers` is only a floor (3) below which "a wall" is not a fair
- * description.
- *
- * `minCommentedRatio` (0.6) is the guard against the shape that dominated the
- * first sweep: a **group label**, one comment introducing a run of members
- * (`excalidraw/packages/excalidraw/types.ts:221` labels 6 groups inside a
- * 27-member type; `typescript-eslint/packages/ast-spec/src/expression/
- * BinaryExpression/BinaryOperatorToText.ts:4` partitions 24 operators into
- * `logical` / `bitwise` / `math`). Those comments provide the grouping and
- * deleting them loses it — the same "labels a REGION" exemption
- * `no-restated-comment` makes. Requiring the commented members to be a majority
- * of the type removes every one of them.
- *
- * **Never flagged**
- *
- * - **Generated and test files** (`_paths.isGeneratedFile` / `isTestFile`). This
- *   is not a nicety: over ten first-party repos the raw predicate found 407
- *   walls and **321 of them (79%) were OpenAPI codegen output** — one
- *   `types.gen.ts` per repo, every field carrying its own title. Editing those
- *   is work the next `openapi-generator` run reverts. The same sniff takes
- *   `jsdoc-restates-signature` "from hundreds, mostly noise, to a readable
- *   handful", and it does the same here: 407 → 86. Test files go with them: a
- *   table of identical case labels is not a documentation wall.
- * - **A member comment carrying a JSDoc value tag** (`@deprecated`, `@see`,
- *   `@example`, `@throws`, `@default`, `@remarks`, …) or a prose default
- *   (`default: true`, `defaults to …`). The default of an optional field is the
- *   one fact its type cannot hold; `vite/packages/plugin-legacy/src/types.ts:1`
- *   is eight `// default: …` rows and was the first sweep's clearest false
- *   positive.
- * - **A comment containing a digit, a unit word, a quoted example, `e.g.`, a
- *   banner rule, or a non-ASCII letter.** Each is a bound, a base, an enumerated
- *   value or prose the tokenizer cannot read — all things a name and a type
- *   cannot state. `// 0..100 (% of width)` on `x: number`, `// The 1-based
- *   column number.` on `column: number`, and `// "sukuk"` on a literal-union
- *   field were false positives until this guard existed.
- * - **Computed members.** The rule's premise is that the comment only re-spells
- *   the member's *name*; `[resultType]?: ResultType` has no readable name, and
- *   `redux-toolkit/packages/toolkit/src/query/core/endpointDefinitions.ts:520`
- *   (`// phantom type`, three times) was the last false positive this removed.
- * - **The nine-signal protected class** from `_comments`, as everywhere in this
- *   family — an exemption floor, never a test.
- *
- * **Measured.** Over the 12 OSS repos above: **8 findings**, all eight read,
- * **8 true positives, 0 false**:
- *
- * - `typeorm/src/decorator/options/JoinColumnOptions.ts:4` (3/3),
- *   `typeorm/src/metadata-args/TransactionEntityMetadataArgs.ts:4` (3/3),
- *   `typeorm/src/driver/sap/SapDataSourceOptions.ts:8` and
- *   `typeorm/src/driver/cordova/CordovaDataSourceOptions.ts:6` (3/4 each) —
- *   "Database type." on `type`, "Name of the column." on `name`.
- * - `nest/packages/common/interfaces/features/arguments-host.interface.ts:25`
- *   (3/3, "Returns the data object." on `getData()`) and
- *   `nest/packages/microservices/external/mqtt-options.interface.ts:116` (3/4,
- *   "the QoS" on `qos`, "the retain flag" on `retain`).
- * - `query/packages/lit-query/src/createInfiniteQueryController.ts:51` (3/4,
- *   "Refetches the current infinite query." on `refetch`).
- * - `react-router/packages/react-router/lib/types/route-module-annotations.ts:212`
- *   (13/14), where the comment IS the member's name — `// links`, `// meta`,
- *   `// headers`, `// clientLoader`.
- *
- * Across ten first-party repos and this repo's own `packages/typescript/src`:
- * **0 findings.** The raw predicate found 407 in those repos and every one was
- * removed by a guard that a corpus read justified — 321 (79%) by the
- * generated-file sniff and the rest by the own-line rule above. That makes this
- * a preventive ratchet rather than a migration, the SARJ051 / SARJ085 pattern:
- * a rule worth its code because it holds a line the corpus has already cleared
- * and has no failure mode surviving its exemptions.
- *
- * **Why `maxNovelWords` defaults to 1.** Loosening it to 2 takes the OSS count
- * from 8 to 34 with no clear false positive there — but it takes the
- * first-party count from 0 to 2, and BOTH are false: `name?: string; //
- * Partial match` beside `slug?: string; // Exact match` (the matching MODE is
- * the one thing neither the name nor `string` can state) and a metrics type
- * whose rows define their measure (`views: number; // unique opportunity
- * views`). Two extra words is exactly enough room for a definition. The option
- * is exposed for a team that wants the recall; the default does not take it,
- * because this rule deletes human writing and one wrong deletion is silent.
+ * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-type-member-comment-wall.test.ts
+ * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-type-member-comment-wall.md
  */
 
 import { AST_NODE_TYPES, ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { isProtected, splitIdentifier, stem } from "./_comments.js";
-import { isGeneratedFile, isTestFile } from "./_paths.js";
+import { isGeneratedFile, isStoryFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "commentWall";
 
@@ -133,13 +40,14 @@ type Options = readonly [Partial<RuleOptions>?];
 const DEFAULTS: RuleOptions = {
   // Below three rows "a wall" is not a fair description of what the reader sees.
   minCommentedMembers: 3,
-  // A minority of commented members is a GROUP LABEL, not a wall — see above.
+  // A minority of commented members is a GROUP LABEL, not a wall.
   minCommentedRatio: 0.6,
   // Room for one substantive row in four; a type where a quarter of the comments
   // say something real is a type someone was documenting, not decorating.
   minRestatedRatio: 0.75,
   // One word beyond the member's own text. Zero is `jsdoc-restates-signature`'s
-  // test and is already covered there; two costs ~5% precision (see above).
+  // test and is already covered there; two admits definitions ("Partial match"
+  // beside "Exact match"), which the evidence file counts.
   maxNovelWords: 1,
 };
 
@@ -173,19 +81,34 @@ const NON_ASCII_LETTER_RE = /[^\p{ASCII}\p{N}\p{P}\p{Z}]/u;
  * `_comments.STOPWORDS` for the same reason `jsdoc-restates-signature`'s list
  * is: member documentation conventionally repeats the vocabulary of the type
  * system itself ("the optional callback value") without that being a claim.
+ *
+ * Deliberately absent: `class`, `method`, `function`, `component`, `hook`,
+ * `parameter`, `argument`. In a reflection or decorator type those words are
+ * the whole claim — `Function` cannot say "class" and `number` cannot say
+ * "parameter". The tag words `param` and `arg` stay: block punctuation, not
+ * prose.
  */
 const STOPWORDS: ReadonlySet<string> = new Set(
   `the a an of to for in on with and or as at by is are was be been being
    this that it its if whether when where which what will would can could should
    must may into from over about not no does do done has have had used use uses
    using given provided specified current new existing all any each per via
-   function method component hook class instance object value values data item
-   items element callback handler prop props param parameter argument arg return
+   instance object value values data item
+   items element callback handler prop props param arg return
    returns returning result optional required true false null undefined
    string number boolean array list promise set map record type name`.split(/\s+/),
 );
 
 const WORD_RE = /[A-Za-z][A-Za-z0-9]*/g;
+
+// A label is one bare identifier word: `// links`, `// clientMiddleware`. Two
+// words of prose is already a sentence about the member below it.
+const BARE_LABEL_RE = /^[A-Za-z][A-Za-z0-9]*$/;
+
+/** The identifier `body` spells, folded so `links` and `Links` are one word. */
+function labelStems(body: string): string {
+  return splitIdentifier(body).map(stem).join(" ");
+}
 
 /** A member the rule can judge: a named property or method signature. */
 type NamedMember = TSESTree.TSPropertySignature | TSESTree.TSMethodSignature;
@@ -298,7 +221,13 @@ export default ESLintUtils.RuleCreator(
   create(context, [provided]) {
     const options: RuleOptions = { ...DEFAULTS, ...provided };
     const sourceCode = context.sourceCode;
-    if (isGeneratedFile(context.filename, sourceCode.text) || isTestFile(context.filename)) {
+    // Generated or vendored, a test fixture, or a demo story: three kinds of
+    // file whose member comments are output rather than commentary.
+    if (
+      isGeneratedFile(context.filename, sourceCode.text) ||
+      isTestFile(context.filename) ||
+      isStoryFile(context.filename)
+    ) {
       return {};
     }
 
@@ -315,19 +244,11 @@ export default ESLintUtils.RuleCreator(
      * The comment documenting `member`: the block or line comment on the row
      * above it, or the one trailing its last row.
      *
-     * Two conditions are load-bearing and both were found by running the rule
-     * over the corpus rather than by reasoning about it.
-     *
-     * A leading comment only counts when the MEMBER starts its own line.
-     * Without that, every member of a one-line type literal claims the comment
-     * that ends on the row above the whole thing — `{ d: LogoData; cids:
-     * string[]; styles: LogoStyles }` under a `/** A logo. *\/` block reads as
-     * three members documented three times with the same words. That shape was
-     * 100% of the first-party findings before this check existed.
-     *
-     * And a leading comment must be alone on ITS line, or the trailing comment
-     * of the previous member — which ends on exactly the row above this one — is
-     * read as this member's documentation.
+     * A leading comment counts only when the MEMBER starts its own line, and
+     * only when the comment is alone on ITS line; a trailing comment counts
+     * only when it sits after the member it is read against. All three keep a
+     * one-line type literal under a doc block from reading as three members
+     * documented three times with the same words.
      */
     function documentingComment(member: NamedMember): TSESTree.Comment | undefined {
       const beforeMember = sourceCode.getTokenBefore(member, { includeComments: false });
@@ -342,19 +263,47 @@ export default ESLintUtils.RuleCreator(
       return trail !== undefined && trail.range[0] > member.range[0] ? trail : undefined;
     }
 
+    /**
+     * True when a comment heads a REGION of the type instead of describing the
+     * member under it — the exemption this rule documents and, before this
+     * check, leaked on.
+     *
+     * Three conditions. The body is ONE bare identifier word; it names
+     * something OTHER than the member below it (the decisive one — `// links`
+     * over `LinkDescriptors` heads a group, `// links` over `links` restates a
+     * name); and it shows region evidence, heading a run of members of which
+     * only the first is commented, or set off by a blank line.
+     */
+    function isGroupLabel(
+      comment: TSESTree.Comment,
+      member: NamedMember,
+      headsRun: boolean,
+    ): boolean {
+      if (comment.loc.end.line >= member.loc.start.line) return false;
+      const body = commentBody(comment);
+      if (!BARE_LABEL_RE.test(body)) return false;
+      if (labelStems(body) === labelStems(sourceCode.getText(member.key))) return false;
+      const lineAbove = sourceCode.lines[comment.loc.start.line - 2];
+      return headsRun || (lineAbove !== undefined && lineAbove.trim().length === 0);
+    }
+
     function check(node: TSESTree.TSInterfaceBody | TSESTree.TSTypeLiteral): void {
       const members = node.type === AST_NODE_TYPES.TSInterfaceBody ? node.body : node.members;
       const named = members.filter(isNamedMember);
       if (named.length === 0) return;
 
+      const documented = named.map((member) => ({ member, comment: documentingComment(member) }));
       let commented = 0;
       let restated = 0;
       // A comment documents at most one member, so a shared block cannot be
       // counted once per member that happens to sit next to it.
       const claimed = new Set<TSESTree.Comment>();
-      for (const member of named) {
-        const comment = documentingComment(member);
+      for (const [index, { member, comment }] of documented.entries()) {
         if (comment === undefined || claimed.has(comment)) continue;
+        const next = documented[index + 1];
+        if (isGroupLabel(comment, member, next !== undefined && next.comment === undefined)) {
+          continue;
+        }
         claimed.add(comment);
         commented += 1;
         const body = commentBody(comment);

@@ -194,13 +194,12 @@ const plugin = {
         "@sarj/jsdoc-restates-signature": "warn",
         "@sarj/trailing-value-narration": "warn",
         // The VOLUME arm of the same family (2026-07). Its siblings judge one
-        // comment at a time and can only condemn a comment that adds nothing;
-        // this one judges a TYPE, so it can report ten rows that each add one
-        // word — the wall the reader actually pays for. Measured over 12 OSS TS
-        // repos: 8 findings, 8 read, 8 true positives, 0 false. Zero across ten
-        // first-party repos, where the raw predicate found 407 and every one
-        // was removed by a guard a corpus read justified (321 of them by the
-        // generated-file sniff alone — one `types.gen.ts` per repo).
+        // comment at a time and can only condemn one that adds nothing; this
+        // one judges a TYPE, so it can report ten rows that each add a word.
+        // 33 OSS TS repos / 46,861 files: 22 findings, all read, 0 false; zero
+        // across ten first-party repos, where the generated-file sniff alone
+        // removed 321 of the 407 raw hits. Measurements and the six false
+        // positives that shaped the guards: docs/rules/no-type-member-comment-wall.md
         "@sarj/no-type-member-comment-wall": "warn",
         // The TS half of SARJ057 (2026-07). Python has caught the
         // assertion-FREE test since 0.15.0 (SARJ043) and had no TS
