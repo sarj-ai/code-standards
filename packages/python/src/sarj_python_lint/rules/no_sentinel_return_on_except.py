@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
 from sarj_python_lint.rules._ast_index import children, nodes, walk
+from sarj_python_lint.rules._logging import LOG_METHODS
 
 
 if TYPE_CHECKING:
@@ -375,20 +376,6 @@ def _is_sentinel(value: ast.expr) -> bool:
     return False
 
 
-_LOG_METHODS: frozenset[str] = frozenset(
-    {
-        "debug",
-        "info",
-        "warning",
-        "warn",
-        "error",
-        "exception",
-        "critical",
-        "fatal",
-    }
-)
-
-
 def _handler_logs_before_return(handler: ast.ExceptHandler) -> bool:
     """Report whether some logging call can reach the handler's final sentinel return."""
     _, logged_fallthrough = _list_props(handler.body[:-1])
@@ -502,7 +489,7 @@ def _is_logging_call(node: ast.AST) -> bool:
     if not isinstance(node, ast.Call):
         return False
     func = node.func
-    if not isinstance(func, ast.Attribute) or func.attr not in _LOG_METHODS:
+    if not isinstance(func, ast.Attribute) or func.attr not in LOG_METHODS:
         return False
     return _is_logger_receiver(func.value)
 

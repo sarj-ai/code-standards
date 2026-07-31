@@ -57,6 +57,11 @@ _AUTH_WORDS = frozenset(
         "signature",
         "hmac",
         "apikey",
+        # `bearer` was in the TypeScript twin's AUTH_WORDS and in neither Python
+        # list, so `bearer == provided` was a flagged timing attack in TS and a
+        # silent one here. The two lists are otherwise identical, which is what
+        # made the gap invisible.
+        "bearer",
     }
 )
 
