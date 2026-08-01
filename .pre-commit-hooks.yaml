@@ -1,3 +1,10 @@
+- id: sarj-standards
+  name: 'sarj-standards: Python, SQL, IaC, config, text, and artifact rules'
+  entry: sarj-standards check
+  language: python
+  files: '(?i)(\.py|\.sql|\.tf|\.tfvars|\.hcl|\.ya?ml|\.toml|\.jsonc|\.mdx?|Dockerfile|Makefile)$'
+  additional_dependencies: ['sarj-lint-configs==0.38.0']
+
 - id: sarj-no-sequential-await
   name: 'sarj-lint: no sequential `await` in for-loop'
   entry: sarj-python-lint check --rule no-sequential-await
@@ -578,4 +585,3 @@
   language: python
   types: [sql]
   additional_dependencies: ['sarj-sql-lint']
-

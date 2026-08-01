@@ -1036,3 +1036,116 @@ def test_copyright_mentioned_mid_file_does_not_exempt_a_banner():
     src = "import os\n" * 10 + "# =========\n# Copyright notice handling below.\nMAX = 1\n"
     diags = _check(src)
     assert any("Section-banner" in d.message for d in diags)
+
+
+def test_collapses_a_repeated_statement_walkthrough_to_one_finding():
+    src = """\
+def build_result():
+    # Fetch users
+    users = fetch_users()
+    # Validate users
+    validated_users = validate_users(users)
+    # Sort validated users
+    sorted_users = sort_users(validated_users)
+    # Return sorted users
+    return sorted_users
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert diags[0].line == 2
+    assert "Statement comment wall (4 narrated steps)" in diags[0].message
+
+
+def test_walkthrough_wall_needs_comments_on_most_statements():
+    src = """\
+def build_result():
+    # Fetch users
+    users = fetch_users()
+    validated_users = validate_users(users)
+    sorted_users = sort_users(validated_users)
+    # Return sorted users
+    return sorted_users
+"""
+    assert all("Statement comment wall" not in diag.message for diag in _check(src))
+
+
+def test_two_rationale_comments_make_the_block_documentation_not_a_wall():
+    src = """\
+def build_result():
+    # Fetch users
+    users = fetch_users()
+    # Keep validation here because the upstream accepts partial rows
+    validated_users = validate_users(users)
+    # Sort validated users
+    sorted_users = sort_users(validated_users)
+    # Preserve this order so retries remain idempotent
+    return sorted_users
+"""
+    assert _check(src) == []
+
+
+def test_comment_wall_requires_alignment_with_its_statement():
+    src = """\
+def build_result():
+    # Fetch users
+    users = fetch_users()
+# Validate users
+    validated_users = validate_users(users)
+    # Sort validated users
+    sorted_users = sort_users(validated_users)
+# Return sorted users
+    return sorted_users
+"""
+    assert all("Statement comment wall" not in diag.message for diag in _check(src))
+
+
+def test_docstring_does_not_inflate_statement_count_for_a_three_step_block():
+    src = '''\
+def build_result():
+    """Build the result."""
+    # Fetch users
+    users = fetch_users()
+    # Validate users
+    valid_users = validate_users(users)
+    # Return valid users
+    return valid_users
+'''
+    assert all("Statement comment wall" not in diag.message for diag in _check(src))
+
+
+def test_control_flow_steps_count_as_narrated_statements():
+    src = """\
+def filter_rows(rows):
+    # Filter invalid rows
+    if invalid_rows(rows):
+        rows = valid_rows(rows)
+    # Sort valid rows
+    if rows:
+        rows = sort_rows(rows)
+    # Add warning rows
+    if warning_rows(rows):
+        rows += warning_rows(rows)
+    # Return filtered rows
+    return rows
+"""
+    diags = _check(src)
+    assert any("Statement comment wall" in diag.message for diag in diags)
+
+
+def test_local_walkthrough_inside_a_long_function_is_not_diluted():
+    src = """\
+def build_result():
+    untouched_a = 1
+    untouched_b = 2
+    # Fetch users
+    users = fetch_users()
+    # Validate
+    valid_users = validate_users(users)
+    # Sort valid users
+    sorted_users = sort_users(valid_users)
+    # Return sorted users
+    result = sorted_users
+    publish(result)
+    audit(result)
+"""
+    assert any("Statement comment wall" in diag.message for diag in _check(src))

@@ -17,6 +17,7 @@ from sarj_python_lint.rules._comments import (
     has_external_reference,
     nested_comment_lines,
     standalone_comments,
+    statement_comment_walls,
 )
 from sarj_python_lint.rules._paths import is_generated
 
@@ -503,7 +504,23 @@ class NoCommentCruft(Rule):
         nested = nested_comment_lines(source)
         enumerated = [line for line, _, body in standalone if _ENUMERATION_RE.match(body)]
         license_header = _license_header_lines(standalone)
+        walls = statement_comment_walls(path, source, standalone)
+        wall_members = frozenset(line for members in walls.values() for line in members)
         for line, col, body in standalone:
+            if line in walls:
+                diags[line] = Diagnostic(
+                    path=path,
+                    line=line,
+                    col=col + 1,
+                    code=self.code,
+                    message=(
+                        f"Statement comment wall ({len(walls[line])} narrated steps) — "
+                        "delete the walkthrough and name the operations in code; keep only constraints or rationale."
+                    ),
+                )
+                continue
+            if line in wall_members:
+                continue
             if _is_directive(body) or _is_coding_cookie(body) or line in skip:
                 continue
             prev_body = by_line.get(line - 1)

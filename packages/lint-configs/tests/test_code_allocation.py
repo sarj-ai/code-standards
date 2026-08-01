@@ -24,6 +24,7 @@ from sarj_python_lint.rules import REGISTRY as PYTHON_REGISTRY
 from sarj_sql_lint.rules import REGISTRY as SQL_REGISTRY
 
 from sarj_lint_configs.manifest import SIBLING_PACKAGES
+from sarj_lint_configs.textlint import REGISTRY as TEXT_REGISTRY
 
 
 if TYPE_CHECKING:
@@ -33,17 +34,19 @@ if TYPE_CHECKING:
 class _Coded(Protocol):
     """The one thing the three packages' unrelated `Rule` base classes share."""
 
-    code: str
+    @property
+    def code(self) -> str: ...
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _HOOKS_PATH = _REPO_ROOT / ".pre-commit-hooks.yaml"
 
 #: Distribution name to (registry, the hundreds digit its codes must use).
-_BANDS: Final[Mapping[str, tuple[Mapping[str, type[_Coded]], int]]] = {
+_BANDS: Final[Mapping[str, tuple[Mapping[str, _Coded | type[_Coded]], int]]] = {
     "sarj-python-lint": (PYTHON_REGISTRY, 0),
     "sarj-sql-lint": (SQL_REGISTRY, 1),
     "sarj-iac-lint": (IAC_REGISTRY, 2),
+    "sarj-lint-configs:text": (TEXT_REGISTRY, 3),
 }
 
 _CODE_RE = re.compile(r"^SARJ(\d)(\d{2})$")

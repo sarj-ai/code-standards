@@ -245,6 +245,14 @@ ruleTester.run("no-comment-cruft", rule, {
     {
       code: "// Hero only for now; the release feed lands below it as its port arrives.\nexport function ReleasesPage() { return null; }",
     },
+    // A few annotations do not become a wall unless they cover most of a block.
+    {
+      code: "function build() {\n  // Fetch all users into the users collection\n  const users = fetchUsers();\n  const valid = validateUsers(users);\n  const sorted = sortUsers(valid);\n  // Return the sorted users from this operation\n  return sorted;\n}",
+    },
+    // Rationale and constraints are documentation, even in a heavily commented block.
+    {
+      code: "function build() {\n  // Fetch all users into the users collection\n  const users = fetchUsers();\n  // Keep validation here because upstream accepts partial rows\n  const valid = validateUsers(users);\n  // Sort all valid users into the sorted users collection\n  const sorted = sortUsers(valid);\n  // Preserve this order so retries remain idempotent\n  return sorted;\n}",
+    },
   ],
   invalid: [
     // --- a section signpost fires whichever comment syntax carries it ---
@@ -512,6 +520,16 @@ ruleTester.run("no-comment-cruft", rule, {
     {
       code: "namespace N {\n  // drop(table);\n  export const x = 1;\n}",
       errors: [{ messageId: "commentedOutCode" }],
+    },
+    // Repetitive AI-style walkthroughs are one block-level finding, not four
+    // nearly identical line diagnostics.
+    {
+      code: "function build() {\n  // Fetch users\n  const users = fetchUsers();\n  // Validate users\n  const validUsers = validateUsers(users);\n  // Sort valid users\n  const sortedUsers = sortUsers(validUsers);\n  // Return sorted users\n  return sortedUsers;\n}",
+      errors: [{ messageId: "commentWall", data: { count: "4" } }],
+    },
+    {
+      code: "function build() {\n  const untouched = 1;\n  const alsoUntouched = 2;\n  // Step 1: Fetches users\n  const users = fetchUsers(\n    source,\n  );\n  // Step 2: Validates users\n  const validUsers = validateUsers(\n    users,\n  );\n  // Step 3: Sorts valid users\n  const sortedUsers = sortUsers(\n    validUsers,\n  );\n  // Step 4: Returns sorted users\n  return (\n    sortedUsers\n  );\n  void untouched;\n  void alsoUntouched;\n}",
+      errors: [{ messageId: "commentWall", data: { count: "4" } }],
     },
   ],
 });

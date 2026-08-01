@@ -106,7 +106,9 @@ done < <(tracked '*.md')
 #   - a doc that names no live rule must be under retired/ (not absent);
 #   - and the diff gate at the end fails if a doc leaves `docs/rules/` in this
 #     branch without arriving under `docs/rules/retired/`.
-allocated_codes=$(git grep -hoE '"SARJ[0-9]{3}"' -- 'packages/*/src/*/rules/*.py' |
+allocated_codes=$(git grep -hoE '"SARJ[0-9]{3}"' -- \
+  'packages/*/src/*/rules/*.py' \
+  'packages/lint-configs/src/sarj_lint_configs/textlint.py' |
   tr -d '"' | sort -u)
 
 names_a_live_rule() {

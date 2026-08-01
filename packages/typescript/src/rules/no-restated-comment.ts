@@ -39,6 +39,10 @@ const NEGATION_WORD_RE = /\b(?:no|not|never|neither|nor|without|none|non)\b/i;
 const ACTION_STMT_RE = /[\w.$\])]\s*\(|^\s*(?:return|throw|await|yield)\b/;
 
 const NON_ASCII_LETTER_RE = /[^\p{ASCII}\p{N}\p{P}\p{Z}]/u;
+const WALL_NARRATION_RE =
+  /^(?:(?:\d+[.)]|(?:phase|step)\s+\d+\s*:?)\s*)?(?:add|build|call|check|compute|copy|count|create|fetch|filter|find|get|handle|load|map|merge|parse|process|read|remove|return|save|send|set|sort|store|update|validate|write)(?:s|es|d|ed|ing)?\b/i;
+const WALL_CLUSTER_MAX_LINE_GAP = 8;
+const WALL_CLUSTER_MIN_COMMENTS = 3;
 
 /** True when `a` and `b` are `//` comments on consecutive lines. */
 function areAdjacentLineComments(
@@ -115,9 +119,37 @@ export default createRule<Options, MessageIds>({
     return {
       Program(): void {
         const comments = sourceCode.getAllComments();
+        const wallMembers = new Set<TSESTree.Comment>();
+        let cluster: TSESTree.Comment[] = [];
+        for (const candidate of comments) {
+          const body = candidate.value.replace(/^\/*/, "").trim();
+          if (
+            candidate.type !== "Line" ||
+            !isStandalone(candidate) ||
+            isProtected(body) ||
+            !WALL_NARRATION_RE.test(body)
+          ) {
+            continue;
+          }
+          const previous = cluster.at(-1);
+          if (
+            previous !== undefined &&
+            candidate.loc.start.line - previous.loc.start.line > WALL_CLUSTER_MAX_LINE_GAP
+          ) {
+            if (cluster.length >= WALL_CLUSTER_MIN_COMMENTS) {
+              for (const member of cluster) wallMembers.add(member);
+            }
+            cluster = [];
+          }
+          cluster.push(candidate);
+        }
+        if (cluster.length >= WALL_CLUSTER_MIN_COMMENTS) {
+          for (const member of cluster) wallMembers.add(member);
+        }
         for (let i = 0; i < comments.length; i++) {
           const comment = comments[i];
           if (comment === undefined || comment.type !== "Line") continue;
+          if (wallMembers.has(comment)) continue;
           if (!isStandalone(comment)) continue;
           if (
             areAdjacentLineComments(comments[i - 1], comment) ||

@@ -87,8 +87,15 @@ _SKIP_DIRS: Final = frozenset({
     ".tox",
     ".uv-cache",
     ".venv",
+    ".next",
+    ".turbo",
+    ".wrangler",
+    ".yarn",
+    "build",
+    "coverage",
     "dist",
     "node_modules",
+    "out",
     "target",
     "vendor",
 })
@@ -171,7 +178,13 @@ def _check_manifest(root: Path) -> Iterator[Finding]:
 def _check_pin_files(
     root: Path, files: Sequence[Path], installed: Mapping[str, str]
 ) -> Iterator[Finding]:
-    for path in _candidate_files(files, (".toml", ".yml", ".yaml", ".cfg", ".txt", ".sh")):
+    candidates = (
+        path
+        for path in files
+        if path.name == "package.json"
+        or path.suffix.lower() in {".toml", ".yml", ".yaml", ".cfg", ".txt", ".sh"}
+    )
+    for path in candidates:
         for match in _PIN.finditer(_read(path)):
             name = match.group("name")
             pinned = match.group("version")

@@ -26,14 +26,18 @@ tokenize each file once between them rather than once each.
 
 from __future__ import annotations
 
+import ast
 import io
 import re
 import tokenize
 from typing import TYPE_CHECKING
 
+from sarj_python_lint.rule_base import parse_or_none
+
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
+    from pathlib import Path
 
 
 # S1 — external reference: URL, issue/ticket key, RFC/PEP/CVE, bare GitHub issue
@@ -476,3 +480,163 @@ def comment_runs(standalone: Sequence[tuple[int, int, str]]) -> list[list[tuple[
         else:
             runs.append([entry])
     return runs
+
+
+# A comment wall is judged as a block, not as an isolated sentence. AI-written
+# walkthroughs commonly evade the short-comment restatement rule by adding one
+# or two filler words to every step; repetition is the evidence in that shape.
+_WALL_MIN_STATEMENTS = 4
+_WALL_MIN_COMMENTS = 3
+_WALL_MIN_COMMENTED_RATIO = 0.6
+_WALL_MIN_WEAK_RATIO = 0.75
+_WALL_MAX_WORDS = 18
+_WALL_MIN_CONTENT_WORDS = 1
+_WALL_MIN_MATCHED_RATIO = 0.5
+_WALL_MAX_NOVEL_WORDS = 2
+_WALL_DIRECTIVE_RE = re.compile(
+    r"^(?:todo|fixme|hack\b|xxx|note:|nb:|warning:|important:|noqa|sarj-noqa|"
+    r"type:|pragma|pyright|mypy|fmt:|isort|ruff|pylint|flake8|nosec|nosemgrep|"
+    r"-\*-|!/|coding[:=])",
+    re.IGNORECASE,
+)
+_WALL_NARRATION_RE = re.compile(
+    r"^(?:first(?:ly)?|second(?:ly)?|third(?:ly)?|then|next|now|finally|lastly|"
+    r"add|append|assign|await|build|calculate|call|check|clear|close|compute|convert|copy|"
+    r"count|create|declare|define|delete|extract|fetch|filter|find|format|generate|get|"
+    r"handle|initialize|insert|iterate|join|load|log|loop|map|merge|open|parse|print|"
+    r"process|push|read|remove|render|reset|return|save|send|set|setup|sort|split|"
+    r"start|stop|store|update|validate|wrap|write|apply|assemble|coerce|compress|"
+    r"disable|enable|lint|populate|prepare|redirect|register|resolve|run|stash|use)\b",
+    re.IGNORECASE,
+)
+_WALL_STATEMENTS = (
+    ast.Assign,
+    ast.AnnAssign,
+    ast.AugAssign,
+    ast.Assert,
+    ast.Delete,
+    ast.Expr,
+    ast.Raise,
+    ast.Return,
+    ast.If,
+    ast.For,
+    ast.AsyncFor,
+    ast.While,
+    ast.With,
+    ast.AsyncWith,
+    ast.Match,
+    ast.Try,
+    ast.TryStar,
+)
+
+
+def _is_wall_statement(node: ast.stmt) -> bool:
+    """Exclude docstrings while retaining executable expression statements."""
+    return isinstance(node, _WALL_STATEMENTS) and not (
+        isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, str)
+    )
+
+
+def _weak_walkthrough_comment(body: str, statement: str) -> bool:
+    """Whether a comment is weak evidence inside a repeated walkthrough."""
+    if (
+        not body
+        or body.endswith("?")
+        or len(body.split()) > _WALL_MAX_WORDS
+        or _WALL_DIRECTIVE_RE.match(body)
+        or is_protected(body)
+    ):
+        return False
+    words = content_tokens(body)
+    if len(words) < _WALL_MIN_CONTENT_WORDS or not _WALL_NARRATION_RE.match(body):
+        return False
+    # The opener describes the operation and need not literally occur in the
+    # statement (`Fetch users` / `users = store.list()`). The remainder must be
+    # mostly corroborated; at most two filler words may be novel.
+    known = code_tokens(statement)
+    described = words[1:]
+    if not described:
+        return restates(words, known)
+    matched = sum(1 for word in described if restates([word], known))
+    novel = len(described) - matched
+    return matched / len(described) >= _WALL_MIN_MATCHED_RATIO and novel <= _WALL_MAX_NOVEL_WORDS
+
+
+def _owned_statement_lists(owner: ast.AST) -> tuple[list[ast.stmt], ...]:
+    """Return the distinct statement blocks directly owned by an AST node."""
+    if isinstance(
+        owner,
+        (
+            ast.Module,
+            ast.FunctionDef,
+            ast.AsyncFunctionDef,
+            ast.ClassDef,
+            ast.With,
+            ast.AsyncWith,
+            ast.ExceptHandler,
+        ),
+    ):
+        return (owner.body,)
+    if isinstance(owner, (ast.If, ast.For, ast.AsyncFor, ast.While)):
+        return owner.body, owner.orelse
+    if isinstance(owner, (ast.Try, ast.TryStar)):
+        return owner.body, owner.orelse, owner.finalbody
+    if isinstance(owner, ast.match_case):
+        return (owner.body,)
+    return ()
+
+
+def statement_comment_walls(
+    path: Path,
+    source: str,
+    standalone: Sequence[tuple[int, int, str]],
+) -> dict[int, frozenset[int]]:
+    """Return `{leader: member lines}` for repeated statement narration walls.
+
+    Each wall lives within one AST statement list (module, function, branch,
+    loop, handler). A comment must be directly above and aligned with the simple
+    statement it describes. Three weak comments are not enough by themselves:
+    comments must cover most of a block, and most attached comments must be
+    weak. This keeps an occasional label or a carefully documented exceptional
+    step from turning a whole function into a finding.
+
+    """
+    tree = parse_or_none(path, source)
+    if tree is None:
+        return {}
+    comments = {line: (col, body) for line, col, body in standalone}
+    walls: dict[int, frozenset[int]] = {}
+    for owner in ast.walk(tree):
+        for value in _owned_statement_lists(owner):
+            statements = [item for item in value if _is_wall_statement(item)]
+            if len(statements) < _WALL_MIN_STATEMENTS:
+                continue
+            attached: list[tuple[int, int, bool]] = []
+            for index, statement in enumerate(statements):
+                entry = comments.get(statement.lineno - 1)
+                if entry is None or entry[0] != statement.col_offset:
+                    continue
+                line = statement.lineno - 1
+                segment = ast.get_source_segment(source, statement) or ""
+                attached.append((index, line, _weak_walkthrough_comment(entry[1], segment)))
+            clusters: list[list[tuple[int, int, bool]]] = []
+            for item in attached:
+                if clusters and item[0] <= clusters[-1][-1][0] + 2:
+                    clusters[-1].append(item)
+                else:
+                    clusters.append([item])
+            for cluster in clusters:
+                span = cluster[-1][0] - cluster[0][0] + 1
+                weak = [line for _index, line, is_weak in cluster if is_weak]
+                if (
+                    span < _WALL_MIN_STATEMENTS
+                    or len(weak) < _WALL_MIN_COMMENTS
+                    or len(cluster) / span < _WALL_MIN_COMMENTED_RATIO
+                    or len(weak) / len(cluster) < _WALL_MIN_WEAK_RATIO
+                ):
+                    continue
+                leader = min(weak)
+                walls[leader] = frozenset(weak)
+    return walls

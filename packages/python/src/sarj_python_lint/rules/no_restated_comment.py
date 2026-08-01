@@ -20,6 +20,7 @@ from sarj_python_lint.rules._comments import (
     nested_comment_lines,
     restates,
     standalone_comments,
+    statement_comment_walls,
 )
 from sarj_python_lint.rules._paths import is_generated
 
@@ -261,12 +262,17 @@ class NoRestatedComment(Rule):
         except tokenize.TokenError, IndentationError, SyntaxError:
             return []
         lines = source.splitlines()
+        wall_members = frozenset(
+            line
+            for members in statement_comment_walls(path, source, standalone).values()
+            for line in members
+        )
         diags: list[Diagnostic] = []
         for run in comment_runs(standalone):
             if len(run) != 1:
                 continue
             line, col, body = run[0]
-            if line in nested:
+            if line in nested or line in wall_members:
                 continue
             if self._restates_below(body, line, lines):
                 diags.append(

@@ -8,6 +8,8 @@ from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from . import textlint
+
 
 if TYPE_CHECKING:
     import argparse
@@ -36,6 +38,7 @@ class _Tool(StrEnum):
     PYTHON = "python"
     SQL = "sql"
     IAC = "iac"
+    TEXT = "text"
 
 
 _SUFFIX_TO_TOOL = {
@@ -53,14 +56,37 @@ _IGNORED_DIRS = frozenset(
         ".mypy_cache",
         ".pytest_cache",
         ".ruff_cache",
+        ".next",
+        ".turbo",
+        ".wrangler",
+        ".yarn",
         ".tox",
         ".uv-cache",
         ".venv",
         "dist",
+        "build",
+        "coverage",
         "node_modules",
+        "out",
+        "target",
         "vendor",
     }
 )
+_PYTHON_NOISE_RULES = frozenset(
+    {
+        "docstring-args-restate-signature",
+        "docstring-returns-restate-signature",
+        "duplicated-override-docstring",
+        "no-comment-cruft",
+        "no-restated-comment",
+        "redundant-class-docstring",
+        "redundant-docstring",
+        "restated-test-docstring",
+        "test-phase-label-comment",
+        "trailing-value-narration",
+    }
+)
+_IAC_NOISE_RULES = frozenset({"no-comment-cruft"})
 
 
 @dataclass
@@ -70,10 +96,13 @@ class GroupedPaths:
     python: list[str] = field(default_factory=list)
     sql: list[str] = field(default_factory=list)
     iac: list[str] = field(default_factory=list)
+    text: list[str] = field(default_factory=list)
 
 
 def run(
     files: Sequence[str],
+    *,
+    noise_only: bool = False,
 ) -> int:
     """Dispatch files and directories to every applicable installed registry.
 
@@ -88,13 +117,25 @@ def run(
     sql_main, sql_rules = _load_tool("sarj_sql_lint")
     iac_main, iac_rules = _load_tool("sarj_iac_lint")
 
+    if noise_only:
+        python_rules = _select_rules(python_rules, _PYTHON_NOISE_RULES)
+        sql_rules = _select_rules(sql_rules, frozenset())
+        iac_rules = _select_rules(iac_rules, _IAC_NOISE_RULES)
+
     grouped = group_paths(files)
     statuses = (
         _run(python_main, python_rules, grouped.python),
         _run(sql_main, sql_rules, grouped.sql),
         _run(iac_main, iac_rules, grouped.iac),
+        textlint.run(grouped.text),
     )
     return max(statuses)
+
+
+def _select_rules(
+    registry: Mapping[str, type[_Rule]], selected: frozenset[str]
+) -> dict[str, type[_Rule]]:
+    return {rule_id: rule for rule_id, rule in registry.items() if rule_id in selected}
 
 
 def _load_tool(
@@ -135,16 +176,20 @@ def group_paths(files: Sequence[str]) -> GroupedPaths:
                 if any(part in _IGNORED_DIRS for part in relative_parts):
                     continue
                 if child.is_symlink():
-                    msg = f"refusing symlink input: {child}"
-                    raise ValueError(msg)
+                    continue
                 if not child.is_file():
                     continue
-                tool = _SUFFIX_TO_TOOL.get(child.suffix.lower())
-                _append_path(grouped, tool, str(child))
+                _route_path(grouped, child, str(child))
             continue
-        tool = _SUFFIX_TO_TOOL.get(path.suffix.lower())
-        _append_path(grouped, tool, raw_path)
+        _route_path(grouped, path, raw_path)
     return grouped
+
+
+def _route_path(grouped: GroupedPaths, path: Path, raw_path: str) -> None:
+    """Route one path; YAML intentionally belongs to both IaC and text checks."""
+    _append_path(grouped, _SUFFIX_TO_TOOL.get(path.suffix.lower()), raw_path)
+    if textlint.is_text_path(path):
+        grouped.text.append(raw_path)
 
 
 def _append_path(grouped: GroupedPaths, tool: _Tool | None, path: str) -> None:
@@ -155,6 +200,8 @@ def _append_path(grouped: GroupedPaths, tool: _Tool | None, path: str) -> None:
             grouped.sql.append(path)
         case _Tool.IAC:
             grouped.iac.append(path)
+        case _Tool.TEXT:
+            grouped.text.append(path)
         case None:
             return
 
@@ -175,4 +222,9 @@ def _rule_args(registry: Mapping[str, type[_Rule]]) -> list[str]:
 
 def add_arguments(parser: argparse.ArgumentParser) -> None:
     """Add the all-rule runner arguments to a CLI parser."""
+    parser.add_argument(
+        "--noise-only",
+        action="store_true",
+        help="run only comment, docstring, config-prose, and AI-artifact rules",
+    )
     parser.add_argument("files", nargs="+")

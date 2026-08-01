@@ -9,8 +9,11 @@ import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule } from "./_docs.js";
 import {
+  codeTokens,
+  contentTokens,
   hasExternalReference,
   isProtected,
+  restates,
   restatableStatementBelow,
   restatesStatementHead,
 } from "./_comments.js";
@@ -20,11 +23,21 @@ type MessageIds =
   | "commentedOutCode"
   | "sectionBanner"
   | "fileHeaderPreamble"
+  | "commentWall"
   | "redundantNarration"
   | "untrackedTodo";
 type Options = readonly [];
 
 const LEADING_PREAMBLE_MIN = 4;
+const WALL_MIN_STATEMENTS = 4;
+const WALL_MIN_COMMENTS = 3;
+const WALL_MIN_COMMENTED_RATIO = 0.6;
+const WALL_MIN_WEAK_RATIO = 0.75;
+const WALL_MAX_WORDS = 18;
+const WALL_MAX_NOVEL_WORDS = 2;
+const WALL_NARRATION_RE =
+  /^(?:first(?:ly)?|second(?:ly)?|third(?:ly)?|then|next|now|finally|lastly|add|append|assign|await|build|calculate|call|check|clear|close|compute|convert|copy|count|create|declare|define|delete|extract|fetch|filter|find|format|generate|get|handle|initialize|insert|iterate|join|load|log|loop|map|merge|open|parse|print|process|push|read|remove|render|reset|return|save|send|set|setup|sort|split|start|stop|store|update|validate|wrap|write)(?:s|es|d|ed|ing)?\b/i;
+const WALL_STEP_PREFIX_RE = /^(?:\d+[.)]|(?:phase|step)\s+\d+\s*:)\s*/i;
 
 // Step-narration lead-ins ("First, …", "Then, …", "Finally, …", "Step 2:"). A
 // trailing comma/colon is required so English adverbs ("finally the invariant
@@ -309,6 +322,108 @@ const STATEMENT_CONTAINERS: ReadonlySet<string> = new Set([
   AST_NODE_TYPES.TSInterfaceBody,
 ]);
 
+interface CommentWall {
+  readonly leader: TSESTree.Comment;
+  readonly members: ReadonlySet<TSESTree.Comment>;
+}
+
+interface WallAttachment {
+  readonly container: TSESTree.Node;
+  readonly index: number;
+  readonly statement: string;
+}
+
+function directStatements(container: TSESTree.Node): readonly TSESTree.Node[] {
+  switch (container.type) {
+    case AST_NODE_TYPES.Program:
+    case AST_NODE_TYPES.BlockStatement:
+    case AST_NODE_TYPES.ClassBody:
+    case AST_NODE_TYPES.StaticBlock:
+    case AST_NODE_TYPES.TSModuleBlock:
+      return container.body;
+    case AST_NODE_TYPES.SwitchCase:
+      return container.consequent;
+    case AST_NODE_TYPES.TSInterfaceBody:
+      return container.body;
+    default:
+      return [];
+  }
+}
+
+const WALL_STATEMENTS: ReadonlySet<string> = new Set([
+  AST_NODE_TYPES.ExpressionStatement,
+  AST_NODE_TYPES.ReturnStatement,
+  AST_NODE_TYPES.ThrowStatement,
+  AST_NODE_TYPES.VariableDeclaration,
+  AST_NODE_TYPES.IfStatement,
+  AST_NODE_TYPES.ForStatement,
+  AST_NODE_TYPES.ForOfStatement,
+  AST_NODE_TYPES.ForInStatement,
+  AST_NODE_TYPES.WhileStatement,
+  AST_NODE_TYPES.DoWhileStatement,
+  AST_NODE_TYPES.SwitchStatement,
+  AST_NODE_TYPES.TryStatement,
+]);
+
+function statementAttachmentBelow(
+  comment: TSESTree.Comment,
+  sourceCode: Readonly<{
+    getNodeByRangeIndex(index: number): TSESTree.Node | null;
+    getTokenAfter(
+      node: TSESTree.Comment,
+      options: { includeComments: boolean },
+    ): TSESTree.Token | null;
+    getText(node: TSESTree.Node): string;
+  }>,
+): WallAttachment | null {
+  const token = sourceCode.getTokenAfter(comment, { includeComments: false });
+  if (
+    token === null ||
+    token.loc.start.line !== comment.loc.end.line + 1 ||
+    token.loc.start.column !== comment.loc.start.column
+  ) {
+    return null;
+  }
+  for (
+    let node: TSESTree.Node | null | undefined = sourceCode.getNodeByRangeIndex(token.range[0]);
+    node?.parent != null;
+    node = node.parent
+  ) {
+    if (!STATEMENT_CONTAINERS.has(node.parent.type) || !WALL_STATEMENTS.has(node.type)) {
+      continue;
+    }
+    const siblings = directStatements(node.parent);
+    const index = siblings.indexOf(node);
+    return index < 0
+      ? null
+      : { container: node.parent, index, statement: sourceCode.getText(node) };
+  }
+  return null;
+}
+
+function isWeakWalkthroughComment(body: string, statement: string): boolean {
+  const normalized = body.replace(WALL_STEP_PREFIX_RE, "");
+  if (
+    normalized.length === 0 ||
+    normalized.endsWith("?") ||
+    normalized.split(/\s+/).length > WALL_MAX_WORDS ||
+    isDirective(normalized) ||
+    isProtected(normalized) ||
+    !WALL_NARRATION_RE.test(normalized)
+  ) {
+    return false;
+  }
+  const words = contentTokens(normalized);
+  const described = words.slice(1);
+  if (described.length === 0) return false;
+  const code = codeTokens(statement);
+  const matched = described.filter((word) => restates([word], code)).length;
+  return (
+    matched / described.length >= 0.5 &&
+    described.length - matched <= WALL_MAX_NOVEL_WORDS
+  );
+}
+
 /**
  * Containers whose only legal children are TYPE MEMBERS. A call-shaped comment
  * here cannot be commented-out code, because the statement it looks like would
@@ -424,6 +539,8 @@ export default createRule<Options, MessageIds>({
         "Section-banner / region comment — structure code with functions, not ASCII rules.",
       fileHeaderPreamble:
         "File-header comment preamble — use a brief doc comment for the why, not a block of `//` lines.",
+      commentWall:
+        "Statement comment wall ({{count}} narrated steps) — delete the walkthrough and name the operations in code; keep only constraints or rationale.",
       redundantNarration:
         "Comment narrates the code — delete it or say *why*, not *what*. Code is self-documenting.",
       untrackedTodo:
@@ -447,6 +564,58 @@ export default createRule<Options, MessageIds>({
 
     function isJsDoc(comment: TSESTree.Comment): boolean {
       return comment.type === "Block" && /^\*/.test(comment.value);
+    }
+
+    function findCommentWalls(comments: readonly TSESTree.Comment[]): CommentWall[] {
+      const attached = new Map<
+        TSESTree.Node,
+        Array<{ comment: TSESTree.Comment; index: number; weak: boolean }>
+      >();
+      for (const comment of comments) {
+        if (comment.type !== "Line" || !isStandalone(comment)) continue;
+        const attachment = statementAttachmentBelow(comment, sourceCode);
+        if (attachment === null) continue;
+        const body = stripCommentMarker(comment.value);
+        const entries = attached.get(attachment.container) ?? [];
+        entries.push({
+          comment,
+          index: attachment.index,
+          weak: isWeakWalkthroughComment(body, attachment.statement),
+        });
+        attached.set(attachment.container, entries);
+      }
+
+      const walls: CommentWall[] = [];
+      for (const entries of attached.values()) {
+        const sorted = entries.toSorted((left, right) => left.index - right.index);
+        const clusters: Array<typeof sorted> = [];
+        for (const entry of sorted) {
+          const cluster = clusters.at(-1);
+          if (cluster !== undefined && entry.index <= (cluster.at(-1)?.index ?? 0) + 2) {
+            cluster.push(entry);
+          } else {
+            clusters.push([entry]);
+          }
+        }
+        for (const cluster of clusters) {
+          const firstIndex = cluster[0]?.index;
+          const lastIndex = cluster.at(-1)?.index;
+          if (firstIndex === undefined || lastIndex === undefined) continue;
+          const span = lastIndex - firstIndex + 1;
+          const weak = cluster.filter((entry) => entry.weak).map((entry) => entry.comment);
+          if (
+            span < WALL_MIN_STATEMENTS ||
+            weak.length < WALL_MIN_COMMENTS ||
+            cluster.length / span < WALL_MIN_COMMENTED_RATIO ||
+            weak.length / cluster.length < WALL_MIN_WEAK_RATIO
+          ) {
+            continue;
+          }
+          const leader = weak[0];
+          if (leader !== undefined) walls.push({ leader, members: new Set(weak) });
+        }
+      }
+      return walls;
     }
 
     /** True when every content line of a JSDoc block is a banner or a section title. */
@@ -499,6 +668,9 @@ export default createRule<Options, MessageIds>({
     return {
       Program(): void {
         const comments = sourceCode.getAllComments();
+        const walls = findCommentWalls(comments);
+        const wallByLeader = new Map(walls.map((wall) => [wall.leader, wall]));
+        const wallMembers = new Set(walls.flatMap((wall) => [...wall.members]));
         const firstCodeLine =
           sourceCode.ast.tokens[0]?.loc.start.line ?? Number.MAX_SAFE_INTEGER;
         const enumerated = comments.filter(
@@ -508,6 +680,16 @@ export default createRule<Options, MessageIds>({
         for (let i = 0; i < comments.length; i++) {
           const comment = comments[i];
           if (comment === undefined) continue;
+          const wall = wallByLeader.get(comment);
+          if (wall !== undefined) {
+            context.report({
+              node: comment,
+              messageId: "commentWall",
+              data: { count: String(wall.members.size) },
+            });
+            continue;
+          }
+          if (wallMembers.has(comment)) continue;
           if (isJsDoc(comment)) {
             // A JSDoc block is otherwise left alone — it is where the "why"
             // conventionally lives. A block whose WHOLE body is a rule of dashes

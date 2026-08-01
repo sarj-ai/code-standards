@@ -52,12 +52,20 @@ the install failed identically while `package.json` looked fixed.
 ## Keep current
 
 ```bash
-uv run --frozen sarj-lint-configs doctor      # every version pin agrees?
-uv run --frozen sarj-lint-configs sync --check # the synced configs are unmodified?
-uv run --frozen sarj-lint-configs check .      # the custom Python/SQL/IaC rules pass?
+uv run --frozen sarj-standards doctor       # every version pin agrees?
+uv run --frozen sarj-standards sync --check # the synced configs are unmodified?
+uv run --frozen sarj-standards check .      # every custom code/config/text rule passes?
+uv run --frozen sarj-standards check --noise-only .  # comment/artifact ratchet only
 ```
 
 Run all three in CI. `init` prints them as a ready-made job.
+
+`sarj-standards` is the preferred entrypoint. `sarj-lint-configs` remains an
+alias for compatibility. `check` routes Python, SQL, Terraform, YAML, TOML,
+JSONC, Markdown, Dockerfiles, and Makefiles in one pass. In addition to the
+syntax-aware linters it rejects commented-out config (`SARJ301`), dense
+line-by-line config narration (`SARJ300`), and AI execution diaries or briefs
+that should have been reduced to durable README/docs/ADR facts (`SARJ302`).
 
 ### `doctor` — one version, not three
 
