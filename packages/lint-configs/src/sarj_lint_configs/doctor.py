@@ -230,7 +230,7 @@ def _check_eslint_plugin(root: Path, files: Sequence[Path]) -> Iterator[Finding]
             # the repos that are developing against an unreleased build.
             continue
         where = f"{path.relative_to(root)}: {_ESLINT_PLUGIN}@{pinned}"
-        if pinned.lstrip("^~=") == floor:
+        if _without_range_operator(pinned) == floor:
             yield Finding(Level.OK, where, "matches the tested peer set")
         else:
             yield Finding(
@@ -239,6 +239,32 @@ def _check_eslint_plugin(root: Path, files: Sequence[Path]) -> Iterator[Finding]
                 f"the bundled eslint.strict.mjs is tested against {floor};"
                 " see `sarj-lint-configs peers` for the whole resolvable set",
             )
+
+
+#: A single-version range operator in front of a pin. Longest first, so `>=` is
+#: consumed before `>` and `~=` before `~`.
+#:
+#: This replaced `pinned.lstrip("^~=")`, which is a CHARACTER-SET strip and not a
+#: PREFIX strip: on `>=6.1.0` it stops at the leading `>`, which is outside the
+#: set, so nothing is removed and `">=6.1.0" != "6.1.0"`. A repo pinned to
+#: exactly the tested floor was reported as DRIFT and told to change something
+#: `doctor` could not name. `>=` is the ordinary npm spelling of a floor and the
+#: only PEP 440 spelling of one, so this was the common case, not a corner.
+#: (`lstrip` also mangles what it does match: `^^^6.1.0` reported OK.)
+_RANGE_OPERATORS: Final = (">=", "<=", "~=", "==", "^", "~", ">", "<", "=", "v")
+
+
+def _without_range_operator(pinned: str) -> str:
+    """Return `pinned` with one leading range operator removed.
+
+    One, not all: a pin is a single operator and a version, so stripping
+    repeatedly would launder a malformed specifier into a match.
+
+    """
+    for operator in _RANGE_OPERATORS:
+        if pinned.startswith(operator):
+            return pinned[len(operator) :].strip()
+    return pinned
 
 
 def _package_json_pin(path: Path) -> str | None:

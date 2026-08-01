@@ -36,6 +36,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import warnings
 
 import pytest
 
@@ -364,6 +365,12 @@ def test_ledger_covers_every_deleted_rule_module() -> None:
     deleted `no_patching_system_under_test` (SARJ061) without editing it. Deriving the
     deletions from history means the next one cannot be skipped, and it also means a
     ledger line cannot be quietly removed to free a code up again.
+
+    A SUBSET, deliberately: history is an append-only corroborator. It can prove a
+    deletion happened, never that one did not, so `history ⊆ ledger` is asserted and
+    the reverse is not. The TypeScript twin asserted both directions until the history
+    was squashed to a single root commit, at which point it failed on a tree where
+    nothing was wrong; it is subset-shaped now too.
     """
     ledger = _ledger()
     unrecorded = sorted(
@@ -374,3 +381,29 @@ def test_ledger_covers_every_deleted_rule_module() -> None:
         + "\n  ".join(unrecorded)
         + f"\nAdd them to {_LEDGER_PATH.name}. A code that held a shipped rule must stay burned."
     )
+
+
+def test_reports_whether_history_can_still_corroborate_the_ledger() -> None:
+    """Make the subset gate's reach visible instead of leaving it inferred.
+
+    On a truncated history the assertion above passes by having nothing to check,
+    which reads exactly like passing by being satisfied — the state this repository
+    is in after the root-commit squash. This does not fail on that; it says so, and
+    stops saying so once history accumulates deletions again.
+    """
+    deleted = _deleted_rule_modules()
+    recorded = len(_ledger())
+
+    if not deleted and recorded:
+        warnings.warn(
+            f"history corroborates 0 of {recorded} ledger entries: `git log --diff-filter=D` "
+            f"over {_RULES_DIR} is empty at {_git('rev-parse', '--short', 'HEAD').strip()}. "
+            "The subset gate still catches a NEW deletion that forgets its entry; it cannot "
+            "re-derive the existing ones. Expected after a history rewrite — investigate if "
+            "the history was not rewritten.",
+            stacklevel=1,
+        )
+
+    # Asserts the ledger is populated, not that history agrees with it: an empty ledger
+    # alongside a truncated history would leave nothing checking anything.
+    assert recorded > 0, f"{_LEDGER_PATH.name} is empty, so no code is burned and any code can be reused."
