@@ -558,6 +558,43 @@ def test_doctor_catches_a_stale_eslint_plugin_pin(tmp_path: Path) -> None:
     assert "2.16.0" in proc.stdout
 
 
+@pytest.mark.parametrize(
+    "operator",
+    ["", "^", "~", "=", ">=", "==", "~=", "v"],
+    ids=["bare", "caret", "tilde", "equals", "gte", "double-equals", "compatible", "v-prefix"],
+)
+def test_doctor_accepts_every_spelling_of_the_tested_floor(tmp_path: Path, operator: str) -> None:
+    """A repo pinned to exactly the tested floor is not drifted, however it spells it.
+
+    `>=6.1.0` was reported as DRIFT against a floor of `6.1.0`. The comparison was
+    `pinned.lstrip("^~=")`, a CHARACTER-SET strip: it stops at the leading `>`,
+    which is not in the set, so the whole specifier survived and no longer equalled
+    the floor. `>=` is the ordinary npm spelling of a floor and the only PEP 440
+    spelling of one, so `doctor` told a correctly-pinned repo to change something --
+    without being able to say what.
+    """
+    floor = manifest.eslint_peers()["@sarj/eslint-plugin"]
+    _ = _typescript_repo(tmp_path)
+    _ = (tmp_path / "package.json").write_text(
+        json.dumps({"name": "web", "devDependencies": {"@sarj/eslint-plugin": f"{operator}{floor}"}})
+    )
+    proc = _cli("doctor", "--dest", str(tmp_path))
+    assert "matches the tested peer set" in proc.stdout, proc.stdout
+    assert "tested against" not in proc.stdout, proc.stdout
+
+
+def test_doctor_still_reports_a_range_that_is_not_the_floor(tmp_path: Path) -> None:
+    """The operator is stripped ONCE, so a malformed pin is not laundered into a match."""
+    floor = manifest.eslint_peers()["@sarj/eslint-plugin"]
+    _ = _typescript_repo(tmp_path)
+    _ = (tmp_path / "package.json").write_text(
+        json.dumps({"name": "web", "devDependencies": {"@sarj/eslint-plugin": f"^~{floor}"}})
+    )
+    proc = _cli("doctor", "--dest", str(tmp_path))
+    assert proc.returncode == 1
+    assert "tested against" in proc.stdout, proc.stdout
+
+
 @pytest.mark.parametrize("specifier", ["file:../plugin", "link:../plugin", "workspace:*"])
 def test_doctor_ignores_a_local_eslint_plugin_checkout(tmp_path: Path, specifier: str) -> None:
     """A path specifier names a checkout, not a release, so it cannot be stale."""

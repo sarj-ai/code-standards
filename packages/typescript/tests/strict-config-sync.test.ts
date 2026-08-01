@@ -283,9 +283,25 @@ describe("lint-configs eslint.strict.mjs stays wired to the plugin", () => {
    *
    * Git history is the derivation. A TypeScript rule's NAME is its filename, so
    * `--diff-filter=D` over `src/rules/` recovers every name ever withdrawn
-   * without anyone writing it down. The comparison is an exact set equality in
-   * both directions, so a deletion that forgets to add an entry fails, and so
-   * does an entry invented for a rule that was never deleted.
+   * without anyone writing it down.
+   *
+   * The comparison is a SUBSET, not an equality, and the direction matters.
+   * History is an append-only corroborator: it can prove a deletion happened, it
+   * can never prove one did not. Any rewrite, shallow clone, graft or subtree
+   * split truncates it. So `deleted ⊆ retiredRules` is asserted — a deletion that
+   * forgets its entry still fails, which is the failure this gate exists for —
+   * and the reverse is not. `packages/python/tests/test_rule_meta.py` has always
+   * been subset-shaped for the same reason; this now matches it.
+   *
+   * That reverse direction was asserted until the history was squashed to a
+   * single root commit to scrub private names from commit messages. The log went
+   * empty, `retiredRules` still held eleven names, and the gate failed on a tree
+   * where nothing was wrong. The shallow check below does NOT catch that case:
+   * an orphan root is a COMPLETE history that happens to be one commit. The cost
+   * of dropping the reverse direction is an invented entry for a rule never
+   * deleted, which no longer fails here — `rule-docs.test.ts` still requires
+   * every retired name to be absent from `plugin.rules` and disjoint from
+   * `renamedRules`.
    *
    * `--no-renames` is deliberate: a rule file that MOVED still has to be
    * accounted for, and `_renames.ts` is what distinguishes the two cases. It has
@@ -295,7 +311,7 @@ describe("lint-configs eslint.strict.mjs stays wired to the plugin", () => {
    * withdrawal. `rule-docs.test.ts` keeps the two maps disjoint, so a name can
    * be excused by exactly one of them.
    */
-  it("_retired.ts lists exactly the rule files git has seen deleted", () => {
+  it("_retired.ts covers every rule file git has seen deleted", () => {
     expect(gitOutput("rev-parse", "--is-shallow-repository").trim()).toBe(
       "false",
     );
@@ -324,6 +340,51 @@ describe("lint-configs eslint.strict.mjs stays wired to the plugin", () => {
       deleted.add(name);
     }
 
-    expect([...deleted].sort()).toEqual(Object.keys(retiredRules).sort());
+    const unrecorded = [...deleted]
+      .filter((name) => !(name in retiredRules))
+      .sort();
+    expect(
+      unrecorded,
+      `git history has deleted rule files that _retired.ts never recorded: ${unrecorded.join(", ")}. ` +
+        "Add them, or record the move in _renames.ts if the rule was renamed rather than withdrawn.",
+    ).toEqual([]);
+  });
+
+  /**
+   * The subset assertion above is silent about its own reach. On a truncated
+   * history it passes by having nothing to check, which reads identically to
+   * passing by being satisfied — and that is the state this repository is in,
+   * after the root-commit squash.
+   *
+   * This does not fail on that. It exists so the reduced power is visible in the
+   * run rather than inferred from a green tick, and so it stops being reported
+   * once history has accumulated deletions that corroborate the ledger again.
+   */
+  it("reports whether git history can still corroborate _retired.ts", () => {
+    const log = gitOutput(
+      "log",
+      "--no-renames",
+      "--diff-filter=D",
+      "--name-only",
+      "--format=",
+      "HEAD",
+      "--",
+      "packages/typescript/src/rules",
+    );
+    const recorded = Object.keys(retiredRules).length;
+
+    if (log.trim().length === 0 && recorded > 0) {
+      console.warn(
+        `[strict-config-sync] history corroborates 0 of ${recorded} entries in _retired.ts: ` +
+          `\`git log --diff-filter=D\` over src/rules is empty at ${gitOutput("rev-parse", "--short", "HEAD").trim()}. ` +
+          "The subset gate still catches a NEW deletion that forgets its entry; it cannot re-derive the existing ones. " +
+          "Expected after a history rewrite — investigate if the history was not rewritten.",
+      );
+    }
+
+    // Asserts the ledger is populated, not that history agrees with it: an empty
+    // `_retired.ts` alongside a truncated history would leave nothing checking
+    // anything, and that is worth failing on.
+    expect(recorded).toBeGreaterThan(0);
   });
 });
