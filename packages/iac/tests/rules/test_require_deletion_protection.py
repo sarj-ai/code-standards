@@ -1,0 +1,494 @@
+from __future__ import annotations
+
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+import pytest
+
+from sarj_iac_lint.rules.require_deletion_protection import PROTECTED_TYPES, RequireDeletionProtection
+
+
+if TYPE_CHECKING:
+    from sarj_iac_lint.rule_base import Diagnostic
+
+
+def _check(source: str, name: str = "main.tf") -> list[Diagnostic]:
+    return RequireDeletionProtection().check(Path(name), source)
+
+
+def test_flags_missing_deletion_protection():
+    src = """
+resource "google_sql_database_instance" "main" {
+  name = "prod"
+}
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "no deletion_protection" in diags[0].message
+
+
+def test_allows_variable_gated_protection():
+    src = """
+resource "google_sql_database_instance" "logto" {
+  deletion_protection = var.gke_deletion_protection
+}
+"""
+    assert _check(src) == []
+
+
+def test_allows_prevent_destroy_lifecycle():
+    src = """
+resource "google_container_cluster" "data" {
+  name = "data"
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+"""
+    assert _check(src) == []
+
+
+def test_flags_explicitly_disabled():
+    src = """
+resource "google_container_cluster" "primary" {
+  deletion_protection = false
+}
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "false" in diags[0].message
+
+
+def test_allows_protection_enabled():
+    src = """
+resource "google_sql_database_instance" "main" {
+  name                = "prod"
+  deletion_protection = true
+}
+"""
+    assert _check(src) == []
+
+
+def test_ignores_unprotected_resource_types():
+    src = """
+resource "google_storage_bucket_object" "x" {
+  name = "y"
+}
+"""
+    assert _check(src) == []
+
+
+def test_handles_nested_blocks():
+    src = """
+resource "google_container_cluster" "primary" {
+  node_config {
+    machine_type = "e2-medium"
+  }
+  deletion_protection = true
+}
+"""
+    assert _check(src) == []
+
+
+def test_flags_each_unprotected_instance():
+    src = """
+resource "aws_db_instance" "a" {
+  engine = "postgres"
+}
+resource "aws_db_instance" "b" {
+  deletion_protection = true
+}
+"""
+    assert len(_check(src)) == 1
+
+
+def test_ignores_non_tf_files():
+    src = 'resource "google_sql_database_instance" "main" {\n}\n'
+    assert _check(src, name="notes.txt") == []
+
+
+def test_brace_in_string_does_not_truncate_block():
+    # A `}` inside a string must not end the block early and produce a phantom
+    # "no deletion_protection" FP — the protected value comes after it.
+    src = """
+resource "google_sql_database_instance" "main" {
+  description         = "closes with }"
+  deletion_protection = true
+}
+"""
+    assert _check(src) == []
+
+
+def test_quoted_false_is_disabled():
+    src = """
+resource "google_sql_database_instance" "main" {
+  deletion_protection = "false"
+}
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "false" in diags[0].message
+
+
+def test_quoted_true_is_protected():
+    src = """
+resource "google_sql_database_instance" "main" {
+  deletion_protection = "true"
+}
+"""
+    assert _check(src) == []
+
+
+def test_heredoc_brace_does_not_truncate_block():
+    src = """
+resource "google_sql_database_instance" "main" {
+  user_labels = jsonencode({})
+  startup     = <<-EOT
+    if true; then echo "}"; fi
+  EOT
+  deletion_protection = true
+}
+"""
+    assert _check(src) == []
+
+
+def test_flags_newly_allowlisted_dynamodb():
+    src = """
+resource "aws_dynamodb_table" "sessions" {
+  name = "sessions"
+}
+"""
+    assert len(_check(src)) == 1
+
+
+def test_flags_newly_allowlisted_azurerm_server():
+    src = """
+resource "azurerm_postgresql_flexible_server" "db" {
+  name = "db"
+}
+"""
+    assert len(_check(src)) == 1
+
+
+# --- nesting: the walker rewrite's reason for existing -----------------------
+
+
+def test_flags_protection_only_inside_settings():
+    # Reproduced bug: `settings { deletion_protection_enabled }` is the API-side
+    # flag two levels down; it does not stop `terraform destroy`.
+    src = """
+resource "google_sql_database_instance" "nested_only" {
+  name = "prod"
+  settings {
+    tier                        = "db-f1-micro"
+    deletion_protection_enabled = true
+  }
+}
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "only inside `settings`" in diags[0].message
+    assert diags[0].line == 2
+
+
+def test_nested_true_does_not_rescue_top_level_false():
+    # The old flat scan took the first match in file order and passed this.
+    src = """
+resource "google_sql_database_instance" "main" {
+  settings {
+    deletion_protection_enabled = true
+  }
+  deletion_protection = false
+}
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "deletion_protection = false" in diags[0].message
+
+
+def test_top_level_flag_alongside_nested_one_is_protected():
+    # The shape both real corpus Cloud SQL instances use.
+    src = """
+resource "google_sql_database_instance" "main" {
+  deletion_protection = true
+  settings {
+    deletion_protection_enabled = true
+  }
+}
+"""
+    assert _check(src) == []
+
+
+def test_prevent_destroy_outside_lifecycle_does_not_protect():
+    src = """
+resource "aws_db_instance" "x" {
+  engine = "postgres"
+  restore_to_point_in_time {
+    prevent_destroy = true
+  }
+}
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "no deletion_protection" in diags[0].message
+
+
+def test_prevent_destroy_in_a_nested_lifecycle_does_not_protect():
+    src = """
+resource "aws_db_instance" "x" {
+  engine = "postgres"
+  restore_to_point_in_time {
+    lifecycle {
+      prevent_destroy = true
+    }
+  }
+}
+"""
+    assert len(_check(src)) == 1
+
+
+def test_prevent_destroy_false_does_not_protect():
+    src = """
+resource "google_bigquery_dataset" "d" {
+  dataset_id = "d"
+  lifecycle {
+    prevent_destroy = false
+  }
+}
+"""
+    assert len(_check(src)) == 1
+
+
+def test_lifecycle_without_prevent_destroy_does_not_protect():
+    src = """
+resource "google_bigquery_dataset" "d" {
+  dataset_id = "d"
+  lifecycle {
+    ignore_changes = [labels]
+  }
+}
+"""
+    assert len(_check(src)) == 1
+
+
+# --- multi-line values ------------------------------------------------------
+
+
+def test_multiline_expression_value_is_protected():
+    src = """
+resource "google_sql_database_instance" "main" {
+  deletion_protection = (
+    var.env == "prod"
+  )
+}
+"""
+    assert _check(src) == []
+
+
+def test_multiline_false_is_disabled():
+    # The old regex captured only the trailing `(` and passed every multi-line
+    # value, including this one.
+    src = """
+resource "aws_rds_cluster" "c" {
+  deletion_protection = (
+    false
+  )
+}
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "deletion_protection = false" in diags[0].message
+
+
+# --- masking guards, both directions ----------------------------------------
+
+
+def test_commented_out_protection_does_not_protect():
+    src = """
+resource "google_sql_database_instance" "main" {
+  # deletion_protection = true
+  name = "prod"
+}
+"""
+    assert len(_check(src)) == 1
+
+
+def test_false_inside_a_heredoc_does_not_disable():
+    src = """
+resource "google_sql_database_instance" "main" {
+  deletion_protection = true
+  startup = <<-EOT
+    deletion_protection = false
+  EOT
+}
+"""
+    assert _check(src) == []
+
+
+def test_reports_the_resource_line_and_column():
+    src = 'resource "google_sql_database_instance" "main" {\n  name = "prod"\n}\n'
+    (diag,) = _check(src)
+    assert (diag.line, diag.col) == (1, 1)
+
+
+# --- BigQuery views are not tables ------------------------------------------------
+#
+# 9 of the rule's 24 corpus findings were `google_bigquery_table` blocks, and all
+# but one carried a `view { query = ... }`. A view stores no data, and the provider
+# REQUIRES deletion_protection = false for a view whose query can change — updating
+# the query is a replace, and the replace fails at apply while protection is on.
+
+
+def test_allows_bigquery_view_without_deletion_protection():
+    src = """
+resource "google_bigquery_table" "daily_active_users" {
+  dataset_id = "analytics"
+  table_id   = "daily_active_users"
+  view {
+    query          = "SELECT user_id FROM `proj.analytics.events`"
+    use_legacy_sql = false
+  }
+}
+"""
+    assert _check(src) == []
+
+
+def test_allows_bigquery_materialized_view_without_deletion_protection():
+    src = """
+resource "google_bigquery_table" "rollup" {
+  dataset_id = "analytics"
+  materialized_view {
+    query = "SELECT 1"
+  }
+}
+"""
+    assert _check(src) == []
+
+
+def test_flags_bigquery_table_that_stores_data():
+    """The boundary: a real table is retained — the guard keys on the view block."""
+    src = """
+resource "google_bigquery_table" "events" {
+  dataset_id = "analytics"
+  table_id   = "events"
+  schema     = file("schema.json")
+}
+"""
+    assert len(_check(src)) == 1
+
+
+def test_flags_bigquery_table_whose_view_block_is_nested_elsewhere():
+    """The boundary: only a DIRECT `view` child says the resource is a view."""
+    src = """
+resource "google_bigquery_table" "events" {
+  dataset_id = "analytics"
+  external_data_configuration {
+    view {
+      query = "SELECT 1"
+    }
+  }
+}
+"""
+    assert len(_check(src)) == 1
+
+
+# --- google_redis_instance exposes no deletion_protection argument ----------------
+
+
+def test_ignores_redis_instance_which_has_no_such_argument():
+    """The provider puts `deletion_protection_enabled` on `google_redis_cluster`.
+
+    Flagging the instance named a fix that cannot be written, contradicting the
+    rule's own curation criterion.
+    """
+    src = """
+resource "google_redis_instance" "cache" {
+  name           = "session-cache"
+  memory_size_gb = 4
+}
+"""
+    assert _check(src) == []
+
+
+def test_still_flags_a_curated_type_next_to_the_removed_one():
+    """The boundary: removing one type must not disturb the rest of the set."""
+    src = """
+resource "google_bigtable_instance" "main" {
+  name = "prod"
+}
+"""
+    assert len(_check(src)) == 1
+
+
+# --- HCL keywords are case-insensitive, so the literal test must be too ------------
+
+
+@pytest.mark.parametrize("value", ["FALSE", "False", "fAlSe", '"FALSE"', "( FALSE )"])
+def test_an_uppercase_false_is_still_disabled_protection(value: str):
+    """`_literal` lowercases; without that, `deletion_protection = FALSE` reads as an expression."""
+    src = f'resource "google_sql_database_instance" "main" {{\n  deletion_protection = {value}\n}}\n'
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "deletion_protection = false" in diags[0].message
+
+
+@pytest.mark.parametrize("value", ["TRUE", "True", '"TRUE"'])
+def test_an_uppercase_true_still_protects(value: str):
+    """The other side: lowercasing must not turn a working guard into a finding."""
+    src = f'resource "google_sql_database_instance" "main" {{\n  deletion_protection = {value}\n}}\n'
+    assert _check(src) == []
+
+
+def test_an_uppercase_prevent_destroy_still_protects():
+    src = """
+resource "google_bigquery_dataset" "warehouse" {
+  dataset_id = "warehouse"
+  lifecycle {
+    prevent_destroy = TRUE
+  }
+}
+"""
+    assert _check(src) == []
+
+
+# --- every curated type must be reachable, so no row can be dropped in silence -----
+
+
+@pytest.mark.parametrize("resource_type", sorted(PROTECTED_TYPES))
+def test_every_protected_type_is_wired_in(resource_type: str):
+    """Deleting any single row from PROTECTED_TYPES fails exactly this row's case."""
+    src = f'resource "{resource_type}" "example" {{\n  name = "example"\n}}\n'
+    diags = _check(src)
+    assert len(diags) == 1
+    assert diags[0].code == "SARJ201"
+    assert resource_type in diags[0].message
+
+
+def test_the_curated_set_is_exactly_this():
+    """A parametrize over the set cannot catch a deletion — the case vanishes with the row."""
+    expected = frozenset({
+        "google_sql_database_instance",
+        "google_container_cluster",
+        "google_bigquery_table",
+        "google_bigquery_dataset",
+        "google_spanner_database",
+        "google_alloydb_cluster",
+        "google_bigtable_instance",
+        "aws_db_instance",
+        "aws_rds_cluster",
+        "aws_rds_global_cluster",
+        "aws_redshift_cluster",
+        "aws_dynamodb_table",
+        "aws_elasticache_replication_group",
+        "aws_elasticache_cluster",
+        "aws_docdb_cluster",
+        "aws_neptune_cluster",
+        "azurerm_postgresql_flexible_server",
+        "azurerm_postgresql_server",
+        "azurerm_mysql_flexible_server",
+        "azurerm_mysql_server",
+        "azurerm_mssql_server",
+        "azurerm_mssql_database",
+        "azurerm_cosmosdb_account",
+    })
+    assert expected == PROTECTED_TYPES

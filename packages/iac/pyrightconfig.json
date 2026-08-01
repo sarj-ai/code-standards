@@ -1,0 +1,4 @@
+{
+  "extends": "../../.pyright-strict.json",
+  "include": ["src", "tests"]
+}

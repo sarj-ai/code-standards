@@ -1,0 +1,68 @@
+name: python CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/python/**'
+      - '.github/workflows/python-ci.yml'
+      # The strict configs these jobs lint against live in packages/lint-configs and
+      # are reached through the root symlinks, so a change there changes this job's
+      # result without touching this package.
+      - 'packages/lint-configs/src/sarj_lint_configs/configs/**'
+      - '.ruff-strict.toml'
+      - '.pyright-strict.json'
+      # test_hook_sync.py reads it: a deleted hook must fail this job, not ship.
+      - '.pre-commit-hooks.yaml'
+  pull_request:
+    paths:
+      - 'packages/python/**'
+      - '.github/workflows/python-ci.yml'
+      # The strict configs these jobs lint against live in packages/lint-configs and
+      # are reached through the root symlinks, so a change there changes this job's
+      # result without touching this package.
+      - 'packages/lint-configs/src/sarj_lint_configs/configs/**'
+      - '.ruff-strict.toml'
+      - '.pyright-strict.json'
+      # test_hook_sync.py reads it: a deleted hook must fail this job, not ship.
+      - '.pre-commit-hooks.yaml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/python
+    steps:
+      # Full history, not a shallow clone: the retired-identifier gates DERIVE the
+      # set of withdrawn rules from `git log --diff-filter=D` instead of trusting a
+      # hand-kept list (which is how SARJ061 and eight TypeScript rule names went
+      # unrecorded). With fetch-depth 1 those gates have nothing to read and fail.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      # release.yml's `detect` job watches packages/python/pyproject.toml, but
+      # pre-commit consumers install the root package — so a bump to one and not
+      # the other silently skips the publish. That is exactly how 0.15.0 was
+      # merged without ever reaching PyPI. `make test` depends on this check but
+      # runs from the repo root, which this job never does.
+      - name: Check root/package versions are in sync
+        working-directory: .
+        run: make check-versions-synced
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: 'packages/**/uv.lock'
+      - run: uv python install 3.14
+      - run: uv sync --dev
+      - run: uv run pytest -q
+      - run: uv run ruff check src/ tests/
+      - run: uv run basedpyright
+      - run: uv build

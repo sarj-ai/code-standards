@@ -1,0 +1,90 @@
+{
+  "name": "@sarj/eslint-plugin",
+  "version": "9.5.0",
+  "description": "Custom ESLint rules for hypermodern TypeScript / React / Next.js projects",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sarj-ai/standards.git",
+    "directory": "packages/typescript"
+  },
+  "homepage": "https://github.com/sarj-ai/standards/tree/main/packages/typescript",
+  "bugs": {
+    "url": "https://github.com/sarj-ai/standards/issues"
+  },
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "eslint",
+    "eslintplugin",
+    "eslint-plugin",
+    "sarj",
+    "react",
+    "nextjs",
+    "zod"
+  ],
+  "author": "sarj-ai",
+  "license": "MIT",
+  "dependencies": {
+    "@typescript-eslint/utils": "^8.65.0"
+  },
+  "devDependencies": {
+    "@eslint-community/eslint-plugin-eslint-comments": "^4.7.2",
+    "@eslint/compat": "^2.1.0",
+    "@types/node": "latest",
+    "@typescript-eslint/parser": "latest",
+    "@typescript-eslint/rule-tester": "latest",
+    "@typescript-eslint/utils": "latest",
+    "eslint": "^10.8.0",
+    "eslint-plugin-better-tailwindcss": "^4.7.0",
+    "eslint-plugin-perfectionist": "^5.10.0",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-simple-import-sort": "^14.0.0",
+    "eslint-plugin-unicorn": "^72.0.0",
+    "eslint-plugin-zod": "^4.9.0",
+    "tsup": "latest",
+    "typescript": "latest",
+    "typescript-eslint": "^8.65.0",
+    "vitest": "latest"
+  },
+  "peerDependencies": {
+    "eslint": ">=9.39.4",
+    "typescript": ">=5.0.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "peerDependenciesMeta": {
+    "typescript": {
+      "optional": true
+    }
+  },
+  "overrides": {
+    "esbuild": "^0.28.1",
+    "eslint-plugin-react": {
+      "eslint": "$eslint"
+    }
+  }
+}

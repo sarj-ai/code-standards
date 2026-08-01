@@ -1,0 +1,36 @@
+[project]
+name = "sarj-python-lint"
+version = "0.40.0"
+description = "Custom Python lint rules — AST-based, pre-commit-friendly, hypermodern defaults"
+readme = "packages/python/README.md"
+authors = [{ name = "sarj-ai" }]
+license = { text = "MIT" }
+requires-python = ">=3.14"
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = []
+
+[project.scripts]
+sarj-python-lint = "sarj_python_lint.__main__:main"
+sarj-ratchet = "sarj_python_lint._ratchet_cli:main"
+
+[project.urls]
+Homepage = "https://github.com/sarj-ai/standards"
+Repository = "https://github.com/sarj-ai/standards"
+Issues = "https://github.com/sarj-ai/standards/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+hooks = ["lefthook==2.1.10"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["packages/python/src/sarj_python_lint"]

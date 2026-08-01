@@ -1,0 +1,61 @@
+[project]
+name = "sarj-lint-configs"
+version = "0.37.0"
+description = "Maximally-strict ruff + pyright + ESLint configs for sarj-ai Python/TypeScript projects."
+readme = "README.md"
+requires-python = ">=3.14"
+license = { text = "MIT" }
+authors = [{ name = "sarj-ai" }]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = [
+    "sarj-iac-lint==0.5.0",
+    "sarj-python-lint==0.40.0",
+    "sarj-sql-lint==0.6.0",
+]
+
+[project.scripts]
+sarj-lint-configs = "sarj_lint_configs.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/sarj-ai/standards"
+Repository = "https://github.com/sarj-ai/standards"
+Issues = "https://github.com/sarj-ai/standards/issues"
+
+[build-system]
+requires = ["hatchling>=1.30"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sarj_lint_configs"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "src/sarj_lint_configs/**",
+  "README.md",
+  "pyproject.toml",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=9.0",
+  "ruff>=0.15",
+  "basedpyright>=1.39",
+]
+
+[tool.uv.sources]
+# Development uses the sibling packages while wheel smoke tests resolve the
+# same exact, already-published versions declared above.
+sarj-iac-lint = { path = "../iac", editable = true }
+sarj-python-lint = { path = "../python", editable = true }
+sarj-sql-lint = { path = "../sql", editable = true }
+
+# Dogfooding: linted/formatted by this repo's own published config (root-synced).
+[tool.ruff]
+extend = "../../.ruff-strict.toml"

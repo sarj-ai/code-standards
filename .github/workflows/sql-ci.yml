@@ -1,0 +1,62 @@
+name: sql CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/sql/**'
+      - '.github/workflows/sql-ci.yml'
+      # The strict configs these jobs lint against live in packages/lint-configs and
+      # are reached through the root symlinks, so a change there changes this job's
+      # result without touching this package.
+      - 'packages/lint-configs/src/sarj_lint_configs/configs/**'
+      - '.ruff-strict.toml'
+      - '.pyright-strict.json'
+      # test_hook_sync.py reads it: a deleted hook must fail this job, not ship.
+      - '.pre-commit-hooks.yaml'
+  pull_request:
+    paths:
+      - 'packages/sql/**'
+      - '.github/workflows/sql-ci.yml'
+      # The strict configs these jobs lint against live in packages/lint-configs and
+      # are reached through the root symlinks, so a change there changes this job's
+      # result without touching this package.
+      - 'packages/lint-configs/src/sarj_lint_configs/configs/**'
+      - '.ruff-strict.toml'
+      - '.pyright-strict.json'
+      # test_hook_sync.py reads it: a deleted hook must fail this job, not ship.
+      - '.pre-commit-hooks.yaml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/sql
+    steps:
+      # Full history. This job runs the package suite, and the retired-identifier
+      # gates in it DERIVE the withdrawn rule set from `git log --diff-filter=D`
+      # rather than trusting a hand-kept list, so a shallow checkout fails them.
+      # `scripts/check-ci-history-depth.sh` requires it of every job that runs a
+      # suite: "runs the tests" and "can read git history" were two independent
+      # facts about a job, and a release was lost to the gap between them.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: 'packages/**/uv.lock'
+      - run: uv python install 3.14
+      - run: uv sync --dev
+      - run: uv run pytest -q
+      - run: uv run ruff check src/ tests/
+      - run: uv run basedpyright
+      - run: uv build

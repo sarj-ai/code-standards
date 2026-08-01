@@ -1,0 +1,17 @@
+{
+  "extends": "../tsconfig/strict.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    // ESLint rule modules are `export default createRule(...)`. isolatedDeclarations
+    // (a d.ts-emit-parallelism constraint, not a type-safety one) would force an
+    // explicit RuleModule<...> annotation on every default export for zero safety
+    // gain — tsup emits the declarations fine. Every other strict flag stays on.
+    "isolatedDeclarations": false,
+    "types": ["node"],
+    // tsup's DTS step injects a (now-deprecated) baseUrl; silence the TS7.0 warning.
+    "ignoreDeprecations": "6.0"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "tests"]
+}

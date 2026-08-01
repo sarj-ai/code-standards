@@ -1,0 +1,14 @@
+# Sarj strict TOML lint & formatting configuration for Taplo
+include = ["**/*.toml"]
+exclude = ["**/.ruff-strict.toml", "**/.taplo.toml"]
+
+[formatting]
+align_entries = false
+align_comments = true
+array_trailing_comma = true
+array_auto_expand = true
+inline_table_expand = true
+indent_entries = false
+indent_string = "  "
+trailing_newline = true
+reorder_keys = true

@@ -1,0 +1,101 @@
+name: lint-configs CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/lint-configs/**'
+      - '.github/workflows/lint-configs-ci.yml'
+      # test_code_allocation.py compares all three sibling registries against each
+      # other and against the hooks file; a code claimed in another package must
+      # fail here, where the whole namespace is importable at once.
+      - 'packages/*/src/*/rules/_registry.py'
+      - '.pre-commit-hooks.yaml'
+  pull_request:
+    paths:
+      - 'packages/lint-configs/**'
+      - '.github/workflows/lint-configs-ci.yml'
+      # test_code_allocation.py compares all three sibling registries against each
+      # other and against the hooks file; a code claimed in another package must
+      # fail here, where the whole namespace is importable at once.
+      - 'packages/*/src/*/rules/_registry.py'
+      - '.pre-commit-hooks.yaml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/lint-configs
+    steps:
+      # Full history. This job runs the package suite, and the retired-identifier
+      # gates in it DERIVE the withdrawn rule set from `git log --diff-filter=D`
+      # rather than trusting a hand-kept list, so a shallow checkout fails them.
+      # `scripts/check-ci-history-depth.sh` requires it of every job that runs a
+      # suite: "runs the tests" and "can read git history" were two independent
+      # facts about a job, and a release was lost to the gap between them.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: 'packages/**/uv.lock'
+      - run: uv python install 3.14
+      - run: uv sync --dev
+      - name: Lint + typecheck (dogfood the strict config)
+        run: |
+          uv run ruff check src/ tests/
+          uv run basedpyright
+          uv run sarj-lint-configs check .
+      - name: Build wheel
+        run: |
+          uv build --wheel
+          uv build --wheel --project ../python --out-dir dist/deps
+          uv build --wheel --project ../sql --out-dir dist/deps
+          uv build --wheel --project ../iac --out-dir dist/deps
+      - name: Install built wheel + test deps into a fresh venv
+        run: |
+          uv venv --clear --python 3.14 --seed
+          uv pip install ./dist/deps/*.whl ./dist/sarj_lint_configs-*.whl pytest ruff
+      - name: Pytest
+        run: uv run --no-project pytest -q
+      - name: CLI smoke
+        run: |
+          uv run --no-project sarj-lint-configs list
+          uv run --no-project sarj-lint-configs path ruff
+          uv run --no-project sarj-lint-configs peers
+          fresh="$(mktemp -d)"
+          printf '"""Fresh wheel smoke test."""\n\nVALUE = 1\n' > "$fresh/example.py"
+          (cd "$fresh" && "$GITHUB_WORKSPACE/packages/lint-configs/.venv/bin/sarj-lint-configs" check example.py)
+      - name: Adoption smoke -- init a fresh repo, then prove doctor and sync agree
+        run: |
+          repo="$(mktemp -d)"
+          printf '[project]\nname = "smoke"\nversion = "0.1.0"\n' > "$repo/pyproject.toml"
+          cli="$GITHUB_WORKSPACE/packages/lint-configs/.venv/bin/sarj-lint-configs"
+          "$cli" init --dest "$repo"
+          "$cli" doctor --dest "$repo"
+          "$cli" sync --check --dest "$repo"
+      - name: Adoption smoke -- a TypeScript repo installs the peer set with no ERESOLVE
+        # The failure this catches: `init` used to only PRINT the npm `overrides`,
+        # so every consumer's first `npm install` died with `npm error code
+        # ERESOLVE` (eslint-plugin-react peers eslint <=9.7; the unicorn floor
+        # needs >=10.4). The repo's own package.json carries the same overrides
+        # privately, so nothing here could see it.
+        run: |
+          repo="$(mktemp -d)"
+          printf '{ "name": "smoke", "private": true }\n' > "$repo/package.json"
+          cli="$GITHUB_WORKSPACE/packages/lint-configs/.venv/bin/sarj-lint-configs"
+          "$cli" init --dest "$repo"
+          python -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if 'eslint-plugin-react' in d.get('overrides', {}) else 1)" "$repo/package.json"
+          # Resolution only, and without the unpublished @sarj/eslint-plugin pin:
+          # this asserts the peer set + overrides produce a tree npm accepts.
+          (cd "$repo" && npm install --package-lock-only --no-audit --no-fund \
+            $("$cli" peers | sed -n 's/^npm install -D --save-exact //p' | tr ' ' '\n' | grep -v '^@sarj/' | tr '\n' ' '))

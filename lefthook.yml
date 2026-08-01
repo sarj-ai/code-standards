@@ -1,0 +1,49 @@
+---
+min_version: 2.1.10
+assert_lefthook_installed: true
+
+pre-commit:
+  parallel: true
+  commands:
+    # Pre-commit consumers install the ROOT package, so a root version lagging
+    # packages/python ships a stale linter under a fresh number.
+    version-sync:
+      run: make check-versions-synced
+      fail_text: >-
+        Root pyproject.toml version is out of sync with packages/python.
+        Bump both and retry.
+    private-refs:
+      run: make check-no-private-refs
+      fail_text: >-
+        A private repo/client name or a conflict marker reached the tree.
+        This regresses on rebases onto the scrub commit — re-anonymise and retry.
+    file-conventions:
+      run: make check-file-conventions
+      fail_text: >-
+        A file is misnamed, a rule has no test module named after it, markdown
+        landed outside the four allowed locations, or a strict config was copied
+        instead of symlinked. Fix the reported path and retry.
+
+    lint:
+      run: make lint
+      fail_text: >-
+        Standards lint failed. Fix the reported rule implementation and retry.
+    typecheck:
+      run: make typecheck
+      fail_text: "Standards typecheck failed. Fix the reported error and retry."
+
+pre-push:
+  commands:
+    verify:
+      run: make verify
+      fail_text: >-
+        Standards verification failed. Fix the reported failures before pushing.
+    # The tree check in `make verify` cannot see commit messages, and 53 of this
+    # repo's 156 messages name a private repo or client. This is the only hook
+    # stage where the set of commits being published is known, so it is the only
+    # place a local check can look. CI re-runs it on the PR range.
+    private-refs-commit-messages:
+      run: ./scripts/check-no-private-refs.sh --commits "$(git merge-base origin/main HEAD)..HEAD"
+      fail_text: >-
+        A commit message you are pushing names a private repo or client.
+        Reword it (git rebase -i, or squash) and push again.

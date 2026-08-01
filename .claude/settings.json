@@ -1,0 +1,10 @@
+{
+  "extraKnownMarketplaces": {
+    "sarj": {
+      "source": { "source": "github", "repo": "sarj-ai/standards" }
+    }
+  },
+  "enabledPlugins": {
+    "sarj-audit@sarj": true
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "sarj-audit",
+  "description": "Codebase audit commands (stepdown rule, linting, service layer, library replacement, stack optimization, Zod types)",
+  "version": "1.0.0",
+  "author": { "name": "sarj-ai" },
+  "homepage": "https://github.com/sarj-ai/standards",
+  "repository": "https://github.com/sarj-ai/standards"
+}

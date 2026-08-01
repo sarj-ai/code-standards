@@ -1,0 +1,25 @@
+# Sarj strict YAML lint configuration for yamllint
+extends: default
+
+rules:
+  braces:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
+  brackets:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
+  colons:
+    max-spaces-after: 1
+    max-spaces-before: 0
+  comments:
+    min-spaces-from-content: 1
+  document-start: disable
+  indentation:
+    spaces: 2
+    indent-sequences: true
+  line-length: disable
+  truthy:
+    allowed-values: ['true', 'false']
+    # GitHub Actions uses `on` as a mapping key; YAML 1.1 must not treat keys as
+    # booleans or reject otherwise-valid workflow files.
+    check-keys: false

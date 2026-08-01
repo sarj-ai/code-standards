@@ -1,0 +1,44 @@
+name: typescript CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/typescript/**'
+      - '.github/workflows/typescript-ci.yml'
+  pull_request:
+    paths:
+      - 'packages/typescript/**'
+      - '.github/workflows/typescript-ci.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/typescript
+    steps:
+      # Full history, not a shallow clone: the retired-identifier gates DERIVE the
+      # set of withdrawn rules from `git log --diff-filter=D` instead of trusting a
+      # hand-kept list (which is how SARJ061 and eight TypeScript rule names went
+      # unrecorded). With fetch-depth 1 those gates have nothing to read and fail.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: packages/typescript/package.json
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm pack --dry-run

@@ -1,0 +1,41 @@
+{
+  "name": "@sarj/tsconfig",
+  "version": "0.1.1",
+  "description": "Ultra-strict TypeScript configs for sarj-ai projects — strict.json + base.json",
+  "type": "module",
+  "files": [
+    "strict.json",
+    "base.json",
+    "LICENSE",
+    "README.md"
+  ],
+  "exports": {
+    "./strict.json": "./strict.json",
+    "./base.json": "./base.json",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sarj-ai/standards.git",
+    "directory": "packages/tsconfig"
+  },
+  "homepage": "https://github.com/sarj-ai/standards/tree/main/packages/tsconfig",
+  "bugs": {
+    "url": "https://github.com/sarj-ai/standards/issues"
+  },
+  "keywords": [
+    "typescript",
+    "tsconfig",
+    "config",
+    "strict",
+    "sarj"
+  ],
+  "author": "sarj-ai",
+  "license": "MIT",
+  "peerDependencies": {
+    "typescript": ">=6.0.0"
+  }
+}

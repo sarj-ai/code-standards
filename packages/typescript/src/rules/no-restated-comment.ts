@@ -1,0 +1,155 @@
+/**
+ * @fileoverview no-restated-comment — a comment whose every content word is already on the line below can only go out of date silently.
+ *
+ * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-restated-comment.test.ts
+ * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-restated-comment.md
+ */
+
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+
+import {
+  codeTokens,
+  contentTokens,
+  isProtected,
+  restatableStatementBelow,
+  restates,
+  restatesStatementHead,
+} from "./_comments.js";
+import { createRule } from "./_docs.js";
+import { isGeneratedFile } from "./_paths.js";
+
+type MessageIds = "restatesLineBelow";
+type Options = readonly [];
+
+const MAX_WORDS = 8;
+const MIN_CONTENT_TOKENS = 2;
+
+const DIRECTIVE_RE =
+  /^(eslint\b|eslint-|sarj-noqa\b|@ts-|prettier-ignore|prettier\b|biome-|c8\b|v8\b|istanbul\b|@type\b|@vite|webpack|<reference|<amd|global\b|noinspection|todo\b|fixme\b|hack\b|xxx\b)/i;
+
+// Commented-out code and section banners belong to `no-comment-cruft`.
+const CODEY_RE = /^[\w.$[\]'"]+\s*[:=]\s*\S|^[\w.$]+\s*\(|^(?:return|throw|await|import|export|const|let|var)\b.*[=()[\]{}]/;
+const BANNERISH_RE = /[=\-─-╿*#~_.]{3,}|^[A-Z0-9 _:-]+$/;
+
+const MODALITY_RE = /\b(?:can|could|should|shall|may|might|must|will|would|cannot)\b/i;
+const LEAD_IN_RE = /:$/;
+const EMPHASIS_RE = /\*\w[^*]*\*|`[^`]+`/;
+const NEGATION_WORD_RE = /\b(?:no|not|never|neither|nor|without|none|non)\b/i;
+
+const ACTION_STMT_RE = /[\w.$\])]\s*\(|^\s*(?:return|throw|await|yield)\b/;
+
+const NON_ASCII_LETTER_RE = /[^\p{ASCII}\p{N}\p{P}\p{Z}]/u;
+
+/** True when `a` and `b` are `//` comments on consecutive lines. */
+function areAdjacentLineComments(
+  a: TSESTree.Comment | undefined,
+  b: TSESTree.Comment | undefined,
+): boolean {
+  return (
+    a !== undefined &&
+    b !== undefined &&
+    a.type === "Line" &&
+    b.type === "Line" &&
+    b.loc.start.line === a.loc.end.line + 1
+  );
+}
+
+/**
+ * True when the statement below the comment heads a run of siblings of the same
+ * kind — `// register secrets` over eight `registerSecret(…)` calls. The label
+ * provides the grouping, and deleting it loses that.
+ */
+function headsSiblingRun(node: TSESTree.Node): boolean {
+  const parent = node.parent;
+  if (parent === undefined) return false;
+  const body: readonly TSESTree.Node[] | undefined =
+    "body" in parent && Array.isArray(parent.body)
+      ? (parent.body as readonly TSESTree.Node[])
+      : undefined;
+  if (body === undefined) return false;
+  const index = body.indexOf(node);
+  const next = index >= 0 ? body[index + 1] : undefined;
+  return next !== undefined && next.type === node.type;
+}
+
+export default createRule<Options, MessageIds>({
+  name: "no-restated-comment",
+  meta: {
+    type: "suggestion",
+    docs: {
+      description:
+        "Flag a single-line comment whose every word already appears on the statement below it.",
+    },
+    schema: [],
+    messages: {
+      restatesLineBelow:
+        "Comment restates the statement below it — delete it, or replace it with the *why*; the code already carries the *what*.",
+    },
+  },
+  defaultOptions: [],
+  create(context) {
+    if (isGeneratedFile(context.filename, context.sourceCode.text)) {
+      return {};
+    }
+    const sourceCode = context.sourceCode;
+    const lines = sourceCode.lines;
+
+    function isStandalone(comment: TSESTree.Comment): boolean {
+      const before = sourceCode.getTokenBefore(comment, { includeComments: false });
+      return !before || before.loc.end.line < comment.loc.start.line;
+    }
+
+    function labelsASiblingRun(comment: TSESTree.Comment): boolean {
+      const token = sourceCode.getTokenAfter(comment, { includeComments: false });
+      if (token === null) return false;
+      for (
+        let node: TSESTree.Node | undefined | null = sourceCode.getNodeByRangeIndex(token.range[0]);
+        node != null && node.type !== AST_NODE_TYPES.Program;
+        node = node.parent
+      ) {
+        if (headsSiblingRun(node)) return true;
+      }
+      return false;
+    }
+
+    return {
+      Program(): void {
+        const comments = sourceCode.getAllComments();
+        for (let i = 0; i < comments.length; i++) {
+          const comment = comments[i];
+          if (comment === undefined || comment.type !== "Line") continue;
+          if (!isStandalone(comment)) continue;
+          if (
+            areAdjacentLineComments(comments[i - 1], comment) ||
+            areAdjacentLineComments(comment, comments[i + 1])
+          ) {
+            continue; // one line of a paragraph, not a label for the next statement
+          }
+          const body = comment.value.replace(/^\/*/, "").trim();
+          if (body.length === 0 || body.endsWith("?")) continue;
+          if (DIRECTIVE_RE.test(body) || CODEY_RE.test(body) || BANNERISH_RE.test(body)) continue;
+          if (NON_ASCII_LETTER_RE.test(body) || isProtected(body)) continue;
+          if (MODALITY_RE.test(body) || LEAD_IN_RE.test(body) || EMPHASIS_RE.test(body)) continue;
+          if (NEGATION_WORD_RE.test(body)) continue;
+          if (body.split(/\s+/).length > MAX_WORDS) continue;
+
+          const tokens = contentTokens(body);
+          if (tokens.length < MIN_CONTENT_TOKENS) continue;
+
+          const statement = restatableStatementBelow(comment, sourceCode);
+          if (statement === null) continue;
+          if (restatesStatementHead(body, statement)) continue; // `no-comment-cruft` owns it
+
+          const line = lines[comment.loc.start.line] ?? "";
+          if (!ACTION_STMT_RE.test(line)) continue;
+
+          if (labelsASiblingRun(comment)) continue;
+
+          if (restates(tokens, codeTokens(line))) {
+            context.report({ node: comment, messageId: "restatesLineBelow" });
+          }
+        }
+      },
+    };
+  },
+});

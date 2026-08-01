@@ -1,0 +1,57 @@
+name: tsconfig CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/tsconfig/**'
+      - '.github/workflows/tsconfig-ci.yml'
+  pull_request:
+    paths:
+      - 'packages/tsconfig/**'
+      - '.github/workflows/tsconfig-ci.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/tsconfig
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - name: Validate JSON
+        run: |
+          node -e "JSON.parse(require('fs').readFileSync('base.json','utf8'))"
+          node -e "JSON.parse(require('fs').readFileSync('strict.json','utf8'))"
+      - name: Smoke test — extend strict.json against a sample
+        run: |
+          npm install --no-audit --no-fund --save-dev typescript@latest
+          mkdir -p smoke/src
+          cat > smoke/tsconfig.json <<'EOF'
+          {
+            "extends": "../strict.json",
+            "include": ["src/**/*"],
+            "compilerOptions": {
+              "noEmit": true,
+              "outDir": "out"
+            }
+          }
+          EOF
+          cat > smoke/src/index.ts <<'EOF'
+          export function add(a: number, b: number): number {
+            return a + b;
+          }
+          EOF
+          cd smoke
+          ../node_modules/.bin/tsc --noEmit -p tsconfig.json
+      - run: npm pack --dry-run

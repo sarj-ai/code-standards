@@ -1,0 +1,79 @@
+"""SARJ019 — A SQL query with 3+ JOINs is too entangled — split or denormalize.
+
+Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_query_with_many_joins.py
+Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ019.md
+"""
+
+from __future__ import annotations
+
+import ast
+import re
+from typing import TYPE_CHECKING, override
+
+from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import nodes, walk
+from sarj_python_lint.rules._sql import is_store_module, sql_string_value, strip_sql_noise
+
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+
+# A real query shape, so prose with the bare words "from"/"join" isn't matched.
+_QUERY_SHAPE = re.compile(
+    r"\bSELECT\b[\s\S]*?\bFROM\b|\bUPDATE\b[\s\S]*?\bSET\b|\bDELETE\b\s+FROM\b",
+    re.IGNORECASE,
+)
+_JOIN = re.compile(r"\bJOIN\b", re.IGNORECASE)
+
+_MAX_JOINS = 2
+
+
+class NoQueryWithManyJoins(Rule):
+    id: str = "no-query-with-many-joins"
+    code: str = "SARJ019"
+    has_evidence: bool = True
+    description: str = (
+        "SQL query with 3 or more JOINs — split the query or denormalize instead of fanning across many tables."
+    )
+
+    @override
+    def check(self, path: Path, source: str) -> list[Diagnostic]:
+        if not is_store_module(path):
+            return []
+        tree = parse_or_none(path, source)
+        if tree is None:
+            return []
+
+        diags: list[Diagnostic] = []
+        consumed: set[int] = set()
+        for node in nodes(tree, ast.Constant, ast.BinOp):
+            if id(node) in consumed:
+                continue
+            text = sql_string_value(node)
+            if text is None:
+                continue
+            consumed.update(id(sub) for sub in walk(node))
+
+            sql = strip_sql_noise(text)
+            if _QUERY_SHAPE.search(sql) is None:
+                continue
+            join_count = len(_JOIN.findall(sql))
+            if join_count <= _MAX_JOINS:
+                continue
+
+            diags.append(
+                Diagnostic(
+                    path=path,
+                    line=node.lineno,
+                    col=node.col_offset + 1,
+                    code=self.code,
+                    message=(
+                        f"Query has {join_count} JOINs (max {_MAX_JOINS}) — split it "
+                        "into separate store reads joined in application code, or "
+                        "denormalize. Suppress with `# sarj-noqa: SARJ019`."
+                    ),
+                )
+            )
+        diags.sort(key=lambda d: (d.line, d.col))
+        return diags
