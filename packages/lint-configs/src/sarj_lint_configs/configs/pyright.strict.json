@@ -80,6 +80,14 @@
   "reportInvalidStubStatement": "error",
   "reportSelfClsParameterName": "error",
   "reportTypeCommentUsage": "error",
+  // basedpyright-only (8 keys): reportInvalidCast, reportUnsafeMultipleInheritance,
+  // reportImplicitRelativeImport, reportExplicitAny, reportIgnoreCommentWithoutRule,
+  // reportPrivateLocalImportUsage, reportAny, reportUnannotatedClassAttribute.
+  // Plain pyright (verified on 1.1.411) prints `Config contains unrecognized
+  // setting "<key>"` once per key and then IGNORES it — the run still exits 0
+  // with "0 errors". The warnings are cosmetic; the keys stay because
+  // basedpyright is the canonical checker and dropping them would silently
+  // weaken it. Consumers on plain pyright lose only these eight checks.
   "reportInvalidCast": "error",
   "reportUnsafeMultipleInheritance": "error",
   "reportImplicitRelativeImport": "error",
