@@ -18,8 +18,11 @@ if TYPE_CHECKING:
 
 
 def _cli(*args: str) -> subprocess.CompletedProcess[str]:
+    command = list(args)
+    if command and command[0] == "init" and "--no-install" not in command:
+        command.append("--no-install")
     return subprocess.run(
-        [sys.executable, "-m", "sarj_lint_configs", *args],
+        [sys.executable, "-m", "sarj_lint_configs", *command],
         capture_output=True,
         text=True,
         check=False,
@@ -93,6 +96,15 @@ def test_the_install_command_is_the_one_that_client_understands(client: PackageM
     assert command.startswith(prefix)
     for name, pin in manifest.eslint_peers().items():
         assert f"{name}@{pin}" in command
+
+
+@pytest.mark.parametrize("client", list(PackageManager))
+def test_install_argv_preserves_every_exact_peer(client: PackageManager) -> None:
+    argv = packagemanager.install_argv(client)
+    peers = manifest.eslint_peers()
+    assert len(peers) >= 9
+    for name, pin in peers.items():
+        assert f"{name}@{pin}" in argv
 
 
 def test_init_writes_pnpm_overrides_into_a_pnpm_repo(tmp_path: Path) -> None:

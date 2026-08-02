@@ -6,15 +6,14 @@ as a pip-installable package, plus the commands that adopt them and keep them cu
 ## Adopt
 
 ```bash
-uv add --dev sarj-lint-configs
-uv run --frozen sarj-lint-configs init
+uvx sarj-lint-configs init
 ```
 
-`init` detects Python and/or TypeScript, writes only the configs that ecosystem
+`init` detects Python and/or TypeScript, installs the toolchain and hooks, and writes only the configs that ecosystem
 uses, wires them up (`[tool.ruff] extend`, `pyrightconfig.json`,
 `eslint.config.mjs`), writes a pre-commit block, records the adopted version in
 `.sarj-standards.toml`, and prints the CI snippet and — for TypeScript — the one
-`npm install` command that gets the ESLint peers right.
+ESLint peer set that resolves together. Pass `--no-install` to write only the wiring.
 
 `init --dry-run` prints the whole plan without touching anything. `init` never
 overwrites a file that already exists unless you pass `--force`, so it is safe to
@@ -52,13 +51,13 @@ the install failed identically while `package.json` looked fixed.
 ## Keep current
 
 ```bash
-uv run --frozen sarj-standards doctor       # every version pin agrees?
-uv run --frozen sarj-standards sync --check # the synced configs are unmodified?
-uv run --frozen sarj-standards check .      # every custom code/config/text rule passes?
+uv run --frozen sarj-standards verify       # run every adoption and lint gate
+uv run --frozen sarj-standards format       # apply formatter and safe lint fixes
+uv run --frozen sarj-standards inspect      # print detected adoption state
 uv run --frozen sarj-standards check --noise-only .  # comment/artifact ratchet only
 ```
 
-Run all three in CI. `init` prints them as a ready-made job.
+Run `verify` in CI. `init` prints it as a ready-made job.
 `check --noise-only` covers Python and text/config inputs; TypeScript comment
 noise is enforced by the generated strict ESLint config.
 
