@@ -3,8 +3,9 @@ SHELL := bash
 MAKEFLAGS += --warn-undefined-variables --no-builtin-rules
 
 CONFIG_SRC := packages/lint-configs/src/sarj_lint_configs/configs
+STANDARDS := uv run --project packages/lint-configs --frozen sarj-standards
 
-.PHONY: help setup build verify test lint typecheck check-no-private-refs check-file-conventions promote-strict check-versions-synced publish publish-typescript publish-python publish-sql \
+.PHONY: help setup build verify test lint typecheck repo-check check-no-private-refs check-file-conventions promote-strict check-versions-synced publish publish-typescript publish-python publish-sql \
         publish-iac publish-lint-configs publish-tsconfig sync-rule-ledger
 
 help:
@@ -15,7 +16,8 @@ help:
 
 # Lefthook must be installed before the first commit, so hooks come first.
 setup:
-	./scripts/install-lefthook.sh
+	uv sync --project packages/lint-configs --frozen
+	packages/lint-configs/.venv/bin/sarj-standards repo hooks install --dest .
 	cd packages/python       && uv sync --frozen
 	cd packages/sql          && uv sync --frozen
 	cd packages/iac          && uv sync --frozen
@@ -25,7 +27,7 @@ setup:
 # The gate CONTRIBUTING/CLAUDE.md tells contributors to run before review. It did
 # not exist, so `make verify` failed with "No rule to make target" and the
 # documented workflow could not be followed as written.
-verify: lint typecheck test check-no-private-refs check-file-conventions
+verify: lint typecheck test repo-check
 
 promote-strict:
 	@echo "Promoting all warning-level standards to errors globally..."
@@ -77,8 +79,7 @@ typecheck:
 	cd packages/typescript     && npm run typecheck
 
 check-no-private-refs:
-	@./scripts/check-no-private-refs.sh
-	@./scripts/check-ci-history-depth.sh
+	@$(STANDARDS) repo check --only private-refs --only ci-history
 
 # Filename casing, rule<->test pairing, markdown placement, and the ONE-copy rule
 # for the strict configs in $(CONFIG_SRC). The root `.ruff-strict.toml` /
@@ -92,10 +93,10 @@ check-no-private-refs:
 # a consumer config naming a removed rule makes ESLint exit 2 on the whole repo
 # and `doctor` needs the record to warn before the upgrade rather than after.
 sync-rule-ledger:
-	python3 scripts/sync-rule-ledger.py
+	@$(STANDARDS) repo sync-ledger
 
 check-file-conventions:
-	@./scripts/check-file-conventions.sh
+	@$(STANDARDS) repo check --only file-conventions
 
 # Every one of the 21 places a version is written, not just the two this target
 # used to compare. Pre-commit consumers install the ROOT package, so a root
@@ -104,7 +105,10 @@ check-file-conventions:
 # `packages/typescript/package.json` and leave `package-lock.json` two minor
 # versions behind, and why the root `uv.lock` sat two versions stale on main.
 check-versions-synced:
-	@./scripts/check-versions-synced.sh
+	@$(STANDARDS) repo check --only versions
+
+repo-check:
+	@$(STANDARDS) repo check
 
 publish-typescript:
 	@test -n "$$NPM_TOKEN" || (echo "error: NPM_TOKEN unset"; exit 1)

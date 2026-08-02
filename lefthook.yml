@@ -43,7 +43,7 @@ pre-push:
     # stage where the set of commits being published is known, so it is the only
     # place a local check can look. CI re-runs it on the PR range.
     private-refs-commit-messages:
-      run: ./scripts/check-no-private-refs.sh --commits "$(git merge-base origin/main HEAD)..HEAD"
+      run: uv run --project packages/lint-configs --frozen sarj-standards repo check --only private-refs --commits "$(git merge-base origin/main HEAD)..HEAD"
       fail_text: >-
         A commit message you are pushing names a private repo or client.
         Reword it (git rebase -i, or squash) and push again.

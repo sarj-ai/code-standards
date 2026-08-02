@@ -1,7 +1,7 @@
 /**
  * @fileoverview _renames — every rule this plugin has renamed, old name to new; the old names no longer resolve, so this map is what says what to write instead.
  *
- * It feeds `scripts/sync-rule-ledger.py`, which turns each entry into a `renamed` row of the shipped `rule-ledger.json` that `sarj-lint-configs doctor` reads.
+ * `sarj-standards repo sync-ledger` turns each entry into the consumer-facing ledger row.
  *
  */
 

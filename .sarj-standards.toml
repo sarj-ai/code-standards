@@ -1,0 +1,226 @@
+version = "0.41.0"
+configs = ["ruff", "pyright", "eslint", "markdownlint", "taplo", "yamllint"]
+
+[dest]
+python = "."
+typescript = "packages/typescript"
+
+[verify]
+warnings_as_errors = true
+
+[repository]
+canonical_config_dir = "packages/lint-configs/src/sarj_lint_configs/configs"
+forbidden_paths = ["scripts/*"]
+
+[repository.private_refs]
+distinctive = [
+  "bulbul",
+  "noura",
+  "vision[ _-]?bank",
+  "digital[ _-]?bank",
+  "banking-(be|ai|demo|api)",
+  "kpi[ _-]?hub",
+  "demos?-gateway",
+  "sarj-demos",
+  "ai-canvas-health",
+  "money2020",
+  "name-healer",
+  "precedent-(node|iso)",
+  "internal-automations",
+  "zoho-canary",
+  "voice-cluster",
+  "vb-landing",
+  "hala",
+  "najm",
+  "kashta",
+  "tamr",
+  "farwa",
+  "pericles",
+  "mojaz",
+  "faris",
+  "falltime",
+  "tahded",
+  "sifi",
+  "aljazira",
+  "alinma",
+  "momah",
+  "absher",
+  "mngha",
+  "lucidya",
+]
+contextual = ["summer", "portal", "automations", "bell", "wiki", "demos", "submissions", "talent"]
+exclude = [".sarj-standards.toml", "uv.lock", "*package-lock.json"]
+
+[[repository.filename_rules]]
+glob = "packages/*/src/**/*.py"
+pattern = "^[a-z_][a-z0-9_]*\\.py$"
+label = "Python module must be snake_case"
+
+[[repository.filename_rules]]
+glob = "packages/*/tests/**/*.py"
+pattern = "^[a-z_][a-z0-9_]*\\.py$"
+label = "Python test module must be snake_case"
+
+[[repository.filename_rules]]
+glob = "packages/typescript/**/*.ts"
+pattern = "^_?[a-z0-9]+(?:-[a-z0-9]+)*(?:\\.(?:test|config|d))?\\.(?:ts|tsx|mts|cts)$"
+label = "TypeScript module must be kebab-case"
+
+[[repository.filename_rules]]
+glob = ".github/workflows/*"
+pattern = "^[a-z0-9]+(?:-[a-z0-9]+)*\\.yml$"
+label = "workflow must be kebab-case .yml"
+
+[[repository.rule_families]]
+name = "python"
+source = "packages/python/src/sarj_python_lint/rules"
+tests = "packages/python/tests/rules"
+registry = "packages/python/src/sarj_python_lint/rules/_registry.py"
+extension = "py"
+test_pattern = "test_{name}.py"
+registry_pattern = "rules.{name} import"
+
+[[repository.rule_families]]
+name = "sql"
+source = "packages/sql/src/sarj_sql_lint/rules"
+tests = "packages/sql/tests/rules"
+registry = "packages/sql/src/sarj_sql_lint/rules/_registry.py"
+extension = "py"
+test_pattern = "test_{name}.py"
+registry_pattern = "rules.{name} import"
+
+[[repository.rule_families]]
+name = "iac"
+source = "packages/iac/src/sarj_iac_lint/rules"
+tests = "packages/iac/tests/rules"
+registry = "packages/iac/src/sarj_iac_lint/rules/_registry.py"
+extension = "py"
+test_pattern = "test_{name}.py"
+registry_pattern = "rules.{name} import"
+
+[[repository.rule_families]]
+name = "typescript"
+source = "packages/typescript/src/rules"
+tests = "packages/typescript/tests/rules"
+registry = "packages/typescript/src/index.ts"
+extension = "ts"
+test_pattern = "{name}.test.ts"
+registry_pattern = '"{name}"'
+
+[[repository.config_references]]
+glob = "packages/*/pyproject.toml"
+pattern = '^extend = "([^"]+)"$'
+
+[[repository.config_references]]
+glob = "packages/*/pyrightconfig.json"
+pattern = '"extends": "([^"]+)"'
+
+[repository.versions]
+python = ["pyproject.toml", "packages/python/pyproject.toml"]
+sql = ["packages/sql/pyproject.toml"]
+iac = ["packages/iac/pyproject.toml"]
+lint_configs = ["packages/lint-configs/pyproject.toml"]
+typescript = ["packages/typescript/package.json"]
+tsconfig = ["packages/tsconfig/package.json"]
+
+[[repository.version_references]]
+path = "uv.lock"
+format = "uv-lock"
+version = "python"
+selector = "sarj-python-lint"
+
+[[repository.version_references]]
+path = "packages/python/uv.lock"
+format = "uv-lock"
+version = "python"
+selector = "sarj-python-lint"
+
+[[repository.version_references]]
+path = "packages/sql/uv.lock"
+format = "uv-lock"
+version = "sql"
+selector = "sarj-sql-lint"
+
+[[repository.version_references]]
+path = "packages/iac/uv.lock"
+format = "uv-lock"
+version = "iac"
+selector = "sarj-iac-lint"
+
+[[repository.version_references]]
+path = "packages/lint-configs/uv.lock"
+format = "uv-lock"
+version = "lint_configs"
+selector = "sarj-lint-configs"
+
+[[repository.version_references]]
+path = "packages/lint-configs/pyproject.toml"
+format = "exact-pin"
+version = "python"
+selector = "sarj-python-lint"
+
+[[repository.version_references]]
+path = "packages/lint-configs/pyproject.toml"
+format = "exact-pin"
+version = "sql"
+selector = "sarj-sql-lint"
+
+[[repository.version_references]]
+path = "packages/lint-configs/pyproject.toml"
+format = "exact-pin"
+version = "iac"
+selector = "sarj-iac-lint"
+
+[[repository.version_references]]
+path = "packages/lint-configs/uv.lock"
+format = "uv-lock"
+version = "python"
+selector = "sarj-python-lint"
+
+[[repository.version_references]]
+path = "packages/lint-configs/uv.lock"
+format = "uv-lock"
+version = "sql"
+selector = "sarj-sql-lint"
+
+[[repository.version_references]]
+path = "packages/lint-configs/uv.lock"
+format = "uv-lock"
+version = "iac"
+selector = "sarj-iac-lint"
+
+[[repository.version_references]]
+path = "packages/typescript/package-lock.json"
+format = "json-pointer"
+version = "typescript"
+selector = "/version"
+
+[[repository.version_references]]
+path = "packages/typescript/package-lock.json"
+format = "json-pointer"
+version = "typescript"
+selector = "/packages//version"
+
+[[repository.version_references]]
+path = "packages/lint-configs/src/sarj_lint_configs/configs/eslint.peers.json"
+format = "json-pointer"
+version = "typescript"
+selector = "/peers/@sarj~1eslint-plugin"
+
+[repository.version_coverage]
+manifests = [
+  "packages/python/pyproject.toml",
+  "packages/sql/pyproject.toml",
+  "packages/iac/pyproject.toml",
+  "packages/lint-configs/pyproject.toml",
+  "packages/tsconfig/package.json",
+  "packages/typescript/package.json",
+]
+locks = [
+  "uv.lock",
+  "packages/python/uv.lock",
+  "packages/sql/uv.lock",
+  "packages/iac/uv.lock",
+  "packages/lint-configs/uv.lock",
+  "packages/typescript/package-lock.json",
+]
