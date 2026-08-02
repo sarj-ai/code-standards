@@ -130,6 +130,7 @@
       "prefer-match-type-dispatch",
       "prefer-module-level-constant",
       "prefer-namedtuple-over-tuple-return",
+      "prefer-nominal-id-types",
       "prefer-non-nullable-collection",
       "prefer-or-pattern",
       "prefer-real-store-in-tests",
@@ -261,7 +262,8 @@
       "SARJ089",
       "SARJ090",
       "SARJ091",
-      "SARJ092"
+      "SARJ092",
+      "SARJ093"
     ],
     "sql": [
       "SARJ101",

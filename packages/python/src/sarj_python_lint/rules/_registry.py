@@ -75,6 +75,7 @@ from sarj_python_lint.rules.prefer_module_level_constant import (
 from sarj_python_lint.rules.prefer_namedtuple_over_tuple_return import (
     PreferNamedtupleOverTupleReturn,
 )
+from sarj_python_lint.rules.prefer_nominal_id_types import PreferNominalIdTypes
 from sarj_python_lint.rules.prefer_non_nullable_collection import (
     PreferNonNullableCollection,
 )
@@ -196,6 +197,7 @@ REGISTRY: dict[str, type[Rule]] = {
     PreferSingleSentenceComment.id: PreferSingleSentenceComment,
     NoLongComment.id: NoLongComment,
     NoTypedDocSections.id: NoTypedDocSections,
+    PreferNominalIdTypes.id: PreferNominalIdTypes,
 }
 
 __all__ = ["REGISTRY"]
