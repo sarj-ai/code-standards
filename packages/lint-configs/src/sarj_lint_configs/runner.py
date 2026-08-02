@@ -132,9 +132,7 @@ def run(
     return max(statuses)
 
 
-def _select_rules(
-    registry: Mapping[str, type[_Rule]], selected: frozenset[str]
-) -> dict[str, type[_Rule]]:
+def _select_rules(registry: Mapping[str, type[_Rule]], selected: frozenset[str]) -> dict[str, type[_Rule]]:
     return {rule_id: rule for rule_id, rule in registry.items() if rule_id in selected}
 
 
@@ -152,9 +150,7 @@ def _load_tool(
     """
     checker_module = import_module(f"{package}.__main__")
     registry_module = import_module(f"{package}.rules")
-    if not isinstance(checker_module, _CheckerModule) or not isinstance(
-        registry_module, _RegistryModule
-    ):
+    if not isinstance(checker_module, _CheckerModule) or not isinstance(registry_module, _RegistryModule):
         msg = f"{package} does not expose the expected lint API"
         raise TypeError(msg)
     return checker_module.main, registry_module.REGISTRY
@@ -211,7 +207,7 @@ def _run(
     registry: Mapping[str, type[_Rule]],
     files: Sequence[str],
 ) -> int:
-    if not files:
+    if not files or not registry:
         return 0
     return checker(["check", *_rule_args(registry), "--", *files])
 
@@ -225,6 +221,6 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--noise-only",
         action="store_true",
-        help="run only comment, docstring, config-prose, and AI-artifact rules",
+        help="run Python, config-prose, and AI-artifact noise rules (TypeScript uses the ESLint plugin)",
     )
     parser.add_argument("files", nargs="+")

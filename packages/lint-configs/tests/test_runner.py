@@ -52,9 +52,7 @@ def test_mixed_files_are_grouped_by_tool(
     monkeypatch.chdir(tmp_path)
     for name in ("app.py", "migration.SQL", "main.tf", "values.yaml", "README.md"):
         (tmp_path / name).touch()
-    grouped = runner.group_paths(
-        ["app.py", "migration.SQL", "main.tf", "values.yaml", "README.md"]
-    )
+    grouped = runner.group_paths(["app.py", "migration.SQL", "main.tf", "values.yaml", "README.md"])
     assert grouped == runner.GroupedPaths(
         python=["app.py"],
         sql=["migration.SQL"],
@@ -112,7 +110,7 @@ def test_checker_file_list_is_protected_from_option_injection(
     def fake_load_tool(
         _package: str,
     ) -> tuple[Callable[[list[str]], int], Mapping[str, type[object]]]:
-        return fake_checker, {}
+        return fake_checker, {"rule": object}
 
     monkeypatch.setattr(runner, "_load_tool", fake_load_tool)
     monkeypatch.chdir(tmp_path)
@@ -146,9 +144,25 @@ def test_highest_status_is_propagated(
     assert runner.run(["app.py", "migration.sql", "main.tf"]) == 2
 
 
-def test_noise_only_selects_comment_and_docstring_rules(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+def test_empty_rule_selection_skips_checker(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
+    def checker(_argv: list[str]) -> int:
+        pytest.fail("checker must not run without selected rules")
+
+    def fake_load_tool(
+        _package: str,
+    ) -> tuple[Callable[[list[str]], int], Mapping[str, type[object]]]:
+        return checker, {}
+
+    monkeypatch.setattr(runner, "_load_tool", fake_load_tool)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "migration.sql").touch()
+    assert runner.run(["migration.sql"], noise_only=True) == 0
+
+
+def test_noise_only_selects_comment_and_docstring_rules(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     selected: list[set[str]] = []
 
     def fake_load_tool(
@@ -189,9 +203,7 @@ def test_noise_only_selects_comment_and_docstring_rules(
 
 
 def test_fresh_repo_runs_clean_file(tmp_path: Path) -> None:
-    (tmp_path / "example.py").write_text(
-        '"""Example module."""\n\nVALUE = 1\n'
-    )
+    (tmp_path / "example.py").write_text('"""Example module."""\n\nVALUE = 1\n')
     proc = subprocess.run(
         [sys.executable, "-m", "sarj_lint_configs", "check", "example.py"],
         cwd=tmp_path,
@@ -203,9 +215,7 @@ def test_fresh_repo_runs_clean_file(tmp_path: Path) -> None:
 
 
 def test_directory_argument_cannot_false_green(tmp_path: Path) -> None:
-    (tmp_path / "test_example.py").write_text(
-        "def test_truth() -> None:\n    assert True\n"
-    )
+    (tmp_path / "test_example.py").write_text("def test_truth() -> None:\n    assert True\n")
     venv_bin = tmp_path / ".venv" / "bin"
     venv_bin.mkdir(parents=True)
     (venv_bin / "python3").symlink_to(sys.executable)
