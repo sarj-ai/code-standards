@@ -129,7 +129,7 @@ def test_python_baseline_is_forwarded_before_the_file_separator(
     def fake_load_tool(
         _package: str,
     ) -> tuple[Callable[[list[str]], int], Mapping[str, type[object]]]:
-        return lambda argv: calls.append(argv) or 0, {}
+        return lambda argv: calls.append(argv) or 0, {"rule": object}
 
     monkeypatch.setattr(runner, "_load_tool", fake_load_tool)
     source = tmp_path / "app.py"
