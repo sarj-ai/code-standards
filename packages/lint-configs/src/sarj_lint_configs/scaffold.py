@@ -82,10 +82,17 @@ _RUFF_EXTEND = re.compile(r"^\s*\[tool\.ruff\]\s*$", re.MULTILINE)
 #: pyproject of something this repo did not write.
 _SKIP_DIRS: Final = frozenset({
     ".git",
+    ".next",
+    ".turbo",
+    ".wrangler",
+    ".yarn",
+    "build",
+    "coverage",
     ".tox",
     ".venv",
     "dist",
     "node_modules",
+    "out",
     "target",
     "vendor",
 })
@@ -486,9 +493,9 @@ def precommit_block(*, python: bool, version: str) -> str:
 
     """
     runner_prefix = (
-        "uv run --frozen sarj-lint-configs"
+        "uv run --frozen sarj-standards"
         if python
-        else f"uvx --from sarj-lint-configs=={version} sarj-lint-configs"
+        else f"uvx --from sarj-lint-configs=={version} sarj-standards"
     )
     block = (
         "  - repo: local\n"
@@ -499,14 +506,12 @@ def precommit_block(*, python: bool, version: str) -> str:
         "        language: system\n"
         "        pass_filenames: false\n"
     )
-    if not python:
-        return block
     return block + (
         "      - id: sarj-standards-check\n"
         "        name: sarj standards -- custom rules\n"
         f"        entry: {runner_prefix} check\n"
         "        language: system\n"
-        "        types_or: [python, sql, yaml]\n"
+        "        files: '(?i)(\\.py|\\.sql|\\.tf|\\.tfvars|\\.hcl|\\.ya?ml|\\.toml|\\.jsonc|\\.mdx?|Dockerfile|Makefile)$'\n"
     )
 
 
@@ -539,13 +544,12 @@ def ci_snippet(plan: Plan, *, version: str) -> str:
 
     """
     runner_prefix = (
-        "uv run --frozen sarj-lint-configs"
+        "uv run --frozen sarj-standards"
         if plan.ecosystems.python
-        else f"uvx --from sarj-lint-configs=={version} sarj-lint-configs"
+        else f"uvx --from sarj-lint-configs=={version} sarj-standards"
     )
     commands = ["doctor", "sync --check"]
-    if plan.ecosystems.python:
-        commands.append("check .")
+    commands.append("check .")
     checks = "\n".join(f"          {runner_prefix} {command}" for command in commands)
     names = ", ".join(plan.configs)
     lines = [
@@ -554,6 +558,5 @@ def ci_snippet(plan: Plan, *, version: str) -> str:
         checks,
         f"        # doctor: every version pin agrees. sync --check: {names} are unmodified.",
     ]
-    if plan.ecosystems.python:
-        lines.append("        # check: the custom Python/SQL/IaC rules pass.")
+    lines.append("        # check: custom code, config, text, and artifact rules pass.")
     return "\n".join(lines) + "\n"

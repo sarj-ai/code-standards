@@ -12,6 +12,15 @@ the *what*; comments are reserved for the *why*. JSDoc (`/** ... */`) is
 never flagged, and directive comments (`eslint-`, `@ts-`, `prettier-`,
 `biome-`, `c8`, `<reference`, `TODO`, `FIXME`) are ignored.
 
+Repeated statement walkthroughs are reported once as a comment wall. A block
+must contain at least four simple statements; at least three comments must
+weakly narrate their directly aligned statement; comments must cover 60% of
+the block and 75% of attached comments must be weak. A URL/ticket, directive,
+constraint, causal explanation, invariant, security note, upstream quirk, or
+longer prose comment is never wall evidence. The diagnostic tells an agent to
+name operations in code and retain only rationale or constraints, instead of
+emitting four variations of “comment narrates the code.”
+
 `redundantNarration` covers three shapes: step markers ("First, …", "Step 2:"),
 self-admitted meta-commentary ("for now", "temporary hack"), and a comment
 that restates the statement directly below it (`// increment the counter`

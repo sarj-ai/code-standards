@@ -260,7 +260,7 @@ def test_init_gives_a_typescript_repo_everything_npm_needs(
 def test_init_prints_a_ci_snippet_naming_all_three_gates(tmp_path: Path, command: str) -> None:
     _ = _python_repo(tmp_path)
     proc = _cli("init", "--dest", str(tmp_path))
-    assert f"sarj-lint-configs {command}" in proc.stdout
+    assert f"sarj-standards {command}" in proc.stdout
 
 
 def test_ci_snippet_for_a_typescript_repo_does_not_require_a_python_project(
@@ -317,7 +317,7 @@ def test_generated_precommit_block_carries_no_rev(tmp_path: Path) -> None:
     generated = (tmp_path / ".pre-commit-config.yaml").read_text()
     assert "rev:" not in generated
     assert "repo: local" in generated
-    assert "sarj-lint-configs doctor" in generated
+    assert "sarj-standards doctor" in generated
 
 
 def test_init_writes_the_npm_overrides_into_package_json(tmp_path: Path) -> None:
@@ -437,7 +437,7 @@ def test_the_generated_precommit_hook_actually_runs(tmp_path: Path) -> None:
         # Run the CLI the hook names, through the interpreter the tests already
         # use, so this exercises the generated command shape without needing a
         # network fetch or a uv-managed virtualenv inside tmp_path.
-        subcommand = entry.split("sarj-lint-configs", 1)[1].split()
+        subcommand = entry.split("sarj-standards", 1)[1].split()
         if not pass_filenames_false:
             subcommand.append("src/app.py")
         proc = _cli(*subcommand, cwd=tmp_path)
@@ -458,7 +458,7 @@ def test_a_typescript_only_precommit_hook_does_not_invoke_uv_run(tmp_path: Path)
     assert f"uvx --from sarj-lint-configs=={__version__}" in generated
     # `check` runs the Python/SQL/IaC registries; a TypeScript repo has nothing
     # to feed them, and a hook that lints nothing is a hook that hides.
-    assert "sarj-lint-configs check" not in generated
+    assert "sarj-standards check" in generated
 
 
 def test_detection_finds_a_package_json_in_a_subproject(tmp_path: Path) -> None:
@@ -515,6 +515,19 @@ def test_doctor_catches_a_ci_pin_that_differs_from_the_pyproject_pin(tmp_path: P
     assert proc.returncode == 1
     assert "ci.yml" in proc.stdout
     assert "0.12.2" in proc.stdout
+
+
+def test_doctor_catches_a_stale_package_script_pin(tmp_path: Path) -> None:
+    _ = _typescript_repo(tmp_path)
+    _ = (tmp_path / "package.json").write_text(
+        '{"scripts":{"lint:sarj":"uvx --from sarj-lint-configs==0.1.0 '
+        'sarj-standards check ."}}\n'
+    )
+
+    proc = _cli("doctor", "--dest", str(tmp_path))
+
+    assert proc.returncode == 1
+    assert "package.json: sarj-lint-configs==0.1.0" in proc.stdout
 
 
 def test_doctor_catches_a_stale_precommit_rev(tmp_path: Path) -> None:

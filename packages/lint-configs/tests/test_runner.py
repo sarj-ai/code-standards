@@ -32,6 +32,7 @@ def test_directories_expand_by_suffix_and_skip_generated_trees(tmp_path: Path) -
         python=[str(tmp_path / "app.py")],
         sql=[str(tmp_path / "migration.sql")],
         iac=[str(tmp_path / "main.tf")],
+        text=[],
     )
 
 
@@ -58,6 +59,7 @@ def test_mixed_files_are_grouped_by_tool(
         python=["app.py"],
         sql=["migration.SQL"],
         iac=["main.tf", "values.yaml"],
+        text=["values.yaml", "README.md"],
     )
 
 
@@ -69,6 +71,14 @@ def test_symlink_input_is_rejected(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="refusing symlink input"):
         runner.group_paths([str(link)])
+
+
+def test_symlinks_inside_a_requested_tree_are_skipped(tmp_path: Path) -> None:
+    target = tmp_path / "target.py"
+    target.write_text('"""Target."""\n')
+    (tmp_path / "linked.py").symlink_to(target)
+
+    assert runner.group_paths([str(tmp_path)]).python == [str(target)]
 
 
 def test_missing_input_is_rejected(tmp_path: Path) -> None:
@@ -125,11 +135,57 @@ def test_highest_status_is_propagated(
     ) -> int:
         return next(statuses)
 
+    def clean_text(_files: Sequence[str]) -> int:
+        return 0
+
     monkeypatch.setattr(runner, "_run", fake_run)
+    monkeypatch.setattr(runner.textlint, "run", clean_text)
     monkeypatch.chdir(tmp_path)
     for name in ("app.py", "migration.sql", "main.tf"):
         (tmp_path / name).touch()
     assert runner.run(["app.py", "migration.sql", "main.tf"]) == 2
+
+
+def test_noise_only_selects_comment_and_docstring_rules(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    selected: list[set[str]] = []
+
+    def fake_load_tool(
+        package: str,
+    ) -> tuple[Callable[[list[str]], int], Mapping[str, type[object]]]:
+        if package == "sarj_python_lint":
+            registry = {
+                "no-comment-cruft": object,
+                "no-restated-comment": object,
+                "no-secret-in-log": object,
+            }
+        elif package == "sarj_iac_lint":
+            registry = {"no-comment-cruft": object, "require-deletion-protection": object}
+        else:
+            registry = {"idempotent-ddl": object}
+        return lambda _argv: 0, registry
+
+    def capture_rules(
+        _checker: Callable[[list[str]], int],
+        registry: Mapping[str, type[object]],
+        _files: Sequence[str],
+    ) -> int:
+        selected.append(set(registry))
+        return 0
+
+    monkeypatch.setattr(runner, "_load_tool", fake_load_tool)
+    monkeypatch.setattr(runner, "_run", capture_rules)
+    monkeypatch.chdir(tmp_path)
+    for name in ("app.py", "migration.sql", "main.tf"):
+        (tmp_path / name).touch()
+
+    assert runner.run(["app.py", "migration.sql", "main.tf"], noise_only=True) == 0
+    assert selected == [
+        {"no-comment-cruft", "no-restated-comment"},
+        set(),
+        {"no-comment-cruft"},
+    ]
 
 
 def test_fresh_repo_runs_clean_file(tmp_path: Path) -> None:

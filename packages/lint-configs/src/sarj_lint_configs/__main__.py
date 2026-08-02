@@ -46,6 +46,7 @@ class _Args(argparse.Namespace):
     configs: list[str]
     name: str = ""
     files: list[str]
+    noise_only: bool = False
 
     def __init__(self) -> None:
         super().__init__()
@@ -330,7 +331,7 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_init(args)
         case "check":
             try:
-                return runner.run(args.files)
+                return runner.run(args.files, noise_only=args.noise_only)
             except ValueError as exc:
                 print(f"error: {exc}", file=sys.stderr)
                 return 2
@@ -340,7 +341,7 @@ def main(argv: list[str] | None = None) -> int:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="sarj-lint-configs",
+        prog="sarj-standards",
         description=f"sarj-ai maximally-strict lint configs (v{__version__})",
     )
     parser.add_argument("--version", action="version", version=f"sarj-lint-configs {__version__}")
@@ -414,7 +415,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p_check = sub.add_parser(
         "check",
-        help="run every installed Sarj Python, SQL, and IaC rule",
+        help="run every installed Sarj Python, SQL, IaC, config, text, and artifact rule",
     )
     runner.add_arguments(p_check)
 
