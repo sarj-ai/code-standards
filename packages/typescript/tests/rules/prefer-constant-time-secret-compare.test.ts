@@ -17,11 +17,18 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("prefer-constant-time-secret-compare", rule, {
   valid: [
-    // FP guard, corpus: query/packages/query-core/src/queryClient.ts:604 (10 of
-    // 10 hits) — `skipToken` is a marker Symbol compared by identity.
-    { code: "if (options.queryFn === skipToken) { options.enabled = false; }" },
-    { code: "const disabled = defaultedOptions.queryFn === skipToken;" },
-    { code: "if (value !== emptyToken) { use(value); }" },
+    {
+      name: "allows identity checks against a camelCase marker ending in Token",
+      code: "if (options.queryFn === skipToken) { options.enabled = false; }",
+    },
+    {
+      name: "allows nested identity checks against skipToken",
+      code: "const disabled = defaultedOptions.queryFn === skipToken;",
+    },
+    {
+      name: "allows identity checks against other marker prefixes",
+      code: "if (value !== emptyToken) { use(value); }",
+    },
     // --- Presence checks: comparing against a sentinel leaks nothing. ---
     { code: "if (token === null) { deny(); }" },
     { code: "if (token !== undefined) { use(token); }" },
@@ -32,6 +39,10 @@ ruleTester.run("prefer-constant-time-secret-compare", rule, {
     { code: 'if (scheme === "bearer") { parse(); }' },
     { code: "if (token === TOKEN_SENTINEL) { deny(); }" },
     { code: "if (secret === Sentinels.EMPTY_SECRET) { deny(); }" },
+    {
+      name: "allows a secret-shaped value compared with a public named constant",
+      code: "if (token === TOKEN_TYPE_SYSTEM) { deny(); }",
+    },
     { code: "if (grant === `client_credentials`) { deny(); }" },
     // --- Category / handle metadata, not the credential (SARJ011 narrowing). ---
     { code: "if (tokenType === other.tokenType) { merge(); }" },
@@ -65,6 +76,7 @@ ruleTester.run("prefer-constant-time-secret-compare", rule, {
       filename: "/repo/src/auth.test.ts",
     },
     {
+      name: "allows secret comparisons in test files",
       code: 'if (result.apiKey === candidate) { pass(); }',
       filename: "/repo/test/auth-helpers.ts",
     },
@@ -72,8 +84,14 @@ ruleTester.run("prefer-constant-time-secret-compare", rule, {
   invalid: [
     // The sentinel prefix list must stay narrow: a live credential still fires.
     {
+      name: "reports a runtime API-key comparison and prescribes equal-length digest comparison",
       code: "if (req.headers.apiKey === env.apiKey) { allow(); }",
-      errors: [{ messageId: "preferConstantTimeSecretCompare" }],
+      errors: [
+        {
+          message:
+            "`===` on secret `apiKey` short-circuits on the first differing byte and leaks it through timing. Compare constant-time instead (`crypto.subtle.timingSafeEqual` over equal-length SHA-256 digests).",
+        },
+      ],
     },
     // The live shape: an admin bearer token compared with `===`.
     {

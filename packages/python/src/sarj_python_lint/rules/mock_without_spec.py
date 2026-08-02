@@ -189,6 +189,7 @@ class _FileFacts:
         self.bound_name: dict[ast.Call, str] = {}
         self.reads: dict[str, set[str]] = {}
         self.called: set[str] = set()
+        self.escaped: set[str] = set()
         self.import_fallbacks: set[ast.Call] = set()
         self.attribute_target: dict[ast.Call, str] = {}
         self.path_reads: dict[str, set[str]] = {}
@@ -210,6 +211,8 @@ class _FileFacts:
             elif isinstance(node, ast.Call):
                 if isinstance(node.func, ast.Name):
                     found.called.add(node.func.id)
+                for argument in [*node.args, *(kw.value for kw in node.keywords)]:
+                    found.escaped.update(_escaped_names(argument))
                 found._record_path_call(node)
             elif _catches_import_failure(node):
                 found.import_fallbacks.update(child for child in walk(node) if isinstance(child, ast.Call))
@@ -243,7 +246,7 @@ class _FileFacts:
     def is_call_recorder(self, node: ast.Call) -> bool:
         """Report whether the double bound by `node` is only ever called and introspected."""
         name = self.bound_name.get(node)
-        if name is None or name not in self.called:
+        if name is None or name not in self.called or name in self.escaped:
             return False
         return self.reads.get(name, set()) <= _MOCK_API_ATTRS
 
@@ -257,6 +260,24 @@ class _FileFacts:
             return False
         canned = any(kw.arg in _CANNED_RESULT_KEYWORDS for kw in node.keywords)
         return canned or bool(seen) or path in self.path_calls
+
+
+def _escaped_names(argument: ast.expr) -> set[str]:
+    """Find names passed as values while ignoring reads of the mock assertion API."""
+    escaped: set[str] = set()
+
+    class _EscapeVisitor(ast.NodeVisitor):
+        def visit_Attribute(self, node: ast.Attribute) -> None:
+            if isinstance(node.value, ast.Name) and node.attr in _MOCK_API_ATTRS:
+                return
+            self.generic_visit(node)
+
+        @override
+        def visit_Name(self, node: ast.Name) -> None:
+            escaped.add(node.id)
+
+    _EscapeVisitor().visit(argument)
+    return escaped
 
 
 def _dotted_path(expr: ast.expr) -> str | None:

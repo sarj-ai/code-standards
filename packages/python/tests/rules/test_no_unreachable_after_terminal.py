@@ -1,22 +1,6 @@
-"""Exhaustive tests for SARJ010 `no-unreachable-after-terminal`.
+"""Test context-aware detection of unreachable statements after terminals.
 
-The rule is a pure structural check: for every statement-list field
-(`body`/`orelse`/`finalbody`) on every AST node, if a terminal
-(`return`/`raise`/`break`/`continue`) appears before the last element of that
-list, the statement immediately after the FIRST such terminal is flagged as
-unreachable — at most one diagnostic per list. It is intentionally naive:
-
-  * `sys.exit()` / `os._exit()` are function calls (`ast.Expr`), NOT terminal
-    AST nodes, so code after them is NOT flagged.
-  * `break`/`continue` outside a loop still parse (no semantic check) and are
-    flagged structurally.
-  * A trailing `...` or string-literal "docstring" after a terminal IS an
-    `ast.Expr` statement, so it IS flagged.
-  * Comments are not AST statements, so a terminal followed only by a comment
-    is the last statement of its list and is NOT flagged.
-  * Diagnostics come out in `ast.walk` (breadth-first) order, which is source
-    order for sibling blocks but outer-before-inner for nested blocks — it is
-    not globally line-sorted.
+Each statement list reports once; invalid-context terminals and generator markers are ignored.
 """
 
 from pathlib import Path
@@ -485,11 +469,37 @@ def f(xs):
     assert _check(src) == []
 
 
+def test_break_in_loop_else_clause_binds_to_enclosing_loop():
+    src = """
+def f(rows):
+    for row in rows:
+        for item in row:
+            pass
+        else:
+            break
+            dead()
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert diags[0].line == 8
+
+
 def test_break_inside_nested_def_in_a_loop_is_not_flagged():
     src = """
 def f(xs):
     for x in xs:
         def inner():
+            break
+            dead()
+"""
+    assert _check(src) == []
+
+
+def test_break_inside_nested_class_in_a_loop_is_not_flagged():
+    src = """
+def f(xs):
+    for x in xs:
+        class C:
             break
             dead()
 """

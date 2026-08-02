@@ -12,6 +12,18 @@ const ruleTester = new RuleTester();
 
 ruleTester.run("no-union-in-comment", rule, {
   valid: [
+    {
+      name: "allows unquoted value lists because they are indistinguishable from prose",
+      code: "interface R { kind: string; // one of: draft, sent, paid\n}",
+    },
+    {
+      name: "allows numeric ranges because they describe units rather than unions",
+      code: "interface R { percentage: number; // 0-100\n}",
+    },
+    {
+      name: "allows decimal numeric ranges",
+      code: "interface R { confidence: number; // 0..1\n}",
+    },
     // Already a union: the type holds the set, so there is nothing to move.
     { code: "interface R { kind: 'aa' | 'bb'; }" },
     // The comment restates a union the declaration already spells. That is a

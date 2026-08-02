@@ -323,7 +323,7 @@ def _injected_collaborator(node: ast.ClassDef, data_names: frozenset[str] | set[
     init = next((method for method in _methods(node) if method.name == "__init__"), None)
     if init is None:
         return None
-    stored = _self_assigned_names(init)
+    stored = _self_stored_parameters(init)
     args = init.args
     for param in [*args.posonlyargs, *args.args[1:], *args.kwonlyargs]:
         annotation = _annotation_tail(param.annotation)
@@ -331,27 +331,42 @@ def _injected_collaborator(node: ast.ClassDef, data_names: frozenset[str] | set[
             continue
         if _WEAK_COLLABORATOR_RE.search(annotation):
             continue
-        if param.arg in stored or f"_{param.arg}" in stored:
+        if param.arg in stored:
             return annotation
     return None
 
 
-def _self_assigned_names(init: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
-    """Collect the `self.<attr>` names assigned anywhere in the constructor."""
+def _self_stored_parameters(init: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
+    """Collect constructor parameters assigned directly to `self`."""
     names: set[str] = set()
     for node in ast.walk(init):
         if isinstance(node, ast.Assign):
             targets: list[ast.expr] = list(node.targets)
-        elif isinstance(node, ast.AnnAssign | ast.AugAssign):
+            value = node.value
+        elif isinstance(node, ast.AnnAssign):
             targets = [node.target]
+            value = node.value
         else:
             continue
-        names.update(
-            target.attr
+        if value is not None and any(
+            isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name) and target.value.id == "self"
             for target in targets
-            if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name) and target.value.id == "self"
-        )
+        ):
+            names.update(_stored_parameter_names(value))
     return names
+
+
+def _stored_parameter_names(value: ast.expr) -> set[str]:
+    """Resolve transparent fallback and typing wrappers around stored parameters."""
+    if isinstance(value, ast.Name):
+        return {value.id}
+    if isinstance(value, ast.BoolOp) and isinstance(value.op, ast.Or):
+        return {name for item in value.values for name in _stored_parameter_names(item)}
+    if isinstance(value, ast.Call) and _dotted_tail(value.func) == "cast":
+        cast_values = value.args[1:]
+        if cast_values:
+            return _stored_parameter_names(cast_values[-1])
+    return set()
 
 
 def _annotation_tail(annotation: ast.expr | None) -> str | None:

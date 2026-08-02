@@ -159,6 +159,23 @@ ruleTester.run("prefer-whole-object-assertion", rule, {
       `,
     },
     {
+      name: "ignores awaited expect calls",
+      filename,
+      code: `
+        await expect(obj.a).toBe(1);
+        await expect(obj.b).toBe(2);
+      `,
+    },
+    {
+      name: "ignores resolves and rejects chains",
+      filename,
+      code: `
+        expect(obj.a).resolves.toBe(1);
+        expect(obj.b).resolves.toBe(2);
+        expect(obj.c).rejects.toThrow("nope");
+      `,
+    },
+    {
       filename,
       code: `
         expect.soft(obj.a).toBe(1);
@@ -179,6 +196,23 @@ ruleTester.run("prefer-whole-object-assertion", rule, {
       code: `
         expect(rows[1]).toEqual("a");
         expect(rows[2]).toEqual("b");
+      `,
+    },
+    {
+      name: "ignores indexed runs with gaps",
+      filename,
+      code: `
+        expect(rows[0]).toEqual("a");
+        expect(rows[2]).toEqual("c");
+      `,
+    },
+    {
+      name: "ignores indexed assertions separated by another statement",
+      filename,
+      code: `
+        expect(rows[0]).toEqual("a");
+        observe(rows);
+        expect(rows[1]).toEqual("b");
       `,
     },
     // Element-wise `toBe` is identity; `toEqual` on the whole array is not.
@@ -255,6 +289,14 @@ ruleTester.run("prefer-whole-object-assertion", rule, {
       code: `
         expect(obj.a).toBe(!flag);
         expect(obj.b).toBe(!other);
+      `,
+    },
+    {
+      name: "does not replace regular expression identity with structural comparison",
+      filename,
+      code: `
+        expect(obj.a).toBe(/a/);
+        expect(obj.b).toBe(/b/);
       `,
     },
 
@@ -337,6 +379,28 @@ ruleTester.run("prefer-whole-object-assertion", rule, {
         expect(res.body.user).toMatchObject({ id: 1, name: "ada" });
         
       `,
+      errors: [{ messageId: "combineAssertions" }],
+    },
+    {
+      name: "merges a property run on a literal computed receiver",
+      filename,
+      code: `
+        expect(registry["user"].id).toBe(1);
+        expect(registry["user"].active).toBe(true);
+      `,
+      output:
+        "\n        expect(registry[\"user\"]).toMatchObject({ id: 1, active: true });\n        \n      ",
+      errors: [{ messageId: "combineAssertions" }],
+    },
+    {
+      name: "treats inherited names other than __proto__ as ordinary keys",
+      filename,
+      code: `
+        expect(obj.constructor).toBe(null);
+        expect(obj.toString).toBe("custom");
+      `,
+      output:
+        "\n        expect(obj).toMatchObject({ constructor: null, toString: \"custom\" });\n        \n      ",
       errors: [{ messageId: "combineAssertions" }],
     },
     // Array-indexed run: different message, deliberately no fix, because

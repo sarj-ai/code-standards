@@ -16,13 +16,7 @@ type Options = readonly [];
 
 type Ctx = Readonly<RuleContext<MessageIds, Options>>;
 
-/**
- * Walk down a (possibly chained) receiver expression and decide whether it
- * originates from something that looks like a Zod schema — the bare `z` builder
- * (`z.object({...}).parse(...)`), a `Schema`-suffixed identifier
- * (`userSchema.parse(...)`), or a `Z`-prefixed identifier (`ZUser.parse(...)`).
- * Non-Zod receivers like `JSON` / `Date` are intentionally rejected.
- */
+/** Recognize the supported Zod receiver naming conventions. */
 const looksLikeZodSchema = (node: TSESTree.Node): boolean => {
   let current: TSESTree.Node = node;
   while (true) {
@@ -41,12 +35,7 @@ const looksLikeZodSchema = (node: TSESTree.Node): boolean => {
   }
 };
 
-/**
- * Matches a Zod validation call: `<ZodSchema>.parse(...)` or
- * `<ZodSchema>.safeParse(...)`. Keys off the *receiver* looking like a Zod
- * schema rather than the method name alone, so `JSON.parse(...)` /
- * `Date.parse(...)` are NOT treated as validation.
- */
+/** Match `parse` and `safeParse` only on Zod-shaped receivers. */
 const isZodParseCall = (node: TSESTree.Node): boolean => {
   if (node.type !== AST_NODE_TYPES.CallExpression) return false;
   const callee = node.callee;
@@ -58,10 +47,7 @@ const isZodParseCall = (node: TSESTree.Node): boolean => {
   return looksLikeZodSchema(callee.object);
 };
 
-/**
- * Matches an (optionally awaited) `<x>.formData()` call — the canonical way a
- * `FormData` object is obtained from a `Request` / `Response`.
- */
+/** Match an optionally awaited `<x>.formData()` call. */
 const isFormDataMethodCall = (node: TSESTree.Node): boolean => {
   let current: TSESTree.Node = node;
   if (current.type === AST_NODE_TYPES.AwaitExpression) {
@@ -97,8 +83,7 @@ export default createRule<Options, MessageIds>({
       return {};
     }
 
-    // A receiver is a FormData source if its name reads like form data, or if
-    // it is a binding initialized from a `.formData()` call.
+    // Recognize conventional names and bindings initialized by `.formData()`.
     const isFormSourceIdentifier = (node: TSESTree.Node): boolean => {
       if (node.type !== AST_NODE_TYPES.Identifier) return false;
       if (/formdata/i.test(node.name)) return true;
@@ -135,9 +120,6 @@ export default createRule<Options, MessageIds>({
       return isFormSourceIdentifier(callee.object);
     };
 
-    // Walk up from `node` looking for a surrounding Zod `.parse(...)` /
-    // `.safeParse(...)` call. `.parent` is `null` at the Program root, so we
-    // must guard for both null and undefined.
     const hasZodParseAncestor = (node: TSESTree.Node): boolean => {
       let parent: TSESTree.Node | null | undefined = node.parent;
       while (parent !== null && parent !== undefined) {
@@ -147,8 +129,6 @@ export default createRule<Options, MessageIds>({
       return false;
     };
 
-    // `x instanceof File` / `x instanceof Blob` — a Zod schema adds nothing over
-    // the `instanceof` narrowing for a binary upload.
     const isInstanceofNarrowing = (node: TSESTree.Node): boolean => {
       const parent: TSESTree.Node | null | undefined = node.parent;
       return (
@@ -156,7 +136,9 @@ export default createRule<Options, MessageIds>({
         parent !== undefined &&
         parent.type === AST_NODE_TYPES.BinaryExpression &&
         parent.operator === "instanceof" &&
-        parent.left === node
+        parent.left === node &&
+        parent.right.type === AST_NODE_TYPES.Identifier &&
+        (parent.right.name === "File" || parent.right.name === "Blob")
       );
     };
 

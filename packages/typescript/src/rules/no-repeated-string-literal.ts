@@ -57,13 +57,19 @@ function isScaffolding(node: TSESTree.Node): boolean {
   if (parent === undefined) {
     return true;
   }
+  const isRequireSource =
+    parent.type === AST_NODE_TYPES.CallExpression &&
+    parent.callee.type === AST_NODE_TYPES.Identifier &&
+    parent.callee.name === "require";
   return (
     parent.type === AST_NODE_TYPES.ImportDeclaration ||
+    parent.type === AST_NODE_TYPES.ImportExpression ||
     parent.type === AST_NODE_TYPES.ExportNamedDeclaration ||
     parent.type === AST_NODE_TYPES.ExportAllDeclaration ||
     parent.type === AST_NODE_TYPES.TSImportType ||
     parent.type === AST_NODE_TYPES.JSXAttribute ||
-    parent.type === AST_NODE_TYPES.TSLiteralType
+    parent.type === AST_NODE_TYPES.TSLiteralType ||
+    isRequireSource
   );
 }
 

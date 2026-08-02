@@ -17,6 +17,24 @@ def test_flags_commented_out_yaml(tmp_path: Path) -> None:
     assert _codes(path) == ["SARJ301"]
 
 
+@pytest.mark.parametrize(
+    ("filename", "comment"),
+    [
+        ("config.toml", "# timeout = 30\n"),
+        ("config.jsonc", "// timeout: 30\n"),
+        ("Makefile", "# RELEASE = true\n"),
+        ("Dockerfile", "# RUN make build\n"),
+    ],
+    ids=["toml", "jsonc", "make", "docker"],
+)
+def test_flags_commented_out_syntax_in_each_supported_config_format(
+    tmp_path: Path, filename: str, comment: str
+) -> None:
+    path = tmp_path / filename
+    path.write_text(comment)
+    assert _codes(path) == ["SARJ301"]
+
+
 def test_ignores_documented_config_examples_and_docker_prose(tmp_path: Path) -> None:
     config = tmp_path / "config.toml"
     config.write_text("# Default:\n# timeout = 30\ntimeout = 10\n")
@@ -36,6 +54,12 @@ def test_protects_config_rationale_and_tool_directives(tmp_path: Path) -> None:
     assert _codes(path) == []
 
 
+def test_ignores_comments_inside_yaml_block_scalars(tmp_path: Path) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text("script: |\n  # timeout-minutes: 30\n  # retries: 2\nname: CI\n")
+    assert _codes(path) == []
+
+
 def test_collapses_a_commented_out_config_block(tmp_path: Path) -> None:
     path = tmp_path / "workflow.yml"
     path.write_text("# timeout-minutes: 30\n# retries: 2\nname: CI\n")
@@ -51,6 +75,50 @@ def test_collapses_repeated_config_narration(tmp_path: Path) -> None:
         "# Run deploy command\ncommand: deploy\n"
     )
     assert _codes(path) == ["SARJ300"]
+
+
+def test_config_wall_requires_four_attached_comments(tmp_path: Path) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text(
+        "# Set build name\nname: build\n# Run build command\nrun: make build\n# Set deploy image\nimage: app\n"
+    )
+    assert _codes(path) == []
+
+
+def test_config_wall_requires_three_weak_comments(tmp_path: Path) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text(
+        "# Set build name\nname: build\n"
+        "# Run build command\nrun: make build\n"
+        "# Application lifecycle owner\nimage: app\n"
+        "# Deployment entry point\ncommand: deploy\n"
+    )
+    assert _codes(path) == []
+
+
+def test_config_wall_requires_75_percent_weak_comments(tmp_path: Path) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text(
+        "# Set build name\nname: build\n"
+        "# Run build command\nrun: make build\n"
+        "# Set deploy image\nimage: app\n"
+        "# Deployment entry point\ncommand: deploy\n"
+        "# Release lifecycle owner\ntarget: production\n"
+    )
+    assert _codes(path) == []
+
+
+def test_config_wall_flags_three_weak_comments_out_of_four(tmp_path: Path) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text(
+        "# Set build name\nname: build\n"
+        "# Run build command\nrun: make build\n"
+        "# Set deploy image\nimage: app\n"
+        "# Deployment entry point\ncommand: deploy\n"
+    )
+    findings = textlint.check_paths([str(path)])
+    assert [finding.code for finding in findings] == ["SARJ300"]
+    assert "3 narrated entries" in findings[0].message
 
 
 def test_rationale_comments_count_against_wall_ratio(tmp_path: Path) -> None:
@@ -81,6 +149,52 @@ def test_groups_narration_across_multiline_sibling_entries(tmp_path: Path) -> No
     assert _codes(path) == ["SARJ300"]
 
 
+def test_config_wall_requires_comments_attached_to_entries(tmp_path: Path) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text(
+        "# Set build name\n\nname: build\n"
+        "# Run build command\n\nrun: make build\n"
+        "# Set deploy image\n\nimage: app\n"
+        "# Run deploy command\n\ncommand: deploy\n"
+    )
+    assert _codes(path) == []
+
+
+def test_config_wall_does_not_combine_different_indentation_levels(tmp_path: Path) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text(
+        "# Set build name\nname: build\n"
+        "# Run build command\nrun: make build\n"
+        "  # Set deploy image\n  image: app\n"
+        "  # Run deploy command\n  command: deploy\n"
+    )
+    assert _codes(path) == []
+
+
+@pytest.mark.parametrize(
+    "protected_comment",
+    [
+        "# yamllint disable rule:line-length",
+        "# See RFC 9110 for retry semantics",
+        "# Keep one worker because uploads are serialized",
+        "# Invariant: the deployment name is immutable",
+        "# The timeout is 30 sec",
+        "# Compatibility with legacy runners",
+        "# Upstream rejects parallel uploads",
+    ],
+    ids=["directive", "reference", "rationale", "invariant", "unit", "compatibility", "upstream"],
+)
+def test_config_wall_protects_high_signal_comments(tmp_path: Path, protected_comment: str) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text(
+        "# Set build name\nname: build\n"
+        "# Run build command\nrun: make build\n"
+        "# Application lifecycle owner\nimage: app\n"
+        f"{protected_comment}\ncommand: deploy\n"
+    )
+    assert _codes(path) == []
+
+
 def test_flags_jsonc_block_comment_and_toml_section(tmp_path: Path) -> None:
     jsonc = tmp_path / "settings.jsonc"
     jsonc.write_text('/* "debug": true */\n{}\n')
@@ -99,25 +213,14 @@ def test_manifest_can_exclude_documented_template_config(tmp_path: Path) -> None
     assert _codes(config, root=tmp_path) == []
 
 
-def test_flags_named_ai_execution_artifact(tmp_path: Path) -> None:
-    path = tmp_path / "FIX-BRIEF-V3.md"
-    path.write_text("# Fix brief\n")
-    assert _codes(path, root=tmp_path) == ["SARJ302"]
-
-
 @pytest.mark.parametrize(
-    "relative",
-    [
-        "_backups/old.bak.md",
-        "CLONE_NOTES.md",
-        "AUTHENTICITY-FIXES-PROMPT.md",
-        "audits/fable-loop-findings.md",
-    ],
+    "filename",
+    ["FIX-BRIEF-V3.md", "diagnosis-handoff.md", "project-status.md", "qa-fixlist.md"],
+    ids=["brief", "handoff", "status", "qa"],
 )
-def test_flags_additional_ai_artifact_shapes(tmp_path: Path, relative: str) -> None:
-    path = tmp_path / relative
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("# Temporary work\n")
+def test_flags_named_ai_execution_artifacts(tmp_path: Path, filename: str) -> None:
+    path = tmp_path / filename
+    path.write_text("# Temporary execution record\n")
     assert _codes(path, root=tmp_path) == ["SARJ302"]
 
 
@@ -127,11 +230,54 @@ def test_flags_change_diary_inside_readme(tmp_path: Path) -> None:
     assert _codes(path, root=tmp_path) == ["SARJ302"]
 
 
+@pytest.mark.parametrize(
+    "heading",
+    ["Verification pass", "Verification passes", "QA pass", "Implementation status", "Session summary"],
+    ids=["verification", "verification-plural", "qa", "implementation-status", "session-status"],
+)
+def test_flags_repeated_execution_log_headings(tmp_path: Path, heading: str) -> None:
+    path = tmp_path / "notes.md"
+    path.write_text(f"# Work\n\n## {heading}\n\n## {heading}\n")
+    assert _codes(path, root=tmp_path) == ["SARJ302"]
+
+
 def test_allows_durable_docs_and_single_verification_section(tmp_path: Path) -> None:
     docs = tmp_path / "docs"
     docs.mkdir()
     path = docs / "operations.md"
     path.write_text("# Operations\n\n## Verification\nRun `make verify`.\n")
+    assert _codes(path, root=tmp_path) == []
+
+
+@pytest.mark.parametrize(
+    "relative",
+    [
+        "README.md",
+        "CHANGELOG.md",
+        "CONTRIBUTING.md",
+        "SECURITY.md",
+        "AGENTS.md",
+        "CLAUDE.md",
+        ".github/policy.md",
+        "architecture/system.md",
+        "adr/001-decision.md",
+    ],
+    ids=[
+        "readme",
+        "changelog",
+        "contributing",
+        "security",
+        "agents",
+        "claude",
+        "github",
+        "architecture",
+        "adr",
+    ],
+)
+def test_allows_durable_markdown_locations(tmp_path: Path, relative: str) -> None:
+    path = tmp_path / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("# Current design\n")
     assert _codes(path, root=tmp_path) == []
 
 

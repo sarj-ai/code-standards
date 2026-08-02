@@ -35,7 +35,12 @@ _ESLINT_MAP: Final = re.compile(r"^const rules = \{$(?P<body>.*?)^\};$", re.M | 
 
 _PLACEHOLDER: Final = "TODO: say why it went, in one line a consumer can act on"
 
-_PYTHON_FAMILIES: Final = ("python", "sql", "iac")
+_PYTHON_FAMILIES: Final = (
+    ("python", "python", "sarj_python_lint.rules"),
+    ("sql", "sql", "sarj_sql_lint.rules"),
+    ("iac", "iac", "sarj_iac_lint.rules"),
+    ("text", "lint-configs", "sarj_lint_configs.textlint"),
+)
 
 #: `"old-name": "new-name",` inside the plugin's `renamedRules` map.
 _RENAME_ENTRY: Final = re.compile(r'^\s*"(?P<old>[a-z0-9-]+)": "(?P<new>[a-z0-9-]+)",', re.M)
@@ -89,7 +94,7 @@ def python_family(package: str, module: str) -> tuple[list[str], list[str]]:
 
     """
     program = (
-        f"import json; from {module}.rules import REGISTRY;"
+        f"import json; from {module} import REGISTRY;"
         " print(json.dumps({'ids': sorted(REGISTRY),"
         " 'codes': sorted(rule.code for rule in REGISTRY.values())}))"
     )
@@ -116,9 +121,8 @@ def main() -> int:
     previous: dict[str, object] = json.loads(LEDGER.read_text(encoding="utf-8"))
     rules: dict[str, list[str]] = {"eslint": eslint_rules()}
     codes: dict[str, list[str]] = {}
-    for family in _PYTHON_FAMILIES:
-        module = f"sarj_{family}_lint"
-        rules[family], codes[family] = python_family(family, module)
+    for family, package, module in _PYTHON_FAMILIES:
+        rules[family], codes[family] = python_family(package, module)
 
     old_rules: dict[str, list[str]] = dict(previous.get("rules", {}))  # pyright: ignore[reportArgumentType]
     old_codes: dict[str, list[str]] = dict(previous.get("codes", {}))  # pyright: ignore[reportArgumentType]

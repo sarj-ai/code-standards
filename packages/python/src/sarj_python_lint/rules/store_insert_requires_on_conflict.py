@@ -18,19 +18,14 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# A real insert *write*: the keyword, a table identifier, an optional column
-# list, then `VALUES` / `SELECT` / `DEFAULT VALUES` with nothing in between.
-# Kept character-for-character in step with the TS twin's `INSERT_WRITE` and
-# SARJ105's `INSERT_PATTERN`. The optional `OR <action>` clause is SQLite's
-# conflict resolution, matched here so `INSERT OR IGNORE INTO` is recognised as
-# an insert at all, then excused by `_CONFLICT_HANDLED`.
+# Strict keyword adjacency distinguishes SQL writes from prose. The optional
+# `OR <action>` recognizes SQLite inserts before replay-safe forms are excused.
 _INSERT_WRITE = re.compile(
     r"\bINSERT\s+(?:OR\s+\w+\s+)?INTO\s+[\w.\"'`?$:@-]+\s*(?:\([^)]*\)\s*)?(?:VALUES|SELECT|DEFAULT\s+VALUES)\b",
     re.IGNORECASE,
 )
 
-# Conflict handling that makes the write replay-safe, in all three dialects the
-# repo touches. Shared spelling with SARJ105 and the TS twin.
+# Replay-safe conflict handling supported across the repository's SQL dialects.
 _CONFLICT_HANDLED = re.compile(
     r"\bON\s+CONFLICT\b|\bON\s+DUPLICATE\s+KEY\b|\bINSERT\s+OR\s+(?:IGNORE|REPLACE)\b",
     re.IGNORECASE,
@@ -41,7 +36,8 @@ class StoreInsertRequiresOnConflict(Rule):
     id: str = "store-insert-requires-on-conflict"
     code: str = "SARJ018"
     description: str = (
-        "Embedded SQL INSERT in store code without ON CONFLICT — store writes must be idempotent upserts."
+        "Embedded SQL INSERTs in store code must use ON CONFLICT, ON DUPLICATE KEY, "
+        "or SQLite OR IGNORE/REPLACE."
     )
 
     @override

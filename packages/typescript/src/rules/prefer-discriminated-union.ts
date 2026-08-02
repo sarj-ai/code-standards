@@ -71,8 +71,8 @@ function looksLikeMutuallyExclusiveState(
 
     if (member.optional) {
       optionalCount += 1;
-      // A non-boolean optional is a PAYLOAD — the thing that can end up in the
-      // wrong branch. An all-boolean record is a flag set; see @fileoverview.
+      // A non-boolean optional can land in the wrong branch. All-boolean
+      // records are independent flag sets, not state machines.
       if (!isBooleanTyped(member)) {
         optionalPayloadCount += 1;
       }
@@ -101,7 +101,7 @@ export default createRule<Options, MessageIds>({
     type: "suggestion",
     docs: {
       description:
-        "Flag object types with a boolean status flag and many optionals; model them as a discriminated union instead.",
+        "Flag object types with a boolean status member and at least two optional members, including a non-boolean payload.",
     },
     schema: [],
     messages: {

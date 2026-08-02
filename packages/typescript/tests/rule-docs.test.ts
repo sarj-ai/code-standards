@@ -87,6 +87,14 @@ function commentLines(source: string): { line: number; text: string }[] {
 }
 
 describe("the executable-example links are derived, not typed", () => {
+  it("links to this repository's main branch", () => {
+    expect(REPO_BLOB).toBe("https://github.com/sarj-ai/standards/blob/main");
+  });
+
+  it("keeps executable examples in the rule test directory", () => {
+    expect(TESTS_DIR).toBe("packages/typescript/tests/rules");
+  });
+
   it("derives the examples path from the rule name", () => {
     expect(examplesPath("no-enum")).toBe(`${TESTS_DIR}/no-enum.test.ts`);
   });
@@ -163,8 +171,6 @@ describe("the behavior lives in executable tests", () => {
   });
 
   it("ships no exemption or budget file", () => {
-    // #182 proved zero exemptions is reachable in one change. A budget file is
-    // only ever a place for the next unbounded block to land.
     const strays = readdirSync(HERE).filter((file) => /budget|exempt|allowlist/iu.test(file));
     expect(strays).toEqual([]);
   });

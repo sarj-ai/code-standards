@@ -140,6 +140,16 @@ ruleTester.run("no-cors-wildcard-with-credentials", rule, {
       code: "function h() { headers.set('Access-Control-Allow-Origin', '*'); headers.set('Access-Control-Allow-Credentials', 'true'); }",
       errors: [{ messageId: "corsWildcardWithCredentials" }],
     },
+    {
+      name: "rejects wildcard credentials set with headers.append",
+      code: "headers.append('Access-Control-Allow-Origin', '*'); headers.append('Access-Control-Allow-Credentials', 'true');",
+      errors: [{ messageId: "corsWildcardWithCredentials" }],
+    },
+    {
+      name: "matches manual header names without case sensitivity",
+      code: "res.setHeader('ACCESS-CONTROL-ALLOW-ORIGIN', '*'); res.setHeader('Access-Control-Allow-Credentials', 'TRUE');",
+      errors: [{ messageId: "corsWildcardWithCredentials" }],
+    },
     // Boolean-coerced credentials value on setHeader.
     {
       code: "res.setHeader('Access-Control-Allow-Origin', '*'); res.setHeader('Access-Control-Allow-Credentials', true);",

@@ -213,6 +213,38 @@ ruleTester.run("no-declaration-comment-wall", rule, {
       ].join("\n"),
     },
 
+    {
+      code: "class Row { id = ''; label = ''; href = ''; } // Shared field",
+      options: [{ maxNovelWords: 2 }],
+    },
+
+    {
+      code: [
+        "class Registry {",
+        "  // Retry backup handlers",
+        "  retries = [retryHandler, backupHandler];",
+        "  // Build retry handler",
+        "  fallback = () => buildRetryHandler();",
+        "  // Primary color palette",
+        "  theme = { palette: primaryPalette };",
+        "}",
+      ].join("\n"),
+    },
+
+    {
+      name: "ignores object-literal tables",
+      code: [
+        "const status = {",
+        "  // The pending status",
+        "  pendingStatus: 'pending',",
+        "  // The running status",
+        "  runningStatus: 'running',",
+        "  // The finished status",
+        "  finishedStatus: 'finished',",
+        "};",
+      ].join("\n"),
+    },
+
   ],
 
   invalid: [
@@ -300,6 +332,57 @@ ruleTester.run("no-declaration-comment-wall", rule, {
         "}",
       ].join("\n"),
       options: [{ maxNovelWords: 2 }],
+      errors: [{ messageId: "commentWall" }],
+    },
+
+    {
+      name: "honors minCommentedMembers",
+      code: [
+        "enum Status {",
+        "  // The pending status",
+        "  Pending = 'pending',",
+        "  // The finished status",
+        "  Finished = 'finished',",
+        "}",
+      ].join("\n"),
+      options: [{ minCommentedMembers: 2 }],
+      errors: [{ messageId: "commentWall" }],
+    },
+
+    {
+      name: "honors minCommentedRatio",
+      code: [
+        "enum Status {",
+        "  // The pending status",
+        "  Pending = 'pending',",
+        "  // The finished status",
+        "  Finished = 'finished',",
+        "  // The failed status",
+        "  Failed = 'failed',",
+        "  Queued = 'queued',",
+        "  Running = 'running',",
+        "  Paused = 'paused',",
+        "  Retried = 'retried',",
+        "  Cancelled = 'cancelled',",
+        "}",
+      ].join("\n"),
+      options: [{ minCommentedRatio: 0.3 }],
+      errors: [{ messageId: "commentWall" }],
+    },
+
+    {
+      name: "honors minRestatedRatio",
+      code: [
+        "enum Status {",
+        "  // The pending status",
+        "  Pending = 'pending',",
+        "  // The finished status",
+        "  Finished = 'finished',",
+        "  // set by the reaper when a live worker loses its lease",
+        "  Orphaned = 'orphaned',",
+        "}",
+      ].join("\n"),
+      options: [{ minRestatedRatio: 0.6 }],
       errors: [{ messageId: "commentWall" }],
     },
   ],

@@ -67,12 +67,33 @@ ruleTester.run("prefer-module-level-schema", rule, {
     // NOT FLAGGED — reads `this`. The free-variable check alone would call this
     // hoistable; it is not, because `this.base` has no meaning at module scope.
     {
+      name: "allows schemas that read this",
       code: `${IMPORT}export class C { private readonly base = z.string(); get s() { return z.object({ a: this.base, b: z.string() }); } }`,
+    },
+
+    {
+      name: "allows schemas that read super",
+      code: `${IMPORT}class Base { protected static base = z.string(); }\nexport class C extends Base { static build() { return z.object({ a: super.base, b: z.string() }); } }`,
+    },
+
+    {
+      name: "allows schemas that read arguments",
+      code: `${IMPORT}export function build() { return z.object({ a: z.literal(arguments.length), b: z.string() }); }`,
     },
 
     // NOT FLAGGED — already memoized, so the construction cost is paid once.
     {
+      name: "allows schemas wrapped in useMemo",
       code: `${IMPORT}import { useMemo } from "react";\nexport function useForm() { return useMemo(() => z.object({ a: z.string(), b: z.string() }), []); }`,
+    },
+
+    {
+      name: "allows schemas wrapped in memo",
+      code: `${IMPORT}import { memo } from "./memo.js";\nexport function build() { return memo(() => z.object({ a: z.string(), b: z.string() })); }`,
+    },
+    {
+      name: "allows schemas wrapped in once",
+      code: `${IMPORT}import { once } from "./memo.js";\nexport function build() { return once(() => z.object({ a: z.string(), b: z.string() })); }`,
     },
 
     // NOT FLAGGED — `z.lazy` exists so the schema is NOT built eagerly. The
@@ -96,13 +117,48 @@ ruleTester.run("prefer-module-level-schema", rule, {
     // in the boot locale: a behaviour change, not a refactor. From
     // `twenty/…/useTwoFactorAuthenticationForm.ts:7`.
     {
+      name: "allows schemas with tagged localized text",
       code: `${IMPORT}import { t } from "@lingui/core/macro";\nconst make = () => z.object({ otp: z.string().length(6, t\`OTP must be exactly 6 digits\`), pin: z.string() });\nexport default make;`,
     },
     {
-      code: `${IMPORT}import { t } from "i18next";\nexport const make = () => z.object({ a: z.string(t("a.label")), b: z.string() });`,
+      name: "allows schemas with $t localized text",
+      code: `${IMPORT}import { $t } from "i18n";\nexport const make = () => z.object({ a: z.string($t("a.label")), b: z.string() });`,
     },
     {
-      code: `${IMPORT}import { i18n } from "@lingui/core";\nexport const make = () => z.object({ a: z.string(i18n._("a.label")), b: z.string() });`,
+      name: "allows schemas with defineMessage localized text",
+      code: `${IMPORT}import { defineMessage } from "i18n";\nexport const make = () => z.object({ a: z.string(defineMessage("a.label")), b: z.string() });`,
+    },
+    {
+      name: "allows schemas with gettext localized text",
+      code: `${IMPORT}import { gettext } from "i18n";\nexport const make = () => z.object({ a: z.string(gettext("a.label")), b: z.string() });`,
+    },
+    {
+      name: "allows schemas with msg localized text",
+      code: `${IMPORT}import { msg } from "i18n";\nexport const make = () => z.object({ a: z.string(msg("a.label")), b: z.string() });`,
+    },
+    {
+      name: "allows schemas with ngettext localized text",
+      code: `${IMPORT}import { ngettext } from "i18n";\nexport const make = () => z.object({ a: z.string(ngettext("a.label")), b: z.string() });`,
+    },
+    {
+      name: "allows schemas with t localized text",
+      code: `${IMPORT}import { t } from "i18n";\nexport const make = () => z.object({ a: z.string(t("a.label")), b: z.string() });`,
+    },
+    {
+      name: "allows schemas with translate localized text",
+      code: `${IMPORT}import { translate } from "i18n";\nexport const make = () => z.object({ a: z.string(translate("a.label")), b: z.string() });`,
+    },
+    {
+      name: "allows schemas with $i18n localized text",
+      code: `${IMPORT}import { $i18n } from "i18n";\nexport const make = () => z.object({ a: z.string($i18n.formatMessage("a.label")), b: z.string() });`,
+    },
+    {
+      name: "allows schemas with i18n localized text",
+      code: `${IMPORT}import { i18n } from "i18n";\nexport const make = () => z.object({ a: z.string(i18n.formatMessage("a.label")), b: z.string() });`,
+    },
+    {
+      name: "allows schemas with intl localized text",
+      code: `${IMPORT}import { intl } from "i18n";\nexport const make = () => z.object({ a: z.string(intl.formatMessage("a.label")), b: z.string() });`,
     },
 
     // NOT FLAGGED — a FRAGMENT of a schema that cannot itself move. The sibling
@@ -147,8 +203,10 @@ ruleTester.run("prefer-module-level-schema", rule, {
   invalid: [
     // The core case: rebuilt on every call, uses nothing the function owns.
     {
+      name: "reports a function-local object schema without autofixing",
       code: `${IMPORT}export function handle(raw: unknown) { const ZBody = z.object({ id: z.string(), name: z.string() }); return ZBody.parse(raw); }`,
       errors: [{ messageId: "hoistSchema", data: { factory: "z.object", owner: "handle" } }],
+      output: null,
     },
 
     // Inline at the parse site. `.parse(raw)` CONSUMES a parameter, but the

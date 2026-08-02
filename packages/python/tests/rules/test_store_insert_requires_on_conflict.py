@@ -210,6 +210,11 @@ def test_each_insert_flagged_separately_and_sorted() -> None:
     assert [d.line for d in diags] == [1, 2, 3]
 
 
+def test_multiple_bare_inserts_in_one_literal_report_once() -> None:
+    src = 'q = "INSERT INTO a VALUES (1); INSERT INTO b VALUES (2)"'
+    assert _count(src) == 1
+
+
 def test_mixed_clean_and_dirty_only_flags_dirty() -> None:
     src = 'good = "INSERT INTO t (id) VALUES (1) ON CONFLICT DO NOTHING"\nbad = "INSERT INTO t (id) VALUES (2)"\n'
     diags = _check(src)
@@ -411,3 +416,8 @@ def test_prose_mentioning_insert_into_and_values_does_not_fire() -> None:
 
 def test_insert_keyword_without_a_write_verb_does_not_fire() -> None:
     assert _count('q = "GRANT INSERT ON TABLE t TO app_role"') == 0
+
+
+def test_insert_inside_dollar_quoted_body_is_not_exempt() -> None:
+    src = 'q = "DO $$ BEGIN INSERT INTO t (a) VALUES (1); END $$"'
+    assert _count(src) == 1

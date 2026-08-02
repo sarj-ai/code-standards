@@ -20,7 +20,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import plugin, { renamedRules, rules } from "../src/index.js";
+import plugin, { renamedRules, retiredRules, rules } from "../src/index.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const LEDGER_PATH = resolve(
@@ -89,12 +89,21 @@ describe("rule ledger", () => {
     expect(ledgerRenames).toEqual(expected);
   });
 
-  it("records the rules deleted in 5.0.0, which consumers still name", () => {
-    const removed = new Set(
-      ledger.retired.filter((entry) => entry.kind === "eslint").map((entry) => entry.id),
+  it("records every withdrawn plugin name as removed with no replacement", () => {
+    const removed = Object.fromEntries(
+      ledger.retired
+        .filter((entry) => entry.kind === "eslint" && entry.status === "removed")
+        .map((entry) => [entry.id.replace("@sarj/", ""), entry.replacement]),
     );
-    expect(removed).toContain("@sarj/no-implicit-attribute-access");
-    expect(removed).toContain("@sarj/prefer-setup-file-mocks");
-    expect(removed).toContain("@sarj/ban-loose-type-guards-in-tests");
+    const expected = Object.fromEntries(Object.keys(retiredRules).map((name) => [name, null]));
+    expect(removed).toEqual(expected);
+  });
+
+  it("gives every withdrawn name a release and an actionable migration", () => {
+    for (const entry of Object.values(retiredRules)) {
+      expect(entry.removedIn).toMatch(/^\d+\.\d+\.\d+$/u);
+      expect(entry.reason).toMatch(/^Delete\b/u);
+      expect(entry.reason.match(/[.!?](?:\s|$)/gu)).toHaveLength(1);
+    }
   });
 });

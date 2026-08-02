@@ -15,11 +15,7 @@ type Options = readonly [];
 /** Build / test / tooling config: `vite.config.ts`, `vitest.config.mts`, `playwright.config.ts`. */
 const CONFIG_FILE_RE = /(^|[\\/])[\w.-]+\.config\.[cm]?[jt]sx?$/;
 
-/**
- * Modules that define the validated env boundary have to read raw env exactly
- * once before handing values to Zod. Keep this path-scoped so ordinary
- * `config.ts`/settings helpers still use the boundary instead of becoming one.
- */
+/** Exempt only boundary-named modules that contain a validation marker. */
 const ENV_BOUNDARY_FILE_RE =
   /(^|[\\/])(?:env|client-env|server-env|client-settings|server-settings)\.[cm]?[jt]sx?$/;
 
@@ -73,11 +69,7 @@ const PLATFORM_MARKERS: ReadonlySet<string> = new Set([
   "CI",
 ]);
 
-/**
- * True when `node` is the base of an exempt named access like
- * `process.env.NODE_ENV` or `process.env.VERCEL` — a bundler-replaced constant
- * or a platform-injected marker.
- */
+/** Match named bundler constants and host-owned platform markers. */
 function isExemptVariableAccess(node: TSESTree.MemberExpression): boolean {
   const parent = node.parent;
   return (
@@ -90,11 +82,7 @@ function isExemptVariableAccess(node: TSESTree.MemberExpression): boolean {
   );
 }
 
-/**
- * True when the env access is the TARGET of an assignment (`process.env.X = v`,
- * `process.env.X ??= v`, `delete process.env.X`) rather than a read. Writing a
- * variable for a child process reads no configuration value.
- */
+/** Match assignment and deletion targets, which do not read configuration. */
 function isWriteTarget(node: TSESTree.MemberExpression): boolean {
   const access = node.parent.type === "MemberExpression" && node.parent.object === node ? node.parent : node;
   const parent = access.parent;
@@ -107,11 +95,7 @@ function isWriteTarget(node: TSESTree.MemberExpression): boolean {
   return false;
 }
 
-/**
- * True when the WHOLE environment is spread into an object literal —
- * `{ ...process.env, NO_COLOR: "1" }`. That forwards the inherited environment
- * to a spawned process; it is not a read of any particular setting.
- */
+/** Match whole-environment pass-through such as `{ ...process.env }`. */
 function isWholeEnvSpread(node: TSESTree.MemberExpression): boolean {
   const parent = node.parent;
   return parent.type === "SpreadElement" && parent.argument === node;
@@ -123,12 +107,12 @@ export default createRule<Options, MessageIds>({
     type: "problem",
     docs: {
       description:
-        "Disallow direct `process.env` access; use a Zod-validated env module instead.",
+        "Disallow direct `process.env` and `import.meta.env` reads outside validated boundaries.",
     },
     schema: [],
     messages: {
       noRawEnv:
-        "Do not read from `process.env` directly. Import the Zod-validated env module instead so values are typed and validated at startup.",
+        "Do not read raw environment values directly. Import the validated env module so values are typed and checked at startup.",
     },
   },
   defaultOptions: [],

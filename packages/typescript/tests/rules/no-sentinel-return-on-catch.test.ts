@@ -17,31 +17,42 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("no-sentinel-return-on-catch", rule, {
   valid: [
-    // Generated request clients are template output; sentinel handling there is
-    // owned by the generator.
     {
+      name: "ignores generated request clients",
       code: "async function request() { try { return await run(); } catch { return undefined; } }",
       filename: "/repo/src/openapi-gen/requests/core/request.ts",
     },
-    // FP guard, corpus: react-router/packages/create-react-router/utils.ts:196
-    // and react-router/packages/react-router/lib/rsc/server.rsc.ts:1501 — an
-    // unannotated predicate whose whole contract is a boolean answer.
     {
+      name: "allows an unannotated predicate named with an Exists suffix",
       code: "async function directoryExists(p) { try { const s = await stat(p); return s.isDirectory(); } catch { return false; } }",
     },
     {
+      name: "allows an unannotated predicate named with an is prefix",
       code: "function isClientReference(x) { try { return x.$$typeof === SYM; } catch { return false; } }",
     },
     {
+      name: "allows an unannotated predicate assigned to a variable",
       code: "const hasDependency = ({ name }) => { try { return Boolean(require.resolve(name)); } catch { return false; } };",
     },
-    // FP guard, corpus: react-router/packages/react-router/lib/server-runtime/crypto.ts:30
-    // — the same sentinel already sits on a normal path, behind a ternary.
     {
+      name: "allows the same sentinel on a normal ternary path",
       code: "function verify(value, valid) { try { return valid ? value : false; } catch { return false; } }",
     },
     {
+      name: "allows null on both a normal ternary path and the catch path",
       code: "function readVersion(content) { try { const p = parse(content); return typeof p.version === 'string' ? p.version : null; } catch { return null; } }",
+    },
+    {
+      name: "allows the same sentinel on a nullish-coalescing path",
+      code: "function lookup(id) { try { return cache.get(id) ?? null; } catch { return null; } }",
+    },
+    {
+      name: "allows the same sentinel on an or-fallback path",
+      code: "function enabled(config) { try { return config.enabled || false; } catch { return false; } }",
+    },
+    {
+      name: "leaves promise catch handlers to no-silent-promise-catch",
+      code: "async function load() { return request().catch(() => []); }",
     },
     // Rethrow — the canonical correct handling.
     {
@@ -218,12 +229,23 @@ ruleTester.run("no-sentinel-return-on-catch", rule, {
         }
       `,
     },
-    // Real site: safe-parse — \`undefined\` on bad input is the contract.
     {
+      name: "allows JSON.parse as a safe-parse contract",
       code: `
         function safeParse(x) {
           try { return JSON.parse(x); }
           catch { return undefined; }
+        }
+      `,
+    },
+    {
+      name: "allows a safe parse after earlier work in the try body",
+      code: `
+        function readConfig(path) {
+          try {
+            const text = read(path);
+            return JSON.parse(text);
+          } catch { return null; }
         }
       `,
     },
@@ -246,10 +268,8 @@ ruleTester.run("no-sentinel-return-on-catch", rule, {
         }
       `,
     },
-    // FP-1: a structured logger is a FREE FUNCTION taking a meta object, and the
-    // caught binding is nested inside it behind a conditional. The error IS
-    // logged; \`null\` is a deliberate degraded return.
     {
+      name: "allows reporting a caught error nested in structured metadata",
       code: `
         async function scan(repo) {
           try { return await github.listOpenPullRequests(repo); }
@@ -260,9 +280,8 @@ ruleTester.run("no-sentinel-return-on-catch", rule, {
         }
       `,
     },
-    // FP-1: same shape via the \`logFunctions\` option, for a logger whose name
-    // does not itself read as a reporting call.
     {
+      name: "allows a configured free logging function",
       code: `
         async function scan(repo) {
           try { return await github.listOpenPullRequests(repo); }
@@ -274,8 +293,8 @@ ruleTester.run("no-sentinel-return-on-catch", rule, {
       `,
       options: [{ logFunctions: ["emit"] }],
     },
-    // FP-1: a project-declared logger RECEIVER name.
     {
+      name: "allows a configured logger receiver",
       code: `
         function load() {
           try { return read(); }
@@ -284,9 +303,8 @@ ruleTester.run("no-sentinel-return-on-catch", rule, {
       `,
       options: [{ loggerNames: ["obs"] }],
     },
-    // FP-2: \`new URL\` is consumed by a comparison, so the returned expression is
-    // a BinaryExpression — the try still hinges on a throwing parse.
     {
+      name: "allows a safe constructor nested in a returned comparison",
       code: `
         function isHttpsUrl(s: string): boolean {
           try { return new URL(s).protocol === 'https:'; }
@@ -294,9 +312,8 @@ ruleTester.run("no-sentinel-return-on-catch", rule, {
         }
       `,
     },
-    // FP-2: \`await request.json()\` — the await wrapper plus a body-decoding
-    // method that throws on malformed input.
     {
+      name: "allows a sole awaited body decoder",
       code: `
         async function readBody(request) {
           try { return await request.json(); }
@@ -304,9 +321,8 @@ ruleTester.run("no-sentinel-return-on-catch", rule, {
         }
       `,
     },
-    // FP-2: a DECLARED \`: boolean\` predicate. A boolean cannot carry error
-    // information, so the sentinel is the entire contract.
     {
+      name: "allows a declared boolean predicate",
       code: `
         function canReach(host: string): boolean {
           try { return probe(host); }
@@ -314,8 +330,8 @@ ruleTester.run("no-sentinel-return-on-catch", rule, {
         }
       `,
     },
-    // FP-2: same, through \`Promise<boolean>\`.
     {
+      name: "allows a declared asynchronous boolean predicate",
       code: `
         async function canReach(host: string): Promise<boolean> {
           try { return await probe(host); }
@@ -325,39 +341,58 @@ ruleTester.run("no-sentinel-return-on-catch", rule, {
     },
   ],
   invalid: [
-    // The name guard is boolean-only: a nullable accessor still fires.
     {
+      name: "reports a nullable return from a predicate-named function",
       code: "function isReady(p) { try { return load(p); } catch { return null; } }",
       errors: [{ messageId: "noSentinelReturn" }],
     },
-    // A non-predicate name with no matching normal-path sentinel still fires.
     {
+      name: "reports an empty collection from a non-predicate",
       code: "async function loadRows(p) { try { return await query(p); } catch { return []; } }",
       errors: [{ messageId: "noSentinelReturn" }],
     },
-    // Regression: the log-detection widening (walk the whole argument subtree so
-    // a structured logger's meta object counts) once matched the caught binding
-    // by NAME ALONE, which silenced 8 of 18 true positives. Each of these
-    // swallows the error while merely mentioning the name in a non-value
-    // position. Keep them pinned.
     {
+      name: "does not mistake an object key for a caught-error read",
       code: "function a() { try { return risky(); } catch (error) { logCounter({ error: 1 }); return null; } }",
       errors: [{ messageId: "noSentinelReturn" }],
     },
     {
+      name: "does not mistake a nested object key for a caught-error read",
       code: "function b() { try { return risky(); } catch (error) { captureMetric({ tags: { error: 1 } }); return null; } }",
       errors: [{ messageId: "noSentinelReturn" }],
     },
     {
+      name: "does not mistake another object's property for the caught error",
       code: "function c() { try { return risky(); } catch (err) { reportStatus(response.err); return null; } }",
       errors: [{ messageId: "noSentinelReturn" }],
     },
     {
+      name: "does not count a shadowing callback parameter as the caught error",
       code: "function d() { try { return risky(); } catch (error) { logAll(items.map((error) => error.id)); return null; } }",
       errors: [{ messageId: "noSentinelReturn" }],
     },
 
     // return null — bare swallow, function otherwise returns real data.
+    {
+      name: "does not treat a parse inside a nested callback as safe parsing",
+      code: `
+        function load(items) {
+          try { return items.map((item) => JSON.parse(item)); }
+          catch { return null; }
+        }
+      `,
+      errors: [{ messageId: "noSentinelReturn" }],
+    },
+    {
+      name: "reports a declared nullable accessor contract",
+      code: `
+        async function fetchThing(id: string): Promise<Thing | undefined> {
+          try { return await load(id); }
+          catch { return undefined; }
+        }
+      `,
+      errors: [{ messageId: "noSentinelReturn" }],
+    },
     {
       code: `
         function f() {
@@ -420,9 +455,8 @@ ruleTester.run("no-sentinel-return-on-catch", rule, {
       `,
       errors: [{ messageId: "noSentinelReturn" }],
     },
-    // FP-1 must not over-suppress: declaring \`emit\` as a logger does not excuse
-    // a DIFFERENT call that neither logs nor mentions the caught binding.
     {
+      name: "requires the configured logging function to be called",
       code: `
         async function scan(repo) {
           try { return await list(repo); }
@@ -435,9 +469,8 @@ ruleTester.run("no-sentinel-return-on-catch", rule, {
       options: [{ logFunctions: ["emit"] }],
       errors: [{ messageId: "noSentinelReturn" }],
     },
-    // FP-2 must not over-suppress: a body decode preceded by real I/O. The catch
-    // swallows the network failure too, so \`.json()\` does not excuse it.
     {
+      name: "reports a body decoder when the try also performs I/O",
       code: `
         async function load(url) {
           try {
@@ -448,9 +481,8 @@ ruleTester.run("no-sentinel-return-on-catch", rule, {
       `,
       errors: [{ messageId: "noSentinelReturn" }],
     },
-    // FP-2 must not over-suppress: a declared \`T | null\` return is exactly the
-    // shape this rule exists for — nullable accessors hide failures.
     {
+      name: "reports a declared nullable return contract",
       code: `
         async function fetchThing(id: string): Promise<Thing | null> {
           try { return await load(id); }

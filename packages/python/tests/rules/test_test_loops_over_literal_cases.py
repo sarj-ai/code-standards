@@ -173,6 +173,17 @@ def test_thing(subtests):
     assert _check(src) == []
 
 
+def test_nested_subtest_context_is_exempt():
+    src = """
+def test_thing(subtests):
+    for case in ["a", "b"]:
+        if case:
+            with subtests.test(case=case):
+                assert handle(case)
+"""
+    assert _check(src) == []
+
+
 def test_an_unrelated_test_named_context_manager_still_fires():
     # Only `subtests.test(...)` is the plugin; `runner.test(...)` is some
     # other object's method and reports nothing per case.
@@ -232,6 +243,17 @@ def test_thing():
     for case in ["a", "b"]:
         def _cb():
             assert handle(case)
+        register(_cb)
+"""
+    assert _check(src) == []
+
+
+def test_assert_inside_nested_async_def_does_not_arm_the_loop():
+    src = """
+def test_thing():
+    for case in ["a", "b"]:
+        async def _cb():
+            assert await handle(case)
         register(_cb)
 """
     assert _check(src) == []

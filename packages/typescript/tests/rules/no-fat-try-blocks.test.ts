@@ -416,6 +416,21 @@ ruleTester.run("no-fat-try-blocks", rule, {
         }
       `,
     },
+    {
+      name: "terminal boundaries accept destructured catch bindings",
+      code: `
+        async function f() {
+          try {
+            await one();
+            await two();
+            await three();
+            await four();
+          } catch ({ message }) {
+            return failure(message);
+          }
+        }
+      `,
+    },
     // The purity model, negative side. These must STAY silent after `JSON.parse`
     // and the Map/Set verbs stopped counting as pure by name.
     {
@@ -466,6 +481,123 @@ ruleTester.run("no-fat-try-blocks", rule, {
     },
   ],
   invalid: [
+    {
+      name: "awaits nested in four branches still exceed the limit",
+      code: `
+        async function f(flags) {
+          try {
+            if (flags.a) await one();
+            if (flags.b) await two();
+            if (flags.c) await three();
+            if (flags.d) await four();
+          } catch (error) { handle(error); }
+          finish();
+        }
+      `,
+      errors: [{ messageId: "fatTryBlock" }],
+    },
+    {
+      name: "terminal handlers may not return null",
+      code: `
+        async function f() {
+          try {
+            await one();
+            await two();
+            await three();
+            await four();
+          } catch (error) {
+            report(error);
+            return null;
+          }
+        }
+      `,
+      errors: [{ messageId: "fatTryBlock" }],
+    },
+    {
+      name: "terminal handlers may not return undefined",
+      code: `
+        async function f() {
+          try {
+            await one();
+            await two();
+            await three();
+            await four();
+          } catch (error) {
+            report(error);
+            return undefined;
+          }
+        }
+      `,
+      errors: [{ messageId: "fatTryBlock" }],
+    },
+    {
+      name: "terminal handlers may not return false",
+      code: `
+        async function f() {
+          try {
+            await one();
+            await two();
+            await three();
+            await four();
+          } catch (error) {
+            report(error);
+            return false;
+          }
+        }
+      `,
+      errors: [{ messageId: "fatTryBlock" }],
+    },
+    {
+      name: "an error-shaped property key does not reference the caught error",
+      code: `
+        async function f() {
+          try {
+            await one();
+            await two();
+            await three();
+            await four();
+          } catch (error) {
+            return failure({ error: "hidden" });
+          }
+        }
+      `,
+      errors: [{ messageId: "fatTryBlock" }],
+    },
+    {
+      name: "assignment-ending handlers are recovery rather than propagation",
+      code: `
+        async function f() {
+          try {
+            await one();
+            await two();
+            await three();
+            await four();
+          } catch (error) {
+            state.failure = error;
+          }
+        }
+      `,
+      errors: [{ messageId: "fatTryBlock" }],
+    },
+    {
+      name: "a try at the end of a switch case is not a terminal boundary",
+      code: `
+        async function f(kind) {
+          switch (kind) {
+            case "sync":
+              try {
+                await one();
+                await two();
+                await three();
+                await four();
+              } catch (error) {
+                report(error);
+              }
+          }
+        }
+      `,
+      errors: [{ messageId: "fatTryBlock" }],
+    },
     // `JSON.parse` is the canonical throwing call and the canonical reason to
     // write try/catch, and it was on the "pure, non-throwing" list.
     {

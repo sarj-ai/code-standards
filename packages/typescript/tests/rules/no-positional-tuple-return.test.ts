@@ -32,9 +32,18 @@ ruleTester.run("no-positional-tuple-return", rule, {
     },
     // --- A literal first element makes the tuple the discriminated union. ---
     {
+      name: "allows a tuple tagged by its first element",
+      code: 'export function parse(): ["ok", Payload] { return impl(); }',
+    },
+    {
+      name: "allows a union of tagged tuples",
       code: 'export function parse(): ["ok", Payload] | ["err", string] { return impl(); }',
     },
     // --- React hooks: `[value, setValue]` is the ecosystem contract. ---
+    {
+      name: "allows a hook tuple even when it has no function slot",
+      code: "export function useResource(): [Resource, Error | null] { return impl(); }",
+    },
     {
       code: "export function useToggle(): [boolean, (next: boolean) => void] { return impl(); }",
     },
@@ -45,10 +54,8 @@ ruleTester.run("no-positional-tuple-return", rule, {
     {
       code: "function split(): [string, number] { return impl(); }",
     },
-    // A purely local helper stays unflagged even when the module exports OTHER
-    // names through specifiers — the specifier lookup must be name-scoped, not
-    // "this file has exports".
     {
+      name: "keeps detached export matching scoped to the exported binding",
       code: "function split(): [string, number] { return impl(); }\nconst other = 1;\nexport { other };",
     },
     // A same-named binding exported from ANOTHER module is not this function.
@@ -71,16 +78,17 @@ ruleTester.run("no-positional-tuple-return", rule, {
     { code: "export function many(): Array<[string, number]> { return impl(); }" },
     // --- No return annotation to judge. ---
     { code: "export function inferred() { return ['a', 1]; }" },
-
-    // --- Accessor / mutator pairs -------------------------------------------
-    // `[value, setValue]` without the `use` prefix. Real corpus:
-    // query/packages/svelte-query/src/containers.svelte.ts:31.
     {
+      name: "allows an exported underscore-prefixed implementation helper",
+      code: "export function _decode(): [string, number] { return impl(); }",
+    },
+
+    {
+      name: "allows a two-slot value and mutator pair without a hook name",
       code: "export function createRef<T>(init: T): [T, (newValue: T) => void] { return impl(init); }",
     },
-    // A handle + completion pair. Real corpus:
-    // query/packages/query-persist-client-core/src/persist.ts:162.
     {
+      name: "allows a two-slot accessor and completion pair",
       code: "export function persistQueryClient(o: Opts): [() => void, Promise<void>] { return impl(o); }",
     },
   ],
@@ -90,13 +98,23 @@ ruleTester.run("no-positional-tuple-return", rule, {
       code: "export function download(): [string, Headers, string | null] { return impl(); }",
       errors: [{ messageId: "noPositionalTupleReturn" }],
     },
-    // Wrapped in a Promise, which is where async boundaries put it.
     {
+      name: "rejects a distinct-field tuple wrapped in Promise",
       code: "export async function fetchDoc(): Promise<[string, number]> { return impl(); }",
       errors: [{ messageId: "noPositionalTupleReturn" }],
     },
-    // Exported arrow function.
     {
+      name: "rejects a distinct-field tuple wrapped in PromiseLike",
+      code: "export function fetchDoc(): PromiseLike<[string, number]> { return impl(); }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects a distinct-field tuple wrapped in Awaited",
+      code: "export function fetchDoc(): Awaited<[string, number]> { return impl(); }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects an exported arrow function",
       code: "export const resolve = (): [User, boolean] => impl();",
       errors: [{ messageId: "noPositionalTupleReturn" }],
     },
@@ -151,15 +169,23 @@ ruleTester.run("no-positional-tuple-return", rule, {
       errors: [{ messageId: "noPositionalTupleReturn" }],
     },
 
-    // The pair exemption is exactly two elements: a three-tuple with a callback
-    // slot is still a record whose fields need names.
     {
+      name: "rejects a literal tag outside the first tuple slot",
+      code: 'export function parse(): [Payload, "ok"] { return impl(); }',
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "does not mistake an ordinary use-prefixed name for a React hook",
+      code: "export function userTuple(): [User, boolean] { return impl(); }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects a three-slot tuple even when one slot is a callback",
       code: "export function open(u: string): [Socket, () => void, number] { return impl(u); }",
       errors: [{ messageId: "noPositionalTupleReturn" }],
     },
-    // Two data fields with no function slot still fire. Real corpus:
-    // react-router/packages/react-router/lib/router/utils.ts:1732.
     {
+      name: "rejects a two-slot tuple when neither slot is callable",
       code: "export function compilePath(p: string): [RegExp, CompiledPathParam[]] { return impl(p); }",
       errors: [{ messageId: "noPositionalTupleReturn" }],
     },

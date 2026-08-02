@@ -38,27 +38,17 @@ const WALL_NARRATION_RE =
   /^(?:first(?:ly)?|second(?:ly)?|third(?:ly)?|then|next|now|finally|lastly|add|append|assign|await|build|calculate|call|check|clear|close|compute|convert|copy|count|create|declare|define|delete|extract|fetch|filter|find|format|generate|get|handle|initialize|insert|iterate|join|load|log|loop|map|merge|open|parse|print|process|push|read|remove|render|reset|return|save|send|set|setup|sort|split|start|stop|store|update|validate|wrap|write)(?:s|es|d|ed|ing)?\b/i;
 const WALL_STEP_PREFIX_RE = /^(?:\d+[.)]|(?:phase|step)\s+\d+\s*:)\s*/i;
 
-// Step-narration lead-ins ("First, …", "Then, …", "Finally, …", "Step 2:"). A
-// trailing comma/colon is required so English adverbs ("finally the invariant
-// holds") aren't mistaken for an enumeration marker.
+// Require punctuation after step adverbs so ordinary prose does not match.
 const STEP_NARRATION_RE =
   /^(?:first(?:ly)?|second(?:ly)?|third(?:ly)?|then|next|after(?:wards| that)?|finally|lastly|now)\s*[,:]\s*\S/i;
 
-// Self-admitted meta-commentary — the "why later", not the why. `TODO`/`FIXME`/
-// `HACK`/`XXX` are handled as directives (kept, with an owner, per convention).
-//
-// Every alternative here NAMES the debt: "is a hack", "keeping it simple", "not
-// sure if", "could be refactored". A bare `for now` used to be on the list and
-// is not, because it names nothing — it is an ordinary English temporal
-// qualifier that sits inside genuine scope and rationale comments. See
-// `isBareDeferral` below, which keeps the half of it that is really cruft.
+// These phrases name debt; `isBareDeferral` handles content-free `for now` notes.
 const META_COMMENTARY_RE =
   /\b(?:keeping (?:it|this) simple|could be (?:refactored|improved|cleaned up|simplified)|refactor(?:ed|ing)? (?:later|this)|not sure (?:if|whether|why|how)|quick[- ](?:and[- ]dirty|fix)|(?:a |bit of a )?hacky|is a hack|temporary (?:solution|workaround|fix|hack)|revisit (?:this|later|below)|clean (?:this|it) up|not ideal|placeholder for now)\b/i;
 
 const FOR_NOW_RE = /\bfor now\b/i;
 
-// Words that carry no information about WHAT is deferred, so they do not count
-// as substance around a `for now`.
+// Stopwords do not identify what is deferred.
 const DEFERRAL_STOPWORDS: ReadonlySet<string> = new Set([
   "a", "an", "and", "are", "as", "at", "be", "but", "by", "can", "could", "do",
   "does", "for", "from", "had", "has", "have", "here", "i", "in", "is", "it",
@@ -70,27 +60,7 @@ const DEFERRAL_STOPWORDS: ReadonlySet<string> = new Set([
 /** Most content words a `for now` comment may carry and still be pure deferral. */
 const DEFERRAL_MAX_CONTENT_WORDS = 2;
 
-/**
- * A `for now` comment that defers without saying anything: `// Empty for now.`,
- * `// Not needed for now`, `// login manually for now`.
- *
- * `for now` used to be an alternative inside `META_COMMENTARY_RE`, which made
- * the phrase evidence on its own. It is not. Every other alternative there NAMES
- * the debt; `for now` is two ordinary English words that sit just as happily
- * inside the *why* this rule's own message asks for:
- *
- *     // our svg icons break if we use data urls, so disable inline assets for now
- *     // skipping utils for now, as it has independent release process
- *     // Empty for now.                                    <- the real cruft
- *
- * The distinguishing fact is substance, not the phrase: a comment that defers
- * AND explains is a why-comment. Requiring the rest of the comment to be
- * near-empty keeps the contentless deferrals and drops the ones carrying a scope
- * limit, a reason, or an owner tag. `JUSTIFICATION_RE` does not rescue those —
- * its connective list is narrow, and "as", "so <verb>" and "intentionally" are
- * not on it, which is why they were reported at all. Numbers in
- * the paired tests.
- */
+/** Match `for now` only when at most two content words identify the deferral. */
 function isBareDeferral(text: string): boolean {
   if (!FOR_NOW_RE.test(text)) return false;
   const rest = text.replace(FOR_NOW_RE, " ");
@@ -100,19 +70,14 @@ function isBareDeferral(text: string): boolean {
   return content.length <= DEFERRAL_MAX_CONTENT_WORDS;
 }
 
-// `sarj-noqa` is this repo's own suppression syntax (see `rule_base.py`). It was
-// missing here, so `// sarj-noqa: … — <reason>` on its own line was read as
-// prose and could itself be flagged.
+// Suppression and tool directives are instructions, not prose.
 const DIRECTIVE_RE =
   /^(eslint\b|eslint-|sarj-noqa\b|@ts-|prettier-ignore|prettier\b|biome-|c8\b|v8\b|istanbul\b|@type\b|@vite|webpack|<reference|<amd|global\b|noinspection|hack\b|xxx\b)/i;
 
 const LICENSE_RE =
   /copyright|licen[cs]ed?|spdx|permission is hereby granted|all rights reserved/i;
 
-// An enumerated step in a numbered/bulleted plan: `1. get all tags`, `- read the
-// manifest`. A stack of these is an algorithm walkthrough — the "why/how" the
-// rule's own message asks for — even though no item ends in a full stop, which
-// is why `isProse` misses it.
+// Multiple explanatory list items form a walkthrough, not a content-free preamble.
 const ENUMERATED_ITEM_RE = /^(?:\d+[.):]|[-*•])\s+\S/;
 const ENUMERATED_ITEM_MIN_WORDS = 3;
 const ENUMERATED_PREAMBLE_MIN_ITEMS = 2;
@@ -148,26 +113,16 @@ function isSectionLabel(text: string): boolean {
   return match !== null && SECTION_LABEL_WORDS.has((match[1] ?? "").toLowerCase());
 }
 
-// A SHOUTED label — `REMOVE METHODS`, `PUBLIC API`. Two words minimum, so a
-// one-word acronym beside a member (`UTC`, `ISO`) keeps the fact it carries;
-// digits are excluded for the same reason, a standard number being a citation.
+// Match two-to-four shouted words; preserve acronyms and numbered standards.
 const SHOUTED_LABEL_RE = /^[A-Z]{2,}(?:[ -][A-Z]{2,}){1,3}$/;
 
 const HELPER_OPENER_RE = /^(?:a\s+)?helper\s+(?:function|method|component|hook|class|type|util(?:ity)?)\b/i;
 
-// "Let's not await the promise" — the first-person-plural walkthrough voice.
-// Gated on the narration verb list because the third-person `lets` is a
-// different word doing real work: "lets a same-day re-run find the message it
-// already posted" explains a mechanism and must not be touched.
+// Match walkthrough `let's`, but preserve third-person `lets` explanations.
 const LETS_RE =
   /^let'?s\s+(?:not\s+|just\s+|now\s+|first\s+)?(?:add|append|assign|await|build|calculate|call|check|clear|close|compute|convert|copy|count|create|declare|decrement|define|delete|extract|fetch|filter|find|format|generate|get|handle|increment|init|initialise|initialize|insert|iterate|join|load|log|loop|map|merge|open|parse|print|process|push|read|remove|render|reset|return|save|send|set|setup|sort|split|start|stop|store|update|validate|wrap|write)(?:s|es|ed|ing)?\b/i;
 
-// Enumeration markers that narrate a sequence: `// 1. Load the config`,
-// `// Phase 2: reconcile`. Flagged only when the file carries exactly one — a
-// *run* of them is a documented algorithm walkthrough, which is the kind of
-// comment this rule exists to protect. JSX-expression comments are exempt
-// wholesale (see `isStandalone`): `{/* Step 1: Select Patient */}` mirrors the
-// literal step labels of a UI wizard.
+// Flag an isolated numbered step; preserve walkthrough runs and JSX labels.
 const ENUMERATION_RE = /^(?:\d+[.)]\s+\S|(?:phase|step)\s+\d+\b)/i;
 
 // Dummy translational comments: ultra-short comments that just restate the code.
@@ -180,11 +135,7 @@ const DIAGRAM_ARROW_RE = /[-=~]{2,}>|<[-=~]{2,}/;
 const CODE_KEYWORD_RE =
   /^(import |export |const |let |var |function\b|class |interface |type \w|enum |return\b|throw |await |async |if\s*\(|for\s*\(|while\s*\(|switch\s*\(|new |console\.)/;
 const CODE_TAIL_RE = /[;{}()]\s*$|=>\s*$|,\s*$/;
-// LHS must be a real identifier (not a number literal — `0=Monday` in prose is
-// not an assignment) and `=` must not be `==`/`===`/`=>` (comparison/arrow).
-// The assignment branch additionally requires a code-tail — the line must end
-// with `;`, `)`, `}` or `]` — so plain prose like `count = number of items`
-// (which has no code-tail) is not mistaken for commented-out code.
+// Require an identifier LHS and code tail so prose equations do not match.
 const ASSIGN_RE = /^[A-Za-z_$][\w.$[\]]*\s*(?:=(?![=>])|\+=|-=|\*=)\s*\S.*[;)}\]]\s*$/;
 const CALL_RE = /^[A-Za-z_$][\w.$]*\([^)]*\)\s*;?\s*$/;
 
@@ -253,17 +204,7 @@ function isProse(text: string): boolean {
 const JUSTIFICATION_RE =
   /\b(?:because|since|until|due to|so that|so we|so it|so the|otherwise|which is why|in order to|to avoid|to work around|to prevent|backwards? compat(?:ibility)?|for compatibility)\b/i;
 
-/**
- * The same total-corroboration test as `restatesStatementHead`, widened from the
- * statement's HEAD to the whole statement.
- *
- * `restatesStatementHead` reads only the text before the first `(` — it wants
- * the comment to restate what the statement *computes*, not what it passes as an
- * argument. Flattening every `(` to whitespace hands that function the whole
- * statement as its own head; the tokeniser reads identifiers, so the
- * substitution changes nothing else. Reusing it rather than copying it keeps one
- * definition of "restates".
- */
+/** Apply total corroboration to the whole statement, including call arguments. */
 function restatesWholeStatement(body: string, statement: string | null): boolean {
   return statement !== null && restatesStatementHead(body, statement.replaceAll("(", " "));
 }
@@ -305,12 +246,7 @@ function isRedundantNarration(
   return restatesStatementHead(t, statementBelow);
 }
 
-// Statement-position containers. A comment whose innermost enclosing node is
-// anything else sits INSIDE an expression — an array, an object literal, a call
-// argument list — where a one-word label groups the elements beneath it rather
-// than signposting the file. `# config` inside pydantic's `__all__` is the
-// Python twin of this; both readings produce the same comment and only the
-// nesting tells them apart.
+// Outside these containers, a short label groups expression elements.
 const STATEMENT_CONTAINERS: ReadonlySet<string> = new Set([
   AST_NODE_TYPES.Program,
   AST_NODE_TYPES.BlockStatement,
@@ -423,35 +359,13 @@ function isWeakWalkthroughComment(body: string, statement: string): boolean {
   );
 }
 
-/**
- * Containers whose only legal children are TYPE MEMBERS. A call-shaped comment
- * here cannot be commented-out code, because the statement it looks like would
- * not have parsed in that position — it is a label naming the overload or
- * property beneath it.
- *
- * `TSModuleBlock` is deliberately absent even though a comment there is also
- * "inside a type-ish container": `namespace N { drop(); }` is legal, so a
- * call-shaped comment there CAN be commented-out code, and this rule already
- * treats a module block as a statement position (see `STATEMENT_CONTAINERS`).
- *
- * Recall cost ~zero: a commented-out interface MEMBER (`// name: string;`) never
- * matched the call branch anyway — the `: T;` tail defeats it — and the
- * assignment and keyword branches are untouched, so `// const a = 1;` inside a
- * type literal still fires.
- */
+/** Type-member containers cannot contain bare call statements. */
 const TYPE_MEMBER_CONTAINERS: ReadonlySet<string> = new Set([
   AST_NODE_TYPES.TSInterfaceBody,
   AST_NODE_TYPES.TSTypeLiteral,
 ]);
 
-/**
- * True when the comment at `index` belongs to a contiguous `//` run in which
- * some line cites a ticket, URL, RFC or issue number (protected-class signal
- * S1, applied at run granularity).
- *
- * Run granularity, not line: a scoping note puts its owner at the end, so
- * judging the last line alone reads "for now" as an unowned admission.
- */
+/** Preserve an entire contiguous comment run when any line cites a reference. */
 function runCitesAReference(comments: readonly TSESTree.Comment[], index: number): boolean {
   for (let i = index; i >= 0; i--) {
     if (i < index && !areAdjacentLineComments(comments[i], comments[i + 1])) break;
@@ -690,11 +604,7 @@ export default createRule<Options, MessageIds>({
           }
           if (wallMembers.has(comment)) continue;
           if (isJsDoc(comment)) {
-            // A JSDoc block is otherwise left alone — it is where the "why"
-            // conventionally lives. A block whose WHOLE body is a rule of dashes
-            // or a shouted section title is not documenting the declaration
-            // beneath it; it is the same signpost `sectionBanner` already names,
-            // wearing the one comment syntax this rule used to skip wholesale.
+            // JSDoc is preserved unless its entire body is a section signpost.
             if (isStandalone(comment) && isSectionJsDoc(comment)) {
               context.report({ node: comment, messageId: "sectionBanner" });
             }

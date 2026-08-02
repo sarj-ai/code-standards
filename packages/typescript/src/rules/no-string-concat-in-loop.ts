@@ -21,10 +21,7 @@ const LOOP_NODE_TYPES = new Set<string>([
   "DoWhileStatement",
 ]);
 
-/**
- * Returns true if the given expression node is a string-producing literal:
- * a string `Literal` (`""`, `"..."`, `'...'`) or a `TemplateLiteral`.
- */
+/** Checks whether an initializer is a string or template literal. */
 function isStringLiteralInit(node: TSESTree.Expression | null): boolean {
   if (node === null) {
     return false;
@@ -38,11 +35,7 @@ function isStringLiteralInit(node: TSESTree.Expression | null): boolean {
   return false;
 }
 
-/**
- * Walk the chain of enclosing scopes to find the variable definition for the
- * given identifier name. Returns the resolved `Variable`, or `undefined` if it
- * cannot be found (e.g. an undeclared global or an out-of-scope reference).
- */
+/** Resolves an identifier through its enclosing scopes. */
 function findVariable(
   scope: Scope.Scope,
   name: string,
@@ -58,21 +51,13 @@ function findVariable(
   return undefined;
 }
 
-/**
- * Returns true if the variable was declared with a string-literal initializer.
- * Conservative: if the variable has no single string-initialized declarator
- * (no init, non-literal init, multiple conflicting declarators), returns false.
- */
+/** Requires exactly one variable declaration with a string-literal initializer. */
 function isStringInitializedVariable(variable: Scope.Variable): boolean {
-  // A variable can technically have multiple declarators (e.g. via `var`
-  // hoisting / redeclaration). Only treat it as string-initialized when there
-  // is exactly one declarator and it has a string-literal initializer.
   if (variable.defs.length !== 1) {
     return false;
   }
   const def = variable.defs[0];
   if (def === undefined || def.type !== "Variable") {
-    // Parameters, function names, imports, etc. — type unknown, don't flag.
     return false;
   }
   const declarator = def.node;
@@ -82,12 +67,7 @@ function isStringInitializedVariable(variable: Scope.Variable): boolean {
   return isStringLiteralInit(declarator.init);
 }
 
-/**
- * Returns true if `target` appears as a direct operand of a `+` expression
- * (following left-associative `+` chains, e.g. `s + a + b`). Used to recognize
- * the longhand `s = s + <...>` reassignment, which has the same O(n^2) cost as
- * `s += <...>`. A non-`+` operand (`foo.s`, `s.slice()`, `x + y`) does not match.
- */
+/** Finds a target identifier in a chained `+` expression. */
 function isConcatOperand(
   node: TSESTree.Expression | TSESTree.PrivateIdentifier,
   target: string,
@@ -103,10 +83,7 @@ function isConcatOperand(
   return false;
 }
 
-/**
- * Returns true if `rhs` is a `+` `BinaryExpression` in which `target` appears as
- * an operand — the reassignment shape `s = s + x` / `s = x + s` / `s = s + a + b`.
- */
+/** Recognizes longhand accumulation such as `s = s + x`. */
 function isConcatOntoTarget(
   rhs: TSESTree.Expression,
   target: string,
@@ -117,17 +94,7 @@ function isConcatOntoTarget(
   return isConcatOperand(rhs.left, target) || isConcatOperand(rhs.right, target);
 }
 
-/**
- * Returns true when the accumulator's declaration lives inside `loop`'s BODY, so
- * a fresh string is bound on every iteration.
- *
- * `let s = ""` before the loop is the cross-iteration accumulator this rule
- * targets. `let s = ""` inside the body is not: the `+=` runs a bounded number of
- * times against a string that is discarded at the end of the pass, and there is
- * no quadratic growth to remove — the parts are usually already collected into an
- * array afterwards. Compared by source range, which is exact for a declaration
- * that is lexically nested in the body.
- */
+/** Checks whether the loop creates a fresh accumulator on every iteration. */
 function isDeclaredInsideLoop(
   variable: Scope.Variable,
   loop: TSESTree.Node,
@@ -149,19 +116,12 @@ function isDeclaredInsideLoop(
   return declStart >= bodyStart && declEnd <= bodyEnd;
 }
 
-/**
- * Returns true if `node` is contained within the body of a loop statement.
- * Walks ancestors and, for each loop, ensures the node is inside the loop's
- * BODY (not its test/init/update clauses, which run a bounded number of times
- * relative to the body and aren't the antipattern we target).
- */
+/** Finds the nearest loop whose body contains the assignment. */
 function enclosingLoop(node: TSESTree.Node): TSESTree.Node | null {
   let child: TSESTree.Node = node;
   let parent = node.parent;
   while (parent !== undefined && parent !== null) {
     if (LOOP_NODE_TYPES.has(parent.type)) {
-      // `body` is the property that holds the looped statements for every
-      // loop variant we care about.
       const loop = parent as
         | TSESTree.ForStatement
         | TSESTree.ForOfStatement
@@ -198,8 +158,7 @@ export default createRule<Options, MessageIds>({
       return {};
     }
 
-    // One defect per (accumulator, loop) — see @fileoverview. Keyed on the loop
-    // node so sibling loops over the same variable each keep their report.
+    // Report each accumulator once per loop.
     const reported = new WeakMap<TSESTree.Node, Set<string>>();
 
     return {
@@ -232,9 +191,6 @@ export default createRule<Options, MessageIds>({
         if (!isStringInitializedVariable(variable)) {
           return;
         }
-        // The O(n^2) claim requires the accumulator to SURVIVE across iterations.
-        // One declared inside the loop body is a fresh string every pass, so its
-        // length is bounded by one iteration's work and `join` cannot replace it.
         if (isDeclaredInsideLoop(variable, loop)) {
           return;
         }

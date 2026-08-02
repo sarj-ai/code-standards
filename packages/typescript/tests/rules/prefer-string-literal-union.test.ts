@@ -44,6 +44,14 @@ ruleTester.run("prefer-string-literal-union", rule, {
     {
       code: "function f(x: string) { return x === 'active'; }",
     },
+    {
+      name: "requires two distinct comparison values",
+      code: "function f(x: string) { return x === 'active' || x !== 'active'; }",
+    },
+    {
+      name: "does not combine comparisons from different functions",
+      code: "function first(x: string) { return x === 'active'; } function second(x: string) { return x === 'inactive'; }",
+    },
     // Comparison against a single literal in a switch is not a cluster.
     {
       code: "function f(x: string) { switch (x) { case 'active': return 1; } }",
@@ -67,6 +75,10 @@ ruleTester.run("prefer-string-literal-union", rule, {
     // Uppercase / long literals are not enum-shaped tokens.
     {
       code: "function f(x: string) { return x === 'Active Status Here' || x === 'Another Long Value'; }",
+    },
+    {
+      name: "ignores tokens longer than 31 characters",
+      code: "function f(x: string) { return x === 'abcdefghijklmnopqrstuvwxyzabcdef' || x === 'abcdefghijklmnopqrstuvwxyzabcdeg'; }",
     },
     // Boolean-ish string comparison is not a closed enum — it wants a boolean.
     {
@@ -193,6 +205,20 @@ ruleTester.run("prefer-string-literal-union", rule, {
       code: 'interface Order { status: string; kind: "a" | "b"; }',
       errors: [{ messageId: "bareChoiceField", data: { name: "status" } }],
     },
+    {
+      name: "reports a trailing choice word in a type literal",
+      code: 'type Order = { callStatus: string; kind: "a" | "b" };',
+      errors: [
+        { messageId: "bareChoiceField", data: { name: "callStatus" } },
+      ],
+    },
+    {
+      name: "reports a quoted snake-case choice field",
+      code: 'type Job = { "delivery_mode": string; stage: "new" | "done" };',
+      errors: [
+        { messageId: "bareChoiceField", data: { name: "delivery_mode" } },
+      ],
+    },
     // A comparison cluster on a raw-`string` field fires the cluster diagnostic.
     {
       code: "interface Order { callStatus: string; } function h(o: Order) { return o.callStatus === 'open' || o.callStatus === 'closed'; }",
@@ -207,6 +233,21 @@ ruleTester.run("prefer-string-literal-union", rule, {
     {
       code: "function route(mode: string) { if (mode === 'read') return 1; if (mode === 'write') return 2; return 0; }",
       errors: [{ messageId: "comparisonCluster", data: { key: "mode" } }],
+    },
+    {
+      name: "recognizes loose and reversed inequality comparisons",
+      code: "function route(mode: string) { const reading = mode != 'read'; const writing = 'write' != mode; return reading || writing; }",
+      errors: [{ messageId: "comparisonCluster", data: { key: "mode" } }],
+    },
+    {
+      name: "accepts underscores and hyphens in enum-shaped tokens",
+      code: "function route(status: string) { return status === 'in_progress' || status === 'on-hold'; }",
+      errors: [{ messageId: "comparisonCluster", data: { key: "status" } }],
+    },
+    {
+      name: "does not use a same-named comparison to corroborate a field",
+      code: "type Row = { status: string }; function route(status: string) { return status === 'active' || status === 'inactive'; }",
+      errors: [{ messageId: "comparisonCluster", data: { key: "status" } }],
     },
     // Cluster via `switch` on a raw-`string` param.
     {
@@ -253,4 +294,18 @@ ruleTester.run("prefer-string-literal-union", rule, {
       errors: [{ messageId: "bareChoiceField", data: { name: "status" } }],
     },
   ],
+});
+
+const syntaxOnlyRuleTester = new RuleTester({
+  languageOptions: { parser: tsParser },
+});
+
+syntaxOnlyRuleTester.run("prefer-string-literal-union without type information", rule, {
+  valid: [
+    {
+      name: "leaves comparison clusters inert without resolved types",
+      code: "function route(mode: string) { return mode === 'read' || mode === 'write'; }",
+    },
+  ],
+  invalid: [],
 });

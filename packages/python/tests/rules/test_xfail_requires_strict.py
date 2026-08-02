@@ -237,12 +237,37 @@ def test_thing():
     assert _check(src) == []
 
 
+def test_dynamic_strict_value_is_exempt():
+    src = """
+import pytest
+
+@pytest.mark.xfail(reason="BUG: bad", strict=STRICT_XFAILS)
+def test_thing():
+    assert correct()
+"""
+    assert _check(src) == []
+
+
 def test_imperative_pytest_xfail_call_is_exempt():
     src = """
 import pytest
 
 def test_thing():
     pytest.xfail("BUG: should not reach here")
+"""
+    assert _check(src) == []
+
+
+def test_xfail_used_as_pytest_param_marker_is_exempt():
+    src = """
+import pytest
+
+@pytest.mark.parametrize(
+    "value",
+    [pytest.param("bad", marks=pytest.mark.xfail(reason="BUG: wrong envelope"))],
+)
+def test_thing(value):
+    assert correct(value)
 """
     assert _check(src) == []
 

@@ -19,7 +19,7 @@
     "still exists under another name.",
     "",
     "`kind` is `eslint` for `@sarj/<name>` ESLint rules, `python`/`sql`/`iac` for a",
-    "rule id (which is also its pre-commit hook id under a `sarj-` prefix), and",
+    "rule id that is also a pre-commit hook id, `text` for config-text rules, and",
     "`code` for a `SARJnnn` code as written in a `sarj-noqa` comment."
   ],
   "rules": {
@@ -177,6 +177,11 @@
       "no-comment-cruft",
       "require-deletion-protection",
       "require-prevent-destroy-on-irreplaceable"
+    ],
+    "text": [
+      "commented-out-config",
+      "config-comment-wall",
+      "ephemeral-ai-artifact"
     ]
   },
   "codes": {
@@ -276,6 +281,11 @@
       "SARJ201",
       "SARJ202",
       "SARJ203"
+    ],
+    "text": [
+      "SARJ300",
+      "SARJ301",
+      "SARJ302"
     ]
   },
   "retired": [
@@ -284,7 +294,7 @@
       "kind": "eslint",
       "status": "removed",
       "replacement": null,
-      "note": "removed in @sarj/eslint-plugin 5.0.0: 39 corpus findings read, 0 true positives. Delete the rule entry and any eslint-disable naming it."
+      "note": "Delete the config entry and suppressions; there is no replacement."
     },
     {
       "id": "@sarj/jsdoc-restates-signature",
@@ -305,14 +315,70 @@
       "kind": "eslint",
       "status": "removed",
       "replacement": null,
-      "note": "removed in @sarj/eslint-plugin 5.0.0: 50 corpus findings read, 0 true positives. Delete the rule entry and any eslint-disable naming it."
+      "note": "Delete the config entry and suppressions; there is no replacement."
+    },
+    {
+      "id": "@sarj/no-sequential-await",
+      "kind": "eslint",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete the entry; core `no-await-in-loop` covers it."
+    },
+    {
+      "id": "@sarj/no-template-literal-in-log",
+      "kind": "eslint",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete the config entry and suppressions; there is no replacement."
+    },
+    {
+      "id": "@sarj/no-unsafe-cast",
+      "kind": "eslint",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete the entry; keep `@typescript-eslint/consistent-type-assertions` enabled."
     },
     {
       "id": "@sarj/prefer-setup-file-mocks",
       "kind": "eslint",
       "status": "removed",
       "replacement": null,
-      "note": "removed in @sarj/eslint-plugin 5.0.0: 50 corpus findings read, 0 true positives. Delete the rule entry and any eslint-disable naming it."
+      "note": "Delete the config entry and suppressions; there is no replacement."
+    },
+    {
+      "id": "@sarj/prefer-shadcn",
+      "kind": "eslint",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete the entry; use `react/forbid-elements` for element restrictions."
+    },
+    {
+      "id": "@sarj/primary-export-file-name",
+      "kind": "eslint",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete the config entry and suppressions; there is no replacement."
+    },
+    {
+      "id": "@sarj/require-parameterized-tests",
+      "kind": "eslint",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete stale references; the rule was never registered."
+    },
+    {
+      "id": "@sarj/require-schema-validate-search",
+      "kind": "eslint",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete the entry; use `@typescript-eslint/consistent-type-assertions`."
+    },
+    {
+      "id": "@sarj/single-public-export",
+      "kind": "eslint",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete the config entry and suppressions; there is no replacement."
     },
     {
       "id": "@sarj/strict-test-assertions",
@@ -340,21 +406,21 @@
       "kind": "code",
       "status": "removed",
       "replacement": null,
-      "note": "removed in sarj-python-lint 0.34.0 with the no-patching-system-under-test rule: 25 corpus findings read, 3 true positives."
+      "note": "Removed in sarj-python-lint 0.34.0. Delete every `# sarj-noqa: SARJ061` comment and SARJ061 baseline key; there is no replacement."
     },
     {
       "id": "SARJ083",
       "kind": "code",
       "status": "removed",
       "replacement": null,
-      "note": "removed in sarj-python-lint 0.37.0 with the no-implicit-attribute-access rule: 30 corpus findings read, 10 hard false positives and 5 weak true positives. Delete every `# sarj-noqa: SARJ083` comment and every SARJ083 key in `.sarj-python-baseline.json`; a dead baseline key never fails, but it hides how large the baseline really is."
+      "note": "Removed in sarj-python-lint 0.37.0. Delete every `# sarj-noqa: SARJ083` comment and SARJ083 baseline key; there is no replacement."
     },
     {
       "id": "no-implicit-attribute-access",
       "kind": "python",
       "status": "removed",
       "replacement": null,
-      "note": "removed in sarj-python-lint 0.37.0: 30 corpus findings read, 10 hard false positives and 5 weak true positives. Delete the `sarj-no-implicit-attribute-access` pre-commit hook."
+      "note": "Removed in sarj-python-lint 0.37.0. Delete the `sarj-no-implicit-attribute-access` pre-commit hook; there is no replacement."
     },
     {
       "id": "no-patching-system-under-test",

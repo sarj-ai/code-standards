@@ -92,6 +92,18 @@ def test_flags_unittest_assertions():
     assert _count(src) == 4
 
 
+def test_flags_supported_unittest_literal_variants_and_legacy_alias():
+    src = (
+        "class TestThing(TestCase):\n"
+        "    def test_x(self):\n"
+        "        self.assertTrue([value])\n"
+        "        self.assertFalse(0)\n"
+        "        self.assertFalse([])\n"
+        "        self.assertEquals(-1, -1)\n"
+    )
+    assert _count(src) == 4
+
+
 def test_flags_each_assertion_separately_and_sorts_by_position():
     src = "def test_x():\n    assert True\n    assert [1]\n    assert 2 == 2\n"
     diags = _check(src)
@@ -103,14 +115,7 @@ def test_fires_outside_test_files_too():
     assert len(_check("def guard():\n    assert True\n", "src/app/service.py")) == 1
 
 
-# ---------------------------------------------------------------------------
-# Migrated from SARJ064 `trivially-true-assertion`, which used to report these
-# too. A 21-repository, 42,761-file census found 42 assertions drawing both
-# diagnostics at the same line:col, so SARJ064 dropped its constant arm and this
-# rule owns every literal-only tautology: it reaches production code and modules
-# pytest never collects, reads signed constants, and carries the sole-`except`
-# and pytest-benchmark carve-outs SARJ064 never had.
-# ---------------------------------------------------------------------------
+# SARJ057 owns literal-only tautologies; SARJ064 owns cross-statement construction.
 
 
 def test_flags_every_constant_condition_sarj064_ceded():
@@ -213,6 +218,16 @@ def test_ignores_call_self_comparison():
 def test_ignores_mixed_literal_and_identifier_comparison():
     assert _count("def test_x(result):\n    assert result == 1\n") == 0
     assert _count("def test_x(result):\n    assert 1 == result\n") == 0
+
+
+def test_ignores_chained_and_non_sameness_literal_comparisons():
+    for expr in ("1 == 1 == 1", "1 != 1", "1 is not 1", "1 <= 1", "1 >= 1"):
+        assert _count(f"def test_x():\n    assert {expr}\n") == 0, expr
+
+
+def test_ignores_identical_containers_that_contain_runtime_values():
+    for expr in ("[value] == [value]", "{'key': value} == {'key': value}"):
+        assert _count(f"def test_x(value):\n    assert {expr}\n") == 0, expr
 
 
 def test_ignores_unittest_self_comparison_of_a_value():

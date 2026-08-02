@@ -62,15 +62,9 @@ class _PrivateImport:
 
 
 def _is_our_own_internals(hit: _PrivateImport, path: Path) -> bool:
-    """Report whether the private module belongs to the importer's own distribution.
+    """Return whether the private module is unavailable or belongs to the importer's distribution.
 
-    Only ever true for a private *segment*: reaching a private NAME out of a
-    module is a finding wherever it is written, because the fix — export it — is
-    available to the same authors.
-
-    Returns:
-        True when the finding names an edit the importer cannot make.
-
+    Private imported names never qualify because the same authors can export them.
     """
     if not hit.is_segment:
         return False
@@ -96,12 +90,7 @@ def _is_ours(module: str, path: Path, own_top: str | None) -> bool:
 
 
 def _private_imports(tree: ast.Module) -> list[_PrivateImport]:
-    """Collect every private symbol or private module segment imported absolutely.
-
-    Returns:
-        One entry per private thing; relative imports are skipped.
-
-    """
+    """Collect private symbols and submodule segments from absolute imports."""
     hits: list[_PrivateImport] = []
     for node in nodes(tree, ast.ImportFrom, ast.Import):
         if isinstance(node, ast.ImportFrom):

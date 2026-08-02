@@ -17,6 +17,14 @@ ruleTester.run("no-trailing-value-narration", rule, {
     { code: "const window = 60 * 60 * 24 * 5; // about a working week" },
     // A why, not a restatement.
     { code: "const backoff = 2 * 60; // doubles per attempt, capped by the gateway" },
+    {
+      name: "allows a unit annotation that also explains a domain constraint",
+      code: "const timeout = 5 * 60; // 5 minutes for cold starts",
+    },
+    {
+      name: "allows a comment when any stated number is absent from the code",
+      code: "const timeout = 5 * 60; // 5 minutes with a 30-second cap",
+    },
     // Owned by a ticket or a URL (protected-class signal S1).
     { code: "const retries = 3; // 3 retries (PLT-812)" },
     { code: "const retries = 3; // 3 retries — see https://example.com/limits" },
@@ -26,6 +34,13 @@ ruleTester.run("no-trailing-value-narration", rule, {
     { code: "const staleTime = 5 * 60 * 1000; // minutes" },
     // A directive.
     { code: "const staleTime = 5 * 60 * 1000; // TODO@nmaswood: 5 minutes" },
+    // Without a unit, the comment can state a domain fact or value mapping.
+    { code: "const ounceToG = poundToG / 16; // 16 ounces to a pound" },
+    { code: "for (let serviceNum = 0; serviceNum < 10; serviceNum++) {} // 10 services" },
+    { code: "const map = { 0: off, 100: on }; // 0-Off 100-On" },
+    // Positional bracketed values have no declaration name that can carry the unit.
+    { code: "await setCook(\n  60, // 60 seconds\n);" },
+    { code: "const cases = [\n  [0, 0], // 0 seconds -> 0\n];" },
     // An own-line comment is `no-comment-cruft`'s / `no-restated-comment`'s business.
     { code: "// 5 minutes\nconst staleTime = 5 * 60 * 1000;" },
     // A generated file mirrors its generator.
@@ -35,6 +50,10 @@ ruleTester.run("no-trailing-value-narration", rule, {
     },
   ],
   invalid: [
+    {
+      code: "const payload = {\n  value: 60, // 60 seconds\n};",
+      errors: [{ messageId: "narratesValue" }],
+    },
     {
       code: "const staleTime = 5 * 60 * 1000; // 5 minutes",
       errors: [{ messageId: "narratesValue" }],
@@ -49,6 +68,14 @@ ruleTester.run("no-trailing-value-narration", rule, {
     },
     {
       code: "const poll = 30 * 1000; // 30 seconds",
+      errors: [{ messageId: "narratesValue" }],
+    },
+    {
+      code: "const announcementTimeoutSec = 5 * 60; // 5 minutes",
+      errors: [{ messageId: "narratesValue" }],
+    },
+    {
+      code: "function configure() {\n  const timeout = 5 * 60; // 5 minutes\n}",
       errors: [{ messageId: "narratesValue" }],
     },
     // Identifier words on the line do not rescue the comment.

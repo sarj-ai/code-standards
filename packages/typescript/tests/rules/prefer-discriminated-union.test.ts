@@ -17,93 +17,99 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("prefer-discriminated-union", rule, {
   valid: [
-    // FP guard, corpus: swr/src/_internal/types.ts:1191 — an all-boolean record
-    // is a FLAG SET; every combination is legal, so there is no illegal state.
     {
+      name: "allows independent all-boolean flag sets",
       code: "interface StateDependencies { data?: boolean; error?: boolean; isValidating?: boolean; isLoading?: boolean }",
     },
-    // A proper discriminated union — the prescribed pattern.
     {
+      name: "allows an explicit discriminated union",
       code: "type Result = { ok: true; data: string } | { ok: false; error: string };",
     },
-    // Status boolean but fewer than 2 optionals (only 1 optional).
     {
+      name: "allows an interface with only one optional payload",
       code: "interface Result { success: boolean; data?: string; }",
     },
     {
+      name: "allows a type literal with only one optional payload",
       code: "type Result = { success: boolean; data?: string };",
     },
-    // Status boolean with no optionals at all.
     {
+      name: "allows status flags without optional members",
       code: "interface Flags { ok: boolean; failed: boolean; }",
     },
-    // >= 2 optionals but NO status boolean member.
     {
+      name: "allows interfaces without a recognized status member",
       code: "interface Config { host?: string; port?: number; timeout?: number; }",
     },
     {
+      name: "allows type literals without a recognized status member",
       code: "type Config = { host?: string; port?: number; timeout?: number };",
     },
-    // Has a member named `success` but it is NOT boolean-typed; plus optionals.
     {
+      name: "allows a non-boolean member named success",
       code: "interface Response { success: string; data?: string; error?: string; }",
     },
-    // 2 optionals but the boolean is named something non-status.
     {
+      name: "allows an unrelated boolean member",
       code: "interface Thing { enabled: boolean; data?: string; meta?: number; }",
     },
-    // Plain object type with optionals, no status boolean.
     {
+      name: "allows an optional-only object type",
       code: "type Opts = { a?: number; b?: number; c?: number };",
     },
-    // Empty interface — nothing to flag.
     {
+      name: "allows an empty interface",
       code: "interface Empty {}",
     },
-    // Type alias to a non-object type — not an object type literal.
     {
+      name: "allows a non-object type alias",
       code: 'type Status = "ok" | "error";',
     },
   ],
   invalid: [
-    // A boolean flag alongside an actual optional PAYLOAD still fires.
     {
+      name: "rejects a status flag with optional payloads",
       code: "interface Result { success: boolean; data?: string; error?: Error }",
       errors: [{ messageId: "preferDiscriminatedUnion" }],
     },
-    // interface form: `success` boolean + 2 optionals.
     {
+      name: "rejects an interface with success and two optional payloads",
       code: "interface Result { success: boolean; data?: string; error?: string; }",
       errors: [{ messageId: "preferDiscriminatedUnion" }],
     },
-    // type-alias form: `ok` boolean + 2 optionals.
     {
+      name: "rejects a type literal with ok and two optional payloads",
       code: "type Result = { ok: boolean; data?: string; error?: string };",
       errors: [{ messageId: "preferDiscriminatedUnion" }],
     },
-    // `error` as the boolean status member + 2 optionals.
     {
+      name: "recognizes error as a status member",
       code: "interface ApiResponse { error: boolean; payload?: unknown; message?: string; }",
       errors: [{ messageId: "preferDiscriminatedUnion" }],
     },
-    // `failed` status member + 3 optionals.
     {
+      name: "recognizes failed as a status member",
       code: "type Job = { failed: boolean; result?: string; reason?: string; code?: number };",
       errors: [{ messageId: "preferDiscriminatedUnion" }],
     },
-    // `isError` status member + 2 optionals.
     {
+      name: "recognizes isError as a status member",
       code: "interface State { isError: boolean; value?: number; cause?: string; }",
       errors: [{ messageId: "preferDiscriminatedUnion" }],
     },
-    // More than 2 optionals alongside the status boolean.
     {
+      name: "rejects more than two optional members",
       code: "interface Outcome { ok: boolean; data?: string; error?: string; warning?: string; retryable?: boolean; }",
       errors: [{ messageId: "preferDiscriminatedUnion" }],
     },
-    // String-literal key for the status boolean still counts.
     {
+      name: "recognizes a string-literal status key",
       code: 'type Result = { "success": boolean; data?: string; error?: string };',
+      errors: [{ messageId: "preferDiscriminatedUnion" }],
+    },
+    {
+      name: "rejects one payload mixed with optional boolean flags",
+      code: "interface Result { success: boolean; data?: string; stale?: boolean; }",
       errors: [{ messageId: "preferDiscriminatedUnion" }],
     },
   ],

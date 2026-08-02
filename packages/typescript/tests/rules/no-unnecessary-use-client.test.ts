@@ -18,10 +18,8 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("no-unnecessary-use-client", rule, {
   valid: [
-    // FP guard 1, corpus: zod/packages/docs/components/tabs.tsx:1 and
-    // swr/examples/suspense-global/global-swr-config.tsx:1 — wrapping a
-    // third-party component is the documented reason for the directive.
     {
+      name: "allows wrappers that render named third-party components",
       code: [
         '"use client";',
         'import { Primitive } from "fumadocs-ui/components/tabs";',
@@ -30,6 +28,7 @@ ruleTester.run("no-unnecessary-use-client", rule, {
       filename: "/repo/components/tabs.tsx",
     },
     {
+      name: "allows wrappers that render third-party context providers",
       code: [
         '"use client";',
         'import { SWRConfig } from "swr";',
@@ -37,9 +36,8 @@ ruleTester.run("no-unnecessary-use-client", rule, {
       ].join("\n"),
       filename: "/repo/components/global-swr-config.tsx",
     },
-    // FP guard 2, corpus: query/packages/react-query-devtools/src/index.ts:1 —
-    // a re-export written the long way.
     {
+      name: "allows exported aliases that read imported bindings",
       code: [
         '"use client";',
         'import * as Devtools from "./ReactQueryDevtools";',
@@ -47,39 +45,52 @@ ruleTester.run("no-unnecessary-use-client", rule, {
       ].join("\n"),
       filename: "/repo/src/index.ts",
     },
-    // No directive.
-    { code: "export default function X() { return <div />; }" },
-    // Directive + hook.
     {
+      name: "ignores files without the directive",
+      code: "export default function X() { return <div />; }",
+    },
+    {
+      name: "allows hook calls",
       code: "'use client'; import { useState } from 'react'; export default function X() { const [n] = useState(0); return <div>{n}</div>; }",
     },
-    // Directive + event handler.
     {
+      name: "allows JSX event handlers",
       code: "'use client'; export default function X() { return <button onClick={() => {}}>x</button>; }",
     },
-    // Directive + React.useState (namespaced hook).
     {
+      name: "allows namespaced hook calls",
       code: "'use client'; export default function X() { const [n] = React.useState(0); return <div>{n}</div>; }",
     },
-    // Directive + browser global.
     {
+      name: "allows browser global references",
       code: "'use client'; export default function X() { return <div>{typeof window}</div>; }",
     },
-    // Directive + client-only import.
     {
+      name: "allows known client-only imports",
       code: "'use client'; import * as Dialog from '@radix-ui/react-dialog'; export default function X() { return <Dialog.Root />; }",
     },
-    // Directive + class declaration (client-side only).
     {
+      name: "allows class declarations",
       code: "'use client'; class Thing {} export default function X() { return <div />; }",
     },
-    // FP guard 3, from a first-party review regression: two lazy-wrapper
-    // modules, one deferring a charting bundle and one the editor bundle
-    // — `ssr: false`
-    // is a BUILD ERROR in a Server Component, so this module has no legal form
-    // without the directive. It is also maximally "unnecessary"-looking: one
-    // `dynamic()` call, no JSX, no hooks, no handlers.
     {
+      name: "allows createContext without hooks or handlers",
+      code: [
+        '"use client";',
+        'import { createContext } from "react";',
+        "export const ThemeContext = createContext(null);",
+      ].join("\n"),
+    },
+    {
+      name: "allows direct named re-exports",
+      code: ['"use client";', 'export { Provider } from "./provider";'].join("\n"),
+    },
+    {
+      name: "allows export-all declarations",
+      code: ['"use client";', 'export * from "./provider";'].join("\n"),
+    },
+    {
+      name: "allows exported next/dynamic wrappers",
       code: [
         '"use client";',
         'import dynamic from "next/dynamic";',
@@ -91,11 +102,8 @@ ruleTester.run("no-unnecessary-use-client", rule, {
       ].join("\n"),
       filename: "/repo/app/dashboard/call-volume-chart-lazy.tsx",
     },
-    // Same, arranged so the `next/dynamic` import is the ONLY thing keeping it
-    // valid: the lazy component is a local const (not an imported local, so the
-    // third-party-JSX indicator is out) and the export's subtree references no
-    // import (so the re-export indicator is out).
     {
+      name: "allows internal next/dynamic wrappers",
       code: [
         '"use client";',
         'import dynamic from "next/dynamic";',
@@ -104,13 +112,8 @@ ruleTester.run("no-unnecessary-use-client", rule, {
       ].join("\n"),
       filename: "/repo/components/editor-lazy.tsx",
     },
-    // From the same first-party review regression: a selector-wrapper module
-    // (and its twin). The hook is PASSED, not called, so
-    // `markIfHookOrContext` never sees it — but indicator 2 already exempts the
-    // file because the exported declaration reads imported bindings. Pinned so a
-    // future narrowing of indicator 2 cannot silently reintroduce the report;
-    // the disable comments in the repo are stale, not live false positives.
     {
+      name: "allows exported wrappers that pass imported hook adapters",
       code: [
         '"use client";',
         'import { OrganizationSelector } from "@/components/organization-selector";',
@@ -123,9 +126,8 @@ ruleTester.run("no-unnecessary-use-client", rule, {
       ].join("\n"),
       filename: "/repo/app/scenarios/organization-selector-wrapper.tsx",
     },
-    // An imported hook handed straight to a child as a prop — same shape,
-    // likewise already covered by indicator 2.
     {
+      name: "allows exported wrappers that pass imported hooks",
       code: [
         '"use client";',
         'import { useFilters } from "./use-filters";',
@@ -136,11 +138,8 @@ ruleTester.run("no-unnecessary-use-client", rule, {
     },
   ],
   invalid: [
-    // The guard-3 narrowing is keyed on the EXACT module specifier: another
-    // `next/*` import carries no such constraint and must still fire. Arranged
-    // like the valid `next/dynamic` case above so the specifier is the only
-    // difference between the two.
     {
+      name: "reports unrelated next imports",
       code: [
         '"use client";',
         'import { cookies } from "next/headers";',
@@ -150,9 +149,8 @@ ruleTester.run("no-unnecessary-use-client", rule, {
       filename: "/repo/components/banner-3.tsx",
       errors: [{ messageId: "unnecessaryUseClient" }],
     },
-    // A local `use*`-shaped variable is not a hook and must not excuse the
-    // directive — the boundary of the hook heuristic, pinned.
     {
+      name: "reports use-prefixed variables that are not called",
       code: [
         '"use client";',
         'const useCase = "reporting";',
@@ -161,9 +159,8 @@ ruleTester.run("no-unnecessary-use-client", rule, {
       filename: "/repo/components/banner.tsx",
       errors: [{ messageId: "unnecessaryUseClient" }],
     },
-    // A `use*`-named import that is never referenced in an export's subtree does
-    // not by itself excuse the directive.
     {
+      name: "reports unused use-prefixed imports",
       code: [
         '"use client";',
         'import { useFilters } from "./use-filters";',
@@ -172,8 +169,8 @@ ruleTester.run("no-unnecessary-use-client", rule, {
       filename: "/repo/components/banner-2.tsx",
       errors: [{ messageId: "unnecessaryUseClient" }],
     },
-    // The guards must not over-fire: a locally-defined, server-safe component.
     {
+      name: "reports wrappers that only render relative imports",
       code: [
         '"use client";',
         'import { Row } from "./row";',
@@ -183,10 +180,12 @@ ruleTester.run("no-unnecessary-use-client", rule, {
       errors: [{ messageId: "unnecessaryUseClient" }],
     },
     {
+      name: "reports static components",
       code: "'use client'; export default function X() { return <div>hello</div>; }",
       errors: [{ messageId: "unnecessaryUseClient" }],
     },
     {
+      name: "reports components that only render props",
       code: "'use client'; export default function X({ name }) { return <div>{name}</div>; }",
       errors: [{ messageId: "unnecessaryUseClient" }],
     },

@@ -30,31 +30,35 @@ ruleTester.run("no-raw-env", rule, {
     { code: "const mode = import.meta.env.MODE;" },
     { code: "const prod = import.meta.env.PROD;" },
     { code: "const ssr = import.meta.env.SSR;" },
-    // --- Not a read of a configuration value --------------------------------
-    // Setting a variable for a child process. Real corpus:
-    // react-router/packages/react-router-dev/vite/plugins/prerender.ts:250.
-    { code: "process.env.IS_RR_BUILD_REQUEST = 'yes';" },
-    { code: "process.env.IS_RR_BUILD_REQUEST = ogIsBuildRequest;" },
-    { code: "delete process.env.FORCE_COLOR;" },
-    // Forwarding the inherited environment to a spawned process. Real corpus:
-    // react-router/integration/helpers/create-fixture.ts:45.
-    { code: "spawn(cmd, { env: { ...process.env, NO_COLOR: '1' } });" },
-    // --- Files with no validated env module to import -----------------------
-    // A test that drives a CLI has to read and set the raw environment. Real
-    // corpus: react-router/packages/create-react-router/__tests__/
-    // create-react-router-test.ts (26 hits).
     {
+      name: "allows assigning a raw variable without reading it",
+      code: "process.env.IS_RR_BUILD_REQUEST = 'yes';",
+    },
+    { code: "process.env.IS_RR_BUILD_REQUEST = ogIsBuildRequest;" },
+    {
+      name: "allows compound assignment targets",
+      code: "process.env.FORCE_COLOR ??= '1';",
+    },
+    {
+      name: "allows deleting a raw variable",
+      code: "delete process.env.FORCE_COLOR;",
+    },
+    {
+      name: "allows forwarding the whole environment",
+      code: "spawn(cmd, { env: { ...process.env, NO_COLOR: '1' } });",
+    },
+    {
+      name: "allows raw environment access in tests",
       code: "let originalUserAgent = process.env.npm_config_user_agent;",
       filename: "packages/create-react-router/__tests__/create-react-router-test.ts",
     },
-    // A one-off script. Real corpus: zod/scripts/check-versions.ts.
     {
+      name: "allows raw environment access in scripts",
       code: "const tag = process.env.npm_config_tag || 'latest';",
       filename: "zod/scripts/check-versions.ts",
     },
-    // Build/test config runs before the app exists. Real corpus:
-    // swr/test/e2e/playwright.config.ts.
     {
+      name: "allows raw environment access in build config",
       code: "export default { retries: process.env.CI ? 2 : 0 };",
       filename: "playwright.config.ts",
     },
@@ -62,8 +66,33 @@ ruleTester.run("no-raw-env", rule, {
       code: "export default { reporters: process.env.GITHUB_ACTIONS };",
       filename: "vitest.config.mts",
     },
-    // Validated env boundary modules are the one place raw reads belong.
     {
+      name: "allows a z.object marker in a boundary-named module",
+      code: `
+        import { z } from "zod";
+        const schema = z.object({ API_KEY: z.string() });
+        export const rawApiKey = process.env.API_KEY;
+      `,
+      filename: "/repo/src/client-env.ts",
+    },
+    {
+      name: "allows a parse marker in a boundary-named module",
+      code: `
+        const schema = getEnvSchema();
+        export const env = schema.parse(process.env);
+      `,
+      filename: "/repo/src/server-settings.ts",
+    },
+    {
+      name: "allows a safeParse marker in a boundary-named module",
+      code: `
+        const schema = getEnvSchema();
+        export const env = schema.safeParse(process.env);
+      `,
+      filename: "/repo/src/server-env.ts",
+    },
+    {
+      name: "allows bracketed raw reads inside a validated boundary",
       code: `
         import { z } from "zod";
         const ZClientSettings = z.object({ publicKey: z.string() });
@@ -73,12 +102,8 @@ ruleTester.run("no-raw-env", rule, {
       `,
       filename: "/repo/src/client-settings.ts",
     },
-    // FP guard, corpus: openstatus/apps/web/src/env.ts — a `@t3-oss/env-nextjs`
-    // boundary. `createEnv` validates with the `server`/`client` schemas and its
-    // `runtimeEnv` map is REQUIRED to spell `process.env.X` once per variable,
-    // so the raw reads are the boundary doing its job. That one file was 24 of
-    // the 1,851 findings.
     {
+      name: "allows createEnv runtime mappings in a boundary-named module",
       code: `
         import { createEnv } from "@t3-oss/env-nextjs";
         import { z } from "zod";
@@ -89,23 +114,22 @@ ruleTester.run("no-raw-env", rule, {
       `,
       filename: "/repo/apps/web/src/env.ts",
     },
-    // The same boundary validated with `.safeParse()` rather than `.parse()`.
     {
-      code: `
-        import { z } from "zod";
-        const ZEnv = z.object({ API_KEY: z.string() });
-        export const env = ZEnv.safeParse({ API_KEY: process.env.API_KEY });
-      `,
-      filename: "/repo/src/server-env.ts",
+      name: "allows the host-owned NEXT_RUNTIME marker",
+      code: "if (process.env.NEXT_RUNTIME === 'nodejs') {}",
     },
-    // --- Platform/runtime markers -------------------------------------------
-    // Injected by the host, not by the app's own deployment config. Corpus:
-    // formbricks/apps/web/lib/posthog/server.ts:31 and
-    // dub/apps/web/lib/middleware/utils/get-final-url.ts:84.
-    { code: "if (process.env.NEXT_RUNTIME === 'nodejs') {}" },
-    { code: "const ip = process.env.VERCEL === '1' ? real : local;" },
-    { code: "if (process.env.VERCEL_ENV === 'production') {}" },
-    { code: "const retries = process.env.CI ? 2 : 0;" },
+    {
+      name: "allows the host-owned VERCEL marker",
+      code: "const ip = process.env.VERCEL === '1' ? real : local;",
+    },
+    {
+      name: "allows the host-owned VERCEL_ENV marker",
+      code: "if (process.env.VERCEL_ENV === 'production') {}",
+    },
+    {
+      name: "allows the host-owned CI marker",
+      code: "const retries = process.env.CI ? 2 : 0;",
+    },
   ],
   invalid: [
     {
@@ -130,42 +154,36 @@ ruleTester.run("no-raw-env", rule, {
       code: "const x = import.meta.env[key];",
       errors: [{ messageId: "noRawEnv" }],
     },
-    // The exemptions must not swallow the shape the rule exists for: application
-    // code reading a deployment setting. Real corpus:
-    // zod/packages/docs/loaders/stars.ts:1.
     {
+      name: "reports deployment settings read by application code",
       code: "const GITHUB_TOKEN = process.env.GITHUB_TOKEN;",
       filename: "src/loaders/stars.ts",
       errors: [{ messageId: "noRawEnv" }],
     },
-    // Only the assignment TARGET is exempt — the read on the right still fires.
     {
+      name: "reports a raw read on an assignment right-hand side",
       code: "process.env.FOO = process.env.BAR;",
       errors: [{ messageId: "noRawEnv" }],
     },
-    // A `*.config.*` basename exempts config; a source file that merely has
-    // `config` in its name does not.
     {
+      name: "reports raw reads in ordinary config source modules",
       code: "const host = process.env.HOST;",
       filename: "src/config.ts",
       errors: [{ messageId: "noRawEnv" }],
     },
-    // UPPER BOUND on the boundary widening: a boundary-NAMED module that
-    // validates nothing is exactly what the rule is for. 23 such files in the
-    // corpus keep firing after the widening.
     {
+      name: "reports boundary-named modules without validation markers",
       code: "export const apiKey = process.env.API_KEY;",
       filename: "/repo/src/env.ts",
       errors: [{ messageId: "noRawEnv" }],
     },
-    // UPPER BOUND on the platform-marker exemption. `VERCEL_URL` (52 findings)
-    // and `PORT` (19) are used to BUILD base URLs — a deployment value a repo
-    // may well want validated — so they are deliberately NOT exempt.
     {
+      name: "reports VERCEL_URL because it is deployment configuration",
       code: "const base = `https://${process.env.VERCEL_URL}`;",
       errors: [{ messageId: "noRawEnv" }],
     },
     {
+      name: "reports PORT because it is deployment configuration",
       code: "const port = process.env.PORT;",
       errors: [{ messageId: "noRawEnv" }],
     },

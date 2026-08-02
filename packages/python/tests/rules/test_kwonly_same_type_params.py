@@ -369,6 +369,17 @@ def run():
     assert len(_check(src)) == 1
 
 
+def test_nested_closure_still_fires():
+    src = """
+def build_comparator():
+    def compare(old_key: str, new_key: str) -> bool:
+        return old_key == new_key
+
+    return compare("old", "new")
+"""
+    assert len(_check(src)) == 1
+
+
 def test_overload_implementation_is_exempt():
     # Minimized from trio's _fake_net.getsockopt: the impl's positional shape
     # is pinned by its @overload stubs.
@@ -396,9 +407,7 @@ def test_generated_file_is_exempt():
 
 
 def test_symmetric_numeric_suffix_params_are_exempt():
-    # Minimized from pydantic's almost_equal_floats: value_1/value_2 declare a
-    # symmetric comparison — order genuinely does not matter.
-    src = "def almost_equal_floats(value_1: float, value_2: float, *, delta: float = 1e-8) -> bool: ...\n"
+    src = "def same_policy(policy_id_1: str, policy_id_2: str) -> bool: ...\n"
     assert _check(src) == []
 
 

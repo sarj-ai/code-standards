@@ -19,10 +19,8 @@ const TEST_FILE = "/repo/src/worker.test.ts";
 
 ruleTester.run("no-sleep-in-test-body", rule, {
   valid: [
-    // --- The critical FP guard: a sleep inside a nested helper/fake declared in
-    // the test is SIMULATING latency to exercise a timeout path. That is the
-    // intended use of a delay in a test and must never fire. ---
     {
+      name: "allows a Promise sleep inside a nested latency fake",
       filename: TEST_FILE,
       code: [
         "it('times out a slow upstream', async () => {",
@@ -35,6 +33,7 @@ ruleTester.run("no-sleep-in-test-body", rule, {
       ].join("\n"),
     },
     {
+      name: "allows a helper sleep inside a nested latency fake",
       filename: TEST_FILE,
       code: [
         "it('cancels in flight work', async () => {",
@@ -43,18 +42,28 @@ ruleTester.run("no-sleep-in-test-body", rule, {
         "});",
       ].join("\n"),
     },
-    // --- A zero delay is a macrotask yield to flush the event loop, not a guess. ---
     {
+      name: "allows a zero-delay Promise used to flush the event loop",
       filename: TEST_FILE,
       code: "it('flushes', async () => { await new Promise((r) => setTimeout(r, 0)); });",
     },
-    // --- A non-literal delay is a deliberate parameterised wait. ---
     {
+      name: "allows a zero-delay helper used to flush the event loop",
+      filename: TEST_FILE,
+      code: "it('flushes', async () => { await sleep(0); });",
+    },
+    {
+      name: "allows a parameterized helper delay",
       filename: TEST_FILE,
       code: "it('waits the configured backoff', async () => { await sleep(config.backoffMs); });",
     },
-    // --- Fake timers are the recommended fix and must stay clean. ---
     {
+      name: "allows a parameterized Promise delay",
+      filename: TEST_FILE,
+      code: "it('waits the configured backoff', async () => { await new Promise((r) => setTimeout(r, config.backoffMs)); });",
+    },
+    {
+      name: "allows deterministic fake-timer advancement",
       filename: TEST_FILE,
       code: [
         "it('retries after the backoff', async () => {",
@@ -65,72 +74,107 @@ ruleTester.run("no-sleep-in-test-body", rule, {
         "});",
       ].join("\n"),
     },
-    // --- setTimeout used to schedule work under test, not to sleep. ---
     {
+      name: "allows setTimeout when it is not wrapped as a Promise sleep",
       filename: TEST_FILE,
       code: "it('debounces', () => { setTimeout(() => fire(), 100); vi.runAllTimers(); });",
     },
-    // --- Production code is out of scope: a real sleep there is a design choice. ---
     {
+      name: "ignores Promise sleeps outside test files",
       filename: "/repo/src/queue-consumer.ts",
       code: "export async function backoff() { await new Promise((r) => setTimeout(r, 250)); }",
     },
-    // --- Not a test-case callback (module scope of a test file). ---
     {
+      name: "ignores helper sleeps outside a test callback",
       filename: TEST_FILE,
       code: "const warmup = async () => { await sleep(50); };",
     },
-    // --- describe body is setup, not a test body. ---
     {
+      name: "ignores helper sleeps reached through a describe-scoped helper",
       filename: TEST_FILE,
       code: "describe('suite', () => { const d = () => sleep(10); it('x', () => { d(); }); });",
     },
   ],
   invalid: [
-    // The canonical flaky sleep, directly in the test body.
     {
+      name: "reports an expression-bodied Promise sleep in an it callback",
       filename: TEST_FILE,
       code: "it('eventually posts', async () => { await new Promise((r) => setTimeout(r, 50)); expect(posted()).toBe(true); });",
       errors: [{ messageId: "noSleepInTestBody" }],
     },
-    // Block-bodied executor spelling.
     {
+      name: "reports a block-bodied Promise sleep in a test callback",
       filename: TEST_FILE,
       code: "test('eventually posts', async () => { await new Promise((r) => { setTimeout(r, 100); }); });",
       errors: [{ messageId: "noSleepInTestBody" }],
     },
-    // A shared sleep helper called with a literal delay.
     {
+      name: "reports a sleep helper with a fixed delay",
       filename: TEST_FILE,
       code: "it('eventually posts', async () => { await sleep(200); expect(posted()).toBe(true); });",
       errors: [{ messageId: "noSleepInTestBody" }],
     },
-    // `.only` / `.each` variants are still test bodies.
     {
+      name: "reports a delay helper in an it.only callback",
       filename: TEST_FILE,
       code: "it.only('eventually posts', async () => { await delay(10); });",
       errors: [{ messageId: "noSleepInTestBody" }],
     },
     {
+      name: "reports a sleep helper in an it.each callback",
       filename: TEST_FILE,
       code: "it.each([1, 2])('case %i', async () => { await sleep(5); });",
       errors: [{ messageId: "noSleepInTestBody" }],
     },
-    // Per-test hooks share the flakiness.
     {
+      name: "reports a Promise sleep in a beforeEach hook",
       filename: TEST_FILE,
       code: "beforeEach(async () => { await new Promise((r) => setTimeout(r, 25)); });",
       errors: [{ messageId: "noSleepInTestBody" }],
     },
-    // `.spec.ts` and `tests/` directories count as test files too.
     {
+      name: "reports a helper sleep in a tests directory",
       filename: "/repo/tests/router.ts",
       code: "it('settles', async () => { await sleep(30); });",
       errors: [{ messageId: "noSleepInTestBody" }],
     },
     {
+      name: "reports a helper sleep in a spec.tsx file",
       filename: "/repo/src/router.spec.tsx",
       code: "it('settles', async () => { await sleep(30); });",
+      errors: [{ messageId: "noSleepInTestBody" }],
+    },
+    {
+      name: "reports wait and pause helpers with fixed delays",
+      filename: TEST_FILE,
+      code: "test('settles', async () => { await wait(10); await pause(20); });",
+      errors: [
+        { messageId: "noSleepInTestBody" },
+        { messageId: "noSleepInTestBody" },
+      ],
+    },
+    {
+      name: "reports a Promise sleep with a function executor",
+      filename: TEST_FILE,
+      code: "test('settles', async () => { await new Promise(function (resolve) { setTimeout(resolve, 10); }); });",
+      errors: [{ messageId: "noSleepInTestBody" }],
+    },
+    {
+      name: "reports a helper sleep in a test.skip callback",
+      filename: TEST_FILE,
+      code: "test.skip('settles', async () => { await sleep(10); });",
+      errors: [{ messageId: "noSleepInTestBody" }],
+    },
+    {
+      name: "reports a helper sleep in a tagged test.each callback",
+      filename: TEST_FILE,
+      code: "test.each`value\n${1}`('case', async () => { await sleep(10); });",
+      errors: [{ messageId: "noSleepInTestBody" }],
+    },
+    {
+      name: "reports a helper sleep in an afterEach hook",
+      filename: TEST_FILE,
+      code: "afterEach(async () => { await sleep(10); });",
       errors: [{ messageId: "noSleepInTestBody" }],
     },
   ],

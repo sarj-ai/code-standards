@@ -901,7 +901,7 @@ const config = [
       "no-shadow": "off",
       "@typescript-eslint/no-shadow": "error",
 
-      // The COMPLETE @sarj/eslint-plugin strict ruleset, every rule at `error`.
+      // The COMPLETE @sarj/eslint-plugin strict ruleset at each rule's declared strict severity.
       //
       // No version pin and no per-rule notes: a hand-written "@2.7.0" claim went
       // stale twice, and a declared list of tier deviations outlived the last

@@ -14,19 +14,13 @@ type Options = readonly [];
 
 const TEST_CALLERS: ReadonlySet<string> = new Set(["it", "test"]);
 
-/**
- * Lifecycle hooks reached through the test object — `test.beforeEach(…)`,
- * `test.afterAll(…)`. `testCallerName` walks a member chain down to its ROOT
- * identifier, so these resolved to `test` and their callbacks were linted as
- * test bodies, contradicting the documented "conditionals in `beforeEach` /
- * `beforeAll` are deliberately NOT reported". Teardown is conditional by
- * nature, and there is no assertion in a teardown to hide.
- */
-const HOOK_MEMBERS: ReadonlySet<string> = new Set([
+/** Members whose callbacks define suites or lifecycle work rather than tests. */
+const NON_TEST_MEMBERS: ReadonlySet<string> = new Set([
   "afterAll",
   "afterEach",
   "beforeAll",
   "beforeEach",
+  "describe",
 ]);
 
 const FUNCTION_TYPES: ReadonlySet<AST_NODE_TYPES> = new Set([
@@ -75,6 +69,27 @@ function testCallerName(callee: TSESTree.Node): string | null {
   return null;
 }
 
+/** Return whether any member in a chained callee identifies suite or lifecycle work. */
+function hasNonTestMember(callee: TSESTree.Node): boolean {
+  if (callee.type === AST_NODE_TYPES.MemberExpression) {
+    if (
+      !callee.computed &&
+      callee.property.type === AST_NODE_TYPES.Identifier &&
+      NON_TEST_MEMBERS.has(callee.property.name)
+    ) {
+      return true;
+    }
+    return hasNonTestMember(callee.object);
+  }
+  if (callee.type === AST_NODE_TYPES.CallExpression) {
+    return hasNonTestMember(callee.callee);
+  }
+  if (callee.type === AST_NODE_TYPES.TaggedTemplateExpression) {
+    return hasNonTestMember(callee.tag);
+  }
+  return false;
+}
+
 /** True when `fn` is the callback argument of an `it` or `test` call. */
 function isTestBody(fn: TSESTree.Node): boolean {
   const call = fn.parent;
@@ -84,12 +99,7 @@ function isTestBody(fn: TSESTree.Node): boolean {
   ) {
     return false;
   }
-  if (
-    call.callee.type === AST_NODE_TYPES.MemberExpression &&
-    !call.callee.computed &&
-    call.callee.property.type === AST_NODE_TYPES.Identifier &&
-    HOOK_MEMBERS.has(call.callee.property.name)
-  ) {
+  if (hasNonTestMember(call.callee)) {
     return false;
   }
   const name = testCallerName(call.callee);

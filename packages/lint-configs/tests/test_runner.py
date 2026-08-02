@@ -110,7 +110,7 @@ def test_checker_file_list_is_protected_from_option_injection(
     def fake_load_tool(
         _package: str,
     ) -> tuple[Callable[[list[str]], int], Mapping[str, type[object]]]:
-        return fake_checker, {"rule": object}
+        return fake_checker, {"example-rule": object}
 
     monkeypatch.setattr(runner, "_load_tool", fake_load_tool)
     monkeypatch.chdir(tmp_path)

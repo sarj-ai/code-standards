@@ -49,6 +49,8 @@ export default createRule<Options, MessageIds>({
         properties: {
           ignoreFiles: {
             type: "array",
+            description:
+              "Additional generated-file globs to ignore; shared generated paths and header markers are always ignored.",
             items: { type: "string" },
           },
         },
@@ -66,12 +68,7 @@ export default createRule<Options, MessageIds>({
     const filename = context.filename;
     const sourceText = context.sourceCode.getText();
 
-    // Generated code opts out through the SHARED `isGeneratedFile` predicate.
-    // This rule used to carry its own narrower copy of all three of its signals
-    // — a four-pattern path list and a 1KB `@generated` sniff — and every one of
-    // them could be neutered with the suite green, because the shared predicate
-    // already answered true for the same files. `ignoreFiles` stays: it names
-    // paths a repo knows about and the shared predicate cannot.
+    // `ignoreFiles` adds repository-specific paths to shared generated-file detection.
     const isIgnoredByOption =
       ignoreFiles.length > 0 && matchesAnyPattern(filename, ignoreFiles);
 

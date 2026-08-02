@@ -318,6 +318,17 @@ def test_skips_lookup():
     assert len(_check(src)) == 1
 
 
+def test_trailing_mock_assertion_with_an_effectful_argument_rescues_the_setup():
+    src = """
+def test_skips_lookup():
+    service.lookup.return_value = None
+    handle(request)
+    service.lookup.assert_not_called()
+    audit.record.assert_called_once_with(build_expected_record())
+"""
+    assert _check(src) == []
+
+
 def test_message_names_the_asserted_path():
     [diag] = _check(_ASSERTED_NOT_CALLED)
     assert "`subject_service.extract_api_key_user`" in diag.message
@@ -376,6 +387,19 @@ def test_lookup_is_deferred():
     handle(request)
     service.lookup.assert_not_called()
     {positive}
+"""
+    assert _check(src) == []
+
+
+def test_a_positive_call_assertion_in_a_nested_helper_exempts_the_setup():
+    src = """
+def test_lookup_is_deferred():
+    service.lookup.return_value = None
+    handle(request)
+    service.lookup.assert_not_called()
+
+    def verify_later():
+        service.lookup.assert_called_once()
 """
     assert _check(src) == []
 
@@ -459,6 +483,14 @@ def test_a_configuration_on_the_assertions_own_line_is_still_for_what_comes_next
 def test_lookup():
     service.lookup.assert_not_called(); service.lookup.return_value = None
     assert True
+"""
+    assert _check(src) == []
+
+
+def test_configuration_then_assertion_on_the_same_line_is_exempt():
+    src = """
+def test_lookup():
+    service.lookup.return_value = None; service.lookup.assert_not_called()
 """
     assert _check(src) == []
 
@@ -558,6 +590,24 @@ def test_configure_mock_keys_are_not_flagged():
     src = """
 def test_charge():
     gateway.configure_mock(**{"refund.return_value": Receipt(ok=True)})
+    assert billing.charge(gateway, 100).ok
+"""
+    assert _check(src) == []
+
+
+def test_attach_mock_configuration_is_not_flagged():
+    src = """
+def test_charge():
+    gateway.attach_mock(refund, "refund")
+    assert billing.charge(gateway, 100).ok
+"""
+    assert _check(src) == []
+
+
+def test_mock_constructor_configuration_is_not_flagged():
+    src = """
+def test_charge():
+    gateway = Mock(**{"refund.return_value": Receipt(ok=True)})
     assert billing.charge(gateway, 100).ok
 """
     assert _check(src) == []

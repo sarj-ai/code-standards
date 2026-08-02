@@ -27,35 +27,15 @@ const CONVENTIONS: Record<
   either: { test: ZOD_SCHEMA_NAME_RE, messageId: "zodSchemaName" },
 };
 
-/**
- * Guard (c): the binding already reads as a schema. `ZOD_SUFFIX_RE` is anchored
- * and case-sensitive by design (it is also the *recogniser* other rules use), so
- * it rejects `schema`, `schema1` and `numberSchemaOptional`. Those need no
- * rename — the whole point of the convention is that a reader spots a schema at
- * the use site, and every one of them does. Accepting them here only widens what
- * this rule tolerates; it never makes the shared recogniser stricter.
- */
+/** Names containing "schema" are already recognisable at the use site. */
 const CONTAINS_SCHEMA_RE = /schema/i;
 
-/**
- * Guard (d): micro-benchmark trees. A schema declared in a benchmark is a
- * throwaway local fed to a suite a few lines below — the same "no cross-module
- * use site for the convention to serve" argument as the test-file guard, on a
- * path `isTestFile` does not match. Kept local to this rule rather than pushed
- * into `_paths` because a benchmark is not a test: it is not exempt from
- * correctness rules, only from naming ones.
- *
- * Anchored on a PATH SEGMENT so `workbench/` and `benchmarking-report.ts` are
- * unaffected.
- */
+/** Benchmark-local schemas are fixtures; require a complete path segment. */
 const BENCHMARK_PATH_RE = /(^|[\\/])(?:benchmarks?|bench)[\\/]/;
 
 /**
- * Guard (b): terminal methods on a `z.…` chain whose result is NOT a schema.
- * `.parse`/`.safeParse` return a parsed value or a result envelope, the codec
- * methods return the converted value, `z.toJSONSchema` returns a plain JSON
- * object, `z.registry()` returns a registry, and `.implement()` returns a
- * function. Naming any of them `xSchema` would be a lie.
+ * Terminal methods whose results are values, result envelopes, registries,
+ * JSON objects, or functions rather than schemas.
  */
 const NON_SCHEMA_TERMINALS: ReadonlySet<string> = new Set([
   "parse",
@@ -75,17 +55,13 @@ const NON_SCHEMA_TERMINALS: ReadonlySet<string> = new Set([
   "implement",
 ]);
 
-/** The method name a call chain ends on, e.g. `safeParse` for `z.string().safeParse(x)`. */
+/** Return the final method name in a call chain. */
 const terminalMethodName = (callee: TSESTree.MemberExpression): string | null =>
   !callee.computed && callee.property.type === AST_NODE_TYPES.Identifier
     ? callee.property.name
     : null;
 
-/**
- * Walks down a (possibly chained) callee like `z.object().extend().refine()` and
- * returns `true` if the chain originates from a bare `z` identifier — i.e. the
- * outermost MemberExpression on the chain has `z` as its receiver.
- */
+/** Return whether a call chain originates from the bare `z` identifier. */
 const calleeChainStartsWithZ = (node: TSESTree.Node): boolean => {
   let current: TSESTree.Node = node;
 
@@ -135,12 +111,10 @@ export default createRule<Options, MessageIds>({
   create(context, [optionsArg]) {
     const convention = optionsArg?.convention ?? "either";
     const { test, messageId } = CONVENTIONS[convention];
-    // Guard (c) relaxes the SUFFIX spelling, so it must not apply to a team that
-    // explicitly asked for prefix-only — there `userschema` really is off-convention.
+    // A schema-containing name does not satisfy an explicitly prefix-only policy.
     const acceptsSchemaWord = convention !== "prefix";
 
-    // Guard (a) / (d): a schema declared in a test or a benchmark is a local
-    // fixture, not an API.
+    // Test and benchmark schemas are local fixtures rather than APIs.
     if (
       isTestFile(context.filename) ||
       BENCHMARK_PATH_RE.test(context.filename.replaceAll("\\", "/")) ||
@@ -160,13 +134,13 @@ export default createRule<Options, MessageIds>({
 
         if (!calleeChainStartsWithZ(callee)) return;
 
-        // Guard (b): the chain ends on a call that yields a value/result, not a schema.
+        // Do not apply schema naming to calls that return non-schema values.
         const terminal = terminalMethodName(callee);
         if (terminal !== null && NON_SCHEMA_TERMINALS.has(terminal)) return;
 
         if (node.id.type !== AST_NODE_TYPES.Identifier) return;
         if (test.test(node.id.name)) return;
-        // Guard (c): the name already reads as a schema in any casing.
+        // The name already identifies a schema in any casing.
         if (acceptsSchemaWord && CONTAINS_SCHEMA_RE.test(node.id.name)) return;
 
         context.report({

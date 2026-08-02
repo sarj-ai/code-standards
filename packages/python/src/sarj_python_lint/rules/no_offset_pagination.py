@@ -18,15 +18,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# `OFFSET` followed by a value/param token — the real pagination construct. This
-# excludes the English word ("no base offset"), `'offset'` dict keys, and BigQuery
-# `UNNEST(...) WITH OFFSET AS col` (array indexing, no value token after OFFSET).
-#
-# The parameter alternatives are the UNION of every marker the three packages
-# see, and are kept identical in SARJ107 and the TS twin — see the module
-# docstring. `\?\d*` (sqlite3 / aiosqlite / D1) was missing here specifically,
-# which made `LIMIT ? OFFSET ?` a silent false negative in Python while the TS
-# twin caught it.
+# Require a shared dialect parameter after `OFFSET`, excluding prose and
+# BigQuery's `WITH OFFSET AS` array indexing.
 _OFFSET_PAGINATION = re.compile(
     r"\bOFFSET\s+(?:%s|%\(\w+\)s|\?\d*|:\w+|@\w+|\$\d+|\d+)",
     re.IGNORECASE,

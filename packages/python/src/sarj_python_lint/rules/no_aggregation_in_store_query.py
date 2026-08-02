@@ -65,15 +65,8 @@ _BIGQUERY_SQL = re.compile(
 # so a literal `%` inside a `LIKE` pattern can't false-signal.
 _POSTGRES_SQL = re.compile(r"%\(\w+\)s|%s")
 
-# `IS [NOT] DISTINCT FROM` is Postgres' null-safe comparison OPERATOR — it is a
-# per-row predicate in a WHERE/ON/DO-UPDATE clause and does nothing an equality
-# test doesn't. It shares only the spelling with `SELECT DISTINCT` / `COUNT(
-# DISTINCT ...)`, the set-deduplicating constructs this rule exists to find,
-# which is why the bare `\bDISTINCT\b` scan mis-read it. Blanked before the
-# aggregation scan so the surrounding query is still judged on its real content.
-# Evidence from a first-party review regression: an `INSERT ... ON CONFLICT DO
-# UPDATE ... WHERE organization_id IS NOT DISTINCT FROM EXCLUDED.organization_id`
-# upsert with no aggregation anywhere.
+# This null-safe comparison is a row predicate, not set deduplication. Blank it
+# before scanning without hiding genuine aggregation elsewhere in the query.
 _NULL_SAFE_COMPARISON = re.compile(r"\bIS\s+(?:NOT\s+)?DISTINCT\s+FROM\b", re.IGNORECASE)
 
 _AGGREGATIONS: tuple[tuple[str, re.Pattern[str]], ...] = (

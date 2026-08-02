@@ -28,8 +28,8 @@ function body(comment: TSESTree.Comment): string {
     .trim();
 }
 
-function eligible(text: string): boolean {
-  return text.length > 0 && !DIRECTIVE_RE.test(text) && !LICENSE_RE.test(text) && !VALUE_TAG_RE.test(text);
+function eligible(text: string, includeValueTags: boolean): boolean {
+  return text.length > 0 && !DIRECTIVE_RE.test(text) && !LICENSE_RE.test(text) && (includeValueTags || !VALUE_TAG_RE.test(text));
 }
 
 export function sentenceUnits(text: string): number {
@@ -53,6 +53,7 @@ export function sentenceUnits(text: string): number {
 export function proseGroups(
   filename: string,
   sourceCode: Readonly<TSESLint.SourceCode>,
+  includeValueTags = false,
 ): ProseGroup[] {
   if (isGeneratedFile(filename, sourceCode.text) || isStoryFile(filename)) return [];
   const groups: ProseGroup[] = [];
@@ -60,18 +61,18 @@ export function proseGroups(
   const flush = (): void => {
     if (run.length === 0) return;
     const text = run.map(body).join("\n");
-    if (eligible(text)) groups.push({ comment: run[0]!, text, hasTypedTags: TYPED_TAG_RE.test(text) });
+    if (eligible(text, includeValueTags)) groups.push({ comment: run[0]!, text, hasTypedTags: TYPED_TAG_RE.test(text) });
     run = [];
   };
   for (const comment of sourceCode.getAllComments()) {
     const text = body(comment);
     if (comment.type === "Block") {
       flush();
-      if (eligible(text)) groups.push({ comment, text, hasTypedTags: TYPED_TAG_RE.test(text) });
+      if (eligible(text, includeValueTags)) groups.push({ comment, text, hasTypedTags: TYPED_TAG_RE.test(text) });
       continue;
     }
     const ownLine = sourceCode.lines[comment.loc.start.line - 1]?.slice(0, comment.loc.start.column).trim() === "";
-    if (!ownLine || !eligible(text)) {
+    if (!ownLine || !eligible(text, includeValueTags)) {
       flush();
       continue;
     }

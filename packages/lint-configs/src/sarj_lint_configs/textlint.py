@@ -83,7 +83,7 @@ _STRONG_ARTIFACT_NAME_RE = re.compile(
     re.IGNORECASE,
 )
 _EPHEMERAL_HEADING_RE = re.compile(
-    r"^#{1,6}\s+(?:fixes?\s*[+&/]\s*learnings?|verification passes?|what (?:i|we) "
+    r"^#{1,6}\s+(?:fixes?\s*[+&/]\s*learnings?|verification pass(?:es)?|what (?:i|we) "
     r"changed|implementation status|(?:e2e |merged-site )?qa (?:pass|log|results?)|"
     r"work completed|session summary|remaining work|changes made|bugs found \+ fixed|"
     r"what'?s left|build log|issues? fixed|errors? fixed|pitfalls?\s*/\s*learnings?|"
@@ -148,7 +148,7 @@ class RuleMeta:
 
 
 REGISTRY: Final = {
-    "config-comment-wall": RuleMeta("SARJ300", "dense config/CI narration wall"),
+    "config-comment-wall": RuleMeta("SARJ300", "four-entry config narration wall with 75% weak restatements"),
     "commented-out-config": RuleMeta("SARJ301", "commented-out config syntax"),
     "ephemeral-ai-artifact": RuleMeta("SARJ302", "AI execution brief or change diary"),
 }

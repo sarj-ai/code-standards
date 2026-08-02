@@ -91,6 +91,8 @@ def _tenant_fragments(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[tupl
     found: list[tuple[ast.expr, bool]] = []
 
     def visit(node: ast.AST, *, conditional: bool) -> None:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            return
         # An `IfExp` fragment guards the predicate inside itself:
         # `c.append(SQL("organization_id = %s") if org else SQL("TRUE"))`.
         found.extend(

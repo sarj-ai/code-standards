@@ -13,7 +13,7 @@ export default createRule<Options, MessageIds>({
   name: "no-typed-doc-sections",
   meta: {
     type: "suggestion",
-    docs: { description: "Reject parameter and return JSDoc tags on fully typed functions." },
+    docs: { description: "Reject typed-signature repetition while preserving behavior that types cannot express." },
     schema: [],
     messages: {
       typedSection: "Typed JSDoc repeats parameters or returns — delete the tags and improve names or types instead.",
@@ -23,7 +23,7 @@ export default createRule<Options, MessageIds>({
   create(context) {
     return {
       Program(): void {
-        for (const group of proseGroups(context.filename, context.sourceCode)) {
+        for (const group of proseGroups(context.filename, context.sourceCode, true)) {
           if (group.hasTypedTags && documentsTypedFunction(context.sourceCode, group.comment)) {
             context.report({ node: group.comment, messageId: "typedSection" });
           }

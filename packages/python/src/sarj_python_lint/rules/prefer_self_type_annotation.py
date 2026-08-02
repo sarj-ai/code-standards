@@ -55,8 +55,8 @@ class PreferSelfTypeAnnotation(Rule):
     id: str = "prefer-self-type-annotation"
     code: str = "SARJ078"
     description: str = (
-        "prefer `Self` return type annotation instead of explicit class name "
-        "or string literal reference when returning self/instance."
+        "use `Self` instead of the enclosing class name when an instance method returns `self` "
+        "or a classmethod returns `cls(...)`."
     )
 
     @override
@@ -115,7 +115,7 @@ class PreferSelfTypeAnnotation(Rule):
                             col=returns.col_offset + 1,
                             code="SARJ078",
                             message=(
-                                f"Method `{node.name}` returns `self` but annotates return as `{matched_name}` — "
+                                f"Method `{node.name}` returns an instance of its class but annotates it as `{matched_name}` — "
                                 f"use `Self` (from `typing`) instead."
                             ),
                         )

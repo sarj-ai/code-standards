@@ -13,11 +13,7 @@ import { createSqlListener } from "./_sql.js";
 type MessageIds = "noOffsetPagination";
 type Options = readonly [];
 
-/**
- * `OFFSET` followed by a value or param token — the real pagination construct.
- * The parameter alternatives are the UNION of every marker the three packages
- * see, and are kept identical in SARJ025 and SARJ107.
- */
+/** Match pagination across the parameter styles supported by the TS, Python, and SQL rules. */
 const OFFSET_PAGINATION = /\bOFFSET\s+(?:%s|%\(\w+\)s|\?\d*|:\w+|@\w+|\$\d+|\d+)/i;
 
 /** Cheap substring gate; noise-stripping can only ever remove keywords, never add them. */

@@ -183,9 +183,8 @@ def _reach_back_arm(case: ast.match_case, subject: str) -> _ReachBack | None:
         return None
     positional = tuple(ast.unparse(pat) for pat in inner.patterns)
     kept = tuple(
-        (attr, _capture_name(pat))
+        (attr, ast.unparse(pat))
         for attr, pat in zip(inner.kwd_attrs, inner.kwd_patterns, strict=True)
-        if _capture_name(pat) is not None
     )
     return _ReachBack(
         cls_name=cls_name,
@@ -193,16 +192,9 @@ def _reach_back_arm(case: ast.match_case, subject: str) -> _ReachBack | None:
         fields=fields,
         taken=frozenset(use.taken),
         aliased=aliased,
-        kept=kept,  # pyright: ignore[reportArgumentType]
+        kept=kept,
         positional=positional,
     )
-
-
-def _capture_name(pattern: ast.pattern) -> str | None:
-    """Read the name a keyword sub-pattern captures, if it captures one."""
-    if isinstance(pattern, ast.MatchAs) and pattern.pattern is None:
-        return pattern.name
-    return None
 
 
 def _pattern_class_name(cls: ast.expr) -> str | None:

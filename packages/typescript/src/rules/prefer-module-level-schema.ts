@@ -537,7 +537,7 @@ export default createRule<Options, MessageIds>({
         // sub-schema. Only checked when an enclosing construct actually exists,
         // so `z.array(z.object({…}))` — where the whole expression IS hoistable
         // and `z.array` is not itself reportable — keeps reporting the inner
-        // `z.object`, as the evidence file promises.
+        // `z.object`, as the paired regression test requires.
         const outermost = outermostSchemaExpression(expression);
         if (
           outermost !== expression &&

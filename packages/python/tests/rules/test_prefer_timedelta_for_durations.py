@@ -768,12 +768,6 @@ class Config(Base[int]):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
-# FP-hardening (famous-repo sweep): test files are exempt — fakes mirror the   #
-# seconds-based signatures of the APIs under test (trio's JankyLock.acquire).  #
-# --------------------------------------------------------------------------- #
-
-
 def _check_at(source: str, path: str) -> list[Diagnostic]:
     return PreferTimedeltaForDurations().check(Path(path), source)
 
@@ -793,14 +787,7 @@ def test_production_file_still_fires():
     assert len(_check_at(src, "app/calls/service.py")) == 1
 
 
-# --------------------------------------------------------------------------- #
-# FP-hardening (famous-repo sweep): overload stubs, CLI params, pass-throughs. #
-# --------------------------------------------------------------------------- #
-
-
 def test_overload_stub_is_exempt():
-    # Minimized from anyio/src/anyio/_core/_sockets.py:82-141: five overloads
-    # restate `happy_eyeballs_delay` for the one implementation at :155.
     src = """
 @overload
 async def connect_tcp(host: str, *, happy_eyeballs_delay: float = ...) -> TLSStream: ...
@@ -828,8 +815,6 @@ def test_typing_qualified_overload_is_exempt():
     ],
 )
 def test_cli_decorated_parameters_are_exempt(decorator: str):
-    # Minimized from httpx/httpx/_main.py:464 — click parses the value out of
-    # argv as a float; timedelta is not a shape argv can carry.
     src = f"{decorator}\ndef main(url: str, timeout: float) -> None: ...\n"
     assert _check(src) == []
 
@@ -840,8 +825,6 @@ def test_non_cli_decorator_still_fires():
 
 
 def test_same_name_delegation_is_exempt():
-    # Minimized from anyio/src/anyio/_backends/_trio.py:1115 — the unit belongs
-    # to the wrapped stdlib API.
     src = """
 class Backend:
     @classmethod
@@ -866,7 +849,6 @@ def test_delegation_to_a_different_name_still_fires():
 
 
 def test_computing_with_the_parameter_still_fires():
-    # Not a pass-through: `fail_after` owns the arithmetic, so it owns the unit.
     src = """
 def fail_after(delay: float) -> CancelScope:
     return fail_after(current_time() + delay)
@@ -893,17 +875,7 @@ async def sleep(delay: float, ttl: int) -> None:
     assert "`ttl" in diags[0].message
 
 
-# --------------------------------------------------------------------------- #
-# FP-hardening (19-repo sweep): a parameter whose every use is a same-name      #
-# forward belongs to the wrapped API, not to this signature. 1,463 of 2,791     #
-# findings, 13 of 202 first-party.                                              #
-# --------------------------------------------------------------------------- #
-
-
 def test_keyword_forwarded_parameter_is_exempt():
-    # Minimized from airflow/providers/google/cloud/hooks/analytics_admin.py:73:
-    # the google.api_core `retry` / `timeout` / `metadata` triple handed straight
-    # to a gapic client, which documents float seconds.
     src = """
 def list_accounts(self, retry: Retry = DEFAULT, timeout: float | None = None) -> Pager:
     return self.get_conn().list_accounts(request={}, retry=retry, timeout=timeout)
@@ -921,8 +893,6 @@ def consume(self, poll_timeout: float = 1.0) -> list[Message]:
 
 
 def test_constructor_storing_the_parameter_verbatim_is_exempt():
-    # The field's own annotation is a separate AnnAssign this rule still sees,
-    # so the constructor is not where the unit is chosen.
     src = """
 class Waiter:
     def __init__(self, waiter_delay: int = 30) -> None:
@@ -945,8 +915,6 @@ class Waiter:
 
 
 def test_arithmetic_on_a_forwarded_parameter_still_fires():
-    # Minimized from prefect/src/prefect/server/orchestration/rules.py:870 — the
-    # body owns the arithmetic, so it owns the unit.
     src = """
 def set_retry(self, delay_seconds: float) -> None:
     self.state.scheduled_time = now("UTC") + timedelta(seconds=delay_seconds)
@@ -967,6 +935,14 @@ def test_comparison_on_the_parameter_still_fires():
 def call(self, timeout: float) -> None:
     if timeout > 0:
         self.client.call(timeout=timeout)
+"""
+    assert len(_check(src)) == 1
+
+
+def test_subscript_use_of_the_parameter_still_fires():
+    src = """
+def call(self, timeout: float) -> None:
+    self.client.call(timeout=timeout[0])
 """
     assert len(_check(src)) == 1
 
@@ -1011,10 +987,14 @@ def submit(self, timeout: float, retry_delay: float) -> None:
     assert "`retry_delay" in diags[0].message
 
 
-# --------------------------------------------------------------------------- #
-# FP-hardening (19-repo sweep): an annotation that already admits `timedelta`   #
-# cannot carry the defect. 20 of 2,791 findings, recall cost zero.              #
-# --------------------------------------------------------------------------- #
+def test_wire_format_duration_field_still_fires():
+    src = "class TokenResponse:\n    expires_in: int\n"
+    assert len(_check(src)) == 1
+
+
+def test_numeric_helper_duration_parameter_still_fires():
+    src = "def poisson_interval(average_interval: float) -> float:\n    return average_interval * 2\n"
+    assert len(_check(src)) == 1
 
 
 @pytest.mark.parametrize(
@@ -1029,9 +1009,6 @@ def submit(self, timeout: float, retry_delay: float) -> None:
     ],
 )
 def test_union_admitting_timedelta_is_exempt(annotation: str):
-    # Minimized from airflow/task-sdk/src/airflow/sdk/bases/sensor.py:145 —
-    # `_coerce_poke_interval(poke_interval: float | timedelta) -> timedelta` is
-    # the function whose whole job is the conversion the rule asks for.
     src = f"def _coerce_poke_interval(poke_interval: {annotation}) -> timedelta: ...\n"
     assert _check(src) == []
 
@@ -1060,13 +1037,6 @@ _GENERATED_PROBE = """
 def f(timeout_seconds: int = 30) -> None:
     pass
 """
-
-
-# --------------------------------------------------------------------------- #
-# FP guard: generated files. Their layout is the generator's and re-running it  #
-# discards any edit, so a finding there can never be acted on in place.        #
-# Measured on 69 `DO NOT EDIT` files across two first-party repos.             #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(

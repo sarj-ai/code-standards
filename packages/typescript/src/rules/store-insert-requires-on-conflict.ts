@@ -13,19 +13,11 @@ import { createSqlListener } from "./_sql.js";
 type MessageIds = "storeInsertRequiresOnConflict";
 type Options = readonly [];
 
-/**
- * A real insert *write*: the keyword, a table identifier, an optional column
- * list, then `VALUES` / `SELECT` / `DEFAULT VALUES` with nothing in between.
- * Requiring that exact adjacency is what keeps English prose out — "failed to
- * insert into the queue: values were rejected" has words between the table and
- * the verb, so it does not match. The optional `OR <action>` clause is SQLite's
- * conflict resolution; it is matched here so `INSERT OR IGNORE INTO` is
- * recognised as an insert at all, then excused below.
- */
+/** Matches INSERT writes only when their SQL keywords are adjacent. */
 const INSERT_WRITE =
   /\bINSERT\s+(?:OR\s+\w+\s+)?INTO\s+[\w."'`?$:@-]+\s*(?:\([^)]*\)\s*)?(?:VALUES|SELECT|DEFAULT\s+VALUES)\b/i;
 
-/** Conflict handling that makes the write replay-safe. */
+/** Matches supported replay-safe insert forms. */
 const CONFLICT_HANDLED = /\bON\s+CONFLICT\b|\bON\s+DUPLICATE\s+KEY\b|\bINSERT\s+OR\s+(?:IGNORE|REPLACE)\b/i;
 
 const INSERT_GATE = /insert/i;

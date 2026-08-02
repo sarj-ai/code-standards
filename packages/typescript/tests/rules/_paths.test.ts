@@ -1,28 +1,6 @@
 /**
- * The shared file-path predicates are consulted by 20-30 rule modules each, so a
- * one-line regex change in `_paths.ts` is a scope change for every one of them.
- * #180 made exactly that change — `vendor|vendored|external|third-party`,
- * `fixtures?`, a whole `stories/` tree — on the evidence of six false positives
- * in ONE rule, and nothing measured the other twenty-nine. `no-comment-cruft`
- * went silent on `src/services/external/`, `no-raw-env` on `src/fixture/`.
- *
- * The banner arm — the half that is universal — is at the bottom of this file,
- * where it landed with the subject-scoped widening.
- *
- * Not all of it was wrong. `vendor/`, `vendored/`, `third-party/`,
- * `__fixtures__/` and `__testfixtures__/` are names that make a claim true for
- * EVERY rule, so they stay shared. `external/`, the singular `fixture/` and a
- * `stories/` tree are names that do not, so they became gates. The line is drawn
- * by what the directory name asserts, not by which PR happened to need it.
- *
- * This file is the gate that stops that recurring. Two halves:
- *
- * 1. The DEFAULT behaviour of each predicate is pinned path-by-path. Widening a
- *    default is then a diff to this table, which is the review moment: the table
- *    says, in one place, what every consumer stops seeing.
- * 2. WHICH RULE MODULES pass extra gates is pinned too. A gate exists so one
- *    rule can be exempted from one tree without touching the others; an
- *    unrecorded new caller fails here.
+ * Shared defaults exempt path categories that are safe for every consumer.
+ * Ambiguous directory names require explicit, recorded per-rule gates.
  */
 
 import { readFileSync, readdirSync } from "node:fs";
@@ -37,31 +15,26 @@ const RULES_DIR = fileURLToPath(new URL("../../src/rules", import.meta.url));
 
 describe("isTestFile — shared default", () => {
   it.each([
-    ["src/user.test.ts", true],
-    ["src/user.spec.tsx", true],
-    ["src/user-test.ts", true],
-    ["src/user_test.ts", true],
-    ["src/user.e2e.ts", true],
-    ["src/user.integration.ts", true],
-    ["src/tests/user.ts", true],
-    ["src/test/user.ts", true],
-    ["src/__tests__/user.ts", true],
-    ["src/__mocks__/user.ts", true],
-    ["src/fixtures/user.ts", true],
-    ["e2e/user.ts", true],
-    ["integration/user.ts", true],
-    ["src/user.ts", false],
-    ["src/testing/user.ts", false],
-    ["src/latest/user.ts", false],
-    // The #180 widenings. NOT defaults: `src/fixture/seed.ts` is a production
-    // database seeder in several repos, and 30 rules should not go quiet on it.
-    ["src/fixture/seed.ts", false],
-    // These two ARE defaults: `__fixtures__` / `__testfixtures__` are the same
-    // category as the `fixtures/` that was always here, spelled the way
-    // jscodeshift and Storybook spell it.
-    ["src/__fixtures__/user.ts", true],
-    ["src/__testfixtures__/user.ts", true],
-  ])("%s -> %s", (path, expected) => {
+    ["dot test basename", "src/user.test.ts", true],
+    ["dot spec basename", "src/user.spec.tsx", true],
+    ["dash test basename", "src/user-test.ts", true],
+    ["underscore test basename", "src/user_test.ts", true],
+    ["E2E basename", "src/user.e2e.ts", true],
+    ["integration basename", "src/user.integration.ts", true],
+    ["tests directory", "src/tests/user.ts", true],
+    ["test directory", "src/test/user.ts", true],
+    ["double-underscore tests", "src/__tests__/user.ts", true],
+    ["mock directory", "src/__mocks__/user.ts", true],
+    ["fixtures directory", "src/fixtures/user.ts", true],
+    ["double-underscore fixtures", "src/__fixtures__/user.ts", true],
+    ["test fixtures", "src/__testfixtures__/user.ts", true],
+    ["top-level E2E", "e2e/user.ts", true],
+    ["top-level integration", "integration/user.ts", true],
+    ["production source", "src/user.ts", false],
+    ["testing name fragment", "src/testing/user.ts", false],
+    ["test suffix fragment", "src/latest/user.ts", false],
+    ["singular fixture without gate", "src/fixture/seed.ts", false],
+  ])("recognises %s: %s -> %s", (_name, path, expected) => {
     expect(isTestFile(path)).toBe(expected);
   });
 
@@ -79,12 +52,12 @@ describe("isTestFile — shared default", () => {
 
 describe("isStoryFile — shared default", () => {
   it.each([
-    ["src/Button.stories.tsx", true],
-    ["src/Button.stories.ts", true],
-    ["src/stories/Button.tsx", false],
-    ["src/stories_vue3-vite-default-ts/Button.ts", false],
-    ["src/Button.tsx", false],
-  ])("%s -> %s", (path, expected) => {
+    ["TSX story basename", "src/Button.stories.tsx", true],
+    ["TS story basename", "src/Button.stories.ts", true],
+    ["story tree without gate", "src/stories/Button.tsx", false],
+    ["suffixed story tree without gate", "src/stories_vue3-vite-default-ts/Button.ts", false],
+    ["production component", "src/Button.tsx", false],
+  ])("recognises %s: %s -> %s", (_name, path, expected) => {
     expect(isStoryFile(path)).toBe(expected);
   });
 
@@ -100,27 +73,20 @@ describe("isStoryFile — shared default", () => {
 
 describe("isGeneratedFile — shared default (path arm)", () => {
   it.each([
-    ["src/generated/api.ts", true],
-    ["src/openapi-gen/api.ts", true],
-    ["src/graphql/types/api.ts", true],
-    ["src/api.gen.ts", true],
-    ["src/api.generated.ts", true],
-    ["src/api.d.ts", true],
-    ["src/api.types.ts", true],
-    ["src/api.ts", false],
-    // The #180 widenings. `src/services/external/` is first-party
-    // outbound-integration code — the place a raw `process.env` read or an
-    // untimed `fetch` matters most.
-    ["src/services/external/client.ts", false],
-    // These four ARE defaults: a directory called `vendor` is itself the claim
-    // that the code belongs to an upstream, and it is true for every rule.
-    // `astro/packages/astro/src/assets/utils/vendor/image-size/types/jpg.ts` is
-    // a verbatim copy of the `image-size` package.
-    ["src/vendor/mqtt.ts", true],
-    ["src/vendored/mqtt.ts", true],
-    ["src/third-party/mqtt.ts", true],
-    ["src/third_party/mqtt.ts", true],
-  ])("%s -> %s", (path, expected) => {
+    ["generated directory", "src/generated/api.ts", true],
+    ["OpenAPI output directory", "src/openapi-gen/api.ts", true],
+    ["GraphQL types directory", "src/graphql/types/api.ts", true],
+    ["gen suffix", "src/api.gen.ts", true],
+    ["generated suffix", "src/api.generated.ts", true],
+    ["declaration suffix", "src/api.d.ts", true],
+    ["types suffix", "src/api.types.ts", true],
+    ["vendor directory", "src/vendor/mqtt.ts", true],
+    ["vendored directory", "src/vendored/mqtt.ts", true],
+    ["dash third-party directory", "src/third-party/mqtt.ts", true],
+    ["underscore third-party directory", "src/third_party/mqtt.ts", true],
+    ["production source", "src/api.ts", false],
+    ["first-party external tree without gate", "src/services/external/client.ts", false],
+  ])("recognises %s: %s -> %s", (_name, path, expected) => {
     expect(isGeneratedFile(path)).toBe(expected);
   });
 
@@ -140,19 +106,13 @@ describe("isScriptFile", () => {
   ])("%s -> %s", (path, expected) => {
     expect(isScriptFile(path)).toBe(expected);
   });
+
+  it("recognises Windows script directories", () => {
+    expect(isScriptFile(String.raw`C:\repo\scripts\seed.ts`)).toBe(true);
+  });
 });
 
-/**
- * A gate is a per-rule exemption. Recording who holds one is what keeps it per-rule:
- * an unrecorded caller is a scope change that never got argued.
- *
- * The evidence for the one entry here is #180 — six false positives in
- * `no-type-member-comment-wall` over 33 OSS repos / 46,861 files, all in vendored
- * typings copies, docgen'd story trees and asserted test fixtures. That reasoning is
- * about member COMMENTS being output rather than commentary. It does not transfer to
- * `no-raw-env` or `require-fetch-timeout`, which is exactly why it lives here and
- * not in the defaults.
- */
+/** A gate is a per-rule exemption, so every caller must be recorded here. */
 const GATE_HOLDERS: Readonly<Record<string, readonly string[]>> = {
   "no-type-member-comment-wall.ts": ["externalTree", "fixtureTree", "storyTree"],
 };
@@ -194,15 +154,16 @@ describe("isGeneratedFile — banner markers", () => {
     ["storybook", " * This file has been automatically generated,\n"],
     ["legacy @generated", "// @generated by protoc\n"],
     ["legacy do-not-edit", "// DO NOT EDIT\n"],
+    ["generated by", "// Generated by protoc\n"],
+    ["generated with", "// Generated with openapi-generator\n"],
+    ["generated GraphQL types", "// Generated GraphQL types\n"],
+    ["do not modify this file", "// Do not modify this file manually\n"],
+    ["do not change this file", "// Do not change this file directly\n"],
   ])("recognises the %s banner", (_name, banner) => {
     expect(isGeneratedFile(HAND_WRITTEN, banner)).toBe(true);
   });
 
-  // The obvious widening — bare `auto-?generated`, bare `generated from`, bare
-  // `do not (modify|change)` — matched 175 extra files over 105,551, and most
-  // were hand-written source using the phrase as PROSE or as an identifier.
-  // Every string below is copied verbatim from one of them. Exempting these
-  // files would silently disable twenty rules on ordinary code.
+  // Bare generated/change phrases can describe values or behavior in ordinary source.
   it.each([
     ["identifier", "export type AutoGeneratedFields = 'createdAt' | 'updatedAt';\n"],
     ["prose adjective", "/** The verify token is auto-generated at integration creation. */\n"],

@@ -15,39 +15,23 @@ type Options = readonly [];
 const CONFIGISH_TYPE_RE =
   /(?:Options|Opts|Config|Configuration|Settings|Params|Props|Args|Env|Environment|Callbacks|Flags)$/;
 
-/**
- * Parameter names that carry the same signal from the other side, plus the two
- * ambient-capability names the brief called out as weak evidence of a seam: a
- * class whose ONLY dependency is a logger or a clock is not the substitutability
- * problem this rule is about.
- */
+/** Configuration names plus logger and clock, which alone do not establish a service seam. */
 const CONFIGISH_NAME_RE =
   /^(?:options|opts|config|configuration|settings|params|props|args|env|environment|callbacks|flags|logger|log|clock)$/i;
 
-/**
- * Third-party HTTP transports. A class whose ONLY stored collaborator is one of
- * these is a thin wrapper over somebody else's wire client: the Python side of
- * this standard excludes `*Client` for exactly this reason — an ABC over a class
- * whose collaborator is somebody else's HTTP transport substitutes nothing, and
- * a consumer's test fakes the transport (`respx`, `nock`, `msw`), not the wrapper.
- */
+/** Third-party transports commonly replaced below a thin client wrapper. */
 const HTTP_TRANSPORT_TYPE_RE = /^(?:KyInstance|AxiosInstance|Session)$/;
 
-/** Only the `*Client` naming carries the guard; see the transport-wrapper note in the header. */
-/**
- * TypeScript's own generic containers and mapped helpers. `data: Record<string,
- * Row>` names no implementation a consumer could swap — it is the same data a
- * bare `{ … }` annotation is, wearing a nominal name.
- */
+/** Containers and mapped helpers describe data rather than substitutable implementations. */
 const BUILTIN_CONTAINER_TYPE_RE =
   /^(?:Record|Map|WeakMap|Set|WeakSet|Array|ReadonlyArray|ReadonlyMap|ReadonlySet|Promise|Partial|Required|Readonly|Pick|Omit|Exclude|Extract|NonNullable|Awaited|Parameters|ReturnType|InstanceType)$/;
 
 const TRANSPORT_WRAPPER_NAME_RE = /Client$/;
 
-/** `express.Router()` / `Router()` — the router-factory call that marks HTTP wiring. */
+/** Router-factory call that marks HTTP wiring. */
 const ROUTER_FACTORY_NAME = "Router";
 
-/** Namespaced framework HTTP types (`express.Request`), never the DOM globals of the same name. */
+/** Namespaced framework HTTP types; unqualified DOM globals do not match. */
 const FRAMEWORK_HTTP_TYPES: ReadonlySet<string> = new Set(["Request", "Response", "NextFunction"]);
 
 interface Collaborator {
@@ -121,15 +105,7 @@ const propertySignatureTypes = (
   return types;
 };
 
-/**
- * Every type name this module declares that a collaborator test needs to see
- * through: object shapes (so an options-object parameter's members can be read)
- * and aliases to a function type (so a callback wearing a nominal name is still
- * a callback).
- *
- * A bag or an alias declared in ANOTHER module is left alone rather than guessed
- * at — see the deliberate false negatives in the header.
- */
+/** Locally declared object shapes and function aliases used to resolve constructor bags. */
 interface FileTypeIndex {
   /** `interface Deps { … }` / `type Deps = { … }`, by name. */
   readonly objects: ReadonlyMap<string, MemberTypes>;
@@ -198,18 +174,7 @@ const bagMemberTypes = (
   return declared().objects.get(annotation.typeName.name) ?? null;
 };
 
-/**
- * Collaborators reached through an options-object constructor,
- * `constructor({ userRepo, syncClient }: Deps)`. Each destructured binding is a
- * separate collaborator, because each one is separately stored on a field and
- * separately substitutable — exactly like a named parameter. Its type comes from
- * the bag's declaration, so `{ retries, timeoutMs }: HttpOptions` is dropped by
- * the same primitive-member test that drops `constructor(token: string)`.
- *
- * A rest element (`{ a, ...rest }`) and a nested pattern (`{ a: { b } }`) name
- * no single binding whose substitution a port would protect, so both are
- * skipped while the siblings beside them are still read.
- */
+/** Resolve separately stored collaborators from a locally typed constructor bag. */
 const objectPatternCollaborators = (
   pattern: TSESTree.ObjectPattern,
   declared: () => FileTypeIndex,
@@ -357,12 +322,7 @@ const subtreeHas = (root: TSESTree.Node, found: (node: TSESTree.Node) => boolean
   return hit;
 };
 
-/**
- * Report whether the class body is HTTP framework wiring: it manufactures a
- * router (`express.Router()`), or it handles the framework's own namespaced
- * request/response objects. Such a class is mounted by the server's bootstrap,
- * never injected into anything, so there is no consumer to give a port to.
- */
+/** Framework router wiring is mounted at bootstrap rather than injected into consumers. */
 const isFrameworkWiring = (body: TSESTree.ClassBody): boolean =>
   subtreeHas(body, (node) => {
     if (node.type === AST_NODE_TYPES.CallExpression) {

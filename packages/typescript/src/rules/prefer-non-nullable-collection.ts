@@ -45,7 +45,7 @@ export default createRule<Options, MessageIds>({
     type: "suggestion",
     docs: {
       description:
-        "Require array types to use an empty array instead of explicit nullish unions with two equivalent empty states.",
+        "Require declared data-shape properties and direct aliases to use non-null arrays instead of explicit nullish unions.",
     },
     schema: [],
     messages: {

@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint.rule_base import is_suppressed
 from sarj_python_lint.rules.no_file_level_escape_hatch_noqa import (
     ESCAPE_HATCH_CODES,
     NoFileLevelEscapeHatchNoqa,
@@ -79,6 +80,18 @@ def test_does_not_fire_on_a_directive_inside_a_string():
 
 def test_unparsable_source_yields_no_diagnostics():
     assert _check("# ruff: noqa: TID251\ndef (:\n") == []
+
+
+def test_reasoned_sarj_noqa_suppresses_a_deliberate_file_level_hatch():
+    src = "# ruff: noqa: TID251  # sarj-noqa: SARJ054 — vendored SDK test harness\n"
+    diagnostic = _check(src)[0]
+    assert is_suppressed(src.splitlines(), diagnostic.line, diagnostic.code)
+
+
+def test_sarj_noqa_for_another_rule_does_not_suppress_the_hatch():
+    src = "# ruff: noqa: TID251  # sarj-noqa: SARJ038 — vendored SDK test harness\n"
+    diagnostic = _check(src)[0]
+    assert not is_suppressed(src.splitlines(), diagnostic.line, diagnostic.code)
 
 
 def test_escape_hatch_set_is_exactly_the_banned_api_code():

@@ -12,9 +12,8 @@ const ruleTester = new RuleTester();
 
 ruleTester.run("prefer-server-actions", rule, {
   valid: [
-    // FP guard, corpus: query/examples/angular/auto-refetching/src/app/services/tasks.service.ts:38
-    // — Server Actions do not exist outside React/Next.
     {
+      name: "ignores Angular modules because they cannot use Server Actions",
       code: [
         'import { inject } from "@angular/core";',
         'import { HttpClient } from "@angular/common/http";',
@@ -23,10 +22,58 @@ ruleTester.run("prefer-server-actions", rule, {
       ].join("\n"),
       filename: "/repo/src/app/services/tasks.service.ts",
     },
-    // FP guard: jscodeshift input/output fixtures are text, not running code.
     {
+      name: "ignores Vue modules because they cannot use Server Actions",
+      code: 'import { ref } from "vue"; api.post("/api/tasks");',
+    },
+    {
+      name: "ignores Svelte modules because they cannot use Server Actions",
+      code: 'import { onMount } from "svelte"; api.post("/api/tasks");',
+    },
+    {
+      name: "ignores Solid modules because they cannot use Server Actions",
+      code: 'import { createSignal } from "solid-js"; api.post("/api/tasks");',
+    },
+    {
+      name: "ignores Nest modules because they cannot use Server Actions",
+      code: 'import { Injectable } from "@nestjs/common"; api.post("/api/tasks");',
+    },
+    {
+      name: "ignores Ember modules because they cannot use Server Actions",
+      code: 'import Service from "@ember/service"; api.post("/api/tasks");',
+    },
+    {
+      name: "ignores RxJS modules because they cannot use Server Actions",
+      code: 'import { of } from "rxjs"; api.post("/api/tasks");',
+    },
+    {
+      name: "ignores non-React modules regardless of import position",
+      code: 'api.post("/api/tasks"); import { ref } from "vue";',
+    },
+    {
+      name: "ignores codemod fixtures because they are not running code",
       code: "fetch('/api/todos', { method: 'POST' });",
       filename: "/repo/src/v5/__testfixtures__/bug-reports.input.tsx",
+    },
+    {
+      name: "ignores test files",
+      code: "fetch('/api/todos', { method: 'POST' });",
+      filename: "/repo/src/todos.test.ts",
+    },
+    {
+      name: "ignores scripts",
+      code: "fetch('/api/todos', { method: 'POST' });",
+      filename: "/repo/scripts/seed.ts",
+    },
+    {
+      name: "ignores App Router route handlers",
+      code: "fetch('/api/todos', { method: 'POST' });",
+      filename: "/repo/app/api/todos/route.ts",
+    },
+    {
+      name: "ignores Pages Router API handlers",
+      code: "fetch('/api/todos', { method: 'POST' });",
+      filename: "/repo/pages/api/todos.ts",
     },
     // GET is fine — only mutations are flagged.
     { code: "fetch('/api/users');" },
@@ -37,10 +84,28 @@ ruleTester.run("prefer-server-actions", rule, {
     { code: "fetch('/other/users', { method: 'POST' });" },
     // axios member GET is not a mutation.
     { code: "api.get('/api/users');" },
-    // Express-style route DEFINITION (inline handler arg) is not a client
-    // mutation. Detection is limited to inline function args (see rule docs).
-    { code: "router.post('/api/users', (req, res) => res.json({}));" },
-    { code: "router.delete('/api/users/:id', function (req, res) {});" },
+    {
+      name: "ignores Express route definitions with inline arrow handlers",
+      code: "router.post('/api/users', (req, res) => res.json({}));",
+    },
+    {
+      name: "ignores Express route definitions with inline function handlers",
+      code: "router.delete('/api/users/:id', function (req, res) {});",
+    },
+    {
+      name: "ignores Express route definitions with variable handlers",
+      code: [
+        "const handler = (req, res) => res.json({});",
+        "router.post('/api/users', handler);",
+      ].join("\n"),
+    },
+    {
+      name: "ignores Express route definitions with declared handlers",
+      code: [
+        "function handler(req, res) { res.json({}); }",
+        "router.post('/api/users', handler);",
+      ].join("\n"),
+    },
     // Direct axios config with GET is fine.
     { code: "axios({ method: 'get', url: '/api/users' });" },
     // Direct axios config against an external URL is fine.
@@ -84,6 +149,11 @@ ruleTester.run("prefer-server-actions", rule, {
     // Branch 2: axios/custom-wrapper member call (no handler arg).
     {
       code: "api.post('/api/orders', { total: 1 });",
+      errors: [{ messageId: "preferServerAction" }],
+    },
+    {
+      name: "flags member mutations whose payload is an identifier",
+      code: "api.post('/api/orders', order);",
       errors: [{ messageId: "preferServerAction" }],
     },
     {

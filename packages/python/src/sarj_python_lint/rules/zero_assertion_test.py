@@ -19,9 +19,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# Names that verify something, however the project spells them. A snake_case
-# TOKEN search, not a prefix: `invoke_and_assert` is prefect's primary CLI-test
-# verifier and an anchored pattern could not see it.
+# Match assertion tokens anywhere in a snake_case helper name.
 _ASSERTION_NAME_RE = re.compile(r"(^|_)(assert|expect|verify|validate)", re.IGNORECASE)
 
 # `raises`/`warns` as a token anywhere in the name: `pytest.deprecated_call`,
@@ -31,30 +29,8 @@ _RAISES_TOKEN_RE = re.compile(r"(^|_)(raises|warns|deprecated_call)", re.IGNOREC
 
 _RAISES_NAMES = frozenset({"raises", "warns", "fail"})
 
-# Library assertion helpers whose names contain none of the four tokens above.
-# The name heuristic is a good default and it has a blind spot: a widely used
-# assertion API is free to spell itself without the word "assert".
-#
-# MEASURED, 2026-07-31, over 39,893 content-deduplicated `.py` files: 4,386 of
-# this rule's 7,352 findings — 59.7% — were on test functions whose body calls
-# one of these, i.e. tests that assert perfectly well through a helper this rule
-# could not see. Three read at source (`test_run_without_stepwise`,
-# `test_repr_params_unknown_list`, `test_terminal_report_failedfirst`) are
-# assertion-complete; the flag was wrong in each.
-#
-# Two vocabularies, both exact names rather than a pattern, because the shapes
-# are too generic to match loosely:
-#
-#   * pytest's own `LineMatcher` (`_pytest.pytester`). `result.stdout
-#     .fnmatch_lines([...])` RAISES `Failed` on a mismatch — it is the canonical
-#     way to assert on CLI output, and any repo that tests a console script with
-#     the `pytester` fixture uses it. 438 findings.
-#   * `sqlalchemy.testing.assertions`, whose trailing underscore exists to dodge
-#     Python keywords (`is_`, `in_`). 3,948 findings.
-#
-# Kept as a closed set: a wildcard for "ends in an underscore" or "starts with
-# eq" would swallow unrelated user functions, and the whole point of this rule
-# is that a test which really does assert nothing stays flagged.
+# These pytest and SQLAlchemy helpers verify without an assertion token in their names.
+# Keep the set exact so similarly named application helpers remain findings.
 _LIBRARY_ASSERTION_NAMES = frozenset({
     # _pytest.pytester.LineMatcher
     "fnmatch_lines",
@@ -169,17 +145,7 @@ def _unverifying_tests(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunc
 def _module_level_callables(
     tree: ast.Module, defined_here: dict[str, ast.FunctionDef | ast.AsyncFunctionDef]
 ) -> frozenset[str]:
-    """Collect the names bound by an import or a `def` at module scope.
-
-    Used to tell a callable handed to a runner from a local variable that
-    merely reads like one: `run_sync_in_worker_thread(invoke_and_assert, ...)`
-    passes an imported verifier, while `compare(expected_value, actual)` passes
-    a value computed two lines up.
-
-    Returns:
-        Every name this module imports or defines as a function.
-
-    """
+    """Collect imported and locally defined callable names."""
     imported = {
         alias.asname or alias.name.split(".")[0]
         for node in nodes(tree, ast.Import, ast.ImportFrom)
@@ -189,17 +155,7 @@ def _module_level_callables(
 
 
 def _skips_at_runtime(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Report whether the body unconditionally calls `pytest.skip(...)`.
-
-    The imperative twin of `@pytest.mark.skip`, and exempt for the same reason:
-    everything after it is unreachable, so there was never anything to assert.
-    Only a statement sitting directly in the body counts — a `pytest.skip()`
-    guarded by an `if` leaves the rest of the test running.
-
-    Returns:
-        True when the test aborts itself before it can verify anything.
-
-    """
+    """Report whether the test body unconditionally calls `pytest.skip(...)`."""
     return any(
         isinstance(stmt, ast.Expr)
         and isinstance(call := stmt.value, ast.Call)
@@ -223,15 +179,7 @@ def _verifying_local_names(
     defined_here: dict[str, ast.FunctionDef | ast.AsyncFunctionDef],
     module_callables: frozenset[str],
 ) -> frozenset[str]:
-    """Find the same-module functions that verify, directly or by delegation.
-
-    Transitive because assertion helpers stack: black's `compare_results` calls
-    `check_ast_equivalence`, and only the latter holds the `assert`.
-
-    Returns:
-        Every local function name whose body reaches a verification.
-
-    """
+    """Find same-module functions that verify directly or transitively."""
     verifying = {name for name, node in defined_here.items() if _verifies_something(node, module_callables)}
     pending = {name: _called_names(node) for name, node in defined_here.items() if name not in verifying}
     while True:
@@ -298,16 +246,7 @@ def _is_verification(child: ast.AST, module_callables: frozenset[str]) -> bool:
 
 
 def _raises_assertion_error(node: ast.Raise) -> bool:
-    """Report whether the statement raises `AssertionError`.
-
-    `case _: raise AssertionError("unexpected variant")` is the `match`
-    statement's way of stating an expectation; refusing to count it flagged
-    tests that verify strictly more precisely than an `assert` would.
-
-    Returns:
-        True when the raised exception is an `AssertionError`.
-
-    """
+    """Report whether the statement raises `AssertionError`."""
     exc = node.exc.func if isinstance(node.exc, ast.Call) else node.exc
     match exc:
         case ast.Name(id=name) | ast.Attribute(attr=name):
@@ -317,20 +256,7 @@ def _raises_assertion_error(node: ast.Raise) -> bool:
 
 
 def _hands_a_verifier_to_a_runner(call: ast.Call, module_callables: frozenset[str]) -> bool:
-    """Report whether the call passes an assertion helper as a bare callable.
-
-    `run_sync_in_worker_thread(invoke_and_assert, "work-pool create ''",
-    expected_code=1)` verifies through the helper it hands over, but the helper
-    never appears in callee position, so reading `Call.func` alone cannot see
-    it. Only the FIRST argument — the callable slot every runner and
-    `functools.partial` uses — is read, and only when the name is one this
-    module imports or defines, which is what separates a callable from a local
-    variable that happens to be named `expected_rows`.
-
-    Returns:
-        True when a verifying callable is being handed to a runner.
-
-    """
+    """Report whether a call's first argument is a known assertion helper."""
     if not call.args:
         return False
     match call.args[0]:
@@ -382,18 +308,7 @@ def _delegates_verification(
 
 
 def _called_names(node: ast.AST) -> set[str]:
-    """Collect the names this subtree calls, in callee position.
-
-    Deliberately NOT widened to the callable slot the way `_is_verification` is.
-    These names are resolved against `test_*`-ness as well as against the
-    module's own helpers, and a first argument named `test_client` — a fixture,
-    not a delegate — would otherwise read as "this test re-runs another
-    module's test" and silence the rule.
-
-    Returns:
-        Every name invoked in the subtree.
-
-    """
+    """Collect names called in callee position throughout a subtree."""
     names: set[str] = set()
     for child in walk(node):
         if isinstance(child, ast.Call):

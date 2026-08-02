@@ -28,7 +28,7 @@ _DOUBLE_SUFFIX_RE = re.compile(r"(?:InMemory|Mock|Fake|Stub|Dummy)$")
 
 # Tokens that name a persistence port. Case-sensitive CamelCase tails, so `Storage`,
 # `Restore` and `Bookstore` do not match `Store`. `Cache`, `Storage`, `Table`,
-# `Client`, `Service`, `Api` and `Publisher` are excluded — see the module docstring.
+# `Client`, `Service`, `Api` and `Publisher` are excluded; paired tests pin the boundary.
 _PORT_TAIL = r"(?:Store|Repository|Repo|DAO|Dao|Database|DB|Db)"
 _PORT_TAIL_RE = re.compile(_PORT_TAIL + "$")
 

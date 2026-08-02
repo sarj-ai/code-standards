@@ -34,7 +34,7 @@ export default createRule<Options, MessageIds>({
 
     function enumValues(
       node: TSESTree.CallExpression,
-    ): readonly TSESTree.StringLiteral[] | null {
+    ): readonly TSESTree.StringLiteral[] | undefined | null {
       const callee = node.callee;
       if (
         callee.type !== AST_NODE_TYPES.MemberExpression ||
@@ -57,11 +57,15 @@ export default createRule<Options, MessageIds>({
       }
 
       const values: TSESTree.StringLiteral[] = [];
+      let canFix = true;
       for (const element of argument.elements) {
+        if (element?.type === AST_NODE_TYPES.SpreadElement) {
+          canFix = false;
+          continue;
+        }
         if (
           element === null ||
           element.type !== AST_NODE_TYPES.CallExpression ||
-          element.arguments.length !== 1 ||
           element.callee.type !== AST_NODE_TYPES.MemberExpression ||
           element.callee.computed ||
           element.callee.object.type !== AST_NODE_TYPES.Identifier ||
@@ -73,15 +77,17 @@ export default createRule<Options, MessageIds>({
         }
         const value = element.arguments[0];
         if (
+          element.arguments.length !== 1 ||
           value === undefined ||
           value.type !== AST_NODE_TYPES.Literal ||
           typeof value.value !== "string"
         ) {
-          return null;
+          canFix = false;
+          continue;
         }
         values.push(value);
       }
-      return values;
+      return canFix ? values : undefined;
     }
 
     function buildFix(
@@ -134,7 +140,7 @@ export default createRule<Options, MessageIds>({
         if (values === null) {
           return;
         }
-        const fix = buildFix(node, values);
+        const fix = values === undefined ? undefined : buildFix(node, values);
         context.report({
           node,
           messageId: "preferEnum",

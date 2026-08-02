@@ -258,6 +258,22 @@ def test_two():
     assert len(_check(src)) == 1
 
 
+def test_differing_trailing_comments_suppress_a_duplicate():
+    src = """
+def test_one():
+    u = make_user(role="admin")  # Regression for admin inheritance.
+    allowed = can_delete(u)
+    assert allowed is True
+
+
+def test_two():
+    u = make_user(role="editor")  # Regression for delegated roles.
+    allowed = can_delete(u)
+    assert allowed is True
+"""
+    assert _check(src) == []
+
+
 # --------------------------------------------------------------------------- #
 # The message: it must name the original and the literals that differ.         #
 # --------------------------------------------------------------------------- #
@@ -380,7 +396,14 @@ class OuterTests(TestCase):
 
 @pytest.mark.parametrize(
     "call",
-    ["self.assertEqual(result, 2)", "self.subTest(result)", "self.skipTest('nope')", "self.fail('boom')"],
+    [
+        "self.assertEqual(result, 2)",
+        "self.subTest(result)",
+        "self.skipTest('nope')",
+        "self.fail('boom')",
+        "self.addCleanup(cleanup)",
+        "self.addTypeEqualityFunc(Thing, compare)",
+    ],
 )
 def test_bodies_calling_a_test_case_only_api_are_exempt(call: str):
     # django's mixin classes carry test methods with no TestCase base at all;
@@ -396,6 +419,26 @@ class TestHashedFiles:
         value = compute(2)
         result = normalize(value)
         {call}
+"""
+    assert _check(src) == []
+
+
+def test_a_locally_defined_test_case_base_is_followed_through_inheritance():
+    src = """
+class DatabaseTest(TestCase):
+    pass
+
+
+class TestDeletion(DatabaseTest):
+    def test_admin(self):
+        u = make_user(role="admin")
+        allowed = can_delete(u)
+        assert allowed is True
+
+    def test_editor(self):
+        u = make_user(role="editor")
+        allowed = can_delete(u)
+        assert allowed is True
 """
     assert _check(src) == []
 
@@ -718,6 +761,76 @@ def test_two():
     rows = load(2)
     {binding.replace("item", "row")}
 """
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [
+        (
+            "try:\n        run(value)\n    except Error as exc:\n        assert str(exc)",
+            "try:\n        run(value)\n    except Error as error:\n        assert str(error)",
+        ),
+        (
+            "if result := normalize(value):\n        assert result",
+            "if normalized := normalize(value):\n        assert normalized",
+        ),
+        (
+            "results = [normalize(item) for item in value]\n    assert results",
+            "normalized = [normalize(row) for row in value]\n    assert normalized",
+        ),
+    ],
+    ids=["except-as", "walrus", "comprehension-target"],
+)
+def test_all_body_binding_forms_are_canonicalized(first: str, second: str):
+    src = f"""
+def test_one():
+    value = load(1)
+    {first}
+
+
+def test_two():
+    value = load(2)
+    {second}
+"""
+    assert len(_check(src)) == 1
+
+
+def test_differing_fixture_documents_are_not_case_values():
+    src = '''
+def test_one():
+    page = render("""<main>
+admin permissions and navigation belong here
+</main>""")
+    result = parse(page)
+    assert result
+
+
+def test_two():
+    page = render("""<main>
+editor permissions and navigation belong here
+</main>""")
+    result = parse(page)
+    assert result
+'''
+    assert _check(src) == []
+
+
+def test_short_multiline_literals_remain_parametrize_cases():
+    src = '''
+def test_one():
+    value = load("""a
+b""")
+    result = normalize(value)
+    assert result
+
+
+def test_two():
+    value = load("""c
+d""")
+    result = normalize(value)
+    assert result
+'''
     assert len(_check(src)) == 1
 
 

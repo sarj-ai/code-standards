@@ -18,6 +18,10 @@ ruleTester.run("prefer-zod-enum", rule, {
     'import { z } from "zod"; const S = z.enum(["a", "b"]);',
     'import { z } from "zod"; const S = z.union([z.string(), z.number()]);',
     'import { z } from "zod"; const S = z.union([z.literal("a"), other]);',
+    'import { z } from "zod"; const S = z.union([]);',
+    'import { z } from "zod"; const S = z.union([other, ...schemas]);',
+    'import { z } from "zod"; const S = z["union"]([z.literal("a")]);',
+    'import { z } from "zod"; const S = z.union([z.literal("a"), local.literal("b")]);',
     'const z = localSchemaBuilder; const S = z.union([z.literal("a")]);',
   ],
   invalid: [
@@ -34,6 +38,26 @@ ruleTester.run("prefer-zod-enum", rule, {
     {
       code: 'import { z } from "zod"; const S = z.union([z.literal("a"), /* keep */ z.literal("b")]);',
       output: null,
+      errors: [{ messageId: "preferEnum" }],
+    },
+    {
+      code: 'import { z } from "zod"; const S = z.union([z.literal("a"), ...schemas]);',
+      output: null,
+      errors: [{ messageId: "preferEnum" }],
+    },
+    {
+      code: 'import { z } from "zod"; const S = z.union([z.literal("a"), z.literal(value)]);',
+      output: null,
+      errors: [{ messageId: "preferEnum" }],
+    },
+    {
+      code: 'import { z } from "zod"; const S = z.union([z.literal("a"), z.literal(1)]);',
+      output: null,
+      errors: [{ messageId: "preferEnum" }],
+    },
+    {
+      code: 'import { z as schema } from "zod"; const S = schema.union([schema.literal("a"), schema.literal("b")]);',
+      output: 'import { z as schema } from "zod"; const S = schema.enum(["a", "b"]);',
       errors: [{ messageId: "preferEnum" }],
     },
   ],

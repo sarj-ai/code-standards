@@ -12,11 +12,11 @@ import sarj from "@sarj/eslint-plugin";
 export default [...sarj.configs.recommended];
 ```
 
-51 rules. Each source under `src/rules/` states one concise claim and links to
+55 rules. Each source under `src/rules/` states one concise claim and links to
 its paired tests. The definition and named test cases are the complete rule
 specification, and `meta.docs.url` points directly to those executable examples.
 
-Presets: `recommended` (warn-first), `strict` (every rule at error), `style-guide` (formatting/naming subset).
+Presets: `recommended` (warn-first), `strict` (every shipped rule at its declared strict severity), `style-guide` (formatting/naming subset). The two-sentence comment rule warns; its three-sentence companion errors.
 
 ## Renamed in 7.0.0, aliases deleted in 9.0.0 (breaking)
 

@@ -21,20 +21,14 @@ if TYPE_CHECKING:
 
 _GEN_RANDOM_UUID_RE = re.compile(r"\bgen_random_uuid\s*\(", re.IGNORECASE)
 
-# A string only counts as SQL when it carries a structural keyword. Without this
-# the rule fires on prose that names the function — including this module's own
-# docstring.
+# Require SQL structure so prose that merely names the function stays valid.
 _SQL_SHAPE_RE = re.compile(
     r"\b(?:CREATE|ALTER|INSERT|UPDATE|SELECT|DEFAULT|VALUES)\b",
     re.IGNORECASE,
 )
 
-# A string that is *implementing* v7 rather than defaulting a column to v4. Either
-# it names the v7 function it is defining, or it is unpacking the random UUID into
-# bytes to splice a timestamp into — which is the only reason to call
-# `gen_random_uuid()` and immediately take it apart.
 _BUILDS_UUIDV7_RE = re.compile(
-    r"\buuid_?(?:generate_)?v7\b|"
+    r"\buuid_?(?:generate_)?v7\b|\buuid7\b|"
     r"\b(?:uuid_send|gen_random_bytes|set_byte|get_byte|int8send)\s*\(|"
     r"\b(?:substring|encode|overlay)\s*\(\s*(?:uuid_send\s*\()?\s*gen_random_uuid",
     re.IGNORECASE,

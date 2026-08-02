@@ -13,116 +13,121 @@ const ruleTester = new RuleTester();
 
 ruleTester.run("require-zod-form-validation", rule, {
   valid: [
-    // FP guard, corpus: react-router/packages/react-router/__tests__/dom/data-browser-router-test.tsx:4183
-    // — the FormData was built by the test; there is no trust boundary.
     {
+      name: "ignores FormData reads in test files",
       code: "async function t(request) { const formData = await request.formData(); expect(formData.get('a')).toBe('1'); }",
       filename: "/repo/packages/x/__tests__/dom/data-browser-router-test.tsx",
     },
-    // formData.get() wrapped in a Zod schema .parse() call
     {
+      name: "accepts inline parse with a Z-prefixed schema",
       code: "const name = ZUser.parse({ name: formData.get('name') });",
     },
-    // safeParse is a valid Zod validation too (regression: previously rejected).
     {
+      name: "accepts inline safeParse",
       code: "const name = ZUser.safeParse({ name: formData.get('name') });",
     },
-    // Schema-suffixed receiver counts as a Zod schema.
     {
+      name: "accepts a Schema-suffixed receiver",
       code: "const name = userSchema.parse({ name: formData.get('name') });",
     },
-    // `z.*` builder chain counts as a Zod schema.
     {
+      name: "accepts a z builder chain",
       code: "const name = z.object({ name: z.string() }).parse({ name: formData.get('name') });",
     },
-    // Nested: .parse() ancestor exists somewhere above
     {
+      name: "accepts a nested read under parse",
       code: "const result = ZUser.parse({ inner: { name: formData.get('name') } });",
     },
-    // Reading from a different identifier that isn't a form source
     {
+      name: "ignores get calls on non-form sources",
       code: "const name = req.body.get('name');",
     },
-    // Non-`.get()` member call on formData — rule only targets `.get(...)`
     {
+      name: "ignores other FormData methods",
       code: "for (const key of formData.keys()) {}",
     },
-    // .parse() ancestor at the top level expression
     {
+      name: "accepts a read nested in an argument under parse",
       code: "ZForm.parse(Object.fromEntries([['name', formData.get('name')]]));",
     },
-    // Un-hardcoded receiver: a binding from `.formData()`, validated via Zod.
     {
+      name: "recognizes a binding initialized by an awaited formData call",
       code: "async function f(req) { const fd = await req.formData(); return ZUser.parse({ name: fd.get('name') }); }",
     },
-    // FP-6: validation happens ONE HOP later, through a binding. Walking up from
-    // the `.get()` call cannot see it; tracking the binding through scope can.
     {
+      name: "accepts a binding validated by safeParse later",
       code: "const tokenRaw = formData.get('t');\nconst parsedForm = SubmitFormDataSchema.safeParse({ t: typeof tokenRaw === 'string' ? tokenRaw : undefined });",
     },
-    // FP-6: several statements later, and via the `Z`-prefix convention.
     {
+      name: "accepts a binding validated several statements later",
       code: "const emailRaw = formData.get('email');\ntrace('submit', { present: emailRaw !== null });\nconst parsed = ZSignup.parse({ email: emailRaw });",
     },
-    // FP-6: a file upload narrowed by `instanceof File` — Zod has nothing
-    // useful to say about a `File`, and `instanceof` IS the validation.
     {
+      name: "accepts a File binding narrowed with instanceof",
       code: "const file = formData.get('file');\nif (!(file instanceof File)) { throw new Error('bad'); }\nawait upload(file);",
     },
-    // FP-6: the same narrowing written inline.
     {
+      name: "accepts an inline File narrowing",
       code: "if (formData.get('file') instanceof File) { ok(); }",
+    },
+    {
+      name: "accepts a Blob binding narrowed with instanceof",
+      code: "const blob = formData.get('blob');\nif (blob instanceof Blob) { await upload(blob); }",
     },
   ],
   invalid: [
-    // A real action still fires.
     {
+      name: "reports a production action read",
       code: "export async function action(request) { const formData = await request.formData(); return save(formData.get('name')); }",
       filename: "/repo/src/app/actions.ts",
       errors: [{ messageId: "missingZodValidation" }],
     },
-    // Bare formData.get() with no Zod validation
     {
+      name: "reports a bare FormData read",
       code: "const name = formData.get('name');",
       errors: [{ messageId: "missingZodValidation" }],
     },
-    // formData.get() inside an unrelated function call
     {
+      name: "reports a read inside an unrelated call",
       code: "console.log(formData.get('name'));",
       errors: [{ messageId: "missingZodValidation" }],
     },
-    // JSON.parse is NOT Zod validation — must still be flagged (false-negative fix).
     {
+      name: "does not mistake JSON.parse for Zod validation",
       code: "const name = JSON.parse(formData.get('name'));",
       errors: [{ messageId: "missingZodValidation" }],
     },
-    // Date.parse is NOT Zod validation either.
     {
+      name: "does not mistake Date.parse for Zod validation",
       code: "const ts = Date.parse(formData.get('createdAt'));",
       errors: [{ messageId: "missingZodValidation" }],
     },
-    // Un-hardcoded receiver: a binding from `.formData()` with no validation.
     {
+      name: "reports an unvalidated binding initialized by formData",
       code: "async function f(req) { const fd = await req.formData(); return fd.get('name'); }",
       errors: [{ messageId: "missingZodValidation" }],
     },
-    // Multiple unvalidated reads — each is flagged
     {
+      name: "reports each unvalidated read",
       code: "const a = formData.get('a'); const b = formData.get('b');",
       errors: [
         { messageId: "missingZodValidation" },
         { messageId: "missingZodValidation" },
       ],
     },
-    // FP-6 must not over-suppress: a binding that is USED but never validated
-    // is still an unvalidated read.
     {
+      name: "does not treat an ordinary binding use as validation",
       code: "const tokenRaw = formData.get('t');\nawait redeem(tokenRaw);",
       errors: [{ messageId: "missingZodValidation" }],
     },
-    // FP-6 must not over-suppress: `JSON.parse` on the binding is not Zod.
     {
+      name: "does not treat JSON.parse on a binding as validation",
       code: "const raw = formData.get('payload');\nconst data = JSON.parse(String(raw));",
+      errors: [{ messageId: "missingZodValidation" }],
+    },
+    {
+      name: "does not treat unrelated instanceof narrowing as validation",
+      code: "const value = formData.get('value');\nif (value instanceof URL) { use(value); }",
       errors: [{ messageId: "missingZodValidation" }],
     },
   ],

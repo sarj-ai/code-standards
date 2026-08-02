@@ -61,46 +61,17 @@ const CSS_VAR_REFERENCE_RE = /var\(\s*--/;
 
 const STORIES_FILE_RE = /\.stories\.[cm]?[jt]sx?$/i;
 
-/**
- * Token ROLES, not one vendor's token NAMES.
- *
- * The previous vocabulary was shadcn's and only shadcn's, so a repo with a
- * complete, consistently used design system was read as having none and the
- * `requireSemanticTokens` gate suppressed the rule across the whole repo.
- * Medusa is the worked example: its system is `bg-ui-bg-base` /
- * `text-ui-fg-subtle` backed by `--fg-base` / `--bg-base` custom properties, so
- * its `globals.css` was FOUND and then REJECTED. `dub` names its tokens
- * `content-default` / `bg-default` and lost the same way.
- *
- * Detection errs deliberately towards "a system exists". Guessing yes leaves
- * the rule RUNNING, and an author can disable any line it reports with a
- * reason; guessing no silently disables an error-level rule for a whole
- * repository, and nobody finds out. Those costs are not symmetric, which is why
- * this is a role vocabulary rather than an exact token list.
- */
+/** Broad token roles avoid silently disabling the rule for non-shadcn systems. */
 const TOKEN_ROLES =
   "background|foreground|primary|secondary|muted|accent|destructive|danger|success|warning|info|border|card|popover|surface|content|base|subtle|default|ring|input|fg|bg";
 const SEMANTIC_TOKEN_RE = new RegExp(
   `--(?:color-)?(?:${TOKEN_ROLES})\\b|(?:bg|text|border|ring|fill|stroke)-(?:ui-)?(?:${TOKEN_ROLES})\\b`,
 );
 
-/**
- * Tailwind v4 is CSS-first: there is no `tailwind.config.*` to find, and the
- * theme lives in an `@theme` block in the stylesheet. Without this, every v4
- * setup reads as "no design system" and the gate suppresses the rule.
- */
+/** Tailwind v4 declares its theme in CSS instead of a config file. */
 const THEME_BLOCK_RE = /@theme\b/;
 
-/**
- * Files whose PRESENCE alone proves a configured Tailwind design system.
- *
- * Reading these for a token vocabulary was the second half of the same defect.
- * A `tailwind.config.*` frequently defines its theme by importing a preset
- * (`presets: [require("@medusajs/ui-preset")]`) or by spreading a shared
- * object, so the token names are not textually present in the file that proves
- * they exist. `components.json` was already treated this way; the config files
- * are the same kind of evidence and are now treated the same.
- */
+/** These files prove a token system exists even when its vocabulary comes from a preset. */
 const PRESENCE_MARKERS = [
   "components.json",
   "tailwind.config.js",
@@ -111,13 +82,7 @@ const PRESENCE_MARKERS = [
   "tailwind.config.cts",
 ];
 
-/**
- * Stylesheets that only count as evidence if they actually DECLARE tokens.
- *
- * Unlike a Tailwind config, the existence of a `globals.css` says nothing — every
- * app has one. So these are read and matched against `SEMANTIC_TOKEN_RE` or the
- * v4 `@theme` block.
- */
+/** Stylesheets count only when their contents declare semantic tokens or an `@theme`. */
 const CSS_DETECTION_FILES = [
   "app/globals.css",
   "app/global.css",
@@ -131,13 +96,7 @@ const CSS_DETECTION_FILES = [
   "styles/globals.css",
   "styles/index.css",
 ];
-/**
- * Files that mark a directory as the root of a multi-package workspace.
- *
- * `package.json` is handled separately: only a `workspaces` field counts, since
- * every package has a `package.json` and treating it as a root would stop the
- * sideways scan at the nearest leaf package.
- */
+/** Workspace markers used when no `package.json#workspaces` declaration exists. */
 const WORKSPACE_ROOT_FILES = [
   "pnpm-workspace.yaml",
   "pnpm-workspace.yml",
@@ -182,10 +141,7 @@ const SVG_EXEMPT_COLOR_VALUES = new Set<string>([
   "inherit",
 ]);
 
-// A `fill`/`stroke` literal anywhere inside an `<svg>` subtree is drawing data
-// (icon/illustration artwork), not a reusable UI token — the color is inherent to
-// the graphic. Exempt any descendant of `<svg>` (which subsumes the defs
-// containers `<mask>`/`<clipPath>`/`<defs>`/`<pattern>`/gradients).
+// SVG subtree colors are artwork data rather than reusable UI tokens.
 function jsxElementName(node: TSESTree.JSXElement): string | null {
   const name = node.openingElement.name;
   if (name.type === AST_NODE_TYPES.JSXIdentifier) return name.name;
@@ -199,13 +155,7 @@ function isSvgLikeElementName(name: string): boolean {
   return name === "svg" || SVG_DEFS_CONTAINERS.has(name) || /svg$/i.test(name);
 }
 
-/**
- * Intrinsic lowercase SVG shape primitives.
- *
- * A `fill`/`stroke` on a lowercase `<path>` is never a reusable-UI-token
- * position — real component styling goes through `className` or `style`, which
- * this guard does not touch — so the recall cost is zero.
- */
+/** Intrinsic SVG shapes carry artwork colors; `className` and `style` remain checked. */
 const SVG_SHAPE_PRIMITIVES = new Set<string>([
   "circle",
   "ellipse",
@@ -221,16 +171,8 @@ const SVG_SHAPE_PRIMITIVES = new Set<string>([
   "use",
 ]);
 
-/**
- * Files rendered by react-email or react-pdf.
- *
- * CSS-variable-backed semantic tokens cannot work in either target. `<Tailwind>`
- * from `@react-email/components` compiles classes to inline styles at render
- * time, and `hsl(var(--primary))` is undefined in a mail client; react-pdf has
- * no CSS custom properties at all. Raw palette classes and literal hex are the
- * correct practice there, so the rule's advice is unfollowable.
- */
-const EMAIL_OR_PDF_IMPORT_RE = /@react-(?:email|pdf)\//;
+/** Email and PDF renderers cannot resolve CSS-variable-backed semantic tokens. */
+const EMAIL_OR_PDF_MODULE_RE = /^@react-(?:email|pdf)\//;
 
 const isInsideSvg = (node: TSESTree.Node): boolean => {
   let current: TSESTree.Node | null | undefined = node.parent;
@@ -278,18 +220,7 @@ const hasMarkerAt = (dir: string): boolean => {
   return false;
 };
 
-/**
- * Is there a marker at or above `startDir`? Walks to the filesystem root.
- *
- * There is deliberately no depth budget. A budget introduces a third answer —
- * "ran out" — which has to be reported as one of the other two, and reporting it
- * as "no design system" made this gate's result depend on the ORDER files were
- * linted in.
- *
- * Every visited directory is memoised, so the walk runs once per tree. Caching
- * the resolved answer for all of them is sound: each sits at or below wherever
- * the answer was settled, so "at or above" holds for each of them too.
- */
+/** Walk to the filesystem root and cache the resolved ancestry answer. */
 const hasMarkerAtOrAbove = (startDir: string): boolean => {
   let dir = startDir;
   const root = parse(dir).root;
@@ -319,13 +250,7 @@ const hasMarkerAtOrAbove = (startDir: string): boolean => {
   return answer;
 };
 
-/**
- * The workspace globs a root declares, from `package.json` or `pnpm-workspace.yaml`.
- *
- * The YAML is read with a line regex rather than a parser: a dependency-free rule
- * cannot pull one in, and the only shape that matters is the flat `packages:`
- * list every pnpm workspace writes.
- */
+/** Read workspace globs without adding a YAML dependency to the rule. */
 const readWorkspaceGlobs = (dir: string): string[] => {
   const globs: string[] = [];
 
@@ -415,15 +340,7 @@ const findWorkspaceRoot = (startDir: string): string | null => {
   return answer;
 };
 
-/**
- * Does any package of this workspace carry a design-token marker?
- *
- * An upward walk alone silences a whole monorepo whose token config lives in a
- * sibling package: no ancestor chain from a source file passes through it. A
- * token system in a sibling package is still a token system — that is what a
- * workspace IS — so the scan goes sideways from the workspace root when, and only
- * when, the upward walk has already come back empty.
- */
+/** Scan sibling packages because their token config is not on the source file's ancestry. */
 const workspaceHasMarker = (root: string): boolean => {
   const cached = workspaceScanCache.get(root);
   if (cached !== undefined) return cached;
@@ -463,6 +380,60 @@ const propName = (key: TSESTree.Property["key"]): string | null => {
   return null;
 };
 
+const importsEmailOrPdfRenderer = (program: TSESTree.Program): boolean => {
+  let found = program.body.some((statement) => {
+    if (
+      statement.type !== AST_NODE_TYPES.ImportDeclaration &&
+      statement.type !== AST_NODE_TYPES.ExportNamedDeclaration &&
+      statement.type !== AST_NODE_TYPES.ExportAllDeclaration
+    ) {
+      return false;
+    }
+    return (
+      statement.source !== null &&
+      typeof statement.source.value === "string" &&
+      EMAIL_OR_PDF_MODULE_RE.test(statement.source.value)
+    );
+  });
+  const visit = (node: TSESTree.Node): void => {
+    if (found) return;
+    if (
+      node.type === AST_NODE_TYPES.ImportExpression &&
+      node.source.type === AST_NODE_TYPES.Literal &&
+      typeof node.source.value === "string" &&
+      EMAIL_OR_PDF_MODULE_RE.test(node.source.value)
+    ) {
+      found = true;
+      return;
+    }
+    if (
+      node.type === AST_NODE_TYPES.CallExpression &&
+      node.callee.type === AST_NODE_TYPES.Identifier &&
+      node.callee.name === "require" &&
+      node.arguments[0]?.type === AST_NODE_TYPES.Literal &&
+      typeof node.arguments[0].value === "string" &&
+      EMAIL_OR_PDF_MODULE_RE.test(node.arguments[0].value)
+    ) {
+      found = true;
+      return;
+    }
+    for (const [key, value] of Object.entries(node)) {
+      if (key === "parent") continue;
+      for (const child of Array.isArray(value) ? value : [value]) {
+        if (
+          typeof child === "object" &&
+          child !== null &&
+          typeof (child as { type?: unknown }).type === "string"
+        ) {
+          visit(child as TSESTree.Node);
+        }
+      }
+    }
+  };
+  if (!found) visit(program);
+  return found;
+};
+
 export default createRule<Options, MessageIds>({
   name: "prefer-semantic-colors",
   meta: {
@@ -492,7 +463,7 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [{}],
   create(context, [options]) {
     if (STORIES_FILE_RE.test(context.filename)) return {};
-    if (EMAIL_OR_PDF_IMPORT_RE.test(context.sourceCode.getText())) return {};
+    if (importsEmailOrPdfRenderer(context.sourceCode.ast)) return {};
     if (options?.requireSemanticTokens === true && !hasSemanticTokenSystem(context.filename)) {
       return {};
     }
@@ -508,9 +479,7 @@ export default createRule<Options, MessageIds>({
       }
     };
 
-    // Walk a node that holds className fragments: strings, templates, arrays, cva
-    // variant objects, and conditionals. CallExpressions are handled separately, so
-    // they're not recursed here (avoids double-reporting cn()/cva() args).
+    // Recurse through class fragments but leave calls to the CallExpression visitor.
     const checkClassNode = (node: TSESTree.Node | null): void => {
       if (node === null) return;
       switch (node.type) {
@@ -579,9 +548,7 @@ export default createRule<Options, MessageIds>({
         const name = propName(node.key);
         if (name !== null && CLASS_NAME_RE.test(name)) checkClassNode(node.value);
       },
-      // SVG presentation attributes: <path fill="#7c3aed" stroke="#7c3aed" />.
-      // Neutral drawing literals and anything inside an SVG defs container are
-      // structural, not UI tokens, so they never fire.
+      // SVG artwork colors are exempt; component presentation colors still report.
       "JSXAttribute[name.name=/^(fill|stroke|color)$/]"(node: TSESTree.JSXAttribute): void {
         if (node.value?.type !== AST_NODE_TYPES.Literal) return;
         const owner = node.parent.name;

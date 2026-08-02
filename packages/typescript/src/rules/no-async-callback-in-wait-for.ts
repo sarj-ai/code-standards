@@ -12,14 +12,7 @@ import { isTestFile } from "./_paths.js";
 type MessageIds = "noAsyncCallbackInWaitFor";
 type Options = readonly [];
 
-/**
- * `waitFor(…)` or `<x>.waitFor(…)`. Matching a bare Identifier only made the
- * `vi.waitFor` form structurally invisible.
- *
- * The receiver is deliberately unrestricted: the hazard belongs to the polling
- * contract, not to who owns the function. A computed member is not matched — the
- * name is not statically the callee there.
- */
+/** Match bare and non-computed member calls; the receiver does not change the polling contract. */
 const isWaitForCallee = (callee: TSESTree.CallExpression["callee"]): boolean => {
   if (callee.type === AST_NODE_TYPES.Identifier) return callee.name === "waitFor";
   return (

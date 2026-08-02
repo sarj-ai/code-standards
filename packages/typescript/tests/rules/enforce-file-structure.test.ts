@@ -207,10 +207,7 @@ ruleTester.run("enforce-file-structure", rule, {
     },
   ],
   invalid: [
-    // One misplacement is one message, however many imports trail it. Real
-    // corpus: react-router/packages/react-router-dev/vite/plugin.ts:41, where a
-    // single `const nodeRequire = createRequire(...)` between two import blocks
-    // used to emit 18 diagnostics.
+    // One contiguous misplaced-import run is one defect.
     {
       filename: NON_ACTION_FILENAME,
       code: `

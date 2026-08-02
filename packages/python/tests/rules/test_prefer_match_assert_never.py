@@ -289,6 +289,20 @@ def normalize(payload):
     assert _check(src) == []
 
 
+def test_allows_sequence_pattern_arms():
+    src = """
+def normalize(payload):
+    match payload:
+        case ["created", value]:
+            created(value)
+        case ["deleted", value]:
+            deleted(value)
+        case _:
+            pass
+"""
+    assert _check(src) == []
+
+
 def test_allows_imported_class_pattern_arms():
     # Cannot prove an imported class union is closed — SARJ003's local gate.
     src = """
@@ -552,10 +566,18 @@ def handle(status):
     assert "Status" in diags[0].message
 
 
-def test_flags_in_membership_arms():
+@pytest.mark.parametrize(
+    "members",
+    [
+        "(Status.OPEN, Status.CLOSED)",
+        "[Status.OPEN, Status.CLOSED]",
+        "{Status.OPEN, Status.CLOSED}",
+    ],
+)
+def test_flags_membership_arms_for_each_literal_container(members: str):
     src = f"""{_ENUM_PREAMBLE}
 def handle(status):
-    if status in (Status.OPEN, Status.CLOSED):
+    if status in {members}:
         active()
     elif status == Status.FAILED:
         failed()
@@ -567,12 +589,12 @@ def handle(status):
 
 @pytest.mark.parametrize(
     "base",
-    ["Enum", "IntEnum", "StrEnum", "Flag", "IntFlag", "enum.Enum"],
+    ["Enum", "IntEnum", "StrEnum", "Flag", "IntFlag", "ReprEnum", "enum.Enum", "enum.ReprEnum"],
 )
 def test_flags_all_enum_family_bases(base: str):
     src = f"""
 import enum
-from enum import Enum, IntEnum, StrEnum, Flag, IntFlag
+from enum import Enum, IntEnum, StrEnum, Flag, IntFlag, ReprEnum
 
 class Kind({base}):
     A = 1
@@ -1058,6 +1080,20 @@ class Status(StrEnum):
 
     def label(self) -> str:
         return self.value
+
+HANDLERS = {Status.OPEN: on_open, Status.CLOSED: on_closed}
+"""
+    assert _check(src) == []
+
+
+def test_annotation_without_value_is_not_an_enum_member():
+    src = """
+from enum import StrEnum
+
+class Status(StrEnum):
+    label: str
+    OPEN = "open"
+    CLOSED = "closed"
 
 HANDLERS = {Status.OPEN: on_open, Status.CLOSED: on_closed}
 """

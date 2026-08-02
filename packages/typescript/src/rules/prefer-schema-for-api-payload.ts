@@ -15,11 +15,7 @@ type Options = readonly [];
 
 type Ctx = Readonly<RuleContext<MessageIds, Options>>;
 
-/**
- * Peel TypeScript wrapper nodes that don't affect the underlying value
- * (`as Foo`, `<Foo>x`, `x!`, `x satisfies Foo`, parentheses, optional chain
- * wrappers). Returns the inner expression we actually care about.
- */
+/** Peel TypeScript wrappers that do not affect the underlying value. */
 const unwrap = (
   node: TSESTree.Node | null | undefined,
 ): TSESTree.Node | null => {
@@ -41,10 +37,7 @@ const unwrap = (
   return current ?? null;
 };
 
-/**
- * Promise-chain links that pass the payload along unchanged. `.parse` /
- * `.safeParse` are NOT here — those are the validation the rule is asking for.
- */
+/** Promise methods that preserve an unvalidated payload. */
 const PROMISE_CHAIN_METHODS: ReadonlySet<string> = new Set([
   "then",
   "catch",
@@ -65,16 +58,7 @@ const isSchemaParseReference = (
   );
 };
 
-/**
- * Returns true if the expression is (optionally awaited) a raw payload source:
- * `<x>.json()` (a fetch/Request body) or `JSON.parse(<x>)`.
- *
- * Both hand back `any`, and the failure mode is the same: `payload.user.id`
- * type-checks against a shape the peer never sent, and surfaces at runtime as
- * `undefined` several frames away. Note this only matters at the point a FIELD
- * is read — `const raw: unknown = JSON.parse(body)` is the recommended shape and
- * is never reported, because nothing is accessed off it.
- */
+/** Match optionally awaited `.json()` calls and non-local `JSON.parse()` calls. */
 const isRawPayloadSource = (
   node: TSESTree.Node | null | undefined,
 ): boolean => {
@@ -97,25 +81,20 @@ const isRawPayloadSource = (
   if (property.name === "json") {
     return true;
   }
-  // A promise-chain link does not change what the value IS: the result of
-  // `res.json().catch(() => ({}))` is still an unvalidated payload, and before
-  // this the binding went untracked so the real field read below it was missed.
-  // Unless the chain ends in a schema parse, in which case it is validated.
+  // Promise methods preserve taint unless their callback is a schema parser.
   if (PROMISE_CHAIN_METHODS.has(property.name)) {
     return (
       !current.arguments.some(isSchemaParseReference) &&
       isRawPayloadSource(callee.object)
     );
   }
-  // `JSON.parse(...)` specifically — not any `.parse()`, which is usually the
-  // schema validation we are asking for.
+  // Other `.parse()` calls may be the requested schema validation.
   const object = unwrap(callee.object);
   return (
     property.name === "parse" &&
     object !== null &&
     object.type === AST_NODE_TYPES.Identifier &&
     object.name === "JSON" &&
-    // ...but not `JSON.parse(readFileSync(p, "utf8"))` — see isLocalFileRead.
     !isLocalFileRead(current.arguments[0])
   );
 };
@@ -123,15 +102,7 @@ const isRawPayloadSource = (
 /** Filesystem readers whose result is repo-local text, not a peer's payload. */
 const FILE_READ_RE = /^(readFile|readFileSync|readJson|readJsonSync|readJSON)$/;
 
-/**
- * True when the expression tree contains a filesystem read, i.e. the JSON came
- * off local disk rather than off the wire.
- *
- * The rule's premise is that the value is "unvalidated and attacker-controlled".
- * `JSON.parse(readFileSync("package.json", "utf8"))` is neither: the bytes ship
- * with the repo, nobody else can write them, and a Zod schema over a file the
- * build already depends on adds a second place to update.
- */
+/** Exempt repository-local JSON read through a recognized filesystem reader. */
 const isLocalFileRead = (node: TSESTree.Node | null | undefined): boolean => {
   let found = false;
   const visit = (current: TSESTree.Node | null | undefined): void => {
@@ -172,15 +143,7 @@ const isLocalFileRead = (node: TSESTree.Node | null | undefined): boolean => {
 /** Assertion helpers whose argument is being checked, not consumed. */
 const ASSERTION_CALLEE_RE = /^(expect|assert|should|invariant)$/;
 
-/**
- * True when the node sits inside an assertion call, e.g.
- * `expect(loaderData.method).toEqual("GET")`.
- *
- * The rule's premise is that the field is READ and trusted. Inside an assertion
- * it is neither: the assertion states what the value must be, which is the same
- * check a schema would perform, and a schema parse would move the failure away
- * from the assertion that explains it.
- */
+/** Exempt reads consumed by an assertion such as `expect(value.id).toBe(1)`. */
 const isInsideAssertion = (node: TSESTree.Node): boolean => {
   for (
     let current: TSESTree.Node | undefined | null = node.parent;
@@ -218,20 +181,10 @@ const findVariable = (
   return null;
 };
 
-/**
- * Calls that CHECK their argument rather than trust it: a type-guard predicate
- * (`isProtectedResourceMetadata`) or a named validator.
- */
+/** Names that conventionally identify guards or validators. */
 const GUARD_NAME_RE = /^(?:is|validate|parse|assert|decode|coerce)[A-Z]/;
 
-/**
- * True when the read is being TYPE-TESTED rather than trusted — the operand of
- * a `typeof`, the sole argument of `Array.isArray(...)`, or an argument to a
- * guard/validator call.
- *
- * This SKIPS the report without untracking the variable, so a later unguarded
- * read of a different field still fires. Recall cost 0 of 45.
- */
+/** Exempt a field read used by `typeof`, `Array.isArray`, or a named validator. */
 const isValidationRead = (node: TSESTree.Node): boolean => {
   let current: TSESTree.Node = node;
   let parent: TSESTree.Node | null | undefined = current.parent;
@@ -278,10 +231,7 @@ const isValidationRead = (node: TSESTree.Node): boolean => {
   );
 };
 
-/**
- * True when a call sits in a boolean-test position (`if`/`while`/`for`/`?:`),
- * seen through `!`, `&&`/`||`, and optional-chaining wrappers — i.e. it narrows.
- */
+/** Detect calls in boolean-test positions, including logical wrappers. */
 const isGuardTestPosition = (node: TSESTree.Node): boolean => {
   let current: TSESTree.Node = node;
   let parent: TSESTree.Node | null | undefined = current.parent;
@@ -335,18 +285,14 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context: Ctx) {
-    // A fixture parses what it just produced and asserts on it; see @fileoverview.
+    // Fixtures and generated clients own validation at a different boundary.
     if (isTestFile(context.filename) || isGeneratedFile(context.filename, context.sourceCode.text)) {
       return {};
     }
 
     const unvalidatedVariables = new Set<Scope.Variable>();
 
-    /**
-     * True when every binding a destructuring pattern introduces is type-tested
-     * somewhere. Requiring EVERY binding (not any) keeps the report when one
-     * field is checked and another is used unvalidated.
-     */
+    /** Require every destructured binding to be validated. */
     const isFullyNarrowedPattern = (
       declarator: TSESTree.VariableDeclarator,
     ): boolean => {
@@ -386,9 +332,6 @@ export default createRule<Options, MessageIds>({
           node.id.type === AST_NODE_TYPES.ArrayPattern
         ) {
           if (isRawPayloadSource(node.init)) {
-            // `const { cacheTag } = await req.json()` where EVERY binding the
-            // pattern introduces is then type-tested is the same "the read IS
-            // the validation" case as `isValidationRead`, one node up.
             if (!isFullyNarrowedPattern(node)) {
               context.report({ node: node.id, messageId: "unparsedJsonAccess" });
             }
@@ -410,7 +353,6 @@ export default createRule<Options, MessageIds>({
           if (isRawPayloadSource(node.right)) {
             unvalidatedVariables.add(variable);
           } else {
-            // Reassigned to a parse call or something else: drop tracking.
             unvalidatedVariables.delete(variable);
           }
           return;
@@ -454,20 +396,13 @@ export default createRule<Options, MessageIds>({
         }
       },
       MemberExpression(node): void {
-        // The read is inside an assertion — the assertion IS the validation.
         if (isInsideAssertion(node)) return;
-        // The read is being type-tested, not trusted. Skipping WITHOUT
-        // untracking leaves a later unguarded read of another field reportable.
         if (isValidationRead(node)) return;
         const scope = context.sourceCode.getScope(node);
         const obj = unwrap(node.object);
 
         if (isRawPayloadSource(obj)) {
-          // Direct `.foo` access on `(await r.json()).foo` is always bad,
-          // unless the parent call is a `.parse()`/`.safeParse()` (a
-          // validation) or a `.then()`/`.catch()`/`.finally()` (a promise-chain
-          // link, not a field read — `isRawPayloadSource` carries the taint
-          // through it so the real read below still fires).
+          // Validation and promise methods are calls, not payload field reads.
           const parent = node.parent;
           if (
             parent.type === AST_NODE_TYPES.CallExpression &&

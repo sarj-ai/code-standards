@@ -130,6 +130,15 @@ def test_a_literal_tautology_does_not_consume_the_one_finding_per_test():
     assert (diag.line, diag.col) == (5, 5)
 
 
+@pytest.mark.parametrize(
+    "condition",
+    ["value == value", "'a' in ['a', 'b']"],
+    ids=["self-comparison", "literal-membership"],
+)
+def test_ruff_owned_tautologies_are_not_duplicated(condition: str):
+    assert _check(f"def test_thing(value):\n    assert {condition}\n") == []
+
+
 # --------------------------------------------------------------------------- #
 # Shape 1: reading a constructor keyword straight back out.                     #
 # --------------------------------------------------------------------------- #
@@ -261,8 +270,28 @@ def test_the_same_shape_with_a_capitalised_callee_fires():
 
 @pytest.mark.parametrize(
     "cls",
-    ["CacheBackend", "OpenAIClient", "self.Backend", "AnalyticsService", "OrganizationStore", "Receiver"],
-    ids=["backend", "client", "attribute-backend", "service", "store", "receiver"],
+    [
+        "CacheBackend",
+        "OpenAIClient",
+        "AnalyticsService",
+        "TaskManager",
+        "EventHandler",
+        "ApiServer",
+        "DatabaseSession",
+        "ConnectionPool",
+        "QueryEngine",
+        "JobRunner",
+        "TaskWorker",
+        "OrganizationStore",
+        "UserRepository",
+        "ClientFactory",
+        "RequestBuilder",
+        "PaymentAdapter",
+        "DatabaseConnection",
+        "HttpTransport",
+        "Receiver",
+        "self.Backend",
+    ],
 )
 def test_collaborator_classes_are_exempt(cls: str):
     # celery's cache backends run `expires=` through `prepare_expires`, so
@@ -336,6 +365,19 @@ def test_coercion_evidence_is_scoped_to_the_class():
         assert settings.model == "flash"
     """
     assert len(_check(src)) == 1
+
+
+def test_distinct_echoed_literals_do_not_imply_coercion():
+    src = """
+    def test_first_wire_spelling():
+        response = DeleteContainerFileResponse(object="container.file.deleted")
+        assert response.object == "container.file.deleted"
+
+    def test_second_wire_spelling():
+        response = DeleteContainerFileResponse(object="container_file.deleted")
+        assert response.object == "container_file.deleted"
+    """
+    assert len(_check(src)) == 2
 
 
 # ---- false-positive guard: the constructor did work on the literal ---- #
@@ -497,6 +539,42 @@ def test_a_parameter_shadowing_the_name_is_exempt():
     def test_thing(u):
         u = User(name='bo')
         assert u.name == 'bo'
+    """
+    assert _check(src) == []
+
+
+def test_a_global_name_is_exempt():
+    src = """
+    def test_thing():
+        global user
+        user = User(name='bo')
+        assert user.name == 'bo'
+    """
+    assert _check(src) == []
+
+
+def test_a_nonlocal_name_is_exempt():
+    src = """
+    def outer():
+        user = None
+
+        def test_thing():
+            nonlocal user
+            user = User(name='bo')
+            assert user.name == 'bo'
+    """
+    assert _check(src) == []
+
+
+def test_a_read_from_a_nested_closure_disqualifies_the_outer_local():
+    src = """
+    def test_thing():
+        user = User(name='bo')
+
+        def read_user():
+            return user
+
+        assert user.name == 'bo'
     """
     assert _check(src) == []
 

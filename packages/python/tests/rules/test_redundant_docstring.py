@@ -16,12 +16,7 @@ def _check(source: str) -> list[Diagnostic]:
 
 
 def _fn(signature: str, docstring: str) -> list[Diagnostic]:
-    """Wrap a signature and docstring in a function with a real body.
-
-    Returns:
-        The diagnostics from checking the wrapped source.
-
-    """
+    """Check a docstring inside a function with a nonempty body."""
     return _check(f'def {signature}:\n    """{docstring}"""\n    return None\n')
 
 
@@ -42,6 +37,7 @@ def test_flags_name_restating_docstring(signature: str, docstring: str):
     assert len(diags) == 1
     assert diags[0].code == "SARJ050"
     assert (diags[0].line, diags[0].col) == (2, 5)
+    assert "delete the whole docstring" in diags[0].message
 
 
 def test_one_novel_word_keeps_the_docstring():
@@ -76,6 +72,7 @@ def test_annotation_tokens_count_towards_the_signature():
         "Get a task by ID. Should return 401 with an invalid token.",
         "Get a task by ID (RFC 7231).",
         "Get a task by ID.\\n\\n    >>> get_task('a')",
+        "Get a task by ID.\\n\\n    .. note:: Get a task by ID.",
         "Get a task by ID — never on the write path.",
         "Get a task by ID, because the cache is authoritative.",
     ],
@@ -92,8 +89,19 @@ def test_function_tool_docstring_is_a_prompt():
     assert _check(src) == []
 
 
-@pytest.mark.parametrize("decorator", ["@click.command()", "@app.command()", "@cli.group()", "@mcp.tool()"])
-def test_cli_and_tool_decorators_are_exempt(decorator: str):
+@pytest.mark.parametrize(
+    "decorator",
+    [
+        pytest.param("@click.command()", id="click-help"),
+        pytest.param("@typer.command()", id="typer-help"),
+        pytest.param("@mcp.tool()", id="fastmcp-tool-prompt"),
+        pytest.param("@agent.tool()", id="agent-tool-prompt"),
+        pytest.param("@tool", id="langchain-tool-prompt"),
+        pytest.param("@router.post('/tasks')", id="fastapi-openapi"),
+        pytest.param("@blueprint.route('/tasks')", id="flask-route"),
+    ],
+)
+def test_consumed_docstring_decorators_are_exempt(decorator: str):
     src = f'{decorator}\ndef create_tag(tag: str):\n    """Create a tag."""\n    return None\n'
     assert _check(src) == []
 
@@ -115,6 +123,33 @@ def test_function_without_a_docstring_is_ignored():
 
 def test_module_and_class_docstrings_are_out_of_scope():
     src = '"""Task store."""\n\n\nclass TaskStore:\n    """Task store."""\n\n    x = 1\n'
+    assert _check(src) == []
+
+
+def test_google_args_block_is_owned_by_sarj086():
+    src = (
+        "def get_task(task_id: str):\n"
+        '    """Get a task.\n\n'
+        "    Args:\n"
+        "        task_id: The task ID.\n"
+        '    """\n'
+        "    return None\n"
+    )
+    assert _check(src) == []
+
+
+def test_override_copy_is_owned_by_sarj084():
+    src = (
+        "class BaseStore:\n"
+        "    def get_task(self, task_id: str):\n"
+        '        """Use the base store transaction policy."""\n'
+        "        return None\n\n"
+        "class Store(BaseStore):\n"
+        "    @override\n"
+        "    def get_task(self, task_id: str):\n"
+        '        """Use the base store transaction policy."""\n'
+        "        return None\n"
+    )
     assert _check(src) == []
 
 
@@ -152,27 +187,19 @@ def test_fastapi_route_docstring_is_the_openapi_description():
     ],
 )
 def test_a_literal_value_the_signature_does_not_carry_is_content(docstring: str):
-    """`WORD_RE` is `[A-Za-z][A-Za-z0-9']*`, so a bare number is not a word at all.
-
-    A docstring whose only addition is a literal value is therefore INVISIBLE to
-    the restatement test even when the value is the entire point of the
-    sentence -- `prefect/tests/client/schemas/test_concurrency.py:60` reads
-    "grace_period_seconds=60 is valid (minimum boundary)" under
-    `test_grace_period_seconds_minimum_boundary_valid`. 41 findings of 2,866,
-    0 first-party.
-    """
+    """Keep literal values that the word-based restatement check cannot see."""
     assert _fn("test_retry_limit_valid(retry_limit: int)", docstring) == []
 
 
 def test_a_number_the_signature_already_carries_still_fires():
-    """The boundary: the guard is "a digit the SIGNATURE does not have"."""
+    """Flag the number when the signature already exposes it."""
     diags = _fn("test_retry_limit_5_valid(retry_limit: int)", "Test that retry_limit=5 is valid.")
     assert len(diags) == 1
     assert diags[0].code == "SARJ050"
 
 
 def test_an_annotation_carrying_the_number_counts_as_the_signature():
-    """The boundary on the other side: annotations are part of what a reader reads."""
+    """Treat numeric annotations as visible signature content."""
     assert len(_fn("cap(value: Literal[5], flag: bool)", "Cap the value at 5.")) == 1
 
 
@@ -219,12 +246,10 @@ FILLER_RESTATEMENTS = [
 
 @pytest.mark.parametrize(("signature", "docstring"), FILLER_RESTATEMENTS)
 def test_a_filler_qualifier_does_not_rescue_a_restatement(signature: str, docstring: str):
-    """The shapes the vocabulary was drawn from, each read at source in the corpus sweep."""
     diags = _fn(signature, docstring)
     assert len(diags) == 1
     assert diags[0].code == "SARJ050"
 
 
 def test_main_is_not_filler():
-    """`main` NAMES the thing. Treating it as filler made `Main function.` unflaggable."""
     assert len(_check('def main():\n    """Main function."""\n    return None\n')) == 1

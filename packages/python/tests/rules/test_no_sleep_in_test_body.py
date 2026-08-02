@@ -146,6 +146,12 @@ def test_allows_zero_sleep(call: str):
     assert _check(src) == []
 
 
+@pytest.mark.parametrize("value", ["True", "False"])
+def test_allows_boolean_sleep_arguments(value: str):
+    src = f"async def test_x():\n    await asyncio.sleep({value})\n"
+    assert _check(src) == []
+
+
 @pytest.mark.parametrize(
     "call",
     [
@@ -446,6 +452,32 @@ async def test_task_starts(started):
             break
         await asyncio.sleep(0.01)
     assert started.is_set()
+"""
+    assert _check(src) == []
+
+
+def test_sleep_in_bounded_poll_loop_with_raise_is_exempt():
+    src = """
+import time
+
+def test_worker_starts(worker):
+    for _ in range(10):
+        if worker.failed():
+            raise RuntimeError("worker failed")
+        time.sleep(0.01)
+"""
+    assert _check(src) == []
+
+
+def test_sleep_in_async_for_poll_loop_is_exempt():
+    src = """
+import asyncio
+
+async def test_message_arrives(events):
+    async for event in events:
+        if event.ready:
+            return
+        await asyncio.sleep(0.01)
 """
     assert _check(src) == []
 

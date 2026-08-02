@@ -1,10 +1,6 @@
-"""SARJ048: private imports fire for first-party modules and never for third-party ones.
+"""SARJ048 flags private imports only when the target is first-party and fixable.
 
-Resolution is filesystem-based, so these tests build a real project tree in a
-tmp dir: a `.git` marker for the project root, two first-party packages, and a
-`site-packages`-style tree standing in for a dependency. Asserting on a real
-layout is the point — the whole rule is about what is on disk, and a test that
-stubbed the lookup would pass while the rule shipped broken.
+Tests use real package layouts because ownership is resolved from the filesystem.
 """
 
 from __future__ import annotations
@@ -24,16 +20,7 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 def project(tmp_path: Path) -> Path:
-    """Build a two-package project with a vendored dependency tree.
-
-    Layout mirrors a first-party repo's: a repo root holding a `python/` workspace whose
-    members each carry one package, plus a `.venv` that must never contribute
-    first-party names.
-
-    Returns:
-        The repo root.
-
-    """
+    """Build two workspace distributions plus an ignored virtualenv dependency."""
     root = tmp_path / "repo"
     (root / ".git").mkdir(parents=True)
 
@@ -77,11 +64,6 @@ _TEST_FILE = "python/svc/tests/test_thing.py"
 _SVC_MODULE = "python/svc/svc/adapters/outbound.py"
 
 
-# --------------------------------------------------------------------------- #
-# The exemption: a dependency's privates are not ours to change.               #
-# --------------------------------------------------------------------------- #
-
-
 @pytest.mark.parametrize(
     "source",
     [
@@ -115,11 +97,6 @@ def test_unresolvable_project_yields_nothing(tmp_path: Path):
     assert NoFirstPartyPrivateImport().check(loose, source) == []
 
 
-# --------------------------------------------------------------------------- #
-# The enforcement: our own privates still fire.                                #
-# --------------------------------------------------------------------------- #
-
-
 def test_flags_first_party_private_symbol(project: Path):
     diags = _check(project, _TEST_FILE, "from core.helpers import _row_to_order")
     assert len(diags) == 1
@@ -148,11 +125,6 @@ def test_diagnostics_are_sorted_by_position(project: Path):
     source = "from core.helpers import _b\nfrom core._internals import X\n"
     diags = _check(project, _TEST_FILE, source)
     assert [d.line for d in diags] == [1, 2]
-
-
-# --------------------------------------------------------------------------- #
-# Same-package and metadata exemptions.                                        #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -198,24 +170,21 @@ def test_private_top_level_package_name_is_exempt(project: Path):
     assert _check(project, _TEST_FILE, "from _infra.fakes import FakeStt") == []
 
 
+def test_private_submodule_below_a_private_top_level_package_still_fires(project: Path):
+    infra = project / "python" / "core" / "_infra"
+    infra.mkdir(parents=True)
+    (infra / "__init__.py").touch()
+    (infra / "_fakes.py").touch()
+    assert len(_check(project, _TEST_FILE, "from _infra._fakes import FakeStt")) == 1
+
+
 def test_syntax_error_yields_no_diagnostics(project: Path):
     assert _check(project, _TEST_FILE, "from core.helpers import (") == []
-
-
-# --------------------------------------------------------------------------- #
-# FP-hardening (19-repo sweep): a private module SEGMENT of our own             #
-# DISTRIBUTION, imported for a public name, is our own internals however the    #
-# importer's directory is arranged. 4,064 of 6,285 findings, 3,936 in tests;    #
-# zero first-party recall cost, because a private NAME still fires.             #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
     "source",
     [
-        # Shaped after django/tests/utils_tests/test_os_utils.py:9,
-        # `from django.utils._os import safe_join` — exempt at
-        # django/django/views/static.py:12 before this guard, flagged here.
         "from svc._internals import Thing",
         "from svc._internals import Thing, Other",
         "import svc._internals",
@@ -237,9 +206,6 @@ def test_mixed_public_and_private_names_from_our_own_segment_still_fires(project
 
 
 def test_private_segment_of_another_distribution_still_fires(project: Path):
-    # The reach this guard must keep: shaped after prefect_dbt ->
-    # prefect._internal (31 findings) and an airflow provider ->
-    # airflow.sdk._shared (12), which cross a packaging boundary.
     assert len(_check(project, _TEST_FILE, "from core._internals import Thing")) == 1
 
 
@@ -249,22 +215,9 @@ def test_file_outside_any_distribution_is_not_exempted(project: Path):
     assert len(_check(project, "scripts/backfill.py", "from svc._internals import Thing")) == 1
 
 
-# --------------------------------------------------------------------------- #
-# FP-hardening: a private submodule with no `.py` in the tree is a compiled     #
-# extension behind a stub — "export it publicly" names an edit that does not    #
-# exist. Shaped after pydantic/pydantic/version.py:39, `from                    #
-# pydantic_core._pydantic_core import ...` across a distribution boundary.      #
-# --------------------------------------------------------------------------- #
-
-
 @pytest.fixture
 def extension_package(project: Path) -> Path:
-    """Add a second distribution whose private submodule is a compiled artifact.
-
-    Returns:
-        The repo root.
-
-    """
+    """Add a distribution with private compiled and Python submodules."""
     pkg = project / "python" / "ext" / "ext"
     pkg.mkdir(parents=True)
     (pkg / "__init__.py").touch()
@@ -276,6 +229,17 @@ def extension_package(project: Path) -> Path:
 
 def test_compiled_extension_submodule_is_exempt(extension_package: Path):
     assert _check(extension_package, _TEST_FILE, "from ext._ext import ArgsKwargs") == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from ext._generated import Version",
+        "import ext._generated",
+    ],
+)
+def test_private_submodule_without_python_source_is_exempt(extension_package: Path, source: str):
+    assert _check(extension_package, _TEST_FILE, source) == []
 
 
 def test_compiled_extension_exemption_does_not_cover_a_sibling_with_source(extension_package: Path):

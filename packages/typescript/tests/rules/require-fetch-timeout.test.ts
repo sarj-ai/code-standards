@@ -17,137 +17,155 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("require-fetch-timeout", rule, {
   valid: [
-    // FP guard, corpus: query/packages/query-codemods/src/v5/remove-overloads/__testfixtures__/bug-reports.input.tsx
-    // — jscodeshift BEFORE/AFTER text a codemod test diffs; it never runs.
     {
+      name: "ignores codemod fixtures",
       code: "async function f() { await fetch('https://api.example.com/x'); }",
       filename: "/repo/src/v5/remove-overloads/__testfixtures__/bug-reports.input.tsx",
     },
-    // signal present.
     {
+      name: "accepts AbortSignal.timeout",
       code: "await fetch(url, { signal: AbortSignal.timeout(5000) });",
     },
     {
+      name: "accepts an AbortController signal",
       code: "await fetch(url, { method: 'POST', signal: controller.signal });",
     },
-    // Quoted signal key still counts.
     {
+      name: "accepts a quoted signal key",
       code: "await fetch(url, { 'signal': controller.signal });",
     },
-    // Spread may carry a signal — assumed safe.
     {
+      name: "assumes a spread init may contain a signal",
       code: "await fetch(url, { ...init });",
     },
-    // Computed key could be 'signal' at runtime — assumed safe.
     {
+      name: "assumes a computed init key may be signal",
       code: "await fetch(url, { [key]: value });",
     },
-    // Non-literal init (identifier / call / conditional) — conservative skip.
     {
+      name: "assumes an identifier init may contain a signal",
       code: "await fetch(url, init);",
     },
     {
+      name: "assumes a call result init may contain a signal",
       code: "await fetch(url, buildInit());",
     },
-    // Proxy passthrough: a lone non-string argument is a Request being
-    // forwarded (Workers idiom) — attaching a fresh signal is impossible/wrong.
     {
+      name: "assumes a conditional init may contain a signal",
+      code: "await fetch(url, retry ? retryInit : initialInit);",
+    },
+    {
+      name: "allows forwarding a Request",
       code: "await fetch(request);",
     },
     {
+      name: "allows forwarding a cloned Request",
       code: "const proxy = (c) => fetch(c.req.raw.clone());",
     },
     {
+      name: "allows forwarding a constructed Request",
       code: "await fetch(new Request(url));",
     },
-    // Member-expression fetches are out of scope (Cloudflare service bindings,
-    // custom clients).
     {
+      name: "ignores a service binding fetch",
       code: "await env.MY_SERVICE.fetch(request);",
     },
     {
+      name: "ignores a custom client fetch",
       code: "await client.fetch(url);",
     },
-    // A local binding shadowing `fetch` is not the global — injected fetches
-    // are the caller's responsibility.
     {
+      name: "ignores a fetch parameter",
       code: "async function proxy(fetch: typeof globalThis.fetch) { await fetch('/x'); }",
     },
     {
+      name: "ignores an imported fetch",
       code: "import fetch from 'node-fetch'; await fetch('/x');",
     },
     {
+      name: "ignores a local fetch variable",
       code: "const fetch = makeClient(); await fetch('/x');",
     },
-    // Test files and one-off tooling paths are exempt.
     {
+      name: "ignores a shadowed explicit global receiver",
+      code: "function request(globalThis) { return globalThis.fetch('/x'); }",
+    },
+    {
+      name: "ignores test files",
       code: "await fetch('/x');",
       filename: "/repo/src/lib/api.test.ts",
     },
     {
+      name: "ignores test directories",
       code: "await fetch('/x');",
       filename: "/repo/src/__tests__/helpers.ts",
     },
     {
+      name: "ignores script directories",
       code: "await fetch('/x');",
       filename: "/repo/scripts/backfill.ts",
     },
     {
+      name: "ignores mjs tooling",
       code: "await fetch('/x');",
       filename: "/repo/tools/one-off.mjs",
     },
-    // allowIn glob exempts wrapper modules (matched against the ABSOLUTE path).
     {
+      name: "allows a configured wrapper module",
       code: "await fetch('/x');",
       options: [{ allowIn: ["**/http-client.ts"] }],
       filename: "/repo/src/lib/http-client.ts",
     },
   ],
   invalid: [
-    // Production code still fires.
     {
+      name: "rejects a production fetch without a signal",
       code: "async function f() { await fetch('https://api.example.com/x'); }",
       filename: "/repo/src/clients/api-client.ts",
       errors: [{ messageId: "missingSignal" }],
     },
-    // Inline-URL calls with no init argument.
     {
+      name: "rejects an inline relative URL without an init",
       code: "await fetch('/api/things');",
       errors: [{ messageId: "missingSignal" }],
     },
     {
+      name: "rejects an inline absolute URL without an init",
       code: "const res = await fetch('https://api.example.com/v1/things');",
       errors: [{ messageId: "missingSignal" }],
     },
-    // Template-literal URL is still an inline URL, not a passthrough.
     {
+      name: "rejects a template literal URL without an init",
       code: "await fetch(`/api/items/${id}`);",
       errors: [{ messageId: "missingSignal" }],
     },
-    // Object-literal init provably lacking a signal (any first argument).
     {
+      name: "rejects an object init without a signal",
       code: "await fetch(url, { method: 'POST', body });",
       errors: [{ messageId: "missingSignal" }],
     },
     {
+      name: "rejects an empty object init",
       code: "await fetch(url, {});",
       errors: [{ messageId: "missingSignal" }],
     },
-    // Explicit-global spellings are in scope.
     {
+      name: "rejects globalThis.fetch without a signal",
       code: "await globalThis.fetch('/api/things');",
       errors: [{ messageId: "missingSignal" }],
     },
     {
+      name: "rejects window.fetch without a signal",
       code: "await window.fetch(url, { method: 'POST' });",
       errors: [{ messageId: "missingSignal" }],
     },
     {
+      name: "rejects self.fetch without a signal",
       code: "await self.fetch('/api/things');",
       errors: [{ messageId: "missingSignal" }],
     },
-    // allowIn only exempts matching files.
     {
+      name: "does not exempt a file outside allowIn",
       code: "await fetch('/x');",
       options: [{ allowIn: ["**/http-client.ts"] }],
       filename: "/repo/src/routes/page.ts",

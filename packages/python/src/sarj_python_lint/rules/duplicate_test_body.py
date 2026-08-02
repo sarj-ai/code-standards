@@ -188,7 +188,15 @@ class _Canonicalizer(ast.NodeVisitor):
 
     def visit_Name(self, node: ast.Name) -> None:
         if node.id in self._bound:
-            node.id = self._aliases.setdefault(node.id, f"v{len(self._aliases)}")
+            node.id = self._alias(node.id)
+
+    def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
+        if node.name is not None and node.name in self._bound:
+            node.name = self._alias(node.name)
+        self.generic_visit(node)
+
+    def _alias(self, name: str) -> str:
+        return self._aliases.setdefault(name, f"v{len(self._aliases)}")
 
 
 def _duplicate_groups(tree: ast.Module, source: str) -> list[list[_Shape]]:
@@ -333,12 +341,19 @@ def _body_without_docstring(node: ast.FunctionDef | ast.AsyncFunctionDef) -> lis
 
 def _bound_names(body: list[ast.stmt]) -> frozenset[str]:
     """Find every name the body binds, so those names can be renamed positionally."""
-    return frozenset(
+    stored = {
         child.id
         for stmt in body
         for child in _walk(stmt)
         if isinstance(child, ast.Name) and isinstance(child.ctx, (ast.Store, ast.Del))
-    )
+    }
+    handlers = {
+        child.name
+        for stmt in body
+        for child in _walk(stmt)
+        if isinstance(child, ast.ExceptHandler) and child.name is not None
+    }
+    return frozenset(stored | handlers)
 
 
 def _parameter_names(node: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[str, ...]:

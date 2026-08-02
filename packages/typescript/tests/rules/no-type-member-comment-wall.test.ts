@@ -137,6 +137,35 @@ ruleTester.run("no-type-member-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
+    {
+      name: "preserves colon-form documented defaults",
+      code: [
+        "interface LegacyOptions {",
+        "  // default: true",
+        "  polyfills: boolean;",
+        "  // default: false",
+        "  renderLegacyChunks: boolean;",
+        "  // default: null",
+        "  targets: string;",
+        "}",
+      ].join("\n"),
+    },
+    {
+      name: "honours a stricter commented-member ratio",
+      code: [
+        "interface PartialWall {",
+        "  // Host",
+        "  host: string;",
+        "  // Port",
+        "  port: number;",
+        "  // User",
+        "  user: string;",
+        "  password: string;",
+        "  database: string;",
+        "}",
+      ].join("\n"),
+      options: [{ minCommentedRatio: 0.8 }],
+    },
     // A digit is a bound, a base or an index origin.
     // `typescript-eslint/packages/utils/src/ts-eslint/Linter.ts:200`.
     {
@@ -554,6 +583,7 @@ ruleTester.run("no-type-member-comment-wall", rule, {
     // row here adds exactly two words beyond its member — the same shape as
     // the `// Partial match` valid case, which is what the default protects.
     {
+      name: "honours a higher novel-word allowance",
       code: [
         "interface Timestamps {",
         "  // Time that the latest query started",
@@ -565,6 +595,36 @@ ruleTester.run("no-type-member-comment-wall", rule, {
         "}",
       ].join("\n"),
       options: [{ maxNovelWords: 2 }],
+      errors: [{ messageId: "commentWall" }],
+    },
+    {
+      name: "honours a two-member wall minimum",
+      code: [
+        "interface Pair {",
+        "  // Database host.",
+        "  host: string;",
+        "  // Database port.",
+        "  port: number;",
+        "}",
+      ].join("\n"),
+      options: [{ minCommentedMembers: 2 }],
+      errors: [{ messageId: "commentWall" }],
+    },
+    {
+      name: "honours a lower restatement ratio",
+      code: [
+        "interface MixedDocumentation {",
+        "  // Host",
+        "  host: string;",
+        "  // Port",
+        "  port: number;",
+        "  // resolved from the control plane during failover",
+        "  user: string;",
+        "  // rotated nightly by the credential vault",
+        "  password: string;",
+        "}",
+      ].join("\n"),
+      options: [{ minRestatedRatio: 0.5 }],
       errors: [{ messageId: "commentWall" }],
     },
   ],

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import pytest
 from sarj_iac_lint.rules import REGISTRY as IAC_REGISTRY
@@ -11,6 +11,7 @@ from sarj_sql_lint.rules import REGISTRY as SQL_REGISTRY
 
 from sarj_lint_configs import ledger
 from sarj_lint_configs.doctor import Level, check_retired_rules
+from sarj_lint_configs.textlint import REGISTRY as TEXT_REGISTRY
 
 
 if TYPE_CHECKING:
@@ -18,17 +19,25 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+@runtime_checkable
 class _Coded(Protocol):
     """The one attribute this file needs from a rule, across four packages."""
 
-    code: str
+    @property
+    def code(self) -> str: ...
 
 
-_REGISTRIES: Mapping[str, Mapping[str, type[_Coded]]] = {
+_REGISTRIES: Mapping[str, Mapping[str, object]] = {
     "python": PYTHON_REGISTRY,
     "sql": SQL_REGISTRY,
     "iac": IAC_REGISTRY,
+    "text": TEXT_REGISTRY,
 }
+
+
+def _code(rule: object) -> str:
+    assert isinstance(rule, _Coded)
+    return rule.code
 
 
 @pytest.fixture(name="shipped", scope="module")
@@ -47,7 +56,7 @@ def test_every_live_rule_is_in_the_ledger(shipped: ledger.Ledger, family: str) -
 
 @pytest.mark.parametrize("family", sorted(_REGISTRIES))
 def test_every_live_code_is_in_the_ledger(shipped: ledger.Ledger, family: str) -> None:
-    live = {rule.code for rule in _REGISTRIES[family].values()}
+    live = {_code(rule) for rule in _REGISTRIES[family].values()}
     assert set(shipped.codes[family]) == live, (
         f"the ledger's {family} codes disagree with the registry. Run `make sync-rule-ledger`."
     )
@@ -104,6 +113,29 @@ def test_doctor_names_a_removed_eslint_rule_in_a_config(tmp_path: Path) -> None:
     assert "no longer exists" in findings[0].detail
 
 
+def test_doctor_removes_loose_type_guard_references_without_replacement(tmp_path: Path) -> None:
+    rule = "@sarj/ban-loose-type-guards-in-tests"
+    _ = (tmp_path / "eslint.config.mjs").write_text(
+        f'export default [{{ rules: {{ "{rule}": "error" }} }}];\n', encoding="utf-8"
+    )
+    _ = (tmp_path / "widget.test.ts").write_text(
+        f"// eslint-disable-next-line {rule}\nexpect(typeof value).toBe('string');\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "eslint-suppressions.json").write_text(
+        f'{{"widget.test.ts": {{"{rule}": {{"count": 1}}}}}}\n', encoding="utf-8"
+    )
+
+    findings = sorted(check_retired_rules(tmp_path), key=lambda finding: finding.where)
+    assert [finding.where for finding in findings] == [
+        f"eslint-suppressions.json: {rule} x1",
+        f"eslint.config.mjs: {rule} x1",
+        f"widget.test.ts: {rule} x1",
+    ]
+    assert all("no longer exists" in finding.detail for finding in findings)
+    assert all("there is no replacement" in finding.detail for finding in findings)
+
+
 #: The aliases `@sarj/eslint-plugin` 7.0.0 registered and 9.0.0 deleted. Frozen: a
 #: consumer that adopted 7.0.0 may hold any of these, and each is now `ESLint: exit
 #: 2` rather than a deprecation warning, so the ledger is the only thing that can
@@ -131,6 +163,26 @@ def test_doctor_points_a_deleted_alias_at_its_replacement(tmp_path: Path, old: s
     assert "no longer resolves" in findings[0].detail
 
 
+def test_doctor_finds_a_deleted_alias_in_source_and_suppressions(tmp_path: Path) -> None:
+    old = "@sarj/jsdoc-restates-signature"
+    new = "@sarj/no-restated-jsdoc"
+    _ = (tmp_path / "widget.ts").write_text(
+        f"// eslint-disable-next-line {old}\nexport const widget = 1;\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "eslint-suppressions.json").write_text(
+        f'{{"widget.ts": {{"{old}": {{"count": 1}}}}}}\n',
+        encoding="utf-8",
+    )
+
+    findings = sorted(check_retired_rules(tmp_path), key=lambda finding: finding.where)
+    assert [finding.where for finding in findings] == [
+        f"eslint-suppressions.json: {old} x1",
+        f"widget.ts: {old} x1",
+    ]
+    assert all(f"renamed to {new}" in finding.detail for finding in findings)
+
+
 def test_doctor_leaves_the_python_twin_of_a_deleted_eslint_alias_alone(tmp_path: Path) -> None:
     _ = (tmp_path / ".pre-commit-config.yaml").write_text(
         "repos:\n  - hooks:\n      - id: sarj-trailing-value-narration\n", encoding="utf-8"
@@ -154,14 +206,22 @@ def test_doctor_names_a_stale_disable_directive(tmp_path: Path) -> None:
     )
 
 
-def test_doctor_names_a_removed_precommit_hook(tmp_path: Path) -> None:
+def test_doctor_names_every_sarj061_consumer_reference(tmp_path: Path) -> None:
     _ = (tmp_path / ".pre-commit-config.yaml").write_text(
         "repos:\n  - repo: local\n    hooks:\n      - id: sarj-no-patching-system-under-test\n",
         encoding="utf-8",
     )
-    findings = list(check_retired_rules(tmp_path))
-    assert len(findings) == 1
-    assert "no-patching-system-under-test" in findings[0].where
+    _ = (tmp_path / "service.py").write_text("value = load()  # sarj-noqa: SARJ061\n", encoding="utf-8")
+    _ = (tmp_path / ".sarj-python-baseline.json").write_text('{"service.py": {"SARJ061": 2}}\n', encoding="utf-8")
+
+    findings = sorted(check_retired_rules(tmp_path), key=lambda finding: finding.where)
+    assert [finding.where for finding in findings] == [
+        ".pre-commit-config.yaml: no-patching-system-under-test x1",
+        ".sarj-python-baseline.json: SARJ061 x1",
+        "service.py: SARJ061 x1",
+    ]
+    assert all("no longer exists" in finding.detail for finding in findings)
+    assert all("there is no replacement" in finding.detail for finding in findings[1:])
 
 
 def test_doctor_tells_a_chained_retirement_to_delete_rather_than_renumber(
@@ -176,21 +236,19 @@ def test_doctor_tells_a_chained_retirement_to_delete_rather_than_renumber(
 
 
 def test_doctor_names_a_removed_python_hook_and_its_code(tmp_path: Path) -> None:
-    """A consumer on SARJ083 holds both spellings, and both have to be named.
-
-    The hook id is what makes `pre-commit` fail outright on the next upgrade; the
-    baseline key is survivable but silent, which is why nothing else would report
-    it.
-    """
     _ = (tmp_path / ".pre-commit-config.yaml").write_text(
         "repos:\n  - hooks:\n      - id: sarj-no-implicit-attribute-access\n", encoding="utf-8"
     )
+    _ = (tmp_path / "service.py").write_text("value = payload['id']  # sarj-noqa: SARJ083\n", encoding="utf-8")
     _ = (tmp_path / ".sarj-python-baseline.json").write_text('{"src/api.py": {"SARJ083": 4}}\n', encoding="utf-8")
-    findings = sorted(finding.where for finding in check_retired_rules(tmp_path))
-    assert findings == [
+    findings = sorted(check_retired_rules(tmp_path), key=lambda finding: finding.where)
+    assert [finding.where for finding in findings] == [
         ".pre-commit-config.yaml: no-implicit-attribute-access x1",
         ".sarj-python-baseline.json: SARJ083 x1",
+        "service.py: SARJ083 x1",
     ]
+    assert all("no longer exists" in finding.detail for finding in findings)
+    assert all("there is no replacement" in finding.detail for finding in findings)
 
 
 def test_doctor_does_not_flag_prose_that_merely_contains_a_rule_name(tmp_path: Path) -> None:

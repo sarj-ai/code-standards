@@ -58,7 +58,7 @@ describe("configs.recommended / configs.strict are flat config", () => {
   it("strict wires every rule the plugin ships", () => {
     // `recommended` deliberately omits some (strict-only architectural rules,
     // and ones that need per-repo options to mean anything), but `strict` is
-    // the "every rule at error" preset -- a rule missing from it is a rule
+    // the "every shipped rule" preset -- a rule missing from it is a rule
     // that shipped and runs nowhere, which is the same written-but-inert
     // failure the rules themselves exist to catch, one layer up.
     //

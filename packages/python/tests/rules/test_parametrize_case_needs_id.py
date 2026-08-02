@@ -26,11 +26,6 @@ def test_thing(payload):
 """
 
 
-# --------------------------------------------------------------------------- #
-# Test-path gating.                                                            #
-# --------------------------------------------------------------------------- #
-
-
 @pytest.mark.parametrize("path", ["test_x.py", "x_test.py", "conftest.py", "a/tests/h.py"])
 def test_fires_in_test_paths(path: str):
     assert len(_check(_OPAQUE_TABLE, path)) == 1
@@ -41,11 +36,6 @@ def test_skips_non_test_paths(path: str):
     assert _check(_OPAQUE_TABLE, path) == []
 
 
-# --------------------------------------------------------------------------- #
-# Positive: values pytest cannot render into a readable id.                    #
-# --------------------------------------------------------------------------- #
-
-
 @pytest.mark.parametrize(
     "case",
     [
@@ -54,6 +44,8 @@ def test_skips_non_test_paths(path: str):
         "Config(x=1)",
         "[k for k in keys]",
         "{k: 1 for k in keys}",
+        "{k for k in keys}",
+        "(k for k in keys)",
     ],
 )
 def test_flags_opaque_case_values(case: str):
@@ -89,10 +81,6 @@ def test_thing(cfg, other):
     ],
 )
 def test_one_nameable_column_is_enough(case: str):
-    # pytest joins per-column ids with `-`, so a single nameable column still
-    # distinguishes the case: ("0.0", Decimal("0.0")) reports as `0.0-value1`.
-    # Requiring *any* opaque column instead of *all* produced 372 hits across
-    # pydantic/flask/httpx/requests/rich, overwhelmingly false positives.
     src = f"""
 import pytest
 
@@ -112,6 +100,17 @@ def test_thing(cfg):
     assert cfg
 """
     assert len(_check(src)) == 1
+
+
+def test_unnamed_pytest_param_with_one_nameable_column_is_exempt():
+    src = """
+import pytest
+
+@pytest.mark.parametrize(("label", "cfg"), [pytest.param("on", Config(1)), pytest.param("off", Config(2))])
+def test_thing(label, cfg):
+    assert label and cfg
+"""
+    assert _check(src) == []
 
 
 def test_message_reports_how_many_cases_are_unnameable():
@@ -135,12 +134,6 @@ def test_thing(payload):
     assert payload
 """
     assert len(_check(src)) == 1
-
-
-# --------------------------------------------------------------------------- #
-# FP guard: anything that already names its cases is exempt. The pytest.param  #
-# unwrap is the guard that kept this rule from a 135-hit false-positive run.   #
-# --------------------------------------------------------------------------- #
 
 
 def test_decorator_level_ids_exempts_the_whole_table():
@@ -225,8 +218,6 @@ def test_thing(value):
     ["float('nan')", "int(1e10)", "type(None)", "str(raw)", "bytes(raw)", "re.compile('a')"],
 )
 def test_builtin_scalar_constructor_cases_are_exempt(case: str):
-    # pytest renders the runtime value: `float('nan')` reports as `nan`,
-    # `type(None)` as `NoneType`. 8 third-party tables were flagged this way.
     src = f"""
 import pytest
 
@@ -267,8 +258,6 @@ def test_thing(kwargs, input_value, expected):
 
 
 def test_parametrize_call_outside_a_decorator_is_exempt():
-    # black/tests/data/cases/split_delimiter_comments.py is formatter input that
-    # happens to contain a bare `parametrize(...)` expression.
     src = """
 parametrize(
     (
@@ -292,6 +281,28 @@ import pytest
 class TestThing:
     def test_thing(self, payload):
         assert payload
+"""
+    assert len(_check(src)) == 1
+
+
+def test_bare_parametrize_decorator_still_fires():
+    src = """
+from pytest import parametrize
+
+@parametrize("payload", [{"a": 1}, {"a": 2}])
+def test_thing(payload):
+    assert payload
+"""
+    assert len(_check(src)) == 1
+
+
+def test_parametrize_decorating_an_async_function_still_fires():
+    src = """
+import pytest
+
+@pytest.mark.parametrize("payload", [{"a": 1}, {"a": 2}])
+async def test_thing(payload):
+    assert payload
 """
     assert len(_check(src)) == 1
 
@@ -349,11 +360,6 @@ def test_thing():
     assert handle({"a": 1})
 """
     assert _check(src) == []
-
-
-# --------------------------------------------------------------------------- #
-# Edge cases.                                                                  #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("source", ["", "  \n\n ", "# comment\n"])

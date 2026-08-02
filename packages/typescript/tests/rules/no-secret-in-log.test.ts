@@ -179,6 +179,10 @@ ruleTester.run("no-secret-in-log", rule, {
       code: "console.log(res.body);",
       filename: "tests/fixtures/ashby.ts",
     },
+    {
+      name: "ignores computed member access because the property is not statically known",
+      code: 'logger.info("resp", res["body"]);',
+    },
   ],
   invalid: [
     // Object property: shorthand secret names.
@@ -307,6 +311,12 @@ ruleTester.run("no-secret-in-log", rule, {
       code: 'logger.info("cfg", { INTERNAL_ADMIN_TOKEN });',
       errors: [{ messageId: "noSecretInLog" }],
     },
+    {
+      name: "still rejects secrets in test files",
+      code: 'logger.info("auth", { token });',
+      filename: "src/auth.test.ts",
+      errors: [{ messageId: "noSecretInLog" }],
+    },
 
     // ---- raw-blob arm: the coverage the GritQL plugin used to own ----
     // The shape the port was blocked on: a whole response body threaded into a
@@ -342,6 +352,16 @@ ruleTester.run("no-secret-in-log", rule, {
     },
     {
       code: 'logger.info("resp", { responsePayload });',
+      errors: [{ messageId: "noRawBodyInLog" }],
+    },
+    {
+      name: "rejects plural body names",
+      code: 'logger.info("batch", { responseBodies });',
+      errors: [{ messageId: "noRawBodyInLog" }],
+    },
+    {
+      name: "rejects plural payload names",
+      code: 'logger.info("batch", { webhookPayloads });',
       errors: [{ messageId: "noRawBodyInLog" }],
     },
     {

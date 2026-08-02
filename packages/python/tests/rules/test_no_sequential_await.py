@@ -190,6 +190,7 @@ async def f(items):
         "{x: await v(x) for x in items}",
         "{await k(x): await v(x) for x in items}",
         "[x for x in items if await ok(x)]",
+        "[x for x in items if await ready()]",
         "[await tick() for x in items]",
         "[y for x in items for y in await g(x)]",
         "[await f(y) for x in items for y in x]",
@@ -770,19 +771,26 @@ async def cleanup(killed_processes):
 
 @pytest.mark.parametrize(
     "primitive",
-    ["CancelScope(shield=True)", "create_task_group()", "fail_after(1)", "move_on_after(1)"],
+    [
+        "CancelScope",
+        "create_task_group",
+        "start_soon",
+        "open_nursery",
+        "checkpoint",
+        "fail_after",
+        "move_on_after",
+        "create_memory_object_stream",
+    ],
 )
-def test_structured_concurrency_primitives_exempt_the_module(primitive: str):
+def test_each_trio_anyio_primitive_exempts_a_relative_runtime_module(primitive: str):
     src = f"""
 from .abc import Listener
+
+runtime_marker = {primitive}
 
 async def f(xs):
     for x in xs:
         await x.aclose()
-
-async def g():
-    with {primitive}:
-        pass
 """
     assert _check(src) == []
 
@@ -838,6 +846,15 @@ async def f(xs):
     for x in xs:
         value = await fetch(x)
         record(value)
+"""
+    assert len(_check(src)) == 1
+
+
+def test_annotated_loop_carried_assignment_is_not_exempt():
+    src = """
+async def f(function, iterable, value):
+    for element in iterable:
+        value: object = await function(value, element)
 """
     assert len(_check(src)) == 1
 

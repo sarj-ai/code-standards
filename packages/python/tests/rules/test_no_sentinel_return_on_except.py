@@ -16,9 +16,6 @@ def _check(source: str) -> list[Diagnostic]:
     return NoSentinelReturnOnExcept().check(Path("<test>.py"), source)
 
 
-# --- flagged: sentinel returns that swallow the exception ---
-
-
 def test_flags_return_none():
     src = """
 def f():
@@ -154,9 +151,6 @@ def f():
     assert len(_check(src)) == 2
 
 
-# --- allowed: re-raises ---
-
-
 def test_allows_bare_raise():
     src = """
 def f():
@@ -232,9 +226,6 @@ def f():
 """
     # No real `raise` statement at the handler level -> flagged.
     assert len(_check(src)) == 1
-
-
-# --- allowed: meaningful return values ---
 
 
 def test_allows_return_call():
@@ -325,9 +316,6 @@ def f():
     assert _check(src) == []
 
 
-# --- allowed: sentinel return not the final statement ---
-
-
 def test_allows_sentinel_return_not_final_when_handler_continues():
     # If the return isn't the final statement we don't flag (final stmt rule).
     src = """
@@ -353,25 +341,12 @@ def f():
     assert _check(src) == []
 
 
-# --- syntax errors return [] ---
-
-
 def test_syntax_error_returns_empty():
     assert _check("def f(:\n    pass") == []
 
 
-# ---------------------------------------------------------------------------
-# Added coverage
-# ---------------------------------------------------------------------------
-
-
 def _return_src(ret: str, *, handler: str = "except Exception:") -> str:
-    """Build a function whose sole handler ends in `return <ret>` (return at line 6).
-
-    Returns:
-        The function source.
-
-    """
+    """Build a function whose sole handler ends in `return <ret>` at line 6."""
     return f"""
 def f():
     try:
@@ -379,9 +354,6 @@ def f():
     {handler}
         return {ret}
 """
-
-
-# --- flagged: every sentinel return shape (parametrized) ---
 
 
 @pytest.mark.parametrize(
@@ -517,9 +489,6 @@ def f():
     assert len(_check(src)) == 2
 
 
-# --- line/col precision ---
-
-
 def test_line_col_at_deeper_indent():
     src = """
 class C:
@@ -541,9 +510,6 @@ def test_line_col_single_space_indent():
     assert len(diags) == 1
     assert diags[0].line == 5
     assert diags[0].col == 3
-
-
-# --- ordering of diagnostics ---
 
 
 def test_flat_handlers_emitted_in_source_order():
@@ -594,9 +560,6 @@ def f():
 """
     positions = [(d.line, d.col) for d in _check(src)]
     assert positions == sorted(positions)
-
-
-# --- allowed: re-raise variants (must NOT fire) ---
 
 
 def test_allows_raise_in_for_loop():
@@ -653,9 +616,6 @@ def f():
     assert _check(src) == []
 
 
-# --- allowed: actionable recovery returns a meaningful value ---
-
-
 @pytest.mark.parametrize(
     "ret",
     [
@@ -706,9 +666,6 @@ def f():
         return recovered
 """
     assert _check(src) == []
-
-
-# --- false-positive guards ---
 
 
 def test_return_in_try_body_not_flagged():
@@ -800,9 +757,6 @@ def f():
     assert _check(src) == []
 
 
-# --- degenerate inputs ---
-
-
 @pytest.mark.parametrize(
     "src",
     [
@@ -819,9 +773,6 @@ def test_no_diagnostics_for_sources_without_swallowing_handler(src: str):
 
 
 def test_module_level_return_in_except_is_flagged():
-    # `return` outside a function is a compile-time error, but `ast.parse` (which
-    # `parse_or_none` uses) does NOT reject it — that check happens later in
-    # symbol-table/compile. So the handler is walked and the swallow is flagged.
     src = """
 try:
     risky()
@@ -842,11 +793,6 @@ def outer():
     return inner
 """
     assert len(_check(src)) == 1
-
-
-# ---------------------------------------------------------------------------
-# Logged-sentinel exemption: a logged error is observable, not a silent swallow.
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -905,9 +851,6 @@ def f():
         return None
 """
     assert _check(src) == []
-
-
-# --- must STILL fire: silent swallows without logging ---
 
 
 def test_silent_sentinel_no_logging_still_fires():
@@ -987,9 +930,24 @@ def f():
     assert len(_check(src)) == 1
 
 
-# ---------------------------------------------------------------------------
-# Adversarial: logged-exemption edges (nested control flow, receiver shapes)
-# ---------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "nested_scope",
+    [
+        'later = lambda: logger.error("x")',
+        'class Later:\n            logger.error("x")',
+    ],
+    ids=["lambda", "class"],
+)
+def test_logging_inside_a_nested_scope_still_fires(nested_scope: str):
+    src = f"""
+def f():
+    try:
+        risky()
+    except Exception:
+        {nested_scope}
+        return None
+"""
+    assert len(_check(src)) == 1
 
 
 def test_logging_in_nested_for_before_return_is_exempt():
@@ -1107,9 +1065,6 @@ def f():
     assert _check(src) == []
 
 
-# --- must STILL fire: non-logging preludes that superficially resemble logging ---
-
-
 def test_bare_helper_log_function_is_not_logging_still_fires():
     # `log_error(e)` is a plain Name call, not `<recv>.<level>(...)`, so the rule
     # cannot know it logs — the swallow still fires.
@@ -1137,11 +1092,6 @@ def f():
 
 
 def test_log_after_early_return_only_still_fires():
-    # The logging call is the LAST statement (it sits after a nested early
-    # return), so the handler's final statement is not a sentinel return and the
-    # rule finds nothing to flag on the tail — but the guarded sentinel return is
-    # not final either, so no diagnostic. Documents that a trailing log-only tail
-    # yields no diagnostic.
     src = """
 def f():
     try:
@@ -1154,12 +1104,7 @@ def f():
     assert _check(src) == []
 
 
-# --- conditional / walrus / ternary sentinel shapes (non-constant returns) ---
-
-
 def test_ternary_sentinel_return_is_allowed():
-    # `return None if c else None` is an IfExp, not a bare sentinel constant, so
-    # the rule does not classify it as a sentinel. Documents the current scope.
     src = """
 def f():
     try:
@@ -1180,11 +1125,6 @@ def f():
         return (x := None)
 """
     assert _check(src) == []
-
-
-# ---------------------------------------------------------------------------
-# Adversarial: genuine defects (xfail strict — flip when the rule is fixed)
-# ---------------------------------------------------------------------------
 
 
 def test_substring_log_receiver_should_still_fire():
@@ -1223,16 +1163,6 @@ def f():
         return None
 """
     assert len(_check(src)) == 1
-
-
-# ---------------------------------------------------------------------------
-# Intended-typed-result exemptions (real sweep false positives: requests, httpx,
-# FastAPI, Django). These sentinel returns are the function's contract, not a
-# swallow, and MUST NOT fire.
-# ---------------------------------------------------------------------------
-
-
-# --- 1. predicate name: is_/has_/can_/should_ (+ underscore-prefixed) ---
 
 
 @pytest.mark.parametrize(
@@ -1299,9 +1229,6 @@ def {name}(x):
     assert len(_check(src)) == 1
 
 
-# --- 2. boolean probe: handler False/None + success path returns a boolean ---
-
-
 def test_boolean_probe_with_true_success_path_is_exempt():
     # requests.utils.unicode_is_ascii — name is not is_-prefixed, but success
     # `return True` vs handler `return False` is the classic predicate shape.
@@ -1341,9 +1268,6 @@ def load(x):
         return None
 """
     assert len(_check(src)) == 1
-
-
-# --- 3. feature detection / optional dependency: except ImportError ---
 
 
 @pytest.mark.parametrize(
@@ -1393,9 +1317,6 @@ def load_thing():
         return None
 """
     assert len(_check(src)) == 1
-
-
-# --- 4. lookup-with-default: single `return <lookup>` + narrow except ---
 
 
 def test_get_reason_phrase_lookup_with_default_is_exempt():
@@ -1460,9 +1381,6 @@ def build(key):
     assert len(_check(src)) == 1
 
 
-# --- must STILL fire: genuine data-returning swallows (recall guard) ---
-
-
 def test_data_function_broad_swallow_to_none_still_fires():
     src = """
 def fetch_user(user_id):
@@ -1508,11 +1426,6 @@ def get_config():
         return {}
 """
     assert len(_check(src)) == 1
-
-
-# ---------------------------------------------------------------------------
-# Bonus: bare `except: pass` silently discards the error (no return at all).
-# ---------------------------------------------------------------------------
 
 
 def test_bare_except_pass_is_flagged():
@@ -1578,17 +1491,7 @@ def f():
     assert _check(src) == []
 
 
-# ---------------------------------------------------------------------------
-# Optional-contract exemption: a function annotated `X | None` whose narrow
-# handler returns the None arm is the Optional idiom, not a swallow (dominant
-# Home Assistant / SQLAlchemy false-positive class).
-# ---------------------------------------------------------------------------
-
-
 def test_optional_return_multi_statement_try_narrow_except_is_exempt():
-    # homeassistant.util.dt.parse_time — multi-statement try, narrow except,
-    # `-> time | None` returning None. The single-`return` lookup restriction
-    # misflagged this; the Optional contract exempts it.
     src = """
 def parse_time(time_str: str) -> dt.time | None:
     parts = str(time_str).split(":")
@@ -1703,13 +1606,6 @@ def f(x) -> int | None:
     assert len(_check(src)) == 1
 
 
-# ---------------------------------------------------------------------------
-# Starred exception groups (`except (*GROUP, ValueError):`) are narrow and must
-# not defeat the lookup-with-default / narrowness checks (Home Assistant
-# util.package.async_get_installed_packages).
-# ---------------------------------------------------------------------------
-
-
 def test_starred_exception_group_lookup_with_default_is_exempt():
     src = """
 def f() -> list:
@@ -1730,12 +1626,6 @@ def f():
         return ""
 """
     assert _check(src) == []
-
-
-# ---------------------------------------------------------------------------
-# Logger-name matching is case-insensitive so the stdlib `_LOGGER` module-level
-# convention counts (largest Home Assistant false-positive class).
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -1784,9 +1674,6 @@ def f():
         return None
 """
     assert len(_check(src)) == 1
-
-
-# --- FP-hardening (famous-repo sweep): trio/pydantic idioms ---
 
 
 def test_stop_async_iteration_drain_is_exempt():
@@ -1881,11 +1768,12 @@ def load(path) -> dict:
     assert len(_check(src)) == 1
 
 
-def test_typeis_annotated_contract_returning_false_is_exempt():
+@pytest.mark.parametrize("annotation", ["TypeIs[Callable]", "TypeGuard[Callable]"])
+def test_bool_family_annotated_contract_returning_false_is_exempt(annotation: str):
     # Minimized from pydantic's takes_validated_data_argument: TypeIs/TypeGuard
     # are bool-valued contracts.
-    src = """
-def takes_data(factory) -> TypeIs[Callable]:
+    src = f"""
+def takes_data(factory) -> {annotation}:
     try:
         sig = signature(factory)
     except (ValueError, TypeError):
@@ -1893,9 +1781,6 @@ def takes_data(factory) -> TypeIs[Callable]:
     return len(sig.parameters) == 1
 """
     assert _check(src) == []
-
-
-# --- FP-hardening (famous-repo sweep) -------------------------------------
 
 
 def test_narrow_handler_returning_the_declared_sentinel_is_exempt():
@@ -1927,6 +1812,55 @@ def extract(cls) -> dict:
     return parse(source)
 """
     assert _check(src) == []
+
+
+@pytest.mark.parametrize("sentinel", ["None", "False", "[]", "{}", "()", "''", "set()"])
+def test_narrow_handler_returning_each_declared_sentinel_is_exempt(sentinel: str):
+    src = f"""
+def load(use_default):
+    if use_default:
+        return {sentinel}
+    try:
+        return parse()
+    except ValueError:
+        return {sentinel}
+"""
+    assert _check(src) == []
+
+
+def test_narrow_handler_returning_a_different_sentinel_still_fires():
+    src = """
+def load(use_default):
+    if use_default:
+        return []
+    try:
+        value = read()
+        return parse(value)
+    except ValueError:
+        return {}
+"""
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    "non_contract_return",
+    [
+        "def fallback():\n        return None",
+        'try:\n        recover()\n    except KeyError:\n        logger.info("expected")\n        return None',
+    ],
+    ids=["nested-function", "exception-handler"],
+)
+def test_nested_scope_and_exception_returns_do_not_declare_a_sentinel(non_contract_return: str):
+    src = f"""
+def load():
+    {non_contract_return}
+    try:
+        value = read()
+        return parse(value)
+    except OSError:
+        return None
+"""
+    assert len(_check(src)) == 1
 
 
 def test_broad_handler_returning_the_declared_sentinel_still_fires():
@@ -2012,5 +1946,21 @@ try:
     pass
 except:
     pass
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "guarded_body",
+    ["import optional_dependency", "pass", "...", '"inert"'],
+    ids=["import", "pass", "ellipsis", "docstring"],
+)
+def test_import_only_and_inert_guarded_bodies_cannot_swallow_an_error(guarded_body: str):
+    src = f"""
+def load():
+    try:
+        {guarded_body}
+    except:
+        return None
 """
     assert _check(src) == []

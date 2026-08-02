@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint.rule_base import is_suppressed
 from sarj_python_lint.rules.no_file_level_suppression import NoFileLevelSuppression
 
 
@@ -192,6 +193,18 @@ def test_allows_unrelated_comments(source: str):
     assert _check(source) == []
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        'directive = "# ruff: noqa"\n',
+        'directive = "# type: ignore"\n',
+        'directive = "# pyright: ignore"\n',
+    ],
+)
+def test_allows_directive_text_inside_strings(source: str):
+    assert _check(source) == []
+
+
 # --------------------------------------------------------------------------- #
 # Counts, ordering, position.                                                  #
 # --------------------------------------------------------------------------- #
@@ -221,6 +234,18 @@ def test_scoped_and_bare_in_the_same_file_reports_only_the_bare_one():
     diags = _check(src)
     assert len(diags) == 1
     assert diags[0].line == 2
+
+
+def test_reasoned_sarj_noqa_suppresses_a_justified_blanket():
+    src = "# ruff: noqa  # sarj-noqa: SARJ038 — generated module\nimport os\n"
+    diagnostic = _check(src)[0]
+    assert is_suppressed(src.splitlines(), diagnostic.line, diagnostic.code)
+
+
+def test_sarj_noqa_for_another_rule_does_not_suppress_the_blanket():
+    src = "# ruff: noqa  # sarj-noqa: SARJ054 — generated module\nimport os\n"
+    diagnostic = _check(src)[0]
+    assert not is_suppressed(src.splitlines(), diagnostic.line, diagnostic.code)
 
 
 # --------------------------------------------------------------------------- #

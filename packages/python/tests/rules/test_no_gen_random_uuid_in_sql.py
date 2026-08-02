@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint.rule_base import is_suppressed
 from sarj_python_lint.rules.no_gen_random_uuid_in_sql import NoGenRandomUuidInSql
 
 
@@ -124,10 +125,6 @@ def test_unparsable_source_yields_no_diagnostics():
 
 
 UUIDV7_CONSTRUCTIONS = [
-    # airflow-core/src/airflow/migrations/versions/
-    # 0042_3_0_0_add_uuid_primary_key_to_task_instance_.py:52 — the pgcrypto-less
-    # fallback inside a hand-rolled uuidv7. Telling this to "use uuidv7()" tells
-    # the definition of uuidv7 to call itself.
     (
         'SQL = """\n'
         "CREATE OR REPLACE FUNCTION uuid_generate_v7(p_timestamp timestamptz)\n"
@@ -146,6 +143,31 @@ def test_sql_building_a_uuidv7_is_not_the_defect(source: str):
     assert _check(source) == []
 
 
+@pytest.mark.parametrize(
+    "function_name",
+    ["uuid_generate_v7", "uuidv7", "uuid_v7", "uuid7"],
+)
+def test_allows_common_names_for_a_uuidv7_definition(function_name: str):
+    src = f'SQL = "CREATE FUNCTION {function_name}() RETURNS uuid AS $$ SELECT gen_random_uuid() $$"\n'
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "uuid_send(gen_random_uuid())",
+        "substring(gen_random_uuid()::text FROM 1 FOR 12)",
+        "set_byte(gen_random_uuid()::bytea, 6, 112)",
+        "get_byte(gen_random_uuid()::bytea, 0)",
+        "int8send(gen_random_uuid()::text::bigint)",
+        "encode(gen_random_uuid()::bytea, 'hex')",
+        "overlay(gen_random_uuid()::text PLACING '7' FROM 13)",
+    ],
+)
+def test_allows_uuidv7_building_blocks(expression: str):
+    assert _check(f'SQL = "SELECT {expression}"\n') == []
+
+
 def test_a_plain_v4_default_still_fires_in_a_migration():
     src = 'op.execute("ALTER TABLE t ALTER COLUMN id SET DEFAULT gen_random_uuid()")\n'
     assert len(_check(src)) == 1
@@ -156,22 +178,18 @@ def test_applies_to_test_files_too():
     assert len(_check(src, Path("svc/tests/test_store.py"))) == 1
 
 
-# --------------------------------------------------------------------------- #
-# Why there is no whole-source fast path                                      #
-# --------------------------------------------------------------------------- #
-#
-# A `if "gen_random_uuid" not in source: return []` gate was added here and then
-# REVERTED, because it silently lost findings. The reasoning behind it was that
-# naming the function is a necessary condition, since `strip_sql_noise` only
-# blanks characters out. That is true of the MASKING step and false of the step
-# before it: the gate reads the RAW SOURCE, while the predicate runs on the
-# decoded `ast.Constant.value`. Source -> literal is not blanking-only — escape
-# decoding, implicit concatenation and line continuation all synthesise text
-# that never appears literally in the file.
-#
-# Each of these produced a finding with the rule as written and NOTHING with the
-# gate in place. They are kept as executable evidence so the optimisation is not
-# reattempted from the same wrong premise.
+def test_sarj053_noqa_suppresses_a_deliberate_legacy_default():
+    src = 'SQL = "ALTER TABLE t ALTER id SET DEFAULT gen_random_uuid()"  # sarj-noqa: SARJ053 — legacy\n'
+    diags = _check(src)
+    assert len(diags) == 1
+    assert is_suppressed(src.splitlines(), diags[0].line, diags[0].code)
+
+
+def test_noqa_for_another_rule_does_not_suppress_sarj053():
+    src = 'SQL = "ALTER TABLE t ALTER id SET DEFAULT gen_random_uuid()"  # sarj-noqa: SARJ052\n'
+    diags = _check(src)
+    assert len(diags) == 1
+    assert not is_suppressed(src.splitlines(), diags[0].line, diags[0].code)
 
 
 @pytest.mark.parametrize(
@@ -196,15 +214,7 @@ def test_applies_to_test_files_too():
     ],
 )
 def test_escaped_and_split_identifiers_still_fire(source: str):
-    """The shapes a raw-source gate cannot see. Each must still be reported."""
     assert len(_check(source)) == 1
-
-
-# These four were the original gate's own tests. They remain valid regardless —
-# they pin real matching behaviour — but note that the implicit-concatenation
-# case here splits at a point where the identifier survives INTACT in the source,
-# which is precisely why it passed under the broken gate and gave false
-# confidence. The split-mid-identifier case above is the one that mattered.
 
 
 @pytest.mark.parametrize(

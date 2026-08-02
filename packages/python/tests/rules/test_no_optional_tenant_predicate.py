@@ -91,6 +91,29 @@ def test_flags_ternary_guarded_tenant_predicate():
     assert _count(src) == 1
 
 
+def test_flags_conditional_extend():
+    src = (
+        "def build(args):\n"
+        "    conditions = []\n"
+        "    if args.organization_id:\n"
+        '        conditions.extend([SQL("organization_id = %s")])\n'
+        "    return conditions\n"
+    )
+    assert _count(src) == 1
+
+
+def test_recognises_documented_predicate_operators():
+    for operator in ("IN (%s)", "IS NOT NULL", "<> %s", "!= %s"):
+        src = (
+            "def build(args):\n"
+            "    conditions = []\n"
+            "    if args.organization_id:\n"
+            f'        conditions.append(SQL("organization_id {operator}"))\n'
+            "    return conditions\n"
+        )
+        assert _count(src) == 1, operator
+
+
 def test_flags_each_offending_function_separately():
     src = (
         "def first(args):\n"
@@ -163,6 +186,16 @@ def test_ignores_unconditional_append():
     assert _count(src) == 0
 
 
+def test_ignores_unconditional_extend():
+    src = (
+        "def build(args):\n"
+        "    conditions = []\n"
+        '    conditions.extend([SQL("organization_id = %s")])\n'
+        "    return conditions\n"
+    )
+    assert _count(src) == 0
+
+
 def test_ignores_query_with_no_tenant_predicate_at_all():
     """An intentionally cross-tenant admin query never claimed to be scoped."""
     src = (
@@ -196,6 +229,33 @@ def test_ignores_inline_sql_not_composed_into_a_list():
         "    )\n"
     )
     assert _count(src) == 0
+
+
+def test_inline_sql_does_not_mask_an_optional_composed_predicate():
+    src = (
+        "def build(args):\n"
+        '    execute("SELECT 1 WHERE organization_id = %s", args.organization_id)\n'
+        "    conditions = []\n"
+        "    if args.organization_id:\n"
+        '        conditions.append(SQL("organization_id = %s"))\n'
+        "    return conditions\n"
+    )
+    assert _count(src) == 1
+
+
+def test_nested_function_predicate_does_not_mask_outer_scope():
+    src = (
+        "def outer(args):\n"
+        "    conditions = []\n"
+        "    if args.organization_id:\n"
+        '        conditions.append(SQL("organization_id = %s"))\n'
+        "    def inner():\n"
+        '        return [SQL("tenant_id = %s")]\n'
+        "    return conditions, inner()\n"
+    )
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "`outer`" in diags[0].message
 
 
 def test_ignores_tenant_column_in_a_select_list():

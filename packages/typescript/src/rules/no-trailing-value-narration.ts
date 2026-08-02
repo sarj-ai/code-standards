@@ -49,6 +49,7 @@ function narratesValue(body: string, code: string): boolean {
   for (const number of commentNumbers) {
     if (!codeNumbers.has(number)) return false;
   }
+  if (!words.some((word) => UNIT_WORDS.has(word))) return false;
   const identifiers = codeTokens(code);
   const stems = new Set<string>();
   for (const token of identifiers) stems.add(stem(token));
@@ -68,7 +69,7 @@ export default createRule<Options, MessageIds>({
     type: "suggestion",
     docs: {
       description:
-        "Flag a trailing comment whose every word and number is already on the line it annotates.",
+        "Flag a trailing comment that repeats the line's numeric value only to name its unit.",
     },
     schema: [],
     messages: {
@@ -88,10 +89,26 @@ export default createRule<Options, MessageIds>({
       return before !== null && before.loc.end.line === comment.loc.start.line;
     }
 
+    function isInsideBrackets(comment: TSESTree.Comment): boolean {
+      let node: TSESTree.Node | null | undefined = sourceCode.getNodeByRangeIndex(comment.range[0]);
+      while (node != null) {
+        if (node.type === "BlockStatement" || node.type === "Program") return false;
+        if (
+          node.type === "ArrayExpression" ||
+          node.type === "CallExpression" ||
+          node.type === "NewExpression"
+        ) {
+          return true;
+        }
+        node = node.parent;
+      }
+      return false;
+    }
+
     return {
       Program(): void {
         for (const comment of sourceCode.getAllComments()) {
-          if (!isTrailing(comment)) continue;
+          if (!isTrailing(comment) || isInsideBrackets(comment)) continue;
           const line = sourceCode.lines[comment.loc.start.line - 1] ?? "";
           const code = line.slice(0, comment.loc.start.column);
           const body = comment.value.replace(/^\*+/, "").replace(/\*+$/, "").trim();

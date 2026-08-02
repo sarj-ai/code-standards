@@ -543,6 +543,16 @@ def test_a_partly_destructured_arm_keeps_the_binding_it_already_had():
     assert "`case ChatMessageActionItem(llm_metadata=llm_metadata, action=action, status=status):`" in message
 
 
+def test_an_existing_keyword_constraint_is_not_silently_widened():
+    source = """
+    match event:
+        case Message(kind="primary"):
+            emit(event.payload, event.sender)
+    """
+    (message,) = _messages(source)
+    assert "`case Message(kind='primary', payload=payload, sender=sender):`" in message
+
+
 def test_positional_patterns_are_carried_into_the_suggestion():
     # `case Point(x, y)` binds x and y through `__match_args__`. A keyword-only
     # rewrite would drop both, so the sub-patterns are reproduced verbatim ahead

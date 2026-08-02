@@ -34,13 +34,7 @@ const BROWSER_GLOBALS: ReadonlySet<string> = new Set([
   "TouchEvent",
 ]);
 
-/**
- * Modules whose very import forces a client boundary, independent of what the
- * file then does with them. `next/dynamic` is the case that matters: in the App
- * Router, `dynamic(..., { ssr: false })` is a BUILD ERROR in a Server Component
- * ("`ssr: false` is not allowed with `next/dynamic` in Server Components"), so a
- * lazy-wrapper module has no legal form without `'use client'`.
- */
+/** Modules whose import requires a client boundary. */
 const CLIENT_REQUIRED_MODULES: ReadonlySet<string> = new Set(["next/dynamic"]);
 
 const CLIENT_ONLY_PACKAGES_REGEX =
@@ -48,12 +42,7 @@ const CLIENT_ONLY_PACKAGES_REGEX =
 
 type Ctx = Readonly<RuleContext<MessageIds, Options>>;
 
-/**
- * True for a package specifier — anything that is not a relative path or one of
- * the usual in-repo alias prefixes. A relative/aliased import points at code in
- * this repo, which this same rule already lints, so the "cannot see into the
- * dependency" argument does not apply to it.
- */
+/** True for package specifiers whose implementation this rule cannot inspect. */
 const isBareSpecifier = (source: string): boolean =>
   !source.startsWith(".") && !source.startsWith("/") && !source.startsWith("@/") && !source.startsWith("~");
 
@@ -168,9 +157,7 @@ export default createRule<Options, MessageIds>({
 
     let directiveNode: TSESTree.ExpressionStatement | null = null;
     let hasClientIndicator = false;
-    /** Every local name bound by an import, whatever the module. */
     const importedLocals = new Set<string>();
-    /** Locals bound from a BARE (third-party) specifier — see @fileoverview. */
     const externalLocals = new Set<string>();
 
     const markIfHookOrContext = (

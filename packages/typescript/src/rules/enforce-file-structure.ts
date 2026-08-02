@@ -14,27 +14,7 @@ type Options = readonly [];
 
 type StatementKind = "import" | "reexport" | "body";
 
-/**
- * Classify a top-level statement by WHAT it introduces, not by the presence of
- * the `export` keyword.
- *
- * - `import ...`                        → "import"
- * - `export ... from`, `export * from`, → "reexport"
- *   `export { a, b }` (local names)
- * - everything else, INCLUDING every    → "body"
- *   exported declaration/function
- *
- * Bucketing exported statements as "body" is the whole point: an exported
- * `interface`/`type`/`enum`/`class`/value-`const` is a declaration and an
- * exported `function` (or `export default <fn>`) is a function — both live in
- * the same body as their non-exported equivalents. That lets the dominant
- * step-down layout (public API first, private helpers below) pass instead of
- * forcing every `export`-prefixed statement into a terminal "exports" section.
- *
- * Re-exports are their own neutral group: a generated `_namespaces` barrel that
- * interleaves `import * as X` / `export { X }` must not be flagged, so
- * re-exports never trigger and are allowed anywhere in the file.
- */
+/** Classify declarations by what they introduce; re-exports are neutral. */
 const classifyStatement = (
   statement: TSESTree.ProgramStatement,
 ): StatementKind => {
@@ -44,8 +24,7 @@ const classifyStatement = (
     case AST_NODE_TYPES.ExportAllDeclaration:
       return "reexport";
     case AST_NODE_TYPES.ExportNamedDeclaration:
-      // `export { a } from './x'` / `export { a, b }` re-export names without
-      // declaring anything; only `export <decl>` introduces a body statement.
+      // Only `export <declaration>` introduces a body statement.
       return statement.declaration === null ? "reexport" : "body";
     default:
       return "body";

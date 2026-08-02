@@ -30,16 +30,11 @@ if TYPE_CHECKING:
 
 _MAX_WORDS = 8
 _MAX_ASCII = 127
-# A single content word cannot *restate* a statement — it labels one. The
-# famous-corpus sweep's last two false positives were exactly that shape
-# (`# Hashing.` and `# Repr.` heading assertion groups in attrs/tests/
-# test_slots.py:134,137), and the bare-label vocabulary that matters
-# (`# Constants`, `# Helpers`) is already SARJ016's.
+# A single content word labels a statement rather than restating it.
 _MIN_CONTENT_TOKENS = 2
 
-# A comment heading a region of this many same-indent lines is a SECTION LABEL,
-# not narration of the one line under it. The threshold is the whole guard --
-# see the "fourth guard" paragraph in the module docstring for why 2 fails.
+# Three same-indent lines form a labelled region; two remain eligible because
+# they commonly represent an action followed by its assertion.
 _SECTION_REGION_LINES = 3
 
 # Directive comments, in the broad spelling — this rule sees Python only, but the
@@ -51,48 +46,19 @@ _DIRECTIVE_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Commented-out code and section banners belong to SARJ016; reporting them twice
-# would make the finding look bigger than it is. The keyword arm was added after
-# the famous-corpus sweep: `# assert v.to_python(input_value) == v`
-# (pydantic-core/tests/validators/test_dict.py) is a disabled assertion sitting
-# above the assertion that replaced it, and every word of it naturally appears
-# on the line below.
+# Commented-out code and section banners belong to SARJ016.
 _CODEY_RE = re.compile(r"^[\w.\[\]'\"]+\s*[:=]\s*\S|^[\w.]+\(")
 _CODE_KEYWORD_RE = re.compile(r"^(?:assert|return|raise|await|yield|del|import|from|print|global|nonlocal)\b")
 _CODE_SIGNAL_RE = re.compile(r"[=()\[\]{}]")
 _BANNERISH_RE = re.compile(r"[=\-─-╿*#~_.]{3,}|^[A-Z0-9 _:-]+$")
 
-# Three shapes that survived the zero-information test in the famous-corpus
-# sweep and were wrong every time, each guarded at the site that produced it:
-#
-#  - modality. `can`, `should`, `must` state a possibility or an obligation, and
-#    no arrangement of identifiers can say that. `# can also aclose`
-#    (trio/_tests/test_dtls.py:283) documents that a second API reaches the same
-#    state; `# Should still have a traceback:`
-#    (pydantic-core/tests/test_errors.py:755) says the property survives the step
-#    above, not that the line below checks it.
-#  - a colon-terminated lead-in announces what follows rather than describing the
-#    one line under it (the same reading SARJ016 gives `# For example:`).
-#  - inline emphasis. Someone who wrote `*not*` or backticked an identifier was
-#    making a point about it — `# model_fields is *not* complete on Foo`
-#    (pydantic/tests/test_forward_ref.py:71).
-#  - a bare negation. `no`, `not` and `never` are stopwords for the tokenizer, so
-#    a comment stating a NEGATIVE property passes the zero-information test on
-#    the positive spelling below it — `# no issues with confirmPassword or
-#    password` over `return payload.issues.every(...)`
-#    (zod/packages/zod/src/v4/classic/tests/refine.test.ts:546). Saying what is
-#    absent is the one thing the code's own words cannot.
+# Modality, lead-ins, emphasis, and negation add meaning identifiers cannot.
 _MODALITY_RE = re.compile(r"\b(?:can|could|should|shall|may|might|must|will|would|cannot)\b", re.IGNORECASE)
 _LEAD_IN_RE = re.compile(r":$")
 _EMPHASIS_RE = re.compile(r"\*\w[^*]*\*|`[^`]+`")
 _NEGATION_WORD_RE = re.compile(r"\b(?:no|not|never|neither|nor|without|none|non)\b", re.IGNORECASE)
 
-# The same asymmetry, on the code's side. `not` / `no` / `none` are stopwords for
-# `content_tokens`, so a comment stating a property POSITIVELY passes the
-# zero-information test against a line that expresses it as a double negative —
-# `# The task is queued` over `assert not kubernetes_executor.task_queue.empty()`
-# (airflow-2/providers/cncf/kubernetes/.../test_kubernetes_executor.py:1022).
-# Turning `not ... empty()` into "is queued" is the translation the reader wanted.
+# A positive comment can usefully translate negatively expressed code.
 _CODE_NEGATION_RE = re.compile(r"\bnot\b|!=|\bis None\b|\.empty\(|assert(?:Not|False)")
 
 # A statement whose head a comment could be restating.
@@ -100,15 +66,7 @@ _SIMPLE_STMT_RE = re.compile(
     r"^\s*(?:return\b|yield\b|raise\b|await |del |assert |"
     r"[\w.\[\]\"'()]+\s*(?:[:+\-*/|&]?=)\s*\S|[\w.]+\(|await\s+[\w.]+\()"
 )
-# The statement must *do* something — invoke a callable, or hand a value back.
-# A comment above a plain data declaration is labelling the datum, and the
-# first-party corpus showed that shape is a series of group labels rather than
-# narration: `# Profile` over `PROFILE_NOT_FOUND = "PROFILE_NOT_FOUND"` sits
-# between `# MFA/OTP` and `# Account` in the same enum at one first-party site,
-# and `# Onboarding` over a lone `final_onboarding_stage=...` kwarg sits under
-# `# Provider info` in the same call at another. Requiring a call
-# removed all four of those without touching a single narration hit — the
-# distinguishing feature was never the label, it was what it labels.
+# Plain data declarations are labels; eligible statements perform an action.
 _ACTION_STMT_RE = re.compile(r"[\w.\]\)]\s*\(|^\s*(?:return|raise|yield|await|del)\b")
 
 # Anything whose *body* the comment could be labelling instead.
@@ -122,11 +80,7 @@ _IMPORT_SHAPE_RE = re.compile(r"^\s*(?:import\b|from\b)")
 _KV_SHAPE_RE = re.compile(r"""^\s*["'][^"']+["']\s*:""")
 _ASSIGN_SHAPE_RE = re.compile(r"^\s*[\w.\[\]]+\s*(?::[^=]+)?=[^=]|^\s*[\w.\[\]]+\s*:\s*\S+,?\s*$")
 _ELEMENT_SHAPE_RE = re.compile(r"""^\s*["'\[{(].*,?\s*$|^\s*[\w.'"]+,\s*$""")
-# The call and assert shapes were added after the famous-corpus sweep: without
-# them a label heading a run of bare calls or asserts (`# Secrets` over eight
-# `st.register_type_strategy(...)` lines in pydantic's hypothesis plugin,
-# `# Hashing.` / `# Repr.` over attrs' assertion groups) read as a comment about
-# one statement. Those are the grouping the label exists to provide.
+# Calls and assertions can form labelled sibling groups too.
 _CALL_SHAPE_RE = re.compile(r"^\s*(?:await\s+)?[\w.]+\s*\(")
 _ASSERT_SHAPE_RE = re.compile(r"^\s*assert\b")
 
@@ -152,13 +106,7 @@ def _indent_of(line: str) -> int:
 
 
 def _statement_end(lines: list[str], index: int) -> int:
-    """Find the last line of the statement starting at `index`, by bracket balance.
-
-    Returns:
-        The 0-based index of the statement's final line, so a multi-line call is
-        skipped whole.
-
-    """
+    """Return the final line of a statement using bracket balance."""
     balance = 0
     cursor = index
     while cursor < len(lines):
@@ -187,29 +135,7 @@ def _is_group_label(lines: list[str], index: int) -> bool:
 
 
 def _region_size(lines: list[str], index: int) -> int:
-    """Count the same-indent lines of the blank-line-delimited region at `index`.
-
-    The region runs from `index` until a blank line, a dedent, the NEXT
-    same-indent comment, or end of file. Nested block bodies and the
-    continuation lines of a multi-line statement are stepped over rather than
-    counted, so the number is the count of logical lines at the label's own
-    indent — which is what "how much does this comment head?" means.
-
-    The next comment is a terminator, not a transparent line, and that is what
-    keeps the guard from swallowing true positives: `# Mock auth_manager` above
-    one line, followed by `# Act` and `# Assert`, heads a region of ONE
-    (`airflow/.../routes/public/test_import_error.py:241`), and so does
-    `# Remove the replacement node.` above a four-line call followed by
-    `# Ensure graph is consistent…` (`django/tests/migrations/test_graph.py:391`).
-    Counting across the next label turned both into three-line regions and
-    suppressed them; measured over the corpus, treating comments as transparent
-    removed 149 findings instead of 98, and the extra 51 were dominated by
-    exactly that shape.
-
-    Returns:
-        The number of same-indent, non-comment lines in the region.
-
-    """
+    """Count logical same-indent lines until a blank, dedent, or next label."""
     indent = _indent_of(lines[index])
     size = 0
     cursor = index
