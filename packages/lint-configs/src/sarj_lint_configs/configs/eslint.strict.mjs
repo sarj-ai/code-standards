@@ -610,6 +610,13 @@ const config = [
       "react/no-unstable-nested-components": "error",
       "react-hooks/exhaustive-deps": "error",
       "react-hooks/rules-of-hooks": "error",
+      // Runtime correctness rules that do not require enabling React Compiler.
+      "react-hooks/error-boundaries": "error",
+      "react-hooks/globals": "error",
+      "react-hooks/immutability": "error",
+      "react-hooks/purity": "error",
+      "react-hooks/refs": "error",
+      "react-hooks/set-state-in-render": "error",
       "react/forbid-elements": [
         "error",
         {
@@ -673,6 +680,8 @@ const config = [
       "react/jsx-no-duplicate-props": "error",
       "react/jsx-no-target-blank": "error",
       "react/jsx-no-undef": "error",
+      "react/no-object-type-as-default-prop": "error",
+      "react/no-unknown-property": "error",
       "react/void-dom-elements-no-children": "error",
       "react/jsx-fragments": "error",
       "react/jsx-no-script-url": "error",
@@ -1008,6 +1017,8 @@ const config = [
     files: ["**/components/ui/**", "**/components/design-system/**"],
     rules: {
       "react/forbid-elements": "off",
+      // Prevent design-system primitives from becoming implicit submit buttons.
+      "react/button-has-type": "error",
     },
   },
 

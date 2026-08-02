@@ -43,6 +43,36 @@ async function lint(file: string): Promise<Linter.LintMessage[]> {
 }
 
 describe("the shipped eslint.strict.mjs can actually lint", () => {
+  it.each([
+    "react-hooks/error-boundaries",
+    "react-hooks/globals",
+    "react-hooks/immutability",
+    "react-hooks/purity",
+    "react-hooks/refs",
+    "react-hooks/set-state-in-render",
+    "react/no-object-type-as-default-prop",
+    "react/no-unknown-property",
+  ])("enables %s as an error", async (rule) => {
+    const eslint = new ESLint({
+      cwd: FIXTURE_DIR,
+      overrideConfigFile: true,
+      overrideConfig: strictConfig as Linter.Config[],
+    });
+    const config = await eslint.calculateConfigForFile(
+      resolve(FIXTURE_DIR, "widget.tsx"),
+    );
+    expect(config?.rules?.[rule]?.[0]).toBe(2);
+  });
+
+  it("requires explicit button types inside design-system primitives", () => {
+    const primitiveConfig = (strictConfig as Linter.Config[]).find(
+      (entry) =>
+        entry.files?.includes("**/components/ui/**") &&
+        entry.files.includes("**/components/design-system/**"),
+    );
+    expect(primitiveConfig?.rules?.["react/button-has-type"]).toBe("error");
+  });
+
   it.each(["example.ts", "widget.tsx"])(
     "lints %s without a rule throwing",
     async (file) => {
