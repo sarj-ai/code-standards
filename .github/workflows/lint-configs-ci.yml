@@ -54,7 +54,7 @@ jobs:
         run: |
           uv run ruff check src/ tests/
           uv run basedpyright
-          uv run sarj-lint-configs check --python-baseline sarj-comment-baseline.json .
+          uv run sarj-lint-configs check .
       - name: Build wheel
         run: |
           uv build --wheel
