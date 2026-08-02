@@ -59,13 +59,24 @@ uv run --frozen sarj-standards check --noise-only .  # comment/artifact ratchet 
 ```
 
 Run all three in CI. `init` prints them as a ready-made job.
+`check --noise-only` covers Python and text/config inputs; TypeScript comment
+noise is enforced by the generated strict ESLint config.
 
 `sarj-standards` is the preferred entrypoint. `sarj-lint-configs` remains an
-alias for compatibility. `check` routes Python, SQL, Terraform, YAML, TOML,
-JSONC, Markdown, Dockerfiles, and Makefiles in one pass. In addition to the
-syntax-aware linters it rejects commented-out config (`SARJ301`), dense
-line-by-line config narration (`SARJ300`), and AI execution diaries or briefs
-that should have been reduced to durable README/docs/ADR facts (`SARJ302`).
+alias for compatibility. `check` routes Python, SQL, Terraform, YAML/TFTPL,
+TOML, JSONC, Markdown, INI-style config, environment files, shell scripts,
+Dockerfile variants, Makefiles, and Justfiles in one pass. It rejects
+commented-out config (`SARJ301`), dense config narration (`SARJ300`), and AI
+execution diaries or briefs that should have been reduced to durable
+README/docs/ADR facts (`SARJ302`).
+
+Generated or intentionally instructional config can be excluded explicitly;
+there is no blanket directory exemption:
+
+```toml
+[text]
+exclude = ["examples/generated-values/**"]
+```
 
 ### `doctor` — one version, not three
 

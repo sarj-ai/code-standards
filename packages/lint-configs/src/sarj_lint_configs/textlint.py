@@ -17,8 +17,26 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 
-_TEXT_SUFFIXES: Final = frozenset({".md", ".mdx", ".yaml", ".yml", ".toml", ".jsonc"})
-_TEXT_NAMES: Final = frozenset({"dockerfile", "makefile", "gnumakefile"})
+_TEXT_SUFFIXES: Final = frozenset(
+    {
+        ".bash",
+        ".cfg",
+        ".conf",
+        ".env",
+        ".ini",
+        ".jsonc",
+        ".md",
+        ".mdx",
+        ".properties",
+        ".sh",
+        ".tftpl",
+        ".toml",
+        ".yaml",
+        ".yml",
+        ".zsh",
+    }
+)
+_TEXT_NAMES: Final = frozenset({"dockerfile", "gnumakefile", "justfile", "makefile"})
 _MIN_EPHEMERAL_HEADINGS: Final = 2
 _WALL_MIN_ATTACHED: Final = 4
 _WALL_MIN_WEAK: Final = 3
@@ -26,9 +44,10 @@ _WALL_MIN_WEAK_RATIO: Final = 0.75
 _WALL_MAX_WORDS: Final = 18
 _WALL_MIN_MATCHED_RATIO: Final = 0.5
 _WALL_MAX_NOVEL_WORDS: Final = 2
+_WALL_GROUP_MAX_LINES: Final = 24
 _COMMENTED_CONFIG_MAX_WORDS: Final = 8
-_COMMENTED_CONFIG_RUN_MIN: Final = 2
-_COMMENTED_CONFIG_RUN_RATIO: Final = 0.6
+_COMMENTED_CONFIG_RUN_MIN: Final = 1
+_COMMENTED_CONFIG_RUN_RATIO: Final = 0.5
 _DURABLE_MARKDOWN: Final = (
     "README.md",
     "**/README.md",
@@ -59,7 +78,8 @@ _ARTIFACT_NAME_RE = re.compile(
 )
 _STRONG_ARTIFACT_NAME_RE = re.compile(
     r"(?:build|fix|merge|meeting)[-_]?brief|diagnosis[-_]handoff|morning[-_]summary|"
-    r"debug[-_]todo|project[-_]status|qa[-_]fixlist|end[-_]to[-_]end[-_]plan",
+    r"debug[-_]todo|project[-_]status|qa[-_]fixlist|end[-_]to[-_]end[-_]plan|"
+    r"clone[-_]notes|authenticity[-_]fixes[-_]prompt|fable[-_]loop[-_]findings",
     re.IGNORECASE,
 )
 _EPHEMERAL_HEADING_RE = re.compile(
@@ -78,7 +98,7 @@ _STRONG_DIARY_HEADING_RE = re.compile(
 _DIRECTIVE_RE = re.compile(
     r"^(?:!|shellcheck|yamllint|markdownlint|prettier|eslint|renovate|dependabot|"
     r"pragma|noqa|sarj-noqa|type:|pyright|mypy|syntax=|hadolint|nosec|note:|"
-    r"flags:|tool:|inputs?:|outputs?:|defaults?:|spdx)",
+    r"examples?:|flags:|format:|tool:|inputs?:|outputs?:|defaults?:|usage:|spdx)",
     re.IGNORECASE,
 )
 _PROTECTED_RE = re.compile(
@@ -89,20 +109,20 @@ _PROTECTED_RE = re.compile(
     re.IGNORECASE,
 )
 _CONFIG_SHAPE_RE = re.compile(
-    r"^(?:-\s+)?(?:uses|run|name|if|env|with|image|services|steps|jobs|stages|"
-    r"[A-Za-z_][\w.-]*)\s*[:=]\s*\S",
+    r"""^(?:-\s+)?(?:uses|run|name|if|env|with|image|services|steps|jobs|stages|"""
+    r"""[A-Za-z_][\w.-]*|["'][^"']+["'])\s*[:=]\s*\S""",
     re.IGNORECASE,
 )
-_DOCKER_SHAPE_RE = re.compile(r"^(?:FROM|RUN|COPY|ADD|ENV|ARG|CMD|ENTRYPOINT)\s+")
+_DOCKER_SHAPE_RE = re.compile(
+    r"^(?:ADD|ARG|CMD|COPY|ENTRYPOINT|ENV|EXPOSE|FROM|HEALTHCHECK|LABEL|RUN|SHELL|USER|VOLUME|WORKDIR)\s+"
+)
 _NARRATION_RE = re.compile(
     r"^(?:first|then|next|now|finally|add|build|call|check|configure|create|define|"
     r"deploy|fetch|get|install|load|publish|run|set|setup|test|update|validate|write)\b",
     re.IGNORECASE,
 )
-_WORD_RE = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
-_STOPWORDS: Final = frozenset(
-    {"a", "an", "and", "for", "from", "in", "of", "on", "the", "then", "this", "to", "we"}
-)
+_WORD_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]*")
+_STOPWORDS: Final = frozenset({"a", "an", "and", "for", "from", "in", "of", "on", "the", "then", "this", "to", "we"})
 
 
 @dataclass(frozen=True)
@@ -136,13 +156,20 @@ REGISTRY: Final = {
 
 def is_text_path(path: Path) -> bool:
     """Return whether the cross-file checker owns this path."""
-    return path.suffix.lower() in _TEXT_SUFFIXES or path.name.lower() in _TEXT_NAMES
+    name = path.name.lower()
+    return (
+        path.suffix.lower() in _TEXT_SUFFIXES
+        or name in _TEXT_NAMES
+        or name == ".env"
+        or name.startswith(("dockerfile.", ".env."))
+    )
 
 
 def check_paths(paths: Sequence[str], *, root: Path | None = None) -> list[Finding]:
     """Check routed files, returning findings in stable path/line order."""
     base = (root or Path.cwd()).resolve()
     durable_patterns = _durable_patterns(base)
+    excluded_patterns = _text_exclusions(base)
     findings: list[Finding] = []
     for raw in paths:
         path = Path(raw)
@@ -152,7 +179,8 @@ def check_paths(paths: Sequence[str], *, root: Path | None = None) -> list[Findi
             continue
         relative = _relative(path.resolve(), base)
         findings.extend(_artifact_findings(path, relative, source, durable_patterns))
-        findings.extend(_comment_findings(path, source))
+        if not any(fnmatch(relative, pattern) for pattern in excluded_patterns):
+            findings.extend(_comment_findings(path, source))
     return sorted(findings, key=lambda item: (str(item.path), item.line, item.code))
 
 
@@ -179,10 +207,19 @@ def _artifact_findings(
 ) -> list[Finding]:
     if path.suffix.lower() not in {".md", ".mdx"}:
         return []
+    if path.name.lower() == "changelog.md":
+        return []
+    if any(part.lower() in {"_backups", "backups"} for part in path.parts):
+        return [
+            Finding(
+                path,
+                1,
+                "SARJ302",
+                "Backup work artifact — recover durable facts into maintained documentation and remove the backup copy.",
+            )
+        ]
     durable = any(fnmatch(relative, pattern) for pattern in durable_patterns)
-    if _STRONG_ARTIFACT_NAME_RE.search(path.stem) or (
-        not durable and _ARTIFACT_NAME_RE.search(path.stem)
-    ):
+    if _STRONG_ARTIFACT_NAME_RE.search(path.stem) or (not durable and _ARTIFACT_NAME_RE.search(path.stem)):
         return [
             Finding(
                 path,
@@ -193,9 +230,7 @@ def _artifact_findings(
         ]
     source_lines = source.splitlines()
     headings = [
-        number
-        for number, line in enumerate(source_lines, start=1)
-        if _EPHEMERAL_HEADING_RE.match(line.strip())
+        number for number, line in enumerate(source_lines, start=1) if _EPHEMERAL_HEADING_RE.match(line.strip())
     ]
     has_change_diary = any(_STRONG_DIARY_HEADING_RE.match(line.strip()) for line in source_lines)
     if len(headings) >= _MIN_EPHEMERAL_HEADINGS or has_change_diary:
@@ -225,6 +260,20 @@ def _durable_patterns(root: Path) -> tuple[str, ...]:
     return tuple(item for item in configured if isinstance(item, str))
 
 
+def _text_exclusions(root: Path) -> tuple[str, ...]:
+    manifest = root / ".sarj-standards.toml"
+    if not manifest.is_file():
+        return ()
+    try:
+        parsed: object = tomllib.loads(manifest.read_text(encoding="utf-8"))
+    except tomllib.TOMLDecodeError:
+        return ()
+    configured = list_field(table_field(as_table(parsed), "text"), "exclude")
+    if not configured or not all(isinstance(item, str) for item in configured):
+        return ()
+    return tuple(item for item in configured if isinstance(item, str))
+
+
 def _comment_findings(path: Path, source: str) -> list[Finding]:
     if path.suffix.lower() in {".md", ".mdx"}:
         return []
@@ -247,17 +296,18 @@ def _comment_findings(path: Path, source: str) -> list[Finding]:
         if parsed is None:
             continue
         indent, body = parsed
-        if path.suffix.lower() in {".yaml", ".yml"} and _inside_yaml_block_scalar(
-            lines, index, indent
-        ):
+        if path.suffix.lower() in {".yaml", ".yml"} and _inside_yaml_block_scalar(lines, index, indent):
             continue
         if index + 1 in config_run_lines:
             continue
-        if not body or _DIRECTIVE_RE.match(body) or _PROTECTED_RE.search(body):
+        if not body or _DIRECTIVE_RE.match(body):
             continue
-        if _looks_commented_config(path, body) and not _inside_comment_run(lines, index):
+        protected = bool(_PROTECTED_RE.search(body))
+        if not protected and _looks_commented_config(path, body) and not _inside_comment_run(path, lines, index):
             findings.append(
-                Finding(path, index + 1, "SARJ301", "Commented-out config — delete it; version control preserves history.")
+                Finding(
+                    path, index + 1, "SARJ301", "Commented-out config — delete it; version control preserves history."
+                )
             )
             continue
         next_index = _next_content_line(lines, index + 1)
@@ -266,7 +316,7 @@ def _comment_findings(path: Path, source: str) -> list[Finding]:
         next_line = lines[next_index]
         if len(next_line) - len(next_line.lstrip()) != indent:
             continue
-        attached.append((index + 1, indent, _weak_narration(body, next_line)))
+        attached.append((index + 1, indent, False if protected else _weak_narration(body, next_line)))
 
     for group in _attached_groups(attached):
         weak = [line for line, _indent, is_weak in group if is_weak]
@@ -296,39 +346,38 @@ def _commented_config_runs(path: Path, lines: list[str]) -> set[int]:
         run: list[tuple[int, str]] = []
         while index < len(lines) and (parsed := _standalone_comment(path, lines[index])) is not None:
             indent, body = parsed
-            if not (
-                path.suffix.lower() in {".yaml", ".yml"}
-                and _inside_yaml_block_scalar(lines, index, indent)
-            ):
+            if not (path.suffix.lower() in {".yaml", ".yml"} and _inside_yaml_block_scalar(lines, index, indent)):
                 run.append((index + 1, body))
             index += 1
+        if any(_DIRECTIVE_RE.match(body) for _line, body in run):
+            continue
         shaped = [line for line, body in run if _looks_commented_config(path, body)]
-        if (
-            len(shaped) >= _COMMENTED_CONFIG_RUN_MIN
-            and len(shaped) / len(run) >= _COMMENTED_CONFIG_RUN_RATIO
-        ):
+        if len(shaped) >= _COMMENTED_CONFIG_RUN_MIN and len(shaped) / len(run) >= _COMMENTED_CONFIG_RUN_RATIO:
             leaders.add(shaped[0])
     return leaders
 
 
 def _standalone_comment(path: Path, line: str) -> tuple[int, str] | None:
     stripped = line.lstrip()
-    marker = "//" if path.suffix.lower() == ".jsonc" else "#"
-    if not stripped.startswith(marker):
+    if path.suffix.lower() == ".jsonc":
+        for marker in ("//", "/*", "*"):
+            if stripped.startswith(marker):
+                body = stripped.removeprefix(marker).removesuffix("*/").strip()
+                return len(line) - len(stripped), body
         return None
-    return len(line) - len(stripped), stripped.removeprefix(marker).strip()
+    if not stripped.startswith("#"):
+        return None
+    return len(line) - len(stripped), stripped.removeprefix("#").strip()
 
 
 def _looks_commented_config(path: Path, body: str) -> bool:
-    if path.name.lower() == "dockerfile" and _DOCKER_SHAPE_RE.match(body):
+    if path.name.lower().startswith("dockerfile") and _DOCKER_SHAPE_RE.match(body):
+        return True
+    if path.suffix.lower() == ".toml" and body.startswith("[") and body.endswith("]"):
         return True
     # Config snippets are compact. A sentence that happens to put a colon after
     # its first word (`Dogfooding: ...`) is documentation, not disabled syntax.
-    if (
-        len(body.split()) > _COMMENTED_CONFIG_MAX_WORDS
-        or ". " in body
-        or not _CONFIG_SHAPE_RE.match(body)
-    ):
+    if len(body.split()) > _COMMENTED_CONFIG_MAX_WORDS or ". " in body or not _CONFIG_SHAPE_RE.match(body):
         return False
     _key, separator, value = body.partition(":" if ":" in body else "=")
     if not separator:
@@ -341,9 +390,9 @@ def _looks_commented_config(path: Path, body: str) -> bool:
     )
 
 
-def _inside_comment_run(lines: list[str], index: int) -> bool:
-    return (index > 0 and lines[index - 1].lstrip().startswith(("#", "//"))) or (
-        index + 1 < len(lines) and lines[index + 1].lstrip().startswith(("#", "//"))
+def _inside_comment_run(path: Path, lines: list[str], index: int) -> bool:
+    return (index > 0 and _standalone_comment(path, lines[index - 1]) is not None) or (
+        index + 1 < len(lines) and _standalone_comment(path, lines[index + 1]) is not None
     )
 
 
@@ -364,7 +413,12 @@ def _attached_groups(
 ) -> list[list[tuple[int, int, bool]]]:
     groups: list[list[tuple[int, int, bool]]] = []
     for entry in attached:
-        if groups and groups[-1] and entry[1] == groups[-1][-1][1] and entry[0] <= groups[-1][-1][0] + 6:
+        if (
+            groups
+            and groups[-1]
+            and entry[1] == groups[-1][-1][1]
+            and entry[0] <= groups[-1][-1][0] + _WALL_GROUP_MAX_LINES
+        ):
             groups[-1].append(entry)
         else:
             groups.append([entry])
@@ -390,15 +444,16 @@ def _weak_narration(body: str, statement: str) -> bool:
         return False
     code = {_normalize_word(word) for word in _words(statement)}
     matched = sum(word in code or word.rstrip("s") in code for word in content)
-    return (
-        matched / len(content) >= _WALL_MIN_MATCHED_RATIO
-        and len(content) - matched <= _WALL_MAX_NOVEL_WORDS
-    )
+    return matched / len(content) >= _WALL_MIN_MATCHED_RATIO and len(content) - matched <= _WALL_MAX_NOVEL_WORDS
 
 
 def _words(text: str) -> list[str]:
     """Extract typed word matches from regular-expression results."""
-    return [match.group(0) for match in _WORD_RE.finditer(text)]
+    words: list[str] = []
+    for match in _WORD_RE.finditer(text):
+        expanded = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", match.group(0))
+        words.extend(part for part in re.split(r"[-_]+", expanded) if part)
+    return words
 
 
 def _normalize_word(word: str) -> str:
