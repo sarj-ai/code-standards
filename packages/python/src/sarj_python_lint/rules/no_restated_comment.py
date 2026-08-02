@@ -187,9 +187,7 @@ class NoRestatedComment(Rule):
             return []
         lines = source.splitlines()
         wall_members = frozenset(
-            line
-            for members in statement_comment_walls(path, source, standalone).values()
-            for line in members
+            line for members in statement_comment_walls(path, source, standalone).values() for line in members
         )
         diags: list[Diagnostic] = []
         for run in comment_runs(standalone):

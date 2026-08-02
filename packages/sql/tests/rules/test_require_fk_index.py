@@ -45,8 +45,7 @@ def test_allows_fk_whose_index_arrives_in_a_later_migration(tmp_path: Path) -> N
                 ");\n"
             ),
             "20230410234751_add_foreign_key_indexes": (
-                'CREATE INDEX "WorkflowsOnEventTypes_eventTypeId_idx"\n'
-                '    ON "WorkflowsOnEventTypes"("eventTypeId");\n'
+                'CREATE INDEX "WorkflowsOnEventTypes_eventTypeId_idx"\n    ON "WorkflowsOnEventTypes"("eventTypeId");\n'
             ),
         },
     )

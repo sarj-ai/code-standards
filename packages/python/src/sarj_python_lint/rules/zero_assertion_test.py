@@ -31,31 +31,33 @@ _RAISES_NAMES = frozenset({"raises", "warns", "fail"})
 
 # These pytest and SQLAlchemy helpers verify without an assertion token in their names.
 # Keep the set exact so similarly named application helpers remain findings.
-_LIBRARY_ASSERTION_NAMES = frozenset({
-    # _pytest.pytester.LineMatcher
-    "fnmatch_lines",
-    "fnmatch_lines_random",
-    "no_fnmatch_line",
-    "no_re_match_line",
-    "re_match_lines",
-    "re_match_lines_random",
-    # sqlalchemy.testing.assertions
-    "eq_",
-    "eq_ignore_whitespace",
-    "eq_regex",
-    "in_",
-    "is_",
-    "is_false",
-    "is_instance_of",
-    "is_none",
-    "is_not",
-    "is_not_",
-    "is_not_none",
-    "is_true",
-    "ne_",
-    "not_in",
-    "not_in_",
-})
+_LIBRARY_ASSERTION_NAMES = frozenset(
+    {
+        # _pytest.pytester.LineMatcher
+        "fnmatch_lines",
+        "fnmatch_lines_random",
+        "no_fnmatch_line",
+        "no_re_match_line",
+        "re_match_lines",
+        "re_match_lines_random",
+        # sqlalchemy.testing.assertions
+        "eq_",
+        "eq_ignore_whitespace",
+        "eq_regex",
+        "in_",
+        "is_",
+        "is_false",
+        "is_instance_of",
+        "is_none",
+        "is_not",
+        "is_not_",
+        "is_not_none",
+        "is_true",
+        "ne_",
+        "not_in",
+        "not_in_",
+    }
+)
 
 _TEST_PREFIX = "test_"
 
@@ -281,9 +283,7 @@ def _names_verification(func: ast.expr) -> bool:
 
 
 def _reads_as_verification(name: str) -> bool:
-    return name in _LIBRARY_ASSERTION_NAMES or bool(
-        _ASSERTION_NAME_RE.search(name) or _RAISES_TOKEN_RE.search(name)
-    )
+    return name in _LIBRARY_ASSERTION_NAMES or bool(_ASSERTION_NAME_RE.search(name) or _RAISES_TOKEN_RE.search(name))
 
 
 def _chain_has_fluent_marker(node: ast.expr) -> bool:

@@ -533,9 +533,7 @@ _WALL_STATEMENTS = (
 def _is_wall_statement(node: ast.stmt) -> bool:
     """Exclude docstrings while retaining executable expression statements."""
     return isinstance(node, _WALL_STATEMENTS) and not (
-        isinstance(node, ast.Expr)
-        and isinstance(node.value, ast.Constant)
-        and isinstance(node.value.value, str)
+        isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str)
     )
 
 

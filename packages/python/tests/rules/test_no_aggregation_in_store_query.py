@@ -263,15 +263,15 @@ def test_aggregation_only_in_sql_comment_ignored(source: str) -> None:
     "source",
     [
         pytest.param(
-            'q = "SELECT id FROM call WHERE note = \'COUNT(*)\'"\n',
+            "q = \"SELECT id FROM call WHERE note = 'COUNT(*)'\"\n",
             id="count",
         ),
         pytest.param(
-            'q = "SELECT id FROM call WHERE note = \'GROUP BY status\'"\n',
+            "q = \"SELECT id FROM call WHERE note = 'GROUP BY status'\"\n",
             id="group-by",
         ),
         pytest.param(
-            'q = "SELECT id FROM call WHERE note = \'DISTINCT org_id\'"\n',
+            "q = \"SELECT id FROM call WHERE note = 'DISTINCT org_id'\"\n",
             id="distinct",
         ),
     ],
@@ -589,8 +589,7 @@ def test_backtick_inside_string_value_does_not_exempt_postgres_query() -> None:
     "source",
     [
         pytest.param(
-            "from google.cloud import bigquery\n"
-            'q = "SELECT COUNT(*) FROM call WHERE org_id = %s GROUP BY status"\n',
+            'from google.cloud import bigquery\nq = "SELECT COUNT(*) FROM call WHERE org_id = %s GROUP BY status"\n',
             id="positional",
         ),
         pytest.param(

@@ -52,6 +52,7 @@ jobs:
       - run: uv sync --dev
       - name: Lint + typecheck (dogfood the strict config)
         run: |
+          uv run ruff format --check src/ tests/
           uv run ruff check src/ tests/
           uv run basedpyright
           uv run sarj-lint-configs check .

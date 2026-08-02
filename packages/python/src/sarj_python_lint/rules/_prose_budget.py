@@ -27,11 +27,20 @@ _LICENSE_RE: Final = re.compile(r"\b(?:copyright|spdx-license-identifier|license
 _BOUNDARY_RE: Final = re.compile(r"(?<=[.!?])[\"'`)\]]*\s+(?=[A-Z0-9`])")
 _BULLET_RE: Final = re.compile(r"^\s*(?:[-*+] |\d+[.)] )")
 _TYPED_SECTIONS: Final = frozenset(
-    {"Args", "Arguments", "Parameters", "Params", "Keyword Args", "Keyword Arguments", "Returns", "Return", "Yields", "Yield"}
+    {
+        "Args",
+        "Arguments",
+        "Parameters",
+        "Params",
+        "Keyword Args",
+        "Keyword Arguments",
+        "Returns",
+        "Return",
+        "Yields",
+        "Yield",
+    }
 )
-_SCHEMA_BASES: Final = frozenset(
-    {"BaseModel", "BaseSettings", "RootModel", "TypedDict", "Enum", "IntEnum", "StrEnum"}
-)
+_SCHEMA_BASES: Final = frozenset({"BaseModel", "BaseSettings", "RootModel", "TypedDict", "Enum", "IntEnum", "StrEnum"})
 _SCHEMA_DECORATORS: Final = frozenset({"pydantic", "strawberry", "graphene", "msgspec"})
 
 
@@ -76,7 +85,9 @@ def groups(path: Path, source: str) -> list[ProseGroup]:
     out = _docstring_groups(tree)
     lines = source.splitlines()
     try:
-        comments = [token for token in tokenize.generate_tokens(io.StringIO(source).readline) if token.type == tokenize.COMMENT]
+        comments = [
+            token for token in tokenize.generate_tokens(io.StringIO(source).readline) if token.type == tokenize.COMMENT
+        ]
     except tokenize.TokenError, IndentationError, SyntaxError:
         return out
     run: list[tokenize.TokenInfo] = []
@@ -113,9 +124,7 @@ def _docstring_groups(tree: ast.Module) -> list[ProseGroup]:
             continue
         first = node.body[0]
         if not (
-            isinstance(first, ast.Expr)
-            and isinstance(first.value, ast.Constant)
-            and isinstance(first.value.value, str)
+            isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) and isinstance(first.value.value, str)
         ):
             continue
         if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and (
@@ -128,7 +137,9 @@ def _docstring_groups(tree: ast.Module) -> list[ProseGroup]:
         found = frozenset(
             name
             for name in sections(doc)
-            if name in _TYPED_SECTIONS and isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and _fully_typed(node)
+            if name in _TYPED_SECTIONS
+            and isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and _fully_typed(node)
         )
         out.append(ProseGroup(first.lineno, first.col_offset + 1, doc, "docstring", found))
     return out
@@ -146,6 +157,9 @@ def _is_schema_class(node: ast.ClassDef) -> bool:
 def _fully_typed(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     args = node.args
     parameters = (*args.posonlyargs, *args.args, *args.kwonlyargs)
-    return node.returns is not None and all(arg.arg in {"self", "cls"} or arg.annotation is not None for arg in parameters) and (
-        args.vararg is None or args.vararg.annotation is not None
-    ) and (args.kwarg is None or args.kwarg.annotation is not None)
+    return (
+        node.returns is not None
+        and all(arg.arg in {"self", "cls"} or arg.annotation is not None for arg in parameters)
+        and (args.vararg is None or args.vararg.annotation is not None)
+        and (args.kwarg is None or args.kwarg.annotation is not None)
+    )

@@ -234,9 +234,7 @@ def test_a_label_heading_a_three_line_region_is_not_narration():
 
 def test_a_label_heading_a_two_line_region_still_fires():
     source = (
-        "def f():\n    # Create token pair\n"
-        "    tokens = self.jwt_service.create_token_pair(user)\n"
-        "    assert tokens\n"
+        "def f():\n    # Create token pair\n    tokens = self.jwt_service.create_token_pair(user)\n    assert tokens\n"
     )
     assert len(_check(source)) == 1
 

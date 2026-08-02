@@ -88,7 +88,7 @@ def test_a_docstring_restating_only_the_signature_is_recognised() -> None:
 
 
 def test_a_text_with_no_content_words_is_not_a_restatement() -> None:
-    """"Says nothing" and "says only what the code says" are different findings."""
+    """Distinguish empty prose from a restatement of the code."""
     node = _func("def run() -> None: ...")
     assert not restates("The a of it.", signature_stems(node, None))
 

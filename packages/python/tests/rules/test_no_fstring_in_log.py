@@ -336,11 +336,7 @@ def test_suppresses_calls_with_stdlib_only_keyword(keyword: str):
 
 
 def test_stdlib_attribute_binding_does_not_suppress_unrelated_logger():
-    source = (
-        "import logging\n"
-        "self.logger = logging.getLogger()\n"
-        'logger.info(f"{x}")\n'
-    )
+    source = 'import logging\nself.logger = logging.getLogger()\nlogger.info(f"{x}")\n'
     assert len(_check(source)) == 1
 
 

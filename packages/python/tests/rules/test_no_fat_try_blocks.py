@@ -753,8 +753,7 @@ except ValueError:
 )
 def test_definition_time_calls_count(definition: str):
     body = "\n".join(
-        "\n".join(f"    {line}" for line in definition.replace("N", str(i)).splitlines())
-        for i in range(4)
+        "\n".join(f"    {line}" for line in definition.replace("N", str(i)).splitlines()) for i in range(4)
     )
     src = f"try:\n{body}\nexcept ValueError:\n    pass\n"
     assert len(_check(src)) == 1

@@ -16,9 +16,7 @@ from sarj_python_lint._secret_names import identifier_tokens, is_secret_name, le
         ("ToKeN", ["token", "to", "ke", "n"]),
     ],
 )
-def test_identifier_tokens_preserve_whole_segments_and_split_case(
-    identifier: str, tokens: list[str]
-) -> None:
+def test_identifier_tokens_preserve_whole_segments_and_split_case(identifier: str, tokens: list[str]) -> None:
     assert identifier_tokens(identifier) == tokens
 
 
