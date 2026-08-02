@@ -78,6 +78,14 @@ there is no blanket directory exemption:
 exclude = ["examples/generated-values/**"]
 ```
 
+In source code, use names, types, small functions, and data structures to carry
+the explanation. One sentence of nearby rationale is clean; exactly two
+sentences is a non-blocking warning; three or more is an error and should be
+reduced to the local constraint or moved to an ADR/doc. Fully typed functions
+must not repeat parameters or returns in docstring/JSDoc tables, while external
+contracts, invariants, failures, examples, generated docs, directives,
+licenses, and runtime-consumed prompt/tool/route documentation remain valid.
+
 ### `doctor` — one version, not three
 
 A consumer repo used to state a Sarj version in three independent places: the

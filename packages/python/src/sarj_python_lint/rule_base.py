@@ -5,6 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 import ast
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 import re
 from typing import TYPE_CHECKING, Final
@@ -58,6 +59,13 @@ def is_suppressed(source_lines: Sequence[str], line: int, code: str) -> bool:
     return code.upper() in codes
 
 
+class Severity(StrEnum):
+    """Whether a diagnostic blocks the lint command."""
+
+    WARNING = "warning"
+    ERROR = "error"
+
+
 @dataclass(frozen=True, slots=True)
 class Diagnostic:
     """A single lint finding."""
@@ -67,10 +75,12 @@ class Diagnostic:
     col: int
     code: str
     message: str
+    severity: Severity = Severity.ERROR
 
     def format(self) -> str:
         """Render the finding ruff-compatibly as `path:line:col: CODE message`."""
-        return f"{self.path}:{self.line}:{self.col}: {self.code} {self.message}"
+        label = "warning: " if self.severity is Severity.WARNING else ""
+        return f"{self.path}:{self.line}:{self.col}: {self.code} {label}{self.message}"
 
 
 class Rule(ABC):

@@ -47,6 +47,7 @@ class _Args(argparse.Namespace):
     name: str = ""
     files: list[str]
     noise_only: bool = False
+    python_baseline: Path | None = None
 
     def __init__(self) -> None:
         super().__init__()
@@ -331,7 +332,11 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_init(args)
         case "check":
             try:
-                return runner.run(args.files, noise_only=args.noise_only)
+                return runner.run(
+                    args.files,
+                    noise_only=args.noise_only,
+                    python_baseline=args.python_baseline,
+                )
             except ValueError as exc:
                 print(f"error: {exc}", file=sys.stderr)
                 return 2

@@ -9,7 +9,7 @@ from pathlib import Path
 import sys
 
 from sarj_python_lint import __version__
-from sarj_python_lint.rule_base import Diagnostic, is_suppressed
+from sarj_python_lint.rule_base import Diagnostic, Severity, is_suppressed
 from sarj_python_lint.rules import REGISTRY
 
 
@@ -125,6 +125,8 @@ def _explain(wanted: str) -> int:
 def _baseline_counts(diags: list[Diagnostic]) -> dict[str, dict[str, int]]:
     counts: dict[str, dict[str, int]] = {}
     for d in diags:
+        if d.severity is Severity.WARNING:
+            continue
         counts.setdefault(str(d.path), {})
         counts[str(d.path)][d.code] = counts[str(d.path)].get(d.code, 0) + 1
     return counts
@@ -160,6 +162,9 @@ def _apply_baseline(diags: list[Diagnostic], baseline: dict[str, dict[str, int]]
     seen: Counter[tuple[str, str]] = Counter()
     out: list[Diagnostic] = []
     for d in diags:
+        if d.severity is Severity.WARNING:
+            out.append(d)
+            continue
         key = (str(d.path), d.code)
         seen[key] += 1
         if seen[key] > baseline.get(key[0], {}).get(key[1], 0):
@@ -221,7 +226,7 @@ def main(argv: list[str] | None = None) -> int:
         diags = _apply_baseline(diags, _read_baseline(args.baseline))
     for d in diags:
         sys.stdout.write(d.format() + "\n")
-    return 1 if diags else 0
+    return 1 if any(d.severity is Severity.ERROR for d in diags) else 0
 
 
 if __name__ == "__main__":

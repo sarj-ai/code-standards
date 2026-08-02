@@ -67,7 +67,7 @@ lint:
 	# `lint-configs-ci.yml` runs the custom SARJ rules over this package and
 	# `make lint` did not, so a change could pass `make verify` locally and fail
 	# CI on rules this repo wrote. Dogfooding that stops at ruff is not dogfooding.
-	cd packages/lint-configs   && uv run sarj-lint-configs check src/ tests/
+	cd packages/lint-configs   && uv run sarj-lint-configs check --python-baseline sarj-comment-baseline.json src/ tests/
 
 typecheck:
 	cd packages/python         && uv run basedpyright
