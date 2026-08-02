@@ -1,7 +1,6 @@
 """SARJ002 — O(n²) single-accumulator string growth inside loops.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_inefficient_string_concat_in_loop.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ002.md
 """
 
 from __future__ import annotations
@@ -45,7 +44,6 @@ def _src(node: ast.expr) -> str:
 class InefficientStringConcatInLoop(Rule):
     id: str = "inefficient-string-concat-in-loop"
     code: str = "SARJ002"
-    has_evidence: bool = True
     description: str = "`s += '...'` / `s = s + '...'` in a loop is O(n²); append to a list and join."
 
     @override

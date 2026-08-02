@@ -1,7 +1,6 @@
 """SARJ067 — Mock setup the test can never exercise is a lie about what is covered.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_unused_mock_setup.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ067.md
 """
 
 from __future__ import annotations
@@ -76,7 +75,6 @@ class _Finding(NamedTuple):
 class UnusedMockSetup(Rule):
     id: str = "unused-mock-setup"
     code: str = "SARJ067"
-    has_evidence: bool = True
     description: str = "Mock setup the test can never exercise — overwritten before use, or asserted never called."
 
     @override

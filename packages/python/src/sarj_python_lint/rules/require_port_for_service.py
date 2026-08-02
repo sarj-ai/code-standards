@@ -1,7 +1,6 @@
 """SARJ071 — A concrete service with injected collaborators and no ABC above it is not substitutable.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_require_port_for_service.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ071.md
 """
 
 from __future__ import annotations
@@ -155,7 +154,6 @@ _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 class RequirePortForService(Rule):
     id: str = "require-port-for-service"
     code: str = "SARJ071"
-    has_evidence: bool = True
     description: str = (
         # `*Client` is NOT in the name gate — it was measured and excluded (7 OSS
         # false positives, 0 first-party gain), because a class whose collaborator

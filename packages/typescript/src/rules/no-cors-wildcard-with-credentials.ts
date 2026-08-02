@@ -2,7 +2,6 @@
  * @fileoverview no-cors-wildcard-with-credentials — `Access-Control-Allow-Origin: *` together with credentials lets any site read authenticated responses.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-cors-wildcard-with-credentials.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-cors-wildcard-with-credentials.md
  */
 
 import { type TSESTree } from "@typescript-eslint/utils";

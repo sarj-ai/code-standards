@@ -1,4 +1,5 @@
 """CLI for syncing bundled lint configs into a consumer repository."""
+
 from __future__ import annotations
 
 import argparse
@@ -12,20 +13,20 @@ from . import CONFIGS_DIR, __version__, doctor, manifest, packagemanager, runner
 
 
 CONFIG_NAMES: Final[dict[str, tuple[str, str]]] = {
-    "ruff":         ("ruff.strict.toml", ".ruff-strict.toml"),
-    "pyright":      ("pyright.strict.json", ".pyright-strict.json"),
-    "eslint":       ("eslint.strict.mjs", "eslint.strict.mjs"),
+    "ruff": ("ruff.strict.toml", ".ruff-strict.toml"),
+    "pyright": ("pyright.strict.json", ".pyright-strict.json"),
+    "eslint": ("eslint.strict.mjs", "eslint.strict.mjs"),
     "markdownlint": ("markdownlint.strict.yaml", ".markdownlint.yaml"),
-    "taplo":        ("taplo.strict.toml", ".taplo.toml"),
-    "yamllint":     ("yamllint.strict.yaml", ".yamllint.yaml"),
+    "taplo": ("taplo.strict.toml", ".taplo.toml"),
+    "yamllint": ("yamllint.strict.yaml", ".yamllint.yaml"),
 }
 _PYTHON_CONFIGS: Final = frozenset({"ruff", "pyright"})
 
 _NEXT_STEPS = (
     "\nnext: in your pyproject.toml, add:\n"
-     "  [tool.ruff]\n"
-     '  extend = ".ruff-strict.toml"\n'
-     "\n(or run `sarj-lint-configs init`, which writes that and the rest of the wiring)\n"
+    "  [tool.ruff]\n"
+    '  extend = ".ruff-strict.toml"\n'
+    "\n(or run `sarj-lint-configs init`, which writes that and the rest of the wiring)\n"
 )
 
 
@@ -47,7 +48,6 @@ class _Args(argparse.Namespace):
     name: str = ""
     files: list[str]
     noise_only: bool = False
-    python_baseline: Path | None = None
 
     def __init__(self) -> None:
         super().__init__()
@@ -113,13 +113,10 @@ def _declared_dests(args: _Args) -> dict[str, str]:
     one that forgot -- CI -- compared the strict config against a path where it
     was never written and reported permanent drift.
 
-    Returns:
-        Destination kind to a repo-root-relative path, empty when unknown.
-
     """
     try:
         found = manifest.load(_resolve_dest(args.dest))
-    except (TypeError, ValueError, SystemExit):
+    except TypeError, ValueError, SystemExit:
         return {}
     if found is None:
         return {}
@@ -127,22 +124,12 @@ def _declared_dests(args: _Args) -> dict[str, str]:
 
 
 def _sync_targets(args: _Args) -> list[str]:
-    """Decide which configs a `sync` or `sync --check` run covers.
-
-    `--only` wins; otherwise a repo that ran `init` gets exactly the configs it
-    declared. Falling back to all six matters: without the manifest, a Python
-    repo had to commit `eslint.strict.mjs` and keep it byte-identical forever,
-    or `sync --check` reported permanent drift and CI could never use it.
-
-    Returns:
-        Config names in canonical order.
-
-    """
+    """Decide which configs a `sync` or `sync --check` run covers."""
     if args.only:
         return list(dict.fromkeys(args.only))
     try:
         found = manifest.load(_resolve_dest(args.dest))
-    except (ValueError, SystemExit):
+    except ValueError, SystemExit:
         return list(CONFIG_NAMES)
     if found is None:
         return list(CONFIG_NAMES)
@@ -193,12 +180,7 @@ def cmd_path(args: _Args) -> int:
 
 
 def cmd_peers(args: _Args) -> int:
-    """Print the npm packages `eslint.strict.mjs` needs, at versions that resolve.
-
-    Returns:
-        Zero; the command only reports.
-
-    """
+    """Print the npm packages `eslint.strict.mjs` needs, at versions that resolve."""
     peers = manifest.eslint_peers()
     for name, pin in sorted(peers.items()):
         print(f"{name:50s} {pin}")
@@ -213,12 +195,7 @@ def cmd_peers(args: _Args) -> int:
 
 
 def cmd_doctor(args: _Args) -> int:
-    """Report every version pin site in a repo and whether it agrees with the rest.
-
-    Returns:
-        0 when every pin agrees, 1 on drift.
-
-    """
+    """Report every version pin site in a repo and whether it agrees with the rest."""
     root = _resolve_dest(args.dest)
     findings = doctor.diagnose(root)
     for finding in findings:
@@ -233,12 +210,7 @@ def cmd_doctor(args: _Args) -> int:
 
 
 def cmd_init(args: _Args) -> int:
-    """Scaffold a repo's whole adoption in one command.
-
-    Returns:
-        0 on success, 1 when nothing could be detected.
-
-    """
+    """Scaffold a repo's whole adoption in one command."""
     root = _resolve_dest(args.dest)
     plan = scaffold.build_plan(
         root,
@@ -265,9 +237,7 @@ def cmd_init(args: _Args) -> int:
     if args.dry_run:
         print("\n-- dry run; nothing is written --")
         for name in plan.configs:
-            destination = _init_dest(
-                root, name, python_dest=python_dest, typescript_dest=typescript_dest
-            )
+            destination = _init_dest(root, name, python_dest=python_dest, typescript_dest=typescript_dest)
             print(f"would sync:  {destination}")
     else:
         sync_args = _Args()
@@ -300,12 +270,7 @@ def cmd_init(args: _Args) -> int:
 
 
 def _init_dest(root: Path, name: str, *, python_dest: str, typescript_dest: str) -> Path:
-    """Locate one config's destination the same way `cmd_sync` will.
-
-    Returns:
-        The absolute path `sync` would write.
-
-    """
+    """Locate one config's destination the same way `cmd_sync` will."""
     if name == "eslint":
         base = root / typescript_dest
     elif name in _PYTHON_CONFIGS:
@@ -335,7 +300,6 @@ def main(argv: list[str] | None = None) -> int:
                 return runner.run(
                     args.files,
                     noise_only=args.noise_only,
-                    python_baseline=args.python_baseline,
                 )
             except ValueError as exc:
                 print(f"error: {exc}", file=sys.stderr)
@@ -385,12 +349,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p_path = sub.add_parser("path", help="print the absolute path of a bundled config")
     p_path.add_argument("name", choices=sorted(CONFIG_NAMES))
 
-    p_peers = sub.add_parser(
-        "peers", help="print the npm packages eslint.strict.mjs needs, at tested versions"
-    )
-    p_peers.add_argument(
-        "--dest", default=".", help="project whose package manager to speak (default: cwd)"
-    )
+    p_peers = sub.add_parser("peers", help="print the npm packages eslint.strict.mjs needs, at tested versions")
+    p_peers.add_argument("--dest", default=".", help="project whose package manager to speak (default: cwd)")
 
     p_doctor = sub.add_parser(
         "doctor",

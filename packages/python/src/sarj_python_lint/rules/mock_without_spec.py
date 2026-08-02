@@ -1,7 +1,6 @@
 """SARJ040 — A mock built without `spec=` accepts any attribute — spec it or fake it.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_mock_without_spec.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ040.md
 """
 
 from __future__ import annotations
@@ -86,7 +85,6 @@ _CANNED_RESULT_KEYWORDS = frozenset({"return_value", "side_effect"})
 class MockWithoutSpec(Rule):
     id: str = "mock-without-spec"
     code: str = "SARJ040"
-    has_evidence: bool = True
     description: str = "Mock built without `spec=`/`autospec=` — it accepts any attribute and cannot rot loudly."
 
     @override

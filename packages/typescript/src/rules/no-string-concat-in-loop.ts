@@ -2,7 +2,6 @@
  * @fileoverview no-string-concat-in-loop — `+=` on a string inside a loop rebuilds the whole string every pass, which is O(n^2).
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-string-concat-in-loop.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-string-concat-in-loop.md
  */
 
 import { type TSESTree } from "@typescript-eslint/utils";

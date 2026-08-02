@@ -1,7 +1,6 @@
 /**
  * @fileoverview _comment-wall — the shared judgement behind the comment-VOLUME rules: a run of member comments that mostly re-spell their members is a wall.
  *
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/_comment-wall.md
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";

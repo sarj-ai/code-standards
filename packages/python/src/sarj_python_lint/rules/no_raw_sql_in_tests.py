@@ -1,7 +1,6 @@
 """SARJ036 — Raw SQL INSERT executed in a test body — seed through the store.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_raw_sql_in_tests.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ036.md
 """
 
 from __future__ import annotations
@@ -29,7 +28,6 @@ _INSERT_RE = re.compile(r"\bINSERT\s+INTO\b", re.IGNORECASE)
 class NoRawSqlInTests(Rule):
     id: str = "no-raw-sql-in-tests"
     code: str = "SARJ036"
-    has_evidence: bool = True
     description: str = (
         "raw SQL INSERT executed in a test bypasses the store's write "
         "invariants — seed through the store/service methods instead."

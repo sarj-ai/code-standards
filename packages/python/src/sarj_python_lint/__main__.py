@@ -117,8 +117,6 @@ def _explain(wanted: str) -> int:
     sys.stdout.write(
         f"{cls.code}  {cls.id}\n{summary[0] if summary else cls.description}\nexamples: {cls.examples_url()}\n"
     )
-    if cls.has_evidence:
-        sys.stdout.write(f"evidence: {cls.evidence_url()}\n")
     return 0
 
 

@@ -1,7 +1,6 @@
 """SARJ012 — Secrets passed by keyword argument to a logging call.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_secret_in_log.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ012.md
 """
 
 from __future__ import annotations
@@ -47,7 +46,6 @@ def _is_secret_keyword(name: str) -> bool:
 class NoSecretInLog(Rule):
     id: str = "no-secret-in-log"
     code: str = "SARJ012"
-    has_evidence: bool = True
     description: str = "Secret passed by keyword to a logging call — redact or omit."
 
     @override

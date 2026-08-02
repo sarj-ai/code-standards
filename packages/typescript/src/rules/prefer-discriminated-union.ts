@@ -2,7 +2,6 @@
  * @fileoverview prefer-discriminated-union — a boolean status flag beside many optionals makes illegal states representable.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/prefer-discriminated-union.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/prefer-discriminated-union.md
  */
 
 import { type TSESTree } from "@typescript-eslint/utils";

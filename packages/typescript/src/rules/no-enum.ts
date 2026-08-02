@@ -2,7 +2,6 @@
  * @fileoverview no-enum — a TypeScript `enum` emits runtime code, defaults to numbers, and does not tree-shake.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-enum.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-enum.md
  */
 
 import { type TSESTree } from "@typescript-eslint/utils";

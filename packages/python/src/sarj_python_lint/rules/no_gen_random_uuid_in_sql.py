@@ -1,7 +1,6 @@
 """SARJ053 — `gen_random_uuid()` in SQL embedded in Python — use `uuidv7()`.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_gen_random_uuid_in_sql.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ053.md
 """
 
 from __future__ import annotations
@@ -52,7 +51,6 @@ _MESSAGE = (
 class NoGenRandomUuidInSql(Rule):
     id: str = "no-gen-random-uuid-in-sql"
     code: str = "SARJ053"
-    has_evidence: bool = True
     description: str = (
         "`gen_random_uuid()` in SQL embedded in Python emits a random UUIDv4 — "
         "use `uuidv7()` so primary keys are time-ordered."

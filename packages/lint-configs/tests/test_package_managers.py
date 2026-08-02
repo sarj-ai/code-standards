@@ -1,13 +1,4 @@
-"""`init` has to speak the npm client the repo actually uses, or it writes a no-op.
-
-The shipped ESLint peer set does not install without an override -- the config's
-unicorn floor needs `eslint >= 10.4` while the newest `eslint-plugin-react` peers
-`eslint <= ^9.7` -- and only npm reads a top-level `overrides` key. pnpm reads
-`pnpm.overrides`, Yarn reads `resolutions`, and both ignore npm's spelling in
-silence. Writing npm's block into a pnpm or Yarn repo therefore fails exactly as
-writing nothing would, except `package.json` now looks fixed. Two of the three
-TypeScript layouts measured are not npm.
-"""
+"""`init` has to speak the npm client the repo actually uses, or it writes a no-op."""
 
 from __future__ import annotations
 
@@ -53,9 +44,7 @@ def _project(root: Path, lockfile: str, package_json: dict[str, object] | None =
         ("package-lock.json", PackageManager.NPM),
     ],
 )
-def test_the_lockfile_names_the_client(
-    tmp_path: Path, lockfile: str, expected: PackageManager
-) -> None:
+def test_the_lockfile_names_the_client(tmp_path: Path, lockfile: str, expected: PackageManager) -> None:
     assert packagemanager.detect(_project(tmp_path, lockfile)) == expected
 
 
@@ -66,9 +55,7 @@ def test_a_repo_with_no_lockfile_is_assumed_to_be_npm(tmp_path: Path) -> None:
 
 def test_the_packagemanager_field_beats_a_stray_lockfile(tmp_path: Path) -> None:
     """Corepack enforces the field, so a repo declaring Yarn cannot be installed with npm."""
-    root = _project(
-        tmp_path, "package-lock.json", {"name": "web", "packageManager": "yarn@4.15.0"}
-    )
+    root = _project(tmp_path, "package-lock.json", {"name": "web", "packageManager": "yarn@4.15.0"})
     assert packagemanager.detect(root) == PackageManager.YARN
 
 
@@ -88,9 +75,7 @@ def test_yarn_gets_a_path_selector_with_the_version_resolved() -> None:
     """Yarn has no `$dep` indirection; a literal `$eslint` is a range it cannot parse."""
     overrides = packagemanager.overrides_for(PackageManager.YARN)
     assert overrides.key_path == ("resolutions",)
-    assert overrides.entries == {
-        "eslint-plugin-react/eslint": manifest.eslint_peers()["eslint"]
-    }
+    assert overrides.entries == {"eslint-plugin-react/eslint": manifest.eslint_peers()["eslint"]}
     assert "$" not in json.dumps(overrides.as_document())
 
 
@@ -103,9 +88,7 @@ def test_yarn_gets_a_path_selector_with_the_version_resolved() -> None:
         (PackageManager.BUN, "bun add -d --exact"),
     ],
 )
-def test_the_install_command_is_the_one_that_client_understands(
-    client: PackageManager, prefix: str
-) -> None:
+def test_the_install_command_is_the_one_that_client_understands(client: PackageManager, prefix: str) -> None:
     command = packagemanager.install_command(client)
     assert command.startswith(prefix)
     for name, pin in manifest.eslint_peers().items():

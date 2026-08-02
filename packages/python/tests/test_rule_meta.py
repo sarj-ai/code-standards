@@ -16,8 +16,8 @@ commit the sentence describes: 715 docstrings, 10,949 lines, 42.96%.)
 What replaced it: a rule is documented when its behaviour is pinned by a test module
 and its links to that module resolve. `test_every_rule_has_an_examples_module` is the
 new floor — examples cannot rot into vagueness the way prose can, because they run.
-The links are DERIVED (`Rule.examples_path`, `Rule.evidence_path`) rather than written,
-so a rename fails this file instead of leaving a dead URL in a docstring.
+The examples link is derived from the rule module, so a rename fails this file
+instead of leaving a dead URL in a docstring.
 
 Also the gate on code allocation. Two rules sharing a `SARJ###`, or a new rule claiming
 a code the registry has already retired, are both invisible at runtime — the CLI keys on
@@ -207,24 +207,8 @@ def test_every_rule_has_an_examples_module(rule_id: str) -> None:
 
 
 @pytest.mark.parametrize("rule_id", sorted(REGISTRY))
-def test_evidence_flag_matches_the_filesystem(rule_id: str) -> None:
-    """`has_evidence` is declared, not probed, so this is what keeps it true.
-
-    It has to be declared: the CLI prints the evidence link from an installed wheel,
-    which does not ship `docs/`. This test is the only thing standing between a
-    declared flag and a 404.
-    """
-    cls = REGISTRY[rule_id]
-    exists = (_REPO_ROOT / cls.evidence_path()).is_file()
-    assert cls.has_evidence == exists, (
-        f"{rule_id}: has_evidence={cls.has_evidence} but {cls.evidence_path()} "
-        f"{'exists' if exists else 'does not exist'}"
-    )
-
-
-@pytest.mark.parametrize("rule_id", sorted(REGISTRY))
 def test_module_docstring_is_a_summary_plus_derived_links(rule_id: str) -> None:
-    """Every rule's docstring is a one-line claim and the two generated links."""
+    """Every rule's docstring is a concise claim plus its executable examples."""
     cls = REGISTRY[rule_id]
     doc = _module_docstring(cls)
     lines = _content_lines(doc)
@@ -232,36 +216,28 @@ def test_module_docstring_is_a_summary_plus_derived_links(rule_id: str) -> None:
     assert lines, f"{rule_id}: empty module docstring"
     assert len(lines) <= _MAX_DOCSTRING_LINES, (
         f"{rule_id}: module docstring is {len(lines)} content lines, cap is {_MAX_DOCSTRING_LINES}. "
-        f"Measurements belong in {cls.evidence_path()}; examples belong in {cls.examples_path()}."
+        f"Put behavior in {cls.examples_path()}, not prose."
     )
 
     expected_examples = f"Examples: {cls.examples_url()}"
     assert expected_examples in lines, (
         f"{rule_id}: module docstring must carry the derived examples link.\n  expected: {expected_examples}"
     )
-    expected_evidence = f"Evidence: {cls.evidence_url()}"
-    if cls.has_evidence:
-        assert expected_evidence in lines, (
-            f"{rule_id}: has_evidence is set, so the docstring must carry\n  {expected_evidence}"
-        )
-    else:
-        assert expected_evidence not in lines, f"{rule_id}: docstring links evidence that does not exist"
 
 
 @pytest.mark.parametrize("rule_id", sorted(REGISTRY))
 def test_no_rule_hand_writes_a_link(rule_id: str) -> None:
-    """Links are derived from `__module__` and `code`; a hand-typed one goes stale on rename."""
+    """The examples link is derived from `__module__`; other repo links go stale."""
     cls = REGISTRY[rule_id]
     doc = _module_docstring(cls)
-    derived = {cls.examples_url(), cls.evidence_url()}
     stray = [
         line.strip()
         for line in doc.splitlines()
-        if REPO_BLOB in line and not any(url in line for url in derived)
+        if REPO_BLOB in line and cls.examples_url() not in line
     ]
     assert not stray, (
-        f"{rule_id}: docstring hand-writes a repo link that `Rule.examples_url()` / "
-        f"`Rule.evidence_url()` do not generate:\n  " + "\n  ".join(stray)
+        f"{rule_id}: docstring hand-writes a repo link that `Rule.examples_url()` does not generate:\n  "
+        + "\n  ".join(stray)
     )
 
 

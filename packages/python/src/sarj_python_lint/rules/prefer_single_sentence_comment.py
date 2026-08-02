@@ -1,7 +1,6 @@
 """SARJ090 — Two sentences of comment prose should become one.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_single_sentence_comment.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ090.md
 """
 
 from __future__ import annotations
@@ -21,7 +20,6 @@ class PreferSingleSentenceComment(Rule):
     _WARNING_SENTENCES = 2
     id = "prefer-single-sentence-comment"
     code = "SARJ090"
-    has_evidence = True
     description = "Two-sentence comment — prefer one sentence and self-documenting code."
 
     @override

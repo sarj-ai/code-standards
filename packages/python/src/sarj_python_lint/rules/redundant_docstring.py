@@ -1,7 +1,6 @@
 """SARJ050 — A docstring that only re-spells the signature it sits under.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_redundant_docstring.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ050.md
 """
 
 from __future__ import annotations
@@ -73,7 +72,6 @@ def _signature_text(node: ast.FunctionDef | ast.AsyncFunctionDef, class_name: st
 class RedundantDocstring(Rule):
     id: str = "redundant-docstring"
     code: str = "SARJ050"
-    has_evidence: bool = True
     description: str = (
         "Docstring only re-spells the signature — delete the whole docstring, "
         "or replace it with what the caller cannot read off the name."

@@ -106,14 +106,8 @@ def run(
     files: Sequence[str],
     *,
     noise_only: bool = False,
-    python_baseline: Path | None = None,
 ) -> int:
-    """Dispatch files and directories to every applicable installed registry.
-
-    Returns:
-        The highest exit status produced by an applicable registry.
-
-    """
+    """Dispatch files and directories to every applicable installed registry."""
     # Keep config-only commands (`sync`, `list`, and `path`) usable directly
     # from a Standards source checkout without installing every lint package.
     # The checker packages are required only for the `check` command.
@@ -127,13 +121,8 @@ def run(
         iac_rules = _select_rules(iac_rules, _IAC_NOISE_RULES)
 
     grouped = group_paths(files)
-    python_status = (
-        _run(python_main, python_rules, grouped.python)
-        if python_baseline is None
-        else _run(python_main, python_rules, grouped.python, baseline=python_baseline)
-    )
     statuses = (
-        python_status,
+        _run(python_main, python_rules, grouped.python),
         _run(sql_main, sql_rules, grouped.sql),
         _run(iac_main, iac_rules, grouped.iac),
         textlint.run(grouped.text),
@@ -149,9 +138,6 @@ def _load_tool(
     package: str,
 ) -> tuple[Callable[[list[str]], int], Mapping[str, type[_Rule]]]:
     """Load one checker only when the all-rules command needs it.
-
-    Returns:
-        The checker entry point and its complete rule registry.
 
     Raises:
         TypeError: If an installed checker does not expose the expected API.
@@ -215,13 +201,10 @@ def _run(
     checker: Callable[[list[str]], int],
     registry: Mapping[str, type[_Rule]],
     files: Sequence[str],
-    *,
-    baseline: Path | None = None,
 ) -> int:
     if not files or not registry:
         return 0
-    baseline_args = ["--baseline", str(baseline)] if baseline is not None else []
-    return checker(["check", *_rule_args(registry), *baseline_args, "--", *files])
+    return checker(["check", *_rule_args(registry), "--", *files])
 
 
 def _rule_args(registry: Mapping[str, type[_Rule]]) -> list[str]:
@@ -234,10 +217,5 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         "--noise-only",
         action="store_true",
         help="run Python, config-prose, and AI-artifact noise rules (TypeScript uses the ESLint plugin)",
-    )
-    parser.add_argument(
-        "--python-baseline",
-        type=Path,
-        help="suppress existing Python findings up to per-file/code counts while new findings still fail",
     )
     parser.add_argument("files", nargs="+")

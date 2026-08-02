@@ -2,7 +2,6 @@
  * @fileoverview no-repeated-string-literal — the same structured literal in two functions drifts the moment one copy is edited.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-repeated-string-literal.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-repeated-string-literal.md
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";

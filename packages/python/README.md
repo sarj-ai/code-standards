@@ -139,7 +139,7 @@ the shipped config the section goes and the summary stays.
 read against source gave **~2%** false positives, the whole of which was one
 family (`Returns: A new X` — whether the value is a copy is the one thing
 `-> Self` cannot say) now guarded. Three findings on this repo's own source, all
-true, all deleted. Measurements: [docs/rules/SARJ087.md](../../docs/rules/SARJ087.md).
+true, all deleted. The guarded copy-return case is covered by the paired rule tests.
 
 ### Test ceremony, and the census it was chosen from (0.38.0)
 
@@ -151,7 +151,7 @@ true, all deleted. Measurements: [docs/rules/SARJ087.md](../../docs/rules/SARJ08
 Every comment GROUP in 19 repositories / 45,900 Python files was collected with
 its adjacent code and classified: **451,482 groups, 1,293,022 lines**, of which
 the seven comment/docstring rules that predate this release reached **4.9%**.
-The full census table is in [docs/rules/SARJ088.md](../../docs/rules/SARJ088.md).
+The shipped predicate and its boundaries are recorded in the paired rule tests.
 
 The largest precisely-detectable class left in it is the **test docstring**:
 52,894 of them, 10.1% of every comment group, and SARJ050 reached 4.7%. It

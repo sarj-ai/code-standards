@@ -1,7 +1,6 @@
 """SARJ069 — A `case Cls():` arm that reaches back into the subject for its fields.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_match_pattern_destructuring.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ069.md
 """
 
 from __future__ import annotations
@@ -72,7 +71,6 @@ _BUILTIN_NAMES = frozenset(dir(builtins))
 class PreferMatchPatternDestructuring(Rule):
     id: str = "prefer-match-pattern-destructuring"
     code: str = "SARJ069"
-    has_evidence: bool = True
     description: str = (
         "`case Cls():` binds nothing and the arm reaches back into the subject for "
         "its fields — destructure in the pattern so a renamed field fails the match "

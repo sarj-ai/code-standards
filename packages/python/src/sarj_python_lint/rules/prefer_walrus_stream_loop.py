@@ -1,7 +1,6 @@
 """SARJ077 — Prefer walrus operator in `while` loop conditions for stream/chunk reading.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_walrus_stream_loop.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ077.md
 """
 
 from __future__ import annotations
@@ -49,7 +48,6 @@ def _is_falsy_break_check(test_node: ast.AST, var_name: str) -> bool:
 class PreferWalrusStreamLoop(Rule):
     id: str = "prefer-walrus-stream-loop"
     code: str = "SARJ077"
-    has_evidence: bool = True
     description: str = (
         "stream read loop using `while True:` with assignment and break — combine "
         "into `while (chunk := stream.read(...)):`."

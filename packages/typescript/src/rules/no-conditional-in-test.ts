@@ -2,7 +2,6 @@
  * @fileoverview no-conditional-in-test — a conditional in a test body can route around the assertion, so the test passes without asserting.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-conditional-in-test.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-conditional-in-test.md
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";

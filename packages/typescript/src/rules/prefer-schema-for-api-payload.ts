@@ -2,7 +2,6 @@
  * @fileoverview prefer-schema-for-api-payload — reading a field off `response.json()` propagates `any` inward from the network boundary.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/prefer-schema-for-api-payload.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/prefer-schema-for-api-payload.md
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";

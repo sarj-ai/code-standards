@@ -1,7 +1,6 @@
 """SARJ066 — N copy-pasted test functions in one module are one `parametrize` waiting to be written.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_duplicate_test_body.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ066.md
 """
 
 from __future__ import annotations
@@ -85,7 +84,6 @@ _IDENTICAL_ADVICE = (
 class DuplicateTestBody(Rule):
     id: str = "duplicate-test-body"
     code: str = "SARJ066"
-    has_evidence: bool = True
     description: str = (
         "Test function duplicates another test's body in the same module — collapse them into "
         "one `@pytest.mark.parametrize` with `ids=`."

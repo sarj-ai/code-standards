@@ -1,7 +1,6 @@
 """SARJ010 — Unreachable code after a terminal statement.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_unreachable_after_terminal.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ010.md
 """
 
 from __future__ import annotations
@@ -86,7 +85,6 @@ def _is_generator_marker(stmt: ast.stmt) -> bool:
 class NoUnreachableAfterTerminal(Rule):
     id: str = "no-unreachable-after-terminal"
     code: str = "SARJ010"
-    has_evidence: bool = True
     description: str = "Unreachable code after a terminal statement (`return`/`raise`/`break`/`continue`)."
 
     @override

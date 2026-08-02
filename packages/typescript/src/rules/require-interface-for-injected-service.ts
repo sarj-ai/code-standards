@@ -2,7 +2,6 @@
  * @fileoverview require-interface-for-injected-service — an exported class with injected collaborators and no port above it can only be tested by mocking the class.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/require-interface-for-injected-service.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/require-interface-for-injected-service.md
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";

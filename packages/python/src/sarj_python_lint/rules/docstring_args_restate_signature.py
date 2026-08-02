@@ -1,7 +1,6 @@
 """SARJ086 — An `Args:` block that only re-spells the parameter list.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_docstring_args_restate_signature.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ086.md
 """
 
 from __future__ import annotations
@@ -32,7 +31,6 @@ if TYPE_CHECKING:
 class DocstringArgsRestateSignature(Rule):
     id: str = "docstring-args-restate-signature"
     code: str = "SARJ086"
-    has_evidence: bool = True
     description: str = (
         "`Args:` block adds nothing the signature does not already say — delete the section and keep the summary."
     )

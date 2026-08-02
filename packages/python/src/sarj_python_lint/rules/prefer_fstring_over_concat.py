@@ -1,7 +1,6 @@
 """SARJ068 — Build a string with an f-string, not `"literal" + expression`.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_fstring_over_concat.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ068.md
 """
 
 from __future__ import annotations
@@ -82,7 +81,6 @@ _TERMINATOR_OPERANDS = 2
 class PreferFstringOverConcat(Rule):
     id: str = "prefer-fstring-over-concat"
     code: str = "SARJ068"
-    has_evidence: bool = True
     description: str = (
         "String built with `+` from a literal and a runtime expression — an f-string needs no "
         "`str()` coercion and keeps the literal's spacing visible."

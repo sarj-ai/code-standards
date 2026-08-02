@@ -1,7 +1,6 @@
 """SARJ039 — Literal-only constant collection built inside a function — hoist it.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_module_level_constant.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ039.md
 """
 
 from __future__ import annotations
@@ -93,7 +92,6 @@ _INNER_SCOPE_NODES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.Cla
 class PreferModuleLevelConstant(Rule):
     id: str = "prefer-module-level-constant"
     code: str = "SARJ039"
-    has_evidence: bool = True
     description: str = (
         "a literal-only collection or compiled regex built inside a function is "
         "rebuilt on every call — hoist it to module scope."

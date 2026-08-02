@@ -1,7 +1,6 @@
 """SARJ023 — Stepdown rule — a single-caller private helper belongs below its caller.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_stepdown.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ023.md
 """
 
 from __future__ import annotations
@@ -55,7 +54,6 @@ def _walk(node: ast.AST) -> Iterator[ast.AST]:
 class Stepdown(Rule):
     id: str = "stepdown"
     code: str = "SARJ023"
-    has_evidence: bool = True
     description: str = "Private helper defined above its only caller — move it below the code that calls it."
 
     @override

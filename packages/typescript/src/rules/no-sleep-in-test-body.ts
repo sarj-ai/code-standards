@@ -2,7 +2,6 @@
  * @fileoverview no-sleep-in-test-body — a fixed sleep asserts on wall-clock time rather than on the signal, so the test flakes under CI load.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-sleep-in-test-body.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-sleep-in-test-body.md
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";

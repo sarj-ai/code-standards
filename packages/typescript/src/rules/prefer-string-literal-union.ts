@@ -2,7 +2,6 @@
  * @fileoverview prefer-string-literal-union — a raw `string` field with a closed set of values accepts every value outside it.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/prefer-string-literal-union.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/prefer-string-literal-union.md
  */
 
 import { createRule } from "./_docs.js";

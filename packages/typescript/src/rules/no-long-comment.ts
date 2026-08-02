@@ -1,7 +1,6 @@
 /**
  * @fileoverview no-long-comment — three or more sentences exceed the in-code prose budget.
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-long-comment.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-long-comment.md
  */
 
 import { createRule } from "./_docs.js";
@@ -17,7 +16,7 @@ export default createRule<Options, MessageIds>({
     docs: { description: "Limit in-code prose to two sentences." },
     schema: [],
     messages: {
-      tooLong: "Comment exceeds two sentences — keep one local fact and move durable explanation to docs or an ADR.",
+      tooLong: "Comment exceeds two sentences — keep one local fact and clarify the code itself.",
     },
   },
   defaultOptions: [],

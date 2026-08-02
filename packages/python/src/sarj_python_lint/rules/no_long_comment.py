@@ -1,7 +1,6 @@
 """SARJ091 — Three or more sentences of in-code prose exceed the comment budget.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_long_comment.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ091.md
 """
 
 from __future__ import annotations
@@ -21,8 +20,7 @@ class NoLongComment(Rule):
     _ERROR_SENTENCES = 3
     id = "no-long-comment"
     code = "SARJ091"
-    has_evidence = True
-    description = "Comment exceeds two sentences — keep one local fact and move durable explanation to docs/ADR."
+    description = "Comment exceeds two sentences — keep one local fact and clarify the code itself."
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

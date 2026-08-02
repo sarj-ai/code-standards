@@ -1,7 +1,6 @@
 """SARJ052 — Stdlib `logging` imported in application code — the house logger is loguru.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_stdlib_logging.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ052.md
 """
 
 from __future__ import annotations
@@ -48,7 +47,6 @@ _MESSAGE = (
 class NoStdlibLogging(Rule):
     id: str = "no-stdlib-logging"
     code: str = "SARJ052"
-    has_evidence: bool = True
     description: str = (
         "stdlib `logging` imported outside the loguru bridge — a second logger "
         "hierarchy with its own handlers, levels and sinks; use loguru."

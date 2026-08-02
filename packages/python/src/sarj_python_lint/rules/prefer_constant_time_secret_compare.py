@@ -1,7 +1,6 @@
 """SARJ011 — `==`/`!=` comparisons on secret-like values.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_constant_time_secret_compare.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ011.md
 """
 
 from __future__ import annotations
@@ -69,7 +68,6 @@ _AUTH_WORDS = frozenset(
 class PreferConstantTimeSecretCompare(Rule):
     id: str = "prefer-constant-time-secret-compare"
     code: str = "SARJ011"
-    has_evidence: bool = True
     description: str = "Direct `==`/`!=` on a secret — prefer `hmac.compare_digest(a, b)`."
 
     @override

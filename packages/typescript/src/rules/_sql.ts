@@ -1,7 +1,6 @@
 /**
  * @fileoverview _sql — shared extraction of statically-resolvable SQL strings, with literal values and comments neutralised before any keyword scan.
  *
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/_sql.md
  */
 
 import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";

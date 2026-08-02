@@ -2,7 +2,6 @@
  * @fileoverview no-positional-tuple-return — a positional tuple crossing a module boundary names its fields only at the call site, so call sites disagree.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-positional-tuple-return.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-positional-tuple-return.md
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";

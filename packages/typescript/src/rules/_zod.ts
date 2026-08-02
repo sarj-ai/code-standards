@@ -1,7 +1,6 @@
 /**
  * @fileoverview _zod — the single source of truth for "does this name read as a Zod schema?".
  *
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/_zod.md
  */
 
 /** The `Z<Capital>` prefix convention: `ZUser`, `ZSubmitForm`. */

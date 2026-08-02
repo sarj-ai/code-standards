@@ -1,7 +1,6 @@
 """SARJ092 — Typed signatures do not need parameter or return prose tables.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_typed_doc_sections.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ092.md
 """
 
 from __future__ import annotations
@@ -20,7 +19,6 @@ if TYPE_CHECKING:
 class NoTypedDocSections(Rule):
     id = "no-typed-doc-sections"
     code = "SARJ092"
-    has_evidence = True
     description = "Typed docstring repeats parameters or returns — delete the section and improve names/types instead."
 
     @override

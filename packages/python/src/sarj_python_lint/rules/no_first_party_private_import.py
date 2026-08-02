@@ -1,7 +1,6 @@
 """SARJ048 — Importing a private name — but only when the private name is OURS.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_first_party_private_import.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ048.md
 """
 
 from __future__ import annotations
@@ -27,7 +26,6 @@ if TYPE_CHECKING:
 class NoFirstPartyPrivateImport(Rule):
     id: str = "no-first-party-private-import"
     code: str = "SARJ048"
-    has_evidence: bool = True
     description: str = (
         "Importing a private (`_`-prefixed) name or module from a FIRST-PARTY module reaches past a "
         "surface we control and can widen. Third-party privates are never flagged — that API is not ours to change."

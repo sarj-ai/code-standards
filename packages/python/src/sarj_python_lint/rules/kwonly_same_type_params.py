@@ -1,7 +1,6 @@
 """SARJ034 — >=2 positional parameters with the same primitive annotation — swap-prone.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_kwonly_same_type_params.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ034.md
 """
 
 from __future__ import annotations
@@ -108,7 +107,6 @@ _RISKY_NAME_PART_RE = re.compile(
 class KwonlySameTypeParams(Rule):
     id: str = "kwonly-same-type-params"
     code: str = "SARJ034"
-    has_evidence: bool = True
     description: str = (
         "two or more positional parameters with the same primitive annotation "
         "are swap-prone — make them keyword-only by inserting `*`."

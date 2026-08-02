@@ -3,7 +3,6 @@
  *
  * A path joins a shared default only if its NAME makes a claim true for every rule; anything one rule needs alone is a named gate that rule opts into.
  *
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/_paths.md
  */
 
 const SCRIPT_FILE_RE = /([\\/]scripts[\\/])|(\.mjs$)/;

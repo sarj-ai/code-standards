@@ -1,7 +1,6 @@
 """SARJ041 — A test looping over a literal case table is a hand-rolled parametrize.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_test_loops_over_literal_cases.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ041.md
 """
 
 from __future__ import annotations
@@ -38,7 +37,6 @@ _SUBTESTS_FIXTURE = "subtests"
 class TestLoopsOverLiteralCases(Rule):
     id: str = "test-loops-over-literal-cases"
     code: str = "SARJ041"
-    has_evidence: bool = True
     description: str = (
         "Test loops over a literal case table — use `@pytest.mark.parametrize` so cases report separately."
     )

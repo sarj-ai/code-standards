@@ -2,7 +2,6 @@
  * @fileoverview store-insert-requires-on-conflict — a bare `INSERT` duplicates rows or throws under cron re-runs and queue redelivery.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/store-insert-requires-on-conflict.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/store-insert-requires-on-conflict.md
  */
 
 import { type TSESTree } from "@typescript-eslint/utils";

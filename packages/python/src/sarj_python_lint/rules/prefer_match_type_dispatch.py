@@ -1,7 +1,6 @@
 """SARJ080 — Prefer match/case over control-flow try/raise and sequential type guards.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_match_type_dispatch.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ080.md
 """
 
 from __future__ import annotations
@@ -341,7 +340,6 @@ class _TypeDispatchVisitor(ast.NodeVisitor):
 class PreferMatchTypeDispatch(Rule):
     id: str = "prefer-match-type-dispatch"
     code: str = "SARJ080"
-    has_evidence: bool = True
     description: str = (
         "Control-flow raise in try block or sequential type guards — prefer Python 3.10+ match/case pattern matching."
     )

@@ -1,7 +1,6 @@
 """SARJ008 — An ad-hoc dict record at a function boundary — use pydantic.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_pydantic_at_boundaries.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ008.md
 """
 
 from __future__ import annotations
@@ -39,7 +38,6 @@ class _RouteInfo:
 class PydanticAtBoundaries(Rule):
     id: str = "pydantic-at-boundaries"
     code: str = "SARJ008"
-    has_evidence: bool = True
     description: str = "Public function/route returns an untyped dict — define a pydantic model (or frozen dataclass)."
 
     @override

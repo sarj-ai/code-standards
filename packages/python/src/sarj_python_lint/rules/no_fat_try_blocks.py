@@ -1,7 +1,6 @@
 """SARJ007 — `try` block with more than 3 top-level statements that can raise.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_fat_try_blocks.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ007.md
 """
 
 from __future__ import annotations
@@ -188,7 +187,6 @@ def _all_handlers_reraise(handlers: list[ast.ExceptHandler]) -> bool:
 class NoFatTryBlocks(Rule):
     id: str = "no-fat-try-blocks"
     code: str = "SARJ007"
-    has_evidence: bool = True
     description: str = "Try block has too many throwing statements — keep try blocks skinny."
 
     @override

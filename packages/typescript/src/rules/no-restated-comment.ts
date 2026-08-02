@@ -2,7 +2,6 @@
  * @fileoverview no-restated-comment — a comment whose every content word is already on the line below can only go out of date silently.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-restated-comment.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-restated-comment.md
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";

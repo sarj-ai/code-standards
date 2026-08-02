@@ -1,7 +1,6 @@
 """SARJ049 — A one-line comment that only re-spells the statement beneath it.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_restated_comment.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ049.md
 """
 
 from __future__ import annotations
@@ -246,7 +245,6 @@ def _is_commented_out_code(body: str) -> bool:
 class NoRestatedComment(Rule):
     id: str = "no-restated-comment"
     code: str = "SARJ049"
-    has_evidence: bool = True
     description: str = (
         "Comment restates the statement below it — delete it, or replace it "
         "with the why; the code already carries the what."

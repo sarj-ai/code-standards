@@ -1,15 +1,4 @@
-"""`SARJ###` is one namespace across three packages, and only this package can see it.
-
-A suppression comment carries a bare code — `# sarj-noqa: SARJ012` — with nothing in it
-saying which linter allocated it. Each package's own `test_rule_meta.py` proves its codes
-are unique *within* that package, and that is not the property consumers need: two rules
-in different packages sharing a code make one suppression silence both.
-
-The allocation is banded (0xx Python, 1xx SQL, 2xx IaC) and the bands were holding when
-this was written, but nothing asserted them, so the next SQL rule could have taken the
-next free Python number without anything objecting. `sarj-lint-configs` depends on all
-three distributions, so it is the only place the whole namespace is importable at once.
-"""
+"""`SARJ###` is one namespace across three packages, and only this package can see it."""
 
 from __future__ import annotations
 
@@ -82,22 +71,12 @@ def test_no_two_packages_allocate_the_same_code() -> None:
 
 
 def _pins(text: str) -> list[tuple[str, str]]:
-    """Read every `'<dist>==<version>'` pin out of the hooks file.
-
-    Returns:
-        Distribution name and pinned version, in file order.
-
-    """
+    """Read every `'<dist>==<version>'` pin out of the hooks file."""
     return [(match.group(1), match.group(2)) for match in _PIN_RE.finditer(text)]
 
 
 def test_no_pre_commit_hook_pins_a_stale_sibling_version() -> None:
-    """A pin that outlives its release ships an old linter under a fresh `rev:`.
-
-    Two SQL hooks carried `sarj-sql-lint==0.5.0` through the 0.6.0 release. Nothing
-    compared the pin to the package, because nothing could: the hooks file is at the
-    repo root and the versions live in three sibling distributions.
-    """
+    """A pin that outlives its release ships an old linter under a fresh `rev:`."""
     stale = sorted(
         f"{name}=={pinned} (installed {installed})"
         for name, pinned in _pins(_HOOKS_PATH.read_text(encoding="utf-8"))

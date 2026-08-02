@@ -12,12 +12,9 @@ import sarj from "@sarj/eslint-plugin";
 export default [...sarj.configs.recommended];
 ```
 
-51 rules. Each rule's source under `src/rules/` opens with a one-line claim and
-two links: its tests, which are the examples, and `docs/rules/<rule>.md`, which
-holds the measurements, the false-positive family behind every guard, and the
-alternatives that were rejected. `meta.docs.url` points at the same document, so
-`--format=stylish` prints it. Both links are derived from the rule's name, so a
-rename moves them.
+51 rules. Each source under `src/rules/` states one concise claim and links to
+its paired tests. The definition and named test cases are the complete rule
+specification, and `meta.docs.url` points directly to those executable examples.
 
 Presets: `recommended` (warn-first), `strict` (every rule at error), `style-guide` (formatting/naming subset).
 
@@ -43,8 +40,8 @@ exported for codemods:
 import { renamedRules } from "@sarj/eslint-plugin";
 ```
 
-Migration steps, the reasoning behind each name, and why the aliases went:
-[`docs/rules/_renames.md`](../../docs/rules/_renames.md).
+The rename map and migration behavior live in
+[`src/rules/_renames.ts`](src/rules/_renames.ts) and its tests.
 
 ## New in 4.1.0 — `no-hand-rolled-sleep`
 
@@ -118,8 +115,8 @@ an abandoned placeholder.
 
 From a 37,918-comment, nine-repo measurement study. All three are
 deletion-class, so each was validated against zod / swr / zustand / TanStack
-Query as well as the maintained repos. `docs/rules/<rule>.md` carries the hit
-counts and the false-positive class every guard was built from.
+Query as well as the maintained repos. Each paired test suite records the
+false-positive shapes guarded by the implementation.
 
 | Rule | What it catches | Preset |
 |---|---|---|

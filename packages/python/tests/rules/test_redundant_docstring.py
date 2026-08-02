@@ -179,7 +179,7 @@ def test_an_annotation_carrying_the_number_counts_as_the_signature():
 # A qualifier that narrows nothing ("a SPECIFIC account", "the APPROPRIATE
 # config") was the single commonest reason a pure restatement survived. The
 # words live in `_docstrings.FILLER_QUALIFIERS`, so every rule in the family
-# reads the same list; the measurement is in docs/rules/SARJ088.md.
+# reads the same list; the paired tests are the executable specification.
 
 
 # Spelled out rather than read from the source set, so DROPPING a word fails a

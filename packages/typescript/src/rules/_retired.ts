@@ -1,7 +1,6 @@
 /**
  * @fileoverview _retired — a withdrawn rule name is burned, not recycled, because a consumer's `eslint-disable` comment or suppressions entry still names it.
  *
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/_retired.md
  */
 
 /** Why a name was withdrawn, and in which release. */

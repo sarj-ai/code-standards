@@ -120,26 +120,6 @@ def test_checker_file_list_is_protected_from_option_injection(
     assert argv_seen[-2:] == ["--", "--baseline=.evil.py"]
 
 
-def test_python_baseline_is_forwarded_before_the_file_separator(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    calls: list[list[str]] = []
-
-    def fake_load_tool(
-        _package: str,
-    ) -> tuple[Callable[[list[str]], int], Mapping[str, type[object]]]:
-        return lambda argv: calls.append(argv) or 0, {"rule": object}
-
-    monkeypatch.setattr(runner, "_load_tool", fake_load_tool)
-    source = tmp_path / "app.py"
-    source.touch()
-
-    baseline = tmp_path / "existing.json"
-    assert runner.run([str(source)], python_baseline=baseline) == 0
-    assert calls[0][-4:-1] == ["--baseline", str(baseline), "--"]
-
-
 def test_highest_status_is_propagated(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

@@ -1,6 +1,5 @@
 /**
  * @fileoverview _prose-budget — shared extraction and sentence counting for comment-budget rules.
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/_prose-budget.md
  */
 
 import { AST_NODE_TYPES, type TSESTree, type TSESLint } from "@typescript-eslint/utils";

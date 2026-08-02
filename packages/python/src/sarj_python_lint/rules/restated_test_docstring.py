@@ -1,7 +1,6 @@
 """SARJ088 — A test docstring that only re-spells the test's own name and body.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_restated_test_docstring.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ088.md
 """
 
 from __future__ import annotations
@@ -90,7 +89,6 @@ def _is_test(node: ast.FunctionDef | ast.AsyncFunctionDef, class_name: str | Non
 class RestatedTestDocstring(Rule):
     id: str = "restated-test-docstring"
     code: str = "SARJ088"
-    has_evidence: bool = True
     description: str = (
         "Test docstring only re-spells the test's own name and body — delete it; "
         "rename the test if the name does not already say it."

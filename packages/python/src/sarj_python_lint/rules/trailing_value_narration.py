@@ -1,7 +1,6 @@
 """SARJ051 — A trailing comment that spells out a literal already on the line.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_trailing_value_narration.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ051.md
 """
 
 from __future__ import annotations
@@ -131,7 +130,6 @@ def _narrates_value(body: str, code: str) -> bool:
 class TrailingValueNarration(Rule):
     id: str = "trailing-value-narration"
     code: str = "SARJ051"
-    has_evidence: bool = True
     description: str = (
         "Trailing comment restates the literal on this line — put the unit in "
         "the name (STALE_TIME_MS, or a timedelta) so it cannot drift."

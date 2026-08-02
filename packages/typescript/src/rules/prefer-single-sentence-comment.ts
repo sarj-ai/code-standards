@@ -1,7 +1,6 @@
 /**
  * @fileoverview prefer-single-sentence-comment — two sentences should be reduced to one.
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/prefer-single-sentence-comment.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/prefer-single-sentence-comment.md
  */
 
 import { createRule } from "./_docs.js";

@@ -1,7 +1,6 @@
 """SARJ060 — A test whose only assertion is the value it fed the mock verifies nothing.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_tautological_mock_assertion.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ060.md
 """
 
 from __future__ import annotations
@@ -68,7 +67,6 @@ _IMPLICIT_RECEIVERS = frozenset({"self", "cls"})
 class TautologicalMockAssertion(Rule):
     id: str = "tautological-mock-assertion"
     code: str = "SARJ060"
-    has_evidence: bool = True
     description: str = "Test's only assertion compares against the value it configured the mock to return."
 
     @override

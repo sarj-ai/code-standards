@@ -2,7 +2,6 @@
  * @fileoverview require-zod-form-validation — `formData.get(k)` hands back an attacker-controlled `FormDataEntryValue | null`.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/require-zod-form-validation.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/require-zod-form-validation.md
  */
 
 import { type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";

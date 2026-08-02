@@ -1,7 +1,6 @@
 """SARJ056 — A tenant predicate that only appears inside a conditional branch.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_optional_tenant_predicate.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ056.md
 """
 
 from __future__ import annotations
@@ -38,7 +37,6 @@ _CONDITIONAL_NODES = (ast.If, ast.IfExp)
 class NoOptionalTenantPredicate(Rule):
     id: str = "no-optional-tenant-predicate"
     code: str = "SARJ056"
-    has_evidence: bool = True
     description: str = (
         "A tenant predicate reachable only inside a conditional makes tenant scoping fail open — "
         "the query still runs, unscoped, when the filter is absent."

@@ -1,7 +1,6 @@
 """SARJ044 — A fixture returning a bare tuple forces positional unpacking everywhere.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_fixture_returns_bare_tuple.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ044.md
 """
 
 from __future__ import annotations
@@ -28,7 +27,6 @@ _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 class FixtureReturnsBareTuple(Rule):
     id: str = "fixture-returns-bare-tuple"
     code: str = "SARJ044"
-    has_evidence: bool = True
     description: str = (
         "Fixture returns a bare multi-field tuple — return a NamedTuple so consumers destructure by name."
     )

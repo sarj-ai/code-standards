@@ -1,7 +1,6 @@
 """SARJ062 — A test that substitutes six collaborators exercises the mock wiring, not the code.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_over_mocked_test.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ062.md
 """
 
 from __future__ import annotations
@@ -144,7 +143,6 @@ _TOKEN_RE = re.compile(r"[A-Z]+(?![a-z])|[A-Z][a-z0-9]*|[a-z0-9]+")
 class OverMockedTest(Rule):
     id: str = "over-mocked-test"
     code: str = "SARJ062"
-    has_evidence: bool = True
     description: str = "Test substitutes too many collaborators — it exercises the mock wiring, not the code."
 
     @override

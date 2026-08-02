@@ -1,7 +1,6 @@
 """SARJ020 — No DISTINCT / GROUP BY / COUNT in a store query — aggregate elsewhere.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_aggregation_in_store_query.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ020.md
 """
 
 from __future__ import annotations
@@ -103,7 +102,6 @@ _AGG_GATE = re.compile(r"count|group|distinct", re.IGNORECASE)
 class NoAggregationInStoreQuery(Rule):
     id: str = "no-aggregation-in-store-query"
     code: str = "SARJ020"
-    has_evidence: bool = True
     description: str = (
         "DISTINCT / GROUP BY / COUNT in a Postgres store query — push heavy "
         "aggregation to the columnar mirror (ClickHouse / BigQuery)."

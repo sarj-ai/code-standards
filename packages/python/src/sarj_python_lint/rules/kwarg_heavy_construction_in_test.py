@@ -1,7 +1,6 @@
 """SARJ045 — A domain object built with many kwargs inline belongs in a builder.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_kwarg_heavy_construction_in_test.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ045.md
 """
 
 from __future__ import annotations
@@ -39,7 +38,6 @@ _MOCK_ASSERTION_PREFIX = "assert_"
 class KwargHeavyConstructionInTest(Rule):
     id: str = "kwarg-heavy-construction-in-test"
     code: str = "SARJ045"
-    has_evidence: bool = True
     description: str = "Object built with many keywords inline in a test — extract a helper with defaults."
 
     @override

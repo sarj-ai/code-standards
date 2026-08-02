@@ -1,7 +1,6 @@
 """SARJ003 — `if/elif isinstance(...)` chains that dispatch over a *local* closed union.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_isinstance_union_chain.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ003.md
 """
 
 from __future__ import annotations
@@ -69,7 +68,6 @@ _EXCLUDED_TYPE_NAMES = frozenset(
 class NoIsinstanceUnionChain(Rule):
     id: str = "no-isinstance-union-chain"
     code: str = "SARJ003"
-    has_evidence: bool = True
     description: str = (
         "if/elif isinstance chain over locally-defined classes with an exhaustive "
         "terminal — prefer match/case with assert_never for compile-time exhaustiveness."

@@ -1,7 +1,6 @@
 /**
  * @fileoverview _secret-names — shared predicate for whether an identifier names secret material, rather than merely embedding a secret word.
  *
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/_secret-names.md
  */
 
 export const SECRET_WORDS: ReadonlySet<string> = new Set([

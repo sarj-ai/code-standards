@@ -33,14 +33,7 @@ _SOURCE_TREE_VERSION = "0.0.0.dev0"
 
 
 def test_version_string() -> None:
-    """The shipped version has to BE the pyproject version, not merely look like one.
-
-    `__version__` is what `init` writes into `.sarj-standards.toml`, what
-    `doctor` compares every consumer pin against, and what the generated CI
-    snippet types after `uvx --from sarj-lint-configs==`. A shape-only
-    assertion left all three free to advertise a number that was never
-    published.
-    """
+    """The shipped version has to BE the pyproject version, not merely look like one."""
     declared = tomllib.loads((_PACKAGE_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     assert __version__ == declared["project"]["version"]
 
@@ -162,7 +155,7 @@ def test_naming_convention_allows_framework_names() -> None:
     assert re.search(
         r'"@typescript-eslint/naming-convention".+?format:\s*\["camelCase"\].+?filter:\s*\{\s*regex:\s*"\^\(UNSAFE_\|__\)"',
         text,
-        re.DOTALL
+        re.DOTALL,
     )
 
 
@@ -175,7 +168,10 @@ def test_eslint_config_does_not_assume_react_compiler() -> None:
 def test_cli_list(tmp_path: Path) -> None:
     proc = subprocess.run(
         [sys.executable, "-m", "sarj_lint_configs", "list"],
-        capture_output=True, text=True, check=True, cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=tmp_path,
     )
     assert "ruff" in proc.stdout
     assert "pyright" in proc.stdout
@@ -188,7 +184,9 @@ def test_cli_list(tmp_path: Path) -> None:
 def test_cli_path_ruff() -> None:
     proc = subprocess.run(
         [sys.executable, "-m", "sarj_lint_configs", "path", "ruff"],
-        capture_output=True, text=True, check=True,
+        capture_output=True,
+        text=True,
+        check=True,
     )
     assert proc.stdout.strip() == str(RUFF_STRICT)
 
@@ -196,7 +194,9 @@ def test_cli_path_ruff() -> None:
 def test_cli_sync_writes_files(tmp_path: Path) -> None:
     proc = subprocess.run(
         [sys.executable, "-m", "sarj_lint_configs", "sync", "--dest", str(tmp_path)],
-        capture_output=True, text=True, check=True,
+        capture_output=True,
+        text=True,
+        check=True,
     )
     assert (tmp_path / ".ruff-strict.toml").is_file()
     assert (tmp_path / ".pyright-strict.json").is_file()
@@ -210,9 +210,10 @@ def test_cli_sync_writes_files(tmp_path: Path) -> None:
 def test_cli_sync_skips_existing_without_force(tmp_path: Path) -> None:
     (tmp_path / ".ruff-strict.toml").write_text("pre-existing")
     proc = subprocess.run(
-        [sys.executable, "-m", "sarj_lint_configs", "sync",
-         "--only", "ruff", "--dest", str(tmp_path)],
-        capture_output=True, text=True, check=True,
+        [sys.executable, "-m", "sarj_lint_configs", "sync", "--only", "ruff", "--dest", str(tmp_path)],
+        capture_output=True,
+        text=True,
+        check=True,
     )
     assert "skip" in proc.stdout
     assert (tmp_path / ".ruff-strict.toml").read_text() == "pre-existing"
@@ -221,8 +222,7 @@ def test_cli_sync_skips_existing_without_force(tmp_path: Path) -> None:
 def test_cli_sync_force_overwrites(tmp_path: Path) -> None:
     (tmp_path / ".ruff-strict.toml").write_text("pre-existing")
     subprocess.run(
-        [sys.executable, "-m", "sarj_lint_configs", "sync",
-         "--only", "ruff", "--force", "--dest", str(tmp_path)],
+        [sys.executable, "-m", "sarj_lint_configs", "sync", "--only", "ruff", "--force", "--dest", str(tmp_path)],
         check=True,
     )
     assert (tmp_path / ".ruff-strict.toml").read_text() != "pre-existing"
@@ -230,8 +230,7 @@ def test_cli_sync_force_overwrites(tmp_path: Path) -> None:
 
 def test_cli_sync_only_ruff(tmp_path: Path) -> None:
     subprocess.run(
-        [sys.executable, "-m", "sarj_lint_configs", "sync",
-         "--only", "ruff", "--dest", str(tmp_path)],
+        [sys.executable, "-m", "sarj_lint_configs", "sync", "--only", "ruff", "--dest", str(tmp_path)],
         check=True,
     )
     assert (tmp_path / ".ruff-strict.toml").is_file()
@@ -242,15 +241,17 @@ def test_cli_sync_only_ruff(tmp_path: Path) -> None:
 def test_cli_unknown_subcommand_exits_nonzero(tmp_path: Path) -> None:
     proc = subprocess.run(
         [sys.executable, "-m", "sarj_lint_configs", "bogus"],
-        capture_output=True, text=True, cwd=tmp_path, check=False,
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        check=False,
     )
     assert proc.returncode != 0
 
 
 def test_synced_ruff_parses_as_toml(tmp_path: Path) -> None:
     subprocess.run(
-        [sys.executable, "-m", "sarj_lint_configs", "sync",
-         "--only", "ruff", "--dest", str(tmp_path)],
+        [sys.executable, "-m", "sarj_lint_configs", "sync", "--only", "ruff", "--dest", str(tmp_path)],
         check=True,
     )
     parsed = tomllib.loads((tmp_path / ".ruff-strict.toml").read_text())
@@ -261,7 +262,9 @@ def test_sync_to_nonexistent_dest_errors(tmp_path: Path) -> None:
     bogus = tmp_path / "does-not-exist"
     proc = subprocess.run(
         [sys.executable, "-m", "sarj_lint_configs", "sync", "--dest", str(bogus)],
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     assert proc.returncode != 0
 
@@ -423,17 +426,17 @@ def test_sync_check_detects_drift(tmp_path: Path) -> None:
 def test_ruff_consumes_synced_extend_file(tmp_path: Path) -> None:
     pytest.importorskip("ruff", reason="ruff not installed in this env")
     subprocess.run(
-        [sys.executable, "-m", "sarj_lint_configs", "sync",
-         "--only", "ruff", "--dest", str(tmp_path)],
+        [sys.executable, "-m", "sarj_lint_configs", "sync", "--only", "ruff", "--dest", str(tmp_path)],
         check=True,
     )
-    (tmp_path / "pyproject.toml").write_text(
-        '[tool.ruff]\nextend = ".ruff-strict.toml"\n'
-    )
+    (tmp_path / "pyproject.toml").write_text('[tool.ruff]\nextend = ".ruff-strict.toml"\n')
     (tmp_path / "ok.py").write_text("x = 1\n")
     proc = subprocess.run(
         ["ruff", "check", "--no-cache", str(tmp_path / "ok.py")],
-        capture_output=True, text=True, cwd=tmp_path, check=False,
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        check=False,
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "error reading config" not in proc.stderr.lower()

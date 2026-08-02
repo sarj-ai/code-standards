@@ -1,7 +1,6 @@
 """SARJ043 — A test that verifies nothing passes as long as the code doesn't raise.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_zero_assertion_test.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ043.md
 """
 
 from __future__ import annotations
@@ -114,7 +113,6 @@ _COLLECTED_SUFFIX = "_test.py"
 class ZeroAssertionTest(Rule):
     id: str = "zero-assertion-test"
     code: str = "SARJ043"
-    has_evidence: bool = True
     description: str = "Test contains no assertion of any kind — it passes as long as nothing raises."
 
     @override

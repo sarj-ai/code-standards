@@ -333,7 +333,7 @@
       "kind": "code",
       "status": "removed",
       "replacement": null,
-      "note": "renumbered to SARJ083 in sarj-python-lint 0.26.0, and SARJ083 was itself removed in 0.37.0 -- so there is nothing to renumber to. Delete the `sarj-noqa` comment and any suppression-baseline key. Measurement: docs/rules/retired/SARJ083.md."
+      "note": "renumbered to SARJ083 in sarj-python-lint 0.26.0, and SARJ083 was itself removed in 0.37.0 -- so there is nothing to renumber to. Delete the `sarj-noqa` comment and any suppression-baseline key."
     },
     {
       "id": "SARJ061",
@@ -347,14 +347,14 @@
       "kind": "code",
       "status": "removed",
       "replacement": null,
-      "note": "removed in sarj-python-lint 0.37.0 with the no-implicit-attribute-access rule: 30 corpus findings read, 10 hard false positives and 5 weak true positives. Delete every `# sarj-noqa: SARJ083` comment and every SARJ083 key in `.sarj-python-baseline.json`; a dead baseline key never fails, but it hides how large the baseline really is. Measurement: docs/rules/retired/SARJ083.md."
+      "note": "removed in sarj-python-lint 0.37.0 with the no-implicit-attribute-access rule: 30 corpus findings read, 10 hard false positives and 5 weak true positives. Delete every `# sarj-noqa: SARJ083` comment and every SARJ083 key in `.sarj-python-baseline.json`; a dead baseline key never fails, but it hides how large the baseline really is."
     },
     {
       "id": "no-implicit-attribute-access",
       "kind": "python",
       "status": "removed",
       "replacement": null,
-      "note": "removed in sarj-python-lint 0.37.0: 30 corpus findings read, 10 hard false positives and 5 weak true positives. Delete the `sarj-no-implicit-attribute-access` pre-commit hook. Measurement: docs/rules/retired/SARJ083.md."
+      "note": "removed in sarj-python-lint 0.37.0: 30 corpus findings read, 10 hard false positives and 5 weak true positives. Delete the `sarj-no-implicit-attribute-access` pre-commit hook."
     },
     {
       "id": "no-patching-system-under-test",

@@ -2,7 +2,6 @@
  * @fileoverview prefer-server-actions — an internal `/api/*` mutation hand-rolls the transport, types and error path a Server Action gets from the framework.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/prefer-server-actions.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/prefer-server-actions.md
  */
 
 import { type TSESTree } from "@typescript-eslint/utils";

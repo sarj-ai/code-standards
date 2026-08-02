@@ -2,7 +2,6 @@
  * @fileoverview no-insecure-random-id — `Math.random()` is predictable, so an id, token or key built from it is guessable.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-insecure-random-id.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-insecure-random-id.md
  */
 
 import { type TSESTree } from "@typescript-eslint/utils";

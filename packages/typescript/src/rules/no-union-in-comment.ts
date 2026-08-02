@@ -2,7 +2,6 @@
  * @fileoverview no-union-in-comment — a comment listing a field's allowed strings has written a union type the compiler never gets to enforce.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-union-in-comment.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-union-in-comment.md
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";

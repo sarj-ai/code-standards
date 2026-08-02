@@ -3,7 +3,6 @@
  *
  * It feeds `scripts/sync-rule-ledger.py`, which turns each entry into a `renamed` row of the shipped `rule-ledger.json` that `sarj-lint-configs doctor` reads.
  *
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/_renames.md
  */
 
 export const renamedRules = {

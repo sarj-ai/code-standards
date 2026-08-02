@@ -1,7 +1,6 @@
 """SARJ021 — No `SELECT *` in a store query — list the columns you need.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_select_star.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ021.md
 """
 
 from __future__ import annotations
@@ -60,7 +59,6 @@ def _has_real_select_star(sql: str) -> bool:
 class NoSelectStar(Rule):
     id: str = "no-select-star"
     code: str = "SARJ021"
-    has_evidence: bool = True
     description: str = (
         "SELECT * in a store query — name the columns; * over-fetches and breaks "
         "class_row mapping when the schema changes."

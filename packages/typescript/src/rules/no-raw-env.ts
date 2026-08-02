@@ -2,7 +2,6 @@
  * @fileoverview no-raw-env — a raw `process.env` read is untyped and unvalidated, so a missing variable surfaces as `undefined` in business logic.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-raw-env.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-raw-env.md
  */
 
 import { type TSESTree } from "@typescript-eslint/utils";

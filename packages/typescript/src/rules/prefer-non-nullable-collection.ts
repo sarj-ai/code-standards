@@ -2,7 +2,6 @@
  * @fileoverview prefer-non-nullable-collection — `T[] | null` gives an empty collection two representations and a null check to every caller.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/prefer-non-nullable-collection.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/prefer-non-nullable-collection.md
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";

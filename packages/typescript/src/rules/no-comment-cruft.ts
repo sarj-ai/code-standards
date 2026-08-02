@@ -2,7 +2,6 @@
  * @fileoverview no-comment-cruft — commented-out code, section banners and file-header preambles are volume the reader pays for and nothing maintains.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-comment-cruft.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-comment-cruft.md
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
@@ -90,7 +89,7 @@ const DEFERRAL_MAX_CONTENT_WORDS = 2;
  * limit, a reason, or an owner tag. `JUSTIFICATION_RE` does not rescue those —
  * its connective list is narrow, and "as", "so <verb>" and "intentionally" are
  * not on it, which is why they were reported at all. Numbers in
- * `docs/rules/no-comment-cruft.md`.
+ * the paired tests.
  */
 function isBareDeferral(text: string): boolean {
   if (!FOR_NOW_RE.test(text)) return false;

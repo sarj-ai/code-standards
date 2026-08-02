@@ -1,7 +1,6 @@
 """SARJ082 — Prefer non-null list fields in declared data shapes.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_non_nullable_collection.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ082.md
 """
 
 from __future__ import annotations
@@ -24,7 +23,6 @@ _UNION_NAMES = frozenset({"Optional", "Union"})
 class PreferNonNullableCollection(Rule):
     id: str = "prefer-non-nullable-collection"
     code: str = "SARJ082"
-    has_evidence: bool = True
     description: str = (
         "List fields should use a non-null list and an empty default instead of two equivalent empty states."
     )

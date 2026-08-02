@@ -909,7 +909,7 @@ const config = [
       // packages/typescript/tests/strict-config-sync.test.ts fails if this block
       // omits a shipped rule, names one that does not exist, or sets a tier the
       // plugin's own `configs.strict` does not. Each rule's measurements live in
-      // docs/rules/<rule>.md, which its `meta.docs.url` points at.
+      // the paired tests, which its `meta.docs.url` points at.
       //
       // A `files:`-scoped block further down turns no-raw-env off for env
       // source-of-truth files; that is an override, not a tier change.

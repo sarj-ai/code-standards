@@ -1,7 +1,6 @@
 """SARJ018 — Embedded `INSERT INTO ... VALUES/SELECT` in store code must be an upsert.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_store_insert_requires_on_conflict.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ018.md
 """
 
 from __future__ import annotations
@@ -41,7 +40,6 @@ _CONFLICT_HANDLED = re.compile(
 class StoreInsertRequiresOnConflict(Rule):
     id: str = "store-insert-requires-on-conflict"
     code: str = "SARJ018"
-    has_evidence: bool = True
     description: str = (
         "Embedded SQL INSERT in store code without ON CONFLICT — store writes must be idempotent upserts."
     )

@@ -1,7 +1,6 @@
 /**
  * @fileoverview _tailwind — shared className-position helpers, so the Tailwind rules visit string literals and template quasis alike.
  *
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/_tailwind.md
  */
 
 /**

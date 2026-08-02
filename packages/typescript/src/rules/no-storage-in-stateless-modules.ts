@@ -2,7 +2,6 @@
  * @fileoverview no-storage-in-stateless-modules — private storage inside a module a team declared stateless diverges from the system of record, silently.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-storage-in-stateless-modules.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-storage-in-stateless-modules.md
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";

@@ -1,7 +1,6 @@
 """SARJ028 — Starlette/FastAPI CORS that echoes any Origin with credentials.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_cors_wildcard_with_credentials.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ028.md
 """
 
 from __future__ import annotations
@@ -20,7 +19,6 @@ if TYPE_CHECKING:
 class NoCorsWildcardWithCredentials(Rule):
     id: str = "no-cors-wildcard-with-credentials"
     code: str = "SARJ028"
-    has_evidence: bool = True
     description: str = (
         'CORS `allow_credentials=True` with `"*"` in `allow_origins` lets any site read authenticated responses.'
     )

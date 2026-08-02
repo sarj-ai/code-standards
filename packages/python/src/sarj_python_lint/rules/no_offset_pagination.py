@@ -1,7 +1,6 @@
 """SARJ025 — No `OFFSET` pagination in a store query — use a keyset cursor.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_offset_pagination.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ025.md
 """
 
 from __future__ import annotations
@@ -37,7 +36,6 @@ _OFFSET_PAGINATION = re.compile(
 class NoOffsetPagination(Rule):
     id: str = "no-offset-pagination"
     code: str = "SARJ025"
-    has_evidence: bool = True
     description: str = (
         "OFFSET pagination is O(N) and unstable under concurrent writes — use a "
         "keyset cursor (WHERE id > :cursor ORDER BY id LIMIT n)."

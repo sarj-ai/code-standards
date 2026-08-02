@@ -1,7 +1,6 @@
 /**
  * @fileoverview _logging — shared recognition of logging / error-reporting calls, so the catch rules and the secret rule cannot disagree.
  *
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/_logging.md
  */
 
 import { type TSESTree } from "@typescript-eslint/utils";

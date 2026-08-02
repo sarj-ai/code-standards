@@ -2,7 +2,6 @@
  * @fileoverview prefer-zod-enum — a union of `z.literal` strings infers exactly what `z.enum` does, in more syntax that hides the permitted values.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/prefer-zod-enum.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/prefer-zod-enum.md
  */
 
 import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";

@@ -1,7 +1,6 @@
 """SARJ063 — A test whose only assertions are about which calls landed on a mock.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_interaction_only_test.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ063.md
 """
 
 from __future__ import annotations
@@ -162,7 +161,6 @@ class _Profile:
 class InteractionOnlyTest(Rule):
     id: str = "interaction-only-test"
     code: str = "SARJ063"
-    has_evidence: bool = True
     description: str = "Test asserts only on mock call bookkeeping — it pins the call sequence, not the behaviour."
 
     @override

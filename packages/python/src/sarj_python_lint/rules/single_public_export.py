@@ -1,7 +1,6 @@
 """SARJ022 — Rename a junk-drawer module stem with a single public export.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_single_public_export.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ022.md
 """
 
 from __future__ import annotations
@@ -86,7 +85,6 @@ _CAMEL_BOUNDARY_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z]
 class SinglePublicExport(Rule):
     id: str = "single-public-export"
     code: str = "SARJ022"
-    has_evidence: bool = True
     description: str = "A junk-drawer module with a single public def/class should be renamed after that export."
 
     @override

@@ -1,7 +1,6 @@
 """SARJ042 — An opaque parametrize case with no id reports as `test_x[case0]`.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_parametrize_case_needs_id.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ042.md
 """
 
 from __future__ import annotations
@@ -38,7 +37,6 @@ _DECORATED_NODES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 class ParametrizeCaseNeedsId(Rule):
     id: str = "parametrize-case-needs-id"
     code: str = "SARJ042"
-    has_evidence: bool = True
     description: str = "Opaque `parametrize` case with no `ids=`/`id=` — the failing case reports as `case0`."
 
     @override

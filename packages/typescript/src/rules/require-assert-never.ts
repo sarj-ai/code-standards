@@ -2,7 +2,6 @@
  * @fileoverview require-assert-never — a switch over a union whose `default` does no runtime work stops being exhaustive the day the union grows.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/require-assert-never.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/require-assert-never.md
  */
 
 import { type TSESLint, type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";

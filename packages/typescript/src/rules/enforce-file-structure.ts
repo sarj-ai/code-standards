@@ -2,7 +2,6 @@
  * @fileoverview enforce-file-structure — imports come first, then step-down order; a `use server` directive that is not the first statement is inert.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/enforce-file-structure.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/enforce-file-structure.md
  */
 
 import { type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";

@@ -1,7 +1,6 @@
 """SARJ017 — F-string passed as the message to a logging call.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_fstring_in_log.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ017.md
 """
 
 from __future__ import annotations
@@ -32,7 +31,6 @@ _STDLIB_ONLY_KWARGS = frozenset({"exc_info", "stack_info", "extra"})
 class NoFstringInLog(Rule):
     id: str = "no-fstring-in-log"
     code: str = "SARJ017"
-    has_evidence: bool = True
     description: str = (
         "f-string message in a logging call — pass variables as structured "
         "keyword arguments so logs stay filterable and templates stay constant."
