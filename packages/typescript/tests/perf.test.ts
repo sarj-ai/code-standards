@@ -106,16 +106,15 @@ function configFor(rules: Linter.RulesRecord): Linter.Config[] {
 
 const NO_RULES = configFor({});
 
-/** Best of `repeats`. The minimum is the sample least disturbed by other load. */
-function bestMs(run: () => void, repeats: number): number {
+function elapsedMs(run: () => void): number {
+  const start = performance.now();
   run();
-  let best = Number.POSITIVE_INFINITY;
-  for (let r = 0; r < repeats; r++) {
-    const start = performance.now();
-    run();
-    best = Math.min(best, performance.now() - start);
-  }
-  return best;
+  return performance.now() - start;
+}
+
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)] ?? 0;
 }
 
 /**
@@ -123,28 +122,51 @@ function bestMs(run: () => void, repeats: number): number {
  * Measured here, in this process, next to the rule timings, so it carries the
  * same machine speed and the same background load.
  */
-const parseMs = bestMs(() => {
-  linter.verify(SOURCE, NO_RULES, "synthetic.tsx");
-}, 3);
-
 // Parsed once. Handing `verify` a `SourceCode` is what takes the parser out of
 // every subsequent measurement.
 linter.verify(SOURCE, NO_RULES, "synthetic.tsx");
 const parsed: SourceCode = linter.getSourceCode();
 
-const timingCache = new Map<string, number>();
+const ruleSamples = new Map(ruleNames.map((name) => [name, [] as number[]]));
+const ratioSamples = new Map(ruleNames.map((name) => [name, [] as number[]]));
+const parseSamples: number[] = [];
+const MEASUREMENT_ROUNDS = 7;
+
+for (const name of ruleNames) {
+  linter.verify(parsed, configFor({ [`@sarj/${name}`]: "error" }), "synthetic.tsx");
+}
+
+for (let round = 0; round < MEASUREMENT_ROUNDS; round++) {
+  const parseBefore = elapsedMs(() => linter.verify(SOURCE, NO_RULES, "synthetic.tsx"));
+  const offset = round % ruleNames.length;
+  const orderedNames = [...ruleNames.slice(offset), ...ruleNames.slice(0, offset)];
+  const roundSamples = new Map<string, number>();
+
+  for (const name of orderedNames) {
+    const config = configFor({ [`@sarj/${name}`]: "error" });
+    roundSamples.set(
+      name,
+      elapsedMs(() => linter.verify(parsed, config, "synthetic.tsx")),
+    );
+  }
+
+  const parseAfter = elapsedMs(() => linter.verify(SOURCE, NO_RULES, "synthetic.tsx"));
+  const roundParseMs = (parseBefore + parseAfter) / 2;
+  parseSamples.push(roundParseMs);
+  for (const [name, milliseconds] of roundSamples) {
+    ruleSamples.get(name)?.push(milliseconds);
+    ratioSamples.get(name)?.push(milliseconds / roundParseMs);
+  }
+}
+
+const parseMs = median(parseSamples);
 
 function ruleMs(ruleName: string): number {
-  const cached = timingCache.get(ruleName);
-  if (cached !== undefined) {
-    return cached;
-  }
-  const config = configFor({ [`@sarj/${ruleName}`]: "error" });
-  const ms = bestMs(() => {
-    linter.verify(parsed, config, "synthetic.tsx");
-  }, 7);
-  timingCache.set(ruleName, ms);
-  return ms;
+  return median(ruleSamples.get(ruleName) ?? []);
+}
+
+function ruleRatio(ruleName: string): number {
+  return median(ratioSamples.get(ruleName) ?? []);
 }
 
 const PERF_TIMEOUT_MS = 120_000;
@@ -156,16 +178,16 @@ describe("rule performance", () => {
     // both gates below stop meaning anything. A rule cannot plausibly cost as
     // much as a full parse.
     expect(parseMs, "parse of the synthetic source did not register").toBeGreaterThan(1);
-    const worst = Math.max(...ruleNames.map((name) => ruleMs(name)));
+    const worstRatio = Math.max(...ruleNames.map((name) => ruleRatio(name)));
     expect(
-      worst / parseMs,
-      `slowest rule is ${(worst / parseMs).toFixed(3)}x the parse — timings look like parse timings`,
+      worstRatio,
+      `slowest rule is ${worstRatio.toFixed(3)}x the parse — timings look like parse timings`,
     ).toBeLessThan(0.5);
   }, PERF_TIMEOUT_MS);
 
   it("no rule costs more than a fraction of parsing the same file", () => {
     for (const name of ruleNames) {
-      const ratio = ruleMs(name) / parseMs;
+      const ratio = ruleRatio(name);
       expect(
         ratio,
         `${name}: ${ratio.toFixed(4)}x the parse cost of the same file (budget ${MAX_RULE_COST_VS_PARSE})`,

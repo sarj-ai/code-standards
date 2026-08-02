@@ -380,8 +380,8 @@ const propName = (key: TSESTree.Property["key"]): string | null => {
   return null;
 };
 
-const importsEmailOrPdfRenderer = (program: TSESTree.Program): boolean => {
-  let found = program.body.some((statement) => {
+const staticallyImportsEmailOrPdfRenderer = (program: TSESTree.Program): boolean =>
+  program.body.some((statement) => {
     if (
       statement.type !== AST_NODE_TYPES.ImportDeclaration &&
       statement.type !== AST_NODE_TYPES.ExportNamedDeclaration &&
@@ -395,44 +395,6 @@ const importsEmailOrPdfRenderer = (program: TSESTree.Program): boolean => {
       EMAIL_OR_PDF_MODULE_RE.test(statement.source.value)
     );
   });
-  const visit = (node: TSESTree.Node): void => {
-    if (found) return;
-    if (
-      node.type === AST_NODE_TYPES.ImportExpression &&
-      node.source.type === AST_NODE_TYPES.Literal &&
-      typeof node.source.value === "string" &&
-      EMAIL_OR_PDF_MODULE_RE.test(node.source.value)
-    ) {
-      found = true;
-      return;
-    }
-    if (
-      node.type === AST_NODE_TYPES.CallExpression &&
-      node.callee.type === AST_NODE_TYPES.Identifier &&
-      node.callee.name === "require" &&
-      node.arguments[0]?.type === AST_NODE_TYPES.Literal &&
-      typeof node.arguments[0].value === "string" &&
-      EMAIL_OR_PDF_MODULE_RE.test(node.arguments[0].value)
-    ) {
-      found = true;
-      return;
-    }
-    for (const [key, value] of Object.entries(node)) {
-      if (key === "parent") continue;
-      for (const child of Array.isArray(value) ? value : [value]) {
-        if (
-          typeof child === "object" &&
-          child !== null &&
-          typeof (child as { type?: unknown }).type === "string"
-        ) {
-          visit(child as TSESTree.Node);
-        }
-      }
-    }
-  };
-  if (!found) visit(program);
-  return found;
-};
 
 export default createRule<Options, MessageIds>({
   name: "prefer-semantic-colors",
@@ -463,18 +425,32 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [{}],
   create(context, [options]) {
     if (STORIES_FILE_RE.test(context.filename)) return {};
-    if (importsEmailOrPdfRenderer(context.sourceCode.ast)) return {};
+    if (staticallyImportsEmailOrPdfRenderer(context.sourceCode.ast)) return {};
     if (options?.requireSemanticTokens === true && !hasSemanticTokenSystem(context.filename)) {
       return {};
     }
+
+    let importsEmailOrPdfRenderer = false;
+    const pendingReports: Array<{
+      node: TSESTree.Node;
+      messageId: MessageIds;
+      data: Record<string, string>;
+    }> = [];
+    const report = (
+      node: TSESTree.Node,
+      messageId: MessageIds,
+      data: Record<string, string>,
+    ): void => {
+      pendingReports.push({ node, messageId, data });
+    };
 
     const reportClasses = (value: string, node: TSESTree.Node): void => {
       for (const token of classTokens(value)) {
         const base = tailwindBase(token);
         if (RAW_PALETTE_RE.test(base)) {
-          context.report({ node, messageId: "rawPalette", data: { class: token } });
+          report(node, "rawPalette", { class: token });
         } else if (ARBITRARY_COLOR_RE.test(base) && !CSS_VAR_REFERENCE_RE.test(base)) {
-          context.report({ node, messageId: "arbitraryColor", data: { class: token } });
+          report(node, "arbitraryColor", { class: token });
         }
       }
     };
@@ -518,7 +494,7 @@ export default createRule<Options, MessageIds>({
         RAW_COLOR_VALUE_RE.test(node.value) &&
         !CSS_VAR_REFERENCE_RE.test(node.value)
       ) {
-        context.report({ node, messageId: "inlineColor", data: { value: node.value } });
+        report(node, "inlineColor", { value: node.value });
       }
     };
 
@@ -533,6 +509,15 @@ export default createRule<Options, MessageIds>({
         }
       },
       CallExpression(node: TSESTree.CallExpression): void {
+        if (
+          node.callee.type === AST_NODE_TYPES.Identifier &&
+          node.callee.name === "require" &&
+          node.arguments[0]?.type === AST_NODE_TYPES.Literal &&
+          typeof node.arguments[0].value === "string" &&
+          EMAIL_OR_PDF_MODULE_RE.test(node.arguments[0].value)
+        ) {
+          importsEmailOrPdfRenderer = true;
+        }
         if (node.callee.type === AST_NODE_TYPES.Identifier && CLASS_FNS.has(node.callee.name)) {
           for (const arg of node.arguments) {
             if (arg.type !== AST_NODE_TYPES.SpreadElement) checkClassNode(arg);
@@ -567,6 +552,19 @@ export default createRule<Options, MessageIds>({
       "JSXAttribute[name.name='style'] ObjectExpression > Property"(node: TSESTree.Property): void {
         const name = propName(node.key);
         if (name !== null && STYLE_COLOR_PROPS.has(name)) checkColorValueNode(node.value);
+      },
+      ImportExpression(node: TSESTree.ImportExpression): void {
+        if (
+          node.source.type === AST_NODE_TYPES.Literal &&
+          typeof node.source.value === "string" &&
+          EMAIL_OR_PDF_MODULE_RE.test(node.source.value)
+        ) {
+          importsEmailOrPdfRenderer = true;
+        }
+      },
+      "Program:exit"(): void {
+        if (importsEmailOrPdfRenderer) return;
+        for (const descriptor of pendingReports) context.report(descriptor);
       },
     };
   },
