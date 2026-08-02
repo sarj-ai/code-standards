@@ -2,7 +2,6 @@
  * @fileoverview no-hand-rolled-sleep — a hand-rolled promisified timer cannot be cancelled; the stdlib form takes an `AbortSignal`.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-hand-rolled-sleep.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-hand-rolled-sleep.md
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
@@ -18,7 +17,6 @@ type Options = readonly [
   }?,
 ];
 
-/** Receivers of an explicit `<obj>.setTimeout(...)` that still mean the global. */
 const GLOBAL_OBJECTS: ReadonlySet<string> = new Set([
   "globalThis",
   "window",
@@ -26,18 +24,12 @@ const GLOBAL_OBJECTS: ReadonlySet<string> = new Set([
   "global",
 ]);
 
-/** Modules whose presence proves the file is bundled for a non-Node runtime. */
 const CLIENT_ONLY_MODULES =
   /^(react|react-dom|react-native|svelte|vue|preact|solid-js)(\/|$)|^next\/(navigation|router|link|image)$/;
 
-/** `Promise` combinators whose losing arm is discarded, leaking an orphan timer. */
 const RACE_METHODS: ReadonlySet<string> = new Set(["race", "any"]);
 
-/**
- * Glob-ish matcher mirroring `require-fetch-timeout`'s: `**` spans separators,
- * `*` does not. Kept local for the same reason it is there — two call sites do
- * not yet justify a shared module, and the semantics must not drift silently.
- */
+/** Match configured paths where `**` spans separators and `*` does not. */
 function matchesAnyPattern(filename: string, patterns: readonly string[]): boolean {
   for (const pattern of patterns) {
     const regexSource = pattern
@@ -52,7 +44,6 @@ function matchesAnyPattern(filename: string, patterns: readonly string[]): boole
   return false;
 }
 
-/** True when `callee` names `setTimeout`, bare or on an explicit global object. */
 function isSetTimeoutCallee(callee: TSESTree.Node): boolean {
   if (callee.type === AST_NODE_TYPES.Identifier) {
     return callee.name === "setTimeout";
@@ -83,7 +74,6 @@ function soleCall(fn: TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpres
   return only.expression.type === AST_NODE_TYPES.CallExpression ? only.expression : null;
 }
 
-/** True for a delay that is a real wait: absent-of-literal, or a nonzero literal. */
 function isTimedDelay(delay: TSESTree.Node | undefined): boolean {
   if (delay === undefined) {
     return false;
@@ -91,16 +81,9 @@ function isTimedDelay(delay: TSESTree.Node | undefined): boolean {
   if (delay.type === AST_NODE_TYPES.Literal && typeof delay.value === "number") {
     return delay.value !== 0;
   }
-  // A variable / member / expression delay is the motivating case: a `sleep(ms)`
-  // helper forwarding its parameter. Only a literal `0` is provably a yield.
   return true;
 }
 
-/**
- * True when `callback` settles `name` and carries no value: the bare identifier
- * `name`, or a zero-argument `() => name()` / `() => { name(); }` forwarder.
- * A callback passing a value is a delayed RESULT, which this rule leaves alone.
- */
 function settlesWithoutValue(callback: TSESTree.Node, name: string): boolean {
   if (callback.type === AST_NODE_TYPES.Identifier) {
     return callback.name === name;
@@ -120,13 +103,6 @@ function settlesWithoutValue(callback: TSESTree.Node, name: string): boolean {
   );
 }
 
-/**
- * True when `callback` calls `name` — with or without an argument, since a
- * timeout arm conventionally rejects with an `Error`. Only consulted for the
- * REJECT parameter inside a `Promise.race`, where any rejection at all means
- * "time this out"; the value-carrying case that the resolve path excludes is
- * exactly what a rejection is supposed to look like.
- */
 function rejectsInCallback(callback: TSESTree.Node, name: string): boolean {
   if (callback.type === AST_NODE_TYPES.Identifier) {
     return callback.name === name;
@@ -145,7 +121,6 @@ function rejectsInCallback(callback: TSESTree.Node, name: string): boolean {
   );
 }
 
-/** The name of an executor parameter at `index`, when it is a plain identifier. */
 function parameterName(
   fn: TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression,
   index: number,
@@ -154,11 +129,6 @@ function parameterName(
   return parameter?.type === AST_NODE_TYPES.Identifier ? parameter.name : null;
 }
 
-/**
- * True when `node` sits directly in the array literal handed to
- * `Promise.race([...])` / `Promise.any([...])` — the only position where a
- * delayed rejection means "time this out" and `AbortSignal.timeout` applies.
- */
 function isRaceArm(node: TSESTree.NewExpression): boolean {
   const array = node.parent;
   if (array?.type !== AST_NODE_TYPES.ArrayExpression) {
@@ -229,12 +199,6 @@ export default createRule<Options, MessageIds>({
 
     const checkClientModules = optionsArg?.checkClientModules ?? false;
 
-    /**
-     * True when this module provably ships to a non-Node runtime: a JSX file, a
-     * `"use client"` directive, or an import of a client-only framework. Blunt
-     * on purpose — over-skipping costs a report, under-skipping prints advice
-     * the consumer physically cannot follow.
-     */
     function isClientModule(): boolean {
       if (/\.[cm]?[jt]sx$/.test(filename)) {
         return true;

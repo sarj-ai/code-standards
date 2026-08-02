@@ -1,7 +1,6 @@
 """SARJ025 — No `OFFSET` pagination in a store query — use a keyset cursor.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_offset_pagination.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ025.md
 """
 
 from __future__ import annotations
@@ -19,15 +18,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# `OFFSET` followed by a value/param token — the real pagination construct. This
-# excludes the English word ("no base offset"), `'offset'` dict keys, and BigQuery
-# `UNNEST(...) WITH OFFSET AS col` (array indexing, no value token after OFFSET).
-#
-# The parameter alternatives are the UNION of every marker the three packages
-# see, and are kept identical in SARJ107 and the TS twin — see the module
-# docstring. `\?\d*` (sqlite3 / aiosqlite / D1) was missing here specifically,
-# which made `LIMIT ? OFFSET ?` a silent false negative in Python while the TS
-# twin caught it.
+# Require a shared dialect parameter after `OFFSET`, excluding prose and
+# BigQuery's `WITH OFFSET AS` array indexing.
 _OFFSET_PAGINATION = re.compile(
     r"\bOFFSET\s+(?:%s|%\(\w+\)s|\?\d*|:\w+|@\w+|\$\d+|\d+)",
     re.IGNORECASE,
@@ -37,7 +29,6 @@ _OFFSET_PAGINATION = re.compile(
 class NoOffsetPagination(Rule):
     id: str = "no-offset-pagination"
     code: str = "SARJ025"
-    has_evidence: bool = True
     description: str = (
         "OFFSET pagination is O(N) and unstable under concurrent writes — use a "
         "keyset cursor (WHERE id > :cursor ORDER BY id LIMIT n)."

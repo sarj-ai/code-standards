@@ -472,6 +472,7 @@ def test_call_deployments_api_no_endpoint_type():
     [
         'monkeypatch.setattr(main, "load_config", lambda: "prompt-cfg")',
         'mock.patch("main.load_config", return_value="prompt-cfg")',
+        'mock.patch("main.load_config", lambda: "prompt-cfg")',
     ],
 )
 def test_a_spelling_that_installs_the_double_names_what_it_replaces(installer: str):
@@ -793,6 +794,28 @@ def test_same():
     assert payload == payload
 """
     assert _check(src) == []
+
+
+def test_precedence_between_two_stubbed_collaborators_remains_reported():
+    src = """
+def test_registry_uri_precedence():
+    tracking.get_uri.return_value = "tracking-uri"
+    spark.get_uri.return_value = "spark-uri"
+    result = resolve_registry_uri(tracking, spark)
+    assert result == "spark-uri"
+"""
+    assert len(_check(src)) == 1
+
+
+def test_tuple_unpacking_is_not_resolved_as_a_result_reach_in():
+    src = """
+def test_recording_url(client, monkeypatch):
+    monkeypatch.setattr(object_store, "sign", lambda: "https://signed.example/abc.mp4")
+    body = client.get("/calls/1").json()
+    url, status = body["recording_url"], body["status"]
+    assert url == "https://signed.example/abc.mp4"
+"""
+    assert len(_check(src)) == 1
 
 
 # --------------------------------------------------------------------------- #

@@ -1,7 +1,6 @@
 """SARJ084 — An override whose docstring is a verbatim copy of the base's.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_duplicated_override_docstring.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ084.md
 """
 
 from __future__ import annotations
@@ -40,7 +39,6 @@ def _is_overload(node: _Func) -> bool:
 class DuplicatedOverrideDocstring(Rule):
     id: str = "duplicated-override-docstring"
     code: str = "SARJ084"
-    has_evidence: bool = True
     description: str = (
         "Docstring is a verbatim copy of the base class's — delete it; "
         "`help()`, `inspect.getdoc` and every editor already read the base's."

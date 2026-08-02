@@ -195,8 +195,13 @@ def test_ignores_non_qualifying_calls(value: str):
 
 
 def test_ignores_deeply_nested_displays():
-    value = "[[[[[1, 2, 3]]]]]"
+    value = "[[[[[1]]]], 2, 3]"
     assert _check(_fn(f"allowed = {value}\nreturn len(allowed)")) == []
+
+
+def test_accepts_displays_at_maximum_literal_depth():
+    value = "[[[[1]]], 2, 3]"
+    assert len(_check(_fn(f"allowed = {value}\nreturn len(allowed)"))) == 1
 
 
 # --------------------------------------------------------------------------- #
@@ -265,6 +270,45 @@ def test_ignores_parameter_shadowing():
 
 def test_ignores_import_as_rebind():
     src = _fn('allowed = ["a", "b", "c"]\nimport json as allowed\nreturn allowed')
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "import allowed",
+        "import allowed.tools",
+        "from package import allowed",
+    ],
+)
+def test_ignores_import_rebind_without_alias(statement: str):
+    src = _fn(f'allowed = ["a", "b", "c"]\n{statement}\nreturn allowed')
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "definition",
+    [
+        "def allowed():\n    pass",
+        "async def allowed():\n    pass",
+        "class allowed:\n    pass",
+    ],
+)
+def test_ignores_same_named_nested_definition(definition: str):
+    src = _fn(f'allowed = ["a", "b", "c"]\n{definition}\nreturn allowed')
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "pattern",
+    [
+        "allowed",
+        "[*allowed]",
+        '{"value": value, **allowed}',
+    ],
+)
+def test_ignores_match_capture_rebind(pattern: str):
+    src = _fn(f'allowed = ["a", "b", "c"]\nmatch payload:\n    case {pattern}:\n        pass\nreturn allowed')
     assert _check(src) == []
 
 

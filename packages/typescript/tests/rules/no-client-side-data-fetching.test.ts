@@ -26,6 +26,12 @@ ruleTester.run("no-client-side-data-fetching", rule, {
     {
       code: "useEffect(() => { fetch('/api/x', { method: 'POST' }); }, []);",
     },
+    {
+      code: "useEffect(() => { axios({ url: '/api/x', method: 'POST' }); }, []);",
+    },
+    {
+      code: "useEffect(() => { ky('/api/x', { method: 'PUT' }); }, []);",
+    },
     // axios.create / axios.defaults are NOT HTTP method calls — must not flag.
     {
       code: "useEffect(() => { const instance = axios.create({ baseURL: '/' }); }, []);",
@@ -35,6 +41,9 @@ ruleTester.run("no-client-side-data-fetching", rule, {
     },
     {
       code: "useEffect(() => { axios.interceptors.request.use((c) => c); }, []);",
+    },
+    {
+      code: "useEffect(() => { ky.create({ prefixUrl: '/api' }); superagent.agent(); }, []);",
     },
     // Analytics endpoints are exempt (whole segment matches).
     {
@@ -46,10 +55,17 @@ ruleTester.run("no-client-side-data-fetching", rule, {
     {
       code: "useEffect(() => { fetch('/api/analytics.js'); }, []);",
     },
+    {
+      code: "useEffect(() => { fetch('/telemetry'); fetch('/ping'); fetch('/beacon'); fetch('/metrics'); fetch('/event'); }, []);",
+    },
   ],
   invalid: [
     {
       code: "useEffect(() => { fetch('/api/users'); }, []);",
+      errors: [{ messageId: "noClientFetch" }],
+    },
+    {
+      code: "useEffect(() => { fetch('/api/users', { method: 'GET' }); }, []);",
       errors: [{ messageId: "noClientFetch" }],
     },
     {
@@ -63,6 +79,17 @@ ruleTester.run("no-client-side-data-fetching", rule, {
     {
       code: "useEffect(function () { axios('/x'); }, []);",
       errors: [{ messageId: "noClientFetch" }],
+    },
+    {
+      code: "useEffect(() => { ky('/x'); }, []);",
+      errors: [{ messageId: "noClientFetch" }],
+    },
+    {
+      code: "useEffect(() => { ky.get('/x'); superagent.head('/x'); }, []);",
+      errors: [
+        { messageId: "noClientFetch" },
+        { messageId: "noClientFetch" },
+      ],
     },
     // useLayoutEffect must also be caught.
     {
@@ -82,6 +109,12 @@ ruleTester.run("no-client-side-data-fetching", rule, {
     {
       code: "useEffect(() => { axios.patch('/api/users/1', { name: 'x' }); }, []);",
       errors: [{ messageId: "noClientFetch" }],
+    },
+    {
+      code: "useEffect(() => { axios.put('/x'); axios.delete('/x'); axios.request('/x'); axios.head('/x'); axios.options('/x'); }, []);",
+      errors: Array.from({ length: 5 }, () => ({
+        messageId: "noClientFetch" as const,
+      })),
     },
     // Substring-vs-segment regressions: these must NOT be exempted as analytics.
     {

@@ -1,19 +1,4 @@
-"""Read the shipped record of every rule identifier that was removed or renamed.
-
-Deleting a rule is a HARD failure downstream, not a lint failure. A flat config
-naming a rule the plugin no longer defines makes ESLint exit 2 before it reads a
-file (`Could not find "<rule>" in plugin "@sarj"`), a pre-commit hook id that no
-longer exists fails the same way, and the shipped strict config sets
-`reportUnusedDisableDirectives: "error"` so every orphaned `eslint-disable` is an
-error of its own. A repo can therefore go from green to entirely unlintable on an
-upgrade, with nothing in the failure naming the cause.
-
-The fix has to be a mechanism rather than a list, because the next removal is not
-this one. `rule-ledger.json` records every identifier the toolchain has shipped
-and what became of it; `make sync-rule-ledger` retires rather than deletes, tests
-keep the ledger honest against the live registries, and `doctor` reads it to name
-every stale reference in a repo BEFORE the upgrade that would break it.
-"""
+"""Read the shipped record of every rule identifier that was removed or renamed."""
 
 from __future__ import annotations
 
@@ -59,34 +44,16 @@ class Retired:
 
     @property
     def pattern(self) -> re.Pattern[str]:
-        """Match every spelling of this identifier a consumer repo can contain.
-
-        An ESLint rule is written `@sarj/<name>` in a config, in a suppression
-        file and in a disable directive, so the literal is enough. A rule id
-        appears as the pre-commit hook `sarj-<id>` and as `--rule <id>` on a
-        command line, and matching it bare would flag any prose containing the
-        words. A code appears bare, in `sarj-noqa` comments and baselines.
-
-        Returns:
-            A compiled pattern to search consumer text with.
-
-        """
+        """Match every spelling of this identifier a consumer repo can contain."""
         if self.kind == ESLINT:
             return re.compile(rf"(?<![\w/-]){re.escape(self.id)}(?![\w-])")
         if self.kind == CODE:
             return re.compile(rf"\b{re.escape(self.id)}\b")
-        return re.compile(
-            rf"(?<![\w-])(?:sarj-{re.escape(self.id)}|--rule[ =]{re.escape(self.id)})(?![\w-])"
-        )
+        return re.compile(rf"(?<![\w-])(?:sarj-{re.escape(self.id)}|--rule[ =]{re.escape(self.id)})(?![\w-])")
 
     @property
     def advice(self) -> str:
-        """Describe the fix in one line.
-
-        Returns:
-            The sentence `doctor` prints next to a stale reference.
-
-        """
+        """Describe the fix in one line."""
         if self.status is Status.RENAMED and self.replacement is not None:
             return f"renamed to {self.replacement} -- {self.note}"
         return f"no longer exists -- {self.note}"
@@ -101,12 +68,7 @@ class Ledger:
     retired: tuple[Retired, ...]
 
     def active_ids(self) -> frozenset[str]:
-        """Collect every live identifier, ESLint names carrying their prefix.
-
-        Returns:
-            The identifiers a consumer repo may legitimately name.
-
-        """
+        """Collect every live identifier, ESLint names carrying their prefix."""
         live = {code for family in self.codes.values() for code in family}
         for family, names in self.rules.items():
             prefix = "@sarj/" if family == ESLINT else ""
@@ -120,9 +82,6 @@ def load() -> Ledger:
     A missing or malformed ledger is a packaging bug in THIS package rather than
     a state a consumer repo can be in, so the read is deliberately unguarded:
     swallowing it would turn "we shipped a broken wheel" into "your repo is fine".
-
-    Returns:
-        The parsed ledger.
 
     """
     parsed: object = json.loads(  # pyright: ignore[reportAny] -- json.loads is an untyped stdlib boundary; the shape is narrowed below
@@ -138,10 +97,7 @@ def load() -> Ledger:
 
 def _families(data: Mapping[str, object], key: str) -> dict[str, tuple[str, ...]]:
     table = as_table(data.get(key))
-    return {
-        family: tuple(name for name in list_field(table, family) if isinstance(name, str))
-        for family in table
-    }
+    return {family: tuple(name for name in list_field(table, family) if isinstance(name, str)) for family in table}
 
 
 def _retired(data: Mapping[str, object]) -> Iterator[Retired]:

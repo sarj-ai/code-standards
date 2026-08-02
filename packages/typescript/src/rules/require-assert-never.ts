@@ -2,7 +2,6 @@
  * @fileoverview require-assert-never — a switch over a union whose `default` does no runtime work stops being exhaustive the day the union grows.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/require-assert-never.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/require-assert-never.md
  */
 
 import { type TSESLint, type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
@@ -12,12 +11,7 @@ import { createRule } from "./_docs.js";
 type MessageIds = "missingAssertNever";
 type Options = readonly [];
 
-/**
- * Returns true if the statement performs some runtime work. An empty statement
- * or an empty block does nothing; everything else (`return`, `throw`, `break`,
- * a function call, an `if`, ...) is treated as legitimate runtime handling of
- * the default case.
- */
+/** Empty statements and empty blocks are not runtime handling. */
 const isRuntimeHandlingStatement = (statement: TSESTree.Statement): boolean => {
   if (statement.type === AST_NODE_TYPES.EmptyStatement) return false;
   if (statement.type === AST_NODE_TYPES.BlockStatement) {
@@ -26,11 +20,7 @@ const isRuntimeHandlingStatement = (statement: TSESTree.Statement): boolean => {
   return true;
 };
 
-/**
- * A `default` clause with an empty body that is followed by another `case`
- * falls through into that case, which does the real work (e.g.
- * `default: case Single: handle();`). There is nothing to assert here.
- */
+/** An empty non-final default falls through to a case that handles it. */
 const isFallthroughDefault = (
   node: TSESTree.SwitchStatement,
   defaultIndex: number,
@@ -43,14 +33,7 @@ const isFallthroughDefault = (
   );
 };
 
-/**
- * A `default` clause is a deliberate, documented no-op when its body is empty
- * (or an empty block) but carries a comment — e.g. `default: // do nothing`.
- * We can't distinguish a config-string switch from an exhaustive union switch
- * without type info, so a written-out intent to do nothing is honoured;
- * injecting `assertNever` there would throw at runtime. A bare empty default
- * with no comment is still flagged.
- */
+/** Honor a comment that makes an empty default an intentional no-op. */
 const isCommentOnlyNoopDefault = (
   defaultCase: TSESTree.SwitchCase,
   sourceCode: Readonly<TSESLint.SourceCode>,
@@ -97,29 +80,20 @@ export default createRule<Options, MessageIds>({
         const defaultIndex = node.cases.findIndex(
           (caseNode) => caseNode.test === null,
         );
-        // No `default` at all is fine — we don't demand exhaustiveness of every
-        // switch, only of those that opted into a (no-op) default.
+        // Only present no-op defaults opt into this syntactic check.
         if (defaultIndex === -1) return;
         const defaultCase = node.cases[defaultIndex];
         if (defaultCase === undefined) return;
 
-        // A default that does real runtime work (return a fallback, break,
-        // throw, log, ...) is legitimate — don't demand assertNever there. That
-        // covers the canonical `assertNever(_)` too: it is a call statement, so
-        // a separate recogniser for it decided nothing this line does not
-        // already decide, and no test could tell the two apart.
+        // Any runtime work, including assertNever(), handles the default.
         if (defaultCase.consequent.some(isRuntimeHandlingStatement)) return;
 
-        // A fallthrough default hands control to a following case, which does
-        // the work — there is nothing to assert.
+        // A non-final empty default is handled by its following case.
         if (isFallthroughDefault(node, defaultIndex)) return;
 
-        // A deliberate, comment-documented no-op default is honoured; we can't
-        // prove the discriminant is a union without type info, and injecting
-        // assertNever would throw at runtime on a config-string switch.
+        // Comments distinguish deliberate no-ops without requiring type info.
         if (isCommentOnlyNoopDefault(defaultCase, context.sourceCode)) return;
 
-        // Otherwise the default is a bare, undocumented no-op: flag it.
         context.report({
           node: defaultCase,
           messageId: "missingAssertNever",

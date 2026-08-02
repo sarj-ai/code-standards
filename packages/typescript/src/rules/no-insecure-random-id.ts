@@ -2,7 +2,6 @@
  * @fileoverview no-insecure-random-id — `Math.random()` is predictable, so an id, token or key built from it is guessable.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-insecure-random-id.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-insecure-random-id.md
  */
 
 import { type TSESTree } from "@typescript-eslint/utils";
@@ -119,14 +118,7 @@ function isPartOfToString36Chain(node: TSESTree.Node): boolean {
   return false;
 }
 
-/**
- * Walks up from `node` to find the name of the nearest enclosing binding
- * (VariableDeclarator id) or property (Property / PropertyDefinition key),
- * and returns it. Passes through string concatenation and template literals so
- * that `const tempPath = base + Math.random()...` resolves to `tempPath`.
- * Returns `undefined` if no such name is found before leaving the enclosing
- * initializer/value context.
- */
+/** Finds the nearest binding or property name without leaving its value. */
 function findEnclosingName(node: TSESTree.Node): string | undefined {
   let current: TSESTree.Node = node;
   let parent = current.parent;
@@ -271,22 +263,18 @@ export default createRule<Options, MessageIds>({
 
         const name = findEnclosingName(node);
 
-        // A strong security name always fires — even a `sessionToken` or a name
-        // that also happens to contain a correlation-id word.
+        // Security signals take precedence over non-security signals.
         if (name !== undefined && STRONG_SECURITY_PATTERN.test(name)) {
           context.report({ node, messageId: "insecureRandomId" });
           return;
         }
 
-        // Ephemeral / correlation ids (temp files, HMR sessions, dev request
-        // ids, ...) are not security-sensitive — suppress, including the
-        // `.toString(36)` idiom used to shape them.
+        // Ignore ephemeral and correlation identifiers.
         if (name !== undefined && NON_SECURITY_ID_PATTERN.test(name)) {
           return;
         }
 
-        // A random value concatenated into a filename/path/DOM id is not a
-        // security token.
+        // Ignore filename, path, and DOM-id fragments.
         if (isConcatenatedIntoPathOrDomId(node)) {
           return;
         }

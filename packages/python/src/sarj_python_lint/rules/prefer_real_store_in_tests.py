@@ -1,7 +1,6 @@
 """SARJ058 — A hand-rolled in-memory store makes the test verify a dict, not the database.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_real_store_in_tests.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ058.md
 """
 
 from __future__ import annotations
@@ -29,7 +28,7 @@ _DOUBLE_SUFFIX_RE = re.compile(r"(?:InMemory|Mock|Fake|Stub|Dummy)$")
 
 # Tokens that name a persistence port. Case-sensitive CamelCase tails, so `Storage`,
 # `Restore` and `Bookstore` do not match `Store`. `Cache`, `Storage`, `Table`,
-# `Client`, `Service`, `Api` and `Publisher` are excluded — see the module docstring.
+# `Client`, `Service`, `Api` and `Publisher` are excluded; paired tests pin the boundary.
 _PORT_TAIL = r"(?:Store|Repository|Repo|DAO|Dao|Database|DB|Db)"
 _PORT_TAIL_RE = re.compile(_PORT_TAIL + "$")
 
@@ -125,7 +124,6 @@ _ADVICE = (
 class PreferRealStoreInTests(Rule):
     id: str = "prefer-real-store-in-tests"
     code: str = "SARJ058"
-    has_evidence: bool = True
     description: str = (
         "Hand-rolled in-memory `Store`/`Repository` double — the test verifies a dict instead of the real store."
     )

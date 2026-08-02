@@ -2,7 +2,6 @@
  * @fileoverview no-log-only-catch — a catch that only logs keeps the program running broken, with a log line as the only signal.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-log-only-catch.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-log-only-catch.md
  */
 
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";

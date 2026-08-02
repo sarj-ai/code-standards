@@ -89,6 +89,16 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         }
       `,
     },
+    {
+      name: "ignores an anonymous default class because no interface name can be suggested",
+      filename: SRC,
+      code: `
+        export default class {
+          constructor(private readonly store: TaskStore) {}
+          run(): void {}
+        }
+      `,
+    },
     // Not exported: a module-private helper has no consumer to protect.
     {
       filename: SRC,
@@ -132,6 +142,16 @@ ruleTester.run("require-interface-for-injected-service", rule, {
           protected other(): void {}
           static make(): void {}
           #secret(): void {}
+        }
+      `,
+    },
+    {
+      name: "ignores arrow-property APIs because they are not declared methods",
+      filename: SRC,
+      code: `
+        export class RequestHandler {
+          constructor(private readonly store: TaskStore) {}
+          handle = async (): Promise<void> => this.store.run();
         }
       `,
     },

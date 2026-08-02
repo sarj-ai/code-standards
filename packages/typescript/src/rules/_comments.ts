@@ -1,7 +1,6 @@
 /**
  * @fileoverview _comments — shared comment analysis for the comment-hygiene rules, kept signal-for-signal identical to Python's `_comments.py`.
  *
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/_comments.md
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";

@@ -17,8 +17,8 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("no-string-concat-in-loop", rule, {
   valid: [
-    // Generated stream parsers may use template-owned string accumulation.
     {
+      name: "ignores generated files",
       code: `
         let text = "";
         for (const chunk of chunks) {
@@ -27,8 +27,8 @@ ruleTester.run("no-string-concat-in-loop", rule, {
       `,
       filename: "/repo/src/openapi-gen/requests/core/serverSentEvents.gen.ts",
     },
-    // The prescribed pattern: push parts to an array, join after the loop.
     {
+      name: "allows collecting parts and joining after the loop",
       code: `
         const parts = [];
         for (let i = 0; i < n; i++) {
@@ -37,8 +37,8 @@ ruleTester.run("no-string-concat-in-loop", rule, {
         const result = parts.join("");
       `,
     },
-    // Numeric accumulator — `+=` on a number-initialized variable is fine.
     {
+      name: "ignores numeric accumulators",
       code: `
         let total = 0;
         for (let i = 0; i < n; i++) {
@@ -46,8 +46,8 @@ ruleTester.run("no-string-concat-in-loop", rule, {
         }
       `,
     },
-    // Numeric accumulator inside a while loop.
     {
+      name: "ignores numeric accumulators in while loops",
       code: `
         let total = 0;
         while (total < 100) {
@@ -55,18 +55,16 @@ ruleTester.run("no-string-concat-in-loop", rule, {
         }
       `,
     },
-    // String `+=` OUTSIDE any loop — not the antipattern.
     {
+      name: "ignores string appends outside loops",
       code: `
         let s = "";
         s += "hello";
         s += "world";
       `,
     },
-    // String concatenation in a loop but via a fresh local each iteration that
-    // is not string-initialized at declaration (no initializer) -> conservative
-    // non-flag.
     {
+      name: "ignores declarations without an initializer",
       code: `
         for (let i = 0; i < n; i++) {
           let chunk;
@@ -74,8 +72,8 @@ ruleTester.run("no-string-concat-in-loop", rule, {
         }
       `,
     },
-    // LHS is a parameter (type unknown) -> conservative non-flag.
     {
+      name: "ignores parameters because their runtime type is unknown",
       code: `
         function build(acc) {
           for (let i = 0; i < n; i++) {
@@ -95,9 +93,8 @@ ruleTester.run("no-string-concat-in-loop", rule, {
         }
       `,
     },
-    // Variable initialized to a non-literal expression (function call) -> type
-    // cannot be confirmed as string -> conservative non-flag.
     {
+      name: "ignores non-literal initializers because their type is unknown",
       code: `
         let s = makeString();
         for (let i = 0; i < n; i++) {
@@ -114,9 +111,8 @@ ruleTester.run("no-string-concat-in-loop", rule, {
         }
       `,
     },
-    // Longhand `=` whose RHS is a `+` but the target is NOT an operand
-    // (`s = x + y`) — this overwrites, it does not accumulate.
     {
+      name: "ignores longhand assignment when the target is absent from the sum",
       code: `
         let s = "";
         for (let i = 0; i < n; i++) {
@@ -124,11 +120,8 @@ ruleTester.run("no-string-concat-in-loop", rule, {
         }
       `,
     },
-    // From a first-party review regression — one editor-serializer site
-    // — the accumulator is DECLARED INSIDE the body, so it is a fresh string
-    // every pass, appended to at most once, and the parts are already collected
-    // into `textParts` for a `join` after the loop. Nothing quadratic to remove.
     {
+      name: "allows a fresh per-iteration accumulator collected for a final join",
       code: `
         const textParts = [];
         for (const node of children) {
@@ -143,8 +136,8 @@ ruleTester.run("no-string-concat-in-loop", rule, {
         return textParts.join("\\n\\n");
       `,
     },
-    // Same shape, minimal: declaration inside the body is bounded growth.
     {
+      name: "allows an accumulator declared in the current loop body",
       code: `
         for (const item of items) {
           let line = "";
@@ -176,8 +169,8 @@ ruleTester.run("no-string-concat-in-loop", rule, {
         }
       `,
     },
-    // Longhand `s = s + x` on a body-declared accumulator is equally bounded.
     {
+      name: "allows longhand accumulation on a fresh per-iteration variable",
       code: `
         for (const item of items) {
           let s = "";
@@ -186,33 +179,67 @@ ruleTester.run("no-string-concat-in-loop", rule, {
         }
       `,
     },
+    {
+      name: "ignores unresolved variables because their type is unknown",
+      code: `
+        for (const item of items) {
+          output += item;
+        }
+      `,
+    },
+    {
+      name: "ignores variables with conflicting redeclarations",
+      code: `
+        var output = "";
+        var output = makeOutput();
+        for (const item of items) {
+          output += item;
+        }
+      `,
+    },
+    {
+      name: "ignores member assignments because they are not local variables",
+      code: `
+        const state = { output: "" };
+        for (const item of items) {
+          state.output += item;
+        }
+      `,
+    },
+    {
+      name: "ignores assignments in a loop condition",
+      code: `
+        let output = "";
+        while ((output += next()) !== "done") {
+          consume(output);
+        }
+      `,
+    },
   ],
   invalid: [
-    // Corpus: react-router/packages/react-router/lib/server-runtime/cookies.ts:221
-    // — one accumulator appended from several branches of ONE loop is ONE defect
-    // with ONE fix, so exactly one report is emitted.
     {
+      name: "reports an outer accumulator once when one loop appends in several branches",
       code: "function f(str) { let result = ''; for (const chr of str) { if (ok(chr)) { result += chr; } else { result += '%'; result += hex(chr); } } return result; }",
       errors: [{ messageId: "noStringConcatInLoop" }],
     },
-    // Two distinct accumulators in one loop are two distinct defects.
     {
+      name: "reports two accumulators separately within one loop",
       code: "function f(xs) { let a = ''; let b = ''; for (const x of xs) { a += x; b += x; } return a + b; }",
       errors: [
         { messageId: "noStringConcatInLoop" },
         { messageId: "noStringConcatInLoop" },
       ],
     },
-    // Sibling loops over the same accumulator each keep their own report.
     {
+      name: "reports the same accumulator once in each sibling loop",
       code: "function f(xs, ys) { let s = ''; for (const x of xs) { s += x; } for (const y of ys) { s += y; } return s; }",
       errors: [
         { messageId: "noStringConcatInLoop" },
         { messageId: "noStringConcatInLoop" },
       ],
     },
-    // Empty-string init, `for` loop — the canonical antipattern.
     {
+      name: "reports compound accumulation from an empty string",
       code: `
         let s = "";
         for (let i = 0; i < n; i++) {
@@ -221,8 +248,8 @@ ruleTester.run("no-string-concat-in-loop", rule, {
       `,
       errors: [{ messageId: "noStringConcatInLoop" }],
     },
-    // Double-quoted non-empty string init.
     {
+      name: "reports compound accumulation from a non-empty string",
       code: `
         let out = "prefix:";
         for (const item of items) {
@@ -283,8 +310,8 @@ ruleTester.run("no-string-concat-in-loop", rule, {
       `,
       errors: [{ messageId: "noStringConcatInLoop" }],
     },
-    // Longhand reassignment `s = s + x` — identical O(n^2) cost to `s += x`.
     {
+      name: "reports longhand accumulation",
       code: `
         let s = "";
         for (let i = 0; i < n; i++) {
@@ -313,11 +340,8 @@ ruleTester.run("no-string-concat-in-loop", rule, {
       `,
       errors: [{ messageId: "noStringConcatInLoop" }],
     },
-    // TRUE POSITIVE the body-declaration exemption must not swallow: declared
-    // OUTSIDE the loop, so it survives every iteration — the real O(n^2) shape.
-    // Nearly identical to the exempt serializes-state-to-text case above except
-    // for where the `let` sits.
     {
+      name: "reports accumulation into a variable declared outside the loop",
       code: `
         let sectionText = "";
         for (const node of children) {

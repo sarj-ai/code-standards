@@ -213,9 +213,27 @@ class SocketType:
     assert _check(src) == []
 
 
+def test_not_implemented_stub_with_other_statements_still_fires():
+    src = """
+class SocketType:
+    async def accept(self) -> tuple[SocketType, AddressFormat]:
+        log.warning("not implemented")
+        raise NotImplementedError
+"""
+    assert len(_check(src)) == 1
+
+
 def test_overload_stub_is_exempt():
     src = """
 @overload
+def pair(x: int) -> tuple[int, str]: ...
+"""
+    assert _check(src) == []
+
+
+def test_qualified_overload_stub_is_exempt():
+    src = """
+@typing.overload
 def pair(x: int) -> tuple[int, str]: ...
 """
     assert _check(src) == []
@@ -377,14 +395,13 @@ class B({base}):
     assert len(_check(src)) == 2
 
 
-def test_abstract_declaration_is_exempt():
-    # Minimized from anyio/src/anyio/abc/_sockets.py:230 — the shape mirrors
-    # stdlib `socket.recvmsg`.
-    src = """
+@pytest.mark.parametrize("body", ["pass", "...", '"""Interface declaration."""'])
+def test_abstract_declaration_without_an_implementation_is_exempt(body: str):
+    src = f"""
 class UNIXSocketStream(SocketStream):
     @abstractmethod
     async def receive_fds(self, msglen: int, maxfds: int) -> tuple[bytes, list[int]]:
-        \"\"\"Receive file descriptors along with a message from the peer.\"\"\"
+        {body}
 """
     assert _check(src) == []
 
@@ -408,13 +425,6 @@ _GENERATED_PROBE = """
 def f() -> tuple[str, int]:
     return "a", 1
 """
-
-
-# --------------------------------------------------------------------------- #
-# FP guard: generated files. Their layout is the generator's and re-running it  #
-# discards any edit, so a finding there can never be acted on in place.        #
-# Measured on 69 `DO NOT EDIT` files across two first-party repos.             #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(

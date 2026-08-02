@@ -19,8 +19,7 @@ const COLUMNS = "id, ashby_candidate_id, dataset_id, status, expires_at";
 
 ruleTester.run("no-repeated-string-literal", rule, {
   valid: [
-    // FP guard, corpus: react-router/integration/single-fetch-test.ts:1482 — a
-    // tagged template is an invocation; the tag decides what the text means.
+    // Tagged templates are invocations whose tags define their meaning.
     {
       code: [
         'const a = js`export default function Component() {\n  return null;\n}`;',
@@ -28,7 +27,7 @@ ruleTester.run("no-repeated-string-literal", rule, {
         'function two() { return js`export default function Component() {\n  return null;\n}`; }',
       ].join("\n"),
     },
-    // Corpus: query/packages/query-devtools/src/Devtools.tsx:398 — a `css` block.
+    // Styling tags are outside this rule's string-value contract.
     {
       code: [
         'const base = css`\n  min-width: min-content;\n  display: flex;\n`;',
@@ -36,9 +35,7 @@ ruleTester.run("no-repeated-string-literal", rule, {
         'function b() { return css`\n  min-width: min-content;\n  display: flex;\n`; }',
       ].join("\n"),
     },
-    // --- Unstructured prose is never flagged, even when repeated: two messages
-    // that happen to be equal have different intent, and a shared constant would
-    // wrongly couple them. ---
+    // Equal prose can have separate intent and must remain local.
     {
       code: [
         "function a() { return 'the requested candidate could not be found here'; }",
@@ -46,7 +43,7 @@ ruleTester.run("no-repeated-string-literal", rule, {
         "function c() { return 'the requested candidate could not be found here'; }",
       ].join("\n"),
     },
-    // --- Lower-case prose containing SQL words is prose, not SQL. ---
+    // Lowercase SQL words in prose are not structured strings.
     {
       code: [
         "function a() { return 'pick the fields you want from the list of columns'; }",
@@ -54,9 +51,7 @@ ruleTester.run("no-repeated-string-literal", rule, {
         "function c() { return 'pick the fields you want from the list of columns'; }",
       ].join("\n"),
     },
-    // --- Two uses inside ONE function: edited together, so hoisting them buys
-    // no drift protection. The distinct-scope filter, not a count of
-    // occurrences, is what carries precision here. ---
+    // Repetition within one function remains local.
     {
       code: [
         "function only() {",
@@ -66,7 +61,7 @@ ruleTester.run("no-repeated-string-literal", rule, {
         "}",
       ].join("\n"),
     },
-    // --- Under the length threshold. ---
+    // Short structured strings remain local.
     {
       code: [
         "function a() { return 'SELECT id FROM runs'; }",
@@ -74,19 +69,7 @@ ruleTester.run("no-repeated-string-literal", rule, {
         "function c() { return 'SELECT id FROM runs'; }",
       ].join("\n"),
     },
-    // --- All occurrences inside ONE function: they are edited together, so
-    // hoisting buys no drift protection and only costs locality. ---
-    {
-      code: [
-        "function a() {",
-        `  const x = \`SELECT ${COLUMNS} FROM candidates\`;`,
-        `  const y = \`SELECT ${COLUMNS} FROM candidates\`;`,
-        `  const z = \`SELECT ${COLUMNS} FROM candidates\`;`,
-        "  return [x, y, z];",
-        "}",
-      ].join("\n"),
-    },
-    // --- Template literals WITH substitutions are fragments, not reusable values. ---
+    // Template literals with substitutions are fragments.
     {
       code: [
         `function a(t) { return \`SELECT ${COLUMNS} FROM \${t}\`; }`,
@@ -94,7 +77,7 @@ ruleTester.run("no-repeated-string-literal", rule, {
         `function c(t) { return \`SELECT ${COLUMNS} FROM \${t}\`; }`,
       ].join("\n"),
     },
-    // --- Already extracted to a module-level constant: the drift is gone. ---
+    // An extracted constant has one source of truth.
     {
       code: [
         `const CANDIDATE_QUERY = \`SELECT ${COLUMNS} FROM candidates\`;`,
@@ -103,7 +86,7 @@ ruleTester.run("no-repeated-string-literal", rule, {
         "function c() { return CANDIDATE_QUERY; }",
       ].join("\n"),
     },
-    // --- Test files repeat fixture payloads by design. ---
+    // Test files repeat fixture payloads by design.
     {
       filename: "/repo/test/repo.test.ts",
       code: [
@@ -112,10 +95,7 @@ ruleTester.run("no-repeated-string-literal", rule, {
         `function c() { return \`SELECT ${COLUMNS} FROM candidates\`; }`,
       ].join("\n"),
     },
-    // --- ...including the `-test.ts` / `_test.ts` spellings. All 5 of this
-    // rule's hits over the 2,186-file third-party corpus were react-router
-    // `*-test.ts` source-transform fixtures that the exemption already intended
-    // to cover; `_paths.isTestFile` only knew the `.test.ts` spelling. ---
+    // Hyphenated test filenames are also exempt.
     {
       filename: "/repo/vite/remove-exports-test.ts",
       code: [
@@ -130,16 +110,33 @@ ruleTester.run("no-repeated-string-literal", rule, {
         `function b() { return \`SELECT ${COLUMNS} FROM candidates\`; }`,
       ].join("\n"),
     },
+    // Module scope does not count as a second function scope.
+    {
+      code: [
+        `const query = \`SELECT ${COLUMNS} FROM candidates\`;`,
+        `function read() { return \`SELECT ${COLUMNS} FROM candidates\`; }`,
+      ].join("\n"),
+    },
+    // Module-loading sources are scaffolding, not reusable values.
+    {
+      code: [
+        "function one() { return require('company.internal.adapters.payment_gateway'); }",
+        "function two() { return require('company.internal.adapters.payment_gateway'); }",
+        "async function three() { return import('company.internal.adapters.payment_gateway'); }",
+        "async function four() { return import('company.internal.adapters.payment_gateway'); }",
+      ].join("\n"),
+    },
+    // JSX attributes belong to styling and markup rules.
+    {
+      filename: "/repo/component.tsx",
+      code: [
+        'function One() { return <div data-query="SELECT id, status, created_at FROM candidates" />; }',
+        'function Two() { return <div data-query="SELECT id, status, created_at FROM candidates" />; }',
+      ].join("\n"),
+    },
   ],
   invalid: [
-    // --- CROSS-PACKAGE PARITY with Python's SARJ024. "Two distinct enclosing
-    // functions" is the ONLY count threshold, in BOTH packages. This rule
-    // carried an abandoned three-occurrence gate, so a literal used exactly
-    // twice fired in `.py` and was clean in `.ts`. Minimized from
-    // one first-party store module, where one
-    // `SELECT stage ... FOR UPDATE` is repeated between two store methods.
-    // If this fails, someone re-introduced a total-occurrence threshold —
-    // re-run both corpus sweeps before changing the test. ---
+    // Two distinct functions is the only count threshold, matching SARJ024.
     {
       code: [
         `function submitFinancialInfo() { return \`SELECT ${COLUMNS} FROM candidates\`; }`,
@@ -182,6 +179,22 @@ ruleTester.run("no-repeated-string-literal", rule, {
         { messageId: "noRepeatedStringLiteral" },
         { messageId: "noRepeatedStringLiteral" },
       ],
+    },
+    // Dotted identifiers carry the same structural signal as snake_case names.
+    {
+      code: [
+        "function a() { return 'company.internal.payment_gateway.constraint'; }",
+        "function b() { return 'company.internal.payment_gateway.constraint'; }",
+      ].join("\n"),
+      errors: [{ messageId: "noRepeatedStringLiteral" }],
+    },
+    // Function expressions and arrows are distinct enclosing scopes.
+    {
+      code: [
+        `const read = function () { return \`SELECT ${COLUMNS} FROM candidates\`; };`,
+        `const readAgain = () => \`SELECT ${COLUMNS} FROM candidates\`;`,
+      ].join("\n"),
+      errors: [{ messageId: "noRepeatedStringLiteral" }],
     },
     // Class methods count as distinct scopes.
     {

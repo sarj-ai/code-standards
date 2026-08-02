@@ -2,7 +2,6 @@
  * @fileoverview no-declaration-comment-wall — an enum body or class body whose member comments mostly re-spell the members is a wall the reader pays for by the block.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-declaration-comment-wall.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-declaration-comment-wall.md
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
@@ -92,8 +91,8 @@ export default createRule<Options, MessageIds>({
      *
      * A leading comment counts only when the MEMBER starts its own line, and
      * only when the comment is alone on ITS line; a trailing comment counts only
-     * when it sits after the member it is read against. Between them no comment
-     * can document two members, which is why this rule needs no claim set.
+     * when it sits after the member it is read against. The caller claims each
+     * comment once because compact declarations can share a source line.
      */
     function documentingComment(member: TSESTree.Node): TSESTree.Comment | undefined {
       const beforeMember = sourceCode.getTokenBefore(member, { includeComments: false });
@@ -133,12 +132,14 @@ export default createRule<Options, MessageIds>({
       }));
       let commented = 0;
       let restated = 0;
+      const claimed = new Set<TSESTree.Comment>();
       for (const [index, { member, comment }] of documented.entries()) {
-        if (comment === undefined) continue;
+        if (comment === undefined || claimed.has(comment)) continue;
         const next = documented[index + 1];
         if (isGroupLabel(comment, member, next !== undefined && next.comment === undefined)) {
           continue;
         }
+        claimed.add(comment);
         commented += 1;
         const body = commentBody(comment);
         // A tag block is a directive to a documentation generator, and one

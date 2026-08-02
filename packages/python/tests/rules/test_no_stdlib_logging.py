@@ -79,11 +79,42 @@ def test_allows(source: str):
 
 
 def test_naming_loguru_is_not_on_its_own_a_bridge():
-    # The exemption's premise is that the module *configures* stdlib logging.
-    # A module that merely emits through both has opened the second hierarchy the
-    # rule exists to prevent, and it is the likeliest place for one to appear.
     src = "import logging\n\nfrom loguru import logger\n\nlog = logging.getLogger(__name__)\nlog.info('hi')\n"
     assert [d.line for d in _check(src)] == [1]
+
+
+def test_configuring_stdlib_without_loguru_is_not_a_bridge():
+    src = "import logging\n\nlogging.basicConfig(level=logging.INFO)\n"
+    assert [d.line for d in _check(src)] == [1]
+
+
+@pytest.mark.parametrize(
+    "configuration",
+    [
+        pytest.param("class Intercept(logging.Handler):\n    pass", id="handler-type"),
+        pytest.param("record: logging.LogRecord", id="log-record-type"),
+        pytest.param("logger_type: logging.Logger", id="logger-type"),
+        pytest.param("formatter: logging.Formatter", id="formatter-type"),
+        pytest.param("filter_: logging.Filter", id="filter-type"),
+        pytest.param("logging.basicConfig()", id="basic-config"),
+        pytest.param("logging.getLogger().addHandler(sink)", id="add-handler"),
+        pytest.param("logging.getLogger().removeHandler(sink)", id="remove-handler"),
+        pytest.param("logging.getLogger().setLevel(0)", id="set-level"),
+        pytest.param("logging.addLevelName(5, 'TRACE')", id="add-level-name"),
+        pytest.param("logging.getLogger().addFilter(filter_)", id="add-filter"),
+        pytest.param("logging.config.dictConfig(config)", id="dict-config"),
+        pytest.param("logging.config.fileConfig(path)", id="file-config"),
+        pytest.param("logging.captureWarnings(True)", id="capture-warnings"),
+        pytest.param("fallback = logging.lastResort", id="last-resort"),
+        pytest.param("logging.getLogger().propagate = False", id="propagate"),
+        pytest.param("logging.basicConfig(handlers=[sink])", id="handlers-keyword"),
+        pytest.param("root = logging.getLogger()", id="root-logger"),
+        pytest.param("level = logging.WARNING", id="level-constant"),
+    ],
+)
+def test_allows_loguru_bridge_configuration_markers(configuration: str):
+    src = f"import logging\nfrom loguru import logger\n\n{configuration}\n"
+    assert _check(src) == []
 
 
 def test_allows_type_checking_only_import():

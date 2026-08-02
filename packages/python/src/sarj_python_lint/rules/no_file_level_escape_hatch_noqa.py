@@ -1,7 +1,6 @@
 """SARJ054 — File-level `# ruff: noqa: TID251` — an escape hatch must be per-line.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_file_level_escape_hatch_noqa.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ054.md
 """
 
 from __future__ import annotations
@@ -36,7 +35,6 @@ _RUFF_SCOPED_NOQA_RE = re.compile(
 class NoFileLevelEscapeHatchNoqa(Rule):
     id: str = "no-file-level-escape-hatch-noqa"
     code: str = "SARJ054"
-    has_evidence: bool = True
     description: str = (
         "A file-level `# ruff: noqa` naming an escape-hatch code (TID251) "
         "pre-authorizes every future use in the file — suppress it inline, "

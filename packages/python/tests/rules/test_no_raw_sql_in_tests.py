@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint.rule_base import is_suppressed
 from sarj_python_lint.rules.no_raw_sql_in_tests import NoRawSqlInTests
 
 
@@ -15,11 +16,6 @@ TEST_PATH = "python/app/tests/stores/test_call_store.py"
 
 def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
     return NoRawSqlInTests().check(Path(path), source)
-
-
-# --------------------------------------------------------------------------- #
-# Positive: raw INSERT literals through execute* in tests.                     #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -46,6 +42,11 @@ def test_flags_raw_insert_calls(call: str):
 def test_flags_fstring_insert():
     src = 'async def test_x(conn):\n    await conn.execute(f"INSERT INTO {table} (id) VALUES ({cid})")\n'
     assert len(_check(src)) == 1
+
+
+def test_fstring_interpolation_cannot_complete_a_sql_keyword():
+    src = 'def test_x(conn):\n    conn.execute(f"INS{operation}ERT INTO call VALUES (1)")\n'
+    assert _check(src) == []
 
 
 def test_flags_concatenated_insert():
@@ -79,11 +80,6 @@ def test_message_names_the_method():
     assert ".executemany" in diags[0].message
 
 
-# --------------------------------------------------------------------------- #
-# Negative: SELECT/UPDATE/DELETE and fetch* are legitimate test idioms.        #
-# --------------------------------------------------------------------------- #
-
-
 @pytest.mark.parametrize(
     "call",
     [
@@ -110,16 +106,13 @@ def test_allows_non_insert_sql(call: str):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
-# Negative: INSERT INTO only inside quoted values / comments / prose.          #
-# --------------------------------------------------------------------------- #
-
-
 @pytest.mark.parametrize(
     "call",
     [
         "cursor.execute(\"UPDATE t SET note = 'INSERT INTO nothing' WHERE id = 1\")",
+        'conn.execute("SELECT \'INSERT INTO nothing\'")',
         'conn.execute("SELECT 1 -- INSERT INTO nothing")',
+        'conn.execute("SELECT 1 /* INSERT INTO nothing */")',
         'conn.execute("INSERT")',
         'conn.execute("insert record into the queue table")',
     ],
@@ -129,16 +122,12 @@ def test_allows_insert_only_in_values_comments_or_prose(call: str):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
-# Negative: non-literal / non-SQL arguments and other call shapes.             #
-# --------------------------------------------------------------------------- #
-
-
 @pytest.mark.parametrize(
     "call",
     [
         "conn.execute(query)",
         "conn.execute(build_query())",
+        'conn.execute(query, "INSERT INTO t VALUES (1)")',
         "conn.execute(text(sql))",
         "conn.execute(text())",
         'conn.execute(other.text("INSERT INTO t VALUES (1)"))',
@@ -165,11 +154,6 @@ async def test_x(store):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
-# Path gating: tests only; conftest + migrations allowlisted.                  #
-# --------------------------------------------------------------------------- #
-
-
 _SQL_CALL = 'async def f(conn):\n    await conn.execute("INSERT INTO call (id) VALUES (1)")\n'
 
 
@@ -180,6 +164,7 @@ _SQL_CALL = 'async def f(conn):\n    await conn.execute("INSERT INTO call (id) V
         "test_call_store.py",
         "call_store_test.py",
         "python/app/tests/helpers/seed.py",
+        "python/app/test/helpers/seed.py",
     ],
 )
 def test_fires_in_test_paths(path: str):
@@ -202,11 +187,6 @@ def test_skips_non_test_conftest_and_migrations(path: str):
     assert _check(_SQL_CALL, path) == []
 
 
-# --------------------------------------------------------------------------- #
-# Counts, ordering, edge cases.                                                #
-# --------------------------------------------------------------------------- #
-
-
 def test_multiple_hits_sorted():
     src = """
 async def test_x(conn):
@@ -222,6 +202,16 @@ def test_line_col():
     src = 'def test_x(conn):\n    conn.execute("INSERT INTO a VALUES (1)")\n'
     diags = _check(src)
     assert (diags[0].line, diags[0].col) == (2, 5)
+
+
+def test_reasoned_sarj_noqa_suppresses_schema_probe():
+    src = (
+        'def test_constraint(conn):\n'
+        '    conn.execute("INSERT INTO call VALUES (1)")  '
+        '# sarj-noqa: SARJ036 — assert database constraint\n'
+    )
+    diag = _check(src)[0]
+    assert is_suppressed(src.splitlines(), diag.line, diag.code)
 
 
 @pytest.mark.parametrize("source", ["", "  ", "# comment\n"])

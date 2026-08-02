@@ -1,7 +1,6 @@
 """SARJ070 — Adjacent `case` arms with identical bodies — merge them into one or-pattern.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_or_pattern.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ070.md
 """
 
 from __future__ import annotations
@@ -32,7 +31,6 @@ _EMPTY_BODY_NODES = (ast.Pass,)
 class PreferOrPattern(Rule):
     id: str = "prefer-or-pattern"
     code: str = "SARJ070"
-    has_evidence: bool = True
     description: str = (
         "consecutive `case` arms repeating an identical body — merge them into a "
         "single `|` or-pattern so the shared handler is written once."

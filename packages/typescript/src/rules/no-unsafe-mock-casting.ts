@@ -2,7 +2,6 @@
  * @fileoverview no-unsafe-mock-casting — a cast to `vi.Mock` / `jest.Mock` asserts a mock that may not exist; `vi.mocked()` checks it.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-unsafe-mock-casting.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-unsafe-mock-casting.md
  */
 
 import { type TSESTree } from "@typescript-eslint/utils";

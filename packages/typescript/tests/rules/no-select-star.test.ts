@@ -17,61 +17,116 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("no-select-star", rule, {
   valid: [
-    // --- Explicit projections. ---
-    { code: "db.prepare(`SELECT id, status, created_at FROM runs WHERE id = ?`).first();" },
-    { code: "db.prepare(`SELECT r.id, r.status FROM runs r JOIN jobs j ON j.id = r.job_id`).all();" },
-    // --- The star is a function argument, not a projection. ---
-    { code: "db.prepare(`SELECT COUNT(*) AS n FROM runs`).first();" },
-    { code: "db.prepare(`SELECT COUNT( * ) AS n FROM runs WHERE status = ?`).first();" },
-    // --- Arithmetic, not a projection: an operand follows the star. ---
-    { code: "db.prepare(`SELECT price * quantity AS total FROM line_items`).all();" },
-    // --- EXISTS subqueries never use their projection. ---
     {
+      name: "allows explicit projections",
+      code: "db.prepare(`SELECT id, status, created_at FROM runs WHERE id = ?`).first();",
+    },
+    {
+      name: "allows qualified explicit projections",
+      code: "db.prepare(`SELECT r.id, r.status FROM runs r JOIN jobs j ON j.id = r.job_id`).all();",
+    },
+    { name: "allows COUNT star arguments", code: "db.prepare(`SELECT COUNT(*) AS n FROM runs`).first();" },
+    {
+      name: "allows spaced function star arguments",
+      code: "db.prepare(`SELECT COUNT( * ) AS n FROM runs WHERE status = ?`).first();",
+    },
+    {
+      name: "allows non-COUNT function star arguments",
+      code: "db.prepare(`SELECT row_tally(*) AS n FROM runs`).first();",
+    },
+    {
+      name: "allows multiplication in a projection",
+      code: "db.prepare(`SELECT price * quantity AS total FROM line_items`).all();",
+    },
+    {
+      name: "allows an unused star projection inside EXISTS",
       code: "db.prepare(`SELECT id FROM runs r WHERE EXISTS (SELECT * FROM jobs j WHERE j.run_id = r.id)`).all();",
     },
-    // --- A quoted `'*'` value is neutralized before the scan. ---
-    { code: "db.prepare(`SELECT id FROM runs WHERE glob = '*' AND owner = ?`).all();" },
-    { code: "db.prepare(`SELECT id FROM acl WHERE scope = 'read:*' AND owner = ?`).all();" },
-    // --- Prose that merely contains the words is not a query. ---
-    { code: 'log("select the * you want to copy from the list above");' },
-    // --- Not a query shape at all (no FROM). ---
-    { code: "const glob = `SELECT *`;" },
-    // --- Commented-out SQL is not live. ---
-    { code: "db.prepare(`-- SELECT * FROM runs\\nSELECT id FROM runs`).all();" },
-    // --- Test files may assert over whole fixture rows. ---
     {
+      name: "ignores a quoted star in a projection",
+      code: "db.prepare(`SELECT '*' AS glob FROM patterns`).all();",
+    },
+    {
+      name: "ignores a quoted star in a predicate",
+      code: "db.prepare(`SELECT id FROM runs WHERE glob = '*' AND owner = ?`).all();",
+    },
+    {
+      name: "ignores a star embedded in a quoted value",
+      code: "db.prepare(`SELECT id FROM acl WHERE scope = 'read:*' AND owner = ?`).all();",
+    },
+    {
+      name: "ignores prose containing SELECT, star, and FROM",
+      code: 'log("select the * you want to copy from the list above");',
+    },
+    { name: "requires a complete SELECT FROM shape", code: "const glob = `SELECT *`;" },
+    {
+      name: "ignores SELECT star inside a line comment",
+      code: "db.prepare(`-- SELECT * FROM runs\\nSELECT id FROM runs`).all();",
+    },
+    {
+      name: "ignores SELECT star inside a block comment",
+      code: "db.prepare(`/* SELECT * FROM runs */ SELECT id FROM runs`).all();",
+    },
+    {
+      name: "exempts test files",
       code: "await db.prepare(`SELECT * FROM runs`).all();",
       filename: "/repo/test/runs.test.ts",
     },
   ],
   invalid: [
     {
+      name: "rejects a bare projection star",
       code: "db.prepare(`SELECT * FROM runs WHERE id = ?`).first();",
       errors: [{ messageId: "noSelectStar" }],
     },
-    // Qualified star.
     {
+      name: "rejects a qualified projection star",
       code: "db.prepare(`SELECT r.* FROM runs r JOIN jobs j ON j.id = r.job_id`).all();",
       errors: [{ messageId: "noSelectStar" }],
     },
-    // Star mixed into an otherwise explicit projection.
     {
+      name: "rejects a multiply-qualified projection star",
+      code: "db.prepare(`SELECT main.runs.* FROM main.runs`).all();",
+      errors: [{ messageId: "noSelectStar" }],
+    },
+    {
+      name: "rejects a star mixed with explicit projections",
       code: "db.prepare(`SELECT id, * FROM runs`).all();",
       errors: [{ messageId: "noSelectStar" }],
     },
-    // Multi-line and lower-case spellings.
     {
+      name: "rejects multiline lowercase SELECT star",
       code: "db.prepare(`select *\n  from runs\n  where status = ?`).all();",
       errors: [{ messageId: "noSelectStar" }],
     },
-    // A real star alongside a legitimate COUNT(*) still fires once.
     {
+      name: "reports once when a projection star accompanies COUNT star",
       code: "db.prepare(`SELECT *, COUNT(*) OVER () AS total FROM runs`).all();",
       errors: [{ messageId: "noSelectStar" }],
     },
-    // Plain string literal, not a template.
     {
+      name: "checks plain string literals",
       code: "db.prepare('SELECT * FROM runs').all();",
+      errors: [{ messageId: "noSelectStar" }],
+    },
+    {
+      name: "checks concatenated static fragments",
+      code: "db.prepare('SELECT ' + '* FROM runs').all();",
+      errors: [{ messageId: "noSelectStar" }],
+    },
+    {
+      name: "checks joined static fragment arrays",
+      code: "db.prepare(['SELECT *', 'FROM runs'].join(' ')).all();",
+      errors: [{ messageId: "noSelectStar" }],
+    },
+    {
+      name: "checks tagged templates",
+      code: "const query = sql`SELECT * FROM runs`;",
+      errors: [{ messageId: "noSelectStar" }],
+    },
+    {
+      name: "checks templates with a dynamic table",
+      code: "const query = `SELECT * FROM ${table}`;",
       errors: [{ messageId: "noSelectStar" }],
     },
   ],

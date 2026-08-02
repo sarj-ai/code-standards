@@ -23,6 +23,13 @@ def test_flags_repeated_expression_in_comprehension() -> None:
     assert "Repeated expression in comprehension filter" in diags[0].message
 
 
+def test_flags_repeated_attribute_lookup_in_comprehension() -> None:
+    source = """
+    values = [item.value for item in items if item.value is not None]
+    """
+    assert len(_check(source)) == 1
+
+
 def test_leaves_a_filter_that_does_not_repeat_the_element_alone() -> None:
     """The only shape SARJ076 exists for is the repeated call. A different one is fine."""
     source = """

@@ -43,19 +43,14 @@ ruleTester.run("no-insecure-random-id", rule, {
     { code: "const delayMs = Math.random() * 1000;" },
     // Math.random() in a property with a non-sensitive name.
     { code: "const cfg = { jitter: Math.random() };" },
-    // Real-world sweep FPs: NON-security correlation / ephemeral ids.
-    // Temp-file suffix (name signals ephemeral + concatenated into a path). (Next)
     {
       code: "const tempPath = filePath + '.tmp.' + Math.random().toString(36).slice(2);",
     },
-    // HMR session id — a numeric discriminator, not auth. (Next)
     {
       code: "const sessionId = Math.floor(Number.MAX_SAFE_INTEGER * Math.random());",
     },
-    // Dev correlation ids.
     { code: "const executionId = 'exec-' + Math.random().toString(36);" },
     { code: "const requestId = Math.random().toString(16);" },
-    // In-process discriminator / RPC handle — bare `session`, not auth. (VS Code, NestJS)
     { code: "const session = Math.random();" },
     { code: "class ContextIdFactory { private readonly session = Math.random(); }" },
     // Bare `id`/`key`/`session` substrings alone no longer fire — we require a
@@ -65,21 +60,10 @@ ruleTester.run("no-insecure-random-id", rule, {
     // Random value concatenated into a path — even the toString(36) idiom is
     // suppressed here.
     { code: "const output = base + '/tmp/' + Math.random().toString(36);" },
-    // KNOWN GAP (documented false-negative): arithmetic between Math.random()
-    // and `.toString(36)` breaks the chain walk, so the idiom is NOT caught
-    // unless the binding name is identifier/secret-like. The innocuous binding
-    // name here means this is (currently) not flagged.
-    { code: "const x = (Math.random() * 1e9).toString(36);" },
-
-    // --- Test files are out of scope ----------------------------------------
-    // A fixture generator is not a token mint. Real corpus:
-    // zod/packages/zod/src/v3/tests/Mocker.ts:13 ...
     {
       code: "class Mocker { get string() { return Math.random().toString(36).substring(7); } }",
       filename: "src/v3/tests/Mocker.ts",
     },
-    // ... and react-router/packages/react-router/__tests__/vendor/
-    // turbo-stream-test.ts:215.
     {
       code: "const m = { [Math.random().toString(36).slice(2)]: 1 };",
       filename: "__tests__/vendor/turbo-stream-test.ts",
@@ -167,6 +151,100 @@ ruleTester.run("no-insecure-random-id", rule, {
     {
       code: "const m = { [Math.random().toString(36).slice(2)]: 1 };",
       filename: "src/serialize.ts",
+      errors: [{ messageId: "insecureRandomId" }],
+    },
+  ],
+});
+
+ruleTester.run("no-insecure-random-id security-name contract", rule, {
+  valid: [],
+  invalid: [
+    {
+      code: "const token = Math.random();",
+      errors: [{ messageId: "insecureRandomId" }],
+    },
+    {
+      code: "const secret = Math.random();",
+      errors: [{ messageId: "insecureRandomId" }],
+    },
+    {
+      code: "const csrf = Math.random();",
+      errors: [{ messageId: "insecureRandomId" }],
+    },
+    {
+      code: "const passwd = Math.random();",
+      errors: [{ messageId: "insecureRandomId" }],
+    },
+    {
+      code: "const api_key = Math.random();",
+      errors: [{ messageId: "insecureRandomId" }],
+    },
+    {
+      code: "const authId = Math.random();",
+      errors: [{ messageId: "insecureRandomId" }],
+    },
+  ],
+});
+
+ruleTester.run("no-insecure-random-id non-security-name exceptions", rule, {
+  valid: [
+    { code: "const tempId = Math.random().toString(36);" },
+    { code: "const tmpId = Math.random().toString(36);" },
+    { code: "const cacheKey = Math.random().toString(36);" },
+    { code: "const correlationId = Math.random().toString(36);" },
+    { code: "const reqId = Math.random().toString(36);" },
+    { code: "const traceId = Math.random().toString(36);" },
+    { code: "const devId = Math.random().toString(36);" },
+    { code: "const hmrId = Math.random().toString(36);" },
+    { code: "const mockId = Math.random().toString(36);" },
+    { code: "const testId = Math.random().toString(36);" },
+    { code: "const perfMarker = Math.random().toString(36);" },
+    { code: "const key = Math.random();" },
+  ],
+  invalid: [
+    {
+      code: "const requestToken = Math.random();",
+      errors: [{ messageId: "insecureRandomId" }],
+    },
+  ],
+});
+
+ruleTester.run("no-insecure-random-id path and DOM exceptions", rule, {
+  valid: [
+    { code: "const output = `tmp/${Math.random().toString(36)}`;" },
+    { code: "const output = `tmp\\\\${Math.random().toString(36)}`;" },
+    { code: "const output = `#row-${Math.random().toString(36)}`;" },
+    { code: "const output = `asset-${Math.random().toString(36)}.js`;" },
+  ],
+  invalid: [
+    {
+      code: "const authId = `#row-${Math.random()}`;",
+      errors: [{ messageId: "insecureRandomId" }],
+    },
+  ],
+});
+
+ruleTester.run("no-insecure-random-id production-file boundary", rule, {
+  valid: [
+    {
+      code: "const token = Math.random().toString(36);",
+      filename: "src/auth.spec.ts",
+    },
+  ],
+  invalid: [
+    {
+      code: "const token = Math.random().toString(36);",
+      filename: "src/auth.ts",
+      errors: [{ messageId: "insecureRandomId" }],
+    },
+  ],
+});
+
+ruleTester.run("no-insecure-random-id arithmetic-chain limitation", rule, {
+  valid: [{ code: "const x = (Math.random() * 1e9).toString(36);" }],
+  invalid: [
+    {
+      code: "const token = (Math.random() * 1e9).toString(36);",
       errors: [{ messageId: "insecureRandomId" }],
     },
   ],

@@ -78,6 +78,14 @@ there is no blanket directory exemption:
 exclude = ["examples/generated-values/**"]
 ```
 
+In source code, use names, types, small functions, and data structures to carry
+the explanation. One sentence of nearby rationale is clean; exactly two
+sentences is a non-blocking warning; three or more is an error and should be
+reduced to the local constraint or moved to an ADR/doc. Fully typed functions
+must not repeat parameters or returns in docstring/JSDoc tables, while external
+contracts, invariants, failures, examples, generated docs, directives,
+licenses, and runtime-consumed prompt/tool/route documentation remain valid.
+
 ### `doctor` — one version, not three
 
 A consumer repo used to state a Sarj version in three independent places: the
@@ -155,7 +163,7 @@ pre-commit, and in ordinary source — **before** the upgrade that would break
 them:
 
 ```
-drift  eslint.config.mjs: @sarj/prefer-setup-file-mocks x1  --  no longer exists -- removed in @sarj/eslint-plugin 5.0.0: 50 corpus findings read, 0 true positives. Delete the rule entry and any eslint-disable naming it.
+drift  eslint.config.mjs: @sarj/prefer-setup-file-mocks x1  --  no longer exists -- Delete the config entry and suppressions; there is no replacement.
 drift  src/legacy.ts: @sarj/no-implicit-attribute-access x1  --  no longer exists -- ...
 drift  .pre-commit-config.yaml: no-implicit-attribute-access x1  --  no longer exists -- removed in sarj-python-lint 0.37.0 ...
 drift  .sarj-python-baseline.json: SARJ083 x1  --  no longer exists -- removed in sarj-python-lint 0.37.0 ...

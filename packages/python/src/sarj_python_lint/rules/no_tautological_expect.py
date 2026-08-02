@@ -1,7 +1,6 @@
 """SARJ057 — An assertion whose outcome is decided by the literal it was handed.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_tautological_expect.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ057.md
 """
 
 from __future__ import annotations
@@ -54,7 +53,6 @@ _CONTAINER_KINDS: dict[type[ast.expr], str] = {
 class NoTautologicalExpect(Rule):
     id: str = "no-tautological-expect"
     code: str = "SARJ057"
-    has_evidence: bool = True
     description: str = "Assertion whose operands are all literals — its outcome is fixed before the code runs."
 
     @override

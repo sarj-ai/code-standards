@@ -2,7 +2,6 @@
  * @fileoverview no-raw-fetch-outside-clients — a bare `fetch` outside the client layer opts out of retry, timeout and status handling, and cannot be stubbed.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-raw-fetch-outside-clients.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-raw-fetch-outside-clients.md
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
@@ -19,19 +18,11 @@ export interface RuleOptions {
 
 type Options = readonly [RuleOptions?];
 
-/**
- * Path shapes that legitimately own outbound HTTP. Written as regex sources
- * (not globs) so they can express both path separators.
- *
- * Test files are NOT in this list — they are handled unconditionally by
- * `isTestFile`, so overriding `allow` cannot accidentally un-exempt them.
- */
+/** Client-layer paths that may own outbound HTTP; test files are exempt separately. */
 const DEFAULT_ALLOW: readonly string[] = [
   "[\\\\/]clients?[\\\\/]",
   "-client\\.[cm]?[jt]sx?$",
   "[\\\\/]http-client\\.[cm]?[jt]sx?$",
-  // The `api` spelling of the same client-layer convention: an `api/` directory,
-  // a bare `api.ts`, or a `*-api.ts` / `*.api.ts` module.
   "[\\\\/]api[\\\\/]",
   "[\\\\/]api\\.[cm]?[jt]sx?$",
   "[-.]api\\.[cm]?[jt]sx?$",
@@ -42,11 +33,7 @@ const DEFAULT_ALLOW: readonly string[] = [
   "-(service|connector|adapter|sdk|fetcher)\\.[cm]?[jt]sx?$",
 ];
 
-/**
- * Non-production trees the shared `isTestFile` predicate does not spell:
- * Playwright/Cypress suites and their helpers, and jscodeshift's input/output
- * fixtures (text a codemod transforms, not code that runs).
- */
+/** Additional non-production trees that may call `fetch` directly. */
 const NON_PRODUCTION_TREE_RE =
   /[\\/](playwright|cypress|__testfixtures__)[\\/]/;
 
@@ -112,11 +99,7 @@ function isPresignedUrlTransfer(node: TSESTree.CallExpression): boolean {
   return name !== null && PRESIGNED_URL_NAME_RE.test(name);
 }
 
-/**
- * Compile the configured patterns once per file. An invalid pattern is skipped
- * rather than thrown: a bad `allow` entry should not take the whole lint run
- * down, and the rule failing closed (still reporting) is the safe direction.
- */
+/** Compile valid allow patterns; malformed entries fail closed. */
 function compile(patterns: readonly string[]): RegExp[] {
   const compiled: RegExp[] = [];
   for (const pattern of patterns) {

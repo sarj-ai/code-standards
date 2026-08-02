@@ -2,7 +2,6 @@
  * @fileoverview no-offset-pagination — `OFFSET m` scans and discards m rows per page and shifts under concurrent writes, so rows repeat or vanish.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-offset-pagination.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-offset-pagination.md
  */
 
 import { type TSESTree } from "@typescript-eslint/utils";
@@ -14,11 +13,7 @@ import { createSqlListener } from "./_sql.js";
 type MessageIds = "noOffsetPagination";
 type Options = readonly [];
 
-/**
- * `OFFSET` followed by a value or param token — the real pagination construct.
- * The parameter alternatives are the UNION of every marker the three packages
- * see, and are kept identical in SARJ025 and SARJ107.
- */
+/** Match pagination across the parameter styles supported by the TS, Python, and SQL rules. */
 const OFFSET_PAGINATION = /\bOFFSET\s+(?:%s|%\(\w+\)s|\?\d*|:\w+|@\w+|\$\d+|\d+)/i;
 
 /** Cheap substring gate; noise-stripping can only ever remove keywords, never add them. */

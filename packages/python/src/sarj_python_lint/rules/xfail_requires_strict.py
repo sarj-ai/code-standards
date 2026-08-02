@@ -1,7 +1,6 @@
 """SARJ046 — A non-strict `xfail` bug-pin goes green forever once the bug is fixed.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_xfail_requires_strict.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ046.md
 """
 
 from __future__ import annotations
@@ -44,7 +43,6 @@ _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 class XfailRequiresStrict(Rule):
     id: str = "xfail-requires-strict"
     code: str = "SARJ046"
-    has_evidence: bool = True
     description: str = "Bug-pinning `xfail` without `strict=True` — an XPASS reports as a pass and the pin rots."
 
     @override

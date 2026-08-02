@@ -1,32 +1,4 @@
-/**
- * A rule that no test exercises is a rule nobody has read the output of.
- *
- * `ban-loose-type-guards-in-tests` shipped in `configs.strict` at `"error"` for its
- * entire life with no test file at all — `git log --all` on
- * `tests/rules/ban-loose-type-guards-in-tests.test.ts` returns nothing. It was
- * deleted in #183 after a corpus read found 39 findings and 0 true positives. The
- * plugin's other gates could not have caught it: `strict-config-sync` checks that
- * every rule is WIRED, `flat-presets` checks tiers, and neither has any opinion
- * about whether the rule was ever run against a line of code.
- *
- * The floor here is deliberately behavioural rather than "a file exists". A test
- * file with only `valid` cases proves the rule is quiet, never that it fires; one
- * with only `invalid` cases proves it fires, never that it is safe. Both directions
- * are what makes a rule shippable, so both are required.
- *
- * The check is a static parse of the test file rather than a coverage run: it names
- * the missing thing precisely ("no invalid cases"), costs milliseconds, and cannot
- * be satisfied by a rule module being imported for an unrelated reason — which is
- * exactly how line coverage would have scored `ban-loose-type-guards-in-tests` as
- * covered the moment `src/index.ts` imported it.
- *
- * `rule-docs.test.ts` asserts that each rule's examples module EXISTS and is
- * non-empty, which is the file-shaped half. This file owns the behavioural half,
- * and it also covers names that are wired into a preset without being in the
- * `rules` export. The Python twin is `packages/python/tests/conftest.py`, which
- * measures the same invariant by running the rules instead of parsing them —
- * pytest has no single call shape to parse.
- */
+/** Every shipped rule needs valid and invalid executable cases. */
 
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";

@@ -2,7 +2,6 @@
  * @fileoverview prefer-zod-infer — a hand-written type beside a Zod schema drifts silently the moment the schema gains a field.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/prefer-zod-infer.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/prefer-zod-infer.md
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
@@ -19,12 +18,7 @@ type Options = readonly [
   }?,
 ];
 
-/**
- * Chained methods that leave a schema's inferred type alone. Everything else —
- * `.partial()`, `.omit()`, `.merge()`, `.transform()`, `.brand()`, … — means
- * the inferred type is deliberately not the object literal at the call site,
- * so the pair is none of this rule's business. See guard (d).
- */
+/** Chained methods that preserve a schema's inferred shape. */
 const SHAPE_PRESERVING_METHODS: ReadonlySet<string> = new Set([
   "describe",
   "refine",
@@ -55,7 +49,7 @@ const RESHAPING_MODIFIERS: ReadonlySet<string> = new Set([
   "overwrite",
 ]);
 
-/** Methods whose receiver schema is being reshaped — see guard (f). */
+/** Methods that reshape their receiver schema. */
 const MODULE_LEVEL_RESHAPERS: ReadonlySet<string> = new Set([
   "transform",
   "pipe",
@@ -181,11 +175,7 @@ function unwrapNullish(annotation: TSESTree.TypeNode): {
   return { core: rest.length === 0 ? null : annotation, nullable };
 }
 
-/**
- * Whether the annotation is the shape `z.<leaf>()` infers. `null` means "cannot
- * tell" — a member that references another schema, or a leaf this table does
- * not model. Only a definite `false` blocks a report.
- */
+/** Compares a TypeScript annotation with a known Zod leaf; `null` means unknown. */
 function leafAgrees(
   leaf: string | null,
   annotation: TSESTree.TypeNode | null,
@@ -248,9 +238,9 @@ export default createRule<Options, MessageIds>({
     const zodNamespaces = new Set<string>();
     const schemas: SchemaInfo[] = [];
     const typeDeclarations: TypeDeclaration[] = [];
-    /** Guard (c): every name mentioned inside a `z.ZodType<…>` type argument. */
+    /** Names intentionally constraining a `z.ZodType<...>`. */
     const constrainedTypeNames = new Set<string>();
-    /** Guard (f): schemas this module pipes through a shape-changing method. */
+    /** Schemas reshaped elsewhere in this module. */
     const reshapedSchemaNames = new Set<string>();
 
     /** The `z.…` call chain of `node`, base call first, or `null`. */
@@ -322,7 +312,7 @@ export default createRule<Options, MessageIds>({
       };
     }
 
-    /** Guard (d): only a plain `z.object({...})` literal describes its own shape. */
+    /** Extracts fields only from plain object literals with shape-preserving chains. */
     function schemaFields(
       init: TSESTree.Node,
     ): ReadonlyMap<string, SchemaField> | null {
@@ -436,7 +426,7 @@ export default createRule<Options, MessageIds>({
         if (member === undefined) {
           return false;
         }
-        // Guard (d)/(e): a reshaped member's inferred type is not what is written.
+        // A reshaped member's inferred type is not what is written.
         if (field.reshaped) {
           return false;
         }
@@ -487,7 +477,7 @@ export default createRule<Options, MessageIds>({
         }
       },
 
-      /** Guard (f): `XSchema.transform(...)` anywhere in the module. */
+      /** Records `XSchema.transform(...)` and equivalent module-level reshaping. */
       "MemberExpression[computed=false]"(node: TSESTree.MemberExpression): void {
         if (
           node.object.type === AST_NODE_TYPES.Identifier &&
@@ -498,7 +488,7 @@ export default createRule<Options, MessageIds>({
         }
       },
 
-      /** Guard (c): `z.ZodType<T>` and every other type argument it carries. */
+      /** Records every type argument carried by a Zod constraint. */
       TSTypeReference(node): void {
         const { typeName } = node;
         const referenced =
@@ -517,7 +507,7 @@ export default createRule<Options, MessageIds>({
       },
 
       TSInterfaceDeclaration(node): void {
-        // Guard (b)/(g): generics and `extends` both mean "not a restatement".
+        // Generics and `extends` cannot be replaced by direct schema inference.
         if (node.typeParameters !== undefined || (node.extends?.length ?? 0) > 0) {
           return;
         }

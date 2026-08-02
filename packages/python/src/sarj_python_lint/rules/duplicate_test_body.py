@@ -1,7 +1,6 @@
 """SARJ066 — N copy-pasted test functions in one module are one `parametrize` waiting to be written.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_duplicate_test_body.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ066.md
 """
 
 from __future__ import annotations
@@ -85,7 +84,6 @@ _IDENTICAL_ADVICE = (
 class DuplicateTestBody(Rule):
     id: str = "duplicate-test-body"
     code: str = "SARJ066"
-    has_evidence: bool = True
     description: str = (
         "Test function duplicates another test's body in the same module — collapse them into "
         "one `@pytest.mark.parametrize` with `ids=`."
@@ -190,7 +188,15 @@ class _Canonicalizer(ast.NodeVisitor):
 
     def visit_Name(self, node: ast.Name) -> None:
         if node.id in self._bound:
-            node.id = self._aliases.setdefault(node.id, f"v{len(self._aliases)}")
+            node.id = self._alias(node.id)
+
+    def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
+        if node.name is not None and node.name in self._bound:
+            node.name = self._alias(node.name)
+        self.generic_visit(node)
+
+    def _alias(self, name: str) -> str:
+        return self._aliases.setdefault(name, f"v{len(self._aliases)}")
 
 
 def _duplicate_groups(tree: ast.Module, source: str) -> list[list[_Shape]]:
@@ -335,12 +341,19 @@ def _body_without_docstring(node: ast.FunctionDef | ast.AsyncFunctionDef) -> lis
 
 def _bound_names(body: list[ast.stmt]) -> frozenset[str]:
     """Find every name the body binds, so those names can be renamed positionally."""
-    return frozenset(
+    stored = {
         child.id
         for stmt in body
         for child in _walk(stmt)
         if isinstance(child, ast.Name) and isinstance(child.ctx, (ast.Store, ast.Del))
-    )
+    }
+    handlers = {
+        child.name
+        for stmt in body
+        for child in _walk(stmt)
+        if isinstance(child, ast.ExceptHandler) and child.name is not None
+    }
+    return frozenset(stored | handlers)
 
 
 def _parameter_names(node: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[str, ...]:

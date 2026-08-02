@@ -8,11 +8,8 @@
  * could see it — `no-comment-cruft` and friends exempt JSDoc, so the one place
  * in the repo where prose grew without limit was the one place nothing measured.
  *
- * The shape is now fixed: `<name> — <claim>` plus the two DERIVED links. The
- * measurements live in `docs/rules/<name>.md`, the examples live in
- * `tests/rules/<name>.test.ts`, and both URLs are computed from the rule name by
- * `src/rules/_docs.ts` — so a rename breaks a test here instead of leaving a
- * dead link in a comment.
+ * The shape is fixed: `<name> — <claim>` plus a derived link to the executable
+ * examples in `tests/rules/<name>.test.ts`.
  *
  * There is NO budget file and no exemption list. Every rule was converted in one
  * change; an escape hatch would only be a place for the next 171 lines to land.
@@ -25,15 +22,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import plugin, { renamedRules, retiredRules, rules } from "../src/index.js";
-import {
-  EVIDENCE_DIR,
-  evidencePath,
-  evidenceUrl,
-  examplesPath,
-  examplesUrl,
-  REPO_BLOB,
-  TESTS_DIR,
-} from "../src/rules/_docs.js";
+import { examplesPath, examplesUrl, REPO_BLOB, TESTS_DIR } from "../src/rules/_docs.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../..");
@@ -41,17 +30,15 @@ const RULES_DIR = resolve(HERE, "../src/rules");
 
 /**
  * Content lines allowed in a module's `@fileoverview`: the `<name> — <claim>`
- * summary, an optional second claim line, and the two derived link lines. The
+ * summary, an optional second claim line, and the derived examples link. The
  * cap is what stops the 171-line block growing back one useful paragraph at a
  * time.
  */
 const MAX_FILEOVERVIEW_LINES = 6;
 
 /**
- * Signals that a comment is carrying evidence rather than explaining the code
- * beneath it: a count, a percentage, a `file.ts:12` citation, or the vocabulary
- * of a measurement. All of it belongs in `docs/rules/<name>.md`, which a reader
- * can choose to open and which the rule's own `meta.docs.url` points at.
+ * Signals that a source comment is carrying a corpus report rather than
+ * explaining the implementation beneath it.
  */
 const EVIDENCE_IN_COMMENT =
   /((?<![-\w.#/])\d{3,}|\d+(?:\.\d+)?%|\.tsx?:\d+|\bcorpus\b|\bsweep\b|false[- ]positives?\b|true positives?\b|\bmeasured\b|\bfindings?\b|\bhits?\b|\baudit\b|PR #\d+)/iu;
@@ -99,30 +86,32 @@ function commentLines(source: string): { line: number; text: string }[] {
   return out;
 }
 
-describe("the links are derived, not typed", () => {
+describe("the executable-example links are derived, not typed", () => {
+  it("links to this repository's main branch", () => {
+    expect(REPO_BLOB).toBe("https://github.com/sarj-ai/standards/blob/main");
+  });
+
+  it("keeps executable examples in the rule test directory", () => {
+    expect(TESTS_DIR).toBe("packages/typescript/tests/rules");
+  });
+
   it("derives the examples path from the rule name", () => {
     expect(examplesPath("no-enum")).toBe(`${TESTS_DIR}/no-enum.test.ts`);
   });
 
-  it("derives the evidence path from the rule name", () => {
-    expect(evidencePath("no-enum")).toBe(`${EVIDENCE_DIR}/no-enum.md`);
-  });
-
-  it("hangs both URLs off the same repo blob", () => {
+  it("hangs the URL off the repo blob", () => {
     expect(examplesUrl("no-enum")).toBe(`${REPO_BLOB}/${examplesPath("no-enum")}`);
-    expect(evidenceUrl("no-enum")).toBe(`${REPO_BLOB}/${evidencePath("no-enum")}`);
   });
 
   it("tracks the name it is given, which is the whole point", () => {
-    // A rename must move the link with it. A hand-written string would not.
-    expect(evidenceUrl("made-up-rule")).toBe(`${REPO_BLOB}/docs/rules/made-up-rule.md`);
+    expect(examplesUrl("made-up-rule")).toBe(
+      `${REPO_BLOB}/${TESTS_DIR}/made-up-rule.test.ts`,
+    );
   });
 
-  it.each(ruleNames)("%s points meta.docs.url at its derived evidence doc", (name) => {
-    // `createRule` is `RuleCreator(evidenceUrl)`, so this is the runtime proof
-    // that the derivation is wired rather than merely exported.
+  it.each(ruleNames)("%s points meta.docs.url at its executable examples", (name) => {
     const rule = rules[name as keyof typeof rules];
-    expect(rule.meta.docs?.url).toBe(evidenceUrl(name));
+    expect(rule.meta.docs?.url).toBe(examplesUrl(name));
   });
 });
 
@@ -133,19 +122,13 @@ describe("every rule module is a claim plus its derived links", () => {
     expect(
       lines.length,
       `${name}: @fileoverview is ${lines.length} content lines, cap is ${MAX_FILEOVERVIEW_LINES}. ` +
-        `Measurements belong in ${evidencePath(name)}; examples belong in a test.`,
+        "Behavior belongs in its paired test.",
     ).toBeLessThanOrEqual(MAX_FILEOVERVIEW_LINES);
   });
 
   it.each(moduleNames)("%s states its own name and a claim on line one", (name) => {
     const [first] = fileoverviewLines(moduleSource(name));
     expect(first).toMatch(new RegExp(`^@fileoverview ${name} — \\S`, "u"));
-  });
-
-  it.each(moduleNames)("%s carries the derived evidence link", (name) => {
-    expect(fileoverviewLines(moduleSource(name))).toContain(
-      `Evidence: ${evidenceUrl(name)}`,
-    );
   });
 
   it.each(ruleNames)("%s carries the derived examples link", (name) => {
@@ -165,19 +148,13 @@ describe("every rule module is a claim plus its derived links", () => {
       .filter(
         (line) =>
           line.includes(REPO_BLOB) &&
-          !line.includes(examplesUrl(name)) &&
-          !line.includes(evidenceUrl(name)),
+          !line.includes(examplesUrl(name)),
       );
     expect(stray).toEqual([]);
   });
 });
 
-describe("the evidence lives where the links point", () => {
-  it.each(moduleNames)("%s has a non-empty evidence document", (name) => {
-    const file = resolve(REPO_ROOT, evidencePath(name));
-    expect(statSync(file).size, `${evidencePath(name)} is empty`).toBeGreaterThan(0);
-  });
-
+describe("the behavior lives in executable tests", () => {
   it.each(ruleNames)("%s has a non-empty examples module", (name) => {
     const file = resolve(REPO_ROOT, examplesPath(name));
     expect(statSync(file).size, `${examplesPath(name)} is empty`).toBeGreaterThan(0);
@@ -189,13 +166,11 @@ describe("the evidence lives where the links point", () => {
       .map(({ line, text }) => `${name}.ts:${line}: ${text}`);
     expect(
       offenders,
-      `a measurement belongs in ${evidencePath(name)}, not in a comment`,
+      "Corpus reports do not belong in implementation comments; encode behavior in tests.",
     ).toEqual([]);
   });
 
   it("ships no exemption or budget file", () => {
-    // #182 proved zero exemptions is reachable in one change. A budget file is
-    // only ever a place for the next unbounded block to land.
     const strays = readdirSync(HERE).filter((file) => /budget|exempt|allowlist/iu.test(file));
     expect(strays).toEqual([]);
   });

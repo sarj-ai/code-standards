@@ -5,6 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 import ast
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 import re
 from typing import TYPE_CHECKING, Final
@@ -14,15 +15,9 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 
-# The two locations a rule's documentation lives in, and the base of the links
-# that point at them. Named once here because `Rule.examples_path` /
-# `Rule.evidence_path` DERIVE every rule's links from these plus the rule's own
-# module name and code — no rule module writes a URL by hand, so a rename cannot
-# leave a dead link behind. `test_rule_meta.py` asserts every derived path
-# resolves on disk.
+# Each rule points directly to its executable examples.
 REPO_BLOB: Final = "https://github.com/sarj-ai/standards/blob/main"
 TESTS_DIR: Final = "packages/python/tests/rules"
-EVIDENCE_DIR: Final = "docs/rules"
 
 
 # Suppression syntax. Two forms supported:
@@ -58,6 +53,13 @@ def is_suppressed(source_lines: Sequence[str], line: int, code: str) -> bool:
     return code.upper() in codes
 
 
+class Severity(StrEnum):
+    """Whether a diagnostic blocks the lint command."""
+
+    WARNING = "warning"
+    ERROR = "error"
+
+
 @dataclass(frozen=True, slots=True)
 class Diagnostic:
     """A single lint finding."""
@@ -67,10 +69,12 @@ class Diagnostic:
     col: int
     code: str
     message: str
+    severity: Severity = Severity.ERROR
 
     def format(self) -> str:
         """Render the finding ruff-compatibly as `path:line:col: CODE message`."""
-        return f"{self.path}:{self.line}:{self.col}: {self.code} {self.message}"
+        label = "warning: " if self.severity is Severity.WARNING else ""
+        return f"{self.path}:{self.line}:{self.col}: {self.code} {label}{self.message}"
 
 
 class Rule(ABC):
@@ -79,23 +83,13 @@ class Rule(ABC):
     Subclasses set `id` (kebab-case) and `code` (e.g. SARJ001) as class
     attributes and implement `check(path, source) -> list[Diagnostic]`.
 
-    A rule documents itself with a one-line summary plus two DERIVED links —
-    `examples_url()` (the examples) and `evidence_url()` (the measurements). Both
-    are computed from `__module__` and `code`, never written by hand, and
-    `test_rule_meta.py` asserts each resolves to a file that exists. A rename
-    therefore fails the suite instead of leaving a dead link in a docstring.
+    A rule documents itself with a concise summary and a derived link to its
+    executable examples. The metadata tests require that paired test module.
     """
 
     id: str
     code: str
     description: str
-
-    # True when `docs/rules/<code>.md` holds this rule's measured evidence — the
-    # corpus census, the threshold sweeps and the false-positive families each
-    # guard was built to stop. Declared rather than probed so the link still
-    # prints from an installed wheel, where `docs/` is not shipped;
-    # `test_evidence_flag_matches_the_filesystem` keeps the two honest.
-    has_evidence: bool = False
 
     @abstractmethod
     def check(self, path: Path, source: str) -> list[Diagnostic]:
@@ -107,16 +101,8 @@ class Rule(ABC):
         return f"{TESTS_DIR}/test_{cls.__module__.rpartition('.')[2]}.py"
 
     @classmethod
-    def evidence_path(cls) -> str:
-        return f"{EVIDENCE_DIR}/{cls.code}.md"
-
-    @classmethod
     def examples_url(cls) -> str:
         return f"{REPO_BLOB}/{cls.examples_path()}"
-
-    @classmethod
-    def evidence_url(cls) -> str:
-        return f"{REPO_BLOB}/{cls.evidence_path()}"
 
 
 _last_parse: tuple[str, str, ast.Module | None] | None = None

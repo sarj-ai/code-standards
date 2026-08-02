@@ -1,7 +1,6 @@
 """SARJ089 — A bare Arrange/Act/Assert (or Given/When/Then) phase label in a test.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_phase_label_comment.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ089.md
 """
 
 from __future__ import annotations
@@ -35,7 +34,6 @@ _PHASE_RE = re.compile(
 class TestPhaseLabelComment(Rule):
     id: str = "test-phase-label-comment"
     code: str = "SARJ089"
-    has_evidence: bool = True
     description: str = (
         "Bare test-phase label — delete it; a test whose phases need signposting "
         "wants a named helper or a smaller test, not a comment."

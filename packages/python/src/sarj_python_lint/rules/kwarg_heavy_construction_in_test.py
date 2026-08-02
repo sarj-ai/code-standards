@@ -1,7 +1,6 @@
 """SARJ045 — A domain object built with many kwargs inline belongs in a builder.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_kwarg_heavy_construction_in_test.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ045.md
 """
 
 from __future__ import annotations
@@ -39,7 +38,6 @@ _MOCK_ASSERTION_PREFIX = "assert_"
 class KwargHeavyConstructionInTest(Rule):
     id: str = "kwarg-heavy-construction-in-test"
     code: str = "SARJ045"
-    has_evidence: bool = True
     description: str = "Object built with many keywords inline in a test — extract a helper with defaults."
 
     @override
@@ -103,16 +101,7 @@ class _KwargHeavyVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def reportable_hits(self, tree: ast.Module) -> list[tuple[ast.Call, int]]:
-        """Keep the hits that have duplication to extract and no helper already.
-
-        Two module-wide facts are needed, so this runs after the walk rather
-        than inside `visit_Call`: how often the callee is constructed, and
-        whether the callee is a function this very module defines.
-
-        Returns:
-            The wide constructions worth reporting.
-
-        """
+        """Keep repeated calls unless their callee is a helper defined here."""
         counts = Counter(name for n in nodes(tree, ast.Call) if (name := _callee_name(n.func)) is not None)
         local_defs = _locally_defined_names(tree)
         return [
@@ -137,42 +126,18 @@ def _is_data_callable(func: ast.expr) -> bool:
 
 
 def _is_mock_assertion(func: ast.expr) -> bool:
-    """Report whether the callee is a mock assertion rather than a construction.
-
-    `assert_called_once_with` / `assert_called_with` / `assert_awaited_once_with`
-    are the only `assert_*` callees the corpus contains, and none of them builds
-    anything: the keywords ARE the assertion.
-
-    Returns:
-        True when the call asserts on a recorded call instead of making an object.
-
-    """
+    """Return whether the call asserts on a mock instead of building an object."""
     name = _callee_name(func)
     return name is not None and name.startswith(_MOCK_ASSERTION_PREFIX)
 
 
 def _locally_defined_names(tree: ast.Module) -> frozenset[str]:
-    """Collect every function name this module defines.
-
-    Returns:
-        The names bound by a `def` / `async def` anywhere in the file.
-
-    """
+    """Collect names bound by functions defined in this module."""
     return frozenset(node.name for node in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef))
 
 
 def _calls_a_local_helper(func: ast.expr, local_defs: frozenset[str]) -> bool:
-    """Report whether the callee is a plain function defined in this module.
-
-    Such a callee is the factory, fixture-factory or shared assertion helper the
-    rule asks for — its keywords are the parametrized case matrix, not an
-    inlined object. Only a bare `Name` counts: `module.build(...)` or
-    `self.build(...)` reaches something this file does not own.
-
-    Returns:
-        True when the call targets a same-module `def`.
-
-    """
+    """Return whether a bare callee names a function defined in this module."""
     return isinstance(func, ast.Name) and func.id in local_defs
 
 

@@ -21,12 +21,7 @@ def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
 
 
 def _patches(count: int, prefix: str = "app.mod") -> str:
-    """Build a test decorated with `count` distinct `@patch`es.
-
-    Returns:
-        The source of a single test function at the requested mock count.
-
-    """
+    """Build a test decorated with `count` distinct `@patch`es."""
     decorators = "\n".join(f'@patch("{prefix}{i}.collaborator")' for i in range(count))
     params = ", ".join(f"m{i}" for i in range(count))
     return f"{decorators}\ndef test_thing({params}):\n    assert run() == 1\n"
@@ -192,6 +187,20 @@ def test_mock_constructions_bound_to_names_count():
     assert len(_check(src)) == 1
 
 
+def test_annotated_mock_constructions_bound_to_names_count():
+    src = """
+        def test_thing():
+            a: Service = Mock()
+            b: Service = Mock()
+            c: Service = Mock()
+            d: Service = Mock()
+            e: Service = Mock()
+            f: Service = Mock()
+            assert run(a, b, c, d, e, f) == 1
+    """
+    assert len(_check(src)) == 1
+
+
 def test_a_mock_not_bound_to_a_name_does_not_count():
     # `patch(..., new=MagicMock())` replaces one thing, not two.
     src = """
@@ -206,6 +215,14 @@ def test_a_mock_not_bound_to_a_name_does_not_count():
 def test_mock_fixture_parameters_count():
     src = """
         def test_thing(mock_queue, mock_store, api_mock, mock_bus, other_mock, mock_gateway):
+            assert run() == 1
+    """
+    assert len(_check(src)) == 1
+
+
+def test_keyword_only_mock_fixture_parameters_count():
+    src = """
+        def test_thing(*, mock_queue, mock_store, api_mock, mock_bus, other_mock, mock_gateway):
             assert run() == 1
     """
     assert len(_check(src)) == 1
@@ -503,6 +520,25 @@ def test_a_hoisted_double_wired_into_another_is_one_collaborator():
             ctx.room.participant = mock_participant
             ctx.room.participant.track = mock_track
             assert run(ctx) == 1
+    """
+    assert _check(src) == []
+
+
+def test_transitively_wired_doubles_resolve_to_one_collaborator():
+    src = """
+        def test_thing():
+            root = Mock()
+            branch = Mock()
+            leaf = Mock()
+            twig = Mock()
+            fruit = Mock()
+            seed = Mock()
+            root.branch = branch
+            branch.leaf = leaf
+            leaf.twig = twig
+            twig.fruit = fruit
+            fruit.seed = seed
+            assert run(root) == 1
     """
     assert _check(src) == []
 

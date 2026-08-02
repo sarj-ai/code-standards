@@ -1,7 +1,6 @@
 """SARJ013 — Psycopg `row_factory=dict_row` where a validated model row is intended.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_class_row.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ013.md
 """
 
 from __future__ import annotations
@@ -24,7 +23,6 @@ _BANNED_FACTORY = "dict_row"
 class PreferClassRow(Rule):
     id: str = "prefer-class-row"
     code: str = "SARJ013"
-    has_evidence: bool = True
     description: str = "psycopg row_factory=dict_row returns unvalidated dicts — prefer class_row(Model)."
 
     @override

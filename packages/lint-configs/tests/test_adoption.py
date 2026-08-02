@@ -1,8 +1,4 @@
-"""Tests for the adoption path: `init`, `doctor`, `peers`, and the manifest.
-
-Each test here corresponds to something that was measured broken in a real
-consumer repo, not to a hypothetical. The docstrings say which.
-"""
+"""Tests for the adoption path: `init`, `doctor`, `peers`, and the manifest."""
 
 from __future__ import annotations
 
@@ -25,15 +21,16 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 def _cli(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, "-m", "sarj_lint_configs", *args],
-        capture_output=True, text=True, check=False, cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=cwd,
     )
 
 
 def _python_repo(root: Path) -> Path:
     (root / "src").mkdir(parents=True, exist_ok=True)
-    _ = (root / "pyproject.toml").write_text(
-        '[project]\nname = "app"\nversion = "0.1.0"\nrequires-python = ">=3.14"\n'
-    )
+    _ = (root / "pyproject.toml").write_text('[project]\nname = "app"\nversion = "0.1.0"\nrequires-python = ">=3.14"\n')
     return root
 
 
@@ -43,12 +40,7 @@ def _typescript_repo(root: Path) -> Path:
 
 
 def test_every_eslint_import_has_a_pinned_peer() -> None:
-    """The config's imports were a hidden contract; now they are a checked one.
-
-    A consumer following the README hit `Cannot find package 'typescript-eslint'`,
-    installed it, hit the next one, and so on for nine rounds. Adding an import to
-    `eslint.strict.mjs` without adding its pin recreates that exactly.
-    """
+    """The config's imports were a hidden contract; now they are a checked one."""
     imported = set(re.findall(r'^import \w+ from "([^"]+)";', ESLINT_STRICT.read_text(), re.MULTILINE))
     pinned = set(manifest.eslint_peers())
     assert imported - pinned == set(), "eslint.strict.mjs imports a package with no pin in eslint.peers.json"
@@ -88,13 +80,7 @@ def test_peers_command_prints_one_install_command() -> None:
 
 
 def test_eslint_plugin_pin_matches_the_published_package() -> None:
-    """The README advertised a floor the config had already outgrown.
-
-    `@sarj/eslint-plugin@2.16.0` was documented while the config referenced a rule
-    that only exists in 2.17.0+, so anyone who followed the README got "Definition
-    for rule was not found". A pin asserted against `package.json` cannot go stale
-    silently, which a sentence in a README always can.
-    """
+    """The README advertised a floor the config had already outgrown."""
     source = REPO_ROOT / "packages" / "typescript" / "package.json"
     if not source.is_file():
         pytest.skip("running against an installed wheel, outside the source tree")
@@ -104,14 +90,7 @@ def test_eslint_plugin_pin_matches_the_published_package() -> None:
 
 
 def test_this_repos_own_overrides_are_the_ones_consumers_get() -> None:
-    """The private workaround that made the repo's green CI a lie.
-
-    `packages/typescript/package.json` carries
-    `{"overrides": {"eslint-plugin-react": {"eslint": "$eslint"}}}`. That block
-    existed in nothing shipped, so this repo installed and linted itself fine
-    while every consumer's first `npm install` exited ERESOLVE. Pinning the two
-    together means the repo can no longer rely on a fix consumers cannot get.
-    """
+    """The private workaround that made the repo's green CI a lie."""
     source = REPO_ROOT / "packages" / "typescript" / "package.json"
     if not source.is_file():
         pytest.skip("running against an installed wheel, outside the source tree")
@@ -123,17 +102,13 @@ def test_this_repos_own_overrides_are_the_ones_consumers_get() -> None:
 
 
 def test_manifest_round_trips(tmp_path: Path) -> None:
-    written = manifest.Manifest(
-        version="1.2.3", configs=("ruff", "pyright"), python_dest=".", typescript_dest="web"
-    )
+    written = manifest.Manifest(version="1.2.3", configs=("ruff", "pyright"), python_dest=".", typescript_dest="web")
     _ = (tmp_path / manifest.MANIFEST_NAME).write_text(written.render())
     assert manifest.load(tmp_path) == written
 
 
 def test_manifest_renders_as_valid_toml() -> None:
-    rendered = manifest.Manifest(
-        version="1.2.3", configs=("ruff",), python_dest=".", typescript_dest="."
-    ).render()
+    rendered = manifest.Manifest(version="1.2.3", configs=("ruff",), python_dest=".", typescript_dest=".").render()
     parsed = tomllib.loads(rendered)
     assert parsed["version"] == "1.2.3"
     assert parsed["configs"] == ["ruff"]
@@ -180,12 +155,7 @@ def test_sync_respects_the_manifests_config_set(tmp_path: Path) -> None:
 
 
 def test_sync_check_fails_when_a_synced_config_is_edited(tmp_path: Path) -> None:
-    """The vendoring failure, caught at the earliest possible moment.
-
-    One consumer copied the ESLint config "verbatim" and then edited it; it drifted
-    to 120 rules against a canonical 145, missing 30 and carrying 5 that no longer
-    exist upstream. Nothing detected that for as long as it took to measure by hand.
-    """
+    """The vendoring failure, caught at the earliest possible moment."""
     _ = _python_repo(tmp_path)
     assert _cli("init", "--dest", str(tmp_path)).returncode == 0
     with (tmp_path / ".ruff-strict.toml").open("a") as handle:
@@ -220,12 +190,7 @@ def test_init_writes_the_whole_python_wiring(tmp_path: Path) -> None:
 
 
 def test_init_writes_a_typescript_entrypoint_with_an_override_seam(tmp_path: Path) -> None:
-    """The generated entrypoint has to teach "extend, do not fork".
-
-    Repos hand-rolled their own `unicorn/filename-case` because the canonical one
-    did not cover their framework, and forking was the only route they knew. An
-    override block in the file they own does the same job and keeps upstream rules.
-    """
+    """The generated entrypoint has to teach "extend, do not fork"."""
     _ = _typescript_repo(tmp_path)
     proc = _cli("init", "--dest", str(tmp_path))
     assert proc.returncode == 0, proc.stderr
@@ -247,9 +212,7 @@ def test_init_writes_a_typescript_entrypoint_with_an_override_seam(tmp_path: Pat
         pytest.param("eslint-plugin-react", id="the-package-the-overrides-unblock"),
     ],
 )
-def test_init_gives_a_typescript_repo_everything_npm_needs(
-    tmp_path: Path, expected: str
-) -> None:
+def test_init_gives_a_typescript_repo_everything_npm_needs(tmp_path: Path, expected: str) -> None:
     """Anything missing here sends the reader back to trial-and-error installs."""
     _ = _typescript_repo(tmp_path)
     proc = _cli("init", "--dest", str(tmp_path))
@@ -321,15 +284,7 @@ def test_generated_precommit_block_carries_no_rev(tmp_path: Path) -> None:
 
 
 def test_init_writes_the_npm_overrides_into_package_json(tmp_path: Path) -> None:
-    """`init` has to WRITE the overrides, not just talk about them.
-
-    `eslint.peers.json` and both READMEs said `init` writes the block, and it
-    only ever appended to the printed notes. So the documented one-command
-    adoption path ended at `npm error code ERESOLVE`: the shipped config needs
-    ESLint 10 and `eslint-plugin-react@7.37.5` peers `eslint <= ^9.7`. The repo
-    itself installs only because `packages/typescript/package.json` carries the
-    same overrides privately, where no consumer can see them.
-    """
+    """`init` has to WRITE the overrides, not just talk about them."""
     _ = _typescript_repo(tmp_path)
     proc = _cli("init", "--dest", str(tmp_path))
     assert proc.returncode == 0, proc.stderr
@@ -367,14 +322,7 @@ def test_init_leaves_a_package_json_that_already_has_the_overrides_alone(
 
 
 def test_init_wires_the_subproject_that_actually_installs_eslint(tmp_path: Path) -> None:
-    """The repo root is not the project root, and writing there reaches nobody.
-
-    Two of the three layouts measured keep their TypeScript one directory down,
-    so the root has no `package.json`, no `node_modules` and no `tsconfig.json`.
-    `init` wrote `eslint.config.mjs` there anyway and merged the overrides into a
-    root `package.json` that does not exist -- ESLint does not search upward for a
-    flat config, so the file it wrote could never load.
-    """
+    """The repo root is not the project root, and writing there reaches nobody."""
     (tmp_path / "web").mkdir()
     _ = (tmp_path / "web" / "package.json").write_text('{"name": "web"}\n')
     _ = (tmp_path / "web" / "package-lock.json").write_text("{}\n")
@@ -406,9 +354,7 @@ def test_sync_reads_the_subproject_destinations_back_out_of_the_manifest(
 #: A hook that does not say `pass_filenames: false` receives the staged files
 #: pre-commit matched for it, so replaying one without a path is not the command
 #: that actually runs.
-_PRECOMMIT_HOOK = re.compile(
-    r"entry:\s*(?P<entry>.+?)\n(?P<rest>(?:\s+\w[^\n]*\n)*)", re.MULTILINE
-)
+_PRECOMMIT_HOOK = re.compile(r"entry:\s*(?P<entry>.+?)\n(?P<rest>(?:\s+\w[^\n]*\n)*)", re.MULTILINE)
 
 
 def _precommit_entries(config: str) -> list[tuple[str, bool]]:
@@ -419,14 +365,7 @@ def _precommit_entries(config: str) -> list[tuple[str, bool]]:
 
 
 def test_the_generated_precommit_hook_actually_runs(tmp_path: Path) -> None:
-    """The one file `init` writes that nothing executed.
-
-    `precommit_block` was a hardcoded constant, so it emitted
-    `entry: uv run --frozen sarj-lint-configs doctor` for every repo. In a
-    TypeScript-only repo -- no `pyproject.toml`, no lockfile -- `uv run` exits 2
-    with `error: Failed to spawn: sarj-lint-configs` on every commit. Asserting
-    on the YAML's text could never have caught that; only running the entry can.
-    """
+    """The one file `init` writes that nothing executed."""
     _ = _python_repo(tmp_path)
     _ = (tmp_path / "src" / "app.py").write_text("VALUE: int = 1\n")
     assert _cli("init", "--dest", str(tmp_path)).returncode == 0
@@ -508,8 +447,7 @@ def test_doctor_catches_a_ci_pin_that_differs_from_the_pyproject_pin(tmp_path: P
     workflows = tmp_path / ".github" / "workflows"
     workflows.mkdir(parents=True)
     _ = (workflows / "ci.yml").write_text(
-        "jobs:\n  lint:\n    steps:\n"
-        "      - run: uvx --from sarj-python-lint==0.12.2 sarj-python-lint check .\n"
+        "jobs:\n  lint:\n    steps:\n      - run: uvx --from sarj-python-lint==0.12.2 sarj-python-lint check .\n"
     )
     proc = _cli("doctor", "--dest", str(tmp_path))
     assert proc.returncode == 1
@@ -520,8 +458,7 @@ def test_doctor_catches_a_ci_pin_that_differs_from_the_pyproject_pin(tmp_path: P
 def test_doctor_catches_a_stale_package_script_pin(tmp_path: Path) -> None:
     _ = _typescript_repo(tmp_path)
     _ = (tmp_path / "package.json").write_text(
-        '{"scripts":{"lint:sarj":"uvx --from sarj-lint-configs==0.1.0 '
-        'sarj-standards check ."}}\n'
+        '{"scripts":{"lint:sarj":"uvx --from sarj-lint-configs==0.1.0 sarj-standards check ."}}\n'
     )
 
     proc = _cli("doctor", "--dest", str(tmp_path))
@@ -577,15 +514,7 @@ def test_doctor_catches_a_stale_eslint_plugin_pin(tmp_path: Path) -> None:
     ids=["bare", "caret", "tilde", "equals", "gte", "double-equals", "compatible", "v-prefix"],
 )
 def test_doctor_accepts_every_spelling_of_the_tested_floor(tmp_path: Path, operator: str) -> None:
-    """A repo pinned to exactly the tested floor is not drifted, however it spells it.
-
-    `>=6.1.0` was reported as DRIFT against a floor of `6.1.0`. The comparison was
-    `pinned.lstrip("^~=")`, a CHARACTER-SET strip: it stops at the leading `>`,
-    which is not in the set, so the whole specifier survived and no longer equalled
-    the floor. `>=` is the ordinary npm spelling of a floor and the only PEP 440
-    spelling of one, so `doctor` told a correctly-pinned repo to change something --
-    without being able to say what.
-    """
+    """A repo pinned to exactly the tested floor is not drifted, however it spells it."""
     floor = manifest.eslint_peers()["@sarj/eslint-plugin"]
     _ = _typescript_repo(tmp_path)
     _ = (tmp_path / "package.json").write_text(
@@ -638,9 +567,7 @@ def test_doctor_warns_when_no_manifest_exists(tmp_path: Path) -> None:
 def test_doctor_reports_manifest_version_drift(tmp_path: Path) -> None:
     _ = _python_repo(tmp_path)
     _ = (tmp_path / manifest.MANIFEST_NAME).write_text(
-        manifest.Manifest(
-            version="0.0.1", configs=("ruff",), python_dest=".", typescript_dest="."
-        ).render()
+        manifest.Manifest(version="0.0.1", configs=("ruff",), python_dest=".", typescript_dest=".").render()
     )
     proc = _cli("doctor", "--dest", str(tmp_path))
     assert proc.returncode == 1
@@ -689,9 +616,7 @@ _DOCTOR_OUTPUT_LINE = re.compile(r"^(?:ok|warn|drift)\s", re.MULTILINE)
 
 
 def _documented_pins(text: str) -> dict[str, str]:
-    instructions = "\n".join(
-        line for line in text.splitlines() if not _DOCTOR_OUTPUT_LINE.match(line)
-    )
+    instructions = "\n".join(line for line in text.splitlines() if not _DOCTOR_OUTPUT_LINE.match(line))
     pins = doctor.parse_pins(instructions)
     if plugin := re.search(r"@sarj/eslint-plugin@(?P<version>\d+\.\d+\.\d+)", instructions):
         pins["@sarj/eslint-plugin"] = plugin.group("version")
@@ -703,20 +628,7 @@ def _documented_pins(text: str) -> dict[str, str]:
     [REPO_ROOT / "README.md", REPO_ROOT / "packages" / "lint-configs" / "README.md"],
 )
 def test_readme_never_advertises_a_version_that_is_not_shipping(readme: Path) -> None:
-    """The class of bug this kills, not one instance of it.
-
-    The README advertised a peer floor of `@sarj/eslint-plugin@2.16.0` while the
-    config referenced a rule that only exists in 2.17.0+, so anyone who followed
-    the README got a broken config. It also pinned `sarj-lint-configs==0.10.0`
-    five minor versions after 0.10.0. Both are the same failure: a version literal
-    typed into prose, which is true exactly once. Asserting on them makes a stale
-    doc a red build instead of a consumer's afternoon.
-
-    Only COPY-PASTEABLE forms count: `name==1.2.3` and `@scope/name@1.2.3`. Prose
-    that mentions a historical version without an operator ("pinned at 0.10.0")
-    is not something a reader can paste into a terminal, and a README explaining
-    which versions used to be wrong has to be able to name them.
-    """
+    """The class of bug this kills, not one instance of it."""
     if not readme.is_file():
         pytest.skip(f"{readme} not present")
     current = {
@@ -749,28 +661,13 @@ def test_peers_json_documents_why_each_ceiling_exists() -> None:
 
 
 def test_the_manifest_filename_is_the_one_adopted_repos_committed() -> None:
-    """Every other reference to it is symbolic, so a rename is invisible to the suite.
-
-    The filename is the contract: it is what a consumer commits, what `doctor`
-    looks for, what `sync --check` reads its config set from, and what both
-    READMEs tell people to expect. Renaming the constant orphans every adopted
-    repo at once -- `doctor` starts reporting "absent -- run init" everywhere --
-    with no test objecting.
-    """
+    """Every other reference to it is symbolic, so a rename is invisible to the suite."""
     assert manifest.MANIFEST_NAME == ".sarj-standards.toml"
     assert manifest.MANIFEST_NAME in (REPO_ROOT / "README.md").read_text(encoding="utf-8")
 
 
 def test_the_expected_precommit_rev_names_a_tag_the_release_workflow_publishes() -> None:
-    """The rev namespace is `python-v`, and only the release workflow can confirm it.
-
-    The hooks in `.pre-commit-hooks.yaml` ship from the ROOT package, which is
-    `sarj-python-lint`, so the tag is `python-v<its version>` -- not the
-    `sarj-lint-configs` version a consumer pinned. Existing tests only assert
-    that a WRONG rev drifts, which stays true if the prefix is changed to a
-    namespace that is never tagged: `doctor` would then demand
-    `lint-configs-v0.24.0` from a repo, and no such tag exists to point at.
-    """
+    """The rev namespace is `python-v`, and only the release workflow can confirm it."""
     expected = manifest.expected_precommit_rev()
     assert expected is not None
     assert expected == f"python-v{version('sarj-python-lint')}"
@@ -782,13 +679,7 @@ def test_the_expected_precommit_rev_names_a_tag_the_release_workflow_publishes()
 
 
 def test_sync_check_treats_a_config_that_was_never_synced_as_drift(tmp_path: Path) -> None:
-    """A repo that never ran `sync` must fail `sync --check`, not pass it.
-
-    The check compared bytes only when the destination already existed, so a
-    missing file reported `ok:` and the run exited 0. That is the exact state of
-    a repo that adopted the CI snippet and nothing else, which is the population
-    the gate exists for.
-    """
+    """A repo that never ran `sync` must fail `sync --check`, not pass it."""
     proc = _cli("sync", "--check", "--only", "ruff", "pyright", "--dest", str(tmp_path))
     assert proc.returncode == 1, proc.stdout
     assert "2 drifted" in proc.stdout

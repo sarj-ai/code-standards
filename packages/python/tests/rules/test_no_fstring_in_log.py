@@ -294,25 +294,93 @@ def test_flags_structlog_get_logger_chain():
 @pytest.mark.parametrize(
     "source",
     [
+        'import logging\nlogging.info(f"{x}")\n',
+        'import logging as log\nlog.warning(f"slow {dt}")\n',
+        'import logging.handlers\nlogging.error(f"{error}")\n',
+    ],
+    ids=["module", "aliased-module", "submodule-import"],
+)
+def test_suppresses_stdlib_module_logging_calls(source: str):
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'import logging\nLOG = logging.getLogger(__name__)\nLOG.info(f"{x}")\n',
+        'import logging\nlog: logging.Logger = logging.getLogger()\nlog.error(f"{x}")\n',
+        'import logging\nself.logger = logging.getLogger()\nself.logger.warning(f"{x}")\n',
+    ],
+    ids=["assigned-name", "annotated-name", "assigned-attribute"],
+)
+def test_suppresses_names_bound_to_stdlib_loggers(source: str):
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'logging.getLogger(__name__).info(f"{x}")\n',
+        'logging.getLogger().bind(a=1).info(f"{x}")\n',
+        'LOG = logging.getLogger()\nLOG.bind(a=1).info(f"{x}")\n',
+    ],
+    ids=["inline-factory", "inline-builder", "bound-builder"],
+)
+def test_suppresses_stdlib_factory_through_receiver_chain(source: str):
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("keyword", ["exc_info", "stack_info", "extra"])
+def test_suppresses_calls_with_stdlib_only_keyword(keyword: str):
+    assert _check(f'logger.error(f"{{error}}", {keyword}=value)\n') == []
+
+
+def test_stdlib_attribute_binding_does_not_suppress_unrelated_logger():
+    source = (
+        "import logging\n"
+        "self.logger = logging.getLogger()\n"
+        'logger.info(f"{x}")\n'
+    )
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
         'get_logger().info(f"{x}")\n',
         'get_logger(__name__).warning(f"slow {dt}")\n',
         'get_logger().bind(request_id=rid).info(f"{x}")\n',
+        'getLogger().error(f"{x}")\n',
     ],
+    ids=["snake-case", "snake-case-with-arg", "snake-case-builder", "camel-case"],
 )
 def test_bare_name_factory_is_suppressed_because_it_is_ambiguous(source: str):
-    """A BARE `get_logger()` could be structlog or a stdlib shim; suppress it.
-
-    An earlier version of this file asserted the opposite. That was wrong, and
-    wrong in the dangerous direction: `def get_logger(n): return
-    logging.getLogger(n)` is a common shim (huggingface_hub, transformers,
-    fastmcp, mcp, speechmatics all ship it), and this rule's advice —
-    `logger.info("msg", key=value)` — raises `TypeError` on a stdlib logger.
-    Worse, it raises only when the record is actually emitted, so the code is
-    green at the default WARNING level and fails once log level reaches INFO.
-
-    A false negative here costs one style nit. A false positive ships a
-    production crash. The name alone cannot distinguish the two, so suppress.
-    `structlog.get_logger()` — DOTTED — is unambiguous and still fires; see
-    `test_flags_structlog_get_logger_chain`.
-    """
     assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'warnings.warn(f"{x}")\n',
+        'console.log(f"{x}")\n',
+    ],
+    ids=["warnings", "rich-console"],
+)
+def test_non_logger_apis_with_log_method_names_are_ignored(source: str):
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'logger.info(f"{x}" + "!")\n',
+        'logger.info("value: " + f"{x}")\n',
+    ],
+    ids=["fstring-first", "fstring-last"],
+)
+def test_flags_interpolating_fstring_in_explicit_concatenation(source: str):
+    assert len(_check(source)) == 1
+
+
+def test_allows_explicit_concatenation_with_constant_fstring():
+    assert _check('logger.info(f"constant" + "!")\n') == []

@@ -50,6 +50,19 @@ async def get(conn):
     assert len(_check(src)) == 1
 
 
+def test_flags_manual_model_validation_after_fetching_dict_row():
+    src = """
+from psycopg.rows import dict_row
+
+async def get_task(conn):
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute("SELECT id, status FROM tasks")
+        row = await cur.fetchone()
+        return Task.model_validate(row)
+"""
+    assert len(_check(src)) == 1
+
+
 def test_fires_sync_with_cursor():
     src = """
 from psycopg.rows import dict_row
@@ -351,6 +364,23 @@ def test_sarj_noqa_with_code_is_recognised():
     diags = _check(src)
     lines = src.splitlines()
     assert is_suppressed(lines, diags[0].line, diags[0].code)
+
+
+@pytest.mark.parametrize(
+    ("query", "reason"),
+    [
+        ("SELECT COUNT(*) FROM tasks", "aggregate has no model"),
+        ("SELECT dynamic_columns FROM tasks", "dynamic projection"),
+    ],
+    ids=["aggregate", "dynamic-projection"],
+)
+def test_plain_mapping_exceptions_can_be_suppressed(query: str, reason: str):
+    src = (
+        f'cur.execute("{query}")\n'
+        f"row = conn.cursor(row_factory=dict_row)  # sarj-noqa: SARJ013 — {reason}\n"
+    )
+    diagnostic = _check(src)[0]
+    assert is_suppressed(src.splitlines(), diagnostic.line, diagnostic.code)
 
 
 def test_bare_sarj_noqa_suppresses():

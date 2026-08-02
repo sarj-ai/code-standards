@@ -78,7 +78,10 @@ _PYTHON_NOISE_RULES = frozenset(
         "docstring-returns-restate-signature",
         "duplicated-override-docstring",
         "no-comment-cruft",
+        "no-long-comment",
         "no-restated-comment",
+        "no-typed-doc-sections",
+        "prefer-single-sentence-comment",
         "redundant-class-docstring",
         "redundant-docstring",
         "restated-test-docstring",
@@ -104,12 +107,7 @@ def run(
     *,
     noise_only: bool = False,
 ) -> int:
-    """Dispatch files and directories to every applicable installed registry.
-
-    Returns:
-        The highest exit status produced by an applicable registry.
-
-    """
+    """Dispatch files and directories to every applicable installed registry."""
     # Keep config-only commands (`sync`, `list`, and `path`) usable directly
     # from a Standards source checkout without installing every lint package.
     # The checker packages are required only for the `check` command.
@@ -140,9 +138,6 @@ def _load_tool(
     package: str,
 ) -> tuple[Callable[[list[str]], int], Mapping[str, type[_Rule]]]:
     """Load one checker only when the all-rules command needs it.
-
-    Returns:
-        The checker entry point and its complete rule registry.
 
     Raises:
         TypeError: If an installed checker does not expose the expected API.

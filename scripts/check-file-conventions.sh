@@ -76,70 +76,17 @@ while read -r path; do
 done < <(tracked '.github/workflows/*')
 
 # --- 2. Markdown lives in a closed set of places ----------------------------
-# Prose is a defect here: a rule's claim belongs in its docstring, its examples
-# in its tests, and its measurements in docs/rules/<name>.md. Anything else is a
-# file nobody updates. Adding a location is a deliberate act, so it edits this list.
+# A rule's claim belongs in its definition and its examples belong in tests.
+# Adding a prose location is deliberate, so it edits this closed list.
 while read -r path; do
   [ -n "$path" ] || continue
   case "$path" in
     README.md | CLAUDE.md) ;;
-    docs/rules/*.md | docs/rules/retired/*.md) ;;
     packages/*/README.md) ;;
     plugins/*/commands/*.md | plugins/*/skills/*/SKILL.md | plugins/*/README.md) ;;
     *) report "markdown outside the allowed locations: $path" ;;
   esac
 done < <(tracked '*.md')
-
-# --- 2b. Evidence is RETAINED when its rule is deleted -----------------------
-# `docs/rules/<name>.md` holds the measured corpus evidence a rule was shipped
-# on. That evidence is the only thing that makes the decision revisitable, and
-# the previous version of the check below actively destroyed it: it reported any
-# doc that named no live rule as an orphan, so the mechanical way to satisfy it
-# when withdrawing a rule was to delete the evidence too. #183 did exactly that
-# -- `docs/rules/SARJ061.md` was deleted with SARJ061, taking with it the
-# identity of the 3 findings that commit called true positives, which is now
-# unrecoverable from the tree. In the same commit a second rule was withdrawn on
-# a stated "0 true positives" that no surviving artifact can support or refute.
-#
-# So evidence is not deleted, it is MOVED to `docs/rules/retired/`, and this is
-# enforced two ways rather than written down and hoped for:
-#   - a doc that names no live rule must be under retired/ (not absent);
-#   - and the diff gate at the end fails if a doc leaves `docs/rules/` in this
-#     branch without arriving under `docs/rules/retired/`.
-allocated_codes=$(git grep -hoE '"SARJ[0-9]{3}"' -- \
-  'packages/*/src/*/rules/*.py' \
-  'packages/lint-configs/src/sarj_lint_configs/textlint.py' |
-  tr -d '"' | sort -u)
-
-names_a_live_rule() {
-  local stem="$1"
-  if [[ "$stem" =~ ^SARJ[0-9]{3}$ ]]; then
-    grep -qx "$stem" <<<"$allocated_codes"
-    return
-  fi
-  # A leading `_` marks a shared non-rule helper; it still has to name a module,
-  # because the doc-diet convention gives every module under src/rules an
-  # evidence file and `rule-docs.test.ts` walks the modules to require them.
-  [[ "$stem" =~ ^_?[a-z0-9]+(-[a-z0-9]+)*$ ]] &&
-    [ -f "packages/typescript/src/rules/$stem.ts" ]
-}
-
-while read -r path; do
-  [ -n "$path" ] || continue
-  stem=$(basename "$path" .md)
-  names_a_live_rule "$stem" ||
-    report "docs/rules/$stem.md names no live rule; move it to docs/rules/retired/$stem.md rather than deleting it -- the evidence is what makes the decision revisitable"
-done < <(tracked 'docs/rules/*.md' ':!docs/rules/retired/*')
-
-# The mirror: an archived doc whose rule is live again is evidence nobody reads,
-# because every link derived by `Rule.evidence_path()` points at docs/rules/.
-while read -r path; do
-  [ -n "$path" ] || continue
-  stem=$(basename "$path" .md)
-  if names_a_live_rule "$stem"; then
-    report "docs/rules/retired/$stem.md is archived but $stem is a live rule; move it back to docs/rules/$stem.md"
-  fi
-done < <(tracked 'docs/rules/retired/*.md')
 
 # --- 3. Every rule module has a test module named after it ------------------
 # The pairing is what makes `Rule.examples_path()` resolvable and what makes an
@@ -269,38 +216,6 @@ while read -r manifest; do
   [ -n "$manifest" ] || continue
   check_extends "$manifest" "$(sed -n 's/.*"extends": "\([^"]*\)".*/\1/p' "$manifest" | head -1)"
 done < <(tracked 'packages/*/pyrightconfig.json')
-
-# --- 5. No evidence document leaves the tree --------------------------------
-# The half of retention that section 2b cannot see. 2b answers "is every doc in
-# the right directory"; a doc that was deleted outright is in no directory, so
-# only a diff against the merge base can catch it.
-#
-# It FAILS rather than skips when it cannot resolve the base. A gate that
-# silently no-ops without its input is the defect this whole file exists to
-# stop -- see `check-no-private-refs.sh`, which for three regressions ran only
-# in a hook and reported success everywhere else.
-EVIDENCE_RETENTION_BASE="${EVIDENCE_RETENTION_BASE:-}"
-if [ -z "$EVIDENCE_RETENTION_BASE" ] && git rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
-  EVIDENCE_RETENTION_BASE=$(git merge-base origin/main HEAD 2>/dev/null || true)
-fi
-if [ -n "$EVIDENCE_RETENTION_BASE" ]; then
-  if ! git rev-parse --verify --quiet "$EVIDENCE_RETENTION_BASE^{commit}" >/dev/null 2>&1; then
-    report "evidence-retention base '$EVIDENCE_RETENTION_BASE' does not resolve; CI needs actions/checkout with fetch-depth: 0"
-  else
-    # `-M` is what separates a withdrawal from a rename. #186 renamed four
-    # TypeScript rules and their evidence files with them; that is content
-    # moving, not evidence being destroyed, and git reports it as R rather than
-    # D. Comparing directory listings instead would fail every rename, which is
-    # how a gate earns a `|| true` from the next person in a hurry.
-    while read -r path; do
-      [ -n "$path" ] || continue
-      stem=$(basename "$path" .md)
-      [ -f "docs/rules/retired/$stem.md" ] && continue
-      report "docs/rules/$stem.md was deleted, not archived; restore it as docs/rules/retired/$stem.md (git show $EVIDENCE_RETENTION_BASE:docs/rules/$stem.md) -- a rule's evidence is what makes its withdrawal revisitable"
-    done < <(git diff -M --diff-filter=D --name-only "$EVIDENCE_RETENTION_BASE" HEAD -- 'docs/rules/*.md' |
-      grep -E '^docs/rules/[^/]+\.md$')
-  fi
-fi
 
 [ "$fail" = 0 ] && echo "file conventions ✓"
 exit "$fail"

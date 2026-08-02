@@ -1,21 +1,11 @@
 /**
  * @fileoverview _sql — shared extraction of statically-resolvable SQL strings, with literal values and comments neutralised before any keyword scan.
  *
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/_sql.md
  */
 
 import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
-/**
- * Blank out SQL string-literal contents and comment bodies.
- *
- * A single left-to-right scan, so precedence between strings and comments is
- * correct: a `--` or quote inside a string literal is protected (masked as
- * string data, never read as a comment), and a quote inside a comment is
- * ignored. Every masked character becomes a space except newlines, which are
- * preserved so the text keeps its shape. Doubled quotes (`''` / `""`) are SQL's
- * in-string escape and keep the scanner inside the literal.
- */
+/** Mask SQL values and comments without changing text or line lengths. */
 export function stripSqlNoise(text: string): string {
   const out = [...text];
   const n = text.length;
@@ -77,12 +67,7 @@ export function stripSqlNoise(text: string): string {
 /** The parameter marker a `${...}` substitution is replaced with before scanning. */
 const SUBSTITUTION_MARKER = "?";
 
-/**
- * Reconstruct the SQL text of a string-bearing node, or null when the node does
- * not statically resolve to one. Handles the four shapes real TS SQL takes:
- * a plain string literal, a template literal (substitutions become `?`), a
- * `+`-concatenation of those, and an array of fragments destined for `.join()`.
- */
+/** Reconstruct static SQL literals, templates, concatenations, and fragment arrays. */
 export function sqlTextOf(node: TSESTree.Node): string | null {
   switch (node.type) {
     case AST_NODE_TYPES.Literal:
@@ -118,12 +103,7 @@ export function sqlTextOf(node: TSESTree.Node): string | null {
   }
 }
 
-/**
- * True when `node` is an array whose fragments are glued together by `.join(...)`
- * — the `['INSERT INTO t (...)', 'VALUES (?)', 'ON CONFLICT ...'].join(' ')`
- * shape. Only then may the elements be read as one statement; an unrelated array
- * of strings is not SQL.
- */
+/** Return whether an array's fragments are consumed together by `.join(...)`. */
 function isJoinedFragmentArray(node: TSESTree.ArrayExpression): boolean {
   const parent = node.parent;
   return (
@@ -152,14 +132,7 @@ function markConsumed(node: TSESTree.Node, consumed: WeakSet<TSESTree.Node>): vo
   }
 }
 
-/**
- * Build the ESLint visitor that hands each *whole* SQL statement to `handler`
- * exactly once, along with the node to report on.
- *
- * ESLint traverses parents before children, so a composite node (a
- * `+`-concatenation or a joined fragment array) is seen first and marks its
- * string descendants consumed — the fragments are never re-reported on their own.
- */
+/** Hand each whole, statically resolvable SQL statement to `handler` once. */
 export function createSqlListener(
   handler: (sql: string, node: TSESTree.Node) => void,
 ): TSESLint.RuleListener {

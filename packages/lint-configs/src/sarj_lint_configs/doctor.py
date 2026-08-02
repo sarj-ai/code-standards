@@ -1,16 +1,4 @@
-"""Find every place a consumer repo states a Sarj version, and prove they agree.
-
-The failure this exists for is not "a repo is out of date". It is that a repo is
-out of date in three DIFFERENT ways at once and nothing tells anyone: the
-`pyproject.toml` pin, the pre-commit `rev:` and the version a CI job types on its
-own command line are separate strings that no tool has ever compared. A repo can
-pass its own CI while running one linter version at commit time, a second in the
-`lint` job, and a third for anyone who runs it locally.
-
-`doctor` reads every pin site it can find and compares each to the installed
-wheel. It reports, it never rewrites: the fix is a one-line edit the reader can
-see, and a tool that silently rewrote pins would just move the surprise.
-"""
+"""Find every place a consumer repo states a Sarj version, and prove they agree."""
 
 from __future__ import annotations
 
@@ -53,15 +41,8 @@ _PIN = re.compile(
 
 #: `rev: python-v0.19.0`, `rev: "lint-configs-v0.10.0"`, `rev: 9d073e83b2...`.
 #:
-#: The bare-SHA alternative is not a nicety. A repo that pins the hooks by commit
-#: instead of by tag is the one MOST likely to be stale -- there is no version in
-#: the string to notice going out of date -- and a tag-only pattern silently
-#: skipped it, so `doctor` reported a clean pre-commit config for a repo running
-#: hooks dozens of commits behind. A SHA cannot be compared to a version, so it is
-#: reported as unverifiable-by-construction rather than as agreement.
-_REV = re.compile(
-    r"""rev:\s*['"]?(?P<rev>[a-z-]+-v[0-9][0-9A-Za-z.\-]*|[0-9a-f]{7,40})['"]?"""
-)
+#: Raw commit pins can silently become stale, so report them as unverifiable.
+_REV = re.compile(r"""rev:\s*['"]?(?P<rev>[a-z-]+-v[0-9][0-9A-Za-z.\-]*|[0-9a-f]{7,40})['"]?""")
 
 #: A `rev:` that is a raw commit, not a release tag.
 _SHA_REV = re.compile(r"^[0-9a-f]{7,40}$")
@@ -75,39 +56,47 @@ _LOCAL_SPECIFIERS: Final = ("file:", "link:", "workspace:", "portal:")
 #: `reportUnusedDisableDirectives: "error"`, and a `sarj-noqa: SARJnnn` comment
 #: outlives the code it named.
 _REFERENCE_SUFFIXES: Final = (
-    ".cjs", ".cts", ".js", ".json", ".jsx", ".mjs", ".mts",
-    ".py", ".toml", ".ts", ".tsx", ".yaml", ".yml",
+    ".cjs",
+    ".cts",
+    ".js",
+    ".json",
+    ".jsx",
+    ".mjs",
+    ".mts",
+    ".py",
+    ".toml",
+    ".ts",
+    ".tsx",
+    ".yaml",
+    ".yml",
 )
 
-_SKIP_DIRS: Final = frozenset({
-    ".git",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".ruff_cache",
-    ".tox",
-    ".uv-cache",
-    ".venv",
-    ".next",
-    ".turbo",
-    ".wrangler",
-    ".yarn",
-    "build",
-    "coverage",
-    "dist",
-    "node_modules",
-    "out",
-    "target",
-    "vendor",
-})
+_SKIP_DIRS: Final = frozenset(
+    {
+        ".git",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".tox",
+        ".uv-cache",
+        ".venv",
+        ".next",
+        ".turbo",
+        ".wrangler",
+        ".yarn",
+        "build",
+        "coverage",
+        "dist",
+        "node_modules",
+        "out",
+        "target",
+        "vendor",
+    }
+)
 
 
 def diagnose(root: Path) -> list[Finding]:
-    """Check every version-bearing file under a repo root.
-
-    Returns:
-        One finding per checked site, in reading order.
-
-    """
+    """Check every version-bearing file under a repo root."""
     installed = manifest.installed_versions()
     files = _walk(root)
     findings = [*_check_manifest(root)]
@@ -119,21 +108,7 @@ def diagnose(root: Path) -> list[Finding]:
 
 
 def check_retired_rules(root: Path, files: Sequence[Path] | None = None) -> Iterator[Finding]:
-    """Name every reference to a rule that no longer exists.
-
-    This is the check that has to run BEFORE an upgrade rather than after it.
-    Once the new plugin is installed, a config naming a deleted rule makes ESLint
-    exit 2 on the whole repo -- no file is linted, and the message names the rule
-    but not the fact that it was deliberately removed, nor what to do. Same for a
-    pre-commit hook id, and for a `sarj-noqa` code that was renumbered.
-
-    Every finding is DRIFT, because none of them is survivable: a stale reference
-    is not a rule that fires, it is a toolchain that refuses to start.
-
-    Yields:
-        One finding per file per retired identifier, with the count in it.
-
-    """
+    """Name every reference to a rule that no longer exists."""
     retired = ledger.load().retired
     if not retired:
         return
@@ -175,21 +150,18 @@ def _check_manifest(root: Path) -> Iterator[Finding]:
     )
 
 
-def _check_pin_files(
-    root: Path, files: Sequence[Path], installed: Mapping[str, str]
-) -> Iterator[Finding]:
+def _check_pin_files(root: Path, files: Sequence[Path], installed: Mapping[str, str]) -> Iterator[Finding]:
     candidates = (
         path
         for path in files
-        if path.name == "package.json"
-        or path.suffix.lower() in {".toml", ".yml", ".yaml", ".cfg", ".txt", ".sh"}
+        if path.name == "package.json" or path.suffix.lower() in {".toml", ".yml", ".yaml", ".cfg", ".txt", ".sh"}
     )
     for path in candidates:
         for match in _PIN.finditer(_read(path)):
             name = match.group("name")
             pinned = match.group("version")
             current = installed.get(name)
-            where = f"{path.relative_to(root)}: {name}{match.group("op")}{pinned}"
+            where = f"{path.relative_to(root)}: {name}{match.group('op')}{pinned}"
             if current is None:
                 yield Finding(Level.WARN, where, f"{name} is not installed here, so the pin is unverified")
             elif pinned == current:
@@ -257,13 +229,7 @@ def _check_eslint_plugin(root: Path, files: Sequence[Path]) -> Iterator[Finding]
 #: A single-version range operator in front of a pin. Longest first, so `>=` is
 #: consumed before `>` and `~=` before `~`.
 #:
-#: This replaced `pinned.lstrip("^~=")`, which is a CHARACTER-SET strip and not a
-#: PREFIX strip: on `>=6.1.0` it stops at the leading `>`, which is outside the
-#: set, so nothing is removed and `">=6.1.0" != "6.1.0"`. A repo pinned to
-#: exactly the tested floor was reported as DRIFT and told to change something
-#: `doctor` could not name. `>=` is the ordinary npm spelling of a floor and the
-#: only PEP 440 spelling of one, so this was the common case, not a corner.
-#: (`lstrip` also mangles what it does match: `^^^6.1.0` reported OK.)
+#: Match range prefixes atomically; character-set stripping corrupts operators.
 _RANGE_OPERATORS: Final = (">=", "<=", "~=", "==", "^", "~", ">", "<", "=", "v")
 
 
@@ -301,26 +267,12 @@ def _candidate_files(files: Sequence[Path], suffixes: Sequence[str]) -> Iterator
 
 
 def _walk(root: Path) -> tuple[Path, ...]:
-    """List a repo's files once, pruning the directories nothing is ever found in.
-
-    Both halves matter for a repo big enough to need `doctor`. `rglob` descends
-    into `node_modules` and only discards the results afterwards, so the cost of
-    ignoring a directory was the cost of reading it; and every check wants its own
-    slice of the same tree, which used to mean walking it once per check.
-
-    Returns:
-        Every regular, non-symlinked file under `root`, in reading order.
-
-    """
+    """List a repo's files once, pruning the directories nothing is ever found in."""
     found: list[Path] = []
     for parent, directories, names in os.walk(root):
         directories[:] = sorted(name for name in directories if name not in _SKIP_DIRS)
         here = Path(parent)
-        found.extend(
-            path
-            for name in sorted(names)
-            if not (path := here / name).is_symlink() and path.is_file()
-        )
+        found.extend(path for name in sorted(names) if not (path := here / name).is_symlink() and path.is_file())
     return tuple(found)
 
 
@@ -330,9 +282,6 @@ def _read(path: Path) -> str:
     Decoding with `errors="replace"` rather than catching: every caller only
     ever regex-searches the result for ASCII pins, so a mangled byte cannot
     change an answer, and there is no exception to swallow into a sentinel.
-
-    Returns:
-        The file's text, with undecodable bytes replaced.
 
     """
     return path.read_bytes().decode("utf-8", errors="replace")
@@ -344,18 +293,10 @@ def parse_pins(text: str) -> dict[str, str]:
     Exposed so tests can assert on the pattern that does the real work rather
     than on a formatted report.
 
-    Returns:
-        Distribution name to pinned version; the last pin in the text wins.
-
     """
     return {match.group("name"): match.group("version") for match in _PIN.finditer(text)}
 
 
 def parse_revs(text: str) -> list[str]:
-    """Extract every pre-commit `rev:` tag from a file's text.
-
-    Returns:
-        Tags in the order they appear.
-
-    """
+    """Extract every pre-commit `rev:` tag from a file's text."""
     return [match.group("rev") for match in _REV.finditer(text)]

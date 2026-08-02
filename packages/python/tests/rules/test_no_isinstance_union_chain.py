@@ -187,6 +187,22 @@ def handle(x):
     assert len(_check(src)) == 1
 
 
+def test_flags_chain_terminated_by_assert():
+    src = """
+class Foo: ...
+class Bar: ...
+
+def handle(x):
+    if isinstance(x, Foo):
+        a()
+    elif isinstance(x, Bar):
+        b()
+    else:
+        assert False, "unreachable"
+"""
+    assert len(_check(src)) == 1
+
+
 @pytest.mark.parametrize("branches", [2, 3, 4, 5, 6, 8])
 def test_flags_chains_of_every_length_and_reports_count(branches: int):
     type_names = tuple(f"Variant{i}" for i in range(branches))

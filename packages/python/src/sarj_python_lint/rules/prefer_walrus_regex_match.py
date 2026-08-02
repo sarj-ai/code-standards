@@ -1,7 +1,6 @@
 """SARJ081 — Prefer assignment expression (`:=`) for regex match assignments immediately preceding an `if` check.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_walrus_regex_match.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ081.md
 """
 
 from __future__ import annotations
@@ -69,7 +68,6 @@ def _is_name_used_after(stmts: list[ast.stmt], start_idx: int, name: str) -> boo
 class PreferWalrusRegexMatch(Rule):
     id: str = "prefer-walrus-regex-match"
     code: str = "SARJ081"
-    has_evidence: bool = True
     description: str = (
         "regex match assignment immediately followed by an `if` check — combine into `if (match := re.search(...)):`."
     )

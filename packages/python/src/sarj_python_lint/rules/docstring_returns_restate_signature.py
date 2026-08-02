@@ -1,7 +1,6 @@
 """SARJ087 — A `Returns:` block that only re-spells the name and the return annotation.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_docstring_returns_restate_signature.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ087.md
 """
 
 from __future__ import annotations
@@ -52,7 +51,6 @@ def _return_block(docstring: str) -> str | None:
 class DocstringReturnsRestateSignature(Rule):
     id: str = "docstring-returns-restate-signature"
     code: str = "SARJ087"
-    has_evidence: bool = True
     description: str = (
         "`Returns:` block adds nothing the name and the return annotation do not "
         "already say — delete the section and keep the summary."

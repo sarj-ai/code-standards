@@ -195,6 +195,7 @@ def test_fires_on_bytes_shape_once_the_literal_is_str():
         pytest.param('logging.getLogger(__name__).info("call " + cid)', id="getlogger-inline"),
         pytest.param('logger.exception("call " + cid)', id="logger-exception"),
         pytest.param('logger.info("msg", extra={"k": "v" + cid})', id="nested-in-logging-arg"),
+        pytest.param('logger.info("done", detail="x " + cid)', id="logging-keyword-argument"),
     ],
 )
 def test_skips_logging_calls(source: str):
@@ -326,9 +327,14 @@ def test_fires_when_the_percent_is_not_a_conversion_specifier(source: str):
         # whose payload an f-string rewrite would silently delete.
         pytest.param('qs = Company.objects.filter(name__in=[F("num_chairs") + "1)) OR ((1==1"])', id="django-f"),
         pytest.param('label = "[" + Value(name) + "]"', id="django-value"),
+        pytest.param('label = "[" + Concat(first, last) + "]"', id="django-concat"),
+        pytest.param('clause = RawSQL("x", []) + "-suffix"', id="django-raw-sql"),
+        pytest.param('clause = literal("x") + "-suffix"', id="sqlalchemy-literal"),
         pytest.param('perm = "[" + cls.name + "].(id:" + expression.cast(cls.id, String) + ")"', id="sa-expression"),
         pytest.param('label = func.trim(first) + " " + func.trim(last)', id="sa-func"),
         pytest.param('label = sa.func.lower(col) + "-suffix"', id="sa-dotted-func"),
+        pytest.param('label = sqla.func.lower(col) + "-suffix"', id="sqla-dotted-func"),
+        pytest.param('label = sqlalchemy.func.lower(col) + "-suffix"', id="sqlalchemy-dotted-func"),
         pytest.param('clause = literal_column("a") + "-suffix"', id="literal-column"),
         pytest.param('clause = "prefix-" + bindparam("x")', id="bindparam"),
     ],
@@ -521,6 +527,15 @@ def test_fires_when_the_whitespace_guard_does_not_apply(source: str):
         pytest.param('title = "Error: " + _("not found")', id="gettext-underscore"),
         pytest.param('title = "Error: " + gettext_lazy("not found")', id="gettext-lazy"),
         pytest.param('title = "Error: " + ngettext("a", "b", n)', id="ngettext"),
+        pytest.param('title = "Error: " + ngettext_lazy("a", "b", n)', id="ngettext-lazy"),
+        pytest.param('title = "Error: " + pgettext("ctx", "not found")', id="pgettext"),
+        pytest.param('title = "Error: " + pgettext_lazy("ctx", "not found")', id="pgettext-lazy"),
+        pytest.param('title = "Error: " + npgettext("ctx", "a", "b", n)', id="npgettext"),
+        pytest.param('title = "Error: " + npgettext_lazy("ctx", "a", "b", n)', id="npgettext-lazy"),
+        pytest.param('title = "Error: " + ugettext("not found")', id="ugettext"),
+        pytest.param('title = "Error: " + ugettext_lazy("not found")', id="ugettext-lazy"),
+        pytest.param('title = "Error: " + format_lazy("{}", value)', id="format-lazy"),
+        pytest.param('title = "Error: " + lazy(render, str)', id="lazy"),
         pytest.param('title = "Error: " + translation.gettext("x")', id="dotted-gettext"),
         pytest.param('html = "<b>" + mark_safe(fragment)', id="mark-safe"),
         pytest.param('html = "<b>" + format_html("{}", value)', id="format-html"),
@@ -571,7 +586,12 @@ def test_fires_when_the_whole_chain_is_a_conditional_branch():
         pytest.param('q = "DELETE FROM " + table', id="delete-from"),
         pytest.param('q = "... WHERE " + predicate', id="where"),
         pytest.param('q = "INSERT INTO " + table', id="insert-into"),
+        pytest.param('q = "UPDATE " + table', id="update"),
+        pytest.param('q = "JOIN " + table', id="join"),
         pytest.param('q = "ORDER BY " + column', id="order-by"),
+        pytest.param('q = "GROUP BY " + column', id="group-by"),
+        pytest.param('q = "VALUES " + values', id="values"),
+        pytest.param('q = "SET " + assignments', id="set"),
     ],
 )
 def test_skips_sql_fragments(source: str):
@@ -652,14 +672,6 @@ def test_explicit_literal_only_concatenation_is_silent():
 
 
 def test_a_pathologically_long_chain_does_not_exhaust_the_stack():
-    """`a + b + c + ...` is a left-nested spine one AST level deep per operand.
-
-    A recursive flatten costs a frame per `+` and dies at ~1000 operands, and a
-    `RecursionError` escapes `check()` — only `SyntaxError` is guarded — so it
-    would abort the whole lint run rather than skip one file. CPython's parser
-    builds the spine without recursing, so the rule is the only thing that can
-    fail here.
-    """
     src = 'x = "a" + ' + " + ".join(f"n{i}" for i in range(5000))
     assert len(_check(src, "m.py")) == 1
 
@@ -678,24 +690,10 @@ def test_a_pathologically_long_chain_does_not_exhaust_the_stack():
     ],
 )
 def test_a_concatenated_regex_without_braces_is_still_reported(source: str):
-    r"""Recorded on purpose: a regex-metacharacter guard was built and reverted.
-
-    It suppressed 38 findings of 3,401 (1 first-party) and it silenced
-    `test_fires_when_the_braces_are_removed`, the upper-bound test that pins
-    the `{`/`}` guard as narrow. `rf"\\s*{re.escape(key)}\\s*"` is ordinary
-    Python, so a concatenated regex is not a shape where the rewrite is
-    unavailable — only one an author may prefer. See the module docstring.
-    """
     assert len(_check(source)) == 1
 
 
 def test_a_comment_between_operands_is_not_deletable():
-    """The f-string rewrite would delete the comments the chain is annotated with.
-
-    `prefect/tests/cli/test_deploy.py:3055` and `:6372` interleave
-    `# Enter invalid interval` between the operands of one chain. 58 hits of
-    3,401, 1 first-party.
-    """
     source = """
         keystrokes = (
             "n"  # Enter invalid interval
@@ -708,7 +706,6 @@ def test_a_comment_between_operands_is_not_deletable():
 
 
 def test_a_multi_line_chain_without_a_comment_still_fires():
-    """The boundary: the guard is a COMMENT inside the span, not multi-line-ness."""
     source = """
         keystrokes = (
             "n"
@@ -720,19 +717,8 @@ def test_a_multi_line_chain_without_a_comment_still_fires():
 
 
 def test_a_trailing_comment_on_a_single_line_chain_still_fires():
-    """The boundary: a comment after a one-line chain annotates the statement.
-
-    Nothing is interleaved between operands, so the f-string rewrite keeps it.
-    """
     assert len(_check('msg = "user " + name  # who failed')) == 1
 
 
 def test_a_nested_quoted_call_is_still_reported():
-    """Recorded on purpose: the rejected third guard would have silenced this.
-
-    `"django.db.models" + path.removeprefix("django.db.models.fields")` costs 6
-    of 74 first-party true positives to suppress — the same price at which the
-    broader blob-glue spelling was already turned down. See the module
-    docstring.
-    """
     assert len(_check('path = "django.db.models" + tail.removeprefix("django.db.models.fields")')) == 1

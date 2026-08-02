@@ -1,19 +1,4 @@
-"""Detect a repo's npm client, and speak its dialect for overrides and installs.
-
-The shipped ESLint peer set does not resolve without an override -- the config's
-unicorn floor needs `eslint >= 10.4` and the newest `eslint-plugin-react` peers
-`eslint <= ^9.7` -- and every package manager spells that override differently:
-npm nests it under `overrides`, pnpm under `pnpm.overrides` with a `parent>child`
-selector, Yarn under `resolutions` with a `parent/child` path and no `$dep`
-indirection. `init` emitted the npm spelling unconditionally, which is not a
-degraded experience for the others: pnpm and Yarn ignore a stray `overrides` key
-entirely, so the install fails exactly as it would have with no override at all,
-and the printed next step is an `npm install` the repo must not run.
-
-Detection is by lockfile first because the lockfile is also what says WHERE the
-project root is, which is the same question `init` has to answer to place the
-config next to a `node_modules`.
-"""
+"""Detect a repo's npm client, and speak its dialect for overrides and installs."""
 
 from __future__ import annotations
 
@@ -59,9 +44,6 @@ def detect(root: Path) -> PackageManager:
     it, so a repo that declares Yarn cannot be installed with npm whatever its
     lockfiles say -- and the lockfile answers for everyone else.
 
-    Returns:
-        The detected client, defaulting to npm.
-
     """
     declared = _declared_manager(root / "package.json")
     if declared is not None:
@@ -79,7 +61,7 @@ def _declared_manager(package_json: Path) -> PackageManager | None:
         parsed: object = json.loads(  # pyright: ignore[reportAny] -- json.loads is an untyped stdlib boundary; the shape is narrowed below
             package_json.read_text(encoding="utf-8")
         )
-    except (OSError, ValueError):
+    except OSError, ValueError:
         return None
     declared = manifest.text_field(manifest.as_table(parsed), "packageManager")
     if declared is None:
@@ -97,12 +79,7 @@ class Overrides:
     entries: dict[str, object]
 
     def as_document(self) -> dict[str, object]:
-        """Nest the entries under their key path, for printing.
-
-        Returns:
-            A `package.json` fragment a reader can paste.
-
-        """
+        """Nest the entries under their key path, for printing."""
         document: dict[str, object] = dict(self.entries)
         for key in reversed(self.key_path):
             document = {key: document}
@@ -110,12 +87,7 @@ class Overrides:
 
 
 def overrides_for(client: PackageManager) -> Overrides:
-    """Translate the bundled npm overrides into one client's dialect.
-
-    Returns:
-        The key path and entries to merge into a consumer `package.json`.
-
-    """
+    """Translate the bundled npm overrides into one client's dialect."""
     npm_entries = manifest.eslint_overrides()
     match client:
         case PackageManager.NPM | PackageManager.BUN:
@@ -134,9 +106,6 @@ def _flatten(entries: Mapping[str, object], separator: str) -> Iterator[tuple[st
     npm's `$dep` indirection ("whatever the root depends on") is resolved here
     against the shipped peer set, because Yarn has no equivalent and a literal
     `$eslint` in a `resolutions` entry is a version range Yarn cannot parse.
-
-    Yields:
-        Selector and version, one per leaf.
 
     """
     peers = manifest.eslint_peers()
@@ -158,12 +127,7 @@ def _resolved(value: object, peers: Mapping[str, str]) -> str:
 
 
 def install_command(client: PackageManager) -> str:
-    """Build the command that installs every ESLint peer at a resolvable version.
-
-    Returns:
-        A single copy-pasteable invocation for the detected client.
-
-    """
+    """Build the command that installs every ESLint peer at a resolvable version."""
     specs = " ".join(f"{name}@{pin}" for name, pin in sorted(manifest.eslint_peers().items()))
     match client:
         case PackageManager.NPM:
@@ -177,12 +141,7 @@ def install_command(client: PackageManager) -> str:
 
 
 def install_note(client: PackageManager) -> str | None:
-    """Explain the one thing each client needs beyond the install command.
-
-    Returns:
-        A caveat to print, or None when there is none.
-
-    """
+    """Explain the one thing each client needs beyond the install command."""
     if client is PackageManager.YARN:
         return (
             "Yarn resolves `resolutions` at install time, so re-run `yarn install`"

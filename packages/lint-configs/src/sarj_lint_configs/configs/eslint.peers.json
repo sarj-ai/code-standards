@@ -18,7 +18,7 @@
   "peers": {
     "@eslint-community/eslint-plugin-eslint-comments": "4.7.2",
     "@eslint/compat": "2.1.0",
-    "@sarj/eslint-plugin": "9.6.0",
+    "@sarj/eslint-plugin": "9.7.0",
     "eslint": "10.8.0",
     "eslint-plugin-better-tailwindcss": "4.7.0",
     "eslint-plugin-perfectionist": "5.10.0",

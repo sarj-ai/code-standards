@@ -1,12 +1,4 @@
-"""Exhaustive suite for SARJ020 (no-aggregation-in-store-query).
-
-The rule flags exactly three surfaces inside a SQL-shaped string literal in a
-`.py` file: `COUNT(`, `GROUP BY`, and `DISTINCT`. Everything else — SUM/AVG/
-MIN/MAX/HAVING, prose, non-query strings, ClickHouse files/queries — is out of
-scope by design (see the rule module docstring: "no DISTINCT / GROUP BY /
-COUNT"). These tests pin the *actual* behavior of the implementation, not a
-broader intuition of what "aggregation" might mean.
-"""
+"""Exercise the complete SARJ020 contract."""
 
 from pathlib import Path
 
@@ -264,6 +256,27 @@ def test_docstring_containing_actual_query_is_flagged() -> None:
     ],
 )
 def test_aggregation_only_in_sql_comment_ignored(source: str) -> None:
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param(
+            'q = "SELECT id FROM call WHERE note = \'COUNT(*)\'"\n',
+            id="count",
+        ),
+        pytest.param(
+            'q = "SELECT id FROM call WHERE note = \'GROUP BY status\'"\n',
+            id="group-by",
+        ),
+        pytest.param(
+            'q = "SELECT id FROM call WHERE note = \'DISTINCT org_id\'"\n',
+            id="distinct",
+        ),
+    ],
+)
+def test_aggregation_only_in_sql_string_value_is_ignored(source: str) -> None:
     assert _check(source) == []
 
 
@@ -567,14 +580,28 @@ def test_bq_signal_only_in_comment_does_not_exempt(source: str) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_backtick_inside_string_value_wrongly_exempts_postgres_query() -> None:
+def test_backtick_inside_string_value_does_not_exempt_postgres_query() -> None:
     src = "q = \"SELECT COUNT(*) FROM call WHERE note = 'imported from `legacy`'\"\n"
     assert len(_check(src)) == 1
 
 
-def test_bigquery_import_file_with_real_postgres_query_is_over_broad() -> None:
-    src = 'from google.cloud import bigquery\nq = "SELECT COUNT(*) FROM call WHERE org_id = %s GROUP BY status"\n'
-    assert len(_check(src)) == 1
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param(
+            "from google.cloud import bigquery\n"
+            'q = "SELECT COUNT(*) FROM call WHERE org_id = %s GROUP BY status"\n',
+            id="positional",
+        ),
+        pytest.param(
+            "from google.cloud import bigquery\n"
+            'q = "SELECT COUNT(*) FROM call WHERE org_id = %(org_id)s GROUP BY status"\n',
+            id="named",
+        ),
+    ],
+)
+def test_bigquery_import_does_not_exempt_postgres_placeholder(source: str) -> None:
+    assert len(_check(source)) == 1
 
 
 # --------------------------------------------------------------------------- #
@@ -608,15 +635,10 @@ def test_bigquery_import_file_with_real_postgres_query_is_over_broad() -> None:
     ],
 )
 def test_null_safe_comparison_operator_is_not_aggregation(source: str) -> None:
-    """`IS [NOT] DISTINCT FROM` is a per-row predicate that merely shares a keyword with `SELECT DISTINCT`.
-
-    Evidence: one first-party store module that uses it as an upsert guard.
-    """
     assert _check(source) == []
 
 
 def test_provisioned_number_upsert_shape_is_clean() -> None:
-    """The exact regression site: an ON CONFLICT upsert guarded by a null-safe comparison."""
     src = (
         'q = """\n'
         "    INSERT INTO provisioned_number (phone_number_id, organization_id)\n"
@@ -631,7 +653,6 @@ def test_provisioned_number_upsert_shape_is_clean() -> None:
 
 
 def test_real_distinct_still_fires_alongside_a_null_safe_comparison() -> None:
-    """Blanking the operator must not blind the rule to a genuine `SELECT DISTINCT` in the same query."""
     src = 'q = "SELECT DISTINCT org_id FROM call WHERE a IS NOT DISTINCT FROM b"\n'
     diags = _check(src)
     assert _labels(diags) == ["Store query uses DISTINCT"]
@@ -653,11 +674,6 @@ def test_count_still_fires_alongside_a_null_safe_comparison() -> None:
     ],
 )
 def test_test_files_are_not_store_modules(filename: str) -> None:
-    """A COUNT(*) asserting over per-test fixture rows never runs on the OLTP primary.
-
-    Evidence: three first-party sites — two in one store test module and one in
-    another.
-    """
     src = 'q = "SELECT COUNT(*) FROM batch_call WHERE batch_id = %s::uuid"\n'
     assert _check(src, filename=filename) == []
 

@@ -17,32 +17,40 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("store-insert-requires-on-conflict", rule, {
   valid: [
-    // --- Already an upsert, in each supported spelling. ---
     {
+      name: "allows SQLite ON CONFLICT DO NOTHING",
       code: "db.prepare(`INSERT INTO runs (id, status) VALUES (?1, ?2) ON CONFLICT(id) DO NOTHING`).run();",
     },
     {
+      name: "allows SQLite ON CONFLICT DO UPDATE",
       code: "db.prepare(`INSERT INTO runs (id) VALUES (?) ON CONFLICT (id) DO UPDATE SET seen = 1`).run();",
     },
     {
+      name: "allows a multiline conflict clause",
       code: "db.prepare(`INSERT INTO runs (id) VALUES (?)\n  ON CONFLICT(id)\n  DO NOTHING`).run();",
     },
-    // SQLite's own idempotent insert forms.
-    { code: "db.prepare(`INSERT OR IGNORE INTO runs (id) VALUES (?)`).run();" },
-    { code: "db.prepare(`INSERT OR REPLACE INTO runs (id) VALUES (?)`).run();" },
-    // MySQL's equivalent contract.
     {
+      name: "allows SQLite INSERT OR IGNORE",
+      code: "db.prepare(`INSERT OR IGNORE INTO runs (id) VALUES (?)`).run();",
+    },
+    {
+      name: "allows SQLite INSERT OR REPLACE",
+      code: "db.prepare(`INSERT OR REPLACE INTO runs (id) VALUES (?)`).run();",
+    },
+    {
+      name: "allows MySQL ON DUPLICATE KEY UPDATE",
       code: "db.query(`INSERT INTO runs (id) VALUES (?) ON DUPLICATE KEY UPDATE seen = 1`);",
     },
-    // --- Not an insert write at all. ---
     { code: "db.prepare(`SELECT id, status FROM runs WHERE id = ?`).first();" },
     { code: "db.prepare(`UPDATE runs SET status = ? WHERE id = ?`).run();" },
     { code: "db.prepare(`DELETE FROM runs WHERE id = ?`).run();" },
     { code: "db.exec(`CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY)`);" },
-    // Prose that merely mentions the words is not SQL.
-    { code: 'log("failed to insert into the queue: values were rejected");' },
-    // --- Fragment arrays are read as one statement, so the ON CONFLICT counts. ---
     {
+      name: "ignores prose with nonadjacent SQL keywords",
+      code: 'log("failed to insert into the queue: values were rejected");',
+    },
+    {
+      name: "reassembles joined SQL fragments before checking conflicts",
       code: [
         "const sql = [",
         "  'INSERT INTO ratings (path, email, rating)',",
@@ -51,34 +59,36 @@ ruleTester.run("store-insert-requires-on-conflict", rule, {
         "].join(' ');",
       ].join("\n"),
     },
-    // --- `+` concatenation is reassembled before matching. ---
     {
+      name: "reassembles concatenated SQL before checking conflicts",
       code: "const sql = 'INSERT INTO runs (id) VALUES (?) ' + 'ON CONFLICT(id) DO NOTHING';",
     },
-    // --- Interpolated multi-row VALUES still sees the clause after it. ---
     {
+      name: "allows an upsert with interpolated rows",
       code: "db.prepare(`INSERT INTO runs (id, at) VALUES ${rows} ON CONFLICT(id) DO UPDATE SET at = excluded.at`).run();",
     },
-    // --- Noise stripping: an ON CONFLICT inside a quoted value must NOT excuse a
-    // bare insert, and a bare insert inside a comment must NOT trigger one. ---
     {
+      name: "ignores an insert inside a line comment",
       code: "db.prepare(`-- INSERT INTO runs (id) VALUES (?)\\nSELECT id FROM runs`).all();",
     },
-    // --- Test files seed fixtures against a fresh database. ---
     {
+      name: "ignores an insert inside a block comment",
+      code: "db.prepare(`/* INSERT INTO runs (id) VALUES (?) */ SELECT id FROM runs`).all();",
+    },
+    {
+      name: "does not let dashes in a value hide a real conflict clause",
+      code: "db.prepare(`INSERT INTO notes (id, body) VALUES (?, 'a--b') ON CONFLICT(id) DO NOTHING`).run();",
+    },
+    {
+      name: "allows fixture inserts in dot-test files",
       code: "await db.prepare(`INSERT INTO runs (id) VALUES ('a')`).run();",
       filename: "/repo/test/runs.test.ts",
     },
     {
+      name: "allows fixture inserts under __tests__",
       code: "await db.prepare(`INSERT INTO runs (id) VALUES ('a')`).run();",
       filename: "/repo/src/__tests__/seed.ts",
     },
-    // --- CROSS-PACKAGE PARITY with Python's SARJ018 and SQL's SARJ105
-    // (`packages/python/.../store_insert_requires_on_conflict.py`,
-    // `packages/sql/.../insert_requires_on_conflict.py`). All three must share
-    // ONE definition of "already idempotent". A MySQL upsert used to be a false
-    // positive in the other two while this rule correctly excused it. If one of
-    // these fails, the three implementations have drifted again. ---
     {
       code: "db.prepare(`INSERT INTO t (a, b) VALUES (?, ?) ON CONFLICT (a) DO NOTHING`).run();",
     },
@@ -87,53 +97,58 @@ ruleTester.run("store-insert-requires-on-conflict", rule, {
     },
     { code: "db.prepare(`INSERT OR IGNORE INTO t (a) VALUES (?)`).run();" },
     { code: "db.prepare(`INSERT OR REPLACE INTO t (a) VALUES (?)`).run();" },
-    // The write-verb gate: an `INSERT` privilege grant is not a write.
-    { code: "db.prepare(`GRANT INSERT ON TABLE t TO app_role`).run();" },
-    // Strict adjacency keeps English prose out. Python's `.*?` under DOTALL
-    // matched `insert into ... values` across this whole sentence.
     {
+      name: "ignores an INSERT privilege grant",
+      code: "db.prepare(`GRANT INSERT ON TABLE t TO app_role`).run();",
+    },
+    {
+      name: "ignores prose spanning insert, into, and values",
       code: "const msg = 'failed to insert into the queue: values were rejected by the broker';",
     },
   ],
   invalid: [
-    // `OR IGNORE`/`OR REPLACE` survive replay; `OR ABORT` does not.
     {
+      name: "reports SQLite INSERT OR ABORT",
       code: "db.prepare(`INSERT OR ABORT INTO t (a) VALUES (?)`).run();",
       errors: [{ messageId: "storeInsertRequiresOnConflict" }],
     },
-    // The base case: a bare insert on a store write path.
     {
+      name: "reports a bare VALUES insert",
       code: "db.prepare(`INSERT INTO runs (id, status) VALUES (?1, ?2)`).run();",
       errors: [{ messageId: "storeInsertRequiresOnConflict" }],
     },
-    // Multi-line with a RETURNING tail — still a bare insert.
     {
+      name: "reports a bare insert with a RETURNING tail",
       code: "db.prepare(`INSERT INTO datasets (id, memory_mb)\n  VALUES (?, ?)\n  RETURNING id, memory_mb`).first();",
       errors: [{ messageId: "storeInsertRequiresOnConflict" }],
     },
-    // INSERT ... SELECT is a write too.
     {
+      name: "reports a bare INSERT SELECT",
       code: "db.prepare(`INSERT INTO archive (id) SELECT id FROM runs WHERE done = 1`).run();",
       errors: [{ messageId: "storeInsertRequiresOnConflict" }],
     },
-    // Interpolated column/value lists do not hide the missing clause.
     {
+      name: "reports interpolated column and value lists",
       code: "db.prepare(`INSERT INTO runs (${cols}) VALUES ${rows}`).run();",
       errors: [{ messageId: "storeInsertRequiresOnConflict" }],
     },
-    // An `ON CONFLICT` living inside a quoted VALUE is neutralized, so this bare
-    // insert is still reported — the FP-tuning check that matters most.
     {
+      name: "does not accept ON CONFLICT inside a quoted value",
       code: "db.prepare(`INSERT INTO notes (id, body) VALUES (?, 'ON CONFLICT DO NOTHING')`).run();",
       errors: [{ messageId: "storeInsertRequiresOnConflict" }],
     },
-    // A commented-out clause does not excuse the write either.
     {
+      name: "does not accept a conflict clause inside a line comment",
       code: "db.prepare(`INSERT INTO runs (id) VALUES (?)\\n-- ON CONFLICT(id) DO NOTHING`).run();",
       errors: [{ messageId: "storeInsertRequiresOnConflict" }],
     },
-    // Fragment array with no conflict clause anywhere: one report on the array.
     {
+      name: "does not accept a conflict clause inside a block comment",
+      code: "db.prepare(`INSERT INTO runs (id) VALUES (?) /* ON CONFLICT(id) DO NOTHING */`).run();",
+      errors: [{ messageId: "storeInsertRequiresOnConflict" }],
+    },
+    {
+      name: "reports a joined fragment array once",
       code: [
         "const sql = [",
         "  'INSERT INTO ratings (path, email)',",
@@ -142,9 +157,19 @@ ruleTester.run("store-insert-requires-on-conflict", rule, {
       ].join("\n"),
       errors: [{ messageId: "storeInsertRequiresOnConflict" }],
     },
-    // A plain string literal argument, not a template.
     {
+      name: "reports a plain string literal",
       code: "db.prepare('INSERT INTO runs (id) VALUES (?)').run();",
+      errors: [{ messageId: "storeInsertRequiresOnConflict" }],
+    },
+    {
+      name: "reports a bare DEFAULT VALUES insert",
+      code: "db.prepare(`INSERT INTO runs DEFAULT VALUES`).run();",
+      errors: [{ messageId: "storeInsertRequiresOnConflict" }],
+    },
+    {
+      name: "reports a bare tagged template insert",
+      code: "sql`INSERT INTO runs (id) VALUES (${id})`;",
       errors: [{ messageId: "storeInsertRequiresOnConflict" }],
     },
   ],

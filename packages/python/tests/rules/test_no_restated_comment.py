@@ -15,16 +15,7 @@ def _check(source: str) -> list[Diagnostic]:
 
 
 def _pair(comment: str, code: str) -> list[Diagnostic]:
-    """Wrap a comment/statement pair in a function body, with a `return` beneath it.
-
-    The trailing `return None` has a different statement shape from anything the
-    fixtures put under the comment, so the group-label guard never fires on the
-    fixture itself.
-
-    Returns:
-        The diagnostics from checking the wrapped source.
-
-    """
+    """Wrap a pair with a differently shaped trailing statement."""
     return _check(f"def f():\n    # {comment}\n    {code}\n    return None\n")
 
 
@@ -53,10 +44,7 @@ def test_one_unmatched_word_keeps_the_comment():
 
 
 def test_no_prefix_matching():
-    # `valid` must NOT count as matched by `validate`, nor `config` by
-    # `configure`. That substring corroboration is what gave PR #98 a ~60%
-    # false-positive rate. (camelCase/snake_case *parts* do count — splitting an
-    # identifier is reading it, not guessing at it.)
+    # Identifier parts count, but arbitrary prefixes do not.
     assert _pair("valid config", "validate(configure_all())") == []
 
 
@@ -83,13 +71,22 @@ def test_comment_above_a_block_is_a_region_label(header: str):
     assert _check(f"# build instructions\n{header}\n    pass\n") == []
 
 
-def test_group_label_over_sibling_calls_is_kept():
-    src = "def f():\n    # register secrets\n    register_secret(a)\n    register_secret(b)\n"
+@pytest.mark.parametrize(
+    "src",
+    [
+        "def f():\n    # register secrets\n    register_secret(a)\n    register_secret(b)\n",
+        "# load config\nconfig = load_config()\nother = load_config()\n",
+        "# import profile\nimport profile\nimport account\n",
+        'values = {\n    # load profile\n    "profile": load_profile(),\n    "account": load_account(),\n}\n',
+        "def f():\n    # assert profile\n    assert profile()\n    assert account()\n",
+    ],
+)
+def test_group_label_over_same_shape_siblings_is_kept(src: str):
     assert _check(src) == []
 
 
-def test_group_label_over_sibling_assignments_is_kept():
-    src = "# load config\nconfig = load_config()\nother = load_config()\n"
+def test_group_label_skips_a_multiline_first_statement():
+    src = "def f():\n    # register secrets\n    register_secret(\n        a,\n    )\n    register_secret(b)\n"
     assert _check(src) == []
 
 
@@ -149,11 +146,7 @@ def test_comment_inside_a_bracketed_expression_labels_an_element(src: str):
     ],
 )
 def test_negation_in_the_code_makes_a_positive_comment_informative(code: str):
-    # `not` / `no` / `none` are stopwords for the tokenizer, so a comment stating
-    # the POSITIVE property passes the zero-information test against a line that
-    # spells it as a double negative. Saying "is queued" over `not ... empty()` is
-    # the translation the reader wanted — airflow
-    # providers/cncf/kubernetes/.../test_kubernetes_executor.py:1022.
+    # The positive comment translates code expressed as a negative.
     assert _pair("the task queue", code) == []
 
 
@@ -229,14 +222,6 @@ def test_comment_above_a_blank_line_is_not_about_the_next_statement():
 
 
 def test_a_label_heading_a_three_line_region_is_not_narration():
-    """The comment labels the REGION; the first line only shares its vocabulary.
-
-    Same reading the group-label guard gives a syntactic block, given to a
-    blank-line-delimited paragraph. `django/tests/auth_tests/test_hashers.py:57`
-    is `# Blank passwords` over a five-statement second scenario. Removes 98 of
-    1,304 (7.5%); a random 16 of the removal set read at source were 10 false
-    positives, 5 arguable and 1 true positive.
-    """
     source = (
         "def f():\n"
         "    # Create token pair\n"
@@ -248,19 +233,15 @@ def test_a_label_heading_a_three_line_region_is_not_narration():
 
 
 def test_a_label_heading_a_two_line_region_still_fires():
-    """The boundary, and the whole point of the threshold.
-
-    The >=2 spelling was built, measured and rejected: its population is 297,
-    and the extra 199 it admits over >=3 are dominated by the
-    `<action>; assert <result>` pair, where the comment really does narrate one
-    line.
-    """
-    source = "def f():\n    # Create token pair\n    tokens = self.jwt_service.create_token_pair(user)\n    audit(tokens)\n"
+    source = (
+        "def f():\n    # Create token pair\n"
+        "    tokens = self.jwt_service.create_token_pair(user)\n"
+        "    assert tokens\n"
+    )
     assert len(_check(source)) == 1
 
 
 def test_a_blank_line_ends_the_region():
-    """The boundary: the region is blank-line-delimited, not "the rest of the body"."""
     source = (
         "def f():\n"
         "    # Create token pair\n"
@@ -273,12 +254,6 @@ def test_a_blank_line_ends_the_region():
 
 
 def test_the_next_label_ends_the_region():
-    """The boundary that keeps the guard off true positives.
-
-    `# Mock auth_manager` over one line, followed by `# Act` and `# Assert`,
-    heads a region of ONE. Counting through the next label instead removed 149
-    findings rather than 98, and the extra 51 were dominated by this shape.
-    """
     source = (
         "def f():\n"
         "    # Create token pair\n"
@@ -289,3 +264,18 @@ def test_the_next_label_ends_the_region():
         "    check(response)\n"
     )
     assert len(_check(source)) == 1
+
+
+def test_matching_only_a_string_literal_still_fires():
+    assert len(_pair("set false", 'variables_set(["variables", "set", "false"])')) == 1
+
+
+def test_nearby_comment_with_shared_vocabulary_does_not_hide_restatement():
+    source = (
+        "def f():\n"
+        "    # Update user profile\n"
+        "    update_user_profile(user)\n"
+        "    # Audit user profile\n"
+        "    audit_user_profile(user)\n"
+    )
+    assert [diagnostic.line for diagnostic in _check(source)] == [2, 4]

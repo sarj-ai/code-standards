@@ -1,7 +1,6 @@
 """SARJ024 — A structured string literal repeated across functions — extract a named constant.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_repeated_string_literal.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ024.md
 """
 
 from __future__ import annotations
@@ -37,7 +36,6 @@ _MODULE_SCOPE = -1
 class NoRepeatedStringLiteral(Rule):
     id: str = "no-repeated-string-literal"
     code: str = "SARJ024"
-    has_evidence: bool = True
     description: str = "Structured string literal repeated across functions — extract a module-level constant."
 
     @override

@@ -15,95 +15,113 @@ const ruleTester = new RuleTester({
   },
 });
 
-/** A file inside a module the consumer declared stateless. */
-const DIGEST = "/repo/src/engineer-digest/post.ts";
-/** The option that declares it. */
-const SCOPED = [{ modules: ["[\\\\/]engineer-digest[\\\\/]"] }];
+const STATELESS_MODULE_FILENAME = "/repo/src/engineer-digest/post.ts";
+const STATELESS_MODULE_OPTIONS = [
+  { modules: ["[\\\\/]engineer-digest[\\\\/]"] },
+];
 
 ruleTester.run("no-storage-in-stateless-modules", rule, {
   valid: [
-    // --- Opt-in: a no-op until `modules` is configured ----------------------
-    // This is the shared-preset default. Without it the rule would fire on
-    // every `.put()` in every repo.
-    { code: "db.prepare('select 1');", filename: DIGEST },
-    { code: "kv.put(key, value);", filename: DIGEST },
-    { code: "kv.getWithMetadata(key);", filename: DIGEST },
-    { code: "kv.put(key, value);", filename: DIGEST, options: [{ modules: [] }] },
-
-    // --- Configured, but the file is outside the declared modules -----------
     {
+      name: "allows prepare until a stateless module is configured",
+      code: "db.prepare('select 1');",
+      filename: STATELESS_MODULE_FILENAME,
+    },
+    {
+      name: "allows put until a stateless module is configured",
+      code: "kv.put(key, value);",
+      filename: STATELESS_MODULE_FILENAME,
+    },
+    {
+      name: "allows getWithMetadata until a stateless module is configured",
+      code: "kv.getWithMetadata(key);",
+      filename: STATELESS_MODULE_FILENAME,
+    },
+    {
+      name: "treats an empty modules list as disabled",
+      code: "kv.put(key, value);",
+      filename: STATELESS_MODULE_FILENAME,
+      options: [{ modules: [] }],
+    },
+    {
+      name: "allows storage outside configured stateless module paths",
       code: "db.prepare('select 1'); kv.put(k, v);",
       filename: "/repo/src/referral-tracker/store.ts",
-      options: SCOPED,
+      options: STATELESS_MODULE_OPTIONS,
     },
-
-    // --- Configured and in scope, but not storage access --------------------
-    // Reads against the systems of record are exactly what we want instead.
     {
+      name: "allows reads against a system of record",
       code: "const issues = await linear.listIssues();",
-      filename: DIGEST,
-      options: SCOPED,
+      filename: STATELESS_MODULE_FILENAME,
+      options: STATELESS_MODULE_OPTIONS,
     },
-    // A one-argument `put` is more often a builder/queue helper than a KV write.
-    { code: "queue.put(job);", filename: DIGEST, options: SCOPED },
-    // A computed method name we cannot resolve statically.
-    { code: "store['put'](k, v);", filename: DIGEST, options: SCOPED },
-    // A method outside the configured set.
     {
+      name: "allows one-argument put calls that are unlikely to be KV writes",
+      code: "queue.put(job);",
+      filename: STATELESS_MODULE_FILENAME,
+      options: STATELESS_MODULE_OPTIONS,
+    },
+    {
+      name: "allows computed method names that cannot be resolved statically",
+      code: "store['put'](k, v);",
+      filename: STATELESS_MODULE_FILENAME,
+      options: STATELESS_MODULE_OPTIONS,
+    },
+    {
+      name: "allows method names outside the configured storage set",
       code: "map.set(k, v);",
-      filename: DIGEST,
-      options: SCOPED,
+      filename: STATELESS_MODULE_FILENAME,
+      options: STATELESS_MODULE_OPTIONS,
     },
-    // `methods` replaces the defaults, so `put` is no longer watched.
     {
+      name: "replaces default storage methods when methods is configured",
       code: "kv.put(k, v);",
-      filename: DIGEST,
+      filename: STATELESS_MODULE_FILENAME,
       options: [
         { modules: ["[\\\\/]engineer-digest[\\\\/]"], methods: ["prepare"] },
       ],
     },
-    // A malformed pattern is skipped rather than throwing; nothing matches, so
-    // the rule stays silent.
     {
+      name: "skips malformed module patterns",
       code: "kv.put(k, v);",
-      filename: DIGEST,
+      filename: STATELESS_MODULE_FILENAME,
       options: [{ modules: ["([unterminated"] }],
     },
   ],
   invalid: [
-    // SQL inside a module declared stateless.
     {
+      name: "reports SQL prepare inside a configured stateless module",
       code: "const row = db.prepare('select * from digest_state').first();",
-      filename: DIGEST,
-      options: SCOPED,
+      filename: STATELESS_MODULE_FILENAME,
+      options: STATELESS_MODULE_OPTIONS,
       errors: [{ messageId: "storageInStatelessModule" }],
     },
-    // KV write.
     {
+      name: "reports KV put inside a configured stateless module",
       code: "await kv.put('digest:last', ts);",
-      filename: DIGEST,
-      options: SCOPED,
+      filename: STATELESS_MODULE_FILENAME,
+      options: STATELESS_MODULE_OPTIONS,
       errors: [{ messageId: "storageInStatelessModule" }],
     },
-    // KV read.
     {
+      name: "reports KV getWithMetadata inside a configured stateless module",
       code: "const cached = await kv.getWithMetadata('digest:last');",
-      filename: DIGEST,
-      options: SCOPED,
+      filename: STATELESS_MODULE_FILENAME,
+      options: STATELESS_MODULE_OPTIONS,
       errors: [{ messageId: "storageInStatelessModule" }],
     },
-    // Several accesses in one file are each reported.
     {
+      name: "reports each storage access in the same stateless module",
       code: "await kv.put(a, b); const r = db.prepare(q);",
-      filename: DIGEST,
-      options: SCOPED,
+      filename: STATELESS_MODULE_FILENAME,
+      options: STATELESS_MODULE_OPTIONS,
       errors: [
         { messageId: "storageInStatelessModule" },
         { messageId: "storageInStatelessModule" },
       ],
     },
-    // A second declared module in the same option list.
     {
+      name: "matches every configured stateless module pattern",
       code: "await kv.put(a, b);",
       filename: "/repo/src/weekly-digest/post.ts",
       options: [
@@ -116,10 +134,10 @@ ruleTester.run("no-storage-in-stateless-modules", rule, {
       ],
       errors: [{ messageId: "storageInStatelessModule" }],
     },
-    // A custom `methods` entry.
     {
+      name: "reports a custom configured storage method",
       code: "await store.write(k, v);",
-      filename: DIGEST,
+      filename: STATELESS_MODULE_FILENAME,
       options: [
         { modules: ["[\\\\/]engineer-digest[\\\\/]"], methods: ["write"] },
       ],

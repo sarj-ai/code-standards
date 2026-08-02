@@ -2,7 +2,6 @@
  * @fileoverview prefer-server-actions — an internal `/api/*` mutation hand-rolls the transport, types and error path a Server Action gets from the framework.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/prefer-server-actions.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/prefer-server-actions.md
  */
 
 import { type TSESTree } from "@typescript-eslint/utils";
@@ -120,6 +119,32 @@ function isMutationMethod(
   return false;
 }
 
+function isFunctionArgument(
+  node: TSESTree.CallExpressionArgument,
+  context: Ctx,
+): boolean {
+  const resolved = resolveNode(node, context);
+  if (
+    resolved?.type === "ArrowFunctionExpression" ||
+    resolved?.type === "FunctionExpression"
+  ) {
+    return true;
+  }
+  if (node.type !== "Identifier") return false;
+
+  let scope: Scope.Scope | null = getScope(context, node);
+  while (scope) {
+    const variable = scope.set.get(node.name);
+    if (
+      variable?.defs.some((definition) => definition.type === "FunctionName")
+    ) {
+      return true;
+    }
+    scope = scope.upper;
+  }
+  return false;
+}
+
 function getPropertyNode(
   objNode: TSESTree.Node | null | undefined,
   propName: string,
@@ -171,19 +196,14 @@ export default createRule<Options, MessageIds>({
       return {};
     }
 
-    // Set by the ImportDeclaration visitor. Imports are hoisted to the top of a
-    // module, so every one is seen before the first CallExpression below.
-    let isNonReactFramework = false;
+    const isNonReactFramework = context.sourceCode.ast.body.some(
+      (node) =>
+        node.type === "ImportDeclaration" &&
+        typeof node.source.value === "string" &&
+        NON_REACT_FRAMEWORK_RE.test(node.source.value),
+    );
 
     return {
-      ImportDeclaration(node) {
-        if (
-          typeof node.source.value === "string" &&
-          NON_REACT_FRAMEWORK_RE.test(node.source.value)
-        ) {
-          isNonReactFramework = true;
-        }
-      },
       CallExpression(node) {
         if (isNonReactFramework) return;
         let isMutation = false;
@@ -214,13 +234,10 @@ export default createRule<Options, MessageIds>({
           const methodName = node.callee.property.name.toLowerCase();
           if (AXIOS_MUTATION_METHODS.has(methodName)) {
             const urlArg = node.arguments[0];
-            // Skip Express-style route definitions like
-            // `router.post('/api/x', handler)`: a function argument means this
-            // is registering a handler, not issuing a client mutation.
             const hasHandlerArg = node.arguments.some(
               (arg) =>
-                arg.type === "ArrowFunctionExpression" ||
-                arg.type === "FunctionExpression",
+                arg.type !== "SpreadElement" &&
+                isFunctionArgument(arg, context),
             );
             if (
               urlArg &&

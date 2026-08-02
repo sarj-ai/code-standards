@@ -1,7 +1,6 @@
 """SARJ026 — Public functions returning a bare positional `tuple[A, B, ...]`.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_namedtuple_over_tuple_return.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ026.md
 """
 
 from __future__ import annotations
@@ -64,7 +63,6 @@ _MSG = (
 class PreferNamedtupleOverTupleReturn(Rule):
     id: str = "prefer-namedtuple-over-tuple-return"
     code: str = "SARJ026"
-    has_evidence: bool = True
     description: str = (
         "public function returning a bare positional tuple[A, B, ...] — prefer a "
         "NamedTuple or frozen pydantic model so callers don't unpack by position."

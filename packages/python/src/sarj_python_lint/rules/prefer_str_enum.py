@@ -1,7 +1,6 @@
 """SARJ006 — Raw `str` used where a closed enumeration is clearly intended.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_str_enum.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ006.md
 """
 
 from __future__ import annotations
@@ -134,7 +133,6 @@ _FOREIGN_CHAIN_DEPTH = 2
 class PreferStrEnum(Rule):
     id: str = "prefer-str-enum"
     code: str = "SARJ006"
-    has_evidence: bool = True
     description: str = "Corroborated choice-like str field or equality cluster — prefer StrEnum."
 
     @override

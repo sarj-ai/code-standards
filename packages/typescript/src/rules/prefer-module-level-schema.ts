@@ -2,7 +2,6 @@
  * @fileoverview prefer-module-level-schema — a Zod schema built inside a function is rebuilt on every call, every request, every render.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/prefer-module-level-schema.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/prefer-module-level-schema.md
  */
 
 import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
@@ -538,7 +537,7 @@ export default createRule<Options, MessageIds>({
         // sub-schema. Only checked when an enclosing construct actually exists,
         // so `z.array(z.object({…}))` — where the whole expression IS hoistable
         // and `z.array` is not itself reportable — keeps reporting the inner
-        // `z.object`, as the evidence file promises.
+        // `z.object`, as the paired regression test requires.
         const outermost = outermostSchemaExpression(expression);
         if (
           outermost !== expression &&

@@ -15,52 +15,44 @@ const ruleTester = new RuleTester({
   },
 });
 
-/** A server-side module path: not a test, not a script, not generated, not JSX. */
 const SERVER = "/repo/src/lib/queue.ts";
 
 ruleTester.run("no-hand-rolled-sleep", rule, {
   valid: [
-    // ---- The fix itself must not be flagged. ----
     {
+      name: "accepts the cancellable Node timer",
       code: `import { setTimeout as sleep } from "node:timers/promises";
              await sleep(500, undefined, { signal });`,
       filename: SERVER,
     },
     {
+      name: "accepts AbortSignal.timeout",
       code: `const signal = AbortSignal.timeout(5000);
              await work({ signal });`,
       filename: SERVER,
     },
-
-    // ---- `setTimeout(resolve, 0)` is a macrotask yield, not a delay. The
-    // stdlib answer is `setImmediate`, a different fix. ----
     {
+      name: "accepts a concise macrotask yield",
       code: "await new Promise((resolve) => setTimeout(resolve, 0));",
       filename: SERVER,
     },
     {
+      name: "accepts a block-bodied macrotask yield",
       code: "await new Promise((resolve) => { setTimeout(resolve, 0); });",
       filename: SERVER,
     },
-
-    // ---- A delayed VALUE is not a sleep. Every corpus occurrence of this
-    // shape was the losing arm of a race that resolves to a fallback result,
-    // which `node:timers/promises` does not express. ----
     {
+      name: "accepts a delayed fallback value",
       code: "await new Promise((resolve) => setTimeout(() => resolve(fallback), 4000));",
       filename: SERVER,
     },
     {
+      name: "accepts a block-bodied delayed fallback value",
       code: "await new Promise((resolve) => setTimeout(() => { resolve(fallback); }, 4000));",
       filename: SERVER,
     },
-
-    // ---- Already cancellable: the executor does more than the one call, so
-    // the handle is captured for `clearTimeout` or an abort listener is wired.
-    // Reporting these would be backwards — they are what the rule asks for.
-    // This guard is load bearing: in the OSS corpus every reject-flavoured arm
-    // that this rule does NOT report captures its handle exactly this way. ----
     {
+      name: "accepts a timer cleared on abort",
       code: `await new Promise((resolve) => {
                const timer = setTimeout(resolve, ms);
                signal.addEventListener("abort", () => { clearTimeout(timer); });
@@ -68,209 +60,214 @@ ruleTester.run("no-hand-rolled-sleep", rule, {
       filename: SERVER,
     },
     {
+      name: "accepts an executor that captures its timer",
       code: "await new Promise((resolve) => { timeoutId = setTimeout(resolve, ms); });",
       filename: SERVER,
     },
     {
+      name: "accepts a rejection executor that captures its timer",
       code: `await new Promise((resolve, reject) => {
                timer = setTimeout(() => reject(new Error("timeout")), ms);
              });`,
       filename: SERVER,
     },
-
-    // ---- A reject arm OUTSIDE `Promise.race`/`Promise.any` is a delayed
-    // rejection, and `AbortSignal.timeout` is not a substitute for it. ----
     {
+      name: "accepts a delayed rejection outside a race",
       code: `const bomb = new Promise((_, reject) => setTimeout(() => reject(new Error("x")), 1000));`,
       filename: SERVER,
     },
     {
+      name: "accepts a delayed rejection in Promise.all",
       code: `await Promise.all([work, new Promise((_, reject) => setTimeout(reject, 1000))]);`,
       filename: SERVER,
     },
-    // Inside a race, but the timer handle is captured and cleared — no leak.
     {
+      name: "accepts a race arm that captures its timer",
       code: `await Promise.race([
                work,
                new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("x")), ms); }),
              ]);`,
       filename: SERVER,
     },
-
-    // ---- Shape mismatches. ----
-    // Not `Promise`.
     {
+      name: "ignores delayed rejection nested below a race arm",
+      code: `await Promise.race([
+               work,
+               wrap(new Promise((_, reject) => setTimeout(reject, ms))),
+             ]);`,
+      filename: SERVER,
+    },
+    {
+      name: "ignores non-Promise constructors",
       code: "await new Deferred((resolve) => setTimeout(resolve, ms));",
       filename: SERVER,
     },
-    // No delay argument at all — not a timed wait.
     {
+      name: "ignores a timer without a delay",
       code: "await new Promise((resolve) => setTimeout(resolve));",
       filename: SERVER,
     },
-    // The callback is not the executor's own resolve.
     {
+      name: "ignores a timer with an unrelated callback",
       code: "await new Promise((resolve) => setTimeout(otherCallback, ms));",
       filename: SERVER,
     },
-    // Destructured executor parameter — no identifier to match against.
     {
+      name: "ignores a destructured executor parameter",
       code: "await new Promise(({ resolve }) => setTimeout(resolve, ms));",
       filename: SERVER,
     },
-    // Not `setTimeout`.
     {
+      name: "ignores setInterval",
       code: "await new Promise((resolve) => setInterval(resolve, ms));",
       filename: SERVER,
     },
-    // A non-global receiver may be a scheduler abstraction, not the timer.
     {
+      name: "ignores scheduler abstractions",
       code: "await new Promise((resolve) => scheduler.setTimeout(resolve, ms));",
       filename: SERVER,
     },
-
-    // ---- File-kind guards. ----
-    // Test files belong to `@sarj/no-sleep-in-test-body`, which is enabled in
-    // the shipped strict config; double-reporting them helps nobody.
     {
+      name: "leaves colocated tests to no-sleep-in-test-body",
       code: "await new Promise((resolve) => setTimeout(resolve, 50));",
       filename: "/repo/src/lib/queue.test.ts",
     },
     {
+      name: "leaves test directories to no-sleep-in-test-body",
       code: "await new Promise((resolve) => setTimeout(resolve, 50));",
       filename: "/repo/tests/queue.ts",
     },
-    // One-off tooling dies with the terminal.
     {
+      name: "ignores scripts directories",
       code: "await new Promise((resolve) => setTimeout(resolve, 50));",
       filename: "/repo/scripts/backfill.ts",
     },
     {
+      name: "ignores root scripts",
       code: "await new Promise((resolve) => setTimeout(resolve, 50));",
       filename: "/repo/audit.mjs",
     },
-    // Generated code is overwritten on the next codegen run. In the private
-    // corpus the SAME vendored SSE client supplied the only hit in three
-    // separate repos, which is why this guard is here rather than assumed.
     {
+      name: "ignores generated file paths",
       code: "await new Promise((resolve) => setTimeout(resolve, 50));",
       filename: "/repo/src/api/generated/core/serverSentEvents.gen.ts",
     },
     {
+      name: "ignores generated file markers",
       code: `/* @generated - do not edit */
              await new Promise((resolve) => setTimeout(resolve, 50));`,
       filename: "/repo/src/api/client.ts",
     },
-
-    // ---- Client modules: the default, and the most important guard. A
-    // browser bundle cannot import `node:timers/promises` and the web platform
-    // ships no equivalent, so the fix advice is impossible to follow. ----
     {
+      name: "ignores JSX modules by default",
       code: "await new Promise((resolve) => setTimeout(resolve, 400));",
       filename: "/repo/src/components/AgentPanel.tsx",
     },
     {
+      name: "ignores use-client modules by default",
       code: `"use client";
              await new Promise((resolve) => setTimeout(resolve, 400));`,
       filename: SERVER,
     },
     {
+      name: "ignores React modules by default",
       code: `import { useState } from "react";
              await new Promise((resolve) => setTimeout(resolve, 400));`,
       filename: SERVER,
     },
     {
+      name: "ignores Next client modules by default",
       code: `import { useRouter } from "next/navigation";
              await new Promise((resolve) => setTimeout(resolve, 400));`,
       filename: SERVER,
     },
-
-    // ---- The `allowIn` escape hatch: one sanctioned wrapper module. ----
     {
+      name: "honors an allowIn glob",
       code: "export const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));",
       filename: "/repo/src/lib/sleep.ts",
       options: [{ allowIn: ["**/lib/sleep.ts"] }],
     },
+    {
+      name: "leaves polling loops to no-await-in-loop",
+      code: "while (!done) { await sleep(50); }",
+      filename: SERVER,
+    },
   ],
 
   invalid: [
-    // ---- The motivating case, verbatim in shape: block-bodied arrow, `void`
-    // type argument, delay forwarded from a parameter. ----
     {
+      name: "reports a typed block-bodied sleep",
       code: `export const defaultSleep: Sleep = async (milliseconds) => {
                await new Promise<void>((resolve) => { setTimeout(resolve, milliseconds); });
              };`,
       filename: SERVER,
       errors: [{ messageId: "handRolledSleep" }],
     },
-    // Concise arrow, no type argument.
     {
+      name: "reports a concise sleep",
       code: "await new Promise((resolve) => setTimeout(resolve, 500));",
       filename: SERVER,
       errors: [{ messageId: "handRolledSleep" }],
     },
-    // Returned rather than awaited, wrapped in a named helper — the single most
-    // common spelling in both corpora.
     {
+      name: "reports a returned sleep helper",
       code: "function sleep(ms: number): Promise<void> { return new Promise((resolve) => setTimeout(resolve, ms)); }",
       filename: SERVER,
       errors: [{ messageId: "handRolledSleep" }],
     },
-    // `function (resolve) { ... }` — the spelling core `no-promise-executor-return`
-    // does not report even when it is enabled.
     {
+      name: "reports a function-expression executor",
       code: "await new Promise(function (resolve) { setTimeout(resolve, 250); });",
       filename: SERVER,
       errors: [{ messageId: "handRolledSleep" }],
     },
-    // Abbreviated resolve parameter names are the norm in the corpus.
     {
+      name: "reports an abbreviated resolve parameter",
       code: "await new Promise((r) => setTimeout(r, retryAfterMs));",
       filename: SERVER,
       errors: [{ messageId: "handRolledSleep" }],
     },
-    // Zero-argument forwarder — still a bare sleep, no value carried.
     {
+      name: "reports a concise zero-argument forwarder",
       code: "await new Promise((resolve) => setTimeout(() => resolve(), 750));",
       filename: SERVER,
       errors: [{ messageId: "handRolledSleep" }],
     },
     {
+      name: "reports a block-bodied zero-argument forwarder",
       code: "await new Promise((resolve) => setTimeout(() => { resolve(); }, 750));",
       filename: SERVER,
       errors: [{ messageId: "handRolledSleep" }],
     },
-    // Explicit global receiver.
     {
+      name: "reports an explicit global timer",
       code: "await new Promise((resolve) => globalThis.setTimeout(resolve, 300));",
       filename: SERVER,
       errors: [{ messageId: "handRolledSleep" }],
     },
-    // A computed delay is still a delay; only a literal `0` is provably a yield.
     {
+      name: "reports a computed delay",
       code: "await new Promise((resolve) => setTimeout(resolve, 2 ** attempt * baseMs));",
       filename: SERVER,
       errors: [{ messageId: "handRolledSleep" }],
     },
-
-    // ---- Client modules, opted in. ----
     {
+      name: "reports JSX modules when opted in",
       code: "await new Promise((resolve) => setTimeout(resolve, 400));",
       filename: "/repo/src/components/AgentPanel.tsx",
       options: [{ checkClientModules: true }],
       errors: [{ messageId: "handRolledSleep" }],
     },
     {
+      name: "reports use-client modules when opted in",
       code: `"use client";
              await new Promise((resolve) => setTimeout(resolve, 400));`,
       filename: SERVER,
       options: [{ checkClientModules: true }],
       errors: [{ messageId: "handRolledSleep" }],
     },
-
-    // ---- The `Promise.race` timeout arm. Reported only when the timer handle
-    // is NOT captured, i.e. when the losing arm really does leak. ----
     {
+      name: "reports a concise Promise.race timeout arm",
       code: `await Promise.race([
                work(),
                new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timed out")), 15000)),
@@ -279,6 +276,7 @@ ruleTester.run("no-hand-rolled-sleep", rule, {
       errors: [{ messageId: "handRolledTimeoutRace" }],
     },
     {
+      name: "reports a block-bodied Promise.race timeout arm",
       code: `return Promise.race([
                operation,
                new Promise<T>((_, reject) => {
@@ -288,21 +286,20 @@ ruleTester.run("no-hand-rolled-sleep", rule, {
       filename: SERVER,
       errors: [{ messageId: "handRolledTimeoutRace" }],
     },
-    // `reject` passed directly.
     {
+      name: "reports reject passed directly in Promise.race",
       code: "await Promise.race([work(), new Promise((_, reject) => setTimeout(reject, 1000))]);",
       filename: SERVER,
       errors: [{ messageId: "handRolledTimeoutRace" }],
     },
-    // `Promise.any` discards the losing arm the same way.
     {
+      name: "reports reject passed directly in Promise.any",
       code: "await Promise.any([work(), new Promise((_, reject) => setTimeout(reject, 1000))]);",
       filename: SERVER,
       errors: [{ messageId: "handRolledTimeoutRace" }],
     },
-    // The race message applies in client modules too — `AbortSignal.timeout`
-    // is on the web platform, so unlike the sleep fix it is always available.
     {
+      name: "reports race timeout arms in client modules",
       code: "await Promise.race([work(), new Promise((_, reject) => setTimeout(reject, 1000))]);",
       filename: "/repo/src/components/Panel.tsx",
       errors: [{ messageId: "handRolledTimeoutRace" }],

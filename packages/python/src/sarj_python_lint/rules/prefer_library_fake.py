@@ -1,7 +1,6 @@
 """SARJ059 — A hand-rolled double of a third-party service should use the library that fakes it properly.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_library_fake.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ059.md
 """
 
 from __future__ import annotations
@@ -235,7 +234,6 @@ _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 class PreferLibraryFake(Rule):
     id: str = "prefer-library-fake"
     code: str = "SARJ059"
-    has_evidence: bool = True
     description: str = (
         "Hand-rolled double of a third-party service (S3, Redis, an LLM provider, SMTP, …) where a "
         "maintained fake library exists."

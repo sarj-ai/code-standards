@@ -1,7 +1,6 @@
 """SARJ022 — Rename a junk-drawer module stem with a single public export.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_single_public_export.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ022.md
 """
 
 from __future__ import annotations
@@ -86,8 +85,10 @@ _CAMEL_BOUNDARY_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z]
 class SinglePublicExport(Rule):
     id: str = "single-public-export"
     code: str = "SARJ022"
-    has_evidence: bool = True
-    description: str = "A junk-drawer module with a single public def/class should be renamed after that export."
+    description: str = (
+        "A generic-named module with exactly one public top-level function/class and no public constants "
+        "should be renamed after that export."
+    )
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
@@ -140,9 +141,10 @@ def _has_public_constant(tree: ast.Module) -> bool:
                 targets.append(target)
             case _:
                 pass
+    assigned_names = (node for target in targets for node in ast.walk(target) if isinstance(node, ast.Name))
     return any(
-        isinstance(t, ast.Name) and not t.id.startswith("_") and t.id == t.id.upper() and any(c.isalpha() for c in t.id)
-        for t in targets
+        not name.id.startswith("_") and name.id == name.id.upper() and any(c.isalpha() for c in name.id)
+        for name in assigned_names
     )
 
 

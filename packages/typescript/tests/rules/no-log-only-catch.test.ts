@@ -45,6 +45,10 @@ ruleTester.run("no-log-only-catch", rule, {
     {
       code: "try { f(); } catch (e) { reportError(e); }",
     },
+    {
+      name: "Promise catch handlers belong to no-silent-promise-catch",
+      code: "p.catch(() => {}); p.catch(() => null); p.catch((e) => console.error(e));",
+    },
     // Console call mixed with a non-console statement assignment.
     {
       code: "let ok = true; try { f(); } catch (e) { console.error(e); ok = false; }",
@@ -110,6 +114,10 @@ ruleTester.run("no-log-only-catch", rule, {
     {
       code: "function h(result, res) {\n  let errorMessage = 'Something is wrong with the Jelly API';\n  try {\n    errorMessage = result.body.error;\n  } catch (e) {}\n  res.status(400).json({ message: errorMessage });\n}",
     },
+    {
+      name: "Seed fallbacks include undefined, unary literals, empty arrays, and empty objects",
+      code: "function a() { let x = undefined; try { x = f(); } catch {} return x; }\nfunction b() { let x = -1; try { x = f(); } catch {} return x; }\nfunction c() { let x = []; try { x = f(); } catch {} return x; }\nfunction d() { let x = {}; try { x = f(); } catch {} return x; }",
+    },
 
     // --- Class 3: the rationale is next to the braces, not inside them -------
     // Directly above the `try`.
@@ -125,6 +133,10 @@ ruleTester.run("no-log-only-catch", rule, {
     // dub/apps/web/lib/actions/partners/program-resources/update-program-resource.ts:133.
     {
       code: "async function h(domain) {\n  // best-effort: the page is gone either way, a leaked attachment is\n  // recoverable while a failed delete is not\n  if (domain) {\n    try {\n      await release(domain);\n    } catch (err) {\n      console.error('Failed to release domain:', err);\n    }\n  }\n}",
+    },
+    {
+      name: "A rationale above a loop applies when the try is its only statement",
+      code: "function h(active) {\n  // best-effort polling\n  while (active()) {\n    try {\n      poll();\n    } catch (err) {\n      console.error(err);\n    }\n  }\n}",
     },
 
     // --- test-file exemption now delegates to the shared `_paths.isTestFile` --
@@ -240,6 +252,26 @@ ruleTester.run("no-log-only-catch", rule, {
     // try yields `undefined`, which is the swallow this rule exists to name.
     {
       code: "function g(input) {\n  let parsed;\n  try {\n    parsed = JSON.parse(input);\n  } catch {}\n  return parsed;\n}",
+      errors: [{ messageId: "emptyCatch" }],
+    },
+    {
+      name: "A seeded fallback declaration must immediately precede the try",
+      code: "function g(input) {\n  let parsed = null;\n  prepare();\n  try {\n    parsed = JSON.parse(input);\n  } catch {}\n  return parsed;\n}",
+      errors: [{ messageId: "emptyCatch" }],
+    },
+    {
+      name: "A seeded fallback declaration must contain one binding",
+      code: "function g(input) {\n  let parsed = null, status = 'fallback';\n  try {\n    parsed = JSON.parse(input);\n  } catch {}\n  return parsed;\n}",
+      errors: [{ messageId: "emptyCatch" }],
+    },
+    {
+      name: "A seeded fallback must be written inside the try",
+      code: "function g(input) {\n  let parsed = null;\n  try {\n    JSON.parse(input);\n  } catch {}\n  return parsed;\n}",
+      errors: [{ messageId: "emptyCatch" }],
+    },
+    {
+      name: "Fallback discovery stops at the current function boundary",
+      code: "function outer() {\n  const inner = () => {\n    try {\n      return risky();\n    } catch {}\n  };\n  return null;\n}",
       errors: [{ messageId: "emptyCatch" }],
     },
     // Class 3: a comment above an enclosing block that holds MORE than the try

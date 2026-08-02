@@ -1,7 +1,6 @@
 """SARJ064 — An assertion whose outcome the test itself already decided.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_trivially_true_assertion.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ064.md
 """
 
 from __future__ import annotations
@@ -121,7 +120,6 @@ class _Index:
 class TriviallyTrueAssertion(Rule):
     id: str = "trivially-true-assertion"
     code: str = "SARJ064"
-    has_evidence: bool = True
     description: str = "Assertion cannot fail — its outcome is decided by the test's own literals, not by the code."
 
     @override

@@ -169,6 +169,10 @@ describe("isProtected: the exemption floor", () => {
     expect(isProtected("increment the counter")).toBe(false);
   });
 
+  it("does not treat the exemption floor as a classifier for useful comments", () => {
+    expect(isProtected("the cache key includes the tenant slug")).toBe(false);
+  });
+
   // A vendor name as the mere OBJECT of a narration verb is not ascribed
   // behaviour. That distinction is what holds the leak rate near 1%.
   it("does not protect a vendor name with no behaviour ascribed to it", () => {
@@ -181,7 +185,10 @@ describe("hasExternalReference: signal S1 on its own", () => {
     "tracked in PROJ-249",
     "see https://example.com/spec",
     "per RFC 6265",
+    "specified by PEP 654",
+    "mitigates CVE-2025-1234",
     "regression from #1234",
+    "owned by @standards.example.com",
   ])("finds a reference in %s", (body) => {
     expect(hasExternalReference(body)).toBe(true);
   });

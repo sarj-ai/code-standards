@@ -1,7 +1,6 @@
 """SARJ031 — A nonzero `sleep()` directly in a `test_*` body is a flaky-test smell.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_sleep_in_test_body.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ031.md
 """
 
 from __future__ import annotations
@@ -57,7 +56,6 @@ def _is_poll_loop(node: ast.For | ast.AsyncFor) -> bool:
 class NoSleepInTestBody(Rule):
     id: str = "no-sleep-in-test-body"
     code: str = "SARJ031"
-    has_evidence: bool = True
     description: str = "Nonzero `sleep()` in a test body — synchronize on the signal, don't sleep."
 
     @override

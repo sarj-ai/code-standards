@@ -1,7 +1,6 @@
 """SARJ085 — A class docstring that only re-spells the class name.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_redundant_class_docstring.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ085.md
 """
 
 from __future__ import annotations
@@ -68,7 +67,6 @@ def _base_names(node: ast.ClassDef) -> list[str]:
 class RedundantClassDocstring(Rule):
     id: str = "redundant-class-docstring"
     code: str = "SARJ085"
-    has_evidence: bool = True
     description: str = (
         "Class docstring only re-spells the class name — delete it, or say what "
         "the name cannot: the invariant, the lifetime, the thing it is not."

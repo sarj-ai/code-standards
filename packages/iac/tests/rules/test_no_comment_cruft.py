@@ -118,13 +118,6 @@ def test_bare_number_attribute_still_flagged():
     assert len(_check(src)) == 1
 
 
-# --- the commented-out half judges the RUN, not the line --------------------------
-#
-# `_HCL_CODE_RE` classified any HCL-shaped line as dead code, including an indented
-# usage example inside a prose documentation header. 12 of the 31 commented-out
-# findings in the corpus sat in prose-dominant runs.
-
-
 def test_allows_a_usage_example_inside_a_prose_doc_header():
     src = """
 # Example usage of this module.
@@ -187,13 +180,8 @@ def test_banner_detection_is_unaffected_by_run_dominance():
 resource "google_compute_network" "vpc" {}
 """
     diags = _check(src)
-    # ONE banner, so one finding. This used to assert 2, because the top and
-    # bottom rules of the same banner were reported separately -- the same
-    # defect, twice. Measured over 1,424 content-unique `.tf` files, 748 banner
-    # findings covered 406 banners and 83% of them were double-counted.
     assert len(diags) == 1
     assert "Section-banner" in diags[0].message
-    # Anchored at the FIRST rule line, which is where a reader looks.
     assert diags[0].line == 2
 
 
@@ -234,14 +222,6 @@ resource "x" "y" {}
     assert [d.line for d in _check(src)] == [2, 4]
 
 
-# --- the banner half: the run length, and which regex earns each shape ------------
-#
-# Two regexes decide "banner". `_BANNER_FULL_RE` matches a body made entirely of
-# rule characters, `_BANNER_RUN_RE` matches a 4+ run of ONE character anywhere in
-# the body. Every banner in the tests above satisfies both, so either could be
-# deleted in silence. The two cases below are each caught by exactly one.
-
-
 def test_a_mixed_character_rule_is_a_banner():
     """`# -=-=-=-=` has no 4-run of any single character — only the full-body regex sees it."""
     src = '# -=-=-=-=\nresource "google_compute_network" "vpc" {}\n'
@@ -269,9 +249,6 @@ def test_a_run_shorter_than_four_is_not_a_banner(body: str):
     assert _check(f'# {body}\nresource "google_compute_network" "vpc" {{}}\n') == []
 
 
-# --- directives are excluded, both where the line is judged and where it votes ----
-
-
 def test_a_directive_that_happens_to_contain_a_rule_is_not_a_banner():
     """A `# TODO` about banners is a directive first — otherwise SARJ202 flags its own fix."""
     src = '# TODO: replace the ==== dividers in this file with real blocks\nresource "google_storage_bucket" "b" {}\n'
@@ -291,9 +268,6 @@ resource "google_storage_bucket" "new" {}
     diags = _check(src)
     assert [d.line for d in diags] == [5, 6]
     assert all("Commented-out Terraform" in d.message for d in diags)
-
-
-# --- heredoc bodies are data, and are never judged --------------------------------
 
 
 @pytest.mark.parametrize(
@@ -321,9 +295,6 @@ def test_the_same_lines_outside_a_heredoc_are_still_judged():
     """The boundary: the heredoc is what excuses them, not their content."""
     src = '# bucket        = "legacy"\n# force_destroy = true\nresource "google_storage_bucket" "new" {}\n'
     assert len(_check(src)) == 2
-
-
-# --- code-dominance is decided per run, so the runs must be segmented -------------
 
 
 @pytest.mark.parametrize(

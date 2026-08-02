@@ -2,7 +2,6 @@
  * @fileoverview require-fetch-timeout — a `fetch` with no signal hangs for as long as the upstream stalls, holding the caller open with it.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/require-fetch-timeout.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/require-fetch-timeout.md
  */
 
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";

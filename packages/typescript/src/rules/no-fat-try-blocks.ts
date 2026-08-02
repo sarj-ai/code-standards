@@ -2,7 +2,6 @@
  * @fileoverview no-fat-try-blocks — a `try` holding more than three throwing statements catches failures its handler was never written for.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-fat-try-blocks.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-fat-try-blocks.md
  */
 
 import { type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
@@ -21,21 +20,7 @@ const NESTED_FUNCTION_TYPES = new Set<AST_NODE_TYPES>([
   AST_NODE_TYPES.ArrowFunctionExpression,
 ]);
 
-/**
- * Non-throwing member methods, recognised by NAME ALONE — so the set may hold
- * only names that are not also the vocabulary of an I/O client.
- *
- * `get`, `set`, `add`, `delete`, `has`, `clear`, `find`, `keys`, `values` and
- * `entries` are the `Map` / `Set` API, and they are equally `client.get(url)`,
- * `redis.set(k, v)`, `repo.find(where)` and `api.delete(id)`. A name-only test
- * cannot tell those apart, and resolving the ambiguity towards "pure" blinds
- * the rule to the exact swallow it exists to catch, so they are not here.
- * `isBareCallStatement` still exempts fire-and-forget `cache.set(k, v);`
- * structurally, which is the common non-I/O use of the names left out.
- *
- * What remains are Array / String / Number members with no I/O reading: nothing
- * calls `.padStart()` on a database handle.
- */
+/** Pure method names must not overlap common I/O-client methods such as `get`, `set`, or `find`. */
 const PURE_METHODS = new Set<string>([
   "map", "filter", "forEach", "reduce", "reduceRight", "findIndex",
   "findLast", "findLastIndex", "some", "every", "push", "pop", "shift",
@@ -51,16 +36,7 @@ const PURE_NAMESPACES = new Set<string>([
   "Object", "Array", "Math", "JSON", "Number", "String", "Boolean", "console",
 ]);
 
-/**
- * `Namespace.method` pairs that throw despite the namespace being pure.
- *
- * `JSON.parse` is the canonical throwing call in JavaScript and the canonical
- * reason anybody writes `try`/`catch`; calling it non-throwing blinded the rule
- * to its most common subject. `JSON.stringify` also throws — circular
- * structures, `BigInt` — but is overwhelmingly called on a value the same
- * function just built, so it stays pure. That is a recall choice, stated rather
- * than hidden.
- */
+/** Namespace exceptions that commonly throw; `JSON.stringify` remains a deliberate recall tradeoff. */
 const IMPURE_NAMESPACE_METHODS = new Set<string>(["JSON.parse"]);
 
 /** Constructors that do not throw on construction. */
@@ -187,16 +163,7 @@ function isBareCallStatement(stmt: TSESTree.Statement): boolean {
   );
 }
 
-/**
- * Whether a top-level try-body statement can plausibly throw when the `try`
- * runs. `await` always counts; a bare fire-and-forget call statement does not.
- *
- * Blocks and `if`/`else` branches recurse so the bare-call exemption survives a
- * guard — a fire-and-forget call is no more throwing for sitting inside an
- * `if`. The guard's own TEST is still checked for a throwing call, keeping
- * `if (!validate(x))` counted. A compound statement still contributes at most
- * ONE to the caller's count; this predicate only decides whether it counts.
- */
+/** `await` and used calls count; bare calls do not, including inside blocks and branches. */
 function canThrow(stmt: TSESTree.Statement): boolean {
   if (hasAwait(stmt)) {
     return true;
@@ -238,12 +205,7 @@ const PASS_THROUGH_PARENTS = new Set<AST_NODE_TYPES>([
   AST_NODE_TYPES.LabeledStatement,
 ]);
 
-/**
- * Clause (a): nothing in the enclosing function runs after `node`. The node must
- * be last in its block, and every enclosing block must itself be last, up to the
- * function boundary. A loop, `switch`, or any other construct in between means
- * the statement can be followed by more work, so it is not terminal.
- */
+/** A terminal node is last through every enclosing block up to its function, without a loop or switch. */
 function isTerminalInFunction(node: TSESTree.Node): boolean {
   let current: TSESTree.Node = node;
   let parent: TSESTree.Node | undefined = current.parent;
@@ -274,12 +236,7 @@ function unwrapAwait(expr: TSESTree.Expression): TSESTree.Expression {
     : inner;
 }
 
-/**
- * Clause (b): the handler ends by handing the failure off — a `return`, a
- * `throw`, or a bare call (`errorHandler(e, res);`). A handler that ends on
- * anything else (a branch, an assignment, a loop) is doing recovery work whose
- * correctness depends on which statement threw.
- */
+/** A propagating handler ends with `return`, `throw`, or a bare call. */
 function handlerEndsByHandingOff(handler: TSESTree.CatchClause): boolean {
   const body = handler.body.body;
   const last = body[body.length - 1];
@@ -298,11 +255,7 @@ function handlerEndsByHandingOff(handler: TSESTree.CatchClause): boolean {
   );
 }
 
-/**
- * Every identifier bound by a `catch` parameter pattern. Type annotations are
- * skipped — `catch (e: Error)` binds `e`, not `Error`, and counting the type
- * would let a handler that merely constructs an `Error` pass clause (c).
- */
+/** Collect identifiers bound by a catch pattern, excluding type annotations. */
 function collectBindingNames(
   pattern: TSESTree.Node,
   names: Set<string>,
@@ -363,11 +316,7 @@ function isPropertyName(node: TSESTree.Identifier): boolean {
   return false;
 }
 
-/**
- * Clause (c): the handler references the caught error somewhere — it reports the
- * failure rather than discarding it. Nested callbacks count; a handler that logs
- * the error from inside a `.then()` still reports it.
- */
+/** A boundary must reference its caught error, including through nested callbacks. */
 function handlerMentionsCaughtBinding(handler: TSESTree.CatchClause): boolean {
   const names = caughtBindingNames(handler);
   if (names.size === 0) {
@@ -410,11 +359,7 @@ function isSuccessShapedValue(expr: TSESTree.Expression): boolean {
   return false;
 }
 
-/**
- * Clause (d): the handler fabricates a success-shaped result. This is the shape
- * the rule exists for — an unknown one of N operations failed and the caller is
- * told "nothing found".
- */
+/** Empty or false results hide which operation failed and are not error propagation. */
 const handlerReturnsSuccessShaped = (handler: TSESTree.CatchClause): boolean =>
   subtreeMatches(
     handler.body,
@@ -424,9 +369,7 @@ const handlerReturnsSuccessShaped = (handler: TSESTree.CatchClause): boolean =>
       isSuccessShapedValue(n.argument),
   );
 
-/**
- * The terminal error-propagating boundary exemption.
- */
+/** Exempt terminal boundaries that propagate the caught error without fabricating success. */
 function isTerminalErrorBoundary(node: TSESTree.TryStatement): boolean {
   const handler = node.handler;
   return (

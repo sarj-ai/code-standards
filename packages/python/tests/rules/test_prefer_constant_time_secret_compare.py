@@ -121,7 +121,18 @@ _SIGNATURE_NAMES = ["signature", "sig_signature", "webhook_signature"]
 
 
 @pytest.mark.parametrize("name", _SIGNATURE_NAMES)
-@pytest.mark.parametrize("crypto_import", ["import hmac", "import hashlib", "from jwt import decode"])
+@pytest.mark.parametrize(
+    "crypto_import",
+    [
+        "import hmac",
+        "import hashlib",
+        "import secrets",
+        "from jwt import decode",
+        "from cryptography.hazmat.primitives import hashes",
+        "from Crypto.Hash import HMAC",
+        "from nacl.signing import VerifyKey",
+    ],
+)
 def test_flags_signature_when_module_imports_crypto(name: str, crypto_import: str):
     src = f"{crypto_import}\ndef f({name}, other):\n    return {name} == other\n"
     assert _count(src) == 1
@@ -735,6 +746,16 @@ class Auth:
     def __eq__(self, other):
         def check(provided):
             return self.token == provided
+        return check(other.token)
+"""
+    assert _count(src) == 1
+
+
+def test_flags_secret_compare_in_nested_lambda_inside_eq_dunder():
+    src = """
+class Auth:
+    def __eq__(self, other):
+        check = lambda provided: self.token == provided
         return check(other.token)
 """
     assert _count(src) == 1

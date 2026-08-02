@@ -59,11 +59,18 @@ def test_fires_in_ordinary_test_paths(path: str):
     [
         "common/testing/fakes.py",
         "webserver/test_fakes/clerk.py",
+        "common/testfixtures/redis.py",
+        "common/test_doubles/redis.py",
         "app/fakes.py",
         "app/mocks.py",
         "app/stubs.py",
+        "app/doubles.py",
+        "app/redis_fake.py",
+        "app/redis_mock.py",
         "app/observability/langfuse_stub.py",
         "app/llm_fakes.py",
+        "app/llm_mocks.py",
+        "app/llm_stubs.py",
     ],
 )
 def test_reaches_shared_double_modules_that_is_test_path_misses(path: str):
@@ -90,7 +97,11 @@ def test_skips_production_paths(path: str):
     [
         ("FakeS3Client", "moto"),
         ("MockBoto3Client", "moto"),
+        ("FakeSqsQueue", "moto"),
+        ("FakeSnsPublisher", "moto"),
         ("FakeDynamoDbTable", "moto"),
+        ("FakeKinesisStream", "moto"),
+        ("FakeSesMailer", "moto"),
         ("FakeGcsBucket", "fake-gcs-server"),
         ("FakeBigQueryClient", "bigquery-emulator"),
         ("FakePubSubPublisher", "emulator"),
@@ -98,14 +109,30 @@ def test_skips_production_paths(path: str):
         ("FakeOpenAIClient", "respx"),
         ("StubAnthropicClient", "respx"),
         ("_StubGeminiClient", "respx"),
+        ("FakeGroqClient", "respx"),
+        ("FakeBedrockClient", "respx"),
+        ("FakeCohereClient", "respx"),
+        ("FakeMistralClient", "respx"),
+        ("FakeVertexAIClient", "respx"),
+        ("FakeChatCompletion", "respx"),
         ("FakeRedisCache", "fakeredis"),
+        ("FakeValkeyCache", "fakeredis"),
         ("FakeMongoCollection", "mongomock"),
         ("FakePostgresPool", "testcontainers"),
+        ("FakePsycopgConnection", "testcontainers"),
+        ("FakeMySQLConnection", "testcontainers"),
+        ("FakeMariadbConnection", "testcontainers"),
         ("FakeSmtpServer", "aiosmtpd"),
+        ("FakeSmtplibServer", "aiosmtpd"),
+        ("FakeAiosmtplibServer", "aiosmtpd"),
+        ("FakeSendGridClient", "aiosmtpd"),
+        ("FakeMailgunClient", "aiosmtpd"),
         ("MockHttpxTransport", "respx"),
         ("FakeAiohttpSession", "aioresponses"),
         ("FakeRequestsSession", "responses"),
         ("FakeClock", "time-machine"),
+        ("FakeDateTime", "time-machine"),
+        ("FakeMonotonicClock", "time-machine"),
     ],
 )
 def test_each_service_names_its_own_library(name: str, library: str):
@@ -222,6 +249,24 @@ class FakeThing(openai_sdk.OpenAIClient):
         return 3
 """
     assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        'mock.patch("app.service.boto3.client")',
+        'mock.patch("app.service.datetime")',
+        'monkeypatch.setattr(httpx.AsyncClient, "request", fake_request)',
+        'monkeypatch.setattr(time, "time", lambda: 0)',
+    ],
+)
+def test_sdk_symbol_patches_are_out_of_scope(patch: str):
+    src = f"""
+def test_request(monkeypatch):
+    with {patch}:
+        call_service()
+"""
+    assert _check(src) == []
 
 
 # --------------------------------------------------------------------------- #
@@ -541,7 +586,22 @@ class FakeRedisClient:
 
 @pytest.mark.parametrize(
     "base",
-    ["BaseModel", "NamedTuple", "TypedDict", "Enum", "StrEnum", "Exception", "Protocol", "ABC", "TestCase"],
+    [
+        "ABC",
+        "BaseModel",
+        "Enum",
+        "Exception",
+        "Flag",
+        "IntEnum",
+        "IsolatedAsyncioTestCase",
+        "NamedTuple",
+        "Protocol",
+        "SimpleTestCase",
+        "StrEnum",
+        "TestCase",
+        "TransactionTestCase",
+        "TypedDict",
+    ],
 )
 def test_record_type_bases_are_exempt(base: str):
     src = f"""
@@ -680,15 +740,7 @@ class InMemorySmtpServer:
 
 
 def _two_real_methods_spanning(span: int) -> str:
-    """Build a double with exactly two non-dunder methods and an exact line span.
-
-    The fixed scaffolding — the `class` line, `def __init__`, a blank line and two
-    two-line methods separated by a blank — is 8 lines; the rest is `__init__` body.
-
-    Returns:
-        Source for a class whose `end_lineno - lineno + 1` is exactly `span`.
-
-    """
+    """Build a two-method double whose class spans exactly `span` lines."""
     body = "\n".join(f"        self.field_{i} = {i}" for i in range(span - 8))
     return f"""
 class InMemorySmtpServer:
@@ -823,8 +875,23 @@ class InMemorySMTP:
         ("from fakeredis import FakeAsyncRedis", "FakeRedisWithInfo"),
         ("import moto", "FakeS3Client"),
         ("from moto import mock_aws", "FakeS3Client"),
+        ("import s3fs", "FakeS3Client"),
         ("import respx", "FakeOpenAIClient"),
+        ("import vcr", "FakeOpenAIClient"),
+        ("import pytest_recording", "FakeOpenAIClient"),
+        ("import pytest_httpx", "FakeOpenAIClient"),
+        ("import responses", "FakeOpenAIClient"),
+        ("import aioresponses", "FakeOpenAIClient"),
         ("import testcontainers.postgres", "FakePostgresPool"),
+        ("import gcp_storage_emulator", "FakeGcsBucket"),
+        ("import mongomock", "FakeMongoCollection"),
+        ("import pytest_postgresql", "FakePostgresPool"),
+        ("import aiosmtpd", "FakeSmtpServer"),
+        ("import mailpit", "FakeSmtpServer"),
+        ("import requests_mock", "FakeRequestsSession"),
+        ("import time_machine", "FakeClock"),
+        ("import freezegun", "FakeClock"),
+        ("import timemachine", "FakeClock"),
     ],
 )
 def test_a_file_already_using_the_library_is_exempt(import_line: str, name: str):

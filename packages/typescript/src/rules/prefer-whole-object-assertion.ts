@@ -2,7 +2,6 @@
  * @fileoverview prefer-whole-object-assertion — a run of `expect`s on one receiver fails on the first mismatch and says nothing about the rest of the value.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/prefer-whole-object-assertion.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/prefer-whole-object-assertion.md
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";

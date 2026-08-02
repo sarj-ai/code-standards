@@ -17,31 +17,51 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("no-silent-promise-catch", rule, {
   valid: [
-    // FP guard, corpus: query/packages/query-core/src/thenable.ts:54 — the
-    // suppression is documented, which is the thing the rule asks for.
-    { code: "thenable.catch(() => {\n  // prevent unhandled rejection errors\n});" },
-    // Corpus: react-router/packages/react-router/lib/router/router.ts:6052 — the
-    // explanation sits on the line above the statement.
     {
+      name: "allows a suppression explained inside the handler",
+      code: "thenable.catch(() => {\n  // prevent unhandled rejection errors\n});",
+    },
+    {
+      name: "allows a suppression explained above the statement",
       code: [
         "// Prevent unhandled rejection errors - handled inside of `callLoadOrAction`",
         "lazyRoutePromise.catch(() => {});",
       ].join("\n"),
     },
-    // Corpus: react-router/packages/react-router/lib/components.tsx:1664 — trailing.
-    { code: "promise = Promise.reject().catch(() => {}); // Avoid unhandled rejection warnings" },
-    // FP guard, corpus: react-router/packages/react-router/lib/rsc/html-stream/server.ts:80
-    // — a teardown call rejects when the resource is already gone.
-    { code: "async function f(reader, reason) { await reader.cancel(reason).catch(() => {}); }" },
-    { code: "socket.close().catch(() => null);" },
-    // FP guard, corpus: react-router/integration/helpers/playwright-fixture.ts:318
-    // — the next link consumes the fallback, so it is a recovery step.
-    { code: "evaluate.catch(() => null).then(() => { done(); });" },
+    {
+      name: "allows a suppression explained beside the statement",
+      code: "promise = Promise.reject().catch(() => {}); // Avoid unhandled rejection warnings",
+    },
+    {
+      name: "allows silent teardown catches",
+      code: [
+        "reader.cancel(reason).catch(() => {});",
+        "socket.close().catch(() => null);",
+        "controller.abort().catch(() => undefined);",
+        "resource.destroy().catch(() => false);",
+        "handle.dispose().catch(() => 0);",
+        "lock.release().catch(() => '');",
+        "mutex.unlock().catch(() => ({}));",
+        "client.disconnect().catch(() => []);",
+      ].join("\n"),
+    },
+    {
+      name: "allows a catch fallback consumed by the next chain link",
+      code: "evaluate.catch(() => null).then(() => { done(); });",
+    },
     // Handler that logs is fine.
     {
       code: "p.catch((err) => logger.error({ err }, 'lookup failed'));",
     },
     // Handler that references its error parameter.
+    {
+      name: "allows recovery that returns the rejection value",
+      code: "p.catch((err) => err);",
+    },
+    {
+      name: "allows a regex fallback because it carries information",
+      code: "p.catch(() => /unavailable/);",
+    },
     {
       code: "p.catch((err) => fallbackFor(err));",
     },
@@ -71,15 +91,22 @@ ruleTester.run("no-silent-promise-catch", rule, {
     },
     // Body-parse-fallback idiom: parse failure is not the handled signal.
     {
+      name: "allows JSON body parse fallbacks",
       code: "const body = await res.json().catch(() => ({}));",
     },
     {
+      name: "allows text body parse fallbacks",
       code: "const text = await res.text().catch(() => '');",
     },
     // Test files are exempt (unhandled-rejection suppression is routine there).
     {
       code: "p.catch(() => undefined);",
       filename: "/repo/src/components/widget.test.tsx",
+    },
+    {
+      name: "allows silent catches in spec files",
+      code: "p.catch(() => false);",
+      filename: "/repo/src/components/widget.spec.tsx",
     },
     {
       code: "p.catch(() => null);",
@@ -162,6 +189,11 @@ ruleTester.run("no-silent-promise-catch", rule, {
       errors: [{ messageId: "silentCatch" }],
     },
     {
+      name: "reports a bare return that discards the rejection",
+      code: "p.catch(() => { return; });",
+      errors: [{ messageId: "silentCatch" }],
+    },
+    {
       code: "p.catch(function (err) { return undefined; });",
       errors: [{ messageId: "silentCatch" }],
     },
@@ -188,6 +220,11 @@ ruleTester.run("no-silent-promise-catch", rule, {
     // json/text with arguments or as a plain lookup is NOT the parse idiom.
     {
       code: "client.json(payload).catch(() => null);",
+      errors: [{ messageId: "silentCatch" }],
+    },
+    {
+      name: "reports computed JSON calls because they are not recognized body parsing",
+      code: "client['json']().catch(() => null);",
       errors: [{ messageId: "silentCatch" }],
     },
   ],

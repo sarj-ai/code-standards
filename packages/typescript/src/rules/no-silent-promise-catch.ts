@@ -2,7 +2,6 @@
  * @fileoverview no-silent-promise-catch — `.catch(() => null)` deletes the rejection: no log, no metric, no rethrow, and a sentinel to the caller.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-silent-promise-catch.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-silent-promise-catch.md
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";

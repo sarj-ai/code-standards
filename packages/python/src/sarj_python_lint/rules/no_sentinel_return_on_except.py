@@ -1,7 +1,6 @@
 """SARJ009 — Exception handlers that silently swallow via a sentinel return.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_sentinel_return_on_except.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ009.md
 """
 
 from __future__ import annotations
@@ -25,7 +24,6 @@ type ParentMap = dict[ast.AST, ast.AST]
 class NoSentinelReturnOnExcept(Rule):
     id: str = "no-sentinel-return-on-except"
     code: str = "SARJ009"
-    has_evidence: bool = True
     description: str = "`except` handler returns a sentinel and never re-raises — the exception is silently swallowed."
 
     @override

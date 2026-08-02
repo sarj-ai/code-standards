@@ -1,7 +1,6 @@
 """SARJ032 — Silent fall-through on closed-set dispatch — prefer `assert_never`.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_match_assert_never.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ032.md
 """
 
 from __future__ import annotations
@@ -29,7 +28,6 @@ _DICT_GROWING_METHODS = frozenset({"update", "setdefault"})
 class PreferMatchAssertNever(Rule):
     id: str = "prefer-match-assert-never"
     code: str = "SARJ032"
-    has_evidence: bool = True
     description: str = (
         "silent `case _:` / silent `else` on closed-set dispatch — a new variant "
         "no-ops instead of failing; use assert_never (or raise) in the fallthrough."

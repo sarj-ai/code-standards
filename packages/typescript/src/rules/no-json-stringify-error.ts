@@ -2,7 +2,6 @@
  * @fileoverview no-json-stringify-error — `JSON.stringify` on an Error yields `{}` — `message` and `stack` are non-enumerable.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-json-stringify-error.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-json-stringify-error.md
  */
 
 import { type TSESTree } from "@typescript-eslint/utils";

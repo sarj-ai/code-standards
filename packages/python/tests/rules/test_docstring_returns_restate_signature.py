@@ -85,19 +85,25 @@ def test_a_block_naming_something_the_signature_does_not_is_left_alone():
     assert not diags
 
 
-def test_identity_semantics_are_not_a_restatement():
-    # The one fact `-> Storage` cannot carry is whether the value handed back is
-    # a FRESH object or the receiver. `new` is a stopword for the restatement
-    # tokenizer, so every other word here IS in the signature and without
-    # `_IDENTITY_RE` the block reads as pure ceremony.
-    diags = _check('''
-        def rebind_storage(self, storage: Storage) -> Storage:
+@pytest.mark.parametrize(
+    ("signature", "block"),
+    [
+        ("rebind_storage(self, storage: Storage) -> Storage", "A new storage."),
+        ("get_same_storage(self, storage: Storage) -> Storage", "The same storage."),
+        ("copy_storage(self, storage: Storage) -> Storage", "A copy of storage."),
+        ("return_itself(self) -> Self", "Itself."),
+    ],
+)
+def test_identity_semantics_are_not_a_restatement(signature: str, block: str):
+    # A return annotation cannot say whether the result is fresh or identical.
+    diags = _check(f'''
+        def {signature}:
             """Point the policy somewhere else without disturbing the caller.
 
             Returns:
-                A new storage.
+                {block}
             """
-            return storage
+            return None
         ''')
     assert not diags
 
@@ -128,6 +134,40 @@ def test_a_protected_block_is_left_alone():
                 The secret.
             """
             return ""
+        ''')
+    assert not diags
+
+
+@pytest.mark.parametrize(
+    ("signature", "block"),
+    [
+        ("get_proj_249_ticket(self) -> Ticket", "The PROJ-249 ticket."),
+        ("get_https_example_com(self) -> str", "https://example.com"),
+        ("get_widget_because_cache(self) -> Widget", "The widget because cache."),
+    ],
+)
+def test_references_and_causal_context_keep_the_block(signature: str, block: str):
+    diags = _check(f'''
+        def {signature}:
+            """Fetch the configured value.
+
+            Returns:
+                {block}
+            """
+            return None
+        ''')
+    assert not diags
+
+
+def test_a_prefix_is_not_a_signature_word():
+    diags = _check('''
+        def get_policy(self) -> Policy:
+            """Load the configured policy.
+
+            Returns:
+                The policyholder.
+            """
+            return None
         ''')
     assert not diags
 

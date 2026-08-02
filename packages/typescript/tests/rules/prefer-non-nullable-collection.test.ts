@@ -22,10 +22,20 @@ ruleTester.run("prefer-non-nullable-collection", rule, {
     "type Response = { items: Array<string> };",
     "interface Input { value: string | string[] | null; }",
     "interface Input { id: string | null; }",
-    "interface Input { ids?: string[]; }",
     "function search(ids: string[] | null): Item[] | undefined { return undefined; }",
     "type Result = Promise<Item[] | null>;",
     "type MaybeItem = Item | null;",
+    {
+      name: "allows omission without an explicit nullish collection value",
+      code: "interface Input { ids?: string[]; }",
+    },
+    {
+      name: "allows a meaningful third state with a reasoned suppression",
+      code: [
+        "// eslint-disable-next-line @rule-tester/prefer-non-nullable-collection -- null means routing has not run",
+        "interface RouteState { matches: Match[] | null; }",
+      ].join("\n"),
+    },
     {
       code: "interface Input { ids: string[] | null; }",
       filename: "src/search.test.ts",
@@ -33,6 +43,11 @@ ruleTester.run("prefer-non-nullable-collection", rule, {
     {
       code: "interface Input { ids: string[] | null; }",
       filename: "src/generated/api.ts",
+    },
+    {
+      name: "ignores generated declaration files",
+      code: "interface Input { ids: string[] | null; }",
+      filename: "src/api.d.ts",
     },
     {
       code: "interface Input { ids: string[] | null; }",
@@ -46,6 +61,11 @@ ruleTester.run("prefer-non-nullable-collection", rule, {
     },
     {
       code: "type Response = { items: null | string[] | undefined };",
+      errors: [{ messageId: "preferNonNullableCollection" }],
+    },
+    {
+      name: "flags optional properties whose value type is explicitly nullable",
+      code: "interface Input { ids?: string[] | null; }",
       errors: [{ messageId: "preferNonNullableCollection" }],
     },
     {

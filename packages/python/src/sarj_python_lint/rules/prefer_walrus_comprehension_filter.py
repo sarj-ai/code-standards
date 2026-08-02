@@ -1,7 +1,6 @@
 """SARJ076 — Prefer walrus operator in comprehension filters to avoid duplicate function evaluation.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_walrus_comprehension_filter.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ076.md
 """
 
 from __future__ import annotations
@@ -85,7 +84,6 @@ def _check_comprehension_node(
 class PreferWalrusComprehensionFilter(Rule):
     id: str = "prefer-walrus-comprehension-filter"
     code: str = "SARJ076"
-    has_evidence: bool = True
     description: str = "repeated expression in comprehension filter and element — use `(val := ...)` to evaluate once."
 
     @override

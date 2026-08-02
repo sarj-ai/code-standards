@@ -55,7 +55,23 @@ def test_the_owning_class_name_counts_as_signature():
     assert len(diags) == 1
 
 
-@pytest.mark.parametrize("header", ["Args", "Arguments", "Parameters", "Params"])
+def test_the_function_name_counts_as_signature():
+    diags = _check('''
+        def verify_access_token(token: str) -> Payload:
+            """Reject refresh tokens before decoding.
+
+            Args:
+                token: Access token to verify
+            """
+            return decode(token)
+        ''')
+    assert len(diags) == 1
+
+
+@pytest.mark.parametrize(
+    "header",
+    ["Args", "Arguments", "Parameters", "Params", "Keyword Args", "Keyword Arguments"],
+)
 def test_every_google_section_spelling_is_read(header: str):
     diags = _check(f'''
         def count_widgets(tenant_id: str) -> int:
@@ -173,7 +189,40 @@ def test_entries_carrying_value_keep_the_block(entry: str):
     )
 
 
-@pytest.mark.parametrize("decorator", ["@function_tool", "@click.command()", "@router.post('/x')"])
+def test_a_protected_signal_keeps_an_otherwise_restating_block():
+    assert (
+        _check('''
+        def store_secret(secret: str) -> None:
+            """Persist the credential in the selected vault.
+
+            Args:
+                secret: Secret
+            """
+            return None
+        ''')
+        == []
+    )
+
+
+def test_a_unit_keeps_an_otherwise_restating_block():
+    assert (
+        _check('''
+        def set_timeout_ms(timeout_ms: int) -> None:
+            """Configure the request deadline.
+
+            Args:
+                timeout_ms: Timeout in ms
+            """
+            return None
+        ''')
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    "decorator",
+    ["@function_tool", "@click.command()", "@typer.command()", "@router.post('/x')"],
+)
 def test_prompt_and_cli_decorators_are_exempt(decorator: str):
     # For an agent tool the Args block is part of the schema shipped to the
     # model; for click/typer it is the argument help text.

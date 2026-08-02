@@ -150,6 +150,17 @@ def test_thing():
     assert _check(src) == []
 
 
+@pytest.mark.parametrize("call", ["pytest.raises(ValueError)", "pytest.warns(DeprecationWarning)"])
+def test_bare_pytest_expectation_call_is_exempt(call: str):
+    src = f"""
+import pytest
+
+def test_thing():
+    {call}
+"""
+    assert _check(src) == []
+
+
 @pytest.mark.parametrize(
     "call",
     [
@@ -342,6 +353,23 @@ def import_from(dotted_path):
 
 def test_moved_on_v2(module):
     import_from(module)
+"""
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        "get_graphql_content(response)",
+        "self.check_html(actual, expected)",
+        "assertions.Template.has_resource_properties(resource, expected)",
+        "take_visual_snapshot(page)",
+    ],
+)
+def test_opaque_external_verification_helpers_require_suppression(call: str):
+    src = f"""
+def test_thing(self):
+    {call}
 """
     assert len(_check(src)) == 1
 
@@ -732,30 +760,47 @@ def test_apps(monkeypatch):
 # --------------------------------------------------------------------------- #
 
 
-def test_pytester_line_matcher_counts_as_an_assertion():
-    # `fnmatch_lines` raises `Failed` on a mismatch; it is how pytest's own
-    # suite -- and any repo testing a console script via `pytester` -- asserts.
-    src = """
+@pytest.mark.parametrize(
+    "helper",
+    [
+        "fnmatch_lines",
+        "fnmatch_lines_random",
+        "no_fnmatch_line",
+        "no_re_match_line",
+        "re_match_lines",
+        "re_match_lines_random",
+    ],
+)
+def test_pytester_line_matchers_count_as_assertions(helper: str):
+    src = f"""
 def test_run_without_stepwise(stepwise_pytester):
     result = stepwise_pytester.runpytest("-v")
-    result.stdout.fnmatch_lines(["*test_success_before_fail PASSED*"])
+    result.stdout.{helper}(["*test_success_before_fail PASSED*"])
 """
     assert _check(src) == []
 
 
-def test_no_fnmatch_line_counts_as_an_assertion():
-    src = """
-def test_output_is_quiet(pytester):
-    result = pytester.runpytest("-q")
-    result.stdout.no_fnmatch_line("*Traceback*")
-"""
-    assert _check(src) == []
-
-
-@pytest.mark.parametrize("helper", ["eq_", "ne_", "is_", "is_true", "in_", "eq_regex"])
+@pytest.mark.parametrize(
+    "helper",
+    [
+        "eq_",
+        "eq_ignore_whitespace",
+        "eq_regex",
+        "in_",
+        "is_",
+        "is_false",
+        "is_instance_of",
+        "is_none",
+        "is_not",
+        "is_not_",
+        "is_not_none",
+        "is_true",
+        "ne_",
+        "not_in",
+        "not_in_",
+    ],
+)
 def test_sqlalchemy_testing_assertions_count(helper: str):
-    # The trailing underscore exists to dodge a Python keyword, which is exactly
-    # why the `assert|expect|verify|validate` token search cannot see them.
     src = f"""
 from sqlalchemy.testing.assertions import {helper}
 

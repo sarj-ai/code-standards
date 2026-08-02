@@ -1,7 +1,6 @@
 """SARJ047 — `sleep(POLL_INTERVAL * 4)` in a test is the same race SARJ031 bans.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_sleep_with_computed_arg_in_test.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ047.md
 """
 
 from __future__ import annotations
@@ -23,7 +22,6 @@ _SLEEP_RECEIVERS = frozenset({"asyncio", "time"})
 class SleepWithComputedArgInTest(Rule):
     id: str = "sleep-with-computed-arg-in-test"
     code: str = "SARJ047"
-    has_evidence: bool = True
     description: str = "Computed `sleep()` in a test body — synchronize on the signal, don't guess a delay."
 
     @override

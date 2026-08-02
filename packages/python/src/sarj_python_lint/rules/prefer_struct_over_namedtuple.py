@@ -1,7 +1,6 @@
 """SARJ015 — `collections.namedtuple` — prefer `typing.NamedTuple` or a model.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_struct_over_namedtuple.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ015.md
 """
 
 from __future__ import annotations
@@ -27,7 +26,6 @@ _MSG = (
 class PreferStructOverNamedtuple(Rule):
     id: str = "prefer-struct-over-namedtuple"
     code: str = "SARJ015"
-    has_evidence: bool = True
     description: str = (
         "collections.namedtuple is untyped/positional — prefer typing.NamedTuple or a frozen pydantic model."
     )

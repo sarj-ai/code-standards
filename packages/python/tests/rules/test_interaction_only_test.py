@@ -130,14 +130,30 @@ class TestThing:
             id="call-args",
         ),
         pytest.param(
+            "assert store.save.call_args_list == [call(1)]\n    assert bus.emit_event.call_args_list",
+            id="call-args-list",
+        ),
+        pytest.param(
             "assert store.save.mock_calls == [call(1)]\n    assert bus.emit_event.mock_calls", id="mock-calls"
+        ),
+        pytest.param(
+            "assert store.save.method_calls == [call.flush()]\n    assert bus.emit_event.method_calls",
+            id="method-calls",
         ),
         pytest.param(
             "assert store.save.await_count == 1\n    assert bus.emit_event.await_count == 1", id="await-count"
         ),
         pytest.param(
+            "assert store.save.await_args == call(1)\n    assert bus.emit_event.await_args_list",
+            id="await-args",
+        ),
+        pytest.param(
             "store.save.assert_has_calls([call(1)])\n    bus.emit_event.assert_any_call('x')",
             id="has-calls-any-call",
+        ),
+        pytest.param(
+            "store.save.assert_has_awaits([call(1)])\n    bus.emit_event.assert_any_await('x')",
+            id="has-awaits-any-await",
         ),
     ],
 )
@@ -189,6 +205,20 @@ import pytest
 
 def test_thing():
     with pytest.raises(ValueError):
+        handle(store, bus)
+    store.save.assert_called_once()
+    bus.emit_event.assert_called_once()
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize("context", ["warns(UserWarning)", "deprecated_call()", "RaisesGroup(ValueError)"])
+def test_pytest_exception_and_warning_contexts_count_as_outcomes(context: str):
+    src = f"""
+import pytest
+
+def test_thing():
+    with pytest.{context}:
         handle(store, bus)
     store.save.assert_called_once()
     bus.emit_event.assert_called_once()
@@ -395,6 +425,9 @@ def test_thing():
         pytest.param("assert other.charge.call_count == 0", id="call-count-zero"),
         pytest.param("assert other.charge.call_args is None", id="call-args-none"),
         pytest.param("self.assertFalse(other.charge.called)", id="unittest-assert-false"),
+        pytest.param("self.assertIsNone(other.charge.call_args)", id="unittest-assert-is-none"),
+        pytest.param("self.assertNotCalled(other.charge)", id="unittest-assert-not-called"),
+        pytest.param("assert_false(other.charge.called)", id="helper-assert-false"),
         pytest.param("self.assertEqual(other.charge.call_count, 0)", id="unittest-equal-zero"),
     ],
 )
@@ -449,6 +482,7 @@ class TestMultiDBChecks:
         "test_idempotent_replay",
         "test_debounce_window",
         "test_throttling_limits_sends",
+        "test_not_called_after_shutdown",
         "test_only_once_per_window",
     ],
 )
@@ -482,24 +516,37 @@ def {name}():
 
 
 @pytest.mark.parametrize(
-    ("first", "second"),
+    "method",
     [
-        # Every pair spans two root objects on purpose: a pair sharing a root
-        # never reaches this guard, so it would pass for the wrong reason.
-        pytest.param("worker_sigs.task_prerun.connect", "beat_sigs.task_postrun.connect", id="signal-connect"),
-        pytest.param("room.on", "session.on", id="event-on"),
-        pytest.param("room.off", "session.off", id="event-off"),
-        pytest.param("bus.subscribe", "other.unsubscribe", id="subscribe"),
-        pytest.param("registry.register", "other.unregister", id="register"),
-        pytest.param("emitter.add_listener", "other_emitter.remove_listener", id="listeners"),
+        "add_done_callback",
+        "add_event_handler",
+        "add_listener",
+        "add_signal_handler",
+        "attach",
+        "bind",
+        "connect",
+        "detach",
+        "disconnect",
+        "listen",
+        "off",
+        "on",
+        "on_event",
+        "once",
+        "register",
+        "remove_listener",
+        "remove_signal_handler",
+        "subscribe",
+        "unbind",
+        "unregister",
+        "unsubscribe",
     ],
 )
-def test_registration_only_pins_are_exempt(first: str, second: str):
+def test_every_callback_registration_spelling_is_exempt(method: str):
     src = f"""
 def test_thing():
     monitor.start()
-    {first}.assert_any_call("a", handler)
-    {second}.assert_any_call("b", handler)
+    first.{method}.assert_any_call("a", handler)
+    second.{method}.assert_any_call("b", handler)
 """
     assert _check(src) == []
 
@@ -613,8 +660,9 @@ def test_subdomain_matching(app, client):
     assert _check(src) == []
 
 
-def test_stub_body_is_exempt():
-    assert _check("def test_thing():\n    ...\n") == []
+@pytest.mark.parametrize("body", ["...", "pass", '"not implemented"'])
+def test_stub_body_is_exempt(body: str):
+    assert _check(f"def test_thing():\n    {body}\n") == []
 
 
 # --------------------------------------------------------------------------- #

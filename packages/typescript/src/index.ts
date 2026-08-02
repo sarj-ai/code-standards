@@ -15,6 +15,7 @@ import noHandRolledSleep from "./rules/no-hand-rolled-sleep.js";
 import noInsecureRandomId from "./rules/no-insecure-random-id.js";
 import noJsonStringifyError from "./rules/no-json-stringify-error.js";
 import noLogOnlyCatch from "./rules/no-log-only-catch.js";
+import noLongComment from "./rules/no-long-comment.js";
 import noOffsetPagination from "./rules/no-offset-pagination.js";
 import noPositionalTupleReturn from "./rules/no-positional-tuple-return.js";
 import noRawEnv from "./rules/no-raw-env.js";
@@ -30,6 +31,7 @@ import noSleepInTestBody from "./rules/no-sleep-in-test-body.js";
 import noStorageInStatelessModules from "./rules/no-storage-in-stateless-modules.js";
 import noStringConcatInLoop from "./rules/no-string-concat-in-loop.js";
 import noTautologicalExpect from "./rules/no-tautological-expect.js";
+import noTypedDocSections from "./rules/no-typed-doc-sections.js";
 import noTrailingValueNarration from "./rules/no-trailing-value-narration.js";
 import noDeclarationCommentWall from "./rules/no-declaration-comment-wall.js";
 import noUnionInComment from "./rules/no-union-in-comment.js";
@@ -45,6 +47,7 @@ import preferNonNullableCollection from "./rules/prefer-non-nullable-collection.
 import preferSchemaForApiPayload from "./rules/prefer-schema-for-api-payload.js";
 import preferSemanticColors from "./rules/prefer-semantic-colors.js";
 import preferServerActions from "./rules/prefer-server-actions.js";
+import preferSingleSentenceComment from "./rules/prefer-single-sentence-comment.js";
 import preferStringLiteralUnion from "./rules/prefer-string-literal-union.js";
 import preferWholeObjectAssertion from "./rules/prefer-whole-object-assertion.js";
 import preferZodEnum from "./rules/prefer-zod-enum.js";
@@ -72,6 +75,7 @@ const rules = {
   "no-insecure-random-id": noInsecureRandomId,
   "no-json-stringify-error": noJsonStringifyError,
   "no-log-only-catch": noLogOnlyCatch,
+  "no-long-comment": noLongComment,
   "no-offset-pagination": noOffsetPagination,
   "no-positional-tuple-return": noPositionalTupleReturn,
   "no-raw-env": noRawEnv,
@@ -87,6 +91,7 @@ const rules = {
   "no-storage-in-stateless-modules": noStorageInStatelessModules,
   "no-string-concat-in-loop": noStringConcatInLoop,
   "no-tautological-expect": noTautologicalExpect,
+  "no-typed-doc-sections": noTypedDocSections,
   "no-trailing-value-narration": noTrailingValueNarration,
   "no-declaration-comment-wall": noDeclarationCommentWall,
   "no-union-in-comment": noUnionInComment,
@@ -102,6 +107,7 @@ const rules = {
   "prefer-schema-for-api-payload": preferSchemaForApiPayload,
   "prefer-semantic-colors": preferSemanticColors,
   "prefer-server-actions": preferServerActions,
+  "prefer-single-sentence-comment": preferSingleSentenceComment,
   "prefer-string-literal-union": preferStringLiteralUnion,
   "prefer-whole-object-assertion": preferWholeObjectAssertion,
   "prefer-zod-enum": preferZodEnum,
@@ -116,7 +122,7 @@ const rules = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "9.6.0",
+  version: "9.7.0",
 } as const;
 
 const recommendedRules = {
@@ -132,6 +138,7 @@ const recommendedRules = {
   "@sarj/no-insecure-random-id": "warn",
   "@sarj/no-json-stringify-error": "warn",
   "@sarj/no-log-only-catch": "warn",
+  "@sarj/no-long-comment": "warn",
   "@sarj/no-offset-pagination": "warn",
   "@sarj/no-positional-tuple-return": "warn",
   "@sarj/no-repeated-string-literal": "warn",
@@ -144,6 +151,7 @@ const recommendedRules = {
   "@sarj/no-sleep-in-test-body": "warn",
   "@sarj/no-string-concat-in-loop": "warn",
   "@sarj/no-tautological-expect": "warn",
+  "@sarj/no-typed-doc-sections": "warn",
   "@sarj/no-trailing-value-narration": "warn",
   "@sarj/no-declaration-comment-wall": "warn",
   "@sarj/no-union-in-comment": "warn",
@@ -159,6 +167,7 @@ const recommendedRules = {
   "@sarj/prefer-schema-for-api-payload": "warn",
   "@sarj/prefer-semantic-colors": ["warn", { requireSemanticTokens: true }],
   "@sarj/prefer-server-actions": "warn",
+  "@sarj/prefer-single-sentence-comment": "warn",
   "@sarj/prefer-string-literal-union": "warn",
   "@sarj/prefer-whole-object-assertion": "warn",
   "@sarj/prefer-zod-enum": "warn",
@@ -185,6 +194,7 @@ const strictRules = {
   "@sarj/no-insecure-random-id": "error",
   "@sarj/no-json-stringify-error": "error",
   "@sarj/no-log-only-catch": "error",
+  "@sarj/no-long-comment": "error",
   "@sarj/no-offset-pagination": "error",
   "@sarj/no-positional-tuple-return": "error",
   "@sarj/no-raw-env": "error",
@@ -200,6 +210,7 @@ const strictRules = {
   "@sarj/no-storage-in-stateless-modules": "error",
   "@sarj/no-string-concat-in-loop": "error",
   "@sarj/no-tautological-expect": "error",
+  "@sarj/no-typed-doc-sections": "error",
   "@sarj/no-trailing-value-narration": "error",
   "@sarj/no-declaration-comment-wall": "error",
   "@sarj/no-union-in-comment": "error",
@@ -215,6 +226,7 @@ const strictRules = {
   "@sarj/prefer-schema-for-api-payload": "error",
   "@sarj/prefer-semantic-colors": ["error", { requireSemanticTokens: true }],
   "@sarj/prefer-server-actions": "error",
+  "@sarj/prefer-single-sentence-comment": "warn",
   "@sarj/prefer-string-literal-union": "error",
   "@sarj/prefer-whole-object-assertion": "error",
   "@sarj/prefer-zod-enum": "error",

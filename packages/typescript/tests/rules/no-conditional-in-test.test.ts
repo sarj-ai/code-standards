@@ -39,6 +39,26 @@ ruleTester.run("no-conditional-in-test", rule, {
         }
       });`,
     },
+    {
+      filename: TEST_FILE,
+      code: `test.describe('suite', () => {
+        if (process.env.CI) {
+          test('runs in CI', () => { expect(true).toBe(true); });
+        }
+      });`,
+    },
+    {
+      filename: TEST_FILE,
+      code: `test.describe.only('suite', () => {
+        if (process.env.CI) test('runs', () => { expect(true).toBe(true); });
+      });`,
+    },
+    {
+      filename: TEST_FILE,
+      code: `beforeAll(() => {
+        if (database.isEmpty()) database.seed();
+      });`,
+    },
     // Guard 5, the shape it was actually built for: the branch does nothing but
     // rewrite a field before a snapshot. From
     // `trpc/packages/tests/server/adapters/standalone.test.ts:252`.
@@ -62,6 +82,10 @@ ruleTester.run("no-conditional-in-test", rule, {
     {
       filename: TEST_FILE,
       code: "it('allows conditionals in helper functions', () => { const helper = (b) => { if (b) return 1; return 2; }; expect(helper(true)).toBe(1); });",
+    },
+    {
+      filename: TEST_FILE,
+      code: "it('allows conditionals in declared helpers', () => { function helper(b) { if (b) return 1; return 2; } expect(helper(true)).toBe(1); });",
     },
     {
       filename: "/repo/src/component.ts",
@@ -134,6 +158,14 @@ ruleTester.run("no-conditional-in-test", rule, {
       filename: TEST_FILE,
       code: "test('warms the cache once', () => { warmed || warmCache(); expect(cache.size).toBe(1); });",
     },
+    {
+      filename: TEST_FILE,
+      code: "test('uses a logical value', () => { const checked = ready && expect(value).toBe(1); expect(checked).toBeDefined(); });",
+    },
+    {
+      filename: TEST_FILE,
+      code: "test('uses a nullish value', () => { ready ?? expect(value).toBe(1); });",
+    },
 
     // --- Guard 4: narrowing around assertions erased at run time ---
     {
@@ -148,6 +180,16 @@ ruleTester.run("no-conditional-in-test", rule, {
         }
       });`,
     },
+    {
+      filename: TEST_FILE,
+      code: `test('types both response branches', async () => {
+        if (res.ok) {
+          expectTypeOf(res.data).toEqualTypeOf<Data>();
+        } else {
+          assertType<Error>(res.error);
+        }
+      });`,
+    },
 
     // --- Guard 5: state normalization with no assertion and no escape ---
     {
@@ -158,6 +200,19 @@ ruleTester.run("no-conditional-in-test", rule, {
           json.error.data.stack = '[redacted]';
         }
         expect(json).toMatchInlineSnapshot();
+      });`,
+    },
+    {
+      filename: TEST_FILE,
+      code: `test('normalizes state before asserting', () => {
+        if (dirty) {
+          retries++;
+          delete result.debug;
+          const normalized = true;
+        } else {
+          result.status = 'clean';
+        }
+        expect(result).toMatchSnapshot();
       });`,
     },
   ],
@@ -213,6 +268,17 @@ ruleTester.run("no-conditional-in-test", rule, {
       });`,
       errors: [{ messageId: "noConditionalInTest" }],
     },
+    {
+      filename: TEST_FILE,
+      code: `test('requires the pin immediately above', () => {
+        expect(result.success).toBe(false);
+        log(result);
+        if (!result.success) {
+          expect(result.error).toBeDefined();
+        }
+      });`,
+      errors: [{ messageId: "noConditionalInTest" }],
+    },
 
     // --- Upper bounds on guard 2 ---
     // A throwing consequent with an `else` is a real two-way branch, and the
@@ -226,6 +292,23 @@ ruleTester.run("no-conditional-in-test", rule, {
           expect(value).toBe(1);
         }
       });`,
+      errors: [{ messageId: "noConditionalInTest" }],
+    },
+    {
+      filename: TEST_FILE,
+      code: `test('does more than throw', () => {
+        if (!value) {
+          cleanup();
+          throw new Error('missing');
+        }
+        expect(value).toBe(1);
+      });`,
+      errors: [{ messageId: "noConditionalInTest" }],
+    },
+
+    {
+      filename: TEST_FILE,
+      code: "test('does not gate fallback assertions', () => { ready || expect(value).toBe(1); });",
       errors: [{ messageId: "noConditionalInTest" }],
     },
 
@@ -305,6 +388,16 @@ ruleTester.run("no-conditional-in-test", rule, {
           if (!row.enabled) {
             continue;
           }
+          expect(row.value).toBeGreaterThan(0);
+        }
+      });`,
+      errors: [{ messageId: "noConditionalInTest" }],
+    },
+    {
+      filename: TEST_FILE,
+      code: `test('checks rows until the sentinel', () => {
+        for (const row of rows) {
+          if (row.sentinel) break;
           expect(row.value).toBeGreaterThan(0);
         }
       });`,

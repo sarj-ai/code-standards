@@ -37,6 +37,7 @@ from sarj_python_lint.rules.no_first_party_private_import import (
 from sarj_python_lint.rules.no_fstring_in_log import NoFstringInLog
 from sarj_python_lint.rules.no_gen_random_uuid_in_sql import NoGenRandomUuidInSql
 from sarj_python_lint.rules.no_isinstance_union_chain import NoIsinstanceUnionChain
+from sarj_python_lint.rules.no_long_comment import NoLongComment
 from sarj_python_lint.rules.no_offset_pagination import NoOffsetPagination
 from sarj_python_lint.rules.no_optional_tenant_predicate import (
     NoOptionalTenantPredicate,
@@ -52,6 +53,7 @@ from sarj_python_lint.rules.no_sequential_await import NoSequentialAwait
 from sarj_python_lint.rules.no_sleep_in_test_body import NoSleepInTestBody
 from sarj_python_lint.rules.no_stdlib_logging import NoStdlibLogging
 from sarj_python_lint.rules.no_tautological_expect import NoTautologicalExpect
+from sarj_python_lint.rules.no_typed_doc_sections import NoTypedDocSections
 from sarj_python_lint.rules.no_unreachable_after_terminal import (
     NoUnreachableAfterTerminal,
 )
@@ -79,6 +81,7 @@ from sarj_python_lint.rules.prefer_non_nullable_collection import (
 from sarj_python_lint.rules.prefer_or_pattern import PreferOrPattern
 from sarj_python_lint.rules.prefer_real_store_in_tests import PreferRealStoreInTests
 from sarj_python_lint.rules.prefer_self_type_annotation import PreferSelfTypeAnnotation
+from sarj_python_lint.rules.prefer_single_sentence_comment import PreferSingleSentenceComment
 from sarj_python_lint.rules.prefer_str_enum import PreferStrEnum
 from sarj_python_lint.rules.prefer_struct_over_namedtuple import (
     PreferStructOverNamedtuple,
@@ -190,6 +193,9 @@ REGISTRY: dict[str, type[Rule]] = {
     DocstringReturnsRestateSignature.id: DocstringReturnsRestateSignature,
     RestatedTestDocstring.id: RestatedTestDocstring,
     TestPhaseLabelComment.id: TestPhaseLabelComment,
+    PreferSingleSentenceComment.id: PreferSingleSentenceComment,
+    NoLongComment.id: NoLongComment,
+    NoTypedDocSections.id: NoTypedDocSections,
 }
 
 __all__ = ["REGISTRY"]

@@ -1,7 +1,6 @@
 """SARJ038 — Module-scope unscoped suppression blanket — scope it or fix the findings.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_file_level_suppression.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ038.md
 """
 
 from __future__ import annotations
@@ -53,7 +52,6 @@ _PYRIGHT_IGNORE_MESSAGE = (
 class NoFileLevelSuppression(Rule):
     id: str = "no-file-level-suppression"
     code: str = "SARJ038"
-    has_evidence: bool = True
     description: str = (
         "An unscoped file-level suppression (`# ruff: noqa`, `# type: ignore`, "
         "`# pyright: ignore`) switches a whole checker off for the file, "

@@ -2,7 +2,6 @@
  * @fileoverview no-sentinel-return-on-catch — a `catch` returning `null` / `[]` / `{}` discards the error, so callers cannot tell empty from failed.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-sentinel-return-on-catch.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-sentinel-return-on-catch.md
  */
 
 import { type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
@@ -93,11 +92,7 @@ function isNode(value: unknown): value is TSESTree.Node {
   );
 }
 
-/**
- * Walk `node`'s subtree applying `visit`, but do not descend into nested
- * function scopes — their statements don't run synchronously for the current
- * catch. Stops early once `visit` returns true.
- */
+/** Walk a subtree without entering nested functions, stopping on a match. */
 function walkWithinScope(
   node: TSESTree.Node,
   visit: (current: TSESTree.Node) => boolean,
@@ -168,19 +163,11 @@ function bindsName(param: TSESTree.Node, name: string): boolean {
   }
 }
 
-/**
- * Does `node`'s subtree READ the identifier `name`, in a VALUE position?
- *
- * A bare name match is not enough: an object key, a nested key, a member
- * property of another object and a parameter that merely shadows the name all
- * swallow the error while looking "logged". So non-computed property keys and
- * non-computed member properties are skipped, and a nested function that
- * rebinds the name is not descended into. Each shape has a case in the tests.
- */
+/** Whether a subtree reads a binding in a value position without shadowing it. */
 function subtreeReadsName(node: TSESTree.Node, name: string): boolean {
   let found = false;
 
-  /** True when this function rebinds `name`, so its body reads a different value. */
+  /** Whether this function rebinds `name`. */
   const shadowsName = (fn: TSESTree.Node): boolean =>
     isFunctionNode(fn) &&
     (fn as unknown as { params: TSESTree.Parameter[] }).params.some((param) =>
@@ -235,13 +222,7 @@ function subtreeReadsName(node: TSESTree.Node, name: string): boolean {
   return found;
 }
 
-/**
- * Does the caught-error binding appear ANYWHERE in a call's arguments? The whole
- * argument subtree is searched, not just top-level positional args: a structured
- * logger takes the error nested in a meta object or behind a conditional
- * (`logEvent("x", { error: err instanceof Error ? err.message : String(err) })`),
- * and that reports the error exactly as `report(err)` does.
- */
+/** Whether any call argument reads the caught-error binding. */
 function argsIncludeBinding(
   args: readonly TSESTree.CallExpressionArgument[],
   caughtName: string | null,
@@ -264,10 +245,7 @@ const SAFE_PARSE_CONSTRUCTORS: ReadonlySet<string> = new Set([
   "URLPattern",
 ]);
 
-/**
- * A parse-style call that throws on bad input: `JSON.parse(x)`, `YAML.parse(x)`,
- * `new RegExp(x)`, `new URL(x)`.
- */
+/** Whether a node is a parse-style call or constructor that throws on bad input. */
 function isParseShapedNode(node: TSESTree.Node): boolean {
   if (
     node.type === AST_NODE_TYPES.CallExpression &&
@@ -303,14 +281,7 @@ function isBodyDecodeNode(node: TSESTree.Node): boolean {
   );
 }
 
-/**
- * True when a return statement's argument SUBTREE contains a match. The whole
- * subtree is searched rather than the top node alone, because the parse is
- * usually consumed in place: `return new URL(s).protocol === "https:"` is a
- * `BinaryExpression`, not a `NewExpression`, and `return await request.json()`
- * is an `AwaitExpression`. Nested function scopes are not searched — a parse
- * inside a callback does not run when the `try` does.
- */
+/** Whether a return value contains a match outside nested function scopes. */
 function returnsMatching(
   stmt: TSESTree.Node,
   predicate: (node: TSESTree.Node) => boolean,
@@ -336,13 +307,7 @@ function enclosingReturnTypeNode(
   return null;
 }
 
-/**
- * Function names that declare a boolean contract as clearly as a `: boolean`
- * annotation does. TypeScript INFERS the return type of
- * `async function isDirectory(d: string) { try { … } catch { return false } }`,
- * so demanding the annotation made the predicate exemption depend on a style
- * choice rather than on the contract.
- */
+/** Names that conventionally declare a boolean-returning function. */
 const PREDICATE_NAME_RE = /^(is|has|can|should|must|does|did|was|were|are)[A-Z]/;
 const PREDICATE_SUFFIX_RE = /(Exists?|Available|Enabled|Disabled)$/;
 
@@ -372,11 +337,7 @@ function enclosingFunctionName(node: TSESTree.Node): string | null {
   return null;
 }
 
-/**
- * True when the enclosing function's NAME declares it a predicate and the catch
- * returns a boolean. Same reasoning as `isDeclaredBooleanPredicate`, applied to
- * the (very common) unannotated spelling.
- */
+/** Whether an enclosing predicate-named function returns `false` from its catch. */
 function isNamedBooleanPredicate(
   catchNode: TSESTree.CatchClause,
   kind: SentinelKind,
@@ -391,14 +352,7 @@ function isNamedBooleanPredicate(
   );
 }
 
-/**
- * True when the enclosing function is a DECLARED predicate — annotated
- * `: boolean` (or `: Promise<boolean>`) — and the catch returns `false`. A
- * boolean return type cannot carry error information at all, so "return a typed
- * Result" is not advice that applies; the sentinel IS the whole contract. Only
- * `boolean` qualifies: a declared `T | null` return is the shape this rule
- * exists to flag and must keep firing.
- */
+/** Whether a boolean-returning function returns `false` from its catch. */
 function isDeclaredBooleanPredicate(
   catchNode: TSESTree.CatchClause,
   kind: SentinelKind,
@@ -450,12 +404,7 @@ function enclosingFunctionBody(
   return null;
 }
 
-/**
- * True when the enclosing function returns the same sentinel kind on a normal
- * (non-catch) path — a boolean predicate, a `T | undefined` accessor, etc. —
- * so the catch sentinel is the declared contract, not a swallow. Returns inside
- * the flagged catch itself are excluded.
- */
+/** Whether a normal path returns the same sentinel kind as the catch. */
 function functionReturnsSameSentinelKindElsewhere(
   catchNode: TSESTree.CatchClause,
   kind: SentinelKind,
@@ -475,12 +424,7 @@ function functionReturnsSameSentinelKindElsewhere(
   });
 }
 
-/**
- * The sentinel kinds a returned expression can evaluate to. A bare sentinel
- * yields one; a ternary or a `??` / `||` fallback yields the kinds of its
- * branches, because `return valid ? value : false` puts `false` on a NORMAL
- * path just as plainly as `return false` does.
- */
+/** Sentinel kinds reachable through a direct, ternary, or fallback return. */
 function returnedSentinelKinds(
   arg: TSESTree.Expression | null,
 ): ReadonlySet<SentinelKind> {
@@ -550,12 +494,7 @@ export default createRule<Options, MessageIds>({
 
     const matcher = createLogMatcher(loggingOptions);
 
-    /**
-     * Does the catch body log or report the caught error before the sentinel
-     * return? Either a logging call (logger receiver or a declared
-     * `logFunctions` free function), or an error-reporting call whose name
-     * matches `REPORT_NAME_RE` and whose arguments mention the caught binding.
-     */
+    /** Whether the catch logs or reports its caught error. */
     function logsOrReportsError(
       catchBody: TSESTree.BlockStatement,
       caughtName: string | null,

@@ -1,7 +1,6 @@
 """SARJ019 — A SQL query with 3+ JOINs is too entangled — split or denormalize.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_query_with_many_joins.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ019.md
 """
 
 from __future__ import annotations
@@ -32,7 +31,6 @@ _MAX_JOINS = 2
 class NoQueryWithManyJoins(Rule):
     id: str = "no-query-with-many-joins"
     code: str = "SARJ019"
-    has_evidence: bool = True
     description: str = (
         "SQL query with 3 or more JOINs — split the query or denormalize instead of fanning across many tables."
     )

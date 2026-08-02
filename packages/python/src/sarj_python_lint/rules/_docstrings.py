@@ -111,7 +111,7 @@ _BASE_STOPWORDS = frozenset(
 # config", "the entire widget" — strip the adjective and the sentence means
 # exactly what it meant. Kept as its own name because a single one of these
 # was the commonest reason a pure restatement survived the whole family; see
-# docs/rules/SARJ088.md for the measurement. `main`, `new`, `same` and `copy`
+# The paired SARJ088 tests cover this vocabulary. `main`, `new`, `same` and `copy`
 # are NOT here: they name the thing or its identity, which is content.
 FILLER_QUALIFIERS = frozenset(
     {

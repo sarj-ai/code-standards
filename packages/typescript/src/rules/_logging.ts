@@ -1,7 +1,5 @@
 /**
  * @fileoverview _logging — shared recognition of logging / error-reporting calls, so the catch rules and the secret rule cannot disagree.
- *
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/_logging.md
  */
 
 import { type TSESTree } from "@typescript-eslint/utils";
@@ -36,12 +34,7 @@ export const LOGGER_FACTORIES: ReadonlySet<string> = new Set([
   "get_logger",
 ]);
 
-/**
- * Names of free functions / methods that report an error to a handler or sink,
- * e.g. `onUnexpectedError`, `reportError`, `captureException`, `logError`. Kept
- * broad on purpose: pairing this with "takes the caught binding" is what makes
- * it precise.
- */
+/** Reporting names stay broad because consumers also require the caught binding. */
 export const REPORT_NAME_RE = /error|report|capture|log|trace|warn/i;
 
 /** Shared `loggerNames` / `logFunctions` option shape. */
@@ -50,11 +43,7 @@ export interface LoggingOptions {
   readonly logFunctions?: readonly string[];
 }
 
-/**
- * JSON-schema properties for the shared logging options. Spread into a rule's
- * `schema[0].properties` so every rule that consults `_logging` accepts the same
- * declaration and a project configures its logger exactly once.
- */
+/** Shared schema properties keep logging options consistent across consumers. */
 export const LOGGING_OPTION_PROPERTIES = {
   loggerNames: { type: "array", items: { type: "string" } },
   logFunctions: { type: "array", items: { type: "string" } },
@@ -84,10 +73,7 @@ export interface LogMatcher {
   isLoggingCall(expr: TSESTree.Node): boolean;
 }
 
-/**
- * Builds the log-recognition predicates for one rule invocation, folding in the
- * project's declared `loggerNames` / `logFunctions`. Call once per `create()`.
- */
+/** Builds a matcher with the project's declared receivers and functions. */
 export function createLogMatcher(options: LoggingOptions = {}): LogMatcher {
   const loggerNames: ReadonlySet<string> = new Set([
     ...LOGGER_NAMES,

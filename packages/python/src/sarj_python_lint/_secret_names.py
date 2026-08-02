@@ -1,39 +1,6 @@
-"""Shared predicate for deciding whether an identifier names secret material.
+"""Recognize secret-bearing identifiers for SARJ011 and SARJ012.
 
-Used by both SARJ011 (`prefer-constant-time-secret-compare`) and SARJ012
-(`no-secret-in-log`) so the two rules never diverge on what counts as a secret.
-
-The historical implementation matched a secret word as a bare *substring*, which
-misfired on a large false-positive class observed in a real audit:
-
-- LLM usage counters that merely embed `token`: `token_count`, `prompt_tokens`,
-  `completion_tokens`, `total_tokens`, `max_tokens`, `n_tokens`, `num_tokens`,
-  `tokenize`, `tokenizer`, `token_budget`.
-- Row-id / handle names: `api_key_id`, `*_key_id` — the id of a key row, not the
-  key material.
-- Boolean feature / presence / state flags, in both word orders: trailing
-  (`password_enabled`, `token_present`, `password_set`, `password_configured`)
-  and leading (`has_secret`, `hasSecret`, `is_token`, `isToken`) — a boolean
-  answering "is it there / was it set", not the credential itself. A `type`
-  discriminator is the same: `token_type` is `"Bearer"`, `credential_type` is a
-  class name.
-- Innocent words embedding a secret word: `secretary` (embeds `secret`).
-
-We fix this with three changes:
-
-1. Match a secret word only as a WHOLE token (after snake_case / camelCase
-   splitting), never a substring. This alone clears `tokenize`, `tokenizer`,
-   `secretary`, and every *pluralized* `tokens` counter (plural `tokens` is not
-   the singular secret word `token`).
-2. Disqualify an identifier whose TRAILING token is a counter / row-id / flag
-   marker (`count`, `budget`, `id`, `enabled`, ...) even when a secret word is
-   also present — this clears `token_count`, `api_key_id`, `password_enabled`,
-   while still catching a credential that merely leads with such a word
-   (`valid_token`, `present_token` are secrets, not flags).
-3. Disqualify an identifier whose LEADING WORD is a boolean predicate (`is`,
-   `has`, `was`, ...) — the mirror image of (2), clearing `has_secret` /
-   `hasSecret` / `is_token` / `isToken`, which name a boolean answering "does a
-   secret exist?" and are neither a leak nor a timing surface.
+Matching uses whole words and excludes metadata and boolean-state names.
 """
 
 from __future__ import annotations
@@ -59,22 +26,14 @@ SECRET_WORDS = frozenset(
         "digest",
         "hash",
         "apikey",
-        # `bearer` is in the TypeScript twin's SECRET_WORDS and was in neither
-        # Python set, so `bearer == provided` was a flagged timing attack in one
-        # engine and silent in the other. The lists are otherwise identical,
-        # which is exactly what made the gap invisible.
+        # Keep this vocabulary aligned with the TypeScript helper.
         "bearer",
     }
 )
 
 _SECRET_WORDS = SECRET_WORDS
 
-# Tokens that mark a counter, row-id, feature flag, or boolean presence/state
-# marker. As the TRAILING token they mean the identifier is metadata *about* a
-# secret, not the secret itself, so it is not a leak / timing surface even when a
-# secret word is also present: `token_present`, `password_set`, and
-# `password_configured` are booleans, not credentials. Leading such a word does
-# not disqualify — `valid_token` / `present_token` are credentials.
+# A trailing word in this set makes the identifier metadata, not a credential.
 _INNOCUOUS_WORDS = frozenset(
     {
         "count",
@@ -102,26 +61,7 @@ _INNOCUOUS_WORDS = frozenset(
     }
 )
 
-# A LEADING boolean-predicate word marks a flag, not the credential itself:
-# `has_secret`, `hasSecret`, `is_token`, `isToken`, `should_rotate_token`.
-#
-# WHY THE SHARED PREDICATE (both SARJ011 and SARJ012), not just the SARJ011-only
-# auth narrowing the TS port uses: this is the exact mirror of the TRAILING
-# `_INNOCUOUS_WORDS` check above, which already exempts both rules. `has_token`
-# and `token_present` are the same boolean; word order must not decide whether a
-# name counts as a credential. And the SARJ012 case stands on its own — a boolean
-# answering "does a secret exist?" leaks nothing when logged, so the rule was
-# reporting a pure false positive. (As with the trailing form, the exemption keys
-# on the NAME: someone who writes `has_secret=the_actual_secret` still leaks, but
-# that hole predates this and is inherent to a name-only rule.)
-#
-# WHY IT IS SAFE IN THE PERMISSIVE DIRECTION: every member is a copula/auxiliary
-# verb that is never the head noun of a credential. Real secret names are noun
-# phrases — `auth_token`, `api_key`, `signing_secret`, `INTERNAL_ADMIN_TOKEN` —
-# and none begins with `is`/`has`/`was`/`are`/`can`/`should`. Matching is on the
-# whole leading WORD, never a prefix of one, so names that merely start with
-# those letters keep firing: `hash_secret` (`hash` != `has`), `issuer_token`
-# (`issuer` != `is`), `canary_token` (`canary` != `can`).
+# A leading predicate makes the identifier a boolean flag, not a credential.
 _FLAG_PREFIXES = frozenset({"is", "has", "was", "are", "can", "should"})
 
 # camelCase / PascalCase / ALLCAPS / digit run splitter, applied to each
@@ -131,13 +71,7 @@ _SEGMENT_RE = re.compile(r"[^A-Za-z0-9]+")
 
 
 def identifier_tokens(identifier: str) -> list[str]:
-    """Return ordered lowercase tokens from snake_case + camelCase decomposition.
-
-    Also yields each whole snake/kebab segment lowercased, so a pathological
-    mixed-case single word like `ToKeN` (which camel-splitting shreds into
-    `to`/`ke`/`n`) still surfaces its intended `token` form.
-
-    """
+    """Return lowercase whole segments and their camel-case words."""
     tokens: list[str] = []
     for segment in _SEGMENT_RE.split(identifier):
         if not segment:
@@ -149,14 +83,7 @@ def identifier_tokens(identifier: str) -> list[str]:
 
 
 def leading_word(identifier: str) -> str | None:
-    """Return the first *word* of `identifier`, lowercased, or None if it has none.
-
-    `identifier_tokens` deliberately emits each whole snake/kebab segment before
-    its camel parts, so its first entry for the camelCase `hasSecret` is the
-    useless `hassecret` rather than `has`. Splitting the leading segment with the
-    same camel regex makes `has_secret` and `hasSecret` both yield `has`.
-
-    """
+    """Return the first camel- or delimiter-separated word, lowercased."""
     for segment in _SEGMENT_RE.split(identifier):
         if not segment:
             continue

@@ -103,6 +103,19 @@ def test_flags_assertion_helper_call_inside_a_loop():
     assert len(_check(src)) == 1
 
 
+@pytest.mark.parametrize(
+    "helper",
+    ["check_response", "verify_payload", "validate_record", "expect_ok", "ensure_closed"],
+)
+def test_flags_assertion_named_helper_families_inside_a_loop(helper: str):
+    src = f"""
+    def test_rows():
+        for row in fetch():
+            {helper}(row)
+    """
+    assert len(_check(src)) == 1
+
+
 def test_flags_unittest_assertion_inside_a_loop():
     src = """
     class TestThing:
@@ -1086,6 +1099,22 @@ def test_try_except_else_that_fails_is_exempt():
     assert _check(src) == []
 
 
+@pytest.mark.parametrize(
+    "body",
+    [
+        "try:\n    assert parse(value)\nexcept ValueError:\n    pass",
+        "try:\n    parse(value)\nexcept ValueError:\n    pass\nfinally:\n    assert cleanup_ran()",
+    ],
+    ids=["try-body", "finally"],
+)
+def test_an_assertion_in_any_try_limb_is_exempt(body: str):
+    src = f"""
+    def test_thing():
+    {textwrap.indent(body, "    ")}
+    """
+    assert _check(src) == []
+
+
 def test_try_whose_only_assertion_is_in_a_loop_still_flags():
     src = """
     def test_thing():
@@ -1160,11 +1189,12 @@ def test_pytest_subtests_fixture_is_exempt():
     assert _check(src) == []
 
 
-def test_hypothesis_given_test_is_exempt():
-    src = """
-    from hypothesis import given
+@pytest.mark.parametrize("decorator", ["given(st.integers())", "example(1)", "settings(max_examples=1)"])
+def test_hypothesis_decorated_test_is_exempt(decorator: str):
+    src = f"""
+    from hypothesis import example, given, settings
 
-    @given(st.integers())
+    @{decorator}
     def test_thing(value):
         if value > 0:
             assert f(value) > 0

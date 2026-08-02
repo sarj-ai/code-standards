@@ -20,70 +20,88 @@ const TEST_FILE = "/repo/src/component.test.ts";
 ruleTester.run("no-async-callback-in-wait-for", rule, {
   valid: [
     {
+      name: "allows a synchronous arrow callback",
       filename: TEST_FILE,
       code: "it('works', async () => { await waitFor(() => expect(foo).toBe(true)); });",
     },
     {
+      name: "allows a synchronous function-expression callback",
       filename: TEST_FILE,
       code: "it('works', async () => { await waitFor(function() { expect(foo).toBe(true); }); });",
     },
     {
-      // Not waitFor
+      name: "ignores async callbacks passed to other functions",
       filename: TEST_FILE,
       code: "it('works', async () => { await doSomething(async () => { expect(foo).toBe(true); }); });",
     },
     {
-      // Production file
+      name: "ignores bare waitFor calls in production files",
       filename: "/repo/src/production.ts",
       code: "async function fetch() { return waitFor(async () => {}); }",
     },
     {
-      // Member form, synchronous callback — the shape the rule asks for.
+      name: "allows a synchronous callback in member-form waitFor",
       filename: TEST_FILE,
       code: "it('works', async () => { await vi.waitFor(() => expect(foo).toBe(true)); });",
     },
     {
-      // A member call that merely ends in something else. `waitForSelector` and
-      // `waitForTimeout` take no polled assertion callback at all.
+      name: "ignores member methods whose names only start with waitFor",
       filename: TEST_FILE,
       code: "it('works', async () => { await page.waitForSelector(async () => {}); });",
     },
     {
-      // A computed member is not statically `waitFor`.
+      name: "ignores computed waitFor member calls",
       filename: TEST_FILE,
       code: "it('works', async () => { await api['waitFor'](async () => {}); });",
     },
     {
-      // Member form in a production file stays exempt, like the bare form.
+      name: "ignores member-form waitFor calls in production files",
       filename: "/repo/src/production.ts",
       code: "async function poll() { return vi.waitFor(async () => {}); }",
+    },
+    {
+      name: "ignores a non-function first argument",
+      filename: TEST_FILE,
+      code: "it('works', async () => { const pending = Promise.resolve(); await waitFor(pending); });",
+    },
+    {
+      name: "does not follow a function passed by reference",
+      filename: TEST_FILE,
+      code: "it('works', async () => { const check = async () => true; await waitFor(check); });",
+    },
+    {
+      name: "checks only the first argument",
+      filename: TEST_FILE,
+      code: "it('works', async () => { await waitFor(() => true, async () => false); });",
     },
   ],
   invalid: [
     {
+      name: "reports an async arrow callback even without await",
       filename: TEST_FILE,
       code: "it('fails', async () => { await waitFor(async () => expect(foo).toBe(true)); });",
       errors: [{ messageId: "noAsyncCallbackInWaitFor" }],
     },
     {
+      name: "reports an async function-expression callback",
       filename: TEST_FILE,
       code: "it('fails', async () => { await waitFor(async function() { expect(foo).toBe(true); }); });",
       errors: [{ messageId: "noAsyncCallbackInWaitFor" }],
     },
     {
-      // `vi.waitFor` — the member form the rule could not see at all. This case is
-      // the regression: it reported 0 messages before the callee check was widened.
+      name: "reports an async callback in vi.waitFor",
       filename: TEST_FILE,
       code: "it('fails', async () => { await vi.waitFor(async () => expect(foo).toBe(true)); });",
       errors: [{ messageId: "noAsyncCallbackInWaitFor" }],
     },
     {
+      name: "reports an async function expression in member-form waitFor",
       filename: TEST_FILE,
       code: "it('fails', async () => { await screen.waitFor(async function() { expect(foo).toBe(true); }); });",
       errors: [{ messageId: "noAsyncCallbackInWaitFor" }],
     },
     {
-      // Deep member chains resolve on the property name, not the receiver shape.
+      name: "reports an async callback on a deeply nested receiver",
       filename: TEST_FILE,
       code: "it('fails', async () => { await testing.utils.waitFor(async () => { expect(foo).toBe(true); }); });",
       errors: [{ messageId: "noAsyncCallbackInWaitFor" }],

@@ -1,7 +1,6 @@
 """SARJ001 — `for x in xs: await f(x)` gather antipattern.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_sequential_await.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ001.md
 """
 
 from __future__ import annotations
@@ -22,7 +21,6 @@ if TYPE_CHECKING:
 class NoSequentialAwait(Rule):
     id: str = "no-sequential-await"
     code: str = "SARJ001"
-    has_evidence: bool = True
     description: str = "Sequential `await` in a for-loop — prefer asyncio.gather."
 
     @override

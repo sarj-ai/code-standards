@@ -1,7 +1,6 @@
 """SARJ065 — A test whose every assertion sits behind a branch or loop can pass asserting nothing.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_conditional_assertion_in_test.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ065.md
 """
 
 from __future__ import annotations
@@ -137,7 +136,6 @@ class _Facts:
 class ConditionalAssertionInTest(Rule):
     id: str = "conditional-assertion-in-test"
     code: str = "SARJ065"
-    has_evidence: bool = True
     description: str = "Every assertion in the test is inside a conditional or loop — it can pass asserting nothing."
 
     @override

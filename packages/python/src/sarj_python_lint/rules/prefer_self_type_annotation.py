@@ -1,7 +1,6 @@
 """SARJ078 — Prefer `Self` type annotation for methods returning instance of enclosing class.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_self_type_annotation.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ078.md
 """
 
 from __future__ import annotations
@@ -55,10 +54,9 @@ def _is_return_self_or_cls(outer_func: ast.FunctionDef | ast.AsyncFunctionDef) -
 class PreferSelfTypeAnnotation(Rule):
     id: str = "prefer-self-type-annotation"
     code: str = "SARJ078"
-    has_evidence: bool = True
     description: str = (
-        "prefer `Self` return type annotation instead of explicit class name "
-        "or string literal reference when returning self/instance."
+        "use `Self` instead of the enclosing class name when an instance method returns `self` "
+        "or a classmethod returns `cls(...)`."
     )
 
     @override
@@ -117,7 +115,7 @@ class PreferSelfTypeAnnotation(Rule):
                             col=returns.col_offset + 1,
                             code="SARJ078",
                             message=(
-                                f"Method `{node.name}` returns `self` but annotates return as `{matched_name}` — "
+                                f"Method `{node.name}` returns an instance of its class but annotates it as `{matched_name}` — "
                                 f"use `Self` (from `typing`) instead."
                             ),
                         )

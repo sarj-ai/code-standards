@@ -31,11 +31,6 @@ def test_other():
 """
 
 
-# --------------------------------------------------------------------------- #
-# Test-path gating.                                                            #
-# --------------------------------------------------------------------------- #
-
-
 @pytest.mark.parametrize("path", ["test_x.py", "x_test.py", "conftest.py", "a/tests/h.py"])
 def test_fires_in_test_paths(path: str):
     assert len(_check(_WIDE_IN_TEST, path)) == 2
@@ -44,11 +39,6 @@ def test_fires_in_test_paths(path: str):
 @pytest.mark.parametrize("path", ["src/service.py", "a/testing/thing.py"])
 def test_skips_non_test_paths(path: str):
     assert _check(_WIDE_IN_TEST, path) == []
-
-
-# --------------------------------------------------------------------------- #
-# Positive / threshold boundary.                                               #
-# --------------------------------------------------------------------------- #
 
 
 def test_flags_nine_keywords():
@@ -93,13 +83,6 @@ async def test_other():
     assert len(_check(src)) == 2
 
 
-# --------------------------------------------------------------------------- #
-# FP guard: the factory is allowed to be verbose exactly once. Without the     #
-# nearest-function check the corpus population is 113 rather than 17, and the  #
-# rule would nag at already well-factored helpers.                             #
-# --------------------------------------------------------------------------- #
-
-
 def test_module_level_builder_is_exempt():
     src = f"""
 def _build_call(**overrides):
@@ -132,10 +115,31 @@ def test_thing():
     assert _check(src) == []
 
 
+def test_construction_inside_a_lambda_in_a_test_is_exempt():
+    src = f"""
+def test_thing():
+    build = lambda: UpsertCall({_NINE_KWARGS})
+    assert build()
+"""
+    assert _check(src) == []
+
+
 def test_dict_literal_call_is_exempt():
     src = f"""
 def test_thing():
     payload = dict({_NINE_KWARGS})
+    assert payload
+"""
+    assert _check(src) == []
+
+
+def test_dict_display_is_exempt():
+    src = """
+def test_thing():
+    payload = {
+        "f0": 0, "f1": 1, "f2": 2, "f3": 3, "f4": 4,
+        "f5": 5, "f6": 6, "f7": 7, "f8": 8,
+    }
     assert payload
 """
     assert _check(src) == []
@@ -172,11 +176,6 @@ def test_module_level_construction_is_exempt():
 ROW = UpsertCall({_NINE_KWARGS})
 """
     assert _check(src) == []
-
-
-# --------------------------------------------------------------------------- #
-# Edge cases.                                                                  #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("source", ["", "  \n\n ", "# comment\n"])
@@ -228,8 +227,6 @@ def test_thing():
 
 
 def test_mapping_update_is_data_not_a_construction():
-    # Minimized from rich's tests/test_table.py: 29 keywords relabelling box
-    # characters through `__dict__.update(...)` — entries, not fields.
     src = """
 def test_placement_table_box_elements():
     table = Table(box=box.ASCII)
@@ -261,16 +258,7 @@ def test_style_again():
     assert len(_check(src)) == 2
 
 
-# --------------------------------------------------------------------------- #
-# FP guard from a first-party review regression: the message promises "every     #
-# other test repeats the same boilerplate", so the rule checks that premise      #
-# rather than asserting.                                                         #
-# --------------------------------------------------------------------------- #
-
-
 def test_single_construction_in_the_file_is_exempt():
-    # One first-party test built the only `Batch(` in its file, with 12
-    # required fields. There is no duplication for a builder to remove.
     src = f"""
 def test_thing():
     batch = Batch({_NINE_KWARGS})
@@ -291,8 +279,6 @@ def test_two():
 
 
 def test_a_narrow_sibling_construction_still_counts_as_repetition():
-    # The duplication is of the *callee*, not of the wide call — one wide site
-    # plus a narrow one still means a builder with defaults would pay off.
     src = f"""
 def test_one():
     assert Batch({_NINE_KWARGS})
@@ -325,20 +311,11 @@ def test_two():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
-# FP guard: a mock assertion constructs nothing. 276 of 2,064 corpus findings   #
-# (13.4%), no true positive among them — and only three callee names occur      #
-# corpus-wide, none of which can build an object.                               #
-# --------------------------------------------------------------------------- #
-
-
 @pytest.mark.parametrize(
     "method",
-    ["assert_called_once_with", "assert_called_with", "assert_awaited_once_with"],
+    ["assert_called_once_with", "assert_called_with", "assert_awaited_once_with", "assert_payload_matches"],
 )
 def test_mock_assertion_is_not_a_construction(method: str):
-    # Defaulting these keywords away would delete the assertion: the whole
-    # point is to pin the exact call the code under test made.
     src = f"""
 def test_one(mock_hook):
     mock_hook.{method}({_NINE_KWARGS})
@@ -350,8 +327,6 @@ def test_two(mock_hook):
 
 
 def test_construction_beside_a_mock_assertion_still_fires():
-    # The shape the guard was written for, inverted: one third-party operator
-    # test flagged the assertion and missed the real construction above it.
     src = f"""
 def test_one(mock_hook):
     op = ListJobsOperator({_NINE_KWARGS})
@@ -369,8 +344,6 @@ def test_two(mock_hook):
 
 
 def test_a_callee_merely_beginning_with_the_letters_assert_still_fires():
-    # The guard is the prefix `assert_`, not the substring "assert":
-    # `assertion_bundle(...)` really does build an object.
     src = f"""
 def test_one():
     assert assertion_bundle({_NINE_KWARGS})
@@ -381,15 +354,7 @@ def test_two():
     assert len(_check(src)) == 2
 
 
-# --------------------------------------------------------------------------- #
-# FP guard: the callee IS the helper this rule asks for — a `def` in the same    #
-# module. 89 of 2,064 corpus findings (4.3%) across 9 callees, every one a      #
-# factory, fixture-factory or shared assertion helper.                          #
-# --------------------------------------------------------------------------- #
-
-
 def test_call_to_a_same_module_helper_is_exempt():
-    # The keywords are a hand-rolled parametrize table, not an inlined object.
     src = f"""
 def verify(**case):
     assert run(**case)
@@ -426,7 +391,6 @@ def test_two():
 
 
 def test_call_to_a_callee_this_module_does_not_define_still_fires():
-    # A domain type imported from production code is exactly the target case.
     src = f"""
 from app.models import Order
 
@@ -440,8 +404,6 @@ def test_two():
 
 
 def test_dotted_callee_sharing_a_local_def_name_still_fires():
-    # Only a bare `Name` resolves to this module's `def`; `helpers.build(...)`
-    # reaches something the file does not own, whatever it is called here.
     src = f"""
 def build(**overrides):
     return Order(**overrides)
@@ -456,6 +418,4 @@ def test_two():
 
 
 def test_message_says_helper_not_builder():
-    # The largest arguable class is a test invoking the system under test with
-    # its full parameter list; "builder" was wrong advice for it, "helper" is not.
     assert "extract a helper with defaults" in _check(_WIDE_IN_TEST)[0].message.lower()

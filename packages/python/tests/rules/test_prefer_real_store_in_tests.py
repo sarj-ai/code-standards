@@ -53,6 +53,7 @@ class InMemoryUserStore(UserStore):
         "tests/conftest.py",
         "common/testing/fakes.py",
         "webserver/webserver/test_fakes/user_store.py",
+        "common/adapters/fake_user_store.py",
         "common/adapters/mock_data_store.py",
         "app/doubles/user_store.py",
         "app/mocks/user_store.py",
@@ -376,6 +377,7 @@ class InMemoryUserStore(UserStore):
         "DummyCache",
         "InMemorySessionRegistry",
         "InMemoryQueue",
+        "InMemoryBackend",
         "FakeTable",
         "InMemoryBuffer",
     ],
@@ -840,6 +842,18 @@ class FakeMessageStore:
         return list(self._sent)
 """
     assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "store = MagicMock(spec=AudioFileStore)",
+        "store = AsyncMock()",
+        "worker.store = MagicMock(spec=UserStore)",
+    ],
+)
+def test_mock_objects_without_a_handwritten_class_are_out_of_scope(source: str):
+    assert _check(source) == []
 
 
 # --------------------------------------------------------------------------- #

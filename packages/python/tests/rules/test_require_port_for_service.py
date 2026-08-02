@@ -142,6 +142,9 @@ def test_service_family_names_fire(class_name: str) -> None:
         "ThingBuilder",
         "ThingHandler",
         "ThingHelper",
+        "StateProposer",
+        "QueryContextProcessor",
+        "AirflowInstance",
         "Restore",
         "Bookstore",
     ],
@@ -156,6 +159,9 @@ def test_service_family_names_fire(class_name: str) -> None:
         "Builder",
         "Handler",
         "Helper",
+        "Proposer-is-not-house-port-vocabulary",
+        "Processor-is-not-house-port-vocabulary",
+        "Instance-is-not-house-port-vocabulary",
         "lowercase-store-tail",
         "compound-word",
     ],
@@ -464,6 +470,33 @@ def test_parameter_typed_by_a_same_module_enum_is_not_a_collaborator() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "class ThingRow(TypedDict):\n    key: str",
+        "class ThingRow(NamedTuple):\n    key: str",
+        "@dataclass\nclass ThingRow:\n    key: str",
+        "@attrs.define\nclass ThingRow:\n    key: str",
+    ],
+    ids=["TypedDict", "NamedTuple", "dataclass", "attrs"],
+)
+def test_same_module_record_is_a_value_not_a_collaborator(declaration: str) -> None:
+    declaration = textwrap.indent(declaration, "        ")
+    source = f"""
+{declaration}
+
+
+        class ThingService:
+            def __init__(self, row: ThingRow) -> None:
+                self.row = row
+
+            def read(self) -> str: ...
+
+            def write(self) -> None: ...
+        """
+    assert _check(source) == []
+
+
 # ---- collaborator gate ----
 
 
@@ -620,8 +653,28 @@ def test_collaborator_stored_under_a_private_attribute_counts() -> None:
     assert len(_check(_SERVICE.replace("self.store = store", "self._store = store"))) == 1
 
 
+def test_collaborator_stored_under_a_differently_named_attribute_counts() -> None:
+    assert len(_check(_SERVICE.replace("self.store = store", "self.backend = store"))) == 1
+
+
+def test_unrelated_value_stored_under_the_parameter_name_does_not_count() -> None:
+    assert _check(_SERVICE.replace("self.store = store", "self.store = None")) == []
+
+
 def test_collaborator_stored_by_annotated_assignment_counts() -> None:
     assert len(_check(_SERVICE.replace("self.store = store", "self.store: ThingStore = store"))) == 1
+
+
+def test_collaborator_stored_through_cast_counts() -> None:
+    assert len(_check(_SERVICE.replace("self.store = store", "self.store = cast(ThingStore, store)"))) == 1
+
+
+def test_collaborator_stored_with_default_fallback_counts() -> None:
+    assert len(_check(_SERVICE.replace("self.store = store", "self.store = store or DefaultStore()"))) == 1
+
+
+def test_unrelated_transformation_of_collaborator_does_not_count_as_storage() -> None:
+    assert _check(_SERVICE.replace("self.store = store", "self.store = summarize(store)")) == []
 
 
 def test_keyword_only_collaborator_counts() -> None:

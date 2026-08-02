@@ -1,7 +1,6 @@
 """SARJ014 — Duration named in time units but typed as a raw `int`/`float`.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_timedelta_for_durations.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ014.md
 """
 
 from __future__ import annotations
@@ -80,7 +79,6 @@ _CONSTRAINED_NUMERIC = {
 class PreferTimedeltaForDurations(Rule):
     id: str = "prefer-timedelta-for-durations"
     code: str = "SARJ014"
-    has_evidence: bool = True
     description: str = (
         "Duration named in time units (timeout_seconds, ttl, ...) typed as raw "
         "int/float — use datetime.timedelta so the unit is explicit and checked."

@@ -2,7 +2,6 @@
  * @fileoverview no-tautological-expect — an assertion whose operands are all literals decided its outcome before the code ran, so it can never fail.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-tautological-expect.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-tautological-expect.md
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";

@@ -1,7 +1,6 @@
 """SARJ016 — Comment cruft — commented-out code, section banners, header preambles.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_comment_cruft.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ016.md
 """
 
 from __future__ import annotations
@@ -479,7 +478,6 @@ def _license_header_lines(standalone: list[tuple[int, int, str]]) -> frozenset[i
 class NoCommentCruft(Rule):
     id: str = "no-comment-cruft"
     code: str = "SARJ016"
-    has_evidence: bool = True
     description: str = (
         "Comment cruft (commented-out code, section banner, or file-header "
         "preamble) — delete it; code carries the what, comments only the why."

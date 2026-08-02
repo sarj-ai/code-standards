@@ -3,49 +3,36 @@
  *
  * A path joins a shared default only if its NAME makes a claim true for every rule; anything one rule needs alone is a named gate that rule opts into.
  *
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/_paths.md
  */
 
 const SCRIPT_FILE_RE = /([\\/]scripts[\\/])|(\.mjs$)/;
 
 const STORY_FILE_RE = /\.stories\.[cm]?[jt]sx?$/i;
-// Gate `storyTree`. Storybook's own `stories_vue3-vite-default-ts/` spelling
-// included. Not a default: plenty of repos keep ordinary first-party components
-// under `stories/`, and to a rule about `process.env` those are production.
+// `storyTree` includes Storybook's suffixed directories. It stays opt-in because
+// some repositories keep production components under `stories/`.
 const STORY_TREE_RE = /(^|\/)stories(?:[_-][^/]*)?\//i;
 
-// `vendor` / `vendored` / `third[-_]?party` are shared, mirroring Python's
-// `_GENERATED_DIR_NAMES`: the directory name is itself the claim that an
-// upstream owns the text, and that claim holds for every rule.
+// These directory names explicitly identify upstream-owned code, so every rule
+// may safely ignore them.
 const GENERATED_FILE_RE =
   /([\\/](?:generated|openapi-gen|graphql[\\/]types|vendor|vendored|third[-_]?party)[\\/])|(\.gen\.[cm]?[jt]sx?$)|(\.generated\.[cm]?[jt]sx?$)|(\.d\.[cm]?ts$)|(\.types\.[cm]?ts$)/;
-// Gate `externalTree`. Some `external/` trees really are a copy of someone
-// else's typings, but `src/services/external/` is first-party outbound
-// integration in most repos — the place a raw `process.env` read or an untimed
-// `fetch` matters most — so this cannot be a shared default.
+// `externalTree` stays opt-in because `external/` often contains first-party
+// integration code.
 const EXTERNAL_TREE_RE = /[\\/]external[\\/]/;
 
-// A BANNER match is safe and universal in a way a PATH match is not: no
-// hand-written file claims to be generator output. Subject-scoped on purpose —
-// the file itself has to be what the claim is ABOUT. See the evidence file.
+// A banner must claim that the file itself is generated. This avoids treating
+// prose about generated values or warnings as generated-file declarations.
 const GENERATED_MARKER_RE =
   /(?:@generated\b|this file (?:is|was|has been)[\w\s,'-]{0,40}?generated|auto-?generated file\b|generated (?:with|by)|generated (?:graphql )?types|do not edit(?: directly| manually)?|do not (?:modify|change) this file)/i;
 
 const TEST_BASENAME_RE = /[.\-_](test|spec|e2e)\.[cm]?[jt]sx?$/;
 const TEST_INTEGRATION_BASENAME_RE = /\.integration\.[cm]?[jt]sx?$/;
-// `__fixtures__` / `__testfixtures__` are shared: the same category as the
-// `fixtures/` that has always been here, spelled the way jscodeshift and
-// Storybook spell it.
+// Double-underscore fixture directories are alternate spellings of `fixtures/`.
 const TEST_DIR_RE = /(^|\/)(tests?|__tests__|__mocks__|fixtures|__fixtures__|__testfixtures__|e2e|integration)\//;
-// Gate `fixtureTree`: the SINGULAR `fixture/`. `src/fixture/seed.ts` is a
-// production database seeder in several repos, so exempting it from every
-// consumer of `isTestFile` is a scope change nobody asked for.
+// Singular `fixture/` stays opt-in because it can contain production seeders.
 const FIXTURE_TREE_RE = /(^|\/)fixture\//;
 
-/**
- * Extra path gates `isGeneratedFile` honours on request. Not a default: see the
- * evidence document.
- */
+/** Extra path gates that `isGeneratedFile` honours on request. */
 export type GeneratedPathGate = "externalTree";
 
 /** Extra path gates `isTestFile` honours on request. */
@@ -90,8 +77,8 @@ export function isStoryFile(filename: string, gates: readonly StoryPathGate[] = 
  * True for a file whose text an upstream owns: generator output or a vendored
  * copy by path, or any file whose own header declares it generated.
  *
- * The banner arm is universal. The path arm defaults to generator output and
- * vendored trees; `["externalTree"]` adds `external/`.
+ * The banner arm is universal; the path arm defaults to generator output and
+ * vendored trees, while `["externalTree"]` adds `external/`.
  */
 export function isGeneratedFile(
   filename: string,

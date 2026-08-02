@@ -168,6 +168,16 @@ def test_thing():
     assert _check(src) == []
 
 
+def test_directly_imported_sleep_is_exempt():
+    src = """
+from asyncio import sleep
+
+async def test_thing():
+    await sleep(DELAY * 2)
+"""
+    assert _check(src) == []
+
+
 def test_sleep_with_no_arguments_is_exempt():
     src = """
 import asyncio

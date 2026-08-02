@@ -1,7 +1,6 @@
 """SARJ069 — A `case Cls():` arm that reaches back into the subject for its fields.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_match_pattern_destructuring.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ069.md
 """
 
 from __future__ import annotations
@@ -72,7 +71,6 @@ _BUILTIN_NAMES = frozenset(dir(builtins))
 class PreferMatchPatternDestructuring(Rule):
     id: str = "prefer-match-pattern-destructuring"
     code: str = "SARJ069"
-    has_evidence: bool = True
     description: str = (
         "`case Cls():` binds nothing and the arm reaches back into the subject for "
         "its fields — destructure in the pattern so a renamed field fails the match "
@@ -185,9 +183,8 @@ def _reach_back_arm(case: ast.match_case, subject: str) -> _ReachBack | None:
         return None
     positional = tuple(ast.unparse(pat) for pat in inner.patterns)
     kept = tuple(
-        (attr, _capture_name(pat))
+        (attr, ast.unparse(pat))
         for attr, pat in zip(inner.kwd_attrs, inner.kwd_patterns, strict=True)
-        if _capture_name(pat) is not None
     )
     return _ReachBack(
         cls_name=cls_name,
@@ -195,16 +192,9 @@ def _reach_back_arm(case: ast.match_case, subject: str) -> _ReachBack | None:
         fields=fields,
         taken=frozenset(use.taken),
         aliased=aliased,
-        kept=kept,  # pyright: ignore[reportArgumentType]
+        kept=kept,
         positional=positional,
     )
-
-
-def _capture_name(pattern: ast.pattern) -> str | None:
-    """Read the name a keyword sub-pattern captures, if it captures one."""
-    if isinstance(pattern, ast.MatchAs) and pattern.pattern is None:
-        return pattern.name
-    return None
 
 
 def _pattern_class_name(cls: ast.expr) -> str | None:

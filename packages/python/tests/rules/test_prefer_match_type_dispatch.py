@@ -179,6 +179,20 @@ def test_skips_legitimate_raise_not_caught_by_local_try():
     assert _check(source) == []
 
 
+def test_skips_lowercase_exception_variable_caught_by_its_class():
+    source = """
+    def validate(val):
+        try:
+            if val < 0:
+                err = ValueError("Negative value")
+                raise err
+            return process(val)
+        except ValueError:
+            return None
+    """
+    assert _check(source) == []
+
+
 def test_skips_match_case_idiom():
     source = """
     def parse_clean(data: object):
@@ -297,6 +311,21 @@ def test_skips_generic_exception_fault_barrier():
         except Exception as exc:
             log.exception("unhandled")
             return error_response(exc)
+    """
+    assert _check(source) == []
+
+
+def test_skips_exact_handler_shadowed_by_an_earlier_generic_handler():
+    source = """
+    def create_team(request):
+        try:
+            if not request.team_id:
+                raise ProxyException("team_id required")
+            return build(request)
+        except Exception:
+            return error_response()
+        except ProxyException:
+            return invalid_team_response()
     """
     assert _check(source) == []
 
@@ -544,6 +573,20 @@ def test_flags_django_to_python_shape():
         if isinstance(value, datetime.datetime):
             return value
         return self.parse(value)
+    """
+    diags = _check(source)
+    assert len(diags) == 1
+    assert "2 checks on 'value'" in diags[0].message
+
+
+def test_flags_issubclass_and_is_not_none_passthrough_guards():
+    source = """
+    def normalize(value):
+        if issubclass(value, BaseModel):
+            return value
+        if value is not None:
+            return value
+        return Missing
     """
     diags = _check(source)
     assert len(diags) == 1

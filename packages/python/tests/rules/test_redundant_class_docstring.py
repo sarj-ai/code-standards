@@ -45,6 +45,10 @@ def test_base_class_names_count_towards_the_name():
     assert len(_cls("Handler(RetryPolicy)", "A retry policy handler.")) == 1
 
 
+def test_negation_in_the_class_name_counts_towards_the_name():
+    assert len(_cls("NotRegistered(KeyError, TaskError)", "The task is not registered.")) == 1
+
+
 def test_a_base_the_name_does_not_carry_keeps_the_docstring():
     # The reader sees the base on the class line, so a word it supplies is not
     # novel — but a word NEITHER carries is.
@@ -71,8 +75,13 @@ def test_nested_class_is_checked():
         "BaseSettings",
         "RootModel",
         "TypedDict",
+        "Enum",
+        "EnumMeta",
+        "Flag",
         "StrEnum",
         "IntEnum",
+        "IntFlag",
+        "ReprEnum",
         "enum.Enum",
     ],
 )
@@ -87,7 +96,15 @@ def test_a_generic_schema_base_is_exempt():
     assert _cls("Page(RootModel[int])", "Page root model.") == []
 
 
-@pytest.mark.parametrize("decorator", ["@pydantic.dataclasses.dataclass", "@strawberry.type", "@msgspec.defstruct"])
+@pytest.mark.parametrize(
+    "decorator",
+    [
+        "@pydantic.dataclasses.dataclass",
+        "@strawberry.type",
+        "@graphene.ObjectType",
+        "@msgspec.defstruct",
+    ],
+)
 def test_schema_decorators_are_exempt(decorator: str):
     src = f'{decorator}\nclass ReservationSummary:\n    """Summary of a reservation."""\n\n    x: int = 1\n'
     assert _check(src) == []
@@ -103,23 +120,48 @@ def test_a_class_whose_body_is_the_docstring_is_exempt():
     assert _check('class ShipmentLimitError(DomainError):\n    """Shipment limit error."""\n') == []
 
 
+def test_a_class_with_pass_after_the_docstring_is_still_checked():
+    assert len(_cls("ShipmentLimitError", "Shipment limit error.", "    pass\n")) == 1
+
+
+@pytest.mark.parametrize(
+    "docstring",
+    [
+        pytest.param("Retry policy. See PROJ-249.", id="external-reference"),
+        pytest.param("Retry policy since Python 3.11.", id="version-constraint"),
+        pytest.param("Retry policy for HTTP 429 responses.", id="unit-or-status"),
+        pytest.param("Retry policy, because the upstream caps concurrency.", id="causal-reason"),
+        pytest.param("Retry policy. Never used on the write path.", id="negation"),
+        pytest.param("Retry policy required by an upstream regression.", id="upstream-contract"),
+        pytest.param("Retry policy must run before the lock.", id="invariant"),
+        pytest.param("Retry policy prevents a timing attack.", id="security-reason"),
+        pytest.param("Retry policy; Stripe rejects duplicates.", id="vendor-behavior"),
+    ],
+)
+def test_each_protected_signal_keeps_the_docstring(docstring: str):
+    assert _cls("RetryPolicy", docstring) == []
+
+
 @pytest.mark.parametrize(
     "docstring",
     [
         "Retry policy. See https://example.com/retries.",
         "Retry policy (RFC 7231).",
         "Retry policy — retries within 30 seconds.",
-        "Retry policy. Never used on the write path.",
-        "Retry policy, because the upstream caps concurrency.",
         "Retry policy.\\n\\n    Raises:\\n        ValueError: on a negative budget.",
     ],
 )
-def test_docstrings_carrying_value_are_kept(docstring: str):
+def test_value_markers_keep_the_docstring(docstring: str):
     assert _cls("RetryPolicy", docstring.replace("\\n", "\n")) == []
 
 
-def test_prompt_decorators_are_exempt():
-    src = '@mcp.tool()\nclass RetryPolicy:\n    """The retry policy."""\n\n    x: int = 1\n'
+@pytest.mark.parametrize(
+    "decorator",
+    ["@mcp.tool()", "@function_tool", "@click.command()", '@router.get("/retries")'],
+    ids=["prompt", "llm-tool", "cli", "route"],
+)
+def test_prompt_cli_and_route_decorators_are_exempt(decorator: str):
+    src = f'{decorator}\nclass RetryPolicy:\n    """The retry policy."""\n\n    x: int = 1\n'
     assert _check(src) == []
 
 

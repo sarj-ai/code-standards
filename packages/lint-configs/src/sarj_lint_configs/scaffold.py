@@ -1,17 +1,4 @@
-"""Turn adoption into one command.
-
-Before this, adopting the standards meant reading two READMEs, running `sync`,
-then hand-editing four more files that the READMEs describe but no tool writes:
-the `[tool.ruff] extend`, `pyrightconfig.json`, `eslint.config.mjs`, and a
-pre-commit block. Every one of those is mechanical, and every one of them was a
-place to get it subtly wrong -- which is most of why the checked-in state across
-consumers looks nothing like the documented state.
-
-`init` writes all of them, for the ecosystems it detects, and never overwrites
-something that already exists unless asked. It is deliberately a code generator
-with a `--dry-run`, not a framework: everything it emits is plain text the repo
-now owns and can read.
-"""
+"""Turn adoption into one command."""
 
 from __future__ import annotations
 
@@ -32,15 +19,7 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class Ecosystems:
-    """What kind of repo this is, and WHERE, decided by files already there.
-
-    The "where" is not a refinement. A repo whose TypeScript lives in a
-    subdirectory has no `node_modules` and no `tsconfig.json` at its root, and
-    ESLint's flat config is not searched for upward from a subdirectory -- so a
-    scaffolder with one destination writes a config that is never loaded, next to
-    a `package.json` that does not exist, and reports success. That was two of
-    every three layouts measured.
-    """
+    """What kind of repo this is, and WHERE, decided by files already there."""
 
     python: bool
     typescript: bool
@@ -50,12 +29,7 @@ class Ecosystems:
 
     @property
     def any(self) -> bool:
-        """Whether anything at all was detected.
-
-        Returns:
-            True when at least one ecosystem was found.
-
-        """
+        """Whether anything at all was detected."""
         return self.python or self.typescript
 
 
@@ -80,22 +54,24 @@ _RUFF_EXTEND = re.compile(r"^\s*\[tool\.ruff\]\s*$", re.MULTILINE)
 #: Directories a detection walk must not descend into: an installed dependency
 #: carries thousands of `package.json` files and a vendored tree carries the
 #: pyproject of something this repo did not write.
-_SKIP_DIRS: Final = frozenset({
-    ".git",
-    ".next",
-    ".turbo",
-    ".wrangler",
-    ".yarn",
-    "build",
-    "coverage",
-    ".tox",
-    ".venv",
-    "dist",
-    "node_modules",
-    "out",
-    "target",
-    "vendor",
-})
+_SKIP_DIRS: Final = frozenset(
+    {
+        ".git",
+        ".next",
+        ".turbo",
+        ".wrangler",
+        ".yarn",
+        "build",
+        "coverage",
+        ".tox",
+        ".venv",
+        "dist",
+        "node_modules",
+        "out",
+        "target",
+        "vendor",
+    }
+)
 
 
 def detect(
@@ -135,30 +111,13 @@ def _python_root(root: Path) -> Path | None:
 
 
 def _typescript_root(root: Path) -> Path | None:
-    """Locate the directory an npm client would call the project root.
-
-    The lockfile is the signal, not `package.json`: it is written where installs
-    happen, which is where `node_modules`, the `tsconfig.json` and therefore the
-    only ESLint config that can load live. A repo can carry a `package.json` at
-    its root that declares nothing but `packageManager` while the real project
-    is a directory down, and placing the config by `package.json` alone puts it
-    where no `node_modules` will ever be.
-
-    Returns:
-        The project root, or None when the repo has no TypeScript at all.
-
-    """
+    """Locate the directory an npm client would call the project root."""
     lockfiles = tuple(name for name, _ in LOCKFILES)
     return _shallowest(root, lockfiles) or _shallowest(root, ("package.json",))
 
 
 def _shallowest(root: Path, names: Sequence[str]) -> Path | None:
-    """Find the least-nested directory holding any of `names`.
-
-    Returns:
-        That directory, or None when no file matches.
-
-    """
+    """Find the least-nested directory holding any of `names`."""
     if any((root / name).is_file() for name in names):
         return root
     found = [
@@ -180,22 +139,17 @@ def build_plan(
     python_dest: str | None = None,
     typescript_dest: str | None = None,
 ) -> Plan:
-    """Work out every file `init` would create or amend.
-
-    Returns:
-        The plan, whose `writes`/`edits`/`skips` are the whole effect.
-
-    """
+    """Work out every file `init` would create or amend."""
     ecosystems = detect(root, python_dest=python_dest, typescript_dest=typescript_dest)
-    selected = tuple(configs) if configs else manifest.default_configs(
-        has_python=ecosystems.python, has_typescript=ecosystems.typescript
+    selected = (
+        tuple(configs)
+        if configs
+        else manifest.default_configs(has_python=ecosystems.python, has_typescript=ecosystems.typescript)
     )
     plan = Plan(ecosystems=ecosystems, configs=selected)
 
     if not ecosystems.any:
-        plan.notes.append(
-            "no pyproject.toml and no package.json found -- pass --configs to scaffold anyway"
-        )
+        plan.notes.append("no pyproject.toml and no package.json found -- pass --configs to scaffold anyway")
         return plan
 
     _plan_manifest(root, plan, force=force)
@@ -209,12 +163,7 @@ def build_plan(
 
 
 def dest_of(root: Path, subdirectory: Path | None) -> str:
-    """Express one detected project root the way the manifest records it.
-
-    Returns:
-        A repo-root-relative POSIX path, `.` for the root itself.
-
-    """
+    """Express one detected project root the way the manifest records it."""
     if subdirectory is None:
         return "."
     return subdirectory.relative_to(root).as_posix() or "."
@@ -259,8 +208,7 @@ def _plan_python(root: Path, plan: Plan, *, force: bool) -> None:
             plan.skips.append((pyproject, "already extends .ruff-strict.toml"))
         elif _RUFF_EXTEND.search(text):
             plan.notes.append(
-                f"{pyproject.name} has a [tool.ruff] table already;"
-                ' add `extend = ".ruff-strict.toml"` to it by hand'
+                f'{pyproject.name} has a [tool.ruff] table already; add `extend = ".ruff-strict.toml"` to it by hand'
             )
         else:
             plan.edits.append((pyproject, '\n[tool.ruff]\nextend = ".ruff-strict.toml"\n'))
@@ -285,8 +233,7 @@ def _plan_typescript(root: Path, plan: Plan, *, force: bool) -> None:
     client = plan.ecosystems.client
     _plan_npm_overrides(root, plan, client)
     plan.notes.append(
-        f"detected {client} -- install the tested ESLint peer set:"
-        f"\n    {packagemanager.install_command(client)}"
+        f"detected {client} -- install the tested ESLint peer set:\n    {packagemanager.install_command(client)}"
     )
     caveat = packagemanager.install_note(client)
     if caveat is not None:
@@ -294,25 +241,7 @@ def _plan_typescript(root: Path, plan: Plan, *, force: bool) -> None:
 
 
 def _plan_npm_overrides(root: Path, plan: Plan, client: PackageManager) -> None:
-    """Write the overrides without which the peer set cannot be installed at all.
-
-    This used to only PRINT the block, while the README and `eslint.peers.json`
-    both said `init` writes it. So the documented one-command adoption path ended
-    at `npm error code ERESOLVE` for every TypeScript consumer: the shipped config
-    needs ESLint 10 (its unicorn floor pulls `>= 10.4`) and the newest published
-    `eslint-plugin-react` peers `eslint <= ^9.7`. This repo only installs because
-    `packages/typescript/package.json` carries the same `overrides` privately --
-    a workaround present in nothing shipped.
-
-    It then wrote npm's spelling of the block into every repo, which for a pnpm or
-    Yarn repo is worse than writing nothing: both ignore a bare `overrides` key,
-    so the install fails identically while `package.json` claims to be fixed. The
-    block is now translated to the detected client's dialect.
-
-    The file is merged rather than templated because `package.json` is the
-    consumer's and may already carry overrides of its own: existing keys are
-    preserved and only the ESLint peer entries are added or corrected.
-    """
+    """Write the overrides without which the peer set cannot be installed at all."""
     overrides = packagemanager.overrides_for(client)
     if not overrides.entries:
         return
@@ -327,7 +256,7 @@ def _plan_npm_overrides(root: Path, plan: Plan, client: PackageManager) -> None:
         return
     try:
         merged = _merged_npm_overrides(package_json.read_text(encoding="utf-8"), overrides)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         plan.notes.append(
             f"package.json could not be parsed, so the {client} overrides were not"
             f" merged. {client} cannot resolve the peer set without them -- add by"
@@ -346,19 +275,7 @@ def _plan_npm_overrides(root: Path, plan: Plan, client: PackageManager) -> None:
 
 
 def _merged_npm_overrides(text: str, overrides: Overrides) -> str | None:
-    """Merge the ESLint peer overrides into a package.json's text.
-
-    Returns:
-        The rewritten file, or None when every entry is already present and equal.
-
-    Raises:
-        TypeError: when the text parses to something other than a JSON object.
-            An empty object counts: there is nothing to merge into.
-            The caller also catches the `ValueError` `json.loads` raises on text
-            that is not JSON at all, so a malformed consumer `package.json`
-            degrades to a printed block rather than being overwritten.
-
-    """
+    """Merge the ESLint peer overrides into a package.json's text."""
     parsed: object = json.loads(text)  # pyright: ignore[reportAny] -- untyped stdlib boundary
     data = manifest.as_table(parsed)
     if not data:
@@ -405,29 +322,13 @@ def _set_path(data: dict[str, object], key_path: Sequence[str], value: object) -
 
 
 def _indent_of(text: str) -> int:
-    """Read a JSON file's indentation so a merge does not reformat the whole file.
-
-    Returns:
-        The number of leading spaces on the first indented line; 2 if none.
-
-    """
+    """Read a JSON file's indentation so a merge does not reformat the whole file."""
     match = re.search(r"\n(?P<indent> +)\S", text)
     return len(match.group("indent")) if match else 2
 
 
 def _eslint_entrypoint() -> str:
-    """Render the ESLint entrypoint, with the extension seam spelled out.
-
-    The seam is the point. Consumers fork `eslint.strict.mjs` to add a framework
-    exemption -- a router's `[slug].tsx`, a generated directory -- and once
-    forked it stops receiving upstream rules; one measured copy had fallen 30
-    rules behind while carrying 5 that no longer exist. Appending an override
-    block does the same job and survives `sync --force`, but nothing said so.
-
-    Returns:
-        The file contents.
-
-    """
+    """Render the ESLint entrypoint, with the extension seam spelled out."""
     return """// Flat config entrypoint. `eslint.strict.mjs` next to this file is SYNCED --
 // `sarj-lint-configs sync --force` overwrites it, and `sync --check` fails CI if
 // you edit it. Put every repo-specific decision HERE instead, in the override
@@ -456,9 +357,7 @@ export default [
 
 def _plan_precommit(root: Path, plan: Plan, *, force: bool) -> None:
     path = root / _PRECOMMIT_CONFIG
-    block = precommit_block(
-        python=plan.ecosystems.python, version=manifest.adopted_version()
-    )
+    block = precommit_block(python=plan.ecosystems.python, version=manifest.adopted_version())
     if path.is_file() and not force:
         if "sarj-lint-configs" in path.read_text(encoding="utf-8"):
             plan.skips.append((path, "already runs sarj-lint-configs"))
@@ -469,33 +368,9 @@ def _plan_precommit(root: Path, plan: Plan, *, force: bool) -> None:
 
 
 def precommit_block(*, python: bool, version: str) -> str:
-    """Render the pre-commit hooks, deliberately without a `rev:`.
-
-    This is the whole "one version, not three" fix. The documented block used
-    `repo: https://github.com/sarj-ai/standards` with `rev: python-v<x>`, which
-    is a SECOND version string a human has to keep equal to the pyproject pin,
-    expressed in a different namespace (`python-v0.36.0` for
-    `sarj-lint-configs==0.27.0`). Nobody kept them equal.
-
-    A `repo: local` hook has no `rev:`. It runs the CLI from the environment the
-    pyproject pin already fixed, so upgrading is a single-line change and the
-    two can no longer disagree -- there is nothing left to disagree with.
-
-    The runner is chosen the same way `ci_snippet` chooses it, and for the same
-    reason. This was a hardcoded constant, so a TypeScript-only repo got
-    `entry: uv run --frozen sarj-lint-configs doctor` -- and `uv run` in a repo
-    with no `pyproject.toml` is `error: Failed to spawn: sarj-lint-configs`,
-    exit 2, on every commit. It also got the `check` hook, which runs the
-    Python/SQL/IaC rules a TypeScript repo has nothing to feed.
-
-    Returns:
-        The `repos:` entry, indented for splicing into an existing file.
-
-    """
+    """Render the pre-commit hooks, deliberately without a `rev:`."""
     runner_prefix = (
-        "uv run --frozen sarj-standards"
-        if python
-        else f"uvx --from sarj-lint-configs=={version} sarj-standards"
+        "uv run --frozen sarj-standards" if python else f"uvx --from sarj-lint-configs=={version} sarj-standards"
     )
     block = (
         "  - repo: local\n"
@@ -532,17 +407,7 @@ def apply(plan: Plan) -> None:
 
 
 def ci_snippet(plan: Plan, *, version: str) -> str:
-    """Render the CI job that keeps a repo honest between upgrades.
-
-    A TypeScript-only repo gets `uvx`, not `uv run --frozen`. Telling it to
-    `uv run` would mean adding Python and a lockfile to a repo that has neither,
-    just to obtain an ESLint config -- which is a fair description of why
-    TypeScript repos copied the file instead of installing anything.
-
-    Returns:
-        A GitHub Actions step block.
-
-    """
+    """Render the CI job that keeps a repo honest between upgrades."""
     runner_prefix = (
         "uv run --frozen sarj-standards"
         if plan.ecosystems.python

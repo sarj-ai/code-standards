@@ -1,7 +1,6 @@
 /**
  * @fileoverview _secret-names — shared predicate for whether an identifier names secret material, rather than merely embedding a secret word.
  *
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/_secret-names.md
  */
 
 export const SECRET_WORDS: ReadonlySet<string> = new Set([
@@ -23,14 +22,7 @@ export const SECRET_WORDS: ReadonlySet<string> = new Set([
   "bearer",
 ]);
 
-/**
- * Tokens that mark a counter, row-id, feature flag, or boolean presence/state
- * marker. As the TRAILING token they mean the identifier is metadata *about* a
- * secret, not the secret itself, so it is not a leak / timing surface even when a
- * secret word is also present: `tokenPresent`, `passwordSet`, and
- * `passwordConfigured` are booleans, not credentials. Leading such a word does
- * not disqualify — `validToken` / `presentToken` are credentials.
- */
+/** A trailing word in this set makes the identifier metadata, not a credential. */
 export const INNOCUOUS_WORDS: ReadonlySet<string> = new Set([
   "count",
   "counts",
@@ -56,13 +48,7 @@ export const INNOCUOUS_WORDS: ReadonlySet<string> = new Set([
   "types",
 ]);
 
-/**
- * A trailing token that makes the identifier metadata *about* a secret — its
- * category, handle or label — rather than the credential: `tokenType`,
- * `tokenName`, `sessionId`, `credentialKind`. `type`/`id` are already dropped by
- * the shared innocuous set; `name`/`kind` are added here because logging them
- * can still matter (SARJ012) but they are never a timing surface.
- */
+/** Descriptors excluded from timing checks but retained for logging checks. */
 const DESCRIPTOR_WORDS: ReadonlySet<string> = new Set([
   "type",
   "types",
@@ -74,24 +60,11 @@ const DESCRIPTOR_WORDS: ReadonlySet<string> = new Set([
   "kinds",
 ]);
 
-/**
- * A `type`/`kind` token anywhere marks an enum/category discriminator, not a
- * credential: `TOKEN_TYPE_SYSTEM`, `credentialType`, `grantKind`.
- */
+/** Category words identify credential discriminators rather than secret bytes. */
 const CATEGORY_WORDS: ReadonlySet<string> = new Set(["type", "types", "kind", "kinds"]);
 
 
-/**
- * A leading boolean-predicate word marks a flag, not the credential itself:
- * `isToken`, `hasSecret`, `has_secret`, `isTokenStrategy`. Consulted by the
- * SHARED `isSecretName`, so every consumer gets it: this is the exact mirror of
- * the trailing innocuous-word check that already lives there — a boolean
- * answering "does a secret exist?" leaks nothing whether the marker leads or
- * trails, and word ORDER should not decide whether a name counts as a
- * credential. Matched as a whole leading WORD via `leadingWord`, never as a
- * character prefix, so `hash_secret` (`hash` != `has`), `issuer_token`
- * (`issuer` != `is`) and `canary_token` (`canary` != `can`) keep firing.
- */
+/** A leading predicate makes the identifier a boolean flag, not a credential. */
 export const FLAG_PREFIXES: ReadonlySet<string> = new Set([
   "is",
   "has",
@@ -101,13 +74,7 @@ export const FLAG_PREFIXES: ReadonlySet<string> = new Set([
   "should",
 ]);
 
-/**
- * Words that make an identifier a secret *only* via an integrity/content hash
- * (`contentHash`, `metadataHash`, `rowHash`) rather than an authenticator. A name
- * that ALSO carries one of these keeps firing (`passwordHash`, `tokenHash`,
- * `computedHmac`, `signature`): those gate access, a plain digest of content does
- * not.
- */
+/** Auth words distinguish access-gating hashes from integrity-only hashes. */
 const AUTH_WORDS: ReadonlySet<string> = new Set([
   "token",
   "secret",
@@ -132,12 +99,7 @@ const AUTH_WORDS: ReadonlySet<string> = new Set([
 const CAMEL_RE = /[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|\d+/g;
 const SEGMENT_RE = /[^A-Za-z0-9]+/;
 
-/**
- * Ordered lowercase tokens from snake_case + camelCase decomposition. Also
- * yields each whole snake/kebab segment lowercased, so a pathological mixed-case
- * single word like `ToKeN` (which camel-splitting shreds into `to`/`ke`/`n`)
- * still surfaces its intended `token` form.
- */
+/** Return lowercase whole segments and their camel-case words. */
 export function tokenize(identifier: string): string[] {
   const tokens: string[] = [];
   for (const segment of identifier.split(SEGMENT_RE)) {
@@ -172,16 +134,7 @@ export function hasApiKey(tokens: readonly string[]): boolean {
   return false;
 }
 
-/**
- * True if `identifier` names raw secret material (a credential, not metadata).
- * `innocuous` defaults to the shared metadata set; callers that need a wider
- * exemption list (e.g. `no-secret-in-log`) pass their own superset.
- *
- * Two symmetric metadata guards run before the secret-word scan: a TRAILING
- * innocuous word (`tokenCount`, `apiKeyId`) and a LEADING boolean-predicate word
- * (`hasSecret`, `is_token`). Both describe a name that is *about* a credential
- * rather than being one.
- */
+/** True when an identifier names raw secret material rather than metadata. */
 export function isSecretName(
   identifier: string,
   innocuous: ReadonlySet<string> = INNOCUOUS_WORDS,
@@ -201,10 +154,7 @@ export function isSecretName(
   return hasApiKey(tokens);
 }
 
-/**
- * True if `identifier` names an *authenticator* — an access-gating secret whose
- * bytes an attacker could recover by timing a byte-wise comparison.
- */
+/** True when an identifier names an access-gating secret. */
 export function isAuthSecretName(identifier: string): boolean {
   if (!isSecretName(identifier)) {
     return false;

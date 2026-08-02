@@ -12,22 +12,22 @@ const ruleTester = new RuleTester();
 
 ruleTester.run("no-comment-cruft", rule, {
   valid: [
-    // --- region markers vs prose that opens with the word "region" ---
-    // One first-party matching pipeline and five TS siblings: a prose comment
-    // whose first word happens to be "region".
+    // Preserve prose that happens to open with "region".
     {
       code: "const x = 1;\n// region, sector AND facility_type are HARD constraints when the investor names them\nconst y = 2;",
     },
     { code: "const x = 1;\n// region is derived from the caller's IP, which the CDN rewrites\nconst y = 2;" },
     { code: "const x = 1;\n// regions are resolved lazily\nconst y = 2;" },
-    // A short noun phrase that would pass the title shape if a sentence-final
-    // period were allowed (one first-party route module).
+    {
+      name: "preserves region titles longer than five words",
+      code: "const x = 1;\n// region one two three four five six\nconst y = 2;",
+    },
+    // Sentence punctuation distinguishes prose from a region title.
     { code: "const x = 1;\n// Region centroids for map_pan.\nconst y = 2;" },
     // --- a ticket/URL turns a scoping note into an owned decision ---
     { code: "// EN-only for now; add an AR variant once AR audio exists (PROJ-249)\nconst langs = ['en'];" },
     { code: "// hacky — mirrors https://example.com/api/quirk until they fix it\nconst x = 1;" },
-    // The reference may sit on any line of the run (a first-party freshness
-    // canary puts it last), so the whole run is exempt.
+    // A reference on any line protects the whole contiguous run.
     {
       code: "// Stripe returns a stale timestamp, so the sink writes a field to advance it.\n// EN-only for now (PROJ-249).\nconst config = load();",
     },
@@ -63,6 +63,10 @@ ruleTester.run("no-comment-cruft", rule, {
     // Directive comments are ignored (TODO/FIXME carry an owner elsewhere).
     { code: "// TODO@nmaswood(JIRA-1234): return cachedValue();\nconst x = 1;" },
     { code: "// prettier-ignore\nconst x = 1;" },
+    {
+      name: "preserves tool directives",
+      code: "// eslint-disable-next-line\n// =====\n// @ts-expect-error -- fixture\n// biome-ignore lint: fixture\n// c8 ignore next\nconst x = 1;",
+    },
     // A short leading comment block (< 4 lines) is fine.
     { code: "// the entrypoint\nimport x from 'y';" },
     // Prose with `key=value` / comparisons is not commented-out code.
@@ -95,9 +99,7 @@ ruleTester.run("no-comment-cruft", rule, {
     // A genuine why-comment that happens to mention a narration word is fine.
     { code: "// firstName is required by the upstream API\nconst x = 1;" },
     { code: "// now-deprecated path kept for back-compat\nconst x = 1;" },
-    // C-2 regression: a long `//` module header carrying PROSE is documentation —
-    // the "why" this rule's own message asks for — not cruft. On the adoption
-    // codebase 11 of 15 `fileHeaderPreamble` hits were headers exactly like this.
+    // A leading block containing prose is documentation, not a bare preamble.
     {
       code: "// This module wires the thing.\n// It is old.\n// Be careful.\n// Ask first.\nimport x from 'y';",
     },
@@ -135,68 +137,46 @@ ruleTester.run("no-comment-cruft", rule, {
     { code: "// create the model\nfunction createModel() { return 1; }" },
     // Nothing left to corroborate once the opening verb is removed.
     { code: "// initialize\ninitialize();" },
-    // --- ASCII sequence diagrams are documentation, not banners --------------
-    // Real corpus: swr/src/index/use-swr.ts:524-549, explaining request /
-    // mutation interleaving. A dash run ENDING IN AN ARROW HEAD draws a
-    // timeline; it is not a section rule.
+    // An arrowhead distinguishes a sequence diagram from a banner.
     {
       code: "const x = 1;\n//   req1------------------>res1        (current one)\n//        req2---------------->res2\nconst y = 2;",
     },
     { code: "const x = 1;\n//   mutate-------...---------->\nconst y = 2;" },
-    // --- A numbered walkthrough is a file header, not a label stack ----------
-    // Real corpus: react-router/scripts/release-comments.ts:1.
+    // Multiple numbered explanations form a walkthrough.
     {
       code: "// 1. get all tags sorted by creation date\n// 2. get all commits between current and last tag\n// 3. check if commit is a PR and get the number\n// 4. comment on PRs with the release version\nimport semver from 'semver';",
     },
-    // --- A phrase inside a prose paragraph is not a narration label ----------
-    // Real corpus: react-router/integration/bug-report-test.ts:26 — a six-line
-    // contributor instruction whose first clause opens with "First,".
+    // A phrase inside a prose paragraph is not a standalone narration label.
     {
       code: "// First, make sure to install dependencies and build React Router. From the root of\n// the project, run this:\n//\n//    pnpm install\nconst x = 1;",
     },
-    // Real corpus:
-    // react-router/packages/react-router/lib/dom/ssr/routes.tsx:663.
     {
       code: "// createElement on it.  Patching here as a quick fix and hoping it's no longer\n// an issue in Vite.\nconst x = 1;",
     },
-    // --- "for now" attached to a stated reason is the why, not an excuse -----
-    // Real corpus:
-    // react-router/packages/react-router/__tests__/router/lazy-discovery-test.ts:2412.
+    // A `for now` note with a stated reason is useful rationale.
     {
       code: "// Needed for now since router.fetch is not async until v7\nawait wait(10);",
     },
-    // --- A code sample under its own heading is an illustration --------------
-    // Real corpus: react-router/packages/react-router/lib/hooks.tsx:791, where
-    // `// function Blog() {` sits nine lines below its `// Example:` heading.
+    // An illustration lead-in protects the entire contiguous example.
     {
       code: "// Example:\n//\n// <Routes>\n//   <Route path=\"blog\" element={<Blog />} />\n// </Routes>\n//\n// function Blog() {\n//   return null;\n// }\nconst x = 1;",
     },
 
-    // --- 2026-07 audit, class 1: a short get/set/return label heading a BLOCK -
-    // The `DUMMY_TRANSLATION_RE` branch used to fire on the lexical match alone,
-    // with nothing corroborating it. Real corpus:
-    // papermark/lib/hooks/use-breakpoint.ts:21 — the comment is the only thing
-    // saying why the handler is invoked eagerly.
+    // A short translation must be corroborated by the statement below.
     {
       code: "function useBreakpoint() {\n  const handleChange = () => {};\n  // Set initial value\n  handleChange();\n}",
     },
-    // Real corpus: dub/apps/web/app/(ee)/api/partners/platforms/callback/
-    // route.ts:97 — the label heads a whole token-exchange block.
     {
       code: "// Get access token\nconst urlParams = new URLSearchParams({\n  grant_type: 'authorization_code',\n});",
     },
-    // --- class 2: a step marker that states its own reason ------------------
+    // A step marker with a reason remains documentation.
     {
       code: "// First, warm the cache so we do not pay the cold read twice\nwarm();",
     },
-    // Real corpus: dub/apps/web/lib/actions/partners/update-discount.ts:68 —
-    // `so that` was in the connective list and `so we` was not.
     {
       code: "const a = 1;\n\n// we only cache default group pages for now so we need to invalidate them\nconst paths = [];",
     },
-    // --- class 3: a call-shaped label on a TS overload ----------------------
-    // Real corpus: hono/src/types.ts:440 — 60 of the file's findings were this
-    // one pattern, making it the rule's second-noisiest file corpus-wide.
+    // A call-shaped type-member label cannot be commented-out executable code.
     {
       code: "export interface HandlerInterface {\n  // app.get(path, handler x5)\n  <P extends string>(path: P, handler: H): void;\n}",
     },
@@ -212,6 +192,14 @@ ruleTester.run("no-comment-cruft", rule, {
     // One shouted word is an acronym carrying a fact the name cannot: a unit, a
     // timezone, an encoding.
     { code: "interface T {\n  /** UTC */\n  at: string;\n}" },
+    {
+      name: "preserves protected JSDoc warnings",
+      code: "class C {\n  /** DEPRECATED PUBLIC API */\n  a() { return 1; }\n}",
+    },
+    {
+      name: "preserves numbered standards in JSDoc",
+      code: "interface T {\n  /** ISO 8601 */\n  at: string;\n}",
+    },
     // A shouted SENTENCE is prose someone chose to shout.
     { code: "class C {\n  /** ALWAYS RUN THIS BEFORE THE SEED STEP */\n  a() { return 1; }\n}" },
     // Trailing, so it annotates the code beside it rather than heading a region.
@@ -222,14 +210,7 @@ ruleTester.run("no-comment-cruft", rule, {
     // An empty block says nothing, so it is not saying a section title either.
     { code: "/**\n *\n */\nconst x = 1;" },
 
-    // --- 2026-07-31 sweep: `for now` is not evidence on its own -------------
-    // It was an alternative inside META_COMMENTARY_RE, so any comment
-    // containing the phrase was "self-admitted meta-commentary". Measured over
-    // 175,852 deduplicated files it produced 134 findings; 14 read at source
-    // gave 6 plainly-why comments against 2 contentless ones. The five below
-    // are verbatim corpus lines. `JUSTIFICATION_RE` rescues none of them --
-    // "as", "so <verb>" and "intentionally" are not on its connective list,
-    // which is exactly why they were reported.
+    // `for now` is allowed when the rest of the comment carries substance.
     {
       code: "// our svg icons break if we use data urls, so disable inline assets for now\nconst assetsInlineLimit = 0;",
     },
@@ -245,6 +226,10 @@ ruleTester.run("no-comment-cruft", rule, {
     {
       code: "// Hero only for now; the release feed lands below it as its port arrives.\nexport function ReleasesPage() { return null; }",
     },
+    {
+      name: "preserves for-now notes with three content words",
+      code: "// track release panels for now\nconst tracked = panels;",
+    },
     // A few annotations do not become a wall unless they cover most of a block.
     {
       code: "function build() {\n  // Fetch all users into the users collection\n  const users = fetchUsers();\n  const valid = validateUsers(users);\n  const sorted = sortUsers(valid);\n  // Return the sorted users from this operation\n  return sorted;\n}",
@@ -253,11 +238,17 @@ ruleTester.run("no-comment-cruft", rule, {
     {
       code: "function build() {\n  // Fetch all users into the users collection\n  const users = fetchUsers();\n  // Keep validation here because upstream accepts partial rows\n  const valid = validateUsers(users);\n  // Sort all valid users into the sorted users collection\n  const sorted = sortUsers(valid);\n  // Preserve this order so retries remain idempotent\n  return sorted;\n}",
     },
+    {
+      name: "requires comments on at least sixty percent of a wall span",
+      code: "function build() {\n  // Fetch all users into the users collection\n  const users = fetchUsers();\n  const untouched = 1;\n  // Validate source users into valid users staging collection\n  const validUsers = validateUsers(users);\n  const alsoUntouched = 2;\n  // Sort valid users into sorted users queue archive\n  const sortedUsers = sortUsers(validUsers);\n  const finalUntouched = 3;\n  // Return sorted users from operation archive\n  return sortedUsers;\n}",
+    },
+    {
+      name: "requires three quarters of attached comments to be weak",
+      code: "function build() {\n  // Fetch all users into the users collection\n  const users = fetchUsers();\n  // Keep validation here because upstream accepts partial rows\n  const validUsers = validateUsers(users);\n  // Sort valid users into sorted users\n  const sortedUsers = sortUsers(validUsers);\n  // Preserve this order so retries remain idempotent\n  return sortedUsers;\n}",
+    },
   ],
   invalid: [
-    // --- a section signpost fires whichever comment syntax carries it ---
-    // JSDoc used to be exempt wholesale, so this was the one spelling of a
-    // banner nothing measured.
+    // Section signposts fire in every standalone comment syntax.
     {
       code: "class C {\n  /**\n   * REMOVE METHODS\n   */\n  remove() { return 1; }\n}",
       errors: [{ messageId: "sectionBanner" }],
@@ -277,6 +268,11 @@ ruleTester.run("no-comment-cruft", rule, {
     // --- region marker shapes still fire ---
     {
       code: "const x = 1;\n// region helpers\nconst y = 2;",
+      errors: [{ messageId: "sectionBanner" }],
+    },
+    {
+      name: "flags region titles containing five words",
+      code: "const x = 1;\n// region one two three four five\nconst y = 2;",
       errors: [{ messageId: "sectionBanner" }],
     },
     {
@@ -381,9 +377,7 @@ ruleTester.run("no-comment-cruft", rule, {
       code: "// hardcoded for now\nconst limit = 10;",
       errors: [{ messageId: "redundantNarration" }],
     },
-    // The half of `for now` that really is cruft: it defers and says nothing
-    // about what or why. These are corpus lines too, and they must stay
-    // flagged or the narrowing above has simply deleted the shape.
+    // Content-free `for now` deferrals remain narration.
     {
       code: "// Empty for now.\nconst cfg = {};",
       errors: [{ messageId: "redundantNarration" }],
@@ -394,6 +388,11 @@ ruleTester.run("no-comment-cruft", rule, {
     },
     {
       code: "// login manually for now\nconst session = null;",
+      errors: [{ messageId: "redundantNarration" }],
+    },
+    {
+      name: "flags for-now notes with two content words",
+      code: "// track panels for now\nconst tracked = panels;",
       errors: [{ messageId: "redundantNarration" }],
     },
     {
@@ -476,12 +475,7 @@ ruleTester.run("no-comment-cruft", rule, {
       code: "// fixme: broken\nconst y = 2;",
       errors: [{ messageId: "untrackedTodo" }],
     },
-    // Dummy translational comments. Both cases below USED to be written against
-    // a statement that corroborates nothing (`// increment i` above `let i = 0;`
-    // and `// return the response` above `const x = 1;`) — they encoded exactly
-    // the uncorroborated firing the 2026-07 audit removed, so they are restated
-    // here against code that does corroborate them. The shape still fires; what
-    // no longer fires is the shape with no code backing it.
+    // Translation comments require full corroboration from the statement.
     {
       code: "// increment i\ni += 1;",
       errors: [{ messageId: "redundantNarration" }],
@@ -490,11 +484,7 @@ ruleTester.run("no-comment-cruft", rule, {
       code: "// return the response\nreturn response;",
       errors: [{ messageId: "redundantNarration" }],
     },
-    // --- upper bounds on the 2026-07 guards ---------------------------------
-    // Class 1: corroboration may come from an ARGUMENT for this shape, because a
-    // <=4-word `set`/`get` comment's object is what the call is passed. Real
-    // corpus: documenso e2e specs (4 sites) and
-    // papermark/lib/utils/generate-checksum.ts:11.
+    // Short get/set/return comments may be corroborated by call arguments.
     {
       code: "// Set mobile viewport\nawait page.setViewportSize(MOBILE_VIEWPORT);",
       errors: [{ messageId: "redundantNarration" }],
@@ -530,6 +520,16 @@ ruleTester.run("no-comment-cruft", rule, {
     {
       code: "function build() {\n  const untouched = 1;\n  const alsoUntouched = 2;\n  // Step 1: Fetches users\n  const users = fetchUsers(\n    source,\n  );\n  // Step 2: Validates users\n  const validUsers = validateUsers(\n    users,\n  );\n  // Step 3: Sorts valid users\n  const sortedUsers = sortUsers(\n    validUsers,\n  );\n  // Step 4: Returns sorted users\n  return (\n    sortedUsers\n  );\n  void untouched;\n  void alsoUntouched;\n}",
       errors: [{ messageId: "commentWall", data: { count: "4" } }],
+    },
+    {
+      name: "flags three weak comments covering sixty percent of five statements",
+      code: "function build() {\n  // Fetch all users into the users collection\n  const users = fetchUsers();\n  const untouched = 1;\n  // Validate users into valid users\n  const validUsers = validateUsers(users);\n  const alsoUntouched = 2;\n  // Return valid users from operation\n  return validUsers;\n}",
+      errors: [{ messageId: "commentWall", data: { count: "3" } }],
+    },
+    {
+      name: "flags walls with exactly three quarters weak comments",
+      code: "function build() {\n  // Fetch all users into the users collection\n  const users = fetchUsers();\n  // Validate users into valid users\n  const validUsers = validateUsers(users);\n  // Sort valid users into sorted users\n  const sortedUsers = sortUsers(validUsers);\n  // Preserve this order because retries must be stable\n  return sortedUsers;\n}",
+      errors: [{ messageId: "commentWall", data: { count: "3" } }],
     },
   ],
 });

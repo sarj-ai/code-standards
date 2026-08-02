@@ -2,7 +2,6 @@
  * @fileoverview no-zod-native-enum — `z.nativeEnum` exists to wrap a TypeScript `enum`, which `no-enum` already bans.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-zod-native-enum.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-zod-native-enum.md
  */
 
 import {
@@ -50,12 +49,7 @@ function unwrap(node: TSESTree.Expression): TSESTree.Expression {
   return node;
 }
 
-/**
- * The string values of an object literal whose every property is a plain
- * `key: "literal"` pair, as raw source text (so quote style survives the fix).
- * Returns null when any member is a spread, a computed key, a method, a
- * shorthand, or a non-string value — those sets are not statically rewritable.
- */
+/** Returns unique string-literal values when the object can be safely rewritten. */
 function stringValueTexts(
   node: TSESTree.ObjectExpression,
   sourceCode: Readonly<TSESLint.SourceCode>,

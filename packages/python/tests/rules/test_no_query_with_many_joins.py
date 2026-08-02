@@ -1,23 +1,4 @@
-"""Exhaustive suite for SARJ019 / no-query-with-many-joins.
-
-Verified against the implementation:
-  * threshold `_MAX_JOINS = 2` -> a query is flagged only when it contains
-    **3 or more** `JOIN` keywords. The boundary is exact: 2 JOINs is clean,
-    3 JOINs fires (`test_join_count_boundary`).
-  * every qualified form (`LEFT/RIGHT/INNER/FULL/CROSS ... JOIN`) contributes
-    exactly one to the count — only the bare word `JOIN` is matched.
-  * `--` and `/* */` SQL comments are stripped before counting and before the
-    query-shape check.
-  * a string is only considered when it *looks* like a query: `SELECT ... FROM`,
-    `UPDATE ... SET`, or `DELETE FROM`.
-  * `str.join(...)`, prose, and substrings like `adjoining` never fire.
-
-Known limitation exercised below (not a bug — deterministic by design): an
-f-string only fires when the whole `SELECT ... FROM ... JOIN ...` shape lives in
-a single literal segment. An interpolation placed *between* the `FROM` and the
-`JOIN`s splits the literal so no single segment has both the shape and the joins
-(`test_fstring_interpolation_between_from_and_joins_not_flagged`).
-"""
+"""Executable contract for SARJ019 / no-query-with-many-joins."""
 
 from pathlib import Path
 
@@ -27,17 +8,12 @@ from sarj_python_lint.rule_base import Diagnostic, is_suppressed
 from sarj_python_lint.rules.no_query_with_many_joins import NoQueryWithManyJoins
 
 
-def _check(source: str) -> list[Diagnostic]:
-    return NoQueryWithManyJoins().check(Path("foo_store.py"), source)
+def _check(source: str, path: str = "foo_store.py") -> list[Diagnostic]:
+    return NoQueryWithManyJoins().check(Path(path), source)
 
 
 def _sql_with_joins(n: int, join_kw: str = "JOIN") -> str:
-    """Build a one-line assignment whose query has exactly `n` `join_kw` clauses.
-
-    Returns:
-        The assignment source.
-
-    """
+    """Build an assignment whose query has exactly `n` join clauses."""
     clauses = " ".join(f"{join_kw} t{i} ON t{i}.id = base.id" for i in range(n))
     return 'q = "SELECT * FROM base ' + clauses + '"'  # ruff:ignore[hardcoded-sql-expression] — synthetic lint-rule fixture, not a real query
 
@@ -69,6 +45,19 @@ def test_message_reports_actual_count(n: int) -> None:
     diags = _check(_sql_with_joins(n))
     assert len(diags) == 1
     assert f"Query has {n} JOINs (max 2)" in diags[0].message
+
+
+@pytest.mark.parametrize("path", ["foo_store.py", "app/stores/foo.py"])
+def test_store_modules_are_checked(path: str) -> None:
+    assert len(_check(_sql_with_joins(3), path)) == 1
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["foo.py", "app/service.py", "tests/test_foo_store.py", "app/stores/test_foo.py"],
+)
+def test_non_store_and_test_modules_are_ignored(path: str) -> None:
+    assert _check(_sql_with_joins(3), path) == []
 
 
 # --------------------------------------------------------------------------- #

@@ -15,12 +15,7 @@ def _check(source: str) -> list[Diagnostic]:
 
 
 def _standalone(body: str) -> list[Diagnostic]:
-    """Wrap `body` as a lone own-line comment between two real code lines.
-
-    Returns:
-        The diagnostics from checking the wrapped source.
-
-    """
+    """Check `body` as a standalone comment between live statements."""
     return _check(f"x = 1\n# {body}\ny = 2\n")
 
 
@@ -533,6 +528,10 @@ def test_two_word_assignment_aphorism_is_flagged_as_code():
     assert len(_standalone("a = b in math")) == 1
 
 
+def test_keyword_argument_shaped_label_is_flagged_as_code():
+    assert len(_standalone("tls=True")) == 1
+
+
 def test_global_keyword_with_assignment_prose_is_not_code():
     assert _standalone("global config = None") == []
 
@@ -1007,15 +1006,6 @@ _LICENSE_HEADER = (
 
 
 def test_license_header_rules_are_not_section_banners():
-    """A contributor cannot restructure a legally required header.
-
-    `bokeh/docs/bokeh/docserver.py:1`, `release/checks.py:1` and
-    `release/__main__.py:1` are all `# ---…---` immediately above
-    `# Copyright (c) Anaconda, Inc.`, told to "structure code with functions,
-    not ASCII rules". 831 findings across 590 corpus files were this shape.
-    `_flag_leading_preamble` already exempted licence headers; the banner branch
-    did not.
-    """
     assert _check(_LICENSE_HEADER + "import os\n") == []
 
 
@@ -1032,8 +1022,32 @@ def test_banner_without_a_license_header_still_flags():
 
 
 def test_copyright_mentioned_mid_file_does_not_exempt_a_banner():
-    """The anchor must be a file HEADER, not any copyright mention."""
     src = "import os\n" * 10 + "# =========\n# Copyright notice handling below.\nMAX = 1\n"
+    diags = _check(src)
+    assert any("Section-banner" in d.message for d in diags)
+
+
+def test_license_anchor_on_line_eight_exempts_an_adjacent_banner():
+    src = "import os\n" * 6 + "# =========\n# SPDX-License-Identifier: MIT\nMAX = 1\n"
+    assert _check(src) == []
+
+
+def test_license_anchor_after_line_eight_does_not_exempt_a_banner():
+    src = "import os\n" * 7 + "# =========\n# SPDX-License-Identifier: MIT\nMAX = 1\n"
+    diags = _check(src)
+    assert any("Section-banner" in d.message for d in diags)
+
+
+def test_banner_five_lines_from_license_anchor_is_not_exempt():
+    src = (
+        "# Copyright 2026 Example Corp.\n"
+        "# legally required notice.\n"
+        "# redistribution terms apply.\n"
+        "# see accompanying terms.\n"
+        "#\n"
+        "# =========\n"
+        "MAX = 1\n"
+    )
     diags = _check(src)
     assert any("Section-banner" in d.message for d in diags)
 

@@ -20,12 +20,9 @@ canonical path directly drops the `"**/tests/**"` exemptions — 239 new finding
 in `packages/python` alone. `make check-file-conventions` fails if either link
 becomes a real file.
 
-Deleting a rule does NOT delete its evidence. `docs/rules/<name>.md` is the only
-record of what was measured and why, so when a rule is withdrawn its evidence
-document moves to `docs/rules/retired/<name>.md` — `check-file-conventions`
-fails on a doc that left `docs/rules/` without arriving there. The code itself is
-already burned for you — `code_ledger.json` is append-only — but the evidence is
-not, and nothing but this gate stops it going out with the rule.
+The rule definition is the specification and its paired unit test is the
+executable record. Keep the definition concise; encode examples, edge cases,
+and regressions in tests rather than prose documents or implementation comments.
 
 Every problem gets a gate, not a one-off fix. `make verify` runs
 `check-no-private-refs`, `check-file-conventions` and `check-versions-synced`;
@@ -38,12 +35,11 @@ a fourth sat in the tree the whole time because the guard scanned six
 hand-listed directories. A gate must run where the failure travels, must see the
 whole tree, and must fail loud rather than skip when an input is missing.
 
-A rule module's `@fileoverview` is a one-line `<name> — <claim>` plus the two
-DERIVED links (its tests, and `docs/rules/<name>.md`). Six content lines is the
-cap and there is no exemption file. Measurements, corpus counts, rejected
-alternatives and deliberate-false-negative reasoning go in the `.md`; an example
-becomes a test case. `packages/typescript/tests/rule-docs.test.ts` and
-`packages/python/tests/test_rule_meta.py` enforce both halves.
+A rule module's `@fileoverview` is a one-line `<name> — <claim>` plus its derived
+test link. Six content lines is the cap and there is no exemption file. An
+example, boundary, or rejected false-positive shape becomes a named test case.
+`packages/typescript/tests/rule-docs.test.ts` and
+`packages/python/tests/test_rule_meta.py` enforce this contract.
 
 Renaming a rule is BREAKING. Record it in `renamedRules` in
 `packages/typescript/src/rules/_renames.ts` and run `make sync-rule-ledger`, which

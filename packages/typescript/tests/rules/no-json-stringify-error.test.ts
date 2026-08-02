@@ -17,21 +17,37 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("no-json-stringify-error", rule, {
   valid: [
-    // Stringifying a non-error object is fine.
-    { code: "JSON.stringify(user);" },
-    // Object literal is fine.
-    { code: "JSON.stringify({ a: 1 });" },
-    // Arbitrary identifier that isn't an error name and isn't a catch binding.
-    { code: "const payload = {}; JSON.stringify(payload);" },
-    // Accessing a string property of the error is the recommended escape hatch.
-    { code: "try { f(); } catch (err) { JSON.stringify(err.message); }" },
-    { code: "try { f(); } catch (err) { JSON.stringify(err.stack); }" },
-    { code: "JSON.stringify(err.name);" },
-    // `JSON.stringify` runs ONLY in the non-Error branch of an instanceof guard.
-    { code: "const s = e instanceof Error ? e : JSON.stringify(e, null, '\\t');" },
-    { code: "let s; if (e instanceof Error) { s = e.message; } else { s = JSON.stringify(e); }" },
-    { code: "const s = !(e instanceof Error) ? JSON.stringify(e) : e.message;" },
-    { code: "let s; if (!(err instanceof Error)) { s = JSON.stringify(err); }" },
+    { name: "allows non-error objects", code: "JSON.stringify(user);" },
+    { name: "allows object literals", code: "JSON.stringify({ a: 1 });" },
+    {
+      name: "allows identifiers that are neither error-named nor catch bindings",
+      code: "const payload = {}; JSON.stringify(payload);",
+    },
+    {
+      name: "allows an error message string",
+      code: "try { f(); } catch (err) { JSON.stringify(err.message); }",
+    },
+    {
+      name: "allows an error stack string",
+      code: "try { f(); } catch (err) { JSON.stringify(err.stack); }",
+    },
+    { name: "allows an error name string", code: "JSON.stringify(err.name);" },
+    {
+      name: "allows the non-error branch of an instanceof ternary",
+      code: "const s = e instanceof Error ? e : JSON.stringify(e, null, '\\t');",
+    },
+    {
+      name: "allows the non-error branch of an instanceof if statement",
+      code: "let s; if (e instanceof Error) { s = e.message; } else { s = JSON.stringify(e); }",
+    },
+    {
+      name: "allows the non-error branch of a negated instanceof ternary",
+      code: "const s = !(e instanceof Error) ? JSON.stringify(e) : e.message;",
+    },
+    {
+      name: "allows the non-error branch of a negated instanceof if statement",
+      code: "let s; if (!(err instanceof Error)) { s = JSON.stringify(err); }",
+    },
     // A user-defined type guard narrows the error away before the stringify.
     {
       code: "function f(e) { if (isErrorLike(e)) return e.message; return JSON.stringify(e); }",
@@ -54,14 +70,62 @@ ruleTester.run("no-json-stringify-error", rule, {
     // No arguments.
     { code: "JSON.stringify();" },
 
-    // --- Data payloads hanging off an error object ---------------------------
-    // `error.data` on a react-router `ErrorResponse` is the loader's own JSON
-    // body, fully enumerable. Real corpus:
-    // react-router/playground/rsc-vite/src/routes/root/root.client.tsx:42.
-    { code: "JSON.stringify(error.data);" },
-    { code: "const s = JSON.stringify(err.status);" },
-    { code: "JSON.stringify(error.issues);" },
-    { code: "JSON.stringify(err.response);" },
+    {
+      name: "allows enumerable error data",
+      code: "JSON.stringify(error.data);",
+    },
+    {
+      name: "allows enumerable error status",
+      code: "JSON.stringify(error.status);",
+    },
+    {
+      name: "allows enumerable error statusCode",
+      code: "JSON.stringify(error.statusCode);",
+    },
+    {
+      name: "allows enumerable error statusText",
+      code: "JSON.stringify(error.statusText);",
+    },
+    {
+      name: "allows enumerable error code",
+      code: "JSON.stringify(error.code);",
+    },
+    {
+      name: "allows enumerable error issues",
+      code: "JSON.stringify(error.issues);",
+    },
+    {
+      name: "allows enumerable error details",
+      code: "JSON.stringify(error.details);",
+    },
+    {
+      name: "allows enumerable error body",
+      code: "JSON.stringify(error.body);",
+    },
+    {
+      name: "allows enumerable error payload",
+      code: "JSON.stringify(error.payload);",
+    },
+    {
+      name: "allows enumerable error response",
+      code: "JSON.stringify(error.response);",
+    },
+    {
+      name: "allows enumerable error info",
+      code: "JSON.stringify(error.info);",
+    },
+    {
+      name: "allows enumerable error meta",
+      code: "JSON.stringify(error.meta);",
+    },
+    {
+      name: "allows enumerable error metadata",
+      code: "JSON.stringify(error.metadata);",
+    },
+    {
+      name: "allows enumerable error context",
+      code: "JSON.stringify(error.context);",
+    },
   ],
   invalid: [
     // A `catch` binding passed directly, even with an unconventional name.
@@ -125,13 +189,13 @@ ruleTester.run("no-json-stringify-error", rule, {
       errors: [{ messageId: "noJsonStringifyError" }],
     },
 
-    // A payload accessor is exempt, but a nested-error accessor on the same base
-    // still fires — the guard is about the property, not the base.
     {
+      name: "rejects nested cause while allowing payload properties",
       code: "JSON.stringify(error.cause);",
       errors: [{ messageId: "noJsonStringifyError" }],
     },
     {
+      name: "rejects originalError while allowing payload properties",
       code: "JSON.stringify(err.originalError);",
       errors: [{ messageId: "noJsonStringifyError" }],
     },

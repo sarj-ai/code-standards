@@ -1,7 +1,6 @@
 """SARJ050 — A docstring that only re-spells the signature it sits under.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_redundant_docstring.py
-Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/SARJ050.md
 """
 
 from __future__ import annotations
@@ -27,21 +26,13 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# `restates` reads words, and `_docstrings.WORD_RE` is `[A-Za-z][A-Za-z0-9']*`,
-# so a token that starts with a digit is not a word and cannot be a content
-# word. A bare literal value in a docstring is therefore INVISIBLE to the
-# restatement test, and a docstring whose only addition is that value reads as
-# pure restatement. See the module docstring for the measurement.
+# `restates` ignores digit-leading tokens, so a novel literal number needs its
+# own guard instead of being mistaken for a pure signature restatement.
 _DIGITS_RE = re.compile(r"\d+")
 
 
 def _numeric_content(node: ast.FunctionDef | ast.AsyncFunctionDef, docstring: str, class_name: str | None) -> bool:
-    """Report whether the docstring names a number the signature does not.
-
-    Returns:
-        True when the docstring carries a digit run absent from the signature.
-
-    """
+    """Return whether the docstring names a number absent from the signature."""
     in_docstring = set(_DIGITS_RE.findall(docstring))
     if not in_docstring:
         return False
@@ -49,12 +40,7 @@ def _numeric_content(node: ast.FunctionDef | ast.AsyncFunctionDef, docstring: st
 
 
 def _signature_text(node: ast.FunctionDef | ast.AsyncFunctionDef, class_name: str | None) -> str:
-    """Render everything a reader can read off the signature as one string.
-
-    Returns:
-        The owning class name, the function name, and every parameter and annotation.
-
-    """
+    """Render the owning class, function, parameters, and annotations."""
     parts: list[str] = [node.name]
     if class_name is not None:
         parts.append(class_name)
@@ -73,7 +59,6 @@ def _signature_text(node: ast.FunctionDef | ast.AsyncFunctionDef, class_name: st
 class RedundantDocstring(Rule):
     id: str = "redundant-docstring"
     code: str = "SARJ050"
-    has_evidence: bool = True
     description: str = (
         "Docstring only re-spells the signature — delete the whole docstring, "
         "or replace it with what the caller cannot read off the name."

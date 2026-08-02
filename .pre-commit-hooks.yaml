@@ -3,7 +3,7 @@
   entry: sarj-standards check
   language: python
   files: '(?i)(\.py|\.sql|\.tf|\.tfvars|\.hcl|\.ya?ml|\.toml|\.jsonc|\.mdx?|Dockerfile|Makefile)$'
-  additional_dependencies: ['sarj-lint-configs==0.38.0']
+  additional_dependencies: ['sarj-lint-configs==0.39.0']
 
 - id: sarj-no-sequential-await
   name: 'sarj-lint: no sequential `await` in for-loop'
@@ -562,6 +562,24 @@
 - id: sarj-prefer-self-type-annotation
   name: 'sarj-lint: Method returns `self` but annotates return with explicit class name'
   entry: sarj-python-lint check --rule prefer-self-type-annotation
+  language: python
+  types: [python]
+
+- id: sarj-prefer-single-sentence-comment
+  name: 'sarj-lint: two-sentence comment should become one'
+  entry: sarj-python-lint check --rule prefer-single-sentence-comment
+  language: python
+  types: [python]
+
+- id: sarj-no-long-comment
+  name: 'sarj-lint: comment exceeds two sentences'
+  entry: sarj-python-lint check --rule no-long-comment
+  language: python
+  types: [python]
+
+- id: sarj-no-typed-doc-sections
+  name: 'sarj-lint: typed signature repeats parameters or returns in prose'
+  entry: sarj-python-lint check --rule no-typed-doc-sections
   language: python
   types: [python]
 

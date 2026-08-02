@@ -3,7 +3,6 @@ import { afterAll, describe, it } from "vitest";
 
 import rule from "../../src/rules/require-assert-never.js";
 
-// Bind vitest to RuleTester for proper test reporting
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
@@ -13,8 +12,8 @@ const ruleTester = new RuleTester();
 
 ruleTester.run("require-assert-never", rule, {
   valid: [
-    // Switch with no default — rule only flags a present, no-op default
     {
+      name: "allows a switch with no default",
       code: `
         switch (kind) {
           case 'a': break;
@@ -22,8 +21,8 @@ ruleTester.run("require-assert-never", rule, {
         }
       `,
     },
-    // Default case calls assertNever() as an expression statement
     {
+      name: "allows a bare assertNever call",
       code: `
         switch (kind) {
           case 'a': break;
@@ -31,8 +30,8 @@ ruleTester.run("require-assert-never", rule, {
         }
       `,
     },
-    // Default case throws assertNever()
     {
+      name: "allows throwing the result of assertNever",
       code: `
         switch (kind) {
           case 'a': break;
@@ -40,8 +39,8 @@ ruleTester.run("require-assert-never", rule, {
         }
       `,
     },
-    // Namespaced assertNever — utils.assertNever(x)
     {
+      name: "allows a namespaced assertNever call",
       code: `
         switch (kind) {
           case 'a': break;
@@ -49,8 +48,8 @@ ruleTester.run("require-assert-never", rule, {
         }
       `,
     },
-    // Namespaced assertNever via return
     {
+      name: "allows returning a namespaced assertNever call",
       code: `
         switch (kind) {
           case 'a': return 1;
@@ -58,8 +57,8 @@ ruleTester.run("require-assert-never", rule, {
         }
       `,
     },
-    // Default with multiple statements but at least one assertNever()
     {
+      name: "allows assertNever inside a block",
       code: `
         switch (kind) {
           case 'a': break;
@@ -70,8 +69,8 @@ ruleTester.run("require-assert-never", rule, {
         }
       `,
     },
-    // Reducer-style: default returns the existing state (legitimate runtime default)
     {
+      name: "allows a reducer default that returns existing state",
       code: `
         switch (action.type) {
           case 'inc': return state + 1;
@@ -80,8 +79,8 @@ ruleTester.run("require-assert-never", rule, {
         }
       `,
     },
-    // HTTP-status style: default returns a fallback (legitimate runtime default)
     {
+      name: "allows a default that returns a fallback call",
       code: `
         switch (httpStatus) {
           case 200: return ok();
@@ -90,8 +89,8 @@ ruleTester.run("require-assert-never", rule, {
         }
       `,
     },
-    // Default that throws a regular Error — runtime handling, not flagged.
     {
+      name: "allows a default that throws an error",
       code: `
         switch (kind) {
           case 'a': break;
@@ -99,8 +98,8 @@ ruleTester.run("require-assert-never", rule, {
         }
       `,
     },
-    // Default that calls a non-assertNever function — runtime handling.
     {
+      name: "allows a default that calls a handler",
       code: `
         switch (kind) {
           case 'a': break;
@@ -108,8 +107,8 @@ ruleTester.run("require-assert-never", rule, {
         }
       `,
     },
-    // Default that just breaks — explicit runtime no-op handling.
     {
+      name: "allows a default that breaks",
       code: `
         switch (kind) {
           case 'a': break;
@@ -117,9 +116,17 @@ ruleTester.run("require-assert-never", rule, {
         }
       `,
     },
-    // Fallthrough default — an empty default that hands control to a following
-    // case which does the work. (VS Code CursorPlurality)
     {
+      name: "allows conditional runtime handling",
+      code: `
+        switch (kind) {
+          case 'a': break;
+          default: if (shouldHandle) handle(kind);
+        }
+      `,
+    },
+    {
+      name: "allows an initial default that falls through",
       code: `
         switch (plurality) {
           default:
@@ -129,8 +136,8 @@ ruleTester.run("require-assert-never", rule, {
         }
       `,
     },
-    // Fallthrough default sitting between two cases.
     {
+      name: "allows a middle default that falls through",
       code: `
         switch (kind) {
           case 'a':
@@ -141,9 +148,8 @@ ruleTester.run("require-assert-never", rule, {
         }
       `,
     },
-    // Deliberate, comment-documented no-op default on a config-string switch —
-    // assertNever would throw at runtime here. (Next.js)
     {
+      name: "allows a comment-documented empty default",
       code: `
         switch (setting) {
           case 'on': enable(); break;
@@ -151,8 +157,8 @@ ruleTester.run("require-assert-never", rule, {
         }
       `,
     },
-    // Comment-documented empty block default.
     {
+      name: "allows a comment-documented empty block",
       code: `
         switch (setting) {
           case 'on': enable(); break;
@@ -162,9 +168,8 @@ ruleTester.run("require-assert-never", rule, {
     },
   ],
   invalid: [
-    // Default with no body — an empty, do-nothing default that should either
-    // handle the case or assert exhaustiveness.
     {
+      name: "reports an undocumented empty default",
       code: `
         switch (kind) {
           case 'a': break;
@@ -172,9 +177,10 @@ ruleTester.run("require-assert-never", rule, {
         }
       `,
       errors: [{ messageId: "missingAssertNever" }],
+      output: null,
     },
-    // Default block that does nothing.
     {
+      name: "reports an undocumented empty block",
       code: `
         switch (kind) {
           case 'a': break;
@@ -182,6 +188,29 @@ ruleTester.run("require-assert-never", rule, {
         }
       `,
       errors: [{ messageId: "missingAssertNever" }],
+      output: null,
+    },
+    {
+      name: "reports an empty statement in a default",
+      code: `
+        switch (kind) {
+          case 'a': break;
+          default: ;
+        }
+      `,
+      errors: [{ messageId: "missingAssertNever" }],
+      output: null,
+    },
+    {
+      name: "reports nested empty blocks in a default",
+      code: `
+        switch (kind) {
+          case 'a': break;
+          default: { { } }
+        }
+      `,
+      errors: [{ messageId: "missingAssertNever" }],
+      output: null,
     },
   ],
 });

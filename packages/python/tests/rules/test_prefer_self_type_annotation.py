@@ -38,6 +38,30 @@ def test_flags_explicit_class_name_return_type() -> None:
     assert diags[0].code == "SARJ078"
 
 
+def test_flags_classmethod_constructor_annotated_with_enclosing_class() -> None:
+    source = """
+    class Builder:
+        @classmethod
+        def create(cls) -> "Builder":
+            return cls()
+    """
+    diags = _check(source)
+    assert len(diags) == 1
+    assert "returns an instance of its class" in diags[0].message
+
+
+def test_accepts_self_return_type_annotation() -> None:
+    source = """
+    from typing import Self
+
+    class Builder:
+        def set_name(self, name: str) -> Self:
+            self.name = name
+            return self
+    """
+    assert _check(source) == []
+
+
 def test_does_not_flag_method_returning_other_class() -> None:
     source = """
     class Builder:

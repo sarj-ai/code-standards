@@ -2,7 +2,6 @@
  * @fileoverview no-restated-jsdoc — a JSDoc block whose every word is already in the signature costs three lines and a review and says nothing.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-restated-jsdoc.test.ts
- * Evidence: https://github.com/sarj-ai/standards/blob/main/docs/rules/no-restated-jsdoc.md
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";

@@ -281,6 +281,31 @@ def test_thing():
     assert len(_check(src)) == 1
 
 
+def test_called_recorder_handed_to_production_is_still_flagged():
+    src = """
+from unittest import mock
+
+def test_thing():
+    callback = mock.MagicMock()
+    callback('probe')
+    run(callback)
+    callback.assert_called_once_with('probe')
+"""
+    assert len(_check(src)) == 1
+
+
+def test_call_recorder_introspection_passed_to_assertion_helper_is_exempt():
+    src = """
+from unittest import mock
+
+def test_thing():
+    callback = mock.MagicMock()
+    callback('probe')
+    assert_equal(callback.call_count, 1)
+"""
+    assert _check(src) == []
+
+
 # --------------------------------------------------------------------------- #
 # FP guard: an `except ImportError` stand-in has nothing importable to spec.   #
 # --------------------------------------------------------------------------- #
