@@ -1,4 +1,4 @@
-"""SARJ024 — A structured string literal repeated across functions — extract a named constant.
+"""SARJ024 — A structured string literal repeated across functions — extract a named constant
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_repeated_string_literal.py
 """

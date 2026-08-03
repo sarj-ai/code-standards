@@ -1,4 +1,4 @@
-"""SARJ071 — A concrete service with injected collaborators and no ABC above it is not substitutable.
+"""SARJ071 — A concrete service with injected collaborators and no ABC above it is not substitutable
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_require_port_for_service.py
 """
@@ -17,22 +17,13 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# Name tails that mark a class as a service in this codebase's own vocabulary. Measured
-# across ten first-party repos: 279 public non-test classes match, 42 of them with no
-# base class — see the per-repo spread in the module docstring, which varies from 100%
-# adoption (repos A and B) to 38% (repo I).
-# Case-sensitive CamelCase tails, so `Restore`, `Bookstore` and `Rediscover` miss.
-# `Manager`, `Adapter`, `Builder`, `Router` and `Middleware` are deliberately absent —
-# adding them turned six FastAPI routers and two LiveKit lifecycle helpers into hits.
-# `Client` and `Repository` are absent too, and that was measured, not assumed — see
-# the module docstring.
+# Name tails that mark a class as a service in this codebase's own vocabulary.
 _SERVICE_NAME_RE = re.compile(r"(?:Service|Store|DAO|Dao|Gateway|Provider)$")
 
 # Classes named as the base of a family are the port being asked for, not a missing one.
 _BASE_NAME_RE = re.compile(r"^(?:Base|Abstract)[A-Z_]")
 
-# Annotations that name a value rather than a collaborator. Anything a service is
-# handed that it could equally have been handed as a literal.
+# Annotations that name a value rather than a collaborator.
 _PRIMITIVE_ANNOTATIONS = frozenset(
     {
         "str",
@@ -51,9 +42,7 @@ _PRIMITIVE_ANNOTATIONS = frozenset(
         "frozenset",
         "tuple",
         "type",
-        # The capitalised `typing` aliases are the same builtins. Omitting them is what
-        # made sentry-sdk's `BaseClient(options: "Optional[Dict[str, Any]]")` read as an
-        # injected collaborator.
+        # The capitalised `typing` aliases are the same builtins.
         "List",
         "Dict",
         "Set",
@@ -87,10 +76,7 @@ _PRIMITIVE_ANNOTATIONS = frozenset(
 # collaborator: nobody swaps a `ServerSettings` or a LiveKit `JobContext` in a test.
 _WEAK_COLLABORATOR_RE = re.compile(r"(?:Settings|Config|Configuration|Options|Logger|Log|Clock|Context)$")
 
-# Annotation wrappers that are transparent — the collaborator is inside them. `Union`
-# is here for the same reason `X | None` is unwrapped: without it, prefect's
-# `Union[GitCredentials, Block, dict[str, Any], None]` reduced to the literal name
-# `Union` and passed the non-primitive test.
+# Annotation wrappers that are transparent — the collaborator is inside them.
 _TRANSPARENT_GENERICS = frozenset({"Optional", "Union", "Annotated", "Awaitable", "Coroutine", "Final", "ClassVar"})
 
 # Bases that make a same-module class a data type, so a parameter annotated with it is
@@ -112,8 +98,7 @@ _DATA_BASES = frozenset(
     }
 )
 
-# Decorators that turn a class into a record. `dataclass`/`define` cover stdlib
-# dataclasses, attrs and msgspec-style declarations.
+# Decorators that turn a class into a record.
 _DATA_DECORATORS = frozenset({"dataclass", "dataclasses", "define", "frozen", "mutable", "attrs", "attr", "s"})
 
 # Method decorators that mean the callable is not an instance method a consumer calls
@@ -123,19 +108,13 @@ _NON_METHOD_DECORATORS = frozenset({"property", "cached_property", "staticmethod
 # Method decorators that declare the class is already an interface without an ABC base.
 _INTERFACE_DECORATORS = frozenset({"abstractmethod", "abstractproperty", "overload"})
 
-# Class decorators that bind the class to a declared interface. `zope.interface`'s
-# `@implementer(IIntegrityService)` is exactly the port this rule asks for, spelled the
-# way pyramid projects spell it.
+# Class decorators that bind the class to a declared interface.
 _IMPLEMENTS_DECORATORS = frozenset({"implementer", "implementer_only", "provider", "runtime_checkable", "register"})
 
-# Parameter types that only appear on an HTTP route handler. A class whose public
-# methods take these is the web layer, whatever it calls itself — see the module
-# docstring on `ReceiptService`.
+# Parameter types that only appear on an HTTP route handler.
 _HTTP_PARAM_TYPES = frozenset({"Request", "Response", "BackgroundTasks", "WebSocket", "UploadFile"})
 
 # Callables used as FastAPI/Starlette parameter markers, either inside an `Annotated[...]`
-# or as the parameter's default. `Path` and `File` are also stdlib-ish names, which is why
-# only the *call* form counts: `Annotated[str, Path()]` is a route, `path: Path` is not.
 _HTTP_PARAM_MARKERS = frozenset({"Header", "Query", "Depends", "Body", "Path", "Form", "File", "Cookie", "Security"})
 
 # Directory segments that hold programs rather than importable library code.
@@ -156,9 +135,6 @@ class RequirePortForService(Rule):
     code: str = "SARJ071"
     description: str = (
         # `*Client` is NOT in the name gate — it was measured and excluded (7 OSS
-        # false positives, 0 first-party gain), because a class whose collaborator
-        # is somebody else's HTTP transport substitutes nothing. Advertising it
-        # here promised a check that does not exist.
         "Concrete `*Service`/`*Store`/`*DAO`/`*Gateway`/`*Provider` with injected collaborators "
         "and no ABC — consumers must depend on the concrete class, so their tests can only mock it."
     )

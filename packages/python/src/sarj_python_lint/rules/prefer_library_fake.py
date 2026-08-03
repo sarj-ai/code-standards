@@ -1,4 +1,4 @@
-"""SARJ059 — A hand-rolled double of a third-party service should use the library that fakes it properly.
+"""SARJ059 — A hand-rolled double of a third-party service should use the library that fakes it properly
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_library_fake.py
 """
@@ -28,10 +28,7 @@ class _Service(NamedTuple):
     advice: str
 
 
-# Ordered most-specific first; the first match wins. `words` match a single
-# CamelCase word of the class name exactly (so `Requests` fires but celery's
-# `FakeRequest` does not); `infixes` match the whole name with separators
-# stripped (so `FakeBigQueryClient`, which splits into Big/Query, still matches).
+# Ordered most-specific first; the first match wins.
 _SERVICES: tuple[_Service, ...] = (
     _Service(
         subject="AWS S3",
@@ -172,8 +169,7 @@ _SERVICES: tuple[_Service, ...] = (
     ),
 )
 
-# Words / infixes that mark a class as a test double. `Test` is deliberately absent:
-# it is pytest's class-collection convention, not a double marker.
+# Words / infixes that mark a class as a test double.
 _MARKER_INFIXES = ("mock", "fake", "stub", "dummy", "inmemory", "scripted", "recording")
 _MARKER_WORDS = frozenset({"spy"})
 
@@ -202,13 +198,10 @@ _DATA_HOLDER_BASES = frozenset(
 )
 
 # Base-class name shapes that say "this is the framework's declared extension point".
-# A double implementing one of these fills a plugin slot whose contract the framework
-# already defines and type-checks; the wire-level fake libraries live at another layer.
 _EXTENSION_POINT_PREFIXES = ("Base", "Abstract")
 _EXTENSION_POINT_SUFFIXES = ("ABC", "Base", "Interface", "Protocol", "Mixin")
 
-# Splits CamelCase (and screaming acronyms) into words. `[A-Z][a-z0-9]+` must come
-# first so `FakeS3Client` yields `s3` rather than a bare `s`.
+# Splits CamelCase (and screaming acronyms) into words.
 _CAMEL_RE = re.compile(r"[A-Z][a-z0-9]+|[A-Z]+(?![a-z])|[a-z0-9]+")
 
 # A double this small is not worth a diagnostic, let alone a new dependency.

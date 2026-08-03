@@ -1,4 +1,4 @@
-"""SARJ062 — A test that substitutes six collaborators exercises the mock wiring, not the code.
+"""SARJ062 — A test that substitutes six collaborators exercises the mock wiring, not the code
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_over_mocked_test.py
 """
@@ -47,7 +47,7 @@ _PATCH_OBJECT_REPLACEMENT_ARITY = 3
 # the two-argument form spells it into the dotted target instead.
 _SETATTR_SPLIT_ARITY = 3
 
-# pytest-mock's fixture. `mocker.patch(...)` is `unittest.mock.patch` renamed.
+# pytest-mock's fixture.
 _MOCKER = "mocker"
 
 _MONKEYPATCH = "monkeypatch"
@@ -205,8 +205,7 @@ def _tokens(text: str) -> frozenset[str]:
     return frozenset(word[0].lower() for word in _TOKEN_RE.finditer(text))
 
 
-# The directory a test suite is rooted at. Everything below one of these is the
-# author's organisation of their tests; everything above is where the repo lives.
+# The directory a test suite is rooted at.
 _TEST_ROOT_NAMES = frozenset({"t", "test", "tests"})
 
 
@@ -344,9 +343,6 @@ def _substitutions(
                 subs.update(_patch_keys(dec, subform, names))
                 injected += _injected_owners(dec, subform, names)
     # A class-level `@patch` is the TestCase's shared fixture, not something
-    # this test asked for; its substitutions are not counted. Its injected
-    # parameters still have to be skipped, or they would be recounted as mock
-    # fixtures. They wrap the method's own patches, so they arrive last.
     injected += _class_injected_owners(owner, names)
 
     scan = _body_substitutions(func, names)

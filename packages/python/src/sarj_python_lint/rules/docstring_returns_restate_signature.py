@@ -1,4 +1,4 @@
-"""SARJ087 — A `Returns:` block that only re-spells the name and the return annotation.
+"""SARJ087 — A `Returns:` block that only re-spells the name and the return annotation
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_docstring_returns_restate_signature.py
 """

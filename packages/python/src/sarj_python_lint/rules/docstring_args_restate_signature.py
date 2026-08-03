@@ -1,4 +1,4 @@
-"""SARJ086 — An `Args:` block that only re-spells the parameter list.
+"""SARJ086 — An `Args:` block that only re-spells the parameter list
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_docstring_args_restate_signature.py
 """

@@ -1,4 +1,4 @@
-"""SARJ006 — Raw `str` used where a closed enumeration is clearly intended.
+"""SARJ006 — Raw `str` used where a closed enumeration is clearly intended
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_str_enum.py
 """
@@ -17,12 +17,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-#: Per-variable comparison-cluster accumulator: first line, first col, every
-#: distinct literal seen, then the literals bucketed by operator — `==` / `case`,
-#: `!=`, and `in` / `not in`. A closed set is *enumerated*: one equality operator
-#: reaching 2+ alternatives, on its own or corroborated by a membership set. The
-#: `==` and `!=` buckets are never summed with each other, so an
-#: `x == "a"` / `x != "b"` pair of independent guards does not fire.
+# : Per-variable comparison-cluster accumulator: first line, first col, every
 type _ClusterEntry = tuple[int, int, set[str], set[str], set[str], set[str]]
 
 
@@ -76,10 +71,7 @@ EXTERNAL_VOCAB = frozenset(
 #: not flagged.
 _SCANNER_KEY_SEGMENTS = frozenset({"c", "ch", "chr", "char", "token", "tok", "letter", "digit", "glyph"})
 
-#: Variable names that denote an OPEN external vocabulary (ISO language / country
-#: / currency codes, timezones, locales, regions). Special-casing a few of these
-#: with `if language == "en": elif language == "zh":` is not a closed app enum —
-#: the domain has thousands of members, so a StrEnum would be wrong.
+# : Variable names that denote an OPEN external vocabulary (ISO language / country
 OPEN_DOMAIN_CODE_NAMES = frozenset(
     {
         "language",
@@ -101,9 +93,7 @@ _LOWER_TOKEN_RE = re.compile(r"^[a-z][a-z0-9_-]{0,30}$")
 #: The stdlib `open()` mode vocabulary: 1-3 characters drawn from `rwxab+t`.
 _FILE_MODE_RE = re.compile(r"[rwxabt+]{1,3}")
 
-#: Variable names that hold an `open()` mode. Combined with `_FILE_MODE_RE` this
-#: covers the mode-check idiom without swallowing single-character enums
-#: elsewhere (`grade == "a"` / `grade == "b"` is still a dispatch).
+# : Variable names that hold an `open()` mode.
 _FILE_MODE_KEYS = frozenset({"filemode", "mode", "open_mode", "openmode"})
 
 #: How many distinct literals one operator must enumerate before firing.
@@ -249,10 +239,6 @@ def _cluster_fires(key: str, entry: _ClusterEntry) -> bool:
     if not eq_literals and not ne_literals:
         return False  # a lone `in`/`not in` membership guard is not an app enum
     # A closed set is enumerated by ONE operator reaching 2+ alternatives
-    # (`x == "a" ... elif x == "b"`, `x != "a" and x != "b"`), optionally
-    # corroborated by a membership set over the same variable. `==` and `!=`
-    # literals are never summed together: `x == "a"` plus `x != "b"` is two
-    # independent guards, not a dispatch over a domain.
     enumerated = max(len(eq_literals | in_literals), len(ne_literals | in_literals))
     if enumerated < _MIN_CLUSTER_SIZE:
         return False

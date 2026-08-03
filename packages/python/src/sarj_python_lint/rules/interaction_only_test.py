@@ -1,4 +1,4 @@
-"""SARJ063 — A test whose only assertions are about which calls landed on a mock.
+"""SARJ063 — A test whose only assertions are about which calls landed on a mock
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_interaction_only_test.py
 """
@@ -67,7 +67,7 @@ _MOCK_STATE_ATTRS = frozenset(
 
 _TEST_PREFIX = "test_"
 
-# pytest's default `python_files`. `is_test_path` is broader on purpose.
+# pytest's default `python_files`.
 _COLLECTED_SUFFIX = "_test.py"
 
 # Manual CLI probes live here under `test_*.py` names but are never collected.
@@ -82,14 +82,9 @@ _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 # --- the calibrated guards; see the module docstring for the measurements ---
 
 # Distinct mocked collaborators that must be pinned before the test is
-# describing a *sequence* rather than a single notification. Counted by root
-# object, matching SARJ062: a collaborator is an object, not one of its methods.
 _MIN_INTERACTION_TARGETS = 2
 
 # Wiring a callback onto a collaborator is the one side effect that genuinely
-# has no observable result: nothing is returned and nothing changes until the
-# event fires. A test that only pins registrations is checking the only thing
-# it can check.
 _REGISTRATION_METHODS = frozenset(
     {
         "add_done_callback",

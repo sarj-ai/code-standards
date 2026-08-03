@@ -1,4 +1,4 @@
-"""SARJ069 — A `case Cls():` arm that reaches back into the subject for its fields.
+"""SARJ069 — A `case Cls():` arm that reaches back into the subject for its fields
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_match_pattern_destructuring.py
 """
@@ -18,9 +18,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# Destructuring has to pay for the width it adds to the `case` line. One field
-# mentioned once is a wash; two reads is where the arm starts repeating itself
-# or hiding more than one dependency in its body.
+# Destructuring has to pay for the width it adds to the `case` line.
 _MIN_READS = 2
 
 # How many field names the message spells out before it elides the rest.
@@ -63,8 +61,6 @@ _BUILTIN_TYPE_NAMES = frozenset(
 )
 
 # A capture named after the field is the ideal spelling, but not when it would
-# shadow a builtin: `case CustomRecord(id=id)` trips ruff's A001. Taken from
-# the interpreter so the set never drifts.
 _BUILTIN_NAMES = frozenset(dir(builtins))
 
 
@@ -115,10 +111,7 @@ class _ReachBack:
     fields: list[str]
     taken: frozenset[str]
     aliased: bool
-    # Sub-patterns the arm already had. Both must be reproduced verbatim in
-    # the suggestion: dropping a positional one widens what the arm matches
-    # (`case Point(0, 0)` would start matching every Point) and dropping a
-    # capture makes the body raise NameError.
+    # Sub-patterns the arm already had.
     kept: tuple[tuple[str, str], ...]
     positional: tuple[str, ...]
 
@@ -131,10 +124,7 @@ def _message(finding: _ReachBack) -> str:
     """Render the diagnostic, spelling out the pattern the arm should have used."""
     named = finding.fields[:_MAX_NAMED_FIELDS]
     elided = len(finding.fields) - len(named)
-    # The elision stays OUT of the pattern text. A trailing `, ...` inside the
-    # parentheses is a syntax error — a bare `...` is a positional pattern, and
-    # positional cannot follow keyword — so the suggestion was un-pasteable on
-    # every arm that read more fields than fit. It is stated in prose instead.
+    # The elision stays OUT of the pattern text.
     bindings = ", ".join(f"{field}={finding.binding(field)}" for field in named)
     kept_text = ", ".join([*finding.positional, *(f"{attr}={name}" for attr, name in finding.kept)])
     if kept_text:

@@ -1,4 +1,4 @@
-"""SARJ081 — Prefer assignment expression (`:=`) for regex match assignments immediately preceding an `if` check.
+"""SARJ081 — Prefer assignment expression (`:=`) for regex match assignments immediately preceding an `if` check
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_walrus_regex_match.py
 """

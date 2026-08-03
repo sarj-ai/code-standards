@@ -1,4 +1,4 @@
-"""SARJ090 — Two sentences of comment prose should become one.
+"""SARJ090 — Two sentences of comment prose should become one
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_single_sentence_comment.py
 """

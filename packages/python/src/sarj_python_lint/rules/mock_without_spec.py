@@ -1,4 +1,4 @@
-"""SARJ040 — A mock built without `spec=` accepts any attribute — spec it or fake it.
+"""SARJ040 — A mock built without `spec=` accepts any attribute — spec it or fake it
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_mock_without_spec.py
 """
@@ -30,14 +30,9 @@ _SPEC_KEYWORDS = frozenset({"spec", "spec_set", "autospec", "new", "new_callable
 
 
 # How many positional arguments a callee must receive before the spec/new
-# parameter is filled. `Mock(spec, wraps, ...)`, `patch(target, new, ...)` and
-# `patch.object(target, attribute, new, ...)` all take it positionally, and that
-# is how it is nearly always spelled, so an arity check is the only way to see
-# the author's own escape hatch.
 _REPLACEMENT_ARITY = {"Mock": 1, "MagicMock": 1, "AsyncMock": 1, "patch": 2, "patch.object": 3}
 
-# Attributes every mock answers regardless of what it stands in for. A double
-# read back only through these is a call recorder, not a stand-in for a type.
+# Attributes every mock answers regardless of what it stands in for.
 _MOCK_API_ATTRS = frozenset(
     {
         "assert_any_await",
@@ -76,9 +71,7 @@ _MOCK_API_ATTRS = frozenset(
 # An import that failed leaves nothing importable to spec against.
 _IMPORT_FAILURES = frozenset({"ImportError", "ModuleNotFoundError"})
 
-# Keywords that canned-answer a *call*. You only say what a double returns, or
-# raises, when something is going to invoke it — so their presence is positive
-# evidence that the double stands in for one callable rather than an object.
+# Keywords that canned-answer a *call*.
 _CANNED_RESULT_KEYWORDS = frozenset({"return_value", "side_effect"})
 
 
@@ -229,9 +222,7 @@ class _FileFacts:
                 self.attribute_target[value] = path
 
     def _record_path_read(self, node: ast.Attribute) -> None:
-        # Load context only. `recv.method = Mock()` is a *store* through
-        # `recv.method`; counting it would make every stub look like a namespace
-        # double read back through its own name.
+        # Load context only.
         if not isinstance(node.ctx, ast.Load):
             return
         path = _dotted_path(node.value)

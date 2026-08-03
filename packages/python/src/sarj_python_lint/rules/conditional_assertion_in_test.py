@@ -1,4 +1,4 @@
-"""SARJ065 — A test whose every assertion sits behind a branch or loop can pass asserting nothing.
+"""SARJ065 — A test whose every assertion sits behind a branch or loop can pass asserting nothing
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_conditional_assertion_in_test.py
 """
@@ -21,9 +21,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# Names that verify something, however the project spells them. Matches
-# `assert`, `self.assertEqual`, `mock.assert_called_once_with`, `_assert_row`,
-# `check_response`, `verify_payload`, `expect_ok`, `ensure_closed`.
+# Names that verify something, however the project spells them.
 _ASSERTION_NAME_RE = re.compile(r"^_{0,2}(assert|check|verify|validate|expect|ensure)", re.IGNORECASE)
 
 # `raises`/`warns` as a token anywhere in the name: `pytest.deprecated_call`,
@@ -34,12 +32,10 @@ _RAISES_TOKEN_RE = re.compile(r"(^|_)(raises|warns|deprecated_call)", re.IGNOREC
 # `from pytest import raises`.
 _VERIFY_NAMES = frozenset({"raises", "warns", "fail", "deprecated_call"})
 
-# Calls that abandon the test rather than fail it. A branch that ends in one of
-# these is an early-exit guard, not a missing assertion.
+# Calls that abandon the test rather than fail it.
 _EXIT_NAMES = frozenset({"skip", "xfail", "exit", "skipTest", "importorskip"})
 
-# Calls that end the test in failure: `pytest.fail(...)`, `self.fail(...)`. A
-# one-armed `if` whose body reaches one is the assertion, spelled long-hand.
+# Calls that end the test in failure: `pytest.fail(...)`, `self.fail(...)`.
 _FAIL_NAMES = frozenset({"fail"})
 
 # Fluent verification DSLs reached through an attribute rather than a call name.
@@ -59,9 +55,6 @@ _PARAMETRIZE = "parametrize"
 _PARAM = "param"
 
 # A condition that probes what the environment can do, rather than what the
-# code under test returned. Django gates on `connection.features.supports_*`,
-# celery on `hasattr(signal, "setitimer")`; the assertion is deliberately
-# skipped where the capability is absent.
 _CAPABILITY_RE = re.compile(
     r"support|feature|capabilit|available|installed|platform|implementation|version|hasattr|debug",
     re.IGNORECASE,
@@ -106,8 +99,6 @@ _PASSTHROUGH_CALLS = frozenset(
 _VIEW_METHODS = frozenset({"items", "keys", "values"})
 
 # `str.split(sep)` yields at least one element for every input, `""` included.
-# `"".splitlines()` is the one empty case, and a test that iterates rendered
-# output has already produced the text it is splitting.
 _ALWAYS_NONEMPTY_METHODS = frozenset({"split", "rsplit", "splitlines"})
 
 # Attribute calls that inherit emptiness from their first argument, or from
@@ -115,7 +106,7 @@ _ALWAYS_NONEMPTY_METHODS = frozenset({"split", "rsplit", "splitlines"})
 # `itertools.product(alphabet, repeat=n)`, `rows.copy()`.
 _PASSTHROUGH_METHODS = frozenset({"fromkeys", "product", "copy", "gather"})
 
-# pytest's default `python_files`. `is_test_path` is broader on purpose.
+# pytest's default `python_files`.
 _COLLECTED_SUFFIX = "_test.py"
 
 # Manual CLI probes live here under test_*.py names but are never collected.
@@ -174,9 +165,6 @@ def _conditionally_asserting_tests(tree: ast.Module) -> list[ast.FunctionDef | a
     helpers = _asserting_helper_names(tree)
     module_bindings = _bindings_in(tree.body)
     # A module-level table is often sized by a *sibling* test
-    # (`assert len(TEST_CASES) == 4` in one test, looped over in the next), so
-    # claims about module-level names are pooled across the whole file. Claims
-    # about locals are not — they belong to the function that made them.
     module_nonempty = frozenset(_nonempty_claims(tree, helpers) & set(module_bindings))
     imported = _imported_names(tree)
     hits: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
@@ -244,9 +232,7 @@ def _marker_name(dec: ast.expr) -> str | None:
     return target.attr if isinstance(target, ast.Attribute) else None
 
 
-# --------------------------------------------------------------------------- #
 # "Does executing this guarantee an assertion?"                                #
-# --------------------------------------------------------------------------- #
 
 
 def _guaranteed(body: Sequence[ast.stmt], facts: _Facts) -> bool:
@@ -285,8 +271,6 @@ def _stmt_guarantees(stmt: ast.stmt, facts: _Facts) -> bool:
 def _if_guarantees(stmt: ast.If, facts: _Facts) -> bool:
     if not stmt.orelse:
         # `if failures: pytest.fail(...)` *is* `assert not failures`: the arm
-        # that is not taken is the passing outcome, and the arm that is taken
-        # fails the test. There is nothing conditional about the check.
         if _always_fails(stmt.body):
             return True
         return _is_capability_probe(stmt.test) and _guaranteed(stmt.body, facts)
@@ -370,10 +354,6 @@ def _loop_guarantees(stmt: ast.For | ast.AsyncFor, facts: _Facts) -> bool:
     if not _iterable_is_nonempty(stmt.iter, facts, frozenset()):
         return False
     # Inside a loop that is proven to run, anything reached *through* the loop
-    # variable is part of the item's own structure — `for c in countries: for
-    # ring in c.mpoly:`. Demanding a size assertion on every element's
-    # sub-collection is not a request anyone would act on, and it was the
-    # single largest residual false-positive class in the sweep.
     inner = _Facts(
         nonempty=facts.nonempty,
         bindings=facts.bindings,
@@ -390,11 +370,6 @@ def _bound_names(target: ast.expr) -> frozenset[str]:
 
 def _try_guarantees(stmt: ast.Try, facts: _Facts) -> bool:
     # An explicit `try` in a test is `assertRaises` written long-hand — the
-    # shape django reaches for when `assertRaises` cannot express the check
-    # ("UnicodeEncodeError is a subclass of ValueError", `test_datefield.py:212`;
-    # `except TimeoutException: pass` / `else: self.fail(...)`,
-    # `test_related_object_lookups.py:183`). Whichever limb holds the check, the
-    # author chose the control flow deliberately, so any of them counts.
     limbs: list[Sequence[ast.stmt]] = [stmt.body, stmt.orelse, stmt.finalbody]
     limbs.extend(handler.body for handler in stmt.handlers)
     return any(_guaranteed(limb, facts) for limb in limbs)
@@ -437,9 +412,7 @@ def _expr_names_assertion(expr: ast.expr, helpers: frozenset[str]) -> bool:
     return _names_assertion(target, helpers)
 
 
-# --------------------------------------------------------------------------- #
 # "Is there an assertion in here at all?"                                      #
-# --------------------------------------------------------------------------- #
 
 
 def _contains_assertion(node: ast.AST, helpers: frozenset[str]) -> bool:
@@ -514,9 +487,7 @@ def _called_names(node: ast.AST) -> set[str]:
     return names
 
 
-# --------------------------------------------------------------------------- #
 # Early exits: a branch that bails out owes no assertion.                      #
-# --------------------------------------------------------------------------- #
 
 
 def _exits(body: Sequence[ast.stmt]) -> bool:
@@ -544,9 +515,7 @@ def _is_exit_call(value: ast.expr) -> bool:
     return isinstance(func, ast.Name) and func.id in _EXIT_NAMES
 
 
-# --------------------------------------------------------------------------- #
 # Non-emptiness: which iterables are proven to run their loop body.            #
-# --------------------------------------------------------------------------- #
 
 
 def _facts_for(
@@ -948,5 +917,4 @@ def _range_is_nonempty(expr: ast.Call, facts: _Facts, seen: frozenset[str]) -> b
         return len(range(*bounds)) > 0
     except ValueError, TypeError:
         # `range(1, 10, 0)` is a zero step; no arguments at all, or four of
-        # them, means the name is not the builtin. Neither proves anything.
         return False

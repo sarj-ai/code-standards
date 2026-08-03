@@ -1,4 +1,4 @@
-"""SARJ088 — A test docstring that only re-spells the test's own name and body.
+"""SARJ088 — A test docstring that only re-spells the test's own name and body
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_restated_test_docstring.py
 """
@@ -24,9 +24,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# The vocabulary a test docstring spends on *being a test*. Folded into the
-# known-stem set rather than into `_docstrings.STOPWORDS`, so it widens this
-# rule alone and cannot silently move SARJ050/085/086/087.
+# The vocabulary a test docstring spends on *being a test*.
 _TEST_CEREMONY = (
     "assert",
     "asserted",
@@ -80,26 +78,16 @@ _TEST_CEREMONY = (
 
 _CEREMONY_STEMS = frozenset(stem(word) for word in _TEST_CEREMONY)
 
-# Sections other than the summary are SARJ086/087's subject. A test docstring
-# carrying one is a different artefact and is left whole.
+# Sections other than the summary are SARJ086/087's subject.
 _SUMMARY_ONLY = frozenset({"summary"})
 
 
-# The keyword singletons. `assert x is None` puts the word "None" on the screen
-# as surely as an identifier does, and `... is None` is the single most common
-# thing a test docstring re-spells.
+# The keyword singletons.
 _SINGLETONS: dict[object, str] = {None: "none", True: "true", False: "false"}
 
 
 def _body_stems(node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
-    """Collect the stemmed word parts of every IDENTIFIER in the test body.
-
-    Identifiers and keyword singletons only — never string literals. A test body
-    is full of prose in strings ("user not found"), and letting those count as
-    "the code already says it" is what would turn an explanatory docstring into
-    a finding.
-
-    """
+    """Collect the stemmed word parts of every IDENTIFIER in the test body."""
     tokens: list[str] = []
     for child in ast.walk(node):
         match child:

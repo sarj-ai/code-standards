@@ -1,4 +1,4 @@
-"""SARJ050 — A docstring that only re-spells the signature it sits under.
+"""SARJ050 — A docstring that only re-spells the signature it sits under
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_redundant_docstring.py
 """

@@ -1,4 +1,4 @@
-"""SARJ077 — Prefer walrus operator in `while` loop conditions for stream/chunk reading.
+"""SARJ077 — Prefer walrus operator in `while` loop conditions for stream/chunk reading
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_walrus_stream_loop.py
 """

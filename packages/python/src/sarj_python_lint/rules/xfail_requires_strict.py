@@ -1,4 +1,4 @@
-"""SARJ046 — A non-strict `xfail` bug-pin goes green forever once the bug is fixed.
+"""SARJ046 — A non-strict `xfail` bug-pin goes green forever once the bug is fixed
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_xfail_requires_strict.py
 """
@@ -29,11 +29,10 @@ _NONDETERMINISM_RE = re.compile(r"intermittent|flak|sometimes|non-?deterministic
 # Sibling markers that declare a nondeterministic dependency.
 _NONDETERMINISTIC_MARKERS = frozenset({"real_llm", "flaky", "network", "integration"})
 
-# Hypothesis' entry point. One `@given` expands into many generated inputs.
+# Hypothesis' entry point.
 _PROPERTY_DECORATORS = frozenset({"given"})
 
-# schemathesis binds `.parametrize()` on a schema object. `pytest.mark.parametrize`
-# is a fixed table and is NOT this — it is excluded by checking the receiver.
+# schemathesis binds `.parametrize()` on a schema object.
 _PARAMETRIZE_ATTR = "parametrize"
 _PYTEST_MARK = "mark"
 
@@ -93,7 +92,6 @@ def _is_property_based(dec: ast.expr) -> bool:
     if not isinstance(target, ast.Attribute) or target.attr != _PARAMETRIZE_ATTR:
         return False
     # `pytest.mark.parametrize` is a fixed table, not a generator — the receiver
-    # is `mark`. A schemathesis schema object is anything else.
     receiver = target.value
     return not (isinstance(receiver, ast.Attribute) and receiver.attr == _PYTEST_MARK)
 

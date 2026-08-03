@@ -1,4 +1,4 @@
-"""SARJ058 — A hand-rolled in-memory store makes the test verify a dict, not the database.
+"""SARJ058 — A hand-rolled in-memory store makes the test verify a dict, not the database
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_real_store_in_tests.py
 """
@@ -19,25 +19,16 @@ if TYPE_CHECKING:
 
 
 # A test-double marker leading the class name (`InMemoryUserStore`, `StubUserStore`).
-# The lookahead keeps `Mockery` / `Fakeout` out. `Null` and `Noop` are absent on
-# purpose: a null object does not claim to behave like the real store.
 _DOUBLE_PREFIX_RE = re.compile(r"^_*(?:InMemory|Mock|Fake|Stub|Dummy)(?=[A-Z_]|$)")
 
 # The same marker trailing instead (`UserStoreFake`).
 _DOUBLE_SUFFIX_RE = re.compile(r"(?:InMemory|Mock|Fake|Stub|Dummy)$")
 
-# Tokens that name a persistence port. Case-sensitive CamelCase tails, so `Storage`,
-# `Restore` and `Bookstore` do not match `Store`. `Cache`, `Storage`, `Table`,
-# `Client`, `Service`, `Api` and `Publisher` are excluded; paired tests pin the boundary.
+# Tokens that name a persistence port.
 _PORT_TAIL = r"(?:Store|Repository|Repo|DAO|Dao|Database|DB|Db)"
 _PORT_TAIL_RE = re.compile(_PORT_TAIL + "$")
 
 # Qualifiers that put the port somewhere other than a relational database: a vector
-# index, a Redis key, a blob, a document or graph database, a distributed lock, an
-# agent's conversation memory, a workflow's state bag, an artifact or a trace. There
-# is no `Psql*` sibling to prefer for any of them, so the advice this rule gives would
-# be wrong. Matched against the port base and against the class name with its
-# test-double marker removed — `FakeRedisLockStore` names no base at all.
 _NON_RELATIONAL_RE = re.compile(r"(?:Vector|Redis|Blob|Doc|Graph|Lock|Memory|State|Artifact|Trace)" + _PORT_TAIL + "$")
 
 # `AbstractStore` -> `abstract_store`, for spotting `test_<port>.py`.
@@ -73,8 +64,7 @@ _CONTAINER_FACTORIES = frozenset(
 # `@dataclass` fields spell the container as `field(default_factory=dict)`.
 _FIELD_FACTORIES = frozenset({"field", "Field"})
 
-# Container methods that mutate. `pop` is counted as a write; it is a delete that
-# happens to return the row.
+# Container methods that mutate.
 _MUTATORS = frozenset(
     {
         "append",

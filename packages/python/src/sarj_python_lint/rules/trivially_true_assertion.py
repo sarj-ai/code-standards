@@ -1,4 +1,4 @@
-"""SARJ064 — An assertion whose outcome the test itself already decided.
+"""SARJ064 — An assertion whose outcome the test itself already decided
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_trivially_true_assertion.py
 """
@@ -21,7 +21,7 @@ _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 
 _TEST_PREFIX = "test_"
 
-# pytest's default `python_files`. `is_test_path` is broader on purpose.
+# pytest's default `python_files`.
 _COLLECTED_SUFFIX = "_test.py"
 
 # Manual CLI probes carry `test_*.py` names but are never collected.
@@ -33,11 +33,7 @@ _ISINSTANCE_ARITY = 2
 
 _DUNDER_PREFIX = "__"
 
-# Class-name endings that mark a collaborator rather than a record. Such a class
-# does work in `__init__` — celery's cache backends run `expires=` through
-# `prepare_expires` — so reading a constructor argument back out of one is a
-# coercion test, not a tautology. `Backend` and `Client` are the endings the
-# corpus actually produced; the rest are the same idea, spelled differently.
+# Class-name endings that mark a collaborator rather than a record.
 _COLLABORATOR_SUFFIXES = (
     "backend",
     "client",
@@ -61,8 +57,6 @@ _COLLABORATOR_SUFFIXES = (
 )
 
 # `assert result.passed is False` is the pytest house spelling for a boolean
-# field, and it is the same tautology as `== False`. A non-singleton `is`
-# comparison is ruff's F632 and stays that rule's problem.
 _ECHO_OPS = (ast.Eq, ast.Is)
 
 _KWARG_DIAGNOSIS = (
@@ -78,9 +72,7 @@ _ISINSTANCE_DIAGNOSIS = (
 # The advice when the test still has an assertion that can fail.
 _ADVICE = ". Assert on something the code under test derived, or drop the assertion"
 
-# The advice when it does not. Telling the author to drop the assertion would
-# hand them a test SARJ043 (`zero-assertion-test`) immediately rejects, so the two
-# rules have to agree: the repair is to assert the behaviour, or delete the test.
+# The advice when it does not.
 _ONLY_ASSERTION_ADVICE = (
     ". Every assertion this test makes is like it, so dropping them would leave a test that verifies "
     "nothing, which SARJ043 (`zero-assertion-test`) rejects in turn. Assert the behaviour the test name "
@@ -219,9 +211,7 @@ def _called_name(func: ast.expr) -> str | None:
     return func.attr if isinstance(func, ast.Attribute) else None
 
 
-# --------------------------------------------------------------------------- #
 # Both shapes: what the test constructed a line earlier.                       #
-# --------------------------------------------------------------------------- #
 
 
 def _construction_findings(index: _Index) -> list[tuple[ast.Assert, str]]:

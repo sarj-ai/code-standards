@@ -1,4 +1,4 @@
-"""SARJ001 — `for x in xs: await f(x)` gather antipattern.
+"""SARJ001 — `for x in xs: await f(x)` gather antipattern
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_sequential_await.py
 """
@@ -51,14 +51,9 @@ class NoSequentialAwait(Rule):
 
 
 # A loop's *iterable* is evaluated once in the enclosing scope, NOT per element:
-# `for x in await fetch()` / `{x for x in await fetch()}` await once. Iterables
-# are visited *before* the loop is pushed, so an await there attributes to an
-# enclosing loop (if any), not this one.
 _SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
 
 # Top-level body statements that signal conditional or ordered logic rather than
-# a straight-line parallel map. A `for` whose body contains any of these is not
-# treated as the gather antipattern.
 _CONTROL_FLOW = (
     ast.If,
     ast.For,
@@ -92,8 +87,6 @@ def _imports_non_asyncio_runtime(tree: ast.AST, source: str) -> bool:
 
 
 # Names that exist only in trio / anyio, so a module using one is a
-# structured-concurrency module even when it reaches its runtime by a relative
-# import. `TaskGroup` is deliberately absent: `asyncio.TaskGroup` shares it.
 _STRUCTURED_CONCURRENCY_NAMES = frozenset(
     {
         "CancelScope",
@@ -155,9 +148,6 @@ def _loop_carried_awaits(tree: ast.AST) -> set[int]:
     exempt: set[int] = set()
     for node in nodes(tree, ast.Assign):
         # An assignment's *value* cannot contain another assignment, so each
-        # await has at most one enclosing assignment to be carried by. Awaits
-        # are collected before the targets so an await-free value — the common
-        # case — costs nothing beyond the scan it needs anyway.
         awaits = list(_same_scope_awaits(node.value))
         if not awaits:
             continue

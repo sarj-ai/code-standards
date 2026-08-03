@@ -1,4 +1,4 @@
-"""SARJ034 — >=2 positional parameters with the same primitive annotation — swap-prone.
+"""SARJ034 — >=2 positional parameters with the same primitive annotation — swap-prone
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_kwonly_same_type_params.py
 """
@@ -32,8 +32,7 @@ _CLI_DECORATOR_MODULES = frozenset({"click", "typer"})
 #: `@<name>.command(...)` / `@<name>.group(...)` — click groups and typer apps.
 _CLI_DECORATOR_ATTRS = frozenset({"command", "group"})
 
-#: Methods that implement a duck-typed stdlib protocol. The stdlib is the
-#: caller and calls them positionally, so `*` here is a runtime TypeError.
+# : Methods that implement a duck-typed stdlib protocol.
 _DUCK_PROTOCOL_METHODS = frozenset(
     {
         "read",
@@ -64,8 +63,7 @@ _DUCK_PROTOCOL_METHODS = frozenset(
     }
 )
 
-#: Parameter-name vocabularies whose ORDER is the notation. A same-typed group
-#: drawn entirely from one of these reads unambiguously positionally.
+# : Parameter-name vocabularies whose ORDER is the notation.
 _CONVENTIONAL_ORDER_GROUPS = (
     frozenset({"x", "y", "z"}),
     frozenset({"lat", "lon", "alt"}),
@@ -86,10 +84,7 @@ _CONVENTIONAL_ORDER_GROUPS = (
     frozenset({"start", "stop", "step"}),
 )
 
-#: A DIRECTORY named `tests_common`, `test_utils`, `system_tests`, ... — a
-#: test-support tree that `_paths.is_test_path` (segments `tests`/`test` only)
-#: does not recognise. Anchored at both ends so it matches a whole segment: a
-#: module named `testing_commands.py` is production code and stays linted.
+# : A DIRECTORY named `tests_common`, `test_utils`, `system_tests`, ...
 _TEST_SUPPORT_DIR_RE = re.compile(r"tests?_.+|.+_tests?", re.IGNORECASE)
 
 #: A numbered migration: an append-only artifact that has already run.
@@ -120,9 +115,6 @@ class KwonlySameTypeParams(Rule):
         if tree is None:
             return []
         # The signature test is a local, allocation-free predicate; the three
-        # name/id tables each scan the whole module. Screening on the signature
-        # first means a module with no swap-prone signature at all — the common
-        # case — never builds a table.
         candidates = [
             (node, offending)
             for node in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef)
@@ -159,17 +151,7 @@ class KwonlySameTypeParams(Rule):
 
 
 def _is_exempt_path(path: Path) -> bool:
-    """Report whether the file is exempt on location alone.
-
-    Two shapes `_paths` does not cover, both of them this rule's own business:
-    a test-support tree whose directory is named `tests_common` / `test_utils` /
-    `system_tests` rather than plain `tests`, and a numbered migration, which is
-    an append-only record of something that has already run everywhere.
-
-    Returns:
-        True when the file's location exempts it.
-
-    """
+    """Report whether the file is exempt on location alone."""
     directories = path.parts[:-1]
     if any(_TEST_SUPPORT_DIR_RE.fullmatch(part) for part in directories):
         return True
@@ -237,28 +219,7 @@ def _is_route_decorator(dec: ast.expr) -> bool:
 
 
 def _swap_prone_annotation(args: ast.arguments) -> str | None:
-    """Find a primitive annotation shared by >= 2 swap-prone positional parameters.
-
-    A leading `self`/`cls` is excluded. Only bare-`Name` primitive annotations
-    participate — `str | None`, `Literal[...]`, and domain types never group.
-    Only `args.args` (positional-or-keyword) parameters count: keyword-only
-    parameters (behind `*`) cannot be swapped positionally, and positional-only
-    parameters (before `/`) are a deliberate positional API. A `*`/`*args`/`/`
-    marker therefore exempts exactly the parameters it protects — never the
-    same-type pair sitting in front of it.
-
-    A parameter named `__x` is positional-only by the PEP 484 spelling and so
-    cannot be made keyword-only at all; it never groups.
-
-    A group whose parameter names differ only by a symmetric suffix on one
-    shared stem (`value_1`/`value_2`, `policy_id_a`/`policy_id_b`) or are drawn
-    entirely from a conventional ordered vocabulary (`x`/`y`, `width`/`height`)
-    is not swap-prone and never groups.
-
-    Returns:
-        The offending primitive name, or None when the signature is fine.
-
-    """
+    """Find a primitive annotation shared by >= 2 swap-prone positional parameters."""
     params = list(args.args)
     if params and params[0].arg in {"self", "cls"}:
         params = params[1:]
@@ -305,27 +266,12 @@ _LETTER_SUFFIX_RE = re.compile(r"_[a-z]$")
 
 
 def _is_symmetric_numbering(arg_names: list[str]) -> bool:
-    """Report whether the group is one stem plus a symmetric per-parameter label.
-
-    `value_1`/`value_2` (or `x1`/`x2`) and `policy_id_a`/`policy_id_b` both
-    declare a symmetric function — argument order genuinely does not matter, so
-    the group is not swap-prone. Requires ONE shared stem: `source_id`/
-    `target_id` have different stems and stay flagged.
-
-    Returns:
-        True when all names share one stem and differ only by that label.
-
-    """
+    """Report whether the group is one stem plus a symmetric per-parameter label."""
     return _shares_one_stem(arg_names, _NUMERIC_SUFFIX_RE) or _shares_one_stem(arg_names, _LETTER_SUFFIX_RE)
 
 
 def _shares_one_stem(arg_names: list[str], suffix: re.Pattern[str]) -> bool:
-    """Report whether every name is the same stem plus a match of `suffix`.
-
-    Returns:
-        True when the stems collapse to one non-empty name.
-
-    """
+    """Report whether every name is the same stem plus a match of `suffix`."""
     if not all(suffix.search(name) for name in arg_names):
         return False
     stems = {suffix.sub("", name) for name in arg_names}

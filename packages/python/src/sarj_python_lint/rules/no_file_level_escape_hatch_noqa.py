@@ -1,4 +1,4 @@
-"""SARJ054 — File-level `# ruff: noqa: TID251` — an escape hatch must be per-line.
+"""SARJ054 — File-level `# ruff: noqa: TID251` — an escape hatch must be per-line
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_file_level_escape_hatch_noqa.py
 """
@@ -18,8 +18,6 @@ if TYPE_CHECKING:
 
 
 # The codes whose remediation `ruff.strict.toml` spells as an inline, reasoned
-# suppression. TID251 (flake8-tidy-imports banned-api) is ruff's
-# only such code; the frozenset is the extension point if that changes.
 ESCAPE_HATCH_CODES = frozenset({"TID251"})
 
 # Matched as ruff accepts a file-level scoped suppression: case-insensitive on

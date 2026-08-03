@@ -1,4 +1,4 @@
-"""SARJ007 — `try` block with more than 3 top-level statements that can raise.
+"""SARJ007 — `try` block with more than 3 top-level statements that can raise
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_fat_try_blocks.py
 """
@@ -41,14 +41,7 @@ def _nested_scope_body_ids(node: ast.AST) -> frozenset[int]:
     return frozenset()
 
 
-#: Terminal method names of the metrics/tracing recorders. Prometheus counters and
-#: histograms (`counter.labels(...).inc()`, `hist.observe(x)`, `gauge.set(x)`),
-#: statsd (`.increment`, `.timing`), and OpenTelemetry spans
-#: (`span.set_attribute(...)`, `span.record_exception(e)`) are all fire-and-forget
-#: recorders — see `_is_observability_call`.
-#: `set` and `record` are deliberately ABSENT — `cache.set(k, v)` /
-#: `store.record(row)` collide with them and are real work whose failure a handler
-#: is plausibly written for.
+# : Terminal method names of the metrics/tracing recorders.
 _OBSERVABILITY_METHODS = frozenset(
     {
         "inc",
@@ -69,9 +62,7 @@ _OBSERVABILITY_METHODS = frozenset(
     }
 )
 
-#: Clock reads. `time.monotonic()` / `perf_counter()` / `time()` and
-#: `datetime.now()` / `utcnow()` cannot raise at all, but they are the calls that
-#: turn an elapsed-time bookkeeping line into a "throwing" statement.
+# : Clock reads.
 _CLOCK_ROOTS = frozenset({"time", "datetime", "date"})
 _CLOCK_METHODS = frozenset(
     {
@@ -86,12 +77,7 @@ _CLOCK_METHODS = frozenset(
     }
 )
 
-#: Value-shaping builtins. These are what an instrumentation line calls on its
-#: arguments — `logger.info(..., n=len(items), elapsed_s=round(t, 2))`,
-#: `tool_name=type(tool).__name__`. They are pure and total on the values a log
-#: line passes them, so they don't make the statement a candidate for the
-#: handler. Builtins that genuinely do work and raise (`open`, `eval`, `next`,
-#: `getattr`) are deliberately absent.
+# : Value-shaping builtins.
 _INERT_BUILTINS = frozenset(
     {
         "abs",

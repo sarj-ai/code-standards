@@ -1,4 +1,4 @@
-"""SARJ021 — No `SELECT *` in a store query — list the columns you need.
+"""SARJ021 — No `SELECT *` in a store query — list the columns you need
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_select_star.py
 """

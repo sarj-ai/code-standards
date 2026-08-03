@@ -1,4 +1,4 @@
-"""SARJ089 — A bare Arrange/Act/Assert (or Given/When/Then) phase label in a test.
+"""SARJ089 — A bare Arrange/Act/Assert (or Given/When/Then) phase label in a test
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_phase_label_comment.py
 """
@@ -18,10 +18,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# The phase vocabulary, as a whole-body match. `setup` and `teardown` are
-# deliberately ABSENT: SARJ016 already owns them through its section-label
-# vocabulary, and reporting one deletion twice makes the finding look bigger
-# than it is.
+# The phase vocabulary, as a whole-body match.
 _PHASE_RE = re.compile(
     r"^(?:arrange|act|assert(?:ion)?s?|given|when|then|exercise|execute|verif(?:y|ication)|"
     r"cleanup|prepare|sanity(?:\s+check)?|arrange\s*[/&+]\s*act|act\s*[/&+]\s*assert|"

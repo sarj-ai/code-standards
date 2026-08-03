@@ -1,4 +1,4 @@
-"""SARJ010 — Unreachable code after a terminal statement.
+"""SARJ010 — Unreachable code after a terminal statement
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_unreachable_after_terminal.py
 """
@@ -26,10 +26,6 @@ _FUNCTIONS = (ast.FunctionDef, ast.AsyncFunctionDef)
 _CONTEXT_NODES = (*_FUNCTIONS, *_LOOPS, ast.ClassDef)
 
 # The node kinds whose subtree can contain a statement, and so the only ones
-# worth recursing into. `ast.stmt` covers every statement (and every block-owning
-# compound statement); `ExceptHandler` and `match_case` own blocks without being
-# statements themselves; `mod` is the tree root. Everything else is an expression
-# or an expression fragment, and no expression can contain a statement.
 _STATEMENT_BEARING = (ast.stmt, ast.ExceptHandler, ast.match_case, ast.mod)
 
 
@@ -70,11 +66,6 @@ def _child_context(node: ast.AST, field: str, *, in_function: bool, in_loop: boo
 
 def _is_generator_marker(stmt: ast.stmt) -> bool:
     # `yield` / `yield from` after a terminal is the idiom that forces a
-    # function to be a generator even when the yielding path is unreachable
-    # (e.g. `return` then `yield` makes an async generator). Removing it would
-    # change the function's type, so it is load-bearing, not dead code. The
-    # assignment forms (`x = yield`, `x += yield from ()`) are equally
-    # load-bearing generator markers, so match them too.
     match stmt:
         case ast.Expr(value=value) | ast.Assign(value=value) | ast.AugAssign(value=value) | ast.AnnAssign(value=value):
             return isinstance(value, (ast.Yield, ast.YieldFrom))
@@ -105,10 +96,7 @@ class NoUnreachableAfterTerminal(Rule):
         # the statements in its own `body`; every other child inherits.
         body_ids: set[int] = {id(stmt) for stmt in _block(node, "body")} if isinstance(node, _CONTEXT_NODES) else set()
         for child in children(node):
-            # Recurse only where a statement block can still be found. Python's
-            # grammar gives no expression a statement child, so descending into
-            # one can only ever reach `_flag_block([])` — the walk used to spend
-            # most of its time proving that about every operand in the file.
+            # Recurse only where a statement block can still be found.
             if not isinstance(child, _STATEMENT_BEARING):
                 continue
             field = "body" if id(child) in body_ids else ""
@@ -118,11 +106,7 @@ class NoUnreachableAfterTerminal(Rule):
     def _flag_block(
         self, stmts: list[ast.stmt], path: Path, *, in_function: bool, in_loop: bool, diags: list[Diagnostic]
     ) -> None:
-        # Find the first terminal that is not the last element. The statement
-        # after it is unreachable, but a generator-marker `yield` is
-        # load-bearing and exempt per-statement: skip any markers and flag the
-        # first genuinely-dead statement that follows, so a non-yield dead
-        # statement after an exempt yield still fires.
+        # Find the first terminal that is not the last element.
         for i in range(len(stmts) - 1):
             if not _is_terminal(stmts[i], in_function=in_function, in_loop=in_loop):
                 continue

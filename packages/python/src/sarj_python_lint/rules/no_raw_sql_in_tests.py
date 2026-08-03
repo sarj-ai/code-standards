@@ -1,4 +1,4 @@
-"""SARJ036 — Raw SQL INSERT executed in a test body — seed through the store.
+"""SARJ036 — Raw SQL INSERT executed in a test body — seed through the store
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_raw_sql_in_tests.py
 """

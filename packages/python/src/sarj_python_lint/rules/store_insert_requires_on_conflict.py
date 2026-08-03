@@ -1,4 +1,4 @@
-"""SARJ018 — Embedded `INSERT INTO ... VALUES/SELECT` in store code must be an upsert.
+"""SARJ018 — Embedded `INSERT INTO ... VALUES/SELECT` in store code must be an upsert
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_store_insert_requires_on_conflict.py
 """
@@ -18,8 +18,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# Strict keyword adjacency distinguishes SQL writes from prose. The optional
-# `OR <action>` recognizes SQLite inserts before replay-safe forms are excused.
+# Strict keyword adjacency distinguishes SQL writes from prose.
 _INSERT_WRITE = re.compile(
     r"\bINSERT\s+(?:OR\s+\w+\s+)?INTO\s+[\w.\"'`?$:@-]+\s*(?:\([^)]*\)\s*)?(?:VALUES|SELECT|DEFAULT\s+VALUES)\b",
     re.IGNORECASE,

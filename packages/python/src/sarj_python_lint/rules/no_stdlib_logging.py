@@ -1,4 +1,4 @@
-"""SARJ052 — Stdlib `logging` imported in application code — the house logger is loguru.
+"""SARJ052 — Stdlib `logging` imported in application code — the house logger is loguru
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_stdlib_logging.py
 """
@@ -25,9 +25,6 @@ _LOGURU_ROOT = "loguru"
 _EXEMPT_DIR_NAMES = frozenset({"scripts", "notebooks"})
 
 # Evidence that a module CONFIGURES stdlib logging rather than emitting through
-# it. Paired with a loguru import this is the bridge; a loguru import on its own
-# is not, or the rule would fall silent on exactly the module most likely to grow
-# a second logger hierarchy by accident.
 _BRIDGE_MARKER_RE = re.compile(
     r"\b(?:Handler|LogRecord|Logger|Formatter|Filter|LoggerAdapter|LoggingIntegration)\b|"
     r"\b(?:basicConfig|addHandler|removeHandler|setLevel|addLevelName|addFilter|dictConfig|fileConfig|captureWarnings|lastResort)\b|"
@@ -58,8 +55,6 @@ class NoStdlibLogging(Rule):
         if is_test_path(path) or _EXEMPT_DIR_NAMES.intersection(path.parts) or is_generated(path, source):
             return []
         # Every diagnostic comes from an `import logging...` statement, which
-        # cannot exist unless the module name is spelled in the text. Checking
-        # that first keeps the overwhelming majority of files from being parsed.
         if _LOGGING_ROOT not in source:
             return []
         tree = parse_or_none(path, source)

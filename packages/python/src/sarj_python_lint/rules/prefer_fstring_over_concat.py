@@ -1,4 +1,4 @@
-"""SARJ068 — Build a string with an f-string, not `"literal" + expression`.
+"""SARJ068 — Build a string with an f-string, not `"literal" + expression`
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_fstring_over_concat.py
 """
@@ -21,19 +21,14 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# Method names that make a logger-receiver call a logging call. Kept in sync by
-# construction with SARJ017's list; the receiver test is the shared helper.
+# Method names that make a logger-receiver call a logging call.
 
 # A literal ENDING in an UPPERCASE SQL keyword is a query fragment awaiting
-# interpolation — ruff's S608 and SARJ021 own that shape. Anchored at the end,
-# and case-SENSITIVE: SQL keywords are written in caps by universal convention,
-# so `"copied from "` in prose is not mistaken for a query fragment.
 _SQL_RE = re.compile(
     r"\b(SELECT|INSERT\s+INTO|UPDATE|DELETE\s+FROM|WHERE|FROM|JOIN|ORDER\s+BY|GROUP\s+BY|VALUES|SET)\b\s*$"
 )
 
 # Calls returning a lazy translation proxy or an escape-aware SafeString.
-# Interpolating either into an f-string changes behaviour, not just style.
 _LAZY_CALLS = frozenset(
     {
         "_",
@@ -55,15 +50,9 @@ _LAZY_CALLS = frozenset(
 )
 
 # A literal carrying a `%`-conversion specifier is a `%`-format template being
-# assembled, not a message. The `(?![0-9A-Fa-f]{2})` lookahead keeps URL-encoded
-# octets (`%2F`, `%20`, `%3D`) from reading as specifiers; the cost is that a
-# genuine hex-looking width spec (`%20d`) is also skipped, which is the safe way
-# round. The space flag is deliberately absent from the flag class so that prose
-# like `"50% of "` is not read as `% o`.
 _PCT_FORMAT_RE = re.compile(r"%(?![0-9A-Fa-f]{2})(?:\([^)]*\))?[-#0+]?[0-9*.]*[hlL]?[diouxXeEfFgGcrsa%]")
 
-# Constructors that build an ORM / SQL *expression object*, not a string. Adding
-# a literal to one of these is `Concat`-by-operator-overload deep inside a query.
+# Constructors that build an ORM / SQL *expression object*, not a string.
 _ORM_CALLS = frozenset({"F", "Value", "literal", "literal_column", "Concat", "RawSQL", "bindparam"})
 
 # Roots whose attribute calls are SQLAlchemy expression constructors
@@ -138,12 +127,7 @@ class PreferFstringOverConcat(Rule):
 
 
 def _comment_lines(source: str) -> frozenset[int]:
-    """Collect the 1-based line numbers carrying a `#` comment.
-
-    Returns:
-        The comment lines, or an empty set when the source does not tokenize.
-
-    """
+    """Collect the 1-based line numbers carrying a `#` comment."""
     try:
         return frozenset(
             token.start[0]

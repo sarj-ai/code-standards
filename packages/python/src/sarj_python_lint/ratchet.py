@@ -1,41 +1,4 @@
-"""Suppression ratchet: count every escape hatch in a tree and let the count only shrink.
-
-A suppression comment is a decision to stop a checker from doing its job on one
-line. Individually each is often right; collectively they are the only number
-that says whether the codebase is getting more or less checked, and nothing in
-review shows that number. A ratchet makes it visible and one-directional:
-snapshot today's counts into a baseline, then fail any commit that raises one.
-
-Three ceilings apply at once, because each catches a shape the others miss:
-
-* **per code** — `# noqa: TID251` growing from 40 to 41 is a real regression
-  even when the repo total falls, and a code-blind total lets a cleanup
-  elsewhere pay for it.
-* **per package** — a monorepo where one package is well-typed and another is
-  not needs separate floors, or the good package's headroom finances the bad
-  one's debt.
-* **per file** — a global ceiling on any single file, so new suppressions
-  cannot pile into one hot spot while the package total stays flat. Files that
-  already exceeded it when the ceiling landed are grandfathered at their
-  then-current counts and may only shrink.
-
-All four suppression dialects are counted, each under its own key prefix, so
-migrating a suppression from one spelling to another can never hide it:
-
-| key                     | comment form                                    |
-|-------------------------|-------------------------------------------------|
-| `noqa:CODE`             | `x = f()  # noqa: E501`                         |
-| `sarj-noqa:CODE`        | `x = f()  # sarj-noqa: SARJ016 — reason`        |
-| `pyright:CODE`          | `x = f()  # pyright: ignore[reportAny]`         |
-| `type-ignore:CODE`      | `x = f()  # type: ignore[attr-defined]`         |
-| `type-ignore`           | `x = f()  # type: ignore`  (bare)               |
-| `file-noqa:CODE`        | `# ruff: noqa: E501` at file level              |
-| `file-noqa:<blanket>`   | `# ruff: noqa` at file level, no codes          |
-| `file-pyright:RULE`     | `# pyright: reportAny=false` file header        |
-
-Every occurrence on a line counts, not just the first: `f()  # noqa: A  # noqa: B`
-is two suppressions.
-"""
+"""Suppression ratchet: count every escape hatch in a tree and let the count only shrink."""
 
 from __future__ import annotations
 
@@ -100,7 +63,7 @@ class Measurement:
 
 @dataclass(frozen=True, slots=True)
 class Baseline:
-    """The checked-in ceilings. A key absent from `codes`/`packages` has a ceiling of 0."""
+    """The checked-in ceilings."""
 
     codes: dict[str, int] = field(default_factory=dict[str, int])
     packages: dict[str, int] = field(default_factory=dict[str, int])
@@ -148,13 +111,7 @@ def measure(
     excluded_dir_names: frozenset[str] = DEFAULT_EXCLUDED_DIR_NAMES,
     excluded_subtrees: Iterable[str] = (),
 ) -> Measurement:
-    """Count every suppression under `root`, bucketed by code, package and file.
-
-    `packages` are paths relative to `root`; a package that does not exist
-    contributes 0 rather than raising, so a baseline outliving a rename fails
-    loudly on the package's disappearance rather than crashing.
-
-    """
+    """Count every suppression under `root`, bucketed by code, package and file."""
     codes: Counter[str] = Counter()
     package_counts: Counter[str] = Counter()
     files: dict[str, int] = {}
@@ -214,13 +171,7 @@ def improvements(measurement: Measurement, baseline: Baseline) -> dict[str, tupl
 
 
 def seed(measurement: Measurement, baseline: Baseline) -> Baseline:
-    """Build the baseline that `--update` would write from a measurement.
-
-    Per-file grandfathering is preserved only where it is still needed: a file
-    that dropped to or below the global ceiling loses its exception, so the
-    allowance cannot outlive the debt it was granted for.
-
-    """
+    """Build the baseline that `--update` would write from a measurement."""
     exceptions = {path: n for path, n in measurement.files.items() if n > baseline.per_file_ceiling}
     return Baseline(
         codes=dict(sorted(measurement.codes.items())),
@@ -231,12 +182,7 @@ def seed(measurement: Measurement, baseline: Baseline) -> Baseline:
 
 
 def load_baseline(path: Path) -> Baseline:
-    """Read a baseline JSON file, ignoring entries of the wrong shape.
-
-    A hand-edited baseline degrades to "not baselined" (ceiling 0) for the
-    malformed entry rather than crashing the gate or silently passing.
-
-    """
+    """Read a baseline JSON file, ignoring entries of the wrong shape."""
     raw: object = json.loads(  # pyright: ignore[reportAny] — json.loads is an untyped stdlib boundary; every read below narrows
         path.read_text(encoding="utf-8")
     )
@@ -281,12 +227,7 @@ def dump_baseline(baseline: Baseline, packages: Iterable[str]) -> str:
 
 
 def discover_packages(root: Path, excluded_dir_names: frozenset[str] = DEFAULT_EXCLUDED_DIR_NAMES) -> list[str]:
-    """List the top-level directories under `root` that contain Python files.
-
-    Used when neither `--package` nor a baseline names the packages, so the
-    first run needs no configuration.
-
-    """
+    """List the top-level directories under `root` that contain Python files."""
     return sorted(
         name
         for child in root.iterdir()
@@ -326,12 +267,7 @@ def _read(path: Path) -> str:
 
 
 def _count_line(line: str, counts: Counter[str]) -> None:
-    """Add one line's suppressions to `counts`.
-
-    The two file-level forms return early: a `# ruff: noqa: X` header is not
-    also an inline `noqa`, and double-counting it would make the two key
-    prefixes overlap.
-    """
+    """Add one line's suppressions to `counts`."""
     file_noqa = _FILE_NOQA_RE.match(line)
     if file_noqa:
         listed = file_noqa.group(1)

@@ -1,4 +1,4 @@
-"""SARJ016 — Comment cruft — commented-out code, section banners, header preambles.
+"""SARJ016 — Comment cruft — commented-out code, section banners, header preambles
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_comment_cruft.py
 """
@@ -57,33 +57,14 @@ _LICENSE_RE = re.compile(
 )
 
 # A licence header is a legally required block of text a contributor cannot
-# restructure, and the `# ---------` rules that box it in are part of it. The
-# rule already knows this -- `_flag_leading_preamble` returns early on
-# `_LICENSE_RE` -- but the BANNER branch did not, so "structure code with
-# functions, not ASCII rules" was reported against the one comment in the file
-# that is not about structure at all. 831 findings across 590 corpus files sat
-# on a punctuation rule in the first 8 lines of a file whose header carries a
-# copyright or SPDX line: `bokeh/docs/bokeh/docserver.py:1`,
-# `bokeh/release/checks.py:1`, `bokeh/release/__main__.py:1` are the shape --
-# `# ---…---` immediately above `# Copyright (c) Anaconda, Inc.`.
-#
-# Scoped to the file HEADER, not to every copyright mention: a banner beside a
-# licence reference in the middle of a file is an ordinary section rule.
 _LICENSE_HEADER_MAX_LINE = 8
 _LICENSE_HEADER_RADIUS = 4
 
 _BANNER_FULL_RE = re.compile(r"^[-=#*~_+.\s]{4,}$")
-# `[\u2500-\u257f]` is the Unicode box-drawing block. A `────────` rule is the
-# same section separator as `--------`, just prettier; 34 of them were sitting in
-# the corpus under a check that only knew ASCII.
+# `[\u2500-\u257f]` is the Unicode box-drawing block.
 _BANNER_RUN_RE = re.compile(r"={4,}|-{4,}|#{4,}|\*{4,}|~{4,}|[\u2500-\u257f]{4,}")
 
 # A VS Code / Visual Studio folding marker: `# region`, `# region helpers`,
-# `#region Types`, `# endregion`. The title must be short and unpunctuated.
-# Matching the bare word alone flagged running prose that merely opens with it —
-# `# region, sector and type are HARD constraints when ...` at one first-party
-# site, plus five TypeScript siblings. A marker names a region; a sentence discusses
-# one, and a sentence has punctuation and more than a handful of words.
 _REGION_MARKER_RE = re.compile(r"^#?(?:end)?region\b(?P<title>.*)$", re.IGNORECASE)
 _REGION_TITLE_RE = re.compile(r"^[\s:\-\u2013\u2014]*\w[\w \-/&+]*$")
 _REGION_TITLE_MAX_WORDS = 5
@@ -104,28 +85,18 @@ _CODE_HEADER_RE = re.compile(
 _ASSIGN_OR_CALL_RE = re.compile(r"^[A-Za-z_][\w.\[\]]*\s*(?:=|:=|\+=|-=|\*=|/=)\s*\S|^[A-Za-z_][\w.]*\(")
 
 # Pseudo-code / grammar-example markers (`%sent%`, `[opt]`, `<FunctionBody>`,
-# `...`). Real commented-out code doesn't carry these — they mark an
-# illustration inside a doc comment, not a line that was once executed.
 _PSEUDOCODE_RE = re.compile(r"%[^%\s]+%|\[opt\]|<[^<>]+>|\.\.\.")
 
 # Code-regeneration recipes: a commented-out call that exists *to be
-# uncommented*, at which point the tool rewrites the file around it.
-# `insert_assert(...)` (pytest-examples / devtools) sits directly above the
-# assertion it generates; "delete it, git history remembers" is wrong advice
-# because git never held it.
 _CODE_REGEN_CALL_RE = re.compile(r"^insert_assert\s*\(")
 
-# Any letter, in any script. A leading comment block without a single one is
-# line art (requests' logo), not a header preamble a docstring could replace.
+# Any letter, in any script.
 _HAS_LETTER_RE = re.compile(r"[^\W\d_]")
 
-# Sentence-final punctuation. A comment line whose predecessor lacks it is the
-# wrapped tail of one sentence, not a standalone claim about the code.
+# Sentence-final punctuation.
 _SENTENCE_END_RE = re.compile(r"""[.!?:;)\]}"'`]$""")
 
 # Step-narration lead-ins ("First, ...", "Then, ...", "Finally, ...", "Step 2:").
-# A trailing comma/colon is required so English adverbs ("finally the invariant
-# holds") aren't mistaken for an enumeration marker.
 _STEP_NARRATION_RE = re.compile(
     r"^(?:first(?:ly)?|second(?:ly)?|third(?:ly)?|then|next|after(?:wards| that)?"
     r"|finally|lastly|now)\s*[,:]\s*\S",
@@ -136,8 +107,7 @@ _STEP_NARRATION_RE = re.compile(
 # ("First, we take the outer send lock, because of Trio's standard semantics").
 _RATIONALE_RE = re.compile(r"\b(?:because|since|so that|otherwise)\b", re.IGNORECASE)
 
-# Self-admitted meta-commentary — the "why later", not the why. Owner-tagged
-# directive markers are handled elsewhere (as directives) and kept.
+# Self-admitted meta-commentary — the "why later", not the why.
 _META_COMMENTARY_RE = re.compile(
     r"\b(?:for now|keeping (?:it|this) simple|could be (?:refactored|improved|cleaned up|simplified)"
     r"|refactor(?:ed|ing)? (?:later|this)|not sure (?:if|whether|why|how)"
@@ -148,11 +118,6 @@ _META_COMMENTARY_RE = re.compile(
 )
 
 # A bare one-word signpost naming a region of the file (`# Constants`,
-# `# Helpers`, `# Types`). It is a table of contents for a file that should have
-# been split, and it goes stale silently. 22 corpus hits across two first-party
-# repos, 12 of 12 sampled were true positives. Closed vocabulary on
-# purpose: a one-word comment outside this list ("# Riyadh") is far more likely
-# to be a genuine label for a value.
 _SECTION_LABEL_WORDS = frozenset(
     {
         "actions",
@@ -199,15 +164,12 @@ _SECTION_LABEL_WORDS = frozenset(
 _SECTION_LABEL_RE = re.compile(r"^([A-Za-z]+)\s*:?\s*$")
 
 # "Helper function to check if a path is active" — the opener announces the
-# *category* of the thing below (which its `def` already states) and then
-# restates its name. 6 corpus hits, 6 true positives.
 _HELPER_OPENER_RE = re.compile(
     r"^(?:a\s+)?helper\s+(?:function|method|component|hook|class|type|util(?:ity)?)\b",
     re.IGNORECASE,
 )
 
-# Verbs that describe the mechanics of the code below. Shared with the `Let's …`
-# gate and kept in step with the TypeScript `NARRATION_VERB_RE`.
+# Verbs that describe the mechanics of the code below.
 _NARRATION_VERBS = (
     r"add|append|assign|await|build|calculate|call|check|clear|close|compute|convert|copy|count|"
     r"create|declare|decrement|define|delete|extract|fetch|filter|find|format|generate|get|handle|"
@@ -217,18 +179,12 @@ _NARRATION_VERBS = (
 )
 
 # "Let's not await the promise" — the first-person-plural walkthrough voice.
-# Gated on the verb list because the third-person `lets` is a different word
-# doing real work: "lets a same-day re-run find the message it already posted"
-# explains a mechanism and must not be touched.
 _LETS_RE = re.compile(
     rf"^let'?s\s+(?:not\s+|just\s+|now\s+|first\s+)?(?:{_NARRATION_VERBS})(?:s|es|ed|ing)?\b",
     re.IGNORECASE,
 )
 
-# Enumeration markers that narrate a sequence: `# 1. Load the config`,
-# `# Phase 2: reconcile`. Flagged only when the file carries exactly one of
-# them — a *run* of them is a documented algorithm walkthrough, which is the
-# kind of comment this rule exists to protect.
+# Enumeration markers that narrate a sequence: `# 1.
 _ENUMERATION_RE = re.compile(r"^(?:\d+[.)]\s+\S|(?:phase|step)\s+\d+\b)", re.IGNORECASE)
 
 # Dummy translational comments: ultra-short comments that just restate the code.
@@ -244,9 +200,7 @@ def _is_word_char(ch: str) -> bool:
 
 _CODING_COOKIE_RE = re.compile(r"coding[:=]\s*[-_.a-zA-Z0-9]+")
 
-# Only `>>>` arms a doctest block. A bare `...` cannot: an ASCII banner of
-# dots starts with it, and exempting on that alone silently disabled the
-# banner check.
+# Only `>>>` arms a doctest block.
 _DOCTEST_PROMPT = ">>>"
 
 
@@ -458,13 +412,7 @@ def _is_assign_or_call(snippet: str) -> bool:
 
 
 def _license_header_lines(standalone: list[tuple[int, int, str]]) -> frozenset[int]:
-    """Collect the lines belonging to a file-header licence block.
-
-    Returns:
-        Every line within `_LICENSE_HEADER_RADIUS` of a licence comment that
-        sits in the first `_LICENSE_HEADER_MAX_LINE` lines of the file.
-
-    """
+    """Collect the lines belonging to a file-header licence block."""
     anchors = [line for line, _, body in standalone if line <= _LICENSE_HEADER_MAX_LINE and _LICENSE_RE.search(body)]
     return frozenset(
         line
@@ -486,7 +434,7 @@ class NoCommentCruft(Rule):
         if is_generated(path, source):
             return []
         # A Sphinx `docs/**/conf.py` is quickstart-generated boilerplate whose
-        # `# -- Section ----` banners are the tool's own convention.
+        # `# Section` banners are the tool's own convention.
         if path.name == "conf.py" and "docs" in path.parts:
             return []
         try:
@@ -588,8 +536,6 @@ class NoCommentCruft(Rule):
         if not any(_HAS_LETTER_RE.search(body) for _, _, body in leading):
             return  # line-art logo, not prose a module docstring could carry
         # A preamble carrying at least one prose sentence is documentation — the
-        # *why* this rule asks for — regardless of which comment syntax carries
-        # it. See the module docstring for the corpus evidence.
         if any(_is_prose_line(body) for _, _, body in leading):
             return
         if len(leading) >= _LEADING_PREAMBLE_MIN:

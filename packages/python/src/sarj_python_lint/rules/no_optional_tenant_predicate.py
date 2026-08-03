@@ -1,4 +1,4 @@
-"""SARJ056 — A tenant predicate that only appears inside a conditional branch.
+"""SARJ056 — A tenant predicate that only appears inside a conditional branch
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_optional_tenant_predicate.py
 """
@@ -18,14 +18,10 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# Columns that scope a row to a tenant. `org_id` is included because some
-# first-party legacy stores use it; `tenant_id`/`account_id`/`workspace_id` are the common
-# names the same pattern takes in other multi-tenant codebases.
+# Columns that scope a row to a tenant.
 _TENANT_COLUMNS = ("organization_id", "org_id", "tenant_id", "account_id", "workspace_id")
 
 # A fragment is a predicate (not a bare column name in a SELECT list) when the
-# tenant column is followed by a comparison. `= %s`, `= ANY(...)`, `IN (...)`,
-# `= {}` (psycopg SQL.format) and `<>` all count.
 _TENANT_PREDICATE_RE = re.compile(
     r"\b(?:\w+\.)?(?:" + "|".join(_TENANT_COLUMNS) + r")\b\s*(?:=|<>|!=|\bIN\b|\bIS\b)",
     re.IGNORECASE,
@@ -47,8 +43,6 @@ class NoOptionalTenantPredicate(Rule):
         if is_test_path(path):
             return []
         # A file with no tenant column anywhere cannot produce a finding, and
-        # that is the overwhelming majority of files. Skipping the AST walk
-        # here keeps the rule off the critical path of every unrelated file.
         if not any(column in source for column in _TENANT_COLUMNS):
             return []
         tree = parse_or_none(path, source)

@@ -1,4 +1,4 @@
-"""SARJ048 — Importing a private name — but only when the private name is OURS.
+"""SARJ048 — Importing a private name — but only when the private name is OURS
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_first_party_private_import.py
 """
@@ -62,10 +62,7 @@ class _PrivateImport:
 
 
 def _is_our_own_internals(hit: _PrivateImport, path: Path) -> bool:
-    """Return whether the private module is unavailable or belongs to the importer's distribution.
-
-    Private imported names never qualify because the same authors can export them.
-    """
+    """Return whether the private module is unavailable or belongs to the importer's distribution."""
     if not hit.is_segment:
         return False
     if not has_first_party_source(hit.module, path):

@@ -1,4 +1,4 @@
-"""SARJ014 — Duration named in time units but typed as a raw `int`/`float`.
+"""SARJ014 — Duration named in time units but typed as a raw `int`/`float`
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_timedelta_for_durations.py
 """
@@ -181,15 +181,7 @@ def _is_forwarded_to_same_name(node: ast.FunctionDef | ast.AsyncFunctionDef, par
 
 
 def _duration_named_params(args: ast.arguments) -> frozenset[str]:
-    """Collect the annotated parameters whose names read as durations.
-
-    The forwarding walk below costs an `ast.walk` of the whole function, so it
-    only runs when some parameter could be reported in the first place.
-
-    Returns:
-        The candidate parameter names.
-
-    """
+    """Collect the annotated parameters whose names read as durations."""
     return frozenset(
         a.arg
         for a in (*args.posonlyargs, *args.args, *args.kwonlyargs)
@@ -198,23 +190,7 @@ def _duration_named_params(args: ast.arguments) -> frozenset[str]:
 
 
 def _same_name_forwarded_params(node: ast.FunctionDef | ast.AsyncFunctionDef, params: frozenset[str]) -> frozenset[str]:
-    """Collect the parameters this function only ever forwards under their own name.
-
-    A parameter qualifies when it is used at least once and *every* one of its
-    loads sits directly in a same-name sink — a keyword argument whose keyword is
-    the parameter's own name, or an attribute store to the same name. Requiring
-    the load to be the sink's direct value is what excludes arithmetic,
-    comparisons and subscripts: in `client.call(timeout=timeout * 2)` the
-    keyword's value is the `BinOp`, not the parameter, so the parameter is
-    disqualified and the finding stands.
-
-    An unused parameter never qualifies — `def schedule(timeout_seconds: int)
-    -> None: ...` has no loads at all and is the rule's core finding.
-
-    Returns:
-        The names of the parameters whose every use is a same-name forward.
-
-    """
+    """Collect the parameters this function only ever forwards under their own name."""
     if not params:
         return frozenset()
     used: set[str] = set()
@@ -232,12 +208,7 @@ def _same_name_forwarded_params(node: ast.FunctionDef | ast.AsyncFunctionDef, pa
 
 
 def _is_same_name_sink(parent: ast.AST, name: str) -> bool:
-    """Report whether `parent` consumes a load of `name` under that same name.
-
-    Returns:
-        True for `f(<name>=<name>)` and `self.<name> = <name>`.
-
-    """
+    """Report whether `parent` consumes a load of `name` under that same name."""
     match parent:
         case ast.keyword(arg=str(keyword)):
             return keyword == name
@@ -248,16 +219,7 @@ def _is_same_name_sink(parent: ast.AST, name: str) -> bool:
 
 
 def _admits_timedelta(node: ast.expr) -> bool:
-    """Report whether the annotation already accepts a `timedelta`.
-
-    Walks the same shapes `_numeric_annotation` does — `|` unions,
-    `Optional[...]`, `Annotated[...]` — so that `float | timedelta | None` is
-    recognised as a signature that already takes what the rule asks for.
-
-    Returns:
-        True when any member of the annotation is `timedelta`.
-
-    """
+    """Report whether the annotation already accepts a `timedelta`."""
     if _trailing_name(node) == "timedelta":
         return True
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):

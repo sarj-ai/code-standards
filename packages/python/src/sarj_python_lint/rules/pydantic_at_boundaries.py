@@ -1,4 +1,4 @@
-"""SARJ008 — An ad-hoc dict record at a function boundary — use pydantic.
+"""SARJ008 — An ad-hoc dict record at a function boundary — use pydantic
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_pydantic_at_boundaries.py
 """
@@ -75,9 +75,7 @@ class PydanticAtBoundaries(Rule):
             route = _route_info(node)
             returns = _resolve_annotation(node.returns)
             if returns is None:
-                # Only an ad-hoc record built in place is an unnamed model. A
-                # mapping the function merely parses/forwards/reflects over has
-                # no declarable shape. Checked last: it walks the body.
+                # Only an ad-hoc record built in place is an unnamed model.
                 if route is not None and not route.has_response_model and _builds_record_literal(node):
                     diags.append(
                         Diagnostic(
@@ -244,7 +242,6 @@ def _classify_return(node: ast.expr) -> str | None:
     base = _flat_name(node.value)
     if base == "Annotated":
         # `Annotated[T, ...]` carries the real type as its first argument
-        # (common in FastAPI). Classify T, ignore the metadata.
         if isinstance(node.slice, ast.Tuple) and node.slice.elts:
             return _classify_return(node.slice.elts[0])
         return _classify_return(node.slice)

@@ -1,4 +1,4 @@
-"""SARJ038 — Module-scope unscoped suppression blanket — scope it or fix the findings.
+"""SARJ038 — Module-scope unscoped suppression blanket — scope it or fix the findings
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_file_level_suppression.py
 """
@@ -18,15 +18,11 @@ if TYPE_CHECKING:
 
 
 # Directive heads, spelled as the tools themselves accept them: no space before
-# the colon, optional space after. `ruff:` is matched case-insensitively (ruff
-# accepts `NOQA`); mypy and pyright only honour their directives in lowercase.
 _RUFF_NOQA_RE = re.compile(r"^ruff:\s*noqa(?P<rest>.*)", re.IGNORECASE)
 _TYPE_IGNORE_RE = re.compile(r"^type:\s*ignore(?P<rest>.*)")
 _PYRIGHT_IGNORE_RE = re.compile(r"^pyright:\s*ignore(?P<rest>.*)")
 
 # What a SCOPED suppression looks like after the directive head: ruff lists its
-# codes after a colon, mypy and pyright inside brackets. At least one word
-# character is required, since a trailing bare colon names no codes either.
 _RUFF_CODES_RE = re.compile(r"^\s*:\s*\w")
 _BRACKET_CODES_RE = re.compile(r"^\s*\[\s*\w")
 

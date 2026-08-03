@@ -1,7 +1,4 @@
-"""Recognize secret-bearing identifiers for SARJ011 and SARJ012.
-
-Matching uses whole words and excludes metadata and boolean-state names.
-"""
+"""Recognize secret-bearing identifiers for SARJ011 and SARJ012."""
 
 from __future__ import annotations
 
@@ -65,7 +62,6 @@ _INNOCUOUS_WORDS = frozenset(
 _FLAG_PREFIXES = frozenset({"is", "has", "was", "are", "can", "should"})
 
 # camelCase / PascalCase / ALLCAPS / digit run splitter, applied to each
-# snake/kebab segment. `APIKey` -> ["API", "Key"], `authToken` -> ["auth", "Token"].
 _CAMEL_RE = re.compile(r"[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|\d+")
 _SEGMENT_RE = re.compile(r"[^A-Za-z0-9]+")
 

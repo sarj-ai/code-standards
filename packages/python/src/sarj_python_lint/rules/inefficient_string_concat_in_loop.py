@@ -1,4 +1,4 @@
-"""SARJ002 — O(n²) single-accumulator string growth inside loops.
+"""SARJ002 — O(n²) single-accumulator string growth inside loops
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_inefficient_string_concat_in_loop.py
 """
@@ -19,21 +19,7 @@ if TYPE_CHECKING:
 
 
 def _src(node: ast.expr) -> str:
-    """`ast.unparse` for the shapes this rule compares, without `ast.unparse`'s cost.
-
-    The rule identifies an accumulator by the SOURCE TEXT of its target, so it unparses
-    once per Name/Attribute in every loop body. `ast.unparse` builds and runs a full
-    unparser on each call. For a bare `Name` the answer is the identifier, and for a
-    dotted chain over one it is the chain — byte-identical, far cheaper. Everything
-    else falls through to `ast.unparse`, so no comparison changes meaning.
-
-    This is why the rule stopped being the registry's performance outlier; see
-    `tests/test_perf.py`.
-
-    Returns:
-        The node's source text.
-
-    """
+    """`ast.unparse` for the shapes this rule compares, without `ast.unparse`'s cost."""
     if isinstance(node, ast.Name):
         return node.id
     if isinstance(node, ast.Attribute) and isinstance(node.value, (ast.Name, ast.Attribute)):

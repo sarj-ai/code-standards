@@ -1,4 +1,4 @@
-"""SARJ020 — No DISTINCT / GROUP BY / COUNT in a store query — aggregate elsewhere.
+"""SARJ020 — No DISTINCT / GROUP BY / COUNT in a store query — aggregate elsewhere
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_aggregation_in_store_query.py
 """
@@ -25,8 +25,7 @@ _QUERY_SHAPE = re.compile(
     re.IGNORECASE,
 )
 
-# ClickHouse IS the place for aggregation. A file that talks to ClickHouse (the
-# columnar mirror) is exempt — only Postgres store queries are in scope.
+# ClickHouse IS the place for aggregation.
 _CLICKHOUSE_FILE = re.compile(
     r"\bclickhouse_connect\b|\bclickhouse_driver\b|^\s*import\s+clickhouse\b",
     re.MULTILINE,
@@ -37,22 +36,14 @@ _CLICKHOUSE_SQL = re.compile(
     r"|\barrayJoin\b|\bquantile\w*\(",
 )
 
-# BigQuery IS also a place for aggregation. Analytics/reporting services read the
-# columnar BigQuery mirror, where COUNT / GROUP BY / DISTINCT are the whole point.
-# A file that imports the BigQuery SDK exempts its queries — but only those with no
-# Postgres-specific signal, so a mixed module's real Postgres store query is still
-# flagged (see _POSTGRES_SQL below).
+# BigQuery IS also a place for aggregation.
 _BIGQUERY_FILE = re.compile(
     r"\bfrom\s+google\.cloud\s+import\s+bigquery\b"
     r"|\bfrom\s+google\.cloud\.bigquery\b"
     r"|\bimport\s+google\.cloud\.bigquery\b",
     re.MULTILINE,
 )
-# Belt-and-braces: a single query with a BigQuery-only signal is BigQuery. Backtick-
-# quoted table identifiers (`project.dataset.table` / `{table}`) are BQ syntax — a
-# Postgres/OLTP query never uses backticks — as are BQ-only functions. ARRAY_AGG /
-# UNNEST / DATE_TRUNC are deliberately EXCLUDED: they exist in Postgres too, so they
-# are not BigQuery signals.
+# Belt-and-braces: a single query with a BigQuery-only signal is BigQuery.
 _BIGQUERY_SQL = re.compile(
     r"\b(?:FROM|JOIN)\s+`"
     r"|\bAPPROX_COUNT_DISTINCT\s*\(|\bGENERATE_ARRAY\s*\(|\b_PARTITIONTIME\b"
@@ -60,13 +51,9 @@ _BIGQUERY_SQL = re.compile(
     re.IGNORECASE,
 )
 # A psycopg parameter placeholder (`%s` / `%(name)s`) is Postgres-specific — BigQuery
-# parameterizes with `@name`. Its presence marks a real Postgres store query, defeating
-# the file-level BigQuery-import exemption. String values are masked before this scan,
-# so a literal `%` inside a `LIKE` pattern can't false-signal.
 _POSTGRES_SQL = re.compile(r"%\(\w+\)s|%s")
 
-# This null-safe comparison is a row predicate, not set deduplication. Blank it
-# before scanning without hiding genuine aggregation elsewhere in the query.
+# This null-safe comparison is a row predicate, not set deduplication.
 _NULL_SAFE_COMPARISON = re.compile(r"\bIS\s+(?:NOT\s+)?DISTINCT\s+FROM\b", re.IGNORECASE)
 
 _AGGREGATIONS: tuple[tuple[str, re.Pattern[str]], ...] = (
@@ -82,12 +69,6 @@ def _blank_null_safe_comparisons(sql: str) -> str:
 
 
 # A diagnostic needs BOTH a query shape (SELECT/UPDATE/DELETE) and an aggregation
-# (COUNT/GROUP/DISTINCT). Noise-stripping only ever blanks characters to spaces, so
-# it can never introduce a contiguous keyword the raw literal lacks — a literal
-# missing either substring class can never be flagged. Gate on two cheap linear
-# scans before the expensive noise-strip and backtracking query-shape regex so
-# large non-SQL prompt strings (which often contain "distinct"/"count"/"group" as
-# prose but no query verb) are dismissed.
 _VERB_GATE = re.compile(r"select|update|delete", re.IGNORECASE)
 _AGG_GATE = re.compile(r"count|group|distinct", re.IGNORECASE)
 
@@ -105,10 +86,6 @@ class NoAggregationInStoreQuery(Rule):
         if not is_store_module(path):
             return []
         # A diagnostic needs some string literal that carries both a query verb
-        # and an aggregation keyword; `source` is a strict superset of every
-        # literal, so if either class is absent from the whole file no diagnostic
-        # is possible — skip the parse and full-tree walk entirely. Most files in
-        # a store-lint sweep are not SQL-bearing, so this is the dominant win.
         if _AGG_GATE.search(source) is None or _VERB_GATE.search(source) is None:
             return []
         if _CLICKHOUSE_FILE.search(source):
@@ -127,11 +104,6 @@ class NoAggregationInStoreQuery(Rule):
             if text is None:
                 continue
             # Only a `+`-concatenated BinOp owns sub-nodes that the walk would
-            # otherwise re-process; mark those consumed. A plain Constant has no
-            # such descendants, and if it is itself a child of a string BinOp the
-            # parent (visited first in this BFS walk) already consumed it — so the
-            # per-Constant subtree walk is pure overhead on large literal-heavy
-            # files (the dominant cost here).
             if isinstance(node, ast.BinOp):
                 consumed.update(id(sub) for sub in walk(node))
 

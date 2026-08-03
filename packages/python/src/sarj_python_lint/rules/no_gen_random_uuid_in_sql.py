@@ -1,4 +1,4 @@
-"""SARJ053 — `gen_random_uuid()` in SQL embedded in Python — use `uuidv7()`.
+"""SARJ053 — `gen_random_uuid()` in SQL embedded in Python — use `uuidv7()`
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_gen_random_uuid_in_sql.py
 """

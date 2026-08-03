@@ -1,4 +1,4 @@
-"""SARJ017 — F-string passed as the message to a logging call.
+"""SARJ017 — F-string passed as the message to a logging call
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_fstring_in_log.py
 """
@@ -18,11 +18,6 @@ if TYPE_CHECKING:
 
 
 # Keyword arguments defined by stdlib `logging` (and never structured fields).
-# Their presence marks the call as a stdlib logger, for which the loguru-style
-# structured-keyword rewrite is wrong.
-# The stdlib factory spelling. `logging.getLogger` is camelCase; structlog uses
-# snake_case `get_logger`, and that difference is the only static signal telling
-# a dotted stdlib factory from a dotted structlog one.
 _STDLIB_FACTORY = "getLogger"
 
 _STDLIB_ONLY_KWARGS = frozenset({"exc_info", "stack_info", "extra"})
@@ -154,19 +149,10 @@ def _chain_has_getlogger(expr: ast.expr) -> bool:
     while True:
         if isinstance(node, ast.Call):
             called = node.func
-            # DOTTED callee: only the stdlib spelling counts. `structlog.get_logger()`
-            # must NOT be suppressed — structlog's keyword API is exactly what this
-            # rule's advice targets, and it is the rule's main true positive.
+            # DOTTED callee: only the stdlib spelling counts.
             if isinstance(called, ast.Attribute) and called.attr == _STDLIB_FACTORY:
                 return True
             # BARE callee: `get_logger()` and `getLogger()` are both ambiguous — the
-            # name alone cannot tell `from structlog import get_logger` from a shim
-            # `def get_logger(n): return logging.getLogger(n)`, and such shims ship in
-            # huggingface_hub, transformers, fastmcp, mcp and speechmatics. Suppress
-            # both, because the failure is asymmetric: a false NEGATIVE costs one
-            # style nit, while a false POSITIVE advises `logger.info("m", k=v)` on a
-            # stdlib logger, which raises `TypeError` — and only once log level is
-            # raised to INFO, so it is green in tests and breaks in production.
             if isinstance(called, ast.Name) and called.id.lower() in LOGGER_FACTORIES:
                 return True
             node = called
