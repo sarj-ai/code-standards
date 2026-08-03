@@ -31,7 +31,7 @@ def test_flags_repeated_attribute_lookup_in_comprehension() -> None:
 
 
 def test_leaves_a_filter_that_does_not_repeat_the_element_alone() -> None:
-    """The only shape SARJ076 exists for is the repeated call. A different one is fine."""
+    """The only shape SARJ076 exists for is the repeated call."""
     source = """
     items = [compute(x) for x in range(10) if x > 0]
     """

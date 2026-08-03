@@ -1,7 +1,4 @@
-"""SARJ048 flags private imports only when the target is first-party and fixable.
-
-Tests use real package layouts because ownership is resolved from the filesystem.
-"""
+"""SARJ048 flags private imports only when the target is first-party and fixable."""
 
 from __future__ import annotations
 
@@ -42,10 +39,7 @@ def project(tmp_path: Path) -> Path:
     tests_dir = root / "python" / "svc" / "tests"
     tests_dir.mkdir()
 
-    # A dependency named `vendorlib`, only ever present inside the venv. Every
-    # `vendorlib` case below is therefore also the assertion that a virtualenv
-    # never contributes first-party names: the only place that name exists on
-    # disk is inside `.venv/`.
+    # A dependency named `vendorlib`, only ever present inside the venv.
     dep = root / "python" / ".venv" / "lib" / "python3.14" / "site-packages" / "vendorlib"
     dep.mkdir(parents=True)
     (dep / "__init__.py").touch()
@@ -196,8 +190,7 @@ def test_private_segment_of_our_own_distribution_is_exempt(project: Path, source
 
 
 def test_private_name_from_our_own_distribution_still_fires(project: Path):
-    # The upper bound on the guard: only the SEGMENT is exempt. Exporting
-    # `_redact` is an edit these authors can make, so the finding stands.
+    # The upper bound on the guard: only the SEGMENT is exempt.
     assert len(_check(project, _TEST_FILE, "from svc._internals import _redact")) == 1
 
 

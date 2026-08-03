@@ -1,13 +1,4 @@
-"""Direct tests for the comment helpers shared by SARJ016/049/050/051 and SARJ038/054.
-
-Two surfaces, both consumed by several rules and neither tested on its own:
-
-* the nine-signal protected class, which is an EXEMPTION FLOOR -- widening it
-  silences rules, narrowing it deletes good comments across a whole corpus; and
-* the single tokenize pass the comment and suppression rules share, whose
-  standalone/trailing/nesting classification decides which comments each rule
-  even sees.
-"""
+"""Direct tests for the comment helpers shared by SARJ016/049/050/051 and SARJ038/054."""
 
 import tokenize
 
@@ -62,11 +53,7 @@ def test_each_protected_signal_exempts_a_comment(signal: str, body: str) -> None
     ],
 )
 def test_the_floor_does_not_protect_a_pure_narration(body: str) -> None:
-    """The negative controls that keep the leak rate at ~1%.
-
-    A vendor name as the mere OBJECT of a narration verb carries nothing, and
-    `UTF-8` / `SHA-256` share the shape of a ticket key without being one.
-    """
+    """The negative controls that keep the leak rate at ~1%."""
     assert not is_protected(body)
 
 
@@ -84,10 +71,7 @@ def test_identifier_splitting_covers_the_three_casings() -> None:
 
 
 def test_stemming_is_symmetric_across_the_e_forms() -> None:
-    """Without the trailing-`e` strip, `create` and `creates` never match.
-
-    That asymmetry is what most often made a restatement look novel.
-    """
+    """Without the trailing-`e` strip, `create` and `creates` never match."""
     assert stem("creates") == stem("creating") == stem("create")
     assert stem("updated") == stem("updates") == stem("update")
     assert stem("retries") == stem("retry")
@@ -100,12 +84,7 @@ def test_a_short_word_is_left_alone() -> None:
 
 
 def test_restating_requires_an_exact_or_stemmed_match_not_a_prefix() -> None:
-    """Prefix matching is deliberately absent; it drove a ~60% false-positive rate.
-
-    A comment word that is merely a PREFIX of an identifier says something the
-    identifier does not; treating it as a restatement is what sank the first
-    attempt at this shape (PR #98).
-    """
+    """Prefix matching is deliberately absent; it drove a ~60% false-positive rate."""
     assert restates(content_tokens("updating the widgets"), code_tokens("def update_widget(): ..."))
     assert not restates(["loc"], code_tokens("location = 1"))
 
@@ -145,11 +124,7 @@ def test_consecutive_standalone_comments_group_into_one_run() -> None:
 
 
 def test_the_suppression_view_shares_the_same_pass() -> None:
-    """`all_comments` exists so the suppression rules do not tokenize a second time.
-
-    SARJ038 alone spent ~4% of total rule time on the duplicate pass, deriving
-    the same three facts from identical token-class sets.
-    """
+    """`all_comments` exists so the suppression rules do not tokenize a second time."""
     ordered, first_code_line = all_comments(_SOURCE)
     assert [(body, standalone) for _line, _col, body, standalone in ordered] == [
         ("leading note", True),

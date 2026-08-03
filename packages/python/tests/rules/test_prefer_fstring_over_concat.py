@@ -18,9 +18,7 @@ def _check(source: str, path: str = SRC_PATH) -> list[Diagnostic]:
     return PreferFstringOverConcat().check(Path(path), textwrap.dedent(source))
 
 
-# --------------------------------------------------------------------------- #
 # The shapes the rule exists for.                                             #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -67,9 +65,7 @@ def test_reports_position_of_a_chain_nested_in_a_class_and_a_with_block():
     assert [(d.line, d.col) for d in diags] == [(5, 21)]
 
 
-# --------------------------------------------------------------------------- #
 # the exact message text (each of the three message fragments, verbatim)      #
-# --------------------------------------------------------------------------- #
 
 
 _BASE_MESSAGE = (
@@ -143,9 +139,7 @@ def test_join_hint_threshold_is_exactly_five_operands(source: str, operands: int
     assert (f"at {operands} operands `''.join(...)` may read better still" in diag.message) is suggests_join
 
 
-# --------------------------------------------------------------------------- #
 # false-positive guards: non-string `+` (the type-evidence requirement)        #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -179,9 +173,7 @@ def test_fires_on_bytes_shape_once_the_literal_is_str():
     assert len(_check('blob = "GET " + payload')) == 1
 
 
-# --------------------------------------------------------------------------- #
 # false-positive guards: logging (SARJ017 says the opposite there)            #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -221,9 +213,7 @@ def test_fires_on_the_same_concat_outside_a_logger_receiver():
     assert len(_check('message = "call " + cid')) == 1
 
 
-# --------------------------------------------------------------------------- #
 # false-positive guards: braces (regex / format templates)                    #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -251,9 +241,7 @@ def test_fires_when_the_braces_are_removed(source: str):
     assert len(_check(source)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # false-positive guards: `%`-format template assembly                         #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -281,9 +269,7 @@ def test_fires_when_the_chain_is_not_the_percent_left_operand(source: str):
     assert len(_check(source)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # false-positive guards: literals carrying a `%`-conversion specifier          #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -315,9 +301,7 @@ def test_fires_when_the_percent_is_not_a_conversion_specifier(source: str):
     assert len(_check(source)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # false-positive guards: ORM / SQL expression operands                        #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -355,9 +339,7 @@ def test_fires_without_the_orm_operand(source: str):
     assert len(_check(source)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # false-positive guards: boolean-fallback operands                            #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -390,9 +372,7 @@ def test_fires_when_the_whole_chain_is_a_boolean_operand():
     assert len(_check('label = override or ("-" + field)')) == 1
 
 
-# --------------------------------------------------------------------------- #
 # false-positive guards: `.join(...)` operands                                #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -412,9 +392,7 @@ def test_fires_when_the_join_is_replaced_by_a_plain_call():
     assert len(_check('msg = "routes:\\n" + render(rows)')) == 1
 
 
-# --------------------------------------------------------------------------- #
 # false-positive guards: whitespace-only blob gluing                          #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -450,9 +428,7 @@ def test_fires_when_the_blob_glue_guard_does_not_apply(source: str):
     assert len(_check(source)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # false-positive guards: string repetition                                    #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -485,9 +461,7 @@ def test_skips_numeric_multiplication_operand_too():
     assert len(_check('v = "n=" + n * 3')) == 1
 
 
-# --------------------------------------------------------------------------- #
 # false-positive guards: whitespace-only two-operand chains                    #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -516,9 +490,7 @@ def test_fires_when_the_whitespace_guard_does_not_apply(source: str):
     assert len(_check(source)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # false-positive guards: lazy translation / SafeString operands               #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -549,9 +521,7 @@ def test_fires_on_an_ordinary_call_operand():
     assert len(_check('title = "Error: " + describe("not found")')) == 1
 
 
-# --------------------------------------------------------------------------- #
 # false-positive guards: conditional-expression operands                      #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -574,9 +544,7 @@ def test_fires_when_the_whole_chain_is_a_conditional_branch():
     assert len(_check('order = ("-" + field) if desc else field')) == 1
 
 
-# --------------------------------------------------------------------------- #
 # false-positive guards: SQL fragments (defer to S608 / SARJ021)              #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -609,9 +577,7 @@ def test_fires_on_prose_that_merely_contains_sql_words(source: str):
     assert len(_check(source)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # file-scope gating and robustness                                            #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -676,9 +642,7 @@ def test_a_pathologically_long_chain_does_not_exhaust_the_stack():
     assert len(_check(src, "m.py")) == 1
 
 
-# --------------------------------------------------------------------------- #
 # The 19-repo re-read: 18% FP over 3,401 findings, in two guarded classes.     #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(

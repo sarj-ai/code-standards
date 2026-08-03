@@ -60,9 +60,6 @@ def test_annotation_tokens_count_towards_the_signature():
     assert len(_fn("build(spec: InstructionSpec) -> Instructions", "Build instructions from the spec.")) == 1
 
 
-# --- exemptions ---------------------------------------------------------------
-
-
 @pytest.mark.parametrize(
     "docstring",
     [
@@ -174,9 +171,7 @@ def test_fastapi_route_docstring_is_the_openapi_description():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Numbers are not words.                                                      #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -203,15 +198,10 @@ def test_an_annotation_carrying_the_number_counts_as_the_signature():
     assert len(_fn("cap(value: Literal[5], flag: bool)", "Cap the value at 5.")) == 1
 
 
-# A qualifier that narrows nothing ("a SPECIFIC account", "the APPROPRIATE
-# config") was the single commonest reason a pure restatement survived. The
-# words live in `_docstrings.FILLER_QUALIFIERS`, so every rule in the family
-# reads the same list; the paired tests are the executable specification.
+# A qualifier that narrows nothing ("a SPECIFIC account", "the APPROPRIATE config") was the single commonest reason a pure restatement survived.
 
 
-# Spelled out rather than read from the source set, so DROPPING a word fails a
-# case instead of deleting one. Parametrizing over the live set would make the
-# vocabulary vouch for itself.
+# Spelled out rather than read from the source set, so DROPPING a word fails a case instead of deleting one.
 EXPECTED_FILLER = [
     "actual",
     "already",

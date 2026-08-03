@@ -18,9 +18,7 @@ def _count(source: str) -> int:
     return len(_check(source))
 
 
-# ---------------------------------------------------------------------------
 # Positive: `"*"` in allow_origins + allow_credentials=True.
-# ---------------------------------------------------------------------------
 
 
 def test_flags_bare_wildcard_list():
@@ -84,9 +82,7 @@ def test_flags_explicit_cors_middleware_callee():
     assert _count(src) == 1
 
 
-# ---------------------------------------------------------------------------
 # Negative: must NOT fire.
-# ---------------------------------------------------------------------------
 
 
 def test_allows_explicit_origins_with_credentials():
@@ -148,9 +144,7 @@ def test_allows_bytes_star_not_string_star():
     assert _check(src) == []
 
 
-# ---------------------------------------------------------------------------
 # Edge cases.
-# ---------------------------------------------------------------------------
 
 
 def test_empty_source():
@@ -184,9 +178,7 @@ def test_mixed_flagged_and_clean_calls():
     assert [d.line for d in diags] == [2]
 
 
-# ---------------------------------------------------------------------------
 # Line / column precision (reported at the Call).
-# ---------------------------------------------------------------------------
 
 
 def test_line_and_col_module_level():

@@ -52,9 +52,6 @@ def test_plural_folds_to_singular():
     assert len(_pair("format amounts", "format_amount(x)")) == 1
 
 
-# --- shapes the comment could be labelling rather than restating -------------
-
-
 @pytest.mark.parametrize(
     "header",
     [
@@ -150,9 +147,6 @@ def test_negation_in_the_code_makes_a_positive_comment_informative(code: str):
     assert _pair("the task queue", code) == []
 
 
-# --- exemptions ---------------------------------------------------------------
-
-
 @pytest.mark.parametrize(
     "comment",
     [
@@ -216,9 +210,7 @@ def test_comment_above_a_blank_line_is_not_about_the_next_statement():
     assert _check("def f():\n    # update user\n\n    update_user(u)\n") == []
 
 
-# --------------------------------------------------------------------------- #
 # A section label heading a multi-statement region.                           #
-# --------------------------------------------------------------------------- #
 
 
 def test_a_label_heading_a_three_line_region_is_not_narration():

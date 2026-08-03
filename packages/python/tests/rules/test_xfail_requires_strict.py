@@ -26,9 +26,7 @@ def test_thing():
 """
 
 
-# --------------------------------------------------------------------------- #
 # Test-path gating.                                                            #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("path", ["test_x.py", "x_test.py", "conftest.py", "a/tests/h.py"])
@@ -41,9 +39,7 @@ def test_skips_non_test_paths(path: str):
     assert _check(_ROTTING_PIN, path) == []
 
 
-# --------------------------------------------------------------------------- #
 # Positive: a defect-naming reason with no strict flag.                        #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -95,11 +91,9 @@ def test_thing():
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: strict pins, nondeterministic markers, and environment gates.      #
 # The real_llm exemption is mandatory — every non-strict xfail in one          #
 # first-party repo sits on a live-model eval that cannot be strict.            #
-# --------------------------------------------------------------------------- #
 
 
 def test_strict_true_is_exempt():
@@ -283,9 +277,7 @@ def test_thing():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Edge cases.                                                                  #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("source", ["", "  \n\n ", "# comment\n"])
@@ -356,10 +348,8 @@ async def test_thing():
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # FP-hardening (famous-repo sweep): an environment-gated conditional xfail      #
 # pins a third-party defect on the environments that carry it, not our bug.     #
-# --------------------------------------------------------------------------- #
 
 
 def test_allows_interpreter_gated_conditional_xfail():

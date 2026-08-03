@@ -39,10 +39,7 @@ def _dotted_target_id(target: str) -> str:
     return target.replace(".", "-")
 
 
-# --------------------------------------------------------------------------- #
-# The threshold. Measured across 170,354 corpus tests: 99.71% sit at five or    #
-# below, so the rule fires above five.                                         #
-# --------------------------------------------------------------------------- #
+# The threshold.
 
 
 @pytest.mark.parametrize("count", [0, 1, 2, 3, 4, 5], ids=_mock_count_id)
@@ -103,9 +100,7 @@ def test_diagnostics_are_sorted_by_position():
     assert ["`test_b`" in diags[0].message, "`test_a`" in diags[1].message] == [True, True]
 
 
-# --------------------------------------------------------------------------- #
 # Path gating and collection.                                                  #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("path", ["test_x.py", "x_test.py", "a/tests/things.py", "conftest.py"])
@@ -158,9 +153,7 @@ def test_syntax_error_returns_no_diagnostics():
     assert _check("def test_x(:\n    thing()\n") == []
 
 
-# --------------------------------------------------------------------------- #
 # What counts: every substitution form contributes.                            #
-# --------------------------------------------------------------------------- #
 
 
 def test_body_patches_count():
@@ -259,10 +252,7 @@ def test_monkeypatch_setattr_counts():
 
 
 def test_the_replacement_in_a_two_argument_setattr_is_not_part_of_the_target():
-    # `monkeypatch.setattr("pkg.a.one", fake_clock)` replaces `pkg.a.one`; the
-    # second argument is the stub, not the attribute name. Reading it as one
-    # would key the target off `fake_clock` and drop the whole substitution
-    # through the clock-knob filter.
+    # `monkeypatch.setattr("pkg.a.one", fake_clock)` replaces `pkg.a.one`; the second argument is the stub, not the attribute name.
     src = """
         def test_thing(monkeypatch):
             monkeypatch.setattr("pkg.a.one", fake_clock)
@@ -340,10 +330,7 @@ def test_patch_multiple_of_only_knobs_drops_out_entirely():
 
 
 def test_patch_multiple_config_keywords_are_not_replaced_attributes():
-    # `autospec` is configuration, so `patch.multiple` injects two parameters
-    # here, not three; `mock_c` onward are genuine fixtures and take the count
-    # to six. Reading `autospec` as an attribute would skip one more parameter
-    # and silently drop the finding.
+    # `autospec` is configuration, so `patch.multiple` injects two parameters here, not three; `mock_c` onward are genuine fixtures and take the count to six.
     src = """
         @patch.multiple("app.gateway", alpha=DEFAULT, bravo=DEFAULT, autospec=True)
         def test_thing(alpha, bravo, mock_c, mock_d, mock_e, mock_f, mock_g):
@@ -360,10 +347,7 @@ def test_async_test_is_checked():
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
-# A collaborator is an object, not one of its methods. Both reductions were     #
-# forced by real false positives; see the module docstring.                     #
-# --------------------------------------------------------------------------- #
+# A collaborator is an object, not one of its methods.
 
 
 def test_many_attributes_of_one_module_are_one_collaborator():
@@ -496,16 +480,11 @@ def test_the_same_target_patched_twice_counts_once():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
-# A name hoisted out of an object graph is that graph. Without this the counter #
-# reported one object as many, which is what invalidated the old threshold.     #
-# --------------------------------------------------------------------------- #
+# A name hoisted out of an object graph is that graph.
 
 
 def test_a_hoisted_double_wired_into_another_is_one_collaborator():
-    # The same object graph as `test_building_out_one_mocks_object_graph...`,
-    # written with each double bound to a local first. `mock_ctx = Mock()`
-    # followed by `ctx.room = mock_ctx` is one collaborator, not two.
+    # The same object graph as `test_building_out_one_mocks_object_graph...`, written with each double bound to a local first.
     src = """
         def test_thing():
             ctx = Mock()
@@ -597,9 +576,7 @@ def test_a_chained_assignment_binds_one_collaborator():
 
 
 def test_a_patch_handle_belongs_to_the_object_it_patched():
-    # mlflow/tests/store/_unity_catalog/model_registry/
-    # test_unity_catalog_rest_store.py:900 — six `patch.object(store, ...)`
-    # handles, each carrying a response object. One collaborator: `store`.
+    # mlflow/tests/store/_unity_catalog/model_registry/ test_unity_catalog_rest_store.py:900 — six `patch.object(store, ...)` handles, each carrying a response object.
     src = """
         def test_thing(store):
             with (
@@ -628,11 +605,7 @@ def test_a_patch_handle_belongs_to_the_object_it_patched():
 
 
 def test_a_double_wired_onto_an_injected_parameter_joins_that_collaborator():
-    # superset/tests/unit_tests/utils/webdriver_test.py:847 — the Playwright
-    # chain hangs off the parameter `@patch` injected for the browser manager,
-    # so it belongs to that patch's target. Three patched modules plus two
-    # standalone doubles is five; reading the injected parameters as three more
-    # collaborators of their own makes it eight.
+    # superset/tests/unit_tests/utils/webdriver_test.py:847 — the Playwright chain hangs off the parameter `@patch` injected for the browser manager, so it belongs to that patch's target.
     src = """
         @patch("app.three.charlie")
         @patch("app.two.bravo")
@@ -686,9 +659,7 @@ def test_mutually_wired_doubles_resolve_without_spinning():
 
 
 def test_the_mocker_fixture_is_not_itself_a_collaborator():
-    # pytest-mock's `mocker` is the handle you patch *through*; what it patches
-    # is counted at the `mocker.patch(...)` call site. Counting the handle too
-    # added a phantom substitution to every pytest-mock test.
+    # pytest-mock's `mocker` is the handle you patch *through*; what it patches is counted at the `mocker.patch(...)` call site.
     src = """
         def test_thing(mocker, mock_store, mock_bus, mock_gateway, mock_queue, mock_registry):
             assert run() == 1
@@ -696,10 +667,8 @@ def test_the_mocker_fixture_is_not_itself_a_collaborator():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # A bare name resolves through the file's import table, so `gateway` and        #
 # `app.gateway` are one collaborator.                                           #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -767,9 +736,7 @@ def test_a_relative_import_does_not_qualify_a_name(header: str):
     assert len(OverMockedTest().check(Path(TEST_PATH), src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # An f-string patch target is reconstructed, not collapsed to a placeholder.    #
-# --------------------------------------------------------------------------- #
 
 
 def test_f_string_patch_targets_are_distinct_collaborators():
@@ -808,10 +775,7 @@ def test_an_f_string_target_is_filtered_like_any_other():
     assert OverMockedTest().check(Path(TEST_PATH), src) == []
 
 
-# --------------------------------------------------------------------------- #
-# Import spellings. The name table is what keeps HTTP `.patch` out, so every    #
-# way of reaching `unittest.mock` has to resolve.                               #
-# --------------------------------------------------------------------------- #
+# Import spellings.
 
 
 @pytest.mark.parametrize(
@@ -853,9 +817,7 @@ def test_fully_qualified_mock_constructions_resolve():
     assert len(OverMockedTest().check(Path(TEST_PATH), src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: `client.patch("/items/1")` is an HTTP request, not a mock.          #
-# --------------------------------------------------------------------------- #
 
 
 def test_http_patch_requests_are_not_substitutions():
@@ -923,9 +885,7 @@ def test_a_locally_named_mock_class_is_not_a_double():
     assert OverMockedTest().check(Path(TEST_PATH), src) == []
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: environment and test-infrastructure knobs are not collaborators.    #
-# --------------------------------------------------------------------------- #
 
 
 def test_monkeypatch_setenv_is_not_a_substitution():
@@ -971,10 +931,7 @@ def test_other_monkeypatch_methods_are_not_substitutions(method: str):
     ids=["mapping-positional", "mapping-keyword", "environ"],
 )
 def test_patch_dict_is_not_a_substitution(decorator: str):
-    # Deliberately not only `os.environ`: the environment is filtered by target
-    # name anyway, so an environ-only case passes even with the `patch.dict`
-    # guard deleted. `alpha.beta` and `registry` are ordinary mappings and
-    # become counted collaborators the moment the guard goes.
+    # Deliberately not only `os.environ`: the environment is filtered by target name anyway, so an environ-only case passes even with the `patch.dict` guard deleted.
     src = f"""
         {decorator}
         @patch("a.one")
@@ -1049,10 +1006,8 @@ def test_a_monkeypatched_timeout_does_not_count():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: class-level `@patch` is the TestCase's shared fixture.              #
 # django/tests/backends/base/test_creation.py — five findings from one stack.   #
-# --------------------------------------------------------------------------- #
 
 
 def test_class_level_patches_are_not_attributed_to_each_method():
@@ -1100,10 +1055,8 @@ def test_parameters_injected_by_class_level_patches_are_not_recounted():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: a `@patch` injects a `mock_*` parameter — counting both double-     #
 # counts every decorated test.                                                  #
-# --------------------------------------------------------------------------- #
 
 
 def test_patch_injected_parameters_are_not_counted_twice():
@@ -1187,9 +1140,7 @@ def test_patch_multiple_injects_one_parameter_per_replaced_attribute():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: composition-root tests must stub every adapter.                     #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("name", ["test_wiring_builds_app", "test_startup_smoke", "test_di_container_resolves"])
@@ -1229,15 +1180,11 @@ def test_an_ordinary_name_in_an_ordinary_file_is_not_exempt():
     assert len(_check(_patches(8), "agent/tests/test_main_helpers.py")) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Real shapes from the corpus.                                                  #
-# --------------------------------------------------------------------------- #
 
 
 def test_collect_digits_on_exit_is_clean():
-    # A first-party test site. This used to score 6 and was one of the two
-    # findings that justified the old threshold; the sixth was `mock_room`,
-    # hoisted out of `mock_job_ctx`. It scores 5.
+    # A first-party test site.
     src = """
         async def test_on_exit_unregisters_local_user_state_listener(self) -> None:
             task = self._task()
@@ -1258,8 +1205,7 @@ def test_collect_digits_on_exit_is_clean():
 
 
 def test_celery_synloop_fires():
-    # celery/t/unit/test_loops.py:9 — eight bare doubles, then assert they were
-    # called. `clock` is dropped as a time knob, leaving eight of the nine.
+    # celery/t/unit/test_loops.py:9 — eight bare doubles, then assert they were called.
     src = """
         def test_synloop_perform_pending_operations_on_system_exit():
             obj = Mock()
@@ -1292,11 +1238,7 @@ def test_a_real_dependency_test_with_one_boundary_double_is_clean():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
-# The seam exemption reads the path, so it must read only the part the author   #
-# chose. Tokenising the absolute path let an ancestor directory supplied by     #
-# whoever cloned the repo disable the rule for the whole checkout.              #
-# --------------------------------------------------------------------------- #
+# The seam exemption reads the path, so it must read only the part the author   # chose.
 
 
 @pytest.mark.parametrize(

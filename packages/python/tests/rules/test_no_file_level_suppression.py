@@ -18,9 +18,7 @@ def _check(source: str, path: str = SRC_PATH) -> list[Diagnostic]:
     return NoFileLevelSuppression().check(Path(path), source)
 
 
-# --------------------------------------------------------------------------- #
 # Positive: bare Ruff file-wide noqa anywhere in the file.                      #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -49,9 +47,7 @@ def test_flags_bare_ruff_noqa(source: str):
     assert "scope it" in diags[0].message
 
 
-# --------------------------------------------------------------------------- #
 # Positive: standalone `# type: ignore` / `# pyright: ignore` above line 1.    #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -93,9 +89,7 @@ def test_flags_file_level_pyright_ignore(source: str):
     assert "pyright: ignore" in diags[0].message
 
 
-# --------------------------------------------------------------------------- #
 # Negative: scoped suppressions are reviewed, legible decisions.               #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -117,9 +111,7 @@ def test_allows_scoped_suppressions(source: str):
     assert _check(source) == []
 
 
-# --------------------------------------------------------------------------- #
 # Negative: per-line suppressions bind to one line by construction.            #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -156,9 +148,7 @@ def test_allows_standalone_suppression_after_first_statement(source: str):
     assert _check(source) == []
 
 
-# --------------------------------------------------------------------------- #
 # Negative: other comments that legitimately sit at the top of a file.         #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -205,9 +195,7 @@ def test_allows_directive_text_inside_strings(source: str):
     assert _check(source) == []
 
 
-# --------------------------------------------------------------------------- #
 # Counts, ordering, position.                                                  #
-# --------------------------------------------------------------------------- #
 
 
 def test_multiple_blankets_each_reported_sorted_by_line():
@@ -248,9 +236,7 @@ def test_sarj_noqa_for_another_rule_does_not_suppress_the_blanket():
     assert not is_suppressed(src.splitlines(), diagnostic.line, diagnostic.code)
 
 
-# --------------------------------------------------------------------------- #
 # Edge cases: malformed and trivial sources.                                   #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(

@@ -10,8 +10,7 @@ if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Diagnostic
 
 
-# Kept in sync with `_EXCLUDED_TYPE_NAMES` in the rule module. Copied rather than
-# imported so the test exercises the rule's public surface only.
+# Kept in sync with `_EXCLUDED_TYPE_NAMES` in the rule module.
 EXCLUDED_TYPE_NAMES = (
     "bool",
     "bytearray",
@@ -62,15 +61,7 @@ def _chain(
     *type_names: str,
     terminal: str = "raise ValueError()",
 ) -> str:
-    """Render a local-closed-union dispatch over `target`.
-
-    Emits the class defs, then an if/elif isinstance chain over `target` with an
-    exhaustive terminal `else`.
-
-    Returns:
-        The rendered dispatch source.
-
-    """
+    """Render a local-closed-union dispatch over `target`."""
     lines: list[str] = [_classdefs(*type_names), "", "def handle(subject, other):"]
     for i, name in enumerate(type_names):
         kw = "if" if i == 0 else "elif"
@@ -91,15 +82,7 @@ def _two_arm(
     terminal: str = "raise ValueError()",
     classes: tuple[str, ...] = ("Foo", "Bar", "Baz"),
 ) -> str:
-    """Render a two-arm dispatch with local classes and an exhaustive terminal.
-
-    For target-equality adversarial cases where `test0`/`test1` carry the
-    interesting target expressions.
-
-    Returns:
-        The rendered dispatch source.
-
-    """
+    """Render a two-arm dispatch with local classes and an exhaustive terminal."""
     return (
         f"{_classdefs(*classes)}\n"
         "def handle(o, a, b):\n"
@@ -109,9 +92,7 @@ def _two_arm(
     )
 
 
-# --------------------------------------------------------------------------- #
 # Positive: chains that SHOULD be flagged                                      #
-# --------------------------------------------------------------------------- #
 
 
 def test_flags_two_branch_chain_over_local_classes():
@@ -325,9 +306,7 @@ def handle(x):
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Multiple independent chains: count + ordering                               #
-# --------------------------------------------------------------------------- #
 
 
 def test_two_sibling_chains_each_flagged():
@@ -409,9 +388,7 @@ def test_chain_reported_once_at_head_not_per_arm():
     assert len(diags) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Line / column precision                                                      #
-# --------------------------------------------------------------------------- #
 
 
 def test_line_and_col_at_module_level():
@@ -464,9 +441,7 @@ class Bar: ...
     assert diags[0].col == 9
 
 
-# --------------------------------------------------------------------------- #
 # Negative: the local-union gate — non-local / open-set type probes            #
-# --------------------------------------------------------------------------- #
 
 
 def test_property_cached_property_probe_not_flagged():
@@ -566,9 +541,7 @@ def handle(x):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Negative: the exhaustiveness gate — open chains / permissive fall-through     #
-# --------------------------------------------------------------------------- #
 
 
 def test_open_chain_without_else_not_flagged():
@@ -614,9 +587,7 @@ def handle(x):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Negative: excluded builtin / stdlib / sentinel names (belt-and-suspenders)   #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("excluded", sorted(EXCLUDED_TYPE_NAMES))
@@ -655,9 +626,7 @@ def test_local_class_colliding_with_excluded_name_suppresses_chain():
     assert _check(_chain("x", "Node", "Sequence")) == []
 
 
-# --------------------------------------------------------------------------- #
 # Negative: not a closed-union dispatch chain                                  #
-# --------------------------------------------------------------------------- #
 
 
 def test_allows_tuple_membership_check():
@@ -816,9 +785,7 @@ def handle(x):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Edge cases: comprehensions, lambdas, empty, syntax errors                    #
-# --------------------------------------------------------------------------- #
 
 
 def test_empty_source_returns_empty():
@@ -874,9 +841,7 @@ def test_two_branch_chain_is_the_minimum_flagged():
     assert _check(one) == []
 
 
-# --------------------------------------------------------------------------- #
 # Diagnostic metadata                                                          #
-# --------------------------------------------------------------------------- #
 
 
 def test_diagnostic_carries_path_and_code():
@@ -903,10 +868,8 @@ def handle(x):
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Adversarial: `_ast_equal` must match `ast.dump` EXACTLY — equal targets      #
 # (structurally identical -> same target -> chain IS flagged)                  #
-# --------------------------------------------------------------------------- #
 
 
 def test_deep_attribute_target_equal_flagged():
@@ -949,10 +912,8 @@ def test_fstring_target_equal_flagged():
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Adversarial: `_ast_equal` must match `ast.dump` EXACTLY — distinct targets   #
 # (equal-repr-but-different / different-value -> NOT the same target -> no flag)#
-# --------------------------------------------------------------------------- #
 
 
 def test_subscript_int_vs_float_index_not_flagged():
@@ -995,9 +956,7 @@ def test_boolop_different_operator_not_flagged():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Adversarial: heuristic boundaries — match/case, elif resets                  #
-# --------------------------------------------------------------------------- #
 
 
 def test_two_valid_arms_before_non_isinstance_reset_not_flagged():

@@ -20,9 +20,7 @@ def _count(source: str) -> int:
     return len(_check(source))
 
 
-# --------------------------------------------------------------------------- #
 # Positive — obviously-string RHS accumulated with `+=` fires exactly once.    #
-# --------------------------------------------------------------------------- #
 
 
 _STRINGISH_RHS = [
@@ -62,10 +60,8 @@ def f(items, dt, bits, prefix):
     assert _count(src) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Coercion / join / os.path.join RHS is NOT accumulation — never fires.        #
 # These are the prescribed remedy or a bounded transform, not the O(n²) bug.   #
-# --------------------------------------------------------------------------- #
 
 
 _NON_ACCUMULATION_RHS = [
@@ -136,11 +132,7 @@ def f(items):
 
 
 def test_flags_concat_in_for_else_clause():
-    """The `else` block is visited at loop depth, so a concat there fires.
-
-    Documents current behaviour; the else runs once, so this is arguably a
-    borderline false positive worth revisiting if the rule tightens.
-    """
+    """The `else` block is visited at loop depth, so a concat there fires."""
     src = """
 def f(items):
     s = ""
@@ -163,9 +155,7 @@ def f(it):
     assert _count(src) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Nesting — each concat is flagged once, never once per ancestor loop.         #
-# --------------------------------------------------------------------------- #
 
 
 def test_nested_for_for_reports_once():
@@ -233,9 +223,7 @@ def f(items):
     assert _count(src) == 2
 
 
-# --------------------------------------------------------------------------- #
 # Diagnostic content — line, col (1-based), code, message.                     #
-# --------------------------------------------------------------------------- #
 
 
 def test_reports_line_and_one_based_column():
@@ -252,9 +240,7 @@ def test_reports_distinct_positions_in_source_order():
     assert positions == [(4, 9), (6, 9)]
 
 
-# --------------------------------------------------------------------------- #
 # Recall — bare-name accumulation of a string-typed accumulator now fires.     #
-# --------------------------------------------------------------------------- #
 
 
 def test_flags_bare_name_augassign_when_target_is_string():
@@ -304,9 +290,7 @@ def f(items, chunk, s):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Real-world false-positive regressions (Flask / requests / Django sweep).     #
-# --------------------------------------------------------------------------- #
 
 
 def test_allows_join_reassignment_in_loop():
@@ -420,9 +404,7 @@ def f(parts):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Negative / exempt — the correct patterns and out-of-scope shapes.            #
-# --------------------------------------------------------------------------- #
 
 
 def test_allows_concat_outside_any_loop():
@@ -523,9 +505,7 @@ def f(items):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Edge — parse failures, empty input, comments-only.                          #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -543,9 +523,7 @@ def test_non_parseable_or_trivial_sources_yield_no_diagnostics(source: str):
     assert _check(source) == []
 
 
-# --------------------------------------------------------------------------- #
 # False-positive guards — accumulators that only look adjacent to strings.     #
-# --------------------------------------------------------------------------- #
 
 
 def test_numeric_accumulation_alongside_string_append_is_clean():
@@ -583,9 +561,7 @@ def f(frames):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Previously known gaps — now fixed and asserted directly.                     #
-# --------------------------------------------------------------------------- #
 
 
 def test_flags_string_concat_in_async_for():
@@ -661,11 +637,9 @@ def f(items, values, value):
     assert _count(src) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Adversarial coverage — compound statements wrapping an in-loop concat.        #
 # The visitor recurses via generic_visit, so loop_depth stays > 0 inside any    #
 # nested block and the concat must still fire.                                  #
-# --------------------------------------------------------------------------- #
 
 
 _WRAPPED_CONCAT_BODIES = [
@@ -760,11 +734,7 @@ def f(gen):
 
 
 def test_flags_async_for_concat_when_nested_in_sync_for():
-    """Flag the concat when an async-for nests inside a sync for.
-
-    A pure async-for is a known gap, but the outer sync for keeps loop_depth
-    positive, so the concat is still flagged.
-    """
+    """Flag the concat when an async-for nests inside a sync for."""
     src = """
 async def f(rows):
     s = ""
@@ -824,9 +794,7 @@ def f(items):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Previously undetected string-valued RHS shapes — now recognised.             #
-# --------------------------------------------------------------------------- #
 
 
 def test_flags_ternary_string_rhs_in_loop():
@@ -862,10 +830,8 @@ def f(items):
     assert _count(src) == 1
 
 
-# --------------------------------------------------------------------------- #
 # FP-hardening (famous-repo sweep): while-loop probe targets are not O(n²)     #
 # accumulators — the test reads the target, so join cannot express the loop.   #
-# --------------------------------------------------------------------------- #
 
 
 def test_while_probe_target_is_exempt():

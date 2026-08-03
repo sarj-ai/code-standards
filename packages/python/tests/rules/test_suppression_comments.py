@@ -1,11 +1,4 @@
-"""Direct tests for the comment scanner shared by SARJ038 and SARJ054.
-
-Both suppression rules decide what "file-level" means from these three facts:
-a comment's text, whether it stands alone on its line, and whether it precedes
-the module's first statement. Getting any of them wrong makes one rule stop
-firing and the other fire on the wrong line, with no test in either suite
-pointing at the shared scanner.
-"""
+"""Direct tests for the comment scanner shared by SARJ038 and SARJ054."""
 
 import tokenize
 

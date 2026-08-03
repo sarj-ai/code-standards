@@ -15,12 +15,7 @@ def _check(source: str, path: Path = Path("<t>.py")) -> list[Diagnostic]:
 
 
 def _pair(base_doc: str, override_doc: str, *, base: str = "Store", child: str = "MemoryStore") -> str:
-    """Build a base class and a subclass that both define `get` with a docstring.
-
-    Returns:
-        Module source with the two classes, each method carrying a real body.
-
-    """
+    """Build a base class and a subclass that both define `get` with a docstring."""
     return (
         f"class {base}:\n"
         f"    def get(self, key: str) -> str:\n"
@@ -99,9 +94,6 @@ def test_indentation_differences_do_not_hide_a_copy():
         "        return key\n"
     )
     assert len(_check(src)) == 1
-
-
-# --- exemptions ---------------------------------------------------------------
 
 
 def test_a_reworded_override_is_kept():
@@ -218,22 +210,13 @@ def test_generated_file_is_skipped():
 
 
 def test_banner_less_generated_tree_is_skipped_by_path():
-    """A generated module with no header marker is still exempt.
-
-    The exemption is named after an OpenAPI client, and openapi-python-client
-    emits no banner at all — a header-only guard exempted nothing it was
-    written for.
-    """
+    """A generated module with no header marker is still exempt."""
     src = _pair("Get a value.", "Get a value.")
     assert _check(src, Path("src/generated/models.py")) == []
 
 
 def test_a_hand_written_path_still_reports():
-    """Pins the surviving true positives: the guard is about generated trees only.
-
-    Without this, widening the path predicate later would silently take the
-    rule's whole population with it.
-    """
+    """Pins the surviving true positives: the guard is about generated trees only."""
     src = _pair("Get a value.", "Get a value.")
     assert len(_check(src, Path("src/app/stores.py"))) == 1
 

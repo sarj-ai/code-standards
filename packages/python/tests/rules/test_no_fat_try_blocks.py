@@ -22,9 +22,6 @@ def _try_with_n_calls(n: int, *, indent: str = "") -> str:
     return f"{indent}try:\n{body}\n{indent}except ValueError:\n{indent}    pass\n"
 
 
-# ---- Positive: try bodies at/above the throwing-statement threshold fire ----
-
-
 @pytest.mark.parametrize("n", [4, 5, 6, 10])
 def test_fires_when_throwing_statements_exceed_threshold(n: int):
     diags = _check(_try_with_n_calls(n))
@@ -116,9 +113,6 @@ except* ValueError:
     assert len(_check(src)) == 1
 
 
-# ---- Negative: at/below threshold, or throwing work outside node.body ----
-
-
 @pytest.mark.parametrize("n", [1, 2, 3])
 def test_clean_when_throwing_statements_at_or_below_threshold(n: int):
     assert _check(_try_with_n_calls(n)) == []
@@ -197,9 +191,6 @@ except KeyError:
     assert _check(src) == []
 
 
-# ---- Compound statements count as a single top-level statement ----
-
-
 def test_throwing_if_counts_as_one_statement():
     src = """
 try:
@@ -265,9 +256,6 @@ except ValueError:
     assert len(_check(src)) == 1
 
 
-# ---- else / finally exempt the block regardless of body size ----
-
-
 def test_else_clause_exempts_fat_block():
     src = """
 try:
@@ -311,9 +299,6 @@ finally:
     cleanup()
 """
     assert _check(src) == []
-
-
-# ---- Re-raising except handlers exempt the block (wrapping, not swallowing) ----
 
 
 def test_bare_reraise_handler_exempts_fat_block():
@@ -409,9 +394,6 @@ except ValueError:
     assert len(_check(src)) == 1
 
 
-# ---- Nested try blocks are checked independently ----
-
-
 def test_only_inner_try_fat_flags_inner():
     src = """
 try:
@@ -450,9 +432,6 @@ except ValueError:
     assert len(_check(src)) == 2
 
 
-# ---- Line / column reporting ----
-
-
 def test_reports_line_and_col_for_top_level_try():
     src = """
 try:
@@ -483,9 +462,6 @@ def outer():
     diags = _check(src)
     assert len(diags) == 1
     assert (diags[0].line, diags[0].col) == (4, 9)
-
-
-# ---- Multiple violations ----
 
 
 def test_two_sibling_fat_trys_report_both_in_order():
@@ -522,9 +498,6 @@ except ValueError:
 """
     lines = [d.line for d in _check(src)]
     assert lines == sorted(lines)
-
-
-# ---- False-positive guards ----
 
 
 def test_small_try_with_large_except_is_clean():
@@ -587,9 +560,6 @@ except ValueError:
     assert len(_check(src)) == 1
 
 
-# ---- Parse edge cases ----
-
-
 def test_empty_source_returns_empty():
     assert _check("") == []
 
@@ -626,9 +596,6 @@ except KeyError:
     pass
 """
     assert len(_check(src)) == 1
-
-
-# ---- Adversarial: re-raise exemption, TryStar, and subtree-walk edges ----
 
 
 def test_trystar_all_handlers_reraise_exempts():

@@ -1,11 +1,4 @@
-"""Direct tests for the shared node index every rule's traversal goes through.
-
-`_ast_index` replaced `ast.walk` in 59 rule modules on the strength of two
-invariants: the index yields the same nodes in the same ORDER, and it matches by
-`isinstance` so SUBCLASS queries still work. Neither invariant had a test of its
-own -- breaking either one changes findings in dozens of rules at once, and the
-per-rule suites would each report it as an unrelated failure.
-"""
+"""Direct tests for the shared node index every rule's traversal goes through."""
 
 import ast
 
@@ -53,7 +46,7 @@ def test_children_is_elementwise_identical_to_iter_child_nodes() -> None:
 
 
 def test_nodes_preserves_ast_walk_order_for_a_single_type() -> None:
-    """The order invariant. A rule that reports the FIRST match depends on it."""
+    """The order invariant."""
     tree = _tree()
     expected = [n for n in ast.walk(tree) if isinstance(n, ast.Name)]
     assert [id(n) for n in nodes(tree, ast.Name)] == [id(n) for n in expected]
@@ -67,11 +60,7 @@ def test_nodes_preserves_ast_walk_order_across_several_types() -> None:
 
 
 def test_nodes_matches_subclasses_not_exact_classes() -> None:
-    """Buckets are keyed on exact class; a query for a BASE class must still resolve.
-
-    `nodes(tree, ast.stmt)` has to return every statement, not the empty list
-    that an exact-class lookup would give.
-    """
+    """Buckets are keyed on exact class; a query for a BASE class must still resolve."""
     tree = _tree()
     expected = [n for n in ast.walk(tree) if isinstance(n, ast.stmt)]
     assert [id(n) for n in nodes(tree, ast.stmt)] == [id(n) for n in expected]
@@ -88,12 +77,7 @@ def test_a_type_absent_from_the_file_returns_nothing() -> None:
 
 
 def test_the_memo_slot_is_rebuilt_when_the_tree_changes() -> None:
-    """One slot, keyed on tree identity -- so alternating trees must not alias.
-
-    The CLI iterates files on the outer loop and rules on the inner one, so a
-    single slot is all that is ever live; a stale hit here would hand one file's
-    nodes to another file's rule.
-    """
+    """One slot, keyed on tree identity -- so alternating trees must not alias."""
     first = ast.parse("class A:\n    pass\n")
     second = ast.parse("def b() -> None:\n    pass\n")
     assert len(nodes(first, ast.ClassDef)) == 1

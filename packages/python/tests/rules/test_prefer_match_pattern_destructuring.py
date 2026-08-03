@@ -29,9 +29,7 @@ match event:
 """
 
 
-# --------------------------------------------------------------------------- #
 # Positive: a class pattern that binds nothing and reaches back.               #
-# --------------------------------------------------------------------------- #
 
 
 def test_flags_two_distinct_fields():
@@ -112,9 +110,7 @@ def test_read_floor(body: str, expected: int):
     assert len(_check(source)) == expected
 
 
-# --------------------------------------------------------------------------- #
 # Guards: a capture is bound before the guard runs, so guard reads count.      #
-# --------------------------------------------------------------------------- #
 
 
 def test_flags_reads_in_the_guard():
@@ -136,9 +132,7 @@ def test_guard_and_body_reads_combine_to_reach_the_floor():
     assert len(_check(source)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # `as` aliases.                                                                #
-# --------------------------------------------------------------------------- #
 
 
 def test_flags_reach_back_through_an_as_alias():
@@ -170,9 +164,7 @@ def test_bare_capture_alias_is_not_a_class_pattern():
     assert _check(source) == []
 
 
-# --------------------------------------------------------------------------- #
 # Capture naming: never propose a name the arm cannot use.                     #
-# --------------------------------------------------------------------------- #
 
 
 def test_prefixes_a_capture_that_would_shadow_a_builtin():
@@ -241,10 +233,7 @@ def test_elides_the_field_list_past_four_fields():
     ast.parse(f"match x:\n    {pattern}\n        pass\n")
 
 
-# --------------------------------------------------------------------------- #
-# ---- false-positive guards ----                                              #
 # The subject is rebound or written through.                                   #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -337,10 +326,7 @@ def test_an_alias_rebinding_also_disqualifies():
     assert _check(source) == []
 
 
-# --------------------------------------------------------------------------- #
-# ---- false-positive guards ----                                              #
 # Private attributes, methods, and non-field access.                           #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -421,10 +407,7 @@ def test_subscripting_a_field_still_counts_the_field():
     assert "`case Foo(kind=kind):`" in message
 
 
-# --------------------------------------------------------------------------- #
-# ---- false-positive guards ----                                              #
 # Patterns that are not a plain class pattern.                                 #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -479,10 +462,7 @@ def test_a_domain_class_with_the_same_shape_fires():
     assert len(_check(source)) == 1
 
 
-# --------------------------------------------------------------------------- #
-# ---- false-positive guards ----                                              #
 # Subjects the arm cannot reach back through, and already-bound fields.        #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -531,9 +511,7 @@ def test_skips_when_the_body_reads_only_already_bound_fields():
 
 
 def test_a_partly_destructured_arm_keeps_the_binding_it_already_had():
-    # The suggestion has to reproduce `llm_metadata=llm_metadata`. Dropping it —
-    # which this rule did until 0.26.0 — produces a pattern that stops binding a
-    # name the body still uses, so applying the advice raises NameError.
+    # The suggestion has to reproduce `llm_metadata=llm_metadata`.
     source = """
     match message:
         case ChatMessageActionItem(llm_metadata=llm_metadata):
@@ -554,9 +532,7 @@ def test_an_existing_keyword_constraint_is_not_silently_widened():
 
 
 def test_positional_patterns_are_carried_into_the_suggestion():
-    # `case Point(x, y)` binds x and y through `__match_args__`. A keyword-only
-    # rewrite would drop both, so the sub-patterns are reproduced verbatim ahead
-    # of the new keyword captures.
+    # `case Point(x, y)` binds x and y through `__match_args__`.
     source = """
     match point:
         case Point(x, y):
@@ -567,9 +543,7 @@ def test_positional_patterns_are_carried_into_the_suggestion():
 
 
 def test_a_positional_constraint_is_not_silently_widened():
-    # `case Point(0, 0)` matches only the origin. Rewriting it to keyword-only
-    # would make the arm match every Point — a semantics change the reader would
-    # not expect from a message about destructuring.
+    # `case Point(0, 0)` matches only the origin.
     source = """
     match point:
         case Point(0, 0):
@@ -580,10 +554,7 @@ def test_a_positional_constraint_is_not_silently_widened():
 
 
 def test_every_suggested_pattern_is_valid_python():
-    # The suggestion is meant to be pasted. Until 0.26.0 the field-elision
-    # appended `, ...` inside the parentheses, which is a syntax error (a bare
-    # `...` is positional, and positional cannot follow keyword) — 10 of the 76
-    # findings across the first-party corpora were un-pasteable.
+    # The suggestion is meant to be pasted.
     source = """
     match item:
         case Wide():
@@ -594,9 +565,7 @@ def test_every_suggested_pattern_is_valid_python():
     ast.parse(f"match x:\n    {pattern}\n        pass\n")
 
 
-# --------------------------------------------------------------------------- #
 # Whole-object use: the subject stays bound, so the arm still fires.           #
-# --------------------------------------------------------------------------- #
 
 
 def test_an_arm_that_also_passes_the_whole_object_still_fires():
@@ -610,9 +579,7 @@ def test_an_arm_that_also_passes_the_whole_object_still_fires():
     assert "`case AttachLiveKit(config=config, room=room):`" in message
 
 
-# --------------------------------------------------------------------------- #
 # Robustness: paths, syntax errors, empty input, ordering.                     #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(

@@ -543,24 +543,11 @@ def c():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
-# Cross-package parity with the TS twin                                        #
-# (`packages/typescript/src/rules/no-repeated-string-literal.ts`).             #
-# "Two distinct enclosing functions" is the ONLY count threshold, in BOTH      #
-# packages. TS carried an abandoned three-occurrence gate, so a literal used   #
-# exactly twice fired here and was clean in `.ts`. If this fails, someone has  #
-# re-introduced a total-occurrence threshold — re-run both corpus sweeps       #
-# before changing the test.                                                    #
-# --------------------------------------------------------------------------- #
+# Cross-package parity with the TS twin                                        # (`packages/typescript/src/rules/no-repeated-string-literal.ts`).
 
 
 def test_exactly_two_occurrences_in_two_functions_fires():
-    """Two copies across two functions is a finding.
-
-    Minimized from one first-party onboarding store, where one
-    `SELECT stage ... FOR UPDATE` is repeated between two sibling
-    submit-and-advance methods.
-    """
+    """Two copies across two functions is a finding."""
     src = f'''
 def submit_financial_info():
     return """{_LONG_SQL}"""

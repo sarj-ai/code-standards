@@ -1,7 +1,4 @@
-"""Test context-aware detection of unreachable statements after terminals.
-
-Each statement list reports once; invalid-context terminals and generator markers are ignored.
-"""
+"""Test context-aware detection of unreachable statements after terminals."""
 
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -21,9 +18,7 @@ def _check(source: str) -> list[Diagnostic]:
     return NoUnreachableAfterTerminal().check(Path("<test>.py"), source)
 
 
-# --------------------------------------------------------------------------- #
 # Positive: a statement after each terminal type is flagged.                   #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -68,10 +63,8 @@ def f():
     assert diags[0].code == "SARJ010"
 
 
-# --------------------------------------------------------------------------- #
 # Positive: terminal-before-last is flagged in every block-bearing construct.  #
 # Covers the body / orelse / finalbody fields across node types.               #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -161,9 +154,7 @@ def test_flags_terminal_before_last_in_block(label: str, src: str):
     assert diags[0].code == "SARJ010"
 
 
-# --------------------------------------------------------------------------- #
 # Negative: terminal is the LAST statement of its block -> nothing flagged.    #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -211,10 +202,8 @@ def test_terminal_as_last_statement_is_allowed(label: str, src: str):
     assert _check(src) == [], label
 
 
-# --------------------------------------------------------------------------- #
 # Negative: terminal confined to one branch / nested block; sibling code is    #
 # genuinely reachable, so it must NOT be flagged.                              #
-# --------------------------------------------------------------------------- #
 
 
 def test_return_in_one_branch_then_code_after_if():
@@ -284,10 +273,8 @@ def f():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # False-positive guards: non-terminal "exits" must NOT be treated as terminal. #
 # The rule is structural on AST node types only.                               #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -312,9 +299,7 @@ def test_non_terminal_exit_calls_are_not_flagged(label: str, src: str):
 
 
 def test_conditional_return_expression_does_not_terminate_list():
-    # A ternary that may or may not "exit" is still one Return statement; the
-    # statement after it in the same list IS unreachable and flagged. Guard is
-    # that we don't over- or under-count: exactly one diagnostic.
+    # A ternary that may or may not "exit" is still one Return statement; the statement after it in the same list IS unreachable and flagged.
     src = """
 def f(x):
     return 1 if x else 2
@@ -323,11 +308,9 @@ def f(x):
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # False-positive guard: `yield` / `yield from` after a terminal is the idiom    #
 # that forces a function to be a generator even when the path is unreachable.   #
 # It is load-bearing (removing it changes the function type) -> NOT flagged.    #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -374,9 +357,7 @@ def _gen():
     assert diags[0].line == 4  # points at `dead()`, not the later `yield`
 
 
-# --------------------------------------------------------------------------- #
 # Edge: comments, docstrings, ellipsis, empty, whitespace, syntax errors.      #
-# --------------------------------------------------------------------------- #
 
 
 def test_comment_after_terminal_is_not_flagged():
@@ -425,11 +406,7 @@ def test_syntax_errors_return_empty(src: str):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
-# Context: a terminal only ends the block where Python allows it. `return`      #
-# outside a function and `break`/`continue` outside a loop are SyntaxErrors —   #
-# the file never runs, so nothing after them is meaningfully dead.              #
-# --------------------------------------------------------------------------- #
+# Context: a terminal only ends the block where Python allows it.
 
 
 @pytest.mark.parametrize("terminal", ["break", "continue"])
@@ -525,9 +502,7 @@ def test_module_level_raise_is_still_flagged():
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Counting: at most one diagnostic per statement list (the first terminal).    #
-# --------------------------------------------------------------------------- #
 
 
 def test_only_first_unreachable_in_a_list_is_flagged():
@@ -578,9 +553,7 @@ def outer():
     assert len(_check(src)) == 2
 
 
-# --------------------------------------------------------------------------- #
 # Line / column reporting: diag points at the unreachable statement, col+1.    #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -613,10 +586,8 @@ def test_col_is_one_based_offset_plus_one():
     assert _check(src)[0].col == 5
 
 
-# --------------------------------------------------------------------------- #
 # Ordering: sibling blocks appear in source order; nesting follows walk order  #
 # (outer body before inner body), i.e. not globally line-sorted.               #
-# --------------------------------------------------------------------------- #
 
 
 def test_sibling_top_level_blocks_in_source_order():
@@ -645,9 +616,7 @@ def outer():
     assert [d.line for d in diags] == [5, 7]
 
 
-# --------------------------------------------------------------------------- #
 # Regression pins for the original hand-written cases.                         #
-# --------------------------------------------------------------------------- #
 
 
 def test_flags_statement_after_return():
@@ -685,9 +654,7 @@ def test_handles_syntax_error():
     assert _check("def f(:\n    pass") == []
 
 
-# --------------------------------------------------------------------------- #
 # Adversarial: yield-exemption edges + terminal detection in exotic blocks.    #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -749,9 +716,7 @@ def test_yield_marker_exempt_across_block_kinds(label: str, src: str):
     ],
 )
 def test_non_bare_yield_after_terminal_is_flagged(label: str, src: str):
-    # The exemption is deliberately shallow: only a direct bare `yield` /
-    # `yield from` Expr statement is spared. A `def`/`class`/walrus, or a yield
-    # wrapped in control flow, is still flagged as unreachable.
+    # The exemption is deliberately shallow: only a direct bare `yield` / `yield from` Expr statement is spared.
     diags = _check(src)
     assert len(diags) == 1, label
     assert diags[0].code == "SARJ010"

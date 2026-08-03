@@ -26,9 +26,7 @@ def orgs_and_users():
 """
 
 
-# --------------------------------------------------------------------------- #
 # Test-path gating.                                                            #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("path", ["conftest.py", "test_x.py", "a/tests/fixtures.py"])
@@ -41,9 +39,7 @@ def test_skips_non_test_paths(path: str):
     assert _check(_BARE_TUPLE_FIXTURE, path) == []
 
 
-# --------------------------------------------------------------------------- #
 # Positive: every fixture-decorator spelling and result form.                  #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -114,9 +110,7 @@ def triple():
     assert "bare 3-field tuple" in diag.message
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: the named alternative and the factory-closure shape.               #
-# --------------------------------------------------------------------------- #
 
 
 def test_namedtuple_construction_is_exempt():
@@ -203,9 +197,7 @@ def test_thing():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Edge cases.                                                                  #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("source", ["", "  \n\n ", "# comment\n"])
@@ -263,10 +255,8 @@ def a_fix(flag):
     assert [d.line for d in diags] == sorted(d.line for d in diags)
 
 
-# --------------------------------------------------------------------------- #
 # FP guard from a first-party review regression: distinct static types make a  #
 # reorder a type error, which is the same protection a NamedTuple buys.        #
-# --------------------------------------------------------------------------- #
 
 
 def test_distinctly_typed_tuple_annotation_is_exempt():

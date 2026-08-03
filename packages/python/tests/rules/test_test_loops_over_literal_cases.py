@@ -24,9 +24,7 @@ def test_thing():
 """
 
 
-# --------------------------------------------------------------------------- #
 # Test-path gating.                                                            #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -42,9 +40,7 @@ def test_skips_non_test_paths(path: str):
     assert _check(_LITERAL_CASE_LOOP, path) == []
 
 
-# --------------------------------------------------------------------------- #
 # Positive: literal case tables of every display kind.                         #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -99,10 +95,7 @@ def test_thing():
     assert "4 inline cases" in diag.message
 
 
-# --------------------------------------------------------------------------- #
-# FP guard: the iterable must be a literal. Exhaustiveness checks over enums,  #
-# fixtures and query results are a different, legitimate shape.                #
-# --------------------------------------------------------------------------- #
+# FP guard: the iterable must be a literal.
 
 
 @pytest.mark.parametrize(
@@ -147,9 +140,7 @@ def test_thing():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: a sub-test already gives each iteration its own report.            #
-# --------------------------------------------------------------------------- #
 
 
 def test_unittest_subtest_loop_is_exempt():
@@ -207,9 +198,7 @@ def test_thing():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: nearest enclosing function must be the test itself.                #
-# --------------------------------------------------------------------------- #
 
 
 def test_loop_in_fixture_is_exempt():
@@ -285,9 +274,7 @@ def helper_thing():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Edge cases.                                                                  #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("source", ["", "   \n\n  ", "# comment\n"])

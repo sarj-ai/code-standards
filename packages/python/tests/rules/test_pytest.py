@@ -1,10 +1,4 @@
-"""Direct tests for the pytest-benchmark carve-out shared by SARJ043 and SARJ057.
-
-A benchmark measures wall-clock time; verifying is not its job. Both
-assertion-quality rules need the same exemption, and keeping it in one module is
-what stops the two copies from drifting -- so the predicate needs a test that is
-not attached to either rule.
-"""
+"""Direct tests for the pytest-benchmark carve-out shared by SARJ043 and SARJ057."""
 
 import ast
 

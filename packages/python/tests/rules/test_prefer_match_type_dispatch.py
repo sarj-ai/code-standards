@@ -16,9 +16,7 @@ def _check(source: str, path: str = SRC_PATH) -> list[Diagnostic]:
     return PreferMatchTypeDispatch().check(Path(path), textwrap.dedent(source))
 
 
-# --------------------------------------------------------------------------- #
 # Core detection: Hideous parser helper / raise-in-try idiom                 #
-# --------------------------------------------------------------------------- #
 
 
 _HIDEOUS_PARSER_IDIOM = """
@@ -228,10 +226,7 @@ def test_skips_generated_source():
     assert _check(source) == []
 
 
-# --------------------------------------------------------------------------- #
-# Control-flow-raise arm: measured false-positive classes, deliberately not   #
-# flagged. Each of these was reported before the 24,644-file audit.           #
-# --------------------------------------------------------------------------- #
+# Control-flow-raise arm: measured false-positive classes, deliberately not   # flagged.
 
 
 def test_skips_handler_that_re_raises_unchanged():
@@ -279,12 +274,7 @@ def test_skips_handler_where_both_branches_raise():
 
 
 def test_flags_handler_that_only_sometimes_re_raises():
-    """Upper bound on the re-raise guard: a conditional re-raise still reports.
-
-    The guard is for handlers that *always* propagate. A handler with a normal
-    exit path still consumes the exception on that path, which is the dispatch
-    this rule is about.
-    """
+    """Upper bound on the re-raise guard: a conditional re-raise still reports."""
     source = """
     def load(payload):
         try:
@@ -405,11 +395,7 @@ def test_flags_raise_in_a_try_body_at_the_span_limit():
 
 
 def test_skips_try_body_that_is_only_a_raise():
-    """132/1,364: scaffolding that raises in order to obtain a live exception.
-
-    `ExceptionInfo()` reads `sys.exc_info()`, so there is no other way to build
-    one. There is no dispatch here to rewrite as match/case.
-    """
+    """132/1,364: scaffolding that raises in order to obtain a live exception."""
     source = """
     def build_einfo():
         try:
@@ -437,11 +423,7 @@ def test_skips_control_flow_raise_in_a_test_file():
 
 
 def test_sequential_guards_still_report_in_a_test_file():
-    """The test exemption is scoped to the control-flow-raise arm only.
-
-    A field deserializer defined in a test-support module is still a real
-    finding; one of the six corpus survivors is exactly that.
-    """
+    """The test exemption is scoped to the control-flow-raise arm only."""
     source = """
     class TagField(Field):
         def to_python(self, value):
@@ -456,10 +438,7 @@ def test_sequential_guards_still_report_in_a_test_file():
     assert "Sequential sentinel/type guards" in diags[0].message
 
 
-# --------------------------------------------------------------------------- #
-# Surviving true positives, transcribed from the OSS corpus. These pin the    #
-# control-flow-raise arm's population against a guard quietly widening.       #
-# --------------------------------------------------------------------------- #
+# Surviving true positives, transcribed from the OSS corpus.
 
 
 def test_flags_django_was_modified_since_shape():
@@ -502,17 +481,11 @@ def test_flags_django_normalize_together_shape():
     assert "raise TypeError()" in diags[0].message
 
 
-# --------------------------------------------------------------------------- #
 # Sequential-guard arm: measured false-positive classes.                      #
-# --------------------------------------------------------------------------- #
 
 
 def test_skips_guards_returning_a_different_value():
-    """261/271 of this arm returned something other than the guarded variable.
-
-    These are ordinary early returns, not the sentinel-passthrough idiom the
-    module docstring describes.
-    """
+    """261/271 of this arm returned something other than the guarded variable."""
     source = """
     def most_recent_job(job_type, session):
         if job_type == "TriggererJob":
@@ -538,11 +511,7 @@ def test_skips_guards_with_no_type_check_in_the_chain():
 
 
 def test_skips_bare_name_sentinel_comparator():
-    """`case TICKET_NOT_FOUND:` is a capture pattern — it matches every value.
-
-    Suggesting match/case here would silently break the code, so this shape is
-    deliberately never reported. 5/271 of this arm were this.
-    """
+    """`case TICKET_NOT_FOUND:` is a capture pattern — it matches every value."""
     source = """
     def summarize(ticket_data, other):
         if ticket_data is TICKET_NOT_FOUND:

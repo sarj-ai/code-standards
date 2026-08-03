@@ -14,9 +14,6 @@ def _check(source: str, path: str = "svc.py") -> list[Diagnostic]:
     return PydanticAtBoundaries().check(Path(path), source)
 
 
-# --- Trigger 1: untyped dict returns ---------------------------------------
-
-
 def test_flags_dict_str_any_return():
     src = """
 from typing import Any
@@ -132,9 +129,6 @@ def i() -> list[CallPayload]: ...
     assert _check(src) == []
 
 
-# --- tuple returns are NOT flagged (multiple return values are idiomatic) ----
-
-
 def test_allows_heterogeneous_tuple_return():
     src = "def stop_call() -> tuple[bool, str | None]:\n    return True, None\n"
     assert _check(src) == []
@@ -167,9 +161,6 @@ def h() -> tuple[int]:
 def test_allows_private_function_returning_tuple():
     src = "def _split() -> tuple[bool, str | None]:\n    return True, None\n"
     assert _check(src) == []
-
-
-# --- Trigger 2: FastAPI route handlers ---------------------------------------
 
 
 def test_flags_router_get_without_return_annotation():
@@ -220,7 +211,7 @@ async def get_call(call_id: str):
 
 
 def test_ignores_non_router_receivers():
-    """`client.get(...)` etc. is not a FastAPI route decorator."""
+    """`client.get(...)` etc."""
     src = """
 @client.get("/upstream")
 def fetch_upstream():
@@ -240,9 +231,6 @@ async def delete_org(org_id: str):
     return {"ok": True}
 """
     assert len(_check(src)) == 1
-
-
-# --- Exclusions ---------------------------------------------------------------
 
 
 def test_skips_test_files():
@@ -276,11 +264,8 @@ def test_syntax_error_returns_empty():
     assert _check("def f(:\n") == []
 
 
-# ===========================================================================
 # ADDED COVERAGE
-# ===========================================================================
 
-# --- Flagged dict shapes (parametrized) ------------------------------------
 
 _FLAGGED_DICT_ANNOTATIONS = [
     "dict[str, Any]",
@@ -317,8 +302,6 @@ def test_flagged_dict_annotations(ann: str):
     assert diags[0].code == "SARJ008"
     assert "pydantic model" in diags[0].message
 
-
-# --- NOT-flagged shapes / false-positive guards (parametrized) --------------
 
 _ALLOWED_ANNOTATIONS = [
     "str",
@@ -366,9 +349,6 @@ def test_allowed_annotations(ann: str):
     assert _check(f'def f() -> {ann}:\n    return {{"id": 1}}\n') == [], ann
 
 
-# --- Forward-reference string annotations -----------------------------------
-
-
 def test_flags_string_forward_ref_dict():
     assert len(_check('def f() -> "dict[str, Any]":\n    return {"id": 1}\n')) == 1
 
@@ -386,8 +366,6 @@ def test_string_forward_ref_with_syntax_error_not_flagged():
     """A malformed string annotation resolves to None → treated as unannotated."""
     assert _check('def f() -> "dict[":\n    return {"id": 1}\n') == []
 
-
-# --- Validator hook variants (parametrized) ---------------------------------
 
 _VALIDATOR_DECORATORS = [
     '@model_validator(mode="before")',
@@ -408,16 +386,10 @@ def test_validator_hooks_never_flagged(dec: str):
     assert _check(src) == [], dec
 
 
-# --- Overload stub variants -------------------------------------------------
-
-
 @pytest.mark.parametrize("dec", ["@overload", "@typing.overload", "@t.overload"])
 def test_overload_variants_never_flagged(dec: str):
     src = f"{dec}\ndef f(x) -> dict[str, Any]: ...\n"
     assert _check(src) == [], dec
-
-
-# --- Route method / receiver matrix -----------------------------------------
 
 
 @pytest.mark.parametrize("method", ["get", "post", "put", "patch", "delete"])
@@ -481,9 +453,6 @@ def test_route_returning_none_annotation_not_flagged():
     assert _check(src) == []
 
 
-# --- Non-route missing-annotation is NOT flagged ----------------------------
-
-
 def test_plain_missing_annotation_not_flagged():
     """Only routes are flagged for a missing annotation — plain functions are not."""
     src = "def f():\n    return {'id': 1}\n"
@@ -504,9 +473,6 @@ def test_non_route_call_decorator_with_dict_still_flagged():
 def test_property_returning_dict_flagged():
     src = "class C:\n    @property\n    def data(self) -> dict[str, Any]:\n        return {'id': 1}\n"
     assert len(_check(src)) == 1
-
-
-# --- Line / column reporting ------------------------------------------------
 
 
 def test_reports_line_and_col_for_top_level_function():
@@ -530,9 +496,6 @@ def test_route_reports_decorated_function_line():
     diags = _check(src)
     assert len(diags) == 1
     assert diags[0].line == 3
-
-
-# --- Multiple diagnostics / ordering ----------------------------------------
 
 
 def test_multiple_top_level_functions_in_source_order():
@@ -589,9 +552,6 @@ def b() -> dict[str, Any]:
     assert [d.line for d in diags] == [6, 3]
 
 
-# --- Message content --------------------------------------------------------
-
-
 def test_dict_message_includes_function_name_and_annotation():
     diags = _check("def build_payload() -> dict[str, Any]:\n    return {'id': 1}\n")
     assert len(diags) == 1
@@ -607,9 +567,6 @@ def test_route_message_includes_route_name():
     msg = diags[0].message
     assert "get_call" in msg
     assert "response_model" in msg
-
-
-# --- Empty / trivial / malformed sources ------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -642,9 +599,6 @@ def test_syntax_errors_return_empty(src: str):
     assert _check(src) == []
 
 
-# --- Test-path exclusion variants -------------------------------------------
-
-
 @pytest.mark.parametrize(
     "path",
     [
@@ -675,11 +629,7 @@ def test_non_test_paths_are_still_linted(path: str):
     assert len(_check(src, path=path)) == 1, path
 
 
-# ===========================================================================
 # ADVERSARIAL EDGE-CASE HUNT (new)
-# ===========================================================================
-
-# --- Additional flagged shapes (passing regressions) ------------------------
 
 
 def test_flags_builtins_dict_subscript():
@@ -718,9 +668,6 @@ def test_flags_implicitly_concatenated_string_annotation():
     assert len(_check('def f() -> "dict[str, " "Any]":\n    return {"id": 1}\n')) == 1
 
 
-# --- Additional allowed shapes / documented limitations (passing) -----------
-
-
 def test_allows_dict_with_bare_dict_value():
     """Bare `dict` in VALUE position is not inspected (mirrors `dict[str, dict[str, Any]]`)."""
     assert _check("def f() -> dict[str, dict]:\n    return {'id': 1}\n") == []
@@ -743,9 +690,6 @@ def test_allows_type_alias_return_pure_annotation_limitation():
     assert _check(src) == []
 
 
-# --- Previously-genuine defects (now fixed) ---------------------------------
-
-
 def test_annotated_dict_return_should_be_flagged():
     src = 'from typing import Annotated, Any\ndef f() -> Annotated[dict[str, Any], "meta"]:\n    return {"id": 1}\n'
     assert len(_check(src)) == 1
@@ -764,12 +708,9 @@ def test_pytest_fixture_returning_dict_is_false_positive():
     assert _check(src) == []
 
 
-# ===========================================================================
 # CORPUS SWEEP: 413 findings over fastapi / pydantic / black / sqlmodel /
 # rich / flask / httpx / requests / anyio (2,657 files).
-# ===========================================================================
 
-# --- Guard: the record must be built in place -------------------------------
 
 _OPAQUE_MAPPING_BODIES = [
     # `black/src/black/files.py:130` (parse_pyproject_toml), `pydantic/mypy.py:1433`.
@@ -845,9 +786,6 @@ def f() -> dict[str, Any]:
     assert _check(src) == []
 
 
-# --- Guard: closures are not boundaries -------------------------------------
-
-
 def test_closure_returning_record_not_flagged():
     """`httpx/_transports/asgi.py:134` — an inner ASGI callable is not importable."""
     src = """
@@ -881,9 +819,6 @@ class Service:
     assert len(_check(src)) == 1
 
 
-# --- Guard: dict-conversion protocol methods --------------------------------
-
-
 @pytest.mark.parametrize(
     "name",
     ["asdict", "as_dict", "dict", "model_dump", "to_data", "to_dict"],
@@ -899,9 +834,6 @@ def test_names_merely_containing_dict_are_still_flagged(name: str):
     """Opposite case: the exemption is an exact-name allowlist, not a substring match."""
     src = f"def {name}(self) -> dict[str, Any]:\n    return {{'id': self.id}}\n"
     assert len(_check(src)) == 1, name
-
-
-# --- Routes: the missing-annotation trigger needs an ad-hoc dict too --------
 
 
 _NON_RECORD_ROUTE_BODIES = [

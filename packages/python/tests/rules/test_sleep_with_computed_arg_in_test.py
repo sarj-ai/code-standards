@@ -27,9 +27,7 @@ async def test_thing():
 """
 
 
-# --------------------------------------------------------------------------- #
 # Test-path gating.                                                            #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("path", ["test_x.py", "x_test.py", "conftest.py", "a/tests/h.py"])
@@ -42,9 +40,7 @@ def test_skips_non_test_paths(path: str):
     assert _check(_COMPUTED_SLEEP, path) == []
 
 
-# --------------------------------------------------------------------------- #
 # Positive: every non-literal delay shape.                                     #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -78,10 +74,8 @@ def test_thing():
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Disjointness with SARJ031: a literal delay belongs to that rule, and no      #
 # single sleep may ever be reported by both.                                   #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("delay", ["0.01", "1", "2.5", "0"])
@@ -107,9 +101,7 @@ async def test_thing():
     assert combined <= 1
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: nearest enclosing function, inherited from SARJ031.                #
-# --------------------------------------------------------------------------- #
 
 
 def test_sleep_in_nested_fake_coroutine_is_exempt():
@@ -196,9 +188,7 @@ time.sleep(DELAY * 2)
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Edge cases.                                                                  #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("source", ["", "  \n\n ", "# comment\n"])

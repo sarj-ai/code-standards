@@ -26,9 +26,7 @@ def test_results():
 """
 
 
-# --------------------------------------------------------------------------- #
 # Path gating.                                                                 #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("path", ["test_x.py", "x_test.py", "a/tests/test_y.py"])
@@ -46,9 +44,7 @@ def test_skips_modules_pytest_does_not_collect(path: str):
     assert _check(_LOOP_ONLY, path) == []
 
 
-# --------------------------------------------------------------------------- #
 # Positive: no path through the test is guaranteed to assert.                  #
-# --------------------------------------------------------------------------- #
 
 
 def test_flags_loop_only_assertion():
@@ -170,9 +166,7 @@ def test_diagnostics_are_sorted_by_position():
     assert [(d.line, d.col) for d in _check(src)] == [(3, 5), (7, 1)]
 
 
-# --------------------------------------------------------------------------- #
 # Guard: an unconditional assertion anywhere clears the test.                  #
-# --------------------------------------------------------------------------- #
 
 
 def test_top_level_assertion_alongside_a_conditional_one_is_exempt():
@@ -269,9 +263,7 @@ def test_assert_raises_context_manager_is_exempt():
 
 
 def test_top_level_raise_is_exempt():
-    # The `raise` is the whole verdict: falling out of the search loop means the
-    # fixture never produced the row the test was looking for. Nothing here is
-    # named like an assertion, so only the `ast.Raise` arm can clear it.
+    # The `raise` is the whole verdict: falling out of the search loop means the fixture never produced the row the test was looking for.
     src = """
     def test_thing():
         for row in fetch():
@@ -319,9 +311,7 @@ def test_match_without_a_wildcard_case_still_flags():
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: a one-armed `if` that fails the test is the assertion.             #
-# --------------------------------------------------------------------------- #
 
 
 _AGGREGATOR = """
@@ -472,9 +462,7 @@ def test_while_true_runs_its_body_and_is_exempt():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: the collection was sized before (or after) the loop.               #
-# --------------------------------------------------------------------------- #
 
 
 def test_size_claim_inline_before_the_loop_is_exempt():
@@ -499,10 +487,7 @@ def test_size_claim_after_the_loop_is_exempt():
     assert _check(src) == []
 
 
-# A size claim made in a *sibling* test is the case that exercises the machinery
-# — an inline `assert len(rows) == 3` would clear the test by being an
-# unconditional assertion in its own right. A first-party corpus test is
-# written exactly this way.
+# A size claim made in a *sibling* test is the case that exercises the machinery — an inline `assert len(rows) == 3` would clear the test by being an unconditional assertion in its own right.
 _SIBLING_CLAIM = """
 rows = build_rows()
 
@@ -575,9 +560,7 @@ def test_an_emptiness_guard_that_bails_out_is_exempt():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: loops over literal collections.                                    #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -708,9 +691,7 @@ def test_loop_over_an_accumulator_filled_by_a_maybe_empty_loop_still_flags():
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: parametrize columns whose every row is a non-empty literal.        #
-# --------------------------------------------------------------------------- #
 
 
 def test_loop_over_a_parametrized_non_empty_column_is_exempt():
@@ -781,9 +762,7 @@ def test_the_wrong_parametrized_column_does_not_clear_the_loop():
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: fixed tables — enums, class fixtures, imported constants.          #
-# --------------------------------------------------------------------------- #
 
 
 def test_loop_over_an_enum_class_is_exempt():
@@ -950,9 +929,7 @@ def test_loop_over_an_imported_function_call_still_flags():
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: inner loops reached through a proven outer loop.                   #
-# --------------------------------------------------------------------------- #
 
 
 def test_inner_loop_over_the_outer_items_structure_is_exempt():
@@ -995,9 +972,7 @@ def test_a_one_armed_if_inside_a_proven_loop_still_flags():
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: a branch that bails out owes no assertion.                         #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -1066,9 +1041,7 @@ def test_an_early_exit_on_an_unrelated_condition_does_not_size_a_later_loop():
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: try/except as long-hand assertRaises.                              #
-# --------------------------------------------------------------------------- #
 
 
 def test_try_except_whose_handler_asserts_is_exempt():
@@ -1127,9 +1100,7 @@ def test_try_whose_only_assertion_is_in_a_loop_still_flags():
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: capability probes.                                                 #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -1163,9 +1134,7 @@ def test_assertion_gated_on_ordinary_state_still_flags(condition: str):
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: sub-tests, hypothesis, nested defs, skips and fixtures.            #
-# --------------------------------------------------------------------------- #
 
 
 def test_unittest_subtest_block_is_exempt():
@@ -1273,9 +1242,7 @@ def test_nested_function_named_test_is_not_collected():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Boundary with SARJ043: a test with no assertion at all is not this rule.     #
-# --------------------------------------------------------------------------- #
 
 
 def test_a_test_with_no_assertion_anywhere_is_left_to_sarj043():
@@ -1296,9 +1263,7 @@ def test_a_helper_function_is_not_a_test():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Edge cases.                                                                  #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("source", ["", "  \n\n ", "# comment\n"])

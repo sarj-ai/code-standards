@@ -36,9 +36,7 @@ class FakeS3Client:
 """
 
 
-# --------------------------------------------------------------------------- #
 # File-scope gating.                                                          #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -87,9 +85,7 @@ def test_skips_production_paths(path: str):
     assert _check(_FAKE_S3, path) == []
 
 
-# --------------------------------------------------------------------------- #
 # Positive: one diagnostic per recognised service, each naming its library.    #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -219,8 +215,7 @@ class _FakeRedisCache:
 
 
 def test_service_token_may_come_from_a_base_class():
-    # One first-party site declares `FakeLLMClient(OpenAILLMClient)`. The
-    # name alone carries no brand; the base does.
+    # One first-party site declares `FakeLLMClient(OpenAILLMClient)`.
     src = """
 class FakeLLMClient(OpenAILLMClient):
     def generate(self):
@@ -269,10 +264,7 @@ def test_request(monkeypatch):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
-# FP guard: pytest's own collection classes. A first-party                     #
-# `TestGeminiNullDataCollected` was a real finding of the first draft.         #
-# --------------------------------------------------------------------------- #
+# FP guard: pytest's own collection classes.
 
 
 @pytest.mark.parametrize("name", ["TestGeminiNullDataCollected", "test_MongoBackend_no_mock", "TestFakeRedisCache"])
@@ -306,10 +298,8 @@ class MockGeminiClient:
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: doubles of the project's own domain ports. ~60 of these exist in   #
 # two first-party repos; none of them has a library and none should fire.      #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -339,10 +329,7 @@ class {name}:
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
-# FP guard: framework extension points. LiveKit's plugin ABCs have no library, #
-# and langchain's `FakeChatOpenAI(BaseChatModel)` fired before this guard.     #
-# --------------------------------------------------------------------------- #
+# FP guard: framework extension points.
 
 
 @pytest.mark.parametrize(
@@ -400,10 +387,7 @@ class FakeChatOpenAI(ChatOpenAI):
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
-# FP guard: recording decorators around the real client. A first-party         #
-# `RecordingObjectStore` in a test-fakes package is the motivator.             #
-# --------------------------------------------------------------------------- #
+# FP guard: recording decorators around the real client.
 
 
 def test_delegating_spy_is_exempt():
@@ -502,9 +486,7 @@ class FakeRedisClient:
 
 
 def test_exactly_half_the_methods_forwarding_is_still_a_spy():
-    # The `>= half` boundary: 2 forwards of 4 methods. Both `forwards >= 2` and
-    # `forwards * 2 >= len(methods)` hold with no slack, so tightening either
-    # comparison to `>` makes this fire.
+    # The `>= half` boundary: 2 forwards of 4 methods.
     src = """
 class RecordingRedisClient:
     def get(self, key):
@@ -579,9 +561,7 @@ class FakeRedisClient:
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: data holders.                                                      #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -671,9 +651,7 @@ class FakeS3Response:
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: substance floor.                                                   #
-# --------------------------------------------------------------------------- #
 
 
 def test_two_method_double_is_below_the_floor():
@@ -793,10 +771,8 @@ class InMemorySmtpServer:
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: a long class with one method returning canned data is a data        #
 # factory, not a protocol hand-roll. dagster's MockKafkaConsumerResource.       #
-# --------------------------------------------------------------------------- #
 
 
 def test_a_long_single_method_canned_data_factory_is_exempt():
@@ -815,9 +791,7 @@ class MockKafkaConsumerResource:
 
 
 def test_a_nested_connection_class_counts_as_the_second_entry_point():
-    # litellm `.../prisma_and_spend/conftest.py:323` — `InMemorySMTP` exposes one
-    # method, but that method defines a `_Conn` that hand-rolls starttls/login/
-    # send_message. That nested class is the protocol implementation.
+    # litellm `.../prisma_and_spend/conftest.py:323` — `InMemorySMTP` exposes one method, but that method defines a `_Conn` that hand-rolls starttls/login/ send_message.
     src = """
 @dataclass
 class InMemorySMTP:
@@ -863,9 +837,7 @@ class InMemorySMTP:
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: the library is already in use.                                     #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -947,9 +919,7 @@ class FakeRequestsSession:
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
-# FP guard: scope. Only module-level classes are considered.                   #
-# --------------------------------------------------------------------------- #
+# FP guard: scope.
 
 
 def test_class_nested_in_a_function_is_exempt():
@@ -1003,9 +973,7 @@ if TYPE_CHECKING:
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Token-matching precision.                                                    #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -1101,9 +1069,7 @@ class S3Client:
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Edge cases.                                                                  #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("source", ["", "  \n\n ", "# comment\n"])

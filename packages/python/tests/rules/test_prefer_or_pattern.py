@@ -18,9 +18,7 @@ def _check(source: str, path: str = SRC_PATH) -> list[Diagnostic]:
     return PreferOrPattern().check(Path(path), textwrap.dedent(source))
 
 
-# --------------------------------------------------------------------------- #
 # Core detection: adjacent arms repeating one body.                            #
-# --------------------------------------------------------------------------- #
 
 
 _TWO_CLASS_ARMS = """
@@ -204,9 +202,7 @@ def test_flags_arms_that_bind_the_same_name_at_different_positions():
     assert len(diags) == 1
 
 
-# --------------------------------------------------------------------------- #
 # false-positive guards — guarded arms                                         #
-# --------------------------------------------------------------------------- #
 
 
 def test_skips_run_when_the_first_arm_is_guarded():
@@ -278,9 +274,7 @@ def test_guarded_arm_breaks_a_run_in_two():
     assert diags[0].line == 8
 
 
-# --------------------------------------------------------------------------- #
 # false-positive guards — irrefutable arms                                     #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -317,9 +311,7 @@ def test_as_pattern_with_a_subpattern_is_refutable_and_still_flagged():
     assert len(diags) == 1
 
 
-# --------------------------------------------------------------------------- #
 # false-positive guards — differing bodies                                     #
-# --------------------------------------------------------------------------- #
 
 
 def test_skips_arms_whose_bodies_differ():
@@ -356,14 +348,7 @@ def test_skips_arms_whose_bodies_have_different_lengths():
 
 
 def test_skips_arms_whose_bodies_share_a_first_statement_but_differ_in_length():
-    """The length check must run *before* the element-wise compare.
-
-    `test_skips_arms_whose_bodies_have_different_lengths` above uses arms whose
-    first statements differ, so the element-wise `all(...)` short-circuits and
-    never reaches the strict `zip`. This shape shares its first statement, so
-    deleting the length guard raises `ValueError: zip() argument 2 is shorter
-    than argument 1` instead of returning a diagnostic list.
-    """
+    """The length check must run *before* the element-wise compare."""
     assert (
         _check(
             """
@@ -412,9 +397,7 @@ def test_skips_arms_that_differ_only_in_a_nested_literal():
     )
 
 
-# --------------------------------------------------------------------------- #
 # false-positive guards — comments distinguishing the arms                     #
-# --------------------------------------------------------------------------- #
 
 
 def test_skips_arms_with_different_trailing_comments():
@@ -498,13 +481,7 @@ def test_flags_the_same_pair_once_the_separating_comment_is_gone():
 
 
 def test_a_comment_on_the_second_arms_case_line_is_not_a_gap_comment():
-    """The gap ends one line *above* the second `case`.
-
-    A comment on the second arm's own `case` line belongs to that arm, so it is
-    compared against the first arm's comments rather than read as a deliberate
-    separator. Widening the gap to include `second.pattern.lineno` would swallow
-    this comment and suppress a legitimate finding.
-    """
+    """The gap ends one line *above* the second `case`."""
     diags = _check(
         """
         def f(v):
@@ -551,9 +528,7 @@ def test_a_comment_after_the_run_does_not_suppress_it():
     assert len(diags) == 1
 
 
-# --------------------------------------------------------------------------- #
 # false-positive guards — illegal merges (different bound names)               #
-# --------------------------------------------------------------------------- #
 
 
 def test_skips_arms_binding_different_names():
@@ -648,9 +623,7 @@ def test_skips_when_mapping_rest_names_differ():
     )
 
 
-# --------------------------------------------------------------------------- #
 # false-positive guards — empty bodies                                         #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -719,9 +692,7 @@ def test_a_docstring_style_string_body_is_not_treated_as_empty():
     assert len(diags) == 1
 
 
-# --------------------------------------------------------------------------- #
 # false-positive guards — non-adjacent arms                                    #
-# --------------------------------------------------------------------------- #
 
 
 def test_skips_non_adjacent_arms_with_the_same_body():
@@ -775,9 +746,7 @@ def test_identical_bodies_in_different_matches_are_not_merged():
     )
 
 
-# --------------------------------------------------------------------------- #
 # path gating and robustness                                                   #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(

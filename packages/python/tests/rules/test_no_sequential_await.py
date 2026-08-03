@@ -18,12 +18,7 @@ def _check(source: str, path: str = PROD_PATH) -> list[Diagnostic]:
 
 
 def _wrap(body: str) -> str:
-    """Embed a `for`-loop body (indented relative to the loop) under a prod async function.
-
-    Returns:
-        The wrapped async-function source.
-
-    """
+    """Embed a `for`-loop body (indented relative to the loop) under a prod async function."""
     indented = "\n".join(f"        {line}" if line else "" for line in body.splitlines())
     return f"async def f(items):\n    for x in items:\n{indented}\n"
 
@@ -35,9 +30,7 @@ async def f(items):
 """
 
 
-# --------------------------------------------------------------------------- #
 # Test-path exemptions: the rule never fires for test modules.                #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -74,9 +67,7 @@ def test_conftest_named_directory_is_not_exempt():
     assert len(_check(_SEQUENTIAL_LOOP, "conftest/service.py")) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Positive: straight-line `for` bodies that await a call using the loop var.  #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -149,11 +140,7 @@ async def f(items):
 
 
 def test_data_dependent_awaits_in_flat_body_still_fire():
-    """Fire on a flat body awaiting the loop var by structural heuristic.
-
-    The rule fires even when the second await depends on the first (it does not
-    inspect data-dependency).
-    """
+    """Fire on a flat body awaiting the loop var by structural heuristic."""
     src = """
 async def f(items):
     for x in items:
@@ -174,9 +161,7 @@ async def f(items):
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Positive: comprehensions / generator expressions.                           #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -209,18 +194,12 @@ def test_flags_comprehension_code():
 
 
 def test_nested_comprehension_flags_only_inner_owner_of_await():
-    """Flag only the inner comprehension that owns the per-element `await`.
-
-    The outer comprehension has no `await` of its own, so a single diagnostic
-    (for the inner loop) is emitted.
-    """
+    """Flag only the inner comprehension that owns the per-element `await`."""
     src = "async def f(rows):\n    return [[await f(c) for c in r] for r in rows]\n"
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Iterable is evaluated once in the enclosing scope — awaiting it is free.    #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -263,9 +242,7 @@ async def f():
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Negative: `for` bodies containing control flow are not the gather map.      #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -308,9 +285,7 @@ async def f(items):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Negative: while / async-for / gather / no-await shapes.                     #
-# --------------------------------------------------------------------------- #
 
 
 def test_allows_await_in_while_loop():
@@ -374,9 +349,7 @@ async def f(items):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Multiple loops: counts and scope boundaries.                                #
-# --------------------------------------------------------------------------- #
 
 
 def test_flags_each_distinct_loop_once():
@@ -470,9 +443,7 @@ async def outer(items):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Edge cases: empty / whitespace / syntax error / non-async.                  #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("source", ["", "   ", "\n\n", "# just a comment\n"])
@@ -507,9 +478,7 @@ def test_module_level_for_without_await():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # try / async-with / async-for around awaits do not fire.                     #
-# --------------------------------------------------------------------------- #
 
 
 def test_try_except_around_awaits_not_flagged():
@@ -534,9 +503,7 @@ async def f(items):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Line / column correctness.                                                  #
-# --------------------------------------------------------------------------- #
 
 
 def test_line_col_for_loop_body_await():
@@ -560,9 +527,7 @@ def test_diagnostic_path_preserved():
     assert diags[0].path == Path(PROD_PATH)
 
 
-# --------------------------------------------------------------------------- #
 # Multiple violations are returned sorted by (line, col).                     #
-# --------------------------------------------------------------------------- #
 
 
 def test_multi_violation_sorted_by_line():
@@ -592,18 +557,11 @@ async def f(rows, cols):
     assert {d.code for d in diags} == {"SARJ001"}
 
 
-# --------------------------------------------------------------------------- #
 # Adversarial: constructs not covered above that the rule handles correctly.  #
-# --------------------------------------------------------------------------- #
 
 
 def test_nested_comprehension_in_for_body_flags_only_comprehension():
-    """Flag only the comprehension, not the enclosing `for`.
-
-    The inner comprehension's `await` uses its own var (`c`), not the loop var
-    (`x`), so the `for` is not the antipattern; only the gatherable comprehension
-    fires.
-    """
+    """Flag only the comprehension, not the enclosing `for`."""
     src = """
 async def f(items):
     for x in items:
@@ -665,9 +623,7 @@ async def outer(items):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Adversarial: genuine defects (xfail, strict).                               #
-# --------------------------------------------------------------------------- #
 
 
 def test_async_generator_yield_await_should_not_flag():
@@ -704,9 +660,7 @@ async def f(items):
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # FP-hardening (famous-repo sweep): trio/anyio modules have no asyncio.gather. #
-# --------------------------------------------------------------------------- #
 
 
 def test_trio_module_is_exempt():
@@ -823,9 +777,7 @@ async def f(xs, tg: asyncio.TaskGroup):
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # FP-hardening (famous-repo sweep): a fold is not a map.                       #
-# --------------------------------------------------------------------------- #
 
 
 def test_loop_carried_accumulator_is_exempt():

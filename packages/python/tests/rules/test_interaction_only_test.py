@@ -30,9 +30,7 @@ def test_send_notification():
 """
 
 
-# --------------------------------------------------------------------------- #
 # Path gating, matching SARJ043: only pytest-collected modules.                #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("path", ["test_x.py", "x_test.py", "a/tests/test_y.py"])
@@ -60,9 +58,7 @@ def test_skips_uncollected_script_probes(path: str):
     assert _check(_INTERACTION_ONLY, path) == []
 
 
-# --------------------------------------------------------------------------- #
 # Positive: every assertion is mock call bookkeeping.                          #
-# --------------------------------------------------------------------------- #
 
 
 def test_flags_the_motivating_shape():
@@ -179,10 +175,8 @@ class TestThing(TestCase):
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: one non-interaction assertion is enough to clear the test.         #
 # This is the boundary with SARJ043, which fires only on zero assertions.      #
-# --------------------------------------------------------------------------- #
 
 
 def test_an_outcome_assertion_alongside_the_interaction_is_exempt():
@@ -305,13 +299,7 @@ def test_main():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
-# FP guard: a single collaborator is one notification, not a sequence. Counted  #
-# by root object, matching SARJ062: a collaborator is an object, not one of its #
-# methods. 56 of the 60 raw django findings were this shape, and counting whole #
-# dotted paths instead of roots let one mock satisfy the gate on its own —      #
-# 799 of 1,261 OSS findings (63%).                                             #
-# --------------------------------------------------------------------------- #
+# FP guard: a single collaborator is one notification, not a sequence.
 
 
 def test_count_and_args_on_one_mock_is_a_single_contract():
@@ -378,8 +366,6 @@ class TestHook:
 
 def test_mocks_held_on_self_share_the_self_root():
     # A deliberate calibration: `self.conn` / `self.cur` collapse to `self`.
-    # Making `self.` transparent restores 20 airflow DBAPI-adapter findings and
-    # nothing anywhere else, so the plain root split is what ships.
     src = """
 class TestDbApiHook:
     def test_insert_rows(self):
@@ -410,10 +396,7 @@ def test_thing():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
-# FP guard: negative claims. Pure negative space, or a routing contract like    #
-# django/tests/check_framework/test_multi_db.py:23.                            #
-# --------------------------------------------------------------------------- #
+# FP guard: negative claims.
 
 
 @pytest.mark.parametrize(
@@ -464,9 +447,7 @@ class TestMultiDBChecks:
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: the test name declares the interaction is the contract.            #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -509,10 +490,8 @@ def {name}():
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: callback registration has no observable result.                    #
 # celery/t/unit/fixups/test_django.py:183, and one first-party monitor test.   #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -564,10 +543,8 @@ async def test_on_exit_unregisters_state_listener():
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: every target is a patched free function, so no object exists whose  #
 # state the test could have asserted on instead.                               #
-# --------------------------------------------------------------------------- #
 
 
 def test_patched_free_functions_only_are_exempt():
@@ -604,9 +581,7 @@ def test_get_key(mock_get_blob):
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: pytest collection — skipped, fixtures, stubs, nested defs.         #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("marker", ["skip", "skipif(True)", "xfail(reason='x')"])
@@ -665,9 +640,7 @@ def test_stub_body_is_exempt(body: str):
     assert _check(f"def test_thing():\n    {body}\n") == []
 
 
-# --------------------------------------------------------------------------- #
 # Edge cases.                                                                  #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("source", ["", "  \n\n ", "# comment\n"])

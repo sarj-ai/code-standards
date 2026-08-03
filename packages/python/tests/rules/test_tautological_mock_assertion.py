@@ -27,9 +27,7 @@ def test_get_user():
 """
 
 
-# --------------------------------------------------------------------------- #
 # Path gating.                                                                 #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("path", ["test_x.py", "x_test.py", "a/tests/test_y.py"])
@@ -58,9 +56,7 @@ def test_skips_uncollected_script_probes():
     assert _check(_TAUTOLOGY, "chat/scripts/test_llm_providers.py") == []
 
 
-# --------------------------------------------------------------------------- #
 # Positive: the shapes that stub a value and then assert on it.                #
-# --------------------------------------------------------------------------- #
 
 
 def test_flags_return_value_literal_round_trip():
@@ -221,10 +217,7 @@ def test_the_exact_message_text():
     )
 
 
-# --------------------------------------------------------------------------- #
-# FP guard: an assertion that reaches into the result. 16 of the 44 structural #
-# matches across the audited corpora were this shape, all real assertions.     #
-# --------------------------------------------------------------------------- #
+# FP guard: an assertion that reaches into the result.
 
 
 def test_attribute_of_the_result_is_exempt():
@@ -271,10 +264,7 @@ def test_recording_url(client):
 
 
 def test_a_local_bound_to_a_subscript_of_the_result_is_exempt():
-    # saleor `graphql/shop/tests/queries/test_shop.py:515` — a full GraphQL round
-    # trip whose envelope is unpacked into `data` before the comparison. Same
-    # assertion as `test_subscript_of_the_result_is_exempt`, spelled over two
-    # statements.
+    # saleor `graphql/shop/tests/queries/test_shop.py:515` — a full GraphQL round trip whose envelope is unpacked into `data` before the comparison.
     src = """
 def test_query_available_external_authentications(external_auths, user_api_client, monkeypatch):
     monkeypatch.setattr(
@@ -343,8 +333,7 @@ def test_recording_url(client):
 
 
 def test_a_circular_alias_pair_terminates():
-    # Each name is still bound exactly once, so both survive into the alias map
-    # and resolving one walks into the other. Without a visited set this hangs.
+    # Each name is still bound exactly once, so both survive into the alias map and resolving one walks into the other.
     src = """
 def test_swap():
     store.get.return_value = {"id": 7}
@@ -376,17 +365,11 @@ def test_read_main(client):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
-# FP guard: a stub on a *piece* of a double the body never hands over. The      #
-# code has to navigate the chain for the comparison to hold, so the assertion   #
-# also says it navigated correctly. 27 of the 137 census findings were this.    #
-# --------------------------------------------------------------------------- #
+# FP guard: a stub on a *piece* of a double the body never hands over.
 
 
 def test_stub_on_a_sub_object_of_an_unconnected_double_is_exempt():
-    # airflow common SQL `test_dbapi.py:600`. `self.cur` is wired to `self.db_hook`
-    # in `setUp`, so a single-file rule cannot show the hook reaches the cursor —
-    # and `run(...)` really does have to walk connection -> cursor -> fetchall.
+    # airflow common SQL `test_dbapi.py:600`.
     src = """
 class TestDbApiHook:
     def test_run_fetch_all_handler_select_1(self):
@@ -439,9 +422,7 @@ def test_execute_with_input_text():
 
 
 def test_an_alias_naming_a_piece_of_a_double_does_not_dodge_the_guard():
-    # airflow `test_gcs.py:1874`. Each binding only gives part of the double a
-    # shorter name, so following the aliases lands back on `mock_service`, which
-    # the body never hands to the hook.
+    # airflow `test_gcs.py:1874`.
     src = """
 class TestGCSHook:
     def test_object_get_blob(self, mock_service):
@@ -476,8 +457,7 @@ def test_call_deployments_api_no_endpoint_type():
     ],
 )
 def test_a_spelling_that_installs_the_double_names_what_it_replaces(installer: str):
-    # The guard only applies to `<recv>.return_value = X`. An installer call says
-    # which symbol the double stands in for, so reachability is not in doubt.
+    # The guard only applies to `<recv>.return_value = X`.
     src = f"""
 def test_prompt_config(monkeypatch):
     {installer}
@@ -500,10 +480,7 @@ class TestHook:
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
-# FP guard: round trips. The value also flows into the code under test, so the #
-# comparison pins a passthrough the code could have broken.                    #
-# --------------------------------------------------------------------------- #
+# FP guard: round trips.
 
 
 def test_value_also_passed_to_the_code_under_test_is_exempt():
@@ -558,10 +535,7 @@ def test_room():
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
-# FP guard: the test also verifies what the code did. This is most of the      #
-# rule — it removed the only false positives in celery and fastapi.            #
-# --------------------------------------------------------------------------- #
+# FP guard: the test also verifies what the code did.
 
 
 @pytest.mark.parametrize(
@@ -635,10 +609,7 @@ def test_get_db():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
-# FP guard: a real assertion alongside the echo. Every assertion must be an    #
-# echo, or the test is doing real work.                                        #
-# --------------------------------------------------------------------------- #
+# FP guard: a real assertion alongside the echo.
 
 
 def test_real_assertion_alongside_the_echo_is_exempt():
@@ -674,10 +645,7 @@ def test_get_user():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
-# FP guard: trivial stub values. `return_value = None` + `assert x is None`    #
-# pins a code path that genuinely could have returned something.               #
-# --------------------------------------------------------------------------- #
+# FP guard: trivial stub values.
 
 
 @pytest.mark.parametrize("value", ["None", "True", "False", "0", "1", '""', "b''", "[]", "{}", "()", "0.0", "1.0"])
@@ -702,9 +670,7 @@ def test_get_user():
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: the expected value was never stubbed.                             #
-# --------------------------------------------------------------------------- #
 
 
 def test_expectation_the_body_never_stubbed_is_exempt():
@@ -749,9 +715,7 @@ def test_status():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: assertion shapes that are not a single equality comparison.        #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -818,9 +782,7 @@ def test_recording_url(client, monkeypatch):
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: functions pytest does not collect as tests.                        #
-# --------------------------------------------------------------------------- #
 
 
 def test_helper_function_is_exempt():
@@ -845,9 +807,7 @@ def make_probe():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Edge cases.                                                                  #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("source", ["", "  \n\n ", "# comment\n"])

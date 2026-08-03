@@ -17,9 +17,6 @@ def _check(source: str, path: str = "<t>.py") -> list[Diagnostic]:
     return PreferStructOverNamedtuple().check(Path(path), source)
 
 
-# --- Metadata ----------------------------------------------------------------
-
-
 def test_rule_identity():
     rule = PreferStructOverNamedtuple()
     assert rule.code == "SARJ015"
@@ -33,9 +30,6 @@ def test_diag_carries_code_and_message():
     assert diags[0].code == "SARJ015"
     assert "typing.NamedTuple" in diags[0].message
     assert "pydantic" in diags[0].message
-
-
-# --- Positive: `from collections import namedtuple` --------------------------
 
 
 def test_flags_from_collections_import_namedtuple():
@@ -77,9 +71,6 @@ def test_flags_each_of_multiple_from_imports_on_separate_lines():
     assert len(diags) == 2
     assert diags[0].line == 1
     assert diags[1].line == 2
-
-
-# --- Positive: qualified `collections.namedtuple(...)` calls ------------------
 
 
 def test_flags_qualified_collections_namedtuple_call():
@@ -162,9 +153,6 @@ def test_flags_nested_call_argument():
     assert len(_check(src)) == 1
 
 
-# --- Positive: import + call together ----------------------------------------
-
-
 def test_flags_both_import_and_call_sites():
     src = """
 from collections import namedtuple
@@ -183,9 +171,6 @@ def test_functional_call_via_from_import_counts_import_only():
     diags = _check(src)
     assert len(diags) == 1
     assert diags[0].line == 1
-
-
-# --- Negative: typing.NamedTuple is the recommended form ---------------------
 
 
 def test_allows_typing_namedtuple_class():
@@ -216,9 +201,6 @@ def test_allows_typing_namedtuple_functional_call():
     assert _check(src) == []
 
 
-# --- Negative: other collections members -------------------------------------
-
-
 @pytest.mark.parametrize(
     "src",
     [
@@ -237,9 +219,6 @@ def test_allows_collections_abc_namedtuple_lookalike():
     """A submodule import (`collections.abc`) is not `module == 'collections'`."""
     src = "from collections.abc import Sequence\nimport collections\n"
     assert _check(src) == []
-
-
-# --- Negative / false-positive guards ----------------------------------------
 
 
 def test_allows_bare_namedtuple_call_without_import():
@@ -298,9 +277,6 @@ def test_allows_docstring_mentioning_namedtuple():
     assert _check(src) == []
 
 
-# --- Edge cases: empty / malformed input -------------------------------------
-
-
 @pytest.mark.parametrize("src", ["", "\n", "   \n\t\n", "# just a comment\n"])
 def test_empty_or_trivial_source_is_clean(src: str):
     assert _check(src) == []
@@ -319,9 +295,6 @@ def test_syntax_error_returns_empty_without_crashing(src: str):
     assert _check(src) == []
 
 
-# --- Line / column precision on multiple diagnostics -------------------------
-
-
 def test_line_and_col_of_two_distinct_findings():
     src = "from collections import namedtuple\nimport collections as c\nR = c.namedtuple('R', ['a'])\n"
     diags = _check(src)
@@ -331,11 +304,7 @@ def test_line_and_col_of_two_distinct_findings():
 
 
 def test_finding_order_follows_ast_walk_not_source_position():
-    """Order findings by `ast.walk`, not source position.
-
-    `ast.walk` is breadth-first: import findings (direct Module children) precede
-    call findings (nested in Assign), so output is not strictly source-sorted.
-    """
+    """Order findings by `ast.walk`, not source position."""
     src = (
         "import collections\n"
         'A = collections.namedtuple("A", ["x"])\n'
@@ -345,9 +314,6 @@ def test_finding_order_follows_ast_walk_not_source_position():
     diags = _check(src)
     assert sorted(d.line for d in diags) == [2, 3, 4]
     assert [d.line for d in diags] == [3, 2, 4]
-
-
-# --- Suppression is a CLI-layer concern, not applied by check() --------------
 
 
 def test_check_does_not_apply_sarj_noqa():
@@ -367,9 +333,6 @@ def test_is_suppressed_false_for_unrelated_code():
     src = "from collections import namedtuple  # sarj-noqa: SARJ001 — other\n"
     diags = _check(src)
     assert not is_suppressed(src.splitlines(), diags[0].line, diags[0].code)
-
-
-# --- Regression pins for static-name-matching limitations --------------------
 
 
 def test_shadowed_collections_name_still_fires():
@@ -415,9 +378,6 @@ def test_flags_from_asname_shadowing_typing_name():
     """`as NamedTuple` doesn't launder it — the source name is still `namedtuple`."""
     src = 'from collections import namedtuple as NamedTuple\nP = NamedTuple("P", ["x"])\n'
     assert len(_check(src)) == 1
-
-
-# --- Adversarial: deeply nested / exotic call sites --------------------------
 
 
 def test_flags_call_in_deeply_nested_defs():
@@ -469,16 +429,8 @@ def test_flags_conditional_from_import_alone():
     assert len(_check("if True:\n    from collections import namedtuple\n")) == 1
 
 
-# --- Adversarial: exact BFS emission order across interleaved sites -----------
-
-
 def test_exact_bfs_order_interleaved_imports_and_calls():
-    """Emit findings in pure BFS order across interleaved sites.
-
-    import(L3, depth 1) precedes both module-level calls (depth 2); the call
-    nested in `def f` (L5, depth 3) sorts last — verifying the single walk still
-    emits pure BFS order.
-    """
+    """Emit findings in pure BFS order across interleaved sites."""
     src = (
         "import collections\n"
         'A = collections.namedtuple("A", ["x"])\n'
@@ -515,9 +467,6 @@ def test_import_finding_precedes_call_finding_even_when_import_nested_deeper():
     assert diags[0].line == 4
 
 
-# --- Adversarial: must-NOT-fire negatives ------------------------------------
-
-
 def test_allows_qualified_typing_namedtuple_call():
     """`typing.namedtuple` keys off the name `typing`, not in `collections_names`."""
     assert _check('import typing\nP = typing.namedtuple("P", ["x"])\n') == []
@@ -549,10 +498,8 @@ def test_allows_string_annotation_call_form():
     assert _check('x: "collections.namedtuple" = None\n') == []
 
 
-# --------------------------------------------------------------------------- #
 # FP-hardening (famous-repo sweep): test files are exempt — a namedtuple in a  #
 # test is usually the SUBJECT (pydantic's namedtuple-validation tests).        #
-# --------------------------------------------------------------------------- #
 
 
 def test_test_file_is_exempt():
@@ -570,9 +517,7 @@ def test_production_file_still_fires():
     assert len(_check(src, path="app/calls/rows.py")) == 1
 
 
-# --------------------------------------------------------------------------- #
 # The two famous-repo sweep hits, verified true and pinned as regressions.    #
-# --------------------------------------------------------------------------- #
 
 
 def test_flags_namedtuple_built_in_a_property_with_a_local_import():

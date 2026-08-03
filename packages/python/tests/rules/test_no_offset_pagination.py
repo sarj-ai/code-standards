@@ -177,14 +177,7 @@ def test_syntax_error_returns_empty(source: str):
     assert _check(source) == []
 
 
-# --------------------------------------------------------------------------- #
-# Cross-package parity with SARJ107 and the TS twin                            #
-# (`packages/sql/.../no_limit_offset.py`,                                      #
-#  `packages/typescript/src/rules/no-offset-pagination.ts`).                   #
-# All three share ONE parameter alternation. `?` was missing here, so every    #
-# sqlite3 / aiosqlite store paginating with `LIMIT ? OFFSET ?` was a silent    #
-# false negative while the TS twin caught it.                                  #
-# --------------------------------------------------------------------------- #
+# Cross-package parity with SARJ107 and the TS twin                            # (`packages/sql/.../no_limit_offset.py`,                                      # `packages/typescript/src/rules/no-offset-pagination.ts`).
 
 PARAM_MARKERS = {
     "pyformat": 'q = "SELECT id FROM t ORDER BY id LIMIT %s OFFSET %s"\n',

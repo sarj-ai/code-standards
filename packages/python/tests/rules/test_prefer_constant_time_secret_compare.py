@@ -20,9 +20,7 @@ def _count(source: str) -> int:
     return len(_check(source))
 
 
-# Every authenticator stem, exercised as a standalone identifier. Bare integrity
-# hashes (`hash`, `digest`, `sha_digest`) are deliberately absent — they are not a
-# timing-attack surface and live in the negative suite below.
+# Every authenticator stem, exercised as a standalone identifier.
 _SECRET_NAMES = [
     "token",
     "access_token",
@@ -42,9 +40,7 @@ _SECRET_NAMES = [
 _OPERATORS = ["==", "!="]
 
 
-# ---------------------------------------------------------------------------
 # Positive: a secret-like identifier compared with `==` / `!=`.
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", _SECRET_NAMES)
@@ -112,10 +108,8 @@ def test_flags_secret_word_as_whole_token(identifier: str):
     assert _count(src) == 1
 
 
-# ---------------------------------------------------------------------------
 # `signature` is crypto-gated: a MAC in crypto code, a *function* signature in
 # reflection code (pydantic's `default_model_signature` sweep FP).
-# ---------------------------------------------------------------------------
 
 _SIGNATURE_NAMES = ["signature", "sig_signature", "webhook_signature"]
 
@@ -176,9 +170,7 @@ def test_message_mentions_compare_digest():
     assert "compare_digest" in diags[0].message
 
 
-# ---------------------------------------------------------------------------
 # Negative: comparisons that must NOT be flagged.
-# ---------------------------------------------------------------------------
 
 
 def test_allows_compare_digest_hmac():
@@ -233,9 +225,7 @@ def test_allows_secret_subscript_operand():
     assert _check(src) == []
 
 
-# ---------------------------------------------------------------------------
 # Excluded operands: presence / identity-style comparisons.
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -260,10 +250,8 @@ def test_allows_secret_count_vs_zero():
     assert _check(src) == []
 
 
-# ---------------------------------------------------------------------------
 # Literal-sentinel exemption: a secret compared to a compile-time str/bytes
 # literal is a placeholder/state check, not a timing-attack surface.
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("op", _OPERATORS)
@@ -297,17 +285,11 @@ def test_allows_secret_vs_string_literal_left_operand():
     assert _check(src) == []
 
 
-# ---------------------------------------------------------------------------
 # Still fires: two runtime operands (Name/Attribute both sides).
-# ---------------------------------------------------------------------------
 
 
 def test_flags_two_runtime_hash_names():
-    """`cached_hash != token_hash` still fires — `token_hash` carries the `token` authenticator.
-
-    `cached_hash` alone is an integrity hash (not a timing surface); the diagnostic
-    comes from the `token_hash` operand.
-    """
+    """`cached_hash != token_hash` still fires — `token_hash` carries the `token` authenticator."""
     src = "def f(cached_hash, token_hash):\n    return cached_hash != token_hash\n"
     assert _count(src) == 1
 
@@ -327,9 +309,7 @@ def test_flags_secret_vs_attribute_operand():
     assert _count(src) == 1
 
 
-# ---------------------------------------------------------------------------
 # Edge cases.
-# ---------------------------------------------------------------------------
 
 
 def test_empty_source():
@@ -368,9 +348,7 @@ def test_secret_vs_secret_attribute_single_diag():
     assert _count(src) == 1
 
 
-# ---------------------------------------------------------------------------
 # Line / column precision.
-# ---------------------------------------------------------------------------
 
 
 def test_line_and_col_module_level():
@@ -401,9 +379,7 @@ def test_col_for_indented_comparison():
     assert diags[0].col == 12
 
 
-# ---------------------------------------------------------------------------
 # Multiple diagnostics: count and ordering.
-# ---------------------------------------------------------------------------
 
 
 def test_multiple_secrets_each_flagged():
@@ -427,9 +403,7 @@ def test_mixed_flagged_and_clean_lines():
     assert [d.line for d in diags] == [2, 5]
 
 
-# ---------------------------------------------------------------------------
 # False-positive class: whole-token matching + innocuous-marker denylist.
-# ---------------------------------------------------------------------------
 
 _NON_SECRET_LOOKALIKES = [
     "token_count",
@@ -469,14 +443,7 @@ def test_still_flags_password_compound_label():
     assert _count(src) == 1
 
 
-# ---------------------------------------------------------------------------
-# SARJ011-only narrowing: integrity hashes, category/handle descriptors, and
-# ALL-CAPS sentinel constants are not a timing surface. (SARJ012
-# `no-secret-in-log` keeps the broader shared secret set — these are suppressed
-# inside this rule, not in `_secret_names`. The leading boolean-flag exemption
-# below is the exception: it lives in the shared `_secret_names` predicate, so
-# SARJ012 gets it too — a flag is neither a timing surface nor a leak.)
-# ---------------------------------------------------------------------------
+# SARJ011-only narrowing: integrity hashes, category/handle descriptors, and ALL-CAPS sentinel constants are not a timing surface.
 
 _INTEGRITY_HASH_NAMES = [
     "hash",
@@ -623,9 +590,7 @@ def test_flags_genuine_authenticator_compares(src: str):
     assert _count(src) == 1
 
 
-# ---------------------------------------------------------------------------
 # Test-path scope: fixture equality assertions are not a timing surface.
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("test_path", ["test_auth.py", "svc/tests/test_auth.py", "tests/conftest.py"])
@@ -640,10 +605,8 @@ def test_flags_same_compare_in_production_path():
     assert len(PreferConstantTimeSecretCompare().check(Path("svc/auth.py"), src)) == 1
 
 
-# ---------------------------------------------------------------------------
 # Adversarial edge-case hunt (2026-07): camelCase, attribute/attribute,
 # lambda/f-string operands, innocuous-boundary probing.
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", ["apiKey", "accessToken", "clientSecret", "authToken"])
@@ -688,9 +651,6 @@ def test_flags_token_tag_tag_absent_from_denylist():
     assert _count(src) == 1
 
 
-# --- Genuine defects: xfail(strict=True) ----------------------------------
-
-
 def test_flags_secret_in_walrus_operand():
     src = "def f(expected):\n    return (secret := load()) == expected\n"
     assert _count(src) == 1
@@ -708,9 +668,6 @@ def test_flags_valid_token_credential():
 def test_allows_secret_vs_name_bound_to_literal():
     src = 'def f(token):\n    expected = "PLACEHOLDER"\n    return token == expected\n'
     assert _check(src) == []
-
-
-# --- Value-equality dunders are not an auth gate --------------------------
 
 
 def test_allows_secret_compare_in_eq_dunder():

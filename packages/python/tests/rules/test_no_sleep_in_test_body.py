@@ -25,9 +25,7 @@ async def test_thing():
 """
 
 
-# --------------------------------------------------------------------------- #
 # Test-path gating: the rule ONLY fires inside test files.                     #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -61,9 +59,7 @@ def test_skips_non_test_paths(path: str):
     assert _check(_ASYNC_SLEEP, path) == []
 
 
-# --------------------------------------------------------------------------- #
 # Positive: nonzero sleep directly in a `test_*` body.                         #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -128,9 +124,7 @@ def test_diagnostic_path_preserved():
     assert diags[0].path == Path(TEST_PATH)
 
 
-# --------------------------------------------------------------------------- #
 # Negative: sleep(0) and non-literal args are deliberate, not flaky syncs.     #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -173,9 +167,7 @@ def test_allows_sleep_with_no_args():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Critical FP guard: sleeps inside a NESTED function within the test.          #
-# --------------------------------------------------------------------------- #
 
 
 def test_allows_sleep_in_nested_async_helper():
@@ -243,9 +235,7 @@ async def test_x():
     assert diags[0].line == 6
 
 
-# --------------------------------------------------------------------------- #
 # Negative: non-test functions, module scope, other receivers.                #
-# --------------------------------------------------------------------------- #
 
 
 def test_allows_sleep_in_non_test_helper_in_test_file():
@@ -292,9 +282,7 @@ def test_allows_attribute_chain_receiver():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Edge cases: empty / whitespace / syntax error.                              #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("source", ["", "   ", "\n\n", "# just a comment\n"])
@@ -314,9 +302,7 @@ def test_syntax_error_returns_empty(source: str):
     assert _check(source) == []
 
 
-# --------------------------------------------------------------------------- #
 # Counts, line/col, sorting.                                                   #
-# --------------------------------------------------------------------------- #
 
 
 def test_multiple_sleeps_in_one_test_all_fire():
@@ -371,10 +357,8 @@ async def test_b():
     assert len(_check(src)) == 2
 
 
-# --------------------------------------------------------------------------- #
 # FP-hardening (famous-repo sweep): a sleep inside a while loop is polling —   #
 # the remedy this rule's own message prescribes (trio's OS-thread waits).      #
-# --------------------------------------------------------------------------- #
 
 
 def test_sleep_in_while_poll_loop_is_exempt():
