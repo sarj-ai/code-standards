@@ -553,8 +553,29 @@ def test_a_positional_constraint_is_not_silently_widened():
     assert "`case Point(0, 0, color=color, label=label):`" in message
 
 
+@pytest.mark.parametrize(
+    ("existing", "capture"),
+    [
+        pytest.param("existing=collision", "item_collision", id="keyword"),
+        pytest.param("collision", "item_collision", id="positional"),
+        pytest.param("existing=Pair(collision, item_collision)", "item_item_collision", id="nested"),
+    ],
+)
+def test_existing_capture_names_do_not_collide_with_suggested_bindings(existing: str, capture: str):
+    source = f"""
+    match item:
+        case Widget({existing}):
+            emit(item.collision, item.other)
+    """
+    (message,) = _messages(source)
+    pattern = message.split("write `")[1].split("` instead")[0]
+    parsed = ast.parse(f"match x:\n    {pattern}\n        pass\n")
+
+    compile(parsed, "<suggested pattern>", "exec")
+    assert f"collision={capture}" in pattern
+
+
 def test_every_suggested_pattern_is_valid_python():
-    # The suggestion is meant to be pasted.
     source = """
     match item:
         case Wide():
@@ -562,7 +583,11 @@ def test_every_suggested_pattern_is_valid_python():
     """
     (message,) = _messages(source)
     pattern = message.split("write `")[1].split("` instead")[0]
-    ast.parse(f"match x:\n    {pattern}\n        pass\n")
+    parsed = ast.parse(f"match x:\n    {pattern}\n        pass\n")
+    compile(parsed, "<suggested pattern>", "exec")
+
+    assert isinstance(parsed.body[0], ast.Match)
+    assert isinstance(parsed.body[0].cases[0].pattern, ast.MatchClass)
 
 
 # Whole-object use: the subject stays bound, so the arm still fires.           #

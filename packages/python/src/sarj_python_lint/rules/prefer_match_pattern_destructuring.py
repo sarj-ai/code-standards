@@ -115,9 +115,17 @@ class _ReachBack:
     kept: tuple[tuple[str, str], ...]
     positional: tuple[str, ...]
 
-    def binding(self, field: str) -> str:
-        """Choose a capture name for `field` that the arm can actually use."""
-        return f"{self.alias}_{field}" if field in self.taken or field in _BUILTIN_NAMES else field
+    def bindings(self, fields: list[str]) -> list[tuple[str, str]]:
+        """Allocate unique capture names that do not shadow the arm."""
+        reserved = set(self.taken | _BUILTIN_NAMES)
+        bindings: list[tuple[str, str]] = []
+        for field in fields:
+            capture = field
+            while capture in reserved:
+                capture = f"{self.alias}_{capture}"
+            reserved.add(capture)
+            bindings.append((field, capture))
+        return bindings
 
 
 def _message(finding: _ReachBack) -> str:
@@ -125,7 +133,7 @@ def _message(finding: _ReachBack) -> str:
     named = finding.fields[:_MAX_NAMED_FIELDS]
     elided = len(finding.fields) - len(named)
     # The elision stays OUT of the pattern text.
-    bindings = ", ".join(f"{field}={finding.binding(field)}" for field in named)
+    bindings = ", ".join(f"{field}={capture}" for field, capture in finding.bindings(named))
     kept_text = ", ".join([*finding.positional, *(f"{attr}={name}" for attr, name in finding.kept)])
     if kept_text:
         bindings = f"{kept_text}, {bindings}"
@@ -177,11 +185,23 @@ def _reach_back_arm(case: ast.match_case, subject: str) -> _ReachBack | None:
         cls_name=cls_name,
         alias=alias,
         fields=fields,
-        taken=frozenset(use.taken),
+        taken=frozenset(use.taken | _pattern_bindings(inner)),
         aliased=aliased,
         kept=kept,
         positional=positional,
     )
+
+
+def _pattern_bindings(pattern: ast.pattern) -> set[str]:
+    """Return every capture name already reserved by `pattern`."""
+    bindings: set[str] = set()
+    for node in walk(pattern):
+        match node:
+            case ast.MatchAs(name=str(name)) | ast.MatchStar(name=str(name)) | ast.MatchMapping(rest=str(name)):
+                bindings.add(name)
+            case _:
+                pass
+    return bindings
 
 
 def _pattern_class_name(cls: ast.expr) -> str | None:
