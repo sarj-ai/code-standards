@@ -48,6 +48,10 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: 'packages/**/uv.lock'
       # release.yml's `detect` job watches packages/python/pyproject.toml, but
       # pre-commit consumers install the root package — so a bump to one and not
       # the other silently skips the publish. That is exactly how 0.15.0 was
@@ -56,10 +60,6 @@ jobs:
       - name: Check root/package versions are in sync
         working-directory: .
         run: make check-versions-synced
-      - uses: astral-sh/setup-uv@v9.0.0
-        with:
-          enable-cache: true
-          cache-dependency-glob: 'packages/**/uv.lock'
       - run: uv python install 3.14
       - run: uv sync --dev
       - run: uv run pytest -q

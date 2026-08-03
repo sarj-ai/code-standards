@@ -62,6 +62,13 @@ Run all three in CI. `init` prints them as a ready-made job.
 `check --noise-only` covers Python and text/config inputs; TypeScript comment
 noise is enforced by the generated strict ESLint config.
 
+Maintainers can declare repository policy in `.sarj-standards.toml` and replace
+ad hoc scripts with `sarj-standards repo check`. The same command checks private
+references, CI history, filenames, rule/test/registry pairing, canonical config
+references, and version coverage; `repo sync-ledger`, `repo comment-corpus`,
+`repo hooks install`, and `repo rules manifest` provide the related maintenance
+operations.
+
 `sarj-standards` is the preferred entrypoint. `sarj-lint-configs` remains an
 alias for compatibility. `check` routes Python, SQL, Terraform, YAML/TFTPL,
 TOML, JSONC, Markdown, INI-style config, environment files, shell scripts,

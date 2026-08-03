@@ -6,10 +6,23 @@ import argparse
 import json
 from pathlib import Path
 import shutil
+import subprocess  # ruff: ignore[suspicious-subprocess-import] -- repository commands report failures from fixed-argument child processes.
 import sys
 from typing import Final
 
-from . import CONFIGS_DIR, __version__, doctor, manifest, packagemanager, runner, scaffold
+from . import (
+    CONFIGS_DIR,
+    __version__,
+    comment_corpus,
+    doctor,
+    hooks,
+    manifest,
+    packagemanager,
+    repository,
+    rule_maintenance,
+    runner,
+    scaffold,
+)
 
 
 CONFIG_NAMES: Final[dict[str, tuple[str, str]]] = {
@@ -48,6 +61,13 @@ class _Args(argparse.Namespace):
     name: str = ""
     files: list[str]
     noise_only: bool = False
+    repo_cmd: str = ""
+    repo_only: list[str]
+    commits: str | None = None
+    roots: list[Path]
+    summary: bool = False
+    rules_cmd: str = ""
+    hooks_cmd: str = ""
 
     def __init__(self) -> None:
         super().__init__()
@@ -57,6 +77,8 @@ class _Args(argparse.Namespace):
         self.files = []
         self.only = []
         self.configs = []
+        self.repo_only = []
+        self.roots = []
 
 
 def cmd_sync(args: _Args, *, next_steps: bool = True) -> int:
@@ -304,6 +326,8 @@ def main(argv: list[str] | None = None) -> int:
             except ValueError as exc:
                 print(f"error: {exc}", file=sys.stderr)
                 return 2
+        case "repo":
+            return _cmd_repo(args)
         case _:  # argparse enforces `required=True`, so this is unreachable
             return 2
 
@@ -384,7 +408,68 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     runner.add_arguments(p_check)
 
+    _add_repo_parsers(sub.add_parser("repo", help="run configurable repository maintenance tasks"))
+
     return parser
+
+
+def _cmd_repo(args: _Args) -> int:
+    try:
+        return _run_repo(args)
+    except (OSError, TypeError, ValueError, subprocess.SubprocessError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+
+def _run_repo(args: _Args) -> int:
+    if args.repo_cmd == "check":
+        findings = repository.check(_resolve_dest(args.dest), selected=frozenset(args.repo_only), commits=args.commits)
+        print("\n".join(finding.render() for finding in findings) or "repository policy ✓")
+        return 1 if findings else 0
+    if args.repo_cmd == "sync-ledger":
+        result = rule_maintenance.sync_ledger(_resolve_dest(args.dest), check=args.check)
+        print(result.message)
+        return result.status
+    if args.repo_cmd == "comment-corpus":
+        return comment_corpus.emit(args.roots, summary=args.summary, output=sys.stdout)
+    if args.repo_cmd == "hooks" and args.hooks_cmd == "install":
+        return hooks.install(_resolve_dest(args.dest))
+    if args.repo_cmd == "rules" and args.rules_cmd == "manifest":
+        print(json.dumps(rule_maintenance.inventory(_resolve_dest(args.dest)), indent=2))
+        return 0
+    return 2
+
+
+def _add_repo_parsers(repo: argparse.ArgumentParser) -> None:
+    commands = repo.add_subparsers(dest="repo_cmd", required=True)
+    check = commands.add_parser("check", help="run repository policy gates")
+    check.add_argument("--dest", default=".", help="repository root (default: cwd)")
+    check.add_argument(
+        "--only",
+        dest="repo_only",
+        action="append",
+        choices=("ci-history", "file-conventions", "private-refs", "versions"),
+        default=[],
+    )
+    check.add_argument("--commits", help="also inspect commit messages in this revision range")
+    ledger = commands.add_parser("sync-ledger", help="synchronize the rule compatibility ledger")
+    ledger.add_argument("--dest", default=".", help="repository root (default: cwd)")
+    ledger.add_argument("--check", action="store_true", help="report drift without writing")
+    corpus = commands.add_parser("comment-corpus", help="extract comments for calibration")
+    corpus.add_argument("roots", nargs="+", type=Path)
+    corpus.add_argument("--summary", action="store_true")
+    hook_commands = commands.add_parser("hooks", help="manage the pinned repository hooks").add_subparsers(
+        dest="hooks_cmd", required=True
+    )
+    hook_commands.add_parser("install", help="install Lefthook").add_argument(
+        "--dest", default=".", help="repository root (default: cwd)"
+    )
+    rule_commands = commands.add_parser("rules", help="inspect live custom rules").add_subparsers(
+        dest="rules_cmd", required=True
+    )
+    rule_commands.add_parser("manifest", help="print a machine-readable rule inventory").add_argument(
+        "--dest", default=".", help="repository root (default: cwd)"
+    )
 
 
 if __name__ == "__main__":
