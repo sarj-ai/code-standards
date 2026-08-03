@@ -1,4 +1,4 @@
-"""SARJ011 — `==`/`!=` comparisons on secret-like values
+"""SARJ011 — `==`/`!=` comparisons on secret-like values.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_constant_time_secret_compare.py
 """

@@ -24,7 +24,7 @@ _GENERATED_HEADER_LINES = 5
 
 _GENERATED_DIR_NAMES = frozenset({"generated", "vendor", "vendored"})
 
-# A directory holding one of these is a code-generator root: the file is the
+# Marker files identify generator roots whose banner-less output cannot self-identify as generated.
 _CODEGEN_MARKER_NAMES = (
     ".openapi-generator",
     ".openapi-generator-ignore",
@@ -42,7 +42,7 @@ _CODEGEN_MARKER_NAMES = (
 # Ancestor walks stop at the repository root.
 _REPO_ROOT_MARKERS = (".git",)
 
-# Guards against a pathological path (or a symlink loop) turning the ancestor
+# Bound ancestor scans so pathological paths or symlink loops cannot stall linting.
 _MAX_ANCESTOR_DEPTH = 40
 
 

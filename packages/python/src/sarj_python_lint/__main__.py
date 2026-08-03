@@ -102,16 +102,13 @@ class _Args(argparse.Namespace):
 
 
 def _explain(wanted: str) -> int:
-    """Print a rule's summary plus the derived links to its examples and evidence."""
+    """Print a rule's description and its derived examples link."""
     key = wanted.strip()
     cls = REGISTRY.get(key) or next((c for c in REGISTRY.values() if c.code.upper() == key.upper()), None)
     if cls is None:
         sys.stderr.write(f"unknown rule: {wanted}\navailable: {', '.join(sorted(REGISTRY))}\n")
         return 2
-    summary = (sys.modules[cls.__module__].__doc__ or "").strip().splitlines()
-    sys.stdout.write(
-        f"{cls.code}  {cls.id}\n{summary[0] if summary else cls.description}\nexamples: {cls.examples_url()}\n"
-    )
+    sys.stdout.write(f"{cls.code}  {cls.id}\n{cls.description}\nexamples: {cls.examples_url()}\n")
     return 0
 
 

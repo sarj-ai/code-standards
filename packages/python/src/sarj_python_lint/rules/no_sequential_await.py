@@ -1,4 +1,4 @@
-"""SARJ001 — `for x in xs: await f(x)` gather antipattern
+"""SARJ001 — `for x in xs: await f(x)` gather antipattern.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_sequential_await.py
 """

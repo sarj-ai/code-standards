@@ -1,4 +1,4 @@
-"""SARJ076 — Prefer walrus operator in comprehension filters to avoid duplicate function evaluation
+"""SARJ076 — Prefer walrus operator in comprehension filters to avoid duplicate function evaluation.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_walrus_comprehension_filter.py
 """

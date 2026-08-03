@@ -1,5 +1,7 @@
 """Shared first-party / third-party module resolution."""
 
+# Ownership resolution is conservative because a missed finding is safer than advising an impossible dependency edit.
+
 from __future__ import annotations
 
 from functools import lru_cache
@@ -60,12 +62,13 @@ def is_first_party_module(module: str, path: Path) -> bool:
         return False
     root = _project_root(path)
     if root is None:
+        # Unresolved ownership biases to third-party to avoid unfixable findings.
         return False
     return top in _first_party_roots(root)
 
 
 def own_top_package(path: Path) -> str | None:
-    """Return the name of the top-level package `path` itself belongs to."""
+    """Return the outermost importable ancestor, including across PEP 420 namespace gaps."""
     resolved = _resolved(path)
     if resolved is None:
         return None
@@ -84,7 +87,7 @@ def own_top_package(path: Path) -> str | None:
 
 
 def same_distribution(module: str, path: Path) -> bool:
-    """Report whether `module` ships in the same distribution as `path`."""
+    """Compare packaging manifests so a distribution's tests count as its own code."""
     ours = distribution_root(path)
     if ours is None:
         return False
@@ -98,7 +101,7 @@ def same_distribution(module: str, path: Path) -> bool:
 
 
 def distribution_root(path: Path) -> Path | None:
-    """Locate the packaging manifest that owns `path`."""
+    """Locate the nearest packaging manifest because package nesting alone is not distribution ownership."""
     resolved = _resolved(path)
     if resolved is None:
         return None
@@ -168,7 +171,7 @@ def _first_party_roots(root: Path) -> frozenset[str]:
 
 @lru_cache(maxsize=32)
 def _first_party_packages(root: Path) -> tuple[tuple[str, Path], ...]:
-    """Locate every top-level package directory under `root`."""
+    """Locate importable top-level packages; `__init__.py` prevents data directories from posing as code."""
     found: list[tuple[str, Path]] = []
     queue: list[tuple[Path, int]] = [(root, 0)]
     scanned = 0

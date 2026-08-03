@@ -1,4 +1,4 @@
-"""SARJ080 — Prefer match/case over control-flow try/raise and sequential type guards
+"""SARJ080 — Prefer match/case over control-flow try/raise and sequential type guards.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_match_type_dispatch.py
 """

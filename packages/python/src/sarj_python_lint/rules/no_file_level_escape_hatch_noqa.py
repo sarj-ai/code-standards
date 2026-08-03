@@ -1,4 +1,4 @@
-"""SARJ054 — File-level `# ruff: noqa: TID251` — an escape hatch must be per-line
+"""SARJ054 — File-level `# ruff: noqa: TID251` — an escape hatch must be per-line.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_file_level_escape_hatch_noqa.py
 """

@@ -1,4 +1,4 @@
-"""SARJ012 — Secrets passed by keyword argument to a logging call
+"""SARJ012 — Secrets passed by keyword argument to a logging call.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_secret_in_log.py
 """

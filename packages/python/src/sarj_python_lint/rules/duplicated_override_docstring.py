@@ -1,4 +1,4 @@
-"""SARJ084 — An override whose docstring is a verbatim copy of the base's
+"""SARJ084 — An override whose docstring is a verbatim copy of the base's.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_duplicated_override_docstring.py
 """

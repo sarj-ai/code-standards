@@ -1,4 +1,4 @@
-"""SARJ034 — >=2 positional parameters with the same primitive annotation — swap-prone
+"""SARJ034 — >=2 positional parameters with the same primitive annotation — swap-prone.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_kwonly_same_type_params.py
 """
@@ -32,7 +32,7 @@ _CLI_DECORATOR_MODULES = frozenset({"click", "typer"})
 #: `@<name>.command(...)` / `@<name>.group(...)` — click groups and typer apps.
 _CLI_DECORATOR_ATTRS = frozenset({"command", "group"})
 
-# : Methods that implement a duck-typed stdlib protocol.
+#: Methods that implement a duck-typed stdlib protocol.
 _DUCK_PROTOCOL_METHODS = frozenset(
     {
         "read",
@@ -63,7 +63,7 @@ _DUCK_PROTOCOL_METHODS = frozenset(
     }
 )
 
-# : Parameter-name vocabularies whose ORDER is the notation.
+#: Parameter-name vocabularies whose ORDER is the notation.
 _CONVENTIONAL_ORDER_GROUPS = (
     frozenset({"x", "y", "z"}),
     frozenset({"lat", "lon", "alt"}),
@@ -84,7 +84,7 @@ _CONVENTIONAL_ORDER_GROUPS = (
     frozenset({"start", "stop", "step"}),
 )
 
-# : A DIRECTORY named `tests_common`, `test_utils`, `system_tests`, ...
+#: A DIRECTORY named `tests_common`, `test_utils`, `system_tests`, ...
 _TEST_SUPPORT_DIR_RE = re.compile(r"tests?_.+|.+_tests?", re.IGNORECASE)
 
 #: A numbered migration: an append-only artifact that has already run.

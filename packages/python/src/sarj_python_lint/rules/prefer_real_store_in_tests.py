@@ -1,4 +1,4 @@
-"""SARJ058 — A hand-rolled in-memory store makes the test verify a dict, not the database
+"""SARJ058 — A hand-rolled in-memory store makes the test verify a dict, not the database.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_real_store_in_tests.py
 """

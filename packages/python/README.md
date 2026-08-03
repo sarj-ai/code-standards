@@ -29,8 +29,7 @@ uv tool install sarj-python-lint
 
 Mined from an AST audit of ~7,500 test functions across two production repos.
 Every one is scoped to test files and carries the false-positive guard that made
-it shippable; the module docstring for each records the population it was
-measured against.
+it shippable; `sarj-python-lint explain` links each rule to its behavioral tests.
 
 ```yaml
     - id: sarj-mock-without-spec                   # SARJ040
@@ -72,8 +71,8 @@ Attribute access (`session._stt`) is out of scope and stays with ruff's
 
 From a 37,918-comment, nine-repo measurement study. All three are
 deletion-class, so each was validated against pydantic / trio / attrs as well as
-the maintained repos before shipping — the counts and the false-positive classes
-each guard was built from are recorded in the rule module docstrings.
+the maintained repos before shipping, with each false-positive guard encoded in
+the behavioral tests linked by `sarj-python-lint explain`.
 
 ```yaml
     - id: sarj-no-restated-comment                 # SARJ049

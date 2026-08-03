@@ -100,9 +100,11 @@ _SIGNALS: dict[str, re.Pattern[str]] = {
     "vendor": _VENDOR_RE,
 }
 
+# These measured high-precision signals are exemption-only; their absence never licenses deletion.
+
 
 def is_protected(body: str) -> bool:
-    """Report whether a comment carries any protected-class signal."""
+    """Apply an exemption floor; absence of a signal does not prove prose is worthless."""
     return any(pattern.search(body) for pattern in _SIGNALS.values())
 
 
@@ -290,6 +292,7 @@ def code_tokens(text: str) -> set[str]:
 
 def restates(comment_tokens: Sequence[str], code: Iterable[str]) -> bool:
     """Report whether every content token of a comment already appears in the code."""
+    # Prefix matching is intentionally absent because it made unrelated identifiers look equivalent.
     present = set(code)
     stems = {stem(token) for token in present}
     return all(token in present or stem(token) in stems for token in comment_tokens)

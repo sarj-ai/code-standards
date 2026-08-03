@@ -1,4 +1,4 @@
-"""SARJ056 — A tenant predicate that only appears inside a conditional branch
+"""SARJ056 — A tenant predicate that only appears inside a conditional branch.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_optional_tenant_predicate.py
 """

@@ -1,4 +1,4 @@
-"""SARJ022 — Rename a junk-drawer module stem with a single public export
+"""SARJ022 — Rename a junk-drawer module stem with a single public export.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_single_public_export.py
 """
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 _SKIPPED_FILENAMES = frozenset({"__init__.py", "conftest.py"})
 
-# Filenames whose stem is fixed by a framework or tool convention and therefore
+# Framework-owned filenames cannot take the rename this rule would otherwise require.
 _FRAMEWORK_CONVENTION_FILENAMES = frozenset(
     {
         "models.py",

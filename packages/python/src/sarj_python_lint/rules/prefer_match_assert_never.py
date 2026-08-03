@@ -1,4 +1,4 @@
-"""SARJ032 — Silent fall-through on closed-set dispatch — prefer `assert_never`
+"""SARJ032 — Silent fall-through on closed-set dispatch — prefer `assert_never`.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_match_assert_never.py
 """

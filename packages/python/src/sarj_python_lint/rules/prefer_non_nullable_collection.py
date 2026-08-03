@@ -1,4 +1,4 @@
-"""SARJ082 — Prefer non-null list fields in declared data shapes
+"""SARJ082 — Prefer non-null list fields in declared data shapes.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_non_nullable_collection.py
 """

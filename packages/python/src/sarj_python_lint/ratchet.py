@@ -63,7 +63,7 @@ class Measurement:
 
 @dataclass(frozen=True, slots=True)
 class Baseline:
-    """The checked-in ceilings."""
+    """Ceilings by code, package, and file so cleanup in one dimension cannot finance debt in another."""
 
     codes: dict[str, int] = field(default_factory=dict[str, int])
     packages: dict[str, int] = field(default_factory=dict[str, int])
@@ -172,6 +172,7 @@ def improvements(measurement: Measurement, baseline: Baseline) -> dict[str, tupl
 
 def seed(measurement: Measurement, baseline: Baseline) -> Baseline:
     """Build the baseline that `--update` would write from a measurement."""
+    # Recompute exceptions so a file loses grandfathering as soon as it reaches the ceiling.
     exceptions = {path: n for path, n in measurement.files.items() if n > baseline.per_file_ceiling}
     return Baseline(
         codes=dict(sorted(measurement.codes.items())),

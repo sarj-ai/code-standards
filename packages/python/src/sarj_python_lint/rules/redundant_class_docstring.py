@@ -1,4 +1,4 @@
-"""SARJ085 — A class docstring that only re-spells the class name
+"""SARJ085 — A class docstring that only re-spells the class name.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_redundant_class_docstring.py
 """

@@ -1,4 +1,4 @@
-"""SARJ059 — A hand-rolled double of a third-party service should use the library that fakes it properly
+"""SARJ059 — A hand-rolled double of a third-party service should use the library that fakes it properly.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_library_fake.py
 """

@@ -1,4 +1,4 @@
-"""SARJ002 — O(n²) single-accumulator string growth inside loops
+"""SARJ002 — O(n²) single-accumulator string growth inside loops.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_inefficient_string_concat_in_loop.py
 """

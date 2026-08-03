@@ -1,4 +1,4 @@
-"""SARJ018 — Embedded `INSERT INTO ... VALUES/SELECT` in store code must be an upsert
+"""SARJ018 — Embedded `INSERT INTO ... VALUES/SELECT` in store code must be an upsert.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_store_insert_requires_on_conflict.py
 """

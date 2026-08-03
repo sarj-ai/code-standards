@@ -1,4 +1,4 @@
-"""SARJ013 — Psycopg `row_factory=dict_row` where a validated model row is intended
+"""SARJ013 — Psycopg `row_factory=dict_row` where a validated model row is intended.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_class_row.py
 """

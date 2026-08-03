@@ -1,4 +1,4 @@
-"""SARJ049 — A one-line comment that only re-spells the statement beneath it
+"""SARJ049 — A one-line comment that only re-spells the statement beneath it.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_restated_comment.py
 """

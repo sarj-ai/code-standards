@@ -1,4 +1,4 @@
-"""SARJ023 — Stepdown rule — a single-caller private helper belongs below its caller
+"""SARJ023 — Stepdown rule — a single-caller private helper belongs below its caller.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_stepdown.py
 """
@@ -30,7 +30,7 @@ _EXEMPT_METHOD_DECORATORS = frozenset({"property", "cached_property", "abstractm
 
 _SELF_NAMES = frozenset({"self", "cls"})
 
-# : The conventional throwaway name for a `@singledispatch.register` /
+#: A repeated singledispatch implementation name cannot identify one movable target.
 _DISCARD_NAME = "_"
 
 

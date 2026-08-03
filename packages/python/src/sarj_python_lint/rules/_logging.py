@@ -12,7 +12,7 @@ _LOGGER_NAMES = frozenset({"logger", "log", "logging", "loguru", "_logger", "_lo
 LOGGER_FACTORIES = frozenset({"getlogger", "get_logger"})
 _LOGGER_FACTORIES = LOGGER_FACTORIES
 
-# Public: the `.attr` of a logging call.
+# Shared by SARJ012 and SARJ017 so security and style sinks cannot drift apart.
 LOG_METHODS = frozenset(
     {
         "critical",

@@ -1,4 +1,4 @@
-"""SARJ088 — A test docstring that only re-spells the test's own name and body
+"""SARJ088 — A test docstring that only re-spells the test's own name and body.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_restated_test_docstring.py
 """

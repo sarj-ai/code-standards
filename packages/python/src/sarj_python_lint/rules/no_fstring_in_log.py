@@ -1,4 +1,4 @@
-"""SARJ017 — F-string passed as the message to a logging call
+"""SARJ017 — F-string passed as the message to a logging call.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_fstring_in_log.py
 """

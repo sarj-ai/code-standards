@@ -1,4 +1,4 @@
-"""SARJ062 — A test that substitutes six collaborators exercises the mock wiring, not the code
+"""SARJ062 — A test that substitutes six collaborators exercises the mock wiring, not the code.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_over_mocked_test.py
 """

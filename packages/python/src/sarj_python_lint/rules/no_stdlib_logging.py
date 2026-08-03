@@ -1,4 +1,4 @@
-"""SARJ052 — Stdlib `logging` imported in application code — the house logger is loguru
+"""SARJ052 — Stdlib `logging` imported in application code — the house logger is loguru.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_stdlib_logging.py
 """

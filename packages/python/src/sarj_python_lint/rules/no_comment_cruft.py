@@ -1,4 +1,4 @@
-"""SARJ016 — Comment cruft — commented-out code, section banners, header preambles
+"""SARJ016 — Comment cruft — commented-out code, section banners, header preambles.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_comment_cruft.py
 """

@@ -20,7 +20,7 @@ REPO_BLOB: Final = "https://github.com/sarj-ai/standards/blob/main"
 TESTS_DIR: Final = "packages/python/tests/rules"
 
 
-# Suppression syntax.
+# Keep SARJ suppressions separate because Ruff removes unknown `noqa` codes.
 _SARJ_NOQA_RE = re.compile(
     r"#\s*sarj-noqa(?::\s*([A-Za-z0-9_, ]+))?",
     re.IGNORECASE,

@@ -1,4 +1,4 @@
-"""SARJ003 — `if/elif isinstance(...)` chains that dispatch over a *local* closed union
+"""SARJ003 — `if/elif isinstance(...)` chains that dispatch over a *local* closed union.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_isinstance_union_chain.py
 """

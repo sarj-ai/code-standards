@@ -1,4 +1,4 @@
-"""SARJ092 — Typed signatures do not need parameter or return prose tables
+"""SARJ092 — Typed signatures do not need parameter or return prose tables.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_typed_doc_sections.py
 """

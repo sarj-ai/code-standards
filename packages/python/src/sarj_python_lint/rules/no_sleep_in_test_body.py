@@ -1,4 +1,4 @@
-"""SARJ031 — A nonzero `sleep()` directly in a `test_*` body is a flaky-test smell
+"""SARJ031 — A nonzero `sleep()` directly in a `test_*` body is a flaky-test smell.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_sleep_in_test_body.py
 """

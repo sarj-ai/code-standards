@@ -55,6 +55,7 @@ class ProseGroup:
 
 def sentence_units(text: str) -> int:
     """Count prose sentences and unpunctuated list items deterministically."""
+    text = _without_examples_metadata(text)
     cleaned = re.sub(r"https?://\S+", "URL", text)
     cleaned = re.sub(r"`[^`\n]+`", "CODE", cleaned)
     cleaned = re.sub(r"\b\d+\.\d+\b", "NUMBER", cleaned)
@@ -73,6 +74,26 @@ def sentence_units(text: str) -> int:
     if paragraph:
         units += len(_BOUNDARY_RE.split(paragraph))
     return units
+
+
+def _without_examples_metadata(text: str) -> str:
+    """Remove standardized rule-example links from the prose budget."""
+    kept: list[str] = []
+    expect_url = False
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.casefold() == "examples:":
+            expect_url = True
+            continue
+        if re.fullmatch(r"examples:\s+https?://\S+", line, re.IGNORECASE):
+            expect_url = False
+            continue
+        if expect_url and re.fullmatch(r"https?://\S+", line):
+            expect_url = False
+            continue
+        expect_url = False
+        kept.append(raw)
+    return "\n".join(kept)
 
 
 def groups(path: Path, source: str) -> list[ProseGroup]:

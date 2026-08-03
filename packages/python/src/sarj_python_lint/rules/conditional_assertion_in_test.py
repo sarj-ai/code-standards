@@ -1,4 +1,4 @@
-"""SARJ065 — A test whose every assertion sits behind a branch or loop can pass asserting nothing
+"""SARJ065 — A test whose every assertion sits behind a branch or loop can pass asserting nothing.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_conditional_assertion_in_test.py
 """

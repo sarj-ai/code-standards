@@ -1,4 +1,4 @@
-"""SARJ078 — Prefer `Self` type annotation for methods returning instance of enclosing class
+"""SARJ078 — Prefer `Self` type annotation for methods returning instance of enclosing class.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_self_type_annotation.py
 """

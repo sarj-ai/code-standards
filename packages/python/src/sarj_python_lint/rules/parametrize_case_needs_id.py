@@ -1,4 +1,4 @@
-"""SARJ042 — An opaque parametrize case with no id reports as `test_x[case0]`
+"""SARJ042 — An opaque parametrize case with no id reports as `test_x[case0]`.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_parametrize_case_needs_id.py
 """

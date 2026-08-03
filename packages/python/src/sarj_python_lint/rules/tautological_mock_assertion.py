@@ -1,4 +1,4 @@
-"""SARJ060 — A test whose only assertion is the value it fed the mock verifies nothing
+"""SARJ060 — A test whose only assertion is the value it fed the mock verifies nothing.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_tautological_mock_assertion.py
 """

@@ -1,4 +1,4 @@
-"""SARJ063 — A test whose only assertions are about which calls landed on a mock
+"""SARJ063 — A test whose only assertions are about which calls landed on a mock.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_interaction_only_test.py
 """

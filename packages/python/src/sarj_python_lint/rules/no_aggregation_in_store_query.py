@@ -1,4 +1,4 @@
-"""SARJ020 — No DISTINCT / GROUP BY / COUNT in a store query — aggregate elsewhere
+"""SARJ020 — No DISTINCT / GROUP BY / COUNT in a store query — aggregate elsewhere.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_aggregation_in_store_query.py
 """

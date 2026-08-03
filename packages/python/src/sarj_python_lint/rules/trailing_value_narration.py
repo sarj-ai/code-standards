@@ -1,4 +1,4 @@
-"""SARJ051 — A trailing comment that spells out a literal already on the line
+"""SARJ051 — A trailing comment that spells out a literal already on the line.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_trailing_value_narration.py
 """

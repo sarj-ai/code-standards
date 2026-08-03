@@ -1,4 +1,4 @@
-"""SARJ006 — Raw `str` used where a closed enumeration is clearly intended
+"""SARJ006 — Raw `str` used where a closed enumeration is clearly intended.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_str_enum.py
 """
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# : Per-variable comparison-cluster accumulator: first line, first col, every
+#: Per-variable comparison-cluster accumulator: first line, first col, every
 type _ClusterEntry = tuple[int, int, set[str], set[str], set[str], set[str]]
 
 
@@ -71,7 +71,7 @@ EXTERNAL_VOCAB = frozenset(
 #: not flagged.
 _SCANNER_KEY_SEGMENTS = frozenset({"c", "ch", "chr", "char", "token", "tok", "letter", "digit", "glyph"})
 
-# : Variable names that denote an OPEN external vocabulary (ISO language / country
+#: Variable names that denote an OPEN external vocabulary (ISO language / country
 OPEN_DOMAIN_CODE_NAMES = frozenset(
     {
         "language",
@@ -93,7 +93,7 @@ _LOWER_TOKEN_RE = re.compile(r"^[a-z][a-z0-9_-]{0,30}$")
 #: The stdlib `open()` mode vocabulary: 1-3 characters drawn from `rwxab+t`.
 _FILE_MODE_RE = re.compile(r"[rwxabt+]{1,3}")
 
-# : Variable names that hold an `open()` mode.
+#: Variable names that hold an `open()` mode.
 _FILE_MODE_KEYS = frozenset({"filemode", "mode", "open_mode", "openmode"})
 
 #: How many distinct literals one operator must enumerate before firing.

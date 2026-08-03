@@ -1,4 +1,4 @@
-"""SARJ008 — An ad-hoc dict record at a function boundary — use pydantic
+"""SARJ008 — An ad-hoc dict record at a function boundary — use pydantic.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_pydantic_at_boundaries.py
 """

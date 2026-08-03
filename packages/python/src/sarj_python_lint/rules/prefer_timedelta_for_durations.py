@@ -1,4 +1,4 @@
-"""SARJ014 — Duration named in time units but typed as a raw `int`/`float`
+"""SARJ014 — Duration named in time units but typed as a raw `int`/`float`.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_timedelta_for_durations.py
 """
@@ -190,7 +190,7 @@ def _duration_named_params(args: ast.arguments) -> frozenset[str]:
 
 
 def _same_name_forwarded_params(node: ast.FunctionDef | ast.AsyncFunctionDef, params: frozenset[str]) -> frozenset[str]:
-    """Collect the parameters this function only ever forwards under their own name."""
+    """Collect parameters used only as same-named sinks, never in duration arithmetic."""
     if not params:
         return frozenset()
     used: set[str] = set()

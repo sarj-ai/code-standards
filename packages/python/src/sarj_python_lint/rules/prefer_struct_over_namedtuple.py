@@ -1,4 +1,4 @@
-"""SARJ015 — `collections.namedtuple` — prefer `typing.NamedTuple` or a model
+"""SARJ015 — `collections.namedtuple` — prefer `typing.NamedTuple` or a model.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_struct_over_namedtuple.py
 """

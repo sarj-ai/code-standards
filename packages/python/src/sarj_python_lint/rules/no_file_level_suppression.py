@@ -1,4 +1,4 @@
-"""SARJ038 — Module-scope unscoped suppression blanket — scope it or fix the findings
+"""SARJ038 — Module-scope unscoped suppression blanket — scope it or fix the findings.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_file_level_suppression.py
 """

@@ -1,4 +1,4 @@
-"""SARJ043 — A test that verifies nothing passes as long as the code doesn't raise
+"""SARJ043 — A test that verifies nothing passes as long as the code doesn't raise.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_zero_assertion_test.py
 """

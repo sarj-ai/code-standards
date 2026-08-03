@@ -1,4 +1,4 @@
-"""SARJ093 flags boundaries where multiple ID roles share primitive string types
+"""SARJ093 flags boundaries where multiple ID roles share primitive string types.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_nominal_id_types.py
 """

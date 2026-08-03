@@ -1,4 +1,4 @@
-"""SARJ046 — A non-strict `xfail` bug-pin goes green forever once the bug is fixed
+"""SARJ046 — A non-strict `xfail` bug-pin goes green forever once the bug is fixed.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_xfail_requires_strict.py
 """

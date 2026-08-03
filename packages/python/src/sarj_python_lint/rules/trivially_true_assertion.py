@@ -1,4 +1,4 @@
-"""SARJ064 — An assertion whose outcome the test itself already decided
+"""SARJ064 — An assertion whose outcome the test itself already decided.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_trivially_true_assertion.py
 """

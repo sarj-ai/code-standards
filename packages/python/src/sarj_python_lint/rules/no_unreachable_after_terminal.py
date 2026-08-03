@@ -1,4 +1,4 @@
-"""SARJ010 — Unreachable code after a terminal statement
+"""SARJ010 — Unreachable code after a terminal statement.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_unreachable_after_terminal.py
 """

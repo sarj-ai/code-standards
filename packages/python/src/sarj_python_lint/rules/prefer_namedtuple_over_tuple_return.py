@@ -1,4 +1,4 @@
-"""SARJ026 — Public functions returning a bare positional `tuple[A, B, ...]`
+"""SARJ026 — Public functions returning a bare positional `tuple[A, B, ...]`.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_namedtuple_over_tuple_return.py
 """
@@ -29,7 +29,7 @@ _MIN_ELEMENTS = 2
 #: shape counts as a shared contract rather than one class's own design.
 _SIBLING_DECLARATIONS = 2
 
-# : Bases that shape a class rather than hand it an interface to implement.
+#: Bases that shape a class rather than hand it an interface to implement.
 _STRUCTURAL_BASES = frozenset(
     {
         "ABC",

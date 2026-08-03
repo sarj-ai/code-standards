@@ -1,4 +1,4 @@
-"""SARJ047 — `sleep(POLL_INTERVAL * 4)` in a test is the same race SARJ031 bans
+"""SARJ047 — `sleep(POLL_INTERVAL * 4)` in a test is the same race SARJ031 bans.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_sleep_with_computed_arg_in_test.py
 """

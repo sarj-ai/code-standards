@@ -1,4 +1,4 @@
-"""SARJ048 — Importing a private name — but only when the private name is OURS
+"""SARJ048 — Importing a private name — but only when the private name is OURS.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_first_party_private_import.py
 """

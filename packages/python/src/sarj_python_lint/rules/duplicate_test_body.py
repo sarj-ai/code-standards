@@ -1,4 +1,4 @@
-"""SARJ066 — N copy-pasted test functions in one module are one `parametrize` waiting to be written
+"""SARJ066 — N copy-pasted test functions in one module are one `parametrize` waiting to be written.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_duplicate_test_body.py
 """

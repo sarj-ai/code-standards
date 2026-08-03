@@ -1,4 +1,4 @@
-"""SARJ028 — Starlette/FastAPI CORS that echoes any Origin with credentials
+"""SARJ028 — Starlette/FastAPI CORS that echoes any Origin with credentials.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_cors_wildcard_with_credentials.py
 """

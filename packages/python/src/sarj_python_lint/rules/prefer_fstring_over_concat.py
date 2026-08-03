@@ -1,4 +1,4 @@
-"""SARJ068 — Build a string with an f-string, not `"literal" + expression`
+"""SARJ068 — Build a string with an f-string, not `"literal" + expression`.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_fstring_over_concat.py
 """

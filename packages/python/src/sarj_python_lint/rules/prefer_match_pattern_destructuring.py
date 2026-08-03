@@ -1,4 +1,4 @@
-"""SARJ069 — A `case Cls():` arm that reaches back into the subject for its fields
+"""SARJ069 — A `case Cls():` arm that reaches back into the subject for its fields.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_match_pattern_destructuring.py
 """

@@ -1,4 +1,4 @@
-"""SARJ040 — A mock built without `spec=` accepts any attribute — spec it or fake it
+"""SARJ040 — A mock built without `spec=` accepts any attribute — spec it or fake it.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_mock_without_spec.py
 """

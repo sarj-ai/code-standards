@@ -1,4 +1,4 @@
-"""SARJ007 — `try` block with more than 3 top-level statements that can raise
+"""SARJ007 — `try` block with more than 3 top-level statements that can raise.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_fat_try_blocks.py
 """
@@ -41,7 +41,7 @@ def _nested_scope_body_ids(node: ast.AST) -> frozenset[int]:
     return frozenset()
 
 
-# : Terminal method names of the metrics/tracing recorders.
+#: Terminal method names of the metrics/tracing recorders.
 _OBSERVABILITY_METHODS = frozenset(
     {
         "inc",
@@ -62,7 +62,7 @@ _OBSERVABILITY_METHODS = frozenset(
     }
 )
 
-# : Clock reads.
+#: Clock reads.
 _CLOCK_ROOTS = frozenset({"time", "datetime", "date"})
 _CLOCK_METHODS = frozenset(
     {
@@ -77,7 +77,7 @@ _CLOCK_METHODS = frozenset(
     }
 )
 
-# : Value-shaping builtins.
+#: Value-shaping builtins.
 _INERT_BUILTINS = frozenset(
     {
         "abs",

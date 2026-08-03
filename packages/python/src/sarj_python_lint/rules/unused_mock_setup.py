@@ -1,4 +1,4 @@
-"""SARJ067 — Mock setup the test can never exercise is a lie about what is covered
+"""SARJ067 — Mock setup the test can never exercise is a lie about what is covered.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_unused_mock_setup.py
 """

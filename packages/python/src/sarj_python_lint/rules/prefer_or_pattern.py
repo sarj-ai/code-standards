@@ -1,4 +1,4 @@
-"""SARJ070 — Adjacent `case` arms with identical bodies — merge them into one or-pattern
+"""SARJ070 — Adjacent `case` arms with identical bodies — merge them into one or-pattern.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_or_pattern.py
 """

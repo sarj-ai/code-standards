@@ -1,4 +1,4 @@
-"""SARJ045 — A domain object built with many kwargs inline belongs in a builder
+"""SARJ045 — A domain object built with many kwargs inline belongs in a builder.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_kwarg_heavy_construction_in_test.py
 """

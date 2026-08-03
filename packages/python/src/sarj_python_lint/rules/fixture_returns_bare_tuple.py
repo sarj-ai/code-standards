@@ -1,4 +1,4 @@
-"""SARJ044 — A fixture returning a bare tuple forces positional unpacking everywhere
+"""SARJ044 — A fixture returning a bare tuple forces positional unpacking everywhere.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_fixture_returns_bare_tuple.py
 """

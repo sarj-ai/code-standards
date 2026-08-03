@@ -134,7 +134,7 @@ VALUE_MARKER_RE = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 
-# Decorators whose docstring is consumed by something other than a reader, so
+# Decorators that consume docstrings at runtime, where deleting prose would change behavior.
 PROMPT_DECORATOR_MARKERS = frozenset(
     {
         "agent",

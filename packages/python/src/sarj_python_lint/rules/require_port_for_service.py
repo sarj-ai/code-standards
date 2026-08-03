@@ -1,4 +1,4 @@
-"""SARJ071 — A concrete service with injected collaborators and no ABC above it is not substitutable
+"""SARJ071 — A concrete service with injected collaborators and no ABC above it is not substitutable.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_require_port_for_service.py
 """

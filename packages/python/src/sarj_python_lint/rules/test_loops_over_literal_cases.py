@@ -1,4 +1,4 @@
-"""SARJ041 — A test looping over a literal case table is a hand-rolled parametrize
+"""SARJ041 — A test looping over a literal case table is a hand-rolled parametrize.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_test_loops_over_literal_cases.py
 """

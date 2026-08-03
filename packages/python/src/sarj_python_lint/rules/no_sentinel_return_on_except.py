@@ -1,4 +1,4 @@
-"""SARJ009 — Exception handlers that silently swallow via a sentinel return
+"""SARJ009 — Exception handlers that silently swallow via a sentinel return.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_sentinel_return_on_except.py
 """

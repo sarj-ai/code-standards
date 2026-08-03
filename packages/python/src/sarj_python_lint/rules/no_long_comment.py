@@ -1,4 +1,4 @@
-"""SARJ091 — Three or more sentences of in-code prose exceed the comment budget
+"""SARJ091 — Three or more sentences of in-code prose exceed the comment budget.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_long_comment.py
 """

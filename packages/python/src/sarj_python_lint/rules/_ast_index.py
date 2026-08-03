@@ -1,5 +1,7 @@
 """One tree traversal per file, shared by every rule that needs node lookups."""
 
+# Breadth-first order and isinstance semantics intentionally match ast.walk because rules rely on first-match order.
+
 from __future__ import annotations
 
 import ast
@@ -92,10 +94,11 @@ class _NodeIndex:
 
 
 _last_index: tuple[ast.AST, _NodeIndex] | None = None
+# The strong tree reference prevents a recycled object id from ever reusing a stale index.
 
 
 def nodes[NodeT: ast.AST](tree: ast.AST, *types: type[NodeT]) -> list[NodeT]:
-    """Every node of `tree` matching `types`, in `ast.walk` order."""
+    """Index a whole-file tree; use `walk` for subtrees and never mutate indexed nodes."""
     global _last_index  # ruff: ignore[global-statement] — single-slot memo, mirroring `parse_or_none`
     if _last_index is None or _last_index[0] is not tree:
         _last_index = (tree, _NodeIndex(tree))

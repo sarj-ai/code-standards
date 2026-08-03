@@ -1,4 +1,4 @@
-"""SARJ039 — Literal-only constant collection built inside a function — hoist it
+"""SARJ039 — Literal-only constant collection built inside a function — hoist it.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_module_level_constant.py
 """
@@ -61,10 +61,10 @@ _SAFE_CALLEES = frozenset(
     }
 )
 
-# : Collection methods known not to mutate the receiver.
+#: Collection methods known not to mutate the receiver.
 _SAFE_METHODS = frozenset({"copy", "count", "get", "index", "items", "keys", "values"})
 
-# : The `re.Pattern` API.
+#: The `re.Pattern` API.
 _SAFE_REGEX_METHODS = frozenset(
     {
         "findall",
@@ -80,7 +80,7 @@ _SAFE_REGEX_METHODS = frozenset(
 
 _FUNCTION_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 
-# : Nodes that open a scope of their own.
+#: Nodes that open a scope of their own.
 _INNER_SCOPE_NODES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
 
 

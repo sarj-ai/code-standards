@@ -1,4 +1,4 @@
-"""SARJ057 — An assertion whose outcome is decided by the literal it was handed
+"""SARJ057 — An assertion whose outcome is decided by the literal it was handed.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_tautological_expect.py
 """
