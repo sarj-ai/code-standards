@@ -61,7 +61,7 @@ jobs:
           # True iff the manifest's own `version` line changed between BEFORE..AFTER.
           ver_changed () {
             if git rev-parse --verify --quiet "${BEFORE}^{commit}" >/dev/null 2>&1; then
-              git diff --no-color "$BEFORE" "$AFTER" -- "$1" | grep -qE "$2"
+              git diff --no-color "$BEFORE" "$AFTER" -- "$1" | grep -E "$2" >/dev/null
             else
               return 1
             fi
