@@ -23,7 +23,6 @@ if TYPE_CHECKING:
 
 
 _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
-
 _TEST_PREFIX = "test_"
 
 # Collapse case literals so differing inputs do not hide duplicated test structure.
@@ -123,7 +122,7 @@ class _Outline:
         self.key: tuple[str, bool, tuple[str, ...], str, str] = (
             container,
             isinstance(node, ast.AsyncFunctionDef),
-            _parameter_names(node),
+            _signature_shape(node),
             _decorator_shape(node),
             ",".join(types),
         )
@@ -173,6 +172,25 @@ class _Canonicalizer(ast.NodeVisitor):
         if node.name is not None and node.name in self._bound:
             node.name = self._alias(node.name)
         self.generic_visit(node)
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self._visit_eager(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self._visit_eager(node)
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self._visit_eager(node)
+
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        self._visit_eager(node)
+
+    def visit_comprehension(self, node: ast.comprehension) -> None:
+        self._visit_eager(node)
+
+    def _visit_eager(self, node: ast.AST) -> None:
+        for child in _eager_children(node):
+            self.visit(child)
 
     def _alias(self, name: str) -> str:
         return self._aliases.setdefault(name, f"v{len(self._aliases)}")
@@ -323,24 +341,51 @@ def _bound_names(body: list[ast.stmt]) -> frozenset[str]:
     stored = {
         child.id
         for stmt in body
-        for child in _walk(stmt)
+        for child in _binding_nodes(stmt)
         if isinstance(child, ast.Name) and isinstance(child.ctx, (ast.Store, ast.Del))
     }
     handlers = {
         child.name
         for stmt in body
-        for child in _walk(stmt)
+        for child in _binding_nodes(stmt)
         if isinstance(child, ast.ExceptHandler) and child.name is not None
     }
     return frozenset(stored | handlers)
 
 
-def _parameter_names(node: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[str, ...]:
-    # Only functions in the same container are ever compared, so `self` is
-    # either present on both sides or on neither and needs no special case.
-    args = node.args
-    declared = (*args.posonlyargs, *args.args, *args.kwonlyargs, args.vararg, args.kwarg)
-    return tuple(arg.arg for arg in declared if arg is not None)
+def _binding_nodes(node: ast.AST) -> Iterator[ast.AST]:
+    yield node
+    for child in _eager_children(node):
+        yield from _binding_nodes(child)
+
+
+def _eager_children(node: ast.AST) -> Iterator[ast.AST]:
+    match node:
+        case ast.FunctionDef() | ast.AsyncFunctionDef():
+            yield from (
+                *node.decorator_list,
+                *node.args.defaults,
+                *(default for default in node.args.kw_defaults if default is not None),
+            )
+        case ast.ClassDef():
+            yield from (*node.decorator_list, *node.bases, *(keyword.value for keyword in node.keywords))
+        case ast.Lambda():
+            yield from (
+                *node.args.defaults,
+                *(default for default in node.args.kw_defaults if default is not None),
+            )
+        case ast.comprehension():
+            yield from (node.iter, *node.ifs)
+        case _:
+            yield from children(node)
+
+
+def _signature_shape(node: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[str, ...]:
+    return (
+        ast.dump(node.args),
+        ast.dump(node.returns) if node.returns is not None else "",
+        *(ast.dump(param) for param in node.type_params),
+    )
 
 
 def _decorator_shape(node: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
