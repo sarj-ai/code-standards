@@ -1,11 +1,4 @@
-"""`_hcl.blocks()` — the lexical block-tree walker SARJ201/SARJ203 are built on.
-
-Every capability the rules rely on is pinned here: nesting depth, labels,
-direct-vs-nested child separation, 1-based line/col, and value rejoining across
-lines. The masking guards (strings, comments, heredocs) are pinned in both
-directions — text that looks like syntax must not become syntax, and real
-syntax must survive.
-"""
+"""Tests for `_hcl.blocks()` lexical block-tree walker."""
 
 from __future__ import annotations
 

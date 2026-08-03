@@ -1,7 +1,4 @@
-"""SARJ202 flags commented-out HCL and section banners in IaC files.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/iac/tests/rules/test_no_comment_cruft.py
-"""
+"""SARJ202: Flags commented-out HCL and section banners in IaC files."""
 
 from __future__ import annotations
 
@@ -38,11 +35,7 @@ _BANNER_RUN_RE = re.compile(r"={4,}|-{4,}|#{4,}|\*{4,}|~{4,}")
 _HCL_CODE_RE = re.compile(
     r"^(?:resource|data|module|variable|output|provider|locals|terraform|"
     r'backend|dynamic|moved)\s+["{]'
-    # attribute assignment whose RHS looks like an HCL value (not English prose
-    # such as `deploy = provision the stack` or `retry = 3 attempts` in a comment
-    # legend). A bare-number RHS must be the *whole* value (`ttl = 3600`), not the
-    # start of a sentence, to match the same "needs a strong code signal" bar that
-    # already excludes word-prose RHS.
+    # Matches attribute assignments whose right-hand side represents a literal HCL value.
     r'|^[A-Za-z_][\w-]*\s*=(?!=)\s*(?:["\'\[{]|true\b|false\b|null\b'
     r"|var\.|local\.|module\.|data\.|[A-Za-z_][\w]*\.|[a-z_][\w]*\("
     r"|\d+(?:\.\d+)?\s*,?\s*$)"
@@ -64,16 +57,11 @@ class NoCommentCruft(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        # Commented-out-code detection runs on real HCL only. `.tfvars` is
-        # excluded: a block of commented `key = ""` lines there is a conventional
-        # menu of optional inputs, not dead code. Banners are flagged everywhere.
+        # HCL commented-out code checks exclude .tfvars, while section banners are checked in all files.
         detect_code = str(path).endswith((".tf", ".tf.json", ".hcl"))
         lines = source.splitlines()
-        # Heredoc bodies are arbitrary text (scripts, JSON, docs) — a `# ...`
-        # line there is data, not a real comment, so never classify it.
+        # Heredoc lines are data rather than HCL line comments.
         in_heredoc = heredoc_body_mask(lines)
-        # Annotated rather than a bare `frozenset()` on the else branch, whose
-        # element type is unknown and widens the whole binding.
         empty: frozenset[int] = frozenset()
         code_run = _code_dominant_lines(lines, in_heredoc) if detect_code else empty
         banner_leaders = _banner_group_leaders(lines, in_heredoc)

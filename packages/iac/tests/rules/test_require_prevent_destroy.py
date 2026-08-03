@@ -83,9 +83,6 @@ resource "google_storage_bucket" "b" {
     assert "prevent_destroy = false" in diags[0].message
 
 
-# --- guard: force_destroy ---------------------------------------------------
-
-
 def test_force_destroy_true_exempts():
     src = """
 resource "google_storage_bucket" "scratch" {
@@ -116,9 +113,6 @@ resource "google_storage_bucket" "blob" {
 }
 """
     assert len(_check(src)) == 1
-
-
-# --- guard: a secret whose value Terraform reconstructs ---------------------
 
 
 def test_terraform_managed_version_exempts_the_secret():
@@ -168,9 +162,6 @@ resource "google_secret_manager_secret_version" "v" {
     assert len(_check(src)) == 1
 
 
-# --- scope ------------------------------------------------------------------
-
-
 def test_ignores_types_with_their_own_deletion_protection():
     src = 'resource "google_sql_database_instance" "main" {\n  name = "prod"\n}\n'
     assert _check(src) == []
@@ -199,17 +190,9 @@ resource "google_storage_bucket" "c" {
     assert [d.line for d in _check(src)] == [2, 11]
 
 
-# --- every curated type must be reachable, so no row can be dropped in silence -----
-
-
 @pytest.mark.parametrize("resource_type", sorted(IRREPLACEABLE_TYPES))
 def test_every_irreplaceable_type_is_wired_in(resource_type: str):
-    """Deleting any single row from IRREPLACEABLE_TYPES fails exactly this row's case.
-
-    Only the three GCP rows were reachable from a test before this, so the AWS and
-    Azure halves of the set were decoration: removing `aws_s3_bucket` changed no
-    result.
-    """
+    """Verify deleting any single row from IRREPLACEABLE_TYPES fails this test case."""
     src = f'resource "{resource_type}" "example" {{\n  name = "example"\n}}\n'
     diags = _check(src)
     assert len(diags) == 1
@@ -225,11 +208,6 @@ def test_prevent_destroy_guards_every_irreplaceable_type(resource_type: str):
 
 
 def test_the_curated_set_is_exactly_this():
-    """Parametrizing over the set cannot catch a *deletion* — the case vanishes with the row.
-
-    So the set is also pinned literally. Adding or removing a cloud's row is a
-    policy change and must be a deliberate edit here, not a silent one.
-    """
     expected = {
         "google_storage_bucket",
         "google_secret_manager_secret",
@@ -242,9 +220,6 @@ def test_the_curated_set_is_exactly_this():
         "azurerm_container_registry",
     }
     assert expected == IRREPLACEABLE_TYPES
-
-
-# --- HCL keywords are case-insensitive, so the literal test must be too ------------
 
 
 def test_an_uppercase_prevent_destroy_still_guards():

@@ -170,9 +170,6 @@ resource "azurerm_postgresql_flexible_server" "db" {
     assert len(_check(src)) == 1
 
 
-# --- nesting: the walker rewrite's reason for existing -----------------------
-
-
 def test_flags_protection_only_inside_settings():
     # Reproduced bug: `settings { deletion_protection_enabled }` is the API-side
     # flag two levels down; it does not stop `terraform destroy`.
@@ -271,9 +268,6 @@ resource "google_bigquery_dataset" "d" {
     assert len(_check(src)) == 1
 
 
-# --- multi-line values ------------------------------------------------------
-
-
 def test_multiline_expression_value_is_protected():
     src = """
 resource "google_sql_database_instance" "main" {
@@ -298,9 +292,6 @@ resource "aws_rds_cluster" "c" {
     diags = _check(src)
     assert len(diags) == 1
     assert "deletion_protection = false" in diags[0].message
-
-
-# --- masking guards, both directions ----------------------------------------
 
 
 def test_commented_out_protection_does_not_protect():
@@ -329,14 +320,6 @@ def test_reports_the_resource_line_and_column():
     src = 'resource "google_sql_database_instance" "main" {\n  name = "prod"\n}\n'
     (diag,) = _check(src)
     assert (diag.line, diag.col) == (1, 1)
-
-
-# --- BigQuery views are not tables ------------------------------------------------
-#
-# 9 of the rule's 24 corpus findings were `google_bigquery_table` blocks, and all
-# but one carried a `view { query = ... }`. A view stores no data, and the provider
-# REQUIRES deletion_protection = false for a view whose query can change — updating
-# the query is a replace, and the replace fails at apply while protection is on.
 
 
 def test_allows_bigquery_view_without_deletion_protection():
@@ -392,15 +375,8 @@ resource "google_bigquery_table" "events" {
     assert len(_check(src)) == 1
 
 
-# --- google_redis_instance exposes no deletion_protection argument ----------------
-
-
 def test_ignores_redis_instance_which_has_no_such_argument():
-    """The provider puts `deletion_protection_enabled` on `google_redis_cluster`.
-
-    Flagging the instance named a fix that cannot be written, contradicting the
-    rule's own curation criterion.
-    """
+    """Verify google_redis_instance is ignored as it lacks a deletion_protection argument."""
     src = """
 resource "google_redis_instance" "cache" {
   name           = "session-cache"
@@ -418,9 +394,6 @@ resource "google_bigtable_instance" "main" {
 }
 """
     assert len(_check(src)) == 1
-
-
-# --- HCL keywords are case-insensitive, so the literal test must be too ------------
 
 
 @pytest.mark.parametrize("value", ["FALSE", "False", "fAlSe", '"FALSE"', "( FALSE )"])
@@ -451,12 +424,9 @@ resource "google_bigquery_dataset" "warehouse" {
     assert _check(src) == []
 
 
-# --- every curated type must be reachable, so no row can be dropped in silence -----
-
-
 @pytest.mark.parametrize("resource_type", sorted(PROTECTED_TYPES))
 def test_every_protected_type_is_wired_in(resource_type: str):
-    """Deleting any single row from PROTECTED_TYPES fails exactly this row's case."""
+    """Verify deleting any single row from PROTECTED_TYPES fails this test case."""
     src = f'resource "{resource_type}" "example" {{\n  name = "example"\n}}\n'
     diags = _check(src)
     assert len(diags) == 1
@@ -465,7 +435,6 @@ def test_every_protected_type_is_wired_in(resource_type: str):
 
 
 def test_the_curated_set_is_exactly_this():
-    """A parametrize over the set cannot catch a deletion — the case vanishes with the row."""
     expected = {
         "google_sql_database_instance",
         "google_container_cluster",
