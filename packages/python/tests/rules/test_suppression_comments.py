@@ -4,7 +4,6 @@ import tokenize
 
 import pytest
 
-from sarj_python_lint.rules import _suppression_comments
 from sarj_python_lint.rules._suppression_comments import scan_comments, scan_comments_or_none
 
 
@@ -65,21 +64,14 @@ def test_an_unlexable_file_propagates_rather_than_reading_as_comment_free() -> N
 
 
 @pytest.mark.parametrize(
-    "failure",
+    "source",
     [
-        pytest.param(tokenize.TokenError("EOF", (1, 0)), id="token"),
-        pytest.param(SyntaxError("bad syntax"), id="syntax"),
+        pytest.param("x = (\n", id="token"),
+        pytest.param("if True:\n  x = 1\n y = 2\n", id="indentation"),
     ],
 )
-def test_optional_scan_names_each_malformed_source_failure(
-    monkeypatch: pytest.MonkeyPatch,
-    failure: Exception,
-) -> None:
-    def raise_failure(_source: str) -> tuple[object, int]:
-        raise failure
-
-    monkeypatch.setattr(_suppression_comments, "all_comments", raise_failure)
-    assert scan_comments_or_none("malformed") is None
+def test_optional_scan_handles_each_tokenizer_failure(source: str) -> None:
+    assert scan_comments_or_none(source) is None
 
 
 def test_optional_scan_preserves_valid_empty_results() -> None:
