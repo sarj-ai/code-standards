@@ -171,7 +171,7 @@ _SECTION_RE = re.compile(
     re.MULTILINE,
 )
 
-# One `Args:` entry: `name (type): description`, with the type parenthesis
+# Parse one Google-style Args entry with an optional parenthesized type.
 _ARG_ENTRY_RE = re.compile(r"^[ \t]+(?P<name>\*{0,2}[A-Za-z_]\w*)[ \t]*(?:\((?P<type>[^)]*)\))?[ \t]*:(?P<desc>.*)$")
 
 ARG_SECTIONS = ("Args", "Arguments", "Parameters", "Params", "Keyword Args", "Keyword Arguments")

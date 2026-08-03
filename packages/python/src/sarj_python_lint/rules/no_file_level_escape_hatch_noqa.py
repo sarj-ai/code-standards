@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# The codes whose remediation `ruff.strict.toml` spells as an inline, reasoned
+# These codes require inline, reasoned suppressions rather than file-wide escape hatches.
 ESCAPE_HATCH_CODES = frozenset({"TID251"})
 
 # Matched as ruff accepts a file-level scoped suppression: case-insensitive on

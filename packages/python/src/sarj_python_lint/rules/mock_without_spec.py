@@ -29,7 +29,7 @@ _PATCHERS = frozenset({"patch"})
 _SPEC_KEYWORDS = frozenset({"spec", "spec_set", "autospec", "new", "new_callable", "wraps"})
 
 
-# How many positional arguments a callee must receive before the spec/new
+# Positional arity reveals when each mock constructor already received its spec or replacement.
 _REPLACEMENT_ARITY = {"Mock": 1, "MagicMock": 1, "AsyncMock": 1, "patch": 2, "patch.object": 3}
 
 # Attributes every mock answers regardless of what it stands in for.

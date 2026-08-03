@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 # Columns that scope a row to a tenant.
 _TENANT_COLUMNS = ("organization_id", "org_id", "tenant_id", "account_id", "workspace_id")
 
-# A fragment is a predicate (not a bare column name in a SELECT list) when the
+# Require a comparison after the tenant column so SELECT-list names do not masquerade as predicates.
 _TENANT_PREDICATE_RE = re.compile(
     r"\b(?:\w+\.)?(?:" + "|".join(_TENANT_COLUMNS) + r")\b\s*(?:=|<>|!=|\bIN\b|\bIS\b)",
     re.IGNORECASE,
@@ -42,7 +42,7 @@ class NoOptionalTenantPredicate(Rule):
     def check(self, path: Path, source: str) -> list[Diagnostic]:
         if is_test_path(path):
             return []
-        # A file with no tenant column anywhere cannot produce a finding, and
+        # Avoid parsing files that cannot contain a tenant predicate.
         if not any(column in source for column in _TENANT_COLUMNS):
             return []
         tree = parse_or_none(path, source)

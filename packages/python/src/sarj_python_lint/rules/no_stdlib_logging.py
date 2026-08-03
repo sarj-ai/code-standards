@@ -24,7 +24,7 @@ _LOGURU_ROOT = "loguru"
 # Directories whose code is one-shot: no long-lived process, no log pipeline.
 _EXEMPT_DIR_NAMES = frozenset({"scripts", "notebooks"})
 
-# Evidence that a module CONFIGURES stdlib logging rather than emitting through
+# Configuration modules may bridge stdlib logging without using it as the application logger.
 _BRIDGE_MARKER_RE = re.compile(
     r"\b(?:Handler|LogRecord|Logger|Formatter|Filter|LoggerAdapter|LoggingIntegration)\b|"
     r"\b(?:basicConfig|addHandler|removeHandler|setLevel|addLevelName|addFilter|dictConfig|fileConfig|captureWarnings|lastResort)\b|"
@@ -54,7 +54,7 @@ class NoStdlibLogging(Rule):
         """Report every runtime stdlib-`logging` import in `source`."""
         if is_test_path(path) or _EXEMPT_DIR_NAMES.intersection(path.parts) or is_generated(path, source):
             return []
-        # Every diagnostic comes from an `import logging...` statement, which
+        # Skip parsing unless the only import root this rule reports is present.
         if _LOGGING_ROOT not in source:
             return []
         tree = parse_or_none(path, source)

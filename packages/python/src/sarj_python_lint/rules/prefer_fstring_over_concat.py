@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
 # Method names that make a logger-receiver call a logging call.
 
-# A literal ENDING in an UPPERCASE SQL keyword is a query fragment awaiting
+# An uppercase SQL suffix marks a query fragment whose concatenation is intentional.
 _SQL_RE = re.compile(
     r"\b(SELECT|INSERT\s+INTO|UPDATE|DELETE\s+FROM|WHERE|FROM|JOIN|ORDER\s+BY|GROUP\s+BY|VALUES|SET)\b\s*$"
 )
@@ -49,7 +49,7 @@ _LAZY_CALLS = frozenset(
     }
 )
 
-# A literal carrying a `%`-conversion specifier is a `%`-format template being
+# Preserve percent-format templates instead of mixing formatting styles.
 _PCT_FORMAT_RE = re.compile(r"%(?![0-9A-Fa-f]{2})(?:\([^)]*\))?[-#0+]?[0-9*.]*[hlL]?[diouxXeEfFgGcrsa%]")
 
 # Constructors that build an ORM / SQL *expression object*, not a string.

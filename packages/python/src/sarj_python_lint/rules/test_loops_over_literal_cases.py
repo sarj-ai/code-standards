@@ -116,7 +116,7 @@ class _LiteralCaseLoopVisitor(ast.NodeVisitor):
 
 
 def _literal_case_count(iterable: ast.expr) -> int:
-    # Only a display literal at the loop header exposes cases that could be
+    # Only display literals expose a case table that can move into parametrize.
     if not isinstance(iterable, _LITERAL_ITERABLES):
         return 0
     if any(isinstance(elt, ast.Starred) for elt in iterable.elts):
@@ -147,7 +147,7 @@ def _is_subtest_call(expr: ast.expr) -> bool:
 
 
 def _contains_assert(node: ast.AST) -> bool:
-    # Hand-rolled descent rather than `ast.walk`: walk enqueues a node's children
+    # Prune nested scopes explicitly because ast.walk cannot stop after enqueueing their children.
     if isinstance(node, _SCOPE_NODES):
         return False
     if isinstance(node, ast.Assert):

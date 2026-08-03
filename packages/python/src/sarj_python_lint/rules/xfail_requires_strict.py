@@ -91,7 +91,7 @@ def _is_property_based(dec: ast.expr) -> bool:
         return target.id in _PROPERTY_DECORATORS
     if not isinstance(target, ast.Attribute) or target.attr != _PARAMETRIZE_ATTR:
         return False
-    # `pytest.mark.parametrize` is a fixed table, not a generator — the receiver
+    # Exclude pytest.mark.parametrize because its fixed table is not property-based generation.
     receiver = target.value
     return not (isinstance(receiver, ast.Attribute) and receiver.attr == _PYTEST_MARK)
 

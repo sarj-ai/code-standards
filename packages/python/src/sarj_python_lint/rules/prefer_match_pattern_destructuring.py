@@ -60,7 +60,7 @@ _BUILTIN_TYPE_NAMES = frozenset(
     }
 )
 
-# A capture named after the field is the ideal spelling, but not when it would
+# Avoid captures that collide with an existing pattern binding.
 _BUILTIN_NAMES = frozenset(dir(builtins))
 
 

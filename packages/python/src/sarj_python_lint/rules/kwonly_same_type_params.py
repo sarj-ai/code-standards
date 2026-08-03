@@ -114,7 +114,7 @@ class KwonlySameTypeParams(Rule):
         tree = parse_or_none(path, source)
         if tree is None:
             return []
-        # The signature test is a local, allocation-free predicate; the three
+        # Run cheap signature guards before allocating the analysis visitor.
         candidates = [
             (node, offending)
             for node in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef)
