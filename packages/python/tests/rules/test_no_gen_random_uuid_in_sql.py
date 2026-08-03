@@ -144,12 +144,16 @@ def test_sql_building_a_uuidv7_is_not_the_defect(source: str):
 
 
 @pytest.mark.parametrize(
-    "function_name",
-    ["uuid_generate_v7", "uuidv7", "uuid_v7", "uuid7"],
+    "source",
+    [
+        'SQL = "CREATE FUNCTION uuid_generate_v7() RETURNS uuid AS $$ SELECT gen_random_uuid() $$"\n',
+        'SQL = "CREATE FUNCTION uuidv7() RETURNS uuid AS $$ SELECT gen_random_uuid() $$"\n',
+        'SQL = "CREATE FUNCTION uuid_v7() RETURNS uuid AS $$ SELECT gen_random_uuid() $$"\n',
+        'SQL = "CREATE FUNCTION uuid7() RETURNS uuid AS $$ SELECT gen_random_uuid() $$"\n',
+    ],
 )
-def test_allows_common_names_for_a_uuidv7_definition(function_name: str):
-    src = f'SQL = "CREATE FUNCTION {function_name}() RETURNS uuid AS $$ SELECT gen_random_uuid() $$"\n'
-    assert _check(src) == []
+def test_allows_common_names_for_a_uuidv7_definition(source: str):
+    assert _check(source) == []
 
 
 @pytest.mark.parametrize(
