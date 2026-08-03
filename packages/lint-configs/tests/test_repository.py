@@ -5,13 +5,10 @@ import os
 from pathlib import Path
 import re
 import subprocess
-from typing import TYPE_CHECKING
+
+import pytest
 
 from sarj_lint_configs import comment_corpus, hooks, repository, rule_maintenance
-
-
-if TYPE_CHECKING:
-    import pytest
 
 
 def _policy(**changes: object) -> repository.RepositoryPolicy:
@@ -236,16 +233,38 @@ def test_version_references_detect_lock_drift(tmp_path: Path) -> None:
     assert findings[0].message == "demo is 1.0.0, expected 2.0.0"
 
 
-def test_comment_corpus_emits_json_and_summary(tmp_path: Path) -> None:
+def test_comment_corpus_defaults_to_an_aggregate_summary(tmp_path: Path) -> None:
     (tmp_path / "example.py").write_text('"""One. Two."""\n# Explain why.\n', encoding="utf-8")
     output = io.StringIO()
 
-    assert comment_corpus.emit([tmp_path], summary=False, output=output) == 0
-    assert '"kind": "docstring"' in output.getvalue()
+    assert comment_corpus.emit_summary([tmp_path], output) == 0
+    assert output.getvalue().startswith("repository\t0-1\t2\t3+\n")
+    assert "repository-1\t1\t1\t0\n" in output.getvalue()
+    assert tmp_path.name not in output.getvalue()
+    assert "One. Two." not in output.getvalue()
 
-    summary = io.StringIO()
-    comment_corpus.emit([tmp_path], summary=True, output=summary)
-    assert summary.getvalue().startswith("repository\t0-1\t2\t3+\n")
+
+def test_comment_corpus_writes_text_to_a_private_new_file(tmp_path: Path) -> None:
+    (tmp_path / "example.py").write_text("# Sensitive explanation.\n", encoding="utf-8")
+    destination = tmp_path / "corpus.jsonl"
+
+    assert comment_corpus.write_records([tmp_path], destination) == 0
+    assert '"text": "Sensitive explanation."' in destination.read_text(encoding="utf-8")
+    assert destination.stat().st_mode & 0o777 == 0o600
+
+    with pytest.raises(FileExistsError):
+        comment_corpus.write_records([tmp_path], destination)
+
+
+def test_comment_corpus_skips_symlinked_files(tmp_path: Path) -> None:
+    outside = tmp_path.parent / f"{tmp_path.name}-outside.py"
+    outside.write_text("# Sensitive explanation.\n", encoding="utf-8")
+    (tmp_path / "linked.py").symlink_to(outside)
+    output = io.StringIO()
+
+    comment_corpus.emit_summary([tmp_path], output)
+
+    assert output.getvalue() == "repository\t0-1\t2\t3+\n"
 
 
 def test_hook_install_resolves_environment_binaries(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
