@@ -259,7 +259,6 @@ duplicated ruff.
 
 ```yaml
     - id: sarj-prefer-fstring-over-concat          # SARJ068
-    - id: sarj-prefer-match-pattern-destructuring  # SARJ069
     - id: sarj-prefer-or-pattern                   # SARJ070
     - id: sarj-require-port-for-service            # SARJ071
 ```

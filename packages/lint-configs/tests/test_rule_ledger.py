@@ -248,6 +248,24 @@ def test_doctor_names_a_removed_python_hook_and_its_code(tmp_path: Path) -> None
     assert all("there is no replacement" in finding.detail for finding in findings)
 
 
+def test_doctor_explains_why_match_destructuring_was_retired(tmp_path: Path) -> None:
+    _ = (tmp_path / ".pre-commit-config.yaml").write_text(
+        "repos:\n  - hooks:\n      - id: sarj-prefer-match-pattern-destructuring\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "service.py").write_text("use(value)  # sarj-noqa: SARJ069\n", encoding="utf-8")
+    _ = (tmp_path / ".sarj-python-baseline.json").write_text('{"service.py": {"SARJ069": 1}}\n', encoding="utf-8")
+
+    findings = sorted(check_retired_rules(tmp_path), key=lambda finding: finding.where)
+    assert [finding.where for finding in findings] == [
+        ".pre-commit-config.yaml: prefer-match-pattern-destructuring x1",
+        ".sarj-python-baseline.json: SARJ069 x1",
+        "service.py: SARJ069 x1",
+    ]
+    assert "evaluation" in findings[0].detail
+    assert all("fallthrough" in finding.detail for finding in findings[1:])
+
+
 def test_doctor_does_not_flag_prose_that_merely_contains_a_rule_name(tmp_path: Path) -> None:
     _ = (tmp_path / "notes.py").write_text(
         "# we used to rely on no-patching-system-under-test for sarj checks\n", encoding="utf-8"

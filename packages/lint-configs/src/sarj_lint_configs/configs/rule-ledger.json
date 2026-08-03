@@ -126,7 +126,6 @@
       "prefer-fstring-over-concat",
       "prefer-library-fake",
       "prefer-match-assert-never",
-      "prefer-match-pattern-destructuring",
       "prefer-match-type-dispatch",
       "prefer-module-level-constant",
       "prefer-namedtuple-over-tuple-return",
@@ -245,7 +244,6 @@
       "SARJ066",
       "SARJ067",
       "SARJ068",
-      "SARJ069",
       "SARJ070",
       "SARJ071",
       "SARJ076",
@@ -411,6 +409,13 @@
       "note": "Removed in sarj-python-lint 0.34.0. Delete every `# sarj-noqa: SARJ061` comment and SARJ061 baseline key; there is no replacement."
     },
     {
+      "id": "SARJ069",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ069 suppressions and baseline keys; generic match destructuring can turn attribute failures into fallthrough."
+    },
+    {
       "id": "SARJ083",
       "kind": "code",
       "status": "removed",
@@ -430,6 +435,13 @@
       "status": "removed",
       "replacement": null,
       "note": "removed in sarj-python-lint 0.34.0: 25 corpus findings read, 3 true positives. Delete the `sarj-no-patching-system-under-test` pre-commit hook."
+    },
+    {
+      "id": "prefer-match-pattern-destructuring",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Remove this hook from pre-commit; generic match destructuring changes failure, evaluation, and binding semantics."
     }
   ]
 }
