@@ -41,7 +41,11 @@ def test_sentence_like_punctuation_inside_tokens_is_ignored(source: str) -> None
     assert PreferSingleSentenceComment().check(Path("app.py"), source) == []
 
 
-@pytest.mark.parametrize("path", [Path("generated/client.py"), Path("vendor/client.py")])
+@pytest.mark.parametrize(
+    "path",
+    [Path("generated/client.py"), Path("vendor/client.py")],
+    ids=["generated", "vendor"],
+)
 def test_generated_and_vendored_files_are_exempt(path: Path) -> None:
     assert PreferSingleSentenceComment().check(path, '"""First fact. Second fact."""\n') == []
 
