@@ -310,6 +310,198 @@ def test_comment_corpus_removes_partial_output_after_failure(monkeypatch: pytest
     assert list(tmp_path.glob(".corpus.jsonl.*.tmp")) == []
 
 
+def test_comment_corpus_does_not_remove_a_colliding_staging_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    destination = tmp_path / "corpus.jsonl"
+    staging = tmp_path / ".corpus.jsonl.collision.tmp"
+    staging.mkdir()
+    marker = staging / "owned-by-another-process"
+    marker.write_text("keep", encoding="utf-8")
+
+    def collision_token(_length: int) -> str:
+        return "collision"
+
+    monkeypatch.setattr("sarj_lint_configs.comment_corpus.secrets.token_hex", collision_token)
+
+    with pytest.raises(FileExistsError):
+        comment_corpus.write_records([tmp_path], destination)
+
+    assert marker.read_text(encoding="utf-8") == "keep"
+    assert not destination.exists()
+
+
+def test_comment_corpus_rejects_a_staging_file_swap(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    (tmp_path / "example.py").write_text("# Initial comment.\n", encoding="utf-8")
+    destination = tmp_path / "corpus.jsonl"
+    replacement = tmp_path / "replacement.jsonl"
+    replacement.write_text('{"text": "attacker controlled"}\n', encoding="utf-8")
+    original_link = os.link
+
+    def swap_before_link(
+        source: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        target: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+        follow_symlinks: bool = True,
+    ) -> None:
+        assert src_dir_fd is not None
+        os.unlink(source, dir_fd=src_dir_fd)
+        os.symlink(replacement, source, dir_fd=src_dir_fd)
+        original_link(
+            source,
+            target,
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+            follow_symlinks=follow_symlinks,
+        )
+
+    monkeypatch.setattr("sarj_lint_configs.comment_corpus.os.link", swap_before_link)
+
+    with pytest.raises(RuntimeError, match="staging file changed"):
+        comment_corpus.write_records([tmp_path], destination)
+
+    assert replacement.read_text(encoding="utf-8") == '{"text": "attacker controlled"}\n'
+    assert destination.is_symlink()
+    assert destination.resolve() == replacement
+    staging_directories = list(tmp_path.glob(".corpus.jsonl.*.tmp"))
+    assert len(staging_directories) == 1
+    assert (staging_directories[0] / "records").is_symlink()
+
+
+def test_comment_corpus_does_not_delete_a_destination_replaced_after_publication(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (tmp_path / "example.py").write_text("# Initial comment.\n", encoding="utf-8")
+    destination = tmp_path / "corpus.jsonl"
+    original_fsync = os.fsync
+    calls = 0
+
+    def replace_before_directory_fsync(descriptor: int) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            destination.unlink()
+            destination.write_text("owned by another process", encoding="utf-8")
+            error = OSError("directory fsync failed")
+            raise error
+        original_fsync(descriptor)
+
+    monkeypatch.setattr("sarj_lint_configs.comment_corpus.os.fsync", replace_before_directory_fsync)
+
+    with pytest.raises(OSError, match="directory fsync failed"):
+        comment_corpus.write_records([tmp_path], destination)
+
+    assert destination.read_text(encoding="utf-8") == "owned by another process"
+    assert list(tmp_path.glob(".corpus.jsonl.*.tmp")) == []
+
+
+def test_comment_corpus_does_not_use_or_remove_a_swapped_staging_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    destination = tmp_path / "corpus.jsonl"
+    staging = tmp_path / ".corpus.jsonl.swap.tmp"
+    moved = tmp_path / "original-staging"
+    original_open = os.open
+
+    def swap_before_open(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        if path == staging.name:
+            staging.rename(moved)
+            staging.mkdir()
+        return original_open(path, flags, mode, dir_fd=dir_fd)
+
+    def swap_token(_length: int) -> str:
+        return "swap"
+
+    monkeypatch.setattr("sarj_lint_configs.comment_corpus.secrets.token_hex", swap_token)
+    monkeypatch.setattr("sarj_lint_configs.comment_corpus.os.open", swap_before_open)
+
+    with pytest.raises(RuntimeError, match="staging directory changed"):
+        comment_corpus.write_records([tmp_path], destination)
+
+    assert staging.is_dir()
+    assert moved.is_dir()
+    assert list(staging.iterdir()) == []
+    assert list(moved.iterdir()) == []
+    assert not destination.exists()
+
+
+def test_comment_corpus_rejects_a_nonsticky_shared_output_directory(tmp_path: Path) -> None:
+    output_directory = tmp_path / "shared"
+    output_directory.mkdir(mode=0o777)
+    output_directory.chmod(0o777)
+
+    with pytest.raises(PermissionError, match="group/world writable"):
+        comment_corpus.write_records([tmp_path], output_directory / "corpus.jsonl")
+
+
+def test_comment_corpus_does_not_open_parent_when_token_generation_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    class TokenError(Exception):
+        pass
+
+    opened: list[object] = []
+    failure = TokenError()
+    original_open = os.open
+
+    def fail_token(_length: int) -> str:
+        raise failure
+
+    def record_open(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        opened.append((path, flags, mode, dir_fd))
+        return original_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr("sarj_lint_configs.comment_corpus.secrets.token_hex", fail_token)
+    monkeypatch.setattr("sarj_lint_configs.comment_corpus.os.open", record_open)
+
+    with pytest.raises(TokenError):
+        comment_corpus.write_records([tmp_path], tmp_path / "corpus.jsonl")
+
+    assert opened == []
+
+
+def test_comment_corpus_closes_records_descriptor_when_fstat_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    destination = tmp_path / "corpus.jsonl"
+    original_fstat = os.fstat
+    calls = 0
+    records_descriptor = -1
+
+    def fail_records_fstat(descriptor: int) -> os.stat_result:
+        nonlocal calls, records_descriptor
+        calls += 1
+        if calls == 3:
+            records_descriptor = descriptor
+            error = OSError("records fstat failed")
+            raise error
+        return original_fstat(descriptor)
+
+    monkeypatch.setattr("sarj_lint_configs.comment_corpus.os.fstat", fail_records_fstat)
+
+    with pytest.raises(OSError, match="records fstat failed"):
+        comment_corpus.write_records([tmp_path], destination)
+
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        original_fstat(records_descriptor)
+    assert not destination.exists()
+    assert list(tmp_path.glob(".corpus.jsonl.*.tmp")) == []
+
+
 def test_hook_install_resolves_environment_binaries(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     calls: list[list[str]] = []
 
