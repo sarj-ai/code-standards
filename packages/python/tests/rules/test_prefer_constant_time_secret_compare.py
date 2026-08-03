@@ -348,21 +348,16 @@ def test_secret_vs_secret_attribute_single_diag():
     assert _count(src) == 1
 
 
-# Line / column precision.
-
-
-def test_line_and_col_module_level():
-    diags = _check("token == expected\n")
-    assert len(diags) == 1
-    assert diags[0].line == 1
-    assert diags[0].col == 1
-
-
-def test_line_and_col_offset_within_statement():
-    diags = _check("result = api_key != given\n")
-    assert len(diags) == 1
-    assert diags[0].line == 1
-    assert diags[0].col == 10
+@pytest.mark.parametrize(
+    ("source", "col"),
+    [
+        pytest.param("token == expected\n", 1, id="module-level"),
+        pytest.param("result = api_key != given\n", 10, id="statement-offset"),
+    ],
+)
+def test_line_and_col(source: str, col: int):
+    (diag,) = _check(source)
+    assert (diag.line, diag.col) == (1, col)
 
 
 def test_line_reported_for_deeper_statement():

@@ -222,18 +222,16 @@ def test_multiple_violations_returned_in_line_order():
     assert [d.line for d in diags] == [1, 2, 3]
 
 
-def test_line_and_col_point_at_the_fstring_single_line():
-    diags = _check('logger.info(f"val {x}")\n')
-    assert len(diags) == 1
-    assert diags[0].line == 1
-    assert diags[0].col == 13
-
-
-def test_line_and_col_point_at_the_fstring_multiline():
-    diags = _check('logger.info(\n    f"val {x}",\n)\n')
-    assert len(diags) == 1
-    assert diags[0].line == 2
-    assert diags[0].col == 5
+@pytest.mark.parametrize(
+    ("source", "line", "col"),
+    [
+        pytest.param('logger.info(f"val {x}")\n', 1, 13, id="single-line"),
+        pytest.param('logger.info(\n    f"val {x}",\n)\n', 2, 5, id="multiline"),
+    ],
+)
+def test_line_and_col_point_at_the_fstring(source: str, line: int, col: int):
+    (diag,) = _check(source)
+    assert (diag.line, diag.col) == (line, col)
 
 
 def test_only_the_first_positional_argument_is_inspected():
