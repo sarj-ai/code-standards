@@ -152,7 +152,7 @@ def _chain_has_getlogger(expr: ast.expr) -> bool:
             # DOTTED callee: only the stdlib spelling counts.
             if isinstance(called, ast.Attribute) and called.attr == _STDLIB_FACTORY:
                 return True
-            # BARE callee: `get_logger()` and `getLogger()` are both ambiguous — the
+            # A bare logger factory is ambiguous, so suppress it rather than risk false advice.
             if isinstance(called, ast.Name) and called.id.lower() in LOGGER_FACTORIES:
                 return True
             node = called

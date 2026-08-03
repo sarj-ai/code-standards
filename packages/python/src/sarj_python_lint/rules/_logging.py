@@ -7,8 +7,7 @@ import ast
 
 _LOGGER_NAMES = frozenset({"logger", "log", "logging", "loguru", "_logger", "_log"})
 
-# Public: `no_fstring_in_log._chain_has_getlogger` must test the SAME set with
-# the SAME casing, or a factory can be a logger to one and not the other.
+# Keep both rules on one normalized factory set so security cannot miss a receiver style lint sees.
 LOGGER_FACTORIES = frozenset({"getlogger", "get_logger"})
 _LOGGER_FACTORIES = LOGGER_FACTORIES
 
@@ -39,7 +38,7 @@ def is_logger_expr(expr: ast.expr) -> bool:
             return True
         return is_logger_expr(expr.value)
     if isinstance(expr, ast.Call):
-        # A factory names a logger only when it is *called*: `get_logger()` is a
+        # A factory name denotes a logger only when called; otherwise it is merely a function.
         callee = expr.func
         if isinstance(callee, ast.Attribute) and callee.attr.lower() in _LOGGER_FACTORIES:
             return True

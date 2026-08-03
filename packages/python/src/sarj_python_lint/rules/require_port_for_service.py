@@ -134,7 +134,7 @@ class RequirePortForService(Rule):
     id: str = "require-port-for-service"
     code: str = "SARJ071"
     description: str = (
-        # `*Client` is NOT in the name gate — it was measured and excluded (7 OSS
+        # Client is deliberately excluded because it produced excessive false positives in measured projects.
         "Concrete `*Service`/`*Store`/`*DAO`/`*Gateway`/`*Provider` with injected collaborators "
         "and no ABC — consumers must depend on the concrete class, so their tests can only mock it."
     )

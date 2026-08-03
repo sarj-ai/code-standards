@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# S1 — external reference: URL, issue/ticket key, RFC/PEP/CVE, bare GitHub issue
+# S1 — external references: URLs, tickets, RFCs, PEPs, CVEs, issues, and handles.
 _REF_RE = re.compile(
     r"https?://|\bRFC[- ]?\d+|\bPEP[- ]?\d+|\bCVE-\d{4}|"
     r"\b(?!UTF-|SHA-|ISO-|AES-|CRC-|MD-|PCM-|EOF-|API-|BASE-)[A-Z][A-Z0-9]{1,9}-\d[A-Z0-9]{0,5}\b|"
@@ -30,7 +30,7 @@ _VERSION_RE = re.compile(
     re.IGNORECASE,
 )
 
-# S3 — a number carrying a unit (time, size, rate, audio, percent) or an HTTP
+# S3 — numbers carrying units or HTTP status codes.
 _UNITS_RE = re.compile(
     r"[~<>]?\d+(?:\.\d+)?\s?(?:ms|s\b|sec\b|seconds?\b|min\b|minutes?\b|hours?\b|days?\b|"
     r"KB|MB|MiB|GiB|kHz|Hz|bytes?\b|bit\b|-bit\b|%|px\b|rps\b|qps\b)|"
@@ -77,7 +77,7 @@ _SECURITY_RE = re.compile(
     re.IGNORECASE,
 )
 
-# S9 — a vendor proper noun with *ascribed behaviour* (possessive, or followed by
+# S9 — vendor names only when paired with ascribed behavior, not mere narration.
 _VENDOR_RE = re.compile(
     r"\b(?:GitHub|Slack|Twilio|LiveKit|Kamailio|Groq|OpenAI|Anthropic|Cloudflare|FastAPI|"
     r"Starlette|Sentry|Zoho|Salla|Ashby|Linear|BigQuery|Postgres|Neon|Drizzle|Vertex|Gemini|"
@@ -447,7 +447,7 @@ def _weak_walkthrough_comment(body: str, statement: str) -> bool:
     words = content_tokens(body)
     if len(words) < _WALL_MIN_CONTENT_WORDS or not _WALL_NARRATION_RE.match(body):
         return False
-    # The opener describes the operation and need not literally occur in the
+    # The opener names the operation; the remaining words must mostly match the statement.
     known = code_tokens(statement)
     described = words[1:]
     if not described:

@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# Bases whose subclass docstring is emitted into a machine-readable schema —
+# Preserve subclass docstrings that become machine-readable schema descriptions.
 _SCHEMA_BASES = frozenset(
     {
         "BaseModel",

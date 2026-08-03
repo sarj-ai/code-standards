@@ -61,7 +61,7 @@ _INNOCUOUS_WORDS = frozenset(
 # A leading predicate makes the identifier a boolean flag, not a credential.
 _FLAG_PREFIXES = frozenset({"is", "has", "was", "are", "can", "should"})
 
-# camelCase / PascalCase / ALLCAPS / digit run splitter, applied to each
+# Split camel case, capitals, and digit runs within each underscore-delimited component.
 _CAMEL_RE = re.compile(r"[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|\d+")
 _SEGMENT_RE = re.compile(r"[^A-Za-z0-9]+")
 

@@ -22,7 +22,7 @@ _MIN_CHAIN_LENGTH = 2
 # `isinstance(x, T)` takes exactly two positional arguments.
 _ISINSTANCE_ARG_COUNT = 2
 
-# Belt-and-suspenders: names that must never count as a local union member even if a
+# Exclude builtins and ABCs even when a same-named local class shadows them.
 _EXCLUDED_TYPE_NAMES = frozenset(
     {
         "dict",

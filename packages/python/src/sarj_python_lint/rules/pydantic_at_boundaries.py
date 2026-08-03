@@ -241,7 +241,7 @@ def _classify_return(node: ast.expr) -> str | None:
 
     base = _flat_name(node.value)
     if base == "Annotated":
-        # `Annotated[T, ...]` carries the real type as its first argument
+        # Annotated carries its runtime value type in the first argument.
         if isinstance(node.slice, ast.Tuple) and node.slice.elts:
             return _classify_return(node.slice.elts[0])
         return _classify_return(node.slice)

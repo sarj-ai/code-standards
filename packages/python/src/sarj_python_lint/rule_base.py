@@ -37,7 +37,7 @@ def is_suppressed(source_lines: Sequence[str], line: int, code: str) -> bool:
         return False
     codes_str = m.group(1)
     if not codes_str:
-        # Bare `# sarj-noqa` suppresses every SARJ code on the line
+        # A bare sarj-noqa intentionally suppresses every SARJ code on its line.
         return True
     codes = {val.upper() for c in codes_str.split(",") if (val := c.strip())}
     return code.upper() in codes
