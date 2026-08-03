@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
     from sarj_iac_lint._hcl import Block
 
-# Stateful resources with unrecoverable deletion risk exposing deletion_protection[_enabled] (google_redis_instance omitted).
+# Stateful resources exposing deletion_protection[_enabled]; Redis has no supported protection argument.
 PROTECTED_TYPES = frozenset(
     {
         # GCP
@@ -114,6 +114,7 @@ def _violation(block: Block) -> str | None:
     """Describe why `block` is unprotected, or None when it is protected."""
     attr = block.attribute(*_PROTECTION_ATTRS)
     if attr is not None:
+        # Expressions are policy-controlled; only a literal false is demonstrably unsafe.
         return f"{attr.name} = false" if _literal(attr.value) == "false" else None
     lifecycle = block.child(_LIFECYCLE)
     if lifecycle is not None:

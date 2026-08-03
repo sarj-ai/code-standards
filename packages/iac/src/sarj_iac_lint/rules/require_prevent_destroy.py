@@ -97,8 +97,8 @@ def _violation(block: Block) -> str | None:
     """Describe why `block` is unguarded, or None when it is guarded or exempt."""
     force = block.attribute(_FORCE_DESTROY)
     if force is not None and _literal(force.value) != "false":
-        # `force_destroy = true`, or an env-gated expression `prevent_destroy`
-        # cannot mirror — a deliberate statement that this store is disposable.
+        # A true or environment-gated force_destroy explicitly marks the store disposable;
+        # prevent_destroy cannot mirror that expression because Terraform requires a literal.
         return None
     lifecycle = block.child(_LIFECYCLE)
     if lifecycle is None:
@@ -110,7 +110,7 @@ def _violation(block: Block) -> str | None:
 
 
 def _terraform_owned_secrets(top: tuple[Block, ...]) -> frozenset[tuple[str, str]]:
-    """Collect `(secret_type, secret_name)` pairs whose value Terraform reconstructs."""
+    """Collect secrets reconstructed by a version resource in the same file."""
     owned: set[tuple[str, str]] = set()
     for block in top:
         if block.type != _RESOURCE or not block.labels:

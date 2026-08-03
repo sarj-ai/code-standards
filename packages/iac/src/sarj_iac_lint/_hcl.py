@@ -1,4 +1,4 @@
-"""Tiny string/heredoc-aware scanning and block-tree parsing helpers preserving line/column positions across IaC rules."""
+"""Dependency-free partial HCL parsing that preserves positions for diagnostics and suppressions."""
 
 from __future__ import annotations
 
