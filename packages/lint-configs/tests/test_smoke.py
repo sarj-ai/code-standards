@@ -26,9 +26,7 @@ from sarj_lint_configs import (
 
 _PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 
-#: The version an uninstalled source checkout reports. Written out rather than
-#: read from `_meta`, because reading it from the module under test would make
-#: the assertion true for any value the module happened to hold.
+#: Expected fallback independent of the module under test.
 _SOURCE_TREE_VERSION = "0.0.0.dev0"
 
 
@@ -39,12 +37,6 @@ def test_version_string() -> None:
 
 
 def test_an_uninstalled_source_tree_reports_a_dev_version() -> None:
-    """The fallback branch never runs under test, so its literal was unpinned.
-
-    A source checkout that has not been installed has no distribution metadata;
-    the version it reports must still be a version, because `doctor` and the
-    manifest renderer format it into files either way.
-    """
     real = importlib.metadata.version
 
     def _absent(distribution_name: str) -> str:
@@ -131,10 +123,6 @@ def test_eslint_config_avoids_eslint_10_only_unicorn_rules() -> None:
 
 
 def test_promise_function_async_skips_method_declarations() -> None:
-    # The autofix is destructive on framework-defined methods: React's ReactNode
-    # includes Promise<AwaitedReactNode>, so a class component's render() infers
-    # as promise-returning and the fixer adds `async`, which makes React throw
-    # #482 at runtime. Checking methods must stay off.
     text = ESLINT_STRICT.read_text()
     assert re.search(
         r'"@typescript-eslint/promise-function-async"\s*:\s*\[\s*"error"\s*,\s*\{[^}]*checkMethodDeclarations\s*:\s*false',

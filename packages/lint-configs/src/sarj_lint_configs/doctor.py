@@ -200,19 +200,14 @@ def _check_precommit_revs(root: Path, files: Sequence[Path]) -> Iterator[Finding
 
 
 def _check_eslint_plugin(root: Path, files: Sequence[Path]) -> Iterator[Finding]:
-    # The peer manifest ships inside this wheel, so a missing or malformed one is
-    # a packaging bug in THIS package, not a condition a consumer repo can be in.
-    # Letting it raise is the point: swallowing it would turn "we shipped a broken
-    # wheel" into "your package.json is fine".
+    # A missing peer manifest is a packaging defect and must fail loudly.
     floor = manifest.eslint_peers()[_ESLINT_PLUGIN]
     for path in _candidate_files(files, (".json",)):
         if path.name != "package.json":
             continue
         pinned = _package_json_pin(path)
         if pinned is None or pinned.startswith(_LOCAL_SPECIFIERS):
-            # `file:`, `link:` and `workspace:` name a checkout, not a release.
-            # Reporting those as drift would make `doctor` cry wolf in exactly
-            # the repos that are developing against an unreleased build.
+            # Local specs represent unreleased checkouts, not version drift.
             continue
         where = f"{path.relative_to(root)}: {_ESLINT_PLUGIN}@{pinned}"
         if _without_range_operator(pinned) == floor:
@@ -226,20 +221,12 @@ def _check_eslint_plugin(root: Path, files: Sequence[Path]) -> Iterator[Finding]
             )
 
 
-#: A single-version range operator in front of a pin. Longest first, so `>=` is
-#: consumed before `>` and `~=` before `~`.
-#:
-#: Match range prefixes atomically; character-set stripping corrupts operators.
+#: Single-version range operators in longest-first match order.
 _RANGE_OPERATORS: Final = (">=", "<=", "~=", "==", "^", "~", ">", "<", "=", "v")
 
 
 def _without_range_operator(pinned: str) -> str:
-    """Return `pinned` with one leading range operator removed.
-
-    One, not all: a pin is a single operator and a version, so stripping
-    repeatedly would launder a malformed specifier into a match.
-
-    """
+    """Remove at most one leading range operator from a version pin."""
     for operator in _RANGE_OPERATORS:
         if pinned.startswith(operator):
             return pinned[len(operator) :].strip()
@@ -277,23 +264,12 @@ def _walk(root: Path) -> tuple[Path, ...]:
 
 
 def _read(path: Path) -> str:
-    """Read a repo file as text, tolerating anything that is not UTF-8.
-
-    Decoding with `errors="replace"` rather than catching: every caller only
-    ever regex-searches the result for ASCII pins, so a mangled byte cannot
-    change an answer, and there is no exception to swallow into a sentinel.
-
-    """
+    """Read a repository file while replacing invalid UTF-8 bytes."""
     return path.read_bytes().decode("utf-8", errors="replace")
 
 
 def parse_pins(text: str) -> dict[str, str]:
-    """Extract every Sarj version pin from a file's text.
-
-    Exposed so tests can assert on the pattern that does the real work rather
-    than on a formatted report.
-
-    """
+    """Extract every Sarj version pin from a file's text."""
     return {match.group("name"): match.group("version") for match in _PIN.finditer(text)}
 
 

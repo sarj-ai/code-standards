@@ -375,8 +375,7 @@ def _looks_commented_config(path: Path, body: str) -> bool:
         return True
     if path.suffix.lower() == ".toml" and body.startswith("[") and body.endswith("]"):
         return True
-    # Config snippets are compact. A sentence that happens to put a colon after
-    # its first word (`Dogfooding: ...`) is documentation, not disabled syntax.
+    # Reject prose-shaped text before recognizing disabled configuration.
     if len(body.split()) > _COMMENTED_CONFIG_MAX_WORDS or ". " in body or not _CONFIG_SHAPE_RE.match(body):
         return False
     _key, separator, value = body.partition(":" if ":" in body else "=")

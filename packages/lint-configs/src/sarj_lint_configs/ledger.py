@@ -77,13 +77,7 @@ class Ledger:
 
 
 def load() -> Ledger:
-    """Read the ledger that ships inside this wheel.
-
-    A missing or malformed ledger is a packaging bug in THIS package rather than
-    a state a consumer repo can be in, so the read is deliberately unguarded:
-    swallowing it would turn "we shipped a broken wheel" into "your repo is fine".
-
-    """
+    """Read the rule ledger bundled in this wheel."""
     parsed: object = json.loads(  # pyright: ignore[reportAny] -- json.loads is an untyped stdlib boundary; the shape is narrowed below
         LEDGER_JSON.read_text(encoding="utf-8")
     )

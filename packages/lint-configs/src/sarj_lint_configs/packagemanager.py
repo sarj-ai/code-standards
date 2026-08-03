@@ -24,8 +24,7 @@ class PackageManager(StrEnum):
     BUN = "bun"
 
 
-#: Lockfile name to the client that writes it. Checked in this order, so a repo
-#: carrying two lockfiles resolves the same way every run.
+#: Lockfiles in deterministic package-manager precedence order.
 LOCKFILES: Final[tuple[tuple[str, PackageManager], ...]] = (
     ("pnpm-lock.yaml", PackageManager.PNPM),
     ("yarn.lock", PackageManager.YARN),
@@ -38,13 +37,7 @@ _ESLINT: Final = "eslint"
 
 
 def detect(root: Path) -> PackageManager:
-    """Decide which npm client a directory is managed by.
-
-    The `packageManager` field is authoritative when present -- Corepack enforces
-    it, so a repo that declares Yarn cannot be installed with npm whatever its
-    lockfiles say -- and the lockfile answers for everyone else.
-
-    """
+    """Select the declared package manager or infer one from its lockfile."""
     declared = _declared_manager(root / "package.json")
     if declared is not None:
         return declared

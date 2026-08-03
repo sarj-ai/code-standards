@@ -161,12 +161,6 @@ def test_a_second_init_on_a_pnpm_repo_changes_nothing(tmp_path: Path) -> None:
 def test_the_project_root_is_the_lockfiles_directory_not_the_topmost_package_json(
     tmp_path: Path,
 ) -> None:
-    """A root package.json can declare nothing but `packageManager`.
-
-    Placing the config beside the topmost `package.json` puts it in a directory
-    that will never have a `node_modules`, and a flat config is not searched for
-    upward -- so the config loads for nobody while the tool reports success.
-    """
     _ = (tmp_path / "package.json").write_text('{"packageManager": "yarn@4.15.0"}\n')
     (tmp_path / "typescript").mkdir()
     _ = _project(tmp_path / "typescript", "yarn.lock")

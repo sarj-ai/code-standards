@@ -108,9 +108,7 @@ def run(
     noise_only: bool = False,
 ) -> int:
     """Dispatch files and directories to every applicable installed registry."""
-    # Keep config-only commands (`sync`, `list`, and `path`) usable directly
-    # from a Standards source checkout without installing every lint package.
-    # The checker packages are required only for the `check` command.
+    # Load checker packages only for commands that execute their registries.
     python_main, python_rules = _load_tool("sarj_python_lint")
     sql_main, sql_rules = _load_tool("sarj_sql_lint")
     iac_main, iac_rules = _load_tool("sarj_iac_lint")
@@ -137,12 +135,7 @@ def _select_rules(registry: Mapping[str, type[_Rule]], selected: frozenset[str])
 def _load_tool(
     package: str,
 ) -> tuple[Callable[[list[str]], int], Mapping[str, type[_Rule]]]:
-    """Load one checker only when the all-rules command needs it.
-
-    Raises:
-        TypeError: If an installed checker does not expose the expected API.
-
-    """
+    """Load one checker when the all-rules command needs it."""
     checker_module = import_module(f"{package}.__main__")
     registry_module = import_module(f"{package}.rules")
     if not isinstance(checker_module, _CheckerModule) or not isinstance(registry_module, _RegistryModule):

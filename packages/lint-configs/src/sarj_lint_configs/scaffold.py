@@ -80,14 +80,7 @@ def detect(
     python_dest: str | None = None,
     typescript_dest: str | None = None,
 ) -> Ecosystems:
-    """Decide which ecosystems a repo contains, and which directory owns each.
-
-    A repo counts as TypeScript when it has a `package.json` anywhere outside
-    `node_modules`, because the sub-project case is the common one: one repo we
-    measured ships the strict config at its root while only a fraction of its
-    sub-projects wire it in, and a root-only check would call that repo done.
-
-    """
+    """Detect each ecosystem and the directory that owns it."""
     python_root = _override(root, python_dest) or _python_root(root)
     typescript_root = _override(root, typescript_dest) or _typescript_root(root)
     return Ecosystems(
@@ -170,12 +163,7 @@ def dest_of(root: Path, subdirectory: Path | None) -> str:
 
 
 def _note_subproject_destinations(root: Path, plan: Plan) -> None:
-    """Say out loud when a config landed somewhere other than the repo root.
-
-    Silence here is how the single-destination bug survived: the tool reported
-    `wrote: eslint.config.mjs` and the reader had no reason to check whether that
-    was the directory their `node_modules` is in.
-    """
+    """Report configs written outside the repository root."""
     for label, subdirectory in (
         ("python", plan.ecosystems.python_root),
         ("typescript", plan.ecosystems.typescript_root),
