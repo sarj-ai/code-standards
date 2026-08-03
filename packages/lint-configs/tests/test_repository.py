@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -32,13 +33,45 @@ def _policy(**changes: object) -> repository.RepositoryPolicy:
     return repository.RepositoryPolicy(**values)  # pyright: ignore[reportArgumentType]
 
 
+def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    environment = os.environ.copy()  # ruff: ignore[banned-api] — Git subprocesses need the inherited environment minus hook-local variables.
+    local_names = subprocess.run(
+        ["git", "rev-parse", "--local-env-vars"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    for name in local_names:
+        environment.pop(name, None)
+    return subprocess.run(
+        ["git", "-C", str(root), *args],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
+
+
 def _git_repo(root: Path, files: dict[str, str]) -> None:
-    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    _git(root, "init", "-q")
     for relative, content in files.items():
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
-    subprocess.run(["git", "-C", str(root), "add", "."], check=True)
+    _git(root, "add", ".")
+
+
+def _commit(root: Path, message: str) -> None:
+    _git(
+        root,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "-qm",
+        message,
+    )
 
 
 def test_load_policy_reads_repository_configuration(tmp_path: Path) -> None:
@@ -90,25 +123,30 @@ def test_private_reference_check_scans_tracked_files(tmp_path: Path) -> None:
 
 def test_private_reference_check_scans_commit_messages(tmp_path: Path) -> None:
     _git_repo(tmp_path, {"clean.py": "value = 1\n"})
-    subprocess.run(
-        [
-            "git",
-            "-C",
-            str(tmp_path),
-            "-c",
-            "user.name=Test",
-            "-c",
-            "user.email=test@example.com",
-            "commit",
-            "-qm",
-            "secret-repo change",
-        ],
-        check=True,
-    )
+    _commit(tmp_path, "secret-repo change")
 
     findings = repository.check_private_refs(tmp_path, _policy(), commits="HEAD")
 
     assert findings[0].where == "HEAD"
+
+
+def test_git_fixtures_ignore_a_hooks_repository_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    outer = tmp_path / "outer"
+    inner = tmp_path / "inner"
+    outer.mkdir()
+    inner.mkdir()
+    _git_repo(outer, {"outer.py": "value = 1\n"})
+    _commit(outer, "outer")
+    outer_head = _git(outer, "rev-parse", "HEAD").stdout
+
+    monkeypatch.setenv("GIT_DIR", str(outer / ".git"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(outer))
+    monkeypatch.setenv("GIT_INDEX_FILE", str(outer / ".git" / "index"))
+    _git_repo(inner, {"inner.py": "value = 2\n"})
+    _commit(inner, "inner")
+
+    assert _git(outer, "rev-parse", "HEAD").stdout == outer_head
+    assert _git(inner, "show", "--format=%s", "--no-patch", "HEAD").stdout.strip() == "inner"
 
 
 def test_ci_history_requires_full_checkout_for_test_jobs(tmp_path: Path) -> None:
