@@ -13,7 +13,16 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from sarj_lint_configs import ESLINT_PEERS, ESLINT_STRICT, __version__, doctor, lifecycle, manifest, scaffold
+from sarj_lint_configs import (
+    ESLINT_PEERS,
+    ESLINT_STRICT,
+    __version__,
+    doctor,
+    lifecycle,
+    manifest,
+    scaffold,
+)
+from sarj_lint_configs import __main__ as cli
 from sarj_lint_configs.__main__ import main
 
 
@@ -46,6 +55,36 @@ def _python_repo(root: Path) -> Path:
 def _typescript_repo(root: Path) -> Path:
     _ = (root / "package.json").write_text('{"name": "web", "private": true}\n')
     return root
+
+
+def test_verify_leaves_maintainer_repository_policy_to_repo_check(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (tmp_path / ".sarj-standards.toml").write_text("[repository]\n")
+
+    def clean(_args: object) -> int:
+        return 0
+
+    def sync_cleanly(_args: object, *, next_steps: bool) -> int:
+        _ = next_steps
+        return 0
+
+    def no_custom_rules(_root: Path) -> int:
+        return 0
+
+    def no_verification_commands(_ecosystems: scaffold.Ecosystems) -> list[lifecycle.Command]:
+        return []
+
+    def execute_cleanly(_commands: Iterable[lifecycle.Command]) -> int:
+        return 0
+
+    monkeypatch.setattr(cli, "cmd_doctor", clean)
+    monkeypatch.setattr(cli, "cmd_sync", sync_cleanly)
+    monkeypatch.setattr(lifecycle, "verify_custom_rules", no_custom_rules)
+    monkeypatch.setattr(lifecycle, "verification_commands", no_verification_commands)
+    monkeypatch.setattr(lifecycle, "execute", execute_cleanly)
+
+    assert cli.main(["verify", "--dest", str(tmp_path)]) == 0
 
 
 def test_every_eslint_import_has_a_pinned_peer() -> None:

@@ -65,7 +65,7 @@ shipping versions by a test, so this section cannot rot silently again.
 
 | Command | Answers |
 |---|---|
-| `uv run --frozen sarj-standards verify` | Run version, config, custom-rule, repository-policy, Ruff, BasedPyright, and ESLint gates. |
+| `uv run --frozen sarj-standards verify` | Run version, config, custom-rule, Ruff, BasedPyright, and ESLint gates. |
 | `uv run --frozen sarj-standards format` | Format Python and apply safe Ruff and ESLint fixes. |
 | `uv run --frozen sarj-standards inspect` | Show the detected adoption as JSON. |
 
