@@ -170,7 +170,11 @@ def _reach_back_arm(case: ast.match_case, subject: str) -> _ReachBack | None:
     if cls_name is None or cls_name.rpartition(".")[2] in _BUILTIN_TYPE_NAMES:
         return None
 
-    use = _arm_uses(case, {subject, alias})
+    pattern_bindings = _pattern_bindings(inner)
+    owners = {subject, alias} - pattern_bindings
+    if not owners:
+        return None
+    use = _arm_uses(case, owners)
     if use is None:
         return None
     already_bound = frozenset(inner.kwd_attrs)
@@ -185,7 +189,7 @@ def _reach_back_arm(case: ast.match_case, subject: str) -> _ReachBack | None:
         cls_name=cls_name,
         alias=alias,
         fields=fields,
-        taken=frozenset(use.taken | _pattern_bindings(inner)),
+        taken=frozenset(use.taken | pattern_bindings),
         aliased=aliased,
         kept=kept,
         positional=positional,

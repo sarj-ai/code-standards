@@ -575,6 +575,42 @@ def test_existing_capture_names_do_not_collide_with_suggested_bindings(existing:
     assert f"collision={capture}" in pattern
 
 
+@pytest.mark.parametrize(
+    "existing",
+    [
+        pytest.param("existing=item", id="keyword"),
+        pytest.param("item", id="positional"),
+        pytest.param("existing=Pair(item)", id="nested"),
+    ],
+)
+def test_skips_when_an_existing_capture_shadows_the_subject(existing: str):
+    source = f"""
+    match item:
+        case Widget({existing}):
+            emit(item.collision, item.other)
+    """
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "existing",
+    [
+        pytest.param("existing=item", id="keyword"),
+        pytest.param("item", id="positional"),
+        pytest.param("existing=Pair(item)", id="nested"),
+    ],
+)
+def test_uses_an_outer_alias_when_the_subject_is_shadowed(existing: str):
+    source = f"""
+    match item:
+        case Widget({existing}) as whole:
+            emit(whole.collision, whole.other)
+    """
+    (message,) = _messages(source)
+    assert "collision=collision, other=other" in message
+    assert "as whole" in message
+
+
 def test_every_suggested_pattern_is_valid_python():
     source = """
     match item:
