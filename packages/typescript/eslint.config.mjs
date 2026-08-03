@@ -6,19 +6,27 @@ export default defineConfig(
   { ignores: ["dist/**", "tests/fixtures/**"] },
   {
     name: "sarj/typescript",
-    files: ["**/*.{ts,mjs}"],
+    files: ["**/*.{ts,tsx,mts,cts,mjs}"],
     extends: [js.configs.recommended, tseslint.configs.recommendedTypeChecked],
     languageOptions: {
       parserOptions: {
-        projectService: { allowDefaultProject: ["*.ts", "*.mjs"] },
+        projectService: {
+          allowDefaultProject: ["*.ts", "*.tsx", "*.mts", "*.cts", "*.mjs"],
+        },
         tsconfigRootDir: import.meta.dirname,
       },
     },
     linterOptions: { reportUnusedDisableDirectives: "error" },
   },
   {
+    name: "sarj/javascript",
+    files: ["**/*.{js,cjs}"],
+    extends: [js.configs.recommended],
+    linterOptions: { reportUnusedDisableDirectives: "error" },
+  },
+  {
     name: "sarj/estree-discriminants",
-    files: ["src/rules/**/*.ts"],
+    files: ["src/rules/**/*.{ts,tsx,mts,cts}"],
     rules: { "@typescript-eslint/no-unsafe-enum-comparison": "off" },
   },
 );
