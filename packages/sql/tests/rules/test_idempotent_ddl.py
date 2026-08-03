@@ -93,9 +93,7 @@ CREATE SEQUENCE order_seq;
 
 
 def test_ignores_create_type_which_has_no_if_not_exists_in_postgres():
-    # Postgres `CREATE TYPE` has no IF NOT EXISTS form, so demanding it would ask
-    # for invalid SQL. Enums are handled by SARJ103; idempotency for composite
-    # types is a guard (DROP TYPE IF EXISTS) the linter doesn't mandate here.
+    # Postgres CREATE TYPE has no IF NOT EXISTS clause, so it is ignored by this rule.
     src = "CREATE TYPE color AS (r INT, g INT, b INT);"
     assert _check(src) == []
 
@@ -157,14 +155,7 @@ def test_skips_trailing_inline_comment():
 
 
 def test_flags_create_table_inside_dollar_quoted_body():
-    """A `$$ ... $$` body is live SQL, not string data — the rule must see into it.
-
-    This previously asserted the opposite. `mask_sql` blanked dollar-quoted bodies
-    as though they were string literals, which hid 26 live DDL/DML keywords across
-    12 files of the two-repo first-party corpus from all 8 rules. A `CREATE TABLE`
-    without `IF NOT EXISTS` inside a function body is exactly as non-idempotent as
-    one at the top level — the second call fails — so it must be flagged.
-    """
+    """Ensure CREATE TABLE without IF NOT EXISTS inside a dollar-quoted body is flagged."""
     src = """
 CREATE OR REPLACE FUNCTION seed() RETURNS void AS $$
 BEGIN
@@ -189,13 +180,7 @@ $$ LANGUAGE plpgsql;
     assert _check(src) == []
 
 
-# --- MySQL implements only some of the IF [NOT] EXISTS forms ----------------------
-#
-# MySQL has no `CREATE INDEX IF NOT EXISTS`, no `ADD COLUMN IF NOT EXISTS` and no
-# `DROP INDEX IF EXISTS`, so demanding them there demands a syntax error. It DOES
-# have `CREATE TABLE IF NOT EXISTS`, `CREATE SCHEMA IF NOT EXISTS` and
-# `DROP TABLE IF EXISTS`, and so does SQLite — which is why the gate is `is_mysql`
-# and not `not is_postgres`.
+# MySQL supports only a subset of IF [NOT] EXISTS clauses.
 
 _MYSQL_MARKER = "CREATE TABLE IF NOT EXISTS `k` (`id` int UNSIGNED) ENGINE=InnoDB;\n"
 
@@ -224,10 +209,7 @@ def test_flags_mysql_drop_table_without_if_exists():
 
 
 def test_flags_sqlite_create_index_without_if_not_exists():
-    """The boundary: SQLite supports `CREATE INDEX IF NOT EXISTS`, so it is a real finding.
-
-    Backticks alone prove "not Postgres" — they must not be read as "MySQL".
-    """
+    """Verify SQLite supports CREATE INDEX IF NOT EXISTS so non-idempotent indexes are flagged."""
     src = "CREATE INDEX `idx` ON `orders` (`user_id`);"
     assert len(_check(src)) == 1
 

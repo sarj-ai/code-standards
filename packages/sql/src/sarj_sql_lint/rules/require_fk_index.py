@@ -1,45 +1,4 @@
-"""SARJ112: Require index on Foreign Key column.
-
-Postgres does NOT automatically index foreign key columns. Deleting or updating rows from a parent table
-triggers a full sequential scan on the child table if the FK is unindexed, locking the child table.
-
-A 25-finding seeded sample of the 446 findings over 2,133 deduped `.sql` files read
-TP 19 / FP 6 — 24% wrong, in two classes, both fixed here.
-
-**Single-file scope in a multi-file migration tree** — 34.6% of the sampled errors.
-The rule collected `CREATE INDEX` statements from the file it was handed, but in a
-migration tree the covering index routinely arrives in a *later* migration. Verified
-end to end: `cal.com/packages/prisma/migrations/20220711182928_add_workflows/migration.sql:77`
-flagged `WorkflowsOnEventTypes.eventTypeId`, and
-`cal.com/packages/prisma/migrations/20230410234751_add_foreign_key_indexes/migration.sql:167`
-creates exactly that index. The same shape appears at
-`papermark/prisma/migrations/20230912150657_initialize/migration.sql:149` and
-`documenso/.../20240424072655_update_foreign_key_constraints/migration.sql:17`.
-Index collection now spans the whole migration tree — the nearest ancestor directory
-named `migrations`/`migration`/`drizzle`/`migrate`, else the file's own directory —
-so an index created anywhere in the tree counts. The scan is bounded
-(`_MAX_TREE_FILES`, `_MAX_TREE_BYTES`) and cached per root, and it is skipped
-entirely when the linted path is not a real file, which keeps it off synthetic and
-in-memory inputs.
-
-**The reported line was wrong 9.9% of the time.** Both diagnostics located
-themselves with `ctx.stmt.find(<text>)`, re-finding the matched text *by value*
-inside the `;`-split statement. A repeated segment resolves to the first
-occurrence, so the offset drifts: at
-`airflow/providers/informatica/dev/init/001_schema_and_seed.sql:51` the message
-named `product_id` while pointing at the `customer_id` line. This is worse than a
-cosmetic defect — `-- sarj-noqa` is line-keyed, so a mis-attributed finding is
-**unsuppressable**. Both sites now use the match's real offset
-(`fk_match.start()`, and a running segment offset for the inline scan, which is
-safe because the FK-masking substitution preserves length).
-
-**This rule deliberately does NOT take the `is_dump_file` exemption** that SARJ101,
-SARJ104 and the rest were given. Its dump findings are among its most reliable: a
-dump is a *complete* rendering of the schema, so an absent `CREATE INDEX` really
-does mean an absent index — three were hand-verified. What a dump finding must not
-do is ask for an edit to the dump, so those carry a message that points at the
-migration instead.
-"""
+"""SARJ112: Require index on Foreign Key column."""
 
 from __future__ import annotations
 
@@ -120,8 +79,7 @@ def _collect_indexes(masked: str) -> dict[str, set[tuple[str, ...]]]:
     return indexed_cols
 
 
-# Directory names that mark the root of a migration tree. An index created in any
-# migration under the same root covers a foreign key declared in any other.
+# Directory names marking the root of a migration tree where an index in any migration covers FKs across the tree.
 _MIGRATION_ROOT_NAMES = frozenset({"migrations", "migration", "migrate", "drizzle"})
 
 # Bounds on the sibling scan, so a pathological tree cannot turn a per-file lint
@@ -131,12 +89,7 @@ _MAX_TREE_BYTES = 1_000_000
 
 
 def _migration_root(path: Path) -> Path | None:
-    """Locate the migration tree `path` belongs to.
-
-    Returns:
-        The nearest ancestor directory that names a migration tree, or None.
-
-    """
+    """Locate the migration tree `path` belongs to."""
     for parent in path.parents:
         if parent.name.lower() in _MIGRATION_ROOT_NAMES:
             return parent
@@ -145,15 +98,7 @@ def _migration_root(path: Path) -> Path | None:
 
 @lru_cache(maxsize=64)
 def _tree_leading_indexed(root: Path) -> frozenset[tuple[str, str]]:
-    """Collect `(table, leading indexed column)` pairs from every `.sql` file under `root`.
-
-    Cached per root: a migration tree is scanned once per process no matter how
-    many of its files are linted.
-
-    Returns:
-        Every `(table, leading column)` pair indexed anywhere in the tree.
-
-    """
+    """Collect `(table, leading indexed column)` pairs from every `.sql` file under `root`."""
     pairs: set[tuple[str, str]] = set()
     try:
         candidates = sorted(root.rglob("*.sql"))[:_MAX_TREE_FILES]
@@ -172,12 +117,7 @@ def _tree_leading_indexed(root: Path) -> frozenset[tuple[str, str]]:
 
 
 def _sibling_indexed(path: Path, tables: tuple[str, ...]) -> set[str]:
-    """Leading columns indexed anywhere in `path`'s migration tree for `tables`.
-
-    Returns:
-        The set of leading indexed column names, empty when there is no tree.
-
-    """
+    """Leading columns indexed anywhere in `path`'s migration tree for `tables`."""
     if not tables:
         return set()
     try:
@@ -274,10 +214,7 @@ class RequireFkIndex(Rule):
         )
         body = fk_clean_pattern.sub(lambda m: " " * len(m.group(0)), body)
 
-        # `body` is offset `ctx.header_end` into `ctx.stmt`, and `fk_clean_pattern`
-        # substitutes equal-length runs of spaces, so a running offset over the
-        # `,`-split segments stays exactly aligned with the source. Re-finding the
-        # segment text by value did not — see this module's docstring.
+        # Align segment_start with source using header_end and fixed-length substitutions.
         segment_start = ctx.header_end
         for segment in body.split(","):
             if (
@@ -310,16 +247,7 @@ class RequireFkIndex(Rule):
 
 
 def _message(column: str, table: str, *, is_dump: bool) -> str:
-    """Word the diagnostic for `column` on `table`.
-
-    A dump is a complete rendering of the schema, so a missing index really is
-    missing — but the dump is regenerated and must not be edited, so the fix is
-    named as a new migration instead.
-
-    Returns:
-        The diagnostic message.
-
-    """
+    """Word the diagnostic for `column` on `table`."""
     head = (
         f"Foreign key column `{column}` on table `{table}` should have a corresponding `CREATE INDEX` "
         "to prevent full table scans and lock contention during parent row deletes."

@@ -1,44 +1,4 @@
-r"""SARJ101: detect TIMESTAMP columns missing `WITH TIME ZONE`.
-
-Postgres `TIMESTAMP` without `WITH TIME ZONE` discards offset on INSERT,
-silently producing wrong timestamps for non-UTC clients. Use TIMESTAMPTZ.
-
-This is a loud-and-correct rule and is deliberately not weakened beyond the one
-guard below: a 25-finding seeded sample of the 793 findings over 2,133 deduped
-`.sql` files read TP 20 / FP 5, and the population rate of the FP class is nearer
-3% than the sample's 20%.
-
-**`timestamp` used as a column NAME, not a type.** `\\bTIMESTAMP\\b` matches any
-bare identifier, and `timestamp` is a conventional column name in ClickHouse DDL
-(`PARTITION BY toYYYYMM(timestamp)`, `ORDER BY (org_id, timestamp, api_key_id)`)
-and in CTE column lists (`prefect/tests/scripts/populate_database.sql:59` —
-`WITH states (TYPE, name, timestamp, state_details)`). The two uses are told apart
-by position: a *type* is preceded by a column name, while a bare column reference
-in a list is bracketed by `(`/`,` on the left and `,`/`)` on the right. Measured on
-the corpus, the predicate partitions the population cleanly — 815 type-position
-occurrences, 23 column-reference occurrences, no overlap — so the guard costs zero
-recall. `created_at TIMESTAMP,` and `ts TIMESTAMP)` keep firing, because the
-character before the keyword is part of the column name.
-
-The rule also stops reporting on pg_dump snapshots (`is_dump_file`) and on
-generator-owned migrations (`is_generated_migration`): the fix for a Prisma-emitted
-naive timestamp is `@db.Timestamptz` in `schema.prisma`, and an edit to the
-migration is reverted by the next `prisma migrate`.
-
-**The `redirect_to_model` decision, independently verified 2026-07-31.** #183
-built and REJECTED a generated-migration suppression for the schema rules, on
-the grounds that it took this rule from 770 to 12 and SARJ103 to zero while the
-genuine precision guards were worth 23 and 0. Re-measured over 1,792
-content-unique `.sql` files from a disjoint corpus, that decision held exactly:
-SARJ101 moves 769 -> 759 and SARJ103 195 files -> 195 files, 283 -> 283
-findings. The 10 SARJ101 removals are all one file
-(`prefect/tests/scripts/populate_database.sql:23,42,59,95`), where a CTE column
-list literally named `timestamp` (`WITH states (TYPE, name, timestamp, ...)`)
-was read as a `TIMESTAMP` column type — a parser false positive, correctly gone.
-The surviving findings carry the redirect: "the edit belongs in the schema model
-(`schema.prisma`, the Drizzle schema module, the Atlas HCL) followed by a new
-migration".
-"""
+r"""SARJ101: detect TIMESTAMP columns missing `WITH TIME ZONE`."""
 
 from __future__ import annotations
 
@@ -59,9 +19,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# `\b...\b` already excludes TIMESTAMPTZ (no boundary before TZ). An optional
-# precision modifier `(n)` is allowed before WITH TIME ZONE so the lookahead does
-# not misfire on `TIMESTAMP(3) WITH TIME ZONE`.
+# Match TIMESTAMP unless followed by WITH TIME ZONE, allowing an optional (n) precision modifier.
 PATTERN = re.compile(
     r"\bTIMESTAMP\b(?!\s*(?:\(\s*\d+\s*\)\s*)?WITH\s+TIME\s+ZONE\b)",
     re.IGNORECASE,
@@ -72,17 +30,7 @@ _CLOSES_LIST_ITEM = frozenset(",)")
 
 
 def _is_column_reference(line: str, start: int, end: int) -> bool:
-    """Report whether the `TIMESTAMP` token at `[start:end)` is a bare list element.
-
-    A type always follows a column name, so its left neighbour is an identifier
-    character. A `timestamp` that is bracketed by `(`/`,` on the left *and* `,`/`)`
-    on the right carries no name and is therefore a reference to a column called
-    `timestamp`, not a type.
-
-    Returns:
-        True when the token is a bare element of a parenthesised list.
-
-    """
+    """Report whether the `TIMESTAMP` token at `[start:end)` is a bare list element."""
     before = line[:start].rstrip()
     after = line[end:].lstrip()
     return bool(before) and before[-1] in _OPENS_LIST_ITEM and bool(after) and after[0] in _CLOSES_LIST_ITEM

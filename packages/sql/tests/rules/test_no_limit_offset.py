@@ -57,14 +57,7 @@ def test_skips_offset_inside_string_literal():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
-# Cross-package parity with SARJ025 and the TS twin                            #
-# (`packages/python/.../no_offset_pagination.py`,                              #
-#  `packages/typescript/src/rules/no-offset-pagination.ts`).                   #
-# All three flag `OFFSET` only when a value/param token follows, and all three #
-# share ONE parameter alternation. This rule used to be a bare `\bOFFSET\b`,   #
-# so identical SQL was clean in `.py` and a finding in `.sql`.                 #
-# --------------------------------------------------------------------------- #
+# Test cross-package parity with SARJ025 and the TS twin.
 
 PARAM_MARKERS = {
     "pyformat": "SELECT id FROM t ORDER BY id LIMIT %s OFFSET %s;",

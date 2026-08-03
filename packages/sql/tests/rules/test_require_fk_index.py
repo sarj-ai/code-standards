@@ -19,10 +19,7 @@ def _check(source: str, path: Path = P) -> list[Diagnostic]:
     return RequireFkIndex().check(path, source)
 
 
-# --- the covering index routinely arrives in a LATER migration --------------------
-#
-# 34.6% of the sampled errors were this: the rule read one file, and the index it
-# demanded already existed elsewhere in the same migration tree.
+# Test covering index in later migration.
 
 
 def _tree(tmp_path: Path, files: dict[str, str]) -> Path:
@@ -99,15 +96,10 @@ def test_in_memory_source_is_judged_on_its_own_content() -> None:
     assert len(_check(src)) == 1
 
 
-# --- line attribution -------------------------------------------------------------
+# Test line attribution.
 
 
 def test_reports_the_line_of_the_fk_it_names() -> None:
-    """`-- sarj-noqa` is line-keyed, so a mis-attributed finding is unsuppressable.
-
-    Re-finding the clause text by value inside the statement resolved to the first
-    identical occurrence and made the reported line drift.
-    """
     src = """CREATE TABLE membership (
     account_id INT,
     FOREIGN KEY (account_id) REFERENCES tenant(id),
@@ -131,7 +123,7 @@ def test_reports_the_line_of_each_inline_reference() -> None:
     assert by_column == {"customer_id": 3, "product_id": 4}
 
 
-# --- dumps are judged, but pointed at the migration -------------------------------
+# Test dump messages.
 
 
 def test_dump_findings_are_kept_and_point_at_the_migration() -> None:
@@ -154,7 +146,7 @@ def test_non_dump_findings_keep_the_plain_message() -> None:
     assert "schema dump" not in diags[0].message
 
 
-# --- index spellings that already cover the FK ------------------------------------
+# Test covering index spellings.
 
 
 def test_multiline_using_btree_index_covers_the_fk() -> None:

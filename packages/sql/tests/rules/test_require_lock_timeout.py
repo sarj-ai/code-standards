@@ -21,11 +21,7 @@ def _check(source: str, path: Path = P) -> list[Diagnostic]:
     return RequireLockTimeout().check(path, source)
 
 
-# --- the parser bug: every spelling of the assignment must be recognised ---------
-#
-# The rule previously required TWO runs of whitespace after `SET` whenever the
-# optional LOCAL/SESSION keyword was absent, so the ordinary single-space form was
-# invisible and the migration below — which already complies — was reported.
+# Test assignment spellings.
 
 
 @pytest.mark.parametrize(
@@ -60,14 +56,6 @@ def test_zero_timeout_is_not_protection() -> None:
     ids=["line-comment", "block-comment", "string-literal"],
 )
 def test_a_timeout_that_is_only_mentioned_is_not_a_timeout_that_is_set(prologue: str) -> None:
-    """The liveness check: the pattern runs on raw source, so the *position* must be live.
-
-    `ASSIGNMENT_PATTERN` is deliberately matched against unmasked source — a
-    timeout value is a `'3s'` string literal and the masker would blank it away.
-    The price is that prose matches too, so every match is re-checked against
-    `mask_sql` output at its own offset. Without that check a migration is
-    "protected" by a commented-out line someone left behind.
-    """
     assert len(_check(f"{prologue}\nALTER TABLE users ADD COLUMN note TEXT;\n")) == 1
 
 
@@ -93,7 +81,7 @@ def test_similarly_named_setting_is_not_lock_timeout() -> None:
     assert len(_check("SET lock_timeout_ms = '3s';\nALTER TABLE t ADD COLUMN c INT;\n")) == 1
 
 
-# --- session state is a property of the file, not of each statement --------------
+# Test session state.
 
 
 def test_one_finding_per_unprotected_run_not_per_statement() -> None:
@@ -163,7 +151,7 @@ def test_every_ddl_form_needs_a_timeout(ddl: str) -> None:
     assert _check(f"SET lock_timeout = '3s';\n{ddl}\n") == []
 
 
-# --- dialect ---------------------------------------------------------------------
+# Dialect tests.
 
 
 def test_mysql_migration_is_not_asked_for_a_postgres_guc() -> None:
@@ -182,7 +170,7 @@ def test_postgres_migration_still_fires_next_to_the_dialect_boundary() -> None:
     assert len(_check(src)) == 1
 
 
-# --- assignment forms the regex cannot see, and the dump exemption ----------------
+# Test assignment forms and dump exemptions.
 
 
 def test_set_config_call_counts_as_an_assignment() -> None:
