@@ -69,6 +69,7 @@ test: check-versions-synced
 
 # Dogfooding: every package is linted/formatted by this repo's own strict config.
 lint:
+	cd packages/typescript     && npm run lint
 	cd packages/python         && uv run ruff check src/ tests/
 	cd packages/sql            && uv run ruff check src/ tests/
 	cd packages/iac            && uv run ruff check src/ tests/

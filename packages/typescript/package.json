@@ -32,6 +32,7 @@
   },
   "scripts": {
     "build": "tsup",
+    "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
@@ -52,6 +53,7 @@
   "devDependencies": {
     "@eslint-community/eslint-plugin-eslint-comments": "^4.7.2",
     "@eslint/compat": "^2.1.0",
+    "@eslint/js": "10.0.1",
     "@types/node": "latest",
     "@typescript-eslint/parser": "latest",
     "@typescript-eslint/rule-tester": "latest",

@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig/strict.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "..",
+    "types": ["node"]
+  },
+  "include": ["**/*.ts"]
+}

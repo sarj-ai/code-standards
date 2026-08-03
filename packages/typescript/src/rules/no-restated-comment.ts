@@ -67,7 +67,7 @@ function headsSiblingRun(node: TSESTree.Node): boolean {
   if (parent === undefined) return false;
   const body: readonly TSESTree.Node[] | undefined =
     "body" in parent && Array.isArray(parent.body)
-      ? (parent.body as readonly TSESTree.Node[])
+      ? parent.body
       : undefined;
   if (body === undefined) return false;
   const index = body.indexOf(node);

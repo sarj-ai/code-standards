@@ -133,7 +133,7 @@ export default createRule<Options, MessageIds>({
           ...node.body,
           type: AST_NODE_TYPES.TSTypeLiteral,
           members: node.body.body,
-        } as TSESTree.TSTypeLiteral;
+        };
         checkTypeLiteral(synthetic, node);
       },
       "TSTypeAliasDeclaration > TSTypeLiteral"(

@@ -38,6 +38,7 @@ jobs:
           cache: 'npm'
           cache-dependency-path: packages/typescript/package.json
       - run: npm install --no-audit --no-fund
+      - run: npm run lint
       - run: npm run build
       - run: npm run typecheck
       - run: npm test
