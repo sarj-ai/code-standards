@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from fnmatch import fnmatch
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -352,11 +353,21 @@ def _git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProc
     if executable is None:
         msg = "git is required for repository checks"
         raise OSError(msg)
+    environment = os.environ.copy()  # ruff: ignore[banned-api] -- preserve user Git configuration, but not a hook's repository binding.
+    local_names = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [executable, "rev-parse", "--local-env-vars"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    for name in local_names:
+        environment.pop(name, None)
     return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
         [executable, *args],
         cwd=root,
         check=check,
         capture_output=True,
+        env=environment,
         text=True,
     )
 

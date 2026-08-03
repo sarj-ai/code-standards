@@ -149,6 +149,28 @@ def test_git_fixtures_ignore_a_hooks_repository_environment(monkeypatch: pytest.
     assert _git(inner, "show", "--format=%s", "--no-patch", "HEAD").stdout.strip() == "inner"
 
 
+def test_repository_checks_ignore_a_hooks_repository_environment(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    outer = tmp_path / "outer"
+    inner = tmp_path / "inner"
+    outer.mkdir()
+    inner.mkdir()
+    _git_repo(outer, {"outer.py": "value = 1\n"})
+    _commit(outer, "outer")
+    _git_repo(inner, {"leak.py": "# secret-repo/api\n"})
+
+    monkeypatch.setenv("GIT_DIR", str(outer / ".git"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(outer))
+    monkeypatch.setenv("GIT_INDEX_FILE", str(outer / ".git" / "index"))
+
+    findings = repository.check_private_refs(inner, _policy(), commits=None)
+
+    assert [(finding.where, finding.message) for finding in findings] == [
+        ("leak.py", "private repository or client reference")
+    ]
+
+
 def test_ci_history_requires_full_checkout_for_test_jobs(tmp_path: Path) -> None:
     workflow = tmp_path / ".github/workflows/ci.yml"
     workflow.parent.mkdir(parents=True)
