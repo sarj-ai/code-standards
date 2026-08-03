@@ -81,14 +81,7 @@ CREATE TABLE x (created_at TIMESTAMPTZ);
     assert _check(src) == []
 
 
-# --- `timestamp` as a column NAME, not a type -------------------------------------
-#
-# `\bTIMESTAMP\b` matches any bare identifier. In ClickHouse DDL and in CTE column
-# lists `timestamp` is a conventional column name. A type is always preceded by a
-# column name; a bare column reference in a list is bracketed by `(`/`,` on the
-# left and `,`/`)` on the right. Measured on the corpus the predicate partitions
-# the population with no overlap — 774 type-position vs 19 column-reference — so
-# the guard costs no recall.
+# Test timestamp used as a column name rather than a type.
 
 
 def test_allows_timestamp_as_a_bare_column_reference_in_a_grouping_key():

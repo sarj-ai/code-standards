@@ -1,11 +1,4 @@
-"""`mask_sql` masking contract, with dollar-quoted bodies kept as live SQL.
-
-A `$$ ... $$` body in a Postgres migration is a `DO` block or a function body — it
-is SQL, not string data — so it must survive masking while genuine string data and
-comments are still blanked. These tests pin both halves, plus the invariants every
-rule depends on: identical length, identical line count, and no reflow (so the
-line-keyed `-- sarj-noqa` suppression keeps working).
-"""
+"""`mask_sql` masking contract, with dollar-quoted bodies kept as live SQL."""
 
 from __future__ import annotations
 
@@ -34,9 +27,7 @@ def _mask(source: str) -> str:
     return masked
 
 
-# --------------------------------------------------------------------------
-# dollar-quoted bodies are kept as SQL
-# --------------------------------------------------------------------------
+# Dollar-quoted bodies are kept as SQL.
 
 
 def test_bare_dollar_body_is_kept_as_sql() -> None:
@@ -106,9 +97,7 @@ def test_empty_dollar_body() -> None:
     assert _mask("SELECT $$$$;") == "SELECT     ;"
 
 
-# --------------------------------------------------------------------------
-# things that look like dollar quotes but are not
-# --------------------------------------------------------------------------
+# Things that look like dollar quotes but are not.
 
 
 @pytest.mark.parametrize(
@@ -152,9 +141,7 @@ def test_lone_dollar_is_literal() -> None:
     assert _mask("SELECT '$' , $ , 1;") == "SELECT     , $ , 1;"
 
 
-# --------------------------------------------------------------------------
-# comments win over dollar quotes
-# --------------------------------------------------------------------------
+# Comments win over dollar quotes.
 
 
 def test_dollar_quote_inside_a_line_comment_opens_nothing() -> None:
@@ -181,9 +168,7 @@ def test_dollar_quote_inside_a_string_literal_opens_nothing() -> None:
     assert dollar_quoted_lines(source) == frozenset()
 
 
-# --------------------------------------------------------------------------
-# unterminated input must terminate, and must not swallow the file
-# --------------------------------------------------------------------------
+# Unterminated input must terminate and not swallow the file.
 
 
 def test_unterminated_dollar_quote_keeps_the_rest_as_sql() -> None:
@@ -210,9 +195,7 @@ def test_unterminated_string_and_comment_still_terminate() -> None:
     assert _mask("/* abc") == "      "
 
 
-# --------------------------------------------------------------------------
-# ordinary literals and identifiers are masked exactly as before
-# --------------------------------------------------------------------------
+# Ordinary literals and identifiers are masked exactly as before.
 
 
 def test_string_literal_is_masked() -> None:
@@ -242,9 +225,7 @@ def test_semicolon_inside_a_literal_does_not_split_statements() -> None:
     assert len(split_statements(_mask("INSERT INTO t VALUES ('a;b');"))) == 1
 
 
-# --------------------------------------------------------------------------
-# line-number stability (the `-- sarj-noqa` contract)
-# --------------------------------------------------------------------------
+# Line-number stability (the `-- sarj-noqa` contract).
 
 
 def test_line_numbers_are_stable_across_a_multiline_dollar_body() -> None:
@@ -284,9 +265,7 @@ def test_noqa_inside_a_dollar_body_still_suppresses(
     assert ":3:" in reported[0]
 
 
-# --------------------------------------------------------------------------
-# dollar_quoted_lines
-# --------------------------------------------------------------------------
+# dollar_quoted_lines tests.
 
 
 def test_dollar_quoted_lines_covers_the_body_and_its_delimiters() -> None:

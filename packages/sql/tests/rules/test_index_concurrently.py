@@ -59,12 +59,7 @@ def test_skips_comment_lines():
     assert _check(src) == []
 
 
-# --- index on a table created in the same file -----------------------------------
-#
-# The table is brand new: no rows, no concurrent writers, so CONCURRENTLY buys
-# nothing — and since CREATE INDEX CONCURRENTLY cannot run inside a transaction
-# block, taking the advice would force an atomic migration to become
-# non-transactional. 63.5% of this rule's corpus population was this shape.
+# Test creating index on a table created in the same file.
 
 
 def test_allows_index_on_table_created_in_the_same_file():
@@ -76,11 +71,6 @@ CREATE INDEX idx_orders_user ON orders (user_id);
 
 
 def test_allows_index_on_quoted_table_created_in_the_same_file():
-    """Regression: `mask_sql` blanks `"..."`, and Prisma quotes every table name.
-
-    Reading the table name from masked text made the guard silently never fire for
-    the generator that emits most of this rule's population.
-    """
     src = """
 CREATE TABLE "Workflow" ("id" TEXT NOT NULL, "userId" INTEGER);
 CREATE INDEX "Workflow_userId_idx" ON "Workflow"("userId");
@@ -106,10 +96,6 @@ CREATE INDEX idx_orders_user
 
 
 def test_flags_index_on_a_table_not_created_in_this_file():
-    """The boundary: an index-only migration against an existing table.
-
-    This is the outage case the rule exists for, and the guard must never reach it.
-    """
     src = """
 CREATE TABLE orders (id BIGSERIAL PRIMARY KEY);
 CREATE INDEX idx_users_email ON users (email);
@@ -137,7 +123,7 @@ CREATE INDEX idx_orders_user ON orders (user_id);
     assert len(_check(src)) == 1
 
 
-# --- dialect ---------------------------------------------------------------------
+# Dialect tests.
 
 
 def test_allows_plain_create_index_in_sqlite():

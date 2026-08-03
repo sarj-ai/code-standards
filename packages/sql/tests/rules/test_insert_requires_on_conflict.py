@@ -107,14 +107,7 @@ def test_statement_without_trailing_semicolon_is_still_checked():
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
-# Cross-package parity with SARJ018 and the TS twin                            #
-# (`packages/python/.../store_insert_requires_on_conflict.py`,                 #
-#  `packages/typescript/src/rules/store-insert-requires-on-conflict.ts`).      #
-# All three must share ONE definition of "already idempotent" and ONE          #
-# definition of a real insert write. If one of these fails, the three          #
-# implementations have drifted again — fix the drift, not the test.            #
-# --------------------------------------------------------------------------- #
+# Test cross-package parity with SARJ018 and the TS twin.
 
 ALREADY_IDEMPOTENT = {
     "postgres_on_conflict": "INSERT INTO t (a) VALUES (1) ON CONFLICT (a) DO NOTHING;",
@@ -146,12 +139,7 @@ def test_insert_keyword_without_a_write_verb_does_not_fire(source: str):
     assert _check(source) == []
 
 
-# --------------------------------------------------------------------------- #
-# Dollar-quoted seed blocks. `mask_sql` keeps `DO $$ ... $$` bodies visible,    #
-# which is what lets the rule see the DML inside them. A block that guards its  #
-# own replay procedurally is exempt; an UNGUARDED one is still the defect this  #
-# rule exists to catch, so the exemption must not be a blanket one.             #
-# --------------------------------------------------------------------------- #
+# Test dollar-quoted seed blocks.
 
 _GUARDED_SEED = """
 DO $$
@@ -177,12 +165,6 @@ END $$;
 
 
 def test_guarded_dollar_quoted_seed_block_is_exempt():
-    """A block that guards its own replay needs no ON CONFLICT.
-
-    Evidence: two first-party reference-data seed migrations — one using
-    `RETURN`, one the `CONTINUE` variant inside a `FOREACH` loop.
-    An `ON CONFLICT` clause there would be dead code.
-    """
     assert _check(_GUARDED_SEED) == []
 
 

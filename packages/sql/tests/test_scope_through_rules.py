@@ -1,17 +1,4 @@
-"""The shared scope helpers exercised THROUGH every rule that consumes them.
-
-`is_dump_file` and `redirect_to_model` are each tested directly in
-`test_dialect_and_generated.py`, but a helper that is correct and *not wired in*
-is indistinguishable from one that is. Deleting the `is_dump_file` guard from any
-one of eleven rules, or the `redirect_to_model` call from any one of six, changed
-no test before this module existed. These parametrizations put exactly one case
-per consuming rule behind each helper, so dropping the call site from a single
-rule fails that rule's case and only that one.
-
-One source triggers all twelve rules exactly once, which also makes the stakes
-legible: on a hand-written path it is twelve findings, and on `structure.sql` it
-is one.
-"""
+"""Test shared scope helpers exercised through every rule that consumes them."""
 
 from __future__ import annotations
 
@@ -57,9 +44,7 @@ SELECT * FROM children LIMIT 10 OFFSET 100;
 
 HAND_WRITTEN = Path("db/migrations/0001_init.sql")
 
-# SARJ112 require-fk-index deliberately declines the dump exemption — a missing
-# FK index is a property of the deployed database, and a dump is the one place
-# the whole schema is visible at once. It is the residue in every count below.
+# RequireFkIndex deliberately declines the dump exemption.
 DUMP_EXEMPT = tuple(cls for cls in REGISTRY.values() if cls is not RequireFkIndex)
 
 MODEL_REDIRECTING = (
@@ -87,7 +72,7 @@ def test_the_shared_source_fires_every_rule_exactly_once() -> None:
     assert len(fired) == 12
 
 
-# --- is_dump_file, once per consuming rule ----------------------------------------
+# Test is_dump_file once per consuming rule.
 
 
 @pytest.mark.parametrize("rule_cls", DUMP_EXEMPT, ids=_ids(DUMP_EXEMPT))
@@ -107,11 +92,7 @@ def test_the_dump_exemption_is_what_stands_between_twelve_findings_and_one() -> 
     assert _total(Path("db/structure.sql"), ALL_TWELVE) == 1
 
 
-# --- the three path-only dump signals, pinned one at a time -----------------------
-#
-# None of these files says "PostgreSQL database dump" anywhere, so the content
-# branch cannot carry them: each name is caught by exactly one path signal, and
-# deleting that signal leaves the other two green.
+# Test path-only dump signals.
 
 
 @pytest.mark.parametrize("name", ["structure.sql", "schema.sql"])
@@ -134,7 +115,7 @@ def test_a_hand_written_migration_next_to_those_names_is_still_judged() -> None:
     assert _total(Path("db/migrations/schema_changes.sql"), ALL_TWELVE) == 12
 
 
-# --- redirect_to_model, once per consuming rule -----------------------------------
+# Test redirect_to_model once per consuming rule.
 
 GENERATED = f"--> statement-breakpoint\n{ALL_TWELVE}"
 

@@ -1,13 +1,4 @@
-"""Every registered rule must be reachable from pre-commit, and every hook must be real.
-
-The Python package has carried this gate since 0.16.0; SQL and IaC never got it, and
-IaC paid for it: `require-prevent-destroy-on-irreplaceable` shipped in three releases
-with no hook, so it ran in exactly zero consumer repos and nothing said so.
-
-It lives here rather than in one cross-package module because `sql-ci.yml` is scoped to
-`packages/sql/**` — a gate in another package's tests would not run on the commit that
-adds a rule.
-"""
+"""Every registered rule must be reachable from pre-commit, and every hook must be real."""
 
 from __future__ import annotations
 

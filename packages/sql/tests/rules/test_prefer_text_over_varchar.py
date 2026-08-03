@@ -73,11 +73,7 @@ def test_skips_varchar_inside_string_literal():
     assert _check(src) == []
 
 
-# --- the rule is a *Postgres schema authoring* rule -------------------------------
-#
-# 84% of a 25-finding corpus sample was wrong, in three classes: MySQL (where
-# "use TEXT" is harmful advice, not neutral), pg_dump snapshots, and
-# generator-owned migrations.
+# Test dialect restrictions for Postgres schema authoring rules.
 
 
 def test_allows_varchar_in_mysql():

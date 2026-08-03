@@ -1,23 +1,4 @@
-"""SARJ106: forbid the non-B `JSON` type and `::json` casts — use JSONB.
-
-Plain `json` stores raw text: every read re-parses, no indexing (GIN),
-no containment operators, and duplicate keys / whitespace are preserved
-so equality is unreliable. JSONB is the right default for every column
-and cast; the word boundary in the pattern keeps `JSONB` itself, and
-identifiers like `json_build_object`, from matching.
-Schema dumps are exempt (`is_dump_file`). A pg_dump snapshot is a rendering of a
-schema that already exists: the diagnostic asks for an edit to a file that the
-next `pg_dump` regenerates, and the defect it names, if real, has to be fixed in a
-migration anyway. This exemption already guarded SARJ102, SARJ108 and SARJ110;
-`is_dump_file` accounted for 41.7% of the pre-dedupe population of the rules that
-were not calling it.
-
-Generator-owned migrations are exempt (`is_generated_migration`). Prisma, Drizzle
-and Atlas compile a model down to SQL, so the fix belongs in `schema.prisma` (or
-the Drizzle schema module) and an edit to the emitted migration is reverted by the
-next generate — and applied migrations are immutable by construction, since Prisma
-checksums them in `_prisma_migrations` and `migrate deploy` errors on drift.
-"""
+"""SARJ106: forbid the non-B `JSON` type and `::json` casts — use JSONB."""
 
 from __future__ import annotations
 

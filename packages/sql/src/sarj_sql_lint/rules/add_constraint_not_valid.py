@@ -1,15 +1,4 @@
-"""SARJ111: Enforce NOT VALID on ADD CONSTRAINT (CHECK/FK) in table alterations.
-
-Adding CHECK or FOREIGN KEY constraints on existing tables blocks writes during full-table validation.
-Use `ADD CONSTRAINT ... NOT VALID;` followed by a separate `VALIDATE CONSTRAINT` step.
-Note: Postgres does not support NOT VALID for UNIQUE, PRIMARY KEY, or EXCLUDE constraints.
-Schema dumps are exempt (`is_dump_file`). A pg_dump snapshot is a rendering of a
-schema that already exists: the diagnostic asks for an edit to a file that the
-next `pg_dump` regenerates, and the defect it names, if real, has to be fixed in a
-migration anyway. This exemption already guarded SARJ102, SARJ108 and SARJ110;
-`is_dump_file` accounted for 41.7% of the pre-dedupe population of the rules that
-were not calling it.
-"""
+"""SARJ111: Enforce NOT VALID on ADD CONSTRAINT (CHECK/FK) in table alterations."""
 
 from __future__ import annotations
 

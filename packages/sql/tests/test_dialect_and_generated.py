@@ -1,10 +1,4 @@
-"""The shared scope predicates: `is_postgres`, `is_mysql`, `is_generated_migration`.
-
-These three decide *where* a rule is allowed to speak, so their boundaries matter
-more than any single rule's. The dialect pair is a measured partition of the corpus
-— 337 of 2,134 deduped `.sql` files carry a non-Postgres marker and none of those
-337 carries a Postgres-only token — and these tests pin both sides of it.
-"""
+"""Test shared scope predicates: is_postgres, is_mysql, is_generated_migration."""
 
 from __future__ import annotations
 
@@ -24,7 +18,7 @@ from sarj_sql_lint.rule_base import (
 )
 
 
-# --- is_postgres ------------------------------------------------------------------
+# Test is_postgres.
 
 
 @pytest.mark.parametrize(
@@ -89,7 +83,7 @@ def test_free_form_dialect_prose_is_not_a_directive() -> None:
     assert is_postgres(source)
 
 
-# --- is_mysql is narrower than "not Postgres" -------------------------------------
+# Test is_mysql.
 
 
 def test_sqlite_is_not_postgres_but_is_not_mysql_either() -> None:
@@ -113,7 +107,7 @@ def test_mysql_markers_are_recognised(source: str) -> None:
     assert is_mysql(source)
 
 
-# --- is_generated_migration -------------------------------------------------------
+# Test is_generated_migration.
 
 
 def test_drizzle_statement_breakpoint_is_a_content_sentinel() -> None:
@@ -169,7 +163,7 @@ def test_the_marker_search_stops_at_a_repository_boundary(tmp_path: Path) -> Non
     assert not is_generated_migration(migration, migration.read_text())
 
 
-# --- redirect_to_model REDIRECTS, it does not suppress -----------------------------
+# Test redirect_to_model.
 
 
 def test_redirect_keeps_every_finding_and_renames_the_fix_site() -> None:

@@ -1,23 +1,4 @@
-"""SARJ103: forbid `CREATE TYPE ... AS ENUM` — use TEXT + CHECK constraint.
-
-Postgres enums can't be altered transactionally: adding a value can't run
-inside the same transaction that uses it, removing or reordering values is
-effectively impossible, and renames ripple through every dependent object.
-A TEXT column with a CHECK constraint gives the same integrity guarantee
-and migrates with a plain `ALTER TABLE ... DROP/ADD CONSTRAINT`.
-Schema dumps are exempt (`is_dump_file`). A pg_dump snapshot is a rendering of a
-schema that already exists: the diagnostic asks for an edit to a file that the
-next `pg_dump` regenerates, and the defect it names, if real, has to be fixed in a
-migration anyway. This exemption already guarded SARJ102, SARJ108 and SARJ110;
-`is_dump_file` accounted for 41.7% of the pre-dedupe population of the rules that
-were not calling it.
-
-Generator-owned migrations are exempt (`is_generated_migration`). Prisma, Drizzle
-and Atlas compile a model down to SQL, so the fix belongs in `schema.prisma` (or
-the Drizzle schema module) and an edit to the emitted migration is reverted by the
-next generate — and applied migrations are immutable by construction, since Prisma
-checksums them in `_prisma_migrations` and `migrate deploy` errors on drift.
-"""
+"""SARJ103: forbid `CREATE TYPE ... AS ENUM` — use TEXT + CHECK constraint."""
 
 from __future__ import annotations
 
@@ -48,7 +29,7 @@ _ALTER_ADD_VALUE_RE = re.compile(r"\bALTER\s+TYPE\b.*?\bADD\s+VALUE\b", re.IGNOR
 
 @final
 class NoPgEnum(Rule):
-    """CREATE TYPE ... AS ENUM — use TEXT + CHECK constraint instead."""
+    """Forbid CREATE TYPE AS ENUM in favor of TEXT with CHECK constraint."""
 
     id = "no-pg-enum"
     code = "SARJ103"

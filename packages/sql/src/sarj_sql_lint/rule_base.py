@@ -19,20 +19,13 @@ _SARJ_NOQA_RE = re.compile(
 )
 _NON_NEWLINE = re.compile(r"[^\n]")
 
-# A dollar-quote delimiter: `$$` or `$tag$`, where `tag` is an identifier. The tag
-# may NOT start with a digit, which is what keeps `$1`/`$2` positional parameters
-# from ever matching (there is no `$1$` delimiter in Postgres).
+# A dollar-quote delimiter (`$$` or `$tag$`) where `tag` cannot start with a digit, preventing match with `$1`/`$2` positional parameters.
 _DOLLAR_DELIM_RE = re.compile(r"\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$")
 _IDENT_CHAR_RE = re.compile(r"[A-Za-z0-9_]")
 
 
 def is_dump_file(source: str, path: Path | None = None) -> bool:
-    """Report whether source text or path indicates an auto-generated schema dump file.
-
-    Returns:
-        True if the file is a schema dump.
-
-    """
+    """Report whether source text or path indicates an auto-generated schema dump file."""
     if path is not None:
         name = path.name.lower()
         if name in {"structure.sql", "schema.sql"} or name.endswith("_dump.sql") or "restore" in path.parts:
@@ -46,10 +39,7 @@ def is_dump_file(source: str, path: Path | None = None) -> bool:
     )
 
 
-# Tokens that exist in MySQL / MariaDB / SQLite and cannot appear in Postgres DDL.
-# Backtick-quoted identifiers are the strongest single signal: Postgres has no
-# backtick quoting at all, and both MySQL and SQLite (including everything Drizzle
-# emits for either) use it by default.
+# Tokens (like backticks or AUTO_INCREMENT) that exist in MySQL/SQLite and cannot appear in Postgres DDL.
 _NON_POSTGRES_RE = re.compile(
     r"`[^`\n]+`"  # backtick-quoted identifier — MySQL, MariaDB, SQLite
     r"|\bAUTO_INCREMENT\b"  # MySQL column attribute
@@ -60,10 +50,7 @@ _NON_POSTGRES_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Tokens exclusive to MySQL / MariaDB. Deliberately narrower than
-# `_NON_POSTGRES_RE`: SQLite is *not* MySQL, and a rule whose premise fails only
-# under MySQL (SARJ102 — SQLite does support `CREATE TABLE/INDEX IF NOT EXISTS`)
-# must not be silenced by a backtick that only proves "not Postgres".
+# Tokens exclusive to MySQL/MariaDB, intentionally narrower than _NON_POSTGRES_RE so SQLite files are not matched.
 _MYSQL_RE = re.compile(
     r"\bAUTO_INCREMENT\b"
     r"|\bENGINE\s*="
@@ -82,13 +69,7 @@ _SQLITE_RE = re.compile(r"\bAUTOINCREMENT\b", re.IGNORECASE)
 
 
 def declared_dialect(source: str) -> str | None:
-    """Return an explicit dialect declared in a leading SQL line comment.
-
-    A narrow directive lets hand-written migrations state their dialect without
-    relying on vendor-specific syntax happening to appear in every file. Free-form
-    comments remain ignored, so prose cannot accidentally change rule scope.
-
-    """
+    """Return an explicit dialect declared in a leading SQL line comment."""
     match = _DIALECT_DIRECTIVE_RE.search(source)
     if match is None:
         return None
@@ -112,30 +93,7 @@ _MAX_MARKER_ASCENT = 12
 
 
 def is_postgres(source: str) -> bool:
-    """Report whether `source` is free of any non-Postgres dialect marker.
-
-    Several rules encode a *Postgres* fact — `SET lock_timeout` (SARJ110),
-    `CREATE INDEX CONCURRENTLY` (SARJ108), "VARCHAR(n) buys nothing over TEXT"
-    (SARJ104). None of those is true of MySQL or SQLite, where the same advice is
-    at best a no-op and at worst a syntax error or actively harmful (MySQL `TEXT`
-    cannot carry a `DEFAULT`, is stored off-page, and has an index-prefix limit).
-
-    Corpus measurement over 2,134 deduped `.sql` files: 337 carry at least one
-    marker above, and **zero of those 337 also carry a Postgres-only token**
-    (`JSONB`, `SERIAL`/`BIGSERIAL`, a `::` cast, `TIMESTAMPTZ`,
-    `gen_random_uuid`, `uuid_generate_v4`, `USING gin|gist|btree|hash|brin`,
-    `CREATE EXTENSION`, `TEXT[]`). The two populations are disjoint, so treating a
-    marker as decisive costs no Postgres recall — it is a partition, not a
-    heuristic. 288 of the 337 are caught by the backtick alone.
-
-    Pass `mask_sql` output, or raw source when the rule has not masked yet; a
-    backtick inside a comment or a `'...'` literal is blanked by the masker and so
-    cannot fake a dialect.
-
-    Returns:
-        True when nothing in `source` contradicts Postgres.
-
-    """
+    """Report whether `source` is free of any non-Postgres dialect marker."""
     dialect = declared_dialect(source)
     if dialect is not None:
         return dialect == "postgresql"
@@ -143,16 +101,7 @@ def is_postgres(source: str) -> bool:
 
 
 def is_mysql(source: str) -> bool:
-    """Report whether `source` carries a MySQL/MariaDB-exclusive token.
-
-    Narrower than `not is_postgres(...)` on purpose — see `_MYSQL_RE`. Corpus:
-    143 of 2,134 deduped `.sql` files, none of which carries a Postgres-only
-    token.
-
-    Returns:
-        True when `source` is MySQL/MariaDB.
-
-    """
+    """Report whether `source` carries a MySQL/MariaDB-exclusive token."""
     dialect = declared_dialect(source)
     if dialect is not None:
         return dialect == "mysql"
@@ -169,12 +118,7 @@ def is_sqlite(source: str) -> bool:
 
 @lru_cache(maxsize=2048)
 def _has_generated_marker(directory: Path) -> bool:
-    """Report whether `directory` or an ancestor is a generator-owned migration root.
-
-    Returns:
-        True when a Prisma/Drizzle/Atlas marker file is found at or above `directory`.
-
-    """
+    """Report whether `directory` or an ancestor is a generator-owned migration root."""
     for depth, parent in enumerate((directory, *directory.parents)):
         if depth > _MAX_MARKER_ASCENT:
             return False
@@ -191,34 +135,7 @@ def _has_generated_marker(directory: Path) -> bool:
 
 
 def is_generated_migration(path: Path, source: str) -> bool:
-    """Report whether `path` is a migration emitted by a schema-migration generator.
-
-    Prisma, Drizzle and Atlas compile a *model* (`schema.prisma`, a Drizzle schema
-    module, an Atlas HCL schema) down to SQL. For a rule whose fix lives in that
-    model — column type, enum choice, JSON vs JSONB, UUID default — the `.sql`
-    file is a build artifact: hand-editing it is reverted by the next
-    `prisma migrate` / `drizzle-kit generate`, and applied migrations are immutable
-    by construction (Prisma checksums them in `_prisma_migrations` and
-    `migrate deploy` errors on drift). Pointing a diagnostic there asks for a
-    change that cannot be made and would not survive if it were.
-
-    Detection is a marker file at or above the migration directory
-    (`migration_lock.toml`, `meta/_journal.json`, `atlas.sum`) plus Drizzle's
-    `--> statement-breakpoint` content sentinel for trees checked out without
-    their metadata. Measured coverage: 9,799 of 12,614 pre-dedupe SQL findings.
-
-    Deliberately **not** applied to SARJ108, SARJ110, SARJ111 or SARJ112. Those
-    name a production lock or outage risk that survives regeneration, and a
-    reviewer fixes them by hand-editing a `--create-only` migration *before* it
-    ships — the diagnostic is actionable exactly when it matters. The generic
-    Python `_paths.is_generated` is no substitute here: it matches 0 of these
-    files, because Prisma and Drizzle emit no generated-file banner and their
-    directories are not in `_GENERATED_DIR_NAMES`.
-
-    Returns:
-        True when `path` is inside a generator-owned migration tree.
-
-    """
+    """Report whether `path` is a migration emitted by a schema-migration generator."""
     if _GENERATED_MIGRATION_SENTINEL in source:
         return True
     return _has_generated_marker(path.parent)
@@ -239,22 +156,12 @@ def is_suppressed(source_lines: list[str], line: int, code: str) -> bool:
 
 
 def _blank(segment: str) -> str:
-    """Replace every char with a space, keeping newlines so offsets are preserved.
-
-    Returns:
-        `segment` with every non-newline character turned into a space.
-
-    """
+    """Replace every char with a space, keeping newlines so offsets are preserved."""
     return _NON_NEWLINE.sub(" ", segment)
 
 
 def _scan_quoted(source: str, start: int, quote: str) -> int:
-    """Index just past a `quote`-delimited run starting at `start`, honoring `''`/`""`.
-
-    Returns:
-        The index one past the closing quote, or `len(source)` if unterminated.
-
-    """
+    """Index just past a `quote`-delimited run starting at `start`, honoring `''`/`""`."""
     n = len(source)
     j = start + 1
     while j < n:
@@ -268,21 +175,7 @@ def _scan_quoted(source: str, start: int, quote: str) -> int:
 
 
 def _dollar_open_tag(source: str, i: int) -> str | None:
-    """Return the dollar-quote delimiter opening at `i`, or None if one does not.
-
-    Two things must hold. The text at `i` must look like `$$` or `$tag$` — the tag
-    is an identifier, so a leading digit is impossible and `$1`/`$2` positional
-    parameters can never match. And `i` must not sit inside an identifier: Postgres
-    allows `$` as a non-leading identifier character, so the `$` in `total$amount`
-    or `foo$bar$` is part of the name and opens nothing. The check is deliberately
-    NOT applied when looking for a *closing* delimiter — once the lexer is inside a
-    dollar-quoted body identifier rules no longer apply, so `END$$;` really does
-    close a `$$` body.
-
-    Returns:
-        The delimiter text (`"$$"`, `"$func$"`, ...), or None.
-
-    """
+    """Return the dollar-quote delimiter opening at `i`, or None if one does not."""
     if i > 0 and _IDENT_CHAR_RE.match(source, i - 1) is not None:
         return None
     m = _DOLLAR_DELIM_RE.match(source, i)
@@ -290,15 +183,7 @@ def _dollar_open_tag(source: str, i: int) -> str | None:
 
 
 def _closing_depth(source: str, i: int, open_tags: list[str]) -> int | None:
-    """Index in `open_tags` of the outermost open delimiter that closes at `i`.
-
-    Outermost wins: an inner `$b$` left unterminated inside a `$a$` body must not
-    stop the `$a$` body from ending, so hitting `$a$` pops `$b$` along with it.
-
-    Returns:
-        The index into `open_tags`, or None when nothing closes here.
-
-    """
+    """Index in `open_tags` of the outermost open delimiter that closes at `i`."""
     for depth, tag in enumerate(open_tags):
         if source.startswith(tag, i):
             return depth
@@ -371,103 +256,13 @@ def _scan(source: str) -> tuple[str, list[tuple[int, int]]]:
 
 
 def mask_sql(source: str) -> str:
-    r"""Blank out comments, string literals and quoted identifiers; KEEP dollar-quoted bodies.
-
-    The returned text has the same length and line structure as `source` — masking
-    replaces characters with spaces and never deletes or reflows, so line numbers
-    (and therefore `-- sarj-noqa`, which is line-keyed) survive unchanged.
-
-    Blanked: `--` and `/* */` comment bodies, `'...'` literals, `"..."` identifiers,
-    and the `$$` / `$tag$` *delimiters* themselves.
-
-    NOT blanked: the body between dollar-quote delimiters. A `$$ ... $$` body in a
-    migration is not string *data*, it is live SQL — a `DO $$ ... $$` block or a
-    `CREATE FUNCTION ... AS $$ ... $$` body — and blanking it hid real DDL/DML from
-    every rule. The body is re-scanned by this same masker, so strings and comments
-    *inside* it are still masked and a nested `$inner$ ... $inner$` is handled.
-
-    Corpus evidence (two first-party repos, 239 tracked `.sql` files, 9,108
-    lines). Blanking the bodies hid **26 live DDL/DML keywords across 12 files**
-    from all 8 rules — 19 `UPDATE`, 3 `ALTER TABLE`, 2 `DELETE FROM`,
-    2 `INSERT INTO`. Named examples:
-
-    * a tenant-reassignment data migration, 4 lines — four
-      `UPDATE public.<parent>` / `UPDATE public.<child>` re-owning statements
-      inside a `DO $$ ... $$` block,
-    * a cascade-cleanup migration, 2 lines — `DELETE FROM <parent>` /
-      `DELETE FROM <child>` inside a `DO $$ ... $$` block,
-    * an add-column migration, 1 line —
-      `ALTER TABLE <table> ADD CONSTRAINT ...` inside a `DO` block,
-    * a reference-data seed migration, 1 line — `INSERT INTO <table> (...)`
-      inside a `DO $$ ... $$` block.
-
-    A raw-vs-masked keyword diff reports a larger 50 for the same corpus, but 24 of
-    those are prose inside `--` comments *within* the bodies (`-- Step 1: Update the
-    'batch' table`) which stay masked either way. 26 is the number of keywords that
-    actually become visible to a rule.
-
-    This was also a cross-language divergence: `strip_sql_noise` in the sibling
-    Python package (`sarj_python_lint/rules/_sql.py`) has no dollar branch at all,
-    so the *same* SQL text was judged when embedded in a `.py` string and unjudged
-    when it lived in a `.sql` migration — the gap favoured the riskier file type.
-    Keeping the body closes the gap from the `.sql` side.
-
-    Net effect on the corpus (post-`sarj-noqa` findings before -> after):
-    SARJ101 23 -> 23, SARJ102 250 -> 250, SARJ103 0 -> 0, SARJ104 140 -> 140,
-    SARJ106 0 -> 0, SARJ107 0 -> 0, SARJ108 334 -> 334, and **SARJ105
-    insert-requires-on-conflict 17 -> 19**. Nothing is lost anywhere. The two new
-    SARJ105 hits — both reference-data seed migrations in one first-party repo
-    — are both **false positives**: each
-    `INSERT` sits in a `DO $$ ... $$` seed block already guarded by
-    `IF EXISTS (SELECT 1 FROM <table> WHERE code = ...) THEN CONTINUE/RETURN`, which
-    is a perfectly good replay guard, and `ON CONFLICT` there would be redundant.
-    That is 2 of 2 new hits wrong, so SARJ105 wants a function-body exemption to
-    go with this change — `if diagnostic_line in dollar_quoted_lines(source)`
-    drops exactly those two and nothing else (19 -> 17). The other seven rules are
-    line-local type/DDL checks whose premise holds inside a body just as it does
-    outside, and none of them moved, so none needs an exemption.
-
-    Known, deliberate divergences from the Postgres lexer, both in the safe
-    direction: a `$$` sitting inside a `--`/`/* */` comment or inside a `'...'`
-    literal *within* a body does not terminate that body (Postgres, which treats
-    the body as raw text, would let it). Reading the body as SQL is what makes
-    comments inside `DO` blocks stay masked, which is overwhelmingly the common
-    case in the corpus. An unterminated delimiter keeps the rest of the file as
-    SQL rather than swallowing it.
-
-    Returns:
-        A same-length copy of `source` with those spans blanked.
-
-    """
+    r"""Blank out comments, string literals and quoted identifiers while keeping dollar-quoted bodies."""
     masked, _ = _scan(source)
     return masked
 
 
 def dollar_quoted_lines(source: str) -> frozenset[int]:
-    """1-based line numbers that fall inside a `$$ ... $$` / `$tag$ ... $tag$` body.
-
-    `mask_sql` deliberately keeps those bodies as SQL, which is what lets rules see
-    the DDL/DML inside `DO` blocks and function bodies. A rule whose premise is
-    *migration-level* rather than statement-level can use this to exempt them:
-    `if diagnostic.line in dollar_quoted_lines(source): continue`.
-
-    SARJ105 insert-requires-on-conflict is the live case. Its premise is migration
-    replay, but a `DO $$ ... $$` seed block guards its own replay with
-    `IF EXISTS (...) THEN CONTINUE/RETURN` instead of `ON CONFLICT`, and both new
-    SARJ105 findings unlocked by keeping bodies visible are that shape
-    (two reference-data seed migrations in one first-party repo)
-    — 2 of 2 wrong. Applying this exemption there takes SARJ105 from 19 back to 17
-    over the corpus, removing exactly those two and nothing else. The other seven
-    rules are line-local type/DDL checks that are equally true inside a body, and
-    none of them changed count, so none should use this.
-
-    The delimiter lines themselves are included when any part of the body shares
-    the line.
-
-    Returns:
-        The 1-based line numbers covered by a dollar-quoted body.
-
-    """
+    """1-based line numbers that fall inside a `$$ ... $$` / `$tag$ ... $tag$` body."""
     _, spans = _scan(source)
     if not spans:
         return frozenset()
@@ -482,15 +277,7 @@ def dollar_quoted_lines(source: str) -> frozenset[int]:
 
 
 def split_statements(masked: str) -> list[Statement]:
-    """Split already-masked SQL into `;`-delimited statements.
-
-    Operates on `mask_sql` output so a `;` inside a string/comment (now blank) never
-    splits a statement. Each statement is a list of `(lineno, text)` fragments.
-
-    Returns:
-        One `Statement` per `;`-delimited run, in source order.
-
-    """
+    """Split already-masked SQL into `;`-delimited statements."""
     statements: list[Statement] = []
     current: Statement = []
     for lineno, raw in enumerate(masked.splitlines(), start=1):
@@ -508,12 +295,7 @@ def split_statements(masked: str) -> list[Statement]:
 
 
 def locate(statement: Statement, offset: int) -> tuple[int, int]:
-    r"""Map a char `offset` into `"\n".join(text)` back to a 1-based `(line, col)`.
-
-    Returns:
-        The 1-based `(line, col)` for `offset`, clamped to the statement's end.
-
-    """
+    r"""Map a char `offset` into `"\n".join(text)` back to a 1-based `(line, col)`."""
     pos = 0
     for lineno, text in statement:
         if offset <= pos + len(text):
@@ -543,26 +325,7 @@ _MODEL_OWNED_SUFFIX = (
 
 
 def redirect_to_model(diags: list[Diagnostic], *, model_owned: bool) -> list[Diagnostic]:
-    """Point a schema diagnostic at the model when the migration is generated.
-
-    This deliberately REDIRECTS rather than suppresses. A wrong column type, a
-    native enum, a `VARCHAR(n)` cap, a `json` column or a v4 UUID default is a
-    property of the deployed database, and it survives regeneration exactly as
-    the lock and outage risks in SARJ108/110/111/112 do — those are not exempted
-    either, for the same reason.
-
-    Suppressing instead was measured and rejected. On the 2,133-file corpus it
-    took SARJ101 from 770 to 12, SARJ102 from 3,079 to 246 and SARJ103 from 283
-    to **0** — while the genuine false-positive guards on those same rules were
-    worth only 23, 79 and 0 findings respectively. Sampling had put SARJ101 at
-    ~3% false positives and SARJ102 at 4.2%, so all but a sliver of what the
-    exemption removed was true. A rule that fires zero times on 2,133 files is
-    not precise, it is off.
-
-    Returns:
-        `diags` unchanged, or with the model-redirect note appended to each.
-
-    """
+    """Point a schema diagnostic at the model when the migration is generated."""
     if not model_owned:
         return diags
     return [replace(d, message=d.message + _MODEL_OWNED_SUFFIX) for d in diags]
