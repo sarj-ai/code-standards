@@ -47,9 +47,7 @@ def test_every_rule_link_is_unique() -> None:
 def test_explain_accepts_a_code_or_an_id(spelling: str, capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["explain", spelling]) == 0
     assert capsys.readouterr().out == (
-        "SARJ017  no-fstring-in-log\n"
-        f"{NoFstringInLog.description}\n"
-        f"examples: {NoFstringInLog.examples_url()}\n"
+        f"SARJ017  no-fstring-in-log\n{NoFstringInLog.description}\nexamples: {NoFstringInLog.examples_url()}\n"
     )
 
 
