@@ -230,17 +230,19 @@ def test_the_curated_set_is_exactly_this():
     So the set is also pinned literally. Adding or removing a cloud's row is a
     policy change and must be a deliberate edit here, not a silent one.
     """
-    expected = frozenset({
-        "google_storage_bucket",
-        "google_secret_manager_secret",
-        "google_artifact_registry_repository",
-        "aws_s3_bucket",
-        "aws_secretsmanager_secret",
-        "aws_ecr_repository",
-        "azurerm_storage_account",
-        "azurerm_key_vault",
-        "azurerm_container_registry",
-    })
+    expected = frozenset(
+        {
+            "google_storage_bucket",
+            "google_secret_manager_secret",
+            "google_artifact_registry_repository",
+            "aws_s3_bucket",
+            "aws_secretsmanager_secret",
+            "aws_ecr_repository",
+            "azurerm_storage_account",
+            "azurerm_key_vault",
+            "azurerm_container_registry",
+        }
+    )
     assert expected == IRREPLACEABLE_TYPES
 
 

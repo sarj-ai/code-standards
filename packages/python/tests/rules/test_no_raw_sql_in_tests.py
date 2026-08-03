@@ -110,7 +110,7 @@ def test_allows_non_insert_sql(call: str):
     "call",
     [
         "cursor.execute(\"UPDATE t SET note = 'INSERT INTO nothing' WHERE id = 1\")",
-        'conn.execute("SELECT \'INSERT INTO nothing\'")',
+        "conn.execute(\"SELECT 'INSERT INTO nothing'\")",
         'conn.execute("SELECT 1 -- INSERT INTO nothing")',
         'conn.execute("SELECT 1 /* INSERT INTO nothing */")',
         'conn.execute("INSERT")',
@@ -206,9 +206,9 @@ def test_line_col():
 
 def test_reasoned_sarj_noqa_suppresses_schema_probe():
     src = (
-        'def test_constraint(conn):\n'
+        "def test_constraint(conn):\n"
         '    conn.execute("INSERT INTO call VALUES (1)")  '
-        '# sarj-noqa: SARJ036 — assert database constraint\n'
+        "# sarj-noqa: SARJ036 — assert database constraint\n"
     )
     diag = _check(src)[0]
     assert is_suppressed(src.splitlines(), diag.line, diag.code)

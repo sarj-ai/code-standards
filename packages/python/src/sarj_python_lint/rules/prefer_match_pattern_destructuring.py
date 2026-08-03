@@ -182,10 +182,7 @@ def _reach_back_arm(case: ast.match_case, subject: str) -> _ReachBack | None:
     if sum(use.reads[attr] for attr in fields) < _MIN_READS:
         return None
     positional = tuple(ast.unparse(pat) for pat in inner.patterns)
-    kept = tuple(
-        (attr, ast.unparse(pat))
-        for attr, pat in zip(inner.kwd_attrs, inner.kwd_patterns, strict=True)
-    )
+    kept = tuple((attr, ast.unparse(pat)) for attr, pat in zip(inner.kwd_attrs, inner.kwd_patterns, strict=True))
     return _ReachBack(
         cls_name=cls_name,
         alias=alias,

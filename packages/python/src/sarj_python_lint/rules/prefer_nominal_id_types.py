@@ -141,15 +141,15 @@ def _qualified_tail(node: ast.expr) -> str:
 
 
 def _is_raw_schema_class(node: ast.ClassDef) -> bool:
-    return node.name.endswith(_RAW_SCHEMA_SUFFIXES) or any(
-        _qualified_tail(base) == "Protocol" for base in node.bases
-    )
+    return node.name.endswith(_RAW_SCHEMA_SUFFIXES) or any(_qualified_tail(base) == "Protocol" for base in node.bases)
 
 
 def _is_external_adapter_path(path: Path) -> bool:
     parts = {part.lower() for part in path.parts}
-    return "providers" in parts or "integration" in parts or (
-        "integrations" in parts and ("models" in parts or path.name == "models.py")
+    return (
+        "providers" in parts
+        or "integration" in parts
+        or ("integrations" in parts and ("models" in parts or path.name == "models.py"))
     )
 
 
@@ -159,8 +159,7 @@ def _is_raw_string_id(annotation: ast.expr) -> bool:
     if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
         members = _flatten_union(annotation)
         return any(_is_raw_string_id(member) for member in members) and all(
-            _is_raw_string_id(member) or _is_nominal_id(member) or _is_none(member)
-            for member in members
+            _is_raw_string_id(member) or _is_nominal_id(member) or _is_none(member) for member in members
         )
     if not isinstance(annotation, ast.Subscript):
         return False
@@ -176,8 +175,7 @@ def _is_raw_string_id(annotation: ast.expr) -> bool:
     if wrapper in _UNION_WRAPPERS:
         members = list(annotation.slice.elts) if isinstance(annotation.slice, ast.Tuple) else [annotation.slice]
         return any(_is_raw_string_id(member) for member in members) and all(
-            _is_raw_string_id(member) or _is_nominal_id(member) or _is_none(member)
-            for member in members
+            _is_raw_string_id(member) or _is_nominal_id(member) or _is_none(member) for member in members
         )
     return False
 

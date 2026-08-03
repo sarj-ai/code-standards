@@ -135,9 +135,9 @@ def _deleted_rule_modules() -> dict[str, str]:
     new name retires the old one exactly as a deletion does, and rename detection
     would hide that.
     """
-    assert (
-        _git("rev-parse", "--is-shallow-repository").strip() == "false"
-    ), "this gate reads deleted rule modules out of git history; check out with fetch-depth: 0"
+    assert _git("rev-parse", "--is-shallow-repository").strip() == "false", (
+        "this gate reads deleted rule modules out of git history; check out with fetch-depth: 0"
+    )
 
     log = _git(
         "log",
@@ -230,11 +230,7 @@ def test_no_rule_hand_writes_a_link(rule_id: str) -> None:
     """The examples link is derived from `__module__`; other repo links go stale."""
     cls = REGISTRY[rule_id]
     doc = _module_docstring(cls)
-    stray = [
-        line.strip()
-        for line in doc.splitlines()
-        if REPO_BLOB in line and cls.examples_url() not in line
-    ]
+    stray = [line.strip() for line in doc.splitlines() if REPO_BLOB in line and cls.examples_url() not in line]
     assert not stray, (
         f"{rule_id}: docstring hand-writes a repo link that `Rule.examples_url()` does not generate:\n  "
         + "\n  ".join(stray)
@@ -350,7 +346,9 @@ def test_ledger_covers_every_deleted_rule_module() -> None:
     """
     ledger = _ledger()
     unrecorded = sorted(
-        f"{code} ({stem}) deleted from {_RULES_DIR}" for code, stem in _deleted_rule_modules().items() if code not in ledger
+        f"{code} ({stem}) deleted from {_RULES_DIR}"
+        for code, stem in _deleted_rule_modules().items()
+        if code not in ledger
     )
     assert not unrecorded, (
         "git history has rule modules whose codes the ledger never recorded:\n  "

@@ -91,8 +91,7 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
         return
 
     unexercised = sorted(
-        f"{rule_id}: {cls.examples_path()} never makes it "
-        f"{'report' if rule_id not in _FIRED else 'stay quiet'}"
+        f"{rule_id}: {cls.examples_path()} never makes it {'report' if rule_id not in _FIRED else 'stay quiet'}"
         for rule_id, cls in REGISTRY.items()
         if rule_id not in _FIRED or rule_id not in _CLEAN
     )

@@ -5,7 +5,7 @@ MAKEFLAGS += --warn-undefined-variables --no-builtin-rules
 CONFIG_SRC := packages/lint-configs/src/sarj_lint_configs/configs
 STANDARDS := uv run --project packages/lint-configs --frozen sarj-standards
 
-.PHONY: help setup build verify test lint typecheck repo-check check-no-private-refs check-file-conventions promote-strict check-versions-synced publish publish-typescript publish-python publish-sql \
+.PHONY: help setup build verify test lint format-check typecheck repo-check check-no-private-refs check-file-conventions promote-strict check-versions-synced publish publish-typescript publish-python publish-sql \
         publish-iac publish-lint-configs publish-tsconfig sync-rule-ledger
 
 help:
@@ -27,7 +27,14 @@ setup:
 # The gate CONTRIBUTING/CLAUDE.md tells contributors to run before review. It did
 # not exist, so `make verify` failed with "No rule to make target" and the
 # documented workflow could not be followed as written.
-verify: lint typecheck test repo-check
+verify: format-check lint typecheck test repo-check
+
+format-check:
+	uv run --project packages/lint-configs ruff format --check \
+	  packages/python/src packages/python/tests \
+	  packages/sql/src packages/sql/tests \
+	  packages/iac/src packages/iac/tests \
+	  packages/lint-configs/src packages/lint-configs/tests
 
 promote-strict:
 	@echo "Promoting all warning-level standards to errors globally..."

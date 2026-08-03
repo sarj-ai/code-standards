@@ -465,9 +465,7 @@ def _license_header_lines(standalone: list[tuple[int, int, str]]) -> frozenset[i
         sits in the first `_LICENSE_HEADER_MAX_LINE` lines of the file.
 
     """
-    anchors = [
-        line for line, _, body in standalone if line <= _LICENSE_HEADER_MAX_LINE and _LICENSE_RE.search(body)
-    ]
+    anchors = [line for line, _, body in standalone if line <= _LICENSE_HEADER_MAX_LINE and _LICENSE_RE.search(body)]
     return frozenset(
         line
         for anchor in anchors

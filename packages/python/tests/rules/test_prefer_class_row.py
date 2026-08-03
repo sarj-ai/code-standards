@@ -375,10 +375,7 @@ def test_sarj_noqa_with_code_is_recognised():
     ids=["aggregate", "dynamic-projection"],
 )
 def test_plain_mapping_exceptions_can_be_suppressed(query: str, reason: str):
-    src = (
-        f'cur.execute("{query}")\n'
-        f"row = conn.cursor(row_factory=dict_row)  # sarj-noqa: SARJ013 — {reason}\n"
-    )
+    src = f'cur.execute("{query}")\nrow = conn.cursor(row_factory=dict_row)  # sarj-noqa: SARJ013 — {reason}\n'
     diagnostic = _check(src)[0]
     assert is_suppressed(src.splitlines(), diagnostic.line, diagnostic.code)
 

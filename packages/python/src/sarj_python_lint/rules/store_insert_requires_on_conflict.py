@@ -36,8 +36,7 @@ class StoreInsertRequiresOnConflict(Rule):
     id: str = "store-insert-requires-on-conflict"
     code: str = "SARJ018"
     description: str = (
-        "Embedded SQL INSERTs in store code must use ON CONFLICT, ON DUPLICATE KEY, "
-        "or SQLite OR IGNORE/REPLACE."
+        "Embedded SQL INSERTs in store code must use ON CONFLICT, ON DUPLICATE KEY, or SQLite OR IGNORE/REPLACE."
     )
 
     @override
