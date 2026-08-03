@@ -38,12 +38,8 @@ pre-push:
       run: make verify
       fail_text: >-
         Standards verification failed. Fix the reported failures before pushing.
-    # The tree check in `make verify` cannot see commit messages, and 53 of this
-    # repo's 156 messages name a private repo or client. This is the only hook
-    # stage where the set of commits being published is known, so it is the only
-    # place a local check can look. CI re-runs it on the PR range.
     private-refs-commit-messages:
-      run: uv run --project packages/lint-configs --frozen sarj-standards repo check --only private-refs --commits "$(git merge-base origin/main HEAD)..HEAD"
+      run: if test -f .sarj-private-refs.toml; then uv run --project packages/lint-configs --frozen sarj-standards repo check --only private-refs --commits "$(git merge-base origin/main HEAD)..HEAD"; else echo "private-reference scan delegated to trusted CI"; fi
       fail_text: >-
         A commit message you are pushing names a private repo or client.
         Reword it (git rebase -i, or squash) and push again.

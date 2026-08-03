@@ -63,6 +63,9 @@ class _Args(argparse.Namespace):
     repo_cmd: str = ""
     repo_only: list[str]
     commits: str | None = None
+    policy_dest: str | None = None
+    private_refs_file: str | None = None
+    quiet: bool = False
     roots: list[Path]
     include_text: Path | None = None
     rules_cmd: str = ""
@@ -464,8 +467,17 @@ def _cmd_repo(args: _Args) -> int:
 
 def _run_repo(args: _Args) -> int:
     if args.repo_cmd == "check":
-        findings = repository.check(_resolve_dest(args.dest), selected=frozenset(args.repo_only), commits=args.commits)
-        print("\n".join(finding.render() for finding in findings) or "repository policy ✓")
+        findings = repository.check(
+            _resolve_dest(args.dest),
+            selected=frozenset(args.repo_only),
+            commits=args.commits,
+            policy_root=_resolve_dest(args.policy_dest) if args.policy_dest else None,
+            private_refs_path=Path(args.private_refs_file).resolve() if args.private_refs_file else None,
+        )
+        if args.quiet:
+            print("repository policy failed" if findings else "repository policy ✓")
+        else:
+            print("\n".join(finding.render() for finding in findings) or "repository policy ✓")
         return 1 if findings else 0
     if args.repo_cmd == "sync-ledger":
         result = rule_maintenance.sync_ledger(_resolve_dest(args.dest), check=args.check)
@@ -495,6 +507,9 @@ def _add_repo_parsers(repo: argparse.ArgumentParser) -> None:
         default=[],
     )
     check.add_argument("--commits", help="also inspect commit messages in this revision range")
+    check.add_argument("--policy-dest", help="trusted repository policy root (default: --dest)")
+    check.add_argument("--private-refs-file", help="private-reference TOML outside the scanned repository")
+    check.add_argument("--quiet", action="store_true", help="hide finding details")
     ledger = commands.add_parser("sync-ledger", help="synchronize the rule compatibility ledger")
     ledger.add_argument("--dest", default=".", help="repository root (default: cwd)")
     ledger.add_argument("--check", action="store_true", help="report drift without writing")

@@ -8,6 +8,7 @@ import subprocess
 
 import pytest
 
+from sarj_lint_configs import __main__ as cli
 from sarj_lint_configs import comment_corpus, hooks, repository, rule_maintenance
 
 
@@ -51,6 +52,8 @@ def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
 
 def _git_repo(root: Path, files: dict[str, str]) -> None:
     _git(root, "init", "-q")
+    _git(root, "config", "user.name", "Test")
+    _git(root, "config", "user.email", "test@example.com")
     for relative, content in files.items():
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -59,16 +62,7 @@ def _git_repo(root: Path, files: dict[str, str]) -> None:
 
 
 def _commit(root: Path, message: str) -> None:
-    _git(
-        root,
-        "-c",
-        "user.name=Test",
-        "-c",
-        "user.email=test@example.com",
-        "commit",
-        "-qm",
-        message,
-    )
+    _git(root, "commit", "-qm", message)
 
 
 def test_load_policy_reads_repository_configuration(tmp_path: Path) -> None:
@@ -108,6 +102,154 @@ locks = ["uv.lock"]
     assert policy.known_locks == ("uv.lock",)
 
 
+def test_load_policy_reads_private_patterns_from_untracked_file(tmp_path: Path) -> None:
+    (tmp_path / ".sarj-standards.toml").write_text("[repository.private_refs]\nexclude = ['lock']\n")
+    (tmp_path / ".sarj-private-refs.toml").write_text(
+        "[private_refs]\ndistinctive = ['confidential-project']\ncontextual = ['workspace']\n"
+    )
+
+    policy = repository.load_policy(tmp_path)
+
+    assert policy.distinctive == ("confidential-project",)
+    assert policy.contextual == ("workspace",)
+    assert policy.private_excludes == ("lock",)
+
+
+def test_load_policy_rejects_a_malformed_rule_instead_of_disabling_it(tmp_path: Path) -> None:
+    (tmp_path / ".sarj-standards.toml").write_text(
+        "[repository]\n[[repository.filename_rules]]\nglob = '*.py'\npattern = '.*'\n"
+    )
+
+    with pytest.raises(ValueError, match="filename rule requires: label"):
+        repository.load_policy(tmp_path)
+
+
+def test_load_policy_rejects_unknown_repository_fields(tmp_path: Path) -> None:
+    (tmp_path / ".sarj-standards.toml").write_text("[repository]\nfilename_rule = []\n")
+
+    with pytest.raises(ValueError, match="unknown repository field"):
+        repository.load_policy(tmp_path)
+
+
+def test_load_policy_rejects_unknown_nested_fields(tmp_path: Path) -> None:
+    (tmp_path / ".sarj-standards.toml").write_text(
+        "[repository]\n[[repository.filename_rules]]\nglob = '*.py'\npattern = '.*'\nlabel = 'python'\nlabels = []\n"
+    )
+
+    with pytest.raises(ValueError, match="unknown filename rule field"):
+        repository.load_policy(tmp_path)
+
+
+def test_load_policy_wraps_invalid_regexes(tmp_path: Path) -> None:
+    (tmp_path / ".sarj-standards.toml").write_text(
+        "[repository]\n[[repository.filename_rules]]\nglob = '*.py'\npattern = '['\nlabel = 'python'\n"
+    )
+
+    with pytest.raises(ValueError, match="invalid filename rule regex"):
+        repository.load_policy(tmp_path)
+
+
+def test_private_reference_check_without_secret_fails_closed(tmp_path: Path) -> None:
+    _git_repo(tmp_path, {"conflicted.py": "<<<<<<< branch\n"})
+
+    with pytest.raises(ValueError, match="policy is unavailable"):
+        repository.check_private_refs(
+            tmp_path,
+            _policy(distinctive=(), contextual=()),
+            commits=None,
+        )
+
+
+def test_default_repository_check_delegates_private_refs_to_trusted_ci(tmp_path: Path) -> None:
+    _git_repo(tmp_path, {"clean.py": "value = 1\n"})
+    (tmp_path / ".sarj-standards.toml").write_text("[repository]\n")
+
+    assert repository.check(tmp_path) == []
+
+
+def test_explicit_private_check_fails_without_a_private_policy(tmp_path: Path) -> None:
+    _git_repo(tmp_path, {"clean.py": "value = 1\n"})
+    (tmp_path / ".sarj-standards.toml").write_text("[repository]\n")
+
+    with pytest.raises(ValueError, match="policy is unavailable"):
+        repository.check(tmp_path, selected=frozenset({"private-refs"}))
+
+
+def test_private_names_are_literals_not_regular_expressions(tmp_path: Path) -> None:
+    _git_repo(tmp_path, {"clean.py": "name = 'secretXrepo'\n", "leak.py": "name = 'secret.repo'\n"})
+
+    findings = repository.check_private_refs(
+        tmp_path,
+        _policy(distinctive=("secret.repo",), contextual=()),
+        commits=None,
+    )
+
+    assert [finding.where for finding in findings] == ["leak.py"]
+
+
+def test_private_name_variants_are_explicit_literals(tmp_path: Path) -> None:
+    _git_repo(tmp_path, {"space.py": "name = 'client portal'\n", "dash.py": "name = 'client-portal'\n"})
+
+    findings = repository.check_private_refs(
+        tmp_path,
+        _policy(distinctive=("client portal", "client-portal"), contextual=()),
+        commits=None,
+    )
+
+    assert [finding.where for finding in findings] == ["dash.py", "space.py"]
+
+
+def test_private_policy_rejects_regex_fields(tmp_path: Path) -> None:
+    (tmp_path / ".sarj-standards.toml").write_text("[repository.private_refs]\ndistinctive_regex = ['client.*']\n")
+
+    with pytest.raises(ValueError, match="unknown private_refs field"):
+        repository.load_policy(tmp_path)
+
+
+def test_private_scan_reads_a_symlink_target_as_data(tmp_path: Path) -> None:
+    _git_repo(tmp_path, {"link": "placeholder"})
+    (tmp_path / "link").unlink()
+    (tmp_path / "link").symlink_to("/confidential-project")
+
+    findings = repository.check_private_refs(
+        tmp_path,
+        _policy(distinctive=("confidential-project",), contextual=()),
+        commits=None,
+    )
+
+    assert [finding.where for finding in findings] == ["link"]
+
+
+def test_trusted_policy_scans_a_separate_candidate_checkout(tmp_path: Path) -> None:
+    trusted = tmp_path / "trusted"
+    candidate = tmp_path / "candidate"
+    trusted.mkdir()
+    candidate.mkdir()
+    (trusted / ".sarj-standards.toml").write_text("[repository.private_refs]\n")
+    secret = tmp_path / "private.toml"
+    secret.write_text("[private_refs]\ndistinctive = ['confidential-project']\n")
+    _git_repo(candidate, {"leak.py": "name = 'confidential-project'\n"})
+
+    findings = repository.check(
+        candidate,
+        selected=frozenset({"private-refs"}),
+        policy_root=trusted,
+        private_refs_path=secret,
+    )
+
+    assert [finding.where for finding in findings] == ["leak.py"]
+
+
+def test_trusted_policy_cannot_run_candidate_path_checks(tmp_path: Path) -> None:
+    trusted = tmp_path / "trusted"
+    candidate = tmp_path / "candidate"
+    trusted.mkdir()
+    candidate.mkdir()
+
+    with pytest.raises(ValueError, match="restricted to the private-refs check"):
+        repository.check(candidate, policy_root=trusted)
+
+
 def test_private_reference_check_scans_tracked_files(tmp_path: Path) -> None:
     _git_repo(tmp_path, {"clean.py": "value = 1\n", "leak.py": "# secret-repo/api\n"})
 
@@ -118,13 +260,110 @@ def test_private_reference_check_scans_tracked_files(tmp_path: Path) -> None:
     ]
 
 
+def test_private_reference_check_scans_tracked_paths(tmp_path: Path) -> None:
+    _git_repo(tmp_path, {"secret-repo.txt": "public content\n"})
+
+    findings = repository.check_private_refs(tmp_path, _policy(), commits=None)
+
+    assert [(finding.where, finding.message) for finding in findings] == [
+        ("secret-repo.txt", "private repository or client reference")
+    ]
+
+
+def test_private_reference_check_scans_intermediate_commit_blobs(tmp_path: Path) -> None:
+    _git_repo(tmp_path, {"value.txt": "public\n"})
+    _commit(tmp_path, "base")
+    (tmp_path / "value.txt").write_text("secret-repo/api\n")
+    _git(tmp_path, "add", "value.txt")
+    _commit(tmp_path, "transient")
+    transient = _git(tmp_path, "rev-parse", "HEAD").stdout.strip()
+    (tmp_path / "value.txt").write_text("public again\n")
+    _git(tmp_path, "add", "value.txt")
+    _commit(tmp_path, "clean")
+
+    findings = repository.check_private_refs(tmp_path, _policy(), commits="HEAD~2..HEAD")
+
+    assert [(finding.where, finding.message) for finding in findings] == [
+        (f"{transient}:value.txt", "private repository or client reference")
+    ]
+
+
+def test_private_reference_check_scans_intermediate_paths_and_symlink_targets(tmp_path: Path) -> None:
+    _git_repo(tmp_path, {"value.txt": "public\n"})
+    _commit(tmp_path, "base")
+    (tmp_path / "secret-repo-link").symlink_to("portal/private")
+    _git(tmp_path, "add", "secret-repo-link")
+    _commit(tmp_path, "transient")
+    transient = _git(tmp_path, "rev-parse", "HEAD").stdout.strip()
+    (tmp_path / "secret-repo-link").unlink()
+    _git(tmp_path, "add", "-u")
+    _commit(tmp_path, "clean")
+
+    findings = repository.check_private_refs(tmp_path, _policy(), commits="HEAD~2..HEAD")
+
+    assert (f"{transient}:secret-repo-link", "private repository or client reference") in {
+        (finding.where, finding.message) for finding in findings
+    }
+
+
+def test_private_reference_check_scans_merge_resolution_blobs(tmp_path: Path) -> None:
+    _git_repo(tmp_path, {"left.txt": "base\n", "right.txt": "base\n", "value.txt": "public\n"})
+    _commit(tmp_path, "base")
+    base = _git(tmp_path, "rev-parse", "HEAD").stdout.strip()
+    _git(tmp_path, "checkout", "-qb", "left")
+    (tmp_path / "left.txt").write_text("left\n")
+    _git(tmp_path, "add", "left.txt")
+    _commit(tmp_path, "left")
+    _git(tmp_path, "checkout", "-qb", "right", base)
+    (tmp_path / "right.txt").write_text("right\n")
+    _git(tmp_path, "add", "right.txt")
+    _commit(tmp_path, "right")
+    _git(tmp_path, "merge", "--no-ff", "--no-commit", "left")
+    (tmp_path / "value.txt").write_text("secret-repo/api\n")
+    _git(tmp_path, "add", "value.txt")
+    _commit(tmp_path, "merge resolution")
+    merge = _git(tmp_path, "rev-parse", "HEAD").stdout.strip()
+    (tmp_path / "value.txt").write_text("public again\n")
+    _git(tmp_path, "add", "value.txt")
+    _commit(tmp_path, "clean")
+
+    findings = repository.check_private_refs(tmp_path, _policy(), commits=f"{base}..HEAD")
+
+    assert (f"{merge}:value.txt", "private repository or client reference") in {
+        (finding.where, finding.message) for finding in findings
+    }
+
+
+def test_private_reference_check_scans_unmaterialized_gitlink_paths(tmp_path: Path) -> None:
+    _git_repo(tmp_path, {"value.txt": "public\n"})
+    _commit(tmp_path, "base")
+    revision = _git(tmp_path, "rev-parse", "HEAD").stdout.strip()
+    _git(tmp_path, "update-index", "--add", "--cacheinfo", f"160000,{revision},secret-repo-module")
+
+    findings = repository.check_private_refs(tmp_path, _policy(), commits=None)
+
+    assert [(finding.where, finding.message) for finding in findings] == [
+        ("secret-repo-module", "private repository or client reference")
+    ]
+
+
 def test_private_reference_check_scans_commit_messages(tmp_path: Path) -> None:
     _git_repo(tmp_path, {"clean.py": "value = 1\n"})
     _commit(tmp_path, "secret-repo change")
 
     findings = repository.check_private_refs(tmp_path, _policy(), commits="HEAD")
 
-    assert findings[0].where == "HEAD"
+    assert findings[0].where == _git(tmp_path, "rev-parse", "HEAD").stdout.strip()
+
+
+def test_private_reference_cli_can_redact_findings(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _git_repo(tmp_path, {"secret-repo.txt": "public\n"})
+    (tmp_path / ".sarj-standards.toml").write_text("[repository.private_refs]\ndistinctive = ['secret-repo']\n")
+
+    status = cli.main(["repo", "check", "--dest", str(tmp_path), "--only", "private-refs", "--quiet"])
+
+    assert status == 1
+    assert capsys.readouterr().out == "repository policy failed\n"
 
 
 def test_git_fixtures_ignore_a_hooks_repository_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

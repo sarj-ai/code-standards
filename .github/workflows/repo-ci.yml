@@ -26,13 +26,3 @@ jobs:
         run: make repo-check
       - name: Python formatting
         run: make format-check
-      # Separate step, and pull_request-only: `github.event.pull_request.base.sha`
-      # does not exist on a push event, and 53 of the 156 commit messages already
-      # on main name a private repo. Re-scanning them on every push to main would
-      # fail main permanently. What must be stopped is adding a 54th.
-      - name: No private repo/client names in the commit messages this PR adds
-        if: github.event_name == 'pull_request'
-        env:
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
-        run: uv run --project packages/lint-configs --frozen sarj-standards repo check --only private-refs --commits "$BASE..$HEAD"

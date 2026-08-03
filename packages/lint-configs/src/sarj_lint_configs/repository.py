@@ -21,6 +21,7 @@ from .manifest import as_table, list_field, table_field, text_field
 
 
 _CONFLICT_RE: Final = re.compile(r"^(?:<<<<<<< |>>>>>>> |\|\|\|\|\|\|\| )", re.MULTILINE)
+_PRIVATE_REFS_FILE: Final = ".sarj-private-refs.toml"
 _TEST_COMMAND_RE: Final = re.compile(r"(?:npm test|pytest|make (?:verify|test)\b)")
 _PYPROJECT_VERSION_RE: Final = re.compile(r'^version = "([^"]+)"$', re.MULTILINE)
 _ESLINT_RULE_RE: Final = re.compile(r'^\s*"([a-z0-9-]+)":', re.MULTILINE)
@@ -93,34 +94,70 @@ class RepositoryPolicy:
     known_locks: tuple[str, ...]
 
 
-def load_policy(root: Path) -> RepositoryPolicy:
+def load_policy(root: Path, *, private_refs_path: Path | None = None) -> RepositoryPolicy:
     path = root / ".sarj-standards.toml"
     try:
         raw: object = tomllib.loads(path.read_text(encoding="utf-8"))
     except (OSError, tomllib.TOMLDecodeError) as exc:
         msg = f"cannot load repository policy from {path}: {exc}"
         raise ValueError(msg) from exc
-    repository = table_field(as_table(raw), "repository")
-    private = table_field(repository, "private_refs")
-    coverage = table_field(repository, "version_coverage")
+    repository = _table(as_table(raw), "repository", required=True)
+    _known_keys(
+        repository,
+        frozenset(
+            {
+                "canonical_config_dir",
+                "config_references",
+                "filename_rules",
+                "forbidden_paths",
+                "private_refs",
+                "rule_families",
+                "version_coverage",
+                "version_references",
+                "versions",
+            }
+        ),
+        "repository",
+    )
+    private = _private_refs(root, _table(repository, "private_refs"), private_refs_path)
+    _known_keys(
+        private,
+        frozenset({"contextual", "distinctive", "exclude"}),
+        "private_refs",
+    )
+    coverage = _table(repository, "version_coverage")
+    _known_keys(coverage, frozenset({"locks", "manifests"}), "version_coverage")
     return RepositoryPolicy(
         distinctive=_strings(private, "distinctive"),
         contextual=_strings(private, "contextual"),
         private_excludes=_strings(private, "exclude"),
         forbidden_paths=_strings(repository, "forbidden_paths"),
-        filename_rules=tuple(_filename_rules(list_field(repository, "filename_rules"))),
-        rule_families=tuple(_rule_families(list_field(repository, "rule_families"))),
-        config_references=tuple(_config_references(list_field(repository, "config_references"))),
-        version_references=tuple(_version_references(list_field(repository, "version_references"))),
-        canonical_config_dir=text_field(repository, "canonical_config_dir") or "",
-        versions={key: _string_values(value) for key, value in table_field(repository, "versions").items()},
+        filename_rules=tuple(_filename_rules(_objects(repository, "filename_rules"))),
+        rule_families=tuple(_rule_families(_objects(repository, "rule_families"))),
+        config_references=tuple(_config_references(_objects(repository, "config_references"))),
+        version_references=tuple(_version_references(_objects(repository, "version_references"))),
+        canonical_config_dir=_optional_text(repository, "canonical_config_dir"),
+        versions={
+            key: _string_values(value, f"repository.versions.{key}")
+            for key, value in _table(repository, "versions").items()
+        },
         known_manifests=_strings(coverage, "manifests"),
         known_locks=_strings(coverage, "locks"),
     )
 
 
-def check(root: Path, *, selected: frozenset[str] = frozenset(), commits: str | None = None) -> list[Finding]:
-    policy = load_policy(root)
+def check(
+    root: Path,
+    *,
+    selected: frozenset[str] = frozenset(),
+    commits: str | None = None,
+    policy_root: Path | None = None,
+    private_refs_path: Path | None = None,
+) -> list[Finding]:
+    if policy_root is not None and policy_root.resolve() != root.resolve() and selected != frozenset({"private-refs"}):
+        msg = "a separate policy root is restricted to the private-refs check"
+        raise ValueError(msg)
+    policy = load_policy(policy_root or root, private_refs_path=private_refs_path)
     checks = {
         "ci-history": lambda: check_ci_history(root),
         "file-conventions": lambda: check_file_conventions(root, policy),
@@ -132,37 +169,141 @@ def check(root: Path, *, selected: frozenset[str] = frozenset(), commits: str | 
         msg = f"unknown repository check(s): {', '.join(sorted(unknown))}"
         raise ValueError(msg)
     findings: list[Finding] = []
+    defaults = frozenset(checks).difference({"private-refs"})
     for name, checker in checks.items():
-        if not selected or name in selected:
+        if name in (selected or defaults):
             findings.extend(checker())
     return sorted(findings, key=lambda item: (item.check, item.where, item.message))
 
 
 def check_private_refs(root: Path, policy: RepositoryPolicy, *, commits: str | None) -> list[Finding]:
-    distinctive = _alternation(policy.distinctive)
-    contextual = _alternation(policy.contextual)
-    broad = re.compile(rf"(^|[^A-Za-z0-9])(?:{distinctive})(?:[^A-Za-z0-9]|$)", re.IGNORECASE)
-    scoped = re.compile(
-        rf"(^|[^A-Za-z0-9])(?:{contextual})(?:/[A-Za-z0-9_.]|'s[^A-Za-z0-9]|'\s)|"
-        rf"^\s*\|\s*(?:{contextual})\s*\|",
-        re.IGNORECASE | re.MULTILINE,
-    )
+    if not any((policy.distinctive, policy.contextual)):
+        msg = "private-reference policy is unavailable"
+        raise ValueError(msg)
+    broad = _broad_private_pattern(policy.distinctive)
+    scoped = _scoped_private_pattern(policy.contextual)
     findings: list[Finding] = []
     for relative in _tracked(root):
+        findings.extend(_private_text_findings(relative, relative, broad, scoped))
         if any(fnmatch(relative, pattern) for pattern in policy.private_excludes):
             continue
-        text = _read_text(root / relative)
-        if broad.search(text) or scoped.search(text):
-            findings.append(Finding("private-refs", relative, "private repository or client reference"))
-        if _CONFLICT_RE.search(text):
-            findings.append(Finding("private-refs", relative, "unresolved conflict marker"))
+        text = _tracked_text(root, relative)
+        findings.extend(_private_text_findings(relative, text, broad, scoped))
     if commits:
-        completed = _git(root, "log", "--format=%h %s%n%b", commits, check=False)
-        if completed.returncode != 0:
+        revisions = _git(root, "rev-list", "--reverse", commits, check=False)
+        if revisions.returncode != 0:
             findings.append(Finding("private-refs", commits, "commit range does not resolve; fetch full history"))
-        elif broad.search(completed.stdout) or scoped.search(completed.stdout) or _CONFLICT_RE.search(completed.stdout):
-            findings.append(Finding("private-refs", commits, "private reference or conflict marker in commit message"))
+        else:
+            findings.extend(_commit_findings(root, revisions.stdout.splitlines(), policy, broad, scoped))
+    return list(dict.fromkeys(findings))
+
+
+def _commit_findings(
+    root: Path,
+    revisions: Sequence[str],
+    policy: RepositoryPolicy,
+    broad: re.Pattern[str] | None,
+    scoped: re.Pattern[str] | None,
+) -> list[Finding]:
+    findings: list[Finding] = []
+    for revision in revisions:
+        message = _git(root, "show", "--quiet", "--format=%H%n%s%n%b", revision).stdout
+        if _matches_private_ref(message, broad, scoped) or _CONFLICT_RE.search(message):
+            findings.append(Finding("private-refs", revision, "private reference or conflict marker in commit message"))
+        changed = _git(
+            root,
+            "diff-tree",
+            "--root",
+            "-m",
+            "-r",
+            "--no-commit-id",
+            "--no-renames",
+            "--name-only",
+            "-z",
+            revision,
+        ).stdout
+        for relative in (path for path in changed.split("\0") if path):
+            where = f"{revision}:{relative}"
+            findings.extend(_private_text_findings(where, relative, broad, scoped))
+            if any(fnmatch(relative, pattern) for pattern in policy.private_excludes):
+                continue
+            text = _revision_text(root, revision, relative)
+            if text is None:
+                continue
+            findings.extend(_private_text_findings(where, text, broad, scoped))
     return findings
+
+
+def _private_text_findings(
+    where: str,
+    text: str,
+    broad: re.Pattern[str] | None,
+    scoped: re.Pattern[str] | None,
+) -> list[Finding]:
+    findings: list[Finding] = []
+    if _matches_private_ref(text, broad, scoped):
+        findings.append(Finding("private-refs", where, "private repository or client reference"))
+    if _CONFLICT_RE.search(text):
+        findings.append(Finding("private-refs", where, "unresolved conflict marker"))
+    return findings
+
+
+def _revision_text(root: Path, revision: str, relative: str) -> str | None:
+    entry = _git(root, "ls-tree", "-z", revision, "--", relative).stdout.rstrip("\0")
+    if not entry:
+        return None
+    metadata, separator, _ = entry.partition("\t")
+    if not separator:
+        return None
+    match metadata.split():
+        case [_, "blob", object_id]:
+            pass
+        case _:
+            return None
+    text = _git(root, "cat-file", "blob", object_id).stdout
+    return "" if "\0" in text else text
+
+
+def _private_refs(
+    root: Path,
+    public: Mapping[str, object],
+    private_refs_path: Path | None,
+) -> Mapping[str, object]:
+    local_path = private_refs_path or root / _PRIVATE_REFS_FILE
+    if local_path.is_file():
+        try:
+            parsed: object = tomllib.loads(local_path.read_text(encoding="utf-8"))
+        except (OSError, tomllib.TOMLDecodeError) as exc:
+            msg = f"cannot load private-reference policy from {local_path}: {exc}"
+            raise ValueError(msg) from exc
+        return {**public, **_table(as_table(parsed), "private_refs", required=True)}
+    return public
+
+
+def _broad_private_pattern(literals: Sequence[str]) -> re.Pattern[str] | None:
+    if not literals:
+        return None
+    alternatives = _private_alternation(literals)
+    return re.compile(rf"(^|[^A-Za-z0-9])(?:{alternatives})(?:[^A-Za-z0-9]|$)", re.IGNORECASE)
+
+
+def _scoped_private_pattern(literals: Sequence[str]) -> re.Pattern[str] | None:
+    if not literals:
+        return None
+    alternatives = _private_alternation(literals)
+    return re.compile(
+        rf"(^|[^A-Za-z0-9])(?:{alternatives})(?:/[A-Za-z0-9_.]|'s[^A-Za-z0-9]|'\s)|"
+        rf"^\s*\|\s*(?:{alternatives})\s*\|",
+        re.IGNORECASE | re.MULTILINE,
+    )
+
+
+def _matches_private_ref(
+    text: str,
+    broad: re.Pattern[str] | None,
+    scoped: re.Pattern[str] | None,
+) -> bool:
+    return bool((broad and broad.search(text)) or (scoped and scoped.search(text)))
 
 
 def check_ci_history(root: Path) -> list[Finding]:
@@ -345,7 +486,7 @@ def _uv_lock_version(path: Path, distribution: str) -> str | None:
 
 def _tracked(root: Path) -> tuple[str, ...]:
     output = _git(root, "ls-files", "-z").stdout
-    return tuple(path for path in output.split("\0") if path and (root / path).exists())
+    return tuple(path for path in output.split("\0") if path)
 
 
 def _git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -368,6 +509,7 @@ def _git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProc
         check=check,
         capture_output=True,
         env=environment,
+        errors="replace",
         text=True,
     )
 
@@ -377,75 +519,142 @@ def _read_text(path: Path) -> str:
     return "" if b"\0" in content else content.decode("utf-8", errors="replace")
 
 
+def _tracked_text(root: Path, relative: str) -> str:
+    path = root / relative
+    if path.is_symlink():
+        return path.readlink().as_posix()
+    resolved_root = root.resolve()
+    resolved = path.resolve()
+    if resolved != resolved_root and not resolved.is_relative_to(resolved_root):
+        msg = f"tracked path escapes repository: {relative}"
+        raise ValueError(msg)
+    return _read_text(resolved)
+
+
 def _digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _alternation(values: Sequence[str]) -> str:
-    if not values:
-        msg = "repository private-reference policy must not be empty"
-        raise ValueError(msg)
-    return "|".join(f"(?:{value})" for value in values)
+def _private_alternation(literals: Sequence[str]) -> str:
+    return "|".join(map(re.escape, literals))
 
 
 def _strings(table: Mapping[str, object], key: str) -> tuple[str, ...]:
-    return _string_values(list_field(table, key))
-
-
-def _string_values(value: object) -> tuple[str, ...]:
-    if not isinstance(value, list):
+    if key not in table:
         return ()
+    return _string_values(table[key], key)
+
+
+def _string_values(value: object, label: str) -> tuple[str, ...]:
+    if not isinstance(value, list):
+        msg = f"{label} must be a list of strings"
+        raise TypeError(msg)
     items: list[object] = value  # pyright: ignore[reportUnknownVariableType]
     strings = tuple(item for item in items if isinstance(item, str))
-    return strings if len(strings) == len(items) else ()
+    if len(strings) != len(items):
+        msg = f"{label} must contain only strings"
+        raise ValueError(msg)
+    return strings
+
+
+def _objects(table: Mapping[str, object], key: str) -> list[object]:
+    if key not in table:
+        return []
+    value = table[key]
+    if not isinstance(value, list):
+        msg = f"repository.{key} must be an array of tables"
+        raise TypeError(msg)
+    return value  # pyright: ignore[reportUnknownVariableType]
+
+
+def _table(table: Mapping[str, object], key: str, *, required: bool = False) -> Mapping[str, object]:
+    if key not in table:
+        if required:
+            msg = f"missing [{key}] table"
+            raise ValueError(msg)
+        return {}
+    value = table[key]
+    if not isinstance(value, dict):
+        msg = f"{key} must be a table"
+        raise TypeError(msg)
+    return as_table(value)  # pyright: ignore[reportUnknownArgumentType]
+
+
+def _known_keys(table: Mapping[str, object], allowed: frozenset[str], label: str) -> None:
+    unknown = set(table).difference(allowed)
+    if unknown:
+        msg = f"unknown {label} field(s): {', '.join(sorted(unknown))}"
+        raise ValueError(msg)
+
+
+def _optional_text(table: Mapping[str, object], key: str) -> str:
+    if key not in table:
+        return ""
+    value = table[key]
+    if not isinstance(value, str):
+        msg = f"repository.{key} must be a string"
+        raise TypeError(msg)
+    return value
+
+
+def _required_texts(table: Mapping[str, object], keys: tuple[str, ...], label: str) -> tuple[str, ...]:
+    values = tuple(text_field(table, key) for key in keys)
+    missing = tuple(key for key, value in zip(keys, values, strict=True) if not value)
+    if missing:
+        msg = f"{label} requires: {', '.join(missing)}"
+        raise ValueError(msg)
+    return tuple(value or "" for value in values)
 
 
 def _filename_rules(values: Iterable[object]) -> Iterable[FilenameRule]:
     for value in values:
         table = as_table(value)
-        glob = text_field(table, "glob")
-        pattern = text_field(table, "pattern")
-        label = text_field(table, "label")
-        if glob and pattern and label:
-            yield FilenameRule(glob, re.compile(pattern), label)
+        _known_keys(table, frozenset({"glob", "label", "pattern"}), "filename rule")
+        glob, pattern, label = _required_texts(table, ("glob", "pattern", "label"), "filename rule")
+        yield FilenameRule(glob, _compile_policy_regex(pattern, "filename rule"), label)
 
 
 def _rule_families(values: Iterable[object]) -> Iterable[RuleFamily]:
     for value in values:
         table = as_table(value)
-        fields = tuple(
-            text_field(table, key)
-            for key in ("name", "source", "tests", "registry", "extension", "test_pattern", "registry_pattern")
+        _known_keys(
+            table,
+            frozenset({"extension", "name", "registry", "registry_pattern", "source", "test_pattern", "tests"}),
+            "rule family",
         )
-        if all(fields):
-            name, source, tests, registry, extension, test_pattern, registry_pattern = fields
-            yield RuleFamily(
-                name or "",
-                source or "",
-                tests or "",
-                registry or "",
-                extension or "",
-                test_pattern or "",
-                registry_pattern or "",
-            )
+        fields = _required_texts(
+            table,
+            ("name", "source", "tests", "registry", "extension", "test_pattern", "registry_pattern"),
+            "rule family",
+        )
+        name, source, tests, registry, extension, test_pattern, registry_pattern = fields
+        yield RuleFamily(name, source, tests, registry, extension, test_pattern, registry_pattern)
 
 
 def _config_references(values: Iterable[object]) -> Iterable[ConfigReference]:
     for value in values:
         table = as_table(value)
-        glob = text_field(table, "glob")
-        pattern = text_field(table, "pattern")
-        if glob and pattern:
-            yield ConfigReference(glob, re.compile(pattern, re.MULTILINE))
+        _known_keys(table, frozenset({"glob", "pattern"}), "config reference")
+        glob, pattern = _required_texts(table, ("glob", "pattern"), "config reference")
+        yield ConfigReference(glob, _compile_policy_regex(pattern, "config reference", re.MULTILINE))
 
 
 def _version_references(values: Iterable[object]) -> Iterable[VersionReference]:
     for value in values:
         table = as_table(value)
-        fields = tuple(text_field(table, key) for key in ("path", "format", "version", "selector"))
-        if all(fields):
-            path, format_name, version, selector = fields
-            yield VersionReference(path or "", format_name or "", version or "", selector or "")
+        _known_keys(table, frozenset({"format", "path", "selector", "version"}), "version reference")
+        path, format_name, version, selector = _required_texts(
+            table, ("path", "format", "version", "selector"), "version reference"
+        )
+        yield VersionReference(path, format_name, version, selector)
+
+
+def _compile_policy_regex(pattern: str, label: str, flags: re.RegexFlag = re.NOFLAG) -> re.Pattern[str]:
+    try:
+        return re.compile(pattern, flags)
+    except re.PatternError as exc:
+        msg = f"invalid {label} regex: {pattern}"
+        raise ValueError(msg) from exc
 
 
 def _check_config_references(root: Path, tracked: Sequence[str], policy: RepositoryPolicy) -> list[Finding]:

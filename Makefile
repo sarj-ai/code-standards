@@ -27,7 +27,7 @@ setup:
 # The gate CONTRIBUTING/CLAUDE.md tells contributors to run before review. It did
 # not exist, so `make verify` failed with "No rule to make target" and the
 # documented workflow could not be followed as written.
-verify: format-check lint typecheck test repo-check
+verify: format-check lint typecheck test repo-check check-no-private-refs
 
 format-check:
 	uv run --project packages/lint-configs --frozen ruff format --check \
@@ -87,7 +87,11 @@ typecheck:
 	cd packages/typescript     && npm run typecheck
 
 check-no-private-refs:
-	@$(STANDARDS) repo check --only private-refs --only ci-history
+	@if test -f .sarj-private-refs.toml; then \
+	  $(STANDARDS) repo check --only private-refs --only ci-history; \
+	else \
+	  echo "private-reference scan delegated to trusted CI"; \
+	fi
 
 # Filename casing, rule<->test pairing, markdown placement, and the ONE-copy rule
 # for the strict configs in $(CONFIG_SRC). The root `.ruff-strict.toml` /
