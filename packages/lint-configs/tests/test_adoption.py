@@ -697,6 +697,11 @@ def test_the_expected_precommit_rev_names_a_tag_the_release_workflow_publishes()
     assert f"maybe_tag {prefix} " in workflow, f"release.yml never creates a {prefix}-v tag"
 
 
+def test_release_version_detection_does_not_short_circuit_git_diff() -> None:
+    workflow = (REPO_ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    assert "| grep -q" not in workflow
+
+
 def test_sync_check_treats_a_config_that_was_never_synced_as_drift(tmp_path: Path) -> None:
     """A repo that never ran `sync` must fail `sync --check`, not pass it."""
     proc = _cli("sync", "--check", "--only", "ruff", "pyright", "--dest", str(tmp_path))
