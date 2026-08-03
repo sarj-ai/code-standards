@@ -1,17 +1,4 @@
-"""Performance regression test.
-
-Two guards, both run over a large synthetic HCL file:
-
-* an absolute backstop — no rule may blow a generous ms/1k-LOC ceiling, catching a
-  catastrophic slowdown regardless of hardware;
-* a relative outlier gate — no single rule may take more than 10x the median rule
-  time. This is hardware-independent and is what catches an algorithmic regression
-  (e.g. a rule going quadratic) that an absolute, machine-dependent budget would miss
-  on a fast laptop but hit on slow CI.
-
-The documented target is < 50 ms / 1k LOC per rule; the relative gate enforces it in
-spirit without flaking across machines.
-"""
+"""Performance regression tests enforcing absolute and relative time budgets for IaC rules."""
 
 from __future__ import annotations
 

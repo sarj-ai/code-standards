@@ -24,9 +24,7 @@ SKIP_DIR_NAMES = {
     ".ruff_cache",
 }
 
-# `.yaml`/`.yml` are collected so `no-comment-cruft` banner detection reaches
-# Helm/k8s/Compose IaC. The CIDR and deletion-protection rules self-filter to
-# `.tf`/`.hcl`, so on YAML only the (HCL-agnostic) banner check runs.
+# YAML files are included for banner checks while HCL rules self-filter by extension.
 _SCANNED_SUFFIXES = frozenset({".tf", ".hcl", ".tfvars", ".yaml", ".yml"})
 
 _MAX_FILE_BYTES = 500_000
