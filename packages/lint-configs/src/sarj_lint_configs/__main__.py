@@ -221,7 +221,7 @@ def cmd_doctor(args: _Args) -> int:
 
     drifted = sum(1 for finding in findings if finding.level is doctor.Level.DRIFT)
     warned = sum(1 for finding in findings if finding.level is doctor.Level.WARN)
-    print(f"\nchecked {len(findings)} version site(s); {drifted} drifted; {warned} unverified.")
+    print(f"\nchecked {len(findings)} configuration site(s); {drifted} drifted; {warned} unverified.")
     if drifted:
         print("fix: make every site match, then re-run. `init --force` rewrites the ones it owns.")
     return 1 if drifted else 0
