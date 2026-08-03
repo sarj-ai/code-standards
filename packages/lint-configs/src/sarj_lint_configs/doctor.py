@@ -49,6 +49,12 @@ _SHA_REV = re.compile(r"^[0-9a-f]{7,40}$")
 
 _ESLINT_PLUGIN: Final = "@sarj/eslint-plugin"
 _LOCAL_SPECIFIERS: Final = ("file:", "link:", "workspace:", "portal:")
+_PYRIGHT_CONFIG_NAMES: Final = frozenset(
+    {".pyright-strict.json", "pyright.strict.json", "pyrightconfig.json", "pyrightconfig.jsonc", "pyproject.toml"}
+)
+_PYRIGHT_REPORT_DEPRECATED = re.compile(
+    r"^\s*[\"']?reportDeprecated[\"']?\s*(?::|=)\s*(?P<value>[^,#/\n]+)", re.MULTILINE
+)
 
 #: Where a rule identifier can be written: configs and suppression baselines, but
 #: also ordinary source, because an `eslint-disable-next-line @sarj/<rule>` for a
@@ -96,7 +102,7 @@ _SKIP_DIRS: Final = frozenset(
 
 
 def diagnose(root: Path) -> list[Finding]:
-    """Check every version-bearing file under a repo root."""
+    """Check version pins and required policy settings under a repo root."""
     installed = manifest.installed_versions()
     files = _walk(root)
     findings = [*_check_manifest(root)]
@@ -104,6 +110,7 @@ def diagnose(root: Path) -> list[Finding]:
     findings.extend(_check_precommit_revs(root, files))
     findings.extend(_check_eslint_plugin(root, files))
     findings.extend(check_retired_rules(root, files))
+    findings.extend(check_pyright_deprecated(root, files))
     return findings
 
 
@@ -121,6 +128,23 @@ def check_retired_rules(root: Path, files: Sequence[Path] | None = None) -> Iter
             if hits:
                 where = f"{path.relative_to(root)}: {entry.id} x{hits}"
                 yield Finding(Level.DRIFT, where, entry.advice)
+
+
+def check_pyright_deprecated(root: Path, files: Sequence[Path] | None = None) -> Iterator[Finding]:
+    """Require consumers to keep Pyright's deprecated-API protection enabled."""
+    for path in files if files is not None else _walk(root):
+        if path.name not in _PYRIGHT_CONFIG_NAMES:
+            continue
+        for match in _PYRIGHT_REPORT_DEPRECATED.finditer(_read(path)):
+            value = match.group("value").strip()
+            if value.strip("\"'") == "error":
+                continue
+            where = f"{path.relative_to(root)}: reportDeprecated = {value}"
+            yield Finding(
+                Level.DRIFT,
+                where,
+                'sets `reportDeprecated` away from "error"; restore it to keep deprecated APIs visible',
+            )
 
 
 def _check_manifest(root: Path) -> Iterator[Finding]:
