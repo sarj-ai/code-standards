@@ -76,9 +76,7 @@ _CACHE: dict[int, bool] = {}
     assert "language.py" in diags[0].message
 
 
-# --------------------------------------------------------------------------- #
 # FP-hardening (famous-repo sweep): a public constant is a public export too.  #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(

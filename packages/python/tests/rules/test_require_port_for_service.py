@@ -19,8 +19,7 @@ def _check(source: str, path: str = "app/services/thing_service.py") -> list[Dia
     return RequirePortForService().check(Path(path), textwrap.dedent(source))
 
 
-# The canonical offender: a concrete service, an injected first-party port, two public
-# methods, no abstract base. Reused as the positive control every guard is measured against.
+# The canonical offender: a concrete service, an injected first-party port, two public methods, no abstract base.
 _SERVICE = textwrap.dedent(
     """
     class ThingService:
@@ -59,10 +58,7 @@ def test_message_is_exactly_the_shipped_text() -> None:
 
 
 def test_message_carves_out_the_persistence_ports_sarj058_owns() -> None:
-    # Doing what this rule asks for a `*Store` — writing `InMemoryUserStore(UserStore)` —
-    # trips SARJ058 `prefer-real-store-in-tests`, which forbids an in-memory double of a
-    # persistence port. The contradiction is resolved here, in one clause, so the advice
-    # a reader follows cannot land them on the other rule.
+    # Doing what this rule asks for a `*Store` — writing `InMemoryUserStore(UserStore)` — trips SARJ058 `prefer-real-store-in-tests`, which forbids an in-memory double of a persistence port.
     message = _check(_SERVICE)[0].message
     assert "purpose-built implementation instead of a mock" in message
     assert "except for a `*Store`/`*DAO` persistence port" in message
@@ -115,9 +111,6 @@ def test_diagnostic_points_at_the_class_not_the_constructor() -> None:
         """
     )
     assert [(d.line, d.col) for d in diags] == [(5, 1)]
-
-
-# ---- name gate ----
 
 
 @pytest.mark.parametrize(
@@ -188,9 +181,6 @@ def test_base_prefix_needs_a_capital_to_count() -> None:
     assert len(_check(_SERVICE.replace("ThingService", "BaselineService"))) == 1
 
 
-# ---- route-handler guard ----
-
-
 def _handler_service(parameter: str) -> str:
     return f"""
         class ThingService:
@@ -245,9 +235,7 @@ def _handler_service(parameter: str) -> str:
     ],
 )
 def test_route_handler_signatures_suppress(parameter: str) -> None:
-    # A first-party `ReceiptService` is `ReceiptRouter`'s body: a router that happens
-    # to be named `*Service`, so the name gate cannot see it. An ABC over an HTTP
-    # boundary substitutes nothing.
+    # A first-party `ReceiptService` is `ReceiptRouter`'s body: a router that happens to be named `*Service`, so the name gate cannot see it.
     assert _check(_handler_service(parameter)) == []
 
 
@@ -286,9 +274,6 @@ def test_private_method_taking_a_request_does_not_suppress() -> None:
 
 def test_domain_type_ending_in_request_is_not_a_route_marker() -> None:
     assert len(_check(_handler_service("args: ExtractFromUrlRequest"))) == 1
-
-
-# ---- inheritance guards ----
 
 
 @pytest.mark.parametrize(
@@ -389,9 +374,6 @@ def test_interface_declaring_class_decorator_suppresses(decorator: str) -> None:
 
 def test_unrelated_class_decorator_still_fires() -> None:
     assert len(_check(f"@final\n{_SERVICE.lstrip()}")) == 1
-
-
-# ---- data-type guards ----
 
 
 @pytest.mark.parametrize(
@@ -495,9 +477,6 @@ def test_same_module_record_is_a_value_not_a_collaborator(declaration: str) -> N
             def write(self) -> None: ...
         """
     assert _check(source) == []
-
-
-# ---- collaborator gate ----
 
 
 @pytest.mark.parametrize(
@@ -697,9 +676,6 @@ def test_class_without_init_is_exempt() -> None:
     )
 
 
-# ---- public-method floor ----
-
-
 def test_single_public_method_is_a_function_in_a_trenchcoat() -> None:
     assert (
         _check(
@@ -789,9 +765,6 @@ def test_async_public_methods_count() -> None:
         )
         == 1
     )
-
-
-# ---- the port already exists elsewhere ----
 
 
 def test_class_named_after_a_port_defined_in_the_module_is_exempt() -> None:
@@ -885,9 +858,7 @@ def test_name_containing_a_service_tail_mid_word_is_silent() -> None:
 
 
 def test_port_suffix_must_start_at_a_camel_case_boundary() -> None:
-    # `ationService` is a suffix of `NotificationService` and is service-shaped, but it
-    # starts mid-word, so it is a coincidence rather than a qualified port name. Without
-    # the `name[index].isupper()` conjunct any such import would silence the rule.
+    # `ationService` is a suffix of `NotificationService` and is service-shaped, but it starts mid-word, so it is a coincidence rather than a qualified port name.
     assert (
         len(
             _check(
@@ -995,9 +966,6 @@ def test_import_alias_binds_the_port_name() -> None:
     )
 
 
-# ---- path and file gates ----
-
-
 @pytest.mark.parametrize(
     "path",
     [
@@ -1082,9 +1050,6 @@ def test_near_identical_source_without_the_generated_header_fires() -> None:
     assert len(_check(f'"""Thing services."""\n{_SERVICE}')) == 1
 
 
-# ---- robustness ----
-
-
 def test_syntax_error_source_yields_nothing() -> None:
     assert _check("class ThingService(:\n    def (") == []
 
@@ -1111,9 +1076,7 @@ def test_transparent_generics_are_unwrapped(annotation: str) -> None:
 
 
 def test_only_the_first_argument_of_a_transparent_generic_is_read() -> None:
-    # Known limit, pinned so it is a decision rather than a surprise: unwrapping takes
-    # `elts[0]`, so `Coroutine[Any, Any, ThingStore]` reduces to `Any` and reads as a
-    # value. No constructor in any measured corpus is annotated this way.
+    # Known limit, pinned so it is a decision rather than a surprise: unwrapping takes `elts[0]`, so `Coroutine[Any, Any, ThingStore]` reduces to `Any` and reads as a value.
     assert _check(_SERVICE.replace("store: ThingStore", "store: Coroutine[Any, Any, ThingStore]")) == []
 
 
@@ -1139,8 +1102,7 @@ def test_nested_class_is_reached() -> None:
 
 
 def test_nested_finding_reports_its_real_line_and_column() -> None:
-    # Both coordinates non-1, so a hardcoded `col=1` (or `col_offset` without the +1)
-    # cannot pass. The class sits at indentation 8 on line 5.
+    # Both coordinates non-1, so a hardcoded `col=1` (or `col_offset` without the +1) cannot pass.
     diags = _check(
         """
         class Outer:

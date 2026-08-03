@@ -36,10 +36,7 @@ class InMemoryUserStore(UserStore):
 """
 
 
-# --------------------------------------------------------------------------- #
-# Path gating. Wider than `is_test_path` on purpose: both repos park reusable   #
-# fakes in `testing/`, `test_fakes/` and `mock_*.py` inside production packages.#
-# --------------------------------------------------------------------------- #
+# Path gating.
 
 
 @pytest.mark.parametrize(
@@ -77,9 +74,7 @@ def test_skips_production_paths(path: str):
     assert _check(_DICT_BACKED, path) == []
 
 
-# --------------------------------------------------------------------------- #
 # Positive: the dict-backed re-implementation.                                 #
-# --------------------------------------------------------------------------- #
 
 
 def test_flags_the_canonical_dict_backed_fake():
@@ -294,11 +289,7 @@ def test_thing():
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
-# Positive: the hollow re-implementation. One first-party site's                #
-# `StubUserStore` answers three calls from preset fields and abandons           #
-# seven more.                                                                  #
-# --------------------------------------------------------------------------- #
+# Positive: the hollow re-implementation.
 
 
 _HOLLOW = """
@@ -358,14 +349,7 @@ class InMemoryUserStore(UserStore):
     assert len(_check(src)) == 1
 
 
-# ---- false-positive guards -------------------------------------------------- #
-
-
-# --------------------------------------------------------------------------- #
-# Guard: an in-memory backend that IS the product. `Cache`, `Storage`, `Queue`  #
-# and `Session` are not persistence ports. django ships `DummyStorage(          #
-# storage.Storage)` and `InMemoryStorage`; both must stay silent.               #
-# --------------------------------------------------------------------------- #
+# Guard: an in-memory backend that IS the product.
 
 
 @pytest.mark.parametrize(
@@ -428,11 +412,7 @@ class {name}:
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
-# Guard: a double whose backing really is a real backend. A first-party         #
-# `MockDataStore` in a production adapter package is a Redis-backed             #
-# demo-mode feature, not a test double.                                         #
-# --------------------------------------------------------------------------- #
+# Guard: a double whose backing really is a real backend.
 
 
 def test_a_double_that_delegates_to_a_real_backend_does_not_fire():
@@ -467,11 +447,7 @@ class MockDataStore:
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
-# Guard: recording spies and canned-response doubles. A first-party             #
-# `FakeAnalyticsStore` in a shared test-fakes module records a call and         #
-# replays a canned row; each list is touched by exactly one method.             #
-# --------------------------------------------------------------------------- #
+# Guard: recording spies and canned-response doubles.
 
 
 def test_recording_spy_does_not_fire():
@@ -525,8 +501,7 @@ class FakeUserStore(UserStore):
 
 
 def test_a_container_only_ever_read_does_not_fire():
-    # Seeded in `__init__` and served read-only: canned data, not a second
-    # implementation. `__init__` is deliberately not counted as a writer.
+    # Seeded in `__init__` and served read-only: canned data, not a second implementation.
     src = """
 class FakeUserStore(UserStore):
     def __init__(self, rows) -> None:
@@ -557,8 +532,7 @@ class FakeUserStore(UserStore):
 
 
 def test_a_local_container_inside_a_method_is_not_an_attribute():
-    # `rows = {}` is a local. Counting it would make `self.rows`, which is bound
-    # to an injected backend, look dict-backed.
+    # `rows = {}` is a local.
     src = """
 class FakeUserStore(UserStore):
     def __init__(self, backend) -> None:
@@ -589,11 +563,7 @@ class FakeUserStore(UserStore):
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
-# Guard: the never-touched port. A first-party `_UnusedTaskStore(TaskStore)`    #
-# in an integration test raises from every method to assert that route          #
-# discovery never invokes a handler.                                            #
-# --------------------------------------------------------------------------- #
+# Guard: the never-touched port.
 
 
 def test_a_port_that_raises_from_every_method_does_not_fire():
@@ -688,10 +658,7 @@ class StubTaskStore(TaskStore):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
-# Guard: fault injectors built on the real store. This is the practice the rule #
-# is asking for — one first-party repo has a dozen subclassing `Psql*`.         #
-# --------------------------------------------------------------------------- #
+# Guard: fault injectors built on the real store.
 
 
 @pytest.mark.parametrize(
@@ -742,9 +709,7 @@ class FakeUserStore(UserStore):
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Guard: abstract bases, Protocols and TypedDicts are the port itself.          #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("base", ["ABC", "abc.ABC", "Protocol", "TypedDict"])
@@ -794,10 +759,7 @@ class InMemoryUserStore(UserStore):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
-# Guard: ports that are not persistence. A queue, a pub/sub topic and a         #
-# third-party HTTP API have no SQL implementation to prefer.                    #
-# --------------------------------------------------------------------------- #
+# Guard: ports that are not persistence.
 
 
 @pytest.mark.parametrize(
@@ -856,12 +818,10 @@ def test_mock_objects_without_a_handwritten_class_are_out_of_scope(source: str):
     assert _check(source) == []
 
 
-# --------------------------------------------------------------------------- #
 # Guard: null objects and behaviour injectors are not doubles of the store.     #
 # Four first-party doubles — `NullUpsertTokenStore`, `RecordingCrmDAO`,         #
 # `AlwaysFailingProductsDAO` and `_NoneModelSettingsCallStore` — all live       #
 # in the test tree and are all correct as written.                              #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -913,12 +873,7 @@ class FakeUserStore(UserStore):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
-# Guard: ports whose backend is not a relational database. There is no `Psql*`  #
-# sibling to prefer for a vector index, a Redis lock or a task-state bag, so    #
-# the advice would be wrong. All five of the rule's OSS hits were this shape or #
-# the next one.                                                                 #
-# --------------------------------------------------------------------------- #
+# Guard: ports whose backend is not a relational database.
 
 
 @pytest.mark.parametrize(
@@ -992,12 +947,10 @@ class InMemoryStore(UserStore):
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Guard: the port under test. mlflow's `MockAbstractStore(AbstractStore)`       #
 # (tests/store/model_registry/test_abstract_store.py:23) is the minimal         #
 # concrete subclass needed to exercise the ABC's template methods — the ABC is  #
 # the system under test.                                                        #
-# --------------------------------------------------------------------------- #
 
 
 _PORT_UNDER_TEST = """
@@ -1041,9 +994,7 @@ class FakeUserStore:
     assert len(_check(src, "tests/test_user_service.py")) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Message and edge cases.                                                      #
-# --------------------------------------------------------------------------- #
 
 
 _EXPECTED_MESSAGE = (

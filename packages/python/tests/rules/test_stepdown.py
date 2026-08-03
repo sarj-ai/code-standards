@@ -794,16 +794,11 @@ def run(xs: list[int]) -> list[int]:
     assert "referenced at line 7" in diags[0].message
 
 
-# --------------------------------------------------------------------------- #
 # FP-hardening (famous-repo sweep): a class is never the stepdown target.      #
-# --------------------------------------------------------------------------- #
 
 
 def test_class_caller_referencing_helper_from_several_methods_is_not_flagged():
-    # Distilled from pydantic `_internal/_generate_schema.py:286`, where
-    # `_extract_json_schema_info_from_field_info` is referenced by three
-    # different `GenerateSchema` methods yet collapsed into one "caller".
-    # There is no canonical "below which caller?" answer here.
+    # Distilled from pydantic `_internal/_generate_schema.py:286`, where `_extract_json_schema_info_from_field_info` is referenced by three different `GenerateSchema` methods yet collapsed into one "caller".
     src = """
 def _norm(k: str) -> str:
     return k
@@ -869,19 +864,11 @@ class Runner:
     assert "_load" in diags[0].message
 
 
-# --------------------------------------------------------------------------- #
 # A duplicate-named def is not flaggable, but it IS a caller.                  #
-# --------------------------------------------------------------------------- #
 
 
 def test_a_caller_fronted_by_overloads_counts_as_a_caller():
-    """An `@overload` group used to be invisible to the caller graph.
-
-    Dropping duplicate names from BOTH roles manufactured false "only caller"
-    claims: `pydantic/pydantic/type_adapter.py:261` has `_init_core_attrs`
-    called from `rebuild` AND from `__init__`, and `__init__` carries two
-    `@overload` stubs, so only `rebuild` was counted. 7 of 5,335 (0.13%).
-    """
+    """An `@overload` group used to be invisible to the caller graph."""
     src = """
 from typing import overload
 
@@ -902,11 +889,7 @@ def rebuild(x: object) -> object:
 
 
 def test_a_caller_that_is_a_property_setter_pair_counts_as_a_caller():
-    """The class-scope spelling of the same bug.
-
-    `django/django/contrib/gis/gdal/raster/band.py:26` has `_flush` called from
-    `data` AND from `nodata_value`, which is a getter/setter pair.
-    """
+    """The class-scope spelling of the same bug."""
     src = """
 class Band:
     def _flush(self) -> None:
@@ -929,15 +912,7 @@ class Band:
 
 
 def test_a_helper_whose_only_caller_is_overloaded_now_fires():
-    """The boundary, and the recall GAIN half of the same fix.
-
-    Such a helper used to be counted as having ZERO callers and skipped
-    entirely. It now reports against the FIRST def of the caller's name, which
-    is where the overload group starts.
-    `airflow/providers/google/.../hooks/bigquery.py:352` is the corpus
-    instance: `_get_pandas_df` sits above `get_df`, its only caller, which
-    carries two `@overload` stubs. 22 findings gained across the corpus.
-    """
+    """The boundary, and the recall GAIN half of the same fix."""
     src = """
 from typing import overload
 
@@ -958,12 +933,7 @@ def get_df(sql: str, kind: object) -> object:
 
 
 def test_a_singledispatch_registration_is_never_a_stepdown_target():
-    """`_` can suppress, but "move it below `_`" names no location.
-
-    `airflow/airflow-core/src/airflow/assets/evaluation.py:45,49` is a class
-    with four methods called `_`; picking one of them as the move target is the
-    same arbitrariness this rule refuses for multi-caller helpers. 2 findings.
-    """
+    """`_` can suppress, but "move it below `_`" names no location."""
     src = """
 import functools
 
@@ -1001,12 +971,7 @@ def test_a_generated_file_is_skipped_by_its_header():
 
 
 def test_a_banner_less_generated_tree_is_skipped_by_path():
-    """The header half of the predicate is not enough on its own.
-
-    Measured on a checked-in openapi-python-client SDK: 240 generated modules,
-    zero carrying a marker in their first five lines. A header-only guard
-    exempts none of them, and the stepdown rule fires across the whole SDK.
-    """
+    """The header half of the predicate is not enough on its own."""
     assert _check(_ABOVE_ITS_ONLY_CALLER, "src/generated/models.py") == []
 
 

@@ -23,9 +23,7 @@ def test_thing():
 """
 
 
-# --------------------------------------------------------------------------- #
 # Test-path gating, plus the uncollected-scripts exclusion.                    #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("path", ["test_x.py", "x_test.py", "a/tests/test_y.py"])
@@ -69,9 +67,7 @@ def test_still_fires_for_a_collected_module_in_the_same_tree():
     assert len(_check(_BARE_TEST, "black/tests/test_black.py")) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Positive: the result is computed and dropped on the floor.                   #
-# --------------------------------------------------------------------------- #
 
 
 def test_flags_discarded_return_value():
@@ -100,10 +96,7 @@ def test_message_names_the_test():
     assert "`test_thing`" in diag.message
 
 
-# --------------------------------------------------------------------------- #
-# FP guard: pytest.raises. This is the whole ballgame — 223 of 264             #
-# assertion-free tests in the audited corpora verify this way.                 #
-# --------------------------------------------------------------------------- #
+# FP guard: pytest.raises.
 
 
 def test_pytest_raises_context_manager_is_exempt():
@@ -191,9 +184,7 @@ def test_thing():
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
-# FP guard: pytest-benchmark. 93 of 291 third-party hits were benchmarks.      #
-# --------------------------------------------------------------------------- #
+# FP guard: pytest-benchmark.
 
 
 def test_called_benchmark_fixture_is_exempt():
@@ -231,9 +222,7 @@ def test_thing():
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: delegated assertion helpers and fluent DSLs.                       #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -288,11 +277,7 @@ def test_thing():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
-# FP guard: helpers defined in the same module. Resolving called names against  #
-# the module's own defs cleared 50 third-party hits (black's `invokeBlack`,     #
-# flask's `common_object_test`, pydantic's `inspect_type_hints`).               #
-# --------------------------------------------------------------------------- #
+# FP guard: helpers defined in the same module.
 
 
 def test_module_local_helper_that_asserts_is_exempt():
@@ -374,10 +359,7 @@ def test_thing(self):
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
-# FP guard: re-running another module's tests. 17 third-party hits, all in the  #
-# fastapi/sqlmodel tutorial suites.                                            #
-# --------------------------------------------------------------------------- #
+# FP guard: re-running another module's tests.
 
 
 def test_calling_an_imported_test_function_is_exempt():
@@ -420,9 +402,7 @@ def test_thing(cases):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: skipped tests and intentional stubs.                               #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("marker", ["skip", "skipif(True)", "xfail(reason='x')"])
@@ -465,9 +445,7 @@ def thing():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Edge cases.                                                                  #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("source", ["", "  \n\n ", "# comment\n"])
@@ -518,10 +496,8 @@ def test_c():
     assert [d.line for d in diags] == sorted(d.line for d in diags)
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: pytest only collects module-level functions and class methods.     #
 # A third-party sweep found 36 nested-callback hits, all false positives.      #
-# --------------------------------------------------------------------------- #
 
 
 def test_nested_route_handler_named_test_is_not_a_test():
@@ -559,12 +535,7 @@ class TestThing:
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
-# FP guard: an assertion helper whose name CARRIES the token without leading    #
-# with it. The largest class in the 50-finding audit (8 of 50); the token       #
-# search plus the callable slot removed 441 of 2,113 corpus findings (20.9%),   #
-# 310 of them prefect's `invoke_and_assert`.                                    #
-# --------------------------------------------------------------------------- #
+# FP guard: an assertion helper whose name CARRIES the token without leading    # with it.
 
 
 @pytest.mark.parametrize(
@@ -654,10 +625,7 @@ def test_thing():
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
-# FP guard: verification by `raise AssertionError`, not by `assert`. Only 3     #
-# corpus findings, but all 3 first-party — 4.5% of the first-party population.  #
-# --------------------------------------------------------------------------- #
+# FP guard: verification by `raise AssertionError`, not by `assert`.
 
 
 def test_match_statement_raising_assertion_error_is_exempt():
@@ -692,10 +660,7 @@ def test_thing():
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
-# FP guard: an unconditional `pytest.skip(...)` body — the imperative twin of   #
-# `@pytest.mark.skip`. 32 corpus findings, 1 first-party.                       #
-# --------------------------------------------------------------------------- #
+# FP guard: an unconditional `pytest.skip(...)` body — the imperative twin of   # `@pytest.mark.skip`.
 
 
 def test_unconditional_pytest_skip_body_is_exempt():
@@ -754,10 +719,8 @@ def test_apps(monkeypatch):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Library assertion helpers whose names carry none of the four name tokens.    #
 # 59.7% of this rule's corpus findings were tests asserting through these.     #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(

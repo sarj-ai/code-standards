@@ -26,9 +26,7 @@ def test_thing():
 """
 
 
-# --------------------------------------------------------------------------- #
 # Test-path gating: the rule ONLY fires inside test files.                     #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -59,9 +57,7 @@ def test_skips_non_test_paths(path: str):
     assert _check(_BARE_MOCK, path) == []
 
 
-# --------------------------------------------------------------------------- #
 # Positive: every unspecced construction spelling fires.                       #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -132,9 +128,7 @@ def test_thing():
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: a spec-bearing argument gives the double a real contract.          #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -180,10 +174,7 @@ def test_thing():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
-# FP guard: `spec` / `new` are POSITIONAL parameters of these signatures, and  #
-# that is how they are nearly always spelled. Corpus: 35 of 137 hits.          #
-# --------------------------------------------------------------------------- #
+# FP guard: `spec` / `new` are POSITIONAL parameters of these signatures, and  # that is how they are nearly always spelled.
 
 
 @pytest.mark.parametrize(
@@ -236,10 +227,8 @@ def test_thing(self):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: a double that is only called and introspected is a stub function / #
 # call recorder — there is no collaborator type for `spec=` to name.           #
-# --------------------------------------------------------------------------- #
 
 
 def test_call_recorder_is_exempt():
@@ -306,9 +295,7 @@ def test_thing():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: an `except ImportError` stand-in has nothing importable to spec.   #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("caught", ["ImportError", "ModuleNotFoundError", "(ImportError, OSError)"])
@@ -351,10 +338,8 @@ def test_thing():
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: the name is only trusted when a unittest.mock import backs it.     #
 # This is what keeps hand-rolled MockFoo/Mock doubles out of the results.      #
-# --------------------------------------------------------------------------- #
 
 
 def test_locally_defined_mock_class_is_not_flagged():
@@ -432,10 +417,8 @@ def test_thing():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: `receiver.method = Mock(...)` is a canned stub for one callable,   #
 # not an unspecced collaborator — the contract belongs to the receiver.        #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -482,8 +465,7 @@ def test_thing():
 
 
 def test_attribute_double_with_no_callable_evidence_is_still_flagged():
-    # Absence of attribute reads is not evidence of callability. `room.local_participant`
-    # is an object double; production can attribute-walk it where this file cannot see.
+    # Absence of attribute reads is not evidence of callability.
     src = """
 from unittest import mock
 
@@ -497,7 +479,6 @@ def test_thing():
 
 def test_attribute_double_read_back_through_a_domain_attribute_is_still_flagged():
     # A namespace double: the file walks it, so `spec=` has a real referent.
-    # The domain read outranks the canned `return_value=`.
     src = """
 from unittest import mock
 
@@ -558,9 +539,7 @@ def test_thing(monkeypatch):
     assert len(_check(src)) == 4
 
 
-# --------------------------------------------------------------------------- #
 # Edge cases: empty / syntax error / multiple hits / position / sort order.    #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("source", ["", "   \n\n  ", "# just a comment\n"])

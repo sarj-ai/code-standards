@@ -101,9 +101,6 @@ def test_a_wrapped_description_is_folded_into_its_entry():
     )
 
 
-# --- exemptions ---------------------------------------------------------------
-
-
 def test_one_informative_entry_protects_the_whole_block():
     # Splitting a parameter table is worse than leaving it whole.
     assert (
@@ -122,8 +119,7 @@ def test_one_informative_entry_protects_the_whole_block():
 
 
 def test_an_entry_with_no_description_is_left_alone():
-    # A machine-emitted `name (type):` stub. Every corpus instance came from an
-    # OpenAPI client generator whose files carry no generated-code marker.
+    # A machine-emitted `name (type):` stub.
     assert (
         _check('''
         def count_widgets(tenant_id: str) -> int:

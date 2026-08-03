@@ -11,11 +11,7 @@ from sarj_python_lint.rules._paths import (
 from sarj_python_lint.rules.prefer_match_type_dispatch import PreferMatchTypeDispatch
 
 
-# A synthetic model in the shape openapi-python-client emits for a nullable
-# field: sentinel guards, then a `raise` inside a `try` whose handler catches it.
-# Written here from the generator's public template, not copied from a corpus.
-# The point is the missing header — a real SDK of this shape had 240 modules and
-# not one marker, so `is_generated_source` cannot see it and only the path can.
+# A synthetic model in the shape openapi-python-client emits for a nullable field: sentinel guards, then a `raise` inside a `try` whose handler catches it.
 _UNMARKED_GENERATED_SDK_SOURCE = '''\
 from typing import Any, TypeVar, Union, cast
 

@@ -38,11 +38,7 @@ async def f():
 
 
 def test_ruff_noqa_does_not_suppress_sarj():
-    """Plain `# noqa: SARJ001` does NOT suppress — must use `# sarj-noqa:`.
-
-    Distinct prefix avoids conflicts with ruff (which strips unrecognized
-    `# noqa` codes even with `external` set).
-    """
+    """Plain `# noqa: SARJ001` does NOT suppress — must use `# sarj-noqa:`."""
     src = """
 async def f():
     for x in []:

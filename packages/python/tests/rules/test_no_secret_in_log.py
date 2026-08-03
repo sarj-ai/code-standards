@@ -1,13 +1,4 @@
-"""Exhaustive suite for SARJ012 `no-secret-in-log`.
-
-The rule is deliberately precise: it flags ONLY a keyword argument whose *name*
-matches a secret word (token/secret/password/passwd/api_key/jwt/credential/
-authorization) on a logging call (`<logger>.<level>(...)`), unless the name also
-carries a redaction marker (prefix/suffix/redact/mask/hash/hint/_len/length).
-The *value* is never inspected — positional args, f-strings, and attribute/
-subscript values are out of scope by design. Suppression is applied by the
-shared `is_suppressed` helper (the rule's `check` never filters noqa itself).
-"""
+"""Exhaustive suite for SARJ012 `no-secret-in-log`."""
 
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -30,9 +21,7 @@ def _codes(source: str) -> list[str]:
     return [d.code for d in _check(source)]
 
 
-# --------------------------------------------------------------------------- #
 # Family 1: every secret word is flagged as a logging keyword                  #
-# --------------------------------------------------------------------------- #
 
 SECRET_KEYWORDS = [
     "token",
@@ -69,9 +58,7 @@ def test_flags_secret_keyword(kw: str):
     assert kw in diags[0].message
 
 
-# --------------------------------------------------------------------------- #
 # Family 2: every log-level method is a logging call                           #
-# --------------------------------------------------------------------------- #
 
 LOG_METHODS = ["debug", "info", "warning", "warn", "error", "exception", "critical"]
 
@@ -82,25 +69,18 @@ def test_flags_on_each_log_method(method: str):
     assert _codes(src) == ["SARJ012"]
 
 
-# `log` and `trace` were here until the vocabulary unification. Both are real
-# sinks -- `trace` is a documented loguru level and `loguru` is in _LOGGER_NAMES;
-# `logger.log(level, msg, ...)` writes exactly like `.info`. SARJ012 matches
-# KEYWORD arguments, which are position-independent, so `.log`'s leading level
-# argument never affected the analysis. Listing them here asserted a leak was
-# not a leak, and SARJ017 disagreed with this rule about both.
+# `log` and `trace` were here until the vocabulary unification.
 NON_LOG_METHODS = ["send", "write", "emit", "handle", "flush", "notice"]
 
 
 @pytest.mark.parametrize("method", NON_LOG_METHODS)
 def test_skips_non_log_method(method: str):
-    """`log`/`trace`/`send`/... are not in the recognised level set."""
+    """`log`/`trace`/`send`/..."""
     src = f'logger.{method}("m", token=t)\n'
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Family 3: logger receiver resolution                                         #
-# --------------------------------------------------------------------------- #
 
 LOGGER_RECEIVERS = [
     "logger",
@@ -123,12 +103,7 @@ LOGGER_RECEIVERS = [
     "logger.opt(lazy=True)",
     "logger.bind(a=1).bind(b=2)",
     "logger.getChild('c')",
-    # Bare-name factories, reached via `from structlog import get_logger` or
-    # `from logging import getLogger`. These sat in NON_LOGGER_RECEIVERS below
-    # and were asserted NOT to fire, which pinned a real secret leak open:
-    # `get_logger().info("auth", token=token)` is structlog's own documented
-    # module-level idiom, and both this rule's docstring and
-    # `_logging.is_logger_expr`'s claimed the factory receiver was covered.
+    # Bare-name factories, reached via `from structlog import get_logger` or `from logging import getLogger`.
     "get_logger()",
     "getLogger(__name__)",
     "get_logger().bind(request_id=rid)",
@@ -164,9 +139,7 @@ def test_skips_non_logger_receiver(recv: str):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Family 4: case insensitivity of the secret word                             #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("kw", ["TOKEN", "Token", "ToKeN", "PASSWORD", "Secret", "Api_Key", "JWT", "Jwt"])
@@ -175,9 +148,7 @@ def test_flags_case_insensitive_secret(kw: str):
     assert _codes(src) == ["SARJ012"]
 
 
-# --------------------------------------------------------------------------- #
 # Family 5: redaction markers exempt the keyword                              #
-# --------------------------------------------------------------------------- #
 
 REDACTED_KEYWORDS = [
     "token_prefix",
@@ -214,9 +185,7 @@ def test_redaction_wins_when_both_present():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Family 6: only the NAME matters — the value is never inspected               #
-# --------------------------------------------------------------------------- #
 
 
 def test_flags_secret_name_even_with_redacted_value():
@@ -241,9 +210,7 @@ def test_allows_safe_name_with_secret_subscript_value():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Family 7: forms the rule intentionally does NOT flag                         #
-# --------------------------------------------------------------------------- #
 
 
 def test_skips_positional_secret_argument():
@@ -301,9 +268,7 @@ def test_comment_mentioning_secret_is_ignored():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Family 8: nested / multiple calls                                            #
-# --------------------------------------------------------------------------- #
 
 
 def test_two_secret_keywords_in_one_call():
@@ -338,9 +303,7 @@ def test_secret_keyword_on_outer_with_nested_non_logger():
     assert _codes(src) == ["SARJ012"]
 
 
-# --------------------------------------------------------------------------- #
 # Family 9: diagnostic location points at the value                           #
-# --------------------------------------------------------------------------- #
 
 
 def test_diagnostic_line_col_single_line():
@@ -361,9 +324,7 @@ def test_diagnostics_ordered_by_source_position():
     assert [(d.line, d.col) for d in diags] == [(1, 24), (2, 23)]
 
 
-# --------------------------------------------------------------------------- #
 # Family 10: parse edge cases                                                  #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -379,16 +340,7 @@ def test_handles_syntax_error(src: str):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
-# Family 11: FALSE-POSITIVE guards — non-secret lookalikes                     #
-# --------------------------------------------------------------------------- #
-#
-# These names embed a secret *substring* but are NOT secrets: LLM usage
-# metrics (`*tokens*` counts, `token_count`), innocent words that merely embed a
-# secret word (`secretary`), and boolean presence / state flags that answer "is
-# it there / was it set" (`token_present`, `password_set`) rather than carrying
-# the credential. Whole-token matching plus the innocuous marker denylist
-# (`_secret_names.py`) clears every one.
+# Family 11: FALSE-POSITIVE guards — non-secret lookalikes                     # These names embed a secret *substring* but are NOT secrets: LLM usage metrics (`*tokens*` counts, `token_count`), innocent words that merely embed a secret word (`secretary`), and boolean presence / state flags that answer "is it there / was it set" (`token_present`, `password_set`) rather than carrying the credential.
 
 FALSE_POSITIVE_KEYWORDS = [
     "token_count",
@@ -426,9 +378,7 @@ def test_does_not_flag_non_secret_lookalike(kw: str):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Family 12: suppression via the shared is_suppressed helper                   #
-# --------------------------------------------------------------------------- #
 
 
 def _unsuppressed(source: str) -> list[Diagnostic]:
@@ -459,12 +409,7 @@ def test_sarj_noqa_only_affects_its_own_line():
     assert kept[0].line == 2
 
 
-# --------------------------------------------------------------------------- #
-# Family 13: additional shared secret words (signature / hmac / digest)        #
-# --------------------------------------------------------------------------- #
-#
-# `_SECRET_WORDS` carries more than the human-facing set in Family 1 — it also
-# holds the crypto-material words shared with SARJ011. They must flag too.
+# Family 13: additional shared secret words (signature / hmac / digest)        # `_SECRET_WORDS` carries more than the human-facing set in Family 1 — it also holds the crypto-material words shared with SARJ011.
 
 
 @pytest.mark.parametrize("kw", ["signature", "hmac", "digest", "api_secret"])
@@ -477,9 +422,7 @@ def test_hash_keyword_is_exempted_by_redaction_marker():
     assert _check('logger.info("m", hash=h)\n') == []
 
 
-# --------------------------------------------------------------------------- #
 # Family 14: camelCase decomposition of the keyword name                       #
-# --------------------------------------------------------------------------- #
 
 
 def test_flags_camelcase_apikey():
@@ -493,9 +436,7 @@ def test_allows_camelcase_innocuous(kw: str):
     assert _check(f'logger.info("m", {kw}=n)\n') == []
 
 
-# --------------------------------------------------------------------------- #
 # Family 15: whole-token matching, not substring                               #
-# --------------------------------------------------------------------------- #
 
 
 def test_flags_reset_token_whole_token_matching():
@@ -508,9 +449,7 @@ def test_allows_plural_tokens_counter():
     assert _check('logger.info("usage", tokens=n)\n') == []
 
 
-# --------------------------------------------------------------------------- #
 # Family 16: extra receiver / method variants                                  #
-# --------------------------------------------------------------------------- #
 
 
 def test_flags_bind_chain_on_self_logger():
@@ -522,9 +461,7 @@ def test_flags_logger_log_with_positional_level():
     assert _codes('logger.log(logging.INFO, "m", token=t)\n') == ["SARJ012"]
 
 
-# --------------------------------------------------------------------------- #
 # Family 17: value never inspected — even a redacting-call value               #
-# --------------------------------------------------------------------------- #
 
 
 def test_flags_secret_name_with_redacting_call_value():
@@ -537,9 +474,7 @@ def test_skips_fstring_secret_with_safe_keyword():
     assert _check('logger.info(f"key={api_key}", user_id=u)\n') == []
 
 
-# --------------------------------------------------------------------------- #
 # Family 18: KNOWN DEFECTS (xfail strict)                                       #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("kw", ["staging_secret", "staging_token"])
@@ -554,15 +489,7 @@ def test_plural_secret_bundle_should_be_flagged(kw: str):
     assert _codes(f'logger.info("loaded", {kw}=v)\n') == ["SARJ012"]
 
 
-# --------------------------------------------------------------------------- #
-# Family 19: LEADING boolean-flag prefixes (`has_secret`, `isToken`)           #
-# --------------------------------------------------------------------------- #
-#
-# The mirror image of the trailing flag markers in Family 11: a name whose
-# leading WORD is a boolean predicate answers "does a secret exist?" and carries
-# no credential, so logging it leaks nothing. Both spellings must behave
-# identically — `has_secret` and `hasSecret` are the same name, and the camelCase
-# form is only visible after camel splitting.
+# Family 19: LEADING boolean-flag prefixes (`has_secret`, `isToken`)           # The mirror image of the trailing flag markers in Family 11: a name whose leading WORD is a boolean predicate answers "does a secret exist?" and carries no credential, so logging it leaks nothing.
 
 _LEADING_FLAG_KEYWORDS = [
     "has_secret",
@@ -603,20 +530,7 @@ def test_flags_credential_whose_leading_word_only_looks_like_a_flag(kw: str):
     assert _codes(f'logger.info("boot", {kw}=v)\n') == ["SARJ012"]
 
 
-# --------------------------------------------------------------------------- #
-# Family 20: LIVENESS CANARY                                                   #
-# --------------------------------------------------------------------------- #
-#
-# This rule reports ZERO hits across 2,657 files of popular third-party Python
-# (fastapi, pydantic, black, sqlmodel, rich, flask, httpx, requests, anyio).
-# That is "nothing to find", not "broken": those 2,657 files contain only 182
-# logging calls in total, and just 5 of them pass ANY named keyword — all five
-# being stdlib-reserved `extra=` / `exc_info=`, never a structured field. A
-# rule keyed on structured keywords cannot fire on a corpus with no structured
-# logging in it.
-#
-# Every other test in this file is a one-liner, so none of them would notice the
-# rule going silent on a realistic multi-statement module. This one would.
+# Family 20: LIVENESS CANARY                                                   # This rule reports ZERO hits across 2,657 files of popular third-party Python (fastapi, pydantic, black, sqlmodel, rich, flask, httpx, requests, anyio).
 
 _SERVICE_MODULE = """
 import logging

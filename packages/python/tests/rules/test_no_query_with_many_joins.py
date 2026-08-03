@@ -18,9 +18,7 @@ def _sql_with_joins(n: int, join_kw: str = "JOIN") -> str:
     return 'q = "SELECT * FROM base ' + clauses + '"'  # ruff:ignore[hardcoded-sql-expression] — synthetic lint-rule fixture, not a real query
 
 
-# --------------------------------------------------------------------------- #
 # Boundary: the whole point of the rule.                                      #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -60,9 +58,7 @@ def test_non_store_and_test_modules_are_ignored(path: str) -> None:
     assert _check(_sql_with_joins(3), path) == []
 
 
-# --------------------------------------------------------------------------- #
 # Positive: qualified JOIN variants each count once.                          #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -109,9 +105,7 @@ def test_two_qualified_joins_stays_clean() -> None:
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Positive: case-insensitivity.                                               #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -126,9 +120,7 @@ def test_case_insensitive_keywords(src: str) -> None:
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Positive: multiline, concatenation, query shapes.                           #
-# --------------------------------------------------------------------------- #
 
 
 def test_multiline_triple_quoted() -> None:
@@ -176,9 +168,7 @@ def test_delete_from_query_shape() -> None:
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Positive: f-strings (when the shape lives in one literal segment).          #
-# --------------------------------------------------------------------------- #
 
 
 def test_fstring_without_interpolation_fires() -> None:
@@ -191,9 +181,7 @@ def test_fstring_interpolation_after_joins_fires() -> None:
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Positive: multiple queries in one file -> sorted diagnostics.               #
-# --------------------------------------------------------------------------- #
 
 
 def test_multiple_queries_each_flagged_and_sorted() -> None:
@@ -207,9 +195,7 @@ def test_multiple_queries_each_flagged_and_sorted() -> None:
     assert all(d.code == "SARJ019" for d in diags)
 
 
-# --------------------------------------------------------------------------- #
 # Line / column reporting.                                                    #
-# --------------------------------------------------------------------------- #
 
 
 def test_single_line_position() -> None:
@@ -234,9 +220,7 @@ def test_diagnostic_field_integrity() -> None:
     assert "split it" in diag.message
 
 
-# --------------------------------------------------------------------------- #
 # Negative: JOINs hidden in SQL comments never push over the threshold.       #
-# --------------------------------------------------------------------------- #
 
 
 def test_join_in_line_comment_ignored() -> None:
@@ -274,9 +258,7 @@ def test_query_entirely_inside_comment_is_clean() -> None:
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Negative: no query shape -> never considered.                               #
-# --------------------------------------------------------------------------- #
 
 
 def test_prose_with_join_words_not_flagged() -> None:
@@ -294,9 +276,7 @@ def test_from_without_select_not_flagged() -> None:
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Negative: false-positive guards for the Python str.join method.             #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -319,9 +299,7 @@ def test_join_separator_building_a_query_without_shape_is_clean() -> None:
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Negative: substrings that merely contain "join".                           #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -339,9 +317,7 @@ def test_join_substrings_do_not_inflate_real_count() -> None:
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Negative: f-string interpolation splits the shape from the joins.           #
-# --------------------------------------------------------------------------- #
 
 
 def test_fstring_interpolation_between_from_and_joins_not_flagged() -> None:
@@ -349,9 +325,7 @@ def test_fstring_interpolation_between_from_and_joins_not_flagged() -> None:
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Negative: non-string / non-query constants.                                 #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -368,9 +342,7 @@ def test_non_query_constants_not_flagged(src: str) -> None:
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Edge: empty / whitespace / broken sources.                                  #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("src", ["", "   ", "\n\n", "# just a comment\n"])
@@ -387,9 +359,7 @@ def test_syntax_error_with_query_text_returns_empty() -> None:
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Suppression via `# sarj-noqa: SARJ019`.                                     #
-# --------------------------------------------------------------------------- #
 
 
 def test_rule_still_emits_under_suppression_comment() -> None:
@@ -414,9 +384,7 @@ def test_unrelated_noqa_code_does_not_suppress() -> None:
     assert not is_suppressed(src.splitlines(), diag.line, diag.code)
 
 
-# --------------------------------------------------------------------------- #
 # Adversarial: further qualified JOIN variants each count exactly once.        #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -444,9 +412,7 @@ def test_qualified_join_split_across_newline_counts_once() -> None:
     assert "3 JOINs" in diags[0].message
 
 
-# --------------------------------------------------------------------------- #
 # Adversarial: implicit comma joins are intentionally NOT counted.            #
-# --------------------------------------------------------------------------- #
 
 
 def test_implicit_comma_join_not_counted() -> None:
@@ -454,9 +420,7 @@ def test_implicit_comma_join_not_counted() -> None:
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Adversarial: `.format()` template literal still carries shape + joins.       #
-# --------------------------------------------------------------------------- #
 
 
 def test_format_template_literal_still_fires() -> None:
@@ -469,9 +433,7 @@ def test_str_join_receiver_with_query_shape_still_fires() -> None:
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Adversarial: the word JOIN split across `+` chunks is reconstructed.         #
-# --------------------------------------------------------------------------- #
 
 
 def test_join_word_split_across_plus_concat_is_reconstructed() -> None:
@@ -479,9 +441,7 @@ def test_join_word_split_across_plus_concat_is_reconstructed() -> None:
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Adversarial: underscore-prefixed identifiers containing "join" don't count.  #
-# --------------------------------------------------------------------------- #
 
 
 def test_underscore_prefixed_join_identifier_not_counted() -> None:
@@ -489,12 +449,7 @@ def test_underscore_prefixed_join_identifier_not_counted() -> None:
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
-# Adversarial cases: string-literal `'join'` values and a `--` inside a quoted  #
-# value no longer fool the JOIN count (masked before scanning). The remaining   #
-# `+`-concatenated-variable split stays xfail — masking a single literal cannot #
-# rejoin keywords spread across separate Constant segments.                     #
-# --------------------------------------------------------------------------- #
+# Adversarial cases: string-literal `'join'` values and a `--` inside a quoted  # value no longer fool the JOIN count (masked before scanning).
 
 
 def test_string_literal_join_values_false_positive() -> None:

@@ -15,12 +15,7 @@ def _check(source: str) -> list[Diagnostic]:
 
 
 def _cls(header: str, docstring: str, body: str = "    x: int = 1\n") -> list[Diagnostic]:
-    """Wrap a class header and docstring in a class with a real body.
-
-    Returns:
-        The diagnostics from checking the wrapped source.
-
-    """
+    """Wrap a class header and docstring in a class with a real body."""
     return _check(f'class {header}:\n    """{docstring}"""\n\n{body}')
 
 
@@ -64,9 +59,6 @@ def test_nested_class_is_checked():
     assert len(_check(src)) == 1
 
 
-# --- exemptions ---------------------------------------------------------------
-
-
 @pytest.mark.parametrize(
     "base",
     [
@@ -86,9 +78,7 @@ def test_nested_class_is_checked():
     ],
 )
 def test_schema_carrying_bases_are_exempt(base: str):
-    # A pydantic model's class docstring is emitted as the JSON-Schema
-    # `description`, which FastAPI publishes and an LLM tool schema ships to the
-    # model. Deleting it edits an artefact someone else reads.
+    # A pydantic model's class docstring is emitted as the JSON-Schema `description`, which FastAPI publishes and an LLM tool schema ships to the model.
     assert _cls(f"ShipmentResponse({base})", "Shipment response.") == []
 
 
@@ -116,7 +106,7 @@ def test_a_plain_dataclass_is_still_checked():
 
 
 def test_a_class_whose_body_is_the_docstring_is_exempt():
-    # The exception-class idiom. Deleting the docstring leaves an empty suite.
+    # The exception-class idiom.
     assert _check('class ShipmentLimitError(DomainError):\n    """Shipment limit error."""\n') == []
 
 

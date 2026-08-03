@@ -115,10 +115,8 @@ def test_ignores_non_numeric_annotation():
     assert _check(src) == []
 
 
-# ---------------------------------------------------------------------------
 # Positive family: every time-unit token in the rule's `_UNIT_RE`, as a
 # function parameter annotated `int`, must be flagged exactly once.
-# ---------------------------------------------------------------------------
 
 _UNIT_NAMES = [
     "timeout_seconds",
@@ -171,9 +169,7 @@ def test_flags_every_unit_token_module_level_field(name: str):
     assert len(_check(src)) == 1
 
 
-# ---------------------------------------------------------------------------
 # Positive family: numeric-annotation shapes that must resolve to a duration.
-# ---------------------------------------------------------------------------
 
 _NUMERIC_SHAPES = [
     "int",
@@ -210,9 +206,7 @@ def test_flags_all_numeric_annotation_shapes(annotation: str):
     assert len(_check(src)) == 1
 
 
-# ---------------------------------------------------------------------------
 # Negative family: a real duration name but excluded by `_EXCLUDE_RE`.
-# ---------------------------------------------------------------------------
 
 _EXCLUDED_NAMES = [
     "timeout_count",
@@ -248,9 +242,7 @@ def test_excluded_names_not_flagged(name: str):
     assert _check(src) == []
 
 
-# ---------------------------------------------------------------------------
 # Negative family: non-duration numeric fields (no unit token at all).
-# ---------------------------------------------------------------------------
 
 _NON_DURATION_NAMES = [
     "retry_count",
@@ -274,9 +266,7 @@ def test_non_duration_numeric_not_flagged(name: str):
     assert _check(src) == []
 
 
-# ---------------------------------------------------------------------------
 # Negative family: wall-clock singular components are positions, not durations.
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -287,9 +277,7 @@ def test_singular_wall_clock_not_flagged(name: str):
     assert _check(src) == []
 
 
-# ---------------------------------------------------------------------------
 # Negative family: already-`timedelta`-typed durations are the goal state.
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -307,9 +295,7 @@ def test_timedelta_typed_not_flagged(name: str, annotation: str):
     assert _check(src) == []
 
 
-# ---------------------------------------------------------------------------
 # Negative family: duration name but a non-numeric annotation.
-# ---------------------------------------------------------------------------
 
 _NON_NUMERIC_ANNOTATIONS = [
     "str",
@@ -337,9 +323,7 @@ def test_string_forward_ref_annotation_is_not_resolved():
     assert _check(src) == []
 
 
-# ---------------------------------------------------------------------------
 # Explicit false-positive guards named in the task.
-# ---------------------------------------------------------------------------
 
 
 def test_num_seconds_display_str_not_flagged():
@@ -362,9 +346,7 @@ def test_seconds_name_typed_str_not_flagged():
     assert _check(src) == []
 
 
-# ---------------------------------------------------------------------------
 # Edge cases: parsing, scope, argument kinds.
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("src", ["", "   \n\n", "# just a comment\n", "\n\n\n"])
@@ -418,9 +400,7 @@ class C:
     assert len(_check(src)) == 1
 
 
-# ---------------------------------------------------------------------------
 # Multiple diagnostics: count and ascending-line ordering.
-# ---------------------------------------------------------------------------
 
 
 def test_multiple_diagnostics_counted_and_sorted():
@@ -448,9 +428,7 @@ class Settings:
     assert {d.line for d in diags} == {3, 5}
 
 
-# ---------------------------------------------------------------------------
 # Line / column precision.
-# ---------------------------------------------------------------------------
 
 
 def test_param_line_and_col():
@@ -476,11 +454,7 @@ def test_diagnostic_code_is_sarj014():
     assert diags[0].code == "SARJ014"
 
 
-# ---------------------------------------------------------------------------
-# BaseSettings exemption: env-wire fields cannot be timedelta (bare-numeric env
-# strings), so duration fields on a pydantic-settings class are not flagged.
-# Ordinary BaseModel domain fields stay flagged.
-# ---------------------------------------------------------------------------
+# BaseSettings exemption: env-wire fields cannot be timedelta (bare-numeric env strings), so duration fields on a pydantic-settings class are not flagged.
 
 
 def test_basesettings_field_not_flagged():
@@ -574,19 +548,11 @@ class AppSettings(BaseSettings):
     assert "retry_delay" in diags[0].message
 
 
-# ---------------------------------------------------------------------------
-# Adversarial: Settings-exemption edges (base-name heuristic + transitive
-# intra-module resolution). Exemption keys off BASE names, not the class's own
-# name, and only resolves intermediates defined in the same module.
-# ---------------------------------------------------------------------------
+# Adversarial: Settings-exemption edges (base-name heuristic + transitive intra-module resolution).
 
 
 def test_settings_named_class_without_base_still_flagged():
-    """Flag a class *named* `...Settings` that has no base.
-
-    Only a `...Settings` BASE grants the env-wire exemption, not the class's own
-    name.
-    """
+    """Flag a class *named* `...Settings` that has no base."""
     src = """
 class RedisSettings:
     connect_timeout_seconds: int
@@ -595,11 +561,7 @@ class RedisSettings:
 
 
 def test_non_pydantic_settings_named_base_exempts_by_name_heuristic():
-    """Exempt a class deriving from any base whose name ends in `Settings`.
-
-    This holds even for a plain non-pydantic class — the rule is a deliberate
-    name heuristic.
-    """
+    """Exempt a class deriving from any base whose name ends in `Settings`."""
     src = """
 class LegacySettings:
     pass
@@ -636,12 +598,7 @@ def build() -> None:
 
 
 def test_external_intermediate_base_not_resolved_still_flagged():
-    """Flag a field whose intermediate base is from another module.
-
-    An intermediate base from another module can't be resolved (its def is
-    invisible) and its name doesn't end in `Settings`, so the field still fires —
-    the documented boundary of intra-module-only transitive resolution.
-    """
+    """Flag a field whose intermediate base is from another module."""
     src = """
 class Config(ExternalBase):
     request_timeout_seconds: float
@@ -681,11 +638,7 @@ class AppSettings(BaseSettings):
 
 
 def test_settings_class_local_var_in_method_still_flagged():
-    """Flag an annotated local inside a settings-class method body.
-
-    An annotated local inside a method body is not a class field — its
-    `AnnAssign` isn't in the class body, so the exemption never covers it.
-    """
+    """Flag an annotated local inside a settings-class method body."""
     src = """
 class AppSettings(BaseSettings):
     def m(self) -> None:
@@ -695,11 +648,7 @@ class AppSettings(BaseSettings):
 
 
 def test_settings_base_cycle_terminates_and_flags():
-    """Terminate on a base cycle with no `Settings` root and flag both classes.
-
-    Mutually-referential bases with no real `Settings` root must not recurse
-    forever, and neither class is exempt.
-    """
+    """Terminate on a base cycle with no `Settings` root and flag both classes."""
     src = """
 class A(B):
     timeout_seconds: int
@@ -710,9 +659,7 @@ class B(A):
     assert len(_check(src)) == 2
 
 
-# ---------------------------------------------------------------------------
 # Adversarial: unit-token vs exclusion-token boundary collisions.
-# ---------------------------------------------------------------------------
 
 
 def test_timestamp_ms_exclusion_wins_over_unit_token():
@@ -721,28 +668,18 @@ def test_timestamp_ms_exclusion_wins_over_unit_token():
 
 
 def test_countdown_seconds_flagged_count_substring_not_a_boundary():
-    """Flag `countdown_seconds` because `count` is not on a token boundary.
-
-    `count` inside `countdown` lacks a `_`/boundary, so exclusion doesn't fire
-    and the `_seconds` unit still flags.
-    """
+    """Flag `countdown_seconds` because `count` is not on a token boundary."""
     src = "def f(countdown_seconds: int) -> None: ...\n"
     assert len(_check(src)) == 1
 
 
 def test_conint_call_annotation_not_resolved():
-    """Skip a `conint(...)` factory-call annotation the AST rule can't resolve.
-
-    A `conint(...)` factory call is a `Call` node, not a brand `Name`, so the
-    AST rule can't see it's numeric — a known limitation, like string forward-refs.
-    """
+    """Skip a `conint(...)` factory-call annotation the AST rule can't resolve."""
     src = "def f(timeout_seconds: conint(ge=0)) -> None: ...\n"
     assert _check(src) == []
 
 
-# ---------------------------------------------------------------------------
 # Regressions — false positives from the class-name index, now fixed.
-# ---------------------------------------------------------------------------
 
 
 def test_name_collision_nested_class_shadows_settings():
@@ -1024,11 +961,7 @@ def test_union_of_numeric_without_timedelta_still_fires():
 
 
 def test_a_timedelta_named_container_does_not_exempt():
-    """Flag a numeric duration alongside an unrelated `timedelta` mention.
-
-    Only a union/Optional/Annotated MEMBER counts; `timedelta` appearing as a
-    container's element type is not the parameter's own type.
-    """
+    """Flag a numeric duration alongside an unrelated `timedelta` mention."""
     src = "def f(timeout_seconds: int, schedule: list[timedelta]) -> None: ...\n"
     assert len(_check(src)) == 1
 

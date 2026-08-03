@@ -18,9 +18,7 @@ def _labels(diags: list[Diagnostic]) -> list[str]:
     return [d.message.split(" —")[0] for d in diags]
 
 
-# --------------------------------------------------------------------------- #
 # Positive: each flagged keyword, on its own, in a store query.
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -54,9 +52,7 @@ def test_case_and_whitespace_insensitive(source: str) -> None:
     assert len(_check(source)) == 1
 
 
-# --------------------------------------------------------------------------- #
-# Positive: query shapes beyond plain SELECT ... FROM.
-# --------------------------------------------------------------------------- #
+# Positive: query shapes beyond plain SELECT ...
 
 
 @pytest.mark.parametrize(
@@ -77,11 +73,7 @@ def test_flags_various_query_shapes(source: str) -> None:
     assert len(_check(source)) == 1
 
 
-# --------------------------------------------------------------------------- #
-# Positive: how the SQL string is spelled — concatenation, f-string, format,
-# execute/fetch call arguments. The rule walks every str Constant (and
-# +-concatenated / adjacent-literal Constants), so all of these are caught.
-# --------------------------------------------------------------------------- #
+# Positive: how the SQL string is spelled — concatenation, f-string, format, execute/fetch call arguments.
 
 
 @pytest.mark.parametrize(
@@ -100,9 +92,7 @@ def test_flags_regardless_of_string_spelling(source: str) -> None:
     assert len(_check(source)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Positive: multiple labels in one query, and multiple violations across a file.
-# --------------------------------------------------------------------------- #
 
 
 def test_multiple_labels_in_one_query_listed_in_rule_order() -> None:
@@ -125,9 +115,7 @@ def test_multiple_violations_sorted_by_line_then_col() -> None:
     assert [d.code for d in diags] == ["SARJ020"] * 3
 
 
-# --------------------------------------------------------------------------- #
 # Positive: exact line/col reporting (x2, per brief).
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -150,9 +138,7 @@ def test_line_and_col(source: str, line: int, col: int) -> None:
     assert (diags[0].line, diags[0].col) == (line, col)
 
 
-# --------------------------------------------------------------------------- #
 # Negative: legitimate bounded/point reads and non-query strings.
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -172,12 +158,7 @@ def test_allows_non_aggregating_or_non_query(source: str) -> None:
     assert _check(source) == []
 
 
-# --------------------------------------------------------------------------- #
-# Negative: OUT-OF-SCOPE aggregate surfaces. The rule name says "aggregation"
-# but the implementation deliberately covers only COUNT(/GROUP BY/DISTINCT.
-# SUM/AVG/MIN/MAX/HAVING in a Postgres store query are NOT flagged. Pinned here
-# so a future scope change is a conscious, visible edit (see report).
-# --------------------------------------------------------------------------- #
+# Negative: OUT-OF-SCOPE aggregate surfaces.
 
 
 @pytest.mark.parametrize(
@@ -194,10 +175,8 @@ def test_out_of_scope_aggregates_not_flagged(source: str) -> None:
     assert _check(source) == []
 
 
-# --------------------------------------------------------------------------- #
 # Negative: false-positive guards — substrings, column names, and Python
 # identifiers that merely contain "count"/"distinct"/"sum" must not trip.
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -225,17 +204,14 @@ def test_docstring_mentioning_count_prose_is_not_a_query() -> None:
 
 
 def test_docstring_containing_actual_query_is_flagged() -> None:
-    # A docstring that literally embeds SELECT ... COUNT( ... FROM is
-    # indistinguishable from a query string and IS flagged (col 1).
+    # A docstring that literally embeds SELECT ...
     src = '"""Run SELECT COUNT(*) FROM call to get the total."""\n'
     diags = _check(src)
     assert len(diags) == 1
     assert (diags[0].line, diags[0].col) == (1, 1)
 
 
-# --------------------------------------------------------------------------- #
 # Negative: SQL comments are stripped before matching.
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -285,10 +261,8 @@ def test_comment_stripped_but_real_aggregation_still_flagged() -> None:
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Exempt: ClickHouse files and ClickHouse-flavored queries — aggregation there
 # is the whole point of the columnar mirror.
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -332,12 +306,7 @@ def test_clickhouse_flavored_query_is_exempt(source: str) -> None:
     assert _check(source) == []
 
 
-# --------------------------------------------------------------------------- #
-# Exempt: BigQuery analytics files and BigQuery-flavored queries — analytics and
-# reporting reads against the columnar mirror LEGITIMATELY aggregate. Mirrors the
-# ClickHouse exemption above. (FP class found on one first-party repo's inline
-# analytics services, e.g. `SELECT id AS session_id FROM \`{source_table}\``.)
-# --------------------------------------------------------------------------- #
+# Exempt: BigQuery analytics files and BigQuery-flavored queries — analytics and reporting reads against the columnar mirror LEGITIMATELY aggregate.
 
 
 @pytest.mark.parametrize(
@@ -425,11 +394,7 @@ def test_plain_postgres_aggregation_still_fires(source: str) -> None:
     assert len(_check(source)) == 1
 
 
-# --------------------------------------------------------------------------- #
-# Path gate: the rule fires only on store-layer modules (`*_store.py` basename
-# or a file under a `stores/` directory). A non-store file (a Flask view, a
-# Django ORM SQL generator) with aggregating SQL is out of scope.
-# --------------------------------------------------------------------------- #
+# Path gate: the rule fires only on store-layer modules (`*_store.py` basename or a file under a `stores/` directory).
 
 
 @pytest.mark.parametrize("filename", ["call_store.py", "stores/call.py"])
@@ -442,9 +407,7 @@ def test_nonstore_file_not_flagged(filename: str) -> None:
     assert _check('q = "SELECT COUNT(*) FROM call"\n', filename=filename) == []
 
 
-# --------------------------------------------------------------------------- #
 # Suppression.
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -471,9 +434,7 @@ def test_noqa_for_other_code_does_not_suppress() -> None:
     assert len(kept) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Edge cases: empty, blank, and unparsable sources.
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -491,9 +452,7 @@ def test_edge_sources_return_no_diagnostics(source: str) -> None:
     assert _check(source) == []
 
 
-# --------------------------------------------------------------------------- #
 # Diagnostic metadata sanity.
-# --------------------------------------------------------------------------- #
 
 
 def test_diagnostic_metadata() -> None:
@@ -506,11 +465,9 @@ def test_diagnostic_metadata() -> None:
     assert "sarj-noqa: SARJ020" in d.message
 
 
-# --------------------------------------------------------------------------- #
 # Adversarial: Postgres-flavored SQL that overlaps with BigQuery vocabulary but
 # is NOT a BQ signal (DATE_TRUNC excluded by docstring; DISTINCT ON is a
 # Postgres-only extension) must STILL fire.
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -530,11 +487,7 @@ def test_postgres_overlapping_vocab_still_fires(source: str) -> None:
     assert len(_check(source)) == 1
 
 
-# --------------------------------------------------------------------------- #
-# Adversarial: an aggregation keyword split across a `+` concatenation boundary
-# (so neither literal half is a full keyword) must still fire once the BinOp is
-# reconstructed. Also tab-separated GROUP/BY.
-# --------------------------------------------------------------------------- #
+# Adversarial: an aggregation keyword split across a `+` concatenation boundary (so neither literal half is a full keyword) must still fire once the BinOp is reconstructed.
 
 
 @pytest.mark.parametrize(
@@ -549,11 +502,7 @@ def test_keyword_split_or_tabbed_still_fires(source: str) -> None:
     assert len(_check(source)) == 1
 
 
-# --------------------------------------------------------------------------- #
-# Adversarial: BigQuery signals live only inside a stripped SQL comment. Comment
-# stripping runs BEFORE the BQ-exemption check, so a comment-embedded backtick or
-# BQ-only function must NOT smuggle a real Postgres aggregation past the rule.
-# --------------------------------------------------------------------------- #
+# Adversarial: BigQuery signals live only inside a stripped SQL comment.
 
 
 @pytest.mark.parametrize(
@@ -573,11 +522,9 @@ def test_bq_signal_only_in_comment_does_not_exempt(source: str) -> None:
     assert len(_check(source)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # BigQuery exemption, tightened: a backtick inside a Postgres string VALUE is    #
 # masked (not read as a table quote), and a file-level BigQuery import no longer #
 # exempts a query carrying a Postgres `%s` placeholder.                          #
-# --------------------------------------------------------------------------- #
 
 
 def test_backtick_inside_string_value_does_not_exempt_postgres_query() -> None:
@@ -603,13 +550,7 @@ def test_bigquery_import_does_not_exempt_postgres_placeholder(source: str) -> No
     assert len(_check(source)) == 1
 
 
-# --------------------------------------------------------------------------- #
-# First-party review regressions.                                               #
-#                                                                               #
-# `IS [NOT] DISTINCT FROM` is Postgres' null-safe comparison OPERATOR, and a     #
-# `test_<x>_store.py` is a test, not a store module. Both classes were 100%      #
-# suppressed at review head with no defect behind any of them.                   #
-# --------------------------------------------------------------------------- #
+# First-party review regressions.
 
 
 @pytest.mark.parametrize(

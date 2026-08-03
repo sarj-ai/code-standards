@@ -18,18 +18,14 @@ def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
     return TriviallyTrueAssertion().check(Path(path), textwrap.dedent(source))
 
 
-# The minimal source that this rule reports: a constructor keyword read straight
-# back out. The finding lands on line 3, column 5, which the position test below
-# pins. `assert True` used to serve this purpose and is now SARJ057's alone.
+# The minimal source that this rule reports: a constructor keyword read straight back out.
 _ECHO_TEST = """def test_thing():
     u = User(name="bo")
     assert u.name == "bo"
 """
 
 
-# --------------------------------------------------------------------------- #
 # Path gating.                                                                 #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("path", ["test_x.py", "x_test.py", "a/tests/test_y.py"])
@@ -55,15 +51,7 @@ def test_skips_modules_pytest_does_not_collect(path: str):
     assert _check(_ECHO_TEST, path) == []
 
 
-# --------------------------------------------------------------------------- #
-# The boundary with SARJ057 `no-tautological-expect`. Every literal-only         #
-# tautology below belongs to SARJ057, which reaches further (production code,    #
-# modules pytest never collects, signed constants) and carries carve-outs this   #
-# rule never had for the sole-`except` marker and pytest-benchmark bodies. The   #
-# positives that used to live here now live in                                  #
-# `test_no_tautological_expect.py`; these are the negatives that hold the        #
-# boundary in place.                                                            #
-# --------------------------------------------------------------------------- #
+# The boundary with SARJ057 `no-tautological-expect`.
 
 
 @pytest.mark.parametrize(
@@ -139,9 +127,7 @@ def test_ruff_owned_tautologies_are_not_duplicated(condition: str):
     assert _check(f"def test_thing(value):\n    assert {condition}\n") == []
 
 
-# --------------------------------------------------------------------------- #
 # Shape 1: reading a constructor keyword straight back out.                     #
-# --------------------------------------------------------------------------- #
 
 
 def test_flags_keyword_echo():
@@ -230,9 +216,6 @@ def test_flags_echoed_collection_and_signed_literals(literal: str):
     assert len(_check(src)) == 1
 
 
-# ---- false-positive guard: the callee is not a class ---- #
-
-
 @pytest.mark.parametrize(
     "call",
     [
@@ -244,9 +227,7 @@ def test_flags_echoed_collection_and_signed_literals(literal: str):
     ids=["module-helper", "private-helper", "service-method", "factory-method"],
 )
 def test_a_function_that_maps_its_arguments_is_not_a_constructor(call: str):
-    # One first-party test reads an env var back through pydantic-settings;
-    # another checks that a service echoes pagination into its response
-    # envelope. Both are real behaviour.
+    # One first-party test reads an env var back through pydantic-settings; another checks that a service echoes pagination into its response envelope.
     field, value = ("ENV", "'staging'") if "ENV" in call else ("limit", "25")
     src = f"""
     def test_thing(service, factory):
@@ -263,9 +244,6 @@ def test_the_same_shape_with_a_capitalised_callee_fires():
         assert result.ENV == "staging"
     """
     assert len(_check(src)) == 1
-
-
-# ---- false-positive guard: collaborator classes normalise what they are given ---- #
 
 
 @pytest.mark.parametrize(
@@ -311,9 +289,6 @@ def test_a_record_class_with_the_same_field_still_fires():
         assert b.expires == 10
     """
     assert len(_check(src)) == 1
-
-
-# ---- false-positive guard: a field a sibling test proves is transformed ---- #
 
 
 def test_a_field_another_test_shows_coercing_is_exempt():
@@ -378,9 +353,6 @@ def test_distinct_echoed_literals_do_not_imply_coercion():
         assert response.object == "container_file.deleted"
     """
     assert len(_check(src)) == 2
-
-
-# ---- false-positive guard: the constructor did work on the literal ---- #
 
 
 @pytest.mark.parametrize(
@@ -476,9 +448,6 @@ def test_a_non_echo_operator_is_exempt(operator: str):
     assert _check(src) == []
 
 
-# ---- false-positive guard: something touched the local in between ---- #
-
-
 @pytest.mark.parametrize(
     "meddling",
     [
@@ -513,9 +482,7 @@ def test_any_other_mention_of_the_local_is_disqualifying(meddling: str):
 
 
 def test_a_method_called_on_the_local_inside_an_assertion_is_disqualifying():
-    # The `assert` wrapper does not make the call safe: `model_dump()` runs
-    # arbitrary code on the object before the field below is read. This is also
-    # the round trip of `assert Model(**d).model_dump() == d` given a name.
+    # The `assert` wrapper does not make the call safe: `model_dump()` runs arbitrary code on the object before the field below is read.
     src = """
     def test_thing():
         u = User(name='bo')
@@ -597,9 +564,7 @@ def test_a_tuple_unpacking_target_is_exempt():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Shape 2: isinstance against the class that was just called.                   #
-# --------------------------------------------------------------------------- #
 
 
 def test_flags_isinstance_of_the_class_just_constructed():
@@ -670,9 +635,7 @@ def test_isinstance_of_a_name_the_test_did_not_construct_is_exempt():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Edge cases and diagnostic shape.                                             #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("source", ["", "  \n\n ", "# comment\n"], ids=["empty", "blank", "comment"])
@@ -727,9 +690,7 @@ def test_diagnostics_are_sorted_by_position():
     assert [(d.line, d.col) for d in _check(src)] == [(4, 5), (8, 5), (12, 5)]
 
 
-# --------------------------------------------------------------------------- #
 # The message, and the conflict with SARJ043 it has to avoid.                  #
-# --------------------------------------------------------------------------- #
 
 
 _ORDINARY_ADVICE = ". Assert on something the code under test derived, or drop the assertion"

@@ -95,9 +95,7 @@ def test_sarj_noqa_for_another_rule_does_not_suppress_the_hatch():
 
 
 def test_escape_hatch_set_is_exactly_the_banned_api_code():
-    # The set is derived from ruff.strict.toml's banned-api messages, which are
-    # the only ones instructing an inline reasoned suppression. Widening it is a
-    # deliberate act, not an accident.
+    # The set is derived from ruff.strict.toml's banned-api messages, which are the only ones instructing an inline reasoned suppression.
     assert frozenset({"TID251"}) == ESCAPE_HATCH_CODES
 
 

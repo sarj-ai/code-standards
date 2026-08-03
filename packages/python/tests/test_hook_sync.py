@@ -1,18 +1,4 @@
-"""Every registered rule must be reachable from pre-commit, and every hook must be real.
-
-A rule that is written, tested and registered but has no `.pre-commit-hooks.yaml` entry
-is inert: it never runs in any consumer repo, and nothing fails to tell you. Fifteen of
-the thirty-nine rules live at the 0.15.x line were in exactly that state — a
-security- and SQL-heavy set including SARJ011 prefer-constant-time-secret-compare,
-SARJ012 no-secret-in-log, SARJ028 no-cors-wildcard-with-credentials and SARJ018-021,
-every one of which has a TypeScript twin that *was* wired. The same defect was caught
-in a `.py` file and missed in a `.ts` file purely because the TypeScript package has
-`strict-config-sync.test.ts` and Python had no equivalent.
-
-This is that equivalent. It is deliberately bidirectional: an orphan hook naming a rule
-that no longer exists is just as broken as a rule with no hook, and it is the shape a
-rule rename leaves behind.
-"""
+"""Every registered rule must be reachable from pre-commit, and every hook must be real."""
 
 from __future__ import annotations
 

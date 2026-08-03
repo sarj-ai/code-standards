@@ -1,13 +1,4 @@
-"""Every engine must agree on what a log call and a secret name are.
-
-Two live false negatives came from the same shape: a word list mirrored by hand
-between the Python and TypeScript engines, where one copy was shorter. Nothing
-compared them, so each engine's own tests passed.
-
-`logger.success("auth", token=token)` was a log call to SARJ017 and not to
-SARJ012 -- the SECURITY rule had the shorter list. `bearer == provided` was a
-timing attack in TypeScript and silent in Python.
-"""
+"""Every engine must agree on what a log call and a secret name are."""
 
 from __future__ import annotations
 
@@ -22,7 +13,7 @@ _TS_ROOT = Path(__file__).resolve().parents[3] / "packages" / "typescript" / "sr
 
 
 def _ts_string_set(source: str, name: str) -> set[str]:
-    """Read the entries of a `const <name> ... = new Set([...])` literal."""
+    """Read the entries of a `const <name> ..."""
     start = source.index(f"const {name}")
     body = source[source.index("[", start) : source.index("]", start)]
     return set(re.findall(r'"([^"]+)"', body))

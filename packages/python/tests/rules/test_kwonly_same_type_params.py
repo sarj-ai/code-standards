@@ -14,9 +14,7 @@ def _check(source: str, path: str = "python/app/app/calls/service.py") -> list[D
     return KwonlySameTypeParams().check(Path(path), source)
 
 
-# --------------------------------------------------------------------------- #
 # Positive: >=2 positional params sharing one primitive annotation.            #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -71,9 +69,7 @@ def test_one_diagnostic_per_function():
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Negative: fewer than two shared primitives.                                  #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -119,9 +115,7 @@ class T:
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Negative: non-primitive / non-bare-Name annotations never group.             #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -142,9 +136,7 @@ def test_allows_non_primitive_annotations(params: str):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Negative: exempt names and decorators.                                       #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -184,9 +176,7 @@ def f(source_id: str, target_id: str) -> None: ...
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Negative: HTTP route handlers — FastAPI binds params by name.                #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -227,9 +217,7 @@ def f(source_id: str, target_id: str) -> None: ...
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Negative: test files are exempt.                                             #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -252,9 +240,7 @@ def test_fires_in_non_test_paths():
     assert len(_check(src, "python/app/app/calls/service.py")) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Marker position: `*` / `/` exempt exactly the params they protect.           #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -295,9 +281,7 @@ def test_lambda_never_flagged():
     assert _check("f = lambda a, b: a + b\n") == []
 
 
-# --------------------------------------------------------------------------- #
 # Ordering, edge cases.                                                        #
-# --------------------------------------------------------------------------- #
 
 
 def test_multiple_functions_sorted():
@@ -325,10 +309,8 @@ def test_syntax_error_returns_empty():
     assert _check("def f(:\n    pass") == []
 
 
-# --------------------------------------------------------------------------- #
 # FP-hardening (famous-repo sweep): callback values, overload impls,           #
 # generated files, symmetric numbering.                                        #
-# --------------------------------------------------------------------------- #
 
 
 def test_function_referenced_as_value_is_exempt():
@@ -421,10 +403,8 @@ def test_distinct_stems_with_numbers_still_fire():
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # FP-hardening (famous-repo sweep, 2,657 files): signatures that CANNOT go     #
 # keyword-only, and vocabularies where position is the notation.               #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -432,11 +412,7 @@ def test_distinct_stems_with_numbers_still_fire():
     ["seek", "read", "write", "readinto", "truncate", "recv", "setsockopt", "add_unredirected_header", "get_header"],
 )
 def test_duck_typed_stdlib_protocol_methods_are_exempt(name: str):
-    # The stdlib is the caller and calls these POSITIONALLY (`io` does
-    # `f.seek(0, 2)`, `http.cookiejar` does `req.add_unredirected_header(k, v)`)
-    # so inserting `*` is a runtime TypeError, not a style change.
-    # Corpus: requests/cookies.py:89 and :95, rich/progress.py:270,
-    # anyio/streams/file.py:97, httpx/_models.py:1257.
+    # The stdlib is the caller and calls these POSITIONALLY (`io` does `f.seek(0, 2)`, `http.cookiejar` does `req.add_unredirected_header(k, v)`) so inserting `*` is a runtime TypeError, not a style change.
     src = f"""
 class Stream:
     def {name}(self, first: int, second: int) -> int: ...
@@ -486,10 +462,7 @@ class Child(Base):
     ],
 )
 def test_cli_command_handlers_are_exempt(decorator: str):
-    # click/typer bind handler parameters by NAME from the declared options;
-    # the human call site is a shell command line. Corpus: httpx/_main.py:452,
-    # black/src/blackd/__init__.py:96,
-    # black/scripts/diff_shades_gha_helper.py:167.
+    # click/typer bind handler parameters by NAME from the declared options; the human call site is a shell command line.
     src = f"""
 @{decorator}
 def main(bind_host: str, cors_origin: str) -> None: ...
@@ -575,10 +548,7 @@ def test_vocabularies_do_not_cross_domains():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
-# FP-hardening (12-repo corpus, 1,405 findings): symmetric letter suffixes,     #
-# test-support trees, numbered migrations. 63 findings removed, no TP lost.     #
-# --------------------------------------------------------------------------- #
+# FP-hardening (12-repo corpus, 1,405 findings): symmetric letter suffixes,     # test-support trees, numbered migrations.
 
 
 @pytest.mark.parametrize(
@@ -590,9 +560,7 @@ def test_vocabularies_do_not_cross_domains():
     ],
 )
 def test_symmetric_letter_suffix_params_are_exempt(params: str):
-    # `_a`/`_b` labels the two sides of a commutative helper exactly as `_1`/`_2`
-    # does. Minimized from a policy registry's `compare_versions(policy_id_a,
-    # policy_id_b)`: swapping the arguments cannot produce a wrong answer.
+    # `_a`/`_b` labels the two sides of a commutative helper exactly as `_1`/`_2` does.
     src = f"def compare_versions({params}) -> int: ...\n"
     assert _check(src) == []
 

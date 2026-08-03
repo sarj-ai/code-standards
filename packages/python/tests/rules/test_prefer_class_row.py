@@ -15,9 +15,7 @@ def _check(source: str, path: str = "<t>.py") -> list[Diagnostic]:
     return PreferClassRow().check(Path(path), source)
 
 
-# --------------------------------------------------------------------------
 # Positive family: bare-name and attribute `row_factory=dict_row` values fire.
-# --------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -116,9 +114,7 @@ def test_fires_when_row_factory_is_not_on_cursor_call():
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------
 # Multiple violations: counted and sorted by (line, col).
-# --------------------------------------------------------------------------
 
 
 def test_flags_multiple_cursors():
@@ -150,9 +146,7 @@ def test_multiple_on_same_line_sorted_by_col():
     assert diags[0].col < diags[1].col
 
 
-# --------------------------------------------------------------------------
 # Line/column accuracy: diagnostic points at the factory value (1-based col).
-# --------------------------------------------------------------------------
 
 
 def test_reports_line_and_col_of_name_value():
@@ -172,9 +166,7 @@ def test_reports_line_and_col_of_attribute_value():
     assert diags[0].col == line2.index("m.dict_row") + 1
 
 
-# --------------------------------------------------------------------------
 # Negative family: other psycopg row factories must NOT fire.
-# --------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -215,9 +207,7 @@ def test_class_row_wrapping_dict_row_does_not_fire():
     assert _check("cur = conn.cursor(row_factory=class_row(dict_row))\n") == []
 
 
-# --------------------------------------------------------------------------
 # Negative family: keyword must be named exactly `row_factory`.
-# --------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -236,9 +226,7 @@ def configure(dict_row):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------
 # Negative family: case sensitivity — only the exact literal `dict_row` fires.
-# --------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("factory", ["Dict_Row", "DICT_ROW", "DictRow", "dictrow", "dict_Row"])
@@ -246,9 +234,7 @@ def test_case_variants_do_not_fire(factory: str):
     assert _check(f"cur = conn.cursor(row_factory={factory})\n") == []
 
 
-# --------------------------------------------------------------------------
 # Negative family: aliased import — rule is literal-name based (documented limit).
-# --------------------------------------------------------------------------
 
 
 def test_aliased_dict_row_import_does_not_fire():
@@ -263,9 +249,7 @@ def get(conn):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------
 # Negative family: non Name/Attribute value expressions (false-positive guards).
-# --------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -328,9 +312,7 @@ def test_comment_mentioning_dict_row_does_not_fire():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------
 # Edge cases: empty / whitespace / comment-only / syntax error inputs.
-# --------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -349,9 +331,7 @@ def test_ignores_syntax_error_mid_cursor_call():
     assert _check("cur = conn.cursor(row_factory=dict_row\n") == []
 
 
-# --------------------------------------------------------------------------
 # Suppression: the rule still emits; `is_suppressed` recognises sarj-noqa.
-# --------------------------------------------------------------------------
 
 
 def test_rule_itself_does_not_apply_suppression():
@@ -392,9 +372,7 @@ def test_sarj_noqa_for_other_code_does_not_suppress():
     assert not is_suppressed(src.splitlines(), diags[0].line, diags[0].code)
 
 
-# --------------------------------------------------------------------------
 # Diagnostic payload fields.
-# --------------------------------------------------------------------------
 
 
 def test_diagnostic_fields_populated():
@@ -413,10 +391,8 @@ def test_message_is_stable_across_shapes():
     assert a.message == b.message
 
 
-# --------------------------------------------------------------------------
 # Adversarial additions: keyword matching is context-free — it fires for ANY
 # `row_factory=dict_row` keyword, not just `conn.cursor(...)`.
-# --------------------------------------------------------------------------
 
 
 def test_fires_in_functools_partial():
@@ -444,10 +420,8 @@ def test_fires_with_leading_star_arg():
     assert len(_check("conn.cursor(*a, row_factory=dict_row)\n")) == 1
 
 
-# --------------------------------------------------------------------------
 # Adversarial additions: attribute matching keys ONLY off the terminal `.attr`,
 # so any receiver whose last segment is `dict_row` fires — even a call/subscript.
-# --------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -468,10 +442,8 @@ def test_attribute_with_nonterminal_dict_row_does_not_fire():
     assert _check("conn.cursor(row_factory=dict_row.foo)\n") == []
 
 
-# --------------------------------------------------------------------------
 # Adversarial additions: names that merely contain `dict_row` as a substring,
 # and `class_row` as a bare name, must not fire (exact-literal match only).
-# --------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -482,9 +454,7 @@ def test_substring_and_class_row_names_do_not_fire(factory: str):
     assert _check(f"conn.cursor(row_factory={factory})\n") == []
 
 
-# --------------------------------------------------------------------------
 # Adversarial additions: compound value expressions collapse to None.
-# --------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -507,10 +477,8 @@ def test_local_variable_rebind_does_not_fire():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------
 # Adversarial additions: column points at the START of a dotted chain, not the
 # `dict_row` leaf, on a wrapped call.
-# --------------------------------------------------------------------------
 
 
 def test_col_points_to_start_of_dotted_chain():
@@ -522,10 +490,8 @@ def test_col_points_to_start_of_dotted_chain():
     assert diags[0].col == line2.index("psycopg") + 1
 
 
-# --------------------------------------------------------------------------
 # Adversarial additions: genuine defect — a walrus-wrapped `dict_row` value is
 # still `dict_row` at runtime, but `_factory_name` does not unwrap NamedExpr.
-# --------------------------------------------------------------------------
 
 
 def test_walrus_wrapped_dict_row_should_fire():

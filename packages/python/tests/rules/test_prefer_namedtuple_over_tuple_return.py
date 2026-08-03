@@ -17,9 +17,6 @@ def _check(source: str, path: str = "<t>.py") -> list[Diagnostic]:
     return PreferNamedtupleOverTupleReturn().check(Path(path), source)
 
 
-# --- Metadata ----------------------------------------------------------------
-
-
 def test_rule_identity():
     rule = PreferNamedtupleOverTupleReturn()
     assert rule.code == "SARJ026"
@@ -32,9 +29,6 @@ def test_diag_carries_code_and_message():
     assert len(diags) == 1
     assert diags[0].code == "SARJ026"
     assert "NamedTuple" in diags[0].message
-
-
-# --- Positive: heterogeneous positional tuple returns ------------------------
 
 
 @pytest.mark.parametrize(
@@ -73,9 +67,6 @@ def test_fires_on_method():
     diags = _check(src)
     assert len(diags) == 1
     assert diags[0].line == 2
-
-
-# --- Negative: the three permitted tuple forms + non-boundary ----------------
 
 
 @pytest.mark.parametrize(
@@ -126,9 +117,6 @@ def test_does_not_fire_on_private_method():
     assert _check(src) == []
 
 
-# --- Line / column reporting -------------------------------------------------
-
-
 def test_reports_at_function_def_line_and_col():
     src = "\n\ndef f() -> tuple[int, str]:\n    return (1, 'a')\n"
     diags = _check(src)
@@ -145,16 +133,10 @@ def test_reports_indented_col():
     assert diags[0].col == 5
 
 
-# --- Multiple, sorted --------------------------------------------------------
-
-
 def test_multiple_sorted_by_line():
     src = "def a() -> tuple[int, str]: ...\ndef b() -> tuple[int, int]: ...\ndef c() -> tuple[bytes, str, None]: ...\n"
     diags = _check(src)
     assert [d.line for d in diags] == [1, 3]
-
-
-# --- Edge cases --------------------------------------------------------------
 
 
 def test_empty_source():
@@ -172,17 +154,11 @@ def test_nested_function_is_exempt():
     assert _check(src) == []
 
 
-# --- Suppression -------------------------------------------------------------
-
-
 def test_suppression_recognized():
     src = "def f() -> tuple[int, str]:  # sarj-noqa: SARJ026 — deliberate\n    ...\n"
     diags = _check(src)
     assert len(diags) == 1
     assert is_suppressed(src.splitlines(), diags[0].line, diags[0].code)
-
-
-# --- FP-hardening (famous-repo sweep) ----------------------------------------
 
 
 def test_test_file_is_exempt():
@@ -249,9 +225,6 @@ def test_ellipsis_body_still_fires():
 def test_implemented_function_still_fires():
     src = "def run_black(file, source) -> tuple[bool, str]:\n    return True, source\n"
     assert len(_check(src)) == 1
-
-
-# --- FP-hardening: closures and declared overrides ---------------------------
 
 
 def test_sort_key_closure_is_exempt():

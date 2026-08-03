@@ -26,9 +26,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# ---------------------------------------------------------------- counting
-
-
 @pytest.mark.parametrize(
     ("line", "key"),
     [
@@ -71,9 +68,6 @@ def test_a_pyright_ignore_is_not_a_file_level_downgrade():
 
 def test_clean_source_counts_nothing():
     assert count_source("def f():\n    return 1\n") == {}
-
-
-# ------------------------------------------------------------------ measure
 
 
 def _tree(root: Path, files: dict[str, str]) -> None:
@@ -138,9 +132,6 @@ def test_measure_records_no_entry_for_a_clean_file(tmp_path: Path):
 def test_discover_packages_finds_dirs_containing_python(tmp_path: Path):
     _tree(tmp_path, {"svc/app.py": "", "docs/readme.md": "", ".hidden/x.py": ""})
     assert discover_packages(tmp_path) == ["svc"]
-
-
-# -------------------------------------------------------------------- gate
 
 
 def _measurement(
@@ -221,9 +212,6 @@ def test_improvements_reports_shrunk_and_retired_codes():
     assert improvements(m, baseline) == {"noqa:A1": (3, 1), "noqa:GONE": (2, 0)}
 
 
-# -------------------------------------------------------------------- seed
-
-
 def test_seed_drops_a_file_exception_once_the_debt_is_paid():
     baseline = Baseline(per_file_ceiling=10, file_exceptions={"svc/legacy.py": 25})
     m = _measurement(codes={"noqa:A1": 9}, packages={"svc": 9}, files={"svc/legacy.py": 9})
@@ -238,9 +226,6 @@ def test_seed_keeps_a_still_needed_file_exception_at_the_new_lower_count():
 
 def test_seed_preserves_the_per_file_ceiling():
     assert seed(_measurement(), Baseline(per_file_ceiling=4)).per_file_ceiling == 4
-
-
-# ---------------------------------------------------------------- baseline io
 
 
 def test_load_baseline_reads_all_three_sections(tmp_path: Path):
@@ -285,9 +270,6 @@ def test_a_comment_key_is_not_read_as_a_ceiling(tmp_path: Path):
     path = tmp_path / "b.json"
     _ = path.write_text(json.dumps({"_comment": "prose", "codes": {"noqa:A1": 1}}), encoding="utf-8")
     assert load_baseline(path).codes == {"noqa:A1": 1}
-
-
-# --------------------------------------------------------------------- CLI
 
 
 def test_cli_seeds_a_first_baseline_without_allow_increase(tmp_path: Path):

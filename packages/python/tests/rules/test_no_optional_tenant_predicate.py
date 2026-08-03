@@ -18,9 +18,7 @@ def _count(source: str) -> int:
     return len(_check(source))
 
 
-# ---------------------------------------------------------------------------
 # Positive: the tenant predicate is reachable only through a conditional.
-# ---------------------------------------------------------------------------
 
 
 def test_flags_conditional_tenant_predicate_with_tautology_fallback():
@@ -155,9 +153,7 @@ def test_recognises_alternate_tenant_column_names():
         assert _count(src) == 1, column
 
 
-# ---------------------------------------------------------------------------
 # Negative: scoping that always applies, or code that is not scoping at all.
-# ---------------------------------------------------------------------------
 
 
 def test_ignores_unconditional_seed():

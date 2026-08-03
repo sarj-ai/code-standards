@@ -18,19 +18,12 @@ def _check(source: str, path: str = SRC_PATH) -> list[Diagnostic]:
 
 
 def _fn(body: str) -> str:
-    """Wrap statements in a module-level function.
-
-    Returns:
-        The source of a one-parameter `def` around `body`.
-
-    """
+    """Wrap statements in a module-level function."""
     indented = "\n".join(f"    {line}" if line else "" for line in body.splitlines())
     return f"def handle(payload):\n{indented}\n"
 
 
-# --------------------------------------------------------------------------- #
 # Positive: constant-only displays and compiled regexes inside a function.     #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -117,9 +110,7 @@ def test_line_and_col():
     assert (diags[0].line, diags[0].col) == (2, 5)
 
 
-# --------------------------------------------------------------------------- #
 # Negative: scope and size gates.                                             #
-# --------------------------------------------------------------------------- #
 
 
 def test_ignores_module_scope():
@@ -145,9 +136,7 @@ def test_min_elements_boundary_is_three():
     assert len(_check(_fn('allowed = ["a", "b", "c"]\nreturn len(allowed)'))) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Negative: the constant-only leaf gate.                                      #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -204,9 +193,7 @@ def test_accepts_displays_at_maximum_literal_depth():
     assert len(_check(_fn(f"allowed = {value}\nreturn len(allowed)"))) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Negative: mutation shapes.                                                  #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -312,9 +299,7 @@ def test_ignores_match_capture_rebind(pattern: str):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Negative: escape shapes.                                                    #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -357,9 +342,7 @@ def test_ignores_capture_by_inner_scope(closure: str):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Positive: safe consumers still fire.                                        #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -428,9 +411,7 @@ def test_fires_on_multiple_safe_reads():
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Nesting: inner functions, methods, loops.                                   #
-# --------------------------------------------------------------------------- #
 
 
 def test_fires_inside_nested_function():
@@ -480,9 +461,7 @@ def test_multiple_hits_sorted():
     assert [(d.line, d.col) for d in diags] == sorted((d.line, d.col) for d in diags)
 
 
-# --------------------------------------------------------------------------- #
 # File-scope exemptions and edge cases.                                       #
-# --------------------------------------------------------------------------- #
 
 
 _HIT = "def handle(payload):\n    allowed = ['a', 'b', 'c']\n    return payload in allowed\n"
@@ -527,9 +506,7 @@ def test_syntax_error_returns_empty():
     assert _check("def f(:\n    pass") == []
 
 
-# --------------------------------------------------------------------------- #
 # FP-hardening: frame reflection (famous-repo sweep).                         #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(

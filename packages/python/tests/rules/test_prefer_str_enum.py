@@ -14,9 +14,6 @@ def _check(source: str, path: str = "<t>.py") -> list[Diagnostic]:
     return PreferStrEnum().check(Path(path), source)
 
 
-# --- Trigger 1: sibling choices attribute -------------------------------------
-
-
 def test_flags_choice_attr_with_str_field():
     src = """
 from pydantic import BaseModel
@@ -191,9 +188,6 @@ class Rec(BaseModel):
     assert _check(src) == []
 
 
-# --- Dropped bare-name heuristic (real-world FP class 2) ----------------------
-
-
 @pytest.mark.parametrize(
     "field",
     ["status", "state", "kind", "role", "priority", "severity", "direction", "tier", "stage", "type", "mode"],
@@ -263,9 +257,6 @@ class Status({base}):
     assert _check(src) == []
 
 
-# --- Field corroborated by an equality cluster on the same name ---------------
-
-
 def test_field_corroborated_by_cluster_on_same_name():
     src = """
 from pydantic import BaseModel
@@ -302,9 +293,6 @@ def route(kind: str) -> int:
     diags = _check(src)
     assert len(diags) == 1
     assert "kind" in diags[0].message
-
-
-# --- Trigger 2: equality comparison clusters ----------------------------------
 
 
 def test_flags_comparison_cluster():
@@ -503,11 +491,7 @@ def handle(status: str) -> int:
 
 
 def test_mixed_eq_and_in_operators_form_one_cluster():
-    """Merge a membership test and an equality comparison into one cluster.
-
-    The membership test contributes literals to a cluster that also has an
-    equality comparison; the equality is what makes the cluster real.
-    """
+    """Merge a membership test and an equality comparison into one cluster."""
     src = """
 def handle(status: str) -> int:
     if status == "active":
@@ -587,9 +571,6 @@ def handle(s: str) -> int:
     assert _check(src) == []
 
 
-# --- Real-world FP class 1: external attribute comparands ---------------------
-
-
 def test_external_attribute_membership_not_flagged():
     """Httpx `_config.py`: `url.scheme not in ("http", "https", "socks5", ...)`."""
     src = """
@@ -636,9 +617,6 @@ def handle(ctx) -> int:
     return 0
 """
     assert _check(src) == []
-
-
-# --- Real-world FP class 3: lone membership guards ----------------------------
 
 
 def test_reflection_key_membership_not_flagged():
@@ -758,9 +736,6 @@ def handle(status: str) -> bool:
     assert _check(src) == []
 
 
-# --- Real-world FP class 3: tokenizers ----------------------------------------
-
-
 def test_single_char_scanner_cluster_not_flagged():
     """Django `defaultfilters`: `last_char == "g"` is a char scan, not an enum."""
     src = """
@@ -804,9 +779,6 @@ def grade(g: str) -> int:
     assert "g" in diags[0].message
 
 
-# --- Real-world FP class 4: already-closed Literal domains --------------------
-
-
 def test_module_alias_literal_param_not_flagged():
     """A param annotated with a module-level `Literal` alias is already closed."""
     src = """
@@ -827,12 +799,7 @@ def render(align: Mode) -> int:
 
 
 def test_module_alias_literal_valueset_not_flagged():
-    """Rich `align.py`: `align = self.align` compared against the alias's values.
-
-    The variable carries no annotation at the comparison site, but every literal
-    is a member of the module's `AlignMethod = Literal[...]` alias, so the closed
-    set already exists.
-    """
+    """Rich `align.py`: `align = self.align` compared against the alias's values."""
     src = """
 from typing import Literal
 
@@ -936,9 +903,6 @@ def route(kind: str) -> int:
     assert "kind" in diags[0].message
 
 
-# --- Comparand shapes that are excluded ---------------------------------------
-
-
 def test_call_comparand_excluded():
     src = """
 def handle(status: str) -> int:
@@ -1027,9 +991,6 @@ def handle(status: str) -> int:
     return 1
 """
     assert len(_check(src)) == 1
-
-
-# --- Scope attribution --------------------------------------------------------
 
 
 def test_comparison_reports_first_line_and_col():
@@ -1160,9 +1121,6 @@ def outer(status):
     assert len(_check(src)) == 1
 
 
-# --- match/case string patterns cluster on the subject ------------------------
-
-
 def test_match_case_string_patterns_should_cluster():
     src = """
 def handle(status: str) -> int:
@@ -1240,9 +1198,6 @@ def handle(obj) -> int:
     assert _check(src) == []
 
 
-# --- Edge cases: parsing, nesting, combined -----------------------------------
-
-
 def test_empty_source_returns_empty():
     assert _check("") == []
 
@@ -1271,9 +1226,7 @@ def route(kind: str) -> int:
     assert [d.line for d in diags] == sorted(d.line for d in diags)
 
 
-# --------------------------------------------------------------------------- #
 # FP-hardening (famous-repo sweep): wire-bound variables (subscript / .get()). #
-# --------------------------------------------------------------------------- #
 
 
 def test_subscript_bound_variable_is_exempt():
@@ -1325,9 +1278,7 @@ def dispatch(kind):
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # FP-hardening (famous-repo sweep): domains defined somewhere else.           #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(

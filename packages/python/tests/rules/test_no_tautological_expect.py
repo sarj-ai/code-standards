@@ -16,9 +16,7 @@ def _count(source: str) -> int:
     return len(_check(source))
 
 
-# ---------------------------------------------------------------------------
 # Positive: the assertion's outcome is decided by its own literals.
-# ---------------------------------------------------------------------------
 
 
 def test_flags_bare_assert_true():
@@ -198,10 +196,7 @@ def test_the_construction_shapes_stay_sarj064s():
     assert _count(isinstance_check) == 0
 
 
-# ---------------------------------------------------------------------------
-# Negative: self-comparison of a real value. Measured ~95% false positives —
-# reflexivity, determinism and memoization are exactly what these tests verify.
-# ---------------------------------------------------------------------------
+# Negative: self-comparison of a real value.
 
 
 def test_ignores_identifier_self_comparison():
@@ -235,9 +230,7 @@ def test_ignores_unittest_self_comparison_of_a_value():
     assert _count(src) == 0
 
 
-# ---------------------------------------------------------------------------
 # Negative: the carve-outs.
-# ---------------------------------------------------------------------------
 
 
 def test_ignores_assert_true_as_sole_except_body():
@@ -295,9 +288,7 @@ def test_does_not_treat_a_declared_but_unused_benchmark_param_as_a_benchmark():
     assert _count(src) == 1
 
 
-# ---------------------------------------------------------------------------
 # Negative: assertions whose truth the code decides.
-# ---------------------------------------------------------------------------
 
 
 def test_ignores_assert_false():
@@ -358,10 +349,7 @@ def test_ignores_empty_source():
     assert _count("") == 0
 
 
-# --------------------------------------------------------------------------- #
-# `match` arms. The generalisation of the except-handler marker: when one arm   #
-# always fails, a constant assertion in another arm says which pattern matched. #
-# --------------------------------------------------------------------------- #
+# `match` arms.
 
 
 def test_ignores_assert_true_marking_a_match_arm_beside_a_raising_arm():

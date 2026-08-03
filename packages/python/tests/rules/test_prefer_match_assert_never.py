@@ -24,9 +24,7 @@ class Status(StrEnum):
 """
 
 
-# --------------------------------------------------------------------------- #
 # Detector (a): silent `case _:` behind enum-member arms.                      #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -189,9 +187,7 @@ class Router:
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Detector (a) negatives: loud/value-returning fallthroughs.                   #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -241,9 +237,7 @@ def handle(kind):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Detector (a) negatives: open-set arm shapes never qualify.                   #
-# --------------------------------------------------------------------------- #
 
 
 def test_allows_string_literal_arms():
@@ -477,9 +471,7 @@ def handle(kind):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Detector (a) negatives: wildcard shape gates.                                #
-# --------------------------------------------------------------------------- #
 
 
 def test_allows_single_real_arm_match():
@@ -542,9 +534,7 @@ def handle(kind):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Detector (b): if/elif over a LOCAL enum with a silent else.                  #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -849,9 +839,7 @@ def handle(status):
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Both detectors together; edge cases.                                         #
-# --------------------------------------------------------------------------- #
 
 
 def test_both_detectors_fire_independently_and_sorted():
@@ -889,9 +877,7 @@ def test_syntax_error_returns_empty():
     assert _check("def f(:\n    pass") == []
 
 
-# --------------------------------------------------------------------------- #
 # Detector (c): handler dict that does not cover the enum.                     #
-# --------------------------------------------------------------------------- #
 
 
 def test_flags_handler_dict_missing_a_member():

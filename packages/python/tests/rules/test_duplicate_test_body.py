@@ -17,9 +17,7 @@ def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
     return DuplicateTestBody().check(Path(path), source)
 
 
-# The canonical shape: same three statements, different locals, one literal
-# apart. `u`/`allowed` vs `user`/`ok` is the naming difference the local-name
-# canonicalization exists to see through.
+# The canonical shape: same three statements, different locals, one literal apart.
 _COPY_PASTED_PAIR = """
 def test_admin_can_delete():
     u = make_user(role="admin")
@@ -34,9 +32,7 @@ def test_editor_can_delete():
 """
 
 
-# --------------------------------------------------------------------------- #
 # Path gating and generated sources.                                           #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("path", ["test_x.py", "x_test.py", "a/tests/thing.py", "conftest.py"])
@@ -58,9 +54,7 @@ def test_the_same_module_without_the_generated_header_still_fires():
     assert len(_check("# Hand-written table-driven checks.\n" + _COPY_PASTED_PAIR)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # Positive: what the rule is for.                                              #
-# --------------------------------------------------------------------------- #
 
 
 def test_flags_the_copy_and_not_the_original():
@@ -71,10 +65,7 @@ def test_flags_the_copy_and_not_the_original():
 
 
 def test_flags_a_group_once_on_its_first_copy():
-    # One diagnostic per group, not per copy. A module that repeats one body N
-    # times is a single `parametrize` refactor, and N-1 diagnostics for one
-    # decision reads as N-1 problems: one first-party chunker test emitted
-    # eight, all naming the same original.
+    # One diagnostic per group, not per copy.
     src = """
 def test_one():
     x = build("a")
@@ -132,11 +123,7 @@ def test_two():
     thing.run()
     assert thing.done
 """
-    # A verbatim copy cannot be collapsed into a `parametrize` — there is no
-    # varying argument to lift — so the advice has to differ from the ordinary
-    # case. Every byte-for-byte pair read across the corpora was a copy-paste
-    # that never got its edit: `prefect`'s test_unset_async is test_unset, and
-    # one first-party `test_admin_can_delete_any_record` has no admin in it.
+    # A verbatim copy cannot be collapsed into a `parametrize` — there is no varying argument to lift — so the advice has to differ from the ordinary case.
     [diag] = _check(src)
     assert "is a verbatim copy of" in diag.message
     assert "never got its edit" in diag.message
@@ -175,18 +162,7 @@ async def test_two():
 
 
 def test_differing_docstrings_suppress_a_duplicate():
-    # Reversed in the 0.22.0 wave. This rule and SARJ070 `prefer-or-pattern`
-    # shipped together taking opposite positions on the same signal: SARJ070
-    # suppresses when two arms carry different comments, because merging forces
-    # one of them to be deleted. Stripping the docstring here said the opposite.
-    #
-    # SARJ070's guard is measured on two independent sites — one first-party
-    # analytics site (`# 7 data points` / `# 30-31 data points`) and
-    # litellm's user_api_key_auth_mcp.py:776 (`# Unreachable: kept for match
-    # exhaustiveness`) — and on the standards repo's own suite 29 of 125
-    # findings paired tests whose differing documentation is provenance no
-    # `ids=` can carry: two corpus citations, or two regression pins naming the
-    # separate bugs they hold down.
+    # Reversed in the 0.22.0 wave.
     src = '''
 def test_one():
     """Admins may delete."""
@@ -274,9 +250,7 @@ def test_two():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # The message: it must name the original and the literals that differ.         #
-# --------------------------------------------------------------------------- #
 
 
 def test_message_names_both_tests_and_the_originals_line():
@@ -335,10 +309,7 @@ def test_two():
     assert "..." in diag.message
 
 
-# --------------------------------------------------------------------------- #
-# FP guard: unittest.TestCase. pytest cannot parametrize those, so the fix the  #
-# message asks for does not exist there. 458 of django's 458 hits.              #
-# --------------------------------------------------------------------------- #
+# FP guard: unittest.TestCase.
 
 
 @pytest.mark.parametrize(
@@ -475,10 +446,8 @@ class TestDeletion:
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # FP guard: identity lives outside the body — container, decorators,            #
 # async-ness, and the parameter list.                                          #
-# --------------------------------------------------------------------------- #
 
 
 def test_identical_bodies_in_different_classes_are_exempt():
@@ -663,10 +632,7 @@ class TestThing:
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
-# FP guard: only literals and locally-bound names are erased. Everything that   #
-# names *what* is under test survives normalization.                            #
-# --------------------------------------------------------------------------- #
+# FP guard: only literals and locally-bound names are erased.
 
 
 @pytest.mark.parametrize(
@@ -834,10 +800,7 @@ d""")
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
-# FP guard: short bodies. Two three-line tests of the same helper are alike by  #
-# construction, and grouping them measures nothing.                            #
-# --------------------------------------------------------------------------- #
+# FP guard: short bodies.
 
 
 def test_a_two_statement_body_is_not_evidence():
@@ -902,9 +865,7 @@ def test_two():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Collection: pytest only collects module-level functions and class methods.    #
-# --------------------------------------------------------------------------- #
 
 
 def test_a_test_named_function_nested_in_a_helper_is_not_collected():
@@ -961,9 +922,7 @@ def test_alpha():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Edge cases.                                                                  #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("source", ["", "  \n\n ", "# comment\n"])
@@ -1061,13 +1020,7 @@ def test_two():
 
 
 def test_a_pathologically_deep_body_does_not_exhaust_the_stack():
-    """Normalisation deep-copies and `ast.dump`s each body, both recursive.
-
-    A left-nested `+` spine of a few thousand terms exhausts the stack, and the
-    `RecursionError` would escape `check()` and abort the whole lint run rather
-    than skip the file. Generated source only — the deepest real test-file AST
-    measured across 43k files is 33 levels.
-    """
+    """Normalisation deep-copies and `ast.dump`s each body, both recursive."""
     body = "e = " + " + ".join(['"a"'] * 1500)
     src = f"def test_one():\n    {body}\n    assert e\n\n\ndef test_two():\n    {body}\n    assert e\n"
     assert _check(src) == []

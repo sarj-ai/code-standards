@@ -49,7 +49,6 @@ def test_a_docstring_naming_something_new_is_left_alone() -> None:
 
 
 def test_the_test_ceremony_vocabulary_is_discounted() -> None:
-    """`Test that ... correctly` is spent on BEING a test, not on which test it is."""
     diags = _check('''
         def test_widget_renders():
             """Verify that the widget renders correctly."""
@@ -59,11 +58,7 @@ def test_the_test_ceremony_vocabulary_is_discounted() -> None:
 
 
 def test_a_word_the_body_already_carries_is_not_novel() -> None:
-    """The body is code the reader has in front of them; a docstring re-spelling it adds nothing.
-
-    `None` is part of that: `assert x is None` puts the word on the screen, so a
-    docstring saying "is None" carries nothing the reader has not already seen.
-    """
+    """The body is code the reader has in front of them; a docstring re-spelling it adds nothing."""
     diags = _check('''
         def test_lookup():
             """Test that a missing beneficiary is None."""

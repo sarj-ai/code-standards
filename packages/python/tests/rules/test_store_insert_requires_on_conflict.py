@@ -16,9 +16,7 @@ def _count(source: str, path: str = "foo_store.py") -> int:
     return len(_check(source, path))
 
 
-# --------------------------------------------------------------------------- #
 # Positive — a bare write with no ON CONFLICT must fire exactly once.          #
-# --------------------------------------------------------------------------- #
 
 FIRES = [
     pytest.param('q = "INSERT INTO t (id) VALUES (%s)"', id="bare_values"),
@@ -93,9 +91,7 @@ def test_fires_once(src: str) -> None:
     assert "upsert" in diags[0].message.lower()
 
 
-# --------------------------------------------------------------------------- #
 # Negative — legitimate / exempt SQL must not fire.                           #
-# --------------------------------------------------------------------------- #
 
 CLEAN = [
     pytest.param(
@@ -158,9 +154,7 @@ def test_does_not_fire(src: str) -> None:
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Multiline reporting                                                          #
-# --------------------------------------------------------------------------- #
 
 
 def test_multiline_triple_quoted_reports_string_start_line() -> None:
@@ -194,9 +188,7 @@ def test_plus_concat_reports_left_operand_position() -> None:
     assert diags[0].col == 5
 
 
-# --------------------------------------------------------------------------- #
 # Multiple findings                                                            #
-# --------------------------------------------------------------------------- #
 
 
 def test_each_insert_flagged_separately_and_sorted() -> None:
@@ -222,9 +214,7 @@ def test_mixed_clean_and_dirty_only_flags_dirty() -> None:
     assert diags[0].line == 2
 
 
-# --------------------------------------------------------------------------- #
 # Suppression                                                                 #
-# --------------------------------------------------------------------------- #
 
 
 def test_diagnostic_line_is_suppressible_by_sarj_noqa() -> None:
@@ -234,11 +224,7 @@ def test_diagnostic_line_is_suppressible_by_sarj_noqa() -> None:
     assert is_suppressed(src.splitlines(), diags[0].line, diags[0].code)
 
 
-# --------------------------------------------------------------------------- #
-# Path gate — the rule fires only on store-layer modules (`*_store.py` basename #
-# or a file under a `stores/` directory). Non-store SQL (Flask view handlers)   #
-# legitimately writes bare INSERTs and is out of scope.                         #
-# --------------------------------------------------------------------------- #
+# Path gate — the rule fires only on store-layer modules (`*_store.py` basename # or a file under a `stores/` directory).
 
 
 @pytest.mark.parametrize("path", ["foo_store.py", "stores/foo.py"])
@@ -251,9 +237,7 @@ def test_nonstore_file_not_flagged(path: str) -> None:
     assert _count('q = "INSERT INTO t (id) VALUES (1)"', path) == 0
 
 
-# --------------------------------------------------------------------------- #
 # Known limitations (xfail) — documented false negatives.                      #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.xfail(
@@ -278,9 +262,7 @@ def test_on_conflict_in_unrelated_statement_wrongly_excuses() -> None:
     assert _count(src) == 1
 
 
-# --------------------------------------------------------------------------- #
 # New passing regressions — correct behavior on previously untested shapes.    #
-# --------------------------------------------------------------------------- #
 
 NEW_FIRES = [
     pytest.param(
@@ -309,11 +291,7 @@ def test_new_fires_once(src: str) -> None:
     assert diags[0].code == "SARJ018"
 
 
-# --------------------------------------------------------------------------- #
-# String-literal awareness: an ON CONFLICT / `--` inside a quoted VALUE no       #
-# longer excuses or falsely trips a finding. The remaining `+`-concat split      #
-# stays xfail (keywords span separate Constant segments).                        #
-# --------------------------------------------------------------------------- #
+# String-literal awareness: an ON CONFLICT / `--` inside a quoted VALUE no       # longer excuses or falsely trips a finding.
 
 
 def test_on_conflict_inside_inserted_string_value_wrongly_excuses() -> None:
@@ -337,14 +315,7 @@ def test_plus_concat_runtime_value_between_keywords_is_missed() -> None:
     assert _count(src) == 1
 
 
-# --------------------------------------------------------------------------- #
-# First-party review regression: a test file is never a store module.           #
-#                                                                               #
-# `test_<x>_store.py` ends in `_store.py`, so the store-layer naming test used   #
-# to sweep in the tests FOR the store layer. A fixture that seeds one row per    #
-# test needs no ON CONFLICT — idempotency is what the per-test database reset    #
-# provides — and raw SQL in tests is already judged by SARJ036.                  #
-# --------------------------------------------------------------------------- #
+# First-party review regression: a test file is never a store module.
 
 
 @pytest.mark.parametrize(
@@ -374,14 +345,7 @@ def test_production_store_modules_still_fire(path: str) -> None:
     assert _count(src, path) == 1
 
 
-# --------------------------------------------------------------------------- #
-# Cross-package parity with SARJ105 and the TS twin                            #
-# (`packages/sql/.../insert_requires_on_conflict.py`,                          #
-#  `packages/typescript/src/rules/store-insert-requires-on-conflict.ts`).      #
-# All three must share ONE definition of "already idempotent" and ONE          #
-# definition of a real insert write. If one of these fails, the three          #
-# implementations have drifted again — fix the drift, not the test.            #
-# --------------------------------------------------------------------------- #
+# Cross-package parity with SARJ105 and the TS twin                            # (`packages/sql/.../insert_requires_on_conflict.py`,                          # `packages/typescript/src/rules/store-insert-requires-on-conflict.ts`).
 
 ALREADY_IDEMPOTENT = [
     pytest.param(
@@ -409,7 +373,7 @@ def test_insert_or_abort_is_not_excused() -> None:
 
 
 def test_prose_mentioning_insert_into_and_values_does_not_fire() -> None:
-    """The old `.*?` under DOTALL matched `insert into ... values` across a whole sentence."""
+    """The old `.*?` under DOTALL matched `insert into ..."""
     src = 'msg = "failed to insert into the queue: values were rejected by the broker"'
     assert _count(src) == 0
 

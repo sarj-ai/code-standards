@@ -301,9 +301,6 @@ def test_three_char_symbol_run_is_not_a_banner():
 
 
 def test_flags_leading_file_header_preamble():
-    # A content-free header: bare labels, nothing explained. A preamble that
-    # carries a prose sentence is documentation and is exempt — see
-    # `test_preamble_with_a_prose_sentence_is_documentation`.
     src = "# module: ingest\n# author: apham\n# version: 3\n# status: draft\nimport os\n"
     diags = _check(src)
     assert len(diags) == 1
@@ -316,14 +313,6 @@ def test_preamble_message_reports_line_count():
     diags = _check(src)
     assert len(diags) == 1
     assert "(5 lines)" in diags[0].message
-
-
-# --- file-header preamble: the "no prose sentence" guard -------------------
-# Shared spec with the TS twin's `fileHeaderPreamble` arm. The naive
-# 4-consecutive-comment-lines test penalises syntax rather than content, so it
-# flags a module header precisely when someone bothered to write one. Measured
-# over two first-party repos + django/fastapi/celery: 7 hits, 7 false positives.
-# Each case below is minimized from one of them.
 
 
 def test_preamble_with_a_prose_sentence_is_documentation():
@@ -441,7 +430,6 @@ def test_comment_run_after_module_docstring_is_not_a_preamble():
 
 
 def test_preamble_and_embedded_banner_both_flag():
-    # The second `====` run follows another banner line, so it is a real
     # section banner, not a heading underline beneath prose.
     src = "# alpha note\n# ================\n# ================\n# delta note\nimport os\n"
     diags = _check(src)
@@ -675,9 +663,7 @@ def test_step_narration_without_rationale_still_fires():
     assert "narrates" in diags[0].message
 
 
-# --------------------------------------------------------------------------- #
 # FP guards found in a third-party sweep (httpx, flask, rich, pydantic).       #
-# --------------------------------------------------------------------------- #
 
 
 def test_doctest_block_including_its_output_is_exempt():
@@ -727,9 +713,7 @@ def f():
     assert len(_check(src)) == 1
 
 
-# --------------------------------------------------------------------------- #
 # FP guards found in a 2,657-file sweep (pydantic, fastapi, black, flask, ...). #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -853,9 +837,6 @@ def test_header_preamble_with_a_single_letter_still_flags():
     assert "preamble" in diags[0].message
 
 
-# --- region markers vs prose that opens with the word "region" ---------------
-
-
 @pytest.mark.parametrize(
     "body",
     [
@@ -888,9 +869,6 @@ def test_prose_opening_with_region_is_not_a_marker(body: str):
     assert _standalone(body) == []
 
 
-# --- ticket-bearing scoping notes --------------------------------------------
-
-
 def test_meta_commentary_with_a_ticket_is_exempt():
     assert _standalone("EN-only for now; add an AR variant once AR audio exists (PROJ-249)") == []
 
@@ -913,9 +891,6 @@ def test_meta_commentary_without_a_ticket_still_fires():
     diags = _standalone("quick fix, clean this up")
     assert len(diags) == 1
     assert "narrates" in diags[0].message
-
-
-# --- SARJ016 extensions -------------------------------------------------------
 
 
 @pytest.mark.parametrize("body", ["Constants", "Helpers", "Types", "Main", "Handlers:", "Hooks"])

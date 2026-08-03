@@ -80,9 +80,6 @@ def test_identifier_words_do_not_rescue_the_comment():
     assert len(_check("stale_time = 5 * 60 * 1000  # stale time: 5 minutes\n")) == 1
 
 
-# --- the remedy needs a name to put the unit in -------------------------------
-
-
 NO_NAME_TO_FIX = [
     # The comment is the only carrier of the unit; there is nothing to rename.
     'payload = {\n    "value": 60,  # 60 seconds\n}\n',
@@ -109,7 +106,6 @@ NO_UNIT_NAMED = [
 @pytest.mark.parametrize("line", NO_UNIT_NAMED)
 def test_comment_without_a_unit_word_is_kept(line: str):
     # The rule's premise is that the comment adds exactly one thing — the unit.
-    # Without a unit word it is stating something else, and something else stays.
     assert _check(f"{line}\n") == []
 
 

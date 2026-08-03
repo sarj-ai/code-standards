@@ -33,9 +33,7 @@ def test_no_bearer_skips_lookup():
 """
 
 
-# --------------------------------------------------------------------------- #
 # Path gating.                                                                 #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("path", ["test_x.py", "x_test.py", "a/tests/y.py", "conftest.py"])
@@ -48,9 +46,7 @@ def test_skips_non_test_paths(path: str):
     assert _check(_OVERWRITTEN, path) == []
 
 
-# --------------------------------------------------------------------------- #
 # Shape A: the configuration is overwritten before anything can read it.       #
-# --------------------------------------------------------------------------- #
 
 
 def test_flags_adjacent_overwrite():
@@ -120,9 +116,6 @@ def test_charge():
     assert billing.charge(gateway) == 2
 """
     assert len(_check(src)) == 1
-
-
-# ---- false-positive guards: something in between could have read the value ----
 
 
 @pytest.mark.parametrize(
@@ -244,9 +237,7 @@ def test_charge():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Shape B: the test asserts the configured path was never called.              #
-# --------------------------------------------------------------------------- #
 
 
 def test_flags_configuration_contradicted_by_assert_not_called():
@@ -346,18 +337,13 @@ def test_the_exact_assert_not_called_message():
 
 
 def test_the_act_on_the_assertions_own_line_still_precedes_it():
-    # Boundary on `last_effect <= line`: the last thing that can drive the mock
-    # shares a line with the assertion, so it still ran *before* it and nothing
-    # follows. Anything stricter than `<=` loses this.
+    # Boundary on `last_effect <= line`: the last thing that can drive the mock shares a line with the assertion, so it still ran *before* it and nothing follows.
     src = """
 def test_skips_lookup():
     service.lookup.return_value = None
     handle(request); service.lookup.assert_not_called()
 """
     assert len(_check(src)) == 1
-
-
-# ---- false-positive guards: the assertion is a checkpoint, not the verdict ----
 
 
 @pytest.mark.parametrize(
@@ -476,9 +462,7 @@ def test_lookup():
 
 
 def test_a_configuration_on_the_assertions_own_line_is_still_for_what_comes_next():
-    # Boundary on `line > stmt.lineno`: same line, configuration second. The
-    # assertion describes the state before it, exactly as when they are on
-    # separate lines, so relaxing the comparison to `>=` would misfire here.
+    # Boundary on `line > stmt.lineno`: same line, configuration second.
     src = """
 def test_lookup():
     service.lookup.assert_not_called(); service.lookup.return_value = None
@@ -531,10 +515,7 @@ def test_lookup():
 
 
 def test_a_nested_helpers_configuration_does_not_pair_with_the_outer_assertion():
-    # The mirror of the case above, and the one that pins `_NESTED_SCOPES`: a
-    # nested `def` owns its own scope, so the rule refuses to pair across the
-    # boundary in either direction. Both misses are the price of never guessing
-    # when a helper runs.
+    # The mirror of the case above, and the one that pins `_NESTED_SCOPES`: a nested `def` owns its own scope, so the rule refuses to pair across the boundary in either direction.
     src = """
 def test_lookup():
     def _arrange():
@@ -547,9 +528,7 @@ def test_lookup():
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Shapes the rule deliberately cannot see — documented in the docstring.       #
-# --------------------------------------------------------------------------- #
 
 
 def test_a_configured_path_never_mentioned_again_is_not_flagged():
@@ -645,9 +624,7 @@ gateway.charge.return_value = 2
     assert _check(src) == []
 
 
-# --------------------------------------------------------------------------- #
 # Edge cases.                                                                  #
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("source", ["", "  \n\n ", "# comment\n"])

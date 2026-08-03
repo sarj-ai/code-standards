@@ -1,10 +1,4 @@
-"""Direct tests for the docstring parser shared by SARJ049/SARJ065/SARJ084.
-
-The three docstring-ceremony rules all decide "does this docstring say anything
-the signature does not" from the same parse. A section-splitting or
-signature-stem regression therefore moves findings in all three at once, and
-each of their suites reports it as an unrelated failure.
-"""
+"""Direct tests for the docstring parser shared by SARJ049/SARJ065/SARJ084."""
 
 import ast
 
@@ -114,12 +108,7 @@ def test_the_value_marker_ignores_a_plain_restatement() -> None:
     ["@router.post('/widgets')", "@app.get('/x')", "@click.command()", "@function_tool"],
 )
 def test_a_consumed_docstring_is_recognised_by_its_decorator(decorator: str) -> None:
-    """These docstrings are artefacts -- an OpenAPI description, `--help`, a tool prompt.
-
-    The routing case was found by a corpus sweep rather than predicted: a
-    `@router.post(...)` handler's one-line docstring is the text an API consumer
-    reads in the generated schema.
-    """
+    """These docstrings are artefacts -- an OpenAPI description, `--help`, a tool prompt."""
     node = _func(f"{decorator}\ndef handler() -> None: ...")
     assert decorator_markers(node) & PROMPT_DECORATOR_MARKERS
 
