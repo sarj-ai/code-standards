@@ -504,6 +504,32 @@ class TestThing:
 @pytest.mark.parametrize(
     ("first", "second"),
     [
+        pytest.param("(case=build(1))", "(case=build(2))", id="defaults"),
+        pytest.param("(case: First)", "(case: Second)", id="parameter-annotations"),
+        pytest.param("(case, /)", "(*, case)", id="parameter-kinds"),
+        pytest.param("(case) -> First", "(case) -> Second", id="return-annotations"),
+        pytest.param("[T]()", "[U]()", id="type-parameters"),
+    ],
+)
+def test_tests_whose_signatures_differ_are_exempt(first: str, second: str):
+    src = f"""
+def test_one{first}:
+    value = prepare()
+    result = run(value)
+    assert result
+
+
+def test_two{second}:
+    value = prepare()
+    result = run(value)
+    assert result
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [
         ('@pytest.mark.xfail(reason="ipv6 unsupported")', '@pytest.mark.xfail(reason="ipv4 only")'),
         ('@pytest.mark.skipif(sys.platform == "win32")', '@pytest.mark.skipif(sys.platform == "darwin")'),
         ("@override_settings(USE_TZ=True)", "@override_settings(USE_TZ=False)"),
@@ -695,6 +721,98 @@ def test_two():
     assert len(_check(src)) == 1
 
 
+def test_comprehension_targets_do_not_rename_global_dependencies():
+    src = """
+def test_one():
+    result = use(x)
+    values = [x for x in rows]
+    assert result
+
+
+def test_two():
+    result = use(y)
+    values = [y for y in rows]
+    assert result
+"""
+    assert _check(src) == []
+
+
+def test_comprehension_walrus_targets_are_containing_scope_bindings():
+    src = """
+def test_one():
+    values = load(1)
+    results = [normalized := normalize(item) for item in values]
+    assert normalized
+
+
+def test_two():
+    values = load(2)
+    results = [clean := normalize(item) for item in values]
+    assert clean
+"""
+    assert len(_check(src)) == 1
+
+
+def test_nested_bindings_do_not_rename_global_dependencies():
+    src = """
+def test_one():
+    result = use(x)
+    def helper():
+        x = build()
+        return x
+    assert result
+
+
+def test_two():
+    result = use(y)
+    def helper():
+        y = build()
+        return y
+    assert result
+"""
+    assert _check(src) == []
+
+
+def test_nested_function_defaults_bind_in_the_containing_scope():
+    src = """
+def test_one():
+    def helper(value=(captured := build(1))):
+        return value
+    result = use(captured)
+    assert result
+
+
+def test_two():
+    def helper(value=(cached := build(2))):
+        return value
+    result = use(cached)
+    assert result
+"""
+    assert len(_check(src)) == 1
+
+
+def test_outer_bindings_do_not_rename_nested_class_attributes():
+    src = """
+def test_one():
+    @(outer_a := decorate())
+    class Subject:
+        outer_a = build()
+        result = use(outer_a)
+    value = inspect(Subject)
+    assert value
+
+
+def test_two():
+    @(outer_b := decorate())
+    class Subject:
+        outer_b = build()
+        result = use(outer_b)
+    value = inspect(Subject)
+    assert value
+"""
+    assert _check(src) == []
+
+
 def test_locals_bound_in_a_different_order_are_a_different_shape():
     src = """
 def test_one():
@@ -741,14 +859,10 @@ def test_two():
             "if result := normalize(value):\n        assert result",
             "if normalized := normalize(value):\n        assert normalized",
         ),
-        (
-            "results = [normalize(item) for item in value]\n    assert results",
-            "normalized = [normalize(row) for row in value]\n    assert normalized",
-        ),
     ],
-    ids=["except-as", "walrus", "comprehension-target"],
+    ids=["except-as", "walrus"],
 )
-def test_all_body_binding_forms_are_canonicalized(first: str, second: str):
+def test_same_scope_binding_forms_are_canonicalized(first: str, second: str):
     src = f"""
 def test_one():
     value = load(1)
