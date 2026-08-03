@@ -6,11 +6,10 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import re
-import tokenize
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule
-from sarj_python_lint.rules._suppression_comments import Comment, scan_comments
+from sarj_python_lint.rules._suppression_comments import Comment, scan_comments_or_none
 
 
 if TYPE_CHECKING:
@@ -57,9 +56,8 @@ class NoFileLevelSuppression(Rule):
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
         """Report every unscoped module-scope suppression blanket in `source`."""
-        try:
-            comments = scan_comments(source)
-        except tokenize.TokenError, IndentationError, SyntaxError:
+        comments = scan_comments_or_none(source)
+        if comments is None:
             return []
         diags = [
             Diagnostic(path=path, line=comment.line, col=comment.col, code=self.code, message=message)
