@@ -291,9 +291,8 @@ def test_region_and_endregion_both_flag():
 
 
 def test_box_drawing_run_is_a_banner():
-    diags = _check("x = 1\n# ════════\ny = 2\n")
-    assert len(diags) == 1
-    assert "Section-banner" in diags[0].message
+    (diag,) = _check("x = 1\n# ════════\ny = 2\n")
+    assert "Section-banner" in diag.message
 
 
 def test_three_char_symbol_run_is_not_a_banner():
@@ -501,10 +500,22 @@ def test_full_only_fill_chars_do_not_flag_inside_prose(body: str):
     assert _standalone(body) == []
 
 
-def test_trailing_inline_comment_on_commented_out_code_still_flags():
-    diags = _standalone("x = compute()  # legacy path")
-    assert len(diags) == 1
-    assert "Commented-out code" in diags[0].message
+@pytest.mark.parametrize(
+    ("body", "message"),
+    [
+        pytest.param("x = compute()  # legacy path", "Commented-out code", id="trailing-inline-comment"),
+        pytest.param("ENDREGION", "Section-banner", id="uppercase-endregion"),
+        pytest.param("return النتيجة", "Commented-out code", id="arabic-identifier"),
+        pytest.param("==== قسم ====", "Section-banner", id="arabic-banner"),
+        pytest.param("todos = []", "Commented-out code", id="todos-assignment"),
+        pytest.param("noqant = fetch()", "Commented-out code", id="noqa-prefix"),
+        pytest.param("quick fix, clean this up", "narrates", id="meta-commentary"),
+        pytest.param("1. Load the config", "narrates", id="enumeration-marker"),
+    ],
+)
+def test_standalone_cruft_flags(body: str, message: str):
+    (diag,) = _standalone(body)
+    assert message in diag.message
 
 
 def test_annotated_assignment_with_call_rhs_is_not_flagged():
@@ -533,12 +544,6 @@ def test_directive_without_space_after_colon_is_ignored():
     assert _standalone("fmt:off") == []
 
 
-def test_uppercase_endregion_is_flagged():
-    diags = _standalone("ENDREGION")
-    assert len(diags) == 1
-    assert "Section-banner" in diags[0].message
-
-
 def test_word_starting_with_region_is_not_a_banner():
     assert _standalone("regionally we differ here") == []
 
@@ -547,36 +552,12 @@ def test_arabic_prose_comment_is_not_flagged():
     assert _standalone("نتحقق من الرقم قبل الإرسال") == []
 
 
-def test_commented_code_with_arabic_identifier_is_flagged():
-    diags = _standalone("return النتيجة")
-    assert len(diags) == 1
-    assert "Commented-out code" in diags[0].message
-
-
-def test_ascii_banner_around_arabic_text_is_flagged():
-    diags = _standalone("==== قسم ====")
-    assert len(diags) == 1
-    assert "Section-banner" in diags[0].message
-
-
 def test_empty_comment_line_counts_toward_preamble():
     src = "# alpha\n#\n# gamma\n# delta\nimport os\n"
     diags = _check(src)
     assert len(diags) == 1
     assert "preamble" in diags[0].message
     assert "(4 lines)" in diags[0].message
-
-
-def test_todos_assignment_is_commented_out_code_not_a_directive():
-    diags = _standalone("todos = []")
-    assert len(diags) == 1
-    assert "Commented-out code" in diags[0].message
-
-
-def test_identifier_starting_with_noqa_is_not_a_directive():
-    diags = _standalone("noqant = fetch()")
-    assert len(diags) == 1
-    assert "Commented-out code" in diags[0].message
 
 
 def test_illustration_under_for_example_lead_in_is_not_flagged():
@@ -617,12 +598,6 @@ def test_banner_preceding_code_line_does_not_suppress_it():
     assert len(diags) == 2
     assert "Section-banner" in diags[0].message
     assert "Commented-out code" in diags[1].message
-
-
-def test_single_dead_code_line_adjacent_to_live_code_still_fires():
-    diags = _standalone("x = foo()")
-    assert len(diags) == 1
-    assert "Commented-out code" in diags[0].message
 
 
 def test_generated_file_is_exempt():
@@ -887,12 +862,6 @@ def test_ticket_anywhere_in_the_run_exempts_the_whole_run():
     assert _check(src) == []
 
 
-def test_meta_commentary_without_a_ticket_still_fires():
-    diags = _standalone("quick fix, clean this up")
-    assert len(diags) == 1
-    assert "narrates" in diags[0].message
-
-
 @pytest.mark.parametrize("body", ["Constants", "Helpers", "Types", "Main", "Handlers:", "Hooks"])
 def test_bare_section_label_flags(body: str):
     diags = _standalone(body)
@@ -936,12 +905,6 @@ def test_third_person_lets_is_kept(body: str):
     assert _standalone(body) == []
 
 
-def test_isolated_enumeration_marker_flags():
-    diags = _standalone("1. Load the config")
-    assert len(diags) == 1
-    assert "narrates" in diags[0].message
-
-
 def test_enumeration_run_is_a_walkthrough_and_is_kept():
     src = "x = 1\n# 1. Load the config\ny = 2\n# 2. Reconcile the rows\nz = 3\n# 3. Emit\nw = 4\n"
     assert _check(src) == []
@@ -962,12 +925,6 @@ def test_section_label_inside_a_literal_groups_its_elements():
     # grouping the names beneath it rather than signposting the file.
     src = '__all__ = [\n    "model_serializer",\n    # config\n    "ConfigDict",\n]\n'
     assert _check(src) == []
-
-
-def test_section_label_at_module_level_still_flags():
-    diags = _check("import os\n\n# Constants\nMAX = 1\n")
-    assert len(diags) == 1
-    assert "narrates" in diags[0].message
 
 
 _LICENSE_HEADER = (

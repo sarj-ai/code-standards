@@ -80,20 +80,16 @@ def test_a_quote_inside_a_comment_does_not_open_a_string() -> None:
     assert "scan" not in stripped
 
 
-def test_a_doubled_quote_stays_part_of_the_value() -> None:
-    stripped = strip_sql_noise("SELECT 'it''s a JOIN' AS s, COUNT(*) FROM t")
-    assert "JOIN" not in stripped
-    assert "COUNT" in stripped
-
-
-def test_a_doubled_double_quote_stays_part_of_the_value() -> None:
-    stripped = strip_sql_noise('SELECT "a "" JOIN b" AS s, COUNT(*) FROM t')
-    assert "JOIN" not in stripped
-    assert "COUNT" in stripped
-
-
-def test_a_block_comment_is_blanked_out() -> None:
-    stripped = strip_sql_noise("SELECT /* JOIN u ON 1 */ COUNT(*) FROM t")
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param("SELECT 'it''s a JOIN' AS s, COUNT(*) FROM t", id="single-quoted-value"),
+        pytest.param('SELECT "a "" JOIN b" AS s, COUNT(*) FROM t', id="double-quoted-value"),
+        pytest.param("SELECT /* JOIN u ON 1 */ COUNT(*) FROM t", id="block-comment"),
+    ],
+)
+def test_sql_noise_is_blanked_out(source: str) -> None:
+    stripped = strip_sql_noise(source)
     assert "JOIN" not in stripped
     assert "COUNT" in stripped
 
