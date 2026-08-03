@@ -32,7 +32,7 @@ def _fn(body: str) -> str:
         ('["a", "b", "c"]', "list"),
         ('{"a": 1, "b": 2, "c": 3}', "dict"),
         ('{"a", "b", "c"}', "set"),
-        ('("a", "b", "c")', "tuple"),
+        ('(["a"], ["b"], ["c"])', "tuple"),
         ('frozenset(["a", "b", "c"])', "frozenset"),
         ('frozenset({"a", "b", "c"})', "frozenset"),
         ("[1, -2, 3.5, 4]", "list"),
@@ -62,7 +62,7 @@ def test_flags_constant_only_displays(value: str, kind: str):
 def test_flags_constant_regex(value: str):
     diags = _check(_fn(f"pattern = {value}\nreturn pattern.match(payload) is not None"))
     assert len(diags) == 1
-    assert "recompiled on every call" in diags[0].message
+    assert "regex-cache lookup on every call" in diags[0].message
 
 
 @pytest.mark.parametrize(
@@ -128,6 +128,11 @@ def test_ignores_class_body_inside_function():
 
 @pytest.mark.parametrize("value", ['["a"]', '["a", "b"]', '{"a": 1, "b": 2}', "frozenset([1, 2])", "()"])
 def test_ignores_displays_below_min_elements(value: str):
+    assert _check(_fn(f"allowed = {value}\nreturn len(allowed)")) == []
+
+
+@pytest.mark.parametrize("value", ['("a", "b", "c")', "((1, 2), (3, 4), (5, -6))"])
+def test_ignores_immutable_literal_tuples(value: str):
     assert _check(_fn(f"allowed = {value}\nreturn len(allowed)")) == []
 
 

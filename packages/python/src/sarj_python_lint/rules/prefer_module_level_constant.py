@@ -1,4 +1,4 @@
-"""SARJ039 — Literal-only constant collection built inside a function — hoist it.
+"""SARJ039 — Runtime-built constant collection or compiled regex inside a function — hoist it.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_module_level_constant.py
 """
@@ -88,8 +88,8 @@ class PreferModuleLevelConstant(Rule):
     id: str = "prefer-module-level-constant"
     code: str = "SARJ039"
     description: str = (
-        "a literal-only collection or compiled regex built inside a function is "
-        "rebuilt on every call — hoist it to module scope."
+        "a runtime-built literal-only collection or compiled regex inside a function repeats "
+        "construction or a regex-cache lookup on every call — hoist it to module scope."
     )
 
     @override
@@ -202,6 +202,8 @@ def _classify(value: ast.expr) -> _Candidate | None:
             return _display_candidate("list", value, len(elts))
         case ast.Set(elts=elts):
             return _display_candidate("set", value, len(elts))
+        case ast.Tuple() if _is_immutable_literal(value):
+            return None
         case ast.Tuple(elts=elts):
             return _display_candidate("tuple", value, len(elts))
         case ast.Dict(keys=keys):
@@ -283,6 +285,19 @@ def _is_constant_only(node: ast.expr, depth: int) -> bool:
         case ast.Dict(keys=keys, values=values):
             entries = [*keys, *values]
             return all(entry is not None and _is_constant_only(entry, depth + 1) for entry in entries)
+        case _:
+            return False
+
+
+def _is_immutable_literal(node: ast.expr) -> bool:
+    """Recognize literal tuples that are not rebuilt at runtime."""
+    match node:
+        case ast.Constant():
+            return True
+        case ast.UnaryOp(op=ast.USub() | ast.UAdd(), operand=ast.Constant(value=int() | float() | complex())):
+            return True
+        case ast.Tuple(elts=elts):
+            return all(_is_immutable_literal(element) for element in elts)
         case _:
             return False
 
@@ -423,9 +438,7 @@ def _dotted_name(node: ast.expr) -> str | None:
 def _message(name: str, candidate: _Candidate) -> str:
     """Render the diagnostic text for one hoistable binding."""
     if candidate.kind == _REGEX_KIND:
-        return (
-            f"`{name}` is a constant regex recompiled on every call — hoist it to module scope so it is compiled once."
-        )
+        return f"`{name}` repeats a regex-cache lookup on every call — hoist it to module scope."
     return (
         f"`{name}` is a constant-only {candidate.kind} rebuilt on every call — hoist it "
         "to module scope so it is built once and can be imported, reused, and tested."
