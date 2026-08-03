@@ -21,9 +21,6 @@ def _check(source: str, path: Path = P) -> list[Diagnostic]:
     return RequireLockTimeout().check(path, source)
 
 
-# Test assignment spellings.
-
-
 @pytest.mark.parametrize(
     "assignment",
     [
@@ -79,9 +76,6 @@ def test_reset_undoes_a_timeout() -> None:
 def test_similarly_named_setting_is_not_lock_timeout() -> None:
     r"""`\b` after the name: `lock_timeout_ms` is a different GUC."""
     assert len(_check("SET lock_timeout_ms = '3s';\nALTER TABLE t ADD COLUMN c INT;\n")) == 1
-
-
-# Test session state.
 
 
 def test_one_finding_per_unprotected_run_not_per_statement() -> None:
@@ -151,9 +145,6 @@ def test_every_ddl_form_needs_a_timeout(ddl: str) -> None:
     assert _check(f"SET lock_timeout = '3s';\n{ddl}\n") == []
 
 
-# Dialect tests.
-
-
 def test_mysql_migration_is_not_asked_for_a_postgres_guc() -> None:
     src = "ALTER TABLE `users` ADD COLUMN `note` TEXT;\n"
     assert _check(src) == []
@@ -168,9 +159,6 @@ def test_postgres_migration_still_fires_next_to_the_dialect_boundary() -> None:
     """The boundary: same DDL, no dialect marker — the guard must not widen to this."""
     src = 'ALTER TABLE "users" ADD COLUMN note TEXT;\n'
     assert len(_check(src)) == 1
-
-
-# Test assignment forms and dump exemptions.
 
 
 def test_set_config_call_counts_as_an_assignment() -> None:

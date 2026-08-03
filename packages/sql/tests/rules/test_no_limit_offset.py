@@ -57,7 +57,7 @@ def test_skips_offset_inside_string_literal():
     assert _check(src) == []
 
 
-# Test cross-package parity with SARJ025 and the TS twin.
+# These fixtures keep this rule aligned with Python SARJ025 and its TypeScript twin.
 
 PARAM_MARKERS = {
     "pyformat": "SELECT id FROM t ORDER BY id LIMIT %s OFFSET %s;",
