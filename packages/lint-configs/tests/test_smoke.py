@@ -429,3 +429,31 @@ def test_ruff_consumes_synced_extend_file(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "error reading config" not in proc.stderr.lower()
     assert "could not resolve" not in proc.stderr.lower()
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def f() -> int:\n    return 1\n",
+        'def f() -> int:\n    """does a thing"""\n    return 1\n',
+    ],
+)
+def test_ruff_does_not_require_or_police_docstrings(tmp_path: Path, source: str) -> None:
+    pytest.importorskip("ruff", reason="ruff not installed in this env")
+    subprocess.run(
+        [sys.executable, "-m", "sarj_lint_configs", "sync", "--only", "ruff", "--dest", str(tmp_path)],
+        check=True,
+    )
+    (tmp_path / "pyproject.toml").write_text('[tool.ruff]\nextend = ".ruff-strict.toml"\n')
+    probe = tmp_path / "probe.py"
+    probe.write_text(source)
+
+    proc = subprocess.run(
+        ["ruff", "check", "--no-cache", str(probe)],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
