@@ -1,29 +1,18 @@
 ---
 name: lint-rule-generator
-description: Automates the process of defining and refining new lint rules from natural language descriptions.
+description: Designs and validates deterministic lint rules from concrete anti-patterns.
 ---
 
-# Lint Rule Generator
+# Lint rule generator
 
-This skill automates the process of defining a new lint rule, from natural language description to a refined, deterministic rule evaluated against real-world codebases.
+Use this skill when the user asks to create or refine a lint rule.
 
-## Instructions
+1. Obtain a precise bad pattern, why it is harmful, applicable languages, exclusions, and examples that must not match.
+2. Search the existing upstream and Sarj rule catalogs. Prefer configuration or extension of an existing rule over new code.
+3. Choose only the implementations needed for the affected languages; do not create both Python and TypeScript variants without evidence.
+4. Build a minimal positive/negative test corpus before implementation. Include near misses, framework idioms, generated code, aliases, nesting, and fixes where applicable.
+5. Implement the narrowest deterministic syntax or semantic check that covers the corpus. Do not encode naming guesses or architectural judgment as a lint error.
+6. Run unit tests, formatter, linter, type checks, and the rule against representative local repositories when available. Inspect every match or a documented sample large enough to estimate false positives.
+7. Refine until the corpus passes and observed false positives are acceptably low. Document limitations, safe autofix behavior, and examples.
 
-When invoked to create a new lint rule, follow this workflow:
-
-1. **Accept Input**:
-   - Ask the user for a natural language description of the issue or anti-pattern they want to prevent.
-
-2. **Draft the Rules**:
-   - Create a deterministic Python AST rule and a TypeScript ESLint rule targeting the described anti-pattern.
-   - Save these rules into your local checkout of the `standards` repository.
-
-3. **Evaluate Against Codebases**:
-   - Run the newly created lint rules against the following repositories to gather matches and evaluate false positives:
-     - at least two first-party repos you have checked out locally (prefer the largest, most actively developed ones).
-     - 10 top open-source TypeScript and Python repositories.
-
-4. **Analyze and Refine**:
-   - Spawn 5 separate subagents to validate and understand the output of linting those repositories.
-   - Have the subagents analyze the findings to identify false positives and make the rule more robust.
-   - Iterate on the rule implementations in the `standards` repository based on the subagents' analysis to refine the logic.
+Do not clone unrelated public repositories, install dependencies, edit external repositories, commit, or publish unless the user separately authorizes those actions.

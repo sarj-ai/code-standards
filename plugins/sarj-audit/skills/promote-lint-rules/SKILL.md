@@ -1,19 +1,16 @@
 ---
 name: promote-lint-rules
-description: Promotes standard rules from "warning" to "error" once a codebase is clean.
+description: Promotes clean lint rules from warning to error without introducing failures.
 ---
 
-# Promote Lint Rules Skill
+# Promote lint rules
 
-This skill monitors and upgrades linting rules in a codebase. Once the codebase is clean of a specific warning, this skill promotes that rule to an error to prevent regressions.
+Use this skill when the user asks to strengthen existing lint severities.
 
-## Instructions
+1. Inventory warning-level rules and scoped suppressions in the repository's effective configuration.
+2. Run the exact lint command used by CI, preserving its environment and file scope.
+3. Promote only rules with zero findings across their full scope. Change the narrowest relevant configuration and preserve unrelated settings.
+4. Rerun the linter and configuration validation. Revert a promotion if it creates errors or changes unrelated behavior.
+5. Report promoted rules, retained warnings and their counts, files changed, and verification commands.
 
-When the user asks to promote lint rules:
-1. Identify any linting rules currently configured as warnings or suppressed in configuration files (e.g., `pyproject.toml`, `.eslintrc`, `.ruff.toml`).
-2. Run the linters to verify if there are any violations of these rules currently in the codebase.
-3. For any rule that currently has ZERO violations (i.e., the codebase is clean for that rule), promote the rule to an `error`.
-    - This involves changing the configuration to treat it as an error or removing the `warn` flag for that specific rule.
-4. If a rule has violations but is close to being clean, suggest running the `ratchet-lint` skill first to burn down the remaining issues.
-5. Verify the updated configuration by running the linter one last time to ensure no new errors were introduced by the promotion.
-6. Commit the changes and provide a summary of the rules promoted.
+Do not remove suppressions, fix violations, commit, or push unless the user separately asks for those actions. Recommend `ratchet-lint` for warning classes that still have findings.
