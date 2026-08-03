@@ -107,10 +107,10 @@ VALUES = [
 
 
 def test_standalone_and_trailing_comments_are_separated() -> None:
-    standalone, first_code_line = standalone_comments(_SOURCE)
-    assert [body for _line, _col, body in standalone] == ["leading note", "inside a bracket"]
+    scan = standalone_comments(_SOURCE)
+    assert [body for _line, _col, body in scan.comments] == ["leading note", "inside a bracket"]
     assert [body for _line, _col, body in trailing_comments(_SOURCE)] == ["trailing note"]
-    assert first_code_line == 2
+    assert scan.first_code_line == 2
 
 
 def test_a_comment_inside_brackets_is_reported_as_nested() -> None:
@@ -125,17 +125,17 @@ def test_consecutive_standalone_comments_group_into_one_run() -> None:
 
 def test_the_suppression_view_shares_the_same_pass() -> None:
     """`all_comments` exists so the suppression rules do not tokenize a second time."""
-    ordered, first_code_line = all_comments(_SOURCE)
-    assert [(body, standalone) for _line, _col, body, standalone in ordered] == [
+    scan = all_comments(_SOURCE)
+    assert [(body, standalone) for _line, _col, body, standalone in scan.comments] == [
         ("leading note", True),
         ("trailing note", False),
         ("inside a bracket", True),
     ]
-    assert first_code_line == 2
+    assert scan.first_code_line == 2
 
 
 def test_a_file_the_tokenizer_rejects_raises_rather_than_reading_as_comment_free() -> None:
     # Every caller catches this and returns no diagnostics; swallowing it here
     # would instead report a broken file as having no comments at all.
-    with pytest.raises((tokenize.TokenError, SyntaxError, IndentationError)):
+    with pytest.raises((tokenize.TokenError, SyntaxError)):
         _ = standalone_comments("def f(:\n")
