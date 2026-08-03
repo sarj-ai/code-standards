@@ -28,6 +28,7 @@ import { ESLint, type Linter } from "eslint";
 import { describe, expect, it } from "vitest";
 
 import strictConfig from "../../lint-configs/src/sarj_lint_configs/configs/eslint.strict.mjs";
+import { rulesOf } from "./_config.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURE_DIR = resolve(HERE, "fixtures/runs");
@@ -58,10 +59,11 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
       overrideConfigFile: true,
       overrideConfig: strictConfig as Linter.Config[],
     });
-    const config = await eslint.calculateConfigForFile(
+    const config: unknown = await eslint.calculateConfigForFile(
       resolve(FIXTURE_DIR, "widget.tsx"),
     );
-    expect(config?.rules?.[rule]?.[0]).toBe(2);
+    const setting = rulesOf(config)[rule];
+    expect(Array.isArray(setting) ? (setting as unknown[])[0] : setting).toBe(2);
   });
 
   it("requires explicit button types inside design-system primitives", () => {
@@ -151,10 +153,10 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
       overrideConfig: strictConfig as Linter.Config[],
     });
     for (const probe of ["example.ts", "widget.tsx"]) {
-      const resolved = await eslint.calculateConfigForFile(
+      const resolved: unknown = await eslint.calculateConfigForFile(
         resolve(FIXTURE_DIR, probe),
       );
-      const live = Object.keys(resolved.rules ?? {}).filter((rule) =>
+      const live = Object.keys(rulesOf(resolved)).filter((rule) =>
         rule.startsWith("react/"),
       );
       expect(

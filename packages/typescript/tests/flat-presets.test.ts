@@ -18,6 +18,7 @@ import { ESLint, type Linter } from "eslint";
 import { describe, expect, it } from "vitest";
 
 import plugin, { recommendedRules, strictRules } from "../src/index.js";
+import { rulesOf } from "./_config.js";
 
 const PRESETS = ["recommended", "strict"] as const;
 
@@ -30,8 +31,8 @@ describe("configs.recommended / configs.strict are flat config", () => {
         plugin.configs[name],
       ] as Linter.Config[],
     });
-    const resolved = await eslint.calculateConfigForFile("src/index.ts");
-    const configured = Object.keys(resolved.rules ?? {});
+    const resolved: unknown = await eslint.calculateConfigForFile("src/index.ts");
+    const configured = Object.keys(rulesOf(resolved));
     // A preset that resolved to nothing would pass "did not throw" while
     // enforcing nothing, which is the same silence the eslintrc shape produced.
     expect(configured.length).toBeGreaterThan(40);
