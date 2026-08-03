@@ -95,8 +95,9 @@ jobs:
           repo="$(mktemp -d)"
           printf '{ "name": "smoke", "private": true }\n' > "$repo/package.json"
           cli="$GITHUB_WORKSPACE/packages/lint-configs/.venv/bin/sarj-lint-configs"
-          "$cli" init --dest "$repo"
+          "$cli" init --dest "$repo" --no-install
           python -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if 'eslint-plugin-react' in d.get('overrides', {}) else 1)" "$repo/package.json"
+          npm --prefix "$repo" pkg delete 'devDependencies.@sarj/eslint-plugin'
           # Resolution only, and without the unpublished @sarj/eslint-plugin pin:
           # this asserts the peer set + overrides produce a tree npm accepts.
           (cd "$repo" && npm install --package-lock-only --no-audit --no-fund \
