@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import ast
 import re
-from typing import TYPE_CHECKING, NamedTuple, override
+from typing import TYPE_CHECKING, Final, Literal, NamedTuple, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
 from sarj_python_lint.rules._ast_index import nodes, walk
@@ -29,10 +29,12 @@ _MOCK_FACTORIES = frozenset(
     {"Mock", "MagicMock", "AsyncMock", "NonCallableMock", "NonCallableMagicMock", "create_autospec"}
 )
 
-_PATCH = "patch"
+type _PatchSubform = Literal["patch", "object", "multiple", "dict"]
+
+_PATCH: Final = "patch"
 
 # `patch.object` / `patch.multiple` / `patch.dict` — the sub-forms of `patch`.
-_PATCH_SUBFORMS = frozenset({"object", "multiple", "dict"})
+_PATCH_SUBFORMS: Final[frozenset[_PatchSubform]] = frozenset({"object", "multiple", "dict"})
 
 # `patch.multiple(target, spec=..., a=Mock())`: everything that is NOT one of
 # these keywords names an attribute being replaced.
@@ -294,7 +296,7 @@ class _MockNames:
             return isinstance(node.value, ast.Name) and node.value.id in self.modules
         return False
 
-    def patch_subform(self, func: ast.expr) -> str | None:
+    def patch_subform(self, func: ast.expr) -> _PatchSubform | None:
         """Map a callee onto the `patch` form it invokes."""
         if isinstance(func, ast.Name):
             return _PATCH if self.symbols.get(func.id) == _PATCH else None
@@ -373,7 +375,7 @@ def _class_injected_owners(owner: ast.ClassDef | None, names: _MockNames) -> lis
     return injected
 
 
-def _injected_owners(call: ast.Call, subform: str, names: _MockNames) -> list[str | None]:
+def _injected_owners(call: ast.Call, subform: _PatchSubform, names: _MockNames) -> list[str | None]:
     """Say which collaborator each parameter this decorator prepends stands for."""
     if subform in {_PATCH, "object"}:
         if _has_replacement(call, subform):
@@ -385,7 +387,7 @@ def _injected_owners(call: ast.Call, subform: str, names: _MockNames) -> list[st
     return []
 
 
-def _has_replacement(call: ast.Call, subform: str) -> bool:
+def _has_replacement(call: ast.Call, subform: _PatchSubform) -> bool:
     # `patch(target, new)` / `patch.object(target, attr, new)` supply the
     # replacement themselves, so nothing is injected into the signature.
     positional = _PATCH_REPLACEMENT_ARITY if subform == _PATCH else _PATCH_OBJECT_REPLACEMENT_ARITY
@@ -500,7 +502,7 @@ def _collaborator_of(node: ast.expr) -> str | None:
     return parts[0]
 
 
-def _patch_keys(call: ast.Call, subform: str, names: _MockNames) -> list[tuple[str, str]]:
+def _patch_keys(call: ast.Call, subform: _PatchSubform, names: _MockNames) -> list[tuple[str, str]]:
     """Name the collaborator(s) a `patch`-family call replaces."""
     if subform == "dict":
         return []
