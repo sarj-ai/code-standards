@@ -15,7 +15,7 @@ from sarj_lint_configs import comment_corpus, hooks, repository, rule_maintenanc
 def _policy(**changes: object) -> repository.RepositoryPolicy:
     values: dict[str, object] = {
         "distinctive": ("secret-repo",),
-        "contextual": ("portal",),
+        "contextual": ("quartzscope",),
         "private_excludes": (),
         "forbidden_paths": (),
         "filename_rules": (),
@@ -72,7 +72,7 @@ def test_load_policy_reads_repository_configuration(tmp_path: Path) -> None:
 canonical_config_dir = "configs"
 [repository.private_refs]
 distinctive = ["private"]
-contextual = ["portal"]
+contextual = ["quartzscope"]
 exclude = ["lock"]
 [[repository.filename_rules]]
 glob = "*.py"
@@ -188,11 +188,11 @@ def test_private_names_are_literals_not_regular_expressions(tmp_path: Path) -> N
 
 
 def test_private_name_variants_are_explicit_literals(tmp_path: Path) -> None:
-    _git_repo(tmp_path, {"space.py": "name = 'client portal'\n", "dash.py": "name = 'client-portal'\n"})
+    _git_repo(tmp_path, {"space.py": "name = 'client alpha zone'\n", "dash.py": "name = 'client-alpha-zone'\n"})
 
     findings = repository.check_private_refs(
         tmp_path,
-        _policy(distinctive=("client portal", "client-portal"), contextual=()),
+        _policy(distinctive=("client alpha zone", "client-alpha-zone"), contextual=()),
         commits=None,
     )
 
@@ -291,7 +291,7 @@ def test_private_reference_check_scans_intermediate_commit_blobs(tmp_path: Path)
 def test_private_reference_check_scans_intermediate_paths_and_symlink_targets(tmp_path: Path) -> None:
     _git_repo(tmp_path, {"value.txt": "public\n"})
     _commit(tmp_path, "base")
-    (tmp_path / "secret-repo-link").symlink_to("portal/private")
+    (tmp_path / "secret-repo-link").symlink_to("quartzscope/private")
     _git(tmp_path, "add", "secret-repo-link")
     _commit(tmp_path, "transient")
     transient = _git(tmp_path, "rev-parse", "HEAD").stdout.strip()
