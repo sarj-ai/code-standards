@@ -19,9 +19,8 @@ if TYPE_CHECKING:
 # A run must contain at least this many arms before merging buys anything.
 _MIN_RUN = 2
 
-# Patterns are rendered back into the message; long ones are elided so a single
-# diagnostic stays readable on one terminal line.
-_MAX_RENDERED_PATTERN = 48
+# Preview complete suggested syntax only when it fits comfortably in one line.
+_MAX_RENDERED_PREVIEW = 96
 
 # Statement shapes that make an arm body empty.
 _EMPTY_BODY_NODES = (ast.Pass,)
@@ -48,11 +47,7 @@ class PreferOrPattern(Rule):
                 line=run[0].pattern.lineno,
                 col=run[0].pattern.col_offset + 1,
                 code=self.code,
-                message=(
-                    f"{len(run)} consecutive `case` arms repeat an identical body — merge them "
-                    f"into one or-pattern (`case {_render(run[0].pattern)} | "
-                    f"{_render(run[1].pattern)}:`) so the shared handling is written once."
-                ),
+                message=_message(run),
             )
             for node in nodes(tree, ast.Match)
             for run in _mergeable_runs(node, lines)
@@ -151,12 +146,19 @@ def _comments_in(lines: list[str], start: int, end: int) -> tuple[str, ...]:
     return tuple(found)
 
 
-def _render(pattern: ast.pattern) -> str:
-    """Render a pattern back to source for the diagnostic message."""
+def _message(run: list[ast.match_case]) -> str:
+    """Describe the merge, including complete syntax only when it fits."""
+    preview = _preview(run[0].pattern, run[1].pattern)
+    prefix = f"{len(run)} consecutive `case` arms repeat an identical body — merge them "
+    if preview is None:
+        return f"{prefix}into one or-pattern so the shared handling is written once."
+    return f"{prefix}into one or-pattern (`case {preview}:`) so the shared handling is written once."
+
+
+def _preview(first: ast.pattern, second: ast.pattern) -> str | None:
+    """Render a complete parseable two-pattern suggestion, if it fits."""
     try:
-        text = ast.unparse(pattern)
+        preview = f"{ast.unparse(first)} | {ast.unparse(second)}"
     except ValueError, AttributeError, TypeError, RecursionError:
-        return "..."
-    if len(text) > _MAX_RENDERED_PATTERN:
-        return f"{text[:_MAX_RENDERED_PATTERN].rstrip()}..."
-    return text
+        return None
+    return preview if len(preview) <= _MAX_RENDERED_PREVIEW else None

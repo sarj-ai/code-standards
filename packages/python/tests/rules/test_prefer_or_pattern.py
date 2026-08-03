@@ -819,7 +819,7 @@ def test_diagnostics_are_sorted_by_position():
     assert [d.line for d in diags] == sorted(d.line for d in diags)
 
 
-def test_a_very_long_pattern_is_elided_in_the_message():
+def test_a_long_pattern_uses_a_concise_description_instead_of_invalid_syntax():
     diags = _check(
         """
         def f(v):
@@ -831,47 +831,64 @@ def test_a_very_long_pattern_is_elided_in_the_message():
         """
     )
     assert len(diags) == 1
-    assert "..." in diags[0].message
+    assert "(`case " not in diags[0].message
+    assert "into one or-pattern so" in diags[0].message
 
 
-# `_MAX_RENDERED_PATTERN` is 48; these two names render to exactly 48 and 49
-# characters, pinning both the constant's value and the `>` in the comparison.
-_RENDERS_TO_48 = "CompositeMultiProviderSpeechRuntimeTTSSettings()"
-_RENDERS_TO_49 = "CompositeMultiProviderSpeechRuntimeXTTSSettings()"
+_PREVIEW_AT_LIMIT = f"C{'x' * 87}() | B()"
+_PREVIEW_OVER_LIMIT = f"C{'x' * 88}() | B()"
 
 
-def test_a_pattern_at_exactly_the_render_limit_is_kept_whole():
-    assert len(_RENDERS_TO_48) == 48
+def test_a_complete_preview_at_the_render_limit_is_kept_whole():
+    assert len(_PREVIEW_AT_LIMIT) == 96
     diags = _check(
         f"""
         def f(v):
             match v:
-                case {_RENDERS_TO_48}:
+                case C{"x" * 87}():
                     stt_model = None
                 case B():
                     stt_model = None
         """
     )
     assert len(diags) == 1
-    assert _RENDERS_TO_48 in diags[0].message
-    assert "..." not in diags[0].message
+    assert _PREVIEW_AT_LIMIT in diags[0].message
 
 
-def test_a_pattern_one_character_over_the_render_limit_is_elided():
-    assert len(_RENDERS_TO_49) == 49
+def test_a_preview_over_the_render_limit_is_omitted_whole():
+    assert len(_PREVIEW_OVER_LIMIT) == 97
     diags = _check(
         f"""
         def f(v):
             match v:
-                case {_RENDERS_TO_49}:
+                case C{"x" * 88}():
                     stt_model = None
                 case B():
                     stt_model = None
         """
     )
     assert len(diags) == 1
-    assert _RENDERS_TO_49 not in diags[0].message
-    assert f"{_RENDERS_TO_49[:48]}..." in diags[0].message
+    assert _PREVIEW_OVER_LIMIT not in diags[0].message
+    assert "(`case " not in diags[0].message
+
+
+def test_preview_is_valid_syntax_for_multiline_patterns_with_captures():
+    (diag,) = _check(
+        """
+        def f(v):
+            match v:
+                case First(
+                    value=token,
+                ):
+                    return token
+                case Second(
+                    value=token,
+                ):
+                    return token
+        """
+    )
+    preview = diag.message.split("(`case ", maxsplit=1)[1].split(":`)", maxsplit=1)[0]
+    compile(f"match v:\n    case {preview}:\n        pass\n", "<suggested pattern>", "exec")
 
 
 def test_run_inside_a_loop_body_is_found():
