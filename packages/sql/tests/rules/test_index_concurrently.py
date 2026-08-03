@@ -59,9 +59,6 @@ def test_skips_comment_lines():
     assert _check(src) == []
 
 
-# Test creating index on a table created in the same file.
-
-
 def test_allows_index_on_table_created_in_the_same_file():
     src = """
 CREATE TABLE orders (id BIGSERIAL PRIMARY KEY, user_id BIGINT);
@@ -121,9 +118,6 @@ def test_flags_index_when_only_a_commented_out_create_table_precedes_it():
 CREATE INDEX idx_orders_user ON orders (user_id);
 """
     assert len(_check(src)) == 1
-
-
-# Dialect tests.
 
 
 def test_allows_plain_create_index_in_sqlite():

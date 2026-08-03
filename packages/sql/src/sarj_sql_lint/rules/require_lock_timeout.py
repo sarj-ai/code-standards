@@ -45,6 +45,7 @@ class RequireLockTimeout(Rule):
             return []
 
         events: list[tuple[int, str, re.Match[str]]] = []
+        # Match raw quoted values, then require the assignment's offset to remain live after masking SQL noise.
         for match in ASSIGNMENT_PATTERN.finditer(source):
             start_pos = match.start()
             if masked[start_pos : start_pos + 3].strip():

@@ -107,7 +107,7 @@ def test_statement_without_trailing_semicolon_is_still_checked():
     assert len(_check(src)) == 1
 
 
-# Test cross-package parity with SARJ018 and the TS twin.
+# These fixtures keep this rule aligned with Python SARJ018 and its TypeScript twin.
 
 ALREADY_IDEMPOTENT = {
     "postgres_on_conflict": "INSERT INTO t (a) VALUES (1) ON CONFLICT (a) DO NOTHING;",
@@ -138,8 +138,6 @@ def test_insert_keyword_without_a_write_verb_does_not_fire(source: str):
     """A bare `INSERT INTO` used to be enough here — the loosest of the three."""
     assert _check(source) == []
 
-
-# Test dollar-quoted seed blocks.
 
 _GUARDED_SEED = """
 DO $$

@@ -19,9 +19,6 @@ def _check(source: str, path: Path = P) -> list[Diagnostic]:
     return RequireFkIndex().check(path, source)
 
 
-# Test covering index in later migration.
-
-
 def _tree(tmp_path: Path, files: dict[str, str]) -> Path:
     root = tmp_path / "prisma" / "migrations"
     for name, body in files.items():
@@ -96,9 +93,6 @@ def test_in_memory_source_is_judged_on_its_own_content() -> None:
     assert len(_check(src)) == 1
 
 
-# Test line attribution.
-
-
 def test_reports_the_line_of_the_fk_it_names() -> None:
     src = """CREATE TABLE membership (
     account_id INT,
@@ -123,9 +117,6 @@ def test_reports_the_line_of_each_inline_reference() -> None:
     assert by_column == {"customer_id": 3, "product_id": 4}
 
 
-# Test dump messages.
-
-
 def test_dump_findings_are_kept_and_point_at_the_migration() -> None:
     """A dump is complete, so an absent CREATE INDEX really is an absent index."""
     src = """-- PostgreSQL database dump
@@ -144,9 +135,6 @@ def test_non_dump_findings_keep_the_plain_message() -> None:
     diags = _check(src)
     assert len(diags) == 1
     assert "schema dump" not in diags[0].message
-
-
-# Test covering index spellings.
 
 
 def test_multiline_using_btree_index_covers_the_fk() -> None:

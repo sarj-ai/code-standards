@@ -73,9 +73,6 @@ def test_skips_varchar_inside_string_literal():
     assert _check(src) == []
 
 
-# Test dialect restrictions for Postgres schema authoring rules.
-
-
 def test_allows_varchar_in_mysql():
     """In MySQL TEXT cannot carry a DEFAULT, is stored off-page, and has an index-prefix limit."""
     src = """

@@ -81,9 +81,6 @@ CREATE TABLE x (created_at TIMESTAMPTZ);
     assert _check(src) == []
 
 
-# Test timestamp used as a column name rather than a type.
-
-
 def test_allows_timestamp_as_a_bare_column_reference_in_a_grouping_key():
     assert _check("PARTITION BY toYYYYMM(timestamp)") == []
 
