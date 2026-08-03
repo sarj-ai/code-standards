@@ -10,6 +10,8 @@ import json
 import os
 from pathlib import Path
 import re
+import secrets
+import stat
 import tokenize
 from typing import TYPE_CHECKING, TypedDict
 
@@ -24,6 +26,9 @@ _SKIP_PARTS = {".git", ".venv", ".worktrees", "node_modules", "dist", "build", "
 _BOUNDARY_RE = re.compile(r"(?<=[.!?])[\"'`)\]]*\s+(?=[A-Z0-9`])")
 _BULLET_RE = re.compile(r"^\s*(?:[-*+] |\d+[.)] )")
 _SECOND_SENTENCE = 2
+_DIRECTORY_FLAGS = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+_READ_FLAGS = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+_WRITE_FLAGS = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
 
 
 class Record(TypedDict):
@@ -39,31 +44,49 @@ class Record(TypedDict):
 def records(roots: Sequence[Path]) -> Iterator[Record]:
     for root in roots:
         resolved_root = root.resolve(strict=True)
-        for directory, names, filenames in os.walk(resolved_root, followlinks=False):
-            names[:] = [name for name in names if name not in _SKIP_PARTS and not name.startswith(".")]
-            for filename in filenames:
-                path = Path(directory, filename)
-                language = _SUFFIXES.get(path.suffix.lower())
-                if language is None or path.is_symlink():
-                    continue
-                try:
-                    resolved = path.resolve(strict=True)
-                    if not resolved.is_relative_to(resolved_root):
+        root_descriptor = os.open(resolved_root, _DIRECTORY_FLAGS)
+        try:
+            for directory, names, filenames, directory_descriptor in os.fwalk(
+                ".", topdown=True, follow_symlinks=False, dir_fd=root_descriptor
+            ):
+                names[:] = [name for name in names if name not in _SKIP_PARTS and not name.startswith(".")]
+                for filename in filenames:
+                    relative = Path(directory, filename)
+                    language = _SUFFIXES.get(relative.suffix.lower())
+                    if language is None:
                         continue
-                    source = resolved.read_text(encoding="utf-8", errors="replace")
-                except OSError:
-                    continue
-                comments = _python_comments(source) if language == "python" else _javascript_comments(source)
-                for line, kind, value in comments:
-                    yield {
-                        "repository": resolved_root.name,
-                        "path": str(path.relative_to(resolved_root)),
-                        "line": line,
-                        "language": language,
-                        "kind": kind,
-                        "sentences": _sentence_units(value),
-                        "text": value,
-                    }
+                    try:
+                        source = _read_regular_file(directory_descriptor, filename)
+                    except OSError:
+                        continue
+                    if source is None:
+                        continue
+                    comments = _python_comments(source) if language == "python" else _javascript_comments(source)
+                    for line, kind, value in comments:
+                        yield {
+                            "repository": resolved_root.name,
+                            "path": relative.as_posix().removeprefix("./"),
+                            "line": line,
+                            "language": language,
+                            "kind": kind,
+                            "sentences": _sentence_units(value),
+                            "text": value,
+                        }
+        finally:
+            os.close(root_descriptor)
+
+
+def _read_regular_file(directory_descriptor: int, filename: str) -> str | None:
+    descriptor = os.open(filename, _READ_FLAGS, dir_fd=directory_descriptor)
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            return None
+        with os.fdopen(descriptor, encoding="utf-8", errors="replace") as source:
+            descriptor = -1
+            return source.read()
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
 
 
 def emit_summary(roots: Sequence[Path], output: TextIO) -> int:
@@ -83,12 +106,27 @@ def emit_summary(roots: Sequence[Path], output: TextIO) -> int:
 
 
 def write_records(roots: Sequence[Path], destination: Path) -> int:
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    descriptor = os.open(destination, flags, 0o600)
-    with os.fdopen(descriptor, "w", encoding="utf-8") as output:
-        output.writelines(json.dumps(record, ensure_ascii=False) + "\n" for record in records(roots))
+    parent = destination.parent.resolve(strict=True)
+    parent_descriptor = os.open(parent, _DIRECTORY_FLAGS)
+    temporary = f".{destination.name}.{secrets.token_hex(8)}.tmp"
+    try:
+        descriptor = os.open(temporary, _WRITE_FLAGS, 0o600, dir_fd=parent_descriptor)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+            output.writelines(json.dumps(record, ensure_ascii=False) + "\n" for record in records(roots))
+            output.flush()
+            os.fsync(output.fileno())
+        os.link(
+            temporary,
+            destination.name,
+            src_dir_fd=parent_descriptor,
+            dst_dir_fd=parent_descriptor,
+            follow_symlinks=False,
+        )
+        os.fsync(parent_descriptor)
+    finally:
+        with suppress(FileNotFoundError):
+            os.unlink(temporary, dir_fd=parent_descriptor)
+        os.close(parent_descriptor)
     return 0
 
 

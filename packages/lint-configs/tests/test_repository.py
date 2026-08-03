@@ -267,6 +267,49 @@ def test_comment_corpus_skips_symlinked_files(tmp_path: Path) -> None:
     assert output.getvalue() == "repository\t0-1\t2\t3+\n"
 
 
+def test_comment_corpus_rejects_a_file_swapped_to_a_symlink(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    source = tmp_path / "example.py"
+    source.write_text("# Initial comment.\n", encoding="utf-8")
+    outside = tmp_path.parent / f"{tmp_path.name}-outside.py"
+    outside.write_text("# Sensitive explanation.\n", encoding="utf-8")
+    original_open = os.open
+
+    def swap_before_open(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        if path == "example.py":
+            source.unlink()
+            source.symlink_to(outside)
+        return original_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr("sarj_lint_configs.comment_corpus.os.open", swap_before_open)
+
+    assert list(comment_corpus.records([tmp_path])) == []
+
+
+def test_comment_corpus_removes_partial_output_after_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    class ExtractionError(Exception):
+        pass
+
+    destination = tmp_path / "corpus.jsonl"
+    failure = ExtractionError()
+
+    def fail(_roots: object) -> object:
+        raise failure
+
+    monkeypatch.setattr(comment_corpus, "records", fail)
+
+    with pytest.raises(ExtractionError):
+        comment_corpus.write_records([tmp_path], destination)
+
+    assert not destination.exists()
+    assert list(tmp_path.glob(".corpus.jsonl.*.tmp")) == []
+
+
 def test_hook_install_resolves_environment_binaries(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     calls: list[list[str]] = []
 
