@@ -13,42 +13,6 @@ canonical_config_dir = "packages/lint-configs/src/sarj_lint_configs/configs"
 forbidden_paths = ["scripts/*"]
 
 [repository.private_refs]
-distinctive = [
-  "bulbul",
-  "noura",
-  "vision[ _-]?bank",
-  "digital[ _-]?bank",
-  "banking-(be|ai|demo|api)",
-  "kpi[ _-]?hub",
-  "demos?-gateway",
-  "sarj-demos",
-  "ai-canvas-health",
-  "money2020",
-  "name-healer",
-  "precedent-(node|iso)",
-  "internal-automations",
-  "zoho-canary",
-  "voice-cluster",
-  "vb-landing",
-  "hala",
-  "najm",
-  "kashta",
-  "tamr",
-  "farwa",
-  "pericles",
-  "mojaz",
-  "faris",
-  "falltime",
-  "tahded",
-  "sifi",
-  "aljazira",
-  "alinma",
-  "momah",
-  "absher",
-  "mngha",
-  "lucidya",
-]
-contextual = ["summer", "portal", "automations", "bell", "wiki", "demos", "submissions", "talent"]
 exclude = [".sarj-standards.toml", "uv.lock", "*package-lock.json"]
 
 [[repository.filename_rules]]

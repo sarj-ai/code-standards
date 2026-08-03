@@ -35,3 +35,4 @@ Thumbs.db
 .claude/*
 !.claude/settings.json
 .worktrees/
+.sarj-private-refs.toml
