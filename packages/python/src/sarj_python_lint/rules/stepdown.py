@@ -326,16 +326,16 @@ def _runtime_nodes(stmts: list[ast.stmt]) -> Iterator[ast.expr]:
                 stack.extend(node.decorator_list)
                 stack.extend(node.args.defaults)
                 stack.extend(d for d in node.args.kw_defaults if d is not None)
-            case ast.ClassDef():
-                stack.extend(node.body)
-                stack.extend(node.decorator_list)
-                stack.extend(node.bases)
-                stack.extend(k.value for k in node.keywords)
-            case ast.AnnAssign():
-                if node.value is not None:
-                    stack.append(node.value)
-            case ast.If() if _is_type_checking_test(node.test):
-                stack.extend(node.orelse)
+            case ast.ClassDef(body=body, decorator_list=decorators, bases=bases, keywords=keywords):
+                stack.extend(body)
+                stack.extend(decorators)
+                stack.extend(bases)
+                stack.extend(keyword.value for keyword in keywords)
+            case ast.AnnAssign(value=value):
+                if value is not None:
+                    stack.append(value)
+            case ast.If(test=test, orelse=orelse) if _is_type_checking_test(test):
+                stack.extend(orelse)
             case ast.expr():
                 yield node
                 stack.extend(_child_nodes(node))
@@ -463,8 +463,8 @@ def _locally_bound_names(node: ast.stmt) -> set[str]:
                 bound.add(n.arg)
             case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef() if n is not node:
                 bound.add(n.name)
-            case ast.alias():
-                bound.add((n.asname or n.name).split(".")[0])
+            case ast.alias(name=name, asname=asname):
+                bound.add((asname or name).split(".")[0])
             case ast.MatchAs(name=str() as nm) | ast.MatchStar(name=str() as nm):
                 bound.add(nm)
             case ast.MatchMapping(rest=str() as nm):

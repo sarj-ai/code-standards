@@ -95,8 +95,8 @@ def _body_stems(node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
                 tokens.extend(split_identifier(child.id))
             case ast.Attribute():
                 tokens.extend(split_identifier(child.attr))
-            case ast.keyword() if child.arg is not None:
-                tokens.extend(split_identifier(child.arg))
+            case ast.keyword(arg=str(arg)):
+                tokens.extend(split_identifier(arg))
             case ast.arg():
                 tokens.extend(split_identifier(child.arg))
             case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
