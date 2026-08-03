@@ -3,7 +3,7 @@
   entry: sarj-standards check
   language: python
   files: '(?i)(\.py|\.sql|\.tf|\.tfvars|\.hcl|\.ya?ml|\.toml|\.jsonc|\.mdx?|Dockerfile|Makefile)$'
-  additional_dependencies: ['sarj-lint-configs==0.40.0']
+  additional_dependencies: ["sarj-lint-configs==0.42.0"]
 
 - id: sarj-no-sequential-await
   name: 'sarj-lint: no sequential `await` in for-loop'
