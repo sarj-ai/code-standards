@@ -46,9 +46,9 @@ def test_every_rule_link_is_unique() -> None:
 @pytest.mark.parametrize("spelling", ["SARJ017", "sarj017", "no-fstring-in-log"])
 def test_explain_accepts_a_code_or_an_id(spelling: str, capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["explain", spelling]) == 0
-    out = capsys.readouterr().out
-    assert "SARJ017  no-fstring-in-log" in out
-    assert f"examples: {NoFstringInLog.examples_url()}" in out
+    assert capsys.readouterr().out == (
+        f"SARJ017  no-fstring-in-log\n{NoFstringInLog.description}\nexamples: {NoFstringInLog.examples_url()}\n"
+    )
 
 
 def test_explain_reports_an_unknown_rule_without_raising(capsys: pytest.CaptureFixture[str]) -> None:

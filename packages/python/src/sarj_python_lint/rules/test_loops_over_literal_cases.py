@@ -117,8 +117,6 @@ class _LiteralCaseLoopVisitor(ast.NodeVisitor):
 
 def _literal_case_count(iterable: ast.expr) -> int:
     # Only a display literal at the loop header exposes cases that could be
-    # lifted into a decorator. Names, calls (`range`, `enumerate`), enums and
-    # comprehensions all hide them, and are excluded by construction.
     if not isinstance(iterable, _LITERAL_ITERABLES):
         return 0
     if any(isinstance(elt, ast.Starred) for elt in iterable.elts):
@@ -150,10 +148,6 @@ def _is_subtest_call(expr: ast.expr) -> bool:
 
 def _contains_assert(node: ast.AST) -> bool:
     # Hand-rolled descent rather than `ast.walk`: walk enqueues a node's children
-    # before the caller can reject it, so a nested `def` would leak its asserts
-    # into this loop's result. Pruning the subtree requires not descending at all.
-    # The scope test is applied to the node itself, not only to its children, so
-    # a `def` sitting directly in the loop body is pruned too.
     if isinstance(node, _SCOPE_NODES):
         return False
     if isinstance(node, ast.Assert):

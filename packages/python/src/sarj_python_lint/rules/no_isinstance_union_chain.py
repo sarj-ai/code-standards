@@ -23,9 +23,6 @@ _MIN_CHAIN_LENGTH = 2
 _ISINSTANCE_ARG_COUNT = 2
 
 # Belt-and-suspenders: names that must never count as a local union member even if a
-# same-named class happens to be defined in the module (a domain class named `Sequence`
-# shadowing the ABC, a local `class Exception`, etc.). The primary gate is still
-# "resolves to a local ClassDef"; this denylist only ever *removes* names from that set.
 _EXCLUDED_TYPE_NAMES = frozenset(
     {
         "dict",

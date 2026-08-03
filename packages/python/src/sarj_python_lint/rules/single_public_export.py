@@ -19,12 +19,7 @@ if TYPE_CHECKING:
 
 _SKIPPED_FILENAMES = frozenset({"__init__.py", "conftest.py"})
 
-# Filenames whose stem is fixed by a framework or tool convention and therefore
-# cannot be renamed without breaking discovery: Django reads models/views/urls/
-# admin/apps/forms/settings/middleware/signals by filename, DRF `serializers.py`,
-# Channels `routing.py`, Celery `tasks.py`, pytest `conftest.py`, `__main__.py`.
-# Even when the stem is also a junk-drawer name (`models.py`, `base.py`), the
-# rename the rule would suggest is not actionable, so these are never flagged.
+# Framework-owned filenames cannot take the rename this rule would otherwise require.
 _FRAMEWORK_CONVENTION_FILENAMES = frozenset(
     {
         "models.py",
@@ -46,10 +41,7 @@ _FRAMEWORK_CONVENTION_FILENAMES = frozenset(
     }
 )
 
-# Generic module stems that describe no responsibility. Curated conservatively:
-# every entry is a name that, standing alone as a module, tells a reader nothing
-# about what lives inside. Idiomatic domain stems (pagination, retry, warmup,
-# client, service, ...) are deliberately excluded.
+# Generic module stems that describe no responsibility.
 _JUNK_DRAWER_STEMS = frozenset(
     {
         "base",

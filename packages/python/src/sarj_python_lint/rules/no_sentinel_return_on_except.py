@@ -351,8 +351,7 @@ def _value_kind(value: ast.expr | None) -> str | None:
 def _is_sentinel(value: ast.expr) -> bool:
     """Report whether `value` is a sentinel: None, False, empty collection/str, set()."""
     if isinstance(value, ast.Constant):
-        # None, False, or empty string. Note: True / non-empty str / numbers
-        # are meaningful and must not be flagged.
+        # None, False, or empty string.
         if value.value is None or value.value is False:
             return True
         return isinstance(value.value, str) and not value.value
@@ -362,8 +361,7 @@ def _is_sentinel(value: ast.expr) -> bool:
     if isinstance(value, ast.Tuple):
         return len(value.elts) == 0
     if isinstance(value, ast.Set):
-        # `set()` is a call, not a Set node; `{}` is a Dict. A Set node always
-        # has at least one element, so it's never empty — but be explicit.
+        # `set()` is a call, not a Set node; `{}` is a Dict.
         return len(value.elts) == 0
     if isinstance(value, ast.Dict):
         return len(value.keys) == 0

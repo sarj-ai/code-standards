@@ -27,30 +27,19 @@ _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 _TEST_PREFIX = "test_"
 
 # Every literal collapses to this, so the differing case value does not defeat
-# the shape match. A string keeps `ast.dump` output deterministic (an `object()`
-# sentinel would render its memory address).
 _LITERAL_PLACEHOLDER = "\x00sarj-literal"
 
 # Statements in the shared body, docstring excluded, below which "these two
 # tests look alike" carries no information.
 _MIN_STATEMENTS = 3
 
-# Members of a normalized-body group before it counts as copy-paste. Two is the
-# honest threshold: one function copied once is already a maintenance burden,
-# and the guards (container, decorators, signature, size) carry the precision.
+# Members of a normalized-body group before it counts as copy-paste.
 _MIN_GROUP = 2
 
 # A class whose base reads like a test-case base is a `unittest.TestCase`, and
-# pytest refuses to apply `parametrize` to those. Matches django's `TestCase` /
-# `SimpleTestCase` / `TransactionTestCase`, plain `unittest.TestCase`, and the
-# suite-local intermediate bases those projects build (`ChoiceWidgetTest`,
-# `AdminViewBasicTest`). A pytest-style class has no base at all, or a base that
-# is not named for a test case.
 _UNITTEST_BASE_RE = re.compile(r"Test(Case|s)?$")
 
-# `self.<name>` calls that only exist on a `unittest.TestCase`. This is the
-# fallback for a mixin class carrying test methods without a TestCase base —
-# django's `TestHashedFiles` is mixed into a `CollectionTestCase` elsewhere.
+# `self.<name>` calls that only exist on a `unittest.TestCase`.
 _UNITTEST_SELF_ATTRS = frozenset({"subTest", "skipTest", "addCleanup", "addTypeEqualityFunc", "fail"})
 
 _UNITTEST_ASSERT_PREFIX = "assert"
@@ -64,10 +53,6 @@ _LITERAL_ECHO_LIMIT = 32
 _MAX_LITERALS_SHOWN = 3
 
 # A *differing* string literal that spans more than one line and is longer than
-# this is a fixture document — an embedded program, a rendered template, a CSV
-# block — not a case value. Erasing one of those erases the whole specification,
-# which is how a file of unrelated tests collapses into a single group. See the
-# "fixture documents" bullet below for the measurement behind the number.
 _MAX_CASE_LITERAL = 32
 
 _PARAMETRIZE_ADVICE = (
@@ -103,12 +88,6 @@ class DuplicateTestBody(Rule):
             return []
         except RecursionError:
             # Normalisation deep-copies each body and `ast.dump`s it, both of
-            # which recurse once per AST level. A left-nested `+` spine of a few
-            # thousand terms — generated or minified source, never hand-written;
-            # the deepest real test-file AST measured across 43k files is 33 —
-            # exhausts the stack. Returning nothing skips this one file, where
-            # letting it propagate would abort the whole lint run: `check()` is
-            # called per file by a CLI that does not catch it.
             return []
 
         diags = [

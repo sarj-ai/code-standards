@@ -62,10 +62,7 @@ class _PrivateImport:
 
 
 def _is_our_own_internals(hit: _PrivateImport, path: Path) -> bool:
-    """Return whether the private module is unavailable or belongs to the importer's distribution.
-
-    Private imported names never qualify because the same authors can export them.
-    """
+    """Return whether the private module is unavailable or belongs to the importer's distribution."""
     if not hit.is_segment:
         return False
     if not has_first_party_source(hit.module, path):

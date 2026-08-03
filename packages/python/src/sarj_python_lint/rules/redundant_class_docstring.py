@@ -26,11 +26,6 @@ if TYPE_CHECKING:
 
 
 # Bases whose subclass docstring is emitted into a machine-readable schema —
-# pydantic's JSON Schema `description`, hence FastAPI's OpenAPI document and any
-# LLM tool/structured-output schema built from the same model. Matched on the
-# final dotted part, so `pydantic.BaseModel` and a bare `BaseModel` import both
-# hit. `Protocol` and `ABC` are absent on purpose: their docstrings are read by
-# people, not by a serializer.
 _SCHEMA_BASES = frozenset(
     {
         "BaseModel",

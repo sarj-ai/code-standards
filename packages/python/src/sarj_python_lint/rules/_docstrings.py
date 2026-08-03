@@ -1,26 +1,4 @@
-"""Shared docstring analysis for the docstring-ceremony rules (SARJ050/084/085/086).
-
-Four rules ask overlapping questions about a docstring — "does this text say
-anything the signature does not?", "which decorators make this docstring an
-artefact someone else reads?", "where does the `Args:` block start?" — and the
-answers have to be identical across all four or the family contradicts itself.
-SARJ050 owned all of this privately until SARJ084-086 needed the same
-judgements; the definitions moved here unchanged rather than being copied.
-
-**`restates` is a DELETION test, not a value test.** It answers only "every
-content word of this text already appears in that identifier set". A False
-result means the text carries a word the signature does not — that is all. It
-must never be read as "this docstring is worthless"; the guards in each rule,
-plus `_comments.is_protected`, are what turn a restatement into a finding.
-
-**Section parsing is Google-style only.** `Args:` / `Returns:` / `Raises:` on
-their own line. NumPy style (`Parameters` followed by a `-----` underline) is
-deliberately not parsed: across 2,440 reviewable first-party files the corpus
-holds **2** NumPy docstrings, which is far too little evidence to tune a second
-parser against, and a half-recognised section is worse than an unrecognised one
-— it would let a rule read a `Parameters` heading as prose and judge the block
-on it.
-"""
+"""Shared docstring analysis for the docstring-ceremony rules (SARJ050/084/085/086)."""
 
 from __future__ import annotations
 
@@ -36,8 +14,6 @@ if TYPE_CHECKING:
 
 
 # Docstring filler that says nothing about *which* thing is being described.
-# `not` / `no` / `none` / `never` are deliberately ABSENT: a docstring that
-# negates the obvious reading of a name is the most useful kind there is.
 _BASE_STOPWORDS = frozenset(
     {
         "a",
@@ -107,12 +83,7 @@ _BASE_STOPWORDS = frozenset(
     }
 )
 
-# Qualifiers that NARROW NOTHING. "a specific account", "the appropriate
-# config", "the entire widget" — strip the adjective and the sentence means
-# exactly what it meant. Kept as its own name because a single one of these
-# was the commonest reason a pure restatement survived the whole family; see
-# The paired SARJ088 tests cover this vocabulary. `main`, `new`, `same` and `copy`
-# are NOT here: they name the thing or its identity, which is content.
+# Qualifiers that NARROW NOTHING.
 FILLER_QUALIFIERS = frozenset(
     {
         "actual",
@@ -163,15 +134,7 @@ VALUE_MARKER_RE = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 
-# Decorators whose docstring is consumed by something other than a reader, so
-# deleting it changes an artefact rather than tidying a file:
-#   - `function_tool` / `tool` hand it to a language model as the tool
-#     description, which is what the agent reasons over;
-#   - click and typer hand it to the terminal as `--help`;
-#   - FastAPI / Starlette / Flask routing decorators hand it to the OpenAPI
-#     schema as the operation description. That last one was found by the corpus
-#     sweep rather than predicted: a `@router.post(...)` handler's one-line
-#     docstring is the text an API consumer reads in the generated schema.
+# Decorators that consume docstrings at runtime, where deleting prose would change behavior.
 PROMPT_DECORATOR_MARKERS = frozenset(
     {
         "agent",
@@ -200,10 +163,7 @@ PROMPT_DECORATOR_MARKERS = frozenset(
     }
 )
 
-# Google-style section headers, each alone on its line. `Args`/`Returns` are the
-# two the ceremony rules act on; the rest are listed so a rule can tell "this
-# docstring has an `Examples:` block" from "this docstring has prose containing
-# the word examples".
+# Google-style section headers, each alone on its line.
 _SECTION_RE = re.compile(
     r"^[ \t]*(?P<name>Args|Arguments|Parameters|Params|Keyword Args|Keyword Arguments|"
     r"Returns|Return|Yields|Yield|Raises|Attributes|Example|Examples|Note|Notes|"
@@ -212,20 +172,13 @@ _SECTION_RE = re.compile(
 )
 
 # One `Args:` entry: `name (type): description`, with the type parenthesis
-# optional. The leading indent is required — an unindented `name:` line is
-# ordinary prose with a colon in it, not a parameter entry.
 _ARG_ENTRY_RE = re.compile(r"^[ \t]+(?P<name>\*{0,2}[A-Za-z_]\w*)[ \t]*(?:\((?P<type>[^)]*)\))?[ \t]*:(?P<desc>.*)$")
 
 ARG_SECTIONS = ("Args", "Arguments", "Parameters", "Params", "Keyword Args", "Keyword Arguments")
 
 
 def sections(docstring: str) -> dict[str, str]:
-    """Split a Google-style docstring into `{"summary": ..., "<Section>": ...}`.
-
-    A docstring with no recognised header is all summary. Two blocks under the
-    same header (which a hand-edited docstring does produce) concatenate.
-
-    """
+    """Split a Google-style docstring into `{"summary": ..., "<Section>": ...}`."""
     marks = [(match.start(), match.end(), match.group("name")) for match in _SECTION_RE.finditer(docstring)]
     if not marks:
         return {"summary": docstring}
@@ -246,14 +199,7 @@ def arg_section(docstring: str) -> str | None:
 
 
 def arg_entries(block: str) -> list[tuple[str, str, str]]:
-    """Parse an `Args:` block into `(name, type, description)` triples.
-
-    A line that is not an entry but follows one is that entry's wrapped
-    description. Folding those in is load-bearing rather than cosmetic: without
-    it the continuation row vanishes, and an entry whose informative half sits
-    on the second line reads as a bare restatement.
-
-    """
+    """Parse an `Args:` block into `(name, type, description)` triples."""
     entries: list[list[str]] = []
     for raw in block.splitlines():
         match = _ARG_ENTRY_RE.match(raw)
@@ -293,12 +239,7 @@ def annotation_tokens(annotation: ast.expr | None) -> list[str]:
 
 
 def signature_stems(node: ast.FunctionDef | ast.AsyncFunctionDef, class_name: str | None) -> set[str]:
-    """Collect every stem a reader can read off the signature.
-
-    The function name, the owning class name, every parameter name that is not
-    `self`/`cls`, and every annotation — parameter and return.
-
-    """
+    """Collect every stem a reader can read off the signature."""
     tokens = list(split_identifier(node.name))
     if class_name is not None:
         tokens.extend(split_identifier(class_name))
@@ -314,13 +255,7 @@ def signature_stems(node: ast.FunctionDef | ast.AsyncFunctionDef, class_name: st
 
 
 def restates(text: str, known: Iterable[str]) -> bool:
-    """Report whether every content word of `text` is already in `known`.
-
-    A text with no content words at all (pure stopwords, or no words) returns
-    False: "says nothing" and "says only what the code says" are different
-    findings, and only the caller knows which one it wants.
-
-    """
+    """Report whether every content word of `text` is already in `known`."""
     known_stems = set(known)
     words = [match.group(0).lower() for match in WORD_RE.finditer(text)]
     content = [word for word in words if word not in STOPWORDS]

@@ -23,6 +23,11 @@ def test_wrapping_does_not_create_sentences() -> None:
     assert PreferSingleSentenceComment().check(Path("app.py"), source) == []
 
 
+def test_standardized_examples_link_is_metadata() -> None:
+    source = '"""One rule claim.\n\nExamples:\nhttps://example.com/rule-tests\n"""\n'
+    assert PreferSingleSentenceComment().check(Path("app.py"), source) == []
+
+
 @pytest.mark.parametrize(
     "source",
     [

@@ -18,8 +18,6 @@ if TYPE_CHECKING:
 
 
 # The codes whose remediation `ruff.strict.toml` spells as an inline, reasoned
-# suppression. TID251 (flake8-tidy-imports banned-api) is ruff's
-# only such code; the frozenset is the extension point if that changes.
 ESCAPE_HATCH_CODES = frozenset({"TID251"})
 
 # Matched as ruff accepts a file-level scoped suppression: case-insensitive on

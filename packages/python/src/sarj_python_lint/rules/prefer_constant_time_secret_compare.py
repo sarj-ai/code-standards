@@ -20,16 +20,8 @@ if TYPE_CHECKING:
 
 
 # `is_secret_name` (shared with SARJ012) treats a hash/digest as secret material
-# because logging one can still be sensitive. A timing-attack surface is narrower:
-# only a MAC / authenticator whose bytes gate access. These extra SARJ011-only
-# filters strip the classes that are secret-shaped by name but are not an auth
-# comparison — so no_secret_in_log keeps its broader reach unchanged.
 
 # Trailing token that makes the identifier metadata *about* a secret (its category
-# / handle / label), not the credential: `token_type`, `token_name`, `session_id`,
-# `credential_kind`. `type`/`id` are already dropped by the shared innocuous set;
-# `name`/`kind` are added here because logging them can still matter (SARJ012) but
-# they are never a timing surface.
 _DESCRIPTOR_WORDS = frozenset({"type", "types", "name", "names", "id", "ids", "kind", "kinds"})
 
 # A `type`/`kind` token anywhere marks an enum/category discriminator, not a
@@ -37,10 +29,6 @@ _DESCRIPTOR_WORDS = frozenset({"type", "types", "name", "names", "id", "ids", "k
 _CATEGORY_WORDS = frozenset({"type", "types", "kind", "kinds"})
 
 # Words that make an identifier a secret *only* via an integrity/content hash
-# (`content_hash`, `metadata_hash`, `row_hash`) rather than an authenticator.
-# A name that ALSO carries one of these keeps firing (`password_hash`,
-# `token_hash`, `computed_hmac`, `signature`): those gate access, a plain digest
-# of content does not.
 _AUTH_WORDS = frozenset(
     {
         "token",
@@ -57,9 +45,6 @@ _AUTH_WORDS = frozenset(
         "hmac",
         "apikey",
         # `bearer` was in the TypeScript twin's AUTH_WORDS and in neither Python
-        # list, so `bearer == provided` was a flagged timing attack in TS and a
-        # silent one here. The two lists are otherwise identical, which is what
-        # made the gap invisible.
         "bearer",
     }
 )
@@ -95,7 +80,6 @@ class PreferConstantTimeSecretCompare(Rule):
             if id(node) in dunder_compares:
                 continue
             # Only single-operator comparisons using == or != (Eq/NotEq).
-            # Chained comparisons (a == b == c) and is/is not don't apply.
             if len(node.ops) != 1:
                 continue
             if not isinstance(node.ops[0], (ast.Eq, ast.NotEq)):
@@ -169,8 +153,6 @@ def _is_secret_operand(node: ast.AST, *, crypto_module: bool) -> bool:
 
 
 # The polysemous auth words: a MAC in crypto code, a *function* signature in
-# reflection code. They count as auth words only in a module that imports
-# crypto machinery.
 _CRYPTO_GATED_WORDS = frozenset({"signature", "signatures"})
 
 _CRYPTO_MODULES = frozenset({"hmac", "hashlib", "secrets", "jwt", "cryptography", "Crypto", "nacl"})

@@ -29,9 +29,7 @@ _MIN_ELEMENTS = 2
 #: shape counts as a shared contract rather than one class's own design.
 _SIBLING_DECLARATIONS = 2
 
-#: Bases that shape a class rather than hand it an interface to implement. A
-#: method on a `BaseModel` / `Protocol` / `Generic` subclass is still the
-#: module's own design, so these do not mark a method as an inherited override.
+#: Bases that shape a class rather than hand it an interface to implement.
 _STRUCTURAL_BASES = frozenset(
     {
         "ABC",

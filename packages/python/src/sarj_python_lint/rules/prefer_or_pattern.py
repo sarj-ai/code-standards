@@ -23,8 +23,7 @@ _MIN_RUN = 2
 # diagnostic stays readable on one terminal line.
 _MAX_RENDERED_PATTERN = 48
 
-# Statement shapes that make an arm body empty. Merging empty arms de-duplicates
-# nothing and destroys the one-line-per-variant ledger the author wrote.
+# Statement shapes that make an arm body empty.
 _EMPTY_BODY_NODES = (ast.Pass,)
 
 

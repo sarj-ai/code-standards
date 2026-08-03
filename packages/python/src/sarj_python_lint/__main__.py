@@ -102,21 +102,13 @@ class _Args(argparse.Namespace):
 
 
 def _explain(wanted: str) -> int:
-    """Print a rule's summary plus the derived links to its examples and evidence.
-
-    This is the runtime consumer of the one-line module docstring: it is what
-    makes an inaccurate summary visible rather than merely unread.
-
-    """
+    """Print a rule's description and its derived examples link."""
     key = wanted.strip()
     cls = REGISTRY.get(key) or next((c for c in REGISTRY.values() if c.code.upper() == key.upper()), None)
     if cls is None:
         sys.stderr.write(f"unknown rule: {wanted}\navailable: {', '.join(sorted(REGISTRY))}\n")
         return 2
-    summary = (sys.modules[cls.__module__].__doc__ or "").strip().splitlines()
-    sys.stdout.write(
-        f"{cls.code}  {cls.id}\n{summary[0] if summary else cls.description}\nexamples: {cls.examples_url()}\n"
-    )
+    sys.stdout.write(f"{cls.code}  {cls.id}\n{cls.description}\nexamples: {cls.examples_url()}\n")
     return 0
 
 
@@ -131,13 +123,7 @@ def _baseline_counts(diags: list[Diagnostic]) -> dict[str, dict[str, int]]:
 
 
 def _read_baseline(path: Path) -> dict[str, dict[str, int]]:
-    """Load a baseline file, keeping only well-formed `{path: {CODE: count}}` entries.
-
-    `json.loads` returns `Any`, so the shape is narrowed here rather than
-    asserted — a hand-edited baseline should degrade to "not baselined" rather
-    than crash the run or silently suppress on a malformed entry.
-
-    """
+    """Load a baseline file, keeping only well-formed `{path: {CODE: count}}` entries."""
     raw: object = json.loads(  # pyright: ignore[reportAny] — json.loads is an untyped stdlib boundary; the shape is narrowed below
         path.read_text(encoding="utf-8")
     )

@@ -18,17 +18,13 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# The two attributes that *configure* what a mock does when called. Assigning
-# either is arrange, never act.
+# The two attributes that *configure* what a mock does when called.
 _CONFIG_ATTRS = frozenset({"return_value", "side_effect"})
 
-# Assertions that the mock was never reached. If one of these passes, every
-# configuration of that path is provably unobserved.
+# Assertions that the mock was never reached.
 _NOT_CALLED_ASSERTIONS = frozenset({"assert_not_called", "assert_not_awaited"})
 
-# Reads of the call record. Their presence means the test *does* care whether
-# the path was called, so an `assert_not_called` elsewhere is a checkpoint
-# rather than the final word.
+# Reads of the call record.
 _INTROSPECTION_ATTRS = frozenset(
     {
         "await_args",

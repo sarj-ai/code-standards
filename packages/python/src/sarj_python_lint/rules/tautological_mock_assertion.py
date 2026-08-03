@@ -17,9 +17,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# The two `unittest.mock` knobs that decide what a stubbed call hands back. Both
-# appear as assignment targets (`m.get.return_value = X`) and as keyword
-# arguments (`patch(..., return_value=X)`, `AsyncMock(side_effect=X)`).
+# The two `unittest.mock` knobs that decide what a stubbed call hands back.
 _MOCK_VALUE_ATTRS = frozenset({"return_value", "side_effect"})
 
 # A call whose name starts with this verifies something in its own right:
@@ -37,22 +35,16 @@ _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 
 _TEST_PREFIX = "test_"
 
-# pytest's default `python_files`. `is_test_path` is broader on purpose — it
-# accepts everything under `tests/` — and a module pytest never imports as a
-# test cannot hold a weak assertion.
+# pytest's default `python_files`.
 _COLLECTED_SUFFIX = "_test.py"
 
 # Manual CLI probes carry `test_*.py` names but are never collected.
 _UNCOLLECTED_DIR_NAMES = frozenset({"scripts"})
 
 # Expression shapes that stand for "the whole thing the code under test
-# produced". `Attribute` (`result.name`) and `Subscript` (`result["id"]`) are
-# deliberately absent: reaching into the result asserts where a value ended up,
-# which is behaviour the stub does not decide.
 _WHOLE_RESULT_NODES = (ast.Name, ast.Call, ast.Await)
 
-# Exactly two: the stub setup and the assertion. A third mention means the value
-# also flows into the call under test, making the comparison a round trip.
+# Exactly two: the stub setup and the assertion.
 _EXPECTED_OCCURRENCES = 2
 
 # `0`/`1` double as False/True, counts, and indexes; stubbing one and asserting

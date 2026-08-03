@@ -20,13 +20,7 @@ REPO_BLOB: Final = "https://github.com/sarj-ai/standards/blob/main"
 TESTS_DIR: Final = "packages/python/tests/rules"
 
 
-# Suppression syntax. Two forms supported:
-#   # sarj-noqa: SARJ001 — reason
-#   # sarj-noqa: SARJ001, SARJ002 — reason
-# We deliberately do NOT reuse ruff's own suppression comment because ruff
-# aggressively cleans unrecognized codes (RUF100/RUF102) even with `external`
-# set, which silently breaks suppressions across runs. A distinct prefix
-# (sarj-noqa) shares no syntax with ruff, so the two never collide.
+# Keep SARJ suppressions separate because Ruff removes unknown `noqa` codes.
 _SARJ_NOQA_RE = re.compile(
     r"#\s*sarj-noqa(?::\s*([A-Za-z0-9_, ]+))?",
     re.IGNORECASE,
@@ -34,11 +28,7 @@ _SARJ_NOQA_RE = re.compile(
 
 
 def is_suppressed(source_lines: Sequence[str], line: int, code: str) -> bool:
-    """Report whether the diagnostic's line carries a `# sarj-noqa[: CODE]` comment.
-
-    `line` is 1-based to match Diagnostic.line.
-
-    """
+    """Report whether the diagnostic's line carries a `# sarj-noqa[: CODE]` comment."""
     if line < 1 or line > len(source_lines):
         return False
     text = source_lines[line - 1]
@@ -78,14 +68,7 @@ class Diagnostic:
 
 
 class Rule(ABC):
-    """Base class for a single lint rule.
-
-    Subclasses set `id` (kebab-case) and `code` (e.g. SARJ001) as class
-    attributes and implement `check(path, source) -> list[Diagnostic]`.
-
-    A rule documents itself with a concise summary and a derived link to its
-    executable examples. The metadata tests require that paired test module.
-    """
+    """Base class for a single lint rule."""
 
     id: str
     code: str
@@ -93,7 +76,7 @@ class Rule(ABC):
 
     @abstractmethod
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        """Inspect the given source. Return zero or more diagnostics."""
+        """Inspect the given source."""
         raise NotImplementedError
 
     @classmethod

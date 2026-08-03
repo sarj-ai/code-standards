@@ -30,7 +30,6 @@ _RAISES_TOKEN_RE = re.compile(r"(^|_)(raises|warns|deprecated_call)", re.IGNOREC
 _RAISES_NAMES = frozenset({"raises", "warns", "fail"})
 
 # These pytest and SQLAlchemy helpers verify without an assertion token in their names.
-# Keep the set exact so similarly named application helpers remain findings.
 _LIBRARY_ASSERTION_NAMES = frozenset(
     {
         # _pytest.pytester.LineMatcher
@@ -82,9 +81,7 @@ _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 # Manual CLI probes live here under test_*.py names but are never collected.
 _UNCOLLECTED_DIR_NAMES = frozenset({"scripts"})
 
-# pytest's default `python_files`. `is_test_path` is broader on purpose (it
-# accepts everything under `tests/`), and that breadth is wrong here: a module
-# pytest never imports as a test cannot hold a weak test.
+# pytest's default `python_files`.
 _COLLECTED_SUFFIX = "_test.py"
 
 

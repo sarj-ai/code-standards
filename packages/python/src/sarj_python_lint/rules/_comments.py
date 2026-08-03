@@ -1,28 +1,4 @@
-"""Shared comment analysis for the comment-hygiene rules (SARJ016/049/050/051).
-
-Two things live here, both needed by more than one rule.
-
-**The protected class.** Nine deterministic signals that mark a comment as
-carrying something the code cannot: an external reference, a version pin, a
-number with a unit, a causal connective, a negation of the obvious, an
-upstream-quirk word, a concurrency/invariant term, security reasoning, or a
-vendor proper noun with *ascribed behaviour*. Measured over a 37,918-comment
-corpus from nine repos: the nine signals protect **40/40** hand-picked best
-comments and leak **~1%** of the hand-classified cruft list.
-
-The class is an **EXEMPTION FLOOR, never a test**. `is_protected(body)` being
-False says nothing at all about a comment — over pydantic / trio / attrs it
-matches only 18-35% of comments a human called valuable. Every use here is of
-the form "if protected, do not flag"; inverting it into "unprotected, so
-delete" would flag two thirds of the best comments in Python's most carefully
-commented libraries. If a future rule wants a *positive* test for value, it
-needs its own measurement, not this.
-
-**One tokenize pass per file.** `standalone_comments()` mirrors
-`rule_base.parse_or_none`: a single-slot memo keyed on the source object, so
-the four comment rules that all need "every comment that is alone on its line"
-tokenize each file once between them rather than once each.
-"""
+"""Shared comment analysis for the comment-hygiene rules (SARJ016/049/050/051)."""
 
 from __future__ import annotations
 
@@ -41,9 +17,6 @@ if TYPE_CHECKING:
 
 
 # S1 — external reference: URL, issue/ticket key, RFC/PEP/CVE, bare GitHub issue
-# number, or an email/handle domain. Ticket keys allow letters after the first
-# digit (`PLATFORM-1YC`) and exclude the encoding/algorithm acronyms that share
-# the shape (`UTF-8`, `SHA-256`, `ISO-8601`, `AES-256`).
 _REF_RE = re.compile(
     r"https?://|\bRFC[- ]?\d+|\bPEP[- ]?\d+|\bCVE-\d{4}|"
     r"\b(?!UTF-|SHA-|ISO-|AES-|CRC-|MD-|PCM-|EOF-|API-|BASE-)[A-Z][A-Z0-9]{1,9}-\d[A-Z0-9]{0,5}\b|"
@@ -58,15 +31,13 @@ _VERSION_RE = re.compile(
 )
 
 # S3 — a number carrying a unit (time, size, rate, audio, percent) or an HTTP
-# status code. `429` and `250 ms` are facts about the world, not about the code.
 _UNITS_RE = re.compile(
     r"[~<>]?\d+(?:\.\d+)?\s?(?:ms|s\b|sec\b|seconds?\b|min\b|minutes?\b|hours?\b|days?\b|"
     r"KB|MB|MiB|GiB|kHz|Hz|bytes?\b|bit\b|-bit\b|%|px\b|rps\b|qps\b)|"
     r"\b[1-5]xx\b|\b(?:301|302|304|307|308|400|401|403|404|405|409|410|412|422|425|429|500|501|502|503|504)\b",
 )
 
-# S4 — a causal connective tying behaviour to a consequence. This is the shape
-# of a *why*: the comment says what breaks if the code changes.
+# S4 — a causal connective tying behaviour to a consequence.
 _CAUSAL_RE = re.compile(
     r"\b(?:because|otherwise|so that|or else|would (?:break|fail|race|deadlock|leak|clobber|loop|crash|page|stall)|"
     r"breaks?\b|so we don'?t|to avoid\b|caused\b|causes\b|gets? clobbered|"
@@ -91,8 +62,7 @@ _UPSTREAM_RE = re.compile(
     re.IGNORECASE,
 )
 
-# S7 — concurrency, ordering, or invariant vocabulary. Nothing in the code text
-# can state "this must run before the lock is taken".
+# S7 — concurrency, ordering, or invariant vocabulary.
 _INVARIANT_RE = re.compile(
     r"\b(?:invariant|idempotent|race\b|deadlock|re-?entran|atomic|thread-?safe|signal-?safe|"
     r"lexicographic(?:al(?:ly)?)?|monotonic|must (?:run|be|happen|come|stay|hit|converge|configure)|"
@@ -108,9 +78,6 @@ _SECURITY_RE = re.compile(
 )
 
 # S9 — a vendor proper noun with *ascribed behaviour* (possessive, or followed by
-# a behavioural verb). A vendor name as the mere object of a narration verb
-# ("Create the prompt for Gemini") carries nothing and is deliberately NOT
-# protected — that distinction is what keeps the leak rate at ~1%.
 _VENDOR_RE = re.compile(
     r"\b(?:GitHub|Slack|Twilio|LiveKit|Kamailio|Groq|OpenAI|Anthropic|Cloudflare|FastAPI|"
     r"Starlette|Sentry|Zoho|Salla|Ashby|Linear|BigQuery|Postgres|Neon|Drizzle|Vertex|Gemini|"
@@ -133,30 +100,18 @@ _SIGNALS: dict[str, re.Pattern[str]] = {
     "vendor": _VENDOR_RE,
 }
 
+# These measured high-precision signals are exemption-only; their absence never licenses deletion.
+
 
 def is_protected(body: str) -> bool:
-    """Report whether a comment carries any protected-class signal.
-
-    EXEMPTION FLOOR ONLY — see the module docstring. A False result is not
-    evidence that the comment is worthless.
-
-    """
+    """Apply an exemption floor; absence of a signal does not prove prose is worthless."""
     return any(pattern.search(body) for pattern in _SIGNALS.values())
 
 
 def has_external_reference(body: str) -> bool:
-    """Report whether a comment cites a ticket, URL, RFC/PEP/CVE, or issue number.
-
-    Signal S1 on its own. A comment that names where the decision is recorded is
-    doing the one thing the code cannot, and it is the signal that separates a
-    scoping note with an owner ("EN-only for now — AR needs audio (PROJ-249)")
-    from an unowned admission ("hacky, fix later").
-
-    """
+    """Report whether a comment cites a ticket, URL, RFC/PEP/CVE, or issue number."""
     return bool(_REF_RE.search(body))
 
-
-# --- tokenisation shared by the restatement detectors ----------------------
 
 # Below this length an inflection strip would eat the word itself.
 _MIN_STEM_LENGTH = 3
@@ -164,9 +119,7 @@ _MIN_STEM_LENGTH = 3
 _WORD_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|\d+")
 _CAMEL_RE = re.compile(r"[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|\d+")
 
-# Words that say nothing about *which* code a comment describes. Kept close to
-# the prototype's list: shrinking it costs recall, growing it costs precision by
-# letting a genuinely novel word be discounted.
+# Words that say nothing about *which* code a comment describes.
 STOPWORDS: frozenset[str] = frozenset(
     [
         "a",
@@ -308,16 +261,7 @@ def split_identifier(token: str) -> list[str]:
 
 
 def stem(word: str) -> str:
-    """Fold the common English inflections so `updates`/`updating` match `update`.
-
-    The trailing-`e` strip is what makes the fold *symmetric*: without it
-    `creates`/`creating` reduce to `creat` while `create` stays `create`, and the
-    two never match — the shape that most often made a restatement look novel.
-
-    Deliberately crude otherwise. A real stemmer would conflate more pairs, and
-    every extra conflation is a chance to call a novel word a restatement.
-
-    """
+    """Fold the common English inflections so `updates`/`updating` match `update`."""
     base = word
     for suffix in ("ing", "ied", "ies", "ers", "er", "ed", "es", "s"):
         if word.endswith(suffix) and len(word) - len(suffix) >= _MIN_STEM_LENGTH:
@@ -347,26 +291,17 @@ def code_tokens(text: str) -> set[str]:
 
 
 def restates(comment_tokens: Sequence[str], code: Iterable[str]) -> bool:
-    """Report whether every content token of a comment already appears in the code.
-
-    Exact or stemmed match only. Prefix matching is deliberately absent: it is
-    what sank the first attempt at this shape (PR #98), where `service` matched
-    `locationService` and drove the false-positive rate to ~60%.
-
-    """
+    """Report whether every content token of a comment already appears in the code."""
+    # Prefix matching is intentionally absent because it made unrelated identifiers look equivalent.
     present = set(code)
     stems = {stem(token) for token in present}
     return all(token in present or stem(token) in stems for token in comment_tokens)
 
 
-# --- one tokenize pass per file --------------------------------------------
-
 _LAYOUT_TOKENS = frozenset({tokenize.NL, tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT})
 _NON_CODE_TOKENS = _LAYOUT_TOKENS | frozenset({tokenize.COMMENT, tokenize.ENCODING, tokenize.ENDMARKER})
 
-# `(line, col0, body, standalone)` for every comment, in source order. This is
-# what `_suppression_comments` needs, and it is a by-product of the pass below
-# rather than a reason to run a second one — see `all_comments`.
+# `(line, col0, body, standalone)` for every comment, in source order.
 _Ordered = list[tuple[int, int, str, bool]]
 
 _Scan = tuple[list[tuple[int, int, str]], list[tuple[int, int, str]], set[int], int, _Ordered]
@@ -405,19 +340,7 @@ def _scan(source: str) -> _Scan:
 
 
 def all_comments(source: str) -> tuple[_Ordered, int]:
-    """Return every comment as `(line, col0, body, standalone)`, plus the first code line.
-
-    Exists so the suppression rules (SARJ038/054) can share this module's
-    tokenize pass instead of running a second one. Both scanners computed the
-    same three facts — comment text, whether it stands alone on its line, and
-    where the first real code token is — from identical token-class sets, so the
-    second pass was pure duplicated work: SARJ038 alone spent ~4% of total rule
-    time on it.
-
-    `col0` is 0-based, matching this module's other accessors; the suppression
-    layer adds one for its 1-based `Comment.col`.
-
-    """
+    """Return every comment as `(line, col0, body, standalone)`, plus the first code line."""
     _, _, _, first_code_line, ordered = _scan_memo(source)
     return ordered, first_code_line
 
@@ -432,41 +355,17 @@ def _scan_memo(source: str) -> _Scan:
 
 
 def trailing_comments(source: str) -> list[tuple[int, int, str]]:
-    """Return every comment that shares its line with code, as `(line, col, body)`.
-
-    Raises out of here when `source` cannot be tokenized; see
-    `standalone_comments`.
-
-    """
+    """Return every comment that shares its line with code, as `(line, col, body)`."""
     return _scan_memo(source)[1]
 
 
 def nested_comment_lines(source: str) -> set[int]:
-    """Return the lines of comments sitting INSIDE a bracketed expression.
-
-    A comment at bracket depth > 0 is annotating an element of a list, dict or
-    call — `# config` inside pydantic's `__all__` groups the names beneath it —
-    rather than signposting the structure of the file. Both readings produce the
-    same one-word comment, and only the depth tells them apart.
-
-    """
+    """Return the lines of comments sitting INSIDE a bracketed expression."""
     return _scan_memo(source)[2]
 
 
 def standalone_comments(source: str) -> tuple[list[tuple[int, int, str]], int]:
-    """Return every own-line comment as `(line, col, body)`, plus the first code line.
-
-    A comment is standalone when it is the only content on its line; `first code
-    line` is the row of the first real code token (a large sentinel when the file
-    has none). Memoized on the source *object* so the comment rules share one
-    tokenize pass per file, as `rule_base.parse_or_none` does for the AST.
-
-    A file the tokenizer rejects raises out of here rather than being silently
-    treated as comment-free; every caller catches that and returns no
-    diagnostics, because a rule has nothing useful to say about a file that does
-    not parse.
-
-    """
+    """Return every own-line comment as `(line, col, body)`, plus the first code line."""
     standalone, _, _, first_code_line, _ = _scan_memo(source)
     return standalone, first_code_line
 
@@ -482,9 +381,7 @@ def comment_runs(standalone: Sequence[tuple[int, int, str]]) -> list[list[tuple[
     return runs
 
 
-# A comment wall is judged as a block, not as an isolated sentence. AI-written
-# walkthroughs commonly evade the short-comment restatement rule by adding one
-# or two filler words to every step; repetition is the evidence in that shape.
+# A comment wall is judged as a block, not as an isolated sentence.
 _WALL_MIN_STATEMENTS = 4
 _WALL_MIN_COMMENTS = 3
 _WALL_MIN_COMMENTED_RATIO = 0.6
@@ -551,8 +448,6 @@ def _weak_walkthrough_comment(body: str, statement: str) -> bool:
     if len(words) < _WALL_MIN_CONTENT_WORDS or not _WALL_NARRATION_RE.match(body):
         return False
     # The opener describes the operation and need not literally occur in the
-    # statement (`Fetch users` / `users = store.list()`). The remainder must be
-    # mostly corroborated; at most two filler words may be novel.
     known = code_tokens(statement)
     described = words[1:]
     if not described:
@@ -591,16 +486,7 @@ def statement_comment_walls(
     source: str,
     standalone: Sequence[tuple[int, int, str]],
 ) -> dict[int, frozenset[int]]:
-    """Return `{leader: member lines}` for repeated statement narration walls.
-
-    Each wall lives within one AST statement list (module, function, branch,
-    loop, handler). A comment must be directly above and aligned with the simple
-    statement it describes. Three weak comments are not enough by themselves:
-    comments must cover most of a block, and most attached comments must be
-    weak. This keeps an occasional label or a carefully documented exceptional
-    step from turning a whole function into a finding.
-
-    """
+    """Return `{leader: member lines}` for repeated statement narration walls."""
     tree = parse_or_none(path, source)
     if tree is None:
         return {}

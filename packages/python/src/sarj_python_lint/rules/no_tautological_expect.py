@@ -34,9 +34,7 @@ _UNITTEST_MSG_KWARG = "msg"
 # `assertEqual(first, second)` and friends: the two operands compared.
 _EQUALITY_ARITY = 2
 
-# Comparison operators whose two-identical-literals form is a tautology. `<=`
-# and `>=` are too, but nobody writes them by accident; `!=`/`is not` on
-# identical literals always *fails*, which is loud rather than silent.
+# Comparison operators whose two-identical-literals form is a tautology.
 _SAMENESS_OPS = (ast.Eq, ast.Is)
 
 # Enough of the operand to identify it in the message without pasting a screenful.

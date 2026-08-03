@@ -61,14 +61,10 @@ _SAFE_CALLEES = frozenset(
     }
 )
 
-#: Collection methods known not to mutate the receiver. Everything else is
-#: assumed to mutate — default-deny, so an unrecognised method suppresses the
-#: report rather than risking a hoist that shares mutable state across calls.
+#: Collection methods known not to mutate the receiver.
 _SAFE_METHODS = frozenset({"copy", "count", "get", "index", "items", "keys", "values"})
 
-#: The `re.Pattern` API. A compiled pattern is immutable and, unlike a JavaScript
-#: RegExp, carries no scan state, so these are all pure reads — but the list is
-#: still explicit, so an unrecognised method on a pattern bails like any other.
+#: The `re.Pattern` API.
 _SAFE_REGEX_METHODS = frozenset(
     {
         "findall",
@@ -84,8 +80,7 @@ _SAFE_REGEX_METHODS = frozenset(
 
 _FUNCTION_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 
-#: Nodes that open a scope of their own. A reference to the binding inside one
-#: is a capture, which outlives the call and therefore bails.
+#: Nodes that open a scope of their own.
 _INNER_SCOPE_NODES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
 
 
@@ -379,8 +374,7 @@ def _is_safe_read(node: ast.Name, parents: dict[int, ast.AST], safe_methods: fro
         case ast.Attribute():
             return _is_safe_method_call(parent, parents, safe_methods)
         case ast.Subscript(value=value, ctx=ctx):
-            # `x[k]` reads; `x[k] = v` / `del x[k]` mutate. `d[x]` uses the
-            # binding as a key, which is a plain read whatever `d` does.
+            # `x[k]` reads; `x[k] = v` / `del x[k]` mutate.
             return isinstance(ctx, ast.Load) if value is node else True
         case ast.Call(args=args, func=callee):
             return any(arg is node for arg in args) and _is_safe_callee(callee)

@@ -18,8 +18,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# Strict keyword adjacency distinguishes SQL writes from prose. The optional
-# `OR <action>` recognizes SQLite inserts before replay-safe forms are excused.
+# Strict keyword adjacency distinguishes SQL writes from prose.
 _INSERT_WRITE = re.compile(
     r"\bINSERT\s+(?:OR\s+\w+\s+)?INTO\s+[\w.\"'`?$:@-]+\s*(?:\([^)]*\)\s*)?(?:VALUES|SELECT|DEFAULT\s+VALUES)\b",
     re.IGNORECASE,

@@ -30,12 +30,7 @@ _EXEMPT_METHOD_DECORATORS = frozenset({"property", "cached_property", "abstractm
 
 _SELF_NAMES = frozenset({"self", "cls"})
 
-#: The conventional throwaway name for a `@singledispatch.register` /
-#: `@run.register` implementation. It is a caller like any other — it can
-#: suppress — but it can never be a stepdown TARGET: "move this below its only
-#: caller `_`" names a location a reader cannot find, and a scope holding four
-#: defs called `_` has no canonical one, which is the same arbitrariness this
-#: rule refuses for multi-caller helpers.
+#: A repeated singledispatch implementation name cannot identify one movable target.
 _DISCARD_NAME = "_"
 
 
@@ -77,17 +72,7 @@ class Stepdown(Rule):
 
 
 def _first_by_name[DefT: _Def](defs: Sequence[DefT]) -> dict[str, DefT]:
-    """Index defs by name, keeping the FIRST definition of a repeated name.
-
-    A repeated name is an `@overload` group, a `@property`/`@x.setter` pair or a
-    conditional def. Such a name cannot be FLAGGED — there is no single node to
-    move — but it is still a perfectly good CALLER, and the first def is where
-    its group starts, which is the position a stepdown has to clear.
-
-    Returns:
-        One node per distinct name, the earliest in body order.
-
-    """
+    """Index defs by name, keeping the FIRST definition of a repeated name."""
     first: dict[str, DefT] = {}
     for d in defs:
         first.setdefault(d.name, d)
