@@ -19,16 +19,16 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# `is_secret_name` (shared with SARJ012) treats a hash/digest as secret material
+# Logging protects broad secret-shaped data; timing checks only cover authenticators that gate access.
 
-# Trailing token that makes the identifier metadata *about* a secret (its category
+# Descriptor suffixes name secret metadata rather than credential bytes.
 _DESCRIPTOR_WORDS = frozenset({"type", "types", "name", "names", "id", "ids", "kind", "kinds"})
 
 # A `type`/`kind` token anywhere marks an enum/category discriminator, not a
 # credential: `TOKEN_TYPE_SYSTEM`, `credential_type`, `grant_kind`.
 _CATEGORY_WORDS = frozenset({"type", "types", "kind", "kinds"})
 
-# Words that make an identifier a secret *only* via an integrity/content hash
+# Auth words distinguish access-gating hashes from ordinary content digests.
 _AUTH_WORDS = frozenset(
     {
         "token",
@@ -44,7 +44,7 @@ _AUTH_WORDS = frozenset(
         "signature",
         "hmac",
         "apikey",
-        # `bearer` was in the TypeScript twin's AUTH_WORDS and in neither Python
+        # Keep bearer aligned with the TypeScript authenticator vocabulary.
         "bearer",
     }
 )
@@ -75,8 +75,7 @@ class PreferConstantTimeSecretCompare(Rule):
         dunder_compares = _equality_dunder_compares(tree, source)
         diags: list[Diagnostic] = []
         for node in compares:
-            # Value equality between two objects the process holds is not an
-            # auth gate — nothing is granted on the result.
+            # Equality dunders compare held objects rather than gate access on attacker input.
             if id(node) in dunder_compares:
                 continue
             # Only single-operator comparisons using == or != (Eq/NotEq).
@@ -152,7 +151,7 @@ def _is_secret_operand(node: ast.AST, *, crypto_module: bool) -> bool:
     return False
 
 
-# The polysemous auth words: a MAC in crypto code, a *function* signature in
+# Treat signature as an authenticator only when the surrounding module is cryptographic.
 _CRYPTO_GATED_WORDS = frozenset({"signature", "signatures"})
 
 _CRYPTO_MODULES = frozenset({"hmac", "hashlib", "secrets", "jwt", "cryptography", "Crypto", "nacl"})

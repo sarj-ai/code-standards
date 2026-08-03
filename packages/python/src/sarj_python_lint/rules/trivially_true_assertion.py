@@ -56,7 +56,7 @@ _COLLABORATOR_SUFFIXES = (
     "receiver",
 )
 
-# `assert result.passed is False` is the pytest house spelling for a boolean
+# Permit identity comparison only for boolean singleton assertions.
 _ECHO_OPS = (ast.Eq, ast.Is)
 
 _KWARG_DIAGNOSIS = (

@@ -50,7 +50,7 @@ _BIGQUERY_SQL = re.compile(
     r"|\bSAFE_CAST\s*\(|\bPARSE_TIMESTAMP\s*\(|\bCOUNTIF\s*\(|\bSTRUCT\s*\(",
     re.IGNORECASE,
 )
-# A psycopg parameter placeholder (`%s` / `%(name)s`) is Postgres-specific — BigQuery
+# Psycopg placeholders are a Postgres signal that overrides otherwise ambiguous analytics syntax.
 _POSTGRES_SQL = re.compile(r"%\(\w+\)s|%s")
 
 # This null-safe comparison is a row predicate, not set deduplication.
@@ -68,7 +68,7 @@ def _blank_null_safe_comparisons(sql: str) -> str:
     return _NULL_SAFE_COMPARISON.sub(lambda m: " " * len(m.group(0)), sql)
 
 
-# A diagnostic needs BOTH a query shape (SELECT/UPDATE/DELETE) and an aggregation
+# Require both a query verb and aggregation syntax to avoid flagging unrelated prose.
 _VERB_GATE = re.compile(r"select|update|delete", re.IGNORECASE)
 _AGG_GATE = re.compile(r"count|group|distinct", re.IGNORECASE)
 
@@ -85,7 +85,7 @@ class NoAggregationInStoreQuery(Rule):
     def check(self, path: Path, source: str) -> list[Diagnostic]:
         if not is_store_module(path):
             return []
-        # A diagnostic needs some string literal that carries both a query verb
+        # Skip files whose literals cannot contain both required syntax classes.
         if _AGG_GATE.search(source) is None or _VERB_GATE.search(source) is None:
             return []
         if _CLICKHOUSE_FILE.search(source):
@@ -103,7 +103,7 @@ class NoAggregationInStoreQuery(Rule):
             text = sql_string_value(node)
             if text is None:
                 continue
-            # Only a `+`-concatenated BinOp owns sub-nodes that the walk would
+            # Mark concatenated children consumed so the walk cannot report the same query twice.
             if isinstance(node, ast.BinOp):
                 consumed.update(id(sub) for sub in walk(node))
 

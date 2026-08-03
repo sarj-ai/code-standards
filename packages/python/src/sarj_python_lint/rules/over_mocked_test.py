@@ -342,7 +342,7 @@ def _substitutions(
             if subform is not None:
                 subs.update(_patch_keys(dec, subform, names))
                 injected += _injected_owners(dec, subform, names)
-    # A class-level `@patch` is the TestCase's shared fixture, not something
+    # Count class-level patch decorators once as shared TestCase fixtures.
     injected += _class_injected_owners(owner, names)
 
     scan = _body_substitutions(func, names)

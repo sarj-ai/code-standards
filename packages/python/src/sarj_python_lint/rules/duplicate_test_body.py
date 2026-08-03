@@ -26,7 +26,7 @@ _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 
 _TEST_PREFIX = "test_"
 
-# Every literal collapses to this, so the differing case value does not defeat
+# Collapse case literals so differing inputs do not hide duplicated test structure.
 _LITERAL_PLACEHOLDER = "\x00sarj-literal"
 
 # Statements in the shared body, docstring excluded, below which "these two
@@ -36,7 +36,7 @@ _MIN_STATEMENTS = 3
 # Members of a normalized-body group before it counts as copy-paste.
 _MIN_GROUP = 2
 
-# A class whose base reads like a test-case base is a `unittest.TestCase`, and
+# Pytest cannot parametrize unittest-style classes, including project-specific TestCase bases.
 _UNITTEST_BASE_RE = re.compile(r"Test(Case|s)?$")
 
 # `self.<name>` calls that only exist on a `unittest.TestCase`.
@@ -52,7 +52,7 @@ _LITERAL_ECHO_LIMIT = 32
 # Differing literals named in the message; past this the list is summarized.
 _MAX_LITERALS_SHOWN = 3
 
-# A *differing* string literal that spans more than one line and is longer than
+# Long multiline literals are fixture documents, not case values to normalize away.
 _MAX_CASE_LITERAL = 32
 
 _PARAMETRIZE_ADVICE = (
@@ -87,7 +87,7 @@ class DuplicateTestBody(Rule):
         except tokenize.TokenError, IndentationError, SyntaxError:
             return []
         except RecursionError:
-            # Normalisation deep-copies each body and `ast.dump`s it, both of
+            # Deep or generated trees may exceed recursion limits during normalization.
             return []
 
         diags = [

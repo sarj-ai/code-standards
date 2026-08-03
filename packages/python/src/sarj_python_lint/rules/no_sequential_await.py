@@ -53,7 +53,7 @@ class NoSequentialAwait(Rule):
 # A loop's *iterable* is evaluated once in the enclosing scope, NOT per element:
 _SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
 
-# Top-level body statements that signal conditional or ordered logic rather than
+# Control flow means the loop is not a straight-line parallel map.
 _CONTROL_FLOW = (
     ast.If,
     ast.For,
@@ -86,7 +86,7 @@ def _imports_non_asyncio_runtime(tree: ast.AST, source: str) -> bool:
     return False
 
 
-# Names that exist only in trio / anyio, so a module using one is a
+# Trio/AnyIO-only names identify structured-concurrency modules even through relative imports.
 _STRUCTURED_CONCURRENCY_NAMES = frozenset(
     {
         "CancelScope",
@@ -147,7 +147,7 @@ def _loop_carried_awaits(tree: ast.AST) -> set[int]:
     """`id()`s of awaits whose result feeds the next iteration through the same name."""
     exempt: set[int] = set()
     for node in nodes(tree, ast.Assign):
-        # An assignment's *value* cannot contain another assignment, so each
+        # Assignment values cannot nest assignments, so each match has one owner.
         awaits = list(_same_scope_awaits(node.value))
         if not awaits:
             continue

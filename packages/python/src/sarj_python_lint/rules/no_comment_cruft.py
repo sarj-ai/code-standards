@@ -56,7 +56,7 @@ _LICENSE_RE = re.compile(
     re.IGNORECASE,
 )
 
-# A licence header is a legally required block of text a contributor cannot
+# License text is legally required and therefore never comment cruft.
 _LICENSE_HEADER_MAX_LINE = 8
 _LICENSE_HEADER_RADIUS = 4
 
@@ -64,7 +64,7 @@ _BANNER_FULL_RE = re.compile(r"^[-=#*~_+.\s]{4,}$")
 # `[\u2500-\u257f]` is the Unicode box-drawing block.
 _BANNER_RUN_RE = re.compile(r"={4,}|-{4,}|#{4,}|\*{4,}|~{4,}|[\u2500-\u257f]{4,}")
 
-# A VS Code / Visual Studio folding marker: `# region`, `# region helpers`,
+# Recognize editor folding markers such as region and endregion.
 _REGION_MARKER_RE = re.compile(r"^#?(?:end)?region\b(?P<title>.*)$", re.IGNORECASE)
 _REGION_TITLE_RE = re.compile(r"^[\s:\-\u2013\u2014]*\w[\w \-/&+]*$")
 _REGION_TITLE_MAX_WORDS = 5
@@ -84,10 +84,10 @@ _CODE_HEADER_RE = re.compile(
 )
 _ASSIGN_OR_CALL_RE = re.compile(r"^[A-Za-z_][\w.\[\]]*\s*(?:=|:=|\+=|-=|\*=|/=)\s*\S|^[A-Za-z_][\w.]*\(")
 
-# Pseudo-code / grammar-example markers (`%sent%`, `[opt]`, `<FunctionBody>`,
+# Grammar-example markers protect notation that intentionally resembles commented code.
 _PSEUDOCODE_RE = re.compile(r"%[^%\s]+%|\[opt\]|<[^<>]+>|\.\.\.")
 
-# Code-regeneration recipes: a commented-out call that exists *to be
+# Preserve commented commands that document intentional regeneration recipes.
 _CODE_REGEN_CALL_RE = re.compile(r"^insert_assert\s*\(")
 
 # Any letter, in any script.
@@ -117,7 +117,7 @@ _META_COMMENTARY_RE = re.compile(
     re.IGNORECASE,
 )
 
-# A bare one-word signpost naming a region of the file (`# Constants`,
+# Known one-word section labels are structural signposts rather than prose.
 _SECTION_LABEL_WORDS = frozenset(
     {
         "actions",
@@ -163,7 +163,7 @@ _SECTION_LABEL_WORDS = frozenset(
 )
 _SECTION_LABEL_RE = re.compile(r"^([A-Za-z]+)\s*:?\s*$")
 
-# "Helper function to check if a path is active" — the opener announces the
+# A "helper function" opener narrates mechanics without explaining intent.
 _HELPER_OPENER_RE = re.compile(
     r"^(?:a\s+)?helper\s+(?:function|method|component|hook|class|type|util(?:ity)?)\b",
     re.IGNORECASE,
@@ -303,7 +303,7 @@ def _is_redundant_narration(
         and _DUMMY_TRANSLATION_RE.match(c)
         and not any(ch in c for ch in "():=")
     ):
-        # Exclude common rationale words or test markers
+        # Exclude common rationale words and test markers.
         lower_c = c.lower()
         rationale_words = (
             "when",
@@ -317,7 +317,7 @@ def _is_redundant_narration(
             "to avoid",
             "only",
         )
-        # Also exclude single-word labels like `# get` which are often group labels in tests
+        # Exclude single-word labels that commonly group tests.
         if len(words) > 1 and not any(word in lower_c for word in rationale_words):
             return True
     if not nested and _is_section_label(c):
@@ -535,7 +535,7 @@ class NoCommentCruft(Rule):
             return
         if not any(_HAS_LETTER_RE.search(body) for _, _, body in leading):
             return  # line-art logo, not prose a module docstring could carry
-        # A preamble carrying at least one prose sentence is documentation — the
+        # Keep prose preambles; only content-free headers are cruft.
         if any(_is_prose_line(body) for _, _, body in leading):
             return
         if len(leading) >= _LEADING_PREAMBLE_MIN:

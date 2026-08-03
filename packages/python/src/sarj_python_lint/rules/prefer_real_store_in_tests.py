@@ -28,7 +28,7 @@ _DOUBLE_SUFFIX_RE = re.compile(r"(?:InMemory|Mock|Fake|Stub|Dummy)$")
 _PORT_TAIL = r"(?:Store|Repository|Repo|DAO|Dao|Database|DB|Db)"
 _PORT_TAIL_RE = re.compile(_PORT_TAIL + "$")
 
-# Qualifiers that put the port somewhere other than a relational database: a vector
+# Qualifiers exclude ports for non-relational stores from this relational-store rule.
 _NON_RELATIONAL_RE = re.compile(r"(?:Vector|Redis|Blob|Doc|Graph|Lock|Memory|State|Artifact|Trace)" + _PORT_TAIL + "$")
 
 # `AbstractStore` -> `abstract_store`, for spotting `test_<port>.py`.

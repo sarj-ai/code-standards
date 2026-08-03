@@ -41,7 +41,7 @@ _COLLECTED_SUFFIX = "_test.py"
 # Manual CLI probes carry `test_*.py` names but are never collected.
 _UNCOLLECTED_DIR_NAMES = frozenset({"scripts"})
 
-# Expression shapes that stand for "the whole thing the code under test
+# Only whole-result expressions can echo a mock value without asserting where it landed.
 _WHOLE_RESULT_NODES = (ast.Name, ast.Call, ast.Await)
 
 # Exactly two: the stub setup and the assertion.

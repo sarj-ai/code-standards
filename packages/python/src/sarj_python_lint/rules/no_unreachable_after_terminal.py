@@ -25,7 +25,7 @@ _FUNCTIONS = (ast.FunctionDef, ast.AsyncFunctionDef)
 # The node kinds whose own `body` runs in a different context than they do.
 _CONTEXT_NODES = (*_FUNCTIONS, *_LOOPS, ast.ClassDef)
 
-# The node kinds whose subtree can contain a statement, and so the only ones
+# Recurse only through node kinds whose subtree can contain statements.
 _STATEMENT_BEARING = (ast.stmt, ast.ExceptHandler, ast.match_case, ast.mod)
 
 
@@ -65,7 +65,7 @@ def _child_context(node: ast.AST, field: str, *, in_function: bool, in_loop: boo
 
 
 def _is_generator_marker(stmt: ast.stmt) -> bool:
-    # `yield` / `yield from` after a terminal is the idiom that forces a
+    # An unreachable yield still changes the function into a generator, so it is load-bearing.
     match stmt:
         case ast.Expr(value=value) | ast.Assign(value=value) | ast.AugAssign(value=value) | ast.AnnAssign(value=value):
             return isinstance(value, (ast.Yield, ast.YieldFrom))

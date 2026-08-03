@@ -81,10 +81,10 @@ _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 
 # --- the calibrated guards; see the module docstring for the measurements ---
 
-# Distinct mocked collaborators that must be pinned before the test is
+# Minimum mocked collaborators required before wiring assertions dominate the test.
 _MIN_INTERACTION_TARGETS = 2
 
-# Wiring a callback onto a collaborator is the one side effect that genuinely
+# Callback registration is observable behavior rather than mere mock wiring.
 _REGISTRATION_METHODS = frozenset(
     {
         "add_done_callback",

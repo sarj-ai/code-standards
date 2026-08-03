@@ -54,7 +54,7 @@ _SKIP_MARKERS = frozenset({"skip", "skipif", "xfail"})
 _PARAMETRIZE = "parametrize"
 _PARAM = "param"
 
-# A condition that probes what the environment can do, rather than what the
+# Capability guards legitimately skip assertions where the environment cannot exercise them.
 _CAPABILITY_RE = re.compile(
     r"support|feature|capabilit|available|installed|platform|implementation|version|hasattr|debug",
     re.IGNORECASE,
@@ -164,7 +164,7 @@ def _is_collected_module(path: Path) -> bool:
 def _conditionally_asserting_tests(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
     helpers = _asserting_helper_names(tree)
     module_bindings = _bindings_in(tree.body)
-    # A module-level table is often sized by a *sibling* test
+    # A sibling test can establish that a module-level case table is nonempty.
     module_nonempty = frozenset(_nonempty_claims(tree, helpers) & set(module_bindings))
     imported = _imported_names(tree)
     hits: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
@@ -270,7 +270,7 @@ def _stmt_guarantees(stmt: ast.stmt, facts: _Facts) -> bool:
 
 def _if_guarantees(stmt: ast.If, facts: _Facts) -> bool:
     if not stmt.orelse:
-        # `if failures: pytest.fail(...)` *is* `assert not failures`: the arm
+        # A conditional pytest.fail is an assertion on the negated condition.
         if _always_fails(stmt.body):
             return True
         return _is_capability_probe(stmt.test) and _guaranteed(stmt.body, facts)
@@ -353,7 +353,7 @@ def _loop_guarantees(stmt: ast.For | ast.AsyncFor, facts: _Facts) -> bool:
         return True
     if not _iterable_is_nonempty(stmt.iter, facts, frozenset()):
         return False
-    # Inside a loop that is proven to run, anything reached *through* the loop
+    # Nested collections reached through an item need not be proven nonempty globally.
     inner = _Facts(
         nonempty=facts.nonempty,
         bindings=facts.bindings,
@@ -369,7 +369,7 @@ def _bound_names(target: ast.expr) -> frozenset[str]:
 
 
 def _try_guarantees(stmt: ast.Try, facts: _Facts) -> bool:
-    # An explicit `try` in a test is `assertRaises` written long-hand — the
+    # A try/except test can verify failure without an `assert` token.
     limbs: list[Sequence[ast.stmt]] = [stmt.body, stmt.orelse, stmt.finalbody]
     limbs.extend(handler.body for handler in stmt.handlers)
     return any(_guaranteed(limb, facts) for limb in limbs)
@@ -916,5 +916,5 @@ def _range_is_nonempty(expr: ast.Call, facts: _Facts, seen: frozenset[str]) -> b
     try:
         return len(range(*bounds)) > 0
     except ValueError, TypeError:
-        # `range(1, 10, 0)` is a zero step; no arguments at all, or four of
+        # Invalid range arity or a zero step proves nothing about loop execution.
         return False

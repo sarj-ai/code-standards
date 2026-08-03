@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-#: Per-variable comparison-cluster accumulator: first line, first col, every
+#: Per-variable accumulator containing location and literals grouped by comparison operator.
 type _ClusterEntry = tuple[int, int, set[str], set[str], set[str], set[str]]
 
 
@@ -71,7 +71,7 @@ EXTERNAL_VOCAB = frozenset(
 #: not flagged.
 _SCANNER_KEY_SEGMENTS = frozenset({"c", "ch", "chr", "char", "token", "tok", "letter", "digit", "glyph"})
 
-#: Variable names that denote an OPEN external vocabulary (ISO language / country
+#: Variable names whose external vocabulary is open-ended rather than an application enum.
 OPEN_DOMAIN_CODE_NAMES = frozenset(
     {
         "language",
@@ -238,7 +238,7 @@ def _cluster_fires(key: str, entry: _ClusterEntry) -> bool:
     _line, _col, literals, eq_literals, ne_literals, in_literals = entry
     if not eq_literals and not ne_literals:
         return False  # a lone `in`/`not in` membership guard is not an app enum
-    # A closed set is enumerated by ONE operator reaching 2+ alternatives
+    # One operator must enumerate multiple alternatives before the vocabulary is demonstrably closed.
     enumerated = max(len(eq_literals | in_literals), len(ne_literals | in_literals))
     if enumerated < _MIN_CLUSTER_SIZE:
         return False
