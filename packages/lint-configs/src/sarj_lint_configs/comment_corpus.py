@@ -5,11 +5,14 @@ from __future__ import annotations
 import ast
 from collections import Counter
 from contextlib import suppress
+import errno
 import io
 import json
 import os
 from pathlib import Path
 import re
+import secrets
+import stat
 import tokenize
 from typing import TYPE_CHECKING, TypedDict
 
@@ -24,6 +27,9 @@ _SKIP_PARTS = {".git", ".venv", ".worktrees", "node_modules", "dist", "build", "
 _BOUNDARY_RE = re.compile(r"(?<=[.!?])[\"'`)\]]*\s+(?=[A-Z0-9`])")
 _BULLET_RE = re.compile(r"^\s*(?:[-*+] |\d+[.)] )")
 _SECOND_SENTENCE = 2
+_DIRECTORY_FLAGS = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+_READ_FLAGS = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+_WRITE_FLAGS = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
 
 
 class Record(TypedDict):
@@ -39,31 +45,49 @@ class Record(TypedDict):
 def records(roots: Sequence[Path]) -> Iterator[Record]:
     for root in roots:
         resolved_root = root.resolve(strict=True)
-        for directory, names, filenames in os.walk(resolved_root, followlinks=False):
-            names[:] = [name for name in names if name not in _SKIP_PARTS and not name.startswith(".")]
-            for filename in filenames:
-                path = Path(directory, filename)
-                language = _SUFFIXES.get(path.suffix.lower())
-                if language is None or path.is_symlink():
-                    continue
-                try:
-                    resolved = path.resolve(strict=True)
-                    if not resolved.is_relative_to(resolved_root):
+        root_descriptor = os.open(resolved_root, _DIRECTORY_FLAGS)
+        try:
+            for directory, names, filenames, directory_descriptor in os.fwalk(
+                ".", topdown=True, follow_symlinks=False, dir_fd=root_descriptor
+            ):
+                names[:] = [name for name in names if name not in _SKIP_PARTS and not name.startswith(".")]
+                for filename in filenames:
+                    relative = Path(directory, filename)
+                    language = _SUFFIXES.get(relative.suffix.lower())
+                    if language is None:
                         continue
-                    source = resolved.read_text(encoding="utf-8", errors="replace")
-                except OSError:
-                    continue
-                comments = _python_comments(source) if language == "python" else _javascript_comments(source)
-                for line, kind, value in comments:
-                    yield {
-                        "repository": resolved_root.name,
-                        "path": str(path.relative_to(resolved_root)),
-                        "line": line,
-                        "language": language,
-                        "kind": kind,
-                        "sentences": _sentence_units(value),
-                        "text": value,
-                    }
+                    try:
+                        source = _read_regular_file(directory_descriptor, filename)
+                    except OSError:
+                        continue
+                    if source is None:
+                        continue
+                    comments = _python_comments(source) if language == "python" else _javascript_comments(source)
+                    for line, kind, value in comments:
+                        yield {
+                            "repository": resolved_root.name,
+                            "path": relative.as_posix().removeprefix("./"),
+                            "line": line,
+                            "language": language,
+                            "kind": kind,
+                            "sentences": _sentence_units(value),
+                            "text": value,
+                        }
+        finally:
+            os.close(root_descriptor)
+
+
+def _read_regular_file(directory_descriptor: int, filename: str) -> str | None:
+    descriptor = os.open(filename, _READ_FLAGS, dir_fd=directory_descriptor)
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            return None
+        with os.fdopen(descriptor, encoding="utf-8", errors="replace") as source:
+            descriptor = -1
+            return source.read()
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
 
 
 def emit_summary(roots: Sequence[Path], output: TextIO) -> int:
@@ -83,13 +107,143 @@ def emit_summary(roots: Sequence[Path], output: TextIO) -> int:
 
 
 def write_records(roots: Sequence[Path], destination: Path) -> int:
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    descriptor = os.open(destination, flags, 0o600)
-    with os.fdopen(descriptor, "w", encoding="utf-8") as output:
-        output.writelines(json.dumps(record, ensure_ascii=False) + "\n" for record in records(roots))
+    parent = destination.parent.resolve(strict=True)
+    staging = f".{destination.name}.{secrets.token_hex(8)}.tmp"
+    parent_descriptor = os.open(parent, _DIRECTORY_FLAGS)
+    staging_descriptor = -1
+    staging_status: os.stat_result | None = None
+    source_status: os.stat_result | None = None
+    source_status_box: list[os.stat_result] = []
+    records_owned = False
+    try:
+        _require_safe_output_parent(os.fstat(parent_descriptor))
+        _ = os.mkdir(staging, 0o700, dir_fd=parent_descriptor)
+        staging_status = os.stat(staging, dir_fd=parent_descriptor, follow_symlinks=False)
+        staging_descriptor = os.open(staging, _DIRECTORY_FLAGS, dir_fd=parent_descriptor)
+        if not _same_inode(staging_status, os.fstat(staging_descriptor)):
+            message = "raw corpus staging directory changed before it was opened"
+            raise RuntimeError(message)
+        descriptor = os.open("records", _WRITE_FLAGS, 0o600, dir_fd=staging_descriptor)
+        records_owned = True
+        source_status = _write_and_publish(
+            roots,
+            destination_name=destination.name,
+            descriptor=descriptor,
+            staging_descriptor=staging_descriptor,
+            parent_descriptor=parent_descriptor,
+            source_status_box=source_status_box,
+        )
+    finally:
+        if source_status_box:
+            source_status = source_status_box[0]
+        _cleanup_staging(
+            staging=staging,
+            staging_status=staging_status,
+            staging_descriptor=staging_descriptor,
+            source_status=source_status,
+            records_owned=records_owned,
+            parent_descriptor=parent_descriptor,
+        )
     return 0
+
+
+def _write_and_publish(
+    roots: Sequence[Path],
+    *,
+    destination_name: str,
+    descriptor: int,
+    staging_descriptor: int,
+    parent_descriptor: int,
+    source_status_box: list[os.stat_result],
+) -> os.stat_result:
+    try:
+        source_status = os.fstat(descriptor)
+        source_status_box.append(source_status)
+        stream = os.fdopen(descriptor, "w", encoding="utf-8")
+        descriptor = -1
+        with stream as output:
+            output.writelines(json.dumps(record, ensure_ascii=False) + "\n" for record in records(roots))
+            output.flush()
+            os.fsync(output.fileno())
+            if not _path_matches("records", source_status, staging_descriptor):
+                message = "raw corpus staging file changed before publication"
+                raise RuntimeError(message)
+            os.link(
+                "records",
+                destination_name,
+                src_dir_fd=staging_descriptor,
+                dst_dir_fd=parent_descriptor,
+                follow_symlinks=False,
+            )
+            destination_status = os.stat(destination_name, dir_fd=parent_descriptor, follow_symlinks=False)
+            if not _same_inode(destination_status, source_status):
+                message = "raw corpus staging file changed before publication"
+                raise RuntimeError(message)
+            os.fsync(parent_descriptor)
+        return source_status
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+
+def _cleanup_staging(
+    *,
+    staging: str,
+    staging_status: os.stat_result | None,
+    staging_descriptor: int,
+    source_status: os.stat_result | None,
+    records_owned: bool,
+    parent_descriptor: int,
+) -> None:
+    try:
+        if staging_descriptor >= 0:
+            try:
+                if source_status is not None:
+                    _unlink_if_owned("records", source_status, staging_descriptor)
+                elif records_owned:
+                    with suppress(FileNotFoundError):
+                        os.unlink("records", dir_fd=staging_descriptor)
+            finally:
+                os.close(staging_descriptor)
+    finally:
+        try:
+            if staging_status is not None:
+                _rmdir_if_owned(staging, staging_status, parent_descriptor)
+        finally:
+            os.close(parent_descriptor)
+
+
+def _require_safe_output_parent(parent_status: os.stat_result) -> None:
+    writable_by_others = parent_status.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
+    if writable_by_others and not parent_status.st_mode & stat.S_ISVTX:
+        message = "raw corpus output directory must not be group/world writable unless it has the sticky bit"
+        raise PermissionError(message)
+
+
+def _same_inode(left: os.stat_result, right: os.stat_result) -> bool:
+    return (left.st_dev, left.st_ino) == (right.st_dev, right.st_ino)
+
+
+def _path_matches(name: str, expected: os.stat_result, directory_descriptor: int) -> bool:
+    try:
+        current = os.stat(name, dir_fd=directory_descriptor, follow_symlinks=False)
+    except FileNotFoundError:
+        return False
+    return _same_inode(current, expected)
+
+
+def _unlink_if_owned(name: str, expected: os.stat_result, directory_descriptor: int) -> None:
+    if _path_matches(name, expected, directory_descriptor):
+        os.unlink(name, dir_fd=directory_descriptor)
+
+
+def _rmdir_if_owned(name: str, expected: os.stat_result, directory_descriptor: int) -> None:
+    if _path_matches(name, expected, directory_descriptor):
+        try:
+            os.rmdir(name, dir_fd=directory_descriptor)
+        except OSError as error:
+            if error.errno not in {errno.EEXIST, errno.ENOTEMPTY}:
+                raise
 
 
 def _python_comments(source: str) -> list[tuple[int, str, str]]:
