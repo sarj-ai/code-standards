@@ -6,7 +6,7 @@ import ast
 import io
 import re
 import tokenize
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 from sarj_python_lint.rule_base import parse_or_none
 
@@ -304,6 +304,12 @@ _NON_CODE_TOKENS = _LAYOUT_TOKENS | frozenset({tokenize.COMMENT, tokenize.ENCODI
 # `(line, col0, body, standalone)` for every comment, in source order.
 _Ordered = list[tuple[int, int, str, bool]]
 
+
+class _CommentScan[T](NamedTuple):
+    comments: T
+    first_code_line: int
+
+
 _Scan = tuple[list[tuple[int, int, str]], list[tuple[int, int, str]], set[int], int, _Ordered]
 
 _last_scan: tuple[str, _Scan] | None = None
@@ -339,10 +345,10 @@ def _scan(source: str) -> _Scan:
     return standalone, trailing, nested, first_code_line, ordered
 
 
-def all_comments(source: str) -> tuple[_Ordered, int]:
+def all_comments(source: str) -> _CommentScan[_Ordered]:
     """Return every comment as `(line, col0, body, standalone)`, plus the first code line."""
     _, _, _, first_code_line, ordered = _scan_memo(source)
-    return ordered, first_code_line
+    return _CommentScan(ordered, first_code_line)
 
 
 def _scan_memo(source: str) -> _Scan:
@@ -364,10 +370,10 @@ def nested_comment_lines(source: str) -> set[int]:
     return _scan_memo(source)[2]
 
 
-def standalone_comments(source: str) -> tuple[list[tuple[int, int, str]], int]:
+def standalone_comments(source: str) -> _CommentScan[list[tuple[int, int, str]]]:
     """Return every own-line comment as `(line, col, body)`, plus the first code line."""
     standalone, _, _, first_code_line, _ = _scan_memo(source)
-    return standalone, first_code_line
+    return _CommentScan(standalone, first_code_line)
 
 
 def comment_runs(standalone: Sequence[tuple[int, int, str]]) -> list[list[tuple[int, int, str]]]:
