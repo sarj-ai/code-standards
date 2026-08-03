@@ -1,5 +1,5 @@
 import * as tsParser from "@typescript-eslint/parser";
-import { type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -12,7 +12,7 @@ import {
 function expression(source: string): TSESTree.Expression {
   const program = tsParser.parse(source);
   const statement = program.body[0];
-  if (statement?.type !== "ExpressionStatement") {
+  if (statement?.type !== AST_NODE_TYPES.ExpressionStatement) {
     throw new Error(`Expected an expression: ${source}`);
   }
   return statement.expression;

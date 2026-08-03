@@ -3,10 +3,10 @@ import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
 
 export default defineConfig(
-  { ignores: ["dist/**", "node_modules/**", "tests/fixtures/**"] },
+  { ignores: ["dist/**", "tests/fixtures/**"] },
   {
-    name: "sarj/typescript-source",
-    files: ["**/*.{js,mjs,cjs,ts,mts,cts}"],
+    name: "sarj/typescript",
+    files: ["**/*.{ts,mjs}"],
     extends: [js.configs.recommended, tseslint.configs.recommendedTypeChecked],
     languageOptions: {
       parserOptions: {
@@ -15,9 +15,10 @@ export default defineConfig(
       },
     },
     linterOptions: { reportUnusedDisableDirectives: "error" },
-    rules: {
-      // ESTree discriminants intentionally interoperate with enum members and string literals.
-      "@typescript-eslint/no-unsafe-enum-comparison": "off",
-    },
+  },
+  {
+    name: "sarj/estree-discriminants",
+    files: ["src/rules/**/*.ts"],
+    rules: { "@typescript-eslint/no-unsafe-enum-comparison": "off" },
   },
 );
