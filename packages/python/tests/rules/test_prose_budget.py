@@ -43,6 +43,7 @@ def test_groups_excludes_directives_licenses_and_inline_comments() -> None:
 @pytest.mark.parametrize(
     "path",
     [Path("generated/client.py"), Path("vendor/client.py")],
+    ids=["generated", "vendor"],
 )
 def test_groups_excludes_generated_and_vendored_files(path: Path) -> None:
     assert groups(path, '"""One. Two. Three."""\n') == []
