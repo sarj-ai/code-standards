@@ -466,31 +466,29 @@ def test_every_protected_type_is_wired_in(resource_type: str):
 
 def test_the_curated_set_is_exactly_this():
     """A parametrize over the set cannot catch a deletion — the case vanishes with the row."""
-    expected = frozenset(
-        {
-            "google_sql_database_instance",
-            "google_container_cluster",
-            "google_bigquery_table",
-            "google_bigquery_dataset",
-            "google_spanner_database",
-            "google_alloydb_cluster",
-            "google_bigtable_instance",
-            "aws_db_instance",
-            "aws_rds_cluster",
-            "aws_rds_global_cluster",
-            "aws_redshift_cluster",
-            "aws_dynamodb_table",
-            "aws_elasticache_replication_group",
-            "aws_elasticache_cluster",
-            "aws_docdb_cluster",
-            "aws_neptune_cluster",
-            "azurerm_postgresql_flexible_server",
-            "azurerm_postgresql_server",
-            "azurerm_mysql_flexible_server",
-            "azurerm_mysql_server",
-            "azurerm_mssql_server",
-            "azurerm_mssql_database",
-            "azurerm_cosmosdb_account",
-        }
-    )
+    expected = {
+        "google_sql_database_instance",
+        "google_container_cluster",
+        "google_bigquery_table",
+        "google_bigquery_dataset",
+        "google_spanner_database",
+        "google_alloydb_cluster",
+        "google_bigtable_instance",
+        "aws_db_instance",
+        "aws_rds_cluster",
+        "aws_rds_global_cluster",
+        "aws_redshift_cluster",
+        "aws_dynamodb_table",
+        "aws_elasticache_replication_group",
+        "aws_elasticache_cluster",
+        "aws_docdb_cluster",
+        "aws_neptune_cluster",
+        "azurerm_postgresql_flexible_server",
+        "azurerm_postgresql_server",
+        "azurerm_mysql_flexible_server",
+        "azurerm_mysql_server",
+        "azurerm_mssql_server",
+        "azurerm_mssql_database",
+        "azurerm_cosmosdb_account",
+    }
     assert expected == PROTECTED_TYPES
