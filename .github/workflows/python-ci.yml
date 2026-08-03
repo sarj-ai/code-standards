@@ -63,7 +63,6 @@ jobs:
       - run: uv python install 3.14
       - run: uv sync --dev
       - run: uv run pytest -q
-      - run: uv run ruff format --check src/ tests/
       - run: uv run ruff check src/ tests/
       - run: uv run basedpyright
       - run: uv build

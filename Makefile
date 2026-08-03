@@ -30,7 +30,7 @@ setup:
 verify: format-check lint typecheck test repo-check
 
 format-check:
-	uv run --project packages/lint-configs ruff format --check \
+	uv run --project packages/lint-configs --frozen ruff format --check \
 	  packages/python/src packages/python/tests \
 	  packages/sql/src packages/sql/tests \
 	  packages/iac/src packages/iac/tests \

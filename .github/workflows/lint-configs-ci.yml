@@ -52,7 +52,6 @@ jobs:
       - run: uv sync --dev
       - name: Lint + typecheck (dogfood the strict config)
         run: |
-          uv run ruff format --check src/ tests/
           uv run ruff check src/ tests/
           uv run basedpyright
           uv run sarj-lint-configs check .
@@ -101,5 +100,5 @@ jobs:
           npm --prefix "$repo" pkg delete 'devDependencies.@sarj/eslint-plugin'
           # Resolution only, and without the unpublished @sarj/eslint-plugin pin:
           # this asserts the peer set + overrides produce a tree npm accepts.
-          (cd "$repo" && npm install --package-lock-only --no-audit --no-fund \
-            $("$cli" peers | sed -n 's/^npm install -D --save-exact //p' | tr ' ' '\n' | grep -v '^@sarj/' | tr '\n' ' '))
+          mapfile -t peer_specs < <("$cli" peers | sed -n 's/^npm install -D --save-exact //p' | tr ' ' '\n' | grep -v '^@sarj/')
+          (cd "$repo" && npm install --package-lock-only --no-audit --no-fund "${peer_specs[@]}")
