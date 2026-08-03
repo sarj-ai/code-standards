@@ -21,9 +21,7 @@ _CONFIGS_KEY: Final = "configs"
 
 PEERS_JSON: Final = CONFIGS_DIR / "eslint.peers.json"
 
-#: Sibling distributions whose versions `sarj-lint-configs` pins exactly. A
-#: consumer never chooses these; a pin site naming one is checked against the
-#: version that shipped inside the wheel it already installed.
+#: Sibling distributions pinned exactly by `sarj-lint-configs`.
 LINT_CONFIGS: Final = "sarj-lint-configs"
 _PYTHON_LINT: Final = "sarj-python-lint"
 SIBLING_PACKAGES: Final = (_PYTHON_LINT, "sarj-sql-lint", "sarj-iac-lint")
@@ -34,9 +32,7 @@ def adopted_version() -> str:
     return __version__
 
 
-#: Configs each ecosystem actually consumes. The old `sync` wrote all six
-#: unconditionally, so a Python-only repo had to commit `eslint.strict.mjs` --
-#: and keep it byte-identical -- or give up on `sync --check` in CI entirely.
+#: Config bundle selected for each detected ecosystem.
 PYTHON_CONFIGS: Final = ("ruff", "pyright")
 TYPESCRIPT_CONFIGS: Final = ("eslint",)
 SHARED_CONFIGS: Final = ("markdownlint", "taplo", "yamllint")
@@ -74,11 +70,7 @@ def as_table(value: object) -> dict[str, object]:
     """Read an untyped mapping as a string-keyed table of unknown values."""
     if not isinstance(value, dict):
         return {}
-    # A `dict` narrowed out of an untyped parser is `dict[Unknown, Unknown]`, and
-    # the three suppressions below are the entire cost of that, paid once for the
-    # whole package. Everything downstream of this return sees `dict[str, object]`
-    # and is checked normally -- which is the point of routing every parsed table
-    # through one function instead of narrowing at each call site.
+    # Centralize untyped-parser narrowing so downstream tables stay typed.
     entries: dict[str, object] = {}
     for key, item in value.items():  # pyright: ignore[reportUnknownVariableType]
         if isinstance(key, str):
@@ -177,12 +169,7 @@ def expected_precommit_rev() -> str | None:
 
 
 def eslint_peers() -> dict[str, str]:
-    """Read the tested npm version set for the bundled ESLint config.
-
-    Raises:
-        TypeError: If the bundled manifest is malformed.
-
-    """
+    """Read the tested npm version set for the bundled ESLint config."""
     parsed: object = json.loads(  # pyright: ignore[reportAny] — json.loads is an untyped stdlib boundary; the shape is narrowed below
         PEERS_JSON.read_text(encoding="utf-8")
     )

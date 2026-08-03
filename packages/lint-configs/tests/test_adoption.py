@@ -70,11 +70,6 @@ def test_peer_pins_are_exact_versions() -> None:
 
 
 def test_peers_manifest_carries_the_overrides_that_make_it_installable() -> None:
-    """Without these, `npm install` exits ERESOLVE and the config is unreachable.
-
-    Verified by hand: the exact peer set fails to install in a fresh repo, and
-    succeeds with `{"overrides": {"eslint-plugin-react": {"eslint": "$eslint"}}}`.
-    """
     overrides = manifest.eslint_overrides()
     assert "eslint-plugin-react" in overrides
     assert overrides["eslint-plugin-react"] == {"eslint": "$eslint"}
@@ -144,12 +139,6 @@ def test_malformed_manifest_is_reported_not_ignored(tmp_path: Path) -> None:
 def test_config_set_follows_the_detected_ecosystems(
     *, python: bool, typescript: bool, expected: tuple[str, ...]
 ) -> None:
-    """A Python repo should never be asked to carry an ESLint config.
-
-    `sync` used to write all six unconditionally, so `sync --check` reported
-    permanent drift for the two files a repo did not want -- which is why the
-    check never made it into anyone's CI.
-    """
     assert manifest.default_configs(has_python=python, has_typescript=typescript) == expected
 
 
@@ -262,12 +251,6 @@ def test_init_prints_a_ci_snippet_with_the_unified_gate(tmp_path: Path) -> None:
 def test_ci_snippet_for_a_typescript_repo_does_not_require_a_python_project(
     tmp_path: Path,
 ) -> None:
-    """`uv run --frozen` in a repo with no pyproject is an instruction that fails.
-
-    Needing a Python project and lockfile to obtain an ESLint config is a fair
-    description of why TypeScript repos copied the file rather than install
-    anything, so the generated CI must not ask for one.
-    """
     _ = _typescript_repo(tmp_path)
     proc = _cli("init", "--dest", str(tmp_path))
     assert "uv run --frozen" not in proc.stdout
@@ -301,13 +284,6 @@ def test_init_on_an_empty_directory_says_so(tmp_path: Path) -> None:
 
 
 def test_generated_precommit_block_carries_no_rev(tmp_path: Path) -> None:
-    """The `rev:` was one of the three pin sites; the fix is to delete it.
-
-    A `repo: local` hook runs the CLI from the environment the pyproject pin
-    already fixed, so there is no second version string to keep in step -- and no
-    second namespace to translate (`python-v0.33.0` for `sarj-lint-configs`
-    0.16.0) to get wrong.
-    """
     _ = _python_repo(tmp_path)
     assert _cli("init", "--dest", str(tmp_path)).returncode == 0
     generated = (tmp_path / ".pre-commit-config.yaml").read_text()
@@ -417,11 +393,6 @@ def test_the_generated_precommit_hook_actually_runs(tmp_path: Path) -> None:
 
 
 def test_a_typescript_only_precommit_hook_does_not_invoke_uv_run(tmp_path: Path) -> None:
-    """`uv run --frozen` in a repo with no pyproject is `Failed to spawn`, exit 2.
-
-    `ci_snippet` already reasoned about this; `precommit_block` did not, so the
-    generated hook contradicted the generated CI job in the same `init` run.
-    """
     _ = _typescript_repo(tmp_path)
     assert _cli("init", "--dest", str(tmp_path)).returncode == 0
 
@@ -434,10 +405,6 @@ def test_a_typescript_only_precommit_hook_does_not_invoke_uv_run(tmp_path: Path)
 
 
 def test_detection_finds_a_package_json_in_a_subproject(tmp_path: Path) -> None:
-    """One repo ships the strict config while only 10 of its 52 sub-projects use it.
-
-    Detecting TypeScript only at the root would call that repo fully adopted.
-    """
     _ = _python_repo(tmp_path)
     (tmp_path / "services" / "web").mkdir(parents=True)
     _ = (tmp_path / "services" / "web" / "package.json").write_text("{}\n")
@@ -471,11 +438,6 @@ def test_doctor_catches_a_stale_pyproject_pin(tmp_path: Path) -> None:
 
 
 def test_doctor_catches_a_ci_pin_that_differs_from_the_pyproject_pin(tmp_path: Path) -> None:
-    """The measured case: CI ran `uvx --from sarj-python-lint==0.12.2`.
-
-    That pin lived on a command line in a workflow file, agreed with nothing, and
-    no tool had ever looked at it.
-    """
     _ = _python_repo(tmp_path)
     workflows = tmp_path / ".github" / "workflows"
     workflows.mkdir(parents=True)
@@ -512,13 +474,6 @@ def test_doctor_catches_a_stale_precommit_rev(tmp_path: Path) -> None:
 
 
 def test_doctor_catches_a_precommit_rev_pinned_to_a_raw_commit(tmp_path: Path) -> None:
-    """The stalest pin form was the one shape `doctor` could not see.
-
-    A tag-shaped pattern skipped a 40-character SHA entirely, so a repo pinning
-    the hooks to a commit dozens behind main was reported as having nothing to
-    check -- and a SHA is precisely the pin with no version in it for a human to
-    notice going stale either.
-    """
     _ = _python_repo(tmp_path)
     _ = (tmp_path / ".pre-commit-config.yaml").write_text(
         "repos:\n  - repo: https://github.com/sarj-ai/standards\n"
@@ -641,10 +596,7 @@ def test_rev_pattern_is_not_fooled_by_a_version_tag() -> None:
     assert doctor.parse_revs("rev: v6.0.0\n") == []
 
 
-#: `doctor`'s own report lines. A README that SHOWS drift has to name stale
-#: versions -- that is the example -- so those lines are demonstrations, not
-#: instructions, and holding them to the current version would make the sample
-#: output impossible to write.
+#: Doctor output is illustrative and excluded from documented-pin checks.
 _DOCTOR_OUTPUT_LINE = re.compile(r"^(?:ok|warn|drift)\s", re.MULTILINE)
 
 
@@ -677,11 +629,6 @@ def test_readme_never_advertises_a_version_that_is_not_shipping(readme: Path) ->
 
 
 def test_peers_json_documents_why_each_ceiling_exists() -> None:
-    """A pin below latest is a claim; it has to carry its evidence.
-
-    Without the reason written down, the next person to run `npm update` undoes
-    the only version set that installs.
-    """
     parsed: object = json.loads(ESLINT_PEERS.read_text(encoding="utf-8"))  # pyright: ignore[reportAny] — untyped stdlib boundary
     data = manifest.as_table(parsed)
     peers = manifest.table_field(data, "peers")
@@ -730,8 +677,7 @@ def test_sync_check_reports_drift_after_a_synced_config_is_deleted(tmp_path: Pat
     assert f"drift: {tmp_path / '.ruff-strict.toml'}" in proc.stdout
 
 
-#: Files `init` owns and would otherwise write. Each is given contents a repo
-#: could plausibly have hand-edited, so a clobber is visible rather than a no-op.
+#: Hand-edited fixtures for files owned by `init`.
 _SCAFFOLDED_FILES = {
     manifest.MANIFEST_NAME: '# hand-edited\nversion = "0.0.1"\nconfigs = ["ruff"]\n',
     "pyrightconfig.json": '{ "typeCheckingMode": "standard" }\n',
@@ -749,13 +695,6 @@ def _repo_with_hand_edited_files(root: Path) -> Path:
 
 @pytest.mark.parametrize("name", sorted(_SCAFFOLDED_FILES))
 def test_init_never_overwrites_an_existing_file_without_force(tmp_path: Path, name: str) -> None:
-    """`init` is a generator, not a framework: everything it writes is the repo's.
-
-    Only the `pyproject.toml` append path was covered, so dropping the existence
-    check would have silently replaced a repo's tuned `pyrightconfig.json`, its
-    hand-rolled `eslint.config.mjs` and its adopted-version manifest on a re-run
-    that people are told is safe.
-    """
     _ = _repo_with_hand_edited_files(tmp_path)
     proc = _cli("init", "--dest", str(tmp_path))
     assert proc.returncode == 0, proc.stderr
@@ -765,11 +704,6 @@ def test_init_never_overwrites_an_existing_file_without_force(tmp_path: Path, na
 
 @pytest.mark.parametrize("name", sorted(_SCAFFOLDED_FILES))
 def test_init_force_does_overwrite_the_files_it_owns(tmp_path: Path, name: str) -> None:
-    """The other half of the same guarantee: `--force` has to actually force.
-
-    Without this, `--force` could quietly become a no-op and the documented way
-    to re-sync a repo after an upgrade would leave it on the old wiring.
-    """
     _ = _repo_with_hand_edited_files(tmp_path)
     proc = _cli("init", "--force", "--dest", str(tmp_path))
     assert proc.returncode == 0, proc.stderr
@@ -778,12 +712,6 @@ def test_init_force_does_overwrite_the_files_it_owns(tmp_path: Path, name: str) 
 
 
 def test_an_existing_precommit_config_is_left_alone_and_the_block_is_printed(tmp_path: Path) -> None:
-    """A repo with hooks of its own gets a merge note, never a replacement.
-
-    `.pre-commit-config.yaml` is the one scaffolded file whose contents a repo
-    almost always already owns, and overwriting it deletes every other hook the
-    repo runs.
-    """
     _ = _python_repo(tmp_path)
     existing = (
         "repos:\n"
@@ -803,11 +731,6 @@ def test_an_existing_precommit_config_is_left_alone_and_the_block_is_printed(tmp
 
 
 def test_a_repo_with_its_own_ruff_table_is_told_rather_than_given_a_second_one(tmp_path: Path) -> None:
-    """Two `[tool.ruff]` tables is not valid TOML, so the append would break the repo.
-
-    Only the "already extends" and the "no table at all" paths were covered, and
-    a repo that sets `line-length` and nothing else is the common shape.
-    """
     _ = _python_repo(tmp_path)
     pyproject = tmp_path / "pyproject.toml"
     _ = pyproject.write_text(

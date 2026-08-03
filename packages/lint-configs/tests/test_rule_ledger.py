@@ -136,10 +136,7 @@ def test_doctor_removes_loose_type_guard_references_without_replacement(tmp_path
     assert all("there is no replacement" in finding.detail for finding in findings)
 
 
-#: The aliases `@sarj/eslint-plugin` 7.0.0 registered and 9.0.0 deleted. Frozen: a
-#: consumer that adopted 7.0.0 may hold any of these, and each is now `ESLint: exit
-#: 2` rather than a deprecation warning, so the ledger is the only thing that can
-#: name the replacement.
+#: Aliases removed in 9.0.0 whose replacements remain ledger-backed.
 _ALIASES_DELETED_IN_9_0_0 = {
     "@sarj/jsdoc-restates-signature": "@sarj/no-restated-jsdoc",
     "@sarj/no-async-callback-in-waitfor": "@sarj/no-async-callback-in-wait-for",

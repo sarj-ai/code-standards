@@ -46,10 +46,7 @@ _NEXT_STEPS = (
 
 
 class _Args(argparse.Namespace):
-    """Typed view over the parsed namespace so attribute access isn't `Any`.
-
-    Defaults mirror the argparse defaults; argparse overwrites them at parse time.
-    """
+    """Provide typed defaults for the parsed command namespace."""
 
     cmd: str = ""
     dest: str = "."
@@ -131,14 +128,7 @@ def cmd_sync(args: _Args, *, next_steps: bool = True) -> int:
 
 
 def _declared_dests(args: _Args) -> dict[str, str]:
-    """Read the per-project destinations `init` recorded, so CI need not restate them.
-
-    Without this, a repo whose TypeScript lives in a subdirectory had to spell
-    `--typescript-dest` into every `sync` and `sync --check` invocation, and the
-    one that forgot -- CI -- compared the strict config against a path where it
-    was never written and reported permanent drift.
-
-    """
+    """Read the project destinations recorded by `init`."""
     try:
         found = manifest.load(_resolve_dest(args.dest))
     except TypeError, ValueError, SystemExit:

@@ -6,10 +6,10 @@ from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.prefer_single_sentence_comment import PreferSingleSentenceComment
 
 
-def test_two_sentences_warn_without_blocking() -> None:
+def test_two_sentences_are_blocking() -> None:
     findings = PreferSingleSentenceComment().check(Path("app.py"), '"""First fact. Second fact."""\n')
     assert len(findings) == 1
-    assert findings[0].severity is Severity.WARNING
+    assert findings[0].severity is Severity.ERROR
 
 
 def test_one_or_three_sentences_belong_elsewhere() -> None:
