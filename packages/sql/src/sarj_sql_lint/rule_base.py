@@ -135,7 +135,7 @@ def _has_generated_marker(directory: Path) -> bool:
 
 
 def is_generated_migration(path: Path, source: str) -> bool:
-    """Report whether `path` is a migration emitted by a schema-migration generator."""
+    """Identify generated migrations so findings redirect to models instead of disappearing."""
     if _GENERATED_MIGRATION_SENTINEL in source:
         return True
     return _has_generated_marker(path.parent)
@@ -256,13 +256,13 @@ def _scan(source: str) -> tuple[str, list[tuple[int, int]]]:
 
 
 def mask_sql(source: str) -> str:
-    r"""Blank out comments, string literals and quoted identifiers while keeping dollar-quoted bodies."""
+    r"""Blank comments, strings, identifiers, and dollar delimiters without shifting offsets while keeping procedural SQL bodies live."""
     masked, _ = _scan(source)
     return masked
 
 
 def dollar_quoted_lines(source: str) -> frozenset[int]:
-    """1-based line numbers that fall inside a `$$ ... $$` / `$tag$ ... $tag$` body."""
+    """Locate dollar bodies for rules with an explicit procedural-migration exemption."""
     _, spans = _scan(source)
     if not spans:
         return frozenset()
@@ -325,7 +325,7 @@ _MODEL_OWNED_SUFFIX = (
 
 
 def redirect_to_model(diags: list[Diagnostic], *, model_owned: bool) -> list[Diagnostic]:
-    """Point a schema diagnostic at the model when the migration is generated."""
+    """Retain generated-migration findings while directing the fix to the source model."""
     if not model_owned:
         return diags
     return [replace(d, message=d.message + _MODEL_OWNED_SUFFIX) for d in diags]
