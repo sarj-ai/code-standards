@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import tokenize
 
 from sarj_python_lint.rules._comments import all_comments
 
@@ -31,3 +32,11 @@ def scan_comments(source: str) -> list[Comment]:
         )
         for line, col, body, standalone in ordered
     ]
+
+
+def scan_comments_or_none(source: str) -> list[Comment] | None:
+    """Return `None` when malformed source cannot be tokenized."""
+    try:
+        return scan_comments(source)
+    except tokenize.TokenError, SyntaxError:
+        return None

@@ -6,11 +6,10 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import re
-import tokenize
 from typing import TYPE_CHECKING, final, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule
-from sarj_python_lint.rules._suppression_comments import scan_comments
+from sarj_python_lint.rules._suppression_comments import scan_comments_or_none
 
 
 if TYPE_CHECKING:
@@ -42,9 +41,8 @@ class NoFileLevelEscapeHatchNoqa(Rule):
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
         """Report every file-level ruff exemption naming an escape-hatch code."""
-        try:
-            comments = scan_comments(source)
-        except tokenize.TokenError, IndentationError, SyntaxError:
+        comments = scan_comments_or_none(source)
+        if comments is None:
             return []
         diags = [
             Diagnostic(

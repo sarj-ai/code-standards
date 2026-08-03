@@ -4,7 +4,8 @@ import tokenize
 
 import pytest
 
-from sarj_python_lint.rules._suppression_comments import scan_comments
+from sarj_python_lint.rules import _suppression_comments
+from sarj_python_lint.rules._suppression_comments import scan_comments, scan_comments_or_none
 
 
 _MODULE = '''\
@@ -59,5 +60,27 @@ def test_a_file_of_nothing_but_comments_has_them_all_before_the_first_statement(
 def test_an_unlexable_file_propagates_rather_than_reading_as_comment_free() -> None:
     # Callers treat the raised error as "no diagnostics"; swallowing it here
     # would instead claim the file carries no suppression directives.
-    with pytest.raises((tokenize.TokenError, SyntaxError, IndentationError)):
+    with pytest.raises((tokenize.TokenError, SyntaxError)):
         _ = scan_comments("x = (\n")
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        pytest.param(tokenize.TokenError("EOF", (1, 0)), id="token"),
+        pytest.param(SyntaxError("bad syntax"), id="syntax"),
+    ],
+)
+def test_optional_scan_names_each_malformed_source_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: Exception,
+) -> None:
+    def raise_failure(_source: str) -> tuple[object, int]:
+        raise failure
+
+    monkeypatch.setattr(_suppression_comments, "all_comments", raise_failure)
+    assert scan_comments_or_none("malformed") is None
+
+
+def test_optional_scan_preserves_valid_empty_results() -> None:
+    assert scan_comments_or_none("x = 1\n") == []

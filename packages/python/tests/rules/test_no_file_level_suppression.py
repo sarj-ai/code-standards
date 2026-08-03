@@ -18,6 +18,10 @@ def _check(source: str, path: str = SRC_PATH) -> list[Diagnostic]:
     return NoFileLevelSuppression().check(Path(path), source)
 
 
+def test_unparsable_source_yields_no_diagnostics() -> None:
+    assert _check("# ruff: noqa\ndef (:\n") == []
+
+
 # Positive: bare Ruff file-wide noqa anywhere in the file.                      #
 
 
