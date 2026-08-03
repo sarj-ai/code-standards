@@ -38,22 +38,26 @@ class Record(TypedDict):
 
 def records(roots: Sequence[Path]) -> Iterator[Record]:
     for root in roots:
-        for directory, names, filenames in os.walk(root):
+        resolved_root = root.resolve(strict=True)
+        for directory, names, filenames in os.walk(resolved_root, followlinks=False):
             names[:] = [name for name in names if name not in _SKIP_PARTS and not name.startswith(".")]
             for filename in filenames:
                 path = Path(directory, filename)
                 language = _SUFFIXES.get(path.suffix.lower())
-                if language is None:
+                if language is None or path.is_symlink():
                     continue
                 try:
-                    source = path.read_text(encoding="utf-8", errors="replace")
+                    resolved = path.resolve(strict=True)
+                    if not resolved.is_relative_to(resolved_root):
+                        continue
+                    source = resolved.read_text(encoding="utf-8", errors="replace")
                 except OSError:
                     continue
                 comments = _python_comments(source) if language == "python" else _javascript_comments(source)
                 for line, kind, value in comments:
                     yield {
-                        "repository": root.name,
-                        "path": str(path.relative_to(root)),
+                        "repository": resolved_root.name,
+                        "path": str(path.relative_to(resolved_root)),
                         "line": line,
                         "language": language,
                         "kind": kind,
@@ -62,21 +66,29 @@ def records(roots: Sequence[Path]) -> Iterator[Record]:
                     }
 
 
-def emit(roots: Sequence[Path], *, summary: bool, output: TextIO) -> int:
-    extracted = records(roots)
-    if not summary:
-        output.writelines(json.dumps(record, ensure_ascii=False) + "\n" for record in extracted)
-        return 0
+def emit_summary(roots: Sequence[Path], output: TextIO) -> int:
     counts: Counter[tuple[str, str]] = Counter()
-    for record in extracted:
-        sentences = record["sentences"]
-        band = "0-1" if sentences <= 1 else "2" if sentences == _SECOND_SENTENCE else "3+"
-        counts[record["repository"], band] += 1
+    for index, root in enumerate(roots, start=1):
+        repository = f"repository-{index}"
+        for record in records([root]):
+            sentences = record["sentences"]
+            band = "0-1" if sentences <= 1 else "2" if sentences == _SECOND_SENTENCE else "3+"
+            counts[repository, band] += 1
     output.write("repository\t0-1\t2\t3+\n")
     output.writelines(
         f"{repository}\t{counts[repository, '0-1']}\t{counts[repository, '2']}\t{counts[repository, '3+']}\n"
         for repository in sorted({key[0] for key in counts})
     )
+    return 0
+
+
+def write_records(roots: Sequence[Path], destination: Path) -> int:
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(destination, flags, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+        output.writelines(json.dumps(record, ensure_ascii=False) + "\n" for record in records(roots))
     return 0
 
 

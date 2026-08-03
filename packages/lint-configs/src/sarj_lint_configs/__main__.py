@@ -64,7 +64,7 @@ class _Args(argparse.Namespace):
     repo_only: list[str]
     commits: str | None = None
     roots: list[Path]
-    summary: bool = False
+    include_text: Path | None = None
     rules_cmd: str = ""
     hooks_cmd: str = ""
     no_install: bool = False
@@ -472,7 +472,9 @@ def _run_repo(args: _Args) -> int:
         print(result.message)
         return result.status
     if args.repo_cmd == "comment-corpus":
-        return comment_corpus.emit(args.roots, summary=args.summary, output=sys.stdout)
+        if args.include_text is not None:
+            return comment_corpus.write_records(args.roots, args.include_text)
+        return comment_corpus.emit_summary(args.roots, sys.stdout)
     if args.repo_cmd == "hooks" and args.hooks_cmd == "install":
         return hooks.install(_resolve_dest(args.dest))
     if args.repo_cmd == "rules" and args.rules_cmd == "manifest":
@@ -498,7 +500,12 @@ def _add_repo_parsers(repo: argparse.ArgumentParser) -> None:
     ledger.add_argument("--check", action="store_true", help="report drift without writing")
     corpus = commands.add_parser("comment-corpus", help="extract comments for calibration")
     corpus.add_argument("roots", nargs="+", type=Path)
-    corpus.add_argument("--summary", action="store_true")
+    corpus.add_argument(
+        "--include-text",
+        type=Path,
+        metavar="PRIVATE_JSONL",
+        help="write sensitive comment text to a new owner-readable file",
+    )
     hook_commands = commands.add_parser("hooks", help="manage the pinned repository hooks").add_subparsers(
         dest="hooks_cmd", required=True
     )
