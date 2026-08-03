@@ -18,7 +18,7 @@ Former command topics remain available through focused commands:
 - comments and stepdown ordering are deterministic lint rules, surfaced by `linting`;
 - dependency injection is part of `service-layer`;
 - explicit attribute validation and Zod modeling are part of `data-contracts`;
-- stack detection is shared by every command through `references/audit-protocol.md`; `stack-detection` remains a concise discovery-only command;
+- stack detection is shared by every command through the [audit protocol](#audit-protocol); `stack-detection` remains a concise discovery-only command;
 - the former broad stack audit is covered by `client-server-boundary`, `service-layer`, and `database-schemas-and-migrations`.
 
 ## Skills
