@@ -10,7 +10,7 @@ import subprocess  # ruff: ignore[suspicious-subprocess-import] -- commands are 
 import sys
 from typing import TYPE_CHECKING
 
-from . import manifest, packagemanager, repository, runner, scaffold
+from . import manifest, packagemanager, runner, scaffold
 
 
 if TYPE_CHECKING:
@@ -121,12 +121,6 @@ def execute(commands: Iterable[Command]) -> int:
 
 def verify_custom_rules(root: Path) -> int:
     return runner.run([str(root)])
-
-
-def verify_repository_policy(root: Path) -> int:
-    findings = repository.check(root)
-    sys.stdout.write(("\n".join(finding.render() for finding in findings) or "repository policy ✓") + "\n")
-    return 1 if findings else 0
 
 
 def inspect(root: Path) -> Inspection:

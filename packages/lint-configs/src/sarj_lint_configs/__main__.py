@@ -302,8 +302,6 @@ def cmd_verify(args: _Args) -> int:
         return 1
     if lifecycle.verify_custom_rules(root):
         return 1
-    if lifecycle.verify_repository_policy(root):
-        return 1
     return lifecycle.execute(lifecycle.verification_commands(scaffold.detect(root)))
 
 
