@@ -46,6 +46,9 @@ INLINE_COLUMN_PATTERN = re.compile(
     re.IGNORECASE,
 )
 PRIMARY_OR_UNIQUE_KEYWORD = re.compile(r"\b(PRIMARY\s+KEY|UNIQUE)\b", re.IGNORECASE)
+_FK_CLEAN_PATTERN = re.compile(
+    r'\bFOREIGN\s+KEY\s*\([^)]*\)\s*REFERENCES\s+[a-zA-Z0-9_"\.]+(?:\([^)]*\))?', re.IGNORECASE
+)
 
 
 def _normalize_name(name: str) -> str:
@@ -183,10 +186,8 @@ class RequireFkIndex(Rule):
         leading_indexed: set[str],
     ) -> list[Diagnostic]:
         diags: list[Diagnostic] = []
-        matched_fk_spans: list[tuple[int, int]] = []
 
         for fk_match in TABLE_FK_PATTERN.finditer(ctx.stmt):
-            matched_fk_spans.append((fk_match.start(), fk_match.end()))
             fk_cols = tuple(_normalize_name(c) for c in fk_match.group(1).split(","))
             leading_col = fk_cols[0] if fk_cols else ""
             if leading_col and leading_col not in leading_indexed:
@@ -209,10 +210,7 @@ class RequireFkIndex(Rule):
 
         # Mask table-level FK definitions before inspecting inline column references
         body = ctx.stmt[ctx.header_end :]
-        fk_clean_pattern = re.compile(
-            r"\bFOREIGN\s+KEY\s*\([^)]*\)\s*REFERENCES\s+[a-zA-Z0-9_\"\.]+(?:\([^)]*\))?", re.IGNORECASE
-        )
-        body = fk_clean_pattern.sub(lambda m: " " * len(m.group(0)), body)
+        body = _FK_CLEAN_PATTERN.sub(lambda m: " " * len(m.group(0)), body)
 
         # Align segment_start with source using header_end and fixed-length substitutions.
         segment_start = ctx.header_end
