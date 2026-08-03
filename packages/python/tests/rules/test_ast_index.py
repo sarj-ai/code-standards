@@ -41,8 +41,11 @@ def test_walk_is_elementwise_identical_to_ast_walk() -> None:
 
 def test_children_is_elementwise_identical_to_iter_child_nodes() -> None:
     tree = _tree()
-    for node in ast.walk(tree):
-        assert [id(child) for child in children(node)] == [id(child) for child in ast.iter_child_nodes(node)]
+    walked = list(ast.walk(tree))
+    actual = [children(node) for node in walked]
+    expected = [list(ast.iter_child_nodes(node)) for node in walked]
+
+    assert actual == expected
 
 
 def test_nodes_preserves_ast_walk_order_for_a_single_type() -> None:
