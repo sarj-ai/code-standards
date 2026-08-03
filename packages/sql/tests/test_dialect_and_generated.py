@@ -18,9 +18,6 @@ from sarj_sql_lint.rule_base import (
 )
 
 
-# Test is_postgres.
-
-
 @pytest.mark.parametrize(
     "source",
     [
@@ -83,9 +80,6 @@ def test_free_form_dialect_prose_is_not_a_directive() -> None:
     assert is_postgres(source)
 
 
-# Test is_mysql.
-
-
 def test_sqlite_is_not_postgres_but_is_not_mysql_either() -> None:
     """SARJ102 depends on this: SQLite supports `CREATE TABLE/INDEX IF NOT EXISTS`."""
     source = "CREATE TABLE `t` (`id` integer PRIMARY KEY AUTOINCREMENT);"
@@ -105,9 +99,6 @@ def test_sqlite_is_not_postgres_but_is_not_mysql_either() -> None:
 )
 def test_mysql_markers_are_recognised(source: str) -> None:
     assert is_mysql(source)
-
-
-# Test is_generated_migration.
 
 
 def test_drizzle_statement_breakpoint_is_a_content_sentinel() -> None:
@@ -161,9 +152,6 @@ def test_the_marker_search_stops_at_a_repository_boundary(tmp_path: Path) -> Non
     migration = root / "20240101000000_add_users.sql"
     migration.write_text("CREATE TABLE a ();")
     assert not is_generated_migration(migration, migration.read_text())
-
-
-# Test redirect_to_model.
 
 
 def test_redirect_keeps_every_finding_and_renames_the_fix_site() -> None:

@@ -63,6 +63,7 @@ class IndexConcurrently(Rule):
             target = _target_table(source, masked, match.end())
             if target is not None:
                 created_at = created.get(target)
+                # A newly created table has no concurrent writers; CONCURRENTLY would make this migration nontransactional.
                 if created_at is not None and created_at < pos:
                     continue
             line_start = masked.rfind("\n", 0, pos) + 1

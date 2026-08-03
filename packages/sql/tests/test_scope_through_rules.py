@@ -44,7 +44,7 @@ SELECT * FROM children LIMIT 10 OFFSET 100;
 
 HAND_WRITTEN = Path("db/migrations/0001_init.sql")
 
-# RequireFkIndex deliberately declines the dump exemption.
+# A dump exposes the deployed FK/index relationship, so RequireFkIndex remains actionable there.
 DUMP_EXEMPT = tuple(cls for cls in REGISTRY.values() if cls is not RequireFkIndex)
 
 MODEL_REDIRECTING = (
@@ -72,9 +72,6 @@ def test_the_shared_source_fires_every_rule_exactly_once() -> None:
     assert len(fired) == 12
 
 
-# Test is_dump_file once per consuming rule.
-
-
 @pytest.mark.parametrize("rule_cls", DUMP_EXEMPT, ids=_ids(DUMP_EXEMPT))
 def test_each_rule_takes_the_dump_exemption(rule_cls: type[Rule]) -> None:
     """A pg_dump snapshot renders a schema; the fix belongs in the migration that made it."""
@@ -90,9 +87,6 @@ def test_require_fk_index_deliberately_declines_the_dump_exemption() -> None:
 def test_the_dump_exemption_is_what_stands_between_twelve_findings_and_one() -> None:
     assert _total(HAND_WRITTEN, ALL_TWELVE) == 12
     assert _total(Path("db/structure.sql"), ALL_TWELVE) == 1
-
-
-# Test path-only dump signals.
 
 
 @pytest.mark.parametrize("name", ["structure.sql", "schema.sql"])
@@ -114,8 +108,6 @@ def test_a_hand_written_migration_next_to_those_names_is_still_judged() -> None:
     """The boundary: `schema_changes.sql` is neither the set, the suffix, nor the tree."""
     assert _total(Path("db/migrations/schema_changes.sql"), ALL_TWELVE) == 12
 
-
-# Test redirect_to_model once per consuming rule.
 
 GENERATED = f"--> statement-breakpoint\n{ALL_TWELVE}"
 

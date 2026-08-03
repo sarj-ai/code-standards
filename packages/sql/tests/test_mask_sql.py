@@ -27,9 +27,6 @@ def _mask(source: str) -> str:
     return masked
 
 
-# Dollar-quoted bodies are kept as SQL.
-
-
 def test_bare_dollar_body_is_kept_as_sql() -> None:
     masked = _mask("DO $$ UPDATE batch SET x = 1; $$;")
     assert "UPDATE batch SET x = 1;" in masked
@@ -97,9 +94,6 @@ def test_empty_dollar_body() -> None:
     assert _mask("SELECT $$$$;") == "SELECT     ;"
 
 
-# Things that look like dollar quotes but are not.
-
-
 @pytest.mark.parametrize(
     "source",
     [
@@ -141,9 +135,6 @@ def test_lone_dollar_is_literal() -> None:
     assert _mask("SELECT '$' , $ , 1;") == "SELECT     , $ , 1;"
 
 
-# Comments win over dollar quotes.
-
-
 def test_dollar_quote_inside_a_line_comment_opens_nothing() -> None:
     source = "-- a $$ b\nCREATE TABLE t (id INT);\n"
     masked = _mask(source)
@@ -168,9 +159,6 @@ def test_dollar_quote_inside_a_string_literal_opens_nothing() -> None:
     assert dollar_quoted_lines(source) == frozenset()
 
 
-# Unterminated input must terminate and not swallow the file.
-
-
 def test_unterminated_dollar_quote_keeps_the_rest_as_sql() -> None:
     source = "DO $$\nUPDATE batch SET x = 1;\nCREATE TABLE t (id INT);\n"
     masked = _mask(source)
@@ -193,9 +181,6 @@ def test_pathological_unterminated_tags_do_not_recurse_or_hang() -> None:
 def test_unterminated_string_and_comment_still_terminate() -> None:
     assert _mask("SELECT 'abc") == "SELECT     "
     assert _mask("/* abc") == "      "
-
-
-# Ordinary literals and identifiers are masked exactly as before.
 
 
 def test_string_literal_is_masked() -> None:
@@ -223,9 +208,6 @@ def test_line_and_block_comments_are_masked() -> None:
 
 def test_semicolon_inside_a_literal_does_not_split_statements() -> None:
     assert len(split_statements(_mask("INSERT INTO t VALUES ('a;b');"))) == 1
-
-
-# Line-number stability (the `-- sarj-noqa` contract).
 
 
 def test_line_numbers_are_stable_across_a_multiline_dollar_body() -> None:
@@ -263,9 +245,6 @@ def test_noqa_inside_a_dollar_body_still_suppresses(
     reported = [line for line in capsys.readouterr().out.splitlines() if line]
     assert len(reported) == 1
     assert ":3:" in reported[0]
-
-
-# dollar_quoted_lines tests.
 
 
 def test_dollar_quoted_lines_covers_the_body_and_its_delimiters() -> None:

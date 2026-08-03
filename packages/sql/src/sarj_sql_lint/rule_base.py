@@ -135,7 +135,7 @@ def _has_generated_marker(directory: Path) -> bool:
 
 
 def is_generated_migration(path: Path, source: str) -> bool:
-    """Identify generated migrations so findings redirect to models instead of disappearing."""
+    """Identify generated migrations so schema fixes redirect while runtime-safety findings remain."""
     if _GENERATED_MIGRATION_SENTINEL in source:
         return True
     return _has_generated_marker(path.parent)
@@ -175,7 +175,7 @@ def _scan_quoted(source: str, start: int, quote: str) -> int:
 
 
 def _dollar_open_tag(source: str, i: int) -> str | None:
-    """Return the dollar-quote delimiter opening at `i`, or None if one does not."""
+    """Return an opening dollar tag, rejecting identifier-adjacent `$` that cannot start a delimiter."""
     if i > 0 and _IDENT_CHAR_RE.match(source, i - 1) is not None:
         return None
     m = _DOLLAR_DELIM_RE.match(source, i)
@@ -183,7 +183,7 @@ def _dollar_open_tag(source: str, i: int) -> str | None:
 
 
 def _closing_depth(source: str, i: int, open_tags: list[str]) -> int | None:
-    """Index in `open_tags` of the outermost open delimiter that closes at `i`."""
+    """Choose the outermost matching tag so an unterminated nested tag cannot swallow a valid outer close."""
     for depth, tag in enumerate(open_tags):
         if source.startswith(tag, i):
             return depth
@@ -191,6 +191,7 @@ def _closing_depth(source: str, i: int, open_tags: list[str]) -> int | None:
 
 
 def _scan(source: str) -> tuple[str, list[tuple[int, int]]]:
+    # Preserve offsets while recursively masking comments and literals inside executable dollar-quoted bodies.
     out: list[str] = []
     open_tags: list[str] = []
     spans: list[tuple[int, int]] = []
@@ -256,7 +257,7 @@ def _scan(source: str) -> tuple[str, list[tuple[int, int]]]:
 
 
 def mask_sql(source: str) -> str:
-    r"""Blank comments, strings, identifiers, and dollar delimiters without shifting offsets while keeping procedural SQL bodies live."""
+    r"""Blank SQL noise without shifting offsets or hiding executable dollar-quoted bodies."""
     masked, _ = _scan(source)
     return masked
 
