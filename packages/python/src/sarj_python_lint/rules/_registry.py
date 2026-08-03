@@ -67,7 +67,6 @@ from sarj_python_lint.rules.prefer_constant_time_secret_compare import (
 from sarj_python_lint.rules.prefer_fstring_over_concat import PreferFstringOverConcat
 from sarj_python_lint.rules.prefer_library_fake import PreferLibraryFake
 from sarj_python_lint.rules.prefer_match_assert_never import PreferMatchAssertNever
-from sarj_python_lint.rules.prefer_match_pattern_destructuring import PreferMatchPatternDestructuring
 from sarj_python_lint.rules.prefer_match_type_dispatch import PreferMatchTypeDispatch
 from sarj_python_lint.rules.prefer_module_level_constant import (
     PreferModuleLevelConstant,
@@ -179,7 +178,6 @@ REGISTRY: dict[str, type[Rule]] = {
     DuplicateTestBody.id: DuplicateTestBody,
     UnusedMockSetup.id: UnusedMockSetup,
     PreferFstringOverConcat.id: PreferFstringOverConcat,
-    PreferMatchPatternDestructuring.id: PreferMatchPatternDestructuring,
     PreferOrPattern.id: PreferOrPattern,
     RequirePortForService.id: RequirePortForService,
     PreferNonNullableCollection.id: PreferNonNullableCollection,
