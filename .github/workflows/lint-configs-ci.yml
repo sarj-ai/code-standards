@@ -78,9 +78,11 @@ jobs:
       - name: Adoption smoke -- init a fresh repo, then prove doctor and sync agree
         run: |
           repo="$(mktemp -d)"
+          wheelhouse="$(mktemp -d)"
+          cp dist/*.whl dist/deps/*.whl "$wheelhouse/"
           printf '[project]\nname = "smoke"\nversion = "0.1.0"\n' > "$repo/pyproject.toml"
           cli="$GITHUB_WORKSPACE/packages/lint-configs/.venv/bin/sarj-lint-configs"
-          "$cli" init --dest "$repo"
+          UV_FIND_LINKS="$wheelhouse" "$cli" init --dest "$repo"
           "$cli" doctor --dest "$repo"
           "$cli" sync --check --dest "$repo"
       - name: Adoption smoke -- a TypeScript repo installs the peer set with no ERESOLVE
@@ -93,8 +95,9 @@ jobs:
           repo="$(mktemp -d)"
           printf '{ "name": "smoke", "private": true }\n' > "$repo/package.json"
           cli="$GITHUB_WORKSPACE/packages/lint-configs/.venv/bin/sarj-lint-configs"
-          "$cli" init --dest "$repo"
+          "$cli" init --dest "$repo" --no-install
           python -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if 'eslint-plugin-react' in d.get('overrides', {}) else 1)" "$repo/package.json"
+          npm --prefix "$repo" pkg delete 'devDependencies.@sarj/eslint-plugin'
           # Resolution only, and without the unpublished @sarj/eslint-plugin pin:
           # this asserts the peer set + overrides produce a tree npm accepts.
           (cd "$repo" && npm install --package-lock-only --no-audit --no-fund \

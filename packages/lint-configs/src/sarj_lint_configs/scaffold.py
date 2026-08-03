@@ -413,15 +413,8 @@ def ci_snippet(plan: Plan, *, version: str) -> str:
         if plan.ecosystems.python
         else f"uvx --from sarj-lint-configs=={version} sarj-standards"
     )
-    commands = ["doctor", "sync --check"]
-    commands.append("check .")
-    checks = "\n".join(f"          {runner_prefix} {command}" for command in commands)
-    names = ", ".join(plan.configs)
     lines = [
         "      - name: sarj standards",
-        "        run: |",
-        checks,
-        f"        # doctor: every version pin agrees. sync --check: {names} are unmodified.",
+        f"        run: {runner_prefix} verify",
     ]
-    lines.append("        # check: custom code, config, text, and artifact rules pass.")
     return "\n".join(lines) + "\n"

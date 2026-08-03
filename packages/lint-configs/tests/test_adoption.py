@@ -9,18 +9,27 @@ import re
 import subprocess
 import sys
 import tomllib
+from typing import TYPE_CHECKING
 
 import pytest
 
-from sarj_lint_configs import ESLINT_PEERS, ESLINT_STRICT, __version__, doctor, manifest, scaffold
+from sarj_lint_configs import ESLINT_PEERS, ESLINT_STRICT, __version__, doctor, lifecycle, manifest, scaffold
+from sarj_lint_configs.__main__ import main
+
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _cli(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+    command = list(args)
+    if command and command[0] == "init" and "--no-install" not in command:
+        command.append("--no-install")
     return subprocess.run(
-        [sys.executable, "-m", "sarj_lint_configs", *args],
+        [sys.executable, "-m", "sarj_lint_configs", *command],
         capture_output=True,
         text=True,
         check=False,
@@ -189,6 +198,31 @@ def test_init_writes_the_whole_python_wiring(tmp_path: Path) -> None:
     assert pyproject["tool"]["ruff"]["extend"] == ".ruff-strict.toml"
 
 
+def test_init_installs_dependencies_by_default(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    commands: list[lifecycle.Command] = []
+
+    def execute(planned: Iterable[lifecycle.Command]) -> int:
+        commands.extend(planned)
+        return 0
+
+    monkeypatch.setattr(lifecycle, "execute", execute)
+
+    assert main(["init", "--dest", str(tmp_path)]) == 0
+    assert commands[0].argv == ("uv", "add", "--dev", f"sarj-lint-configs=={__version__}")
+
+
+def test_inspect_reports_detected_adoption(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    assert _cli("init", "--dest", str(tmp_path)).returncode == 0
+
+    parsed: object = json.loads(lifecycle.inspection_json(tmp_path))  # pyright: ignore[reportAny] -- untyped stdlib boundary
+    inspected = manifest.as_table(parsed)
+
+    assert inspected["adopted_version"] == __version__
+    assert inspected["python_root"] == "."
+
+
 def test_init_writes_a_typescript_entrypoint_with_an_override_seam(tmp_path: Path) -> None:
     """The generated entrypoint has to teach "extend, do not fork"."""
     _ = _typescript_repo(tmp_path)
@@ -219,11 +253,10 @@ def test_init_gives_a_typescript_repo_everything_npm_needs(tmp_path: Path, expec
     assert expected in proc.stdout
 
 
-@pytest.mark.parametrize("command", ["doctor", "sync --check", "check ."])
-def test_init_prints_a_ci_snippet_naming_all_three_gates(tmp_path: Path, command: str) -> None:
+def test_init_prints_a_ci_snippet_with_the_unified_gate(tmp_path: Path) -> None:
     _ = _python_repo(tmp_path)
     proc = _cli("init", "--dest", str(tmp_path))
-    assert f"sarj-standards {command}" in proc.stdout
+    assert "sarj-standards verify" in proc.stdout
 
 
 def test_ci_snippet_for_a_typescript_repo_does_not_require_a_python_project(

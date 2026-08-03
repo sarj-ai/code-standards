@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import shlex
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- repository commands report failures from fixed-argument child processes.
 import sys
@@ -16,6 +17,7 @@ from . import (
     comment_corpus,
     doctor,
     hooks,
+    lifecycle,
     manifest,
     packagemanager,
     repository,
@@ -68,6 +70,7 @@ class _Args(argparse.Namespace):
     summary: bool = False
     rules_cmd: str = ""
     hooks_cmd: str = ""
+    no_install: bool = False
 
     def __init__(self) -> None:
         super().__init__()
@@ -261,6 +264,9 @@ def cmd_init(args: _Args) -> int:
         for name in plan.configs:
             destination = _init_dest(root, name, python_dest=python_dest, typescript_dest=typescript_dest)
             print(f"would sync:  {destination}")
+        if not args.no_install:
+            for command in lifecycle.install_commands(root, plan.ecosystems):
+                print(f"would run:   {shlex.join(command.argv)}  (in {command.cwd})")
     else:
         sync_args = _Args()
         sync_args.dest = str(root)
@@ -283,11 +289,41 @@ def cmd_init(args: _Args) -> int:
 
     if not args.dry_run:
         scaffold.apply(plan)
+        if not args.no_install:
+            install_status = lifecycle.execute(lifecycle.install_commands(root, plan.ecosystems))
+            if install_status:
+                return install_status
 
     for note in plan.notes:
         print(f"\nnote:  {note}")
     print("\nadd this to your CI workflow:\n")
     print(scaffold.ci_snippet(plan, version=manifest.adopted_version()))
+    return 0
+
+
+def cmd_verify(args: _Args) -> int:
+    root = _resolve_dest(args.dest)
+    if cmd_doctor(args):
+        return 1
+    sync_args = _Args()
+    sync_args.dest = str(root)
+    sync_args.check = True
+    if cmd_sync(sync_args, next_steps=False):
+        return 1
+    if lifecycle.verify_custom_rules(root):
+        return 1
+    if lifecycle.verify_repository_policy(root):
+        return 1
+    return lifecycle.execute(lifecycle.verification_commands(scaffold.detect(root)))
+
+
+def cmd_format(args: _Args) -> int:
+    root = _resolve_dest(args.dest)
+    return lifecycle.execute(lifecycle.format_commands(scaffold.detect(root)))
+
+
+def cmd_inspect(args: _Args) -> int:
+    sys.stdout.write(lifecycle.inspection_json(_resolve_dest(args.dest)))
     return 0
 
 
@@ -317,6 +353,12 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_doctor(args)
         case "init":
             return cmd_init(args)
+        case "verify":
+            return cmd_verify(args)
+        case "format":
+            return cmd_format(args)
+        case "inspect":
+            return cmd_inspect(args)
         case "check":
             try:
                 return runner.run(
@@ -395,6 +437,9 @@ def _build_parser() -> argparse.ArgumentParser:
     p_init.add_argument("--force", action="store_true", help="overwrite files that already exist")
     p_init.add_argument("--dry-run", action="store_true", help="print the plan without writing")
     p_init.add_argument(
+        "--no-install", action="store_true", help="write wiring without installing dependencies or hooks"
+    )
+    p_init.add_argument(
         "--configs",
         nargs="+",
         choices=sorted(CONFIG_NAMES),
@@ -407,6 +452,14 @@ def _build_parser() -> argparse.ArgumentParser:
         help="run every installed Sarj Python, SQL, IaC, config, text, and artifact rule",
     )
     runner.add_arguments(p_check)
+
+    for name, help_text in (
+        ("verify", "run config drift, custom rules, Ruff, BasedPyright, and ESLint"),
+        ("format", "format Python and apply safe Ruff and ESLint fixes"),
+        ("inspect", "print detected adoption state as JSON"),
+    ):
+        command = sub.add_parser(name, help=help_text)
+        command.add_argument("--dest", default=".", help="repository root (default: cwd)")
 
     _add_repo_parsers(sub.add_parser("repo", help="run configurable repository maintenance tasks"))
 

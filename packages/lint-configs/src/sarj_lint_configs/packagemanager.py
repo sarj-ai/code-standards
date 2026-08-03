@@ -140,6 +140,31 @@ def install_command(client: PackageManager) -> str:
             return f"bun add -d --exact {specs}"
 
 
+def install_argv(client: PackageManager) -> tuple[str, ...]:
+    specs = tuple(f"{name}@{pin}" for name, pin in sorted(manifest.eslint_peers().items()))
+    match client:
+        case PackageManager.NPM:
+            return ("npm", "install", "-D", "--save-exact", *specs)
+        case PackageManager.PNPM:
+            return ("pnpm", "add", "-D", "--save-exact", *specs)
+        case PackageManager.YARN:
+            return ("yarn", "add", "-D", "--exact", *specs)
+        case PackageManager.BUN:
+            return ("bun", "add", "-d", "--exact", *specs)
+
+
+def exec_argv(client: PackageManager, *command: str) -> tuple[str, ...]:
+    match client:
+        case PackageManager.NPM:
+            return ("npx", "--no-install", *command)
+        case PackageManager.PNPM:
+            return ("pnpm", "exec", *command)
+        case PackageManager.YARN:
+            return ("yarn", "exec", *command)
+        case PackageManager.BUN:
+            return ("bunx", "--bun", *command)
+
+
 def install_note(client: PackageManager) -> str | None:
     """Explain the one thing each client needs beyond the install command."""
     if client is PackageManager.YARN:

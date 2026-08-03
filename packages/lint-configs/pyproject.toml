@@ -1,6 +1,6 @@
 [project]
 name = "sarj-lint-configs"
-version = "0.41.0"
+version = "0.42.0"
 description = "Maximally-strict ruff + pyright + ESLint configs for sarj-ai Python/TypeScript projects."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -15,8 +15,11 @@ classifiers = [
   "Topic :: Software Development :: Quality Assurance",
 ]
 dependencies = [
+    "basedpyright>=1.39",
     "lefthook==2.1.10",
+    "pre-commit>=4.5",
     "PyYAML>=6.0.3",
+    "ruff>=0.15",
     "sarj-iac-lint==0.5.0",
     "sarj-python-lint==0.43.0",
     "sarj-sql-lint==0.6.1",
@@ -49,8 +52,6 @@ include = [
 [dependency-groups]
 dev = [
   "pytest>=9.0",
-  "ruff>=0.15",
-  "basedpyright>=1.39",
 ]
 [tool.uv.sources]
 # Development uses the sibling packages while wheel smoke tests resolve the

@@ -38,20 +38,20 @@ For a one-off personal install instead:
 
 Then run any audit, e.g. `/sarj-audit:data-contracts` or `/sarj-audit:concurrency-and-performance`. The plugin lives in [`plugins/sarj-audit/`](plugins/sarj-audit/); [`commands/stack-detection.md`](plugins/sarj-audit/commands/stack-detection.md) is the shared stack-aware Phase-0 the audits gate on, and [`skills/`](plugins/sarj-audit/skills/) ships the lint-rule authoring and ratcheting skills alongside it — they used to sit in a top-level `skills/` directory that nothing loaded them from.
 
-## Adopt (two commands)
+## Adopt
 
 ```bash
-uv add --dev sarj-lint-configs
-uv run --frozen sarj-lint-configs init
+uvx sarj-lint-configs init
 ```
 
-`init` detects whether the repo is Python, TypeScript or both; syncs only the
+`init` detects whether the repo is Python, TypeScript or both; installs the
+toolchain and hooks; syncs only the
 configs that ecosystem uses; wires them into `pyproject.toml`,
 `pyrightconfig.json` and `eslint.config.mjs`; writes a pre-commit block; records
 the adopted version in `.sarj-standards.toml`; and prints the CI snippet plus, for
-TypeScript, the one `npm install` command whose versions actually resolve
-together. `--dry-run` shows the plan first; nothing existing is overwritten
-without `--force`.
+TypeScript, the exact peer set whose versions resolve together. `--dry-run`
+shows the plan first, `--no-install` only writes the wiring, and nothing existing
+is overwritten without `--force`.
 
 Deliberately no version literal above. Pinning a version in prose is how the
 previous instructions came to pin `sarj-lint-configs` at 0.10.0 five minor
@@ -61,13 +61,13 @@ toolchain or a broken config. `uv add` resolves the current version; `.sarj-stan
 `doctor` proves everything else agrees. Both READMEs are now asserted against the
 shipping versions by a test, so this section cannot rot silently again.
 
-## Keep current (three commands, run them in CI)
+## Daily use
 
 | Command | Answers |
 |---|---|
-| `uv run --frozen sarj-lint-configs doctor` | Do the pyproject pin, the pre-commit rev, the CI pin and the `@sarj/eslint-plugin` pin all agree? |
-| `uv run --frozen sarj-lint-configs sync --check` | Has anyone edited a synced config? |
-| `uv run --frozen sarj-lint-configs check .` | Do the custom Python/SQL/IaC rules pass? |
+| `uv run --frozen sarj-standards verify` | Run version, config, custom-rule, repository-policy, Ruff, BasedPyright, and ESLint gates. |
+| `uv run --frozen sarj-standards format` | Format Python and apply safe Ruff and ESLint fixes. |
+| `uv run --frozen sarj-standards inspect` | Show the detected adoption as JSON. |
 
 For TypeScript, `uv run --frozen sarj-lint-configs peers` prints every npm package
 `eslint.strict.mjs` needs at versions that install together — there is no
