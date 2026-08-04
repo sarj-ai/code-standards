@@ -13,6 +13,7 @@ from sarj_python_lint.rules.duplicate_test_body import DuplicateTestBody
 from sarj_python_lint.rules.duplicated_override_docstring import (
     DuplicatedOverrideDocstring,
 )
+from sarj_python_lint.rules.fastapi_openapi_contract import FastapiOpenapiContract
 from sarj_python_lint.rules.fixture_returns_bare_tuple import FixtureReturnsBareTuple
 from sarj_python_lint.rules.inefficient_string_concat_in_loop import (
     InefficientStringConcatInLoop,
@@ -131,6 +132,7 @@ REGISTRY: dict[str, type[Rule]] = {
     NoCorsWildcardWithCredentials.id: NoCorsWildcardWithCredentials,
     NoSleepInTestBody.id: NoSleepInTestBody,
     PydanticAtBoundaries.id: PydanticAtBoundaries,
+    FastapiOpenapiContract.id: FastapiOpenapiContract,
     NoSentinelReturnOnExcept.id: NoSentinelReturnOnExcept,
     NoUnreachableAfterTerminal.id: NoUnreachableAfterTerminal,
     PreferConstantTimeSecretCompare.id: PreferConstantTimeSecretCompare,

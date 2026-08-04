@@ -80,6 +80,7 @@ extend-select = [
 
   "FAST001",
   "FAST002",
+  "FAST003",
 
   "LOG001",
   "LOG002",

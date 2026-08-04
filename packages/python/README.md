@@ -10,13 +10,14 @@ uv tool install sarj-python-lint
 
 ```yaml
 - repo: https://github.com/sarj-ai/standards
-  rev: python-v0.24.0
+  rev: python-v0.44.0
   hooks:
     - id: sarj-no-sequential-await
     - id: sarj-inefficient-string-concat-in-loop
     - id: sarj-prefer-str-enum
     - id: sarj-no-fat-try-blocks
     - id: sarj-pydantic-at-boundaries
+    - id: sarj-fastapi-openapi-contract            # SARJ094
     - id: sarj-prefer-class-row
     - id: sarj-prefer-timedelta-for-durations
     - id: sarj-prefer-struct-over-namedtuple
@@ -24,6 +25,23 @@ uv tool install sarj-python-lint
     - id: sarj-no-fstring-in-log
     - id: sarj-prefer-non-nullable-collection      # SARJ074
 ```
+
+### FastAPI OpenAPI contracts (0.44.0)
+
+`SARJ094` complements Ruff's `ANN*` and `FAST001`-`FAST003` checks. It requires
+schema-visible operations to declare their summary, description and status;
+uses described `Annotated` request markers; rejects schema-erasing response
+shapes and response projections; requires explicit content schemas for direct
+response objects; and keeps direct errors, custom responses, bodyless statuses,
+GET/HEAD inputs and local route ordering honest in OpenAPI. Missing Python
+annotations remain owned by Ruff's `ANN*` rules, so enable both policies.
+
+The rule resolves module-level FastAPI imports and locally constructed or
+aliased routers without guessing from names. Dynamic decorator mappings,
+function-local framework imports, imported router instances and the assembled
+`app.openapi()` document remain application-level integration-test concerns.
+Existing projects can adopt the default-enabled rule with `--update-baseline`
+and then shrink that baseline as endpoint contracts are repaired.
 
 ### Test-quality rules (0.15.0)
 

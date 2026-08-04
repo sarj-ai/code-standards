@@ -92,5 +92,6 @@
   "SARJ090": "prefer-single-sentence-comment",
   "SARJ091": "no-long-comment",
   "SARJ092": "no-typed-doc-sections",
-  "SARJ093": "prefer-nominal-id-types"
+  "SARJ093": "prefer-nominal-id-types",
+  "SARJ094": "fastapi-openapi-contract"
 }

@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
 from sarj_python_lint.rules._ast_index import children, nodes
+from sarj_python_lint.rules._fastapi import FastapiIndex
 
 
 if TYPE_CHECKING:
@@ -49,6 +50,7 @@ class PydanticAtBoundaries(Rule):
             return []
         diags: list[Diagnostic] = []
         local = _local_function_ids(tree)
+        fastapi = FastapiIndex(tree)
         for node in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef):
             if _is_overload(node):
                 continue
@@ -71,6 +73,12 @@ class PydanticAtBoundaries(Rule):
             # A `@pytest.fixture` is test scaffolding, not a public data
             # contract — its return shape is an implementation detail.
             if _is_fixture(node):
+                continue
+            # SARJ094 owns annotated, schema-visible FastAPI routes so the
+            # combined profile emits one contract diagnostic. SARJ008 retains
+            # hidden and unannotated routes that SARJ094 intentionally skips.
+            visible_routes = tuple(route for route in fastapi.routes(node) if not route.is_hidden)
+            if visible_routes and node.returns is not None:
                 continue
             route = _route_info(node)
             returns = _resolve_annotation(node.returns)
