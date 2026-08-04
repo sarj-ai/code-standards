@@ -74,9 +74,11 @@ class PydanticAtBoundaries(Rule):
             # contract — its return shape is an implementation detail.
             if _is_fixture(node):
                 continue
-            # SARJ094 owns proven FastAPI routes so the combined profile emits
-            # one contract diagnostic rather than two competing findings.
-            if fastapi.routes(node):
+            # SARJ094 owns annotated, schema-visible FastAPI routes so the
+            # combined profile emits one contract diagnostic. SARJ008 retains
+            # hidden and unannotated routes that SARJ094 intentionally skips.
+            visible_routes = tuple(route for route in fastapi.routes(node) if not route.is_hidden)
+            if visible_routes and node.returns is not None:
                 continue
             route = _route_info(node)
             returns = _resolve_annotation(node.returns)
