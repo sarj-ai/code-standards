@@ -30,6 +30,10 @@ ruleTester.run("prefer-non-nullable-collection", rule, {
       code: "interface Input { ids?: string[]; }",
     },
     {
+      name: "allows optional API fields where omission and null can differ",
+      code: "interface Input { ids?: string[] | null | undefined; }",
+    },
+    {
       name: "allows a meaningful third state with a reasoned suppression",
       code: [
         "// eslint-disable-next-line @rule-tester/prefer-non-nullable-collection -- null means routing has not run",
@@ -61,11 +65,6 @@ ruleTester.run("prefer-non-nullable-collection", rule, {
     },
     {
       code: "type Response = { items: null | string[] | undefined };",
-      errors: [{ messageId: "preferNonNullableCollection" }],
-    },
-    {
-      name: "flags optional properties whose value type is explicitly nullable",
-      code: "interface Input { ids?: string[] | null; }",
       errors: [{ messageId: "preferNonNullableCollection" }],
     },
     {
