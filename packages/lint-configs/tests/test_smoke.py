@@ -123,14 +123,6 @@ def test_eslint_config_avoids_eslint_10_only_unicorn_rules() -> None:
     assert "CallExpression[callee.property.name='forEach']" in text
 
 
-def test_promise_function_async_skips_method_declarations() -> None:
-    text = ESLINT_STRICT.read_text()
-    assert re.search(
-        r'"@typescript-eslint/promise-function-async"\s*:\s*\[\s*"error"\s*,\s*\{[^}]*checkMethodDeclarations\s*:\s*false',
-        text,
-    )
-
-
 def test_prefer_nullish_coalescing_ignores_primitives() -> None:
     text = ESLINT_STRICT.read_text()
     assert re.search(
@@ -466,3 +458,23 @@ def test_ruff_ignores_sections_forbidden_by_typed_docstring_policy() -> None:
     ignored = manifest.list_field(lint, "ignore")
 
     assert {"DOC201", "DOC402"} <= {item for item in ignored if isinstance(item, str)}
+
+
+def test_eslint_module_sort_does_not_conflict_with_imports_first() -> None:
+    config = ESLINT_STRICT.read_text()
+
+    assert '"perfectionist/sort-modules": "off"' in config
+    assert '"perfectionist/sort-objects": "off"' in config
+
+
+def test_eslint_async_and_void_rules_have_single_authorities() -> None:
+    config = ESLINT_STRICT.read_text()
+
+    assert '"@typescript-eslint/promise-function-async": "off"' in config
+    assert '"@typescript-eslint/no-inferrable-types": "off"' in config
+    assert "{ ignoreArrowShorthand: true }" in config
+    assert '"unicorn/no-thenable": "off"' in config
+    assert '"unicorn/no-useless-undefined": "off"' in config
+    assert '"unicorn/no-useless-switch-case": "off"' in config
+    assert '"react/forbid-component-props": "off"' in config
+    assert '"react/forbid-dom-props": "off"' in config

@@ -244,7 +244,6 @@ Three of the pins are load-bearing floors rather than just "current":
 | `@sarj/eslint-plugin` | Every custom rule the config names has to exist. `no-declaration-comment-wall` arrived in 7.1.0, four rules were renamed in 7.0.0 and their aliases deleted in 9.0.0, `prefer-module-level-schema` arrived in 6.1.0, `no-type-member-comment-wall` in 5.1.0, `prefer-zod-infer` in 4.1.0 and `prefer-zod-enum` in 2.17.0; naming a rule the installed plugin lacks is "Definition for rule was not found", once per file. |
 | `eslint-plugin-unicorn` | The config enables 213 unicorn rules; most do not exist below 72. |
 | `eslint-plugin-zod` | The config **imports** it, so a missing or older install is a hard config error rather than a skipped rule. `zod/prefer-nullish` and `zod/no-any-schema` both land in 4.9.0. |
-| `eslint-plugin-perfectionist` | `sort-modules` does not exist before 4. On 3.x an unknown rule is a **hard config error**, not a soft degrade. |
 
 `eslint-plugin-zod` returns to the config after being dropped in #155, when the
 one rule taken from it (`zod/prefer-enum-over-literal-union`) was replaced by

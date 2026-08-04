@@ -67,6 +67,7 @@ export default createRule<Options, MessageIds>({
     function checkOptionalProperty(
       node: TSESTree.TSPropertySignature | TSESTree.PropertyDefinition,
     ): void {
+      if (node.optional) return;
       const annotation = node.typeAnnotation?.typeAnnotation;
       if (annotation === undefined) return;
       if (annotation.type !== AST_NODE_TYPES.TSUnionType || !isNullableArrayOnly(annotation)) {
