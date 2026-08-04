@@ -75,7 +75,7 @@ jobs:
           emit lint-configs  packages/lint-configs/pyproject.toml '^\+version = '
           cat "$GITHUB_OUTPUT"
 
-  publish-typescript:
+  build-typescript:
     needs: detect
     if: >-
       startsWith(github.ref, 'refs/tags/typescript-v') ||
@@ -84,7 +84,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write
     defaults:
       run:
         working-directory: packages/typescript
@@ -96,20 +95,48 @@ jobs:
           # them fail with 'check out with fetch-depth: 0' — which is what they are
           # written to say, and which blocked every publish on main.
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
-      - run: npm ci || npm install
+      - run: npm install --global npm@11.19.0 --ignore-scripts
+      - name: Enforce lockfile release-age quarantine
+        run: node scripts/check-lockfile-release-age.mjs package-lock.json
+      - run: npm ci
       - run: npm run build
       - run: npm test
-      # No --provenance: npm provenance requires a PUBLIC source repo, but this
-      # repo is internal. Publishes via NODE_AUTH_TOKEN instead.
-      - run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Pack publishable artifact
+        run: npm pack --pack-destination "$RUNNER_TEMP/npm-artifacts"
+      - name: Upload publishable artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: npm-typescript
+          path: ${{ runner.temp }}/npm-artifacts/*.tgz
+          if-no-files-found: error
 
-  publish-python:
+  publish-typescript:
+    needs: build-typescript
+    runs-on: ubuntu-latest
+    environment: npm-release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm install --global npm@11.19.0 --ignore-scripts
+      - name: Download publishable artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: npm-typescript
+          path: ${{ runner.temp }}/npm-artifacts
+      - name: Publish with npm trusted publishing
+        run: npm publish "$RUNNER_TEMP"/npm-artifacts/*.tgz --access public --ignore-scripts
+
+  build-python:
     needs: detect
     if: >-
       startsWith(github.ref, 'refs/tags/python-v') ||
@@ -118,7 +145,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write
     defaults:
       run:
         working-directory: packages/python
@@ -130,19 +156,44 @@ jobs:
           # them fail with 'check out with fetch-depth: 0' — which is what they are
           # written to say, and which blocked every publish on main.
           fetch-depth: 0
-      - uses: astral-sh/setup-uv@v9.0.0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
-          enable-cache: true
-          cache-dependency-glob: 'packages/**/uv.lock'
+          version: '0.11.32'
+          enable-cache: false
       - run: uv python install 3.14
-      - run: uv sync --dev
+      - run: uv sync --locked --dev
+      - run: uv audit --locked
       - run: uv run pytest -q
       - run: uv build --wheel --sdist
-      - uses: pypa/gh-action-pypi-publish@v1.14.1
+      - name: Upload publishable artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          packages-dir: packages/python/dist
+          name: pypi-python
+          path: packages/python/dist/*
+          if-no-files-found: error
 
-  publish-sql:
+  publish-python:
+    needs: build-python
+    runs-on: ubuntu-latest
+    environment: pypi-release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: '0.11.32'
+          enable-cache: false
+      - name: Download publishable artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: pypi-python
+          path: ${{ runner.temp }}/pypi-artifacts
+      - name: Publish with PyPI trusted publishing
+        run: uv publish --trusted-publishing always "$RUNNER_TEMP"/pypi-artifacts/*
+
+  build-sql:
     needs: detect
     if: >-
       startsWith(github.ref, 'refs/tags/sql-v') ||
@@ -162,19 +213,44 @@ jobs:
           # them fail with 'check out with fetch-depth: 0' — which is what they are
           # written to say, and which blocked every publish on main.
           fetch-depth: 0
-      - uses: astral-sh/setup-uv@v9.0.0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
-          enable-cache: true
-          cache-dependency-glob: 'packages/**/uv.lock'
+          version: '0.11.32'
+          enable-cache: false
       - run: uv python install 3.14
-      - run: uv sync --dev
+      - run: uv sync --locked --dev
+      - run: uv audit --locked
       - run: uv run pytest -q
       - run: uv build --wheel --sdist
-      - run: uv publish
-        env:
-          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN_SQL_LINT }}
+      - name: Upload publishable artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pypi-sql
+          path: packages/sql/dist/*
+          if-no-files-found: error
 
-  publish-iac:
+  publish-sql:
+    needs: build-sql
+    runs-on: ubuntu-latest
+    environment: pypi-release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: '0.11.32'
+          enable-cache: false
+      - name: Download publishable artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: pypi-sql
+          path: ${{ runner.temp }}/pypi-artifacts
+      - name: Publish with PyPI trusted publishing
+        run: uv publish --trusted-publishing always "$RUNNER_TEMP"/pypi-artifacts/*
+
+  build-iac:
     needs: detect
     if: >-
       startsWith(github.ref, 'refs/tags/iac-v') ||
@@ -183,7 +259,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write
     defaults:
       run:
         working-directory: packages/iac
@@ -195,19 +270,44 @@ jobs:
           # them fail with 'check out with fetch-depth: 0' — which is what they are
           # written to say, and which blocked every publish on main.
           fetch-depth: 0
-      - uses: astral-sh/setup-uv@v9.0.0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
-          enable-cache: true
-          cache-dependency-glob: 'packages/**/uv.lock'
+          version: '0.11.32'
+          enable-cache: false
       - run: uv python install 3.14
-      - run: uv sync --dev
+      - run: uv sync --locked --dev
+      - run: uv audit --locked
       - run: uv run pytest -q
       - run: uv build --wheel --sdist
-      - uses: pypa/gh-action-pypi-publish@v1.14.1
+      - name: Upload publishable artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          packages-dir: packages/iac/dist
+          name: pypi-iac
+          path: packages/iac/dist/*
+          if-no-files-found: error
 
-  publish-lint-configs:
+  publish-iac:
+    needs: build-iac
+    runs-on: ubuntu-latest
+    environment: pypi-release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: '0.11.32'
+          enable-cache: false
+      - name: Download publishable artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: pypi-iac
+          path: ${{ runner.temp }}/pypi-artifacts
+      - name: Publish with PyPI trusted publishing
+        run: uv publish --trusted-publishing always "$RUNNER_TEMP"/pypi-artifacts/*
+
+  build-lint-configs:
     needs:
       - detect
       - publish-typescript
@@ -237,11 +337,13 @@ jobs:
           # them fail with 'check out with fetch-depth: 0' — which is what they are
           # written to say, and which blocked every publish on main.
           fetch-depth: 0
-      - uses: astral-sh/setup-uv@v9.0.0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
-          enable-cache: true
-          cache-dependency-glob: 'packages/**/uv.lock'
+          version: '0.11.32'
+          enable-cache: false
       - run: uv python install 3.14
+      - run: uv audit --locked
       - name: Build package and exact local dependency wheels
         run: |
           uv build --wheel
@@ -254,11 +356,36 @@ jobs:
           uv pip install ./dist/deps/*.whl ./dist/sarj_lint_configs-*.whl pytest ruff
           uv run --no-project pytest -q tests/
       - run: uv build --sdist
-      - run: uv publish
-        env:
-          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN_LINT_CONFIGS }}
+      - name: Upload publishable artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pypi-lint-configs
+          path: |
+            packages/lint-configs/dist/*.whl
+            packages/lint-configs/dist/*.tar.gz
+          if-no-files-found: error
 
-  publish-tsconfig:
+  publish-lint-configs:
+    needs: build-lint-configs
+    runs-on: ubuntu-latest
+    environment: pypi-release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: '0.11.32'
+          enable-cache: false
+      - name: Download publishable artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: pypi-lint-configs
+          path: ${{ runner.temp }}/pypi-artifacts
+      - name: Publish with PyPI trusted publishing
+        run: uv publish --trusted-publishing always "$RUNNER_TEMP"/pypi-artifacts/*
+
+  build-tsconfig:
     needs: detect
     if: >-
       startsWith(github.ref, 'refs/tags/tsconfig-v') ||
@@ -267,7 +394,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write
     defaults:
       run:
         working-directory: packages/tsconfig
@@ -279,19 +405,45 @@ jobs:
           # them fail with 'check out with fetch-depth: 0' — which is what they are
           # written to say, and which blocked every publish on main.
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
+      - run: npm install --global npm@11.19.0 --ignore-scripts
       - name: Validate JSON
         run: |
           node -e "JSON.parse(require('fs').readFileSync('base.json','utf8'))"
           node -e "JSON.parse(require('fs').readFileSync('strict.json','utf8'))"
-      # No --provenance: npm provenance requires a PUBLIC source repo, but this
-      # repo is internal. Publishes via NODE_AUTH_TOKEN instead.
-      - run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Pack publishable artifact
+        run: npm pack --pack-destination "$RUNNER_TEMP/npm-artifacts"
+      - name: Upload publishable artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: npm-tsconfig
+          path: ${{ runner.temp }}/npm-artifacts/*.tgz
+          if-no-files-found: error
+
+  publish-tsconfig:
+    needs: build-tsconfig
+    runs-on: ubuntu-latest
+    environment: npm-release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm install --global npm@11.19.0 --ignore-scripts
+      - name: Download publishable artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: npm-tsconfig
+          path: ${{ runner.temp }}/npm-artifacts
+      - name: Publish with npm trusted publishing
+        run: npm publish "$RUNNER_TEMP"/npm-artifacts/*.tgz --access public --ignore-scripts
 
   # After a successful publish on push-to-main, stamp the matching `<pkg>-v<version>`
   # git tag. pre-commit consumers pin Python/SQL rules by git tag (installed from
