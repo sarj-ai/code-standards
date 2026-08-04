@@ -27,6 +27,7 @@ class Command:
 @dataclass(frozen=True, slots=True)
 class Inspection:
     adopted_version: str | None
+    profile: manifest.Profile | None
     installed_version: str
     configs: tuple[str, ...]
     python_root: str | None
@@ -128,6 +129,7 @@ def inspect(root: Path) -> Inspection:
     ecosystems = scaffold.detect(root)
     return Inspection(
         adopted_version=adopted.version if adopted else None,
+        profile=adopted.profile if adopted else None,
         installed_version=manifest.adopted_version(),
         configs=adopted.configs if adopted else (),
         python_root=_relative(root, ecosystems.python_root),

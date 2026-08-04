@@ -17,6 +17,7 @@ from . import (
     comment_corpus,
     doctor,
     hooks,
+    library_policy,
     lifecycle,
     manifest,
     packagemanager,
@@ -34,6 +35,10 @@ CONFIG_NAMES: Final[dict[str, tuple[str, str]]] = {
     "markdownlint": ("markdownlint.strict.yaml", ".markdownlint.yaml"),
     "taplo": ("taplo.strict.toml", ".taplo.toml"),
     "yamllint": ("yamllint.strict.yaml", ".yamllint.yaml"),
+}
+APPLICATION_CONFIG_NAMES: Final[dict[str, str]] = {
+    "ruff": "ruff.application.toml",
+    "eslint": "eslint.application.mjs",
 }
 _PYTHON_CONFIGS: Final = frozenset({"ruff", "pyright"})
 
@@ -72,6 +77,8 @@ class _Args(argparse.Namespace):
     rules_cmd: str = ""
     hooks_cmd: str = ""
     no_install: bool = False
+    profile: manifest.Profile | None = None
+    output_format: str = "text"
 
     def __init__(self) -> None:
         super().__init__()
@@ -88,7 +95,7 @@ class _Args(argparse.Namespace):
 def cmd_sync(args: _Args, *, next_steps: bool = True) -> int:
     targets = _sync_targets(args)
     destinations: dict[str, Path] = {}
-    declared = _declared_dests(args)
+    declared, profile = _profile_and_dests(args)
 
     def resolve_destination(kind: str, override: str | None) -> Path:
         if kind not in destinations:
@@ -99,7 +106,10 @@ def cmd_sync(args: _Args, *, next_steps: bool = True) -> int:
 
     results: list[str] = []
     for name in targets:
-        src_name, dst_name = CONFIG_NAMES[name]
+        standard_src_name, dst_name = CONFIG_NAMES[name]
+        src_name = (
+            APPLICATION_CONFIG_NAMES.get(name, standard_src_name) if profile == "application" else standard_src_name
+        )
         src = CONFIGS_DIR / src_name
         if name == "eslint":
             dest = resolve_destination("typescript", args.typescript_dest)
@@ -131,15 +141,23 @@ def cmd_sync(args: _Args, *, next_steps: bool = True) -> int:
     return 0
 
 
-def _declared_dests(args: _Args) -> dict[str, str]:
-    """Read the project destinations recorded by `init`."""
+def _declared_manifest(args: _Args) -> manifest.Manifest | None:
+    """Read the project adoption recorded by `init`."""
     try:
-        found = manifest.load(_resolve_dest(args.dest))
+        return manifest.load(_resolve_dest(args.dest))
     except TypeError, ValueError, SystemExit:
-        return {}
-    if found is None:
-        return {}
-    return {"python": found.python_dest, "typescript": found.typescript_dest}
+        return None
+
+
+def _profile_and_dests(args: _Args) -> tuple[dict[str, str], manifest.Profile]:
+    """Resolve destination and profile defaults from one adoption manifest."""
+    adopted = _declared_manifest(args)
+    if adopted is None:
+        return {}, args.profile or "standard"
+    return (
+        {"python": adopted.python_dest, "typescript": adopted.typescript_dest},
+        args.profile or adopted.profile,
+    )
 
 
 def _sync_targets(args: _Args) -> list[str]:
@@ -193,7 +211,12 @@ def cmd_list() -> int:
 
 
 def cmd_path(args: _Args) -> int:
-    src_name, _ = CONFIG_NAMES[args.name]
+    standard_src_name, _ = CONFIG_NAMES[args.name]
+    src_name = (
+        APPLICATION_CONFIG_NAMES.get(args.name, standard_src_name)
+        if args.profile == "application"
+        else standard_src_name
+    )
     print(CONFIGS_DIR / src_name)
     return 0
 
@@ -237,6 +260,7 @@ def cmd_init(args: _Args) -> int:
         configs=args.configs,
         python_dest=args.python_dest,
         typescript_dest=args.typescript_dest,
+        profile=args.profile or "standard",
     )
 
     detected = [
@@ -270,6 +294,7 @@ def cmd_init(args: _Args) -> int:
         sync_args.typescript_dest = str(root / typescript_dest)
         sync_args.only = list(plan.configs)
         sync_args.force = args.force
+        sync_args.profile = plan.profile
         _ = cmd_sync(sync_args, next_steps=False)
 
     verb_write = "would write" if args.dry_run else "wrote"
@@ -306,7 +331,72 @@ def cmd_verify(args: _Args) -> int:
         return 1
     if lifecycle.verify_custom_rules(root):
         return 1
+    policy_args = _Args()
+    policy_args.dest = str(root)
+    adopted = _declared_manifest(policy_args)
+    if adopted is not None and adopted.profile == "application" and cmd_library_policy(policy_args):
+        return 1
     return lifecycle.execute(lifecycle.verification_commands(scaffold.detect(root)))
+
+
+def cmd_library_policy(args: _Args) -> int:
+    """Enforce the application profile's direct-dependency policy."""
+    root = _resolve_dest(args.dest)
+    adopted = manifest.load(root)
+    profile = args.profile or (adopted.profile if adopted is not None else "standard")
+    if profile != "application":
+        if args.output_format == "json":
+            print(json.dumps({"profile": profile, "findings": []}))
+        elif not args.quiet:
+            print("library policy skipped (standard profile)")
+        return 0
+    try:
+        findings = library_policy.scan(root)
+    except library_policy.ManifestPolicyError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if args.output_format == "json":
+        print(
+            json.dumps(
+                {
+                    "profile": profile,
+                    "findings": [
+                        {
+                            "id": finding.id,
+                            "path": str(finding.path),
+                            "line": finding.line,
+                            "column": finding.column,
+                            "package": finding.package,
+                            "replacement": finding.replacement,
+                            "message": finding.message,
+                        }
+                        for finding in findings
+                    ],
+                },
+                indent=2,
+            )
+        )
+    elif findings or not args.quiet:
+        print("\n".join(finding.render() for finding in findings) or "library policy ✓")
+    return 1 if findings else 0
+
+
+def cmd_check(args: _Args) -> int:
+    """Run source rules and the application dependency policy together."""
+    try:
+        source_status = runner.run(
+            args.files,
+            noise_only=args.noise_only,
+            python_baseline=args.python_baseline,
+        )
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    policy_args = _Args()
+    policy_args.dest = "."
+    policy_args.quiet = True
+    policy_status = cmd_library_policy(policy_args)
+    return max(source_status, policy_status)
 
 
 def cmd_format(args: _Args) -> int:
@@ -351,16 +441,10 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_format(args)
         case "inspect":
             return cmd_inspect(args)
+        case "library-policy":
+            return cmd_library_policy(args)
         case "check":
-            try:
-                return runner.run(
-                    args.files,
-                    noise_only=args.noise_only,
-                    python_baseline=args.python_baseline,
-                )
-            except ValueError as exc:
-                print(f"error: {exc}", file=sys.stderr)
-                return 2
+            return cmd_check(args)
         case "repo":
             return _cmd_repo(args)
         case _:  # argparse enforces `required=True`, so this is unreachable
@@ -380,6 +464,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--dest",
         default=".",
         help="fallback destination for every config (default: cwd)",
+    )
+    p_sync.add_argument(
+        "--profile",
+        choices=manifest.PROFILES,
+        help="config profile (default: manifest profile, else standard)",
     )
     p_sync.add_argument(
         "--python-dest",
@@ -407,6 +496,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p_path = sub.add_parser("path", help="print the absolute path of a bundled config")
     p_path.add_argument("name", choices=sorted(CONFIG_NAMES))
+    p_path.add_argument("--profile", choices=manifest.PROFILES, default="standard")
 
     p_peers = sub.add_parser("peers", help="print the npm packages eslint.strict.mjs needs, at tested versions")
     p_peers.add_argument("--dest", default=".", help="project whose package manager to speak (default: cwd)")
@@ -430,6 +520,12 @@ def _build_parser() -> argparse.ArgumentParser:
     p_init.add_argument("--force", action="store_true", help="overwrite files that already exist")
     p_init.add_argument("--dry-run", action="store_true", help="print the plan without writing")
     p_init.add_argument(
+        "--profile",
+        choices=manifest.PROFILES,
+        default="standard",
+        help="policy profile to adopt (default: standard)",
+    )
+    p_init.add_argument(
         "--no-install", action="store_true", help="write wiring without installing dependencies or hooks"
     )
     p_init.add_argument(
@@ -445,6 +541,23 @@ def _build_parser() -> argparse.ArgumentParser:
         help="run every installed Sarj Python, SQL, IaC, config, text, and artifact rule",
     )
     runner.add_arguments(p_check)
+
+    p_library_policy = sub.add_parser(
+        "library-policy",
+        help="enforce the application profile's direct-dependency catalog",
+    )
+    p_library_policy.add_argument("--dest", default=".", help="repository root (default: cwd)")
+    p_library_policy.add_argument(
+        "--profile",
+        choices=manifest.PROFILES,
+        help="override the adopted profile (useful for corpus measurement)",
+    )
+    p_library_policy.add_argument(
+        "--format",
+        dest="output_format",
+        choices=("text", "json"),
+        default="text",
+    )
 
     for name, help_text in (
         ("verify", "run config drift, custom rules, Ruff, BasedPyright, and ESLint"),

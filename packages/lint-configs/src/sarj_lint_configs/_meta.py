@@ -13,8 +13,10 @@ except PackageNotFoundError:  # running from an uninstalled source tree
 CONFIGS_DIR: Path = Path(str(files(__package__) / "configs"))
 
 RUFF_STRICT: Path = CONFIGS_DIR / "ruff.strict.toml"
+RUFF_APPLICATION: Path = CONFIGS_DIR / "ruff.application.toml"
 PYRIGHT_STRICT: Path = CONFIGS_DIR / "pyright.strict.json"
 ESLINT_STRICT: Path = CONFIGS_DIR / "eslint.strict.mjs"
+ESLINT_APPLICATION: Path = CONFIGS_DIR / "eslint.application.mjs"
 MARKDOWNLINT_STRICT: Path = CONFIGS_DIR / "markdownlint.strict.yaml"
 ESLINT_PEERS: Path = CONFIGS_DIR / "eslint.peers.json"
 TAPLO_STRICT: Path = CONFIGS_DIR / "taplo.strict.toml"

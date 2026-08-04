@@ -17,7 +17,11 @@
 import { ESLint, type Linter } from "eslint";
 import { describe, expect, it } from "vitest";
 
-import plugin, { recommendedRules, strictRules } from "../src/index.js";
+import plugin, {
+  applicationOnlyRules,
+  recommendedRules,
+  strictRules,
+} from "../src/index.js";
 import { rulesOf } from "./_config.js";
 
 const PRESETS = ["recommended", "strict"] as const;
@@ -56,7 +60,7 @@ describe("configs.recommended / configs.strict are flat config", () => {
     ]);
   });
 
-  it("strict wires every rule the plugin ships", () => {
+  it("strict wires every general-profile rule the plugin ships", () => {
     // `recommended` deliberately omits some (strict-only architectural rules,
     // and ones that need per-repo options to mean anything), but `strict` is
     // the "every shipped rule" preset -- a rule missing from it is a rule
@@ -67,8 +71,10 @@ describe("configs.recommended / configs.strict are flat config", () => {
     // wiring one would report the same defect twice under two names. That they
     // stay resolvable, deprecated and out of both presets is asserted in
     // `rule-docs.test.ts`.
+    const applicationOnly = new Set<string>(applicationOnlyRules);
     const known = Object.entries(plugin.rules)
       .filter(([, rule]) => rule.meta.deprecated === undefined)
+      .filter(([rule]) => !applicationOnly.has(rule))
       .map(([rule]) => `@sarj/${rule}`);
     const missing = known.filter((rule) => !(rule in strictRules));
     expect(missing).toEqual([]);
@@ -78,6 +84,13 @@ describe("configs.recommended / configs.strict are flat config", () => {
       .map(([rule]) => `@sarj/${rule}`)
       .filter((rule) => rule in strictRules);
     expect(wiredAliases).toEqual([]);
+  });
+
+  it("keeps application-profile rules out of both general presets", () => {
+    for (const rule of applicationOnlyRules) {
+      expect(`@sarj/${rule}` in recommendedRules).toBe(false);
+      expect(`@sarj/${rule}` in strictRules).toBe(false);
+    }
   });
 
   it("recommended is a subset of strict, never the other way round", () => {

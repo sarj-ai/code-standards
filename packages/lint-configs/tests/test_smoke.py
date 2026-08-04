@@ -13,14 +13,17 @@ import pytest
 
 from sarj_lint_configs import (
     CONFIGS_DIR,
+    ESLINT_APPLICATION,
     ESLINT_STRICT,
     MARKDOWNLINT_STRICT,
     PYRIGHT_STRICT,
+    RUFF_APPLICATION,
     RUFF_STRICT,
     TAPLO_STRICT,
     YAMLLINT_STRICT,
     __version__,
     _meta,  # sarj-noqa: SARJ048 — the source-tree version fallback is the subject of a test below
+    config_generation,
     manifest,
 )
 
@@ -64,6 +67,53 @@ def test_configs_dir_exists() -> None:
 def test_all_six_configs_bundled(path: Path) -> None:
     assert path.is_file(), f"missing bundled config: {path}"
     assert path.stat().st_size > 0
+
+
+@pytest.mark.parametrize("path", [RUFF_APPLICATION, ESLINT_APPLICATION])
+def test_application_configs_bundled(path: Path) -> None:
+    assert path.is_file(), f"missing bundled application config: {path}"
+    assert path.stat().st_size > 0
+
+
+def test_application_configs_have_no_generation_drift() -> None:
+    assert config_generation.sync(check=True)
+
+
+def test_application_configs_are_standalone_supersets() -> None:
+    application_ruff = RUFF_APPLICATION.read_text()
+    application_eslint = ESLINT_APPLICATION.read_text()
+    assert application_ruff.startswith(RUFF_STRICT.read_text().split("[lint.per-file-ignores]", 1)[0])
+    assert len(application_eslint) >= len(ESLINT_STRICT.read_text())
+    assert "Generated application-profile library policy" in application_ruff
+    assert "Generated application-profile library policy" in application_eslint
+
+
+def test_application_configs_enforce_catalog_without_changing_standard_profile() -> None:
+    application_ruff = manifest.as_table(tomllib.loads(RUFF_APPLICATION.read_text()))
+    application_lint = manifest.table_field(application_ruff, "lint")
+    application_tidy = manifest.table_field(application_lint, "flake8-tidy-imports")
+    application_bans = manifest.table_field(application_tidy, "banned-api")
+    standard_ruff = manifest.as_table(tomllib.loads(RUFF_STRICT.read_text()))
+    standard_lint = manifest.table_field(standard_ruff, "lint")
+    standard_tidy = manifest.table_field(standard_lint, "flake8-tidy-imports")
+    standard_bans = manifest.table_field(standard_tidy, "banned-api")
+    assert "argparse" in application_bans
+    assert "pandas" in application_bans
+    assert "argparse" not in standard_bans
+    assert "pandas" not in standard_bans
+
+    application_eslint = ESLINT_APPLICATION.read_text()
+    standard_eslint = ESLINT_STRICT.read_text()
+    assert '"name": "axios"' in application_eslint
+    assert '"name": "lodash"' in application_eslint
+    assert 'name: "@clerk/nextjs"' in application_eslint
+    assert '"group": ["axios/*"]' in application_eslint
+    assert '"@sarj/no-restricted-library-load"' in application_eslint
+    assert '"@sarj/prefer-native-random-uuid": "error"' in application_eslint
+    assert '"module": "axios"' in application_eslint
+    assert '"name": "axios"' not in standard_eslint
+    assert '"name": "lodash"' not in standard_eslint
+    assert '"@sarj/no-restricted-library-load"' not in standard_eslint
 
 
 def test_ruff_config_is_valid_toml() -> None:

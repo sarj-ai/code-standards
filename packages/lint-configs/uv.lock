@@ -395,6 +395,7 @@ source = { editable = "." }
 dependencies = [
     { name = "basedpyright" },
     { name = "lefthook" },
+    { name = "packaging" },
     { name = "pre-commit" },
     { name = "pyyaml" },
     { name = "ruff" },
@@ -412,6 +413,7 @@ dev = [
 requires-dist = [
     { name = "basedpyright", specifier = ">=1.39" },
     { name = "lefthook", specifier = "==2.1.10" },
+    { name = "packaging", specifier = ">=26" },
     { name = "pre-commit", specifier = ">=4.5" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "ruff", specifier = ">=0.15" },

@@ -16,7 +16,12 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import plugin, { renamedRules, retiredRules, rules } from "../src/index.js";
+import plugin, {
+  applicationOnlyRules,
+  renamedRules,
+  retiredRules,
+  rules,
+} from "../src/index.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const STRICT_CONFIG_PATH = resolve(
@@ -164,6 +169,7 @@ describe("lint-configs eslint.strict.mjs stays wired to the plugin", () => {
     const PER_REPO_OPT_IN = new Set([
       "no-storage-in-stateless-modules", // inert without `modules`
       "no-raw-fetch-outside-clients", // needs a repo-specific `allow` list
+      ...applicationOnlyRules, // wired by eslint.application.mjs, not the standard profile
     ]);
 
     const unwired = Object.keys(rules)
@@ -175,7 +181,9 @@ describe("lint-configs eslint.strict.mjs stays wired to the plugin", () => {
     // that referencedRuleNames() ignores comments this is a genuinely separate
     // claim from being wired: "mentioned in the file" vs "configured".
     for (const name of PER_REPO_OPT_IN) {
-      expect(text).toContain(name);
+      if (!applicationOnlyRules.includes(name as (typeof applicationOnlyRules)[number])) {
+        expect(text).toContain(name);
+      }
     }
 
     // ...and the exemption must still be needed. If someone wires an opt-in for
