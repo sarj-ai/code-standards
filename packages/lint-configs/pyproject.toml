@@ -1,6 +1,6 @@
 [project]
 name = "sarj-lint-configs"
-version = "0.46.0"
+version = "0.47.0"
 description = "Maximally-strict ruff + pyright + ESLint configs for sarj-ai Python/TypeScript projects."
 readme = "README.md"
 requires-python = ">=3.14"

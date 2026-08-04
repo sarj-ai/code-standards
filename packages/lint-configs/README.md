@@ -101,8 +101,9 @@ alias for compatibility. `check` routes Python, SQL, Terraform, YAML/TFTPL,
 TOML, JSONC, Markdown, INI-style config, environment files, shell scripts,
 Dockerfile variants, Makefiles, and Justfiles in one pass. It rejects
 commented-out config (`SARJ301`), dense config narration (`SARJ300`), and AI
-execution diaries or briefs that should have been reduced to durable
-README/docs/ADR facts (`SARJ302`).
+execution diaries, bug-hunt dumps, or large point-in-time audits that should
+have been reduced to durable README/docs/ADR facts (`SARJ302`). Large documents
+need at least two independent artifact signals, so size alone never reports.
 
 Generated or intentionally instructional config can be excluded explicitly;
 there is no blanket directory exemption:
