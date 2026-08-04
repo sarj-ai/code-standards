@@ -66,6 +66,7 @@
       "prefer-constant-time-secret-compare",
       "prefer-discriminated-union",
       "prefer-input-group-search",
+      "prefer-shadcn-primitives",
       "prefer-module-level-constant",
       "prefer-module-level-schema",
       "prefer-native-random-uuid",
@@ -357,7 +358,7 @@
       "kind": "eslint",
       "status": "removed",
       "replacement": null,
-      "note": "Delete the entry; use `react/forbid-elements` for element restrictions."
+      "note": "Delete the retired entry. Application-profile consumers can separately adopt `@sarj/prefer-shadcn-primitives`."
     },
     {
       "id": "@sarj/primary-export-file-name",

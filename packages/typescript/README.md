@@ -123,8 +123,16 @@ platform too.
 |---|---|---|
 | `no-hand-rolled-spinner` | Intrinsic elements styled as Tailwind border-ring loading spinners outside the design system. | error / error |
 | `prefer-input-group-search` | Search icons and shared Input controls composed without the shared InputGroup primitive. | error / error |
+| `prefer-shadcn-primitives` | Deterministically visible raw JSX controls used instead of shared shadcn primitives. Unknown and hidden input types are excluded. | application profile: warn |
 | `require-static-next-matcher` | Dynamic values in exported Next.js middleware and proxy matcher configuration. | error / error |
 | `no-hand-rolled-sleep` | `new Promise((r) => setTimeout(r, ms))` in any spelling, and an uncleared `Promise.race`/`Promise.any` timeout arm. Options: `checkClientModules` (default `false`), `allowIn`. | warn / error |
+
+`prefer-shadcn-primitives` is application-only because generic plugin consumers
+may use another design system or intentionally expose native controls. It starts
+at warning with 53 measured adoption findings across four application-profile
+consumers; two additional consumers are clean. Promote it only after those
+findings are removed, and keep it disabled inside `components/ui` and
+`components/design-system`, where shared primitives must wrap native elements.
 
 ## New in 2.14.0 — `no-tautological-expect`
 

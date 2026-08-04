@@ -626,38 +626,6 @@ const config = [
       "react-hooks/purity": "error",
       "react-hooks/refs": "error",
       "react-hooks/set-state-in-render": "error",
-      "react/forbid-elements": [
-        "error",
-        {
-          forbid: [
-            {
-              element: "button",
-              message: "Use <Button> from your design system.",
-            },
-            {
-              element: "input",
-              message:
-                "Use <Input> / <Checkbox> / <RadioGroup> from your design system.",
-            },
-            {
-              element: "select",
-              message: "Use <Select> from your design system.",
-            },
-            {
-              element: "textarea",
-              message: "Use <Textarea> from your design system.",
-            },
-            {
-              element: "dialog",
-              message: "Use <Dialog> / <AlertDialog> from your design system.",
-            },
-            {
-              element: "table",
-              message: "Use <Table> family from your design system.",
-            },
-          ],
-        },
-      ],
       // These rules cannot distinguish a raw inline style from the CSS custom
       // properties their own message recommends for dynamic utility values.
       // Semantic-color and design-system rules remain the style authorities.
