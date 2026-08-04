@@ -122,6 +122,7 @@ platform too.
 | Rule | What it catches | Preset |
 |---|---|---|
 | `no-hand-rolled-spinner` | Intrinsic elements styled as Tailwind border-ring loading spinners outside the design system. | error / error |
+| `prefer-input-group-search` | Search icons and shared Input controls composed without the shared InputGroup primitive. | error / error |
 | `require-static-next-matcher` | Dynamic values in exported Next.js middleware and proxy matcher configuration. | error / error |
 | `no-hand-rolled-sleep` | `new Promise((r) => setTimeout(r, ms))` in any spelling, and an uncleared `Promise.race`/`Promise.any` timeout arm. Options: `checkClientModules` (default `false`), `allowIn`. | warn / error |
 
