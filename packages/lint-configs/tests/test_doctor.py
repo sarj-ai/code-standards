@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from sarj_lint_configs.doctor import Level, check_pyright_deprecated
+from sarj_lint_configs.doctor import Level, check_pyright_deprecated, check_ruff_policy_authority
 
 
 if TYPE_CHECKING:
@@ -41,3 +41,26 @@ def test_doctor_accepts_deprecated_api_protection_at_error(tmp_path: Path, name:
     _ = (tmp_path / name).write_text(f"{setting}\n", encoding="utf-8")
 
     assert not list(check_pyright_deprecated(tmp_path))
+
+
+@pytest.mark.parametrize("key", ["ignore", "select"])
+def test_doctor_rejects_replacement_rule_policy_in_extending_ruff_config(tmp_path: Path, key: str) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        f'[tool.ruff]\nextend = ".ruff-strict.toml"\n\n[tool.ruff.lint]\n{key} = ["ALL"]\n',
+        encoding="utf-8",
+    )
+
+    findings = list(check_ruff_policy_authority(tmp_path))
+
+    assert [finding.level for finding in findings] == [Level.DRIFT]
+    assert findings[0].where == f"pyproject.toml: [tool.ruff.lint].{key}"
+    assert f"use `extend-{key}`" in findings[0].detail
+
+
+def test_doctor_accepts_additive_rule_policy_in_extending_ruff_config(tmp_path: Path) -> None:
+    (tmp_path / "ruff.toml").write_text(
+        'extend = ".ruff-strict.toml"\n\n[lint]\nextend-select = ["B904"]\nextend-ignore = ["D417"]\n',
+        encoding="utf-8",
+    )
+
+    assert not list(check_ruff_policy_authority(tmp_path))

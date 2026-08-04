@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+import tomllib
 from typing import TYPE_CHECKING, Final
 
 from . import ledger, manifest
@@ -55,6 +56,8 @@ _PYRIGHT_CONFIG_NAMES: Final = frozenset(
 _PYRIGHT_REPORT_DEPRECATED = re.compile(
     r"^\s*[\"']?reportDeprecated[\"']?\s*(?::|=)\s*(?P<value>[^,#/\n]+)", re.MULTILINE
 )
+_RUFF_CONFIG_NAMES: Final = frozenset({".ruff.toml", "ruff.toml", "pyproject.toml"})
+_RUFF_REPLACEMENT_KEYS: Final = frozenset({"ignore", "select"})
 
 #: Where a rule identifier can be written: configs and suppression baselines, but
 #: also ordinary source, because an `eslint-disable-next-line @sarj/<rule>` for a
@@ -111,6 +114,7 @@ def diagnose(root: Path) -> list[Finding]:
     findings.extend(_check_eslint_plugin(root, files))
     findings.extend(check_retired_rules(root, files))
     findings.extend(check_pyright_deprecated(root, files))
+    findings.extend(check_ruff_policy_authority(root, files))
     return findings
 
 
@@ -144,6 +148,31 @@ def check_pyright_deprecated(root: Path, files: Sequence[Path] | None = None) ->
                 Level.DRIFT,
                 where,
                 'sets `reportDeprecated` away from "error"; restore it to keep deprecated APIs visible',
+            )
+
+
+def check_ruff_policy_authority(root: Path, files: Sequence[Path] | None = None) -> Iterator[Finding]:
+    """Reject extending Ruff configs that replace inherited rule policy."""
+    for path in files if files is not None else _walk(root):
+        if path.name not in _RUFF_CONFIG_NAMES:
+            continue
+        try:
+            parsed: object = tomllib.loads(_read(path))
+        except tomllib.TOMLDecodeError:
+            continue
+        document = manifest.as_table(parsed)
+        ruff = manifest.as_table(manifest.as_table(document.get("tool")).get("ruff"))
+        if not ruff:
+            ruff = document
+        if not isinstance(ruff.get("extend"), str):
+            continue
+        lint = manifest.as_table(ruff.get("lint"))
+        table = "tool.ruff.lint" if path.name == "pyproject.toml" else "lint"
+        for key in sorted(_RUFF_REPLACEMENT_KEYS.intersection(lint)):
+            yield Finding(
+                Level.DRIFT,
+                f"{path.relative_to(root)}: [{table}].{key}",
+                f"replaces inherited Ruff policy; use `extend-{key}` so the canonical config remains authoritative",
             )
 
 
