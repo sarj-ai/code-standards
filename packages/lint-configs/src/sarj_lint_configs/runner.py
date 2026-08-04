@@ -106,6 +106,7 @@ def run(
     files: Sequence[str],
     *,
     noise_only: bool = False,
+    python_baseline: str | None = None,
 ) -> int:
     """Dispatch files and directories to every applicable installed registry."""
     # Load checker packages only for commands that execute their registries.
@@ -120,7 +121,12 @@ def run(
 
     grouped = group_paths(files)
     statuses = (
-        _run(python_main, python_rules, grouped.python),
+        _run(
+            python_main,
+            python_rules,
+            grouped.python,
+            extra_args=("--baseline", python_baseline) if python_baseline is not None else (),
+        ),
         _run(sql_main, sql_rules, grouped.sql),
         _run(iac_main, iac_rules, grouped.iac),
         textlint.run(grouped.text),
@@ -194,10 +200,12 @@ def _run(
     checker: Callable[[list[str]], int],
     registry: Mapping[str, type[_Rule]],
     files: Sequence[str],
+    *,
+    extra_args: Sequence[str] = (),
 ) -> int:
     if not files or not registry:
         return 0
-    return checker(["check", *_rule_args(registry), "--", *files])
+    return checker(["check", *_rule_args(registry), *extra_args, "--", *files])
 
 
 def _rule_args(registry: Mapping[str, type[_Rule]]) -> list[str]:
@@ -210,5 +218,9 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         "--noise-only",
         action="store_true",
         help="run Python, config-prose, and AI-artifact noise rules (TypeScript uses the ESLint plugin)",
+    )
+    parser.add_argument(
+        "--python-baseline",
+        help="apply a sarj-python-lint shrink-only baseline to staged Python files",
     )
     parser.add_argument("files", nargs="+")

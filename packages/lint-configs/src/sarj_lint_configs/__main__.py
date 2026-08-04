@@ -60,6 +60,7 @@ class _Args(argparse.Namespace):
     name: str = ""
     files: list[str]
     noise_only: bool = False
+    python_baseline: str | None = None
     repo_cmd: str = ""
     repo_only: list[str]
     commits: str | None = None
@@ -355,6 +356,7 @@ def main(argv: list[str] | None = None) -> int:
                 return runner.run(
                     args.files,
                     noise_only=args.noise_only,
+                    python_baseline=args.python_baseline,
                 )
             except ValueError as exc:
                 print(f"error: {exc}", file=sys.stderr)
