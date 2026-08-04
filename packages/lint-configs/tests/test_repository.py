@@ -444,6 +444,15 @@ def test_file_conventions_reject_forbidden_paths(tmp_path: Path) -> None:
     assert findings[0].where == "scripts/check.sh"
 
 
+def test_file_conventions_allow_audit_records(tmp_path: Path) -> None:
+    _git_repo(tmp_path, {"docs/audits/finding.md": "# Finding\n"})
+    (tmp_path / "configs").mkdir()
+
+    findings = repository.check_file_conventions(tmp_path, _policy())
+
+    assert not findings
+
+
 def test_file_conventions_reject_config_outside_canonical_dir(tmp_path: Path) -> None:
     _git_repo(
         tmp_path, {"package/pyproject.toml": 'extend = "local.toml"\n', "package/local.toml": "line-length = 100\n"}

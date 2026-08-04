@@ -33,6 +33,7 @@ _MARKDOWN_LOCATIONS: Final = (
     "plugins/*/commands/*.md",
     "plugins/*/skills/*/SKILL.md",
     "plugins/*/README.md",
+    "docs/audits/*.md",
 )
 
 
