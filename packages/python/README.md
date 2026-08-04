@@ -17,6 +17,7 @@ uv tool install sarj-python-lint
     - id: sarj-prefer-str-enum
     - id: sarj-no-fat-try-blocks
     - id: sarj-pydantic-at-boundaries
+    - id: sarj-fastapi-openapi-contract            # SARJ094
     - id: sarj-prefer-class-row
     - id: sarj-prefer-timedelta-for-durations
     - id: sarj-prefer-struct-over-namedtuple
@@ -24,6 +25,18 @@ uv tool install sarj-python-lint
     - id: sarj-no-fstring-in-log
     - id: sarj-prefer-non-nullable-collection      # SARJ074
 ```
+
+### FastAPI OpenAPI contracts (0.44.0)
+
+`SARJ094` complements Ruff's `ANN*` and `FAST001`-`FAST003` checks. It requires
+schema-visible operations to declare their summary, description and status;
+uses described `Annotated` request markers; rejects schema-erasing response
+shapes and response projections; and keeps direct errors, custom responses,
+bodyless statuses, GET/HEAD inputs and local route ordering honest in OpenAPI.
+
+The rule resolves only FastAPI provenance visible in the current module. Dynamic
+decorator mappings, imported router instances and the assembled `app.openapi()`
+document remain application-level integration-test concerns.
 
 ### Test-quality rules (0.15.0)
 

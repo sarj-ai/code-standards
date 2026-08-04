@@ -87,6 +87,7 @@
       "docstring-returns-restate-signature",
       "duplicate-test-body",
       "duplicated-override-docstring",
+      "fastapi-openapi-contract",
       "fixture-returns-bare-tuple",
       "inefficient-string-concat-in-loop",
       "interaction-only-test",
@@ -261,7 +262,8 @@
       "SARJ090",
       "SARJ091",
       "SARJ092",
-      "SARJ093"
+      "SARJ093",
+      "SARJ094"
     ],
     "sql": [
       "SARJ101",

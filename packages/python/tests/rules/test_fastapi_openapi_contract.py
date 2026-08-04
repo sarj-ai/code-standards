@@ -1,0 +1,378 @@
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+import pytest
+
+from sarj_python_lint.rules.fastapi_openapi_contract import FastapiOpenapiContract
+from sarj_python_lint.rules.pydantic_at_boundaries import PydanticAtBoundaries
+
+
+if TYPE_CHECKING:
+    from sarj_python_lint.rule_base import Diagnostic
+
+
+def _check(source: str, path: str = "api.py") -> list[Diagnostic]:
+    return FastapiOpenapiContract().check(Path(path), source)
+
+
+_PRELUDE = """
+from typing import Annotated, Any, Optional
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Path, Query, Request, status
+from fastapi.responses import FileResponse, StreamingResponse
+
+router = APIRouter()
+"""
+
+
+def test_complete_operation_is_clean():
+    source = (
+        _PRELUDE
+        + """
+@router.get(
+    "/users/{user_id}",
+    summary="Read a user",
+    description="Returns the public user profile.",
+    status_code=status.HTTP_200_OK,
+    responses={404: {"description": "User not found"}},
+)
+async def read_user(
+    user_id: Annotated[str, Path(description="Stable user identifier")],
+    verbose: Annotated[bool, Query(description="Include optional details")] = False,
+    request: Request = None,
+) -> UserResponse:
+    if not verbose:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    return UserResponse(user_id=user_id)
+"""
+    )
+    assert _check(source) == []
+
+
+def test_metadata_is_required_per_visible_operation():
+    source = (
+        _PRELUDE
+        + """
+@router.get("/users")
+async def users() -> list[UserResponse]:
+    return []
+"""
+    )
+    diagnostics = _check(source)
+    assert len(diagnostics) == 1
+    assert "[metadata]" in diagnostics[0].message
+    assert "summary" in diagnostics[0].message
+    assert "description" in diagnostics[0].message
+    assert "status_code" in diagnostics[0].message
+
+
+def test_docstring_satisfies_operation_description():
+    source = (
+        _PRELUDE
+        + '''
+@router.get("/users", summary="Read users", status_code=200)
+async def users() -> list[UserResponse]:
+    """Return the visible users."""
+    return []
+'''
+    )
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("parameter", "fragment"),
+    [
+        ("term: str", "explicit Annotated"),
+        ("term: Annotated[str, Query()]", "non-empty description"),
+        ("payload: Annotated[dict[str, str], Body(description='Payload')]", "schema-erasing"),
+        ("other: Annotated[str, Path(description='Other')]", "not present in route path"),
+    ],
+)
+def test_request_parameter_contract(parameter: str, fragment: str):
+    source = (
+        _PRELUDE
+        + f"""
+@router.post("/items", summary="Create item", description="Creates one item.", status_code=201)
+async def create_item({parameter}) -> ItemResponse:
+    return ItemResponse()
+"""
+    )
+    diagnostics = _check(source)
+    assert any("[parameter]" in diagnostic.message and fragment in diagnostic.message for diagnostic in diagnostics)
+
+
+def test_dependency_marker_does_not_require_description():
+    source = (
+        _PRELUDE
+        + """
+@router.get("/me", summary="Read me", description="Returns the caller.", status_code=200)
+async def me(user: Annotated[User, Depends(current_user)]) -> UserResponse:
+    return UserResponse.model_validate(user)
+"""
+    )
+    assert _check(source) == []
+
+
+def test_ruff_owned_annotation_defects_do_not_duplicate():
+    source = (
+        _PRELUDE
+        + """
+@router.get("/users", summary="Read users", description="Returns users.", status_code=200)
+async def users(limit = Query(10)):
+    return []
+"""
+    )
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("annotation", "extra"),
+    [
+        ("Any", ""),
+        ("object", ""),
+        ("dict[str, str]", ""),
+        ("UserResponse", ", response_model=None"),
+        ("Optional[UserResponse]", ", response_model=None"),
+        ("StreamingResponse", ""),
+    ],
+)
+def test_response_contract_rejects_openapi_erasing_shapes(annotation: str, extra: str):
+    source = (
+        _PRELUDE
+        + f"""
+@router.get("/users", summary="Read users", description="Returns users.", status_code=200{extra})
+async def users() -> {annotation}:
+    raise NotImplementedError
+"""
+    )
+    diagnostics = _check(source)
+    assert any("[return]" in diagnostic.message for diagnostic in diagnostics)
+
+
+def test_explicit_file_response_is_clean():
+    source = (
+        _PRELUDE
+        + """
+@router.get(
+    "/report",
+    summary="Download report",
+    description="Returns the generated report.",
+    status_code=200,
+    response_class=FileResponse,
+    response_model=None,
+)
+async def report() -> FileResponse:
+    return FileResponse("report.pdf")
+"""
+    )
+    assert _check(source) == []
+
+
+def test_no_content_response_has_no_schema():
+    source = (
+        _PRELUDE
+        + """
+@router.delete(
+    "/items/{item_id}",
+    summary="Delete item",
+    description="Deletes one item.",
+    status_code=204,
+    response_model=None,
+)
+async def delete_item(item_id: Annotated[str, Path(description="Item identifier")]) -> None:
+    return None
+"""
+    )
+    assert _check(source) == []
+
+
+def test_no_content_response_rejects_model():
+    source = (
+        _PRELUDE
+        + """
+@router.delete("/items", summary="Delete items", description="Deletes items.", status_code=204)
+async def delete_items() -> ItemResponse:
+    return ItemResponse()
+"""
+    )
+    assert any("[return]" in diagnostic.message for diagnostic in _check(source))
+
+
+@pytest.mark.parametrize("method", ["get", "head"])
+def test_get_and_head_body_are_rejected(method: str):
+    source = (
+        _PRELUDE
+        + f"""
+@router.{method}("/search", summary="Search", description="Searches items.", status_code=200)
+async def search(payload: Annotated[SearchBody, Body(description="Search criteria")]) -> SearchResponse:
+    return SearchResponse()
+"""
+    )
+    assert any(
+        "[parameter]" in diagnostic.message and "request body" in diagnostic.message for diagnostic in _check(source)
+    )
+
+
+def test_response_projection_is_rejected():
+    source = (
+        _PRELUDE
+        + """
+@router.get(
+    "/users",
+    summary="Read users",
+    description="Returns users.",
+    status_code=200,
+    response_model=UserResponse,
+    response_model_exclude={"secret"},
+)
+async def users() -> UserResponse:
+    return UserResponse()
+"""
+    )
+    assert any(
+        "[return]" in diagnostic.message and "dedicated output model" in diagnostic.message
+        for diagnostic in _check(source)
+    )
+
+
+def test_direct_http_exception_requires_documented_response():
+    source = (
+        _PRELUDE
+        + """
+@router.get("/users/{user_id}", summary="Read user", description="Returns a user.", status_code=200)
+async def user(user_id: Annotated[str, Path(description="User identifier")]) -> UserResponse:
+    raise HTTPException(status_code=404)
+"""
+    )
+    assert any("[responses]" in diagnostic.message and "404" in diagnostic.message for diagnostic in _check(source))
+
+
+def test_direct_alternate_response_requires_documentation():
+    source = (
+        _PRELUDE
+        + """
+@router.get("/exports", summary="Read export", description="Returns an export.", status_code=200)
+async def export() -> ExportResponse:
+    return FileResponse("pending.txt", status_code=202)
+"""
+    )
+    assert any("[responses]" in diagnostic.message and "202" in diagnostic.message for diagnostic in _check(source))
+
+
+def test_dynamic_responses_are_accepted_as_unverifiable():
+    source = (
+        _PRELUDE
+        + """
+@router.get(
+    "/users/{user_id}",
+    summary="Read user",
+    description="Returns a user.",
+    status_code=200,
+    responses=COMMON_RESPONSES,
+)
+async def user(user_id: Annotated[str, Path(description="User identifier")]) -> UserResponse:
+    raise HTTPException(status_code=404)
+"""
+    )
+    assert _check(source) == []
+
+
+def test_raw_request_body_requires_openapi_extra():
+    source = (
+        _PRELUDE
+        + """
+@router.post("/events", summary="Receive event", description="Receives an event.", status_code=202)
+async def event(request: Request) -> Ack:
+    payload = await request.json()
+    return Ack(payload=payload)
+"""
+    )
+    assert any(
+        "[parameter]" in diagnostic.message and "requestBody" in diagnostic.message for diagnostic in _check(source)
+    )
+
+
+def test_local_duplicate_and_shadowed_routes_are_rejected():
+    source = (
+        _PRELUDE
+        + """
+@router.get("/users/{user_id}", summary="Read user", description="Returns a user.", status_code=200)
+async def user(user_id: Annotated[str, Path(description="User identifier")]) -> UserResponse: ...
+
+@router.get("/users/me", summary="Read me", description="Returns the caller.", status_code=200)
+async def me() -> UserResponse: ...
+
+@router.get("/users/me", summary="Read me again", description="Returns the caller.", status_code=200)
+async def me_again() -> UserResponse: ...
+"""
+    )
+    messages = [diagnostic.message for diagnostic in _check(source)]
+    assert any("[routing]" in message and "shadowed" in message for message in messages)
+    assert any("[routing]" in message and "duplicate" in message for message in messages)
+
+
+def test_independent_router_factories_do_not_conflict():
+    source = (
+        _PRELUDE
+        + """
+def first() -> APIRouter:
+    router = APIRouter()
+
+    @router.get("/items", summary="Read first", description="Returns first items.", status_code=200)
+    async def items() -> FirstResponse: ...
+    return router
+
+def second() -> APIRouter:
+    router = APIRouter()
+
+    @router.get("/items", summary="Read second", description="Returns second items.", status_code=200)
+    async def items() -> SecondResponse: ...
+    return router
+"""
+    )
+    assert _check(source) == []
+
+
+def test_hidden_websocket_test_generated_and_unrelated_routes_are_ignored():
+    hidden = (
+        _PRELUDE
+        + """
+@router.get("/internal", include_in_schema=False)
+async def internal(value):
+    return value
+
+@router.websocket("/ws")
+async def ws(socket): ...
+"""
+    )
+    assert _check(hidden) == []
+    assert _check(_PRELUDE + "@router.get('/x')\nasync def x(): ...\n", "tests/api.py") == []
+    assert _check("# Generated by openapi-generator\n" + _PRELUDE + "@router.get('/x')\nasync def x(): ...\n") == []
+    assert _check("@client.get('/x')\ndef x(): return {}\n") == []
+
+
+def test_aliases_are_resolved_without_receiver_name_guesses():
+    source = """
+import fastapi as fa
+from typing import Annotated as A
+
+api = fa.FastAPI()
+read = api.get
+
+@read("/items/{item_id}", summary="Read item", description="Returns an item.", status_code=200)
+async def item(item_id: A[str, fa.Path(description="Item identifier")]) -> ItemResponse:
+    return ItemResponse()
+"""
+    assert _check(source) == []
+
+
+def test_sarj008_cedes_proven_routes_to_sarj094():
+    source = (
+        _PRELUDE
+        + """
+@router.get("/health")
+async def health() -> dict[str, Any]:
+    return {"status": "ok"}
+"""
+    )
+    assert PydanticAtBoundaries().check(Path("api.py"), source) == []
+    assert FastapiOpenapiContract().check(Path("api.py"), source)
