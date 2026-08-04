@@ -64,3 +64,19 @@ def test_doctor_accepts_additive_rule_policy_in_extending_ruff_config(tmp_path: 
     )
 
     assert not list(check_ruff_policy_authority(tmp_path))
+
+
+def test_doctor_rejects_consumer_config_that_reenables_conflicting_docstring_rules(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.ruff]\nextend = ".ruff-strict.toml"\n\n[tool.ruff.lint]\nselect = ["ALL"]\nignore = ["D417"]\n',
+        encoding="utf-8",
+    )
+
+    findings = list(check_ruff_policy_authority(tmp_path))
+
+    assert {finding.where for finding in findings} == {
+        "pyproject.toml: [tool.ruff.lint].ignore",
+        "pyproject.toml: [tool.ruff.lint].select",
+    }
+    assert all(finding.level is Level.DRIFT for finding in findings)
+    assert all("canonical config remains authoritative" in finding.detail for finding in findings)

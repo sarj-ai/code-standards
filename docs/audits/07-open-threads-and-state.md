@@ -65,7 +65,8 @@ Reconcile against that snapshot first and decide what supersedes what.
 - **`03-hypermodern-python-api-rule-research.md` — COMPLETE.** See
   `05-hypermodern-api-research-findings.md`. Conclusion: ship no new rule.
 - **`04-downstream-standards-upgrades.md` — COMPLETE.** All six repos on 0.42.
-- **`06-config-authority-and-rule-conflicts.md` — OPEN, highest priority.**
+- **`06-config-authority-and-rule-conflicts.md` — CONFIG AUTHORITY IMPLEMENTED;
+  exhaustive pair audit remains open.**
 
 ## Shipped 2026-08-03
 

@@ -21,6 +21,7 @@ from sarj_lint_configs import (
     YAMLLINT_STRICT,
     __version__,
     _meta,  # sarj-noqa: SARJ048 — the source-tree version fallback is the subject of a test below
+    manifest,
 )
 
 
@@ -457,3 +458,11 @@ def test_ruff_does_not_require_or_police_docstrings(tmp_path: Path, source: str)
     )
 
     assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
+def test_ruff_ignores_sections_forbidden_by_typed_docstring_policy() -> None:
+    parsed: object = tomllib.loads(RUFF_STRICT.read_text())
+    lint = manifest.as_table(manifest.as_table(parsed).get("lint"))
+    ignored = manifest.list_field(lint, "ignore")
+
+    assert {"DOC201", "DOC402"} <= {item for item in ignored if isinstance(item, str)}

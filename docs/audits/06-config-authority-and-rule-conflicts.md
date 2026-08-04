@@ -1,10 +1,11 @@
 # Standards as the single authority + audit every rule pair for contradictions
 
-Status: **OPEN — highest priority.** Date: 2026-08-03.
+Status: **CONFIG AUTHORITY IMPLEMENTED; exhaustive pair audit remains open.**
+Date: 2026-08-03.
 Triggered by a live incident: a teammate was blocked in consumer A by two rules
 that cannot both be satisfied.
 
-## The incident (already fixed, read this first)
+## The incident (fixed and permanently guarded, read this first)
 
 `DOC201` / `DOC402` fire when a `Returns:` / `Yields:` section is **absent**.
 `SARJ092 no-typed-doc-sections`, new in standards 0.42, deletes exactly those
@@ -18,6 +19,9 @@ author-silenceable.
   section, so deleting the section satisfies D417 and SARJ092 at once. Disabling
   it silently dropped a real check on docstrings that lie about the signature.
 - `DOC501` stays enabled: SARJ092 does not govern `Raises:`.
+- Standards 0.43 rejects child Ruff configs that replace inherited `select` or
+  `ignore`, and a permanent invariant keeps `DOC201` / `DOC402` ignored while
+  the typed-docstring policy forbids those sections.
 
 Verified empirically, not by reading config: only consumer A was affected.
 Consumers B and D pass probe files; consumer C has no Python lint config.
@@ -61,8 +65,8 @@ directives incrementally rather than reinstating docstring-demanding rules.
 
 ### 1. Make standards the only authority
 
-Goal: consumers inherit canonical policy and may only add strictness, never
-silently diverge.
+Implemented: consumers inherit canonical policy and may only add strictness,
+never silently diverge.
 
 - Convert consumer `ignore` lists to `extend-ignore`, then remove obsolete
   `noqa` directives by affected source area.
@@ -72,19 +76,21 @@ silently diverge.
   never be re-enabled downstream.
 - Leave `PLC2701` ignored (SARJ048 supersedes it).
 
-### 2. Gate it in `doctor`, not `scripts/`
+### 2. Gate it in `doctor`, not `scripts/` — implemented
 
 `sarj_lint_configs/doctor.py` already runs in the consumer root and has
 DRIFT/WARN levels; today it only checks version drift (pins, pre-commit revs,
 eslint-plugin, retired rules). It does not check **policy** drift.
 
-Add: compare the consumer's effective ignore/select set against canonical and
-emit DRIFT for any locally re-enabled rule that contradicts a shipped SARJ rule.
-`scripts/` cannot do this — it only sees the standards tree, and CLAUDE.md's bar
-is "a gate must run where the failure travels."
+`doctor` now emits DRIFT when an extending Ruff config declares replacement
+`select` or `ignore` policy. It directs consumers to additive `extend-select` /
+`extend-ignore`, preserving canonical exclusions such as `DOC201` / `DOC402`.
+`scripts/` cannot provide this protection — it only sees the standards tree,
+while the gate must run where the failure travels.
 
-Per CLAUDE.md, the guard is not finished until you have mutated the thing it
-guards and watched it fail.
+Regression tests reproduce the broken consumer shape, prove both replacement
+keys fail, prove additive keys pass, and pin the contradictory docstring pair in
+the canonical ignore set.
 
 ### 3. Audit ALL rules for contradictory pairs
 
