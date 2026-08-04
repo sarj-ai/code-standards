@@ -120,6 +120,40 @@ def test_checker_file_list_is_protected_from_option_injection(
     assert argv_seen[-2:] == ["--", "--baseline=.evil.py"]
 
 
+def test_python_baseline_is_forwarded_only_to_python_checker(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    argv_by_package: dict[str, list[str]] = {}
+
+    def fake_load_tool(
+        package: str,
+    ) -> tuple[Callable[[list[str]], int], Mapping[str, type[object]]]:
+        def checker(argv: list[str]) -> int:
+            argv_by_package[package] = argv
+            return 0
+
+        return checker, {"example-rule": object}
+
+    monkeypatch.setattr(runner, "_load_tool", fake_load_tool)
+    monkeypatch.chdir(tmp_path)
+    for name in ("app.py", "migration.sql", "main.tf"):
+        (tmp_path / name).touch()
+
+    assert runner.run(
+        ["app.py", "migration.sql", "main.tf"],
+        python_baseline="python/sarj-standards-baseline.json",
+    ) == 0
+    assert argv_by_package["sarj_python_lint"][-4:] == [
+        "--baseline",
+        "python/sarj-standards-baseline.json",
+        "--",
+        "app.py",
+    ]
+    assert "--baseline" not in argv_by_package["sarj_sql_lint"]
+    assert "--baseline" not in argv_by_package["sarj_iac_lint"]
+
+
 def test_highest_status_is_propagated(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -130,7 +164,10 @@ def test_highest_status_is_propagated(
         _checker: Callable[[list[str]], int],
         _registry: Mapping[str, type[object]],
         _files: Sequence[str],
+        *,
+        extra_args: Sequence[str] = (),
     ) -> int:
+        _ = extra_args
         return next(statuses)
 
     def clean_text(_files: Sequence[str]) -> int:
@@ -184,7 +221,10 @@ def test_noise_only_selects_comment_and_docstring_rules(monkeypatch: pytest.Monk
         _checker: Callable[[list[str]], int],
         registry: Mapping[str, type[object]],
         _files: Sequence[str],
+        *,
+        extra_args: Sequence[str] = (),
     ) -> int:
+        _ = extra_args
         selected.append(set(registry))
         return 0
 
