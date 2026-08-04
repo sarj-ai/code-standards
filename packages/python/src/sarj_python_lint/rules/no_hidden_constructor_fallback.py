@@ -8,6 +8,8 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass
 from functools import lru_cache
+import os
+from pathlib import Path
 from typing import TYPE_CHECKING, final, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, Severity, parse_or_none
@@ -17,7 +19,7 @@ from sarj_python_lint.rules._paths import is_generated, is_test_path
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from collections.abc import Iterator
 
 
 _MIGRATION_PARTS = frozenset({"alembic", "migration", "migrations", "versions"})
@@ -76,7 +78,7 @@ class NoHiddenConstructorFallback(Rule):
             init = next(
                 (
                     statement
-                    for statement in class_node.body
+                    for statement in reversed(class_node.body)
                     if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)) and statement.name == "__init__"
                 ),
                 None,
@@ -251,7 +253,7 @@ class _RuntimeConfigResolver:
         self._tree = tree
         self._root = distribution_root(path)
         self._module = _module_name(path, self._root)
-        self._imports = _imports(tree, self._module)
+        self._imports = _imports(tree, self._module, is_package=path.name == "__init__.py")
         self._settings_cache: dict[tuple[str, str], bool] = {}
         self._settings_class_cache: dict[tuple[str, str], bool] = {}
 
@@ -292,8 +294,8 @@ class _RuntimeConfigResolver:
         if loaded is None:
             self._settings_class_cache[key] = False
             return False
-        tree, _ = loaded
-        imports = _imports(tree, module)
+        tree, module_path = loaded
+        imports = _imports(tree, module, is_package=module_path.name == "__init__.py")
         if symbol in _base_settings_classes(tree, imports):
             self._settings_class_cache[key] = True
             return True
@@ -326,7 +328,7 @@ class _RuntimeConfigResolver:
             self._settings_cache[key] = False
             return False
         tree, module_path = loaded
-        imports = _imports(tree, module)
+        imports = _imports(tree, module, is_package=module_path.name == "__init__.py")
         classes = _base_settings_classes(tree, imports)
         factory = _assigned_factory(tree, symbol)
         if factory is not None:
@@ -358,7 +360,7 @@ class _RuntimeConfigResolver:
         return _read_module(path), path
 
 
-def _imports(tree: ast.Module, current_module: str | None) -> dict[str, _Binding]:
+def _imports(tree: ast.Module, current_module: str | None, *, is_package: bool = False) -> dict[str, _Binding]:
     bindings: dict[str, _Binding] = {}
     for statement in tree.body:
         if isinstance(statement, ast.Import):
@@ -367,7 +369,7 @@ def _imports(tree: ast.Module, current_module: str | None) -> dict[str, _Binding
                 module = alias.name if alias.asname else alias.name.partition(".")[0]
                 bindings[bound] = _Binding(module, None)
         elif isinstance(statement, ast.ImportFrom):
-            module = _absolute_module(statement, current_module)
+            module = _absolute_module(statement, current_module, is_package=is_package)
             if module is None:
                 continue
             for alias in statement.names:
@@ -379,12 +381,12 @@ def _imports(tree: ast.Module, current_module: str | None) -> dict[str, _Binding
     return bindings
 
 
-def _absolute_module(node: ast.ImportFrom, current_module: str | None) -> str | None:
+def _absolute_module(node: ast.ImportFrom, current_module: str | None, *, is_package: bool) -> str | None:
     if node.level == 0:
         return node.module
     if current_module is None:
         return None
-    package = current_module.split(".")[:-1]
+    package = current_module.split(".") if is_package else current_module.split(".")[:-1]
     keep = len(package) - (node.level - 1)
     if keep < 0:
         return None
@@ -501,37 +503,199 @@ def _has_composition_call(path: Path, class_name: str) -> bool:
     module = _module_name(path, root)
     if root is None or module is None:
         return False
-    return (module, class_name) in _distribution_constructor_calls(root)
+    return _distribution_calls_class(root, module, class_name)
 
 
-@lru_cache(maxsize=32)
-def _distribution_constructor_calls(root: Path) -> frozenset[tuple[str, str]]:
-    calls: set[tuple[str, str]] = set()
-    for candidate in root.rglob("*.py"):
-        if any(part.lower() in _SCAN_SKIP_PARTS | _MIGRATION_PARTS for part in candidate.parts) or is_test_path(
-            candidate
-        ):
-            continue
-        try:
-            source = candidate.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
-        if is_generated(candidate, source):
-            continue
-        try:
-            tree = ast.parse(source, filename=str(candidate))
-        except SyntaxError:
-            continue
-        module = _module_name(candidate, root)
-        if module is None:
-            continue
-        imports = _imports(tree, module)
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
+@lru_cache(maxsize=1024)
+def _distribution_calls_class(root: Path, target_module: str, class_name: str) -> bool:
+    skip_directories = _SCAN_SKIP_PARTS | _MIGRATION_PARTS | {"test", "tests"}
+    for directory, directory_names, file_names in os.walk(root):
+        directory_names[:] = [name for name in directory_names if name.lower() not in skip_directories]
+        for file_name in file_names:
+            if not file_name.endswith(".py"):
                 continue
-            resolved = _resolve_expression(node.func, imports)
-            if resolved is None and isinstance(node.func, ast.Name):
-                calls.add((module, node.func.id))
-            elif resolved is not None and len(resolved) >= _QUALIFIED_NAME_PARTS:
-                calls.add((".".join(resolved[:-1]), resolved[-1]))
-    return frozenset(calls)
+            candidate = Path(directory) / file_name
+            if is_test_path(candidate):
+                continue
+            try:
+                source = candidate.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            if class_name not in source or is_generated(candidate, source):
+                continue
+            try:
+                tree = ast.parse(source, filename=str(candidate))
+            except SyntaxError:
+                continue
+            module = _module_name(candidate, root)
+            if module is None:
+                continue
+            imports = _imports(tree, module, is_package=candidate.name == "__init__.py")
+            for node, shadowed in _calls_with_shadowing(tree):
+                parts = _attribute_parts(node.func)
+                if parts is not None and parts[0] in shadowed:
+                    continue
+                resolved = _resolve_expression(node.func, imports)
+                if resolved is None and isinstance(node.func, ast.Name):
+                    called_module, called_symbol = module, node.func.id
+                elif resolved is not None and len(resolved) >= _QUALIFIED_NAME_PARTS:
+                    called_module, called_symbol = ".".join(resolved[:-1]), resolved[-1]
+                else:
+                    continue
+                if called_symbol != class_name:
+                    continue
+                canonical = _canonical_symbol(root, called_module, called_symbol)
+                if canonical == (target_module, class_name):
+                    return True
+    return False
+
+
+@lru_cache(maxsize=4096)
+def _canonical_symbol(root: Path, module: str, symbol: str) -> tuple[str, str]:
+    return _canonical_symbol_inner(root, module, symbol, frozenset())
+
+
+def _canonical_symbol_inner(
+    root: Path,
+    module: str,
+    symbol: str,
+    seen: frozenset[tuple[str, str]],
+) -> tuple[str, str]:
+    key = (module, symbol)
+    if key in seen:
+        return key
+    path = _module_path(module, root)
+    if path is None:
+        return key
+    binding = _imports(_read_module(path), module, is_package=path.name == "__init__.py").get(symbol)
+    if binding is None or binding.symbol is None:
+        return key
+    return _canonical_symbol_inner(root, binding.module, binding.symbol, seen | {key})
+
+
+def _calls_with_shadowing(
+    node: ast.AST,
+    shadowed: frozenset[str] = frozenset(),
+    nested_scope_base: frozenset[str] | None = None,
+) -> Iterator[tuple[ast.Call, frozenset[str]]]:
+    if isinstance(node, (ast.ListComp, ast.SetComp, ast.GeneratorExp, ast.DictComp)):
+        lexical_parent = nested_scope_base if nested_scope_base is not None else shadowed
+        comprehension_shadowed = lexical_parent
+        for index, generator in enumerate(node.generators):
+            iterable_shadowed = shadowed if index == 0 else comprehension_shadowed
+            yield from _calls_with_shadowing(generator.iter, iterable_shadowed)
+            comprehension_shadowed |= frozenset(_target_names(generator.target))
+            for condition in generator.ifs:
+                yield from _calls_with_shadowing(condition, comprehension_shadowed)
+        values = (node.key, node.value) if isinstance(node, ast.DictComp) else (node.elt,)
+        for value in values:
+            yield from _calls_with_shadowing(value, comprehension_shadowed)
+        return
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+        outer_nodes: list[ast.AST]
+        if isinstance(node, ast.Lambda):
+            outer_nodes = [*node.args.defaults, *(default for default in node.args.kw_defaults if default is not None)]
+            body_nodes = [node.body]
+        else:
+            outer_nodes = [
+                *node.decorator_list,
+                *node.args.defaults,
+                *(default for default in node.args.kw_defaults if default is not None),
+            ]
+            body_nodes = list(node.body)
+        for outer in outer_nodes:
+            yield from _calls_with_shadowing(outer, shadowed, nested_scope_base)
+        lexical_parent = nested_scope_base if nested_scope_base is not None else shadowed
+        local_shadowed = lexical_parent | _scope_bindings(node)
+        for body in body_nodes:
+            yield from _calls_with_shadowing(body, local_shadowed)
+        return
+    if isinstance(node, ast.ClassDef):
+        outer_nodes = [*node.decorator_list, *node.bases, *node.keywords]
+        for outer in outer_nodes:
+            yield from _calls_with_shadowing(outer, shadowed, nested_scope_base)
+        lexical_parent = nested_scope_base if nested_scope_base is not None else shadowed
+        class_shadowed = lexical_parent | _class_bindings(node)
+        for body in node.body:
+            yield from _calls_with_shadowing(body, class_shadowed, lexical_parent)
+        return
+    if isinstance(node, ast.Call):
+        yield node, shadowed
+    for child in ast.iter_child_nodes(node):
+        yield from _calls_with_shadowing(child, shadowed, nested_scope_base)
+
+
+def _scope_bindings(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda) -> frozenset[str]:
+    collector = _LocalBindingCollector()
+    for argument in (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs):
+        collector.names.add(argument.arg)
+    if node.args.vararg is not None:
+        collector.names.add(node.args.vararg.arg)
+    if node.args.kwarg is not None:
+        collector.names.add(node.args.kwarg.arg)
+    body = [node.body] if isinstance(node, ast.Lambda) else node.body
+    for statement in body:
+        collector.visit(statement)
+    return frozenset(collector.names - collector.globals)
+
+
+def _class_bindings(node: ast.ClassDef) -> frozenset[str]:
+    collector = _LocalBindingCollector()
+    for statement in node.body:
+        collector.visit(statement)
+    return frozenset(collector.names)
+
+
+class _LocalBindingCollector(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.names: set[str] = set()
+        self.globals: set[str] = set()
+
+    @override
+    def visit_Name(self, node: ast.Name) -> None:
+        if isinstance(node.ctx, ast.Store):
+            self.names.add(node.id)
+
+    @override
+    def visit_Import(self, node: ast.Import) -> None:
+        self.names.update(alias.asname or alias.name.partition(".")[0] for alias in node.names)
+
+    @override
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        self.names.update(alias.asname or alias.name for alias in node.names if alias.name != "*")
+
+    @override
+    def visit_Global(self, node: ast.Global) -> None:
+        self.globals.update(node.names)
+
+    @override
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self.names.add(node.name)
+
+    @override
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self.names.add(node.name)
+
+    @override
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self.names.add(node.name)
+
+    @override
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        del node
+
+    @override
+    def visit_ListComp(self, node: ast.ListComp) -> None:
+        del node
+
+    @override
+    def visit_SetComp(self, node: ast.SetComp) -> None:
+        del node
+
+    @override
+    def visit_DictComp(self, node: ast.DictComp) -> None:
+        del node
+
+    @override
+    def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
+        del node
