@@ -3,7 +3,7 @@
   entry: sarj-standards check
   language: python
   files: '(?i)(\.py|\.sql|\.tf|\.tfvars|\.hcl|\.ya?ml|\.toml|\.jsonc|\.mdx?|Dockerfile|Makefile)$'
-  additional_dependencies: ["sarj-lint-configs==0.46.0"]
+  additional_dependencies: ["sarj-lint-configs==0.47.0"]
 
 - id: sarj-no-sequential-await
   name: 'sarj-lint: no sequential `await` in for-loop'
@@ -38,6 +38,12 @@
 - id: sarj-fastapi-openapi-contract
   name: 'sarj-lint: explicit and accurate FastAPI OpenAPI contracts'
   entry: sarj-python-lint check --rule fastapi-openapi-contract
+  language: python
+  types: [python]
+
+- id: sarj-no-hidden-constructor-fallback
+  name: 'sarj-lint: constructor option silently resolves runtime configuration'
+  entry: sarj-python-lint check --rule no-hidden-constructor-fallback
   language: python
   types: [python]
 

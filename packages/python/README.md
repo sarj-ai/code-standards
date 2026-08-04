@@ -10,7 +10,7 @@ uv tool install sarj-python-lint
 
 ```yaml
 - repo: https://github.com/sarj-ai/standards
-  rev: python-v0.44.0
+  rev: python-v0.45.0
   hooks:
     - id: sarj-no-sequential-await
     - id: sarj-inefficient-string-concat-in-loop
@@ -18,6 +18,7 @@ uv tool install sarj-python-lint
     - id: sarj-no-fat-try-blocks
     - id: sarj-pydantic-at-boundaries
     - id: sarj-fastapi-openapi-contract            # SARJ094
+    - id: sarj-no-hidden-constructor-fallback      # SARJ095 (warning)
     - id: sarj-prefer-class-row
     - id: sarj-prefer-timedelta-for-durations
     - id: sarj-prefer-struct-over-namedtuple
@@ -42,6 +43,29 @@ function-local framework imports, imported router instances and the assembled
 `app.openapi()` document remain application-level integration-test concerns.
 Existing projects can adopt the default-enabled rule with `--update-baseline`
 and then shrink that baseline as endpoint contracts are repaired.
+
+### Hidden constructor settings fallback (0.45.0)
+
+`SARJ095` warns when a keyword-only constructor parameter defaults to `None`
+and the constructor silently replaces it with a proven pydantic-settings value.
+The effective dependency is invisible at the call site, and `value or
+settings.VALUE` also treats an explicit falsey value as omitted. Make the
+argument required and resolve the setting at the application composition root;
+the annotation may remain nullable when `None` is still a valid explicit value.
+
+The rule resolves same-module settings objects, imports, aliases and re-exports
+back to an instance of a `pydantic_settings.BaseSettings` subclass. Literal and
+enum defaults, mutable-container initialization, arbitrary factories and
+clients, module constants, environment-variable APIs, other parameters and
+instance state are deliberately outside v1. No autofix is offered because
+changing constructor optionality requires coordinated call-site edits.
+
+Measured over 4,638 tracked Python files in 33 first-party repositories: three
+constructor warnings across two repositories, all three actionable. A pinned
+15-repository OSS sweep covered 29,203 files and produced zero reports, which is
+compatibility evidence rather than a precision claim. An environment-variable
+arm was rejected before shipping: it reported a public first-party library and
+two intentional LiteLLM integration constructors, all non-actionable.
 
 ### Test-quality rules (0.15.0)
 
