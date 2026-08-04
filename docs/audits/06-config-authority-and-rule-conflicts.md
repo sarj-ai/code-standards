@@ -82,15 +82,16 @@ never silently diverge.
 DRIFT/WARN levels; today it only checks version drift (pins, pre-commit revs,
 eslint-plugin, retired rules). It does not check **policy** drift.
 
-`doctor` now emits DRIFT when an extending Ruff config declares replacement
-`select` or `ignore` policy. It directs consumers to additive `extend-select` /
+`doctor` now emits DRIFT when Ruff policy is split across multiple config files
+or an extending config declares replacement `select` or `ignore` policy. It
+directs consumers to one authority with additive `extend-select` /
 `extend-ignore`, preserving canonical exclusions such as `DOC201` / `DOC402`.
 `scripts/` cannot provide this protection — it only sees the standards tree,
 while the gate must run where the failure travels.
 
-Regression tests reproduce the broken consumer shape, prove both replacement
-keys fail, prove additive keys pass, and pin the contradictory docstring pair in
-the canonical ignore set.
+Regression tests reproduce the broken consumer shape, prove split authority and
+both replacement keys fail, prove one additive config passes, and pin the
+contradictory docstring pair in the canonical ignore set.
 
 ### 3. Audit ALL rules for contradictory pairs
 

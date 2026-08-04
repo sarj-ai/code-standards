@@ -152,7 +152,8 @@ def check_pyright_deprecated(root: Path, files: Sequence[Path] | None = None) ->
 
 
 def check_ruff_policy_authority(root: Path, files: Sequence[Path] | None = None) -> Iterator[Finding]:
-    """Reject extending Ruff configs that replace inherited rule policy."""
+    """Require one Ruff authority and additive policy in extending configs."""
+    configs: list[tuple[Path, dict[str, object]]] = []
     for path in files if files is not None else _walk(root):
         if path.name not in _RUFF_CONFIG_NAMES:
             continue
@@ -162,8 +163,11 @@ def check_ruff_policy_authority(root: Path, files: Sequence[Path] | None = None)
             continue
         document = manifest.as_table(parsed)
         ruff = manifest.as_table(manifest.as_table(document.get("tool")).get("ruff"))
-        if not ruff:
+        if not ruff and path.name != "pyproject.toml":
             ruff = document
+        if not ruff:
+            continue
+        configs.append((path, ruff))
         if not isinstance(ruff.get("extend"), str):
             continue
         lint = manifest.as_table(ruff.get("lint"))
@@ -174,6 +178,21 @@ def check_ruff_policy_authority(root: Path, files: Sequence[Path] | None = None)
                 f"{path.relative_to(root)}: [{table}].{key}",
                 f"replaces inherited Ruff policy; use `extend-{key}` so the canonical config remains authoritative",
             )
+
+    if not configs:
+        return
+    authority = next(
+        (path for path, config in configs if str(config.get("extend", "")).endswith(".ruff-strict.toml")),
+        configs[0][0],
+    )
+    for path, _config in configs:
+        if path == authority:
+            continue
+        yield Finding(
+            Level.DRIFT,
+            f"{path.relative_to(root)}: Ruff config",
+            f"splits Ruff policy across {len(configs)} configs; consolidate it into {authority.relative_to(root)}",
+        )
 
 
 def _check_manifest(root: Path) -> Iterator[Finding]:
