@@ -35,6 +35,7 @@
       "no-enum",
       "no-fat-try-blocks",
       "no-hand-rolled-sleep",
+      "no-hand-rolled-spinner",
       "no-insecure-random-id",
       "no-json-stringify-error",
       "no-log-only-catch",
@@ -79,6 +80,7 @@
       "require-assert-never",
       "require-fetch-timeout",
       "require-interface-for-injected-service",
+      "require-static-next-matcher",
       "require-zod-form-validation",
       "store-insert-requires-on-conflict",
       "zod-naming-convention"

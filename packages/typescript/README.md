@@ -1,5 +1,12 @@
 # @sarj/eslint-plugin
 
+## New in 9.9.0 — static Next.js matchers
+
+`require-static-next-matcher` rejects runtime expressions in exported
+`middleware.ts` and `proxy.ts` matcher configuration. Next.js reads these values
+during static analysis, so identifiers, calls, concatenation, interpolated
+templates, and spreads can pass type checking but fail the production build.
+
 Custom ESLint rules for hypermodern TypeScript / React / Next.js projects.
 
 ```bash
@@ -114,6 +121,8 @@ platform too.
 
 | Rule | What it catches | Preset |
 |---|---|---|
+| `no-hand-rolled-spinner` | Intrinsic elements styled as Tailwind border-ring loading spinners outside the design system. | error / error |
+| `require-static-next-matcher` | Dynamic values in exported Next.js middleware and proxy matcher configuration. | error / error |
 | `no-hand-rolled-sleep` | `new Promise((r) => setTimeout(r, ms))` in any spelling, and an uncleared `Promise.race`/`Promise.any` timeout arm. Options: `checkClientModules` (default `false`), `allowIn`. | warn / error |
 
 ## New in 2.14.0 — `no-tautological-expect`
