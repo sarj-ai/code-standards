@@ -140,10 +140,13 @@ def test_python_baseline_is_forwarded_only_to_python_checker(
     for name in ("app.py", "migration.sql", "main.tf"):
         (tmp_path / name).touch()
 
-    assert runner.run(
-        ["app.py", "migration.sql", "main.tf"],
-        python_baseline="python/sarj-standards-baseline.json",
-    ) == 0
+    assert (
+        runner.run(
+            ["app.py", "migration.sql", "main.tf"],
+            python_baseline="python/sarj-standards-baseline.json",
+        )
+        == 0
+    )
     assert argv_by_package["sarj_python_lint"][-4:] == [
         "--baseline",
         "python/sarj-standards-baseline.json",
