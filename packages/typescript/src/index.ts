@@ -12,6 +12,7 @@ import noDynamicSql from "./rules/no-dynamic-sql.js";
 import noEnum from "./rules/no-enum.js";
 import noFatTryBlocks from "./rules/no-fat-try-blocks.js";
 import noHandRolledSleep from "./rules/no-hand-rolled-sleep.js";
+import noHandRolledSpinner from "./rules/no-hand-rolled-spinner.js";
 import noInsecureRandomId from "./rules/no-insecure-random-id.js";
 import noJsonStringifyError from "./rules/no-json-stringify-error.js";
 import noLogOnlyCatch from "./rules/no-log-only-catch.js";
@@ -57,6 +58,7 @@ import preferZodInfer from "./rules/prefer-zod-infer.js";
 import requireAssertNever from "./rules/require-assert-never.js";
 import requireFetchTimeout from "./rules/require-fetch-timeout.js";
 import requireInterfaceForInjectedService from "./rules/require-interface-for-injected-service.js";
+import requireStaticNextMatcher from "./rules/require-static-next-matcher.js";
 import requireZodFormValidation from "./rules/require-zod-form-validation.js";
 import storeInsertRequiresOnConflict from "./rules/store-insert-requires-on-conflict.js";
 import zodNamingConvention from "./rules/zod-naming-convention.js";
@@ -74,6 +76,7 @@ const rules = {
   "no-enum": noEnum,
   "no-fat-try-blocks": noFatTryBlocks,
   "no-hand-rolled-sleep": noHandRolledSleep,
+  "no-hand-rolled-spinner": noHandRolledSpinner,
   "no-insecure-random-id": noInsecureRandomId,
   "no-json-stringify-error": noJsonStringifyError,
   "no-log-only-catch": noLogOnlyCatch,
@@ -119,6 +122,7 @@ const rules = {
   "require-assert-never": requireAssertNever,
   "require-fetch-timeout": requireFetchTimeout,
   "require-interface-for-injected-service": requireInterfaceForInjectedService,
+  "require-static-next-matcher": requireStaticNextMatcher,
   "require-zod-form-validation": requireZodFormValidation,
   "store-insert-requires-on-conflict": storeInsertRequiresOnConflict,
   "zod-naming-convention": zodNamingConvention,
@@ -126,7 +130,7 @@ const rules = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "9.8.0",
+  version: "9.9.0",
 } as const;
 
 /** Rules registered for application-profile configs but intentionally absent from general presets. */
@@ -145,6 +149,7 @@ const recommendedRules = {
   "@sarj/no-dynamic-sql": "warn",
   "@sarj/no-fat-try-blocks": "warn",
   "@sarj/no-hand-rolled-sleep": "warn",
+  "@sarj/no-hand-rolled-spinner": "error",
   "@sarj/no-insecure-random-id": "warn",
   "@sarj/no-json-stringify-error": "warn",
   "@sarj/no-log-only-catch": "warn",
@@ -185,6 +190,7 @@ const recommendedRules = {
   "@sarj/require-assert-never": "error",
   "@sarj/require-fetch-timeout": "warn",
   "@sarj/require-interface-for-injected-service": "warn",
+  "@sarj/require-static-next-matcher": "error",
   "@sarj/require-zod-form-validation": "error",
   "@sarj/store-insert-requires-on-conflict": "warn",
   "@sarj/zod-naming-convention": "warn",
@@ -201,6 +207,7 @@ const strictRules = {
   "@sarj/no-enum": "error",
   "@sarj/no-fat-try-blocks": "error",
   "@sarj/no-hand-rolled-sleep": "error",
+  "@sarj/no-hand-rolled-spinner": "error",
   "@sarj/no-insecure-random-id": "error",
   "@sarj/no-json-stringify-error": "error",
   "@sarj/no-log-only-catch": "error",
@@ -244,6 +251,7 @@ const strictRules = {
   "@sarj/require-assert-never": "error",
   "@sarj/require-fetch-timeout": "error",
   "@sarj/require-interface-for-injected-service": "error",
+  "@sarj/require-static-next-matcher": "error",
   "@sarj/require-zod-form-validation": "error",
   "@sarj/store-insert-requires-on-conflict": "error",
   "@sarj/zod-naming-convention": "error",

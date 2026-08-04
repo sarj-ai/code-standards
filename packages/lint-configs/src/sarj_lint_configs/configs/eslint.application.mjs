@@ -942,6 +942,7 @@ const config = [
       // source-of-truth files; that is an override, not a tier change.
       "@sarj/zod-naming-convention": "error",
       "@sarj/require-assert-never": "error",
+      "@sarj/require-static-next-matcher": "error",
       "@sarj/require-zod-form-validation": "error",
       "@sarj/prefer-schema-for-api-payload": "error",
       "@sarj/no-client-side-data-fetching": "error",
@@ -962,6 +963,7 @@ const config = [
       "@sarj/no-cors-wildcard-with-credentials": "error",
       "@sarj/no-secret-in-log": "error",
       "@sarj/no-hand-rolled-sleep": "error",
+      "@sarj/no-hand-rolled-spinner": "error",
       "@sarj/require-fetch-timeout": "error",
       "@sarj/no-silent-promise-catch": "error",
       "@sarj/enforce-file-structure": "error",
