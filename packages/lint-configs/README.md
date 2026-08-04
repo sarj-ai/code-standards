@@ -19,6 +19,34 @@ ESLint peer set that resolves together. Pass `--no-install` to write only the wi
 overwrites a file that already exists unless you pass `--force`, so it is safe to
 re-run and safe on a repo that is already half-adopted.
 
+Application repositories can opt into the preferred-library policy at adoption
+time:
+
+```bash
+uvx sarj-lint-configs init --profile application
+```
+
+The selected `standard` or `application` profile is recorded in
+`.sarj-standards.toml`, so later `sync`, `sync --check`, and `verify` select the
+same standalone Ruff and ESLint artifacts automatically. Existing manifests
+without a `profile` field remain on `standard`. The application profile is an
+intentional stack policy: it treats cataloged imports such as `argparse` and
+`pandas` as errors even when the old library remains maintained.
+
+It also checks direct dependencies in `pyproject.toml`, PEP 735 groups,
+Poetry/PDM/uv tables, authored requirements files, and every npm dependency
+field. Run that manifest gate independently—or measure an unadopted repository—
+with:
+
+```bash
+uvx sarj-lint-configs library-policy --profile application --dest .
+```
+
+Findings carry stable `LIB###` IDs and migration cautions. Architectural
+replacements such as Flask to FastAPI, pandas to Polars, and Axios to Ky are
+deliberately errors, but are never broadly autofixed because their APIs and
+runtime semantics differ.
+
 ### Your TypeScript does not have to be at the repo root
 
 `init` writes each ecosystem's configs into the directory that owns it, not into

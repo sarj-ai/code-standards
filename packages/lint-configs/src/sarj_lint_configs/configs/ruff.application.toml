@@ -1,0 +1,424 @@
+# Measured evidence in the comments below cites the two large first-party
+# consumer repos it was taken from as `repo A` and `repo B`; those labels are
+# stable throughout this file.
+line-length = 120
+target-version = "py314"
+extend-exclude = ["sdk"]
+
+[format]
+quote-style              = "double"
+indent-style             = "space"
+skip-magic-trailing-comma = false
+line-ending              = "auto"
+# Markdown has its own canonical linter. Ruff 0.16+ otherwise reformats Python
+# fences in existing prose when a repository runs `ruff format .`.
+exclude                  = ["*.md"]
+
+[lint]
+select = ["ALL"]
+external = ["SARJ"]
+preview = true
+logger-objects = ["loguru.logger"]  # treat loguru as a logger so G004/G010 fire on it (the house logger)
+# TC001/2/3 stay advisory but are NEVER auto-applied: the rewrite is an *unsafe*
+# fix that silently moves runtime-needed FastAPI/pydantic/livekit annotation
+# imports into `TYPE_CHECKING`, breaking them under PEP 649 (repo A shipped two
+# prod outages this way). Marking them unfixable removes the foot-gun while
+# leaving the advisory warning intact.
+unfixable = ["TC001", "TC002", "TC003"]
+
+extend-select = [
+  "ANN401",
+  "RUF013",
+  "RUF022",
+  "RUF023",
+  "RUF052",
+  "TC001",
+  "TC002",
+  "TC003",
+
+  "UP041",
+  "UP045",
+  "UP046",
+  "UP047",
+  "UP049",
+
+  "FURB101",
+  "FURB103",
+  "FURB113",
+  "FURB118",
+  "FURB148",
+  "FURB152",
+  "FURB154",
+  "FURB163",
+  "FURB166",
+  "FURB171",
+  "FURB177",
+  "FURB180",
+  "FURB192",
+
+  "ASYNC100",
+  "ASYNC105",
+  "ASYNC109",
+
+  "B904",
+  "S112",
+  "TRY400",
+  "TRY401",
+
+  "ASYNC210",
+  "ASYNC220",
+  "ASYNC230",
+  "ASYNC251",
+  "PERF402",
+  "SIM117",
+
+  "PT006",
+  "PT007",
+  "PT009",
+  "PT011",
+  "PT012",
+
+  "FAST001",
+  "FAST002",
+  "FAST003",
+
+  "LOG001",
+  "LOG002",
+  "LOG007",
+  "LOG009",
+  "LOG015",
+  "G010",
+
+  "FBT001",
+  "FBT002",
+  "FBT003",
+]
+
+# The ignore list is NO LONGER derived from any consumer's `[tool.ruff.lint]
+# ignore`. It was once the intersection with repo A's, which is how a standard
+# that advertises `select = ["ALL"]` ended up silencing three security checks
+# repo-wide; every remaining entry now has to earn its place with a measurement
+# (see the preamble inside the list). Anything a consumer actively enforces (and
+# this config previously silenced) had already been REMOVED — notably
+# TRY002/TRY003, EM101/EM102, SLF001, RUF067. The docstring-punctuation family is
+# deliberately NOT enforced; see the D/DOC block below for that rule and its
+# reasoning. Naming rules (N801/N802/N806/N999) are never
+# ignored here and stay active.
+ignore = [
+  # Every entry below is measured: each code was force-enabled over this repo,
+  # repo A and repo B, and kept only where the finding is not a defect. Counts
+  # in the comments are `this repo / repo A / repo B`, non-test code unless
+  # stated. A002/A003 (builtin shadowing) were dropped from this list — enabling
+  # them costs 0/1/0 — and S101/S105/S106 moved to `per-file-ignores` for test
+  # code, where the exemption is true, instead of silencing three security
+  # checks repo-wide. Do not re-add them here.
+
+  # Complexity is a code-smell heuristic, not a correctness rule, and these five
+  # thresholds fight the style this same config mandates:
+  #   C901    (>10 paths)     23 / 57 / 36
+  #   PLR0911 (>6 returns)    29 /  6 /  9
+  #   PLR0912 (>12 branches)   6 / 19 / 23
+  #   PLR0913 (>5 args)        1 / 48 / 99
+  #   PLR0915 (>50 statements) 1 / 24 / 16
+  # PLR0911 is the clearest self-contradiction: RET505-RET508 are ENFORCED here
+  # and rewrite every `else` after a `return` into an early return. All three
+  # repos are 100% RET505-clean, and that same flat guard-clause style is what
+  # puts 44 functions over the 6-return cap. C901/PLR0912 land almost entirely
+  # on this repo's own AST visitors, where the branching IS the algorithm.
+  # PLR0913 counts keyword-only parameters; the harmful case — positional
+  # explosion — is already caught by PLR0917, which this config ENFORCES (118
+  # sites in repo A, 113 in repo B) and which both consumers disable locally.
+  # PLR0904/PLR0914/PLR0916/PLR1702/PLR6301 are enforced here too, so complexity
+  # is not unchecked: these five are the specific heuristics with no defect
+  # behind them, and four of the five fire on this repo's own source today.
+  "C901",
+  "PLR0911",
+  "PLR0912",
+  "PLR0913",
+  "PLR0915",
+
+  # DOCSTRINGS: the standard is LESS PROSE, NOT MORE. Code documents itself;
+  # a docstring earns its place by saying something the signature cannot.
+  #
+  # The dividing line, applied to every D/DOC rule:
+  #   KEPT     — rules that DELETE prose, or catch a docstring contradicting the code
+  #   IGNORED  — rules that DEMAND prose, or tax the wording of prose already written
+  #
+  # An earlier version of this file enforced the whole family and said so
+  # ("the docstring-punctuation family ... are now ENFORCED"). That put the
+  # config in direct conflict with this repo's own rules: DOC201 REQUIRES a
+  # `Returns:` section restating the return annotation, while SARJ050
+  # `redundant-docstring` and `no-restated-comment` exist to DELETE prose that
+  # restates the signature. The linter was manufacturing the exact noise the
+  # custom rules were written to remove, and every author paid the tax.
+
+  # Missing docstrings are not a defect.
+  "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107",
+
+  # Mutually-exclusive pairs: ruff requires one of each to be off.
+  "D203",
+  "D213",
+
+  # DEMAND MORE PROSE. These make a machine ask for text that the signature,
+  # the type annotations and the `raise` statements already carry.
+  "D417",    # undocumented-param        — describe every argument
+  "DOC201",  # docstring-missing-returns — describe the return
+  "DOC402",  # docstring-missing-yields  — describe the yield
+  "DOC501",  # docstring-missing-exception
+
+  # WORDING AND SECTION CEREMONY. None of these catch a defect; they tax someone
+  # for writing a short useful sentence, which is the sentence most worth having.
+  "D200",    # one-line docstring should fit on one line
+  "D205",    # blank line required between summary and description
+  "D400",    # first line should end with a period
+  "D401",    # first line should be in imperative mood ("gets" -> "Get")
+  "D403",    # first word should be capitalized
+  "D404",    # first word should not be "This"
+  "D405", "D406", "D407", "D408", "D409",  # section name / underline formatting
+  "D410", "D411", "D412", "D413",          # blank lines around sections
+  "D415",    # first line should end with terminal punctuation
+  "D416",    # section name should end with a colon
+  "D420",    # section order
+  "D421",    # property docstring should not start with a verb
+
+  # DELIBERATELY STILL ENFORCED — every one of these REMOVES text or catches a
+  # docstring that lies about the code, so they pull the same direction as the
+  # rules above rather than against them:
+  #   D402  first line is the function's signature      (pure restatement)
+  #   D414  section has no content                      (empty `Returns:`)
+  #   D418  @overload carrying a docstring
+  #   D419  empty docstring
+  #   DOC102 documented parameter not in the signature  (docstring lies)
+  #   DOC202 `Returns:` on a function that returns nothing
+  #   DOC403 `Yields:` on a function that never yields
+  #   DOC502 documented exception that is never raised
+  # Also kept: D201/D202/D206-D212/D300/D301 — mechanical whitespace and quote
+  # style, formatter-adjacent, no prose implications.
+  # CPY001 missing-copyright-notice — 214 / 838 / 502 findings, one per file.
+  # These are private repositories with no per-file copyright-header policy, so
+  # the rule can only ever report "add a header we do not use".
+  "CPY001",
+
+  # COM812 conflicts with the formatter. Reproduced, not assumed: on
+  # packages/iac/src/sarj_iac_lint/_hcl.py — a file `ruff format --check` calls
+  # already formatted — COM812 reports two sites, and applying its fix makes the
+  # same file format-dirty, because the comma it adds is a magic trailing comma
+  # and the formatter then explodes `_parse_body`'s parameters one per line.
+  # `skip-magic-trailing-comma = false` above is what makes that bite.
+  "COM812",
+
+  # E501 is the formatter's job. `ruff format` already wraps code at 120; what
+  # survives (3 / 280 / 701) is unsplittable string literals, URLs and messages
+  # inside files the formatter reports as clean, so the rule can only ask for a
+  # hand-mangling that `ruff format` would not perform.
+  "E501",
+
+  # RUF001 ambiguous-unicode-character-string — 0 / 24 / 37, and every finding is
+  # the CORRECT character in an Arabic user-facing string: ARABIC FULL STOP,
+  # ARABIC LETTER ALEF/HEH, ARABIC-INDIC DIGITS, plus EN DASH and RIGHT SINGLE
+  # QUOTATION MARK in copy. `allowed-confusables` cannot rescue it — the
+  # confusable set is most of the Arabic script — and this house ships Arabic
+  # product strings, so the rule is structurally wrong here, not merely noisy.
+  "RUF001",
+
+  # PLC2701 import-private-name — OFF, replaced by SARJ048
+  # (sarj-no-first-party-private-import).
+  #
+  # PLC2701 cannot tell OUR private names from a DEPENDENCY's. Its only
+  # exemption is "same top-level package", which is not the same question.
+  # Measured over repo A's five packages it produced 74 sites (80 diagnostics),
+  # of which 3 are reaches into livekit-agents internals
+  # (`livekit.agents.inference_runner._InferenceRunner` and friends, private
+  # since 1.6.6). For those three there is no edit that satisfies the rule —
+  # the public API it points at does not exist — so the finding is an
+  # instruction to vendor the library, pin it forever, or write a suppression.
+  # Ruff has no configuration surface that separates the two cases: PLC2701 is
+  # purely lexical and never resolves an import to a location on disk.
+  #
+  # SARJ048 asks the question PLC2701 cannot: it resolves the imported module
+  # against the project tree and fires only when the defining module is
+  # first-party. On the same corpus it reports 60 sites and adds none of its
+  # own; the 14 it drops are exactly the 3 livekit reaches plus 11 imports of
+  # `_infra`, a first-party test-support package whose *own name* is
+  # underscored and which therefore has no public spelling to switch to.
+  #
+  # Consumers who do not run the sarj-python-lint pre-commit hooks should drop
+  # this entry and keep PLC2701 — an over-firing check beats no check.
+  "PLC2701",
+]
+
+# SLF001 private-member-access stays ON, and this is the honest limitation:
+# ruff CANNOT distinguish first-party from third-party for attribute access.
+# The check is name-based — it sees `x._stt` and has no type for `x`, so
+# `session._stt` (livekit AgentSession, no public accessor) and `widget._cache`
+# (ours) are indistinguishable to it. SARJ048 deliberately does not attempt
+# this: resolving the receiver's type needs a type checker, and the AST
+# approximations tried against repo A (constructor calls, parameter
+# annotations) mis-resolved factory returns — `llm = get_llm(...)` is built by
+# a first-party function and returns a livekit object.
+#
+# `[lint.flake8-self] extend-ignore-names` is the only knob and it is blunt:
+# it matches attribute NAMES globally, so ignoring `_opts` to allow the livekit
+# reach also silences every first-party `_opts` forever. It is deliberately NOT
+# set here.
+#
+# The vendor-boundary reach is therefore a per-line decision: `# noqa: SLF001 —
+# <why the public API cannot serve>`, which puts the reason in the diff where a
+# reviewer sees it. A project with a dedicated adapter layer can scope it once
+# via its own `per-file-ignores` (e.g. `"**/lk/custom_models/*" = ["SLF001"]`) —
+# a consumer-side decision about that project's boundaries, not a standard.
+# Note this only silences ruff: pyright's `reportPrivateUsage` fires on the same
+# line and has no first-party/third-party knob either, so the reach site still
+# needs `# pyright: ignore[reportPrivateUsage]`.
+
+[lint.isort]
+force-single-line          = false
+lines-after-imports        = 2
+force-sort-within-sections = true
+
+# Under PEP 649 (py314) plain annotations are lazy, so TC001-003 moving their
+# imports into `TYPE_CHECKING` is safe — EXCEPT for constructs that eagerly read
+# `__annotations__` at class-creation time (pydantic models/settings, dataclasses,
+# NamedTuple, TypedDict) and FastAPI route decorators that resolve body/param
+# models at request time. Listing them stops TC001-003 from flagging (and its
+# unsafe fix from breaking) their field-type imports.
+[lint.flake8-type-checking]
+runtime-evaluated-base-classes = [
+  "pydantic.BaseModel",
+  "pydantic_settings.BaseSettings",
+  "typing.NamedTuple",
+  "typing.TypedDict",
+]
+runtime-evaluated-decorators = [
+  "pydantic.dataclasses.dataclass",
+  "dataclasses.dataclass",
+  "fastapi.APIRouter.post",
+  "fastapi.APIRouter.get",
+  "fastapi.APIRouter.put",
+  "fastapi.APIRouter.delete",
+  "fastapi.APIRouter.patch",
+  "fastapi.APIRouter.head",
+  "fastapi.APIRouter.options",
+  "fastapi.APIRouter.trace",
+  "fastapi.APIRouter.websocket",
+  "fastapi.APIRouter.api_route",
+  "fastapi.FastAPI.post",
+  "fastapi.FastAPI.get",
+  "fastapi.FastAPI.put",
+  "fastapi.FastAPI.delete",
+  "fastapi.FastAPI.patch",
+  "fastapi.FastAPI.head",
+  "fastapi.FastAPI.options",
+  "fastapi.FastAPI.trace",
+  "fastapi.FastAPI.websocket",
+  "fastapi.FastAPI.api_route",
+]
+
+[lint.flake8-pytest-style]
+# PT011's default list omits RuntimeError, which is the one ambiguous builtin this
+# house raises deliberately — a `pytest.raises(RuntimeError)` with no `match=` cannot
+# tell "the code correctly refused" from "it crashed on the way there". A corpus sweep
+# over repo A, repo B, django, fastapi and celery found 32 such sites, none of which
+# PT011 reports. The other names here are ruff's defaults, restated because setting the
+# key replaces the list rather than extending it.
+#
+# Deliberately NOT added: AttributeError, TypeError, KeyError, IndexError, NameError.
+# Those are raised by the interpreter enforcing a protocol, so the message belongs to
+# CPython and `match=` is both unwritable and version-brittle — pinning `__slots__`
+# via `raises(AttributeError): x.__dict__` is the canonical shape. Judging them added
+# ~250 findings across the same corpus, 251 in django alone, and every one sampled was
+# a legitimate protocol assertion.
+raises-require-match-for = [
+  "BaseException",
+  "Exception",
+  "ValueError",
+  "OSError",
+  "IOError",
+  "EnvironmentError",
+  "RuntimeError",
+  "socket.error",
+]
+
+[lint.flake8-tidy-imports.banned-api]
+"unittest.mock.Mock".msg              = "Prefer real fixtures or hand-rolled fakes implementing the relevant ABC. If a mock is genuinely required, import with `# noqa: TID251 — <reason>`."
+"unittest.mock.AsyncMock".msg         = "Same as Mock."
+"unittest.mock.MagicMock".msg         = "Same as Mock."
+"unittest.mock.patch".msg             = "Prefer dependency injection via fixtures over monkey-patching."
+"pytest_mock".msg                     = "pytest-mock's `mocker` fixture is unittest.mock with a different spelling — it bypasses the mock bans above without any noqa trail. Use real fixtures/fakes; for a genuine external boundary use `from unittest import mock` + inline `# noqa: TID251 — <reason>`."
+
+"datetime.datetime.utcnow".msg        = "Deprecated in Python 3.12. Use `datetime.now(UTC)`."
+"pickle.load".msg                     = "Pickle deserializes arbitrary objects and is unsafe on untrusted input. Use JSON via Pydantic, or msgspec/orjson."
+"pickle.loads".msg                    = "Same — pickle is unsafe."
+
+"os.environ".msg                      = "Use a Pydantic Settings class instead. If you genuinely need raw os.environ, add `# noqa: TID251 — <reason>` inline."
+"os.getenv".msg                       = "Same — use a Pydantic Settings class instead of os.getenv."
+
+"fastapi.UploadFile".msg              = "Use a pre-signed URL so the client uploads directly to object storage."
+"pydantic.alias_generators.to_camel".msg = "Don't camelCase API contracts in the backend. Keep snake_case; transform on the frontend with Zod."
+"typing.cast".msg                     = "Prefer discriminated unions or `isinstance` narrowing over `cast`."
+"psycopg.sql.Literal".msg             = "Use parameterized queries (psycopg's `%s` placeholders) instead of sql.Literal."
+"uuid.uuid4".msg                      = "Use uuid.uuid7() — time-ordered, aligns with the DB uuidv7() default. For unguessable secrets use secrets.token_urlsafe(), not a UUID."
+
+# Generated application-profile library policy. Edit the catalog, not this file.
+"aioredis".msg = "LIB020: aioredis was merged into redis-py; use redis.asyncio. Replace with redis.asyncio."
+"argparse".msg = "LIB001: The application profile standardizes command-line interfaces on Typer. Replace with Typer."
+"backports.cached_property".msg = "LIB018: Python 3.14 provides functools.cached_property. Replace with functools.cached_property."
+"backports.zoneinfo".msg = "LIB012: Python 3.14 provides zoneinfo. Replace with zoneinfo."
+"boto".msg = "LIB019: Boto 2 is obsolete; migrate to boto3 and review API differences. Replace with boto3."
+"cerberus".msg = "LIB007: The application profile standardizes validation and serialization on Pydantic. Replace with Pydantic."
+"click".msg = "LIB002: Use Typer for typed command-line interfaces instead of direct Click APIs. Replace with Typer."
+"enum34".msg = "LIB016: Remove the obsolete enum34 backport on Python 3.14. Replace with enum."
+"flask".msg = "LIB006: The application profile standardizes HTTP APIs on FastAPI; this is an architectural migration. Replace with FastAPI."
+"futures".msg = "LIB017: Remove the obsolete futures backport on Python 3.14. Replace with concurrent.futures."
+"importlib_metadata".msg = "LIB013: Python 3.14 provides importlib.metadata. Replace with importlib.metadata."
+"importlib_resources".msg = "LIB014: Python 3.14 provides importlib.resources. Replace with importlib.resources."
+"marshmallow".msg = "LIB007: The application profile standardizes validation and serialization on Pydantic. Replace with Pydantic."
+"mock".msg = "LIB022: Python 3.14 provides unittest.mock. Replace with unittest.mock."
+"nose".msg = "LIB021: Nose is unmaintained; use pytest. Replace with pytest."
+"optparse".msg = "LIB001: The application profile standardizes command-line interfaces on Typer. Replace with Typer."
+"pandas".msg = "LIB003: Use Polars; migration must account for its expressions and lack of a pandas index model. Replace with Polars."
+"pathlib2".msg = "LIB011: Python 3.14 provides pathlib. Replace with pathlib."
+"pkg_resources".msg = "LIB009: Do not use pkg_resources; choose the focused importlib or packaging API. Replace with importlib.metadata/importlib.resources/packaging."
+"pytz".msg = "LIB008: Use zoneinfo; explicitly review DST ambiguity, localization, and fold behavior. Replace with zoneinfo."
+"requests".msg = "LIB004: Use HTTPX; review timeout defaults, exception types, streaming, and client lifetimes. Replace with HTTPX."
+"tomli".msg = "LIB010: Python 3.14 provides tomllib. Replace with tomllib."
+"ujson".msg = "LIB005: Use orjson; its dumps function returns bytes and option semantics differ. Replace with orjson."
+
+[lint.per-file-ignores]
+# Tests routinely assert, take boolean params, use magic numbers, and shell out
+# to the binary under test (subprocess) — none of that is a smell in a test.
+# subprocess (S404/S603/S607) is for CLI tools that shell out to the binary under
+# test; PLR6301 (test methods that never use self) is a pytest class idiom.
+#
+# S101/S105/S106 live HERE and not in the global `ignore`. Measured with each
+# force-enabled over this repo / repo A / repo B, tests vs non-test code:
+#   S101 assert                    18,975 in tests vs 20 in shipped code
+#   S105 hardcoded-password-string      94 in tests vs  5 in shipped code
+#   S106 hardcoded-password-func-arg   121 in tests vs  0 in shipped code
+# The blanket ignore was buying silence on 25 shipped-code sites at the price of
+# switching three security checks off everywhere — including `assert`, which
+# `python -O` deletes outright. Scoping them to test code costs repo A 25 new
+# findings and this repo and repo B none.
+#
+# INP001 is here for the same reason: pytest test trees are deliberately not
+# packages (adding `__init__.py` changes conftest/module resolution), and this
+# repo's own 97 INP001 findings are all in test trees. In shipped code the rule
+# is a genuine packaging check, so it is no longer globally ignored.
+#
+# RUF076 was removed from this list because ruff REMOVED the rule: `--select
+# RUF076` now fails with "Rule `RUF076` was removed and cannot be selected", so
+# the entry silenced nothing.
+"**/tests/**"     = ["S101", "S105", "S106", "INP001", "FBT001", "FBT002", "FBT003", "PLR2004", "S404", "S603", "S607", "PLR6301"]
+# A `test_*.py` or `conftest.py` outside a tests/ tree is still test code; one
+# consumer has such a module, carrying 7 asserts and 1 INP001.
+"**/test_*.py"    = ["ANN201", "ANN202", "S101", "S105", "S106", "INP001"]
+"**/conftest.py"  = ["S101", "S105", "S106", "INP001"]
+# Standalone scripts are not importable packages, hence INP001 (7 sites in
+# repo A, 4 in repo B, all under a top-level scripts/).
+"scripts/**"      = ["T201", "S", "BLE001", "TRY002", "INP001"]
+# CLI entrypoints print to stdout — that's their job, not stray debug output.
+"**/__main__.py"  = ["T201"]
+# NOTE: `"__init__.py" = []` and `"**/settings.py" = []` used to sit here. Ruff
+# per-file-ignores are additive and an empty list cannot un-ignore anything, so
+# both entries were no-ops; they are removed rather than left as config that
+# reads like an exemption.

@@ -150,6 +150,19 @@ def test_manifest_round_trips(tmp_path: Path) -> None:
     assert manifest.load(tmp_path) == written
 
 
+def test_old_manifest_defaults_to_standard_profile(tmp_path: Path) -> None:
+    _ = (tmp_path / manifest.MANIFEST_NAME).write_text('version = "1.2.3"\nconfigs = ["ruff"]\n')
+    adopted = manifest.load(tmp_path)
+    assert adopted is not None
+    assert adopted.profile == "standard"
+
+
+def test_manifest_rejects_unknown_profile(tmp_path: Path) -> None:
+    _ = (tmp_path / manifest.MANIFEST_NAME).write_text('version = "1.2.3"\nprofile = "library"\nconfigs = ["ruff"]\n')
+    with pytest.raises(ValueError, match=r"profile.*standard, application"):
+        _ = manifest.load(tmp_path)
+
+
 def test_manifest_renders_as_valid_toml() -> None:
     rendered = manifest.Manifest(version="1.2.3", configs=("ruff",), python_dest=".", typescript_dest=".").render()
     parsed = tomllib.loads(rendered)
@@ -226,6 +239,46 @@ def test_init_writes_the_whole_python_wiring(tmp_path: Path) -> None:
     assert pyproject["tool"]["ruff"]["extend"] == ".ruff-strict.toml"
 
 
+def test_init_application_profile_selects_application_artifacts(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    proc = _cli("init", "--profile", "application", "--dest", str(tmp_path))
+    assert proc.returncode == 0, proc.stderr
+
+    adopted = manifest.load(tmp_path)
+    assert adopted is not None
+    assert adopted.profile == "application"
+    expected = cli.CONFIGS_DIR / "ruff.application.toml"
+    assert (tmp_path / ".ruff-strict.toml").read_bytes() == expected.read_bytes()
+
+
+def test_sync_uses_profile_recorded_in_manifest(tmp_path: Path) -> None:
+    _ = _typescript_repo(tmp_path)
+    assert _cli("init", "--profile", "application", "--dest", str(tmp_path)).returncode == 0
+    expected = cli.CONFIGS_DIR / "eslint.application.mjs"
+    assert (tmp_path / "eslint.strict.mjs").read_bytes() == expected.read_bytes()
+    assert _cli("sync", "--check", "--dest", str(tmp_path)).returncode == 0
+
+
+def test_application_ruff_config_rejects_preferred_stack_import(tmp_path: Path) -> None:
+    pytest.importorskip("ruff", reason="ruff not installed in this env")
+    _ = _python_repo(tmp_path)
+    assert _cli("init", "--profile", "application", "--dest", str(tmp_path)).returncode == 0
+    probe = tmp_path / "probe.py"
+    _ = probe.write_text("import argparse\n")
+
+    proc = subprocess.run(
+        ["ruff", "check", "--no-cache", str(probe)],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        check=False,
+    )
+
+    assert proc.returncode == 1
+    assert "banned-api: `argparse` is banned" in proc.stdout
+    assert "LIB001" in proc.stdout
+
+
 def test_init_installs_dependencies_by_default(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _ = _python_repo(tmp_path)
     commands: list[lifecycle.Command] = []
@@ -248,6 +301,7 @@ def test_inspect_reports_detected_adoption(tmp_path: Path) -> None:
     inspected = manifest.as_table(parsed)
 
     assert inspected["adopted_version"] == __version__
+    assert inspected["profile"] == "standard"
     assert inspected["python_root"] == "."
 
 

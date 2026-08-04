@@ -12,11 +12,47 @@ import sarj from "@sarj/eslint-plugin";
 export default [...sarj.configs.recommended];
 ```
 
-55 rules. Each source under `src/rules/` states one concise claim and links to
+57 rules. Each source under `src/rules/` states one concise claim and links to
 its paired tests. The definition and named test cases are the complete rule
 specification, and `meta.docs.url` points directly to those executable examples.
 
-Presets: `recommended` (warn-first), `strict` (every shipped rule at its declared strict severity), `style-guide` (formatting/naming subset). The two-sentence comment rule warns; its three-sentence companion errors.
+Presets: `recommended` (warn-first), `strict` (every general-profile rule at its declared strict severity), `style-guide` (formatting/naming subset). Application-only rules are exported through `applicationOnlyRules` and configured by the application profile. The two-sentence comment rule warns; its three-sentence companion errors.
+
+## New in 9.8.0 — application library policy adapters
+
+`no-restricted-library-load` extends a configured dependency policy to runtime
+loading forms that ESLint's `no-restricted-imports` does not cover: literal
+`import()`, unshadowed `require()` / `require.resolve()`, and TypeScript
+`import x = require(...)`. It matches a package and all of its subpaths, but
+deliberately ignores computed names and shadowed local `require` functions.
+
+`prefer-native-random-uuid` reports resolved, zero-argument UUID v4 calls from
+the `uuid` package and suggests `globalThis.crypto.randomUUID()`. The suggestion
+changes only the call; import cleanup remains explicit. Other UUID versions,
+custom-randomness arguments, re-exports, and function references are untouched.
+
+Neither rule is in the general presets. The application profile configures them
+for its Node 22+ runtime contract and supplies catalog entries to the loader
+rule:
+
+```js
+rules: {
+  "@sarj/no-restricted-library-load": [
+    "error",
+    {
+      libraries: [
+        {
+          id: "LIB101",
+          module: "axios",
+          replacement: "Ky",
+          note: "The APIs are not drop-in equivalents.",
+        },
+      ],
+    },
+  ],
+  "@sarj/prefer-native-random-uuid": "error",
+}
+```
 
 ## Renamed in 7.0.0, aliases deleted in 9.0.0 (breaking)
 

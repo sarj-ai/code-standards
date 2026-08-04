@@ -20,6 +20,7 @@ import noOffsetPagination from "./rules/no-offset-pagination.js";
 import noPositionalTupleReturn from "./rules/no-positional-tuple-return.js";
 import noRawEnv from "./rules/no-raw-env.js";
 import noRawFetchOutsideClients from "./rules/no-raw-fetch-outside-clients.js";
+import noRestrictedLibraryLoad from "./rules/no-restricted-library-load.js";
 import noRepeatedStringLiteral from "./rules/no-repeated-string-literal.js";
 import noRestatedComment from "./rules/no-restated-comment.js";
 import noRestatedJsdoc from "./rules/no-restated-jsdoc.js";
@@ -44,6 +45,7 @@ import preferDiscriminatedUnion from "./rules/prefer-discriminated-union.js";
 import preferModuleLevelConstant from "./rules/prefer-module-level-constant.js";
 import preferModuleLevelSchema from "./rules/prefer-module-level-schema.js";
 import preferNonNullableCollection from "./rules/prefer-non-nullable-collection.js";
+import preferNativeRandomUuid from "./rules/prefer-native-random-uuid.js";
 import preferSchemaForApiPayload from "./rules/prefer-schema-for-api-payload.js";
 import preferSemanticColors from "./rules/prefer-semantic-colors.js";
 import preferServerActions from "./rules/prefer-server-actions.js";
@@ -80,6 +82,7 @@ const rules = {
   "no-positional-tuple-return": noPositionalTupleReturn,
   "no-raw-env": noRawEnv,
   "no-raw-fetch-outside-clients": noRawFetchOutsideClients,
+  "no-restricted-library-load": noRestrictedLibraryLoad,
   "no-repeated-string-literal": noRepeatedStringLiteral,
   "no-restated-comment": noRestatedComment,
   "no-restated-jsdoc": noRestatedJsdoc,
@@ -104,6 +107,7 @@ const rules = {
   "prefer-module-level-constant": preferModuleLevelConstant,
   "prefer-module-level-schema": preferModuleLevelSchema,
   "prefer-non-nullable-collection": preferNonNullableCollection,
+  "prefer-native-random-uuid": preferNativeRandomUuid,
   "prefer-schema-for-api-payload": preferSchemaForApiPayload,
   "prefer-semantic-colors": preferSemanticColors,
   "prefer-server-actions": preferServerActions,
@@ -122,8 +126,14 @@ const rules = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "9.7.1",
+  version: "9.8.0",
 } as const;
+
+/** Rules registered for application-profile configs but intentionally absent from general presets. */
+const applicationOnlyRules = [
+  "no-restricted-library-load",
+  "prefer-native-random-uuid",
+] as const;
 
 const recommendedRules = {
 "@sarj/enforce-file-structure": "warn",
@@ -276,4 +286,4 @@ plugin.configs.strict = {
 
 export default plugin;
 export { type RetiredRule, retiredRules } from "./rules/_retired.js";
-export { recommendedRules, renamedRules, rules, strictRules };
+export { applicationOnlyRules, recommendedRules, renamedRules, rules, strictRules };

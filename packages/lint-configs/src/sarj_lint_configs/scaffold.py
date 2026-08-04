@@ -38,6 +38,7 @@ class Plan:
     """Everything `init` intends to do, so `--dry-run` and the real run agree."""
 
     ecosystems: Ecosystems
+    profile: manifest.Profile = "standard"
     configs: tuple[str, ...] = ()
     writes: list[tuple[Path, str]] = field(default_factory=list)
     edits: list[tuple[Path, str]] = field(default_factory=list)
@@ -131,6 +132,7 @@ def build_plan(
     configs: Sequence[str] | None = None,
     python_dest: str | None = None,
     typescript_dest: str | None = None,
+    profile: manifest.Profile = "standard",
 ) -> Plan:
     """Work out every file `init` would create or amend."""
     ecosystems = detect(root, python_dest=python_dest, typescript_dest=typescript_dest)
@@ -139,7 +141,7 @@ def build_plan(
         if configs
         else manifest.default_configs(has_python=ecosystems.python, has_typescript=ecosystems.typescript)
     )
-    plan = Plan(ecosystems=ecosystems, configs=selected)
+    plan = Plan(ecosystems=ecosystems, profile=profile, configs=selected)
 
     if not ecosystems.any:
         plan.notes.append("no pyproject.toml and no package.json found -- pass --configs to scaffold anyway")
@@ -184,6 +186,7 @@ def _plan_manifest(root: Path, plan: Plan, *, force: bool) -> None:
         configs=plan.configs,
         python_dest=dest_of(root, plan.ecosystems.python_root),
         typescript_dest=dest_of(root, plan.ecosystems.typescript_root),
+        profile=plan.profile,
     ).render()
     _record(plan, path, contents, force=force, reason="already declares an adopted version")
 
