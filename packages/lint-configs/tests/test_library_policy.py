@@ -95,7 +95,7 @@ def test_scan_accepts_pep735_includes_and_ignores_requirement_fixtures_and_unnam
 
 def test_scan_package_json_fields_aliases_and_workspaces(tmp_path: Path) -> None:
     (tmp_path / "package.json").write_text(
-        '{"dependencies":{"http":"npm:Axios@^1","zod":"^4"},"devDependencies":{"jest":"1"},"optionalDependencies":{"node-sass":"1"},"peerDependencies":{"express":"5"}}',
+        '\ufeff{"dependencies":{"http":"npm:Axios@^1","zod":"^4"},"devDependencies":{"jest":"1"},"optionalDependencies":{"node-sass":"1"},"peerDependencies":{"express":"5"}}',
         encoding="utf-8",
     )
     workspace = tmp_path / "packages" / "web"

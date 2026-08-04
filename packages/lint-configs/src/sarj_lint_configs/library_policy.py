@@ -455,7 +455,7 @@ def scan(root: Path, *, allowed_ids: Iterable[str] = ()) -> tuple[Finding, ...]:
             entry = package_index.get((ecosystem, _normalize(package, ecosystem)))
             if entry is None or entry.id in allowed:
                 continue
-            text = source.read_text(encoding="utf-8")
+            text = source.read_text(encoding="utf-8-sig")
             line, column = _location(text, package)
             findings.append(
                 Finding(entry.id, source.relative_to(root), line, column, package, entry.replacement, entry.message)
@@ -531,7 +531,7 @@ def _pyproject_dependencies(path: Path) -> tuple[tuple[Ecosystem, str], ...]:
 
 def _read_toml(path: Path) -> dict[str, object]:
     try:
-        parsed: object = tomllib.loads(path.read_text(encoding="utf-8"))
+        parsed: object = tomllib.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, UnicodeError, tomllib.TOMLDecodeError) as exc:
         msg = f"cannot parse {path}: {exc}"
         raise ManifestPolicyError(msg) from exc
@@ -572,7 +572,7 @@ def _dependency_group_list(value: object, where: str) -> tuple[str, ...]:
 
 def _package_json_dependencies(path: Path) -> tuple[tuple[Ecosystem, str], ...]:
     try:
-        parsed: object = json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny] - narrowed at the parser boundary
+        parsed: object = json.loads(path.read_text(encoding="utf-8-sig"))  # pyright: ignore[reportAny] - narrowed at the parser boundary
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         msg = f"cannot parse {path}: {exc}"
         raise ManifestPolicyError(msg) from exc
@@ -606,7 +606,7 @@ def _requirements_dependencies(
         msg = f"cyclic requirements include at {path}"
         raise ManifestPolicyError(msg)
     try:
-        text = path.read_text(encoding="utf-8")
+        text = path.read_text(encoding="utf-8-sig")
     except (OSError, UnicodeError) as exc:
         msg = f"cannot read {path}: {exc}"
         raise ManifestPolicyError(msg) from exc
