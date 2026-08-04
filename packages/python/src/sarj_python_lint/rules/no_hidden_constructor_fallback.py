@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
-from functools import cache
+from functools import lru_cache
 from typing import TYPE_CHECKING, final, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, Severity, parse_or_none
@@ -22,7 +22,26 @@ if TYPE_CHECKING:
 
 _MIGRATION_PARTS = frozenset({"alembic", "migration", "migrations", "versions"})
 _DESCRIPTOR_DECORATORS = frozenset({"classmethod", "staticmethod"})
-_SCAN_SKIP_PARTS = frozenset({".git", ".venv", "build", "dist", "node_modules", "site-packages", "venv"})
+_QUALIFIED_NAME_PARTS = 2
+_SCAN_SKIP_PARTS = frozenset(
+    {
+        ".git",
+        ".mypy_cache",
+        ".nox",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".tox",
+        ".uv-cache",
+        ".venv",
+        "build",
+        "dist",
+        "generated",
+        "node_modules",
+        "site-packages",
+        "vendor",
+        "venv",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,7 +84,7 @@ class NoHiddenConstructorFallback(Rule):
             if init is None or _is_descriptor(init):
                 continue
             hidden = _hidden_parameters(init, resolver)
-            if not hidden or not _has_composition_call(path, tree, class_node.name):
+            if not hidden or not _has_composition_call(path, class_node.name):
                 continue
             names = ", ".join(f"`{parameter.arg}`" for parameter in hidden)
             noun = "parameter" if len(hidden) == 1 else "parameters"
@@ -105,10 +124,12 @@ def _hidden_parameters(
 
     hidden: set[str] = set()
     rebound: set[str] = set()
+    shadowed = _argument_names(init.args)
     for statement in init.body:
         available = candidates.keys() - rebound
-        hidden.update(_statement_fallbacks(statement, available, resolver))
+        hidden.update(_statement_fallbacks(statement, available, resolver, shadowed))
         rebound.update(_directly_bound_names(statement) & candidates.keys())
+        shadowed.update(_directly_bound_names(statement))
     return [parameter for name, parameter in candidates.items() if name in hidden]
 
 
@@ -116,30 +137,37 @@ def _statement_fallbacks(
     statement: ast.stmt,
     candidates: set[str],
     resolver: _RuntimeConfigResolver,
+    shadowed: set[str],
 ) -> set[str]:
     if isinstance(statement, ast.Assign):
-        return _expression_fallbacks(statement.value, candidates, resolver)
+        return _expression_fallbacks(statement.value, candidates, resolver, shadowed)
     if isinstance(statement, ast.AnnAssign) and statement.value is not None:
-        return _expression_fallbacks(statement.value, candidates, resolver)
+        return _expression_fallbacks(statement.value, candidates, resolver, shadowed)
     if not isinstance(statement, ast.If) or statement.orelse or len(statement.body) != 1:
         return set()
     parameter = _none_comparison_parameter(statement.test, candidates, expect_not=False)
     if parameter is None:
         return set()
     body = statement.body[0]
-    value = body.value if isinstance(body, (ast.Assign, ast.AnnAssign)) else None
-    return {parameter} if value is not None and resolver.is_runtime_config(value) else set()
+    if isinstance(body, ast.Assign):
+        value = body.value if len(body.targets) == 1 and _is_name(body.targets[0], parameter) else None
+    elif isinstance(body, ast.AnnAssign):
+        value = body.value if _is_name(body.target, parameter) else None
+    else:
+        value = None
+    return {parameter} if value is not None and resolver.is_runtime_config(value, shadowed) else set()
 
 
 def _expression_fallbacks(
     expression: ast.expr,
     candidates: set[str],
     resolver: _RuntimeConfigResolver,
+    shadowed: set[str],
 ) -> set[str]:
     if isinstance(expression, ast.BoolOp) and isinstance(expression.op, ast.Or):
         match expression.values:
             case [ast.Name(id=parameter), fallback] if parameter in candidates:
-                return {parameter} if resolver.is_runtime_config(fallback) else set()
+                return {parameter} if resolver.is_runtime_config(fallback, shadowed) else set()
             case _:
                 return set()
     if not isinstance(expression, ast.IfExp):
@@ -149,7 +177,7 @@ def _expression_fallbacks(
         not_none is not None
         and isinstance(expression.body, ast.Name)
         and expression.body.id == not_none
-        and resolver.is_runtime_config(expression.orelse)
+        and resolver.is_runtime_config(expression.orelse, shadowed)
     ):
         return {not_none}
     is_none = _none_comparison_parameter(expression.test, candidates, expect_not=False)
@@ -157,7 +185,7 @@ def _expression_fallbacks(
         is_none is not None
         and isinstance(expression.orelse, ast.Name)
         and expression.orelse.id == is_none
-        and resolver.is_runtime_config(expression.body)
+        and resolver.is_runtime_config(expression.body, shadowed)
     ):
         return {is_none}
     return set()
@@ -195,12 +223,25 @@ def _directly_bound_names(statement: ast.stmt) -> set[str]:
     return set()
 
 
+def _argument_names(arguments: ast.arguments) -> set[str]:
+    names = {argument.arg for argument in (*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs)}
+    if arguments.vararg is not None:
+        names.add(arguments.vararg.arg)
+    if arguments.kwarg is not None:
+        names.add(arguments.kwarg.arg)
+    return names
+
+
 def _target_names(target: ast.expr) -> set[str]:
     if isinstance(target, ast.Name):
         return {target.id}
     if isinstance(target, (ast.Tuple, ast.List)):
         return {name for element in target.elts for name in _target_names(element)}
     return set()
+
+
+def _is_name(expression: ast.expr, name: str) -> bool:
+    return isinstance(expression, ast.Name) and expression.id == name
 
 
 @final
@@ -212,24 +253,66 @@ class _RuntimeConfigResolver:
         self._module = _module_name(path, self._root)
         self._imports = _imports(tree, self._module)
         self._settings_cache: dict[tuple[str, str], bool] = {}
+        self._settings_class_cache: dict[tuple[str, str], bool] = {}
 
-    def is_runtime_config(self, expression: ast.expr) -> bool:
-        return self._is_settings_attribute(expression)
+    def is_runtime_config(self, expression: ast.expr, shadowed: set[str]) -> bool:
+        return self._is_settings_attribute(expression, shadowed)
 
-    def _is_settings_attribute(self, expression: ast.expr) -> bool:
+    def _is_settings_attribute(self, expression: ast.expr, shadowed: set[str]) -> bool:
         parts = _attribute_parts(expression)
-        if parts is None:
+        if parts is None or len(parts) < _QUALIFIED_NAME_PARTS:
             return False
-        root, *attributes = parts
-        if not attributes:
+        if parts[0] in shadowed:
             return False
-        binding = self._imports.get(root)
-        if binding is None:
-            return self._module is not None and self._is_settings_symbol(self._module, root)
-        if binding.symbol is not None:
-            return self._is_settings_symbol(binding.module, binding.symbol)
-        symbol, *setting_attributes = attributes
-        return bool(setting_attributes) and self._is_settings_symbol(binding.module, symbol)
+        resolved = _resolve_expression(expression, self._imports)
+        if resolved is None:
+            if self._module is None:
+                return False
+            resolved = (*self._module.split("."), *parts)
+        for symbol_index in range(len(resolved) - 2, 0, -1):
+            module = ".".join(resolved[:symbol_index])
+            symbol = resolved[symbol_index]
+            if self._is_settings_symbol(module, symbol):
+                return True
+        return False
+
+    def _is_settings_class(
+        self,
+        module: str,
+        symbol: str,
+        seen: frozenset[tuple[str, str]] = frozenset(),
+    ) -> bool:
+        key = (module, symbol)
+        cached = self._settings_class_cache.get(key)
+        if cached is not None:
+            return cached
+        if key in seen:
+            return False
+        loaded = self._load_module(module)
+        if loaded is None:
+            self._settings_class_cache[key] = False
+            return False
+        tree, _ = loaded
+        imports = _imports(tree, module)
+        if symbol in _base_settings_classes(tree, imports):
+            self._settings_class_cache[key] = True
+            return True
+        class_node = next(
+            (node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == symbol),
+            None,
+        )
+        result = False
+        if class_node is not None:
+            for base in class_node.bases:
+                resolved = _resolve_expression(base, imports)
+                if resolved is None or len(resolved) < _QUALIFIED_NAME_PARTS:
+                    continue
+                base_module, base_symbol = ".".join(resolved[:-1]), resolved[-1]
+                if self._is_settings_class(base_module, base_symbol, seen | {key}):
+                    result = True
+                    break
+        self._settings_class_cache[key] = result
+        return result
 
     def _is_settings_symbol(self, module: str, symbol: str, seen: frozenset[tuple[str, str]] = frozenset()) -> bool:
         key = (module, symbol)
@@ -245,9 +328,17 @@ class _RuntimeConfigResolver:
         tree, module_path = loaded
         imports = _imports(tree, module)
         classes = _base_settings_classes(tree, imports)
-        if _assigned_from_class(tree, symbol, classes):
-            self._settings_cache[key] = True
-            return True
+        factory = _assigned_factory(tree, symbol)
+        if factory is not None:
+            resolved_factory = _resolve_expression(factory, imports)
+            if isinstance(factory, ast.Name) and factory.id in classes:
+                self._settings_cache[key] = True
+                return True
+            if resolved_factory is not None and len(resolved_factory) >= _QUALIFIED_NAME_PARTS:
+                factory_module = ".".join(resolved_factory[:-1])
+                if self._is_settings_class(factory_module, resolved_factory[-1]):
+                    self._settings_cache[key] = True
+                    return True
         binding = imports.get(symbol)
         result = (
             binding is not None
@@ -282,6 +373,9 @@ def _imports(tree: ast.Module, current_module: str | None) -> dict[str, _Binding
             for alias in statement.names:
                 if alias.name != "*":
                     bindings[alias.asname or alias.name] = _Binding(module, alias.name)
+        else:
+            for name in _directly_bound_names(statement):
+                bindings.pop(name, None)
     return bindings
 
 
@@ -335,7 +429,7 @@ def _base_settings_classes(tree: ast.Module, imports: dict[str, _Binding]) -> se
     return found
 
 
-def _assigned_from_class(tree: ast.Module, symbol: str, classes: set[str]) -> bool:
+def _assigned_factory(tree: ast.Module, symbol: str) -> ast.expr | None:
     for statement in tree.body:
         if isinstance(statement, ast.Assign):
             targets = statement.targets
@@ -345,28 +439,32 @@ def _assigned_from_class(tree: ast.Module, symbol: str, classes: set[str]) -> bo
             value = statement.value
         else:
             continue
-        if (
-            value is not None
-            and isinstance(value, ast.Call)
-            and isinstance(value.func, ast.Name)
-            and value.func.id in classes
-            and any(isinstance(target, ast.Name) and target.id == symbol for target in targets)
-        ):
-            return True
-    return False
+        if value is not None and isinstance(value, ast.Call) and any(_is_name(target, symbol) for target in targets):
+            return value.func
+    return None
 
 
 def _module_name(path: Path, root: Path | None) -> str | None:
     if root is None:
         return None
+    resolved_path = path.resolve()
+    resolved_root = root.resolve()
+    source_root = resolved_root / "src"
     try:
-        relative = path.resolve().relative_to(root.resolve())
-    except OSError, ValueError:
+        relative = resolved_path.relative_to(source_root)
+        is_package_root = False
+    except ValueError:
+        try:
+            relative = resolved_path.relative_to(resolved_root)
+        except ValueError:
+            return None
+        is_package_root = (resolved_root / "__init__.py").is_file()
+    except OSError:
         return None
     parts = list(relative.with_suffix("").parts)
     if parts and parts[-1] == "__init__":
         parts.pop()
-    if (root / "__init__.py").is_file():
+    if is_package_root:
         parts.insert(0, root.name)
     return ".".join(parts) if parts else None
 
@@ -377,12 +475,15 @@ def _module_path(module: str, root: Path | None) -> Path | None:
     parts = module.split(".")
     if (root / "__init__.py").is_file() and parts and parts[0] == root.name:
         parts = parts[1:]
-    relative = root.joinpath(*parts)
-    candidates = (relative.with_suffix(".py"), relative / "__init__.py")
+    roots = (root, root / "src")
+    relatives = (source_root.joinpath(*parts) for source_root in roots)
+    candidates = (
+        candidate for relative in relatives for candidate in (relative.with_suffix(".py"), relative / "__init__.py")
+    )
     return next((candidate for candidate in candidates if candidate.is_file()), None)
 
 
-@cache
+@lru_cache(maxsize=4096)
 def _read_module(path: Path) -> ast.Module:
     try:
         return ast.parse(path.read_text(encoding="utf-8", errors="replace"), filename=str(path))
@@ -395,24 +496,42 @@ def _tail(expression: ast.expr) -> str | None:
     return parts[-1] if parts else None
 
 
-def _has_composition_call(path: Path, tree: ast.Module, class_name: str) -> bool:
-    if _tree_calls_class(tree, class_name):
-        return True
+def _has_composition_call(path: Path, class_name: str) -> bool:
     root = distribution_root(path)
-    if root is None:
+    module = _module_name(path, root)
+    if root is None or module is None:
         return False
-    return _distribution_calls_class(root, class_name)
+    return (module, class_name) in _distribution_constructor_calls(root)
 
 
-@cache
-def _distribution_calls_class(root: Path, class_name: str) -> bool:
+@lru_cache(maxsize=32)
+def _distribution_constructor_calls(root: Path) -> frozenset[tuple[str, str]]:
+    calls: set[tuple[str, str]] = set()
     for candidate in root.rglob("*.py"):
-        if any(part in _SCAN_SKIP_PARTS for part in candidate.parts) or is_test_path(candidate):
+        if any(part.lower() in _SCAN_SKIP_PARTS | _MIGRATION_PARTS for part in candidate.parts) or is_test_path(
+            candidate
+        ):
             continue
-        if _tree_calls_class(_read_module(candidate), class_name):
-            return True
-    return False
-
-
-def _tree_calls_class(tree: ast.Module, class_name: str) -> bool:
-    return any(isinstance(node, ast.Call) and _tail(node.func) == class_name for node in ast.walk(tree))
+        try:
+            source = candidate.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if is_generated(candidate, source):
+            continue
+        try:
+            tree = ast.parse(source, filename=str(candidate))
+        except SyntaxError:
+            continue
+        module = _module_name(candidate, root)
+        if module is None:
+            continue
+        imports = _imports(tree, module)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            resolved = _resolve_expression(node.func, imports)
+            if resolved is None and isinstance(node.func, ast.Name):
+                calls.add((module, node.func.id))
+            elif resolved is not None and len(resolved) >= _QUALIFIED_NAME_PARTS:
+                calls.add((".".join(resolved[:-1]), resolved[-1]))
+    return frozenset(calls)

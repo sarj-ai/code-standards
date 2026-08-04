@@ -107,6 +107,78 @@ class Generator:
     assert len(_check(service.read_text(), service)) == 1
 
 
+@pytest.mark.parametrize(
+    ("imports", "fallback"),
+    [
+        ("import app.config", "app.config.settings.MODEL"),
+        ("from app import config", "config.settings.MODEL"),
+    ],
+)
+def test_imported_settings_modules_are_resolved(tmp_path: Path, imports: str, fallback: str) -> None:
+    service = _settings_project(
+        tmp_path,
+        f"""{imports}
+
+class Generator:
+    def __init__(self, *, model: str | None = None) -> None:
+        self.model = model or {fallback}
+""",
+    )
+    assert len(_check(service.read_text(), service)) == 1
+
+
+def test_imported_base_settings_subclass_is_resolved(tmp_path: Path) -> None:
+    service = _settings_project(
+        tmp_path,
+        """from app.config import settings
+
+class Generator:
+    def __init__(self, *, model: str | None = None) -> None:
+        self.model = model or settings.MODEL
+""",
+    )
+    (service.parent / "base.py").write_text(
+        "from pydantic_settings import BaseSettings\nclass AppSettings(BaseSettings):\n    MODEL: str = 'model'\n"
+    )
+    (service.parent / "config.py").write_text("from app.base import AppSettings\nsettings = AppSettings()\n")
+    assert len(_check(service.read_text(), service)) == 1
+
+
+def test_shadowed_settings_import_stays_quiet(tmp_path: Path) -> None:
+    service = _settings_project(
+        tmp_path,
+        """from app.config import settings
+settings = object()
+
+class Generator:
+    def __init__(self, *, model: str | None = None) -> None:
+        self.model = model or settings.MODEL
+""",
+    )
+    assert _check(service.read_text(), service) == []
+
+
+@pytest.mark.parametrize(
+    "shadow",
+    [
+        "settings: object",
+        "tenant: object",
+    ],
+)
+def test_constructor_scope_shadowing_stays_quiet(tmp_path: Path, shadow: str) -> None:
+    service = _settings_project(
+        tmp_path,
+        f"""from app.config import settings
+
+class Generator:
+    def __init__(self, {shadow}, *, model: str | None = None) -> None:
+        {"settings = tenant" if shadow.startswith("tenant") else "pass"}
+        self.model = model or settings.MODEL
+""",
+    )
+    assert _check(service.read_text(), service) == []
+
+
 def test_same_module_settings_instance_is_resolved(tmp_path: Path) -> None:
     path = tmp_path / "service.py"
     (tmp_path / "pyproject.toml").write_text("[project]\nname = 'example'\nversion = '0.1.0'\n")
@@ -152,6 +224,84 @@ generator = Generator(model="explicit")
 """
     service.write_text(source)
     assert len(_check(source, service)) == 1
+
+
+def test_absolute_imports_resolve_in_src_layout(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = 'example'\nversion = '0.1.0'\n")
+    package = tmp_path / "src" / "app"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("")
+    (package / "config.py").write_text(
+        "from pydantic_settings import BaseSettings\n"
+        "class Settings(BaseSettings):\n"
+        "    MODEL: str = 'model'\n"
+        "settings = Settings()\n"
+    )
+    service = package / "service.py"
+    source = """from app.config import settings
+
+class Generator:
+    def __init__(self, *, model: str | None = None) -> None:
+        self.model = model or settings.MODEL
+
+generator = Generator(model="explicit")
+"""
+    service.write_text(source)
+    assert len(_check(source, service)) == 1
+
+
+def test_aliased_constructor_call_is_a_composition_root(tmp_path: Path) -> None:
+    service = _settings_project(
+        tmp_path,
+        """from app.config import settings
+
+class Generator:
+    def __init__(self, *, model: str | None = None) -> None:
+        self.model = model or settings.MODEL
+""",
+    )
+    service.write_text(service.read_text().replace("\ngenerator = Generator(model='explicit')\n", "\n"))
+    (service.parent / "composition.py").write_text(
+        "from app.service import Generator as ModelGenerator\ngenerator = ModelGenerator(model='explicit')\n"
+    )
+    assert len(_check(service.read_text(), service)) == 1
+
+
+def test_unrelated_same_named_call_is_not_a_composition_root(tmp_path: Path) -> None:
+    service = _settings_project(
+        tmp_path,
+        """from app.config import settings
+from third_party import Generator as ThirdPartyGenerator
+
+class Generator:
+    def __init__(self, *, model: str | None = None) -> None:
+        self.model = model or settings.MODEL
+""",
+    )
+    service.write_text(service.read_text().replace("\ngenerator = Generator(model='explicit')\n", "\n"))
+    (service.parent / "composition.py").write_text(
+        "from third_party import Generator\ngenerator = Generator(model='explicit')\n"
+    )
+    assert _check(service.read_text(), service) == []
+
+
+def test_generated_call_is_not_a_composition_root(tmp_path: Path) -> None:
+    service = _settings_project(
+        tmp_path,
+        """from app.config import settings
+
+class Generator:
+    def __init__(self, *, model: str | None = None) -> None:
+        self.model = model or settings.MODEL
+""",
+    )
+    service.write_text(service.read_text().replace("\ngenerator = Generator(model='explicit')\n", "\n"))
+    (service.parent / "generated_composition.py").write_text(
+        "# Generated by example-codegen. Do not edit.\n"
+        "from app.service import Generator\n"
+        "generator = Generator(model='explicit')\n"
+    )
+    assert _check(service.read_text(), service) == []
 
 
 @pytest.mark.parametrize(
@@ -257,6 +407,20 @@ class Generator:
         {assignment}
 """
     assert _check(source) == []
+
+
+def test_if_fallback_must_assign_back_to_the_checked_parameter(tmp_path: Path) -> None:
+    service = _settings_project(
+        tmp_path,
+        """from app.config import settings
+
+class Generator:
+    def __init__(self, *, model: str | None = None) -> None:
+        if model is None:
+            self.metrics_backend = settings.MODEL
+""",
+    )
+    assert _check(service.read_text(), service) == []
 
 
 def test_reassigned_parameter_is_not_treated_as_the_omission_sentinel() -> None:
