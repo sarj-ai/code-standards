@@ -32,8 +32,8 @@ import zod from "eslint-plugin-zod";
 // are almost always a symptom of a wrong edit (`no-unnecessary-await`,
 // `no-useless-fallback-in-spread`), calls that silently do nothing
 // (`no-single-promise-in-promise-methods`, `no-invalid-fetch-options`), and
-// footguns with real production failure modes (`no-thenable`,
-// `no-array-fill-with-reference-type`, `no-unsafe-string-replacement`).
+// footguns with real production failure modes (`no-array-fill-with-reference-type`,
+// `no-unsafe-string-replacement`).
 //
 // DOM-family entries are included UNSCOPED on purpose. They are receiver-matched
 // — they only fire on `document.*`, an `Element`, or an event API — so they are
@@ -109,7 +109,9 @@ const UNICORN_CORRECTNESS_RULES = {
   "unicorn/no-shorthand-property-overrides": "error",
   "unicorn/no-single-promise-in-promise-methods": "error",
   "unicorn/no-subtraction-comparison": "error",
-  "unicorn/no-thenable": "error",  // 1 / 1
+  // JSON Schema requires a `then` property. The syntax-only rule rejects that
+  // standards-compliant data shape even when the key is computed.
+  "unicorn/no-thenable": "off",
   "unicorn/no-this-assignment": "error",
   "unicorn/no-this-outside-of-class": "error",  // 2 / 2
   "unicorn/no-typeof-undefined": "error",
@@ -150,7 +152,9 @@ const UNICORN_CORRECTNESS_RULES = {
   "unicorn/no-useless-re-export": "error",
   "unicorn/no-useless-recursion": "error",  // 3 / 1
   "unicorn/no-useless-spread": "error",
-  "unicorn/no-useless-switch-case": "error",  // 23 / 13
+  // Explicit union cases are required by switch-exhaustiveness-check even when
+  // they share the default branch behavior.
+  "unicorn/no-useless-switch-case": "off",
   "unicorn/no-xor-as-exponentiation": "error",
   "unicorn/prefer-add-event-listener": "error",  // 24 / 9
   "unicorn/prefer-add-event-listener-options": "error",  // 5 / 2
@@ -508,6 +512,10 @@ const config = [
       "@typescript-eslint/await-thenable": "error",
       "@typescript-eslint/no-misused-promises": "error",
       "@typescript-eslint/require-await": "error",
+      // `isolatedDeclarations` requires annotations on exported values that
+      // cannot be declaration-emitted in isolation, even when the initializer
+      // looks inferable. The compiler owns that boundary.
+      "@typescript-eslint/no-inferrable-types": "off",
       "@typescript-eslint/restrict-template-expressions": "error",
       "@typescript-eslint/no-unused-vars": [
         "error",
@@ -572,13 +580,14 @@ const config = [
         { ignorePrimitives: { number: true, string: true, boolean: true } },
       ],
       "@typescript-eslint/prefer-optional-chain": "error",
-      // checkMethodDeclarations is off because the autofix is destructive on
-      // framework-defined methods. React's ReactNode union includes
-      // Promise<AwaitedReactNode> (for async Server Components), so a class
-      // component's render() infers as promise-returning and the fixer adds
-      // `async` — which makes React throw #482 and takes down every route the
-      // component wraps. Standalone functions and arrows are still checked.
-      "@typescript-eslint/promise-function-async": ["error", { checkMethodDeclarations: false }],
+      // `require-await` rejects async functions without awaits, while this rule
+      // requires `async` on functions that directly return a Promise. The two
+      // rules deadlock on `() => Promise.resolve(value)`; require-await wins.
+      "@typescript-eslint/promise-function-async": "off",
+      "@typescript-eslint/no-confusing-void-expression": [
+        "error",
+        { ignoreArrowShorthand: true },
+      ],
       "@typescript-eslint/no-non-null-asserted-optional-chain": "error",
       "@typescript-eslint/no-unnecessary-type-assertion": "error",
       "@typescript-eslint/no-redundant-type-constituents": "error",
@@ -649,30 +658,11 @@ const config = [
           ],
         },
       ],
-      "react/forbid-component-props": [
-        "error",
-        {
-          forbid: [
-            {
-              propName: "style",
-              message:
-                "Use design-token utility classes. For dynamic values, set a CSS custom property and reference it via an arbitrary-value class.",
-            },
-          ],
-        },
-      ],
-      "react/forbid-dom-props": [
-        "error",
-        {
-          forbid: [
-            {
-              propName: "style",
-              message:
-                "Use design-token utility classes. For dynamic values, set a CSS custom property and reference it via an arbitrary-value class.",
-            },
-          ],
-        },
-      ],
+      // These rules cannot distinguish a raw inline style from the CSS custom
+      // properties their own message recommends for dynamic utility values.
+      // Semantic-color and design-system rules remain the style authorities.
+      "react/forbid-component-props": "off",
+      "react/forbid-dom-props": "off",
       "react/jsx-pascal-case": "error",
       "react/no-danger": "error",
       "react/no-this-in-sfc": "error",
@@ -736,7 +726,9 @@ const config = [
         },
       ],
       "unicorn/prefer-switch": "warn",
-      "unicorn/no-useless-undefined": "error",
+      // Its `() => undefined` fix produces `() => {}`, which no-empty-function
+      // rejects. Explicit undefined is the single authority for no-op arrows.
+      "unicorn/no-useless-undefined": "off",
       "unicorn/prefer-node-protocol": "error",
       "unicorn/prefer-string-replace-all": "error",
       "unicorn/prefer-top-level-await": "error",
@@ -783,64 +775,18 @@ const config = [
       // perfectionist sorts
       // structural members; simple-import-sort owns import/export ordering
       // (chosen over eslint-plugin-import to avoid Next.js resolver conflicts).
-      "perfectionist/sort-objects": [
-        "error",
-        { type: "natural", order: "asc" },
-      ],
+      // Object insertion order is observable through Object.keys/entries and
+      // is commonly used for UI presentation. Sorting can silently change
+      // behavior, so semantic order remains authoritative.
+      "perfectionist/sort-objects": "off",
       "perfectionist/sort-interfaces": "error",
       "perfectionist/sort-classes": "error",
       "perfectionist/sort-jsx-props": "error",
       "perfectionist/sort-union-types": "error",
-      // Public API first, private machinery below — a file should read
-      // newspaper-style. This is the ALREADY-INSTALLED rule for that job; it was
-      // simply never switched on. It is enabled here instead of growing a
-      // `@sarj` rule, because building in-house what an available plugin rule
-      // already does is this repo's repeated failure mode.
-      //
-      // WARN, not error: this introduces an opinion rather than ratcheting an
-      // existing one. Adoption where the rule can fire is 20.6% for function
-      // declarations (4.0% counting all member kinds), and OSS agrees (20.8% /
-      // 3.4%). The narrowest variant shipped here still produces 5,280 reports
-      // across first-party code, so it is a migration; 75% of violating files
-      // need exactly one move, so it is cheap per file.
-      //
-      // The two options are load-bearing, not cosmetic:
-      //   - `type: "unsorted"` drops the default ALPHABETICAL constraint. Left
-      //     on, it demands `apple` before `zebra` among two exported functions —
-      //     an enormous reordering unrelated to the public-API-first question.
-      //   - the explicit `groups` correct the default order, which lists
-      //     `declare-class, class, export-class` and therefore REQUIRES a
-      //     non-exported class ABOVE an exported one — the exact opposite of the
-      //     intent. Verified by running it: `export class Apple {} / class Zebra {}`
-      //     reports "Expected Zebra (class) to come before Apple (export-class)".
-      //
-      // Two known blind spots, deliberately accepted and recorded so they are
-      // not re-litigated: `const` arrow functions are invisible to this rule
-      // (it has no variable group), and any top-level `const` partitions the
-      // module so members either side are never compared. Together those are why
-      // it covers ~70% rather than 100% of the convention. They are also exactly
-      // the members that are TDZ-UNSAFE to move: `function` declarations hoist,
-      // so reordering them can never throw, whereas moving a `const`/`class`
-      // below a module-initialisation-time use is a live `ReferenceError` at
-      // import. Measured: 0 unsafe moves for declarations in either corpus,
-      // against 31 first-party + 23 OSS for const arrows and 1,114 + 432 for all
-      // member kinds. The blind spots and the safety boundary coincide, so the
-      // scope stops at declarations on purpose.
-      //
-      // Not covered by `@sarj/enforce-file-structure`, which orders only
-      // imports-first and `use server`-first and deliberately PERMITS both
-      // public-first and private-first layouts. This is additive.
-      "perfectionist/sort-modules": [
-        "warn",
-        {
-          type: "unsorted",
-          groups: [
-            ["declare-enum", "declare-interface", "declare-type", "declare-class", "declare-function"],
-            ["export-enum", "export-interface", "export-type", "export-class", "export-function"],
-            ["enum", "interface", "type", "class", "function"],
-          ],
-        },
-      ],
+      // The rule skips imports instead of treating them as partitions, so its
+      // fixer can move declarations across imports and directly violate
+      // `@sarj/enforce-file-structure`. Keep imports-first as the authority.
+      "perfectionist/sort-modules": "off",
       "simple-import-sort/imports": "error",
       "simple-import-sort/exports": "error",
 
