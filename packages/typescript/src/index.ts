@@ -43,10 +43,11 @@ import noUnsafeMockCasting from "./rules/no-unsafe-mock-casting.js";
 import noZodNativeEnum from "./rules/no-zod-native-enum.js";
 import preferConstantTimeSecretCompare from "./rules/prefer-constant-time-secret-compare.js";
 import preferDiscriminatedUnion from "./rules/prefer-discriminated-union.js";
+import preferInputGroupSearch from "./rules/prefer-input-group-search.js";
 import preferModuleLevelConstant from "./rules/prefer-module-level-constant.js";
 import preferModuleLevelSchema from "./rules/prefer-module-level-schema.js";
-import preferNonNullableCollection from "./rules/prefer-non-nullable-collection.js";
 import preferNativeRandomUuid from "./rules/prefer-native-random-uuid.js";
+import preferNonNullableCollection from "./rules/prefer-non-nullable-collection.js";
 import preferSchemaForApiPayload from "./rules/prefer-schema-for-api-payload.js";
 import preferSemanticColors from "./rules/prefer-semantic-colors.js";
 import preferServerActions from "./rules/prefer-server-actions.js";
@@ -107,10 +108,11 @@ const rules = {
   "no-zod-native-enum": noZodNativeEnum,
   "prefer-constant-time-secret-compare": preferConstantTimeSecretCompare,
   "prefer-discriminated-union": preferDiscriminatedUnion,
+  "prefer-input-group-search": preferInputGroupSearch,
   "prefer-module-level-constant": preferModuleLevelConstant,
   "prefer-module-level-schema": preferModuleLevelSchema,
-  "prefer-non-nullable-collection": preferNonNullableCollection,
   "prefer-native-random-uuid": preferNativeRandomUuid,
+  "prefer-non-nullable-collection": preferNonNullableCollection,
   "prefer-schema-for-api-payload": preferSchemaForApiPayload,
   "prefer-semantic-colors": preferSemanticColors,
   "prefer-server-actions": preferServerActions,
@@ -130,7 +132,7 @@ const rules = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "9.9.0",
+  version: "9.10.0",
 } as const;
 
 /** Rules registered for application-profile configs but intentionally absent from general presets. */
@@ -176,6 +178,7 @@ const recommendedRules = {
   "@sarj/no-zod-native-enum": "warn",
   "@sarj/prefer-constant-time-secret-compare": "error",
   "@sarj/prefer-discriminated-union": "warn",
+  "@sarj/prefer-input-group-search": "error",
   "@sarj/prefer-module-level-constant": "warn",
   "@sarj/prefer-module-level-schema": "warn",
   "@sarj/prefer-non-nullable-collection": "warn",
@@ -237,6 +240,7 @@ const strictRules = {
   "@sarj/no-zod-native-enum": "error",
   "@sarj/prefer-constant-time-secret-compare": "error",
   "@sarj/prefer-discriminated-union": "error",
+  "@sarj/prefer-input-group-search": "error",
   "@sarj/prefer-module-level-constant": "error",
   "@sarj/prefer-module-level-schema": "error",
   "@sarj/prefer-non-nullable-collection": "error",

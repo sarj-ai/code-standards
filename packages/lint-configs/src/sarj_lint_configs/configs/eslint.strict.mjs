@@ -892,6 +892,7 @@ const config = [
       "@sarj/no-secret-in-log": "error",
       "@sarj/no-hand-rolled-sleep": "error",
       "@sarj/no-hand-rolled-spinner": "error",
+      "@sarj/prefer-input-group-search": "error",
       "@sarj/require-fetch-timeout": "error",
       "@sarj/no-silent-promise-catch": "error",
       "@sarj/enforce-file-structure": "error",
