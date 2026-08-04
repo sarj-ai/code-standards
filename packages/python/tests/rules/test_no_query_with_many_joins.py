@@ -317,12 +317,12 @@ def test_join_substrings_do_not_inflate_real_count() -> None:
     assert _check(src) == []
 
 
-# Negative: f-string interpolation splits the shape from the joins.           #
+# Positive: f-string interpolation is reconstructed as an opaque placeholder. #
 
 
-def test_fstring_interpolation_between_from_and_joins_not_flagged() -> None:
+def test_fstring_interpolation_between_from_and_joins_is_flagged() -> None:
     src = 'q = f"SELECT * FROM {table} JOIN b ON 1 JOIN c ON 1 JOIN d ON 1"'
-    assert _check(src) == []
+    assert len(_check(src)) == 1
 
 
 # Negative: non-string / non-query constants.                                 #

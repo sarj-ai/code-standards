@@ -1,6 +1,6 @@
-"""SARJ025 — No `OFFSET` pagination in a store query — use a keyset cursor.
+"""SARJ097 — Avoid sorting an entire candidate set by a random function.
 
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_offset_pagination.py
+Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_order_by_random.py
 """
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ import ast
 import re
 from typing import TYPE_CHECKING, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import Diagnostic, Rule, Severity, parse_or_none
 from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._sql import is_store_module, sql_string_value, strip_sql_noise
 
@@ -18,21 +18,17 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# Require a shared dialect parameter after `OFFSET`, excluding prose and
-# BigQuery's `WITH OFFSET AS` array indexing.
-_OFFSET_PAGINATION = re.compile(
-    r"\bOFFSET\s+(?:%s|%\(\w+\)s|\?\d*|:\w+|@\w+|\$\d+|[1-9]\d*)",
+_RANDOM_ORDER = re.compile(
+    r"\bORDER\s+BY\b(?:(?!\b(?:LIMIT|FETCH|OFFSET|FOR)\b)[\s\S])*?\b(?:RANDOM|RAND)\s*\(",
     re.IGNORECASE,
 )
+_SELECT = re.compile(r"\bSELECT\b[\s\S]*?\bFROM\b", re.IGNORECASE)
 
 
-class NoOffsetPagination(Rule):
-    id: str = "no-offset-pagination"
-    code: str = "SARJ025"
-    description: str = (
-        "OFFSET pagination is O(N) and unstable under concurrent writes — use a "
-        "keyset cursor (WHERE id > :cursor ORDER BY id LIMIT n)."
-    )
+class NoOrderByRandom(Rule):
+    id: str = "no-order-by-random"
+    code: str = "SARJ097"
+    description: str = "ORDER BY RANDOM()/RAND() evaluates and sorts the full candidate set."
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
@@ -51,21 +47,20 @@ class NoOffsetPagination(Rule):
             if text is None:
                 continue
             consumed.update(id(sub) for sub in walk(node))
-
             sql = strip_sql_noise(text)
-            if _OFFSET_PAGINATION.search(sql) is None:
+            if _SELECT.search(sql) is None or _RANDOM_ORDER.search(sql) is None:
                 continue
-
             diags.append(
                 Diagnostic(
                     path=path,
                     line=node.lineno,
                     col=node.col_offset + 1,
                     code=self.code,
+                    severity=Severity.WARNING,
                     message=(
-                        "Store query uses OFFSET pagination (O(N), unstable under "
-                        "concurrent writes) — use a keyset cursor (WHERE id > :cursor "
-                        "ORDER BY id LIMIT n). Suppress with `# sarj-noqa: SARJ025`."
+                        "ORDER BY RANDOM()/RAND() evaluates and sorts the full candidate set — use a "
+                        "precomputed sampling key or a bounded sampling strategy. Suppress with "
+                        "`# sarj-noqa: SARJ097`."
                     ),
                 )
             )

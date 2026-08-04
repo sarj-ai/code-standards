@@ -3,7 +3,7 @@
   entry: sarj-standards check
   language: python
   files: '(?i)(\.py|\.sql|\.tf|\.tfvars|\.hcl|\.ya?ml|\.toml|\.jsonc|\.mdx?|Dockerfile|Makefile)$'
-  additional_dependencies: ["sarj-lint-configs==0.46.0"]
+  additional_dependencies: ["sarj-lint-configs==0.47.0"]
 
 - id: sarj-no-sequential-await
   name: 'sarj-lint: no sequential `await` in for-loop'
@@ -418,6 +418,24 @@
 - id: sarj-no-select-star
   name: 'sarj-lint: SELECT * in a store query'
   entry: sarj-python-lint check --rule no-select-star
+  language: python
+  types: [python]
+
+- id: sarj-limit-requires-order-by
+  name: 'sarj-lint: row-limited SELECT without deterministic ORDER BY'
+  entry: sarj-python-lint check --rule limit-requires-order-by
+  language: python
+  types: [python]
+
+- id: sarj-unbounded-order-by
+  name: 'sarj-lint: result ORDER BY without a database row cap'
+  entry: sarj-python-lint check --rule unbounded-order-by
+  language: python
+  types: [python]
+
+- id: sarj-no-order-by-random
+  name: 'sarj-lint: ORDER BY RANDOM()/RAND() sorts the full candidate set'
+  entry: sarj-python-lint check --rule no-order-by-random
   language: python
   types: [python]
 

@@ -15,9 +15,11 @@ import noHandRolledSleep from "./rules/no-hand-rolled-sleep.js";
 import noHandRolledSpinner from "./rules/no-hand-rolled-spinner.js";
 import noInsecureRandomId from "./rules/no-insecure-random-id.js";
 import noJsonStringifyError from "./rules/no-json-stringify-error.js";
+import limitRequiresOrderBy from "./rules/limit-requires-order-by.js";
 import noLogOnlyCatch from "./rules/no-log-only-catch.js";
 import noLongComment from "./rules/no-long-comment.js";
 import noOffsetPagination from "./rules/no-offset-pagination.js";
+import noOrderByRandom from "./rules/no-order-by-random.js";
 import noPositionalTupleReturn from "./rules/no-positional-tuple-return.js";
 import noRawEnv from "./rules/no-raw-env.js";
 import noRawFetchOutsideClients from "./rules/no-raw-fetch-outside-clients.js";
@@ -62,6 +64,7 @@ import requireInterfaceForInjectedService from "./rules/require-interface-for-in
 import requireStaticNextMatcher from "./rules/require-static-next-matcher.js";
 import requireZodFormValidation from "./rules/require-zod-form-validation.js";
 import storeInsertRequiresOnConflict from "./rules/store-insert-requires-on-conflict.js";
+import unboundedOrderBy from "./rules/unbounded-order-by.js";
 import zodNamingConvention from "./rules/zod-naming-convention.js";
 import { renamedRules } from "./rules/_renames.js";
 import { retiredRules } from "./rules/_retired.js";
@@ -80,9 +83,11 @@ const rules = {
   "no-hand-rolled-spinner": noHandRolledSpinner,
   "no-insecure-random-id": noInsecureRandomId,
   "no-json-stringify-error": noJsonStringifyError,
+  "limit-requires-order-by": limitRequiresOrderBy,
   "no-log-only-catch": noLogOnlyCatch,
   "no-long-comment": noLongComment,
   "no-offset-pagination": noOffsetPagination,
+  "no-order-by-random": noOrderByRandom,
   "no-positional-tuple-return": noPositionalTupleReturn,
   "no-raw-env": noRawEnv,
   "no-raw-fetch-outside-clients": noRawFetchOutsideClients,
@@ -127,12 +132,13 @@ const rules = {
   "require-static-next-matcher": requireStaticNextMatcher,
   "require-zod-form-validation": requireZodFormValidation,
   "store-insert-requires-on-conflict": storeInsertRequiresOnConflict,
+  "unbounded-order-by": unboundedOrderBy,
   "zod-naming-convention": zodNamingConvention,
 };
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "9.10.0",
+  version: "9.11.0",
 } as const;
 
 /** Rules registered for application-profile configs but intentionally absent from general presets. */
@@ -154,9 +160,11 @@ const recommendedRules = {
   "@sarj/no-hand-rolled-spinner": "error",
   "@sarj/no-insecure-random-id": "warn",
   "@sarj/no-json-stringify-error": "warn",
+  "@sarj/limit-requires-order-by": "warn",
   "@sarj/no-log-only-catch": "warn",
   "@sarj/no-long-comment": "warn",
   "@sarj/no-offset-pagination": "warn",
+  "@sarj/no-order-by-random": "warn",
   "@sarj/no-positional-tuple-return": "warn",
   "@sarj/no-repeated-string-literal": "warn",
   "@sarj/no-restated-comment": "warn",
@@ -196,6 +204,7 @@ const recommendedRules = {
   "@sarj/require-static-next-matcher": "error",
   "@sarj/require-zod-form-validation": "error",
   "@sarj/store-insert-requires-on-conflict": "warn",
+  "@sarj/unbounded-order-by": "warn",
   "@sarj/zod-naming-convention": "warn",
 } as const;
 
@@ -213,9 +222,11 @@ const strictRules = {
   "@sarj/no-hand-rolled-spinner": "error",
   "@sarj/no-insecure-random-id": "error",
   "@sarj/no-json-stringify-error": "error",
+  "@sarj/limit-requires-order-by": "warn",
   "@sarj/no-log-only-catch": "error",
   "@sarj/no-long-comment": "error",
   "@sarj/no-offset-pagination": "error",
+  "@sarj/no-order-by-random": "warn",
   "@sarj/no-positional-tuple-return": "error",
   "@sarj/no-raw-env": "error",
   "@sarj/no-raw-fetch-outside-clients": "error",
@@ -258,6 +269,7 @@ const strictRules = {
   "@sarj/require-static-next-matcher": "error",
   "@sarj/require-zod-form-validation": "error",
   "@sarj/store-insert-requires-on-conflict": "error",
+  "@sarj/unbounded-order-by": "warn",
   "@sarj/zod-naming-convention": "error",
 } as const;
 

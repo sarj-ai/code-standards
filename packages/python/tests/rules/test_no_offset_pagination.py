@@ -42,7 +42,6 @@ ALLOWS = {
     "python_var_named_offset": "offset = 20\nrows = fetch(offset)\n",
     "line_comment_offset": 'q = "SELECT id FROM call ORDER BY id -- LIMIT %s OFFSET %s"\n',
     "block_comment_offset": 'q = "SELECT id FROM call /* OFFSET 10 */ ORDER BY id"\n',
-    "fstring_offset_interp_only": 'q = f"SELECT id FROM call LIMIT {n} OFFSET {offset}"\n',
     "offset_word_then_prose": 'q = "the offset value was recomputed"\n',
     "empty_string": 'q = ""\n',
     "bytes_literal": 'q = b"LIMIT %s OFFSET %s"\n',
@@ -52,6 +51,10 @@ ALLOWS = {
 @pytest.mark.parametrize("source", ALLOWS.values(), ids=list(ALLOWS))
 def test_does_not_fire(source: str):
     assert _check(source) == []
+
+
+def test_flags_fstring_offset_parameters() -> None:
+    assert len(_check('q = f"SELECT id FROM call LIMIT {n} OFFSET {offset}"\n')) == 1
 
 
 @pytest.mark.parametrize(

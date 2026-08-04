@@ -21,6 +21,7 @@ from sarj_python_lint.rules.inefficient_string_concat_in_loop import (
 from sarj_python_lint.rules.interaction_only_test import InteractionOnlyTest
 from sarj_python_lint.rules.kwarg_heavy_construction_in_test import KwargHeavyConstructionInTest
 from sarj_python_lint.rules.kwonly_same_type_params import KwonlySameTypeParams
+from sarj_python_lint.rules.limit_requires_order_by import LimitRequiresOrderBy
 from sarj_python_lint.rules.mock_without_spec import MockWithoutSpec
 from sarj_python_lint.rules.no_aggregation_in_store_query import (
     NoAggregationInStoreQuery,
@@ -43,6 +44,7 @@ from sarj_python_lint.rules.no_offset_pagination import NoOffsetPagination
 from sarj_python_lint.rules.no_optional_tenant_predicate import (
     NoOptionalTenantPredicate,
 )
+from sarj_python_lint.rules.no_order_by_random import NoOrderByRandom
 from sarj_python_lint.rules.no_query_with_many_joins import NoQueryWithManyJoins
 from sarj_python_lint.rules.no_raw_sql_in_tests import NoRawSqlInTests
 from sarj_python_lint.rules.no_repeated_string_literal import NoRepeatedStringLiteral
@@ -112,6 +114,7 @@ from sarj_python_lint.rules.test_loops_over_literal_cases import (
 )
 from sarj_python_lint.rules.trailing_value_narration import TrailingValueNarration
 from sarj_python_lint.rules.trivially_true_assertion import TriviallyTrueAssertion
+from sarj_python_lint.rules.unbounded_order_by import UnboundedOrderBy
 from sarj_python_lint.rules.unused_mock_setup import UnusedMockSetup
 from sarj_python_lint.rules.xfail_requires_strict import XfailRequiresStrict
 from sarj_python_lint.rules.zero_assertion_test import ZeroAssertionTest
@@ -128,6 +131,9 @@ REGISTRY: dict[str, type[Rule]] = {
     NoFatTryBlocks.id: NoFatTryBlocks,
     NoIsinstanceUnionChain.id: NoIsinstanceUnionChain,
     NoOffsetPagination.id: NoOffsetPagination,
+    LimitRequiresOrderBy.id: LimitRequiresOrderBy,
+    UnboundedOrderBy.id: UnboundedOrderBy,
+    NoOrderByRandom.id: NoOrderByRandom,
     PreferNamedtupleOverTupleReturn.id: PreferNamedtupleOverTupleReturn,
     NoCorsWildcardWithCredentials.id: NoCorsWildcardWithCredentials,
     NoSleepInTestBody.id: NoSleepInTestBody,

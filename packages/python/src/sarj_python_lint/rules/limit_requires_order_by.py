@@ -1,6 +1,6 @@
-"""SARJ019 — Review a SQL query with three or more JOINs before changing its shape.
+"""SARJ095 — A row-limited SELECT needs a deterministic result order.
 
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_query_with_many_joins.py
+Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_limit_requires_order_by.py
 """
 
 from __future__ import annotations
@@ -11,27 +11,25 @@ from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, Severity, parse_or_none
 from sarj_python_lint.rules._ast_index import nodes, walk
-from sarj_python_lint.rules._sql import is_store_module, sql_string_value, strip_sql_noise
+from sarj_python_lint.rules._sql import (
+    has_top_level_phrase,
+    is_store_module,
+    sql_string_value,
+    strip_sql_noise,
+)
 
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 
-# A real query shape, so prose with the bare words "from"/"join" isn't matched.
-_QUERY_SHAPE = re.compile(
-    r"\bSELECT\b[\s\S]*?\bFROM\b|\bUPDATE\b[\s\S]*?\bSET\b|\bDELETE\b\s+FROM\b",
-    re.IGNORECASE,
-)
-_JOIN = re.compile(r"\bJOIN\b", re.IGNORECASE)
-
-_MAX_JOINS = 2
+_SELECT = re.compile(r"\bSELECT\b[\s\S]*?\bFROM\b", re.IGNORECASE)
 
 
-class NoQueryWithManyJoins(Rule):
-    id: str = "no-query-with-many-joins"
-    code: str = "SARJ019"
-    description: str = "SQL query with 3 or more JOINs — review cardinality, indexes, and its query plan."
+class LimitRequiresOrderBy(Rule):
+    id: str = "limit-requires-order-by"
+    code: str = "SARJ095"
+    description: str = "Multi-row SELECT with LIMIT / FETCH but no result-level ORDER BY is unstable."
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
@@ -50,14 +48,14 @@ class NoQueryWithManyJoins(Rule):
             if text is None:
                 continue
             consumed.update(id(sub) for sub in walk(node))
-
             sql = strip_sql_noise(text)
-            if _QUERY_SHAPE.search(sql) is None:
+            limited = (
+                has_top_level_phrase(sql, "LIMIT")
+                or has_top_level_phrase(sql, "FETCH", "FIRST")
+                or has_top_level_phrase(sql, "FETCH", "NEXT")
+            )
+            if not limited or _SELECT.search(sql) is None or has_top_level_phrase(sql, "ORDER", "BY"):
                 continue
-            join_count = len(_JOIN.findall(sql))
-            if join_count <= _MAX_JOINS:
-                continue
-
             diags.append(
                 Diagnostic(
                     path=path,
@@ -66,10 +64,8 @@ class NoQueryWithManyJoins(Rule):
                     code=self.code,
                     severity=Severity.WARNING,
                     message=(
-                        f"Query has {join_count} JOINs (max {_MAX_JOINS}) — review cardinality, "
-                        "indexes, and EXPLAIN output before you split it across application "
-                        "reads; keep the join when that avoids extra round trips. Suppress with "
-                        "`# sarj-noqa: SARJ019`."
+                        "Row-limited SELECT has no result-level ORDER BY, so the chosen rows are unstable — "
+                        "order by a deterministic key. Suppress with `# sarj-noqa: SARJ095`."
                     ),
                 )
             )

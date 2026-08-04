@@ -426,6 +426,13 @@ def test_respects_noqa(source: str) -> None:
     assert kept == []
 
 
+def test_multiline_sql_wrapper_keeps_the_literal_suppression_line() -> None:
+    source = 'q = SQL(\n    "SELECT COUNT(*) FROM call"  # sarj-noqa: SARJ020\n)\n'
+    diags = _check(source)
+    kept = [d for d in diags if not is_suppressed(source.splitlines(), d.line, d.code)]
+    assert kept == []
+
+
 def test_noqa_for_other_code_does_not_suppress() -> None:
     src = 'q = "SELECT COUNT(*) FROM call"  # sarj-noqa: SARJ019\n'
     diags = _check(src)

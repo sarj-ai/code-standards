@@ -64,6 +64,146 @@ export function stripSqlNoise(text: string): string {
   return out.join("");
 }
 
+/** SQL words outside parentheses, after values and comments are masked. */
+export function topLevelWords(sql: string): string[] {
+  const masked = stripSqlNoise(sql);
+  const words: string[] = [];
+  let depth = 0;
+  let i = 0;
+  while (i < masked.length) {
+    const char = masked[i];
+    if (char === "(") {
+      depth += 1;
+      i += 1;
+      continue;
+    }
+    if (char === ")") {
+      depth = Math.max(0, depth - 1);
+      i += 1;
+      continue;
+    }
+    if (depth === 0 && char !== undefined && /[A-Za-z0-9_]/.test(char)) {
+      const start = i;
+      i += 1;
+      while (i < masked.length && /[A-Za-z0-9_]/.test(masked[i] ?? "")) {
+        i += 1;
+      }
+      words.push(masked.slice(start, i).toUpperCase());
+      continue;
+    }
+    i += 1;
+  }
+  return words;
+}
+
+/** Whether consecutive top-level SQL words equal `phrase`. */
+export function hasTopLevelPhrase(sql: string, ...phrase: string[]): boolean {
+  const wanted = phrase.map((word) => word.toUpperCase());
+  const words = topLevelWords(sql);
+  return words.some((_, index) => wanted.every((word, offset) => words[index + offset] === word));
+}
+
+/** Whether LIMIT/FETCH caps the whole result, excluding ClickHouse LIMIT BY. */
+export function hasTopLevelRowCap(sql: string): boolean {
+  const words = topLevelWords(sql);
+  if (
+    words.some(
+      (_, index) =>
+        (words[index] === "FETCH" && words[index + 1] === "FIRST") ||
+        (words[index] === "FETCH" && words[index + 1] === "NEXT"),
+    )
+  ) {
+    return true;
+  }
+  const boundaries = new Set([
+    "FETCH",
+    "FOR",
+    "FORMAT",
+    "INTO",
+    "LIMIT",
+    "OFFSET",
+    "SETTINGS",
+    "UNION",
+  ]);
+  return words.some((word, index) => {
+    if (word !== "LIMIT") {
+      return false;
+    }
+    const following = words.slice(index + 1);
+    const boundary = following.findIndex((token) => boundaries.has(token));
+    const clause = boundary === -1 ? following : following.slice(0, boundary);
+    return !clause.includes("BY") && (clause.length === 0 || !["ALL", "NULL"].includes(clause[0] ?? ""));
+  });
+}
+
+const SQL_CALL_NAMES = new Set([
+  "$executeRaw",
+  "$queryRaw",
+  "all",
+  "any",
+  "exec",
+  "execute",
+  "first",
+  "get",
+  "many",
+  "none",
+  "one",
+  "prepare",
+  "query",
+  "raw",
+  "run",
+  "unsafe",
+]);
+const SQL_TAG_NAMES = new Set(["sql", "SQL"]);
+
+function callableName(node: TSESTree.Node): string | null {
+  if (node.type === AST_NODE_TYPES.Identifier) {
+    return node.name;
+  }
+  if (
+    node.type === AST_NODE_TYPES.MemberExpression &&
+    !node.computed &&
+    node.property.type === AST_NODE_TYPES.Identifier
+  ) {
+    return node.property.name;
+  }
+  return null;
+}
+
+/** Whether a SQL literal is directly consumed by a runtime query API or SQL tag. */
+export function isRuntimeSqlNode(node: TSESTree.Node): boolean {
+  let current: TSESTree.Node | undefined = node;
+  for (let depth = 0; current !== undefined && depth < 8; depth += 1) {
+    const parent: TSESTree.Node | undefined = current.parent;
+    if (parent === undefined) {
+      return false;
+    }
+    if (parent.type === AST_NODE_TYPES.TaggedTemplateExpression) {
+      const name = callableName(parent.tag);
+      return name !== null && (SQL_TAG_NAMES.has(name) || SQL_CALL_NAMES.has(name));
+    }
+    if (
+      parent.type === AST_NODE_TYPES.CallExpression &&
+      (parent.arguments as readonly TSESTree.Node[]).includes(current)
+    ) {
+      const name = callableName(parent.callee);
+      return name !== null && SQL_CALL_NAMES.has(name);
+    }
+    if (
+      parent.type !== AST_NODE_TYPES.BinaryExpression &&
+      parent.type !== AST_NODE_TYPES.ArrayExpression &&
+      parent.type !== AST_NODE_TYPES.CallExpression &&
+      parent.type !== AST_NODE_TYPES.MemberExpression &&
+      parent.type !== AST_NODE_TYPES.ObjectExpression &&
+      parent.type !== AST_NODE_TYPES.Property
+    ) {
+      return false;
+    }
+    current = parent;
+  }
+  return false;
+}
+
 /** The parameter marker a `${...}` substitution is replaced with before scanning. */
 const SUBSTITUTION_MARKER = "?";
 

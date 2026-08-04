@@ -93,5 +93,8 @@
   "SARJ091": "no-long-comment",
   "SARJ092": "no-typed-doc-sections",
   "SARJ093": "prefer-nominal-id-types",
-  "SARJ094": "fastapi-openapi-contract"
+  "SARJ094": "fastapi-openapi-contract",
+  "SARJ095": "limit-requires-order-by",
+  "SARJ096": "unbounded-order-by",
+  "SARJ097": "no-order-by-random"
 }

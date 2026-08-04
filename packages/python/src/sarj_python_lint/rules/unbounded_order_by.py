@@ -1,6 +1,6 @@
-"""SARJ019 — Review a SQL query with three or more JOINs before changing its shape.
+"""SARJ096 — Review a result sort that has no database row cap.
 
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_query_with_many_joins.py
+Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_unbounded_order_by.py
 """
 
 from __future__ import annotations
@@ -11,27 +11,26 @@ from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, Severity, parse_or_none
 from sarj_python_lint.rules._ast_index import nodes, walk
-from sarj_python_lint.rules._sql import is_store_module, sql_string_value, strip_sql_noise
+from sarj_python_lint.rules._sql import (
+    has_top_level_phrase,
+    has_top_level_row_cap,
+    is_store_module,
+    sql_string_value,
+    strip_sql_noise,
+)
 
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 
-# A real query shape, so prose with the bare words "from"/"join" isn't matched.
-_QUERY_SHAPE = re.compile(
-    r"\bSELECT\b[\s\S]*?\bFROM\b|\bUPDATE\b[\s\S]*?\bSET\b|\bDELETE\b\s+FROM\b",
-    re.IGNORECASE,
-)
-_JOIN = re.compile(r"\bJOIN\b", re.IGNORECASE)
-
-_MAX_JOINS = 2
+_SELECT = re.compile(r"\bSELECT\b[\s\S]*?\bFROM\b", re.IGNORECASE)
 
 
-class NoQueryWithManyJoins(Rule):
-    id: str = "no-query-with-many-joins"
-    code: str = "SARJ019"
-    description: str = "SQL query with 3 or more JOINs — review cardinality, indexes, and its query plan."
+class UnboundedOrderBy(Rule):
+    id: str = "unbounded-order-by"
+    code: str = "SARJ096"
+    description: str = "Result-level ORDER BY without LIMIT / FETCH may sort an unbounded result set."
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
@@ -50,14 +49,21 @@ class NoQueryWithManyJoins(Rule):
             if text is None:
                 continue
             consumed.update(id(sub) for sub in walk(node))
-
             sql = strip_sql_noise(text)
-            if _QUERY_SHAPE.search(sql) is None:
+            if _SELECT.search(sql) is None or not has_top_level_phrase(sql, "ORDER", "BY"):
                 continue
-            join_count = len(_JOIN.findall(sql))
-            if join_count <= _MAX_JOINS:
+            if has_top_level_row_cap(sql):
                 continue
-
+            if any(
+                has_top_level_phrase(sql, *phrase)
+                for phrase in (
+                    ("FOR", "UPDATE"),
+                    ("FOR", "SHARE"),
+                    ("FOR", "NO", "KEY", "UPDATE"),
+                    ("FOR", "KEY", "SHARE"),
+                )
+            ):
+                continue
             diags.append(
                 Diagnostic(
                     path=path,
@@ -66,10 +72,9 @@ class NoQueryWithManyJoins(Rule):
                     code=self.code,
                     severity=Severity.WARNING,
                     message=(
-                        f"Query has {join_count} JOINs (max {_MAX_JOINS}) — review cardinality, "
-                        "indexes, and EXPLAIN output before you split it across application "
-                        "reads; keep the join when that avoids extra round trips. Suppress with "
-                        "`# sarj-noqa: SARJ019`."
+                        "Result-level ORDER BY has no database row cap — add LIMIT/keyset pagination, "
+                        "or document why the complete result is independently bounded. Suppress with "
+                        "`# sarj-noqa: SARJ096`."
                     ),
                 )
             )

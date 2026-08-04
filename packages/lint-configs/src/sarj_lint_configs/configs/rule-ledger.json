@@ -25,6 +25,7 @@
   "rules": {
     "eslint": [
       "enforce-file-structure",
+      "limit-requires-order-by",
       "no-async-callback-in-wait-for",
       "no-client-side-data-fetching",
       "no-comment-cruft",
@@ -41,6 +42,7 @@
       "no-log-only-catch",
       "no-long-comment",
       "no-offset-pagination",
+      "no-order-by-random",
       "no-positional-tuple-return",
       "no-raw-env",
       "no-raw-fetch-outside-clients",
@@ -84,6 +86,7 @@
       "require-static-next-matcher",
       "require-zod-form-validation",
       "store-insert-requires-on-conflict",
+      "unbounded-order-by",
       "zod-naming-convention"
     ],
     "python": [
@@ -98,6 +101,7 @@
       "interaction-only-test",
       "kwarg-heavy-construction-in-test",
       "kwonly-same-type-params",
+      "limit-requires-order-by",
       "mock-without-spec",
       "no-aggregation-in-store-query",
       "no-comment-cruft",
@@ -112,6 +116,7 @@
       "no-long-comment",
       "no-offset-pagination",
       "no-optional-tenant-predicate",
+      "no-order-by-random",
       "no-query-with-many-joins",
       "no-raw-sql-in-tests",
       "no-repeated-string-literal",
@@ -161,6 +166,7 @@
       "test-phase-label-comment",
       "trailing-value-narration",
       "trivially-true-assertion",
+      "unbounded-order-by",
       "unused-mock-setup",
       "xfail-requires-strict",
       "zero-assertion-test"
@@ -268,7 +274,10 @@
       "SARJ091",
       "SARJ092",
       "SARJ093",
-      "SARJ094"
+      "SARJ094",
+      "SARJ095",
+      "SARJ096",
+      "SARJ097"
     ],
     "sql": [
       "SARJ101",

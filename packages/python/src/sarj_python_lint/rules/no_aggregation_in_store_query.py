@@ -1,4 +1,4 @@
-"""SARJ020 — No DISTINCT / GROUP BY / COUNT in a store query — aggregate elsewhere.
+"""SARJ020 — Review apparently unbounded aggregation in PostgreSQL OLTP queries.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_aggregation_in_store_query.py
 """
@@ -9,7 +9,7 @@ import ast
 import re
 from typing import TYPE_CHECKING, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import Diagnostic, Rule, Severity, parse_or_none
 from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._sql import is_store_module, sql_string_value, strip_sql_noise
 
@@ -77,8 +77,7 @@ class NoAggregationInStoreQuery(Rule):
     id: str = "no-aggregation-in-store-query"
     code: str = "SARJ020"
     description: str = (
-        "DISTINCT / GROUP BY / COUNT in a Postgres store query — push heavy "
-        "aggregation to the columnar mirror (ClickHouse / BigQuery)."
+        "Apparently unbounded DISTINCT / GROUP BY / COUNT in a Postgres OLTP query — review an analytics offload."
     )
 
     @override
@@ -97,14 +96,14 @@ class NoAggregationInStoreQuery(Rule):
 
         diags: list[Diagnostic] = []
         consumed: set[int] = set()
-        for node in nodes(tree, ast.Constant, ast.BinOp):
+        for node in nodes(tree, ast.Constant, ast.BinOp, ast.JoinedStr):
             if id(node) in consumed:
                 continue
             text = sql_string_value(node)
             if text is None:
                 continue
             # Mark concatenated children consumed so the walk cannot report the same query twice.
-            if isinstance(node, ast.BinOp):
+            if not isinstance(node, ast.Constant):
                 consumed.update(id(sub) for sub in walk(node))
 
             if _AGG_GATE.search(text) is None or _VERB_GATE.search(text) is None:
@@ -125,10 +124,11 @@ class NoAggregationInStoreQuery(Rule):
                     line=node.lineno,
                     col=node.col_offset + 1,
                     code=self.code,
+                    severity=Severity.WARNING,
                     message=(
-                        f"Store query uses {', '.join(found)} — push heavy "
-                        "aggregation to ClickHouse / BigQuery, keep Postgres to "
-                        "point/bounded reads. Suppress with `# sarj-noqa: SARJ020`."
+                        f"Store query uses {', '.join(found)} — review its plan and consider "
+                        "ClickHouse / BigQuery when transactional consistency is unnecessary. "
+                        "Suppress with `# sarj-noqa: SARJ020`."
                     ),
                 )
             )

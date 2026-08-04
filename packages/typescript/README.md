@@ -19,7 +19,7 @@ import sarj from "@sarj/eslint-plugin";
 export default [...sarj.configs.recommended];
 ```
 
-57 rules. Each source under `src/rules/` states one concise claim and links to
+64 rules. Each source under `src/rules/` states one concise claim and links to
 its paired tests. The definition and named test cases are the complete rule
 specification, and `meta.docs.url` points directly to those executable examples.
 
@@ -325,6 +325,9 @@ Several rules are ports of the Python linter's SARJ rules, retuned for TypeScrip
 | `prefer-constant-time-secret-compare` | SARJ011 | Byte-by-byte secret recovery through the timing of a short-circuiting `===` on a token / signature / HMAC. On Workers the fix is `crypto.subtle.timingSafeEqual` over equal-length digests. |
 | `no-secret-in-log` | SARJ012 | Credentials persisted into log sinks. |
 | `store-insert-requires-on-conflict` | SARJ018 | Duplicate rows — or unique-constraint failures that re-trigger the handler — when a cron re-runs or a queue message is redelivered. |
+| `limit-requires-order-by` | SARJ095 | Nondeterministic row selection when a limited query has no result-level ordering. |
+| `unbounded-order-by` | SARJ096 | Database sorts whose result size is not capped by `LIMIT` or `FETCH`. |
+| `no-order-by-random` | SARJ097 | Full random-key sorts used to sample rows. |
 | `no-select-star` | SARJ021 | An implicit row contract that changes silently when a column is added or reordered. |
 | `no-offset-pagination` | SARJ025 | O(N)-per-page scans, and rows repeated or skipped when the offset window shifts under concurrent inserts. |
 | `no-repeated-string-literal` | SARJ024 | Copies of a structured literal (SQL, column lists, prompt templates) drifting apart when only one is edited. |
@@ -338,3 +341,9 @@ Several rules are ports of the Python linter's SARJ rules, retuned for TypeScrip
 Shared helpers live in `src/rules/_*.ts` (`_secret-names.ts`, `_sql.ts`, `_logging.ts`, `_paths.ts`, `_tailwind.ts`) so related rules cannot diverge on what counts as a secret, a SQL statement, a logging call, or a test file.
 
 Deliberately **not** ported: `no-unreachable-after-terminal` (SARJ010) is already covered by `allowUnreachableCode: false` in `@sarj/tsconfig` plus ESLint core `no-unreachable`; `no-aggregation-in-store-query` (SARJ020) assumes a Postgres-OLTP / columnar-mirror split that D1 does not have; `no-query-with-many-joins` (SARJ019), `stepdown` (SARJ023), `prefer-class-row`, `prefer-struct-over-namedtuple`, `prefer-timedelta-for-durations`, and `no-fstring-in-log` have no TypeScript defect class or target API; `prefer-str-enum` is covered by `prefer-string-literal-union` + `no-enum`.
+
+The ordering rules are deliberately dialect-neutral: PostgreSQL, BigQuery,
+ClickHouse, and SQLite/D1 all leave an unordered limited result unstable and
+may require an expensive result sort unless an appropriate index or access path
+supplies the order. They inspect only the outer statement, so an ordered/limited
+CTE does not hide an unsafe outer query.
