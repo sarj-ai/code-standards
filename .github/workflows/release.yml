@@ -461,7 +461,13 @@ jobs:
       - publish-tsconfig
     if: >-
       always() && !cancelled() &&
-      github.event_name == 'push' && github.ref == 'refs/heads/main'
+      github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+      (needs.publish-python.result == 'success' ||
+       needs.publish-sql.result == 'success' ||
+       needs.publish-iac.result == 'success' ||
+       needs.publish-lint-configs.result == 'success' ||
+       needs.publish-typescript.result == 'success' ||
+       needs.publish-tsconfig.result == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -469,42 +475,60 @@ jobs:
       - name: Harden the runner
         uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
         with:
-          egress-policy: audit
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+          persist-credentials: false
       - name: Configure release tag identity
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-      - name: Tag Python release
-        if: >-
-          needs.publish-python.result == 'success' ||
-          (needs.detect.outputs.python != 'true' && needs.publish-python.result == 'skipped')
-        run: uv run --project packages/lint-configs --frozen sarj-standards repo release create-tags python --dest .
-      - name: Tag SQL release
-        if: >-
-          needs.publish-sql.result == 'success' ||
-          (needs.detect.outputs.sql != 'true' && needs.publish-sql.result == 'skipped')
-        run: uv run --project packages/lint-configs --frozen sarj-standards repo release create-tags sql --dest .
-      - name: Tag IaC release
-        if: >-
-          needs.publish-iac.result == 'success' ||
-          (needs.detect.outputs.iac != 'true' && needs.publish-iac.result == 'skipped')
-        run: uv run --project packages/lint-configs --frozen sarj-standards repo release create-tags iac --dest .
-      - name: Tag lint-configs release
-        if: >-
-          needs.publish-lint-configs.result == 'success' ||
-          (needs.detect.outputs.lint-configs != 'true' && needs.publish-lint-configs.result == 'skipped')
-        run: uv run --project packages/lint-configs --frozen sarj-standards repo release create-tags lint-configs --dest .
-      - name: Tag TypeScript release
-        if: >-
-          needs.publish-typescript.result == 'success' ||
-          (needs.detect.outputs.typescript != 'true' && needs.publish-typescript.result == 'skipped')
-        run: uv run --project packages/lint-configs --frozen sarj-standards repo release create-tags typescript --dest .
-      - name: Tag tsconfig release
-        if: >-
-          needs.publish-tsconfig.result == 'success' ||
-          (needs.detect.outputs.tsconfig != 'true' && needs.publish-tsconfig.result == 'skipped')
-        run: uv run --project packages/lint-configs --frozen sarj-standards repo release create-tags tsconfig --dest .
+      - name: Tag only packages published by this run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLISH_PYTHON: ${{ needs.publish-python.result }}
+          PUBLISH_SQL: ${{ needs.publish-sql.result }}
+          PUBLISH_IAC: ${{ needs.publish-iac.result }}
+          PUBLISH_LINT_CONFIGS: ${{ needs.publish-lint-configs.result }}
+          PUBLISH_TYPESCRIPT: ${{ needs.publish-typescript.result }}
+          PUBLISH_TSCONFIG: ${{ needs.publish-tsconfig.result }}
+        run: |
+          set -euo pipefail
+          targets=()
+          [[ "$PUBLISH_PYTHON" == success ]] && targets+=(python)
+          [[ "$PUBLISH_SQL" == success ]] && targets+=(sql)
+          [[ "$PUBLISH_IAC" == success ]] && targets+=(iac)
+          [[ "$PUBLISH_LINT_CONFIGS" == success ]] && targets+=(lint-configs)
+          [[ "$PUBLISH_TYPESCRIPT" == success ]] && targets+=(typescript)
+          [[ "$PUBLISH_TSCONFIG" == success ]] && targets+=(tsconfig)
+
+          manifest_version() {
+            case "$1" in
+              python|sql|iac|lint-configs)
+                python3 -c 'import pathlib, sys, tomllib; print(tomllib.loads(pathlib.Path(sys.argv[1]).read_text())["project"]["version"])' "packages/$1/pyproject.toml"
+                ;;
+              typescript|tsconfig)
+                python3 -c 'import json, pathlib, sys; print(json.loads(pathlib.Path(sys.argv[1]).read_text())["version"])' "packages/$1/package.json"
+                ;;
+            esac
+          }
+
+          gh auth setup-git
+          for target in "${targets[@]}"; do
+            version="$(manifest_version "$target")"
+            tag="$target-v$version"
+            existing="$(git ls-remote --tags origin "refs/tags/$tag" | awk '{print $1}')"
+            if [[ -n "$existing" ]]; then
+              peeled="$(git ls-remote --tags origin "refs/tags/$tag^{}" | awk '{print $1}')"
+              [[ "${peeled:-$existing}" == "$GITHUB_SHA" ]] || {
+                echo "Existing $tag does not point to published commit $GITHUB_SHA" >&2
+                exit 1
+              }
+              continue
+            fi
+            git tag -a "$tag" -m "$target $version" "$GITHUB_SHA"
+            git push origin "refs/tags/$tag"
+          done
