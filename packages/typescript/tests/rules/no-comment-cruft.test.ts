@@ -433,6 +433,11 @@ ruleTester.run("no-comment-cruft", rule, {
       errors: [{ messageId: "commentedOutCode" }],
     },
     {
+      name: "flags a long disabled assertion without regex backtracking",
+      code: `test('result', () => {\n  // expect(value)${".matcher<Zero>".repeat(2_000)}();\n});`,
+      errors: [{ messageId: "commentedOutCode" }],
+    },
+    {
       code: "// import { foo } from './bar';\nexport const x = 1;",
       errors: [{ messageId: "commentedOutCode" }],
     },

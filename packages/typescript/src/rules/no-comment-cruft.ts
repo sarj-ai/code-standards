@@ -141,8 +141,10 @@ const CALL_RE = /^[A-Za-z_$][\w.$]*\([^)]*\)\s*;?\s*$/;
 // Assertion chains often contain nested calls, so the generic CALL_RE cannot
 // recognize them. A disabled assertion is especially dangerous: the test still
 // passes, but verifies nothing. Keep this narrow to established assertion APIs.
-const ASSERTION_CODE_RE =
-  /^(?:await\s+)?(?:expect(?:TypeOf)?\s*\(.+\)\s*(?:\.\w+(?:<[^\n]*>)?)+(?:\s*\(.*\))?|assert(?:\.\w+)?\s*\(.+\))\s*;?\s*$/;
+// Recognizing the assertion API opener is enough here: a comment beginning
+// with an actual call is code regardless of the shape of the chained matcher.
+// Avoid parsing nested TypeScript generics with a backtracking regexp.
+const ASSERTION_CODE_RE = /^(?:await\s+)?(?:expect(?:TypeOf)?|assert(?:\.\w+)?)\s*\(/;
 
 // Placeholders that only appear in grammar productions / desugaring examples,
 // never in real code: `%sent%`, `[opt]`, a standalone `<FunctionBody>`, `…` / `...`.

@@ -78,7 +78,9 @@ def heredoc_body_mask(lines: list[str]) -> list[bool]:
 
 # Tokenize strings (including interpolations), identifier paths, operators, and structural punctuation.
 _TOKEN_RE = re.compile(
-    r'"(?:\\.|\$\{(?:[^{}"]|"(?:\\.|[^"\\])*")*\}|[^"\\])*"'
+    # Keep the interpolation, escape, ordinary-dollar, and ordinary-character
+    # branches disjoint so hostile strings cannot induce regex backtracking.
+    r'"(?:\\.|\$(?!\{)|\$\{(?:[^{}"]|"(?:\\.|[^"\\])*")*\}|[^"$\\])*"'
     r"|[A-Za-z_][\w.\-]*"
     r"|==|!=|<=|>=|&&|\|\||[{}()\[\]=,]"
     r"|\S"

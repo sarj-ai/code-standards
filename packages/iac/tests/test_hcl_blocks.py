@@ -122,6 +122,13 @@ resource "google_sql_database_instance" "main" {
     assert block.attribute("deletion_protection") is not None
 
 
+def test_adversarial_interpolation_string_tokenizes_without_backtracking():
+    hostile = "${{}}" * 10_000
+    src = f'resource "example" "main" {{\n  value = "{hostile}"\n}}\n'
+    (block,) = blocks(src)
+    assert block.attribute("value") is not None
+
+
 def test_commented_out_attribute_is_not_parsed():
     src = """
 resource "google_sql_database_instance" "main" {
