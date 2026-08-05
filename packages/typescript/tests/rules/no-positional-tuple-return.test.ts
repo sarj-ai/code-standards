@@ -17,6 +17,14 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("no-positional-tuple-return", rule, {
   valid: [
+    {
+      name: "allows private tuple-returning implementation details inside an exported class",
+      code: "export class Loader { private load(): [string, number] { return impl(); } public run(): void {} }",
+    },
+    {
+      name: "does not collide a nested interface name with an exported top-level interface",
+      code: "export interface Loader {} namespace Internal { interface Loader { load(): [string, number]; } }",
+    },
     // --- The named form, which is the whole point. ---
     {
       code: "export function download(): { body: string; contentType: string | null } { return impl(); }",
@@ -60,6 +68,16 @@ ruleTester.run("no-positional-tuple-return", rule, {
     { code: "export function inferred() { return ['a', 1]; }" },
   ],
   invalid: [
+    {
+      name: "rejects a public arrow property on an exported class",
+      code: "export class Loader { load = (): [string, number] => impl(); }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "unwraps satisfies around an exported arrow function",
+      code: "export const load = (((): [string, number] => impl()) satisfies Loader);",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
     {
       name: "resolves a local tuple alias used by an exported function",
       code: "type Pair = [string, number]; export function pair(): Pair { return impl(); }",

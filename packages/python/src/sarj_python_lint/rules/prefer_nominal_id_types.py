@@ -260,15 +260,22 @@ def _type_alias_type_value(value: ast.expr) -> ast.expr | None:
 
 
 def _nominal_alias_names(tree: ast.Module) -> frozenset[str]:
+    new_type_calls = {"NewType"}
+    for statement in tree.body:
+        if isinstance(statement, ast.ImportFrom) and statement.module == "typing":
+            new_type_calls.update(alias.asname or alias.name for alias in statement.names if alias.name == "NewType")
     names: set[str] = set()
     for statement in tree.body:
-        if not isinstance(statement, ast.Assign) or len(statement.targets) != 1:
+        if isinstance(statement, ast.Assign) and len(statement.targets) == 1:
+            target, value = statement.targets[0], statement.value
+        elif isinstance(statement, ast.AnnAssign) and statement.value is not None:
+            target, value = statement.target, statement.value
+        else:
             continue
-        target = statement.targets[0]
         if (
             isinstance(target, ast.Name)
-            and isinstance(statement.value, ast.Call)
-            and _qualified_tail(statement.value.func) == "NewType"
+            and isinstance(value, ast.Call)
+            and _qualified_tail(value.func) in new_type_calls
         ):
             names.add(target.id)
     return frozenset(names)

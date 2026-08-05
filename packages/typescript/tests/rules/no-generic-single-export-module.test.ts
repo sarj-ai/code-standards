@@ -44,6 +44,7 @@ ruleTester.run("no-generic-single-export-module", rule, {
     { filename: "/repo/src/utils.ts", code: "declare function parseOrder(): void; export { parseOrder };" },
     { filename: "/repo/src/utils.ts", code: "declare const orderSchema: object; export { orderSchema };" },
     { filename: "/repo/src/utils.ts", code: "declare namespace Order {} export { Order };" },
+    { filename: "/repo/src/utils.ts", code: "declare enum Order { Open } export { Order };" },
     {
       filename: "/repo/src/utils.ts",
       code: "const parseOrder = () => ({}); export { parseOrder, parseOrder as default };",

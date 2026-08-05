@@ -11,8 +11,15 @@ RuleTester.itOnly = it.only;
 
 const ruleTester = new RuleTester({ languageOptions: { parser: tsParser } });
 
+const DEEP_CYCLE_SIZE = 12_000;
+const DEEP_CYCLE = Array.from(
+  { length: DEEP_CYCLE_SIZE },
+  (_unused, index) => `function f${index}() { return f${(index + 1) % DEEP_CYCLE_SIZE}(); }`,
+).join("\n");
+
 ruleTester.run("stepdown", rule, {
   valid: [
+    { name: "handles a deep cyclic graph without recursive stack overflow", code: DEEP_CYCLE },
     {
       name: "allows a module helper below its sole caller",
       code: "function run() { return load(); }\nfunction load() { return 1; }",
@@ -60,6 +67,14 @@ ruleTester.run("stepdown", rule, {
     {
       name: "allows a private method referenced by a class field",
       code: "class Service { private normalize(v: string) { return v.trim(); } handler = this.normalize; run(v: string) { return this.normalize(v); } }",
+    },
+    {
+      name: "allows a private method also called through a this alias",
+      code: "class Service { private load() { return 1; } private run() { const self = this; return this.load() + self.load(); } }",
+    },
+    {
+      name: "allows a private method destructured from this",
+      code: "class Service { private load() { return 1; } private run() { const { load } = this; return this.load() + load.call(this); } }",
     },
     {
       name: "allows a private static helper referenced by a method decorator",

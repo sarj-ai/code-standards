@@ -15,7 +15,7 @@ const STORY_TREE_RE = /(^|\/)stories(?:[_-][^/]*)?\//i;
 // These directory names explicitly identify upstream-owned code, so every rule
 // may safely ignore them.
 const GENERATED_FILE_RE =
-  /([\\/](?:generated|__generated__|openapi-gen|graphql[\\/]types|vendor|vendored|third[-_]?party)[\\/])|(\.gen\.[cm]?[jt]sx?$)|(\.generated\.[cm]?[jt]sx?$)|(\.d\.[cm]?ts$)|(\.types\.[cm]?ts$)/i;
+  /((?:^|[\\/])(?:generated|__generated__|openapi-gen|graphql[\\/]types|vendor|vendored|third[-_]?party)[\\/])|(\.gen\.[cm]?[jt]sx?$)|(\.generated\.[cm]?[jt]sx?$)|(\.d\.[cm]?ts$)|(\.types\.[cm]?ts$)/i;
 // `externalTree` stays opt-in because `external/` often contains first-party
 // integration code.
 const EXTERNAL_TREE_RE = /[\\/]external[\\/]/;
@@ -24,6 +24,7 @@ const EXTERNAL_TREE_RE = /[\\/]external[\\/]/;
 // prose about generated values or warnings as generated-file declarations.
 const GENERATED_MARKER_RE =
   /(?:@generated\b|this file (?:is|was|has been)[\w\s,'-]{0,40}?generated|auto-?generated file\b|generated (?:with|by)|generated (?:graphql )?types|do not edit(?: directly| manually)?|do not (?:modify|change) this file)/i;
+const COMMENT_LINE_RE = /^\s*(?:\/\/|\/\*+|\*|#)/;
 
 const TEST_BASENAME_RE = /[.\-_](test|spec|e2e)\.[cm]?[jt]sx?$/;
 const TEST_INTEGRATION_BASENAME_RE = /\.integration\.[cm]?[jt]sx?$/;
@@ -92,7 +93,10 @@ export function isGeneratedFile(
   if (gates.includes("externalTree") && EXTERNAL_TREE_RE.test(normalized)) {
     return true;
   }
-  return GENERATED_MARKER_RE.test(sourceText.slice(0, 2048));
+  return sourceText
+    .slice(0, 2048)
+    .split("\n")
+    .some((line) => COMMENT_LINE_RE.test(line) && GENERATED_MARKER_RE.test(line));
 }
 
 /**

@@ -23,6 +23,8 @@ if TYPE_CHECKING:
 type _ClusterEntry = tuple[int, int, set[str], set[str], set[str], set[str]]
 
 _MIN_CAST_ARGS = 2
+_MIN_TYPE_ALIAS_ARGS = 2
+_CHOICE_PAIR_ARITY = 2
 _CAST_FUNCTION = "cast"
 _STR_CONSTRUCTOR = "str"
 
@@ -144,10 +146,12 @@ class PreferStrEnum(Rule):
             return []
         check_clusters = not is_test_path(path)
         alias_names, alias_valuesets = _module_literal_aliases(tree)
+        raw_string_aliases = _module_raw_string_aliases(tree)
         literal_funcs = _literal_returning_functions(tree)
         class_nodes: list[ast.ClassDef] = []
         all_clusters: list[tuple[dict[str, _ClusterEntry], frozenset[str]]] = []
         cluster_opacity: dict[int, frozenset[str]] = {}
+        comprehension_opacity: dict[int, frozenset[str]] = {}
         stack: list[tuple[ast.AST, dict[str, _ClusterEntry] | None]] = [(tree, None)]
         while stack:
             node, active = stack.pop()
@@ -156,6 +160,7 @@ class PreferStrEnum(Rule):
                 child_active: dict[str, _ClusterEntry] | None = None
             elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 if check_clusters:
+                    comprehension_opacity.update(_closed_comprehension_targets(node, alias_names, raw_string_aliases))
                     child_active = {}
                     shadowed = {
                         arg.arg
@@ -167,7 +172,7 @@ class PreferStrEnum(Rule):
                     }
                     shadowed.update(target for target, _value in _local_bindings(node))
                     inherited = cluster_opacity.get(id(active), frozenset()) - shadowed
-                    opaque = inherited | _opaque_names(node, alias_names, literal_funcs)
+                    opaque = inherited | _opaque_names(node, alias_names, literal_funcs, raw_string_aliases)
                     all_clusters.append((child_active, opaque))
                     cluster_opacity[id(child_active)] = opaque
                 else:
@@ -191,7 +196,11 @@ class PreferStrEnum(Rule):
                         if _is_wire_lookup(generator.iter)
                         for name in _bound_target_names(generator.target)
                     }
-                    opaque = (cluster_opacity.get(id(active), frozenset()) - bound_targets) | wire_targets
+                    opaque = (
+                        (cluster_opacity.get(id(active), frozenset()) - bound_targets)
+                        | wire_targets
+                        | comprehension_opacity.get(id(node), frozenset())
+                    )
                     all_clusters.append((child_active, frozenset(opaque)))
                     cluster_opacity[id(child_active)] = frozenset(opaque)
             else:
@@ -368,13 +377,55 @@ def _module_literal_aliases(tree: ast.Module) -> tuple[frozenset[str], list[froz
     return frozenset(names), valuesets
 
 
+def _module_raw_string_aliases(tree: ast.Module) -> frozenset[str]:
+    aliases: dict[str, ast.expr] = {}
+    for statement in tree.body:
+        if isinstance(statement, ast.TypeAlias):
+            aliases[statement.name.id] = statement.value
+        elif (
+            isinstance(statement, ast.Assign)
+            and len(statement.targets) == 1
+            and isinstance(statement.targets[0], ast.Name)
+        ):
+            value = statement.value
+            if isinstance(value, ast.Call) and _trailing_name(value.func) == "TypeAliasType":
+                value = (
+                    value.args[1]
+                    if len(value.args) >= _MIN_TYPE_ALIAS_ARGS
+                    else next((keyword.value for keyword in value.keywords if keyword.arg == "value"), value)
+                )
+            aliases[statement.targets[0].id] = value
+        elif (
+            isinstance(statement, ast.AnnAssign)
+            and isinstance(statement.target, ast.Name)
+            and statement.value is not None
+        ):
+            aliases[statement.target.id] = statement.value
+    raw: set[str] = set()
+    for _round in range(len(aliases)):
+        grown = {
+            name
+            for name, value in aliases.items()
+            if name not in raw and isinstance(value, ast.Name) and (value.id == "str" or value.id in raw)
+        }
+        if not grown:
+            break
+        raw |= grown
+    return frozenset(raw)
+
+
 def _opaque_names(
     func: ast.FunctionDef | ast.AsyncFunctionDef,
     alias_names: frozenset[str],
     literal_funcs: frozenset[str],
+    raw_string_aliases: frozenset[str],
 ) -> frozenset[str]:
     """Collect the names in `func` a StrEnum recommendation cannot apply to."""
-    base = _literal_typed_names(func, alias_names) | _foreign_typed_names(func) | _wire_bound_names(func, literal_funcs)
+    base = (
+        _literal_typed_names(func, alias_names)
+        | _foreign_typed_names(func, raw_string_aliases)
+        | _wire_bound_names(func, literal_funcs)
+    )
     return _close_over_assignments(func, base)
 
 
@@ -398,6 +449,46 @@ def _literal_typed_names(func: ast.FunctionDef | ast.AsyncFunctionDef, alias_nam
             names.add(node.target.id)
         stack.extend(children(node))
     return frozenset(names)
+
+
+def _closed_comprehension_targets(
+    func: ast.FunctionDef | ast.AsyncFunctionDef,
+    alias_names: frozenset[str],
+    raw_string_aliases: frozenset[str],
+) -> dict[int, frozenset[str]]:
+    annotations: dict[str, ast.expr] = {
+        arg.arg: arg.annotation
+        for arg in (*func.args.posonlyargs, *func.args.args, *func.args.kwonlyargs)
+        if arg.annotation is not None
+    }
+    own_nodes: list[ast.AST] = []
+    pending: list[ast.AST] = list(func.body)
+    while pending:
+        node = pending.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
+            continue
+        own_nodes.append(node)
+        pending.extend(children(node))
+    for node in own_nodes:
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            annotations[node.target.id] = node.annotation
+    result: dict[int, frozenset[str]] = {}
+    for node in own_nodes:
+        if not isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+            continue
+        closed: set[str] = set()
+        for generator in node.generators:
+            if not isinstance(generator.iter, ast.Name):
+                continue
+            annotation = annotations.get(generator.iter.id)
+            if not isinstance(annotation, ast.Subscript):
+                continue
+            element = annotation.slice.elts[0] if isinstance(annotation.slice, ast.Tuple) else annotation.slice
+            if _is_literal_annotation(element, alias_names) or _is_foreign_annotation(element, raw_string_aliases):
+                closed.update(_bound_target_names(generator.target))
+        if closed:
+            result[id(node)] = frozenset(closed)
+    return result
 
 
 def _close_over_assignments(func: ast.FunctionDef | ast.AsyncFunctionDef, seed: frozenset[str]) -> frozenset[str]:
@@ -436,12 +527,15 @@ def _local_bindings(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[tuple[
     return bindings
 
 
-def _foreign_typed_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> frozenset[str]:
+def _foreign_typed_names(
+    func: ast.FunctionDef | ast.AsyncFunctionDef,
+    raw_string_aliases: frozenset[str],
+) -> frozenset[str]:
     """Collect names annotated with a named type other than `str`."""
     names: set[str] = set()
     args = func.args
     for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs):
-        if _is_foreign_annotation(arg.annotation):
+        if _is_foreign_annotation(arg.annotation, raw_string_aliases):
             names.add(arg.arg)
     stack: list[ast.AST] = list(func.body)
     while stack:
@@ -451,29 +545,32 @@ def _foreign_typed_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> frozen
         if (
             isinstance(node, ast.AnnAssign)
             and isinstance(node.target, ast.Name)
-            and _is_foreign_annotation(node.annotation)
+            and _is_foreign_annotation(node.annotation, raw_string_aliases)
         ):
             names.add(node.target.id)
         stack.extend(children(node))
     return frozenset(names)
 
 
-def _is_foreign_annotation(annotation: ast.expr | None) -> bool:
+def _is_foreign_annotation(
+    annotation: ast.expr | None,
+    raw_string_aliases: frozenset[str] = frozenset(),
+) -> bool:
     """Report whether the annotation names a type other than `str`."""
     if annotation is None:
         return False
     if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
         parsed = _parse_string_annotation(annotation.value)
-        return parsed is not None and _is_foreign_annotation(parsed)
+        return parsed is not None and _is_foreign_annotation(parsed, raw_string_aliases)
     if _is_literal_annotation(annotation, frozenset()):
         return True
     inner = _strip_optional(annotation)
     if isinstance(inner, ast.Subscript) and _trailing_name(inner.value) == "Annotated":
         first = inner.slice.elts[0] if isinstance(inner.slice, ast.Tuple) and inner.slice.elts else None
-        return first is not None and _is_foreign_annotation(first)
+        return first is not None and _is_foreign_annotation(first, raw_string_aliases)
     match inner:
         case ast.Name(id=ident):
-            return ident != "str"
+            return ident != "str" and ident not in raw_string_aliases
         case ast.Attribute(attr=attr):
             return attr != "str"
         case _:
@@ -656,9 +753,17 @@ def _is_scanner_key(key: str) -> bool:
 
 
 def _string_collection_values(node: ast.AST | None) -> set[str] | None:
+    if isinstance(node, ast.Dict):
+        keys = {None if key is None else _str_const(key) for key in node.keys}
+        return None if None in keys else {key for key in keys if key is not None}
     if not isinstance(node, (ast.List, ast.Tuple, ast.Set)):
         return None
-    values = {_str_const(element) for element in node.elts}
+    values = {
+        _str_const(element.elts[0])
+        if isinstance(element, (ast.List, ast.Tuple)) and len(element.elts) == _CHOICE_PAIR_ARITY
+        else _str_const(element)
+        for element in node.elts
+    }
     if None in values:
         return None
     return {value for value in values if value is not None}

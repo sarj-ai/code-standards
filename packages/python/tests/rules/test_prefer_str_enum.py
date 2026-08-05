@@ -1425,6 +1425,19 @@ class Widget:
     assert len(_check(src)) == 1
 
 
+@pytest.mark.parametrize(
+    "choices",
+    ["[('draft', 'Draft'), ('live', 'Live')]", "{'draft': 'Draft', 'live': 'Live'}"],
+)
+def test_named_django_choice_shapes_associate_with_the_field(choices: str):
+    src = f"""
+class Widget:
+    STATUS_CHOICES = {choices}
+    status: str
+"""
+    assert len(_check(src)) == 1
+
+
 def test_captured_literal_annotation_stays_closed_in_nested_function():
     src = """
 def outer(status: Literal["a", "b"]):
@@ -1447,6 +1460,15 @@ def route(kind: Status, values: list[str]) -> list[bool]:
     assert len(_check(src)) == 1
 
 
+@pytest.mark.parametrize("element", ["Status", "Literal['a', 'b']"])
+def test_comprehension_target_inherits_closed_iterable_element_type(element: str):
+    src = f"""
+def route(values: list[{element}]) -> list[bool]:
+    return [status == "a" or status == "b" for status in values]
+"""
+    assert _check(src) == []
+
+
 def test_flattened_pep604_literal_union_is_already_closed():
     src = """
 def route(status: Literal["a"] | Literal["b"] | None) -> int:
@@ -1457,6 +1479,20 @@ def route(status: Literal["a"] | Literal["b"] | None) -> int:
     return 0
 """
     assert _check(src) == []
+
+
+@pytest.mark.parametrize("declaration", ["Status = str", "Status = TypeAliasType('Status', str)"])
+def test_structural_string_alias_remains_an_open_string(declaration: str):
+    src = f"""
+{declaration}
+def route(status: Status) -> int:
+    if status == "a":
+        return 1
+    if status == "b":
+        return 2
+    return 0
+"""
+    assert len(_check(src)) == 1
 
 
 # FP-hardening (famous-repo sweep): wire-bound variables (subscript / .get()). #

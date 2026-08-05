@@ -203,8 +203,16 @@ def _git_tracked_files(source: CorpusSource) -> tuple[Path, ...]:
 
 
 def _git_environment() -> dict[str, str]:
-    return {
+    environment = {
         name: value
         for name, value in os.environ.items()  # ruff: ignore[banned-api] -- discard hook-local repository routing.
         if name in _GIT_SAFE_ENV
     }
+    environment.update(
+        {
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_SYSTEM": os.devnull,
+        }
+    )
+    return environment

@@ -32,6 +32,18 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         }
       `,
     },
+    {
+      name: "recognizes a transitively inherited local abstract port",
+      filename: SRC,
+      code: `
+        abstract class BasePort { abstract handle(): void; }
+        class SpecializedPort extends BasePort { handle(): void {} }
+        export class RequestHandler extends SpecializedPort {
+          constructor(private readonly store: TaskStore) { super(); }
+          handle(): void {}
+        }
+      `,
+    },
     // The target state, and the corpus's overwhelming convention: 175 of 229
     // exported classes look like this.
     {

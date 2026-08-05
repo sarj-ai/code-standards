@@ -166,7 +166,18 @@ class RequirePortForService(Rule):
             if _BASE_NAME_RE.match(node.name)
             or _declares_interface(node)
             or any(_dotted_tail(base) in {"ABC", "Protocol"} for base in node.bases)
+            or any(keyword.arg == "metaclass" and _dotted_tail(keyword.value) == "ABCMeta" for keyword in node.keywords)
         }
+        for _round in range(len(classes)):
+            grown = {
+                node.name
+                for node in classes
+                if node.name not in local_port_names
+                and any(_dotted_tail(base) in local_port_names for base in node.bases)
+            }
+            if not grown:
+                break
+            local_port_names |= grown
 
         diags = [
             Diagnostic(

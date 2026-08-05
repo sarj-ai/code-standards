@@ -103,6 +103,7 @@ function typeOnlyBindings(program: TSESTree.Program): ReadonlySet<string> {
       if (
         (declaration.type === AST_NODE_TYPES.ClassDeclaration ||
           declaration.type === AST_NODE_TYPES.FunctionDeclaration ||
+          declaration.type === AST_NODE_TYPES.TSEnumDeclaration ||
           declaration.type === AST_NODE_TYPES.TSModuleDeclaration) &&
         declaration.id !== null &&
         declaration.id.type === AST_NODE_TYPES.Identifier

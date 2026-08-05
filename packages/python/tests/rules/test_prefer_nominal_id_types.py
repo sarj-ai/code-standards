@@ -210,3 +210,15 @@ def test_newtype_alias_without_id_suffix_still_counts_as_nominal_role():
 def test_type_alias_type_primitive_is_not_mistaken_for_nominal_id():
     src = "UserId = TypeAliasType('UserId', str)\nOrgId = TypeAliasType('OrgId', str)\n\ndef sync(user_id: UserId, org_id: OrgId) -> None: ...\n"
     assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "from typing import NewType as NT\nUserKey = NT('UserKey', str)",
+        "UserKey: TypeAlias = NewType('UserKey', str)",
+    ],
+)
+def test_suffixless_newtype_alias_spellings_count_as_nominal(declaration: str):
+    src = f"{declaration}\n\ndef sync(user_id: UserKey, org_id: str) -> None: ...\n"
+    assert len(_check(src)) == 1

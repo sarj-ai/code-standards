@@ -1165,3 +1165,22 @@ class BillingService(LocalBase):
     def refund(self) -> None: ...
 """
     assert len(_check(source)) == 1
+
+
+def test_transitively_inherited_local_protocol_counts_as_a_port() -> None:
+    source = """
+class Port(Protocol):
+    def charge(self) -> None: ...
+    def refund(self) -> None: ...
+
+class SpecializedPort(Port):
+    pass
+
+class BillingService(SpecializedPort):
+    def __init__(self, repo: BillingRepository) -> None:
+        self.repo = repo
+
+    def charge(self) -> None: ...
+    def refund(self) -> None: ...
+"""
+    assert _check(source) == []

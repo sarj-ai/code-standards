@@ -36,7 +36,7 @@ const ROUTER_FACTORY_NAME = "Router";
 
 /** Namespaced framework HTTP types; unqualified DOM globals do not match. */
 const FRAMEWORK_HTTP_TYPES: ReadonlySet<string> = new Set(["Request", "Response", "NextFunction"]);
-const STORAGE_ASSIGNMENT_OPERATORS: ReadonlySet<string> = new Set(["=", "??=", "||="]);
+const STORAGE_ASSIGNMENT_OPERATORS: ReadonlySet<string> = new Set(["=", "&&=", "??=", "||="]);
 
 interface Collaborator {
   readonly name: string;
@@ -318,6 +318,7 @@ const readConstructor = (
       while (
         source.type === AST_NODE_TYPES.TSNonNullExpression ||
         source.type === AST_NODE_TYPES.TSAsExpression ||
+        source.type === AST_NODE_TYPES.TSSatisfiesExpression ||
         source.type === AST_NODE_TYPES.TSTypeAssertion
       ) source = source.expression;
       if (source.type === AST_NODE_TYPES.NewExpression) {
@@ -466,6 +467,7 @@ const publicMethodNames = (body: TSESTree.ClassBody): string[] => {
 
 function localClassAbstractness(program: TSESTree.Program): ReadonlyMap<string, boolean> {
   const classes = new Map<string, boolean>();
+  const parents = new Map<string, string>();
   for (const statement of program.body) {
     const declaration = statement.type === AST_NODE_TYPES.ExportNamedDeclaration ||
       statement.type === AST_NODE_TYPES.ExportDefaultDeclaration
@@ -473,7 +475,20 @@ function localClassAbstractness(program: TSESTree.Program): ReadonlyMap<string, 
       : statement;
     if (declaration?.type === AST_NODE_TYPES.ClassDeclaration && declaration.id !== null) {
       classes.set(declaration.id.name, declaration.abstract === true);
+      if (declaration.superClass?.type === AST_NODE_TYPES.Identifier) {
+        parents.set(declaration.id.name, declaration.superClass.name);
+      }
     }
+  }
+  for (let pass = 0; pass < classes.size; pass += 1) {
+    let changed = false;
+    for (const [name, parent] of parents) {
+      if (classes.get(name) !== true && classes.get(parent) === true) {
+        classes.set(name, true);
+        changed = true;
+      }
+    }
+    if (!changed) break;
   }
   return classes;
 }
@@ -486,7 +501,7 @@ function localInterfaceSurfaces(program: TSESTree.Program): ReadonlyMap<string, 
       ? statement.declaration
       : statement;
     if (declaration?.type !== AST_NODE_TYPES.TSInterfaceDeclaration) continue;
-    const callables = new Set<string>();
+    const callables = interfaces.get(declaration.id.name) ?? new Set<string>();
     for (const member of declaration.body.body) {
       if (
         member.type !== AST_NODE_TYPES.TSMethodSignature &&
@@ -501,9 +516,12 @@ function localInterfaceSurfaces(program: TSESTree.Program): ReadonlyMap<string, 
     interfaces.set(declaration.id.name, callables);
     parents.set(
       declaration.id.name,
-      declaration.extends.flatMap((heritage) =>
+      [
+        ...(parents.get(declaration.id.name) ?? []),
+        ...declaration.extends.flatMap((heritage) =>
         heritage.expression.type === AST_NODE_TYPES.Identifier ? [heritage.expression.name] : ["*"],
-      ),
+        ),
+      ],
     );
   }
   for (let pass = 0; pass <= interfaces.size; pass += 1) {

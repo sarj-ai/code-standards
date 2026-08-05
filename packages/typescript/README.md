@@ -337,6 +337,19 @@ provides a precise filename. Ambiguous re-exports, type-only modules,
 conventional framework filenames, tests, generated files, and CommonJS modules
 are excluded. It is warning-first while corpus evidence accumulates.
 
+`stepdown` is likewise warning-first: measured adoption is intentionally broad,
+so it only owns ordering within a private-method band. The strict preset gives
+public/protected/private band ordering to `@typescript-eslint/member-ordering`
+and disables `perfectionist/sort-classes`, avoiding contradictory owners. The
+rule resolves module helpers, private methods, recursion and cycles, but leaves
+function-valued private fields and mutable receiver aliases alone.
+
+`no-positional-tuple-return` now rejects every fixed multi-field tuple on an
+exported TypeScript boundary—including homogeneous, labelled, tagged, readonly,
+hook-style, interface, function-type, declaration and abstract-method returns.
+The runtime alternative is a named object. Private/local implementation helpers
+and sequence-shaped arrays remain outside the public-boundary rule.
+
 ## Ported from `sarj_python_lint`
 
 Several rules are ports of the Python linter's SARJ rules, retuned for TypeScript. The false-positive tuning documented in the Python docstrings is ported with them — that tuning is the valuable part.
@@ -349,7 +362,7 @@ Several rules are ports of the Python linter's SARJ rules, retuned for TypeScrip
 | `no-select-star` | SARJ021 | An implicit row contract that changes silently when a column is added or reordered. |
 | `no-offset-pagination` | SARJ025 | O(N)-per-page scans, and rows repeated or skipped when the offset window shifts under concurrent inserts. |
 | `no-repeated-string-literal` | SARJ024 | Copies of a structured literal (SQL, column lists, prompt templates) drifting apart when only one is edited. |
-| `no-positional-tuple-return` | SARJ026 | Call sites re-inventing — and disagreeing on — the field names of a positional tuple return. |
+| `no-positional-tuple-return` | SARJ026 | Public APIs exposing multi-field tuples—even labelled or hook-style tuples—instead of named objects. |
 | `no-sleep-in-test-body` | SARJ031 | Tests that assert on wall-clock time and flake under CI load. |
 | `no-fat-try-blocks` | SARJ007 | Over-broad `catch` handlers swallowing unrelated failures. |
 | `no-cors-wildcard-with-credentials` | SARJ008 | Credentialed cross-origin requests from any origin. |

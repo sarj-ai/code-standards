@@ -331,10 +331,56 @@ function classScope(
   for (const method of methods) {
     const caller = methodName(method);
     if (caller === null || method.value.body === null) continue;
+    const methodClassVariables = new Set(classVariables);
+    const methodAliases = new Set<NonNullable<ReturnType<typeof ASTUtils.findVariable>>>();
+    for (const statement of method.value.body.body) {
+      walk(statement, context.sourceCode.visitorKeys, (current, nestedFunction) => {
+        if (
+          nestedFunction ||
+          current.type !== AST_NODE_TYPES.VariableDeclarator ||
+          current.parent.type !== AST_NODE_TYPES.VariableDeclaration ||
+          current.parent.kind !== "const" ||
+          current.id.type !== AST_NODE_TYPES.Identifier
+        ) return;
+        let initializer = current.init;
+        while (
+          initializer?.type === AST_NODE_TYPES.TSAsExpression ||
+          initializer?.type === AST_NODE_TYPES.TSSatisfiesExpression ||
+          initializer?.type === AST_NODE_TYPES.TSNonNullExpression
+        ) initializer = initializer.expression;
+        if (initializer?.type !== AST_NODE_TYPES.ThisExpression) return;
+        const variable = context.sourceCode.getDeclaredVariables(current)[0];
+        if (variable !== undefined) {
+          methodClassVariables.add(variable);
+          methodAliases.add(variable);
+        }
+      });
+    }
     const visitCall = (current: TSESTree.Node, nestedFunction: boolean): void => {
+      if (
+        current.type === AST_NODE_TYPES.VariableDeclarator &&
+        current.id.type === AST_NODE_TYPES.ObjectPattern &&
+        current.init?.type === AST_NODE_TYPES.ThisExpression
+      ) {
+        for (const property of current.id.properties) {
+          if (
+            property.type === AST_NODE_TYPES.Property &&
+            property.key.type === AST_NODE_TYPES.Identifier &&
+            privateNames.has(property.key.name)
+          ) pinned.add(property.key.name);
+        }
+      }
       if (current.type !== AST_NODE_TYPES.MemberExpression) return;
-      const target = referencedMethod(context, current, classVariables);
-      if (target === null || !privateNames.has(target)) return;
+      const target = referencedMethod(context, current, methodClassVariables);
+      if (target === null) return;
+      if (!privateNames.has(target)) return;
+      const objectVariable = current.object.type === AST_NODE_TYPES.Identifier
+        ? ASTUtils.findVariable(context.sourceCode.getScope(current.object), current.object.name)
+        : null;
+      if (objectVariable !== null && methodAliases.has(objectVariable)) {
+        pinned.add(target);
+        return;
+      }
       if (
         current.computed ||
         nestedFunction ||

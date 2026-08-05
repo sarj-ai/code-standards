@@ -59,7 +59,16 @@ function functionName(node: TSESTree.Node): string | null {
   if (node.type === AST_NODE_TYPES.FunctionDeclaration) {
     return node.id?.name ?? null;
   }
-  const parent = node.parent;
+  let wrapped = node;
+  while (
+    (wrapped.parent?.type === AST_NODE_TYPES.TSAsExpression ||
+      wrapped.parent?.type === AST_NODE_TYPES.TSSatisfiesExpression ||
+      wrapped.parent?.type === AST_NODE_TYPES.TSNonNullExpression) &&
+    wrapped.parent.expression === wrapped
+  ) {
+    wrapped = wrapped.parent;
+  }
+  const parent = wrapped.parent;
   if (parent?.type === AST_NODE_TYPES.VariableDeclarator && parent.id.type === AST_NODE_TYPES.Identifier) {
     return parent.id.name;
   }
@@ -70,6 +79,13 @@ function functionName(node: TSESTree.Node): string | null {
       parent?.type === AST_NODE_TYPES.Property) &&
     parent.key.type === AST_NODE_TYPES.Identifier
   ) {
+    if (
+      (parent.type === AST_NODE_TYPES.MethodDefinition ||
+        parent.type === AST_NODE_TYPES.TSAbstractMethodDefinition ||
+        parent.type === AST_NODE_TYPES.PropertyDefinition) &&
+      (parent.accessibility === "private" ||
+        parent.accessibility === "protected")
+    ) return null;
     return parent.key.name;
   }
   return null;
@@ -121,16 +137,24 @@ function moduleScopeBindingName(node: TSESTree.Node): string | null {
   if (topLevel.type === AST_NODE_TYPES.ClassDeclaration) {
     let owner: TSESTree.Node | undefined = node.parent;
     while (owner !== undefined && owner.parent !== topLevel.body) owner = owner.parent;
-    return (owner?.type === AST_NODE_TYPES.MethodDefinition || owner?.type === AST_NODE_TYPES.TSAbstractMethodDefinition) &&
+    return (owner?.type === AST_NODE_TYPES.MethodDefinition ||
+      owner?.type === AST_NODE_TYPES.TSAbstractMethodDefinition ||
+      owner?.type === AST_NODE_TYPES.PropertyDefinition) &&
       owner.value === node
       ? topLevel.id?.name ?? null
       : null;
   }
   if (topLevel.type === AST_NODE_TYPES.VariableDeclaration) {
     for (const declarator of topLevel.declarations) {
+      let initializer = declarator.init;
+      while (
+        initializer?.type === AST_NODE_TYPES.TSAsExpression ||
+        initializer?.type === AST_NODE_TYPES.TSSatisfiesExpression ||
+        initializer?.type === AST_NODE_TYPES.TSNonNullExpression
+      ) initializer = initializer.expression;
       if (
         declarator.id.type === AST_NODE_TYPES.Identifier &&
-        declarator.init === node
+        initializer === node
       ) return declarator.id.name;
     }
   }
@@ -187,6 +211,13 @@ function exportedTypeNames(program: TSESTree.Program): ReadonlySet<string> {
     ) names.add(statement.declaration.id.name);
     for (const specifier of statement.specifiers) names.add(specifier.local.name);
   }
+  for (const statement of program.body) {
+    if (
+      statement.type === AST_NODE_TYPES.ExportDefaultDeclaration &&
+      (statement.declaration.type === AST_NODE_TYPES.TSInterfaceDeclaration ||
+        statement.declaration.type === AST_NODE_TYPES.TSTypeAliasDeclaration)
+    ) names.add(statement.declaration.id.name);
+  }
   return names;
 }
 
@@ -209,6 +240,15 @@ function owningInterface(node: TSESTree.Node): TSESTree.TSInterfaceDeclaration |
     if (current.type === AST_NODE_TYPES.Program) return null;
   }
   return null;
+}
+
+function isExportedInterface(
+  node: TSESTree.TSInterfaceDeclaration,
+  exports: ReadonlySet<string>,
+): boolean {
+  return node.parent.type === AST_NODE_TYPES.ExportNamedDeclaration ||
+    node.parent.type === AST_NODE_TYPES.ExportDefaultDeclaration ||
+    (node.parent.type === AST_NODE_TYPES.Program && exports.has(node.id.name));
 }
 
 /**
@@ -293,14 +333,14 @@ export default createRule<Options, MessageIds>({
       },
       TSCallSignatureDeclaration(node): void {
         const owner = owningInterface(node);
-        if (owner === null || !typeExports.has(owner.id.name) || node.returnType === undefined) return;
+        if (owner === null || !isExportedInterface(owner, typeExports) || node.returnType === undefined) return;
         report(node.returnType.typeAnnotation, `${owner.id.name}.call`);
       },
       TSMethodSignature(node): void {
         const owner = owningInterface(node);
         if (
           owner === null ||
-          !typeExports.has(owner.id.name) ||
+          !isExportedInterface(owner, typeExports) ||
           node.returnType === undefined ||
           node.key.type !== AST_NODE_TYPES.Identifier
         ) return;
@@ -317,7 +357,7 @@ export default createRule<Options, MessageIds>({
         const annotation = node.typeAnnotation?.typeAnnotation;
         if (
           owner === null ||
-          !typeExports.has(owner.id.name) ||
+          !isExportedInterface(owner, typeExports) ||
           node.key.type !== AST_NODE_TYPES.Identifier ||
           annotation?.type !== AST_NODE_TYPES.TSFunctionType ||
           annotation.returnType === undefined
