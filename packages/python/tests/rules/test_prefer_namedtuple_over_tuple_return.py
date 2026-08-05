@@ -122,6 +122,10 @@ def test_fires_on_inferred_tuple_literal_return():
     assert len(_check("def f():\n    return 1, 'a'\n")) == 1
 
 
+def test_explicit_non_tuple_contract_wins_over_tuple_implementation():
+    assert _check("def f() -> object:\n    return 1, 'a'\n") == []
+
+
 def test_private_owning_class_is_not_a_public_boundary():
     assert _check("class _Internal:\n    def pair(self) -> tuple[int, str]: ...\n") == []
 

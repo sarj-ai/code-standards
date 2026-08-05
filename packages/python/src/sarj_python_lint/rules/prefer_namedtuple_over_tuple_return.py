@@ -86,7 +86,7 @@ class PreferNamedtupleOverTupleReturn(Rule):
                 continue
             if not (
                 (node.returns is not None and _is_bare_positional_tuple(node.returns, facts.type_aliases))
-                or _returns_tuple_literal(node)
+                or (node.returns is None and _returns_tuple_literal(node))
             ):
                 continue
             family = (owner.name if owner is not None else None, node.name)

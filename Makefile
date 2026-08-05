@@ -52,8 +52,9 @@ test: check-versions-synced
 	  && uv build --wheel --project ../python --out-dir dist/deps >/dev/null \
 	  && uv build --wheel --project ../sql    --out-dir dist/deps >/dev/null \
 	  && uv build --wheel --project ../iac    --out-dir dist/deps >/dev/null \
-	  && uv pip install --quiet --reinstall ./dist/deps/*.whl ./dist/sarj_lint_configs-*.whl \
-	  && uv run --no-project pytest -q tests/
+	  && uv venv --quiet --clear dist/test-venv \
+	  && uv pip install --quiet --python dist/test-venv/bin/python pytest ./dist/deps/*.whl ./dist/sarj_lint_configs-*.whl \
+	  && dist/test-venv/bin/python -m pytest -q tests/
 	cd packages/tsconfig       && node -e "JSON.parse(require('fs').readFileSync('base.json','utf8'))" && node -e "JSON.parse(require('fs').readFileSync('strict.json','utf8'))"
 
 # Each package runs its native type-aware lint gate.
