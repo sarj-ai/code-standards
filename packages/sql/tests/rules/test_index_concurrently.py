@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 from sarj_sql_lint.rules.index_concurrently import IndexConcurrently
 
 
@@ -19,6 +21,28 @@ def test_flags_create_index_without_concurrently():
     diags = _check(src)
     assert len(diags) == 1
     assert "CONCURRENTLY" in diags[0].message
+
+
+def test_dbmate_transactional_migration_gets_compatible_paired_guidance() -> None:
+    source = "-- migrate:up\nSET LOCAL lock_timeout = '2s';\nCREATE INDEX idx ON users(email);\n"
+
+    (finding,) = _check(source)
+
+    assert "migrate:no-transaction" in finding.message
+    assert "SET`/`RESET" in finding.message
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "SELECT '-- migrate:up';\nCREATE INDEX idx ON users(email);\n",
+        "-- documentation mentions -- migrate:up\nCREATE INDEX idx ON users(email);\n",
+        "DO $body$\n-- migrate:up\n$body$;\nCREATE INDEX idx ON users(email);\n",
+    ],
+)
+def test_dbmate_guidance_requires_an_exact_live_directive(source: str) -> None:
+    (finding,) = _check(source)
+    assert "dbmate" not in finding.message
 
 
 def test_flags_create_unique_index_without_concurrently():

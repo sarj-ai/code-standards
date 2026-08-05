@@ -4,7 +4,7 @@
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/prefer-immutable-module-constant.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -51,28 +51,52 @@ function unwrapExpression(node: TSESTree.Node): TSESTree.Node {
   return node;
 }
 
-function isObjectFreeze(node: TSESTree.Node): boolean {
+type GlobalResolver = (identifier: TSESTree.Identifier) => boolean;
+
+function isObjectFreeze(node: TSESTree.Node, isUnshadowedGlobal: GlobalResolver): boolean {
   const inner = unwrapExpression(node);
-  return (
+  if (
     inner.type === AST_NODE_TYPES.CallExpression &&
     inner.callee.type === AST_NODE_TYPES.MemberExpression &&
     !inner.callee.computed &&
     inner.callee.object.type === AST_NODE_TYPES.Identifier &&
     inner.callee.object.name === "Object" &&
+    isUnshadowedGlobal(inner.callee.object) &&
     inner.callee.property.type === AST_NODE_TYPES.Identifier &&
-    inner.callee.property.name === "freeze"
-  );
+    inner.callee.property.name === "freeze" &&
+    inner.arguments.length === 1
+  ) {
+    const argument = inner.arguments[0];
+    return argument !== undefined && argument.type !== AST_NODE_TYPES.SpreadElement && collectionKind(argument, isUnshadowedGlobal) === "literal";
+  }
+  return false;
 }
 
-function collectionKind(node: TSESTree.Node): "literal" | "Set" | "Map" | null {
+function collectionKind(node: TSESTree.Node, isUnshadowedGlobal: GlobalResolver): "literal" | "Set" | "Map" | null {
   const inner = unwrapExpression(node);
+  if (
+    inner.type === AST_NODE_TYPES.CallExpression &&
+    inner.callee.type === AST_NODE_TYPES.MemberExpression &&
+    !inner.callee.computed &&
+    inner.callee.object.type === AST_NODE_TYPES.Identifier &&
+    inner.callee.object.name === "Object" &&
+    isUnshadowedGlobal(inner.callee.object) &&
+    inner.callee.property.type === AST_NODE_TYPES.Identifier &&
+    inner.callee.property.name === "freeze" &&
+    inner.arguments.length === 1 &&
+    inner.arguments[0] !== undefined &&
+    inner.arguments[0].type !== AST_NODE_TYPES.SpreadElement
+  ) {
+    return collectionKind(inner.arguments[0], isUnshadowedGlobal);
+  }
   if (inner.type === AST_NODE_TYPES.ArrayExpression || inner.type === AST_NODE_TYPES.ObjectExpression) {
     return "literal";
   }
   if (
     inner.type === AST_NODE_TYPES.NewExpression &&
     inner.callee.type === AST_NODE_TYPES.Identifier &&
-    (inner.callee.name === "Set" || inner.callee.name === "Map")
+    (inner.callee.name === "Set" || inner.callee.name === "Map") &&
+    isUnshadowedGlobal(inner.callee)
   ) {
     return inner.callee.name;
   }
@@ -90,7 +114,7 @@ function isReadonlyType(node: TSESTree.Node, kind: "literal" | "Set" | "Map"): b
     return false;
   }
   if (node.typeName.name === "Readonly") {
-    return true;
+    return kind === "literal";
   }
   return kind === "literal"
     ? node.typeName.name === "ReadonlyArray"
@@ -168,6 +192,10 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     const sourceCode = context.sourceCode;
+    const isUnshadowedGlobal: GlobalResolver = (identifier) => {
+      const variable = ASTUtils.findVariable(sourceCode.getScope(identifier), identifier.name);
+      return variable === null || variable.defs.length === 0;
+    };
     if (isTestFile(context.filename) || isGeneratedFile(context.filename, sourceCode.getText())) {
       return {};
     }
@@ -193,10 +221,13 @@ export default createRule<Options, MessageIds>({
         ) {
           return;
         }
-        if (isAsConst(node.init, (target) => sourceCode.getText(target)) || isObjectFreeze(node.init)) {
+        if (
+          isAsConst(node.init, (target) => sourceCode.getText(target)) ||
+          isObjectFreeze(node.init, isUnshadowedGlobal)
+        ) {
           return;
         }
-        const kind = collectionKind(node.init);
+        const kind = collectionKind(node.init, isUnshadowedGlobal);
         if (kind === null || declaredReadonlyType(node, kind)) {
           return;
         }

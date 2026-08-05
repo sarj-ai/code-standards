@@ -6,7 +6,7 @@ export default defineConfig({
   dts: true,
   sourcemap: false,
   clean: true,
-  target: "node24",
+  target: "node22",
   shims: true,
   // Externalize ESLint + its tooling — they live in the host process
   // (the consumer's ESLint instance). Bundling them would (a) break the ESM

@@ -1,10 +1,11 @@
 [project]
 name = "sarj-sql-lint"
-version = "0.6.2"
+version = "0.6.3"
 description = "Custom SQL lint rules for Postgres migrations — sqlfluff + pygrep, pre-commit-friendly."
 readme = "README.md"
 authors = [{ name = "sarj-ai" }]
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.14"
 classifiers = [
   "Development Status :: 4 - Beta",
@@ -45,6 +46,7 @@ packages = ["src/sarj_sql_lint"]
 include = [
   "src",
   "README.md",
+  "LICENSE",
   "pyproject.toml",
 ]
 exclude = [

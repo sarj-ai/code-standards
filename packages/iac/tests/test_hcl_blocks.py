@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 # `_hcl` is package-private by design; the walker is exercised directly because
 # its guards (masking, nesting, value rejoining) are what the rules depend on.
 from sarj_iac_lint._hcl import blocks
@@ -179,3 +181,10 @@ def test_empty_and_unbalanced_sources_degrade_without_raising():
     # Truncated file: parsed leniently rather than raising.
     (block,) = blocks('resource "aws_db_instance" "x" {\n  engine = "postgres"\n')
     assert block.labels == ("aws_db_instance", "x")
+
+
+def test_excessive_nesting_fails_with_a_controlled_parse_error() -> None:
+    source = "block {\n" * 200 + "}\n" * 200
+
+    with pytest.raises(ValueError, match="nesting exceeds"):
+        blocks(source)

@@ -63,6 +63,17 @@ shipping versions by a test, so this section cannot rot silently again.
 
 ## Daily use
 
+Use the launcher printed by `init`; it reflects where the bundle was installed:
+
+| Repository shape | Launcher prefix |
+|---|---|
+| Python project at the root | `uv run --frozen` |
+| Python project in `backend/` | `uv run --project backend --frozen` |
+| TypeScript-only repository | `uvx --from sarj-lint-configs==<manifest version>` |
+
+The examples below show the root-Python form. Keep the command after the prefix
+the same for other layouts.
+
 | Command | Answers |
 |---|---|
 | `uv run --frozen sarj-standards check` | Run version, config, custom-rule, Ruff, BasedPyright, and ESLint gates. |
@@ -71,7 +82,7 @@ shipping versions by a test, so this section cannot rot silently again.
 | `uv run --frozen sarj-standards update --check` | Preview a coherent toolchain update. |
 | `uv run --frozen sarj-standards show state` | Show the detected adoption as JSON. |
 
-For TypeScript, `uv run --frozen sarj-lint-configs peers` prints every npm package
+For TypeScript, `sarj-standards show peers` (with the init-generated launcher) prints every npm package
 `eslint.strict.mjs` needs at versions that install together — there is no
 `@latest` combination that does.
 
@@ -93,7 +104,9 @@ generated pre-commit block.
 
 ## Release
 
-Tag and push — the `release.yml` workflow handles publish via OIDC (PyPI) and `NPM_TOKEN` (npm).
+Normal releases are triggered by merging a manifest version bump to `main`;
+`release.yml` publishes via OIDC, then creates the matching version tag.
+Manual tagging is an exceptional recovery workflow.
 
 | Tag pattern | Publishes |
 |---|---|
@@ -103,9 +116,6 @@ Tag and push — the `release.yml` workflow handles publish via OIDC (PyPI) and 
 | `iac-vX.Y.Z` | `sarj-iac-lint` to PyPI |
 | `lint-configs-vX.Y.Z` | `sarj-lint-configs` to PyPI |
 | `tsconfig-vX.Y.Z` | `@sarj/tsconfig` to npm |
-
-Normal releases are triggered by merging a manifest version bump to `main`;
-the workflow publishes the changed package and creates its matching version tag.
 
 For a rule release, keep the change atomic: update the implementation, registry,
 strict config and tests; bump the owning package manifest; update its generated

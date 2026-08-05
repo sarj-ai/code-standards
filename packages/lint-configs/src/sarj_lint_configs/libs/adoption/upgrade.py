@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 import re
 import shutil
+import tomllib
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from sarj_lint_configs._meta import CONFIGS_DIR
+from sarj_lint_configs.libs.filesystem import is_link_like
 
-from . import doctor, lifecycle, manifest, scaffold, transaction
+from . import doctor, hooks, lifecycle, manifest, scaffold, transaction
 
 
 if TYPE_CHECKING:
@@ -66,6 +68,12 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
     if adopted is None:
         msg = "repository is not adopted; run `sarj-standards init` first"
         raise ValueError(msg)
+    path = manifest.manifest_path(root)
+    current_text = path.read_text(encoding="utf-8")
+    parsed: object = tomllib.loads(current_text)
+    hooks_table = manifest.table_field(manifest.as_table(parsed), "hooks")
+    hook_manager = adopted.hook_manager if "manager" in hooks_table else hooks.detect_manager(root)
+    adopted = replace(adopted, hook_manager=hook_manager)
     ecosystems = scaffold.detect(
         root,
         python_dest=adopted.python_dest if any(name in adopted.configs for name in manifest.PYTHON_CONFIGS) else None,
@@ -80,6 +88,7 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
         python_dest=adopted.python_dest if ecosystems.python else None,
         typescript_dest=adopted.typescript_dest if ecosystems.typescript else None,
         profile=adopted.profile,
+        hook_manager=adopted.hook_manager,
     )
     if scaffold_plan.errors:
         raise ValueError("; ".join(scaffold_plan.errors))
@@ -93,12 +102,13 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
     scaffold_write_paths = {path for path, _contents in scaffold_plan.writes}
     pin_writes = [(update.path, update.contents) for update in pin_updates if update.path not in scaffold_write_paths]
 
-    path = manifest.manifest_path(root)
-    current_text = path.read_text(encoding="utf-8")
     if not _VERSION_LINE.search(current_text):
         msg = f"{path} has no replaceable top-level version field"
         raise ValueError(msg)
     manifest_text = _VERSION_LINE.sub(f'version = "{manifest.adopted_version()}"', current_text, count=1)
+    if "manager" not in hooks_table:
+        separator = "" if manifest_text.endswith("\n\n") else "\n"
+        manifest_text += f'{separator}[hooks]\nmanager = "{hook_manager}"\n'
     changes: list[Change] = []
     if manifest_text != current_text:
         changes.append(Change(path, f"adopt lint-configs {manifest.adopted_version()}"))
@@ -159,24 +169,46 @@ def apply(plan: UpgradePlan, *, install: bool = True) -> int:
         + [path for path, _contents in (*plan.scaffold_plan.writes, *plan.scaffold_plan.edits)]
     )
     file_transaction = transaction.FileTransaction.capture(plan.root, paths)
+    environment = None if plan.ecosystems.python_root is None else plan.ecosystems.python_root / ".venv"
+    environment_existed = environment is not None and environment.exists()
     try:
         status = _apply_and_validate(plan, install=install)
     except KeyboardInterrupt:
         file_transaction.rollback()
+        _ = _cleanup_new_environment(environment, existed=environment_existed)
         return 130
     except OSError, TypeError, ValueError:
         file_transaction.rollback()
+        _ = _cleanup_new_environment(environment, existed=environment_existed)
         return 2
     if status:
         file_transaction.rollback()
+        if not _cleanup_new_environment(environment, existed=environment_existed):
+            return 2
     return status
+
+
+def _cleanup_new_environment(environment: Path | None, *, existed: bool) -> bool:
+    if existed or environment is None or not environment.is_dir():
+        return True
+    try:
+        shutil.rmtree(environment)
+    except OSError:
+        return False
+    return True
 
 
 def _apply_and_validate(plan: UpgradePlan, *, install: bool) -> int:
     """Apply the plan and return its install/postflight status."""
     _write_plan(plan)
     if install:
-        status = lifecycle.execute(lifecycle.install_commands(plan.root, plan.ecosystems))
+        status = lifecycle.execute(
+            lifecycle.install_commands(
+                plan.root,
+                plan.ecosystems,
+                hook_manager=plan.adopted.hook_manager,
+            )
+        )
         if status:
             return status
     findings = doctor.diagnose(plan.root)
@@ -213,7 +245,7 @@ def _write_plan(plan: UpgradePlan) -> None:
     )
     manifest.manifest_path(plan.root).write_text(plan.manifest_text, encoding="utf-8")
     for source, target in plan.config_writes:
-        if target.is_symlink() or (target.exists() and not target.is_file()):
+        if is_link_like(target) or (target.exists() and not target.is_file()):
             msg = f"refusing unsafe generated-config target {target}"
             raise OSError(msg)
         _ = shutil.copyfile(source, target)

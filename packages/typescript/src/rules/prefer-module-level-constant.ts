@@ -405,7 +405,7 @@ export default createRule<Options, MessageIds>({
     ],
     messages: {
       hoistCollection:
-        "`{{name}}` is a literal-only {{kind}} rebuilt on every call. Hoist it to module scope so it is allocated once and can be reused, exported, and tested.",
+        "`{{name}}` is a literal-only {{kind}} rebuilt on every call. Hoist it to module scope in immutable form (`as const`, a readonly collection, or `Object.freeze`) so it is allocated once without exposing mutable shared state.",
       hoistRegex:
         "`{{name}}` is a constant regex recompiled on every call. Hoist it to module scope.",
     },

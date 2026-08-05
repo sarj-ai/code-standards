@@ -178,3 +178,29 @@ def test_a_schema_dump_is_not_asked_for_a_lock_timeout() -> None:
     """
     assert _check(src, Path("structure.sql")) == []
     assert _check(src) == []
+
+
+def test_nontransactional_migration_rejects_ineffective_set_local_timeout() -> None:
+    source = """
+    -- migrate:no-transaction
+    -- migrate:up
+    SET LOCAL lock_timeout = '2s';
+    CREATE INDEX CONCURRENTLY idx_users_email ON users(email);
+    """
+
+    (finding,) = _check(source)
+
+    assert "session" in finding.message
+    assert "SET LOCAL" in finding.message
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "SELECT '-- migrate:no-transaction';\nSET LOCAL lock_timeout = '2s';\nALTER TABLE t ADD COLUMN c int;",
+        "-- documentation mentions -- migrate:no-transaction\nSET LOCAL lock_timeout = '2s';\nALTER TABLE t ADD COLUMN c int;",
+        "DO $body$\n-- migrate:no-transaction\n$body$;\nSET LOCAL lock_timeout = '2s';\nALTER TABLE t ADD COLUMN c int;",
+    ],
+)
+def test_nontransactional_mode_requires_an_exact_live_directive(source: str) -> None:
+    assert _check(source) == []

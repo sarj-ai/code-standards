@@ -14,6 +14,7 @@ from typing import (
     cast,  # ruff: ignore[banned-api] -- json.loads is typed Any; establish an object boundary before narrowing.
 )
 
+from sarj_lint_configs.libs.filesystem import is_link_like
 from sarj_lint_configs.libs.linting import runner
 
 from . import manifest, packagemanager, scaffold
@@ -45,15 +46,23 @@ class Inspection:
     package_manager: str | None
 
 
-def install_commands(root: Path, ecosystems: scaffold.Ecosystems) -> list[Command]:
+def install_commands(
+    root: Path,
+    ecosystems: scaffold.Ecosystems,
+    *,
+    hook_manager: manifest.HookManager = "pre-commit",
+) -> list[Command]:
     commands: list[Command] = []
     if ecosystems.python_root is not None:
         versions = manifest.installed_versions()
         bundle = tuple(f"{name}=={version}" for name, version in versions.items())
+        release_age_exemptions = tuple(
+            argument for name in versions for argument in ("--exclude-newer-package", f"{name}=2099-12-31")
+        )
         commands.append(
             Command(
                 "Python standards",
-                ("uv", "add", "--dev", *bundle),
+                ("uv", "add", "--dev", *release_age_exemptions, *bundle),
                 ecosystems.python_root,
             )
         )
@@ -67,7 +76,7 @@ def install_commands(root: Path, ecosystems: scaffold.Ecosystems) -> list[Comman
                 install_root,
             )
         )
-    if (root / ".git").exists():
+    if (root / ".git").exists() and hook_manager == "pre-commit":
         hook_argv = (
             (
                 "uv",
@@ -148,7 +157,7 @@ def _staged_eslint_candidates(root: Path, paths: Iterable[str]) -> set[Path]:
     for raw_path in paths:
         path = Path(raw_path)
         unresolved = path if path.is_absolute() else root / path
-        if unresolved.is_symlink():
+        if is_link_like(unresolved):
             continue
         candidate = unresolved.resolve()
         if candidate.suffix.lower() in _ESLINT_SUFFIXES and candidate.is_relative_to(root) and candidate.is_file():

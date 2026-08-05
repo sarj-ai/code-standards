@@ -131,6 +131,10 @@ _DIRECTIVE_RE = re.compile(
     re.IGNORECASE,
 )
 _SARJ_SUPPRESSION_RE = re.compile(r"^sarj-noqa:\s*(?P<codes>SARJ\d+(?:\s*,\s*SARJ\d+)*)\s*$", re.IGNORECASE)
+_MARKDOWN_SUPPRESSION_RE = re.compile(
+    r"^\s*<!--\s*sarj-noqa:\s*(?P<codes>SARJ\d+(?:\s*,\s*SARJ\d+)*)\s*-->\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
 _PROTECTED_RE = re.compile(
     r"https?://|\b(?:RFC|PEP|CVE)[- ]?\d+|\b[A-Z][A-Z0-9]{1,9}-\d+\b|"
     r"\b(?:because|otherwise|so that|to avoid|workaround|upstream|requires?|must |"
@@ -220,8 +224,14 @@ def check_paths(paths: Sequence[str], *, root: Path | None = None) -> list[Findi
         relative = _relative(path.resolve(), base)
         if any(fnmatch(relative, pattern) for pattern in excluded_patterns):
             continue
-        findings.extend(_artifact_findings(path, relative, source, durable_patterns))
-        findings.extend(_comment_findings(path, source))
+        path_findings = [
+            *_artifact_findings(path, relative, source, durable_patterns),
+            *_comment_findings(path, source),
+        ]
+        suppressed: frozenset[str] = (
+            _markdown_suppressions(source) if path.suffix.lower() in {".md", ".mdx"} else frozenset()
+        )
+        findings.extend(finding for finding in path_findings if finding.code not in suppressed)
     return sorted(findings, key=lambda item: (str(item.path), item.line, item.code))
 
 
@@ -238,6 +248,15 @@ def _relative(path: Path, root: Path) -> str:
         return path.relative_to(root).as_posix()
     except ValueError:
         return path.name
+
+
+def _markdown_suppressions(source: str) -> frozenset[str]:
+    prose = "\n".join(_markdown_prose_lines(source))
+    return frozenset(
+        code.strip().upper()
+        for match in _MARKDOWN_SUPPRESSION_RE.finditer(prose)
+        for code in match.group("codes").split(",")
+    )
 
 
 def _artifact_findings(
@@ -306,16 +325,30 @@ def _artifact_findings(
 
 def _markdown_prose_lines(source: str) -> list[str]:
     """Blank fenced examples while preserving line numbers for diagnostics."""
+    max_fence_indent = 3
+    min_fence_length = 3
+    indented_code_spaces = 4
     visible: list[str] = []
-    fence: str | None = None
+    fence: tuple[str, int] | None = None
     for line in source.splitlines():
-        stripped = line.lstrip()
-        marker = "```" if stripped.startswith("```") else "~~~" if stripped.startswith("~~~") else None
-        if marker is not None:
-            fence = None if fence == marker else marker if fence is None else fence
+        leading_spaces = len(line) - len(line.lstrip(" "))
+        candidate = line[leading_spaces:] if leading_spaces <= max_fence_indent else ""
+        marker = candidate[:1]
+        marker_length = len(candidate) - len(candidate.lstrip(marker)) if marker in {"`", "~"} else 0
+        if fence is not None:
+            fence_marker, fence_length = fence
+            if marker == fence_marker and marker_length >= fence_length and not candidate[marker_length:].strip():
+                fence = None
             visible.append("")
             continue
-        visible.append("" if fence is not None else line)
+        if marker_length >= min_fence_length and (marker != "`" or "`" not in candidate[marker_length:]):
+            fence = (marker, marker_length)
+            visible.append("")
+            continue
+        if leading_spaces >= indented_code_spaces or line.startswith("\t"):
+            visible.append("")
+            continue
+        visible.append(line)
     return visible
 
 

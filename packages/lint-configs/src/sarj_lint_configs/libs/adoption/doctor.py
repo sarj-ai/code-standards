@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Final, NamedTuple
 from sarj_lint_configs._meta import CONFIGS_DIR
 from sarj_lint_configs.libs.repository import ledger
 
-from . import manifest, packagemanager
+from . import hooks, manifest, packagemanager
 
 
 if TYPE_CHECKING:
@@ -174,6 +174,7 @@ def diagnose(root: Path) -> list[Finding]:
         if not any(fnmatch(path.relative_to(root).as_posix(), pattern) for pattern in exclusions)
     )
     findings = [*_check_manifest(root)]
+    findings.extend(_check_hook_manager(root))
     findings.extend(_check_pin_files(root, files, installed))
     findings.extend(_check_adopted_python_bundle(root, files, installed))
     findings.extend(_check_precommit_revs(root, files))
@@ -184,6 +185,26 @@ def diagnose(root: Path) -> list[Finding]:
     findings.extend(check_ruff_policy_authority(root, files))
     findings.extend(_check_adoption_wiring(root))
     return sorted(findings, key=lambda finding: (finding.where, finding.id, finding.detail))
+
+
+def _check_hook_manager(root: Path) -> Iterator[Finding]:
+    try:
+        adopted = manifest.load(root)
+    except OSError, TypeError, ValueError:
+        return
+    if adopted is None or adopted.hook_manager != "lefthook":
+        return
+    path = hooks.lefthook_config(root)
+    if path is not None and hooks.lefthook_runs_staged_check(root):
+        yield Finding(Level.OK, path.name, "runs the canonical staged check", "doctor.hooks.lefthook")
+        return
+    yield Finding(
+        Level.DRIFT,
+        "lefthook.yml",
+        "Lefthook does not run `sarj-standards check --staged` during pre-commit",
+        "doctor.hooks.lefthook",
+        "add a Lefthook pre-commit command that runs `sarj-standards check --staged`",
+    )
 
 
 def _has_adopted_eslint(root: Path) -> bool:
@@ -723,7 +744,31 @@ def _check_adoption_wiring(root: Path) -> Iterator[Finding]:  # ruff: ignore[too
                 "doctor.eslint.wiring",
                 "import and spread `./eslint.strict.mjs` from the active ESLint config chain",
             )
+        shadowing = _nested_eslint_configs(typescript_root, active_entrypoint)
+        if shadowing:
+            rendered = ", ".join(path.relative_to(root).as_posix() for path in shadowing)
+            yield Finding(
+                Level.DRIFT,
+                str(typescript_root.relative_to(root)),
+                f"package-local ESLint configs can bypass the adopted config: {rendered}",
+                "doctor.eslint.shadowed-config",
+                "make each package config import the adopted eslint.strict.mjs chain, or remove the shadowing config",
+            )
         yield from _check_eslint_peer_set(root, typescript_root)
+
+
+def _nested_eslint_configs(typescript_root: Path, active_entrypoint: Path) -> tuple[Path, ...]:
+    names = {*_ESLINT_CONFIG_NAMES, ".eslintrc", ".eslintrc.json", ".eslintrc.js", ".eslintrc.cjs"}
+    found: list[Path] = []
+    for path in _walk(typescript_root):
+        if path == active_entrypoint or path.name not in names:
+            continue
+        if path.parent == typescript_root and path.name == "eslint.strict.mjs":
+            continue
+        if _eslint_wiring_reaches_strict(path, typescript_root):
+            continue
+        found.append(path)
+    return tuple(sorted(found))
 
 
 def _manifest_destination(root: Path, value: str) -> Path | None:

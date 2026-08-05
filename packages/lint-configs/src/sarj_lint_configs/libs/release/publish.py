@@ -8,6 +8,7 @@ from tempfile import TemporaryDirectory
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Literal
 
+from sarj_lint_configs.libs.release.artifacts import verify_python_wheel_license
 from sarj_lint_configs.libs.release.process import ProcessRunner, run_build_process, run_process
 from sarj_lint_configs.libs.release.typescript import run_typescript_release
 
@@ -64,6 +65,7 @@ def publish_target(root: Path, target: PublishTarget, *, runner: ProcessRunner =
         ):
             msg = f"uv build did not create exactly one wheel for {target}"
             raise ValueError(msg)
+        verify_python_wheel_license(artifacts[0])
         runner(("uv", "publish", *(str(artifact) for artifact in artifacts)), cwd=cwd)
 
 

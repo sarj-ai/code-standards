@@ -212,6 +212,17 @@ def test_manifest_records_gradual_baseline_without_losing_extensions(tmp_path: P
     assert "[consumer]\nkeep = true" in path.read_text(encoding="utf-8")
 
 
+def test_manifest_refuses_to_record_a_baseline_through_a_symlink(tmp_path: Path) -> None:
+    outside = tmp_path.parent / f"{tmp_path.name}-outside.toml"
+    outside.write_text("untouched = true\n", encoding="utf-8")
+    (tmp_path / manifest.MANIFEST_NAME).symlink_to(outside)
+
+    with pytest.raises(OSError, match="refusing symlink mutation target"):
+        manifest.record_python_baseline(tmp_path, ".sarj-standards-baseline.json")
+
+    assert outside.read_text(encoding="utf-8") == "untouched = true\n"
+
+
 def test_check_create_baseline_records_a_default_used_by_later_checks(tmp_path: Path) -> None:
     _ = _python_repo(tmp_path)
     (tmp_path / "src" / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
@@ -362,10 +373,18 @@ def test_init_installs_dependencies_by_default(monkeypatch: pytest.MonkeyPatch, 
         "uv",
         "add",
         "--dev",
+        "--exclude-newer-package",
+        "sarj-lint-configs=2099-12-31",
+        "--exclude-newer-package",
+        "sarj-python-lint=2099-12-31",
+        "--exclude-newer-package",
+        "sarj-sql-lint=2099-12-31",
+        "--exclude-newer-package",
+        "sarj-iac-lint=2099-12-31",
         f"sarj-lint-configs=={__version__}",
-        "sarj-python-lint==0.47.0",
-        "sarj-sql-lint==0.6.2",
-        "sarj-iac-lint==0.5.3",
+        "sarj-python-lint==0.47.1",
+        "sarj-sql-lint==0.6.3",
+        "sarj-iac-lint==0.5.4",
     )
 
 
@@ -487,6 +506,56 @@ def test_generated_precommit_block_carries_no_rev(tmp_path: Path) -> None:
     assert "sarj-standards check --staged --" in generated
     assert "package\\.json|pyrightconfig\\.json" in generated
     assert generated.count("id: sarj-standards-check") == 1
+
+
+def test_init_preserves_an_existing_lefthook_manager(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    (tmp_path / "lefthook.yml").write_text(
+        "pre-commit:\n  commands:\n    standards:\n      run: sarj-standards check --staged\n", encoding="utf-8"
+    )
+
+    proc = _cli("init", str(tmp_path), "--no-install")
+
+    assert proc.returncode == 0, proc.stderr
+    assert not (tmp_path / ".pre-commit-config.yaml").exists()
+    adopted = manifest.load(tmp_path)
+    assert adopted is not None
+    assert adopted.hook_manager == "lefthook"
+
+
+def test_init_can_explicitly_disable_hook_management(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+
+    proc = _cli("init", str(tmp_path), "--hooks", "none", "--no-install")
+
+    assert proc.returncode == 0, proc.stderr
+    assert not (tmp_path / ".pre-commit-config.yaml").exists()
+    adopted = manifest.load(tmp_path)
+    assert adopted is not None
+    assert adopted.hook_manager == "none"
+
+
+def test_init_rejects_unwired_or_missing_lefthook_management(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    missing = _cli("init", str(tmp_path), "--hooks", "lefthook", "--no-install")
+    assert missing.returncode == 2
+    assert "requires lefthook" in missing.stderr
+
+    (tmp_path / "lefthook.yml").write_text("pre-commit:\n  commands: {}\n", encoding="utf-8")
+    unwired = _cli("init", str(tmp_path), "--hooks", "lefthook", "--no-install")
+    assert unwired.returncode == 2
+    assert "sarj-standards check --staged" in unwired.stderr
+
+
+@pytest.mark.parametrize("suffix", ["js", "jsx", "mjs", "cjs", "ts", "tsx", "mts", "cts"])
+def test_generated_precommit_block_routes_every_supported_javascript_suffix(tmp_path: Path, suffix: str) -> None:
+    _ = _typescript_repo(tmp_path)
+    assert _cli("init", "--dest", str(tmp_path)).returncode == 0
+
+    generated = (tmp_path / ".pre-commit-config.yaml").read_text()
+    match = re.search(r"(?m)^\s*files:\s*'(?P<pattern>[^']+)'$", generated)
+    assert match is not None
+    assert re.search(match.group("pattern"), f"src/example.{suffix}") is not None
 
 
 def test_init_writes_the_npm_overrides_into_package_json(tmp_path: Path) -> None:
@@ -1373,6 +1442,19 @@ def test_init_rejects_a_symlinked_mutation_target(tmp_path: Path) -> None:
     assert "symlink mutation target" in proc.stderr
     assert outside.read_text(encoding="utf-8") == '[project]\nname = "outside"\n'
     assert not (tmp_path / manifest.MANIFEST_NAME).exists()
+
+
+def test_init_rejects_a_symlinked_parent_of_a_mutation_target(tmp_path: Path) -> None:
+    real = tmp_path / "real"
+    real.mkdir()
+    (real / "pyproject.toml").write_text('[project]\nname = "app"\nversion = "0.1.0"\n', encoding="utf-8")
+    (tmp_path / "python").symlink_to(real, target_is_directory=True)
+
+    proc = _cli("init", str(tmp_path), "--python-dest", "python", "--no-install")
+
+    assert proc.returncode == 2
+    assert "traverses a symlink or junction" in proc.stderr
+    assert not (real / ".ruff-strict.toml").exists()
 
 
 def test_init_does_not_accept_comment_only_ruff_wiring(tmp_path: Path) -> None:

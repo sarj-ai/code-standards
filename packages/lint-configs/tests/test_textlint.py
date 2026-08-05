@@ -264,6 +264,30 @@ def test_new_artifact_rule_warns_without_blocking_its_first_release(
     assert "SARJ302 warning:" in capsys.readouterr().out
 
 
+def test_markdown_artifact_suppression_is_exact_code_specific(tmp_path: Path) -> None:
+    path = tmp_path / "FIX-BRIEF.md"
+    path.write_text("<!-- sarj-noqa: SARJ302 -->\n# Preserved external artifact\n", encoding="utf-8")
+    assert _codes(path, root=tmp_path) == []
+
+    path.write_text("<!-- sarj-noqa: SARJ301 -->\n# Temporary execution record\n", encoding="utf-8")
+    assert _codes(path, root=tmp_path) == ["SARJ302"]
+
+
+@pytest.mark.parametrize(
+    "example",
+    [
+        "```markdown\n<!-- sarj-noqa: SARJ302 -->\n```",
+        "    <!-- sarj-noqa: SARJ302 -->",
+        "`<!-- sarj-noqa: SARJ302 -->`",
+    ],
+)
+def test_markdown_suppression_examples_do_not_suppress_real_findings(tmp_path: Path, example: str) -> None:
+    path = tmp_path / "FIX-BRIEF.md"
+    path.write_text(f"{example}\n# Temporary execution record\n", encoding="utf-8")
+
+    assert _codes(path, root=tmp_path) == ["SARJ302"]
+
+
 def test_established_text_rules_remain_blocking(tmp_path: Path) -> None:
     path = tmp_path / "config.toml"
     path.write_text("# timeout = 30\n")
@@ -374,6 +398,26 @@ def test_markdown_fences_do_not_create_artifact_headings(tmp_path: Path) -> None
     readme = tmp_path / "README.md"
     readme.write_text(
         "# CLI\n\n```markdown\n## Fixes + learnings\n## Verification passes\n```\n",
+        encoding="utf-8",
+    )
+
+    assert _codes(readme, root=tmp_path) == []
+
+
+def test_long_markdown_fence_is_not_closed_by_a_shorter_example_fence(tmp_path: Path) -> None:
+    readme = tmp_path / "README.md"
+    readme.write_text(
+        "# CLI\n\n````markdown\n```markdown\n## Fixes + learnings\n## Verification passes\n```\n````\n",
+        encoding="utf-8",
+    )
+
+    assert _codes(readme, root=tmp_path) == []
+
+
+def test_indented_markdown_code_does_not_create_artifact_headings(tmp_path: Path) -> None:
+    readme = tmp_path / "README.md"
+    readme.write_text(
+        "# CLI\n\n    ## Fixes + learnings\n    ## Verification passes\n",
         encoding="utf-8",
     )
 

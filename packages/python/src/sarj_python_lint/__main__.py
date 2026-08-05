@@ -47,7 +47,11 @@ def _expand_paths(paths: list[Path]) -> list[Path]:
         if not p.exists():
             continue
         if p.is_file():
-            out.append(p)
+            try:
+                if p.stat().st_size <= _MAX_FILE_BYTES:
+                    out.append(p)
+            except OSError:
+                pass
             continue
         for child in p.rglob("*.py"):
             if not child.is_file():
@@ -82,8 +86,9 @@ def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
         raw = [diagnostic for rule in rules for diagnostic in rule.check(p, source)]
         diags.extend(
             diagnostic
-            for diagnostic in deduplicate_diagnostics(raw)
-            if not is_suppressed(source_lines, diagnostic.line, diagnostic.code)
+            for diagnostic in deduplicate_diagnostics(
+                [diagnostic for diagnostic in raw if not is_suppressed(source_lines, diagnostic.line, diagnostic.code)]
+            )
         )
     return diags
 

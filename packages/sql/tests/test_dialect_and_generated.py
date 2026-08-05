@@ -8,6 +8,7 @@ import pytest
 
 from sarj_sql_lint.rule_base import (
     Diagnostic,
+    clear_path_caches,
     declared_dialect,
     is_generated_migration,
     is_mysql,
@@ -113,6 +114,18 @@ def test_prisma_migration_lock_marks_the_whole_tree(tmp_path: Path) -> None:
     migration = root / "20240101000000_init" / "migration.sql"
     migration.write_text("CREATE TABLE a ();")
     assert is_generated_migration(migration, migration.read_text())
+
+
+def test_generated_marker_cache_can_be_cleared_between_lint_runs(tmp_path: Path) -> None:
+    migration = tmp_path / "migration.sql"
+    migration.write_text("CREATE TABLE a ();", encoding="utf-8")
+    clear_path_caches()
+    assert not is_generated_migration(migration, migration.read_text(encoding="utf-8"))
+
+    (tmp_path / "migration_lock.toml").write_text('provider = "postgresql"\n', encoding="utf-8")
+    clear_path_caches()
+
+    assert is_generated_migration(migration, migration.read_text(encoding="utf-8"))
 
 
 def test_atlas_sum_marks_the_tree(tmp_path: Path) -> None:

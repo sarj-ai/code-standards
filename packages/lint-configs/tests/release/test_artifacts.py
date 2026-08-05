@@ -63,7 +63,7 @@ def test_verify_built_package_checks_nonempty_dist_files(tmp_path: Path) -> None
 
 def test_verify_package_tarball_reads_actual_archive(tmp_path: Path) -> None:
     archive = tmp_path / "package.tgz"
-    _tarball(archive, {"package/dist/index.js": b"export {};"})
+    _tarball(archive, {"package/LICENSE": b"MIT", "package/dist/index.js": b"export {};"})
 
     assert verify_package_tarball(archive, ("dist/index.js",)) == ("dist/index.js",)
 

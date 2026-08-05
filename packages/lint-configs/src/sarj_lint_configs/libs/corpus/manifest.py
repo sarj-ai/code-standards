@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
+import os
 from pathlib import Path
 import re
 import stat
 import tomllib
 from typing import TypeIs
+
+from sarj_lint_configs.libs.filesystem import is_link_like
 
 
 _DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -103,7 +106,10 @@ def load_manifest(path: Path) -> CorpusManifest:
 
 def load_private_overlay(path: Path) -> CorpusManifest:
     """Load an explicit owner-readable overlay whose identities remain private."""
-    if path.is_symlink() or not path.is_file():
+    if os.name == "nt":
+        msg = "private corpus overlays require POSIX owner-only permission semantics"
+        raise OSError(msg)
+    if is_link_like(path) or not path.is_file():
         msg = "private corpus overlay must be a regular non-symlink file"
         raise ValueError(msg)
     mode = stat.S_IMODE(path.stat().st_mode)
@@ -182,6 +188,9 @@ def _source(values: dict[str, object], origin: Path, visibility: CorpusVisibilit
         msg = "public corpus roots must be relative to the manifest"
         raise ValueError(msg)
     if not resolved.is_absolute():
+        if visibility is CorpusVisibility.PUBLIC and ".." in resolved.parts:
+            msg = "public corpus roots must stay below the manifest directory"
+            raise ValueError(msg)
         resolved = (origin.parent / resolved).resolve()
     return CorpusSource(
         name,

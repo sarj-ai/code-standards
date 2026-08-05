@@ -22,7 +22,9 @@ if TYPE_CHECKING:
 # Logging protects broad secret-shaped data; timing checks only cover authenticators that gate access.
 
 # Descriptor suffixes name secret metadata rather than credential bytes.
-_DESCRIPTOR_WORDS = frozenset({"type", "types", "name", "names", "id", "ids", "kind", "kinds"})
+_DESCRIPTOR_WORDS = frozenset(
+    {"type", "types", "name", "names", "id", "ids", "kind", "kinds", "scope", "scopes", "permission", "permissions"}
+)
 
 # A `type`/`kind` token anywhere marks an enum/category discriminator, not a
 # credential: `TOKEN_TYPE_SYSTEM`, `credential_type`, `grant_kind`.

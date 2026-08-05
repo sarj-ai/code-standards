@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_lint_configs.libs.corpus import CorpusKind, CorpusSource, snapshot, verify
 from sarj_lint_configs.libs.rules import (
     CatalogRule,
     EvaluationCase,
+    EvaluationEvidence,
     EvaluationThresholds,
     ExpectedOutcome,
     Finding,
@@ -24,6 +27,7 @@ from sarj_lint_configs.libs.rules import (
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from pathlib import Path
 
 
 def _problem() -> RuleProblem:
@@ -163,3 +167,59 @@ def test_private_case_source_and_layout_do_not_enter_report() -> None:
     assert report.cases[0].case_id.startswith("<private:")
     assert "private-case" not in repr(report)
     assert report.cases[0].findings[0].message == "<private-finding>"
+
+
+def test_private_case_ids_are_report_local_ordinals() -> None:
+    cases = (
+        EvaluationCase("guessable-customer-name", Language.PYTHON, "pass", private=True),
+        EvaluationCase("another-customer-name", Language.PYTHON, "pass", private=True),
+    )
+
+    report = evaluate(_problem(), "TEST001", cases, lambda _case: ())
+
+    assert tuple(case.case_id for case in report.cases) == ("<private:1>", "<private:2>")
+
+
+def test_error_promotion_requires_verified_evidence_zero_errors_and_performance_budget(tmp_path: Path) -> None:
+    source_file = tmp_path / "case.py"
+    source_file.write_text("pass\n", encoding="utf-8")
+    unverified = snapshot(CorpusSource("sample", tmp_path, CorpusKind.LOCAL, "sha256:" + "0" * 64, ("*.py",)))
+    with pytest.raises(ValueError, match="verified corpora"):
+        EvaluationEvidence((unverified,), "all cases", timedelta(seconds=1), timedelta(seconds=1))
+    verified = verify(CorpusSource("sample", tmp_path, CorpusKind.LOCAL, unverified.digest, ("*.py",)))
+    slow = EvaluationEvidence(
+        (verified,),
+        "all cases",
+        timedelta(seconds=2),
+        timedelta(seconds=1),
+        maximum_slowdown=1.25,
+    )
+    cases = tuple(
+        EvaluationCase(
+            f"case-{index}",
+            Language.PYTHON,
+            "pass" if index == 0 else "return None",
+            ExpectedOutcome.MATCH if index == 0 else ExpectedOutcome.NO_MATCH,
+        )
+        for index in range(20)
+    )
+
+    report = evaluate(
+        _problem(),
+        "TEST001",
+        cases,
+        lambda case: (Finding("TEST001", 1, 1, "hit"),) if case.expected is ExpectedOutcome.MATCH else (),
+        evidence=slow,
+    )
+    assert report.decision is PromotionDecision.WARN
+
+    permissive = EvaluationThresholds(max_false_positives=1, minimum_cases_for_error=1)
+    false_positive = evaluate(
+        _problem(),
+        "TEST001",
+        (EvaluationCase("good", Language.PYTHON, "return None"),),
+        lambda _case: (Finding("TEST001", 1, 1, "hit"),),
+        thresholds=permissive,
+        evidence=slow,
+    )
+    assert false_positive.decision is PromotionDecision.WARN

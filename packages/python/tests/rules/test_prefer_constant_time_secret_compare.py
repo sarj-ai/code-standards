@@ -197,6 +197,12 @@ def test_allows_two_non_secret_names():
     assert _check(src) == []
 
 
+def test_allows_token_scope_collection_comparison() -> None:
+    source = "token_scopes = frozenset(load_scopes())\nvalid_scopes = frozenset(expected_scopes())\nresult = token_scopes != valid_scopes\n"
+
+    assert _check(source) == []
+
+
 @pytest.mark.parametrize("op", ["is", "is not", "<", ">", "<=", ">=", "in", "not in"])
 def test_allows_non_eq_operators(op: str):
     """Identity, ordering, and membership operators are out of scope."""

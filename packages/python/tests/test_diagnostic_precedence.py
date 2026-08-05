@@ -40,7 +40,7 @@ def test_specific_warning_never_hides_a_generic_error() -> None:
     assert deduplicate_diagnostics([generic, specific]) == [generic, specific]
 
 
-def test_suppressing_specific_finding_does_not_reveal_generic_twin(
+def test_suppressing_specific_finding_preserves_unsuppressed_generic_twin(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     source = tmp_path / "test_service.py"
@@ -62,5 +62,7 @@ def test_suppressing_specific_finding_does_not_reveal_generic_twin(
         ]
     )
 
-    assert status == 0
-    assert not capsys.readouterr().out
+    assert status == 1
+    output = capsys.readouterr().out
+    assert "SARJ050" in output
+    assert "SARJ088" not in output

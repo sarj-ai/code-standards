@@ -18,6 +18,7 @@ from sarj_lint_configs.libs.adoption.configs import (
     APPLICATION_CONFIG_NAMES,
     CONFIG_NAMES,
 )
+from sarj_lint_configs.libs.filesystem import is_link_like
 
 
 if TYPE_CHECKING:
@@ -78,8 +79,10 @@ class _Args(argparse.Namespace):
     github_output: Path | None = None
     release_target: str = ""
     release_targets: list[str]
+    wheels: list[Path]
     root: str | None = None
     configs_only: bool = False
+    hooks: manifest.HookManager | None = None
     dependencies: bool = False
     show_cmd: str = ""
     staged: bool = False
@@ -98,6 +101,7 @@ class _Args(argparse.Namespace):
         self.release_exclude = []
         self.release_exclude_file = []
         self.release_targets = []
+        self.wheels = []
 
 
 def cmd_sync(args: _Args, *, next_steps: bool = True) -> int:
@@ -344,7 +348,11 @@ def cmd_upgrade(args: _Args) -> int:
         for finding in pending:
             print(f"pending: {finding.id} {finding.where} -- {finding.detail}")
         print("next: run the skipped setup command(s), then `sarj-standards doctor`:")
-        for command in lifecycle.install_commands(root, plan.ecosystems):
+        for command in lifecycle.install_commands(
+            root,
+            plan.ecosystems,
+            hook_manager=plan.adopted.hook_manager,
+        ):
             print(f"      {shlex.join(command.argv)}  (in {command.cwd})")
         return 0
     print(f"upgraded: {root} now uses standards {__version__}")
@@ -364,6 +372,7 @@ def cmd_init(args: _Args) -> int:
             python_dest=args.python_dest,
             typescript_dest=args.typescript_dest,
             profile=args.profile or "standard",
+            hook_manager=args.hooks,
         )
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -400,15 +409,20 @@ def cmd_init(args: _Args) -> int:
                 print(f"would run:   {shlex.join(command.argv)}  (in {command.cwd})")
     else:
         result = service.apply_init(init_plan, install=not args.no_install)
-        if result.sync is not None:
-            _render_sync(result.sync)
         if result.status:
             if result.failure is service.InitFailure.INTERRUPTED:
                 print("error: initialization interrupted; file changes were restored", file=sys.stderr)
             elif result.failure is service.InitFailure.APPLY:
                 detail = f": {result.error}" if result.error else ""
                 print(f"error: initialization failed and file changes were restored{detail}", file=sys.stderr)
+            else:
+                print(
+                    "error: initialization failed; generated files, wiring, and any newly created .venv were restored",
+                    file=sys.stderr,
+                )
             return result.status
+        if result.sync is not None:
+            _render_sync(result.sync)
 
     verb_write = "would write" if args.dry_run else "wrote"
     verb_edit = "would append to" if args.dry_run else "appended to"
@@ -555,7 +569,7 @@ def cmd_check(args: _Args) -> int:
         print("future `sarj-standards check` and pre-commit runs apply it automatically")
         return 0
     if args.staged:
-        health_status = _check_staged_adoption_health(root)
+        health_status = _check_staged_adoption_health(root, output_format=args.output_format)
         if health_status:
             return health_status
         if not args.files:
@@ -610,17 +624,33 @@ def _validate_check_mode(args: _Args) -> None:
         _user_error("--create-baseline cannot be combined with --noise-only")
 
 
-def _check_staged_adoption_health(root: Path) -> int:
+def _check_staged_adoption_health(root: Path, *, output_format: str = "text") -> int:
     """Keep the staged fast path from bypassing generated config and pin drift."""
     from sarj_lint_configs import doctor  # ruff: ignore[import-outside-top-level] — lazy staged route
 
     drifted = [finding for finding in doctor.diagnose(root) if finding.level is doctor.Level.DRIFT]
+    invalid = any(finding.id in {"doctor.manifest.invalid", "doctor.package-json.invalid"} for finding in drifted)
+    status = 2 if invalid else 1 if drifted else 0
+    if output_format == "json" and status:
+        print(
+            json.dumps(
+                {
+                    "schema": 1,
+                    "command": "check",
+                    "phase": "adoption-health",
+                    "status": status,
+                    "root": str(root),
+                    "findings": [finding.as_dict() for finding in drifted],
+                },
+                indent=2,
+            )
+        )
+        return status
     for finding in drifted:
         print(f"drift: {finding.id} {finding.where} -- {finding.detail}")
     remediations = list(dict.fromkeys(finding.remediation for finding in drifted if finding.remediation))
     for remediation in remediations:
         print(f"fix: {remediation}")
-    invalid = any(finding.id in {"doctor.manifest.invalid", "doctor.package-json.invalid"} for finding in drifted)
     if invalid:
         return 2
     return 1 if drifted else 0
@@ -660,7 +690,7 @@ def _safe_staged_paths(root: Path, paths: Iterable[str]) -> list[str]:
         except ValueError:
             continue
         cursor = repository
-        if any((cursor := cursor / part).is_symlink() for part in relative.parts):
+        if any(is_link_like(cursor := cursor / part) for part in relative.parts):
             continue
         resolved = lexical.resolve()
         if resolved.is_relative_to(repository) and resolved.is_file():
@@ -715,8 +745,11 @@ def cmd_show(args: _Args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = _build_parser().parse_args(argv, namespace=_Args())
+    raw_argv = sys.argv[1:] if argv is None else argv
+    args = _build_parser().parse_args(raw_argv, namespace=_Args())
     if args.root is not None:
+        if any(argument == "--dest" or argument.startswith("--dest=") for argument in raw_argv):
+            _user_error("pass either positional ROOT or --dest, not both")
         args.dest = args.root
     match args.cmd:
         case "sync":
@@ -843,6 +876,11 @@ def _build_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-locals]
     p_init = sub.add_parser("init", help="scaffold the whole adoption: configs, wiring, hooks, CI")
     p_init.add_argument("--dest", default=".", help="repo root to scaffold (default: cwd)")
     p_init.add_argument("root", nargs="?", help="repository root (default: current directory)")
+    p_init.add_argument(
+        "--hooks",
+        choices=manifest.HOOK_MANAGERS,
+        help="hook manager (default: detect Lefthook, otherwise pre-commit)",
+    )
     p_init.add_argument(
         "--python-dest",
         help="the directory that owns pyproject.toml (default: detected)",
@@ -1076,6 +1114,11 @@ def _run_repo(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one lazy 
             if artifact is not None:
                 print(f"packed and verified {artifact.path}")
             return 0
+        if args.release_cmd == "verify-wheel":
+            for wheel in args.wheels:
+                release.verify_python_wheel_license(wheel.resolve())
+                print(f"verified wheel license: {wheel}")
+            return 0
         if args.release_cmd == "publish":
             target = args.release_target
             if target == "typescript":
@@ -1176,6 +1219,10 @@ def _add_repo_parsers(repo: argparse.ArgumentParser) -> None:  # ruff: ignore[to
     typescript.add_argument("release_mode", choices=("check", "pack", "publish"))
     typescript.add_argument("--dest", default=".", help="standards repository root (default: cwd)")
     typescript.add_argument("--output", type=Path, help="artifact directory (required for pack)")
+    verify_wheel = release_commands.add_parser(
+        "verify-wheel", help="require non-empty license text in built Python wheels"
+    )
+    verify_wheel.add_argument("wheels", nargs="+", type=Path)
     publish = release_commands.add_parser("publish", help="build and publish one package through its native client")
     publish.add_argument(
         "release_target",

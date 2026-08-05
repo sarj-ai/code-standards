@@ -53,7 +53,7 @@ class Stepdown(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated(path, source):
+        if path.name == "__main__.py" or is_generated(path, source):
             return []
         if _is_test_path(path):
             return []
@@ -465,9 +465,7 @@ def _locally_bound_names(node: ast.stmt) -> set[str]:
                 bound.add(n.name)
             case ast.alias(name=name, asname=asname):
                 bound.add((asname or name).split(".")[0])
-            case ast.MatchAs(name=str() as nm) | ast.MatchStar(name=str() as nm):
-                bound.add(nm)
-            case ast.MatchMapping(rest=str() as nm):
+            case ast.MatchAs(name=str() as nm) | ast.MatchStar(name=str() as nm) | ast.MatchMapping(rest=str() as nm):
                 bound.add(nm)
             case _:
                 pass
@@ -476,9 +474,7 @@ def _locally_bound_names(node: ast.stmt) -> set[str]:
 
 def _is_type_checking_test(test: ast.expr) -> bool:
     match test:
-        case ast.Name(id="TYPE_CHECKING"):
-            return True
-        case ast.Attribute(attr="TYPE_CHECKING"):
+        case ast.Name(id="TYPE_CHECKING") | ast.Attribute(attr="TYPE_CHECKING"):
             return True
         case _:
             return False

@@ -11,6 +11,7 @@ import pytest
 from sarj_lint_configs.libs.corpus import (
     CorpusKind,
     CorpusManifest,
+    CorpusSnapshot,
     CorpusSource,
     CorpusVisibility,
     load_manifest,
@@ -48,11 +49,21 @@ def test_snapshot_is_stable_and_sensitive_to_selected_content(tmp_path: Path) ->
     assert first.digest != changed.digest
 
 
+def test_snapshot_value_rejects_invalid_or_empty_identity() -> None:
+    with pytest.raises(ValueError, match="sha256"):
+        CorpusSnapshot("sample", "not-a-digest", 1, 1)
+    with pytest.raises(ValueError, match="counts"):
+        CorpusSnapshot("sample", _EMPTY_DIGEST, 0, -1)
+
+
 def test_verify_requires_the_declared_content_digest(tmp_path: Path) -> None:
     (tmp_path / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
     actual = snapshot(_source(tmp_path))
 
-    assert verify(_source(tmp_path, digest=actual.digest)) == actual
+    verified = verify(_source(tmp_path, digest=actual.digest))
+    assert verified == actual
+    assert verified.verified is True
+    assert actual.verified is False
     with pytest.raises(ValueError, match="digest drifted"):
         verify(_source(tmp_path))
 
@@ -209,6 +220,39 @@ def test_git_corpus_root_must_match_repository_top_level(monkeypatch: pytest.Mon
         snapshot(source)
 
 
+def test_git_corpus_ignores_ambient_repository_routing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    corpus = tmp_path / "repository"
+    corpus.mkdir()
+    (corpus / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
+    revision = "a" * 40
+    source = CorpusSource(
+        "pinned",
+        corpus,
+        CorpusKind.GIT,
+        "sha256:" + "0" * 64,
+        ("**/*.py",),
+        revision=revision,
+    )
+    monkeypatch.setenv("GIT_DIR", "/wrong/repository/.git")
+    monkeypatch.setenv("GIT_WORK_TREE", "/wrong/repository")
+
+    def which(_name: str) -> str:
+        return "/usr/bin/git"
+
+    monkeypatch.setattr(shutil, "which", which)
+
+    def run(*_args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        environment = kwargs.get("env")
+        assert isinstance(environment, dict)
+        assert "GIT_DIR" not in environment
+        assert "GIT_WORK_TREE" not in environment
+        return subprocess.CompletedProcess(("git",), 0, f"{corpus}\n{revision}\n")
+
+    monkeypatch.setattr(subprocess, "run", run)
+
+    assert snapshot(source).revision == revision
+
+
 def test_public_manifest_rejects_absolute_nonportable_roots(tmp_path: Path) -> None:
     manifest = tmp_path / "corpora.toml"
     manifest.write_text(
@@ -223,6 +267,23 @@ def test_public_manifest_rejects_absolute_nonportable_roots(tmp_path: Path) -> N
     )
 
     with pytest.raises(ValueError, match="must be relative"):
+        load_manifest(manifest)
+
+
+def test_public_manifest_rejects_parent_directory_roots(tmp_path: Path) -> None:
+    manifest = tmp_path / "corpora.toml"
+    manifest.write_text(
+        "schema = 1\n"
+        "[[corpus]]\n"
+        'name = "sample"\n'
+        'root = "../outside"\n'
+        'kind = "local"\n'
+        f'digest = "{_EMPTY_DIGEST}"\n'
+        'include = ["**/*.py"]\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="below the manifest"):
         load_manifest(manifest)
 
 

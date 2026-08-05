@@ -22,6 +22,8 @@ from sarj_python_lint.rules.prefer_immutable_module_constant import PreferImmuta
         pytest.param("VALUES = [runtime_value]", "tuple", id="dynamic-list-element"),
         pytest.param("LABELS = {'value': runtime_value}", "immutable mapping", id="dynamic-dict-value"),
         pytest.param("VALUES = [*runtime_values]", "tuple", id="dynamic-list-spread"),
+        pytest.param("VALUES = []\ndef mutate(VALUES):\n    VALUES.append(1)", "tuple", id="parameter-shadow"),
+        pytest.param("VALUES = []\ndef mutate():\n    VALUES = []\n    VALUES.append(1)", "tuple", id="local-shadow"),
     ],
 )
 def test_warns_for_literal_mutable_module_constants(source: str, replacement: str) -> None:
@@ -48,6 +50,8 @@ def test_warns_for_literal_mutable_module_constants(source: str, replacement: st
         "LABELS = {}\nLABELS['a'] = 'A'",
         "LABELS = {'a': []}\nLABELS['a'].append('A')",
         "LABELS = {'a': {'b': 'B'}}\nLABELS['a']['b'] = 'C'",
+        "BG_TASKS = set()\nservice = Service(bg_tasks=BG_TASKS)",
+        "BG_TASKS = set()\ndef install(task):\n    task.add_done_callback(BG_TASKS.discard)",
     ],
 )
 def test_ignores_immutable_dynamic_nonconstant_and_intentionally_mutated_values(source: str) -> None:
@@ -63,3 +67,20 @@ def test_ignores_test_and_generated_files() -> None:
     rule = PreferImmutableModuleConstant()
     assert rule.check(Path("tests/test_service.py"), "VALUES = [1, 2, 3]") == []
     assert rule.check(Path("generated.py"), source) == []
+
+
+@pytest.mark.parametrize("source", ["A = B = []\nA.append(1)", "A = B = {}\nconsume(B)", "A = B = set()"])
+def test_chained_mutable_assignments_are_conservatively_exempt(source: str) -> None:
+    assert PreferImmutableModuleConstant().check(Path("service.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "list = factory\nVALUES = list(runtime_values)",
+        "from custom import dict\nVALUES = dict(runtime_values)",
+        "def set(*values): return values\nVALUES = set(runtime_values)",
+    ],
+)
+def test_ignores_constructor_calls_when_builtin_name_is_shadowed(source: str) -> None:
+    assert PreferImmutableModuleConstant().check(Path("service.py"), source) == []

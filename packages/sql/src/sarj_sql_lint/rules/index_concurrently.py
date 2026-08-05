@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING, final, override
 
-from sarj_sql_lint.rule_base import Diagnostic, Rule, is_dump_file, is_postgres, mask_sql
+from sarj_sql_lint.rule_base import Diagnostic, Rule, has_dbmate_directive, is_dump_file, is_postgres, mask_sql
 
 
 if TYPE_CHECKING:
@@ -49,6 +49,7 @@ class IndexConcurrently(Rule):
             return []
 
         masked = mask_sql(source)
+        dbmate_transactional = has_dbmate_directive(source, "up") and not has_dbmate_directive(source, "no-transaction")
         if not is_postgres(source):
             return []
 
@@ -74,8 +75,11 @@ class IndexConcurrently(Rule):
                     col=pos - line_start + 1,
                     code=self.code,
                     message=(
-                        "Use `CREATE INDEX CONCURRENTLY` — a plain CREATE INDEX "
-                        "locks the table against writes for the whole build."
+                        "Move this index to a `-- migrate:no-transaction` migration, replace `SET LOCAL` "
+                        "timeouts with session `SET`/`RESET`, and use `CREATE INDEX CONCURRENTLY` — "
+                        "dbmate otherwise runs it in a transaction where CONCURRENTLY is illegal."
+                        if dbmate_transactional
+                        else "Use `CREATE INDEX CONCURRENTLY` — a plain CREATE INDEX locks the table against writes for the whole build."
                     ),
                 )
             )
