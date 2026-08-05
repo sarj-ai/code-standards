@@ -50,6 +50,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      artifact_sha256: ${{ steps.artifact_identity.outputs.sha256 }}
     defaults:
       run:
         working-directory: packages/typescript
@@ -85,6 +87,9 @@ jobs:
           f=fs.readdirSync(d).filter(x=>x.endsWith('.tgz'));
           if(f.length!==1)throw new Error('expected exactly one npm artifact');
           fs.renameSync(d+'/'+f[0],d+'/package.tgz')"
+      - name: Bind artifact digest to the build job
+        id: artifact_identity
+        run: echo "sha256=$(sha256sum "$RUNNER_TEMP/npm-artifacts/package.tgz" | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
       - name: Upload publishable artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -95,7 +100,7 @@ jobs:
   publish-typescript:
     needs: build-typescript
     runs-on: ubuntu-latest
-    environment: npm-release
+    environment: npm-typescript-release
     permissions:
       contents: read
       id-token: write
@@ -113,6 +118,10 @@ jobs:
         with:
           name: npm-typescript
           path: ${{ runner.temp }}/npm-artifacts
+      - name: Verify build-bound artifact digest
+        env:
+          EXPECTED_SHA256: ${{ needs.build-typescript.outputs.artifact_sha256 }}
+        run: echo "$EXPECTED_SHA256  $RUNNER_TEMP/npm-artifacts/package.tgz" | sha256sum --check --strict
       - name: Publish with npm trusted publishing
         run: npm publish "$RUNNER_TEMP/npm-artifacts/package.tgz" --access public --ignore-scripts
 
@@ -392,6 +401,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      artifact_sha256: ${{ steps.artifact_identity.outputs.sha256 }}
     defaults:
       run:
         working-directory: packages/tsconfig
@@ -427,6 +438,16 @@ jobs:
           f=fs.readdirSync(d).filter(x=>x.endsWith('.tgz'));
           if(f.length!==1)throw new Error('expected exactly one npm artifact');
           fs.renameSync(d+'/'+f[0],d+'/package.tgz')"
+      - name: Verify artifact identity and bind digest
+        id: artifact_identity
+        run: |
+          manifest="$(tar -xOf "$RUNNER_TEMP/npm-artifacts/package.tgz" package/package.json)"
+          actual_name="$(printf '%s' "$manifest" | node -e "const fs=require('node:fs');process.stdout.write(JSON.parse(fs.readFileSync(0,'utf8')).name)")"
+          actual_version="$(printf '%s' "$manifest" | node -e "const fs=require('node:fs');process.stdout.write(JSON.parse(fs.readFileSync(0,'utf8')).version)")"
+          expected_version="$(node -p "require('./package.json').version")"
+          test "$actual_name" = '@sarj/tsconfig'
+          test "$actual_version" = "$expected_version"
+          echo "sha256=$(sha256sum "$RUNNER_TEMP/npm-artifacts/package.tgz" | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
       - name: Upload publishable artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -437,7 +458,7 @@ jobs:
   publish-tsconfig:
     needs: build-tsconfig
     runs-on: ubuntu-latest
-    environment: npm-release
+    environment: npm-tsconfig-release
     permissions:
       contents: read
       id-token: write
@@ -455,6 +476,10 @@ jobs:
         with:
           name: npm-tsconfig
           path: ${{ runner.temp }}/npm-artifacts
+      - name: Verify build-bound artifact digest
+        env:
+          EXPECTED_SHA256: ${{ needs.build-tsconfig.outputs.artifact_sha256 }}
+        run: echo "$EXPECTED_SHA256  $RUNNER_TEMP/npm-artifacts/package.tgz" | sha256sum --check --strict
       - name: Publish with npm trusted publishing
         run: npm publish "$RUNNER_TEMP/npm-artifacts/package.tgz" --access public --ignore-scripts
 

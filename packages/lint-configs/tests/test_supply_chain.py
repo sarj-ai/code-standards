@@ -67,3 +67,13 @@ def test_privileged_tag_job_is_dependency_free_and_publish_gated() -> None:
     assert "needs.publish-python.result == 'success'" in tag_job
     assert "needs.detect.outputs.python != 'true'" not in tag_job
     assert '[[ "${peeled:-$existing}" == "$GITHUB_SHA" ]]' in tag_job
+
+
+def test_npm_publishers_have_distinct_identities_and_digest_binding() -> None:
+    release = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    assert "environment: npm-release" not in release
+    assert "environment: npm-typescript-release" in release
+    assert "environment: npm-tsconfig-release" in release
+    assert release.count("artifact_sha256:") == 2
+    assert release.count("Verify build-bound artifact digest") == 2
+    assert "test \"$actual_name\" = '@sarj/tsconfig'" in release
