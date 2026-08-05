@@ -921,6 +921,49 @@ def test_doctor_skips_vendored_trees(tmp_path: Path) -> None:
     assert "0.1.0" not in proc.stdout
 
 
+def test_doctor_git_walk_isolates_hook_environment_and_prunes_generated_paths(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Git hook repository variables cannot redirect a consumer scan."""
+    kept = tmp_path / "pyproject.toml"
+    skipped = tmp_path / "node_modules" / "junk" / "pyproject.toml"
+    generated = tmp_path / ".playwright-mcp" / "page.yml"
+    skipped.parent.mkdir(parents=True)
+    generated.parent.mkdir()
+    _ = kept.write_text('[project]\nname = "app"\nversion = "0.1.0"\n', encoding="utf-8")
+    _ = skipped.write_text('deps = ["sarj-python-lint==0.1.0"]\n', encoding="utf-8")
+    _ = generated.write_text('entry: "@sarj/no-implicit-attribute-access"\n', encoding="utf-8")
+    monkeypatch.setenv("GIT_DIR", "/wrong/repository/.git")
+    monkeypatch.setenv("GIT_WORK_TREE", "/wrong/repository")
+    monkeypatch.setenv("GIT_PREFIX", "nested/")
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.bare")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", "true")
+
+    def git_files(*_args: object, **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        environment = kwargs["env"]
+        assert isinstance(environment, dict)
+        assert "GIT_DIR" not in environment
+        assert "GIT_WORK_TREE" not in environment
+        assert "GIT_PREFIX" not in environment
+        assert "GIT_CONFIG_COUNT" not in environment
+        assert "GIT_CONFIG_KEY_0" not in environment
+        assert "GIT_CONFIG_VALUE_0" not in environment
+        return subprocess.CompletedProcess(
+            args=(),
+            returncode=0,
+            stdout=b"pyproject.toml\0node_modules/junk/pyproject.toml\0.playwright-mcp/page.yml\0",
+            stderr=b"",
+        )
+
+    monkeypatch.setattr(doctor.subprocess, "run", git_files)
+
+    findings = doctor.diagnose(tmp_path)
+
+    assert not [finding for finding in findings if "node_modules" in finding.where]
+    assert not [finding for finding in findings if ".playwright-mcp" in finding.where]
+
+
 def test_doctor_warns_when_no_manifest_exists(tmp_path: Path) -> None:
     _ = _python_repo(tmp_path)
     proc = _cli("doctor", "--dest", str(tmp_path))

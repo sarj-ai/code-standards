@@ -139,12 +139,17 @@ def test_doctor_accepts_one_standalone_ruff_config(tmp_path: Path) -> None:
     assert not list(check_ruff_policy_authority(tmp_path))
 
 
-def test_doctor_honors_gitignore_when_scanning_rule_references(tmp_path: Path) -> None:
-    _ = subprocess.run(("git", "init", "-q", str(tmp_path)), check=True)
+def test_doctor_honors_gitignore_when_scanning_rule_references(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _ = subprocess.run(("git", "init", "-q", str(tmp_path)), check=True, env={})
     (tmp_path / ".gitignore").write_text("generated/\n", encoding="utf-8")
     generated = tmp_path / "generated"
     generated.mkdir()
     (generated / "fixture.py").write_text("# sarj-noqa: SARJ061\n", encoding="utf-8")
+    monkeypatch.setenv("GIT_DIR", "/wrong/repository/.git")
+    monkeypatch.setenv("GIT_PREFIX", "nested/")
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.bare")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", "true")
 
     findings = doctor.diagnose(tmp_path)
 

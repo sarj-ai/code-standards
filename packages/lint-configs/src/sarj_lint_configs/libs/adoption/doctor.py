@@ -159,6 +159,9 @@ _SKIP_DIRS: Final = frozenset(
         "vendor",
     }
 )
+_GIT_SAFE_ENV: Final = frozenset(
+    {"HOME", "LANG", "LC_ALL", "LC_CTYPE", "PATH", "SYSTEMDRIVE", "SYSTEMROOT", "TMPDIR", "XDG_CONFIG_HOME"}
+)
 
 
 def diagnose(root: Path) -> list[Finding]:
@@ -900,12 +903,18 @@ def _candidate_files(files: Sequence[Path], suffixes: Sequence[str]) -> Iterator
 def _walk(root: Path) -> tuple[Path, ...]:
     """List authored files once, honoring ignore rules when the root is a Git checkout."""
     git = shutil.which("git")
+    git_environment = {
+        name: value
+        for name, value in os.environ.items()  # ruff: ignore[banned-api] — Git hook variables must not redirect child scans.
+        if name in _GIT_SAFE_ENV
+    }
     try:
         completed = (
             subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed Git executable and argv.
                 (git, "-C", str(root), "ls-files", "--cached", "--others", "--exclude-standard", "-z"),
                 check=False,
                 capture_output=True,
+                env=git_environment,
                 shell=False,
             )
             if git is not None
@@ -919,7 +928,8 @@ def _walk(root: Path) -> tuple[Path, ...]:
             if not raw:
                 continue
             path = root / raw.decode("utf-8", errors="surrogateescape")
-            if not path.is_symlink() and path.is_file():
+            relative = path.relative_to(root)
+            if not any(part in _SKIP_DIRS for part in relative.parts) and not path.is_symlink() and path.is_file():
                 found.append(path)
         return tuple(sorted(found))
 
