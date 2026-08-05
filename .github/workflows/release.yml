@@ -76,7 +76,10 @@ jobs:
       - run: npm install --global npm@11.19.0 --ignore-scripts
       - name: Enforce lockfile release-age quarantine
         run: uv run --project ../lint-configs --frozen sarj-standards repo release lock-age packages/typescript/package-lock.json --dest ../.. --exclude-file .github/release-age-exclusions.txt
-      - run: npm ci
+      # Dependency lifecycle scripts are an unnecessary code-execution surface.
+      # esbuild's platform binary is installed as an optional dependency, so the
+      # release build does not need package install hooks.
+      - run: npm ci --ignore-scripts
       - run: npm run build
       - run: npm test
       - name: Pack publishable artifact
@@ -113,6 +116,8 @@ jobs:
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
+      - name: Install the manifest-declared npm without lifecycle scripts
+        run: npm install --global npm@11.19.0 --ignore-scripts
       - name: Download publishable artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -471,6 +476,8 @@ jobs:
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
+      - name: Install the manifest-declared npm without lifecycle scripts
+        run: npm install --global npm@11.19.0 --ignore-scripts
       - name: Download publishable artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
