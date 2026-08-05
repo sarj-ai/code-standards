@@ -258,9 +258,9 @@ It reports; it never rewrites. Exit 1 on drift.
 The sibling linter versions are not yours to pick. `sarj-lint-configs` pins
 `sarj-python-lint`, `sarj-sql-lint` and `sarj-iac-lint` exactly, so `doctor`
 reads them out of the wheel you already installed and derives what every other
-site should say — including the pre-commit tag, which lives in a different
-namespace (`python-v0.37.0` for `sarj-lint-configs` 0.32.0) that nobody should
-have to translate by hand.
+site should say. It still diagnoses legacy pre-commit tag pins so an old
+adoption cannot drift silently, but new adoption does not create that second
+version site.
 
 The block `init` writes has no `rev:` at all. One `repo: local` hook runs the CLI
 from the environment your `pyproject.toml` pin already fixed, which deletes the

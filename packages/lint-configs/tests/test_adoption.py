@@ -1180,18 +1180,17 @@ def test_the_manifest_filename_is_the_one_adopted_repos_committed() -> None:
     assert manifest.MANIFEST_NAME in (REPO_ROOT / "README.md").read_text(encoding="utf-8")
 
 
-def test_the_expected_precommit_rev_names_a_tag_the_release_workflow_publishes() -> None:
-    """The main-only release creates the `python-v` rev consumed by pre-commit."""
+def test_the_legacy_precommit_rev_mapping_is_diagnostic_only() -> None:
+    """Legacy revs remain diagnosable, but the release workflow cannot create them."""
     expected = manifest.expected_precommit_rev()
     assert expected is not None
     assert expected == f"python-v{version('sarj-python-lint')}"
 
     workflow = (REPO_ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
-    prefix = expected.rsplit("-v", 1)[0]
     assert "branches: [main]" in workflow
     assert "tags:" not in workflow.partition("\npermissions:\n")[0]
-    assert f"targets+=({prefix})" in workflow, f"release.yml never selects {prefix} for tagging"
-    assert 'tag="$target-v$version"' in workflow
+    assert "\n  tag:\n" not in workflow
+    assert "git push" not in workflow
 
 
 def test_release_version_detection_does_not_short_circuit_git_diff() -> None:
