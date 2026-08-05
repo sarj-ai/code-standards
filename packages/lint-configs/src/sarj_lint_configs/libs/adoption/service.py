@@ -132,7 +132,9 @@ def plan_sync(
 
 def apply_sync(plan: SyncPlan, *, force: bool = False, check: bool = False) -> SyncResult:
     """Apply or check a config synchronization plan without producing output."""
-    records = tuple(SyncRecord(target, _sync_one(target, force=force, check=check)) for target in plan.targets)
+    records = tuple(
+        SyncRecord(target, _sync_one(target, root=plan.root, force=force, check=check)) for target in plan.targets
+    )
     return SyncResult(records, check)
 
 
@@ -257,9 +259,20 @@ def _contained_destination(root: Path, requested: str, *, label: str) -> Path:
     return destination
 
 
-def _sync_one(target: SyncTarget, *, force: bool, check: bool) -> SyncOutcome:
+def _sync_one(target: SyncTarget, *, root: Path, force: bool, check: bool) -> SyncOutcome:
     destination = target.destination
-    if destination.is_symlink() or (destination.exists() and not destination.is_file()):
+    if destination.is_symlink():
+        if not check:
+            return SyncOutcome.INVALID
+        try:
+            resolved = destination.resolve(strict=True)
+            resolved.relative_to(root)
+        except OSError, ValueError:
+            return SyncOutcome.INVALID
+        if not resolved.is_file() or resolved.read_bytes() != target.source.read_bytes():
+            return SyncOutcome.DRIFT
+        return SyncOutcome.OK
+    if destination.exists() and not destination.is_file():
         return SyncOutcome.INVALID
     if check:
         if not destination.is_file() or destination.read_bytes() != target.source.read_bytes():

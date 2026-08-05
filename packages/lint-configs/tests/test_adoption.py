@@ -70,7 +70,8 @@ def test_verify_leaves_maintainer_repository_policy_to_repo_check(
         _ = next_steps
         return 0
 
-    def no_custom_rules(_root: Path) -> int:
+    def no_custom_rules(_root: Path, *, paths: Iterable[str]) -> int:
+        assert tuple(paths) == (".",)
         return 0
 
     def no_verification_commands(_ecosystems: scaffold.Ecosystems) -> list[lifecycle.Command]:
@@ -156,6 +157,27 @@ def test_old_manifest_defaults_to_standard_profile(tmp_path: Path) -> None:
     adopted = manifest.load(tmp_path)
     assert adopted is not None
     assert adopted.profile == "standard"
+    assert adopted.verify_paths == (".",)
+
+
+def test_manifest_loads_contained_custom_verification_paths(tmp_path: Path) -> None:
+    _ = (tmp_path / manifest.MANIFEST_NAME).write_text(
+        'version = "1.2.3"\nconfigs = []\n[verify]\npaths = ["src", "README.md"]\n'
+    )
+
+    adopted = manifest.load(tmp_path)
+
+    assert adopted is not None
+    assert adopted.verify_paths == ("src", "README.md")
+
+
+def test_manifest_rejects_custom_verification_path_escape(tmp_path: Path) -> None:
+    _ = (tmp_path / manifest.MANIFEST_NAME).write_text(
+        'version = "1.2.3"\nconfigs = []\n[verify]\npaths = ["../outside"]\n'
+    )
+
+    with pytest.raises(ValueError, match="escapes repository root"):
+        _ = manifest.load(tmp_path)
 
 
 def test_manifest_rejects_unknown_profile(tmp_path: Path) -> None:

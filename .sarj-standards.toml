@@ -1,4 +1,4 @@
-version = "0.48.0"
+version = "0.48.1"
 profile = "standard"
 configs = ["ruff", "pyright"]
 
@@ -14,6 +14,11 @@ exclude = [
   "packages/lint-configs/tests/test_rule_ledger.py",
   "packages/lint-configs/tests/test_upgrade.py",
 ]
+
+[verify]
+# Rule implementations intentionally contain rejected examples in their fixtures.
+# Dogfood custom rules on the public package surface and maintained prose instead.
+paths = ["README.md", "CLAUDE.md", "packages/lint-configs/README.md", "packages/lint-configs/src", "packages/lint-configs/tests"]
 
 [repository]
 canonical_config_dir = "packages/lint-configs/src/sarj_lint_configs/configs"

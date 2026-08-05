@@ -64,6 +64,7 @@ def test_release_cli_preserves_release_age_environment(
     monkeypatch.setattr(release, "check_lockfile_release_age", check)
     monkeypatch.setenv("MIN_RELEASE_AGE_DAYS", "21")
     monkeypatch.setenv("MIN_RELEASE_AGE_EXCLUDE", "from-env,from-both")
+    (tmp_path / "release-age.txt").write_text("from-file@1.0.0\n", encoding="utf-8")
 
     status = cli.main(
         [
@@ -75,6 +76,8 @@ def test_release_cli_preserves_release_age_environment(
             "from-cli",
             "--exclude",
             "from-both",
+            "--exclude-file",
+            "release-age.txt",
             "--dest",
             str(tmp_path),
         ]
@@ -84,7 +87,7 @@ def test_release_cli_preserves_release_age_environment(
     assert policies == [
         release.ReleaseAgePolicy(
             timedelta(days=21),
-            frozenset({"from-env", "from-cli", "from-both"}),
+            frozenset({"from-env", "from-cli", "from-both", "from-file@1.0.0"}),
         )
     ]
 

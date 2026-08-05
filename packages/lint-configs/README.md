@@ -95,6 +95,17 @@ Run `verify` in CI. `init` prints it as a ready-made job.
 `check --noise-only` covers Python and text/config inputs; TypeScript comment
 noise is enforced by the generated strict ESLint config.
 
+`verify` checks the whole repository by default. A tool repository whose rule
+fixtures intentionally contain rejected code can narrow only the custom-rule
+pass, without weakening Ruff, BasedPyright, or ESLint:
+
+```toml
+[verify]
+paths = ["src", "tests", "README.md"]
+```
+
+Paths are repository-relative and cannot escape the repository root.
+
 Maintainers can declare repository policy in `.sarj-standards.toml` and replace
 ad hoc scripts with `sarj-standards repo check`. The same command checks private
 references, CI history, filenames, rule/test/registry pairing, canonical config
@@ -107,8 +118,8 @@ Makefile are intentionally thin adapters rather than a second implementation:
 
 ```bash
 sarj-standards repo setup --check
-sarj-standards repo release check-tag typescript-v9.12.0
-sarj-standards repo release lock-age packages/typescript/package-lock.json
+sarj-standards repo release check-tag typescript-v9.12.1
+sarj-standards repo release lock-age packages/typescript/package-lock.json --exclude-file .github/release-age-exclusions.txt
 sarj-standards repo release typescript check
 sarj-standards repo release publish typescript
 ```
@@ -118,6 +129,10 @@ grouped under `sarj_lint_configs.libs` by adoption, linting, repository, setup,
 and release domains; `__main__` is only an entrypoint and `cli/` owns argument
 parsing and presentation. The former top-level modules remain identity-preserving
 compatibility aliases for existing imports and monkeypatches.
+
+Release-age exception files contain one exact `package@version` per line, with
+optional `#` comments. Name-wide exceptions are rejected in files, so a future
+lockfile upgrade cannot silently inherit a temporary whitelist.
 
 `sarj-standards` is the preferred entrypoint. `sarj-lint-configs` remains an
 alias for compatibility. `check` routes Python, SQL, Terraform, YAML/TFTPL,

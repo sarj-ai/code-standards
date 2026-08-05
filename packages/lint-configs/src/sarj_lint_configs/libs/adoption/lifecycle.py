@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- commands are fixed argv assembled from detected ecosystems.
@@ -119,15 +120,26 @@ def execute(commands: Iterable[Command]) -> int:
             sys.stderr.write(f"error: {command.argv[0]} is required for {command.label}\n")
             return 2
         completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-            [executable, *command.argv[1:]], cwd=command.cwd, check=False
+            [executable, *command.argv[1:]],
+            cwd=command.cwd,
+            check=False,
+            env=_command_environment(command),
         )
         if completed.returncode:
             return completed.returncode
     return 0
 
 
-def verify_custom_rules(root: Path) -> int:
-    return runner.run([str(root)])
+def _command_environment(command: Command) -> dict[str, str] | None:
+    if command.argv[0] not in {"uv", "uvx"}:
+        return None
+    environment = os.environ.copy()  # ruff: ignore[banned-api] -- nested uv must not inherit the package runner's venv.
+    environment.pop("VIRTUAL_ENV", None)
+    return environment
+
+
+def verify_custom_rules(root: Path, *, paths: Iterable[str] = (".",)) -> int:
+    return runner.run([str(root / path) for path in paths])
 
 
 def inspect(root: Path) -> Inspection:

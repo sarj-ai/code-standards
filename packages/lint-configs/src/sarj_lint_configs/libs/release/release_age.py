@@ -20,6 +20,26 @@ if TYPE_CHECKING:
 _SCOPED_PACKAGE_PARTS = 2
 
 
+def load_exact_exclusions(path: Path) -> frozenset[str]:
+    """Load reviewable package@version exceptions from a line-oriented file."""
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        msg = f"could not read release-age exclusions {path}: {exc}"
+        raise ValueError(msg) from exc
+    exclusions: set[str] = set()
+    for line_number, raw_line in enumerate(lines, start=1):
+        value = raw_line.partition("#")[0].strip()
+        if not value:
+            continue
+        name, separator, version = value.rpartition("@")
+        if not separator or not name or not version or (name.startswith("@") and "/" not in name):
+            msg = f"{path}:{line_number}: expected an exact package@version exclusion"
+            raise ValueError(msg)
+        exclusions.add(value)
+    return frozenset(exclusions)
+
+
 class PackumentFetcher(Protocol):
     """Fetch one npm package metadata document."""
 

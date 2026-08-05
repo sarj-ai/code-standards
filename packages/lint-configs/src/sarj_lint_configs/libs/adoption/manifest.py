@@ -49,6 +49,7 @@ class Manifest:
     python_dest: str
     typescript_dest: str
     profile: Profile = "standard"
+    verify_paths: tuple[str, ...] = (".",)
 
     def render(self) -> str:
         """Serialise to the TOML text written at the repo root."""
@@ -143,12 +144,14 @@ def load(root: Path) -> Manifest | None:
     profile: Profile = raw_profile
 
     dest_table = table_field(data, "dest")
+    verify_table = table_field(data, "verify")
     return Manifest(
         version=declared,
         configs=tuple(name for name in names if isinstance(name, str)),
         python_dest=_dest_value(dest_table, "python"),
         typescript_dest=_dest_value(dest_table, "typescript"),
         profile=profile,
+        verify_paths=_verify_paths(root, verify_table),
     )
 
 
@@ -165,6 +168,23 @@ def _dest_value(table: dict[str, object], key: str) -> str:
         msg = f"manifest [dest].{key} must be a non-empty string"
         raise TypeError(msg)
     return value
+
+
+def _verify_paths(root: Path, table: dict[str, object]) -> tuple[str, ...]:
+    if "paths" not in table:
+        return (".",)
+    values = list_field(table, "paths")
+    if not values or not all(isinstance(value, str) and value for value in values):
+        msg = "manifest [verify].paths must be a non-empty list of non-empty strings"
+        raise TypeError(msg)
+    paths = tuple(value for value in values if isinstance(value, str))
+    for value in paths:
+        try:
+            (root / value).resolve().relative_to(root.resolve())
+        except ValueError as exc:
+            msg = f"manifest [verify].paths entry escapes repository root: {value}"
+            raise ValueError(msg) from exc
+    return paths
 
 
 def installed_versions() -> dict[str, str]:

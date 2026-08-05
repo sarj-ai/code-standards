@@ -10,6 +10,7 @@ from sarj_lint_configs.libs.release import (
     PackageIdentity,
     ReleaseAgePolicy,
     check_lockfile_release_age,
+    load_exact_exclusions,
     locked_registry_packages,
 )
 
@@ -53,6 +54,22 @@ def test_locked_registry_packages_applies_name_and_version_exclusions(tmp_path: 
     policy = ReleaseAgePolicy(exclusions=frozenset({"a", "b@2.0.0"}))
 
     assert locked_registry_packages(lockfile, policy) == ()
+
+
+def test_load_exact_exclusions_accepts_comments_and_scoped_packages(tmp_path: Path) -> None:
+    path = tmp_path / "exclusions.txt"
+    path.write_text("# temporary\nplain@1.2.3 # reason\n@scope/pkg@4.5.6\n", encoding="utf-8")
+
+    assert load_exact_exclusions(path) == frozenset({"plain@1.2.3", "@scope/pkg@4.5.6"})
+
+
+@pytest.mark.parametrize("value", ["plain", "@scope@1.0.0", "plain@", "@1.0.0"])
+def test_load_exact_exclusions_rejects_non_exact_entries(tmp_path: Path, value: str) -> None:
+    path = tmp_path / "exclusions.txt"
+    path.write_text(f"{value}\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="expected an exact package@version"):
+        load_exact_exclusions(path)
 
 
 def test_check_lockfile_release_age_uses_injected_clock_and_fetcher(tmp_path: Path) -> None:

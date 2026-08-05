@@ -92,7 +92,7 @@ jobs:
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - run: npm install --global npm@11.19.0 --ignore-scripts
       - name: Enforce lockfile release-age quarantine
-        run: uv run --project ../lint-configs --frozen sarj-standards repo release lock-age packages/typescript/package-lock.json --dest ../..
+        run: uv run --project ../lint-configs --frozen sarj-standards repo release lock-age packages/typescript/package-lock.json --dest ../.. --exclude-file .github/release-age-exclusions.txt
       - run: npm ci
       - run: npm run build
       - run: npm test
@@ -300,13 +300,11 @@ jobs:
   build-lint-configs:
     needs:
       - detect
-      - publish-typescript
       - publish-python
       - publish-sql
       - publish-iac
     if: >-
       always() &&
-      (needs.publish-typescript.result == 'success' || needs.publish-typescript.result == 'skipped') &&
       (needs.publish-python.result == 'success' || needs.publish-python.result == 'skipped') &&
       (needs.publish-sql.result == 'success' || needs.publish-sql.result == 'skipped') &&
       (needs.publish-iac.result == 'success' || needs.publish-iac.result == 'skipped') &&
@@ -357,6 +355,7 @@ jobs:
 
   publish-lint-configs:
     needs: build-lint-configs
+    if: always() && needs.build-lint-configs.result == 'success'
     runs-on: ubuntu-latest
     environment: pypi-release
     permissions:
@@ -449,7 +448,7 @@ jobs:
       - publish-lint-configs
       - publish-tsconfig
     if: >-
-      always() && !cancelled() && !failure() &&
+      always() && !cancelled() &&
       github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
@@ -464,20 +463,32 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
       - name: Tag Python release
-        if: needs.detect.outputs.python == 'true'
+        if: >-
+          needs.publish-python.result == 'success' ||
+          (needs.detect.outputs.python != 'true' && needs.publish-python.result == 'skipped')
         run: uv run --project packages/lint-configs --frozen sarj-standards repo release create-tags python --dest .
       - name: Tag SQL release
-        if: needs.detect.outputs.sql == 'true'
+        if: >-
+          needs.publish-sql.result == 'success' ||
+          (needs.detect.outputs.sql != 'true' && needs.publish-sql.result == 'skipped')
         run: uv run --project packages/lint-configs --frozen sarj-standards repo release create-tags sql --dest .
       - name: Tag IaC release
-        if: needs.detect.outputs.iac == 'true'
+        if: >-
+          needs.publish-iac.result == 'success' ||
+          (needs.detect.outputs.iac != 'true' && needs.publish-iac.result == 'skipped')
         run: uv run --project packages/lint-configs --frozen sarj-standards repo release create-tags iac --dest .
       - name: Tag lint-configs release
-        if: needs.detect.outputs.lint-configs == 'true'
+        if: >-
+          needs.publish-lint-configs.result == 'success' ||
+          (needs.detect.outputs.lint-configs != 'true' && needs.publish-lint-configs.result == 'skipped')
         run: uv run --project packages/lint-configs --frozen sarj-standards repo release create-tags lint-configs --dest .
       - name: Tag TypeScript release
-        if: needs.detect.outputs.typescript == 'true'
+        if: >-
+          needs.publish-typescript.result == 'success' ||
+          (needs.detect.outputs.typescript != 'true' && needs.publish-typescript.result == 'skipped')
         run: uv run --project packages/lint-configs --frozen sarj-standards repo release create-tags typescript --dest .
       - name: Tag tsconfig release
-        if: needs.detect.outputs.tsconfig == 'true'
+        if: >-
+          needs.publish-tsconfig.result == 'success' ||
+          (needs.detect.outputs.tsconfig != 'true' && needs.publish-tsconfig.result == 'skipped')
         run: uv run --project packages/lint-configs --frozen sarj-standards repo release create-tags tsconfig --dest .

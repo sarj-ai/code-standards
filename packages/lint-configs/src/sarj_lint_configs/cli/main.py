@@ -68,6 +68,7 @@ class _Args(argparse.Namespace):
     lockfile: Path | None = None
     minimum_age: timedelta | None = None
     release_exclude: list[str]
+    release_exclude_file: list[Path]
     output: Path | None = None
     before: str = ""
     after: str = ""
@@ -86,6 +87,7 @@ class _Args(argparse.Namespace):
         self.repo_only = []
         self.roots = []
         self.release_exclude = []
+        self.release_exclude_file = []
         self.release_targets = []
 
 
@@ -399,11 +401,11 @@ def cmd_verify(args: _Args) -> int:
     sync_args.check = True
     if cmd_sync(sync_args, next_steps=False):
         return 1
-    if lifecycle.verify_custom_rules(root):
+    adopted = _declared_manifest(args)
+    if lifecycle.verify_custom_rules(root, paths=(".",) if adopted is None else adopted.verify_paths):
         return 1
     policy_args = _Args()
     policy_args.dest = str(root)
-    adopted = _declared_manifest(policy_args)
     if adopted is not None and adopted.profile == "application" and cmd_library_policy(policy_args):
         return 1
     return lifecycle.execute(lifecycle.verification_commands(scaffold.detect(root)))
@@ -700,6 +702,8 @@ def _run_repo(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one lazy 
 
         plan = plan_setup(_resolve_dest(args.dest))
         if args.check:
+            if plan.install_hooks:
+                print(f"would install: Lefthook repository hooks  (in {plan.root})")
             for command in plan.commands:
                 print(f"would run: {shlex.join(command.argv)}  (in {command.cwd})")
             return 0
@@ -740,7 +744,13 @@ def _run_repo(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one lazy 
             )
             policy = release.ReleaseAgePolicy(
                 args.minimum_age if args.minimum_age is not None else environment_policy.minimum_age,
-                environment_policy.exclusions | frozenset(args.release_exclude),
+                environment_policy.exclusions
+                | frozenset(args.release_exclude)
+                | frozenset(
+                    exclusion
+                    for exclusion_file in args.release_exclude_file
+                    for exclusion in release.load_exact_exclusions((root / exclusion_file).resolve())
+                ),
             )
             report = release.check_lockfile_release_age((root / args.lockfile).resolve(), policy)
             if report.failures:
@@ -853,6 +863,14 @@ def _add_repo_parsers(repo: argparse.ArgumentParser) -> None:  # ruff: ignore[to
     age.add_argument("--dest", default=".", help="standards repository root (default: cwd)")
     age.add_argument("--minimum-days", dest="minimum_age", type=lambda value: timedelta(days=int(value)))
     age.add_argument("--exclude", dest="release_exclude", action="append", default=[])
+    age.add_argument(
+        "--exclude-file",
+        dest="release_exclude_file",
+        action="append",
+        type=Path,
+        default=[],
+        help="line-oriented exact package@version exceptions (repeatable)",
+    )
     typescript = release_commands.add_parser("typescript", help="check, pack, or publish the TypeScript package")
     typescript.add_argument("release_mode", choices=("check", "pack", "publish"))
     typescript.add_argument("--dest", default=".", help="standards repository root (default: cwd)")
