@@ -68,15 +68,18 @@ function typeOnlyBindings(program: TSESTree.Program): ReadonlySet<string> {
   const names = new Set<string>();
   const runtimeNames = new Set<string>();
   for (const statement of program.body) {
+    const declaration = statement.type === AST_NODE_TYPES.ExportNamedDeclaration
+      ? statement.declaration
+      : statement;
     if (
-      statement.type === AST_NODE_TYPES.TSInterfaceDeclaration ||
-      statement.type === AST_NODE_TYPES.TSTypeAliasDeclaration
+      declaration?.type === AST_NODE_TYPES.TSInterfaceDeclaration ||
+      declaration?.type === AST_NODE_TYPES.TSTypeAliasDeclaration
     ) {
-      names.add(statement.id.name);
+      names.add(declaration.id.name);
       continue;
     }
-    if (statement.type === AST_NODE_TYPES.TSEnumDeclaration && statement.const) {
-      names.add(statement.id.name);
+    if (declaration?.type === AST_NODE_TYPES.TSEnumDeclaration && declaration.const) {
+      names.add(declaration.id.name);
       continue;
     }
     if (statement.type === AST_NODE_TYPES.ImportDeclaration) {
@@ -92,9 +95,6 @@ function typeOnlyBindings(program: TSESTree.Program): ReadonlySet<string> {
       }
       continue;
     }
-    const declaration = statement.type === AST_NODE_TYPES.ExportNamedDeclaration
-      ? statement.declaration
-      : statement;
     if (declaration?.type === AST_NODE_TYPES.TSDeclareFunction && declaration.id !== null) {
       names.add(declaration.id.name);
       continue;

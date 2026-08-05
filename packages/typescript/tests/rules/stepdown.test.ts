@@ -101,6 +101,10 @@ ruleTester.run("stepdown", rule, {
       code: "class Service { private static load() { return 1; } @deco(Service.load) private run() { return Service.load(); } }",
     },
     {
+      name: "pins a private helper referenced while evaluating a parameter decorator",
+      code: "class Service { private static load() { return 1; } private run(@deco(Service.load()) value: string) { return value; } }",
+    },
+    {
       name: "allows a private method called through a computed property",
       code: "class Service { private load() { return 1; } run() { return this['load'](); } }",
     },

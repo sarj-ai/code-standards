@@ -241,3 +241,23 @@ def move(file_id: str, folder_id: str, *, replace: bool = False) -> None: ...
 def test_suffixless_newtype_inside_a_union_is_still_nominal():
     src = "UserKey = NewType('UserKey', str)\ndef sync(user_id: str | UserKey, org_id: OrgId) -> None: ...\n"
     assert len(_check(src)) == 1
+
+
+def test_raw_alias_of_suffixless_nominal_union_is_detected():
+    src = "UserKey = NewType('UserKey', str)\nMixed = UserKey | str\ndef sync(user_id: Mixed, org_id: OrgId) -> None: ...\n"
+    assert len(_check(src)) == 1
+
+
+def test_suffixless_nominal_aliases_are_transitive():
+    src = "UserKey = NewType('UserKey', str)\nAssigneeKey = UserKey\ndef sync(user_id: AssigneeKey, org_id: str) -> None: ...\n"
+    assert len(_check(src)) == 1
+
+
+def test_class_fields_and_matching_constructor_report_once():
+    src = """
+class Link:
+    file_id: str
+    owner_id: str
+    def __init__(self, file_id: str, owner_id: str) -> None: ...
+"""
+    assert len(_check(src)) == 1

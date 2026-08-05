@@ -86,9 +86,21 @@ class PreferNominalIdTypes(Rule):
             return []
 
         source_lines = source.splitlines()
-        raw_aliases = _raw_alias_names(tree)
         nominal_aliases = _nominal_alias_names(tree)
+        raw_aliases = _raw_alias_names(tree, nominal_aliases)
         diagnostics: list[Diagnostic] = []
+        class_role_names = {
+            node: {role.name for role in _boundary_roles(node, raw_aliases, nominal_aliases)}
+            for node in tree.body
+            if isinstance(node, ast.ClassDef)
+        }
+        constructor_owners = {
+            member: node
+            for node in tree.body
+            if isinstance(node, ast.ClassDef)
+            for member in node.body
+            if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)) and member.name == "__init__"
+        }
         exempt_schema_nodes = {
             descendant
             for candidate in ast.walk(tree)
@@ -100,6 +112,9 @@ class PreferNominalIdTypes(Rule):
             if node in exempt_schema_nodes:
                 continue
             roles = _boundary_roles(node, raw_aliases, nominal_aliases)
+            owner = constructor_owners.get(node) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) else None
+            if owner is not None and {role.name for role in roles} == class_role_names.get(owner, set()):
+                continue
             raw = [role for role in roles if role.raw_primitive]
             if not raw or len({role.name for role in roles}) < _MIN_ID_ROLES:
                 continue
@@ -230,7 +245,7 @@ def _is_external_adapter_path(path: Path) -> bool:
     )
 
 
-def _raw_alias_names(tree: ast.Module) -> frozenset[str]:
+def _raw_alias_names(tree: ast.Module, nominal_aliases: frozenset[str]) -> frozenset[str]:
     aliases: dict[str, ast.expr] = {}
     for statement in tree.body:
         if isinstance(statement, ast.TypeAlias):
@@ -250,7 +265,9 @@ def _raw_alias_names(tree: ast.Module) -> frozenset[str]:
     raw: set[str] = set()
     for _round in range(len(aliases)):
         grown = {
-            name for name, value in aliases.items() if name not in raw and _is_raw_primitive_id(value, frozenset(raw))
+            name
+            for name, value in aliases.items()
+            if name not in raw and _is_raw_primitive_id(value, frozenset(raw), nominal_aliases)
         }
         if not grown:
             break
@@ -272,6 +289,7 @@ def _nominal_alias_names(tree: ast.Module) -> frozenset[str]:
         if isinstance(statement, ast.ImportFrom) and statement.module in {"typing", "typing_extensions"}:
             new_type_calls.update(alias.asname or alias.name for alias in statement.names if alias.name == "NewType")
     names: set[str] = set()
+    aliases: dict[str, ast.expr] = {}
     for statement in tree.body:
         if isinstance(statement, ast.Assign) and len(statement.targets) == 1:
             target, value = statement.targets[0], statement.value
@@ -285,6 +303,17 @@ def _nominal_alias_names(tree: ast.Module) -> frozenset[str]:
             and _qualified_tail(value.func) in new_type_calls
         ):
             names.add(target.id)
+        elif isinstance(target, ast.Name):
+            aliases[target.id] = _type_alias_type_value(value) or value
+    for _round in range(len(aliases)):
+        grown = {
+            name
+            for name, value in aliases.items()
+            if name not in names and isinstance(value, (ast.Name, ast.Attribute)) and _qualified_tail(value) in names
+        }
+        if not grown:
+            break
+        names |= grown
     return frozenset(names)
 
 

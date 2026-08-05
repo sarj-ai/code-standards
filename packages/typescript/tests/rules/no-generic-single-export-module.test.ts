@@ -50,6 +50,9 @@ ruleTester.run("no-generic-single-export-module", rule, {
     { filename: "/repo/src/utils.ts", code: "declare function parseOrder(): void; export default parseOrder;" },
     { filename: "/repo/src/utils.ts", code: "declare class Order {} export default Order;" },
     { filename: "/repo/src/utils.ts", code: "import type { Order } from './order.js'; export default Order;" },
+    { filename: "/repo/src/utils.ts", code: "export interface Order { id: string } export default Order;" },
+    { filename: "/repo/src/utils.ts", code: "export type Order = { id: string }; export default Order;" },
+    { filename: "/repo/src/utils.ts", code: "export const enum Order { Open } export default Order;" },
     {
       filename: "/repo/src/utils.ts",
       code: "const parseOrder = () => ({}); export { parseOrder, parseOrder as default };",

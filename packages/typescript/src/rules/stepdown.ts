@@ -345,6 +345,12 @@ function classScope(
     if (caller === null || method.value.body === null) continue;
     const methodClassVariables = new Set(classVariables);
     const methodAliases = new Set<NonNullable<ReturnType<typeof ASTUtils.findVariable>>>();
+    const parameterDecoratorNodes = new Set<TSESTree.Node>();
+    for (const parameter of method.value.params) {
+      for (const decorator of parameter.decorators) {
+        walk(decorator, context.sourceCode.visitorKeys, (current) => parameterDecoratorNodes.add(current));
+      }
+    }
     const thisValue = (value: TSESTree.Expression | null | undefined): boolean => {
       let current = value;
       while (
@@ -426,6 +432,7 @@ function classScope(
       if (
         current.computed ||
         nestedFunction ||
+        parameterDecoratorNodes.has(current) ||
         current.parent.type !== AST_NODE_TYPES.CallExpression ||
         current.parent.callee !== current
       ) {
