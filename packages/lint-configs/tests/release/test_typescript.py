@@ -36,6 +36,10 @@ class FakeRunner:
             license_info = tarfile.TarInfo("package/LICENSE")
             license_info.size = 3
             package.addfile(license_info, io.BytesIO(b"MIT"))
+            manifest = b'{"name":"example","version":"1.0.0"}'
+            manifest_info = tarfile.TarInfo("package/package.json")
+            manifest_info.size = len(manifest)
+            package.addfile(manifest_info, io.BytesIO(manifest))
             info = tarfile.TarInfo("package/dist/index.js")
             info.size = len(contents)
             package.addfile(info, io.BytesIO(contents))
@@ -46,7 +50,10 @@ class FakeRunner:
 def _package(tmp_path: Path) -> tuple[Path, FakeRunner]:
     root = tmp_path / "package"
     root.mkdir()
-    (root / "package.json").write_text('{"main":"./dist/index.js"}', encoding="utf-8")
+    (root / "package.json").write_text(
+        '{"name":"example","version":"1.0.0","main":"./dist/index.js"}',
+        encoding="utf-8",
+    )
     return root, FakeRunner(root)
 
 

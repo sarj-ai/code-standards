@@ -98,7 +98,41 @@ def test_verify_package_tarball_rejects_an_empty_export(tmp_path: Path) -> None:
 def test_verify_package_tarball_rejects_install_lifecycle_scripts(tmp_path: Path) -> None:
     archive = tmp_path / "package.tgz"
     manifest = json.dumps({"scripts": {"postinstall": "node payload.js"}}).encode()
-    _tarball(archive, {"package/package.json": manifest, "package/dist/index.js": b"export {};"})
+    _tarball(
+        archive,
+        {
+            "package/LICENSE": b"MIT",
+            "package/package.json": manifest,
+            "package/dist/index.js": b"export {};",
+        },
+    )
 
     with pytest.raises(ValueError, match="install lifecycle script is forbidden"):
         verify_package_tarball(archive, ("dist/index.js",))
+
+
+def test_verify_package_tarball_binds_name_and_version(tmp_path: Path) -> None:
+    archive = tmp_path / "package.tgz"
+    manifest = json.dumps({"name": "@sarj/eslint-plugin", "version": "9.12.1"}).encode()
+    _tarball(
+        archive,
+        {
+            "package/LICENSE": b"MIT",
+            "package/package.json": manifest,
+            "package/dist/index.js": b"export {};",
+        },
+    )
+
+    assert verify_package_tarball(
+        archive,
+        ("dist/index.js",),
+        expected_name="@sarj/eslint-plugin",
+        expected_version="9.12.1",
+    ) == ("dist/index.js",)
+    with pytest.raises(ValueError, match="name does not match"):
+        verify_package_tarball(
+            archive,
+            ("dist/index.js",),
+            expected_name="@sarj/tsconfig",
+            expected_version="9.12.1",
+        )
