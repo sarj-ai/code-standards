@@ -18,13 +18,13 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-_HTTP_METHODS = {"get", "post", "put", "patch", "delete"}
+_HTTP_METHODS = frozenset({"get", "post", "put", "patch", "delete"})
 # Dict-conversion protocol methods: returning a raw dict is the declared
 # contract (and inherited, for pydantic's `model_dump`/`dict`).
-_DICT_CONVERSION_NAMES = {"asdict", "as_dict", "dict", "model_dump", "to_data", "to_dict"}
-_DICT_NAMES = {"dict", "Dict"}
-_LIST_NAMES = {"list", "List"}
-_ANY_VALUE_NAMES = {"Any", "object"}
+_DICT_CONVERSION_NAMES = frozenset({"asdict", "as_dict", "dict", "model_dump", "to_data", "to_dict"})
+_DICT_NAMES = frozenset({"dict", "Dict"})
+_LIST_NAMES = frozenset({"list", "List"})
+_ANY_VALUE_NAMES = frozenset({"Any", "object"})
 # `dict[K, V]` subscript carries exactly two type arguments.
 _DICT_ARG_COUNT = 2
 
@@ -183,7 +183,7 @@ def _is_overload(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     return False
 
 
-_VALIDATOR_DECORATORS = {"model_validator", "field_validator", "validator", "root_validator"}
+_VALIDATOR_DECORATORS = frozenset({"model_validator", "field_validator", "validator", "root_validator"})
 
 
 def _is_validator(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:

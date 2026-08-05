@@ -933,6 +933,7 @@ const config = [
       "@sarj/no-hand-rolled-sleep": "error",
       "@sarj/no-hand-rolled-spinner": "error",
       "@sarj/prefer-input-group-search": "error",
+      "@sarj/prefer-immutable-module-constant": "warn",
       "@sarj/require-fetch-timeout": "error",
       "@sarj/no-silent-promise-catch": "error",
       "@sarj/enforce-file-structure": "error",

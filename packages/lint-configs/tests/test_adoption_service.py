@@ -40,6 +40,19 @@ def test_sync_service_plans_and_applies_without_cli_state(tmp_path: Path) -> Non
     assert (tmp_path / ".ruff-strict.toml").is_file()
 
 
+def test_sync_service_reports_current_config_as_ok_without_rewriting(tmp_path: Path) -> None:
+    plan = plan_sync(tmp_path, configs=("ruff",))
+    first = apply_sync(plan)
+    before = plan.targets[0].destination.stat().st_mtime_ns
+
+    second = apply_sync(plan, force=True)
+
+    assert first.count(SyncOutcome.WRITTEN) == 1
+    assert second.count(SyncOutcome.OK) == 1
+    assert second.count(SyncOutcome.WRITTEN) == 0
+    assert plan.targets[0].destination.stat().st_mtime_ns == before
+
+
 def test_init_service_applies_configs_wiring_and_manifest(tmp_path: Path) -> None:
     _python_project(tmp_path)
     plan = plan_init(tmp_path)

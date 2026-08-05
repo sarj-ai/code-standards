@@ -6,6 +6,7 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from types import MappingProxyType
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
@@ -83,7 +84,7 @@ _SUMMARY_ONLY = frozenset({"summary"})
 
 
 # The keyword singletons.
-_SINGLETONS: dict[object, str] = {None: "none", True: "true", False: "false"}
+_SINGLETONS = MappingProxyType({None: "none", True: "true", False: "false"})
 
 
 def _body_stems(node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:

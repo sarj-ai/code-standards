@@ -6,6 +6,7 @@ import ast
 import io
 import re
 import tokenize
+from types import MappingProxyType
 from typing import TYPE_CHECKING, NamedTuple
 
 from sarj_python_lint.rule_base import parse_or_none
@@ -89,17 +90,19 @@ _VENDOR_RE = re.compile(
     r"only|models)\b)",
 )
 
-_SIGNALS: dict[str, re.Pattern[str]] = {
-    "ref": _REF_RE,
-    "version": _VERSION_RE,
-    "units": _UNITS_RE,
-    "causal": _CAUSAL_RE,
-    "negation": _NEGATION_RE,
-    "upstream": _UPSTREAM_RE,
-    "invariant": _INVARIANT_RE,
-    "security": _SECURITY_RE,
-    "vendor": _VENDOR_RE,
-}
+_SIGNALS = MappingProxyType(
+    {
+        "ref": _REF_RE,
+        "version": _VERSION_RE,
+        "units": _UNITS_RE,
+        "causal": _CAUSAL_RE,
+        "negation": _NEGATION_RE,
+        "upstream": _UPSTREAM_RE,
+        "invariant": _INVARIANT_RE,
+        "security": _SECURITY_RE,
+        "vendor": _VENDOR_RE,
+    }
+)
 
 # These measured high-precision signals are exemption-only; their absence never licenses deletion.
 

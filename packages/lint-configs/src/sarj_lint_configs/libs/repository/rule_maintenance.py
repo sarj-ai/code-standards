@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from importlib import import_module
 import json
@@ -16,7 +17,6 @@ from . import repository
 
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
     from pathlib import Path
 
 
@@ -135,7 +135,7 @@ def _load_ledger(path: Path) -> dict[str, object]:
 def _registry(module_name: str) -> Mapping[str, type[Rule]]:
     module = import_module(module_name)
     value = getattr(module, "REGISTRY", None)
-    if not isinstance(value, dict):
+    if not isinstance(value, Mapping):
         msg = f"{module_name} has no registry"
         raise TypeError(msg)
     return value  # pyright: ignore[reportUnknownVariableType]

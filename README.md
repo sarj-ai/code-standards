@@ -41,7 +41,7 @@ Then run any audit, e.g. `/sarj-audit:data-contracts` or `/sarj-audit:concurrenc
 ## Adopt
 
 ```bash
-uvx sarj-lint-configs init
+uvx --from sarj-lint-configs sarj-standards init
 ```
 
 `init` detects whether the repo is Python, TypeScript or both; installs the
@@ -65,9 +65,11 @@ shipping versions by a test, so this section cannot rot silently again.
 
 | Command | Answers |
 |---|---|
-| `uv run --frozen sarj-standards verify` | Run version, config, custom-rule, Ruff, BasedPyright, and ESLint gates. |
-| `uv run --frozen sarj-standards format` | Format Python and apply safe Ruff and ESLint fixes. |
-| `uv run --frozen sarj-standards inspect` | Show the detected adoption as JSON. |
+| `uv run --frozen sarj-standards check` | Run version, config, custom-rule, Ruff, BasedPyright, and ESLint gates. |
+| `uv run --frozen sarj-standards fix` | Format Python and apply safe Ruff and ESLint fixes. |
+| `uv run --frozen sarj-standards doctor` | Diagnose drift and print exact remediation. |
+| `uv run --frozen sarj-standards update --check` | Preview a coherent toolchain update. |
+| `uv run --frozen sarj-standards show state` | Show the detected adoption as JSON. |
 
 For TypeScript, `uv run --frozen sarj-lint-configs peers` prints every npm package
 `eslint.strict.mjs` needs at versions that install together — there is no
@@ -110,7 +112,7 @@ strict config and tests; bump the owning package manifest; update its generated
 lockfile; and, for Python/SQL/IaC rules, bump the exact dependency and version of
 `sarj-lint-configs`. Run `make verify`. The release workflow
 then publishes and tags every changed package. Consumer repositories run
-`sarj-lint-configs doctor` and `sync --check` in CI, so a new release cannot
+`sarj-standards doctor` and `update --configs-only --check` in CI, so a new release cannot
 silently leave them stale.
 
 Adding an npm import to `eslint.strict.mjs` also means adding its pin to

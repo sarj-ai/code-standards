@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import ast
 import re
+from types import MappingProxyType
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
@@ -67,7 +68,7 @@ _JUNK_DRAWER_STEMS = frozenset(
 
 # Multi-word acronyms whose community-accepted snake_case is a single token
 # rather than the letter-by-letter split (`OAuth` -> `oauth`, not `o_auth`).
-_ACRONYM_OVERRIDES: dict[str, str] = {"OAuth": "Oauth", "GraphQL": "Graphql", "gRPC": "Grpc"}
+_ACRONYM_OVERRIDES = MappingProxyType({"OAuth": "Oauth", "GraphQL": "Graphql", "gRPC": "Grpc"})
 
 # Split on camelCase boundaries while keeping runs of capitals (acronyms)
 # together: `HTTPServer` -> `HTTP` + `Server`, `JWTHandler` -> `JWT` + `Handler`.

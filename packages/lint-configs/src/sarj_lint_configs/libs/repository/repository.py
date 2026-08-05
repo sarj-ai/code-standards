@@ -34,6 +34,7 @@ _MARKDOWN_LOCATIONS: Final = (
     "packages/*/README.md",
     "plugins/*/commands/*.md",
     "plugins/*/skills/*/SKILL.md",
+    "plugins/*/skills/*/references/*.md",
     "plugins/*/README.md",
     "docs/audits/*.md",
 )

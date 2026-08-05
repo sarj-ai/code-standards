@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import re
 import shutil
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from sarj_lint_configs._meta import CONFIGS_DIR
@@ -18,14 +19,23 @@ if TYPE_CHECKING:
 
 
 _VERSION_LINE = re.compile(r'(?m)^version\s*=\s*"[^"]*"\s*$')
-_CONFIG_SOURCES = {
-    "ruff": ("ruff.strict.toml", "ruff.application.toml", ".ruff-strict.toml", "python"),
-    "pyright": ("pyright.strict.json", "pyright.strict.json", ".pyright-strict.json", "python"),
-    "eslint": ("eslint.strict.mjs", "eslint.application.mjs", "eslint.strict.mjs", "typescript"),
-    "markdownlint": ("markdownlint.strict.yaml", "markdownlint.strict.yaml", ".markdownlint.yaml", "root"),
-    "taplo": ("taplo.strict.toml", "taplo.strict.toml", ".taplo.toml", "root"),
-    "yamllint": ("yamllint.strict.yaml", "yamllint.strict.yaml", ".yamllint.yaml", "root"),
-}
+_INSTALL_REMEDIABLE_FINDING_IDS = frozenset(
+    {
+        "doctor.eslint.override",
+        "doctor.eslint.peer",
+        "doctor.python.bundle-missing",
+    }
+)
+_CONFIG_SOURCES = MappingProxyType(
+    {
+        "ruff": ("ruff.strict.toml", "ruff.application.toml", ".ruff-strict.toml", "python"),
+        "pyright": ("pyright.strict.json", "pyright.strict.json", ".pyright-strict.json", "python"),
+        "eslint": ("eslint.strict.mjs", "eslint.application.mjs", "eslint.strict.mjs", "typescript"),
+        "markdownlint": ("markdownlint.strict.yaml", "markdownlint.strict.yaml", ".markdownlint.yaml", "root"),
+        "taplo": ("taplo.strict.toml", "taplo.strict.toml", ".taplo.toml", "root"),
+        "yamllint": ("yamllint.strict.yaml", "yamllint.strict.yaml", ".yamllint.yaml", "root"),
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -170,7 +180,24 @@ def _apply_and_validate(plan: UpgradePlan, *, install: bool) -> int:
         if status:
             return status
     findings = doctor.diagnose(plan.root)
-    return 1 if any(finding.level is doctor.Level.DRIFT for finding in findings) else 0
+    drifted = [finding for finding in findings if finding.level is doctor.Level.DRIFT]
+    if not install:
+        drifted = [finding for finding in drifted if not is_install_remediable(finding)]
+    return 1 if drifted else 0
+
+
+def is_install_remediable(finding: doctor.Finding) -> bool:
+    """Whether the setup commands skipped by ``--no-install`` fix a finding."""
+    return finding.id in _INSTALL_REMEDIABLE_FINDING_IDS
+
+
+def pending_install_findings(root: Path) -> list[doctor.Finding]:
+    """Return truthful dependency drift left by a successful no-install update."""
+    return [
+        finding
+        for finding in doctor.diagnose(root)
+        if finding.level is doctor.Level.DRIFT and is_install_remediable(finding)
+    ]
 
 
 def _write_plan(plan: UpgradePlan) -> None:

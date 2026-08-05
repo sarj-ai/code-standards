@@ -11,18 +11,20 @@ from sarj_iac_lint.rule_base import Diagnostic, is_suppressed
 from sarj_iac_lint.rules import REGISTRY
 
 
-SKIP_DIR_NAMES = {
-    "node_modules",
-    ".venv",
-    "venv",
-    ".git",
-    "dist",
-    "build",
-    ".terraform",
-    "__pycache__",
-    ".pytest_cache",
-    ".ruff_cache",
-}
+SKIP_DIR_NAMES = frozenset(
+    {
+        "node_modules",
+        ".venv",
+        "venv",
+        ".git",
+        "dist",
+        "build",
+        ".terraform",
+        "__pycache__",
+        ".pytest_cache",
+        ".ruff_cache",
+    }
+)
 
 # YAML files are included for banner checks while HCL rules self-filter by extension.
 _SCANNED_SUFFIXES = frozenset({".tf", ".hcl", ".tfvars", ".yaml", ".yml"})

@@ -9,7 +9,10 @@ from pathlib import Path
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- commands are fixed argv assembled from detected ecosystems.
 import sys
-from typing import TYPE_CHECKING
+from typing import (
+    TYPE_CHECKING,
+    cast,  # ruff: ignore[banned-api] -- json.loads is typed Any; establish an object boundary before narrowing.
+)
 
 from sarj_lint_configs.libs.linting import runner
 
@@ -18,6 +21,10 @@ from . import manifest, packagemanager, scaffold
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
+
+_PROJECT_SKIP_DIRS = frozenset({".git", ".venv", "build", "dist", "node_modules", "target", "vendor"})
+_ESLINT_SUFFIXES = frozenset({".cjs", ".cts", ".js", ".jsx", ".mjs", ".mts", ".ts", ".tsx"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,12 +87,19 @@ def install_commands(root: Path, ecosystems: scaffold.Ecosystems) -> list[Comman
 def verification_commands(ecosystems: scaffold.Ecosystems) -> list[Command]:
     commands: list[Command] = []
     if ecosystems.python_root is not None:
-        commands.extend(
-            (
-                Command("Ruff", (_environment_binary("ruff"), "check", "."), ecosystems.python_root),
-                Command("BasedPyright", (_environment_binary("basedpyright"),), ecosystems.python_root),
+        for project in _python_verification_roots(ecosystems.python_root):
+            commands.extend(
+                (
+                    Command(
+                        "Ruff", ("uv", "run", "--project", str(project), "--frozen", "ruff", "check", "."), project
+                    ),
+                    Command(
+                        "BasedPyright",
+                        ("uv", "run", "--project", str(project), "--frozen", "basedpyright"),
+                        project,
+                    ),
+                )
             )
-        )
     if ecosystems.typescript_root is not None:
         commands.append(
             Command("ESLint", packagemanager.exec_argv(ecosystems.client, "eslint", "."), ecosystems.typescript_root)
@@ -93,15 +107,73 @@ def verification_commands(ecosystems: scaffold.Ecosystems) -> list[Command]:
     return commands
 
 
+def staged_eslint_commands(root: Path, paths: Iterable[str]) -> list[Command]:
+    """Build one package-manager-aware ESLint command for staged JS/TS files.
+
+    Pre-commit passes paths relative to the repository, while callers may pass
+    absolute paths.  ESLint must run from the detected TypeScript project so it
+    resolves that project's flat config, TypeScript project, and package tree.
+    Deleted files, symlinks, paths outside the repository, and files belonging
+    to another project are deliberately omitted.
+    """
+    repository = root.resolve()
+    candidates = _staged_eslint_candidates(repository, paths)
+    if not candidates:
+        return []
+    ecosystems = scaffold.detect(repository)
+    project = ecosystems.typescript_root
+    if project is None:
+        return []
+    project = project.resolve()
+    scoped = sorted(
+        {
+            candidate.relative_to(project).as_posix()
+            for candidate in candidates
+            if candidate == project or candidate.is_relative_to(project)
+        }
+    )
+    if not scoped:
+        return []
+    return [
+        Command(
+            "ESLint (staged)",
+            packagemanager.exec_argv(ecosystems.client, "eslint", "--", *scoped),
+            project,
+        )
+    ]
+
+
+def _staged_eslint_candidates(root: Path, paths: Iterable[str]) -> set[Path]:
+    candidates: set[Path] = set()
+    for raw_path in paths:
+        path = Path(raw_path)
+        unresolved = path if path.is_absolute() else root / path
+        if unresolved.is_symlink():
+            continue
+        candidate = unresolved.resolve()
+        if candidate.suffix.lower() in _ESLINT_SUFFIXES and candidate.is_relative_to(root) and candidate.is_file():
+            candidates.add(candidate)
+    return candidates
+
+
 def format_commands(ecosystems: scaffold.Ecosystems) -> list[Command]:
     commands: list[Command] = []
     if ecosystems.python_root is not None:
-        commands.extend(
-            (
-                Command("Ruff format", (_environment_binary("ruff"), "format", "."), ecosystems.python_root),
-                Command("Ruff fixes", (_environment_binary("ruff"), "check", "--fix", "."), ecosystems.python_root),
+        for project in _python_verification_roots(ecosystems.python_root):
+            commands.extend(
+                (
+                    Command(
+                        "Ruff format",
+                        ("uv", "run", "--project", str(project), "--frozen", "ruff", "format", "."),
+                        project,
+                    ),
+                    Command(
+                        "Ruff fixes",
+                        ("uv", "run", "--project", str(project), "--frozen", "ruff", "check", "--fix", "."),
+                        project,
+                    ),
+                )
             )
-        )
     if ecosystems.typescript_root is not None:
         commands.append(
             Command(
@@ -139,7 +211,9 @@ def _command_environment(command: Command) -> dict[str, str] | None:
 
 
 def verify_custom_rules(root: Path, *, paths: Iterable[str] = (".",)) -> int:
-    return runner.run([str(root / path) for path in paths])
+    adopted = manifest.load(root)
+    baseline = None if adopted is None or adopted.python_baseline is None else str(root / adopted.python_baseline)
+    return runner.run([str(root / path) for path in paths], python_baseline=baseline)
 
 
 def inspect(root: Path) -> Inspection:
@@ -166,6 +240,35 @@ def _environment_binary(name: str) -> str:
         msg = f"{name} is missing from the sarj-lint-configs environment"
         raise OSError(msg)
     return found
+
+
+def _python_verification_roots(root: Path) -> tuple[Path, ...]:
+    """Return independently configured Python projects without double-checking an umbrella root."""
+    nested = sorted(
+        {
+            path.parent
+            for path in root.glob("**/pyrightconfig.json")
+            if not any(part in _PROJECT_SKIP_DIRS for part in path.relative_to(root).parts)
+            and (path.parent / "pyproject.toml").is_file()
+        },
+        key=lambda path: path.as_posix(),
+    )
+    if not nested:
+        return (root,)
+    root_config = root / "pyrightconfig.json"
+    if root in nested and len(nested) > 1 and not _pyright_has_explicit_scope(root_config):
+        nested.remove(root)
+    return tuple(nested)
+
+
+def _pyright_has_explicit_scope(path: Path) -> bool:
+    if not path.is_file():
+        return False
+    try:
+        parsed = cast("object", json.loads(path.read_text(encoding="utf-8")))
+    except OSError, json.JSONDecodeError:
+        return False
+    return isinstance(parsed, dict) and any(key in parsed for key in ("include", "files"))
 
 
 def _relative(root: Path, path: Path | None) -> str | None:

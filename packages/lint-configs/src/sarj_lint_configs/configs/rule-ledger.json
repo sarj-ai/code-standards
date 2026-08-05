@@ -65,8 +65,8 @@
       "no-zod-native-enum",
       "prefer-constant-time-secret-compare",
       "prefer-discriminated-union",
+      "prefer-immutable-module-constant",
       "prefer-input-group-search",
-      "prefer-shadcn-primitives",
       "prefer-module-level-constant",
       "prefer-module-level-schema",
       "prefer-native-random-uuid",
@@ -74,6 +74,7 @@
       "prefer-schema-for-api-payload",
       "prefer-semantic-colors",
       "prefer-server-actions",
+      "prefer-shadcn-primitives",
       "prefer-single-sentence-comment",
       "prefer-string-literal-union",
       "prefer-whole-object-assertion",
@@ -132,6 +133,7 @@
       "prefer-class-row",
       "prefer-constant-time-secret-compare",
       "prefer-fstring-over-concat",
+      "prefer-immutable-module-constant",
       "prefer-library-fake",
       "prefer-match-assert-never",
       "prefer-match-type-dispatch",
@@ -271,7 +273,8 @@
       "SARJ092",
       "SARJ093",
       "SARJ094",
-      "SARJ095"
+      "SARJ095",
+      "SARJ096"
     ],
     "sql": [
       "SARJ101",

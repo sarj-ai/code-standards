@@ -62,9 +62,14 @@ _ESLINT_CONFIG_NAMES: Final = (
     "eslint.config.cts",
 )
 _PYRIGHT_CONFIG: Final = "pyrightconfig.json"
-_PRECOMMIT_CONFIG: Final = ".pre-commit-config.yaml"
+_PRECOMMIT_CONFIG_NAMES: Final = (".pre-commit-config.yaml", ".pre-commit-config.yml")
 
-_RUFF_EXTEND = re.compile(r"^\s*\[tool\.ruff\]\s*$", re.MULTILINE)
+_RUFF_EXTEND = re.compile(r"^[ \t]*\[tool\.ruff\][ \t]*$", re.MULTILINE)
+_RUFF_LINT_SECTION = re.compile(
+    r"(?ms)^(?P<header>[ \t]*\[tool\.ruff\.lint\][ \t]*(?:#[^\n]*)?\n)"
+    r"(?P<body>.*?)(?=^[ \t]*\[|\Z)"
+)
+_RUFF_REPLACEMENT_KEY = re.compile(r"(?m)^(?P<indent>[ \t]*)(?P<key>select|ignore)(?P<equals>[ \t]*=)")
 
 #: Directories a detection walk must not descend into: an installed dependency
 #: carries thousands of `package.json` files and a vendored tree carries the
@@ -269,11 +274,16 @@ def _plan_python(root: Path, plan: Plan, *, force: bool) -> None:
             plan.errors.append(f"cannot safely wire {pyproject}: {exc}")
             return
         ruff = manifest.as_table(manifest.as_table(manifest.as_table(parsed).get("tool")).get("ruff"))
-        if ruff.get("extend") == ".ruff-strict.toml":
-            plan.skips.append((pyproject, "already extends .ruff-strict.toml"))
-        elif _RUFF_EXTEND.search(text):
-            updated = _RUFF_EXTEND.sub('[tool.ruff]\nextend = ".ruff-strict.toml"', text, count=1)
+        updated = _extend_ruff_replacement_policy(text)
+        if ruff.get("extend") == ".ruff-strict.toml" and updated != text:
             plan.writes.append((pyproject, updated))
+        elif ruff.get("extend") == ".ruff-strict.toml":
+            plan.skips.append((pyproject, "already extends .ruff-strict.toml"))
+        elif _RUFF_EXTEND.search(updated):
+            wired = _RUFF_EXTEND.sub('[tool.ruff]\nextend = ".ruff-strict.toml"', updated, count=1)
+            plan.writes.append((pyproject, wired))
+        elif updated != text:
+            plan.writes.append((pyproject, f'{updated}\n[tool.ruff]\nextend = ".ruff-strict.toml"\n'))
         else:
             plan.edits.append((pyproject, '\n[tool.ruff]\nextend = ".ruff-strict.toml"\n'))
 
@@ -297,6 +307,20 @@ def _plan_python(root: Path, plan: Plan, *, force: bool) -> None:
         )
 
 
+def _extend_ruff_replacement_policy(text: str) -> str:
+    """Make consumer Ruff selections additive before inheriting our policy."""
+
+    def rewrite_section(section: re.Match[str]) -> str:
+        def rewrite_key(match: re.Match[str]) -> str:
+            replacement = "extend-select" if match.group("key") == "select" else "extend-ignore"
+            return f"{match.group('indent')}{replacement}{match.group('equals')}"
+
+        body = _RUFF_REPLACEMENT_KEY.sub(rewrite_key, section.group("body"))
+        return f"{section.group('header')}{body}"
+
+    return _RUFF_LINT_SECTION.sub(rewrite_section, text)
+
+
 def _json_object(path: Path) -> tuple[dict[str, object] | None, str | None]:
     try:
         parsed: object = json.loads(  # pyright: ignore[reportAny] -- untyped stdlib boundary
@@ -304,9 +328,9 @@ def _json_object(path: Path) -> tuple[dict[str, object] | None, str | None]:
         )
     except (OSError, ValueError) as exc:
         return None, str(exc)
-    document = manifest.as_table(parsed)
-    if not document:
-        return None, "expected a non-empty JSON object"
+    if not isinstance(parsed, dict):
+        return None, "expected a JSON object"
+    document = manifest.as_table(parsed)  # pyright: ignore[reportUnknownArgumentType] -- isinstance establishes the JSON object boundary; as_table narrows its leaves
     return document, None
 
 
@@ -524,7 +548,15 @@ export default [
 
 
 def _plan_precommit(root: Path, plan: Plan, *, force: bool) -> None:
-    path = root / _PRECOMMIT_CONFIG
+    existing = [root / name for name in _PRECOMMIT_CONFIG_NAMES if (root / name).is_file()]
+    if len(existing) > 1:
+        plan.errors.append(
+            "multiple pre-commit configurations are active: "
+            + ", ".join(path.name for path in existing)
+            + "; keep one before running init"
+        )
+        return
+    path = existing[0] if existing else root / _PRECOMMIT_CONFIG_NAMES[0]
     block = precommit_block(
         python=plan.ecosystems.python,
         version=manifest.adopted_version(),
@@ -537,23 +569,18 @@ def _plan_precommit(root: Path, plan: Plan, *, force: bool) -> None:
             version=manifest.adopted_version(),
             python_dest=dest_of(root, plan.ecosystems.python_root),
         )
-        has_drift = re.search(r"(?m)^\s*-\s+id:\s+sarj-standards-drift\s*$", text) is not None
-        has_check = re.search(r"(?m)^\s*-\s+id:\s+sarj-standards-check\s*$", text) is not None
-        has_legacy_check = re.search(r"(?m)^\s*-\s+id:\s+sarj-standards\s*$", text) is not None
-        if has_drift and (has_check or has_legacy_check):
-            visible = _ensure_hook_verbose(text, "sarj-standards-check") if has_check else text
-            if visible == text:
-                plan.skips.append((path, "already runs both sarj-standards hooks"))
+        custom_legacy = re.search(r"(?m)^\s*-\s+id:\s+sarj-standards\s*$", text) is not None
+        owned_hook = re.search(r"(?m)^\s*-\s+id:\s+sarj-standards-(?:check|drift)\s*$", text) is not None
+        if custom_legacy:
+            plan.skips.append((path, "preserving a custom legacy sarj-standards hook"))
+        elif owned_hook:
+            canonical = _canonicalize_owned_hooks(text, runner_prefix)
+            if canonical == text:
+                plan.skips.append((path, "already runs the canonical sarj-standards hook"))
             else:
-                plan.writes.append((path, visible))
+                plan.writes.append((path, canonical))
         elif re.search(r"(?m)^repos:\s*$", text):
-            missing = ""
-            if not has_drift:
-                missing += _precommit_drift_block(runner_prefix)
-            if not has_check and not has_legacy_check:
-                missing += _precommit_check_block(runner_prefix)
-            if has_legacy_check:
-                plan.notes.append("preserved the existing sarj-standards check hook and its baseline arguments")
+            missing = _precommit_check_block(runner_prefix)
             addition = missing if text.endswith("\n") else "\n" + missing
             plan.edits.append((path, addition))
         else:
@@ -562,53 +589,57 @@ def _plan_precommit(root: Path, plan: Plan, *, force: bool) -> None:
     _record(plan, path, f"repos:\n{block}", force=force, reason="exists")
 
 
-def _ensure_hook_verbose(text: str, hook_id: str) -> str:
-    """Expose non-blocking rule output from one generated local hook."""
-    start = re.search(rf"(?m)^(?P<indent>\s*)-\s+id:\s+{re.escape(hook_id)}\s*$", text)
-    if start is None:
+def _canonicalize_owned_hooks(text: str, runner_prefix: str) -> str:
+    """Replace recognized generated hooks with one current staged hook."""
+    lines = text.splitlines(keepends=True)
+    owned = {"sarj-standards-check", "sarj-standards-drift"}
+    spans: list[tuple[int, int]] = []
+    for index, line in enumerate(lines):
+        match = re.match(r"^(?P<indent>\s*)-\s+id:\s+(?P<id>\S+)\s*$", line.rstrip("\n"))
+        if match is None or match["id"] not in owned:
+            continue
+        indent = len(match["indent"])
+        end = index + 1
+        while end < len(lines):
+            stripped = lines[end].lstrip()
+            candidate_indent = len(lines[end]) - len(stripped)
+            if (candidate_indent == indent and stripped.startswith("- id:")) or (
+                candidate_indent < indent and stripped.startswith("- repo:")
+            ):
+                break
+            end += 1
+        spans.append((index, end))
+    if not spans:
         return text
-    next_hook = re.search(r"(?m)^\s*-\s+(?:id|repo):\s+", text[start.end() :])
-    end = len(text) if next_hook is None else start.end() + next_hook.start()
-    block = text[start.start() : end]
-    if verbose := re.search(r"(?m)^(?P<indent>\s*)verbose:\s*(?:true|false)\s*$", block):
-        if verbose.group(0).rstrip().endswith("true"):
-            return text
-        absolute_start = start.start() + verbose.start()
-        absolute_end = start.start() + verbose.end()
-        replacement = f"{verbose.group('indent')}verbose: true"
-        return f"{text[:absolute_start]}{replacement}{text[absolute_end:]}"
-    insertion = start.end()
-    return f"{text[:insertion]}\n{start.group('indent')}  verbose: true{text[insertion:]}"
+    first = spans[0][0]
+    removed = {index for start, end in spans for index in range(start, end)}
+    output: list[str] = []
+    for index, line in enumerate(lines):
+        if index == first:
+            output.append(_precommit_hook(runner_prefix))
+        if index not in removed:
+            output.append(line)
+    return "".join(output)
 
 
 def precommit_block(*, python: bool, version: str, python_dest: str = ".") -> str:
-    """Render the pre-commit hooks, deliberately without a `rev:`."""
+    """Render one staged-file orchestrator, deliberately without a second version pin."""
     runner_prefix = _runner_prefix(python=python, version=version, python_dest=python_dest)
-    return _precommit_drift_block(runner_prefix) + _precommit_check_block(runner_prefix)
-
-
-def _precommit_drift_block(runner_prefix: str) -> str:
-    return (
-        "  - repo: local\n"
-        "    hooks:\n"
-        "      - id: sarj-standards-drift\n"
-        "        name: sarj standards -- config + version drift\n"
-        f"        entry: {runner_prefix} doctor\n"
-        "        language: system\n"
-        "        pass_filenames: false\n"
-    )
+    return _precommit_check_block(runner_prefix)
 
 
 def _precommit_check_block(runner_prefix: str) -> str:
+    return f"  - repo: local\n    hooks:\n{_precommit_hook(runner_prefix)}"
+
+
+def _precommit_hook(runner_prefix: str) -> str:
     return (
-        "  - repo: local\n"
-        "    hooks:\n"
         "      - id: sarj-standards-check\n"
-        "        name: sarj standards -- custom rules\n"
-        f"        entry: {runner_prefix} check\n"
+        "        name: sarj standards -- staged checks\n"
+        f"        entry: {runner_prefix} check --staged --\n"
         "        language: system\n"
         "        verbose: true\n"
-        "        files: '(?i)(\\.py|\\.sql|\\.tf|\\.tfvars|\\.hcl|\\.ya?ml|\\.toml|\\.jsonc|\\.mdx?|\\.(?:bash|cfg|conf|env|ini|properties|sh|tftpl|zsh)|(?:^|/)\\.env(?:\\..*)?$|(?:^|/)(?:Dockerfile(?:\\..*)?|Gnumakefile|Justfile|Makefile))$'\n"
+        "        files: '(?i)(\\.py|\\.tsx?|\\.jsx?|\\.sql|\\.tf|\\.tfvars|\\.hcl|\\.ya?ml|\\.toml|\\.jsonc|\\.mdx?|\\.(?:bash|cfg|conf|env|ini|properties|sh|tftpl|zsh)|(?:^|/)\\.env(?:\\..*)?$|(?:^|/)(?:Dockerfile(?:\\..*)?|Gnumakefile|Justfile|Makefile|package\\.json|pyrightconfig\\.json))$'\n"
     )
 
 
@@ -644,7 +675,7 @@ def ci_snippet(plan: Plan, *, version: str) -> str:
     )
     lines = [
         "      - name: sarj standards",
-        f"        run: {runner_prefix} verify",
+        f"        run: {runner_prefix} check",
     ]
     return "\n".join(lines) + "\n"
 

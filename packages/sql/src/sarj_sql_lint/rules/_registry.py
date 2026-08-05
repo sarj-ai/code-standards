@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from sarj_sql_lint.rules.add_constraint_not_valid import AddConstraintNotValid
@@ -17,20 +18,24 @@ from sarj_sql_lint.rules.require_lock_timeout import RequireLockTimeout
 
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from sarj_sql_lint.rule_base import Rule
 
 
-REGISTRY: dict[str, type[Rule]] = {
-    EnforceTimestamptz.id: EnforceTimestamptz,
-    IdempotentDdl.id: IdempotentDdl,
-    NoPgEnum.id: NoPgEnum,
-    PreferTextOverVarchar.id: PreferTextOverVarchar,
-    InsertRequiresOnConflict.id: InsertRequiresOnConflict,
-    PreferJsonb.id: PreferJsonb,
-    NoLimitOffset.id: NoLimitOffset,
-    IndexConcurrently.id: IndexConcurrently,
-    PreferUuidv7Default.id: PreferUuidv7Default,
-    RequireLockTimeout.id: RequireLockTimeout,
-    AddConstraintNotValid.id: AddConstraintNotValid,
-    RequireFkIndex.id: RequireFkIndex,
-}
+REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
+    {
+        EnforceTimestamptz.id: EnforceTimestamptz,
+        IdempotentDdl.id: IdempotentDdl,
+        NoPgEnum.id: NoPgEnum,
+        PreferTextOverVarchar.id: PreferTextOverVarchar,
+        InsertRequiresOnConflict.id: InsertRequiresOnConflict,
+        PreferJsonb.id: PreferJsonb,
+        NoLimitOffset.id: NoLimitOffset,
+        IndexConcurrently.id: IndexConcurrently,
+        PreferUuidv7Default.id: PreferUuidv7Default,
+        RequireLockTimeout.id: RequireLockTimeout,
+        AddConstraintNotValid.id: AddConstraintNotValid,
+        RequireFkIndex.id: RequireFkIndex,
+    }
+)

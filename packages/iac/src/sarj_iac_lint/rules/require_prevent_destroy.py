@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from types import MappingProxyType
 from typing import TYPE_CHECKING, final, override
 
 from sarj_iac_lint._hcl import blocks
@@ -33,10 +34,12 @@ IRREPLACEABLE_TYPES = frozenset(
 )
 
 # Mapping of secret version resource types to the secret types they supply.
-_VERSION_SOURCES = {
-    "google_secret_manager_secret_version": "google_secret_manager_secret",
-    "aws_secretsmanager_secret_version": "aws_secretsmanager_secret",
-}
+_VERSION_SOURCES = MappingProxyType(
+    {
+        "google_secret_manager_secret_version": "google_secret_manager_secret",
+        "aws_secretsmanager_secret_version": "aws_secretsmanager_secret",
+    }
+)
 
 _RESOURCE = "resource"
 _LIFECYCLE = "lifecycle"

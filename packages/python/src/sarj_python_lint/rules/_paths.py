@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from functools import cache
+from functools import lru_cache
 import re
 from typing import TYPE_CHECKING
 
@@ -52,13 +52,13 @@ def is_generated_source(source: str) -> bool:
     return any(_GENERATED_RE.search(line) for line in head)
 
 
-@cache
+@lru_cache(maxsize=256)
 def _is_codegen_root(directory: Path) -> bool:
     """Report whether `directory` holds a code generator's config or ignore file."""
     return any((directory / name).exists() for name in _CODEGEN_MARKER_NAMES)
 
 
-@cache
+@lru_cache(maxsize=256)
 def _is_repo_root(directory: Path) -> bool:
     """Report whether `directory` is a repository root."""
     return any((directory / name).exists() for name in _REPO_ROOT_MARKERS)
@@ -78,6 +78,12 @@ def is_generated_path(path: Path) -> bool:
         if _is_repo_root(ancestor):
             break
     return False
+
+
+def clear_path_caches() -> None:
+    """Start one rule run with fresh, bounded filesystem marker lookups."""
+    _is_codegen_root.cache_clear()
+    _is_repo_root.cache_clear()
 
 
 def is_generated(path: Path, source: str) -> bool:

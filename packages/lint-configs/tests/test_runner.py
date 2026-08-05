@@ -306,6 +306,37 @@ def test_python_baseline_is_forwarded_only_to_python_checker(
     assert "--baseline" not in argv_by_package["sarj_iac_lint"]
 
 
+def test_create_python_baseline_uses_all_python_rules_and_update_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    argv_seen: list[str] = []
+
+    def fake_load_tool(
+        _package: str,
+    ) -> tuple[Callable[[list[str]], int], Mapping[str, type[object]]]:
+        def checker(argv: list[str]) -> int:
+            argv_seen.extend(argv)
+            return 0
+
+        return checker, {"rule-b": object, "rule-a": object}
+
+    monkeypatch.setattr(runner, "_load_tool", fake_load_tool)
+    source = tmp_path / "app.py"
+    source.touch()
+
+    assert runner.create_python_baseline([str(source)], str(tmp_path / "baseline.json")) == 0
+    assert argv_seen[:7] == [
+        "check",
+        "--rule",
+        "rule-a",
+        "--rule",
+        "rule-b",
+        "--update-baseline",
+        str(tmp_path / "baseline.json"),
+    ]
+
+
 def test_highest_status_is_propagated(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

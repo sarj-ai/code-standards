@@ -370,6 +370,35 @@ def test_flags_strong_change_diary_heading_without_a_second_heading(tmp_path: Pa
     assert _codes(readme, root=tmp_path) == ["SARJ302"]
 
 
+def test_markdown_fences_do_not_create_artifact_headings(tmp_path: Path) -> None:
+    readme = tmp_path / "README.md"
+    readme.write_text(
+        "# CLI\n\n```markdown\n## Fixes + learnings\n## Verification passes\n```\n",
+        encoding="utf-8",
+    )
+
+    assert _codes(readme, root=tmp_path) == []
+
+
+def test_matching_sarj_suppression_is_code_specific(tmp_path: Path) -> None:
+    config = tmp_path / "config.toml"
+    config.write_text("# sarj-noqa: SARJ301\n# timeout = 30\n", encoding="utf-8")
+    assert _codes(config) == []
+
+    config.write_text("# sarj-noqa: SARJ999\n# timeout = 30\n", encoding="utf-8")
+    assert _codes(config) == ["SARJ301"]
+
+
+def test_custom_durable_paths_extend_builtin_locations(tmp_path: Path) -> None:
+    (tmp_path / ".sarj-standards.toml").write_text('[artifacts]\ndurable = ["evidence/**"]\n', encoding="utf-8")
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    report = docs / "architecture-report.md"
+    report.write_text("# Maintained architecture\n", encoding="utf-8")
+
+    assert _codes(report, root=tmp_path) == []
+
+
 def test_flags_large_dated_audit_inside_docs(tmp_path: Path) -> None:
     docs = tmp_path / "docs"
     docs.mkdir()

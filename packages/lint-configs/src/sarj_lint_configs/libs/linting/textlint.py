@@ -8,13 +8,14 @@ from pathlib import Path
 import re
 import sys
 import tomllib
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
 from sarj_lint_configs.libs.adoption.manifest import as_table, list_field, table_field
 
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
 
 
 _TEXT_SUFFIXES: Final = frozenset(
@@ -129,6 +130,7 @@ _DIRECTIVE_RE = re.compile(
     r"examples?:|flags:|format:|tool:|inputs?:|outputs?:|defaults?:|usage:|spdx)",
     re.IGNORECASE,
 )
+_SARJ_SUPPRESSION_RE = re.compile(r"^sarj-noqa:\s*(?P<codes>SARJ\d+(?:\s*,\s*SARJ\d+)*)\s*$", re.IGNORECASE)
 _PROTECTED_RE = re.compile(
     r"https?://|\b(?:RFC|PEP|CVE)[- ]?\d+|\b[A-Z][A-Z0-9]{1,9}-\d+\b|"
     r"\b(?:because|otherwise|so that|to avoid|workaround|upstream|requires?|must |"
@@ -177,16 +179,18 @@ class RuleMeta:
     blocking: bool = True
 
 
-REGISTRY: Final = {
-    "config-comment-wall": RuleMeta("SARJ300", "four-entry config narration wall with 75% weak restatements"),
-    "commented-out-config": RuleMeta("SARJ301", "commented-out config syntax"),
-    # New rules spend one release as visible, non-blocking findings.
-    "ephemeral-ai-artifact": RuleMeta(
-        "SARJ302",
-        "AI execution brief, audit report, or change diary",
-        blocking=False,
-    ),
-}
+REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
+    {
+        "config-comment-wall": RuleMeta("SARJ300", "four-entry config narration wall with 75% weak restatements"),
+        "commented-out-config": RuleMeta("SARJ301", "commented-out config syntax"),
+        # New rules spend one release as visible, non-blocking findings.
+        "ephemeral-ai-artifact": RuleMeta(
+            "SARJ302",
+            "AI execution brief, audit report, or change diary",
+            blocking=False,
+        ),
+    }
+)
 
 _META_BY_CODE: Final = {meta.code: meta for meta in REGISTRY.values()}
 
@@ -265,7 +269,8 @@ def _artifact_findings(
                 "Ephemeral AI work artifact — move durable knowledge into README/docs/ADR and delete the execution brief or report.",
             )
         ]
-    source_lines = source.splitlines()
+    source_lines = _markdown_prose_lines(source)
+    prose = "\n".join(source_lines)
     headings = [
         number for number, line in enumerate(source_lines, start=1) if _EPHEMERAL_HEADING_RE.match(line.strip())
     ]
@@ -279,7 +284,7 @@ def _artifact_findings(
                 "Chronological AI execution log — keep current usage/design facts; remove passes, change diary, and session narration.",
             )
         ]
-    if _large_artifact(source, path, source_lines):
+    if _large_artifact(prose, path, source_lines):
         line = next(
             (
                 number
@@ -297,6 +302,21 @@ def _artifact_findings(
             )
         ]
     return []
+
+
+def _markdown_prose_lines(source: str) -> list[str]:
+    """Blank fenced examples while preserving line numbers for diagnostics."""
+    visible: list[str] = []
+    fence: str | None = None
+    for line in source.splitlines():
+        stripped = line.lstrip()
+        marker = "```" if stripped.startswith("```") else "~~~" if stripped.startswith("~~~") else None
+        if marker is not None:
+            fence = None if fence == marker else marker if fence is None else fence
+            visible.append("")
+            continue
+        visible.append("" if fence is not None else line)
+    return visible
 
 
 def _large_artifact(source: str, path: Path, lines: list[str]) -> bool:
@@ -345,7 +365,7 @@ def _text_policy(root: Path) -> tuple[tuple[str, ...], tuple[str, ...]]:
     table = as_table(parsed)
     configured_durable = list_field(table_field(table, "artifacts"), "durable")
     durable = (
-        tuple(item for item in configured_durable if isinstance(item, str))
+        tuple(dict.fromkeys((*_DURABLE_MARKDOWN, *(item for item in configured_durable if isinstance(item, str)))))
         if configured_durable and all(isinstance(item, str) for item in configured_durable)
         else _DURABLE_MARKDOWN
     )
@@ -433,7 +453,15 @@ def _commented_config_runs(path: Path, lines: list[str]) -> set[int]:
             if not (path.suffix.lower() in {".yaml", ".yml"} and _inside_yaml_block_scalar(lines, index, indent)):
                 run.append((index + 1, body))
             index += 1
-        if any(_DIRECTIVE_RE.match(body) for _line, body in run):
+        suppressions = {
+            code.upper()
+            for _line, body in run
+            if (match := _SARJ_SUPPRESSION_RE.match(body)) is not None
+            for code in match.group("codes").split(",")
+        }
+        if "SARJ301" in suppressions:
+            continue
+        if any(_DIRECTIVE_RE.match(body) and _SARJ_SUPPRESSION_RE.match(body) is None for _line, body in run):
             continue
         shaped = [line for line, body in run if _looks_commented_config(path, body)]
         if len(shaped) >= _COMMENTED_CONFIG_RUN_MIN and len(shaped) / len(run) >= _COMMENTED_CONFIG_RUN_RATIO:

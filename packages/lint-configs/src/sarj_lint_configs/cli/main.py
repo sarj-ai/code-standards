@@ -21,6 +21,8 @@ from sarj_lint_configs.libs.adoption.configs import (
 
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from sarj_lint_configs.libs.adoption import service
 
 
@@ -48,6 +50,7 @@ class _Args(argparse.Namespace):
     files: list[str]
     noise_only: bool = False
     python_baseline: str | None = None
+    create_baseline: str | None = None
     repo_cmd: str = ""
     repo_only: list[str]
     commits: str | None = None
@@ -75,6 +78,12 @@ class _Args(argparse.Namespace):
     github_output: Path | None = None
     release_target: str = ""
     release_targets: list[str]
+    root: str | None = None
+    configs_only: bool = False
+    dependencies: bool = False
+    show_cmd: str = ""
+    staged: bool = False
+    release_commit: str = ""
 
     def __init__(self) -> None:
         super().__init__()
@@ -251,7 +260,11 @@ def cmd_doctor(args: _Args) -> int:
 
 def cmd_upgrade(args: _Args) -> int:
     """Preview or apply the latest coherent compatibility bundle."""
-    from sarj_lint_configs import doctor, upgrade  # ruff: ignore[import-outside-top-level] — lazy route
+    from sarj_lint_configs import (  # ruff: ignore[import-outside-top-level] — lazy route
+        doctor,
+        lifecycle,
+        upgrade,
+    )
 
     if (
         not args.offline
@@ -300,14 +313,40 @@ def cmd_upgrade(args: _Args) -> int:
             print(f"error: {finding.where} -- {finding.detail}", file=sys.stderr)
         return 2
     preview = upgrade.render(plan.changes)
-    print(preview or f"current: {root} already matches standards {__version__}")
     if args.check:
-        drift = any(finding.level is doctor.Level.DRIFT for finding in doctor.diagnose(root))
-        return 1 if plan.changes or drift else 0
+        drifted = [finding for finding in doctor.diagnose(root) if finding.level is doctor.Level.DRIFT]
+        if preview:
+            print(preview)
+        elif drifted:
+            print(
+                f"bundle current: {root} has standards {__version__},"
+                f" but doctor found {len(drifted)} configuration drift(s)"
+            )
+        else:
+            print(f"current: {root} already matches standards {__version__}")
+        for finding in drifted:
+            print(f"drift: {finding.id} {finding.where} -- {finding.detail}")
+        remediations = list(dict.fromkeys(finding.remediation for finding in drifted if finding.remediation))
+        for remediation in remediations:
+            print(f"fix: {remediation}")
+        return 1 if plan.changes or drifted else 0
+    print(preview or f"current: {root} already matches standards {__version__}")
     status = upgrade.apply(plan, install=not args.no_install)
     if status:
         print("error: upgrade failed; tracked configuration files were restored", file=sys.stderr)
         return status
+    pending = upgrade.pending_install_findings(root) if args.no_install else []
+    if pending:
+        print(
+            f"updated configuration: {root} now uses standards {__version__};"
+            f" setup is incomplete ({len(pending)} dependency finding(s))"
+        )
+        for finding in pending:
+            print(f"pending: {finding.id} {finding.where} -- {finding.detail}")
+        print("next: run the skipped setup command(s), then `sarj-standards doctor`:")
+        for command in lifecycle.install_commands(root, plan.ecosystems):
+            print(f"      {shlex.join(command.argv)}  (in {command.cwd})")
+        return 0
     print(f"upgraded: {root} now uses standards {__version__}")
     return 0
 
@@ -382,6 +421,10 @@ def cmd_init(args: _Args) -> int:
 
     for note in plan.notes:
         print(f"\nnote:  {note}")
+    if args.no_install and init_plan.install_commands:
+        print("\nnext:  dependency and hook installation was skipped; run:")
+        for command in init_plan.install_commands:
+            print(f"       {shlex.join(command.argv)}  (in {command.cwd})")
     print("\nadd this to your CI workflow:\n")
     print(service.scaffold.ci_snippet(plan, version=manifest.adopted_version()))
     return 0
@@ -471,20 +514,158 @@ def cmd_check(args: _Args) -> int:
     """Run source rules and the application dependency policy together."""
     from sarj_lint_configs import runner  # ruff: ignore[import-outside-top-level] — lazy route
 
+    _validate_check_mode(args)
+    if args.dependencies:
+        return cmd_library_policy(args)
+    if args.staged and not args.files:
+        try:
+            args.files = _staged_files(_resolve_dest(args.dest))
+        except (OSError, subprocess.SubprocessError) as exc:
+            print(f"error: cannot read staged files: {exc}", file=sys.stderr)
+            return 2
+    root = _resolve_dest(args.dest)
+    if args.staged and args.files:
+        args.files = _safe_staged_paths(root, args.files)
     try:
+        adopted = manifest.load(root)
+    except (OSError, TypeError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if args.create_baseline is not None:
+        output = (root / args.create_baseline).resolve()
+        try:
+            relative = output.relative_to(root).as_posix()
+        except ValueError:
+            print("error: baseline path must stay inside the repository", file=sys.stderr)
+            return 2
+        if adopted is None:
+            print("error: run `sarj-standards init` before creating a gradual baseline", file=sys.stderr)
+            return 2
+        selected = args.files or list(adopted.verify_paths)
+        inputs = [str(root / path) for path in selected]
+        try:
+            status = runner.create_python_baseline(inputs, str(output))
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        if status:
+            return status
+        manifest.record_python_baseline(root, relative)
+        print(f"created shrink-only baseline: {relative}")
+        print("future `sarj-standards check` and pre-commit runs apply it automatically")
+        return 0
+    if args.staged:
+        health_status = _check_staged_adoption_health(root)
+        if health_status:
+            return health_status
+        if not args.files:
+            return 0
+    if not args.files:
+        return cmd_verify(args)
+    selected_paths = [str(Path(raw) if Path(raw).is_absolute() else root / raw) for raw in args.files]
+    try:
+        configured_baseline = (
+            None if adopted is None or adopted.python_baseline is None else str(root / adopted.python_baseline)
+        )
         source_status = runner.run(
-            args.files,
+            selected_paths,
             noise_only=args.noise_only,
-            python_baseline=args.python_baseline,
+            python_baseline=args.python_baseline or configured_baseline,
         )
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    eslint_status = 0
+    if args.staged:
+        from sarj_lint_configs import lifecycle  # ruff: ignore[import-outside-top-level] — lazy staged route
+
+        try:
+            eslint_status = lifecycle.execute(lifecycle.staged_eslint_commands(root, selected_paths))
+        except ValueError as exc:
+            print(f"error: cannot run staged ESLint: {exc}", file=sys.stderr)
+            return 2
     policy_args = _Args()
-    policy_args.dest = "."
+    policy_args.dest = str(root)
     policy_args.quiet = True
     policy_status = cmd_library_policy(policy_args)
-    return max(source_status, policy_status)
+    return max(source_status, eslint_status, policy_status)
+
+
+def _validate_check_mode(args: _Args) -> None:
+    """Reject option combinations whose values would otherwise be ignored."""
+    if args.dependencies:
+        incompatible = (
+            (args.files, "selected paths"),
+            (args.staged, "--staged"),
+            (args.noise_only, "--noise-only"),
+            (args.python_baseline is not None, "--baseline"),
+            (args.create_baseline is not None, "--create-baseline"),
+        )
+        for enabled, label in incompatible:
+            if enabled:
+                _user_error(f"{label} cannot be combined with --dependencies")
+    if args.create_baseline is not None and args.python_baseline is not None:
+        _user_error("--create-baseline cannot be combined with --baseline")
+    if args.create_baseline is not None and args.noise_only:
+        _user_error("--create-baseline cannot be combined with --noise-only")
+
+
+def _check_staged_adoption_health(root: Path) -> int:
+    """Keep the staged fast path from bypassing generated config and pin drift."""
+    from sarj_lint_configs import doctor  # ruff: ignore[import-outside-top-level] — lazy staged route
+
+    drifted = [finding for finding in doctor.diagnose(root) if finding.level is doctor.Level.DRIFT]
+    for finding in drifted:
+        print(f"drift: {finding.id} {finding.where} -- {finding.detail}")
+    remediations = list(dict.fromkeys(finding.remediation for finding in drifted if finding.remediation))
+    for remediation in remediations:
+        print(f"fix: {remediation}")
+    invalid = any(finding.id in {"doctor.manifest.invalid", "doctor.package-json.invalid"} for finding in drifted)
+    if invalid:
+        return 2
+    return 1 if drifted else 0
+
+
+def _staged_files(root: Path) -> list[str]:
+    """Return staged, non-deleted files as absolute paths safe for any caller CWD."""
+    git = shutil.which("git")
+    if git is None:
+        msg = "git is required for --staged"
+        raise OSError(msg)
+    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed argv, no shell.
+        [git, "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    )
+    names = (part.decode("utf-8", errors="surrogateescape") for part in completed.stdout.split(b"\0"))
+    return _safe_staged_paths(root, names)
+
+
+def _safe_staged_paths(root: Path, paths: Iterable[str]) -> list[str]:
+    """Keep hook-supplied paths inside the repository and reject symlink aliases."""
+    repository = root.resolve()
+    safe: list[str] = []
+    for raw in paths:
+        if not raw:
+            continue
+        supplied = Path(raw)
+        lexical = Path(
+            os.path.abspath(  # ruff: ignore[os-path-abspath] -- preserve lexical symlink components before resolve.
+                supplied if supplied.is_absolute() else repository / supplied
+            )
+        )
+        try:
+            relative = lexical.relative_to(repository)
+        except ValueError:
+            continue
+        cursor = repository
+        if any((cursor := cursor / part).is_symlink() for part in relative.parts):
+            continue
+        resolved = lexical.resolve()
+        if resolved.is_relative_to(repository) and resolved.is_file():
+            safe.append(str(resolved))
+    return list(dict.fromkeys(safe))
 
 
 def cmd_format(args: _Args) -> int:
@@ -504,8 +685,39 @@ def cmd_inspect(args: _Args) -> int:
     return 0
 
 
+def cmd_update(args: _Args) -> int:
+    """Update the coherent bundle, or only its generated configuration files."""
+    config_options = args.only or args.force or args.profile is not None or args.python_dest or args.typescript_dest
+    if config_options and not args.configs_only:
+        _user_error("--config, --force, --profile, and config destinations require --configs-only")
+    if args.configs_only and (args.offline or args.no_install):
+        _user_error("--offline and --no-install cannot be combined with --configs-only")
+    return cmd_sync(args) if args.configs_only else cmd_upgrade(args)
+
+
+def cmd_show(args: _Args) -> int:
+    """Render read-only package and adoption information."""
+    match args.show_cmd:
+        case "state":
+            return cmd_inspect(args)
+        case "configs":
+            return cmd_list()
+        case "config":
+            return cmd_path(args)
+        case "peers":
+            return cmd_peers(args)
+        case "rules":
+            args.repo_cmd = "rules"
+            args.rules_cmd = "manifest"
+            return _cmd_repo(args)
+        case _:
+            return 2
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv, namespace=_Args())
+    if args.root is not None:
+        args.dest = args.root
     match args.cmd:
         case "sync":
             return cmd_sync(args)
@@ -519,11 +731,13 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_doctor(args)
         case "upgrade":
             return cmd_upgrade(args)
+        case "update":
+            return cmd_update(args)
         case "init":
             return cmd_init(args)
         case "verify":
             return cmd_verify(args)
-        case "format":
+        case "format" | "fix":
             return cmd_format(args)
         case "inspect":
             return cmd_inspect(args)
@@ -531,21 +745,32 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_library_policy(args)
         case "check":
             return cmd_check(args)
-        case "repo":
+        case "show":
+            return cmd_show(args)
+        case "repo" | "maintain":
             return _cmd_repo(args)
         case _:  # argparse enforces `required=True`, so this is unreachable
             return 2
 
 
-def _build_parser() -> argparse.ArgumentParser:
+def _build_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-locals] -- argparse keeps each command's contract explicit.
     parser = argparse.ArgumentParser(
         prog="sarj-standards",
-        description=f"sarj-ai maximally-strict lint configs (v{__version__})",
+        description=f"Adopt, check, fix, diagnose, and update sarj-ai standards (v{__version__}).",
+        epilog=(
+            "Start with `sarj-standards init`, then use `sarj-standards check`. "
+            "Run `sarj-standards COMMAND --help` for command-specific examples."
+        ),
     )
     parser.add_argument("--version", action="version", version=f"sarj-standards {__version__}")
-    sub = parser.add_subparsers(dest="cmd", required=True)
+    sub = parser.add_subparsers(
+        dest="cmd",
+        required=True,
+        metavar="{init,check,fix,doctor,update,show,maintain}",
+        title="commands",
+    )
 
-    p_sync = sub.add_parser("sync", help="copy bundled configs into a repo")
+    p_sync = sub.add_parser("sync")
     p_sync.add_argument(
         "--dest",
         default=".",
@@ -578,13 +803,13 @@ def _build_parser() -> argparse.ArgumentParser:
         help="report drift without writing; exit nonzero when a config differs",
     )
 
-    sub.add_parser("list", help="show available configs and target filenames")
+    sub.add_parser("list")
 
-    p_path = sub.add_parser("path", help="print the absolute path of a bundled config")
+    p_path = sub.add_parser("path")
     p_path.add_argument("name", choices=sorted(CONFIG_NAMES))
     p_path.add_argument("--profile", choices=manifest.PROFILES, default="standard")
 
-    p_peers = sub.add_parser("peers", help="print the npm packages eslint.strict.mjs needs, at tested versions")
+    p_peers = sub.add_parser("peers")
     p_peers.add_argument("--dest", default=".", help="project whose package manager to speak (default: cwd)")
 
     p_doctor = sub.add_parser(
@@ -592,6 +817,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="report version drift across pyproject, pre-commit, CI and package.json",
     )
     p_doctor.add_argument("--dest", default=".", help="repo root to inspect (default: cwd)")
+    p_doctor.add_argument("root", nargs="?", help="repository root (default: current directory)")
     p_doctor.add_argument(
         "--format",
         dest="output_format",
@@ -600,7 +826,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="output format (default: text)",
     )
 
-    p_upgrade = sub.add_parser("upgrade", help="safely move every owned site to the latest coherent release")
+    p_upgrade = sub.add_parser("upgrade")
     p_upgrade.add_argument("--dest", default=".", help="repo root to upgrade (default: cwd)")
     p_upgrade.add_argument("--check", action="store_true", help="preview without writing; exit 1 when updates exist")
     p_upgrade.add_argument(
@@ -616,6 +842,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p_init = sub.add_parser("init", help="scaffold the whole adoption: configs, wiring, hooks, CI")
     p_init.add_argument("--dest", default=".", help="repo root to scaffold (default: cwd)")
+    p_init.add_argument("root", nargs="?", help="repository root (default: current directory)")
     p_init.add_argument(
         "--python-dest",
         help="the directory that owns pyproject.toml (default: detected)",
@@ -645,7 +872,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p_check = sub.add_parser(
         "check",
-        help="run every installed Sarj Python, SQL, IaC, config, text, and artifact rule",
+        help="check the complete repository, or applicable rules for selected paths",
     )
     p_check.add_argument(
         "--noise-only",
@@ -653,15 +880,47 @@ def _build_parser() -> argparse.ArgumentParser:
         help="run Python, config-prose, and AI-artifact noise rules (TypeScript uses the ESLint plugin)",
     )
     p_check.add_argument(
+        "--baseline",
         "--python-baseline",
-        help="apply a sarj-python-lint shrink-only baseline to staged Python files",
+        dest="python_baseline",
+        help="apply a shrink-only baseline (the Python-specific spelling remains compatible)",
     )
-    p_check.add_argument("files", nargs="+")
+    p_check.add_argument(
+        "--create-baseline",
+        nargs="?",
+        const=".sarj-standards-baseline.json",
+        metavar="PATH",
+        help="snapshot existing Python findings and make later checks enforce only-new findings",
+    )
+    p_check.add_argument("--dest", default=".", help="repository root for a complete check (default: cwd)")
+    p_check.add_argument(
+        "--dependencies",
+        action="store_true",
+        help="check only application-profile dependency policy",
+    )
+    p_check.add_argument(
+        "--staged",
+        action="store_true",
+        help="run custom rules on hook-supplied paths, or discover staged files when none are supplied",
+    )
+    p_check.add_argument(
+        "--profile",
+        choices=manifest.PROFILES,
+        help="override the adopted profile with --dependencies",
+    )
+    p_check.add_argument(
+        "--format",
+        dest="output_format",
+        choices=("text", "json"),
+        default="text",
+    )
+    p_check.add_argument(
+        "files",
+        nargs="*",
+        help="selected paths; when omitted, check the complete repository",
+    )
 
-    p_library_policy = sub.add_parser(
-        "library-policy",
-        help="enforce the application profile's direct-dependency catalog",
-    )
+    p_library_policy = sub.add_parser("library-policy")
     p_library_policy.add_argument("--dest", default=".", help="repository root (default: cwd)")
     p_library_policy.add_argument(
         "--profile",
@@ -675,15 +934,56 @@ def _build_parser() -> argparse.ArgumentParser:
         default="text",
     )
 
-    for name, help_text in (
-        ("verify", "run config drift, custom rules, Ruff, BasedPyright, and ESLint"),
-        ("format", "format Python and apply safe Ruff and ESLint fixes"),
-        ("inspect", "print detected adoption state as JSON"),
-    ):
-        command = sub.add_parser(name, help=help_text)
+    for name in ("verify", "format", "inspect"):
+        command = sub.add_parser(name)
         command.add_argument("--dest", default=".", help="repository root (default: cwd)")
 
-    _add_repo_parsers(sub.add_parser("repo", help="run configurable repository maintenance tasks"))
+    fix = sub.add_parser("fix", help="apply safe formatting and lint fixes")
+    fix.add_argument("root", nargs="?", help="repository root (default: current directory)")
+    fix.add_argument("--dest", default=".", help=argparse.SUPPRESS)
+
+    update = sub.add_parser("update", help="upgrade standards or refresh bundled configurations")
+    update.add_argument("root", nargs="?", help="repository root (default: current directory)")
+    update.add_argument("--dest", default=".", help=argparse.SUPPRESS)
+    update.add_argument("--check", action="store_true", help="preview without writing; exit 1 when changes exist")
+    update.add_argument("--offline", action="store_true", help="use the executing bundle without resolving latest")
+    update.add_argument("--no-install", action="store_true", help="do not install dependencies or hooks")
+    update.add_argument(
+        "--configs-only",
+        action="store_true",
+        help="refresh bundled configuration files without changing dependency versions",
+    )
+    update.add_argument("--force", action="store_true", help="overwrite existing configs with --configs-only")
+    update.add_argument("--profile", choices=manifest.PROFILES, help="config profile with --configs-only")
+    update.add_argument("--python-dest", help="Ruff/Pyright config destination with --configs-only")
+    update.add_argument("--typescript-dest", help="ESLint config destination with --configs-only")
+    update.add_argument(
+        "--config",
+        dest="only",
+        action="append",
+        choices=sorted(CONFIG_NAMES),
+        default=[],
+        help="refresh one config with --configs-only (repeatable)",
+    )
+
+    show = sub.add_parser("show", help="print read-only package and adoption information")
+    show_commands = show.add_subparsers(dest="show_cmd", required=True)
+    state = show_commands.add_parser("state", help="print detected adoption state as JSON")
+    state.add_argument("root", nargs="?", help="repository root (default: current directory)")
+    state.add_argument("--dest", default=".", help=argparse.SUPPRESS)
+    show_commands.add_parser("configs", help="list bundled configurations")
+    config = show_commands.add_parser("config", help="print one bundled configuration path")
+    config.add_argument("name", choices=sorted(CONFIG_NAMES))
+    config.add_argument("--profile", choices=manifest.PROFILES, default="standard")
+    peers = show_commands.add_parser("peers", help="show tested ESLint peer dependencies and install command")
+    peers.add_argument("root", nargs="?", help="repository root (default: current directory)")
+    peers.add_argument("--dest", default=".", help=argparse.SUPPRESS)
+    rules = show_commands.add_parser("rules", help="print the machine-readable custom-rule inventory")
+    rules.add_argument("root", nargs="?", help="repository root (default: current directory)")
+    rules.add_argument("--dest", default=".", help=argparse.SUPPRESS)
+
+    _add_repo_parsers(sub.add_parser("maintain", help="repository policy, hooks, rule ledgers, and releases"))
+    _add_repo_parsers(sub.add_parser("repo"))
 
     return parser
 
@@ -725,7 +1025,7 @@ def _run_repo(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one lazy 
             print("all current package versions have release tags")
             return 0
         if args.release_cmd == "create-tags":
-            result = release.create_release_tags(root, tuple(args.release_targets))
+            result = release.create_release_tags(root, tuple(args.release_targets), commit=args.release_commit)
             for tag_name in result.existing:
                 print(f"release tag already exists: {tag_name}")
             for tag_name in result.created:
@@ -853,6 +1153,7 @@ def _add_repo_parsers(repo: argparse.ArgumentParser) -> None:  # ruff: ignore[to
         choices=("typescript", "python", "sql", "iac", "lint-configs", "tsconfig"),
     )
     create_tags.add_argument("--dest", default=".", help="standards repository root (default: cwd)")
+    create_tags.add_argument("--commit", dest="release_commit", required=True, help="exact commit that was published")
     changes = release_commands.add_parser("changes", help="emit package version changes between Git revisions")
     changes.add_argument("--before", required=True)
     changes.add_argument("--after", required=True)

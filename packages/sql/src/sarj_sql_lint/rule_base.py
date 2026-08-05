@@ -190,6 +190,7 @@ def _closing_depth(source: str, i: int, open_tags: list[str]) -> int | None:
     return None
 
 
+@lru_cache(maxsize=32)
 def _scan(source: str) -> tuple[str, list[tuple[int, int]]]:
     # Preserve offsets while recursively masking comments and literals inside executable dollar-quoted bodies.
     out: list[str] = []

@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import re
 import tomllib
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Literal
 
 from sarj_lint_configs.libs.release._values import is_object_dict, string_object_dict
@@ -15,6 +16,8 @@ from sarj_lint_configs.libs.release.process import ProcessFailureError, ProcessR
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+
+    from sarj_lint_configs.libs.release.registry import PublicationChecker
 
 
 ManifestFormat = Literal["json", "toml"]
@@ -47,14 +50,16 @@ class TagSyncResult:
     existing: tuple[str, ...]
 
 
-RELEASE_TARGETS: Final[Mapping[str, ReleaseTarget]] = {
-    "typescript": ReleaseTarget(Path("packages/typescript/package.json"), "json"),
-    "python": ReleaseTarget(Path("packages/python/pyproject.toml"), "toml"),
-    "sql": ReleaseTarget(Path("packages/sql/pyproject.toml"), "toml"),
-    "iac": ReleaseTarget(Path("packages/iac/pyproject.toml"), "toml"),
-    "lint-configs": ReleaseTarget(Path("packages/lint-configs/pyproject.toml"), "toml"),
-    "tsconfig": ReleaseTarget(Path("packages/tsconfig/package.json"), "json"),
-}
+RELEASE_TARGETS: Final[Mapping[str, ReleaseTarget]] = MappingProxyType(
+    {
+        "typescript": ReleaseTarget(Path("packages/typescript/package.json"), "json"),
+        "python": ReleaseTarget(Path("packages/python/pyproject.toml"), "toml"),
+        "sql": ReleaseTarget(Path("packages/sql/pyproject.toml"), "toml"),
+        "iac": ReleaseTarget(Path("packages/iac/pyproject.toml"), "toml"),
+        "lint-configs": ReleaseTarget(Path("packages/lint-configs/pyproject.toml"), "toml"),
+        "tsconfig": ReleaseTarget(Path("packages/tsconfig/package.json"), "json"),
+    }
+)
 _TAG_PATTERN: Final = re.compile(r"^(?P<target>[a-z][a-z0-9-]*)-v(?P<version>[^\s/]+)$")
 
 
@@ -151,24 +156,84 @@ def create_release_tags(
     root: Path,
     targets: tuple[str, ...],
     *,
+    commit: str,
     runner: ProcessRunner = run_process,
+    publication_checker: PublicationChecker | None = None,
 ) -> TagSyncResult:
-    """Idempotently create and push manifest-derived annotated release tags."""
+    """Tag an explicit publishing commit after registry publication is visible."""
+    from sarj_lint_configs.libs.release.registry import (  # ruff: ignore[import-outside-top-level] -- avoid the tags/registry import cycle
+        publication_exists,
+        require_publication,
+        target_requirement,
+    )
+
     resolved = root.resolve()
+    if not commit or commit.startswith("-"):
+        msg = "release tag creation requires an explicit publishing commit"
+        raise ValueError(msg)
+    resolved_commit = (
+        runner(
+            ("git", "rev-parse", "--verify", f"{commit}^{{commit}}"),
+            cwd=resolved,
+            capture_output=True,
+        ).stdout.strip()
+        or commit
+    )
+    checker = publication_exists if publication_checker is None else publication_checker
     created: list[str] = []
     existing: list[str] = []
     for target in dict.fromkeys(targets):
         tag = _current_tag(target, resolved)
         if _remote_tag_exists(resolved, tag, runner=runner):
+            _require_remote_tag_commit(resolved, tag, resolved_commit, runner=runner)
             existing.append(tag)
             continue
-        try:
-            runner(("git", "rev-parse", "--verify", "--quiet", f"refs/tags/{tag}"), cwd=resolved)
-        except ProcessFailureError as exc:
-            if exc.returncode != 1:
-                raise
+        require_publication(target_requirement(resolved, target), checker=checker)
+        if not _require_local_tag_commit(resolved, tag, resolved_commit, runner=runner):
             version = tag.removeprefix(f"{target}-v")
-            runner(("git", "tag", "-a", tag, "-m", f"{target} {version}"), cwd=resolved)
+            runner(("git", "tag", "-a", tag, commit, "-m", f"{target} {version}"), cwd=resolved)
         runner(("git", "push", "origin", f"refs/tags/{tag}"), cwd=resolved)
         created.append(tag)
     return TagSyncResult(tuple(created), tuple(existing))
+
+
+def _require_remote_tag_commit(root: Path, tag: str, commit: str, *, runner: ProcessRunner) -> None:
+    """Reject an idempotent retry when an existing tag names another commit."""
+    result = runner(
+        (
+            "git",
+            "ls-remote",
+            "--exit-code",
+            "--tags",
+            "origin",
+            f"refs/tags/{tag}",
+            f"refs/tags/{tag}^{{}}",
+        ),
+        cwd=root,
+        capture_output=True,
+    )
+    references = dict(line.split("\t", 1)[::-1] for line in result.stdout.splitlines() if "\t" in line)
+    actual = references.get(f"refs/tags/{tag}^{{}}", references.get(f"refs/tags/{tag}"))
+    if actual == commit:
+        return
+    msg = f"existing remote tag {tag} points to {actual or 'an unknown object'}, not publishing commit {commit}"
+    raise ValueError(msg)
+
+
+def _require_local_tag_commit(root: Path, tag: str, commit: str, *, runner: ProcessRunner) -> bool:
+    """Return whether a local tag exists, rejecting one that names another commit."""
+    try:
+        result = runner(
+            ("git", "rev-parse", "--verify", f"refs/tags/{tag}^{{commit}}"),
+            cwd=root,
+            capture_output=True,
+        )
+    except ProcessFailureError as exc:
+        if exc.returncode == 1:
+            return False
+        raise
+    actual = result.stdout.strip()
+    if actual == commit:
+        return True
+    msg = f"existing local tag {tag} points to {actual or 'an unknown object'}, not publishing commit {commit}"
+    raise ValueError(msg)

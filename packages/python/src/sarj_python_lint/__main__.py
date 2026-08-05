@@ -7,30 +7,34 @@ from collections import Counter
 import json
 from pathlib import Path
 import sys
+from types import MappingProxyType
 
 from sarj_python_lint import __version__
 from sarj_python_lint.rule_base import Diagnostic, Severity, is_suppressed
 from sarj_python_lint.rules import REGISTRY
+from sarj_python_lint.rules._paths import clear_path_caches
 
 
-SKIP_DIR_NAMES = {
-    "node_modules",
-    ".venv",
-    "venv",
-    ".git",
-    "dist",
-    "build",
-    ".next",
-    "coverage",
-    "__pycache__",
-    ".pytest_cache",
-    ".ruff_cache",
-    ".uv-cache",
-    ".mypy_cache",
-    ".turbo",
-    ".yarn",
-    ".pnpm-store",
-}
+SKIP_DIR_NAMES = frozenset(
+    {
+        "node_modules",
+        ".venv",
+        "venv",
+        ".git",
+        "dist",
+        "build",
+        ".next",
+        "coverage",
+        "__pycache__",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".uv-cache",
+        ".mypy_cache",
+        ".turbo",
+        ".yarn",
+        ".pnpm-store",
+    }
+)
 
 # Skip files larger than this — they are almost always generated/vendored, not
 # hand-written source worth linting.
@@ -66,6 +70,7 @@ def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
         sys.stderr.write(f"available: {', '.join(sorted(REGISTRY))}\n")
         raise SystemExit(2)
     rules = [REGISTRY[rid]() for rid in rule_ids]
+    clear_path_caches()
     expanded = _expand_paths(paths)
     diags: list[Diagnostic] = []
     for p in expanded:
@@ -74,12 +79,44 @@ def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
         except OSError:
             continue
         source_lines = source.splitlines()
-        for rule in rules:
-            for d in rule.check(p, source):
-                if is_suppressed(source_lines, d.line, d.code):
-                    continue
-                diags.append(d)
+        raw = [diagnostic for rule in rules for diagnostic in rule.check(p, source)]
+        diags.extend(
+            diagnostic
+            for diagnostic in deduplicate_diagnostics(raw)
+            if not is_suppressed(source_lines, diagnostic.line, diagnostic.code)
+        )
     return diags
+
+
+_PROSE_PRECEDENCE = MappingProxyType(
+    {
+        "SARJ084": frozenset({"SARJ050"}),
+        "SARJ088": frozenset({"SARJ050", "SARJ085"}),
+        "SARJ092": frozenset({"SARJ086", "SARJ087"}),
+    }
+)
+
+
+def deduplicate_diagnostics(diags: list[Diagnostic]) -> list[Diagnostic]:
+    """Keep the most specific prose remediation at a source location."""
+    present: dict[tuple[Path, int, int], dict[str, set[Severity]]] = {}
+    for diagnostic in diags:
+        by_code = present.setdefault((diagnostic.path, diagnostic.line, diagnostic.col), {})
+        by_code.setdefault(diagnostic.code, set()).add(diagnostic.severity)
+    suppressed = {
+        (location, generic, generic_severity)
+        for location, codes in present.items()
+        for specific, generics in _PROSE_PRECEDENCE.items()
+        if specific in codes
+        for generic in generics
+        for generic_severity in codes.get(generic, set())
+        if generic_severity is Severity.WARNING or Severity.ERROR in codes[specific]
+    }
+    return [
+        diagnostic
+        for diagnostic in diags
+        if ((diagnostic.path, diagnostic.line, diagnostic.col), diagnostic.code, diagnostic.severity) not in suppressed
+    ]
 
 
 class _Args(argparse.Namespace):
@@ -118,9 +155,18 @@ def _baseline_counts(diags: list[Diagnostic]) -> dict[str, dict[str, int]]:
     for d in diags:
         if d.severity is Severity.WARNING:
             continue
-        counts.setdefault(str(d.path), {})
-        counts[str(d.path)][d.code] = counts[str(d.path)].get(d.code, 0) + 1
+        key = _baseline_path(d.path)
+        counts.setdefault(key, {})
+        counts[key][d.code] = counts[key].get(d.code, 0) + 1
     return counts
+
+
+def _baseline_path(path: Path) -> str:
+    """Make baselines portable when a caller supplies repository-absolute paths."""
+    try:
+        return path.resolve().relative_to(Path.cwd().resolve()).as_posix()
+    except ValueError:
+        return str(path)
 
 
 def _read_baseline(path: Path) -> dict[str, dict[str, int]]:
@@ -150,9 +196,16 @@ def _apply_baseline(diags: list[Diagnostic], baseline: dict[str, dict[str, int]]
         if d.severity is Severity.WARNING:
             out.append(d)
             continue
-        key = (str(d.path), d.code)
+        path_key = _baseline_path(d.path)
+        key = (path_key, d.code)
         seen[key] += 1
-        if seen[key] > baseline.get(key[0], {}).get(key[1], 0):
+        # The raw lookup preserves compatibility with baselines written before
+        # repository-relative keys were introduced.
+        allowance = max(
+            baseline.get(path_key, {}).get(d.code, 0),
+            baseline.get(str(d.path), {}).get(d.code, 0),
+        )
+        if seen[key] > allowance:
             out.append(d)
     return out
 

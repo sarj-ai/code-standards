@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import ast
 import re
+from types import MappingProxyType
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
@@ -62,18 +63,20 @@ _CLI_MODULES = frozenset({"click", "typer"})
 #: (`@option(...)`, `@app.argument(...)`).
 _CLI_DECORATORS = frozenset({"argument", "option"})
 
-_CONSTRAINED_NUMERIC = {
-    "PositiveInt": "int",
-    "NonNegativeInt": "int",
-    "NegativeInt": "int",
-    "NonPositiveInt": "int",
-    "StrictInt": "int",
-    "PositiveFloat": "float",
-    "NonNegativeFloat": "float",
-    "NegativeFloat": "float",
-    "NonPositiveFloat": "float",
-    "StrictFloat": "float",
-}
+_CONSTRAINED_NUMERIC = MappingProxyType(
+    {
+        "PositiveInt": "int",
+        "NonNegativeInt": "int",
+        "NegativeInt": "int",
+        "NonPositiveInt": "int",
+        "StrictInt": "int",
+        "PositiveFloat": "float",
+        "NonNegativeFloat": "float",
+        "NegativeFloat": "float",
+        "NonPositiveFloat": "float",
+        "StrictFloat": "float",
+    }
+)
 
 
 class PreferTimedeltaForDurations(Rule):

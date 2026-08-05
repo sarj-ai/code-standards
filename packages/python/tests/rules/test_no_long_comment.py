@@ -1,22 +1,23 @@
 from pathlib import Path
 
+from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.no_long_comment import NoLongComment
 
 
-def test_three_sentences_are_an_error() -> None:
-    findings = NoLongComment().check(Path("app.py"), '"""One fact. Two facts. Three facts."""\n')
-    assert len(findings) == 1
-    assert findings[0].code == "SARJ091"
+def test_docstrings_are_owned_by_semantic_docstring_rules() -> None:
+    assert NoLongComment().check(Path("app.py"), '"""One fact. Two facts. Three facts."""\n') == []
 
 
 def test_contiguous_line_comments_are_one_group() -> None:
     source = "# First fact.\n# Second fact.\n# Third fact.\nvalue = 1\n"
-    assert len(NoLongComment().check(Path("app.py"), source)) == 1
+    findings = NoLongComment().check(Path("app.py"), source)
+    assert len(findings) == 1
+    assert findings[0].severity is Severity.WARNING
 
 
 def test_three_unpunctuated_list_items_are_sentence_equivalents() -> None:
     source = '"""Supported modes:\n\n- fast path\n- safe path\n- legacy path\n"""\n'
-    assert len(NoLongComment().check(Path("app.py"), source)) == 1
+    assert NoLongComment().check(Path("app.py"), source) == []
 
 
 def test_abbreviations_urls_and_decimals_do_not_split() -> None:
@@ -42,7 +43,7 @@ Structured configuration is compressed. The payloads are highly repetitive.
 Compression keeps the URL inside its length budget.
 """
 '''
-    assert len(NoLongComment().check(Path("query_param_codec.py"), source)) == 1
+    assert NoLongComment().check(Path("query_param_codec.py"), source) == []
 
 
 def test_schema_class_docstring_is_runtime_consumed() -> None:
