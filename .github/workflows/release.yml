@@ -5,40 +5,21 @@ name: release
 #   changed vs the previous commit, and the matching publish job runs. Because
 #   this workflow runs DIRECTLY on the push (not via workflow_call), PyPI
 #   Trusted Publishing (OIDC) works — reusable workflows are unsupported by PyPI.
-# - Tag `<pkg>-v*` or manual dispatch: publishes the selected package(s).
 # A push with no version bump publishes nothing (no duplicate-version errors).
 
 on:
   push:
     branches: [main]
-    tags:
-      - 'typescript-v*'
-      - 'python-v*'
-      - 'sql-v*'
-      - 'iac-v*'
-      - 'lint-configs-v*'
-      - 'tsconfig-v*'
-  workflow_dispatch:
-    inputs:
-      target:
-        description: 'Which package to publish'
-        required: true
-        type: choice
-        options:
-          - typescript
-          - python
-          - sql
-          - iac
-          - lint-configs
-          - tsconfig
-          - all
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
-  # Detects which package versions changed on a push to main. For tag/dispatch
-  # runs it emits all-false (the publish jobs gate on the tag/target instead).
+  # Detects which package versions changed in the push to main.
   detect:
     runs-on: ubuntu-latest
     outputs:
@@ -49,15 +30,14 @@ jobs:
       lint-configs: ${{ steps.c.outputs.lint-configs }}
       tsconfig: ${{ steps.c.outputs.tsconfig }}
     steps:
-      - uses: actions/checkout@v7
+      - name: Harden the runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-      - name: Require release tag to match its package manifest
-        if: startsWith(github.ref, 'refs/tags/')
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: uv run --project packages/lint-configs --frozen sarj-standards repo release check-tag "$RELEASE_TAG" --dest .
       - id: c
         env:
           BEFORE: ${{ github.event.before }}
@@ -66,10 +46,7 @@ jobs:
 
   build-typescript:
     needs: detect
-    if: >-
-      startsWith(github.ref, 'refs/tags/typescript-v') ||
-      github.event.inputs.target == 'typescript' || github.event.inputs.target == 'all' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.detect.outputs.typescript == 'true')
+    if: needs.detect.outputs.typescript == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -77,7 +54,11 @@ jobs:
       run:
         working-directory: packages/typescript
     steps:
-      - uses: actions/checkout@v7
+      - name: Harden the runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           # The publish jobs run `npm test` / `pytest`, and the rule-ledger gates
           # read deleted rule modules out of git history. A shallow checkout makes
@@ -85,7 +66,7 @@ jobs:
           # written to say, and which blocked every publish on main.
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
@@ -98,11 +79,17 @@ jobs:
       - run: npm test
       - name: Pack publishable artifact
         run: uv run --project ../lint-configs --frozen sarj-standards repo release typescript pack --dest ../.. --output "$RUNNER_TEMP/npm-artifacts"
+      - name: Normalize the single verified artifact name
+        run: >-
+          node -e "const fs=require('node:fs'),d=process.env.RUNNER_TEMP+'/npm-artifacts',
+          f=fs.readdirSync(d).filter(x=>x.endsWith('.tgz'));
+          if(f.length!==1)throw new Error('expected exactly one npm artifact');
+          fs.renameSync(d+'/'+f[0],d+'/package.tgz')"
       - name: Upload publishable artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: npm-typescript
-          path: ${{ runner.temp }}/npm-artifacts/*.tgz
+          path: ${{ runner.temp }}/npm-artifacts/package.tgz
           if-no-files-found: error
 
   publish-typescript:
@@ -113,25 +100,25 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/setup-node@v7
+      - name: Harden the runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
-      - run: npm install --global npm@11.19.0 --ignore-scripts
       - name: Download publishable artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: npm-typescript
           path: ${{ runner.temp }}/npm-artifacts
       - name: Publish with npm trusted publishing
-        run: npm publish "$RUNNER_TEMP"/npm-artifacts/*.tgz --access public --ignore-scripts
+        run: npm publish "$RUNNER_TEMP/npm-artifacts/package.tgz" --access public --ignore-scripts
 
   build-python:
     needs: detect
-    if: >-
-      startsWith(github.ref, 'refs/tags/python-v') ||
-      github.event.inputs.target == 'python' || github.event.inputs.target == 'all' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.detect.outputs.python == 'true')
+    if: needs.detect.outputs.python == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -139,7 +126,11 @@ jobs:
       run:
         working-directory: packages/python
     steps:
-      - uses: actions/checkout@v7
+      - name: Harden the runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           # The publish jobs run `npm test` / `pytest`, and the rule-ledger gates
           # read deleted rule modules out of git history. A shallow checkout makes
@@ -155,12 +146,12 @@ jobs:
       - run: uv sync --locked --dev
       - run: uv audit --locked
       - run: uv run pytest -q
-      - run: uv build --wheel --sdist
+      - run: uv build --wheel
       - name: Upload publishable artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: pypi-python
-          path: packages/python/dist/*
+          path: packages/python/dist/*.whl
           if-no-files-found: error
 
   publish-python:
@@ -171,24 +162,23 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - name: Harden the runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
         with:
-          version: '0.11.32'
-          enable-cache: false
+          egress-policy: audit
       - name: Download publishable artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: pypi-python
-          path: ${{ runner.temp }}/pypi-artifacts
-      - name: Publish with PyPI trusted publishing
-        run: uv publish --trusted-publishing always "$RUNNER_TEMP"/pypi-artifacts/*
+          path: publish-dist
+      - name: Publish wheel with PyPI trusted publishing and attestations
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          packages-dir: publish-dist/
 
   build-sql:
     needs: detect
-    if: >-
-      startsWith(github.ref, 'refs/tags/sql-v') ||
-      github.event.inputs.target == 'sql' || github.event.inputs.target == 'all' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.detect.outputs.sql == 'true')
+    if: needs.detect.outputs.sql == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -196,7 +186,11 @@ jobs:
       run:
         working-directory: packages/sql
     steps:
-      - uses: actions/checkout@v7
+      - name: Harden the runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           # The publish jobs run `npm test` / `pytest`, and the rule-ledger gates
           # read deleted rule modules out of git history. A shallow checkout makes
@@ -212,12 +206,12 @@ jobs:
       - run: uv sync --locked --dev
       - run: uv audit --locked
       - run: uv run pytest -q
-      - run: uv build --wheel --sdist
+      - run: uv build --wheel
       - name: Upload publishable artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: pypi-sql
-          path: packages/sql/dist/*
+          path: packages/sql/dist/*.whl
           if-no-files-found: error
 
   publish-sql:
@@ -228,24 +222,23 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - name: Harden the runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
         with:
-          version: '0.11.32'
-          enable-cache: false
+          egress-policy: audit
       - name: Download publishable artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: pypi-sql
-          path: ${{ runner.temp }}/pypi-artifacts
-      - name: Publish with PyPI trusted publishing
-        run: uv publish --trusted-publishing always "$RUNNER_TEMP"/pypi-artifacts/*
+          path: publish-dist
+      - name: Publish wheel with PyPI trusted publishing and attestations
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          packages-dir: publish-dist/
 
   build-iac:
     needs: detect
-    if: >-
-      startsWith(github.ref, 'refs/tags/iac-v') ||
-      github.event.inputs.target == 'iac' || github.event.inputs.target == 'all' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.detect.outputs.iac == 'true')
+    if: needs.detect.outputs.iac == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -253,7 +246,11 @@ jobs:
       run:
         working-directory: packages/iac
     steps:
-      - uses: actions/checkout@v7
+      - name: Harden the runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           # The publish jobs run `npm test` / `pytest`, and the rule-ledger gates
           # read deleted rule modules out of git history. A shallow checkout makes
@@ -269,12 +266,12 @@ jobs:
       - run: uv sync --locked --dev
       - run: uv audit --locked
       - run: uv run pytest -q
-      - run: uv build --wheel --sdist
+      - run: uv build --wheel
       - name: Upload publishable artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: pypi-iac
-          path: packages/iac/dist/*
+          path: packages/iac/dist/*.whl
           if-no-files-found: error
 
   publish-iac:
@@ -285,17 +282,19 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - name: Harden the runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
         with:
-          version: '0.11.32'
-          enable-cache: false
+          egress-policy: audit
       - name: Download publishable artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: pypi-iac
-          path: ${{ runner.temp }}/pypi-artifacts
-      - name: Publish with PyPI trusted publishing
-        run: uv publish --trusted-publishing always "$RUNNER_TEMP"/pypi-artifacts/*
+          path: publish-dist
+      - name: Publish wheel with PyPI trusted publishing and attestations
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          packages-dir: publish-dist/
 
   build-lint-configs:
     needs:
@@ -308,9 +307,7 @@ jobs:
       (needs.publish-python.result == 'success' || needs.publish-python.result == 'skipped') &&
       (needs.publish-sql.result == 'success' || needs.publish-sql.result == 'skipped') &&
       (needs.publish-iac.result == 'success' || needs.publish-iac.result == 'skipped') &&
-      (startsWith(github.ref, 'refs/tags/lint-configs-v') ||
-       github.event.inputs.target == 'lint-configs' || github.event.inputs.target == 'all' ||
-       (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.detect.outputs.lint-configs == 'true'))
+      needs.detect.outputs.lint-configs == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -318,7 +315,11 @@ jobs:
       run:
         working-directory: packages/lint-configs
     steps:
-      - uses: actions/checkout@v7
+      - name: Harden the runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           # The publish jobs run `npm test` / `pytest`, and the rule-ledger gates
           # read deleted rule modules out of git history. A shallow checkout makes
@@ -343,14 +344,11 @@ jobs:
           uv venv --clear --python 3.14 --seed
           uv pip install ./dist/deps/*.whl ./dist/sarj_lint_configs-*.whl pytest ruff
           uv run --no-project pytest -q tests/
-      - run: uv build --sdist
       - name: Upload publishable artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: pypi-lint-configs
-          path: |
-            packages/lint-configs/dist/*.whl
-            packages/lint-configs/dist/*.tar.gz
+          path: packages/lint-configs/dist/*.whl
           if-no-files-found: error
 
   publish-lint-configs:
@@ -362,24 +360,23 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - name: Harden the runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
         with:
-          version: '0.11.32'
-          enable-cache: false
+          egress-policy: audit
       - name: Download publishable artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: pypi-lint-configs
-          path: ${{ runner.temp }}/pypi-artifacts
-      - name: Publish with PyPI trusted publishing
-        run: uv publish --trusted-publishing always "$RUNNER_TEMP"/pypi-artifacts/*
+          path: publish-dist
+      - name: Publish wheel with PyPI trusted publishing and attestations
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          packages-dir: publish-dist/
 
   build-tsconfig:
     needs: detect
-    if: >-
-      startsWith(github.ref, 'refs/tags/tsconfig-v') ||
-      github.event.inputs.target == 'tsconfig' || github.event.inputs.target == 'all' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.detect.outputs.tsconfig == 'true')
+    if: needs.detect.outputs.tsconfig == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -387,7 +384,11 @@ jobs:
       run:
         working-directory: packages/tsconfig
     steps:
-      - uses: actions/checkout@v7
+      - name: Harden the runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           # The publish jobs run `npm test` / `pytest`, and the rule-ledger gates
           # read deleted rule modules out of git history. A shallow checkout makes
@@ -395,7 +396,7 @@ jobs:
           # written to say, and which blocked every publish on main.
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
@@ -406,11 +407,17 @@ jobs:
           node -e "JSON.parse(require('fs').readFileSync('strict.json','utf8'))"
       - name: Pack publishable artifact
         run: npm pack --pack-destination "$RUNNER_TEMP/npm-artifacts"
+      - name: Normalize the single artifact name
+        run: >-
+          node -e "const fs=require('node:fs'),d=process.env.RUNNER_TEMP+'/npm-artifacts',
+          f=fs.readdirSync(d).filter(x=>x.endsWith('.tgz'));
+          if(f.length!==1)throw new Error('expected exactly one npm artifact');
+          fs.renameSync(d+'/'+f[0],d+'/package.tgz')"
       - name: Upload publishable artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: npm-tsconfig
-          path: ${{ runner.temp }}/npm-artifacts/*.tgz
+          path: ${{ runner.temp }}/npm-artifacts/package.tgz
           if-no-files-found: error
 
   publish-tsconfig:
@@ -421,18 +428,21 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/setup-node@v7
+      - name: Harden the runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
-      - run: npm install --global npm@11.19.0 --ignore-scripts
       - name: Download publishable artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: npm-tsconfig
           path: ${{ runner.temp }}/npm-artifacts
       - name: Publish with npm trusted publishing
-        run: npm publish "$RUNNER_TEMP"/npm-artifacts/*.tgz --access public --ignore-scripts
+        run: npm publish "$RUNNER_TEMP/npm-artifacts/package.tgz" --access public --ignore-scripts
 
   # After a successful publish on push-to-main, stamp the matching `<pkg>-v<version>`
   # git tag. pre-commit consumers pin Python/SQL rules by git tag (installed from
@@ -454,7 +464,11 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
+      - name: Harden the runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0

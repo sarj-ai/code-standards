@@ -30,6 +30,8 @@
 baseline-browser-mapping@2.11.8
 brace-expansion@1.1.18
 brace-expansion@5.0.8
+# Reviewed security fix for GHSA-rgw5-rvv9-x895; remove after the 14-day quarantine.
+brace-expansion@5.0.9
 electron-to-chromium@1.5.399
 enhanced-resolve@5.24.5
 eslint@10.8.0

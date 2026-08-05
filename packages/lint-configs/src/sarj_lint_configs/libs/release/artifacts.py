@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 
 
 type JsonValue = str | int | float | bool | list[JsonValue] | dict[str, JsonValue] | None
+_INSTALL_LIFECYCLE_SCRIPTS = frozenset({"preinstall", "install", "postinstall", "prepare"})
 
 
 def _json_value(value: object) -> JsonValue:
@@ -117,6 +118,29 @@ def _inspect_members(archive: tarfile.TarFile, expected: set[str]) -> set[str]:
         if path.is_absolute() or ".." in path.parts or not path.parts or path.parts[0] != "package":
             msg = f"unsafe path in package archive: {member.name}"
             raise ValueError(msg)
+        if member.issym() or member.islnk():
+            msg = f"links are forbidden in package archive: {member.name}"
+            raise ValueError(msg)
+        if member.isfile() and member.name.endswith(".map"):
+            msg = f"source maps are forbidden in package archive: {member.name}"
+            raise ValueError(msg)
+        if member.name == "package/package.json" and member.isfile():
+            manifest_file = archive.extractfile(member)
+            if manifest_file is None:
+                msg = "could not read package/package.json from package archive"
+                raise ValueError(msg)
+            try:
+                manifest: object = json.load(manifest_file)  # pyright: ignore[reportAny]
+            except json.JSONDecodeError as exc:
+                msg = "package archive contains invalid package/package.json"
+                raise ValueError(msg) from exc
+            manifest_data = string_object_dict(manifest, label="packed package.json")
+            scripts = manifest_data.get("scripts")
+            if is_object_dict(scripts):
+                dangerous = _INSTALL_LIFECYCLE_SCRIPTS.intersection(scripts)
+                if dangerous:
+                    msg = f"install lifecycle script is forbidden in package archive: {min(dangerous)}"
+                    raise ValueError(msg)
         if member.name in expected:
             if not member.isfile() or member.size == 0:
                 msg = f"packed entry point is missing, empty, or not a regular file: {member.name}"

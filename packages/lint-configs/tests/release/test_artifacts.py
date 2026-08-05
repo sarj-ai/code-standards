@@ -68,11 +68,22 @@ def test_verify_package_tarball_reads_actual_archive(tmp_path: Path) -> None:
     assert verify_package_tarball(archive, ("dist/index.js",)) == ("dist/index.js",)
 
 
-def test_verify_package_tarball_rejects_traversal(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("files", "pattern"),
+    [
+        ({"../escape": b"bad", "package/dist/index.js": b"export {};"}, "unsafe path"),
+        (
+            {"package/dist/index.js": b"export {};", "package/dist/index.js.map": b"{}"},
+            "source maps are forbidden",
+        ),
+    ],
+    ids=["traversal", "source-map"],
+)
+def test_verify_package_tarball_rejects_unsafe_content(tmp_path: Path, files: dict[str, bytes], pattern: str) -> None:
     archive = tmp_path / "package.tgz"
-    _tarball(archive, {"../escape": b"bad", "package/dist/index.js": b"export {};"})
+    _tarball(archive, files)
 
-    with pytest.raises(ValueError, match="unsafe path"):
+    with pytest.raises(ValueError, match=pattern):
         verify_package_tarball(archive, ("dist/index.js",))
 
 
@@ -81,4 +92,13 @@ def test_verify_package_tarball_rejects_an_empty_export(tmp_path: Path) -> None:
     _tarball(archive, {"package/dist/index.js": b""})
 
     with pytest.raises(ValueError, match="empty"):
+        verify_package_tarball(archive, ("dist/index.js",))
+
+
+def test_verify_package_tarball_rejects_install_lifecycle_scripts(tmp_path: Path) -> None:
+    archive = tmp_path / "package.tgz"
+    manifest = json.dumps({"scripts": {"postinstall": "node payload.js"}}).encode()
+    _tarball(archive, {"package/package.json": manifest, "package/dist/index.js": b"export {};"})
+
+    with pytest.raises(ValueError, match="install lifecycle script is forbidden"):
         verify_package_tarball(archive, ("dist/index.js",))
