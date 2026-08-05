@@ -156,11 +156,15 @@ def _fixed_tuple_return_arity(
         )
     if isinstance(annotation, ast.Name) and annotation.id not in resolving:
         target = aliases.get(annotation.id)
-        return 0 if target is None else _fixed_tuple_return_arity(
-            target,
-            aliases=aliases,
-            unwrap_yield_wrapper=unwrap_yield_wrapper,
-            resolving=resolving | {annotation.id},
+        return (
+            0
+            if target is None
+            else _fixed_tuple_return_arity(
+                target,
+                aliases=aliases,
+                unwrap_yield_wrapper=unwrap_yield_wrapper,
+                resolving=resolving | {annotation.id},
+            )
         )
     if not isinstance(annotation, ast.Subscript):
         return 0
@@ -178,9 +182,7 @@ def _fixed_tuple_return_arity(
         "AsyncIterable",
     }:
         first = annotation.slice.elts[0] if isinstance(annotation.slice, ast.Tuple) else annotation.slice
-        return _fixed_tuple_return_arity(
-            first, aliases=aliases, unwrap_yield_wrapper=False, resolving=resolving
-        )
+        return _fixed_tuple_return_arity(first, aliases=aliases, unwrap_yield_wrapper=False, resolving=resolving)
     if name not in {"tuple", "Tuple"} or not isinstance(annotation.slice, ast.Tuple):
         return 0
     elements = annotation.slice.elts

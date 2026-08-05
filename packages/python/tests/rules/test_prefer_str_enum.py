@@ -1356,6 +1356,45 @@ def route(status: Annotated[Status, Meta()]) -> int:
     assert _check(src) == []
 
 
+@pytest.mark.parametrize(
+    "annotation",
+    ["Literal['a', 'b'] | None", "Annotated[Literal['a', 'b'], Meta()]", "Union[Literal['a'], Literal['b']]"],
+)
+def test_wrapped_literal_annotation_is_already_closed(annotation: str):
+    src = f"""
+def route(status: {annotation}) -> int:
+    if status == "a":
+        return 1
+    if status == "b":
+        return 2
+    return 0
+"""
+    assert _check(src) == []
+
+
+def test_wire_provenance_survives_fallback_expression():
+    src = """
+def route(payload) -> int:
+    kind = payload.kind or "unknown"
+    if kind == "a":
+        return 1
+    if kind == "b":
+        return 2
+    return 0
+"""
+    assert _check(src) == []
+
+
+def test_comprehension_target_does_not_merge_with_enclosing_name():
+    src = """
+def route(kind: str, values: list[str]) -> bool:
+    outer = kind == "outer"
+    inner = [kind == "inner" for kind in values]
+    return outer or any(inner)
+"""
+    assert _check(src) == []
+
+
 def test_generic_choices_do_not_fan_out_by_shared_default_value():
     src = """
 class Widget:
@@ -1375,6 +1414,49 @@ class Widget:
 """
     [diag] = _check(src)
     assert diag.line == 5
+
+
+def test_named_status_choices_associate_without_a_literal_default():
+    src = """
+class Widget:
+    STATUS_CHOICES = ["small", "large"]
+    status: str
+"""
+    assert len(_check(src)) == 1
+
+
+def test_captured_literal_annotation_stays_closed_in_nested_function():
+    src = """
+def outer(status: Literal["a", "b"]):
+    def inner() -> int:
+        if status == "a":
+            return 1
+        if status == "b":
+            return 2
+        return 0
+    return inner()
+"""
+    assert _check(src) == []
+
+
+def test_comprehension_shadow_does_not_inherit_outer_foreign_opacity():
+    src = """
+def route(kind: Status, values: list[str]) -> list[bool]:
+    return [kind == "a" or kind == "b" for kind in values]
+"""
+    assert len(_check(src)) == 1
+
+
+def test_flattened_pep604_literal_union_is_already_closed():
+    src = """
+def route(status: Literal["a"] | Literal["b"] | None) -> int:
+    if status == "a":
+        return 1
+    if status == "b":
+        return 2
+    return 0
+"""
+    assert _check(src) == []
 
 
 # FP-hardening (famous-repo sweep): wire-bound variables (subscript / .get()). #

@@ -26,6 +26,19 @@ ruleTester.run("no-positional-tuple-return", rule, {
       code: "function split(): [string, number] { return impl(); }",
     },
     {
+      name: "does not inherit an inline export through an enclosing function",
+      code: "export function outer(): void { function local(): [string, number] { return impl(); } local(); }",
+    },
+    {
+      name: "does not inherit a detached export through an enclosing function",
+      code: "function outer(): void { const local = (): [string, number] => impl(); local(); } export { outer };",
+    },
+    {
+      name: "ignores generated declaration files when the rule is used standalone",
+      filename: "/repo/src/__generated__/api.ts",
+      code: "export function pair(): [string, number] { return impl(); }",
+    },
+    {
       name: "keeps detached export matching scoped to the exported binding",
       code: "function split(): [string, number] { return impl(); }\nconst other = 1;\nexport { other };",
     },
@@ -47,6 +60,36 @@ ruleTester.run("no-positional-tuple-return", rule, {
     { code: "export function inferred() { return ['a', 1]; }" },
   ],
   invalid: [
+    {
+      name: "resolves a local tuple alias used by an exported function",
+      code: "type Pair = [string, number]; export function pair(): Pair { return impl(); }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects a tuple return on an exported interface method",
+      code: "export interface Loader { load(): [string, number]; }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects an exported function-type alias returning a tuple",
+      code: "export type Loader = () => [string, number];",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects an exported declare function returning a tuple",
+      code: "export declare function pair(): [string, number];",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects an exported interface callable property returning a tuple",
+      code: "export interface Loader { load: () => [string, number]; }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects an exported abstract method returning a tuple",
+      code: "export abstract class Loader { abstract load(): [string, number]; }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
     {
       name: "rejects a homogeneous fixed tuple",
       code: "export function bounds(): [number, number] { return impl(); }",

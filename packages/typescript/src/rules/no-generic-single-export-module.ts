@@ -20,7 +20,7 @@ const GENERIC_STEMS = new Set([
 // Frameworks and common inheritance layouts own these filenames; a rename can
 // break discovery or erase the conventional "base implementation" signal.
 const CONVENTIONAL_STEMS = new Set(["base", "models"]);
-const CJS_OBJECT_EXPORT_METHODS = new Set(["assign", "defineProperty"]);
+const CJS_OBJECT_EXPORT_METHODS = new Set(["assign", "defineProperties", "defineProperty"]);
 
 interface FileParts {
   readonly extension: string;
@@ -95,6 +95,25 @@ function typeOnlyBindings(program: TSESTree.Program): ReadonlySet<string> {
     const declaration = statement.type === AST_NODE_TYPES.ExportNamedDeclaration
       ? statement.declaration
       : statement;
+    if (declaration?.type === AST_NODE_TYPES.TSDeclareFunction && declaration.id !== null) {
+      names.add(declaration.id.name);
+      continue;
+    }
+    if (declaration !== null && (declaration as { declare?: boolean }).declare === true) {
+      if (
+        (declaration.type === AST_NODE_TYPES.ClassDeclaration ||
+          declaration.type === AST_NODE_TYPES.FunctionDeclaration ||
+          declaration.type === AST_NODE_TYPES.TSModuleDeclaration) &&
+        declaration.id !== null &&
+        declaration.id.type === AST_NODE_TYPES.Identifier
+      ) names.add(declaration.id.name);
+      if (declaration.type === AST_NODE_TYPES.VariableDeclaration) {
+        for (const item of declaration.declarations) {
+          if (item.id.type === AST_NODE_TYPES.Identifier) names.add(item.id.name);
+        }
+      }
+      continue;
+    }
     if (declaration !== null && "type" in declaration) {
       for (const name of declaredNames(declaration as TSESTree.NamedExportDeclarations)) {
         runtimeNames.add(name);
@@ -149,9 +168,9 @@ function runtimeExports(program: TSESTree.Program): RuntimeExports {
 
 function kebabCase(name: string): string {
   return name
-    .replaceAll("OAuth", "Oauth")
-    .replaceAll("GraphQL", "Graphql")
-    .replaceAll("gRPC", "Grpc")
+    .replaceAll(/oauth/giu, "Oauth")
+    .replaceAll(/graphql/giu, "Graphql")
+    .replaceAll(/grpc/giu, "Grpc")
     .replaceAll(/([a-z\d])([A-Z])/gu, "$1-$2")
     .replaceAll(/([A-Z]+)([A-Z][a-z])/gu, "$1-$2")
     .replaceAll(/[_\s]+/gu, "-")
@@ -164,12 +183,20 @@ function isGlobalIdentifier(
   context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
   node: TSESTree.Identifier,
 ): boolean {
-  return ASTUtils.findVariable(context.sourceCode.getScope(node), node.name) === null;
+  const variable = ASTUtils.findVariable(context.sourceCode.getScope(node), node.name);
+  return variable === null || variable.defs.length === 0;
 }
 
 function isConventionalFrameworkUtility(filename: string, exported: string): boolean {
   const normalized = filename.replaceAll("\\", "/");
   return exported === "cn" && /(?:^|\/)lib\/utils\.[cm]?[jt]sx?$/u.test(normalized);
+}
+
+function memberPropertyName(node: TSESTree.MemberExpression): string | null {
+  if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) return node.property.name;
+  return node.computed && node.property.type === AST_NODE_TYPES.Literal && typeof node.property.value === "string"
+    ? node.property.value
+    : null;
 }
 
 export default createRule<Options, MessageIds>({
@@ -204,9 +231,9 @@ export default createRule<Options, MessageIds>({
           node.callee.type === AST_NODE_TYPES.MemberExpression &&
           node.callee.object.type === AST_NODE_TYPES.Identifier &&
           node.callee.object.name === "Object" &&
-          !node.callee.computed &&
-          node.callee.property.type === AST_NODE_TYPES.Identifier &&
-          CJS_OBJECT_EXPORT_METHODS.has(node.callee.property.name)
+          isGlobalIdentifier(context, node.callee.object) &&
+          memberPropertyName(node.callee) !== null &&
+          CJS_OBJECT_EXPORT_METHODS.has(memberPropertyName(node.callee)!)
         ) hasCommonJsExport = true;
       },
       MemberExpression(node): void {
@@ -219,9 +246,7 @@ export default createRule<Options, MessageIds>({
           node.object.type === AST_NODE_TYPES.Identifier &&
           node.object.name === "module" &&
           isGlobalIdentifier(context, node.object) &&
-          !node.computed &&
-          node.property.type === AST_NODE_TYPES.Identifier &&
-          node.property.name === "exports"
+          memberPropertyName(node) === "exports"
         ) hasCommonJsExport = true;
       },
       "Program:exit"(program): void {
@@ -233,7 +258,7 @@ export default createRule<Options, MessageIds>({
         const { name: exported, node } = onlyExport;
         if (isConventionalFrameworkUtility(context.filename, exported)) return;
         const expectedStem = kebabCase(exported);
-        const suffixStem = file.suffixes.join("-").toLowerCase();
+        const suffixStem = file.suffixes.map(kebabCase).join("-");
         const currentResponsibility = [stem, suffixStem].filter(Boolean).join("-");
         if (
           expectedStem === currentResponsibility ||
@@ -245,7 +270,7 @@ export default createRule<Options, MessageIds>({
           ? expectedStem.slice(0, -suffixTail.length)
           : expectedStem;
         if (renameStem === "" || GENERIC_STEMS.has(renameStem)) return;
-        const suffix = file.suffixes.map((part) => `.${part}`).join("");
+        const suffix = file.suffixes.map((part) => `.${kebabCase(part)}`).join("");
         context.report({
           node,
           messageId: "genericSingleExport",

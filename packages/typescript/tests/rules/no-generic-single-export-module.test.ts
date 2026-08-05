@@ -26,6 +26,9 @@ ruleTester.run("no-generic-single-export-module", rule, {
     { filename: "/repo/src/utils.ts", code: "module.exports = function buildOrder() {};" },
     { filename: "/repo/src/utils.ts", code: "Object.defineProperty(exports, 'x', { value: 1 }); export const parseOrder = () => ({});" },
     { filename: "/repo/src/utils.ts", code: "Object.assign(exports, { x: 1 }); export const parseOrder = () => ({});" },
+    { filename: "/repo/src/utils.ts", code: "Object.defineProperties(exports, { x: { value: 1 } }); export const parseOrder = () => ({});" },
+    { filename: "/repo/src/utils.ts", code: "module['exports'] = {}; export const parseOrder = () => ({});" },
+    { filename: "/repo/src/utils.ts", code: "Object['defineProperty'](exports, 'x', { value: 1 }); export const parseOrder = () => ({});" },
     { filename: "/repo/src/lib/utils.ts", code: "export function cn(...inputs: unknown[]) { return inputs.join(' '); }" },
     { filename: "/repo/src/base.ts", code: "export class OrderBase {}" },
     { filename: "/repo/src/models.ts", code: "export class OrderModel {}" },
@@ -37,6 +40,10 @@ ruleTester.run("no-generic-single-export-module", rule, {
     { filename: "/repo/src/utils.ts", code: "import type { Order } from './order.js'; export { Order };" },
     { filename: "/repo/src/utils.ts", code: "import { type Order } from './order.js'; export { Order };" },
     { filename: "/repo/src/utils.ts", code: "const enum Order { Open } export { Order };" },
+    { filename: "/repo/src/utils.ts", code: "declare class Order {} export { Order };" },
+    { filename: "/repo/src/utils.ts", code: "declare function parseOrder(): void; export { parseOrder };" },
+    { filename: "/repo/src/utils.ts", code: "declare const orderSchema: object; export { orderSchema };" },
+    { filename: "/repo/src/utils.ts", code: "declare namespace Order {} export { Order };" },
     {
       filename: "/repo/src/utils.ts",
       code: "const parseOrder = () => ({}); export { parseOrder, parseOrder as default };",
@@ -68,6 +75,12 @@ ruleTester.run("no-generic-single-export-module", rule, {
       errors: [{ messageId: "genericSingleExport", data: { stem: "utils", exported: "parseOrder", expected: "parse-order.ts" } }],
     },
     {
+      name: "does not mistake a locally shadowed Object helper for CommonJS",
+      filename: "/repo/src/utils.ts",
+      code: "const Object = { defineProperty() {} }; Object.defineProperty(exports, 'x', {}); export function parseOrder() { return {}; }",
+      errors: [{ messageId: "genericSingleExport", data: { stem: "utils", exported: "parseOrder", expected: "parse-order.ts" } }],
+    },
+    {
       name: "reports a sole exported class in helpers",
       filename: "/repo/src/helpers.tsx",
       code: "export class OrderBuilder { build() { return {}; } }",
@@ -96,6 +109,12 @@ ruleTester.run("no-generic-single-export-module", rule, {
       filename: "/repo/src/utils.server.ts",
       code: "export function parseOrder() { return {}; }",
       errors: [{ messageId: "genericSingleExport", data: { stem: "utils", exported: "parseOrder", expected: "parse-order.server.ts" } }],
+    },
+    {
+      name: "canonicalizes a mixed-case suffix in the suggested filename",
+      filename: "/repo/src/utils.graphQL.ts",
+      code: "export class OrderGraphQL {}",
+      errors: [{ messageId: "genericSingleExport", data: { stem: "utils", exported: "OrderGraphQL", expected: "order.graphql.ts" } }],
     },
     {
       name: "does not duplicate a suffix already carried by the export",

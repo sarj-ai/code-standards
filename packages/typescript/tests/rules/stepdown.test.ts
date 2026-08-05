@@ -62,6 +62,10 @@ ruleTester.run("stepdown", rule, {
       code: "class Service { private normalize(v: string) { return v.trim(); } handler = this.normalize; run(v: string) { return this.normalize(v); } }",
     },
     {
+      name: "allows a private static helper referenced by a method decorator",
+      code: "class Service { private static load() { return 1; } @deco(Service.load) private run() { return Service.load(); } }",
+    },
+    {
       name: "allows a private method called through a computed property",
       code: "class Service { private load() { return 1; } run() { return this['load'](); } }",
     },
@@ -90,6 +94,11 @@ ruleTester.run("stepdown", rule, {
   ],
   invalid: [
     {
+      name: "includes a named default-export function as a caller",
+      code: "function load() { return 1; }\nexport default function run() { return load(); }",
+      errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "run" } }],
+    },
+    {
       name: "self recursion does not hide a module helper's sole external caller",
       code: "function walk(n: number): number { return n <= 0 ? 0 : walk(n - 1); }\nfunction run() { return walk(2); }",
       errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "walk", caller: "run" } }],
@@ -107,6 +116,11 @@ ruleTester.run("stepdown", rule, {
     {
       name: "reports a const arrow helper above its sole arrow caller",
       code: "const load = () => 1;\nexport const run = () => load();",
+      errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "run" } }],
+    },
+    {
+      name: "resolves a class expression through its outer const binding",
+      code: "const Service = class { private static load() { return 1; } private static run() { return Service.load(); } };",
       errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "run" } }],
     },
     {

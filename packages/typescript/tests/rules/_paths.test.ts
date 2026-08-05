@@ -74,6 +74,8 @@ describe("isStoryFile — shared default", () => {
 describe("isGeneratedFile — shared default (path arm)", () => {
   it.each([
     ["generated directory", "src/generated/api.ts", true],
+    ["double-underscore generated directory", "src/__generated__/api.ts", true],
+    ["case-insensitive generated directory", "src/Generated/api.ts", true],
     ["OpenAPI output directory", "src/openapi-gen/api.ts", true],
     ["GraphQL types directory", "src/graphql/types/api.ts", true],
     ["gen suffix", "src/api.gen.ts", true],

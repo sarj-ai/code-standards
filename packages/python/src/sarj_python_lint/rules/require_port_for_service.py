@@ -159,6 +159,14 @@ class RequirePortForService(Rule):
             elif isinstance(node, ast.ImportFrom | ast.Import):
                 bound_names.update(alias.asname or alias.name.rpartition(".")[2] for alias in node.names)
         data_names = {node.name for node in classes if _is_data_type(node)}
+        local_class_names = {node.name for node in classes}
+        local_port_names = {
+            node.name
+            for node in classes
+            if _BASE_NAME_RE.match(node.name)
+            or _declares_interface(node)
+            or any(_dotted_tail(base) in {"ABC", "Protocol"} for base in node.bases)
+        }
 
         diags = [
             Diagnostic(
@@ -177,7 +185,16 @@ class RequirePortForService(Rule):
                 ),
             )
             for node in classes
-            if (collaborator := _unsubstitutable_service(node, data_names, bound_names)) is not None
+            if (
+                collaborator := _unsubstitutable_service(
+                    node,
+                    data_names,
+                    bound_names,
+                    local_class_names,
+                    local_port_names,
+                )
+            )
+            is not None
         ]
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
@@ -203,14 +220,18 @@ def _has_main_guard(tree: ast.Module) -> bool:
 
 
 def _unsubstitutable_service(
-    node: ast.ClassDef, data_names: frozenset[str] | set[str], bound_names: frozenset[str] | set[str]
+    node: ast.ClassDef,
+    data_names: frozenset[str] | set[str],
+    bound_names: frozenset[str] | set[str],
+    local_class_names: frozenset[str] | set[str],
+    local_port_names: frozenset[str] | set[str],
 ) -> str | None:
     """Decide whether `node` is a service class with no port above it."""
     if node.name.startswith("_") or not _SERVICE_NAME_RE.search(node.name):
         return None
     if _BASE_NAME_RE.match(node.name) or _names_a_port_in_scope(node.name, bound_names):
         return None
-    if _has_base(node) or _is_data_type(node) or _declares_interface(node):
+    if _has_base(node, local_class_names, local_port_names) or _is_data_type(node) or _declares_interface(node):
         return None
     if _public_method_count(node) < _MIN_PUBLIC_METHODS or _handles_http_requests(node):
         return None
@@ -259,11 +280,24 @@ def _names_a_port_in_scope(name: str, bound_names: frozenset[str] | set[str]) ->
     )
 
 
-def _has_base(node: ast.ClassDef) -> bool:
-    """Report whether the class inherits anything at all."""
+def _has_base(
+    node: ast.ClassDef,
+    local_class_names: frozenset[str] | set[str],
+    local_port_names: frozenset[str] | set[str],
+) -> bool:
+    """Report whether the class inherits a real port or an unknown external/framework base."""
     if node.keywords:
         return True
-    return any(_dotted_tail(base) != "object" for base in node.bases)
+    for base in node.bases:
+        name = _dotted_tail(base)
+        if name in {None, "object"}:
+            continue
+        if name in local_class_names:
+            if name in local_port_names:
+                return True
+            continue
+        return True
+    return False
 
 
 def _is_data_type(node: ast.ClassDef) -> bool:

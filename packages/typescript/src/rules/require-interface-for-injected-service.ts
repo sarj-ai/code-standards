@@ -36,6 +36,7 @@ const ROUTER_FACTORY_NAME = "Router";
 
 /** Namespaced framework HTTP types; unqualified DOM globals do not match. */
 const FRAMEWORK_HTTP_TYPES: ReadonlySet<string> = new Set(["Request", "Response", "NextFunction"]);
+const STORAGE_ASSIGNMENT_OPERATORS: ReadonlySet<string> = new Set(["=", "??=", "||="]);
 
 interface Collaborator {
   readonly name: string;
@@ -298,7 +299,7 @@ const readConstructor = (
       const expression = current.type === AST_NODE_TYPES.ExpressionStatement ? current.expression : null;
       if (
         expression?.type !== AST_NODE_TYPES.AssignmentExpression ||
-        expression.operator !== "=" ||
+        !STORAGE_ASSIGNMENT_OPERATORS.has(expression.operator) ||
         expression.left.type !== AST_NODE_TYPES.MemberExpression ||
         expression.left.object.type !== AST_NODE_TYPES.ThisExpression
       ) {
@@ -313,9 +314,12 @@ const readConstructor = (
         }
         continue;
       }
-      const source = expression.right.type === AST_NODE_TYPES.TSNonNullExpression
-        ? expression.right.expression
-        : expression.right;
+      let source = expression.right;
+      while (
+        source.type === AST_NODE_TYPES.TSNonNullExpression ||
+        source.type === AST_NODE_TYPES.TSAsExpression ||
+        source.type === AST_NODE_TYPES.TSTypeAssertion
+      ) source = source.expression;
       if (source.type === AST_NODE_TYPES.NewExpression) {
         constructedFields += 1;
       } else if (source.type === AST_NODE_TYPES.Identifier) {
@@ -460,6 +464,91 @@ const publicMethodNames = (body: TSESTree.ClassBody): string[] => {
   return names;
 };
 
+function localClassAbstractness(program: TSESTree.Program): ReadonlyMap<string, boolean> {
+  const classes = new Map<string, boolean>();
+  for (const statement of program.body) {
+    const declaration = statement.type === AST_NODE_TYPES.ExportNamedDeclaration ||
+      statement.type === AST_NODE_TYPES.ExportDefaultDeclaration
+      ? statement.declaration
+      : statement;
+    if (declaration?.type === AST_NODE_TYPES.ClassDeclaration && declaration.id !== null) {
+      classes.set(declaration.id.name, declaration.abstract === true);
+    }
+  }
+  return classes;
+}
+
+function localInterfaceSurfaces(program: TSESTree.Program): ReadonlyMap<string, ReadonlySet<string>> {
+  const interfaces = new Map<string, Set<string>>();
+  const parents = new Map<string, string[]>();
+  for (const statement of program.body) {
+    const declaration = statement.type === AST_NODE_TYPES.ExportNamedDeclaration
+      ? statement.declaration
+      : statement;
+    if (declaration?.type !== AST_NODE_TYPES.TSInterfaceDeclaration) continue;
+    const callables = new Set<string>();
+    for (const member of declaration.body.body) {
+      if (
+        member.type !== AST_NODE_TYPES.TSMethodSignature &&
+        member.type !== AST_NODE_TYPES.TSPropertySignature
+      ) continue;
+      if (member.computed || member.key.type !== AST_NODE_TYPES.Identifier) continue;
+      if (
+        member.type === AST_NODE_TYPES.TSMethodSignature ||
+        member.typeAnnotation?.typeAnnotation.type === AST_NODE_TYPES.TSFunctionType
+      ) callables.add(member.key.name);
+    }
+    interfaces.set(declaration.id.name, callables);
+    parents.set(
+      declaration.id.name,
+      declaration.extends.flatMap((heritage) =>
+        heritage.expression.type === AST_NODE_TYPES.Identifier ? [heritage.expression.name] : ["*"],
+      ),
+    );
+  }
+  for (let pass = 0; pass <= interfaces.size; pass += 1) {
+    let changed = false;
+    for (const [name, inherited] of parents) {
+      const surface = interfaces.get(name);
+      if (surface === undefined) continue;
+      for (const parent of inherited) {
+        const parentSurface = interfaces.get(parent);
+        const additions = parentSurface ?? new Set(["*"]);
+        for (const method of additions) {
+          if (!surface.has(method)) {
+            surface.add(method);
+            changed = true;
+          }
+        }
+      }
+    }
+    if (!changed) break;
+  }
+  return interfaces;
+}
+
+function hasServicePort(
+  node: TSESTree.ClassDeclaration,
+  methods: readonly string[],
+  classes: ReadonlyMap<string, boolean>,
+  interfaces: ReadonlyMap<string, ReadonlySet<string>>,
+): boolean {
+  if (node.superClass !== null) {
+    if (node.superClass.type !== AST_NODE_TYPES.Identifier) return true;
+    const localAbstract = classes.get(node.superClass.name);
+    if (localAbstract === undefined || localAbstract) return true;
+  }
+  if (node.implements.length === 0) return false;
+  for (const implementation of node.implements) {
+    if (implementation.expression.type !== AST_NODE_TYPES.Identifier) return true;
+    const surface = interfaces.get(implementation.expression.name);
+    if (surface === undefined) return true;
+    if (surface.has("*")) return true;
+    if (methods.every((method) => surface.has(method))) return true;
+  }
+  return false;
+}
+
 export default createRule<Options, MessageIds>({
   name: "require-interface-for-injected-service",
   meta: {
@@ -484,6 +573,8 @@ export default createRule<Options, MessageIds>({
     // has an options-object constructor to read.
     let declaredTypes: FileTypeIndex | null = null;
     const detachedExports = detachedValueExports(context.sourceCode.ast);
+    const localClasses = localClassAbstractness(context.sourceCode.ast);
+    const localInterfaces = localInterfaceSurfaces(context.sourceCode.ast);
     const objectTypes = (): FileTypeIndex =>
       (declaredTypes ??= fileTypeIndex(context.sourceCode.ast));
 
@@ -491,11 +582,8 @@ export default createRule<Options, MessageIds>({
       ClassDeclaration(node: TSESTree.ClassDeclaration): void {
         if (node.id === null) return;
         if (!isExportedClass(node, detachedExports)) return;
-        // The port itself must never fire, and a class that extends anything —
-        // an abstract base, a framework class, `Error` — already has one.
+        // The port itself must never fire.
         if (node.abstract === true) return;
-        if (node.superClass !== null) return;
-        if (node.implements.length > 0) return;
         // Decorated classes are framework-owned construction surfaces. Syntax
         // alone cannot reliably distinguish DI decorators (including aliases)
         // from controllers, components, resolvers, scoped providers, and more.
@@ -526,6 +614,7 @@ export default createRule<Options, MessageIds>({
 
         const methods = publicMethodNames(node.body);
         if (methods.length === 0) return;
+        if (hasServicePort(node, methods, localClasses, localInterfaces)) return;
 
         context.report({
           node: node.id,

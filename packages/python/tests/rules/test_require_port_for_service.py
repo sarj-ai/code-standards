@@ -1150,3 +1150,18 @@ def test_rule_metadata() -> None:
     assert rule.id == "require-port-for-service"
     assert rule.code == "SARJ071"
     assert len(rule.description) >= 10
+
+
+def test_local_concrete_base_does_not_count_as_a_service_port() -> None:
+    source = """
+class LocalBase:
+    def helper(self) -> None: ...
+
+class BillingService(LocalBase):
+    def __init__(self, repo: BillingRepository) -> None:
+        self.repo = repo
+
+    def charge(self) -> None: ...
+    def refund(self) -> None: ...
+"""
+    assert len(_check(source)) == 1

@@ -194,3 +194,19 @@ def test_additional_id_collection_wrappers_are_detected(wrapper: str):
 def test_adapter_models_path_is_exempt():
     src = "def map_ids(user_id: str, org_id: str) -> None: ...\n"
     assert _check(src, Path("app/adapters/vendor/models.py")) == []
+
+
+@pytest.mark.parametrize("declaration", ["UserId = str", "type UserId = str"])
+def test_structural_primitive_alias_is_not_mistaken_for_nominal_id(declaration: str):
+    src = f"{declaration}\n\ndef sync(user_id: UserId, org_id: OrgId) -> None: ...\n"
+    assert len(_check(src)) == 1
+
+
+def test_newtype_alias_without_id_suffix_still_counts_as_nominal_role():
+    src = "UserKey = NewType('UserKey', str)\n\ndef sync(user_id: UserKey, org_id: str) -> None: ...\n"
+    assert len(_check(src)) == 1
+
+
+def test_type_alias_type_primitive_is_not_mistaken_for_nominal_id():
+    src = "UserId = TypeAliasType('UserId', str)\nOrgId = TypeAliasType('OrgId', str)\n\ndef sync(user_id: UserId, org_id: OrgId) -> None: ...\n"
+    assert len(_check(src)) == 1

@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
-from types import EllipsisType
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
@@ -84,7 +83,7 @@ class PreferNamedtupleOverTupleReturn(Rule):
                 continue
             if node.returns is None:
                 continue
-            if _is_interface_stub(node) or _is_overload(node) or _is_abstract_declaration(node):
+            if _is_overload(node):
                 continue
             if _is_declared_override(node, owner, facts):
                 continue
@@ -177,40 +176,6 @@ def _is_declared_override(
         return True  # `class UDPSocket(abc.UDPSocket)` — a concrete impl of its own ABC
     foreign = any(name not in facts.local_classes and name not in _STRUCTURAL_BASES for name in base_names)
     return foreign and facts.classes_declaring.get(node.name, 0) >= _SIBLING_DECLARATIONS
-
-
-def _is_abstract_declaration(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    if not any(_name_of(dec) == "abstractmethod" for dec in node.decorator_list):
-        return False
-    return all(_is_empty_statement(stmt) for stmt in node.body)
-
-
-def _is_empty_statement(stmt: ast.stmt) -> bool:
-    match stmt:
-        case ast.Pass() | ast.Expr(value=ast.Constant(value=str() | EllipsisType())):
-            return True
-        case _:
-            return False
-
-
-def _is_interface_stub(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    has_raise = False
-    for stmt in node.body:
-        if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str):
-            continue
-        if _raises_not_implemented(stmt):
-            has_raise = True
-            continue
-        return False
-    return has_raise
-
-
-def _raises_not_implemented(stmt: ast.stmt) -> bool:
-    if not isinstance(stmt, ast.Raise):
-        return False
-    exc = stmt.exc
-    target = exc.func if isinstance(exc, ast.Call) else exc
-    return isinstance(target, ast.Name) and target.id == "NotImplementedError"
 
 
 def _calls_super_method(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:

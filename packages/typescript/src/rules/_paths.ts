@@ -15,7 +15,7 @@ const STORY_TREE_RE = /(^|\/)stories(?:[_-][^/]*)?\//i;
 // These directory names explicitly identify upstream-owned code, so every rule
 // may safely ignore them.
 const GENERATED_FILE_RE =
-  /([\\/](?:generated|openapi-gen|graphql[\\/]types|vendor|vendored|third[-_]?party)[\\/])|(\.gen\.[cm]?[jt]sx?$)|(\.generated\.[cm]?[jt]sx?$)|(\.d\.[cm]?ts$)|(\.types\.[cm]?ts$)/;
+  /([\\/](?:generated|__generated__|openapi-gen|graphql[\\/]types|vendor|vendored|third[-_]?party)[\\/])|(\.gen\.[cm]?[jt]sx?$)|(\.generated\.[cm]?[jt]sx?$)|(\.d\.[cm]?ts$)|(\.types\.[cm]?ts$)/i;
 // `externalTree` stays opt-in because `external/` often contains first-party
 // integration code.
 const EXTERNAL_TREE_RE = /[\\/]external[\\/]/;

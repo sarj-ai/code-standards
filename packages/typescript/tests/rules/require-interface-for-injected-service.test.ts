@@ -20,6 +20,18 @@ const SRC = "/repo/src/domain/record-normalizer/service.ts";
 
 ruleTester.run("require-interface-for-injected-service", rule, {
   valid: [
+    {
+      name: "recognizes a service surface inherited by a local port interface",
+      filename: SRC,
+      code: `
+        interface BasePort { handle(): void; }
+        interface RequestPort extends BasePort {}
+        export class RequestHandler implements RequestPort {
+          constructor(private readonly store: TaskStore) {}
+          handle(): void {}
+        }
+      `,
+    },
     // The target state, and the corpus's overwhelming convention: 175 of 229
     // exported classes look like this.
     {
@@ -776,6 +788,43 @@ ruleTester.run("require-interface-for-injected-service", rule, {
   ],
 
   invalid: [
+    {
+      name: "recognizes nullish assignment and type-asserted constructor storage",
+      filename: SRC,
+      code: `
+        export class RequestHandler {
+          private store?: TaskStore;
+          constructor(store: TaskStore) { this.store ??= store as TaskStore; }
+          handle(): void {}
+        }
+      `,
+      errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }],
+    },
+    {
+      name: "a local marker interface does not cover the service surface",
+      filename: SRC,
+      code: `
+        interface Serializable { serialize(): string; }
+        export class RequestHandler implements Serializable {
+          constructor(private readonly store: TaskStore) {}
+          handle(): void {}
+          serialize(): string { return ""; }
+        }
+      `,
+      errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle, serialize" } }],
+    },
+    {
+      name: "a local concrete superclass is not a service port",
+      filename: SRC,
+      code: `
+        class LocalBase { helper(): void {} }
+        export class RequestHandler extends LocalBase {
+          constructor(private readonly store: TaskStore) { super(); }
+          handle(): void {}
+        }
+      `,
+      errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }],
+    },
     {
       name: "recognizes a nullable collaborator stored through a non-null assertion in control flow",
       filename: SRC,

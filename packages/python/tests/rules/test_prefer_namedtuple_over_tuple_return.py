@@ -183,7 +183,7 @@ def test_test_file_is_exempt():
     assert _check(src, path="src/trio/_tests/test_windows_pipes.py") == []
 
 
-def test_not_implemented_stub_is_exempt():
+def test_not_implemented_stub_still_bans_a_new_tuple_contract():
     # Minimized from trio's SocketType.accept: the tuple shape mirrors stdlib
     # socket.accept and is not this module's to change.
     src = """
@@ -191,17 +191,17 @@ class SocketType:
     async def accept(self) -> tuple[SocketType, AddressFormat]:
         raise NotImplementedError
 """
-    assert _check(src) == []
+    assert len(_check(src)) == 1
 
 
-def test_not_implemented_stub_with_docstring_is_exempt():
+def test_not_implemented_stub_with_docstring_still_bans_a_new_tuple_contract():
     src = """
 class SocketType:
     async def accept(self) -> tuple[SocketType, AddressFormat]:
         \"\"\"Mirror of stdlib accept.\"\"\"
         raise NotImplementedError("subclass me")
 """
-    assert _check(src) == []
+    assert len(_check(src)) == 1
 
 
 def test_not_implemented_stub_with_other_statements_still_fires():
@@ -384,14 +384,14 @@ class B({base}):
 
 
 @pytest.mark.parametrize("body", ["pass", "...", '"""Interface declaration."""'])
-def test_abstract_declaration_without_an_implementation_is_exempt(body: str):
+def test_abstract_declaration_still_bans_a_new_tuple_contract(body: str):
     src = f"""
 class UNIXSocketStream(SocketStream):
     @abstractmethod
     async def receive_fds(self, msglen: int, maxfds: int) -> tuple[bytes, list[int]]:
         {body}
 """
-    assert _check(src) == []
+    assert len(_check(src)) == 1
 
 
 def test_abstract_method_with_a_real_body_still_fires():

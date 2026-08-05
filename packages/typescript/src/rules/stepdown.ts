@@ -32,50 +32,66 @@ function isFunction(node: TSESTree.Node): node is FunctionNode {
   );
 }
 
-/** Tarjan SCC index for genuine multi-helper cycles; self recursion is not an ordering cycle. */
+/** Iterative Kosaraju SCC index; self recursion is not an ordering cycle. */
 function cycleComponents(graph: ReadonlyMap<string, ReadonlySet<string>>): ReadonlyMap<string, number> {
   const nodes = new Set<string>();
+  const reverse = new Map<string, Set<string>>();
   for (const [caller, callees] of graph) {
     nodes.add(caller);
-    for (const callee of callees) nodes.add(callee);
+    for (const callee of callees) {
+      nodes.add(callee);
+      const incoming = reverse.get(callee) ?? new Set<string>();
+      incoming.add(caller);
+      reverse.set(callee, incoming);
+    }
   }
-  const indexes = new Map<string, number>();
-  const lowlinks = new Map<string, number>();
-  const stack: string[] = [];
-  const onStack = new Set<string>();
-  const components = new Map<string, number>();
-  let nextIndex = 0;
-  let nextComponent = 0;
-
-  const connect = (name: string): void => {
-    const index = nextIndex++;
-    indexes.set(name, index);
-    lowlinks.set(name, index);
-    stack.push(name);
-    onStack.add(name);
-    for (const callee of graph.get(name) ?? []) {
-      if (!indexes.has(callee)) {
-        connect(callee);
-        lowlinks.set(name, Math.min(lowlinks.get(name) ?? index, lowlinks.get(callee) ?? index));
-      } else if (onStack.has(callee)) {
-        lowlinks.set(name, Math.min(lowlinks.get(name) ?? index, indexes.get(callee) ?? index));
+  const seen = new Set<string>();
+  const finishOrder: string[] = [];
+  for (const root of nodes) {
+    if (seen.has(root)) continue;
+    const pending: Array<{ readonly name: string; readonly exiting: boolean }> = [
+      { name: root, exiting: false },
+    ];
+    while (pending.length > 0) {
+      const current = pending.pop();
+      if (current === undefined) break;
+      if (current.exiting) {
+        finishOrder.push(current.name);
+        continue;
+      }
+      if (seen.has(current.name)) continue;
+      seen.add(current.name);
+      pending.push({ name: current.name, exiting: true });
+      for (const callee of graph.get(current.name) ?? []) {
+        if (!seen.has(callee)) pending.push({ name: callee, exiting: false });
       }
     }
-    if (lowlinks.get(name) !== indexes.get(name)) return;
+  }
+  const components = new Map<string, number>();
+  let nextComponent = 0;
+  const assigned = new Set<string>();
+  for (let index = finishOrder.length - 1; index >= 0; index -= 1) {
+    const root = finishOrder[index];
+    if (root === undefined || assigned.has(root)) continue;
     const members: string[] = [];
-    let member: string | undefined;
-    do {
-      member = stack.pop();
+    const pending = [root];
+    assigned.add(root);
+    while (pending.length > 0) {
+      const member = pending.pop();
       if (member === undefined) break;
-      onStack.delete(member);
       members.push(member);
-    } while (member !== name);
+      for (const caller of reverse.get(member) ?? []) {
+        if (!assigned.has(caller)) {
+          assigned.add(caller);
+          pending.push(caller);
+        }
+      }
+    }
     if (members.length > 1) {
       for (const cyclicName of members) components.set(cyclicName, nextComponent);
       nextComponent += 1;
     }
-  };
-  for (const name of nodes) if (!indexes.has(name)) connect(name);
+  }
   return components;
 }
 
@@ -142,6 +158,11 @@ function exportedNames(program: TSESTree.Program): Set<string> {
       statement.type === AST_NODE_TYPES.ExportDefaultDeclaration &&
       statement.declaration.type === AST_NODE_TYPES.Identifier
     ) names.add(statement.declaration.name);
+    if (
+      statement.type === AST_NODE_TYPES.ExportDefaultDeclaration &&
+      statement.declaration.type === AST_NODE_TYPES.FunctionDeclaration &&
+      statement.declaration.id !== null
+    ) names.add(statement.declaration.id.name);
   }
   return names;
 }
@@ -149,7 +170,10 @@ function exportedNames(program: TSESTree.Program): Set<string> {
 function moduleDefinitions(program: TSESTree.Program): Definition[] {
   const definitions: Definition[] = [];
   for (const statement of program.body) {
-    const node = statement.type === AST_NODE_TYPES.ExportNamedDeclaration ? statement.declaration : statement;
+    const node = statement.type === AST_NODE_TYPES.ExportNamedDeclaration ||
+      statement.type === AST_NODE_TYPES.ExportDefaultDeclaration
+      ? statement.declaration
+      : statement;
     if (node?.type === AST_NODE_TYPES.FunctionDeclaration && node.id !== null && node.body !== null) {
       definitions.push({ name: node.id.name, node, functionNode: node, bindingNode: node });
       continue;
@@ -224,12 +248,13 @@ function methodName(node: TSESTree.MethodDefinition): string | null {
 function referencedMethod(
   context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
   node: TSESTree.MemberExpression,
-  classVariable: ReturnType<typeof ASTUtils.findVariable>,
+  classVariables: ReadonlySet<NonNullable<ReturnType<typeof ASTUtils.findVariable>>>,
 ): string | null {
+  const objectVariable = node.object.type === AST_NODE_TYPES.Identifier
+    ? ASTUtils.findVariable(context.sourceCode.getScope(node.object), node.object.name)
+    : null;
   const isClassReference =
-    node.object.type === AST_NODE_TYPES.Identifier &&
-    classVariable !== null &&
-    ASTUtils.findVariable(context.sourceCode.getScope(node.object), node.object.name) === classVariable;
+    objectVariable !== null && classVariables.has(objectVariable);
   if (node.object.type !== AST_NODE_TYPES.ThisExpression && !isClassReference) return null;
   if (node.property.type === AST_NODE_TYPES.PrivateIdentifier) return `#${node.property.name}`;
   if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) return node.property.name;
@@ -259,7 +284,7 @@ function walk(
 function classScope(
   context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
   node: TSESTree.ClassDeclaration | TSESTree.ClassExpression,
-  computedReferences: readonly TSESTree.MemberExpression[],
+  computedReferenceNames: ReadonlySet<string>,
 ): void {
   const methods = node.body.body.filter(
     (member): member is TSESTree.MethodDefinition => member.type === AST_NODE_TYPES.MethodDefinition,
@@ -289,16 +314,26 @@ function classScope(
   const privateNames = new Set(definitions.map((definition) => definition.name));
   const calls = new Map<string, Set<string>>();
   const pinned = new Set<string>();
-  const classVariable = node.id === null
-    ? null
-    : ASTUtils.findVariable(context.sourceCode.getScope(node), node.id.name);
+  const classVariables = new Set<NonNullable<ReturnType<typeof ASTUtils.findVariable>>>();
+  if (node.id !== null) {
+    const internal = ASTUtils.findVariable(context.sourceCode.getScope(node), node.id.name);
+    if (internal !== null) classVariables.add(internal);
+  }
+  if (
+    node.type === AST_NODE_TYPES.ClassExpression &&
+    node.parent.type === AST_NODE_TYPES.VariableDeclarator &&
+    node.parent.id.type === AST_NODE_TYPES.Identifier
+  ) {
+    const outer = ASTUtils.findVariable(context.sourceCode.getScope(node.parent), node.parent.id.name);
+    if (outer !== null) classVariables.add(outer);
+  }
 
   for (const method of methods) {
     const caller = methodName(method);
     if (caller === null || method.value.body === null) continue;
     const visitCall = (current: TSESTree.Node, nestedFunction: boolean): void => {
       if (current.type !== AST_NODE_TYPES.MemberExpression) return;
-      const target = referencedMethod(context, current, classVariable);
+      const target = referencedMethod(context, current, classVariables);
       if (target === null || !privateNames.has(target)) return;
       if (
         current.computed ||
@@ -313,6 +348,10 @@ function classScope(
       callees.add(target);
       calls.set(caller, callees);
     };
+    for (const decorator of method.decorators) {
+      walk(decorator, context.sourceCode.visitorKeys, visitCall, true);
+    }
+    if (method.computed) walk(method.key, context.sourceCode.visitorKeys, visitCall, true);
     for (const parameter of method.value.params) {
       walk(parameter, context.sourceCode.visitorKeys, visitCall);
     }
@@ -324,20 +363,11 @@ function classScope(
     if (member.type === AST_NODE_TYPES.MethodDefinition || member.type === AST_NODE_TYPES.TSAbstractMethodDefinition) continue;
     walk(member, context.sourceCode.visitorKeys, (current) => {
       if (current.type !== AST_NODE_TYPES.MemberExpression) return;
-      const target = referencedMethod(context, current, classVariable);
+      const target = referencedMethod(context, current, classVariables);
       if (target !== null && privateNames.has(target)) pinned.add(target);
     });
   }
-  for (const current of computedReferences) {
-    const outsideClass = current.range[0] < node.range[0] || current.range[1] > node.range[1];
-    if (
-      !outsideClass ||
-      !current.computed ||
-      current.property.type !== AST_NODE_TYPES.Literal ||
-      typeof current.property.value !== "string"
-    ) continue;
-    if (privateNames.has(current.property.value)) pinned.add(current.property.value);
-  }
+  for (const name of computedReferenceNames) if (privateNames.has(name)) pinned.add(name);
 
   const accessibility = new Map(
     scopeDefinitions.map((definition) => {
@@ -375,16 +405,16 @@ export default createRule<Options, MessageIds>({
       ClassExpression: (node): void => { classes.push(node); },
       "Program:exit": (program): void => {
         moduleScope(context, program);
-        const computedReferences: TSESTree.MemberExpression[] = [];
+        const computedReferenceNames = new Set<string>();
         walk(program, context.sourceCode.visitorKeys, (node) => {
           if (
             node.type === AST_NODE_TYPES.MemberExpression &&
             node.computed &&
             node.property.type === AST_NODE_TYPES.Literal &&
             typeof node.property.value === "string"
-          ) computedReferences.push(node);
+          ) computedReferenceNames.add(node.property.value);
         });
-        for (const node of classes) classScope(context, node, computedReferences);
+        for (const node of classes) classScope(context, node, computedReferenceNames);
       },
     };
   },
