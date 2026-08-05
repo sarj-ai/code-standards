@@ -765,8 +765,7 @@ def _string_collection_values(node: ast.AST | None) -> set[str] | None:
             if isinstance(element, (ast.List, ast.Tuple)) and len(element.elts) == _CHOICE_PAIR_ARITY
             else element
         )
-        # Django choice tables commonly use `(None, "---")` for the blank
-        # option. It is not a string enum member, but it must not obscure the
+        # Ignore Django's `(None, "---")` blank sentinel while preserving the
         # closed string vocabulary alongside it.
         if _is_none_annotation(candidate):
             continue

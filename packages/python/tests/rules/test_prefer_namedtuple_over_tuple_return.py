@@ -118,6 +118,14 @@ def test_does_not_fire_without_annotation():
     assert _check("def f(): ...\n") == []
 
 
+def test_fires_on_inferred_tuple_literal_return():
+    assert len(_check("def f():\n    return 1, 'a'\n")) == 1
+
+
+def test_private_owning_class_is_not_a_public_boundary():
+    assert _check("class _Internal:\n    def pair(self) -> tuple[int, str]: ...\n") == []
+
+
 def test_does_not_fire_on_private_function():
     assert _check("def _helper() -> tuple[int, str]: ...\n") == []
     assert _check("def __dunder__() -> tuple[int, str]: ...\n") == []
@@ -214,20 +222,20 @@ class SocketType:
     assert len(_check(src)) == 1
 
 
-def test_overload_stub_is_exempt():
+def test_overload_only_tuple_contract_fires_once():
     src = """
 @overload
 def pair(x: int) -> tuple[int, str]: ...
 """
-    assert _check(src) == []
+    assert len(_check(src)) == 1
 
 
-def test_qualified_overload_stub_is_exempt():
+def test_qualified_overload_only_tuple_contract_fires_once():
     src = """
 @typing.overload
 def pair(x: int) -> tuple[int, str]: ...
 """
-    assert _check(src) == []
+    assert len(_check(src)) == 1
 
 
 def test_ellipsis_body_still_fires():

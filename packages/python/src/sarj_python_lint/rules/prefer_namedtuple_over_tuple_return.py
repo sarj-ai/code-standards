@@ -78,17 +78,21 @@ class PreferNamedtupleOverTupleReturn(Rule):
             return []
         facts = _module_facts(tree)
         diags: list[Diagnostic] = []
+        reported: set[tuple[str | None, str]] = set()
         for node, owner in _iter_boundary_functions(tree):
-            if node.name.startswith("_"):
-                continue
-            if node.returns is None:
-                continue
-            if _is_overload(node):
+            if node.name.startswith("_") or (owner is not None and owner.name.startswith("_")):
                 continue
             if _is_declared_override(node, owner, facts):
                 continue
-            if not _is_bare_positional_tuple(node.returns, facts.type_aliases):
+            if not (
+                (node.returns is not None and _is_bare_positional_tuple(node.returns, facts.type_aliases))
+                or _returns_tuple_literal(node)
+            ):
                 continue
+            family = (owner.name if owner is not None else None, node.name)
+            if family in reported:
+                continue
+            reported.add(family)
             diags.append(
                 Diagnostic(
                     path=path,
@@ -198,6 +202,23 @@ def _is_overload(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
                 return True
             case _:
                 continue
+    return False
+
+
+def _returns_tuple_literal(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Detect an inferred fixed tuple without descending into nested scopes."""
+    pending: list[ast.AST] = [*node.body]
+    while pending:
+        current = pending.pop()
+        if (
+            isinstance(current, ast.Return)
+            and isinstance(current.value, ast.Tuple)
+            and len(current.value.elts) >= _MIN_ELEMENTS
+        ):
+            return True
+        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+            continue
+        pending.extend(children(current))
     return False
 
 
