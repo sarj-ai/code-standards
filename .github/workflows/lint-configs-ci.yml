@@ -35,13 +35,17 @@ jobs:
       run:
         working-directory: packages/lint-configs
     steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
       # Full history. This job runs the package suite, and the retired-identifier
       # gates in it DERIVE the withdrawn rule set from `git log --diff-filter=D`
       # rather than trusting a hand-kept list, so a shallow checkout fails them.
       # The repository policy requires it of every job that runs a
       # suite: "runs the tests" and "can read git history" were two independent
       # facts about a job, and a release was lost to the gap between them.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0

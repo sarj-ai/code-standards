@@ -888,14 +888,15 @@ def test_the_manifest_filename_is_the_one_adopted_repos_committed() -> None:
 
 
 def test_the_expected_precommit_rev_names_a_tag_the_release_workflow_publishes() -> None:
-    """The rev namespace is `python-v`, and only the release workflow can confirm it."""
+    """The main-only release creates the `python-v` rev consumed by pre-commit."""
     expected = manifest.expected_precommit_rev()
     assert expected is not None
     assert expected == f"python-v{version('sarj-python-lint')}"
 
     workflow = (REPO_ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
     prefix = expected.rsplit("-v", 1)[0]
-    assert f"'{prefix}-v*'" in workflow, f"release.yml never triggers on {prefix}-v* tags"
+    assert "branches: [main]" in workflow
+    assert "tags:" not in workflow.partition("\npermissions:\n")[0]
     assert f"repo release create-tags {prefix} " in workflow, f"release.yml never creates a {prefix}-v tag"
 
 

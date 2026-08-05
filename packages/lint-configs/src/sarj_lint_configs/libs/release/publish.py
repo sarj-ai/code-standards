@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 
 PublishTarget = Literal["typescript", "python", "sql", "iac", "lint-configs", "tsconfig"]
-_EXPECTED_PYTHON_ARTIFACTS = 2
+_EXPECTED_PYTHON_ARTIFACTS = 1
 _PYTHON_TARGETS: Mapping[str, str] = {
     "python": "python",
     "sql": "sql",
@@ -53,12 +53,12 @@ def publish_target(root: Path, target: PublishTarget, *, runner: ProcessRunner =
     cwd = resolved / "packages" / package
     with TemporaryDirectory(prefix=f"sarj-{package}-release-") as temporary:
         destination = Path(temporary)
-        runner(("uv", "build", "--wheel", "--sdist", "--out-dir", str(destination)), cwd=cwd)
-        artifacts = tuple(sorted((*destination.glob("*.whl"), *destination.glob("*.tar.gz"))))
+        runner(("uv", "build", "--wheel", "--out-dir", str(destination)), cwd=cwd)
+        artifacts = tuple(sorted(destination.glob("*.whl")))
         if len(artifacts) != _EXPECTED_PYTHON_ARTIFACTS or any(
             not artifact.is_file() or artifact.stat().st_size == 0 for artifact in artifacts
         ):
-            msg = f"uv build did not create exactly one wheel and one source archive for {target}"
+            msg = f"uv build did not create exactly one wheel for {target}"
             raise ValueError(msg)
         runner(("uv", "publish", *(str(artifact) for artifact in artifacts)), cwd=cwd)
 

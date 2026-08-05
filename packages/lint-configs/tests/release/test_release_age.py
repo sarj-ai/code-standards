@@ -33,7 +33,6 @@ def test_locked_registry_packages_deduplicates_and_supports_scopes(tmp_path: Pat
             "node_modules/plain": {"version": "1.0.0", "resolved": "https://registry.npmjs.org/plain/-/plain.tgz"},
             "nested/node_modules/plain": {"version": "1.0.0"},
             "node_modules/@scope/pkg": {"version": "2.0.0"},
-            "node_modules/private": {"version": "3.0.0", "resolved": "https://packages.example/private.tgz"},
         },
     )
 
@@ -41,6 +40,21 @@ def test_locked_registry_packages_deduplicates_and_supports_scopes(tmp_path: Pat
         PackageIdentity("@scope/pkg", "2.0.0"),
         PackageIdentity("plain", "1.0.0"),
     )
+
+
+def test_locked_registry_packages_rejects_non_npm_registry_artifact(tmp_path: Path) -> None:
+    lockfile = _lockfile(
+        tmp_path,
+        {
+            "node_modules/private": {
+                "version": "3.0.0",
+                "resolved": "https://packages.example/private.tgz",
+            },
+        },
+    )
+
+    with pytest.raises(ValueError, match=r"resolves outside registry\.npmjs\.org"):
+        locked_registry_packages(lockfile, ReleaseAgePolicy())
 
 
 def test_locked_registry_packages_applies_name_and_version_exclusions(tmp_path: Path) -> None:

@@ -106,7 +106,7 @@ class ReleaseAgeReport:
 
 
 def locked_registry_packages(lockfile: Path, policy: ReleaseAgePolicy) -> tuple[PackageIdentity, ...]:
-    """Extract unique npm-registry package versions from a package-lock file."""
+    """Extract package versions and reject artifacts outside the public npm registry."""
     packages_value = _load_object(lockfile).get("packages")
     if packages_value is None:
         return ()
@@ -122,7 +122,8 @@ def locked_registry_packages(lockfile: Path, policy: ReleaseAgePolicy) -> tuple[
         if not isinstance(version, str) or not version:
             continue
         if isinstance(resolved, str) and not resolved.startswith("https://registry.npmjs.org/"):
-            continue
+            msg = f"lockfile package {name}@{version} resolves outside registry.npmjs.org: {resolved}"
+            raise ValueError(msg)
         identity = PackageIdentity(name, version)
         if name not in policy.exclusions and f"{name}@{version}" not in policy.exclusions:
             identities.add(identity)

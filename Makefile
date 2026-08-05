@@ -5,14 +5,12 @@ MAKEFLAGS += --warn-undefined-variables --no-builtin-rules
 CONFIG_SRC := packages/lint-configs/src/sarj_lint_configs/configs
 STANDARDS := uv run --project packages/lint-configs --frozen sarj-standards
 
-.PHONY: help setup build verify doctor test lint format-check typecheck repo-check check-no-private-refs check-file-conventions check-versions-synced release-check release-check-lock-age release-check-tags release-check-typescript publish publish-typescript publish-python publish-sql \
-        publish-iac publish-lint-configs publish-tsconfig sync-rule-ledger
+.PHONY: help setup build verify doctor test lint format-check typecheck repo-check check-no-private-refs check-file-conventions check-versions-synced release-check release-check-lock-age release-check-tags release-check-typescript sync-rule-ledger
 
 help:
 	@echo "Targets: setup | verify | doctor | build | test | lint | typecheck"
 	@echo "         check-{versions-synced,no-private-refs,file-conventions} | release-check"
-	@echo "         publish-{typescript,python,sql,iac,lint-configs,tsconfig} | publish (all)"
-	@echo "Releases trigger via tag push: typescript-v* python-v* sql-v* iac-v* lint-configs-v* tsconfig-v*"
+	@echo "Releases are published only after a version-changing merge to main."
 
 setup:
 	$(STANDARDS) repo setup --dest .
@@ -34,10 +32,10 @@ format-check:
 
 build:
 	cd packages/typescript     && npm run build
-	cd packages/python         && uv build --wheel --sdist
-	cd packages/sql            && uv build --wheel --sdist
-	cd packages/iac            && uv build --wheel --sdist
-	cd packages/lint-configs   && uv build --wheel --sdist
+	cd packages/python         && uv build --wheel
+	cd packages/sql            && uv build --wheel
+	cd packages/iac            && uv build --wheel
+	cd packages/lint-configs   && uv build --wheel
 
 test: check-versions-synced
 	cd packages/typescript     && npm test
@@ -128,23 +126,3 @@ release-check-tags:
 
 release-check-typescript:
 	$(STANDARDS) repo release typescript check --dest .
-
-publish-typescript:
-	$(STANDARDS) repo release publish typescript --dest .
-
-publish-python:
-	$(STANDARDS) repo release publish python --dest .
-
-publish-sql:
-	$(STANDARDS) repo release publish sql --dest .
-
-publish-iac:
-	$(STANDARDS) repo release publish iac --dest .
-
-publish-lint-configs:
-	$(STANDARDS) repo release publish lint-configs --dest .
-
-publish-tsconfig:
-	$(STANDARDS) repo release publish tsconfig --dest .
-
-publish: publish-typescript publish-python publish-sql publish-iac publish-lint-configs publish-tsconfig

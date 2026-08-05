@@ -17,19 +17,15 @@ def test_python_publish_builds_then_publishes_without_shell(tmp_path: Path) -> N
         if argv[:2] == ("uv", "build"):
             destination = Path(argv[-1])
             (destination / "example-1.0.0-py3-none-any.whl").write_bytes(b"wheel")
-            (destination / "example-1.0.0.tar.gz").write_bytes(b"sdist")
         return ProcessResult(0)
 
     publish_target(tmp_path, "python", runner=runner)
 
     build, publish = calls
-    assert build[0][:4] == ("uv", "build", "--wheel", "--sdist")
-    assert build[0][4] == "--out-dir"
+    assert build[0][:3] == ("uv", "build", "--wheel")
+    assert build[0][3] == "--out-dir"
     assert publish[0][:2] == ("uv", "publish")
-    assert {Path(path).name for path in publish[0][2:]} == {
-        "example-1.0.0-py3-none-any.whl",
-        "example-1.0.0.tar.gz",
-    }
+    assert {Path(path).name for path in publish[0][2:]} == {"example-1.0.0-py3-none-any.whl"}
     assert build[1] == publish[1] == tmp_path / "packages" / "python"
 
 

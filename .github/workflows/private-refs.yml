@@ -17,6 +17,10 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
       - name: Require trusted scan for forks
         if: github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name != github.repository
         run: |
