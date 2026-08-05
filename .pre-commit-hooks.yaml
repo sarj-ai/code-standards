@@ -2,8 +2,11 @@
   name: 'sarj-standards: Python, SQL, IaC, config, text, and artifact rules'
   entry: sarj-standards check
   language: python
-  files: '(?i)(\.py|\.sql|\.tf|\.tfvars|\.hcl|\.ya?ml|\.toml|\.jsonc|\.mdx?|Dockerfile|Makefile)$'
-  additional_dependencies: ["sarj-lint-configs==0.47.0"]
+  files: '(?i)(\.py|\.sql|\.tf|\.tfvars|\.hcl|\.ya?ml|\.toml|\.jsonc|\.mdx?|\.(?:bash|cfg|conf|env|ini|properties|sh|tftpl|zsh)|(?:^|/)\.env(?:\..*)?$|(?:^|/)(?:Dockerfile(?:\..*)?|Gnumakefile|Justfile|Makefile))$'
+  # New rules can report without blocking for one release. Pre-commit normally
+  # hides successful-hook output, so verbose keeps those warnings visible.
+  verbose: true
+  additional_dependencies: ["sarj-lint-configs==0.48.0"]
 
 - id: sarj-no-sequential-await
   name: 'sarj-lint: no sequential `await` in for-loop'

@@ -142,7 +142,7 @@ const CALL_RE = /^[A-Za-z_$][\w.$]*\([^)]*\)\s*;?\s*$/;
 // recognize them. A disabled assertion is especially dangerous: the test still
 // passes, but verifies nothing. Keep this narrow to established assertion APIs.
 const ASSERTION_CODE_RE =
-  /^(?:await\s+)?(?:expect(?:TypeOf)?\s*\(.+\)\s*(?:\.\w+(?:<[^;()]*>)?)+(?:\s*\(.*\))?|assert(?:\.\w+)?\s*\(.+\))\s*;?\s*$/;
+  /^(?:await\s+)?(?:expect(?:TypeOf)?\s*\(.+\)\s*(?:\.\w+(?:<[^\n]*>)?)+(?:\s*\(.*\))?|assert(?:\.\w+)?\s*\(.+\))\s*;?\s*$/;
 
 // Placeholders that only appear in grammar productions / desugaring examples,
 // never in real code: `%sent%`, `[opt]`, a standalone `<FunctionBody>`, `…` / `...`.

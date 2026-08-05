@@ -1,6 +1,6 @@
 [project]
 name = "sarj-python-lint"
-version = "0.45.0"
+version = "0.46.0"
 description = "Custom Python lint rules — AST-based, pre-commit-friendly, hypermodern defaults"
 readme = "packages/python/README.md"
 authors = [{ name = "sarj-ai" }]
@@ -15,6 +15,9 @@ classifiers = [
   "Topic :: Software Development :: Quality Assurance",
 ]
 dependencies = []
+
+[tool.ruff]
+extend = ".ruff-strict.toml"
 
 [project.scripts]
 sarj-python-lint = "sarj_python_lint.__main__:main"

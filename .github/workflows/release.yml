@@ -52,28 +52,17 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - name: Require release tag to match its package manifest
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: uv run --project packages/lint-configs --frozen sarj-standards repo release check-tag "$RELEASE_TAG" --dest .
       - id: c
         env:
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          # True iff the manifest's own `version` line changed between BEFORE..AFTER.
-          ver_changed () {
-            if git rev-parse --verify --quiet "${BEFORE}^{commit}" >/dev/null 2>&1; then
-              git diff --no-color "$BEFORE" "$AFTER" -- "$1" | grep -E "$2" >/dev/null
-            else
-              return 1
-            fi
-          }
-          emit () { echo "$1=$( { ver_changed "$2" "$3"; } && echo true || echo false )" >> "$GITHUB_OUTPUT"; }
-          emit typescript    packages/typescript/package.json     '^\+[[:space:]]*"version":'
-          emit tsconfig      packages/tsconfig/package.json       '^\+[[:space:]]*"version":'
-          emit python        packages/python/pyproject.toml       '^\+version = '
-          emit sql           packages/sql/pyproject.toml          '^\+version = '
-          emit iac           packages/iac/pyproject.toml          '^\+version = '
-          emit lint-configs  packages/lint-configs/pyproject.toml '^\+version = '
-          cat "$GITHUB_OUTPUT"
+        run: uv run --project packages/lint-configs --frozen sarj-standards repo release changes --before "$BEFORE" --after "$AFTER" --github-output "$GITHUB_OUTPUT" --dest .
 
   build-typescript:
     needs: detect
@@ -100,14 +89,15 @@ jobs:
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - run: npm install --global npm@11.19.0 --ignore-scripts
       - name: Enforce lockfile release-age quarantine
-        run: node ../../.github/scripts/check-lockfile-release-age.mjs package-lock.json
+        run: uv run --project ../lint-configs --frozen sarj-standards repo release lock-age packages/typescript/package-lock.json --dest ../..
       - run: npm ci
       - run: npm run build
       - run: npm test
       - name: Pack publishable artifact
-        run: npm pack --pack-destination "$RUNNER_TEMP/npm-artifacts"
+        run: uv run --project ../lint-configs --frozen sarj-standards repo release typescript pack --dest ../.. --output "$RUNNER_TEMP/npm-artifacts"
       - name: Upload publishable artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -468,41 +458,26 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - name: Create version tags for newly published packages
-        env:
-          PY_OK: ${{ needs.publish-python.result }}
-          SQL_OK: ${{ needs.publish-sql.result }}
-          IAC_OK: ${{ needs.publish-iac.result }}
-          TS_OK: ${{ needs.publish-typescript.result }}
-          LC_OK: ${{ needs.publish-lint-configs.result }}
-          TSC_OK: ${{ needs.publish-tsconfig.result }}
-          PY_CHG: ${{ needs.detect.outputs.python }}
-          SQL_CHG: ${{ needs.detect.outputs.sql }}
-          IAC_CHG: ${{ needs.detect.outputs.iac }}
-          TS_CHG: ${{ needs.detect.outputs.typescript }}
-          LC_CHG: ${{ needs.detect.outputs.lint-configs }}
-          TSC_CHG: ${{ needs.detect.outputs.tsconfig }}
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - name: Configure release tag identity
         run: |
-          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          toml_version () { sed -n 's/^version = "\(.*\)"/\1/p' "$1" | head -1; }
-          json_version () { node -e "process.stdout.write(require('./$1').version)"; }
-          maybe_tag () {
-            local prefix="$1" version="$2"
-            local tag="${prefix}-v${version}"
-            if [ -z "$version" ]; then echo "no version for $prefix, skipping"; return; fi
-            if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
-              echo "$tag already exists, skipping"; return
-            fi
-            git tag -a "$tag" -m "$prefix $version"
-            git push origin "$tag"
-            echo "created $tag"
-          }
-          if [ "$PY_CHG" = "true" ]; then [ "$PY_OK" = "success" ]; maybe_tag python "$(toml_version packages/python/pyproject.toml)"; fi
-          if [ "$SQL_CHG" = "true" ]; then [ "$SQL_OK" = "success" ]; maybe_tag sql "$(toml_version packages/sql/pyproject.toml)"; fi
-          if [ "$IAC_CHG" = "true" ]; then [ "$IAC_OK" = "success" ]; maybe_tag iac "$(toml_version packages/iac/pyproject.toml)"; fi
-          if [ "$LC_CHG" = "true" ]; then [ "$LC_OK" = "success" ]; maybe_tag lint-configs "$(toml_version packages/lint-configs/pyproject.toml)"; fi
-          if [ "$TS_CHG" = "true" ]; then [ "$TS_OK" = "success" ]; maybe_tag typescript "$(json_version packages/typescript/package.json)"; fi
-          if [ "$TSC_CHG" = "true" ]; then [ "$TSC_OK" = "success" ]; maybe_tag tsconfig "$(json_version packages/tsconfig/package.json)"; fi
-          echo "done"
+      - name: Tag Python release
+        if: needs.detect.outputs.python == 'true'
+        run: uv run --project packages/lint-configs --frozen sarj-standards repo release create-tags python --dest .
+      - name: Tag SQL release
+        if: needs.detect.outputs.sql == 'true'
+        run: uv run --project packages/lint-configs --frozen sarj-standards repo release create-tags sql --dest .
+      - name: Tag IaC release
+        if: needs.detect.outputs.iac == 'true'
+        run: uv run --project packages/lint-configs --frozen sarj-standards repo release create-tags iac --dest .
+      - name: Tag lint-configs release
+        if: needs.detect.outputs.lint-configs == 'true'
+        run: uv run --project packages/lint-configs --frozen sarj-standards repo release create-tags lint-configs --dest .
+      - name: Tag TypeScript release
+        if: needs.detect.outputs.typescript == 'true'
+        run: uv run --project packages/lint-configs --frozen sarj-standards repo release create-tags typescript --dest .
+      - name: Tag tsconfig release
+        if: needs.detect.outputs.tsconfig == 'true'
+        run: uv run --project packages/lint-configs --frozen sarj-standards repo release create-tags tsconfig --dest .

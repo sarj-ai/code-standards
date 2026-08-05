@@ -52,6 +52,12 @@ class _Binding:
     symbol: str | None
 
 
+@dataclass(frozen=True, slots=True)
+class _HiddenParameter:
+    parameter: ast.arg
+    uses_boolean_or: bool
+
+
 @final
 class NoHiddenConstructorFallback(Rule):
     id = "no-hidden-constructor-fallback"
@@ -88,19 +94,24 @@ class NoHiddenConstructorFallback(Rule):
             hidden = _hidden_parameters(init, resolver)
             if not hidden or not _has_composition_call(path, class_node.name):
                 continue
-            names = ", ".join(f"`{parameter.arg}`" for parameter in hidden)
+            names = ", ".join(f"`{match.parameter.arg}`" for match in hidden)
             noun = "parameter" if len(hidden) == 1 else "parameters"
             verb = "falls" if len(hidden) == 1 else "fall"
+            falsey_warning = (
+                " A boolean `or` also treats explicit falsey values as omitted."
+                if any(match.uses_boolean_or for match in hidden)
+                else ""
+            )
             diagnostics.append(
                 Diagnostic(
                     path=path,
-                    line=hidden[0].lineno,
-                    col=hidden[0].col_offset + 1,
+                    line=hidden[0].parameter.lineno,
+                    col=hidden[0].parameter.col_offset + 1,
                     code=self.code,
                     message=(
                         f"Constructor {noun} {names} {verb} back to application settings when omitted; "
-                        "make the argument required and resolve the fallback at the call site or composition root. "
-                        "A boolean `or` also treats explicit falsey values as omitted."
+                        "make the argument required and resolve the fallback at the call site or composition root."
+                        f"{falsey_warning}"
                     ),
                     severity=Severity.WARNING,
                 )
@@ -115,7 +126,7 @@ def _is_descriptor(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
 def _hidden_parameters(
     init: ast.FunctionDef | ast.AsyncFunctionDef,
     resolver: _RuntimeConfigResolver,
-) -> list[ast.arg]:
+) -> list[_HiddenParameter]:
     candidates = {
         parameter.arg: parameter
         for parameter, default in zip(init.args.kwonlyargs, init.args.kw_defaults, strict=True)
@@ -124,15 +135,16 @@ def _hidden_parameters(
     if not candidates:
         return []
 
-    hidden: set[str] = set()
+    hidden: dict[str, bool] = {}
     rebound: set[str] = set()
     shadowed = _argument_names(init.args)
     for statement in init.body:
         available = candidates.keys() - rebound
-        hidden.update(_statement_fallbacks(statement, available, resolver, shadowed))
+        for name, uses_boolean_or in _statement_fallbacks(statement, available, resolver, shadowed).items():
+            hidden[name] = hidden.get(name, False) or uses_boolean_or
         rebound.update(_directly_bound_names(statement) & candidates.keys())
         shadowed.update(_directly_bound_names(statement))
-    return [parameter for name, parameter in candidates.items() if name in hidden]
+    return [_HiddenParameter(parameter, hidden[name]) for name, parameter in candidates.items() if name in hidden]
 
 
 def _statement_fallbacks(
@@ -140,16 +152,16 @@ def _statement_fallbacks(
     candidates: set[str],
     resolver: _RuntimeConfigResolver,
     shadowed: set[str],
-) -> set[str]:
+) -> dict[str, bool]:
     if isinstance(statement, ast.Assign):
         return _expression_fallbacks(statement.value, candidates, resolver, shadowed)
     if isinstance(statement, ast.AnnAssign) and statement.value is not None:
         return _expression_fallbacks(statement.value, candidates, resolver, shadowed)
     if not isinstance(statement, ast.If) or statement.orelse or len(statement.body) != 1:
-        return set()
+        return {}
     parameter = _none_comparison_parameter(statement.test, candidates, expect_not=False)
     if parameter is None:
-        return set()
+        return {}
     body = statement.body[0]
     if isinstance(body, ast.Assign):
         value = body.value if len(body.targets) == 1 and _is_name(body.targets[0], parameter) else None
@@ -157,7 +169,7 @@ def _statement_fallbacks(
         value = body.value if _is_name(body.target, parameter) else None
     else:
         value = None
-    return {parameter} if value is not None and resolver.is_runtime_config(value, shadowed) else set()
+    return {parameter: False} if value is not None and resolver.is_runtime_config(value, shadowed) else {}
 
 
 def _expression_fallbacks(
@@ -165,15 +177,15 @@ def _expression_fallbacks(
     candidates: set[str],
     resolver: _RuntimeConfigResolver,
     shadowed: set[str],
-) -> set[str]:
+) -> dict[str, bool]:
     if isinstance(expression, ast.BoolOp) and isinstance(expression.op, ast.Or):
         match expression.values:
             case [ast.Name(id=parameter), fallback] if parameter in candidates:
-                return {parameter} if resolver.is_runtime_config(fallback, shadowed) else set()
+                return {parameter: True} if resolver.is_runtime_config(fallback, shadowed) else {}
             case _:
-                return set()
+                return {}
     if not isinstance(expression, ast.IfExp):
-        return set()
+        return {}
     not_none = _none_comparison_parameter(expression.test, candidates, expect_not=True)
     if (
         not_none is not None
@@ -181,7 +193,7 @@ def _expression_fallbacks(
         and expression.body.id == not_none
         and resolver.is_runtime_config(expression.orelse, shadowed)
     ):
-        return {not_none}
+        return {not_none: False}
     is_none = _none_comparison_parameter(expression.test, candidates, expect_not=False)
     if (
         is_none is not None
@@ -189,8 +201,8 @@ def _expression_fallbacks(
         and expression.orelse.id == is_none
         and resolver.is_runtime_config(expression.body, shadowed)
     ):
-        return {is_none}
-    return set()
+        return {is_none: False}
+    return {}
 
 
 def _none_comparison_parameter(test: ast.expr, candidates: set[str], *, expect_not: bool) -> str | None:

@@ -43,6 +43,10 @@ ruleTester.run("prefer-shadcn-primitives", rule, {
       code: `<input name="csrf" type="hidden" value={token} />`,
     },
     {
+      name: "accepts native file inputs",
+      code: `<input name="attachment" type="file" />`,
+    },
+    {
       name: "accepts expression-wrapped hidden inputs",
       code: `<><input type={"hidden"} /><input type={\`hidden\`} /><input type={"hidden" as const} /><input type={"hidden" satisfies string} /><input type={\`${"hidden"}\`} /></>`,
     },
@@ -53,6 +57,14 @@ ruleTester.run("prefer-shadcn-primitives", rule, {
     {
       name: "ignores inputs whose effective type is unknown",
       code: `<><input type={inputType} /><input type="hidden" {...props} /><input {...props} /></>`,
+    },
+    {
+      name: "accepts labels without a static association",
+      code: `<><label>Account details</label><label htmlFor={fieldId}>Name</label><label htmlFor="">Empty</label><label htmlFor="   ">Blank</label></>`,
+    },
+    {
+      name: "accepts labels that wrap only non-labelable content",
+      code: `<><label><span>Section heading</span></label><label><input type={inputType} /></label><label><input type="hidden" /></label></>`,
     },
     {
       name: "does not treat object prototype names as primitives",
@@ -157,6 +169,20 @@ ruleTester.run("prefer-shadcn-primitives", rule, {
         {
           messageId: "preferShadcnPrimitive",
           data: { element: "label", replacement: "Label" },
+        },
+      ],
+    },
+    {
+      name: "rejects a label wrapping a labelable control",
+      code: `<label>Name <><span><input type="text" /></span></></label>`,
+      errors: [
+        {
+          messageId: "preferShadcnPrimitive",
+          data: { element: "label", replacement: "Label" },
+        },
+        {
+          messageId: "preferShadcnPrimitive",
+          data: { element: "input", replacement: "Input" },
         },
       ],
     },

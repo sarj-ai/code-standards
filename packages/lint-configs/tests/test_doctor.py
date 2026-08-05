@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_lint_configs import __main__ as cli
+from sarj_lint_configs import doctor, manifest
 from sarj_lint_configs.doctor import Level, check_pyright_deprecated, check_ruff_policy_authority
 
 
@@ -43,6 +45,18 @@ def test_doctor_accepts_deprecated_api_protection_at_error(tmp_path: Path, name:
     assert not list(check_pyright_deprecated(tmp_path))
 
 
+def test_doctor_rejects_non_string_manifest_destinations_without_a_traceback(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / ".sarj-standards.toml").write_text(
+        'version = "0.48.0"\nconfigs = []\n[dest]\npython = 3\ntypescript = []\n',
+        encoding="utf-8",
+    )
+
+    assert cli.main(["doctor", "--dest", str(tmp_path)]) == 2
+    assert "must be a non-empty string" in capsys.readouterr().out
+
+
 @pytest.mark.parametrize("key", ["ignore", "select"])
 def test_doctor_rejects_replacement_rule_policy_in_extending_ruff_config(tmp_path: Path, key: str) -> None:
     (tmp_path / "pyproject.toml").write_text(
@@ -66,10 +80,10 @@ def test_doctor_accepts_additive_rule_policy_in_extending_ruff_config(tmp_path: 
     assert not list(check_ruff_policy_authority(tmp_path))
 
 
-def test_doctor_rejects_multiple_ruff_policy_files(tmp_path: Path) -> None:
+def test_doctor_rejects_a_ruff_chain_that_never_reaches_strict(tmp_path: Path) -> None:
     root_config = tmp_path / "python" / "pyproject.toml"
     root_config.parent.mkdir()
-    root_config.write_text('[tool.ruff]\nextend = ".ruff-strict.toml"\n', encoding="utf-8")
+    root_config.write_text("[tool.ruff]\nline-length = 100\n", encoding="utf-8")
     child_config = tmp_path / "python" / "agent" / "pyproject.toml"
     child_config.parent.mkdir()
     child_config.write_text('[tool.ruff]\nextend = "../pyproject.toml"\n', encoding="utf-8")
@@ -77,8 +91,45 @@ def test_doctor_rejects_multiple_ruff_policy_files(tmp_path: Path) -> None:
     findings = list(check_ruff_policy_authority(tmp_path))
 
     assert [finding.where for finding in findings] == ["python/agent/pyproject.toml: Ruff config"]
-    assert "split" in findings[0].detail
-    assert "python/pyproject.toml" in findings[0].detail
+    assert "canonical .ruff-strict.toml" in findings[0].detail
+    assert findings[0].id == "doctor.ruff.authority"
+
+
+def test_doctor_accepts_a_monorepo_ruff_chain_that_terminates_at_strict(tmp_path: Path) -> None:
+    central = tmp_path / "python" / "pyproject.toml"
+    central.parent.mkdir()
+    central.write_text('[tool.ruff]\nextend = "../.ruff-strict.toml"\n', encoding="utf-8")
+    leaf = tmp_path / "python" / "agent" / "pyproject.toml"
+    leaf.parent.mkdir()
+    leaf.write_text('[tool.ruff]\nextend = "../pyproject.toml"\n', encoding="utf-8")
+
+    assert not list(check_ruff_policy_authority(tmp_path))
+
+
+def test_doctor_accepts_symlinked_canonical_ruff_config(tmp_path: Path) -> None:
+    generated = tmp_path / "generated" / "ruff.strict.toml"
+    generated.parent.mkdir()
+    generated.write_text('[lint]\nselect = ["ALL"]\n', encoding="utf-8")
+    (tmp_path / ".ruff-strict.toml").symlink_to(generated)
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.ruff]\nextend = ".ruff-strict.toml"\n',
+        encoding="utf-8",
+    )
+
+    assert not list(check_ruff_policy_authority(tmp_path))
+
+
+def test_doctor_rejects_a_cyclic_ruff_chain(tmp_path: Path) -> None:
+    first = tmp_path / "ruff.toml"
+    second = tmp_path / "nested" / "ruff.toml"
+    second.parent.mkdir()
+    first.write_text('extend = "nested/ruff.toml"\n', encoding="utf-8")
+    second.write_text('extend = "../ruff.toml"\n', encoding="utf-8")
+
+    findings = list(check_ruff_policy_authority(tmp_path))
+
+    assert len(findings) == 2
+    assert all(finding.id == "doctor.ruff.authority" for finding in findings)
 
 
 def test_doctor_accepts_one_standalone_ruff_config(tmp_path: Path) -> None:
@@ -101,3 +152,23 @@ def test_doctor_rejects_consumer_config_that_reenables_conflicting_docstring_rul
     }
     assert all(finding.level is Level.DRIFT for finding in findings)
     assert all("canonical config remains authoritative" in finding.detail for finding in findings)
+
+
+def test_doctor_honors_explicit_fixture_exclusions(tmp_path: Path) -> None:
+    retired = tmp_path / "tests" / "fixtures" / "retired.ts"
+    retired.parent.mkdir(parents=True)
+    retired.write_text("// eslint-disable-next-line @sarj/no-implicit-attribute-access\n", encoding="utf-8")
+    adopted = manifest.Manifest(
+        version=manifest.adopted_version(),
+        configs=(),
+        python_dest=".",
+        typescript_dest=".",
+    )
+    (tmp_path / manifest.MANIFEST_NAME).write_text(
+        f'{adopted.render()}\n[doctor]\nexclude = ["tests/fixtures/**"]\n',
+        encoding="utf-8",
+    )
+
+    findings = doctor.diagnose(tmp_path)
+
+    assert not [finding for finding in findings if finding.id == "doctor.rule.retired"]

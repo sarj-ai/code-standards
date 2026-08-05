@@ -1,0 +1,3 @@
+{
+  "extends": ".pyright-strict.json"
+}

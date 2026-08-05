@@ -393,6 +393,7 @@ raises-require-match-for = [
 "scripts/**"      = ["T201", "S", "BLE001", "TRY002", "INP001"]
 # CLI entrypoints print to stdout — that's their job, not stray debug output.
 "**/__main__.py"  = ["T201"]
+"**/cli/**/*.py"  = ["T201"]
 # NOTE: `"__init__.py" = []` and `"**/settings.py" = []` used to sit here. Ruff
 # per-file-ignores are additive and an empty list cannot un-ignore anything, so
 # both entries were no-ops; they are removed rather than left as config that

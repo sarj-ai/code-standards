@@ -1,12 +1,19 @@
-version = "0.44.0"
-configs = ["ruff", "pyright", "eslint", "markdownlint", "taplo", "yamllint"]
+version = "0.48.0"
+profile = "standard"
+configs = ["ruff", "pyright"]
 
 [dest]
 python = "."
 typescript = "packages/typescript"
 
-[verify]
-warnings_as_errors = true
+[doctor]
+# Compatibility tests intentionally spell retired IDs to prove their migration
+# messages; those fixtures are not active consumer suppressions.
+exclude = [
+  "packages/lint-configs/tests/test_doctor.py",
+  "packages/lint-configs/tests/test_rule_ledger.py",
+  "packages/lint-configs/tests/test_upgrade.py",
+]
 
 [repository]
 canonical_config_dir = "packages/lint-configs/src/sarj_lint_configs/configs"

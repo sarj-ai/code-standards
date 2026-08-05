@@ -23,29 +23,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - name: Verify every current package version has a release tag
-        run: |
-          set -euo pipefail
-          toml_version () { sed -n 's/^version = "\(.*\)"/\1/p' "$1" | head -1; }
-          json_version () { node -e "process.stdout.write(require('./$1').version)"; }
-          missing=0
-          verify_tag () {
-            local prefix="$1" version="$2"
-            local tag="${prefix}-v${version}"
-            if [ -z "$version" ]; then
-              echo "::error::no version found for $prefix"
-              missing=1
-            elif git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
-              echo "$tag exists"
-            else
-              echo "::error::missing release tag $tag"
-              missing=1
-            fi
-          }
-          verify_tag python       "$(toml_version packages/python/pyproject.toml)"
-          verify_tag sql          "$(toml_version packages/sql/pyproject.toml)"
-          verify_tag iac          "$(toml_version packages/iac/pyproject.toml)"
-          verify_tag lint-configs "$(toml_version packages/lint-configs/pyproject.toml)"
-          verify_tag typescript   "$(json_version packages/typescript/package.json)"
-          verify_tag tsconfig     "$(json_version packages/tsconfig/package.json)"
-          exit "$missing"
+        run: uv run --project packages/lint-configs --frozen sarj-standards repo release verify-tags --dest .

@@ -24,6 +24,16 @@ const SHADCN_PRIMITIVES = {
 
 type RawPrimitive = keyof typeof SHADCN_PRIMITIVES;
 
+const LABELABLE_ELEMENTS: ReadonlySet<string> = new Set([
+  "button",
+  "input",
+  "meter",
+  "output",
+  "progress",
+  "select",
+  "textarea",
+]);
+
 function rawElementName(
   node: TSESTree.JSXOpeningElement,
 ): RawPrimitive | null {
@@ -96,6 +106,44 @@ function effectiveAttribute(
   return { kind: "missing" };
 }
 
+function isLabelableElement(node: TSESTree.JSXElement): boolean {
+  if (node.openingElement.name.type !== AST_NODE_TYPES.JSXIdentifier) {
+    return false;
+  }
+  const name = node.openingElement.name.name;
+  if (!LABELABLE_ELEMENTS.has(name)) return false;
+  if (name !== "input") return true;
+  const typeAttribute = effectiveAttribute(node.openingElement, "type");
+  if (typeAttribute.kind === "unknown") return false;
+  return !(
+    typeAttribute.kind === "known" &&
+    typeAttribute.value.toLowerCase() === "hidden"
+  );
+}
+
+function containsLabelableElement(
+  node: TSESTree.JSXElement | TSESTree.JSXFragment,
+): boolean {
+  return node.children.some((child) => {
+    if (child.type === AST_NODE_TYPES.JSXElement) {
+      return isLabelableElement(child) || containsLabelableElement(child);
+    }
+    if (child.type === AST_NODE_TYPES.JSXFragment) {
+      return containsLabelableElement(child);
+    }
+    return false;
+  });
+}
+
+function isStaticallyAssociatedLabel(node: TSESTree.JSXOpeningElement): boolean {
+  const htmlFor = effectiveAttribute(node, "htmlFor");
+  if (htmlFor.kind === "known" && htmlFor.value.trim().length > 0) return true;
+  return (
+    node.parent.type === AST_NODE_TYPES.JSXElement &&
+    containsLabelableElement(node.parent)
+  );
+}
+
 function replacementFor(
   node: TSESTree.JSXOpeningElement,
   element: RawPrimitive,
@@ -105,7 +153,7 @@ function replacementFor(
   if (typeAttribute.kind === "unknown") return null;
   const inputType =
     typeAttribute.kind === "known" ? typeAttribute.value.toLowerCase() : "text";
-  if (inputType === "hidden") return null;
+  if (inputType === "hidden" || inputType === "file") return null;
   if (inputType === "checkbox") return "Checkbox";
   if (inputType === "radio") return "RadioGroup family";
   return "Input";
@@ -131,6 +179,7 @@ export default createRule<Options, MessageIds>({
       JSXOpeningElement(node): void {
         const element = rawElementName(node);
         if (element === null) return;
+        if (element === "label" && !isStaticallyAssociatedLabel(node)) return;
         const replacement = replacementFor(node, element);
         if (replacement === null) return;
         context.report({

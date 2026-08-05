@@ -5,10 +5,18 @@ on:
     branches: [main]
     paths:
       - 'packages/typescript/**'
+      - 'packages/lint-configs/src/sarj_lint_configs/configs/eslint*.mjs'
+      - 'packages/lint-configs/src/sarj_lint_configs/configs/rule-ledger.json'
+      - 'packages/lint-configs/src/sarj_lint_configs/libs/release/**'
+      - 'packages/lint-configs/src/sarj_lint_configs/cli/**'
       - '.github/workflows/typescript-ci.yml'
   pull_request:
     paths:
       - 'packages/typescript/**'
+      - 'packages/lint-configs/src/sarj_lint_configs/configs/eslint*.mjs'
+      - 'packages/lint-configs/src/sarj_lint_configs/configs/rule-ledger.json'
+      - 'packages/lint-configs/src/sarj_lint_configs/libs/release/**'
+      - 'packages/lint-configs/src/sarj_lint_configs/cli/**'
       - '.github/workflows/typescript-ci.yml'
 
 permissions:
@@ -37,9 +45,11 @@ jobs:
           node-version: '24'
           cache: 'npm'
           cache-dependency-path: packages/typescript/package-lock.json
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - run: npm ci --no-audit --no-fund
       - run: npm run lint
       - run: npm run build
       - run: npm run typecheck
       - run: npm test
-      - run: npm pack --dry-run
+      - name: Pack and verify the publishable artifact
+        run: uv run --project ../lint-configs --frozen sarj-standards repo release typescript pack --dest ../.. --output "$RUNNER_TEMP/npm-artifacts"

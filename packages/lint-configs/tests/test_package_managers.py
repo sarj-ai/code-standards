@@ -82,6 +82,12 @@ def test_yarn_gets_a_path_selector_with_the_version_resolved() -> None:
     assert "$" not in json.dumps(overrides.as_document())
 
 
+def test_bun_gets_a_flat_eslint_override_it_actually_honors() -> None:
+    overrides = packagemanager.overrides_for(PackageManager.BUN)
+    assert overrides.key_path == ("overrides",)
+    assert overrides.entries == {"eslint": manifest.eslint_peers()["eslint"]}
+
+
 @pytest.mark.parametrize(
     ("client", "prefix"),
     [
@@ -107,6 +113,19 @@ def test_install_argv_preserves_every_exact_peer(client: PackageManager) -> None
         assert f"{name}@{pin}" in argv
 
 
+def test_pnpm_workspace_install_targets_the_workspace_root() -> None:
+    assert packagemanager.install_argv(PackageManager.PNPM, workspace=True)[2] == "-w"
+    assert packagemanager.install_command(PackageManager.PNPM, workspace=True).startswith("pnpm add -w ")
+
+
+def test_conflicting_lockfiles_fail_instead_of_selecting_by_accident(tmp_path: Path) -> None:
+    _project(tmp_path, "pnpm-lock.yaml")
+    _ = (tmp_path / "yarn.lock").write_text("", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="conflicting package-manager lockfiles"):
+        packagemanager.detect(tmp_path)
+
+
 def test_init_writes_pnpm_overrides_into_a_pnpm_repo(tmp_path: Path) -> None:
     _ = _project(tmp_path, "pnpm-lock.yaml")
     proc = _cli("init", "--dest", str(tmp_path))
@@ -120,6 +139,24 @@ def test_init_writes_pnpm_overrides_into_a_pnpm_repo(tmp_path: Path) -> None:
     assert "pnpm add -D --save-exact" in proc.stdout
 
 
+def test_pnpm_11_workspace_overrides_are_merged_in_the_workspace_yaml(tmp_path: Path) -> None:
+    _project(tmp_path, "pnpm-lock.yaml")
+    workspace = tmp_path / "pnpm-workspace.yaml"
+    workspace.write_text("overrides:\n  rollup@<4: '>=4'\n\nallowBuilds:\n  esbuild: true\n", encoding="utf-8")
+
+    proc = _cli("init", "--dest", str(tmp_path))
+
+    assert proc.returncode == 0, proc.stderr
+    text = workspace.read_text(encoding="utf-8")
+    assert '"eslint-plugin-react>eslint"' in text
+    assert "rollup@<4" in text
+    assert "allowBuilds" in text
+    package: dict[str, object] = json.loads(  # pyright: ignore[reportAny]
+        (tmp_path / "package.json").read_text(encoding="utf-8")
+    )
+    assert "pnpm" not in package
+
+
 def test_init_writes_resolutions_into_a_yarn_repo(tmp_path: Path) -> None:
     _ = _project(tmp_path, "yarn.lock", {"name": "web", "packageManager": "yarn@4.15.0"})
     proc = _cli("init", "--dest", str(tmp_path))
@@ -131,6 +168,18 @@ def test_init_writes_resolutions_into_a_yarn_repo(tmp_path: Path) -> None:
     resolutions = manifest.table_field(written, "resolutions")
     assert resolutions["eslint-plugin-react/eslint"] == manifest.eslint_peers()["eslint"]
     assert "yarn add -D --exact" in proc.stdout
+
+
+def test_init_writes_bun_override_without_npm_nested_syntax(tmp_path: Path) -> None:
+    _ = _project(tmp_path, "bun.lock", {"name": "web", "packageManager": "bun@1.2.0"})
+    proc = _cli("init", "--dest", str(tmp_path))
+    assert proc.returncode == 0, proc.stderr
+
+    parsed: object = json.loads(  # pyright: ignore[reportAny]
+        (tmp_path / "package.json").read_text(encoding="utf-8")
+    )
+    overrides = manifest.table_field(manifest.as_table(parsed), "overrides")
+    assert overrides == {"eslint": manifest.eslint_peers()["eslint"]}
 
 
 def test_merging_pnpm_overrides_keeps_the_rest_of_the_pnpm_table(tmp_path: Path) -> None:
@@ -179,3 +228,16 @@ def test_an_explicit_dest_overrides_detection(tmp_path: Path) -> None:
     found = scaffold.detect(tmp_path, typescript_dest="other")
     assert found.typescript_root == tmp_path / "other"
     assert found.client == PackageManager.PNPM
+
+
+def test_nested_lockfile_beats_an_unrelated_root_package_json(tmp_path: Path) -> None:
+    _ = (tmp_path / "package.json").write_text('{"name": "tooling"}\n', encoding="utf-8")
+    project = tmp_path / "typescript"
+    project.mkdir()
+    _project(project, "yarn.lock")
+
+    found = scaffold.detect(tmp_path)
+
+    assert found.typescript_root == project
+    assert found.typescript_install_root == project
+    assert found.client is PackageManager.YARN

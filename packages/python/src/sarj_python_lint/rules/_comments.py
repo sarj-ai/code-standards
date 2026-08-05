@@ -9,6 +9,7 @@ import tokenize
 from typing import TYPE_CHECKING, NamedTuple
 
 from sarj_python_lint.rule_base import parse_or_none
+from sarj_python_lint.rules._ast_index import nodes
 
 
 if TYPE_CHECKING:
@@ -498,7 +499,7 @@ def statement_comment_walls(
         return {}
     comments = {line: (col, body) for line, col, body in standalone}
     walls: dict[int, frozenset[int]] = {}
-    for owner in ast.walk(tree):
+    for owner in nodes(tree, ast.AST):
         for value in _owned_statement_lists(owner):
             statements = [item for item in value if _is_wall_statement(item)]
             if len(statements) < _WALL_MIN_STATEMENTS:

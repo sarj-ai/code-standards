@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from typing import TYPE_CHECKING
@@ -12,7 +13,7 @@ from sarj_lint_configs import runner
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
+    from collections.abc import Callable, Iterator, Mapping, Sequence
     from pathlib import Path
 
 
@@ -34,6 +35,114 @@ def test_directories_expand_by_suffix_and_skip_generated_trees(tmp_path: Path) -
         iac=[str(tmp_path / "main.tf")],
         text=[],
     )
+
+
+def test_directory_walk_prunes_ignored_directories(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    ignored_source = tmp_path / "node_modules" / "package" / "ignored.py"
+    ignored_source.parent.mkdir(parents=True)
+    ignored_source.touch()
+    source = tmp_path / "src" / "app.py"
+    source.parent.mkdir()
+    source.touch()
+    visited: list[str] = []
+    real_walk = os.walk
+
+    def recording_walk(
+        top: Path,
+        *,
+        topdown: bool,
+        followlinks: bool,
+    ) -> Iterator[tuple[str, list[str], list[str]]]:
+        for root, dir_names, file_names in real_walk(
+            top,
+            topdown=topdown,
+            followlinks=followlinks,
+        ):
+            visited.append(str(root))
+            yield root, dir_names, file_names
+
+    monkeypatch.setattr(os, "walk", recording_walk)
+
+    assert runner.group_paths([str(tmp_path)]).python == [str(source)]
+    assert not any("node_modules" in root for root in visited)
+
+
+def test_directory_walk_skips_oversized_discovered_files(tmp_path: Path) -> None:
+    large = tmp_path / "large.py"
+    large.write_bytes(b"x" * (500 * 1024 + 1))
+    small = tmp_path / "small.py"
+    small.touch()
+
+    assert runner.group_paths([str(tmp_path)]).python == [str(small)]
+
+
+def test_directory_walk_preserves_oversized_markdown_for_artifact_rule(tmp_path: Path) -> None:
+    large = tmp_path / "audit-report.md"
+    large.write_bytes(b"# Findings\n" + b"word " * (110 * 1024))
+
+    assert runner.group_paths([str(tmp_path)]).text == [str(large)]
+
+
+def test_directory_walk_prunes_playwright_mcp_artifacts(tmp_path: Path) -> None:
+    generated = tmp_path / ".playwright-mcp" / "page-2026-08-04.yml"
+    generated.parent.mkdir()
+    generated.write_text("generated: true\n")
+    source = tmp_path / "config.yml"
+    source.write_text("maintained: true\n")
+
+    assert runner.group_paths([str(tmp_path)]).iac == [str(source)]
+
+
+def test_directory_walk_skips_secret_env_files_but_explicit_inputs_remain_checkable(tmp_path: Path) -> None:
+    secret = tmp_path / ".env.mcp"
+    secret.write_text("TOKEN=secret\n", encoding="utf-8")
+    example = tmp_path / ".env.example"
+    example.write_text("TOKEN=\n", encoding="utf-8")
+
+    assert runner.group_paths([str(tmp_path)]).text == [str(example)]
+    assert runner.group_paths([str(secret)]).text == [str(secret)]
+
+
+def test_explicit_oversized_file_is_still_routed(tmp_path: Path) -> None:
+    large = tmp_path / "large.py"
+    large.write_bytes(b"x" * (500 * 1024 + 1))
+
+    assert runner.group_paths([str(large)]).python == [str(large)]
+
+
+def test_overlapping_inputs_route_each_file_once(tmp_path: Path) -> None:
+    package = tmp_path / "package"
+    package.mkdir()
+    source = package / "app.py"
+    source.touch()
+
+    grouped = runner.group_paths([str(package), str(tmp_path), str(source), str(tmp_path)])
+
+    assert grouped.python == [str(tmp_path / "package" / "app.py")]
+
+
+def test_directory_walk_stats_only_supported_file_types(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "app.py"
+    source.touch()
+    unsupported = tmp_path / "image.png"
+    unsupported.touch()
+    real_stat = os.stat
+    stat_paths: list[str] = []
+
+    def recording_stat(path: os.PathLike[str] | str, *args: object, **kwargs: object) -> os.stat_result:
+        stat_paths.append(os.fspath(path))
+        return real_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "stat", recording_stat)
+
+    assert runner.group_paths([str(tmp_path)]).python == [str(source)]
+    assert str(unsupported) not in stat_paths
 
 
 def test_ignored_ancestor_name_does_not_hide_requested_tree(tmp_path: Path) -> None:
@@ -118,6 +227,46 @@ def test_checker_file_list_is_protected_from_option_injection(
 
     assert runner.run(["--baseline=.evil.py"]) == 0
     assert argv_seen[-2:] == ["--", "--baseline=.evil.py"]
+
+
+def test_run_imports_only_registries_with_routed_files(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    loaded: list[str] = []
+
+    def fake_load_tool(
+        package: str,
+    ) -> tuple[Callable[[list[str]], int], Mapping[str, type[object]]]:
+        loaded.append(package)
+        return lambda _argv: 0, {"example-rule": object}
+
+    monkeypatch.setattr(runner, "_load_tool", fake_load_tool)
+    migration = tmp_path / "migration.sql"
+    migration.touch()
+
+    assert runner.run([str(migration)]) == 0
+    assert loaded == ["sarj_sql_lint"]
+
+
+def test_noise_only_does_not_import_registry_with_no_selected_rules(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    def fail_load(
+        _package: str,
+    ) -> tuple[Callable[[list[str]], int], Mapping[str, type[object]]]:
+        pytest.fail("SQL registry has no noise rules")
+
+    monkeypatch.setattr(
+        runner,
+        "_load_tool",
+        fail_load,
+    )
+    migration = tmp_path / "migration.sql"
+    migration.touch()
+
+    assert runner.run([str(migration)], noise_only=True) == 0
 
 
 def test_python_baseline_is_forwarded_only_to_python_checker(
@@ -240,7 +389,6 @@ def test_noise_only_selects_comment_and_docstring_rules(monkeypatch: pytest.Monk
     assert runner.run(["app.py", "migration.sql", "main.tf"], noise_only=True) == 0
     assert selected == [
         {"no-comment-cruft", "no-restated-comment"},
-        set(),
         {"no-comment-cruft"},
     ]
 

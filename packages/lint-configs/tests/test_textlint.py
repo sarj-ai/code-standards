@@ -213,6 +213,36 @@ def test_manifest_can_exclude_documented_template_config(tmp_path: Path) -> None
     assert _codes(config, root=tmp_path) == []
 
 
+def test_manifest_exclusion_applies_to_artifact_findings(tmp_path: Path) -> None:
+    manifest = tmp_path / ".sarj-standards.toml"
+    manifest.write_text('[text]\nexclude = ["docs/backups/**"]\n', encoding="utf-8")
+    artifact = tmp_path / "docs" / "backups" / "README.md"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text("# Archived operational reference\n", encoding="utf-8")
+
+    assert _codes(artifact, root=tmp_path) == []
+
+
+def test_manifest_is_read_once_per_textlint_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    manifest = tmp_path / ".sarj-standards.toml"
+    manifest.write_text('[artifacts]\ndurable = ["docs/**"]\n[text]\nexclude = ["templates/**"]\n')
+    config = tmp_path / "values.yaml"
+    config.write_text("enabled: true\n")
+    real_read_text = Path.read_text
+    manifest_reads = 0
+
+    def recording_read_text(path: Path, *args: object, **kwargs: object) -> str:
+        nonlocal manifest_reads
+        if path == manifest:
+            manifest_reads += 1
+        return real_read_text(path, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Path, "read_text", recording_read_text)
+
+    assert textlint.check_paths([str(config)], root=tmp_path) == []
+    assert manifest_reads == 1
+
+
 @pytest.mark.parametrize(
     "filename",
     ["FIX-BRIEF-V3.md", "diagnosis-handoff.md", "project-status.md", "qa-fixlist.md"],
@@ -222,6 +252,23 @@ def test_flags_named_ai_execution_artifacts(tmp_path: Path, filename: str) -> No
     path = tmp_path / filename
     path.write_text("# Temporary execution record\n")
     assert _codes(path, root=tmp_path) == ["SARJ302"]
+
+
+def test_new_artifact_rule_warns_without_blocking_its_first_release(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    path = tmp_path / "FIX-BRIEF.md"
+    path.write_text("# Temporary execution record\n")
+
+    assert textlint.run([str(path)]) == 0
+    assert "SARJ302 warning:" in capsys.readouterr().out
+
+
+def test_established_text_rules_remain_blocking(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text("# timeout = 30\n")
+
+    assert textlint.run([str(path)]) == 1
 
 
 def test_flags_change_diary_inside_readme(tmp_path: Path) -> None:

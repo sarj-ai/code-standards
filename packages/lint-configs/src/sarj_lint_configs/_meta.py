@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from importlib.metadata import PackageNotFoundError, version
-from importlib.resources import files
 from pathlib import Path
 
 
@@ -10,7 +9,7 @@ try:
 except PackageNotFoundError:  # running from an uninstalled source tree
     __version__ = "0.0.0.dev0"
 
-CONFIGS_DIR: Path = Path(str(files(__package__) / "configs"))
+CONFIGS_DIR: Path = Path(__file__).resolve().parent / "configs"
 
 RUFF_STRICT: Path = CONFIGS_DIR / "ruff.strict.toml"
 RUFF_APPLICATION: Path = CONFIGS_DIR / "ruff.application.toml"

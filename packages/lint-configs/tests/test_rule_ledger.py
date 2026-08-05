@@ -273,6 +273,14 @@ def test_doctor_does_not_flag_prose_that_merely_contains_a_rule_name(tmp_path: P
     assert not list(check_retired_rules(tmp_path))
 
 
+def test_doctor_prunes_generated_playwright_mcp_artifacts(tmp_path: Path) -> None:
+    generated = tmp_path / ".playwright-mcp" / "page-2026-08-04.yml"
+    generated.parent.mkdir()
+    _ = generated.write_text('entry: "@sarj/no-implicit-attribute-access"\n', encoding="utf-8")
+
+    assert not list(check_retired_rules(tmp_path))
+
+
 def test_doctor_counts_repeats_in_one_file(tmp_path: Path) -> None:
     _ = (tmp_path / "eslint-suppressions.json").write_text(
         '{"a": {"@sarj/prefer-setup-file-mocks": 1}, "b": {"@sarj/prefer-setup-file-mocks": 2}}\n',
