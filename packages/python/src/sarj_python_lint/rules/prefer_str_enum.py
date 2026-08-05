@@ -225,12 +225,21 @@ class PreferStrEnum(Rule):
             else:
                 stack.extend((child, child_active) for child in children(node))
 
+        class_diags = [diag for cls in class_nodes for diag in self._class_field_diags(path, cls, raw_string_aliases)]
+        choice_field_names = {
+            diag.message.split("`", maxsplit=2)[1].split(":", maxsplit=1)[0]
+            for diag in class_diags
+            if diag.message.startswith("`") and "`" in diag.message[1:]
+        }
+        choice_member_keys = {f"{receiver}.{name}" for receiver in ("self", "cls") for name in choice_field_names}
         diags: list[Diagnostic] = []
         for clusters, literal_typed in all_clusters:
             for key, entry in clusters.items():
                 if _cluster_is_already_closed(key, entry, literal_typed, alias_valuesets):
                     continue
                 if not _cluster_fires(key, entry):
+                    continue
+                if key in choice_member_keys:
                     continue
                 diags.append(
                     Diagnostic(
@@ -242,12 +251,16 @@ class PreferStrEnum(Rule):
                     )
                 )
 
-        for cls in class_nodes:
-            diags.extend(self._class_field_diags(path, cls))
+        diags.extend(class_diags)
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
 
-    def _class_field_diags(self, path: Path, cls: ast.ClassDef) -> list[Diagnostic]:
+    def _class_field_diags(
+        self,
+        path: Path,
+        cls: ast.ClassDef,
+        raw_string_aliases: frozenset[str],
+    ) -> list[Diagnostic]:
         diags: list[Diagnostic] = []
         if any(_trailing_name(b) in {"Enum", "StrEnum", "IntEnum"} for b in cls.bases):
             return diags
@@ -274,7 +287,7 @@ class PreferStrEnum(Rule):
                 continue
             if not isinstance(stmt.target, ast.Name):
                 continue
-            if not _is_choice_string_annotation(stmt.annotation):
+            if not _is_choice_string_annotation(stmt.annotation, raw_string_aliases):
                 continue
             name = stmt.target.id
             default = _str_const(stmt.value) if stmt.value is not None else None
@@ -754,8 +767,15 @@ def _is_scanner_key(key: str) -> bool:
 
 def _string_collection_values(node: ast.AST | None) -> set[str] | None:
     if isinstance(node, ast.Dict):
-        keys = {None if key is None else _str_const(key) for key in node.keys}
-        return None if None in keys else {key for key in keys if key is not None}
+        keys: set[str] = set()
+        for key in node.keys:
+            if key is not None and _is_none_annotation(key):
+                continue
+            value = None if key is None else _str_const(key)
+            if value is None:
+                return None
+            keys.add(value)
+        return keys
     if not isinstance(node, (ast.List, ast.Tuple, ast.Set)):
         return None
     values: set[str] = set()
@@ -783,15 +803,15 @@ def _parse_string_annotation(value: str) -> ast.expr | None:
         return None
 
 
-def _is_choice_string_annotation(annotation: ast.expr) -> bool:
+def _is_choice_string_annotation(annotation: ast.expr, raw_string_aliases: frozenset[str]) -> bool:
     if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
         parsed = _parse_string_annotation(annotation.value)
-        return parsed is not None and _is_choice_string_annotation(parsed)
+        return parsed is not None and _is_choice_string_annotation(parsed, raw_string_aliases)
     annotation = _strip_optional(annotation)
     if isinstance(annotation, ast.Subscript) and _trailing_name(annotation.value) == "Annotated":
         first = annotation.slice.elts[0] if isinstance(annotation.slice, ast.Tuple) and annotation.slice.elts else None
-        return first is not None and _is_choice_string_annotation(first)
-    return isinstance(annotation, ast.Name) and annotation.id == "str"
+        return first is not None and _is_choice_string_annotation(first, raw_string_aliases)
+    return isinstance(annotation, ast.Name) and (annotation.id == "str" or annotation.id in raw_string_aliases)
 
 
 def _accumulate_compare(clusters: dict[str, _ClusterEntry], node: ast.Compare) -> None:

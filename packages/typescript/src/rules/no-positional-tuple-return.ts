@@ -260,12 +260,98 @@ function typeAliases(program: TSESTree.Program): ReadonlyMap<string, TSESTree.Ty
   return aliases;
 }
 
+function callableReturnType(
+  node: TSESTree.TypeNode,
+  aliases: ReadonlyMap<string, TSESTree.TypeNode>,
+  resolving: ReadonlySet<string> = new Set(),
+): TSESTree.TypeNode | null {
+  if (node.type === AST_NODE_TYPES.TSFunctionType) return node.returnType?.typeAnnotation ?? null;
+  if (
+    node.type === AST_NODE_TYPES.TSTypeReference &&
+    node.typeName.type === AST_NODE_TYPES.Identifier &&
+    !resolving.has(node.typeName.name)
+  ) {
+    const target = aliases.get(node.typeName.name);
+    if (target !== undefined) {
+      return callableReturnType(target, aliases, new Set([...resolving, node.typeName.name]));
+    }
+  }
+  return null;
+}
+
+function publiclyReachableTypeNames(
+  program: TSESTree.Program,
+  exported: ReadonlySet<string>,
+): ReadonlySet<string> {
+  const names = new Set(exported);
+  const interfaces = new Map<string, readonly TSESTree.TSInterfaceHeritage[]>();
+  for (const statement of program.body) {
+    const declaration = statement.type === AST_NODE_TYPES.ExportNamedDeclaration
+      ? statement.declaration
+      : statement;
+    if (declaration?.type === AST_NODE_TYPES.TSInterfaceDeclaration) {
+      interfaces.set(declaration.id.name, declaration.extends);
+    }
+  }
+  for (let pass = 0; pass < interfaces.size; pass += 1) {
+    let changed = false;
+    for (const name of [...names]) {
+      for (const heritage of interfaces.get(name) ?? []) {
+        if (heritage.expression.type === AST_NODE_TYPES.Identifier && !names.has(heritage.expression.name)) {
+          names.add(heritage.expression.name);
+          changed = true;
+        }
+      }
+    }
+    if (!changed) break;
+  }
+  return names;
+}
+
 function owningInterface(node: TSESTree.Node): TSESTree.TSInterfaceDeclaration | null {
   for (let current = node.parent; current !== undefined; current = current.parent) {
     if (current.type === AST_NODE_TYPES.TSInterfaceDeclaration) return current;
     if (current.type === AST_NODE_TYPES.Program) return null;
   }
   return null;
+}
+
+function owningTypeAlias(node: TSESTree.Node): TSESTree.TSTypeAliasDeclaration | null {
+  for (let current = node.parent; current !== undefined; current = current.parent) {
+    if (current.type === AST_NODE_TYPES.TSTypeAliasDeclaration) return current;
+    if (current.type === AST_NODE_TYPES.Program) return null;
+  }
+  return null;
+}
+
+function owningClass(
+  node: TSESTree.Node,
+): TSESTree.ClassDeclaration | TSESTree.ClassExpression | null {
+  for (let current = node.parent; current !== undefined; current = current.parent) {
+    if (current.type === AST_NODE_TYPES.ClassDeclaration || current.type === AST_NODE_TYPES.ClassExpression) {
+      return current;
+    }
+    if (current.type === AST_NODE_TYPES.Program) return null;
+  }
+  return null;
+}
+
+function isExportedClass(
+  node: TSESTree.ClassDeclaration | TSESTree.ClassExpression,
+  specifierExports: ReadonlySet<string>,
+): boolean {
+  if (
+    node.parent.type === AST_NODE_TYPES.ExportNamedDeclaration ||
+    node.parent.type === AST_NODE_TYPES.ExportDefaultDeclaration
+  ) return true;
+  if (node.type === AST_NODE_TYPES.ClassDeclaration) {
+    return node.id !== null && node.parent.type === AST_NODE_TYPES.Program && specifierExports.has(node.id.name);
+  }
+  if (
+    node.parent.type === AST_NODE_TYPES.VariableDeclarator &&
+    node.parent.id.type === AST_NODE_TYPES.Identifier
+  ) return specifierExports.has(node.parent.id.name) || isInlineExported(node);
+  return false;
 }
 
 function isExportedInterface(
@@ -311,7 +397,10 @@ export default createRule<Options, MessageIds>({
   create(context) {
     if (isGeneratedFile(context.filename, context.sourceCode.text)) return {};
     const specifierExports = specifierExportedNames(context.sourceCode.ast);
-    const typeExports = exportedTypeNames(context.sourceCode.ast);
+    const typeExports = publiclyReachableTypeNames(
+      context.sourceCode.ast,
+      exportedTypeNames(context.sourceCode.ast),
+    );
     const aliases = typeAliases(context.sourceCode.ast);
     const report = (annotation: TSESTree.TypeNode, name: string): void => {
       const tuple = tupleReturnType(annotation, aliases);
@@ -364,31 +453,45 @@ export default createRule<Options, MessageIds>({
       },
       TSMethodSignature(node): void {
         const owner = owningInterface(node);
+        const alias = owningTypeAlias(node);
         if (
-          owner === null ||
-          !isExportedInterface(owner, typeExports) ||
+          (owner === null || !isExportedInterface(owner, typeExports)) &&
+          (alias === null || !typeExports.has(alias.id.name)) ||
           node.returnType === undefined ||
           node.key.type !== AST_NODE_TYPES.Identifier
         ) return;
-        report(node.returnType.typeAnnotation, `${owner.id.name}.${node.key.name}`);
+        report(node.returnType.typeAnnotation, `${owner?.id.name ?? alias?.id.name ?? "type"}.${node.key.name}`);
       },
-      TSFunctionType(node): void {
-        if (node.parent.type !== AST_NODE_TYPES.TSTypeAliasDeclaration) return;
-        const alias = node.parent;
-        if (!typeExports.has(alias.id.name) || node.returnType === undefined) return;
-        report(node.returnType.typeAnnotation, alias.id.name);
+      TSTypeAliasDeclaration(node): void {
+        if (!typeExports.has(node.id.name)) return;
+        const returnType = callableReturnType(node.typeAnnotation, aliases);
+        if (returnType !== null) report(returnType, node.id.name);
       },
       TSPropertySignature(node): void {
         const owner = owningInterface(node);
+        const alias = owningTypeAlias(node);
         const annotation = node.typeAnnotation?.typeAnnotation;
         if (
-          owner === null ||
-          !isExportedInterface(owner, typeExports) ||
+          ((owner === null || !isExportedInterface(owner, typeExports)) &&
+            (alias === null || !typeExports.has(alias.id.name))) ||
           node.key.type !== AST_NODE_TYPES.Identifier ||
-          annotation?.type !== AST_NODE_TYPES.TSFunctionType ||
-          annotation.returnType === undefined
+          annotation === undefined
         ) return;
-        report(annotation.returnType.typeAnnotation, `${owner.id.name}.${node.key.name}`);
+        const returnType = callableReturnType(annotation, aliases);
+        if (returnType !== null) {
+          report(returnType, `${owner?.id.name ?? alias?.id.name ?? "type"}.${node.key.name}`);
+        }
+      },
+      PropertyDefinition(node): void {
+        if (node.accessibility === "private" || node.accessibility === "protected") return;
+        const owner = owningClass(node);
+        const annotation = node.typeAnnotation?.typeAnnotation;
+        if (owner === null || !isExportedClass(owner, specifierExports) || annotation === undefined) return;
+        const returnType = callableReturnType(annotation, aliases);
+        if (returnType !== null) {
+          const name = node.key.type === AST_NODE_TYPES.Identifier ? node.key.name : "property";
+          report(returnType, name);
+        }
       },
     };
   },

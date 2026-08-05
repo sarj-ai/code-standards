@@ -70,6 +70,48 @@ class Record:
     assert len(_check(src)) == 1
 
 
+def test_django_choice_mapping_ignores_the_none_blank_sentinel():
+    src = """
+class Record:
+    status: str
+    status_choices = {None: "---", "active": "Active", "disabled": "Disabled"}
+"""
+    assert len(_check(src)) == 1
+
+
+def test_choice_field_accepts_a_local_structural_string_alias():
+    src = """
+Text = str
+class Record:
+    status: Text
+    status_choices = ("active", "disabled")
+"""
+    assert len(_check(src)) == 1
+
+
+def test_choice_field_and_comparison_cluster_report_once():
+    src = """
+class Record:
+    status: str
+    status_choices = ("active", "disabled")
+    def enabled(self) -> bool:
+        return self.status == "active" or self.status == "disabled"
+"""
+    assert len(_check(src)) == 1
+
+
+def test_choice_field_does_not_hide_an_unrelated_module_cluster():
+    src = """
+class Record:
+    status: str
+    status_choices = ("active", "disabled")
+
+def enabled(status: str) -> bool:
+    return status == "active" or status == "disabled"
+"""
+    assert len(_check(src)) == 2
+
+
 def test_choices_attr_name_is_case_insensitive():
     src = """
 from pydantic import BaseModel

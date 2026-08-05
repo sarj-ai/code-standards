@@ -114,6 +114,29 @@ ruleTester.run("no-positional-tuple-return", rule, {
       errors: [{ messageId: "noPositionalTupleReturn" }],
     },
     {
+      name: "rejects a callable alias chain returning a tuple",
+      code: "type Pair = [string, number]; type Fn = () => Pair; export type Public = Fn;",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects callable members of an exported type literal",
+      code: "export type API = { pair(): [string, number]; other: () => [string, number] };",
+      errors: [
+        { messageId: "noPositionalTupleReturn" },
+        { messageId: "noPositionalTupleReturn" },
+      ],
+    },
+    {
+      name: "rejects a declaration-only callable class property",
+      code: "export class API { pair: () => [string, number]; }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects a tuple contract inherited by an exported interface",
+      code: "interface Base { pair(): [string, number]; } export interface API extends Base {}",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
       name: "rejects an exported declare function returning a tuple",
       code: "export declare function pair(): [string, number];",
       errors: [{ messageId: "noPositionalTupleReturn" }],
