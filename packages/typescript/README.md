@@ -1,5 +1,12 @@
 # @sarj/eslint-plugin
 
+## New in 9.11.0 — disabled test assertions
+
+`no-comment-cruft` now recognizes commented-out `expect(...)` chains and
+`assert(...)` calls. A disabled assertion leaves a collected test passing while
+verifying nothing. JSDoc and assertion examples introduced by prose remain
+exempt, as do active assertions.
+
 ## New in 9.9.0 — static Next.js matchers
 
 `require-static-next-matcher` rejects runtime expressions in exported

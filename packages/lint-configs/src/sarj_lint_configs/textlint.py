@@ -38,6 +38,10 @@ _TEXT_SUFFIXES: Final = frozenset(
 )
 _TEXT_NAMES: Final = frozenset({"dockerfile", "gnumakefile", "justfile", "makefile"})
 _MIN_EPHEMERAL_HEADINGS: Final = 2
+_MIN_NUMBERED_FINDINGS: Final = 2
+_LARGE_ARTIFACT_MIN_LINES: Final = 200
+_LARGE_ARTIFACT_MIN_WORDS: Final = 1_500
+_LARGE_ARTIFACT_MIN_SIGNALS: Final = 2
 _WALL_MIN_ATTACHED: Final = 4
 _WALL_MIN_WEAK: Final = 3
 _WALL_MIN_WEAK_RATIO: Final = 0.75
@@ -79,7 +83,8 @@ _ARTIFACT_NAME_RE = re.compile(
 _STRONG_ARTIFACT_NAME_RE = re.compile(
     r"(?:build|fix|merge|meeting)[-_]?brief|diagnosis[-_]handoff|morning[-_]summary|"
     r"debug[-_]todo|project[-_]status|qa[-_]fixlist|end[-_]to[-_]end[-_]plan|"
-    r"clone[-_]notes|authenticity[-_]fixes[-_]prompt|fable[-_]loop[-_]findings",
+    r"clone[-_]notes|authenticity[-_]fixes[-_]prompt|fable[-_]loop[-_]findings|"
+    r"(?:^|[-_])bugs?[-_]found(?:[-_][a-z0-9]+)*$",
     re.IGNORECASE,
 )
 _EPHEMERAL_HEADING_RE = re.compile(
@@ -93,6 +98,29 @@ _EPHEMERAL_HEADING_RE = re.compile(
 _STRONG_DIARY_HEADING_RE = re.compile(
     r"^#{1,6}\s+(?:fixes?\s*[+&/]\s*learnings?|build log|what changed this session|"
     r"issues? fixed|errors? fixed|pitfalls?\s*/\s*learnings?)(?:\s|$)",
+    re.IGNORECASE,
+)
+_LIFECYCLE_HEADING_RE = re.compile(
+    r"^#{1,6}\s+(?:findings|what (?:was )?(?:actually )?changed|"
+    r"recommended (?:order|actions?)|post[- ]change verification|further findings|"
+    r"not completed|implementation status|session summary|changes made|"
+    r"bugs? found|issues? fixed|verification results?|action items?|deep pass)(?:\s|$)",
+    re.IGNORECASE,
+)
+_DATED_ARTIFACT_RE = re.compile(
+    r"\b(?:audit|report|review|assessment|findings?)\b.*\b20\d{2}(?:[-_/]\d{1,2}){1,2}\b|"
+    r"\b20\d{2}(?:[-_/]\d{1,2}){1,2}\b.*\b(?:audit|report|review|assessment|findings?)\b",
+    re.IGNORECASE,
+)
+_NUMBERED_FINDING_RE = re.compile(r"^\s*\*{0,2}\d+[a-z]?\.(?:\s|\*)", re.IGNORECASE)
+_RESULTS_TABLE_RE = re.compile(r"^\s*\|\s*(?:check|change|finding|object|result)\s*\|", re.IGNORECASE)
+_ARTIFACT_SELF_DESCRIPTION_RE = re.compile(
+    r"\b(?:investigation|audit|execution) log\b|\bchange diary\b|\bpoint-in-time (?:audit|report)\b",
+    re.IGNORECASE,
+)
+_AI_GENERATION_RE = re.compile(
+    r"generated with \[(?:claude|chatgpt|codex)|generated (?:with|by) (?:claude|chatgpt|codex)|"
+    r"co-authored-by:\s*(?:claude|chatgpt|codex)",
     re.IGNORECASE,
 )
 _DIRECTIVE_RE = re.compile(
@@ -150,7 +178,7 @@ class RuleMeta:
 REGISTRY: Final = {
     "config-comment-wall": RuleMeta("SARJ300", "four-entry config narration wall with 75% weak restatements"),
     "commented-out-config": RuleMeta("SARJ301", "commented-out config syntax"),
-    "ephemeral-ai-artifact": RuleMeta("SARJ302", "AI execution brief or change diary"),
+    "ephemeral-ai-artifact": RuleMeta("SARJ302", "AI execution brief, audit report, or change diary"),
 }
 
 
@@ -242,7 +270,53 @@ def _artifact_findings(
                 "Chronological AI execution log — keep current usage/design facts; remove passes, change diary, and session narration.",
             )
         ]
+    if _large_artifact(source, path, source_lines):
+        line = next(
+            (
+                number
+                for number, source_line in enumerate(source_lines, start=1)
+                if _LIFECYCLE_HEADING_RE.match(source_line.strip())
+            ),
+            1,
+        )
+        return [
+            Finding(
+                path,
+                line,
+                "SARJ302",
+                "Point-in-time audit or execution report — move durable facts to maintained documentation and track findings in the issue system.",
+            )
+        ]
     return []
+
+
+def _large_artifact(source: str, path: Path, lines: list[str]) -> bool:
+    if len(lines) < _LARGE_ARTIFACT_MIN_LINES and len(_WORD_RE.findall(source)) < _LARGE_ARTIFACT_MIN_WORDS:
+        return False
+    title = next((line.removeprefix("#").strip() for line in lines if line.startswith("#")), "")
+    dated_subject = f"{path.stem} {title}"
+    lifecycle_headings = {
+        match.group(0).casefold() for line in lines if (match := _LIFECYCLE_HEADING_RE.match(line.strip())) is not None
+    }
+    has_findings_section = any(
+        re.match(r"^#{1,6}\s+(?:further )?findings(?:\s|$)", line, re.IGNORECASE) for line in lines
+    )
+    numbered_findings = sum(bool(_NUMBERED_FINDING_RE.match(line)) for line in lines)
+    dated_artifact = bool(_DATED_ARTIFACT_RE.search(dated_subject))
+    ai_generation = bool(_AI_GENERATION_RE.search(source))
+    self_description = bool(_ARTIFACT_SELF_DESCRIPTION_RE.search(source))
+    structural_signal = len(lifecycle_headings) >= _MIN_EPHEMERAL_HEADINGS or (
+        has_findings_section and numbered_findings >= _MIN_NUMBERED_FINDINGS
+    )
+    signals = (
+        dated_artifact,
+        structural_signal,
+        any(_RESULTS_TABLE_RE.match(line) for line in lines),
+        ai_generation,
+        self_description,
+    )
+    has_provenance = dated_artifact or ai_generation or self_description
+    return has_provenance and sum(signals) >= _LARGE_ARTIFACT_MIN_SIGNALS
 
 
 def _durable_patterns(root: Path) -> tuple[str, ...]:

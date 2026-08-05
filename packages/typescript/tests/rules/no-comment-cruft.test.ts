@@ -88,6 +88,10 @@ ruleTester.run("no-comment-cruft", rule, {
     {
       code: "// For example:\n// var o = {…};\nconst x = 1;",
     },
+    {
+      name: "preserves assertion examples with an illustration lead-in",
+      code: "// For example:\n// expect(result).toEqual({ ok: true });\nconst x = run();",
+    },
     // Pseudo-code placeholder line is not commented-out code.
     {
       code: "const x = 1;\n// obj.value = %sent%;\nconst y = 2;",
@@ -401,6 +405,21 @@ ruleTester.run("no-comment-cruft", rule, {
     },
     {
       code: "const x = 1;\n// return x + 1;\nconst y = 2;",
+      errors: [{ messageId: "commentedOutCode" }],
+    },
+    {
+      name: "flags a disabled chained assertion",
+      code: "test('result', () => {\n  run();\n  // expect(response.body.data).toContain('ready');\n});",
+      errors: [{ messageId: "commentedOutCode" }],
+    },
+    {
+      name: "flags a disabled assert call",
+      code: "test('result', () => {\n  run();\n  // assert.equal(response.status, 200);\n});",
+      errors: [{ messageId: "commentedOutCode" }],
+    },
+    {
+      name: "flags a disabled generic type assertion",
+      code: "test('result', () => {\n  // expectTypeOf(result).toEqualTypeOf<{ ok: true }>();\n});",
       errors: [{ messageId: "commentedOutCode" }],
     },
     {

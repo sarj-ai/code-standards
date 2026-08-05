@@ -138,6 +138,11 @@ const CODE_TAIL_RE = /[;{}()]\s*$|=>\s*$|,\s*$/;
 // Require an identifier LHS and code tail so prose equations do not match.
 const ASSIGN_RE = /^[A-Za-z_$][\w.$[\]]*\s*(?:=(?![=>])|\+=|-=|\*=)\s*\S.*[;)}\]]\s*$/;
 const CALL_RE = /^[A-Za-z_$][\w.$]*\([^)]*\)\s*;?\s*$/;
+// Assertion chains often contain nested calls, so the generic CALL_RE cannot
+// recognize them. A disabled assertion is especially dangerous: the test still
+// passes, but verifies nothing. Keep this narrow to established assertion APIs.
+const ASSERTION_CODE_RE =
+  /^(?:await\s+)?(?:expect(?:TypeOf)?\s*\(.+\)\s*(?:\.\w+(?:<[^;()]*>)?)+(?:\s*\(.*\))?|assert(?:\.\w+)?\s*\(.+\))\s*;?\s*$/;
 
 // Placeholders that only appear in grammar productions / desugaring examples,
 // never in real code: `%sent%`, `[opt]`, a standalone `<FunctionBody>`, `…` / `...`.
@@ -169,6 +174,7 @@ function looksLikeCode(text: string, allowCall = true): boolean {
   if (!t) return false;
   if (CODE_KEYWORD_RE.test(t) && CODE_TAIL_RE.test(t)) return true;
   if (ASSIGN_RE.test(t)) return true;
+  if (ASSERTION_CODE_RE.test(t)) return true;
   return allowCall && CALL_RE.test(t);
 }
 

@@ -321,3 +321,76 @@ def test_flags_strong_change_diary_heading_without_a_second_heading(tmp_path: Pa
     readme = tmp_path / "README.md"
     readme.write_text("# App\n\n## What changed this session\n")
     assert _codes(readme, root=tmp_path) == ["SARJ302"]
+
+
+def test_flags_large_dated_audit_inside_docs(tmp_path: Path) -> None:
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    audit = docs / "pagerduty-audit-2026-08.md"
+    audit.write_text(
+        "# PagerDuty audit — 2026-08-04\n\n"
+        "## Inventory\n\n| Object | Count |\n| --- | --- |\n| Services | 4 |\n\n"
+        "## Findings\n\n**1. Stale rotation.** Remove it.\n\n"
+        "## What was actually changed\n\nThe rotation was replaced.\n\n"
+        "## Recommended order of work\n\n1. Remove the stale rotation.\n\n"
+        "## Post-change verification\n\nThe API returned the expected state.\n\n"
+        + "Evidence captured during the audit.\n"
+        * 180
+    )
+    assert _codes(audit, root=tmp_path) == ["SARJ302"]
+
+
+def test_large_architecture_reference_is_not_an_execution_artifact(tmp_path: Path) -> None:
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    architecture = docs / "ARCHITECTURE.md"
+    architecture.write_text(
+        "# Architecture\n\n## Components\n\nThe API accepts requests and publishes domain events.\n\n"
+        + "### Service contract\n\nEach consumer processes one versioned event schema.\n\n" * 80
+    )
+    assert _codes(architecture, root=tmp_path) == []
+
+
+def test_large_document_needs_multiple_artifact_signals(tmp_path: Path) -> None:
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    operations = docs / "operations-2026-08.md"
+    operations.write_text("# Operations\n\n## Inventory\n\n" + "Current service fact.\n" * 210)
+    assert _codes(operations, root=tmp_path) == []
+
+
+def test_large_design_findings_and_actions_need_artifact_provenance(tmp_path: Path) -> None:
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    design = docs / "database-design.md"
+    design.write_text(
+        "# Database design\n\n## Findings\n\n1. Writes need stable keys.\n2. Reads need an index.\n\n"
+        "## Action Items\n\nAdd the index during implementation.\n\n"
+        + "The maintained design explains a durable constraint.\n"
+        * 200
+    )
+    assert _codes(design, root=tmp_path) == []
+
+
+@pytest.mark.parametrize(
+    "filename",
+    ["BUGS-FOUND.md", "bugs_found.md", "bugs-found-fe.md"],
+)
+def test_flags_bug_hunt_artifacts_even_in_durable_locations(tmp_path: Path, filename: str) -> None:
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    report = docs / filename
+    report.write_text("# Bugs found during the testing initiative\n")
+    assert _codes(report, root=tmp_path) == ["SARJ302"]
+
+
+@pytest.mark.parametrize(
+    "filename",
+    ["bugs-foundation.md", "ladybugs-found.md", "debugs-foundation.md"],
+)
+def test_bug_hunt_name_requires_complete_filename_tokens(tmp_path: Path, filename: str) -> None:
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    document = docs / filename
+    document.write_text("# Maintained reference\n")
+    assert _codes(document, root=tmp_path) == []
