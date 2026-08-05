@@ -21,6 +21,7 @@ from sarj_lint_configs.libs.release.release_age import (
     ReleaseAgeReport,
     check_lockfile_release_age,
     fetch_npm_packument,
+    load_exact_exclusions,
     locked_registry_packages,
 )
 from sarj_lint_configs.libs.release.tags import (
@@ -63,6 +64,7 @@ __all__ = (
     "check_typescript",
     "create_release_tags",
     "fetch_npm_packument",
+    "load_exact_exclusions",
     "locked_registry_packages",
     "missing_remote_release_tags",
     "pack_typescript",

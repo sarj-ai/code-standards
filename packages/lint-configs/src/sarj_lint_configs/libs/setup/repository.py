@@ -15,6 +15,7 @@ class SetupPlan:
 
     root: Path
     commands: tuple[Command, ...]
+    install_hooks: bool = True
 
 
 def plan_setup(root: Path) -> SetupPlan:
@@ -31,10 +32,10 @@ def plan_setup(root: Path) -> SetupPlan:
             resolved / "packages" / "typescript",
         ),
     )
-    return SetupPlan(resolved, commands)
+    return SetupPlan(resolved, install_hooks=True, commands=commands)
 
 
 def apply_setup(plan: SetupPlan) -> int:
     """Install hooks and execute one validated setup plan."""
-    hook_status = hooks.install(plan.root)
+    hook_status = hooks.install(plan.root) if plan.install_hooks else 0
     return hook_status or execute(plan.commands)

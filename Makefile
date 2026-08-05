@@ -5,7 +5,7 @@ MAKEFLAGS += --warn-undefined-variables --no-builtin-rules
 CONFIG_SRC := packages/lint-configs/src/sarj_lint_configs/configs
 STANDARDS := uv run --project packages/lint-configs --frozen sarj-standards
 
-.PHONY: help setup build verify doctor test lint format-check typecheck repo-check check-no-private-refs check-file-conventions check-versions-synced release-check release-check-tags release-check-typescript publish publish-typescript publish-python publish-sql \
+.PHONY: help setup build verify doctor test lint format-check typecheck repo-check check-no-private-refs check-file-conventions check-versions-synced release-check release-check-lock-age release-check-tags release-check-typescript publish publish-typescript publish-python publish-sql \
         publish-iac publish-lint-configs publish-tsconfig sync-rule-ledger
 
 help:
@@ -117,7 +117,10 @@ repo-check:
 # installs from the lockfile and packs to a temporary directory: local release
 # checks cannot accidentally bless a stale ignored `dist/` tree or leave a
 # publishable tarball behind in the repository.
-release-check: check-versions-synced release-check-tags release-check-typescript
+release-check: check-versions-synced release-check-lock-age release-check-tags release-check-typescript
+
+release-check-lock-age:
+	$(STANDARDS) repo release lock-age packages/typescript/package-lock.json --dest . --exclude-file .github/release-age-exclusions.txt
 
 release-check-tags:
 	$(STANDARDS) repo release check-tag typescript-v$$(node -p "require('./packages/typescript/package.json').version") --dest .

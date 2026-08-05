@@ -379,6 +379,58 @@ def test_sync_rejects_symlink_destination_file(tmp_path: Path) -> None:
     assert victim.read_text() == "do not overwrite\n"
 
 
+def test_sync_check_accepts_matching_canonical_symlink_inside_repository(tmp_path: Path) -> None:
+    canonical = tmp_path / "canonical.toml"
+    canonical.write_bytes(RUFF_STRICT.read_bytes())
+    (tmp_path / ".ruff-strict.toml").symlink_to(canonical)
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "sarj_lint_configs",
+            "sync",
+            "--only",
+            "ruff",
+            "--check",
+            "--dest",
+            str(tmp_path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "ok:" in proc.stdout
+
+
+def test_sync_check_rejects_matching_symlink_outside_repository(tmp_path: Path) -> None:
+    outside = tmp_path.parent / f"{tmp_path.name}-outside.toml"
+    outside.write_bytes(RUFF_STRICT.read_bytes())
+    (tmp_path / ".ruff-strict.toml").symlink_to(outside)
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "sarj_lint_configs",
+            "sync",
+            "--only",
+            "ruff",
+            "--check",
+            "--dest",
+            str(tmp_path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 2
+    assert "invalid:" in proc.stdout
+
+
 def test_sync_rejects_non_regular_destination_file(tmp_path: Path) -> None:
     (tmp_path / ".ruff-strict.toml").mkdir()
     proc = subprocess.run(
