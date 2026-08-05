@@ -897,7 +897,8 @@ def test_the_expected_precommit_rev_names_a_tag_the_release_workflow_publishes()
     prefix = expected.rsplit("-v", 1)[0]
     assert "branches: [main]" in workflow
     assert "tags:" not in workflow.partition("\npermissions:\n")[0]
-    assert f"repo release create-tags {prefix} " in workflow, f"release.yml never creates a {prefix}-v tag"
+    assert f"targets+=({prefix})" in workflow, f"release.yml never selects {prefix} for tagging"
+    assert 'tag="$target-v$version"' in workflow
 
 
 def test_release_version_detection_does_not_short_circuit_git_diff() -> None:

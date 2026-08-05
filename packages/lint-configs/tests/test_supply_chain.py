@@ -54,3 +54,16 @@ def test_release_has_no_manual_or_tag_publish_bypass() -> None:
 def test_typescript_release_does_not_emit_source_maps() -> None:
     config = (REPO_ROOT / "packages/typescript/tsup.config.ts").read_text(encoding="utf-8")
     assert "sourcemap: false" in config
+
+
+def test_privileged_tag_job_is_dependency_free_and_publish_gated() -> None:
+    release = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    tag_job = release.partition("\n  tag:\n")[2]
+    assert "egress-policy: block" in tag_job
+    assert "persist-credentials: false" in tag_job
+    assert "setup-uv" not in tag_job
+    assert "uv run" not in tag_job
+    assert "repo release create-tags" not in tag_job
+    assert "needs.publish-python.result == 'success'" in tag_job
+    assert "needs.detect.outputs.python != 'true'" not in tag_job
+    assert '[[ "${peeled:-$existing}" == "$GITHUB_SHA" ]]' in tag_job
