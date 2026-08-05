@@ -356,6 +356,59 @@ def test_private_reference_check_scans_commit_messages(tmp_path: Path) -> None:
     assert findings[0].where == _git(tmp_path, "rev-parse", "HEAD").stdout.strip()
 
 
+def test_private_reference_check_ignores_generated_github_merge_subject(tmp_path: Path) -> None:
+    _git_repo(tmp_path, {"left.txt": "base\n", "right.txt": "base\n"})
+    _commit(tmp_path, "base")
+    base = _git(tmp_path, "rev-parse", "HEAD").stdout.strip()
+    initial_branch = _git(tmp_path, "branch", "--show-current").stdout.strip()
+    _git(tmp_path, "checkout", "-qb", "feature")
+    (tmp_path / "left.txt").write_text("feature\n")
+    _git(tmp_path, "add", "left.txt")
+    _commit(tmp_path, "feature")
+    _git(tmp_path, "checkout", "-q", initial_branch)
+    (tmp_path / "right.txt").write_text("main\n")
+    _git(tmp_path, "add", "right.txt")
+    _commit(tmp_path, "main")
+    _git(tmp_path, "merge", "--no-ff", "-m", "Merge pull request #276 from sarj-ai/agent/safe", "feature")
+
+    findings = repository.check_private_refs(
+        tmp_path,
+        _policy(contextual=("agent",)),
+        commits=f"{base}..HEAD",
+    )
+
+    assert findings == []
+
+
+def test_private_reference_check_scans_generated_github_merge_body(tmp_path: Path) -> None:
+    _git_repo(tmp_path, {"left.txt": "base\n", "right.txt": "base\n"})
+    _commit(tmp_path, "base")
+    base = _git(tmp_path, "rev-parse", "HEAD").stdout.strip()
+    initial_branch = _git(tmp_path, "branch", "--show-current").stdout.strip()
+    _git(tmp_path, "checkout", "-qb", "feature")
+    (tmp_path / "left.txt").write_text("feature\n")
+    _git(tmp_path, "add", "left.txt")
+    _commit(tmp_path, "feature")
+    _git(tmp_path, "checkout", "-q", initial_branch)
+    (tmp_path / "right.txt").write_text("main\n")
+    _git(tmp_path, "add", "right.txt")
+    _commit(tmp_path, "main")
+    _git(
+        tmp_path,
+        "merge",
+        "--no-ff",
+        "-m",
+        "Merge pull request #276 from sarj-ai/agent/safe",
+        "-m",
+        "secret-repo change",
+        "feature",
+    )
+
+    findings = repository.check_private_refs(tmp_path, _policy(), commits=f"{base}..HEAD")
+
+    assert findings[0].where == _git(tmp_path, "rev-parse", "HEAD").stdout.strip()
+
+
 def test_private_reference_cli_can_redact_findings(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     _git_repo(tmp_path, {"secret-repo.txt": "public\n"})
     (tmp_path / ".sarj-standards.toml").write_text("[repository.private_refs]\ndistinctive = ['secret-repo']\n")
