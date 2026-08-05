@@ -21,7 +21,7 @@ dependencies = [
     "pre-commit>=4.5",
     "PyYAML>=6.0.3",
     "ruff>=0.15",
-    "sarj-iac-lint==0.5.1",
+    "sarj-iac-lint==0.5.2",
     "sarj-python-lint==0.46.0",
     "sarj-sql-lint==0.6.1",
 ]

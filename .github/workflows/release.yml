@@ -157,7 +157,7 @@ jobs:
   publish-python:
     needs: build-python
     runs-on: ubuntu-latest
-    environment: pypi-release
+    environment: pypi-python-release
     permissions:
       contents: read
       id-token: write
@@ -217,7 +217,7 @@ jobs:
   publish-sql:
     needs: build-sql
     runs-on: ubuntu-latest
-    environment: pypi-release
+    environment: pypi-sql-release
     permissions:
       contents: read
       id-token: write
@@ -277,7 +277,7 @@ jobs:
   publish-iac:
     needs: build-iac
     runs-on: ubuntu-latest
-    environment: pypi-release
+    environment: pypi-iac-release
     permissions:
       contents: read
       id-token: write
@@ -355,7 +355,7 @@ jobs:
     needs: build-lint-configs
     if: always() && needs.build-lint-configs.result == 'success'
     runs-on: ubuntu-latest
-    environment: pypi-release
+    environment: pypi-lint-configs-release
     permissions:
       contents: read
       id-token: write
@@ -406,7 +406,9 @@ jobs:
           node -e "JSON.parse(require('fs').readFileSync('base.json','utf8'))"
           node -e "JSON.parse(require('fs').readFileSync('strict.json','utf8'))"
       - name: Pack publishable artifact
-        run: npm pack --pack-destination "$RUNNER_TEMP/npm-artifacts"
+        run: |
+          install -d -m 700 "$RUNNER_TEMP/npm-artifacts"
+          npm pack --pack-destination "$RUNNER_TEMP/npm-artifacts"
       - name: Normalize the single artifact name
         run: >-
           node -e "const fs=require('node:fs'),d=process.env.RUNNER_TEMP+'/npm-artifacts',
