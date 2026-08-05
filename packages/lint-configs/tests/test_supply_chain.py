@@ -77,3 +77,13 @@ def test_npm_publishers_have_distinct_identities_and_digest_binding() -> None:
     assert release.count("artifact_sha256:") == 2
     assert release.count("Verify build-bound artifact digest") == 2
     assert "test \"$actual_name\" = '@sarj/tsconfig'" in release
+
+
+def test_npm_release_disables_install_scripts_and_pins_publisher_cli() -> None:
+    release = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    typescript_ci = (REPO_ROOT / ".github/workflows/typescript-ci.yml").read_text(encoding="utf-8")
+
+    assert "npm ci --ignore-scripts" in release
+    assert "npm ci --ignore-scripts --no-audit --no-fund" in typescript_ci
+    assert release.count("npm install --global npm@11.19.0 --ignore-scripts") == 4
+    assert release.count("Install the manifest-declared npm without lifecycle scripts") == 2
