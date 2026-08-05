@@ -147,6 +147,8 @@ jobs:
       - run: uv audit --locked
       - run: uv run pytest -q
       - run: uv build --wheel
+      - name: Verify wheel license
+        run: uv run --project ../lint-configs --frozen sarj-standards repo release verify-wheel dist/*.whl
       - name: Upload publishable artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -207,6 +209,8 @@ jobs:
       - run: uv audit --locked
       - run: uv run pytest -q
       - run: uv build --wheel
+      - name: Verify wheel license
+        run: uv run --project ../lint-configs --frozen sarj-standards repo release verify-wheel dist/*.whl
       - name: Upload publishable artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -267,6 +271,8 @@ jobs:
       - run: uv audit --locked
       - run: uv run pytest -q
       - run: uv build --wheel
+      - name: Verify wheel license
+        run: uv run --project ../lint-configs --frozen sarj-standards repo release verify-wheel dist/*.whl
       - name: Upload publishable artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -343,6 +349,8 @@ jobs:
           uv build --wheel --project ../python --out-dir dist/deps
           uv build --wheel --project ../sql --out-dir dist/deps
           uv build --wheel --project ../iac --out-dir dist/deps
+      - name: Verify wheel licenses
+        run: uv run --frozen sarj-standards repo release verify-wheel dist/*.whl dist/deps/*.whl
       - name: Test against the built wheel
         run: |
           uv venv --clear --python 3.14 --seed

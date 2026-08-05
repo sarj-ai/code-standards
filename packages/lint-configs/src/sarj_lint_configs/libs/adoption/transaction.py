@@ -7,6 +7,8 @@ import os
 from pathlib import Path
 from typing import Final, Self
 
+from sarj_lint_configs.libs.filesystem import is_link_like
+
 
 _OWNED_NAMES: Final = frozenset(
     {
@@ -38,10 +40,19 @@ _SKIP_DIRS: Final = frozenset({".git", ".venv", "node_modules", "dist", "build",
 def validate_targets(root: Path, paths: tuple[Path, ...]) -> None:
     """Reject mutation targets that escape the repo or traverse a symlink."""
     resolved_root = root.resolve()
+    lexical_root = root.absolute()
     for path in paths:
-        if path.is_symlink():
-            msg = f"refusing symlink mutation target {path}"
-            raise OSError(msg)
+        try:
+            relative = path.absolute().relative_to(lexical_root)
+        except ValueError as exc:
+            msg = f"mutation target {path} escapes repository root {resolved_root}"
+            raise OSError(msg) from exc
+        current = lexical_root
+        for part in relative.parts:
+            current /= part
+            if is_link_like(current):
+                msg = f"refusing symlink mutation target {path}; link traversal at {current}"
+                raise OSError(msg)
         if path.exists() and not path.is_file():
             msg = f"refusing non-file mutation target {path}"
             raise OSError(msg)
@@ -91,7 +102,7 @@ class FileTransaction:
     def rollback(self) -> None:
         for path, contents in self.before.items():
             if contents is None:
-                if path.is_file() or path.is_symlink():
+                if path.is_file() or is_link_like(path):
                     path.unlink()
                 continue
             path.parent.mkdir(parents=True, exist_ok=True)

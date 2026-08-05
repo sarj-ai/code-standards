@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
-from sarj_lint_configs.libs.release.process import ProcessFailureError, ProcessRunner, run_process
+from sarj_lint_configs.libs.release.process import ProcessRunner, run_process
 from sarj_lint_configs.libs.release.tags import RELEASE_TARGETS
 
 
@@ -28,14 +28,11 @@ def changed_release_targets(
     """Return deterministic target flags for a GitHub release workflow."""
     changed: dict[str, bool] = {}
     for name, target in RELEASE_TARGETS.items():
-        try:
-            result = runner(
-                ("git", "diff", "--no-color", before, after, "--", target.manifest.as_posix()),
-                cwd=root,
-                capture_output=True,
-            )
-        except ProcessFailureError:
-            return dict.fromkeys(RELEASE_TARGETS, False)
+        result = runner(
+            ("git", "diff", "--no-color", before, after, "--", target.manifest.as_posix()),
+            cwd=root,
+            capture_output=True,
+        )
         pattern = _ADDED_JSON_VERSION if target.format == "json" else _ADDED_TOML_VERSION
         changed[name] = pattern.search(result.stdout) is not None
     return changed

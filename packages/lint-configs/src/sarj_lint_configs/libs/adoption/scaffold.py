@@ -12,7 +12,9 @@ import textwrap
 import tomllib
 from typing import TYPE_CHECKING, Final
 
-from . import manifest, packagemanager
+from sarj_lint_configs.libs.filesystem import is_link_like
+
+from . import hooks, manifest, packagemanager
 from .packagemanager import LOCKFILES, Overrides, PackageManager
 
 
@@ -45,6 +47,7 @@ class Plan:
     root: Path | None = None
     profile: manifest.Profile = "standard"
     configs: tuple[str, ...] = ()
+    hook_manager: manifest.HookManager = "pre-commit"
     writes: list[tuple[Path, str]] = field(default_factory=list)
     edits: list[tuple[Path, str]] = field(default_factory=list)
     skips: list[tuple[Path, str]] = field(default_factory=list)
@@ -118,6 +121,12 @@ def detect(
 def _override(root: Path, dest: str | None) -> Path | None:
     if dest is None:
         return None
+    lexical = root
+    for part in Path(dest).parts:
+        lexical /= part
+        if is_link_like(lexical):
+            msg = f"destination {dest!r} traverses a symlink or junction: {lexical}"
+            raise ValueError(msg)
     resolved = (root / dest).resolve()
     try:
         resolved.relative_to(root.resolve())
@@ -173,6 +182,7 @@ def build_plan(
     python_dest: str | None = None,
     typescript_dest: str | None = None,
     profile: manifest.Profile = "standard",
+    hook_manager: manifest.HookManager | None = None,
 ) -> Plan:
     """Work out every file `init` would create or amend."""
     ecosystems = detect(root, python_dest=python_dest, typescript_dest=typescript_dest)
@@ -181,7 +191,14 @@ def build_plan(
         if configs is not None
         else manifest.default_configs(has_python=ecosystems.python, has_typescript=ecosystems.typescript)
     )
-    plan = Plan(ecosystems=ecosystems, root=root, profile=profile, configs=selected)
+    selected_hook_manager: manifest.HookManager = hook_manager or hooks.detect_manager(root)
+    plan = Plan(
+        ecosystems=ecosystems,
+        root=root,
+        profile=profile,
+        configs=selected,
+        hook_manager=selected_hook_manager,
+    )
 
     if python_dest is None and ecosystems.python_root is not None:
         _report_independent_roots(root, ecosystems.python_root, ("pyproject.toml",), "Python", plan)
@@ -207,7 +224,19 @@ def build_plan(
         and any(name in selected for name in manifest.TYPESCRIPT_CONFIGS)
     ):
         _plan_typescript(ecosystems.typescript_root, plan, force=force)
-    _plan_precommit(root, plan, force=force)
+    if plan.hook_manager == "pre-commit":
+        _plan_precommit(root, plan, force=force)
+    elif plan.hook_manager == "lefthook":
+        if hooks.lefthook_config(root) is None:
+            plan.errors.append("--hooks lefthook requires lefthook.yml or lefthook.yaml")
+        elif not hooks.lefthook_runs_staged_check(root):
+            plan.errors.append(
+                "Lefthook pre-commit must run `sarj-standards check --staged`; add the command and rerun init"
+            )
+        else:
+            plan.notes.append("preserving validated Lefthook management; no pre-commit config was generated")
+    else:
+        plan.notes.append(f"preserving {plan.hook_manager} hook management; no pre-commit config was generated")
     _note_subproject_destinations(root, plan)
     return plan
 
@@ -260,6 +289,7 @@ def _plan_manifest(root: Path, plan: Plan, *, force: bool) -> None:
         python_dest=dest_of(root, plan.ecosystems.python_root),
         typescript_dest=dest_of(root, plan.ecosystems.typescript_root),
         profile=plan.profile,
+        hook_manager=plan.hook_manager,
     ).render()
     _record(plan, path, contents, force=force, reason="already declares an adopted version")
 
@@ -639,7 +669,7 @@ def _precommit_hook(runner_prefix: str) -> str:
         f"        entry: {runner_prefix} check --staged --\n"
         "        language: system\n"
         "        verbose: true\n"
-        "        files: '(?i)(\\.py|\\.tsx?|\\.jsx?|\\.sql|\\.tf|\\.tfvars|\\.hcl|\\.ya?ml|\\.toml|\\.jsonc|\\.mdx?|\\.(?:bash|cfg|conf|env|ini|properties|sh|tftpl|zsh)|(?:^|/)\\.env(?:\\..*)?$|(?:^|/)(?:Dockerfile(?:\\..*)?|Gnumakefile|Justfile|Makefile|package\\.json|pyrightconfig\\.json))$'\n"
+        "        files: '(?i)(\\.py|\\.[cm]?[jt]s|\\.[jt]sx|\\.sql|\\.tf|\\.tfvars|\\.hcl|\\.ya?ml|\\.toml|\\.jsonc|\\.mdx?|\\.(?:bash|cfg|conf|env|ini|properties|sh|tftpl|zsh)|(?:^|/)\\.env(?:\\..*)?$|(?:^|/)(?:Dockerfile(?:\\..*)?|Gnumakefile|Justfile|Makefile|package\\.json|pyrightconfig\\.json))$'\n"
     )
 
 

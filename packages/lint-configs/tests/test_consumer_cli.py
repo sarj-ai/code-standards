@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 import sys
@@ -10,7 +11,7 @@ from typing import TYPE_CHECKING, Protocol
 import pytest
 
 from sarj_lint_configs import __main__ as cli
-from sarj_lint_configs import doctor
+from sarj_lint_configs import doctor, manifest
 
 
 if TYPE_CHECKING:
@@ -192,7 +193,7 @@ def test_check_staged_filters_unsafe_hook_supplied_paths(
     symlink.symlink_to(kept)
     seen: list[list[str]] = []
 
-    def clean_health(_root: Path) -> int:
+    def clean_health(_root: Path, **_kwargs: object) -> int:
         return 0
 
     def run_rules(files: Sequence[str], **_kwargs: object) -> int:
@@ -253,7 +254,7 @@ def test_check_staged_runs_scoped_eslint_and_propagates_its_status(
     def staged_files(_root: Path) -> list[str]:
         return [str(staged)]
 
-    def clean_health(_root: Path) -> int:
+    def clean_health(_root: Path, **_kwargs: object) -> int:
         return 0
 
     def clean_policy(_args: object) -> int:
@@ -306,6 +307,66 @@ def test_check_staged_fails_on_adoption_drift_before_source_rules(
     assert "drift: doctor.config.current .ruff-strict.toml" in output
     assert "fix: run `sarj-standards update`" in output
     assert source_runs == []
+
+
+def test_check_staged_health_failure_honors_json_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    finding = doctor.Finding(
+        doctor.Level.DRIFT,
+        "pyproject.toml",
+        "bundle is missing",
+        "doctor.python.bundle-missing",
+        "install exact pins",
+    )
+
+    def staged_files(_root: Path) -> list[str]:
+        return ["staged.py"]
+
+    def diagnose(_root: Path) -> list[doctor.Finding]:
+        return [finding]
+
+    monkeypatch.setattr(cli, "_staged_files", staged_files)
+    monkeypatch.setattr(doctor, "diagnose", diagnose)
+
+    assert cli.main(["check", "--staged", "--format", "json", "--dest", str(tmp_path)]) == 1
+    parsed: object = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny] -- stdlib JSON is intentionally untyped.
+    payload = manifest.as_table(parsed)
+    assert payload["schema"] == 1
+    assert payload["phase"] == "adoption-health"
+    assert payload["status"] == 1
+    assert manifest.as_table(manifest.list_field(payload, "findings")[0])["id"] == finding.id
+
+
+def test_healthy_staged_json_health_check_does_not_emit_a_second_document(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    staged = tmp_path / "staged.py"
+    staged.write_text("value = 1\n", encoding="utf-8")
+
+    def diagnose(_root: Path) -> list[doctor.Finding]:
+        return []
+
+    def staged_files(_root: Path) -> list[str]:
+        return [str(staged)]
+
+    def run_rules(_files: Sequence[str], **_kwargs: object) -> int:
+        _ = sys.stdout.write('{"schema": 1, "findings": []}\n')
+        return 0
+
+    def clean_policy(_args: object) -> int:
+        return 0
+
+    monkeypatch.setattr(doctor, "diagnose", diagnose)
+    monkeypatch.setattr(cli, "_staged_files", staged_files)
+    monkeypatch.setattr("sarj_lint_configs.runner.run", run_rules)
+    monkeypatch.setattr(cli, "cmd_library_policy", clean_policy)
+
+    assert cli.main(["check", "--staged", "--format", "json", "--dest", str(tmp_path)]) == 0
+    parsed: object = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny]
+    assert manifest.as_table(parsed)["schema"] == 1
 
 
 def test_check_staged_returns_invalid_for_malformed_adopted_package_json(

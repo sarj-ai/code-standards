@@ -11,6 +11,8 @@ import stat
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from sarj_lint_configs.libs.filesystem import is_link_like
+
 from . import textlint
 
 
@@ -209,7 +211,7 @@ def group_paths(files: Sequence[str]) -> GroupedPaths:
     inputs: list[tuple[str, Path, bool]] = []
     for raw_path in files:
         path = Path(raw_path)
-        if path.is_symlink():
+        if is_link_like(path):
             msg = f"refusing symlink input: {raw_path}"
             raise ValueError(msg)
         if not path.exists():

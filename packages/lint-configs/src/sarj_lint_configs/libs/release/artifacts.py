@@ -6,6 +6,7 @@ import json
 from pathlib import Path, PurePosixPath
 import tarfile
 from typing import TYPE_CHECKING
+import zipfile
 
 from sarj_lint_configs.libs.release._values import is_object_dict, is_object_list, string_object_dict
 
@@ -97,7 +98,7 @@ def verify_built_package(package_root: Path) -> tuple[str, ...]:
 
 def verify_package_tarball(tarball: Path, required: Sequence[str]) -> tuple[str, ...]:
     """Inspect an npm tarball and require safe, non-empty regular exported files."""
-    expected = {f"package/{path}" for path in required}
+    expected = {"package/LICENSE", *(f"package/{path}" for path in required)}
     try:
         with tarfile.open(tarball, mode="r:gz") as archive:
             found = _inspect_members(archive, expected)
@@ -109,6 +110,19 @@ def verify_package_tarball(tarball: Path, required: Sequence[str]) -> tuple[str,
         msg = f"packed artifact omits exported entry point: {missing[0].removeprefix('package/')}"
         raise ValueError(msg)
     return tuple(required)
+
+
+def verify_python_wheel_license(wheel: Path) -> None:
+    """Require a non-empty license text in a Python wheel before publication."""
+    try:
+        with zipfile.ZipFile(wheel) as archive:
+            licenses = [name for name in archive.namelist() if PurePosixPath(name).name == "LICENSE"]
+            if not licenses or any(not archive.read(name) for name in licenses):
+                msg = f"wheel omits a non-empty LICENSE: {wheel.name}"
+                raise ValueError(msg)
+    except zipfile.BadZipFile as exc:
+        msg = f"could not inspect wheel {wheel.name}"
+        raise ValueError(msg) from exc
 
 
 def _inspect_members(archive: tarfile.TarFile, expected: set[str]) -> set[str]:

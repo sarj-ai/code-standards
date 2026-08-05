@@ -21,6 +21,8 @@ MANIFEST_NAME: Final = ".sarj-standards.toml"
 _CONFIGS_KEY: Final = "configs"
 Profile = Literal["standard", "application"]
 PROFILES: Final[tuple[Profile, ...]] = ("standard", "application")
+HookManager = Literal["pre-commit", "lefthook", "none"]
+HOOK_MANAGERS: Final[tuple[HookManager, ...]] = ("pre-commit", "lefthook", "none")
 
 PEERS_JSON: Final = CONFIGS_DIR / "eslint.peers.json"
 
@@ -52,6 +54,7 @@ class Manifest:
     profile: Profile = "standard"
     verify_paths: tuple[str, ...] = (".",)
     python_baseline: str | None = None
+    hook_manager: HookManager = "pre-commit"
 
     def render(self) -> str:
         """Serialise to the TOML text written at the repo root."""
@@ -70,6 +73,9 @@ class Manifest:
             "[dest]\n"
             f'python = "{self.python_dest}"\n'
             f'typescript = "{self.typescript_dest}"\n'
+            "\n"
+            "[hooks]\n"
+            f'manager = "{self.hook_manager}"\n'
         )
         if self.python_baseline is not None:
             rendered += f'\n[gradual]\npython_baseline = "{self.python_baseline}"\n'
@@ -151,6 +157,12 @@ def load(root: Path) -> Manifest | None:
     dest_table = table_field(data, "dest")
     verify_table = table_field(data, "verify")
     gradual_table = table_field(data, "gradual")
+    hooks_table = table_field(data, "hooks")
+    raw_hook_manager = hooks_table.get("manager", "pre-commit")
+    if not isinstance(raw_hook_manager, str) or raw_hook_manager not in HOOK_MANAGERS:
+        msg = f"manifest [hooks].manager must be one of: {', '.join(HOOK_MANAGERS)}"
+        raise ValueError(msg)
+    hook_manager: HookManager = raw_hook_manager
     return Manifest(
         version=declared,
         configs=tuple(name for name in names if isinstance(name, str)),
@@ -159,6 +171,7 @@ def load(root: Path) -> Manifest | None:
         profile=profile,
         verify_paths=_verify_paths(root, verify_table),
         python_baseline=_optional_contained_path(root, gradual_table, "python_baseline"),
+        hook_manager=hook_manager,
     )
 
 
@@ -211,8 +224,13 @@ def _optional_contained_path(root: Path, table: dict[str, object], key: str) -> 
 
 def record_python_baseline(root: Path, relative_path: str) -> None:
     """Record the shrink-only baseline while preserving consumer-owned manifest tables."""
+    from . import (  # ruff: ignore[import-outside-top-level] -- breaks an adoption transaction import cycle.
+        transaction,
+    )
+
     _ = _optional_contained_path(root, {"python_baseline": relative_path}, "python_baseline")
     path = manifest_path(root)
+    transaction.validate_targets(root, (path,))
     text = path.read_text(encoding="utf-8")
     parsed: object = tomllib.loads(text)
     gradual = table_field(as_table(parsed), "gradual")
@@ -228,6 +246,7 @@ def record_python_baseline(root: Path, relative_path: str) -> None:
     else:
         separator = "" if text.endswith("\n\n") else ("\n" if text.endswith("\n") else "\n\n")
         text += f'{separator}[gradual]\npython_baseline = "{relative_path}"\n'
+    transaction.validate_targets(root, (path,))
     _ = path.write_text(text, encoding="utf-8")
 
 

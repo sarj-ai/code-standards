@@ -51,3 +51,23 @@ def test_invalid_destination_uses_usage_error_exit_status(tmp_path: Path) -> Non
 
     assert result.returncode == 2
     assert "is not a directory" in result.stderr
+
+
+def test_positional_root_and_dest_are_rejected_as_ambiguous(tmp_path: Path) -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "sarj_lint_configs",
+            "doctor",
+            str(tmp_path),
+            "--dest",
+            str(tmp_path),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 2
+    assert "either positional ROOT or --dest" in result.stderr

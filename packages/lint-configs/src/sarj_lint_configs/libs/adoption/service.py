@@ -9,6 +9,7 @@ import shutil
 from typing import TYPE_CHECKING
 
 from sarj_lint_configs._meta import CONFIGS_DIR
+from sarj_lint_configs.libs.filesystem import is_link_like
 
 from . import lifecycle, manifest, scaffold, transaction
 from .configs import APPLICATION_CONFIG_NAMES, CONFIG_NAMES, PYTHON_CONFIGS
@@ -158,6 +159,7 @@ def plan_init(
     python_dest: str | None = None,
     typescript_dest: str | None = None,
     profile: manifest.Profile = "standard",
+    hook_manager: manifest.HookManager | None = None,
 ) -> InitPlan:
     """Plan the complete init operation, including configs and installation."""
     resolved = root.resolve()
@@ -168,6 +170,7 @@ def plan_init(
         python_dest=python_dest,
         typescript_dest=typescript_dest,
         profile=profile,
+        hook_manager=hook_manager,
     )
     if scaffold_plan.errors or (not scaffold_plan.ecosystems.any and configs is None):
         return InitPlan(scaffold_plan, None, ())
@@ -184,7 +187,13 @@ def plan_init(
         target.destination for target in sync_plan.targets
     )
     transaction.validate_targets(resolved, mutations)
-    commands = tuple(lifecycle.install_commands(resolved, scaffold_plan.ecosystems))
+    commands = tuple(
+        lifecycle.install_commands(
+            resolved,
+            scaffold_plan.ecosystems,
+            hook_manager=scaffold_plan.hook_manager,
+        )
+    )
     return InitPlan(scaffold_plan, sync_plan, commands)
 
 
@@ -193,18 +202,40 @@ def apply_init(plan: InitPlan, *, install: bool = True) -> InitResult:
     if plan.sync is None:
         return InitResult(2, failure=InitFailure.APPLY, error="init plan is not applicable")
     scaffold_targets = tuple(path for path, _contents in (*plan.scaffold.writes, *plan.scaffold.edits))
+    environment = (
+        None if plan.scaffold.ecosystems.python_root is None else plan.scaffold.ecosystems.python_root / ".venv"
+    )
+    environment_existed = environment is not None and environment.exists()
     file_transaction: transaction.FileTransaction | None = None
     try:
         file_transaction = transaction.FileTransaction.capture(plan.sync.root, scaffold_targets)
-        return _apply_init_transaction(plan, file_transaction, install=install)
+        result = _apply_init_transaction(plan, file_transaction, install=install)
+        cleanup_error = _cleanup_new_environment(environment, existed=environment_existed, failed=bool(result.status))
+        if cleanup_error is not None:
+            return InitResult(result.status or 2, result.sync, result.failure or InitFailure.APPLY, cleanup_error)
     except KeyboardInterrupt:
         if file_transaction is not None:
             file_transaction.rollback()
-        return InitResult(130, failure=InitFailure.INTERRUPTED)
+        cleanup_error = _cleanup_new_environment(environment, existed=environment_existed, failed=True)
+        return InitResult(130, failure=InitFailure.INTERRUPTED, error=cleanup_error)
     except OSError as exc:
         if file_transaction is not None:
             file_transaction.rollback()
-        return InitResult(2, failure=InitFailure.APPLY, error=str(exc))
+        cleanup_error = _cleanup_new_environment(environment, existed=environment_existed, failed=True)
+        error = str(exc) if cleanup_error is None else f"{exc}; {cleanup_error}"
+        return InitResult(2, failure=InitFailure.APPLY, error=error)
+    else:
+        return result
+
+
+def _cleanup_new_environment(environment: Path | None, *, existed: bool, failed: bool) -> str | None:
+    if not failed or existed or environment is None or not environment.is_dir():
+        return None
+    try:
+        shutil.rmtree(environment)
+    except OSError as exc:
+        return f"could not remove newly created environment {environment}: {exc}"
+    return None
 
 
 def _apply_init_transaction(
@@ -273,7 +304,7 @@ def _contained_destination(root: Path, requested: str, *, label: str) -> Path:
 
 def _sync_one(target: SyncTarget, *, root: Path, force: bool, check: bool) -> SyncOutcome:
     destination = target.destination
-    if destination.is_symlink():
+    if is_link_like(destination):
         if not check:
             return SyncOutcome.INVALID
         try:

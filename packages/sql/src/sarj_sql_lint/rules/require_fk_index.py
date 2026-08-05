@@ -20,7 +20,7 @@ def _mask_literals_and_comments(sql: str) -> str:
 
     def mask_literal(m: re.Match[str]) -> str:
         s = m.group(0)
-        return "'" + re.sub(r"[^\n]", " ", s[1:-1]) + "'"
+        return f"'{re.sub(r'[^\n]', ' ', s[1:-1])}'"
 
     return re.sub(r"'(?:''|[^'])*'", mask_literal, sql)
 
@@ -42,7 +42,7 @@ TABLE_PK_OR_UNIQUE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 INLINE_COLUMN_PATTERN = re.compile(
-    r"(?:\bADD\s+(?:COLUMN\s+)?)?\b([a-zA-Z0-9_\"]+)\b[\s\S]*?\bREFERENCES\s+[a-zA-Z0-9_\"\.]+\b",
+    r"(?:\bADD\s+(?:COLUMN\s+)?(?:IF\s+NOT\s+EXISTS\s+)?)?\b([a-zA-Z0-9_\"]+)\b[\s\S]*?\bREFERENCES\s+[a-zA-Z0-9_\"\.]+\b",
     re.IGNORECASE,
 )
 PRIMARY_OR_UNIQUE_KEYWORD = re.compile(r"\b(PRIMARY\s+KEY|UNIQUE)\b", re.IGNORECASE)
@@ -63,7 +63,7 @@ def _collect_indexes(masked: str) -> dict[str, set[tuple[str, ...]]]:
     for match in CREATE_INDEX_PATTERN.finditer(masked):
         full_table = _normalize_name(match.group(1))
         base_table = full_table.split(".")[-1]
-        cols = tuple(_normalize_name(c) for c in match.group(2).split(",") if _normalize_name(c))
+        cols = tuple(normalized for column in match.group(2).split(",") if (normalized := _normalize_name(column)))
         if cols:
             indexed_cols.setdefault(full_table, set()).add(cols)
             indexed_cols.setdefault(base_table, set()).add(cols)
@@ -75,7 +75,9 @@ def _collect_indexes(masked: str) -> dict[str, set[tuple[str, ...]]]:
         full_table = _normalize_name(table_match.group(1))
         base_table = full_table.split(".")[-1]
         for pk_match in TABLE_PK_OR_UNIQUE_PATTERN.finditer(stmt):
-            pk_cols = tuple(_normalize_name(c) for c in pk_match.group(1).split(",") if _normalize_name(c))
+            pk_cols = tuple(
+                normalized for column in pk_match.group(1).split(",") if (normalized := _normalize_name(column))
+            )
             if pk_cols:
                 indexed_cols.setdefault(full_table, set()).add(pk_cols)
                 indexed_cols.setdefault(base_table, set()).add(pk_cols)
@@ -91,7 +93,7 @@ _MAX_TREE_FILES = 600
 _MAX_TREE_BYTES = 1_000_000
 
 
-def _migration_root(path: Path) -> Path | None:
+def _migration_root(path: Path) -> Path | None:  # sarj-noqa: SARJ023 — bounded tree helpers stay adjacent.
     """Locate the migration tree `path` belongs to."""
     for parent in path.parents:
         if parent.name.lower() in _MIGRATION_ROOT_NAMES:
@@ -100,7 +102,9 @@ def _migration_root(path: Path) -> Path | None:
 
 
 @lru_cache(maxsize=64)
-def _tree_leading_indexed(root: Path) -> frozenset[tuple[str, str]]:
+def _tree_leading_indexed(  # sarj-noqa: SARJ023 — bounded tree helpers stay adjacent.
+    root: Path,
+) -> frozenset[tuple[str, str]]:
     """Collect `(table, leading indexed column)` pairs from every `.sql` file under `root`."""
     pairs: set[tuple[str, str]] = set()
     try:

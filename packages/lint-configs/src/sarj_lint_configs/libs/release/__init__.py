@@ -4,6 +4,7 @@ from sarj_lint_configs.libs.release.artifacts import (
     required_artifact_paths,
     verify_built_package,
     verify_package_tarball,
+    verify_python_wheel_license,
 )
 from sarj_lint_configs.libs.release.changes import changed_release_targets
 from sarj_lint_configs.libs.release.process import (
@@ -82,4 +83,5 @@ __all__ = (
     "validate_release_tag",
     "verify_built_package",
     "verify_package_tarball",
+    "verify_python_wheel_license",
 )

@@ -5,14 +5,24 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
 import hashlib
+import os
 from pathlib import Path
+import re
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- local, fixed-argument Git verification only.
+from typing import Final
+
+from sarj_lint_configs.libs.filesystem import is_link_like
 
 from .manifest import CorpusKind, CorpusSource
 
 
 _GIT_REVISION_OUTPUT_LINES = 2
+_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
+_REVISION = re.compile(r"^[0-9a-f]{40}$")
+_GIT_SAFE_ENV: Final = frozenset(
+    {"HOME", "LANG", "LC_ALL", "LC_CTYPE", "PATH", "SYSTEMDRIVE", "SYSTEMROOT", "TMPDIR", "XDG_CONFIG_HOME"}
+)
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -25,6 +35,18 @@ class CorpusSnapshot:
     bytes: int
     revision: str | None = None
     private: bool = field(default=False, repr=False, compare=False)
+    verified: bool = field(default=False, init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if not self.name or not _DIGEST.fullmatch(self.digest):
+            msg = "corpus snapshot requires a name and sha256 digest"
+            raise ValueError(msg)
+        if self.files <= 0 or self.bytes < 0:
+            msg = "corpus snapshot counts must contain files and non-negative bytes"
+            raise ValueError(msg)
+        if self.revision is not None and not _REVISION.fullmatch(self.revision):
+            msg = "corpus snapshot revision must be a full lowercase Git revision"
+            raise ValueError(msg)
 
     def __repr__(self) -> str:
         if self.private:
@@ -37,6 +59,7 @@ class CorpusSnapshot:
 
 def snapshot(source: CorpusSource) -> CorpusSnapshot:
     """Hash selected local bytes in stable path order without network access."""
+    initial_revision = _git_revision(source) if source.kind is CorpusKind.GIT else None
     digest = hashlib.sha256()
     total = 0
     files = _files(source)
@@ -45,7 +68,8 @@ def snapshot(source: CorpusSource) -> CorpusSnapshot:
         raise ValueError(msg)
     for path in files:
         relative = path.relative_to(source.root).as_posix().encode()
-        size = path.stat().st_size
+        before = path.stat()
+        size = before.st_size
         digest.update(len(relative).to_bytes(8, "big"))
         digest.update(relative)
         digest.update(size.to_bytes(8, "big"))
@@ -54,12 +78,21 @@ def snapshot(source: CorpusSource) -> CorpusSnapshot:
             while chunk := stream.read(1024 * 1024):
                 digest.update(chunk)
                 read += len(chunk)
-        if read != size:
+        after = path.stat()
+        if read != size or (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns) != (
+            before.st_dev,
+            before.st_ino,
+            before.st_size,
+            before.st_mtime_ns,
+        ):
             relative_name = "<private-file>" if source.visibility.value == "private" else path.relative_to(source.root)
             msg = f"corpus file changed while hashing: {relative_name}"
             raise ValueError(msg)
         total += read
     revision = _git_revision(source) if source.kind is CorpusKind.GIT else None
+    if revision != initial_revision:
+        msg = f"corpus {source.report_name} revision changed while hashing"
+        raise ValueError(msg)
     return CorpusSnapshot(
         source.report_name,
         f"sha256:{digest.hexdigest()}",
@@ -77,7 +110,7 @@ def _files(source: CorpusSource) -> tuple[Path, ...]:
         raise ValueError(msg)
     files: list[Path] = []
     for path in source.root.rglob("*"):
-        if path.is_symlink() or not path.is_file():
+        if is_link_like(path) or not path.is_file():
             continue
         relative = path.relative_to(source.root).as_posix()
         if _matches(relative, source.include) and not _matches(relative, source.exclude):
@@ -106,7 +139,16 @@ def verify(source: CorpusSource) -> CorpusSnapshot:
         else:
             msg = f"corpus {source.report_name} revision drifted: expected {source.revision}, found {actual.revision}"
         raise ValueError(msg)
-    return actual
+    verified = CorpusSnapshot(
+        actual.name,
+        actual.digest,
+        actual.files,
+        actual.bytes,
+        actual.revision,
+        private=actual.private,
+    )
+    object.__setattr__(verified, "verified", True)  # ruff: ignore[unnecessary-dunder-call] -- frozen evidence token.
+    return verified
 
 
 def _git_revision(source: CorpusSource) -> str:
@@ -114,11 +156,18 @@ def _git_revision(source: CorpusSource) -> str:
     if executable is None:
         msg = "git is required to verify a pinned corpus"
         raise OSError(msg)
+    environment = {
+        name: value
+        for name, value in os.environ.items()  # ruff: ignore[banned-api] -- discard hook-local repository routing.
+        if name in _GIT_SAFE_ENV
+    }
     completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed local Git query.
         (executable, "rev-parse", "--show-toplevel", "HEAD"),
         cwd=source.root,
         check=False,
         capture_output=True,
+        env=environment,
+        shell=False,
         text=True,
     )
     lines = completed.stdout.splitlines()

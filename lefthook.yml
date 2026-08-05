@@ -24,10 +24,10 @@ pre-commit:
         landed outside the four allowed locations, or a strict config was copied
         instead of symlinked. Fix the reported path and retry.
 
-    lint:
-      run: make lint
+    standards:
+      run: uv run --project packages/lint-configs --frozen sarj-standards check --staged
       fail_text: >-
-        Standards lint failed. Fix the reported rule implementation and retry.
+        Standards staged checks failed. Fix the reported findings and retry.
     typecheck:
       run: make typecheck
       fail_text: "Standards typecheck failed. Fix the reported error and retry."

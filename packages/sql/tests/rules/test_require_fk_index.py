@@ -168,3 +168,14 @@ def test_alter_table_only_composite_fk_is_covered_by_a_concurrent_index() -> Non
         FOREIGN KEY (team_id, person_id) REFERENCES person_new(team_id, id) NOT VALID;
     """
     assert _check(src) == []
+
+
+def test_alter_add_column_if_not_exists_uses_the_real_fk_column_name() -> None:
+    src = """
+    ALTER TABLE provisioned_number
+      ADD COLUMN IF NOT EXISTS sip_connection_id UUID REFERENCES sip_connection(id);
+    CREATE INDEX CONCURRENTLY idx_number_connection
+      ON provisioned_number (sip_connection_id) WHERE sip_connection_id IS NOT NULL;
+    """
+
+    assert _check(src) == []

@@ -9,6 +9,7 @@ from typing import NamedTuple
 
 
 _HEREDOC_RE = re.compile(r"<<-?\s*([A-Za-z_]\w*)")
+_MAX_BLOCK_DEPTH = 128
 
 
 def strip_inline_comment(line: str) -> str:
@@ -152,6 +153,9 @@ def blocks(source: str) -> tuple[Block, ...]:
 def _parse_body(
     toks: list[_Tok], i: int, depth: int, lines: list[str]
 ) -> tuple[tuple[Attribute, ...], tuple[Block, ...], int]:
+    if depth > _MAX_BLOCK_DEPTH:
+        msg = f"HCL nesting exceeds the supported depth of {_MAX_BLOCK_DEPTH}"
+        raise ValueError(msg)
     attrs: list[Attribute] = []
     found: list[Block] = []
     while i < len(toks):

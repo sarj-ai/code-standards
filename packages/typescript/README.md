@@ -46,7 +46,7 @@ changes only the call; import cleanup remains explicit. Other UUID versions,
 custom-randomness arguments, re-exports, and function references are untouched.
 
 Neither rule is in the general presets. The application profile configures them
-for its Node 22+ runtime contract and supplies catalog entries to the loader
+for its Node 22.13+ runtime contract and supplies catalog entries to the loader
 rule:
 
 ```js

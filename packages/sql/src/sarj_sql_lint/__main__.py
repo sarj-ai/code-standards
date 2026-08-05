@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 
 from sarj_sql_lint import __version__
-from sarj_sql_lint.rule_base import Diagnostic, is_suppressed
+from sarj_sql_lint.rule_base import Diagnostic, clear_path_caches, is_suppressed
 from sarj_sql_lint.rules import REGISTRY
 
 
@@ -39,7 +39,11 @@ def _expand_paths(paths: list[Path]) -> list[Path]:
         if not p.exists():
             continue
         if p.is_file():
-            out.append(p)
+            try:
+                if p.stat().st_size <= MAX_FILE_BYTES:
+                    out.append(p)
+            except OSError:
+                pass
             continue
         for child in p.rglob("*.sql"):
             if not child.is_file():
@@ -62,6 +66,7 @@ def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
         sys.stderr.write(f"available: {', '.join(sorted(REGISTRY))}\n")
         raise SystemExit(2)
     rules = [REGISTRY[rid]() for rid in rule_ids]
+    clear_path_caches()
     expanded = _expand_paths(paths)
     diags: list[Diagnostic] = []
     for p in expanded:

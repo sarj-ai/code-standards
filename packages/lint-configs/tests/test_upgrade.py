@@ -58,6 +58,22 @@ def test_upgrade_repairs_the_bundle_without_losing_manifest_extensions(tmp_path:
     }
 
 
+def test_legacy_upgrade_detects_and_persists_lefthook_manager(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    manifest_path = tmp_path / manifest.MANIFEST_NAME
+    text = manifest_path.read_text(encoding="utf-8")
+    text = text.replace('\n[hooks]\nmanager = "pre-commit"\n', "\n")
+    manifest_path.write_text(text, encoding="utf-8")
+    (tmp_path / "lefthook.yml").write_text(
+        "pre-commit:\n  commands:\n    standards:\n      run: sarj-standards check --staged\n", encoding="utf-8"
+    )
+
+    plan = upgrade.build_plan(tmp_path)
+
+    assert plan.adopted.hook_manager == "lefthook"
+    assert '[hooks]\nmanager = "lefthook"' in plan.manifest_text
+
+
 def test_upgrade_repairs_preexisting_replacement_ruff_policy(tmp_path: Path) -> None:
     _outdated_python_repo(tmp_path)
     pyproject = tmp_path / "pyproject.toml"

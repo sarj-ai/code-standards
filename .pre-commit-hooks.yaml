@@ -6,7 +6,7 @@
   # New rules can report without blocking for one release. Pre-commit normally
   # hides successful-hook output, so verbose keeps those warnings visible.
   verbose: true
-  additional_dependencies: ["sarj-lint-configs==0.49.0"]
+  additional_dependencies: ["sarj-lint-configs==0.49.1"]
 
 - id: sarj-no-sequential-await
   name: 'sarj-lint: no sequential `await` in for-loop'
@@ -187,14 +187,14 @@
   entry: sarj-sql-lint check --rule enforce-timestamptz
   language: python
   types: [sql]
-  additional_dependencies: ['sarj-sql-lint==0.6.2']
+  additional_dependencies: ['sarj-sql-lint==0.6.3']
 
 - id: sarj-ban-postgres-enums
   name: 'sarj-lint(sql): ban native postgres ENUM types (prefer TEXT with CHECK)'
   entry: sarj-sql-lint check --rule no-pg-enum
   language: python
   types: [sql]
-  additional_dependencies: ['sarj-sql-lint==0.6.2']
+  additional_dependencies: ['sarj-sql-lint==0.6.3']
 
 - id: sarj-ban-create-trigger
   name: 'sarj-lint(sql): ban database triggers (prefer application-level logic)'
@@ -207,63 +207,63 @@
   entry: sarj-sql-lint check --rule prefer-text-over-varchar
   language: python
   types: [sql]
-  additional_dependencies: ['sarj-sql-lint==0.6.2']
+  additional_dependencies: ['sarj-sql-lint==0.6.3']
 
 - id: sarj-idempotent-ddl
   name: 'sarj-lint(sql): DDL must be re-runnable (IF [NOT] EXISTS)'
   entry: sarj-sql-lint check --rule idempotent-ddl
   language: python
   types: [sql]
-  additional_dependencies: ['sarj-sql-lint==0.6.2']
+  additional_dependencies: ['sarj-sql-lint==0.6.3']
 
 - id: sarj-insert-requires-on-conflict
   name: 'sarj-lint(sql): INSERT in migrations must be an idempotent upsert (ON CONFLICT)'
   entry: sarj-sql-lint check --rule insert-requires-on-conflict
   language: python
   types: [sql]
-  additional_dependencies: ['sarj-sql-lint==0.6.2']
+  additional_dependencies: ['sarj-sql-lint==0.6.3']
 
 - id: sarj-prefer-jsonb
   name: 'sarj-lint(sql): use JSONB, not JSON'
   entry: sarj-sql-lint check --rule prefer-jsonb
   language: python
   types: [sql]
-  additional_dependencies: ['sarj-sql-lint==0.6.2']
+  additional_dependencies: ['sarj-sql-lint==0.6.3']
 
 - id: sarj-no-limit-offset
   name: 'sarj-lint(sql): no OFFSET pagination (use cursor pagination)'
   entry: sarj-sql-lint check --rule no-limit-offset
   language: python
   types: [sql]
-  additional_dependencies: ['sarj-sql-lint==0.6.2']
+  additional_dependencies: ['sarj-sql-lint==0.6.3']
 
 - id: sarj-index-concurrently
   name: 'sarj-lint(sql): CREATE INDEX must use CONCURRENTLY'
   entry: sarj-sql-lint check --rule index-concurrently
   language: python
   types: [sql]
-  additional_dependencies: ['sarj-sql-lint==0.6.2']
+  additional_dependencies: ['sarj-sql-lint==0.6.3']
 
 - id: sarj-require-deletion-protection
   name: 'sarj-lint(iac): stateful resource must keep deletion_protection = true'
   entry: sarj-iac-lint check --rule require-deletion-protection
   language: python
   files: '\.(tf|hcl)$'
-  additional_dependencies: ['sarj-iac-lint==0.5.3']
+  additional_dependencies: ['sarj-iac-lint==0.5.4']
 
 - id: sarj-no-comment-cruft-iac
   name: 'sarj-lint(iac): commented-out Terraform / section-banner comments'
   entry: sarj-iac-lint check --rule no-comment-cruft
   language: python
   files: '\.(tf|hcl|tfvars)$'
-  additional_dependencies: ['sarj-iac-lint==0.5.3']
+  additional_dependencies: ['sarj-iac-lint==0.5.4']
 
 - id: sarj-require-prevent-destroy-on-irreplaceable
   name: 'sarj-lint(iac): irreplaceable resource without lifecycle prevent_destroy'
   entry: sarj-iac-lint check --rule require-prevent-destroy-on-irreplaceable
   language: python
   files: '\.(tf|hcl)$'
-  additional_dependencies: ['sarj-iac-lint==0.5.3']
+  additional_dependencies: ['sarj-iac-lint==0.5.4']
 
 - id: sarj-mock-without-spec
   name: 'sarj-lint: mock built without spec= accepts any attribute'
@@ -354,7 +354,7 @@
   entry: sarj-sql-lint check --rule prefer-uuidv7-default
   language: python
   types: [sql]
-  additional_dependencies: ['sarj-sql-lint==0.6.2']
+  additional_dependencies: ['sarj-sql-lint==0.6.3']
 
 # Whole-tree gate, not a per-file check: it must see every file to compare
 # totals, so it never takes filenames and runs once per commit.
@@ -365,8 +365,7 @@
   pass_filenames: false
   always_run: true
 
-# --- pygrep hooks -----------------------------------------------------------
-# These two are deliberately NOT SARJ rules. Both encode a convention whose
+# These two pygrep hooks are deliberately not SARJ rules. Both encode a convention whose
 # boundary is repo-specific, and an AST port was measured to be mostly false
 # positives without that repo's own scoping (see the 0.21.0 release notes).
 # They are shipped here so consumers stop hand-rolling the regex, and both
@@ -609,18 +608,18 @@
   entry: sarj-sql-lint check --rule require-lock-timeout
   language: python
   types: [sql]
-  additional_dependencies: ['sarj-sql-lint==0.6.2']
+  additional_dependencies: ['sarj-sql-lint==0.6.3']
 
 - id: sarj-add-constraint-not-valid
   name: 'sarj-lint: ADD CONSTRAINT (CHECK/FK) without NOT VALID'
   entry: sarj-sql-lint check --rule add-constraint-not-valid
   language: python
   types: [sql]
-  additional_dependencies: ['sarj-sql-lint==0.6.2']
+  additional_dependencies: ['sarj-sql-lint==0.6.3']
 
 - id: sarj-require-fk-index
   name: 'sarj-lint: Foreign key column without index on child table'
   entry: sarj-sql-lint check --rule require-fk-index
   language: python
   types: [sql]
-  additional_dependencies: ['sarj-sql-lint==0.6.2']
+  additional_dependencies: ['sarj-sql-lint==0.6.3']

@@ -65,6 +65,10 @@ _DIALECT_DIRECTIVE_RE = re.compile(
     r"^\s*--\s*(?:sql-)?dialect\s*:\s*(postgres(?:ql)?|sqlite|mysql|mariadb)\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
+_DBMATE_DIRECTIVE_RE = re.compile(
+    r"^\s*--\s*migrate:(up|no-transaction)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
 _SQLITE_RE = re.compile(r"\bAUTOINCREMENT\b", re.IGNORECASE)
 
 
@@ -79,6 +83,15 @@ def declared_dialect(source: str) -> str | None:
     if dialect == "mariadb":
         return "mysql"
     return dialect
+
+
+def has_dbmate_directive(source: str, directive: str) -> bool:
+    """Find an exact dbmate line directive outside dollar-quoted function bodies."""
+    dollar_lines = dollar_quoted_lines(source)
+    return any(
+        match.group(1).lower() == directive and source.count("\n", 0, match.start()) + 1 not in dollar_lines
+        for match in _DBMATE_DIRECTIVE_RE.finditer(source)
+    )
 
 
 # Drizzle writes this separator between statements in every migration it emits.
@@ -141,6 +154,11 @@ def is_generated_migration(path: Path, source: str) -> bool:
     return _has_generated_marker(path.parent)
 
 
+def clear_path_caches() -> None:
+    """Clear filesystem-derived state before each independent lint run."""
+    _has_generated_marker.cache_clear()
+
+
 def is_suppressed(source_lines: list[str], line: int, code: str) -> bool:
     """Report whether the diagnostic's line carries a `-- sarj-noqa[: CODE]` comment."""
     if line < 1 or line > len(source_lines):
@@ -155,12 +173,14 @@ def is_suppressed(source_lines: list[str], line: int, code: str) -> bool:
     return code.upper() in codes
 
 
-def _blank(segment: str) -> str:
+def _blank(segment: str) -> str:  # sarj-noqa: SARJ023 — scanner primitive stays above the cached engine.
     """Replace every char with a space, keeping newlines so offsets are preserved."""
     return _NON_NEWLINE.sub(" ", segment)
 
 
-def _scan_quoted(source: str, start: int, quote: str) -> int:
+def _scan_quoted(  # sarj-noqa: SARJ023 — scanner primitive stays above the cached engine.
+    source: str, start: int, quote: str
+) -> int:
     """Index just past a `quote`-delimited run starting at `start`, honoring `''`/`""`."""
     n = len(source)
     j = start + 1
@@ -174,7 +194,9 @@ def _scan_quoted(source: str, start: int, quote: str) -> int:
     return n
 
 
-def _dollar_open_tag(source: str, i: int) -> str | None:
+def _dollar_open_tag(  # sarj-noqa: SARJ023 — scanner primitive stays above the cached engine.
+    source: str, i: int
+) -> str | None:
     """Return an opening dollar tag, rejecting identifier-adjacent `$` that cannot start a delimiter."""
     if i > 0 and _IDENT_CHAR_RE.match(source, i - 1) is not None:
         return None
@@ -182,19 +204,24 @@ def _dollar_open_tag(source: str, i: int) -> str | None:
     return None if m is None else m.group(0)
 
 
-def _closing_depth(source: str, i: int, open_tags: list[str]) -> int | None:
+def _closing_depth(  # sarj-noqa: SARJ023 — scanner primitive stays above the cached engine.
+    source: str, i: int, open_tag_depths: dict[str, list[int]]
+) -> int | None:
     """Choose the outermost matching tag so an unterminated nested tag cannot swallow a valid outer close."""
-    for depth, tag in enumerate(open_tags):
-        if source.startswith(tag, i):
-            return depth
-    return None
+    match = _DOLLAR_DELIM_RE.match(source, i)
+    if match is None:
+        return None
+    depths = open_tag_depths.get(match.group(0))
+    return depths[0] if depths else None
 
 
 @lru_cache(maxsize=32)
+# ruff: ignore[too-many-locals] -- single-pass scanner state is kept local for speed and isolation.
 def _scan(source: str) -> tuple[str, list[tuple[int, int]]]:
     # Preserve offsets while recursively masking comments and literals inside executable dollar-quoted bodies.
     out: list[str] = []
     open_tags: list[str] = []
+    open_tag_depths: dict[str, list[int]] = {}
     spans: list[tuple[int, int]] = []
     body_start = 0
     i = 0
@@ -204,11 +231,17 @@ def _scan(source: str) -> tuple[str, list[tuple[int, int]]]:
     while i < n:
         ch = source[i]
         if ch == "$" and open_tags:
-            depth = _closing_depth(source, i, open_tags)
+            depth = _closing_depth(source, i, open_tag_depths)
             if depth is not None:
                 if i > chunk_start:
                     out.append(source[chunk_start:i])
                 tag = open_tags[depth]
+                for removed_depth in range(len(open_tags) - 1, depth - 1, -1):
+                    removed = open_tags[removed_depth]
+                    depths = open_tag_depths[removed]
+                    depths.pop()
+                    if not depths:
+                        del open_tag_depths[removed]
                 del open_tags[depth:]
                 out.append(" " * len(tag))
                 i += len(tag)
@@ -234,6 +267,7 @@ def _scan(source: str) -> tuple[str, list[tuple[int, int]]]:
                 out.append(source[chunk_start:i])
             if not open_tags:
                 body_start = i
+            open_tag_depths.setdefault(tag, []).append(len(open_tags))
             open_tags.append(tag)
             out.append(" " * len(tag))
             i += len(tag)

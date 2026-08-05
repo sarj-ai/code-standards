@@ -187,9 +187,10 @@ def _reads_frame_locals(scope: _Scope) -> bool:
 def _candidate_binding(node: ast.stmt) -> tuple[ast.Name, ast.expr] | None:
     """Match a single-target `x = <value>` / `x: T = <value>` statement."""
     match node:
-        case ast.Assign(targets=[ast.Name() as target], value=value):
-            return target, value
-        case ast.AnnAssign(target=ast.Name() as target, value=ast.expr() as value):
+        case (
+            ast.Assign(targets=[ast.Name() as target], value=value)
+            | ast.AnnAssign(target=ast.Name() as target, value=ast.expr() as value)
+        ):
             return target, value
         case _:
             return None
@@ -276,9 +277,10 @@ def _is_constant_only(node: ast.expr, depth: int) -> bool:
     if depth > _MAX_LITERAL_DEPTH:
         return False
     match node:
-        case ast.Constant():
-            return True
-        case ast.UnaryOp(op=ast.USub() | ast.UAdd(), operand=ast.Constant(value=int() | float() | complex())):
+        case (
+            ast.Constant()
+            | ast.UnaryOp(op=ast.USub() | ast.UAdd(), operand=ast.Constant(value=int() | float() | complex()))
+        ):
             return True
         case ast.List(elts=elts) | ast.Set(elts=elts) | ast.Tuple(elts=elts):
             return all(_is_constant_only(element, depth + 1) for element in elts)
@@ -292,9 +294,10 @@ def _is_constant_only(node: ast.expr, depth: int) -> bool:
 def _is_immutable_literal(node: ast.expr) -> bool:
     """Recognize literal tuples that are not rebuilt at runtime."""
     match node:
-        case ast.Constant():
-            return True
-        case ast.UnaryOp(op=ast.USub() | ast.UAdd(), operand=ast.Constant(value=int() | float() | complex())):
+        case (
+            ast.Constant()
+            | ast.UnaryOp(op=ast.USub() | ast.UAdd(), operand=ast.Constant(value=int() | float() | complex()))
+        ):
             return True
         case ast.Tuple(elts=elts):
             return all(_is_immutable_literal(element) for element in elts)
@@ -351,9 +354,7 @@ def _parameter_names(func: _Function) -> frozenset[str]:
 def _mentions_name(node: ast.AST, name: str) -> bool:
     """Report whether this node inside an inner scope refers to the binding."""
     match node:
-        case ast.Name(id=ident):
-            return ident == name
-        case ast.arg(arg=ident):
+        case ast.Name(id=ident) | ast.arg(arg=ident):
             return ident == name
         case ast.Global(names=names) | ast.Nonlocal(names=names):
             return name in names
@@ -366,15 +367,16 @@ def _rebinds_name(node: ast.AST, name: str) -> bool:
     match node:
         case ast.Global(names=names) | ast.Nonlocal(names=names):
             return name in names
-        case ast.ExceptHandler(name=bound):
-            return bound == name
-        case ast.FunctionDef(name=bound) | ast.AsyncFunctionDef(name=bound) | ast.ClassDef(name=bound):
+        case (
+            ast.ExceptHandler(name=bound)
+            | ast.FunctionDef(name=bound)
+            | ast.AsyncFunctionDef(name=bound)
+            | ast.ClassDef(name=bound)
+        ):
             return bound == name
         case ast.alias(asname=None, name=module):
             return module.split(".")[0] == name
-        case ast.alias(asname=str() as bound):
-            return bound == name
-        case ast.MatchAs(name=bound) | ast.MatchStar(name=bound):
+        case ast.alias(asname=str() as bound) | ast.MatchAs(name=bound) | ast.MatchStar(name=bound):
             return bound == name
         case ast.MatchMapping(rest=rest):
             return rest == name
@@ -441,5 +443,6 @@ def _message(name: str, candidate: _Candidate) -> str:
         return f"`{name}` repeats a regex-cache lookup on every call — hoist it to module scope."
     return (
         f"`{name}` is a constant-only {candidate.kind} rebuilt on every call — hoist it "
-        "to module scope so it is built once and can be imported, reused, and tested."
+        "to module scope in immutable form (tuple, frozenset, or an immutable mapping) "
+        "so it is built once without exposing mutable shared state."
     )

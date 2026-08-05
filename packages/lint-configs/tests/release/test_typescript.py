@@ -33,6 +33,9 @@ class FakeRunner:
         archive = destination / "example-1.0.0.tgz"
         contents = b"export {};"
         with tarfile.open(archive, "w:gz") as package:
+            license_info = tarfile.TarInfo("package/LICENSE")
+            license_info.size = 3
+            package.addfile(license_info, io.BytesIO(b"MIT"))
             info = tarfile.TarInfo("package/dist/index.js")
             info.size = len(contents)
             package.addfile(info, io.BytesIO(contents))

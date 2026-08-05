@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
-from sarj_lint_configs.libs.adoption import lifecycle, scaffold
+import pytest  # ruff: ignore[typing-only-third-party-import] -- parametrization is evaluated at runtime.
+
+from sarj_lint_configs.libs.adoption import lifecycle, manifest, scaffold
 from sarj_lint_configs.libs.adoption.packagemanager import PackageManager
 
 
@@ -42,6 +44,31 @@ def test_scoped_root_pyright_config_keeps_the_root_project(tmp_path: Path) -> No
     commands = lifecycle.verification_commands(ecosystems)
 
     assert tmp_path in {command.cwd for command in commands}
+
+
+def test_python_install_exact_pins_override_consumer_release_age_cutoffs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        manifest,
+        "installed_versions",
+        lambda: {"sarj-lint-configs": "1.2.3", "sarj-python-lint": "4.5.6"},
+    )
+    ecosystems = scaffold.Ecosystems(True, False, python_root=tmp_path)
+
+    (command,) = lifecycle.install_commands(tmp_path, ecosystems, hook_manager="none")
+
+    assert command.argv == (
+        "uv",
+        "add",
+        "--dev",
+        "--exclude-newer-package",
+        "sarj-lint-configs=9999-12-31",
+        "--exclude-newer-package",
+        "sarj-python-lint=9999-12-31",
+        "sarj-lint-configs==1.2.3",
+        "sarj-python-lint==4.5.6",
+    )
 
 
 def test_staged_eslint_uses_detected_project_cwd_and_package_manager(tmp_path: Path) -> None:

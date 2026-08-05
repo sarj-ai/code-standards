@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import zipfile
 
 from sarj_lint_configs.libs.release import ProcessResult, publish_target
 
@@ -16,7 +17,8 @@ def test_python_publish_builds_then_publishes_without_shell(tmp_path: Path) -> N
         calls.append((argv, cwd))
         if argv[:2] == ("uv", "build"):
             destination = Path(argv[-1])
-            (destination / "example-1.0.0-py3-none-any.whl").write_bytes(b"wheel")
+            with zipfile.ZipFile(destination / "example-1.0.0-py3-none-any.whl", "w") as wheel:
+                wheel.writestr("example-1.0.0.dist-info/licenses/LICENSE", "MIT")
         return ProcessResult(0)
 
     publish_target(tmp_path, "python", runner=runner)

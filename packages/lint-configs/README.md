@@ -83,6 +83,11 @@ the install failed identically while `package.json` looked fixed.
 
 ## Keep current
 
+Use the launcher that `init` prints. Root Python projects use `uv run --frozen`;
+nested Python projects use `uv run --project PATH --frozen`; TypeScript-only
+projects use `uvx --from sarj-lint-configs==VERSION`, where VERSION is recorded
+in `.sarj-standards.toml`. The examples below use the root-Python form.
+
 ```bash
 uv run --frozen sarj-standards doctor       # read-only diagnosis with exact fixes
 uv run --frozen sarj-standards update --check   # preview whether an upgrade is needed
@@ -122,7 +127,7 @@ Makefile are intentionally thin adapters rather than a second implementation:
 
 ```bash
 sarj-standards maintain setup --check
-sarj-standards maintain release check-tag typescript-v9.13.0
+sarj-standards maintain release check-tag typescript-v9.13.1
 sarj-standards maintain release lock-age packages/typescript/package-lock.json --exclude-file .github/release-age-exclusions.txt
 sarj-standards maintain release typescript check
 sarj-standards maintain release publish typescript
@@ -216,10 +221,20 @@ sarj-standards update
 The command bootstraps the newest published compatibility bundle with `uvx
 --refresh`, previews each changed path, blocks on retired rule references,
 updates the single manifest version, syncs configs, safely repairs wiring and
-peer pins, installs dependencies, and rolls everything back if installation or
-the doctor postflight fails. Use `update --check` in automation. The legacy
+peer pins, installs dependencies, rolls generated/config files back, and
+removes a newly created `.venv` if installation or the doctor postflight
+fails. An existing environment is not snapshotted; after a failed update, run
+your package manager's frozen sync to reconcile it with the restored lockfile.
+Use `update --check` in automation. The legacy
 `upgrade --offline --no-install` spelling remains available for maintainers
 testing the already-installed bundle.
+
+For an offline or review-first update, run `sarj-standards update --offline
+--no-install`. This uses the executing/cached bundle, updates only tracked
+configuration, and prints the exact pending install commands. `doctor` and full
+`check` intentionally remain nonzero until those dependencies are installed.
+The bundle and `uvx` environment must already exist in the local cache; this
+mode never claims to download them offline.
 
 A consumer repo used to state a Sarj version in three independent places: the
 `pyproject.toml` pin, the pre-commit `rev:`, and whatever a CI job typed on its
@@ -320,6 +335,9 @@ upstream — and nothing caught it.
 so a Python repo is not asked to carry an ESLint config it never wanted. That
 matters: `sync --check` used to insist on all six files, report permanent drift
 on the two a repo had no use for, and so never made it into anyone's CI.
+Without `--force`, an edited config is preserved and reported as skipped. Use
+`update --configs-only --force` to restore the canonical bytes after reviewing
+the diff.
 
 **Your own settings are not clobbered, and you do not need to fork anything.**
 
@@ -427,8 +445,10 @@ uv run --frozen sarj-standards update --configs-only --python-dest python --type
 
 `check` discovers every rule from the exact registry versions installed with this
 package. Files and recursively discovered directory contents are routed to the
-applicable registry by suffix. It is deliberately zero-tolerance: it does not
-accept suppression baselines that a change could inflate to conceal new findings.
+applicable registry by suffix. Normal suppressions are exact-code and local.
+Python additionally supports a shrink-only `--baseline` / `--create-baseline`:
+the recorded ceiling may decrease, but a change cannot inflate it to conceal
+new findings.
 
 Do not copy the runner into consumer repositories. Keeping it inside the wheel
 ensures the CLI implementation and its exact registry dependencies upgrade as one

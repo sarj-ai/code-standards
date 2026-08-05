@@ -47,7 +47,14 @@ class Record(TypedDict):
     text: str
 
 
+def _require_supported_platform() -> None:
+    if os.name == "nt" or not hasattr(os, "fwalk"):
+        msg = "comment-corpus maintenance requires POSIX descriptor-relative filesystem operations"
+        raise OSError(msg)
+
+
 def records(roots: Sequence[Path]) -> Iterator[Record]:
+    _require_supported_platform()
     for root in roots:
         resolved_root = root.resolve(strict=True)
         root_descriptor = os.open(resolved_root, _DIRECTORY_FLAGS)
@@ -96,6 +103,7 @@ def _read_regular_file(directory_descriptor: int, filename: str) -> str | None:
 
 
 def emit_summary(roots: Sequence[Path], output: TextIO) -> int:
+    _require_supported_platform()
     counts: Counter[tuple[str, str]] = Counter()
     for index, root in enumerate(roots, start=1):
         repository = f"repository-{index}"
@@ -112,6 +120,7 @@ def emit_summary(roots: Sequence[Path], output: TextIO) -> int:
 
 
 def write_records(roots: Sequence[Path], destination: Path) -> int:
+    _require_supported_platform()
     parent = destination.parent.resolve(strict=True)
     staging = f".{destination.name}.{secrets.token_hex(8)}.tmp"
     parent_descriptor = os.open(parent, _DIRECTORY_FLAGS)

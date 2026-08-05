@@ -6,7 +6,7 @@ import operator
 import re
 from typing import TYPE_CHECKING, final, override
 
-from sarj_sql_lint.rule_base import Diagnostic, Rule, is_dump_file, is_postgres, mask_sql
+from sarj_sql_lint.rule_base import Diagnostic, Rule, has_dbmate_directive, is_dump_file, is_postgres, mask_sql
 
 
 if TYPE_CHECKING:
@@ -43,6 +43,7 @@ class RequireLockTimeout(Rule):
         masked = mask_sql(source)
         if not is_postgres(source):
             return []
+        nontransactional = has_dbmate_directive(source, "no-transaction")
 
         events: list[tuple[int, str, re.Match[str]]] = []
         # Match raw quoted values, then require the assignment's offset to remain live after masking SQL noise.
@@ -80,7 +81,7 @@ class RequireLockTimeout(Rule):
                 )
 
                 if is_local:
-                    active_local_timeouts[target_var] = is_active
+                    active_local_timeouts[target_var] = is_active and not nontransactional
                 else:
                     active_global_timeouts[target_var] = is_active
             elif event_type == "TX_END":
@@ -97,8 +98,11 @@ class RequireLockTimeout(Rule):
                             col=1,
                             code=self.code,
                             message=(
-                                "Migration containing DDL (`ALTER TABLE`/`CREATE INDEX`) must set "
-                                "a positive `SET [LOCAL] lock_timeout = ...` or `statement_timeout = ...` prior to DDL statements."
+                                "A nontransactional migration containing DDL must set a positive session "
+                                "`SET lock_timeout = ...` or `statement_timeout = ...` before DDL and `RESET` it afterward; "
+                                "`SET LOCAL` has no effective transaction scope here."
+                                if nontransactional
+                                else "Migration containing DDL (`ALTER TABLE`/`CREATE INDEX`) must set a positive `SET [LOCAL] lock_timeout = ...` or `statement_timeout = ...` prior to DDL statements."
                             ),
                         )
                     )

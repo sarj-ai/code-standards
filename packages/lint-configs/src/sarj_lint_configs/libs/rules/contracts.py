@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-import hashlib
 from pathlib import PurePosixPath
 
 
@@ -140,8 +139,5 @@ class EvaluationCase:
 
     @property
     def report_id(self) -> str:
-        """Pseudonymize private case labels before they enter a report."""
-        if not self.private:
-            return self.case_id
-        fingerprint = hashlib.sha256(self.case_id.encode()).hexdigest()[:12]
-        return f"<private:{fingerprint}>"
+        """Redact private case labels before they enter a report."""
+        return "<private>" if self.private else self.case_id

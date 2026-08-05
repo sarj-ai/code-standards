@@ -38,7 +38,11 @@ def _expand_paths(paths: list[Path]) -> list[Path]:
         if not p.exists():
             continue
         if p.is_file():
-            out.append(p)
+            try:
+                if p.stat().st_size <= _MAX_FILE_BYTES:
+                    out.append(p)
+            except OSError:
+                pass
             continue
         for child in p.rglob("*"):
             if not child.is_file() or child.suffix not in _SCANNED_SUFFIXES:
@@ -113,7 +117,11 @@ def main(argv: list[str] | None = None) -> int:
             sys.stdout.write(f"{inst.code:8}  {rid:34}  {inst.description}\n")
         return 0
 
-    diags = _check(args.rule, args.files)
+    try:
+        diags = _check(args.rule, args.files)
+    except ValueError as exc:
+        sys.stderr.write(f"error: {exc}\n")
+        return 2
     for d in diags:
         sys.stdout.write(d.format() + "\n")
     if args.exit_zero:
