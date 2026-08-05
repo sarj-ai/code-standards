@@ -292,7 +292,6 @@ def test_domain_type_ending_in_request_is_not_a_route_marker() -> None:
         "NamedTuple",
         "Enum",
         "Exception",
-        "Generic[T]",
         "LoggingMixin",
         "object, ThingMixin",
     ],
@@ -310,7 +309,6 @@ def test_domain_type_ending_in_request_is_not_a_route_marker() -> None:
         "NamedTuple",
         "Enum",
         "Exception",
-        "Generic",
         "mixin",
         "object-plus-mixin",
     ],
@@ -321,6 +319,14 @@ def test_any_base_class_suppresses(base: str) -> None:
 
 def test_explicit_object_base_still_fires() -> None:
     assert len(_check(_SERVICE.replace("class ThingService:", "class ThingService(object):"))) == 1
+
+
+def test_generic_base_does_not_count_as_a_service_port() -> None:
+    assert len(_check(_SERVICE.replace("class ThingService:", "class ThingService(Generic[T]):"))) == 1
+
+
+def test_unknown_metaclass_does_not_count_as_a_service_port() -> None:
+    assert len(_check(_SERVICE.replace("class ThingService:", "class ThingService(metaclass=SingletonMeta):"))) == 1
 
 
 def test_metaclass_keyword_suppresses() -> None:
@@ -345,22 +351,24 @@ def test_abstractmethod_in_body_suppresses() -> None:
     )
 
 
-def test_overload_in_body_suppresses() -> None:
-    assert (
-        _check(
-            """
-            class ThingService:
-                def __init__(self, store: ThingStore) -> None:
-                    self.store = store
+def test_overload_signatures_do_not_turn_a_concrete_service_into_a_port() -> None:
+    diagnostics = _check(
+        """
+        class ThingService:
+            def __init__(self, store: ThingStore) -> None:
+                self.store = store
 
-                @overload
-                def read(self) -> str: ...
+            @overload
+            def read(self) -> str: ...
 
-                def write(self) -> None: ...
-            """
-        )
-        == []
+            def read(self) -> str:
+                return "value"
+
+            def write(self) -> None: ...
+        """
     )
+    assert len(diagnostics) == 1
+    assert diagnostics[0].code == "SARJ071"
 
 
 @pytest.mark.parametrize(
@@ -1150,3 +1158,37 @@ def test_rule_metadata() -> None:
     assert rule.id == "require-port-for-service"
     assert rule.code == "SARJ071"
     assert len(rule.description) >= 10
+
+
+def test_local_concrete_base_does_not_count_as_a_service_port() -> None:
+    source = """
+class LocalBase:
+    def helper(self) -> None: ...
+
+class BillingService(LocalBase):
+    def __init__(self, repo: BillingRepository) -> None:
+        self.repo = repo
+
+    def charge(self) -> None: ...
+    def refund(self) -> None: ...
+"""
+    assert len(_check(source)) == 1
+
+
+def test_transitively_inherited_local_protocol_counts_as_a_port() -> None:
+    source = """
+class Port(Protocol):
+    def charge(self) -> None: ...
+    def refund(self) -> None: ...
+
+class SpecializedPort(Port):
+    pass
+
+class BillingService(SpecializedPort):
+    def __init__(self, repo: BillingRepository) -> None:
+        self.repo = repo
+
+    def charge(self) -> None: ...
+    def refund(self) -> None: ...
+"""
+    assert _check(source) == []

@@ -20,6 +20,70 @@ const SRC = "/repo/src/domain/record-normalizer/service.ts";
 
 ruleTester.run("require-interface-for-injected-service", rule, {
   valid: [
+    {
+      name: "combines segregated implemented port surfaces",
+      filename: SRC,
+      code: `
+        interface Reader { read(): void; }
+        interface Writer { write(): void; }
+        export class RequestHandler implements Reader, Writer {
+          constructor(private readonly store: TaskStore) {}
+          read(): void {}
+          write(): void {}
+        }
+      `,
+    },
+    {
+      name: "resolves intersection and reference aliases used as ports",
+      filename: SRC,
+      code: `
+        interface Reader { read(): void; }
+        interface Writer { write(): void; }
+        type Combined = Reader & Writer;
+        type RequestPort = Combined;
+        export class RequestHandler implements RequestPort {
+          constructor(private readonly store: TaskStore) {}
+          read(): void {}
+          write(): void {}
+        }
+      `,
+    },
+    {
+      name: "recognizes callable type aliases on both a port and its implementation",
+      filename: SRC,
+      code: `
+        type Run = () => void;
+        interface RequestPort { run: Run; }
+        export class RequestHandler implements RequestPort {
+          constructor(private readonly store: TaskStore) {}
+          run: Run = () => {};
+        }
+      `,
+    },
+    {
+      name: "recognizes a service surface inherited by a local port interface",
+      filename: SRC,
+      code: `
+        interface BasePort { handle(): void; }
+        interface RequestPort extends BasePort {}
+        export class RequestHandler implements RequestPort {
+          constructor(private readonly store: TaskStore) {}
+          handle(): void {}
+        }
+      `,
+    },
+    {
+      name: "recognizes a transitively inherited local abstract port",
+      filename: SRC,
+      code: `
+        abstract class BasePort { abstract handle(): void; }
+        class SpecializedPort extends BasePort { handle(): void {} }
+        export class RequestHandler extends SpecializedPort {
+          constructor(private readonly store: TaskStore) { super(); }
+          handle(): void {}
+        }
+      `,
+    },
     // The target state, and the corpus's overwhelming convention: 175 of 229
     // exported classes look like this.
     {
@@ -29,6 +93,17 @@ ruleTester.run("require-interface-for-injected-service", rule, {
           private readonly svc: ServiceRegistry;
           constructor(svc: ServiceRegistry) { this.svc = svc; }
           async run(): Promise<void> {}
+        }
+      `,
+    },
+    {
+      name: "keeps arbitrary framework-decorated classes conservative",
+      filename: SRC,
+      code: `
+        @sealed
+        export class RequestHandler {
+          constructor(private readonly store: TaskStore) {}
+          handle(): void {}
         }
       `,
     },
@@ -142,16 +217,6 @@ ruleTester.run("require-interface-for-injected-service", rule, {
           protected other(): void {}
           static make(): void {}
           #secret(): void {}
-        }
-      `,
-    },
-    {
-      name: "ignores arrow-property APIs because they are not declared methods",
-      filename: SRC,
-      code: `
-        export class RequestHandler {
-          constructor(private readonly store: TaskStore) {}
-          handle = async (): Promise<void> => this.store.run();
         }
       `,
     },
@@ -775,6 +840,105 @@ ruleTester.run("require-interface-for-injected-service", rule, {
   ],
 
   invalid: [
+    {
+      name: "implementing a local concrete class does not declare a port",
+      filename: SRC,
+      code: `
+        class Concrete { handle(): void {} }
+        export class RequestHandler implements Concrete {
+          constructor(private readonly store: TaskStore) {}
+          handle(): void {}
+        }
+      `,
+      errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }],
+    },
+    {
+      name: "a local empty type alias is not a service port",
+      filename: SRC,
+      code: `
+        type Empty = {};
+        export class RequestHandler implements Empty {
+          constructor(private readonly store: TaskStore) {}
+          handle(): void {}
+        }
+      `,
+      errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }],
+    },
+    {
+      name: "recognizes nullish assignment and type-asserted constructor storage",
+      filename: SRC,
+      code: `
+        export class RequestHandler {
+          private store?: TaskStore;
+          constructor(store: TaskStore) { this.store ??= store as TaskStore; }
+          handle(): void {}
+        }
+      `,
+      errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }],
+    },
+    {
+      name: "a local marker interface does not cover the service surface",
+      filename: SRC,
+      code: `
+        interface Serializable { serialize(): string; }
+        export class RequestHandler implements Serializable {
+          constructor(private readonly store: TaskStore) {}
+          handle(): void {}
+          serialize(): string { return ""; }
+        }
+      `,
+      errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle, serialize" } }],
+    },
+    {
+      name: "a local concrete superclass is not a service port",
+      filename: SRC,
+      code: `
+        class LocalBase { helper(): void {} }
+        export class RequestHandler extends LocalBase {
+          constructor(private readonly store: TaskStore) { super(); }
+          handle(): void {}
+        }
+      `,
+      errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }],
+    },
+    {
+      name: "recognizes a nullable collaborator stored through a non-null assertion in control flow",
+      filename: SRC,
+      code: `
+        export class RequestHandler {
+          private readonly store: TaskStore;
+          constructor(store: TaskStore | undefined, enabled: boolean) {
+            if (enabled) this.store = store!;
+            else this.store = fallbackStore();
+          }
+          handle(): void {}
+        }
+      `,
+      errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }],
+    },
+    {
+      name: "counts public arrow properties as callable service surface",
+      filename: SRC,
+      code: `
+        export class RequestHandler {
+          constructor(private readonly store: TaskStore) {}
+          handle = async (): Promise<void> => this.store.run();
+        }
+      `,
+      errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }],
+    },
+    {
+      name: "recognizes a detached named export",
+      filename: SRC,
+      code: `
+        class RequestHandler {
+          constructor(private readonly store: TaskStore) {}
+          handle(): void {}
+        }
+        export { RequestHandler };
+      `,
+      errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }],
+    },
     // GROUND TRUTH — the origin case raised in review on a first-party repo,
     // verbatim in shape. Its sibling in the same directory tree does declare an
     // `ITaskTrackerService` port.

@@ -295,6 +295,80 @@ def test_established_text_rules_remain_blocking(tmp_path: Path) -> None:
     assert textlint.run([str(path)]) == 1
 
 
+@pytest.mark.parametrize(
+    "uses",
+    [
+        "actions/checkout@v4",
+        "owner/action@main",
+        "owner/repo/path@release-1",
+        "docker://alpine:3.22",
+        "${{ matrix.action }}",
+    ],
+    ids=["tag", "branch", "reusable-workflow-tag", "container-tag", "expression"],
+)
+def test_warns_for_mutable_remote_workflow_actions(tmp_path: Path, uses: str) -> None:
+    workflow = tmp_path / ".github/workflows/ci.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text(f"jobs:\n  test:\n    steps:\n      - uses: {uses}\n", encoding="utf-8")
+
+    assert _codes(workflow, root=tmp_path) == ["SARJ303"]
+
+
+@pytest.mark.parametrize(
+    "uses",
+    [
+        "actions/checkout@0123456789abcdef0123456789abcdef01234567",
+        "owner/repo/.github/workflows/ci.yml@ABCDEF0123456789ABCDEF0123456789ABCDEF01",
+        "docker://alpine@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "./.github/actions/local",
+        "./.github/workflows/reusable.yml",
+    ],
+    ids=["sha", "uppercase-sha", "container-digest", "local-action", "local-workflow"],
+)
+def test_allows_immutable_or_local_workflow_actions(tmp_path: Path, uses: str) -> None:
+    workflow = tmp_path / ".github/workflows/ci.yaml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text(f"jobs:\n  test:\n    steps:\n      - uses: {uses}\n", encoding="utf-8")
+
+    assert _codes(workflow, root=tmp_path) == []
+
+
+def test_workflow_action_rule_ignores_examples_and_non_workflow_yaml(tmp_path: Path) -> None:
+    workflow = tmp_path / ".github/workflows/ci.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text("script: |\n  - uses: actions/checkout@v4\n", encoding="utf-8")
+    example = tmp_path / "examples/workflow.yml"
+    example.parent.mkdir()
+    example.write_text("- uses: actions/checkout@v4\n", encoding="utf-8")
+
+    assert _codes(workflow, root=tmp_path) == []
+    assert _codes(example, root=tmp_path) == []
+
+
+def test_workflow_action_rule_has_exact_local_suppression(tmp_path: Path) -> None:
+    workflow = tmp_path / ".github/workflows/ci.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text(
+        "# sarj-noqa: SARJ303\n- uses: owner/action@main\n# sarj-noqa: SARJ301\n- uses: owner/other@main\n",
+        encoding="utf-8",
+    )
+
+    findings = textlint.check_paths([str(workflow)], root=tmp_path)
+    assert [(finding.code, finding.line) for finding in findings] == [("SARJ303", 4)]
+
+
+def test_new_workflow_action_rule_warns_without_blocking(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workflow = tmp_path / ".github/workflows/ci.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text("- uses: actions/checkout@v4\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    assert textlint.run([str(workflow.relative_to(tmp_path))]) == 0
+    assert "SARJ303 warning:" in capsys.readouterr().out
+
+
 def test_flags_change_diary_inside_readme(tmp_path: Path) -> None:
     path = tmp_path / "README.md"
     path.write_text("# App\n\n## Fixes + learnings\n\n## Verification passes\n")

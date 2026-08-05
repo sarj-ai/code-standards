@@ -5,6 +5,7 @@ import reactHooks from "eslint-plugin-react-hooks";
 import unicorn from "eslint-plugin-unicorn";
 import eslintComments from "@eslint-community/eslint-plugin-eslint-comments";
 import perfectionist from "eslint-plugin-perfectionist";
+import promise from "eslint-plugin-promise";
 import simpleImportSort from "eslint-plugin-simple-import-sort";
 import betterTailwindcss from "eslint-plugin-better-tailwindcss";
 import sarj from "@sarj/eslint-plugin";
@@ -469,6 +470,7 @@ const config = [
       unicorn,
       "@eslint-community/eslint-comments": eslintComments,
       perfectionist,
+      promise,
       "simple-import-sort": simpleImportSort,
       "@sarj": sarj,
       zod,
@@ -511,6 +513,9 @@ const config = [
       "@typescript-eslint/no-floating-promises": "error",
       "@typescript-eslint/await-thenable": "error",
       "@typescript-eslint/no-misused-promises": "error",
+      // Unlike unicorn/prefer-await, this is scoped to `.then()` inside an
+      // already-async function, where `await` also satisfies `require-await`.
+      "promise/prefer-await-to-then": "warn",
       "@typescript-eslint/require-await": "error",
       // `isolatedDeclarations` requires annotations on exported values that
       // cannot be declaration-emitted in isolation, even when the initializer
@@ -569,6 +574,31 @@ const config = [
           selector: "parameter",
           format: ["camelCase", "snake_case"],
           leadingUnderscore: "allow",
+        },
+      ],
+      // Only accessibility bands are ordered. Field-vs-method and static-vs-
+      // instance layout remain unconstrained, while public methods cannot be
+      // buried below implementation-private methods. `@sarj/stepdown` then
+      // orders sole-caller private helpers within the private band.
+      "@typescript-eslint/member-ordering": [
+        "warn",
+        {
+          classes: {
+            memberTypes: [
+              ["public-constructor", "public-accessor", "public-get", "public-set", "public-method", "public-static-method", "public-instance-method", "public-decorated-method"],
+              ["protected-constructor", "protected-accessor", "protected-get", "protected-set", "protected-method", "protected-static-method", "protected-instance-method", "protected-decorated-method"],
+              ["private-constructor", "private-accessor", "#private-accessor", "private-get", "#private-get", "private-set", "#private-set", "private-method", "private-static-method", "private-instance-method", "private-decorated-method", "#private-method"],
+            ],
+            order: "as-written",
+          },
+          classExpressions: {
+            memberTypes: [
+              ["public-constructor", "public-accessor", "public-get", "public-set", "public-method", "public-static-method", "public-instance-method", "public-decorated-method"],
+              ["protected-constructor", "protected-accessor", "protected-get", "protected-set", "protected-method", "protected-static-method", "protected-instance-method", "protected-decorated-method"],
+              ["private-constructor", "private-accessor", "#private-accessor", "private-get", "#private-get", "private-set", "#private-set", "private-method", "private-static-method", "private-instance-method", "private-decorated-method", "#private-method"],
+            ],
+            order: "as-written",
+          },
         },
       ],
 
@@ -740,15 +770,16 @@ const config = [
       "zod/no-any-schema": "error",
 
       // Deterministic ordering (incorporated from a first-party config).
-      // perfectionist sorts
-      // structural members; simple-import-sort owns import/export ordering
+      // simple-import-sort owns import/export ordering
       // (chosen over eslint-plugin-import to avoid Next.js resolver conflicts).
       // Object insertion order is observable through Object.keys/entries and
       // is commonly used for UI presentation. Sorting can silently change
       // behavior, so semantic order remains authoritative.
       "perfectionist/sort-objects": "off",
       "perfectionist/sort-interfaces": "error",
-      "perfectionist/sort-classes": "error",
+      // Alphabetical class sorting contradicts both accessibility bands and
+      // caller-before-helper stepdown order. The two rules above own classes.
+      "perfectionist/sort-classes": "off",
       "perfectionist/sort-jsx-props": "error",
       "perfectionist/sort-union-types": "error",
       // The rule skips imports instead of treating them as partitions, so its
@@ -922,6 +953,7 @@ const config = [
       "@sarj/no-sentinel-return-on-catch": "error",
       "@sarj/no-log-only-catch": "error",
       "@sarj/no-long-comment": "error",
+      "@sarj/no-generic-single-export-module": "warn",
       "@sarj/no-insecure-random-id": "error",
       "@sarj/no-json-stringify-error": "error",
       "@sarj/no-string-concat-in-loop": "error",
@@ -945,6 +977,7 @@ const config = [
       "@sarj/prefer-constant-time-secret-compare": "error",
       "@sarj/no-dynamic-sql": "error",
       "@sarj/store-insert-requires-on-conflict": "error",
+      "@sarj/stepdown": "warn",
       "@sarj/no-offset-pagination": "error",
       "@sarj/no-select-star": "error",
       "@sarj/no-zod-native-enum": "error",

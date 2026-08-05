@@ -66,5 +66,4 @@ jobs:
             --policy-dest trusted \
             --private-refs-file "$policy_file" \
             --only private-refs \
-            --quiet \
             --commits "$BASE_SHA..$HEAD_SHA"

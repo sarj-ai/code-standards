@@ -17,42 +17,34 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("no-positional-tuple-return", rule, {
   valid: [
+    {
+      name: "allows private tuple-returning implementation details inside an exported class",
+      code: "export class Loader { private load(): [string, number] { return impl(); } public run(): void {} }",
+    },
+    {
+      name: "does not collide a nested interface name with an exported top-level interface",
+      code: "export interface Loader {} namespace Internal { interface Loader { load(): [string, number]; } }",
+    },
     // --- The named form, which is the whole point. ---
     {
       code: "export function download(): { body: string; contentType: string | null } { return impl(); }",
     },
-    // --- Homogeneous pairs are a range/coordinate, not distinct fields. ---
-    { code: "export function bounds(): [number, number] { return impl(); }" },
-    { code: "export function window(): [Date, Date] { return impl(); }" },
-    // --- Variadic tuples are sequences, not records. ---
-    { code: "export function args(): [string, ...number[]] { return impl(); }" },
-    // --- Labeled members already carry the names to the call site. ---
-    {
-      code: "export function respond(): [status: number, body: string] { return impl(); }",
-    },
-    // --- A literal first element makes the tuple the discriminated union. ---
-    {
-      name: "allows a tuple tagged by its first element",
-      code: 'export function parse(): ["ok", Payload] { return impl(); }',
-    },
-    {
-      name: "allows a union of tagged tuples",
-      code: 'export function parse(): ["ok", Payload] | ["err", string] { return impl(); }',
-    },
-    // --- React hooks: `[value, setValue]` is the ecosystem contract. ---
-    {
-      name: "allows a hook tuple even when it has no function slot",
-      code: "export function useResource(): [Resource, Error | null] { return impl(); }",
-    },
-    {
-      code: "export function useToggle(): [boolean, (next: boolean) => void] { return impl(); }",
-    },
-    {
-      code: "export const useCounter = (): [number, () => void] => impl();",
-    },
     // --- Not exported: the call sites live in this file. ---
     {
       code: "function split(): [string, number] { return impl(); }",
+    },
+    {
+      name: "does not inherit an inline export through an enclosing function",
+      code: "export function outer(): void { function local(): [string, number] { return impl(); } local(); }",
+    },
+    {
+      name: "does not inherit a detached export through an enclosing function",
+      code: "function outer(): void { const local = (): [string, number] => impl(); local(); } export { outer };",
+    },
+    {
+      name: "ignores generated declaration files when the rule is used standalone",
+      filename: "/repo/src/__generated__/api.ts",
+      code: "export function pair(): [string, number] { return impl(); }",
     },
     {
       name: "keeps detached export matching scoped to the exported binding",
@@ -69,30 +61,141 @@ ruleTester.run("no-positional-tuple-return", rule, {
     {
       code: "function split(): [string, number] { return impl(); }\nexport { type split };",
     },
-    // Hook naming still wins over the specifier export.
-    {
-      code: "function useToggle(): [boolean, (next: boolean) => void] { return impl(); }\nexport { useToggle };",
-    },
     // --- Single-element tuple and array types are not positional records. ---
     { code: "export function one(): [string] { return impl(); }" },
     { code: "export function many(): Array<[string, number]> { return impl(); }" },
     // --- No return annotation to judge. ---
     { code: "export function inferred() { return ['a', 1]; }" },
-    {
-      name: "allows an exported underscore-prefixed implementation helper",
-      code: "export function _decode(): [string, number] { return impl(); }",
-    },
-
-    {
-      name: "allows a two-slot value and mutator pair without a hook name",
-      code: "export function createRef<T>(init: T): [T, (newValue: T) => void] { return impl(init); }",
-    },
-    {
-      name: "allows a two-slot accessor and completion pair",
-      code: "export function persistQueryClient(o: Opts): [() => void, Promise<void>] { return impl(o); }",
-    },
   ],
   invalid: [
+    {
+      name: "rejects an anonymous default function",
+      code: "export default function (): [string, number] { return impl(); }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects an anonymous default arrow",
+      code: "export default ((): [string, number] => impl());",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects a public method on an exported class expression",
+      code: "export const Loader = class { load(): [string, number] { return impl(); } };",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects a method on an exported object",
+      code: "export const loader = { load(): [string, number] { return impl(); } };",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects a public arrow property on an exported class",
+      code: "export class Loader { load = (): [string, number] => impl(); }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "unwraps satisfies around an exported arrow function",
+      code: "export const load = (((): [string, number] => impl()) satisfies Loader);",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "resolves a local tuple alias used by an exported function",
+      code: "type Pair = [string, number]; export function pair(): Pair { return impl(); }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects a tuple return on an exported interface method",
+      code: "export interface Loader { load(): [string, number]; }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects an exported function-type alias returning a tuple",
+      code: "export type Loader = () => [string, number];",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects a callable alias chain returning a tuple",
+      code: "type Pair = [string, number]; type Fn = () => Pair; export type Public = Fn;",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects callable members of an exported type literal",
+      code: "export type API = { pair(): [string, number]; other: () => [string, number] };",
+      errors: [
+        { messageId: "noPositionalTupleReturn" },
+        { messageId: "noPositionalTupleReturn" },
+      ],
+    },
+    {
+      name: "rejects a declaration-only callable class property",
+      code: "export class API { pair: () => [string, number]; }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects a tuple contract inherited by an exported interface",
+      code: "interface Base { pair(): [string, number]; } export interface API extends Base {}",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects an exported declare function returning a tuple",
+      code: "export declare function pair(): [string, number];",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects an exported interface callable property returning a tuple",
+      code: "export interface Loader { load: () => [string, number]; }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects an exported abstract method returning a tuple",
+      code: "export abstract class Loader { abstract load(): [string, number]; }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects a homogeneous fixed tuple",
+      code: "export function bounds(): [number, number] { return impl(); }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects a variadic tuple boundary",
+      code: "export function args(): [string, ...number[]] { return impl(); }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects labeled tuple members because their runtime representation is still positional",
+      code: "export function respond(): [status: number, body: string] { return impl(); }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects a tagged tuple",
+      code: 'export function parse(): ["ok", Payload] { return impl(); }',
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects a union of tagged tuples",
+      code: 'export function parse(): ["ok", Payload] | ["err", string] { return impl(); }',
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects readonly tuple boundaries",
+      code: "export function parse(): readonly [Payload, Error | null] { return impl(); }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects React-style hook tuples under the blanket boundary rule",
+      code: "export function useToggle(): [boolean, (next: boolean) => void] { return impl(); }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects accessor pairs",
+      code: "export function createRef<T>(init: T): [T, (newValue: T) => void] { return impl(init); }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects exported underscore-prefixed functions",
+      code: "export function _decode(): [string, number] { return impl(); }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
     // The canonical shape: distinct fields the caller must unpack by position.
     {
       code: "export function download(): [string, Headers, string | null] { return impl(); }",

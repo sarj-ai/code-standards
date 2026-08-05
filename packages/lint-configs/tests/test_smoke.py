@@ -124,6 +124,17 @@ def test_ruff_config_is_valid_toml() -> None:
     assert re.search(r'select\s*=\s*\[\s*"ALL"\s*\]', text)
 
 
+def test_requested_ruff_families_remain_globally_enabled() -> None:
+    data = tomllib.loads(RUFF_STRICT.read_text())
+    lint = manifest.table_field(manifest.as_table(data), "lint")
+    assert manifest.list_field(lint, "select") == ["ALL"]
+    raw_ignored = manifest.list_field(lint, "ignore")
+    assert all(isinstance(code, str) for code in raw_ignored)
+    ignored = {code for code in raw_ignored if isinstance(code, str)}
+    assert not any(code.startswith(("ANN", "F", "UP")) for code in ignored)
+    assert {"PLC0415", "BLE001"}.isdisjoint(ignored)
+
+
 def test_ruff_formatter_does_not_rewrite_markdown() -> None:
     data = tomllib.loads(RUFF_STRICT.read_text())
     assert data["format"]["exclude"] == ["*.md"]

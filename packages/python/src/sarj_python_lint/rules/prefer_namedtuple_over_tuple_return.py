@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
-from types import EllipsisType
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
@@ -21,7 +20,9 @@ if TYPE_CHECKING:
 
 
 _TUPLE_NAMES = frozenset({"tuple", "Tuple"})
-_LITERAL_NAMES = frozenset({"Literal"})
+_SINGLE_RETURN_WRAPPERS = frozenset({"Annotated", "Awaitable", "Optional"})
+_UNION_NAMES = frozenset({"Union"})
+_COROUTINE_NAMES = frozenset({"Coroutine"})
 
 _MIN_ELEMENTS = 2
 
@@ -54,7 +55,7 @@ _STRUCTURAL_BASES = frozenset(
 
 _MSG = (
     "public function returns a bare positional tuple[...] — callers must unpack by "
-    "position; prefer a NamedTuple (or a frozen pydantic model for boundary values)."
+    "position; prefer a typing.NamedTuple or frozen dataclass (or a frozen pydantic model at validation boundaries)."
 )
 
 
@@ -77,17 +78,21 @@ class PreferNamedtupleOverTupleReturn(Rule):
             return []
         facts = _module_facts(tree)
         diags: list[Diagnostic] = []
+        reported: set[tuple[str | None, str]] = set()
         for node, owner in _iter_boundary_functions(tree):
-            if node.name.startswith("_"):
-                continue
-            if node.returns is None:
-                continue
-            if _is_interface_stub(node) or _is_overload(node) or _is_abstract_declaration(node):
+            if node.name.startswith("_") or (owner is not None and owner.name.startswith("_")):
                 continue
             if _is_declared_override(node, owner, facts):
                 continue
-            if not _is_bare_positional_tuple(node.returns):
+            if not (
+                (node.returns is not None and _is_bare_positional_tuple(node.returns, facts.type_aliases))
+                or (node.returns is None and _returns_tuple_literal(node))
+            ):
                 continue
+            family = (owner.name if owner is not None else None, node.name)
+            if family in reported:
+                continue
+            reported.add(family)
             diags.append(
                 Diagnostic(
                     path=path,
@@ -108,17 +113,40 @@ class _ModuleFacts:
     local_classes: frozenset[str]
     #: For each method name, how many distinct classes in this module declare it.
     classes_declaring: dict[str, int]
+    type_aliases: dict[str, ast.expr]
 
 
 def _module_facts(tree: ast.Module) -> _ModuleFacts:
     """Collect the module-wide facts the override heuristics need."""
     local_classes: set[str] = set()
     classes_declaring: dict[str, int] = {}
+    type_aliases: dict[str, ast.expr] = {}
+    for statement in tree.body:
+        if isinstance(statement, ast.TypeAlias):
+            type_aliases[statement.name.id] = statement.value
+        elif (
+            isinstance(statement, ast.AnnAssign)
+            and isinstance(statement.target, ast.Name)
+            and _name_of(statement.annotation) == "TypeAlias"
+            and statement.value is not None
+        ):
+            type_aliases[statement.target.id] = statement.value
+        elif (
+            isinstance(statement, ast.Assign)
+            and len(statement.targets) == 1
+            and isinstance(statement.targets[0], ast.Name)
+            and isinstance(statement.value, ast.Subscript)
+        ):
+            type_aliases[statement.targets[0].id] = statement.value
     for node in nodes(tree, ast.ClassDef):
         local_classes.add(node.name)
         for name in {m.name for m in node.body if isinstance(m, (ast.FunctionDef, ast.AsyncFunctionDef))}:
             classes_declaring[name] = classes_declaring.get(name, 0) + 1
-    return _ModuleFacts(local_classes=frozenset(local_classes), classes_declaring=classes_declaring)
+    return _ModuleFacts(
+        local_classes=frozenset(local_classes),
+        classes_declaring=classes_declaring,
+        type_aliases=type_aliases,
+    )
 
 
 def _iter_boundary_functions(
@@ -167,44 +195,6 @@ def _calls_super_method(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     return False
 
 
-def _is_abstract_declaration(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Report whether the node is an `@abstractmethod` with no implementation."""
-    if not any(_name_of(dec) == "abstractmethod" for dec in node.decorator_list):
-        return False
-    return all(_is_empty_statement(stmt) for stmt in node.body)
-
-
-def _is_empty_statement(stmt: ast.stmt) -> bool:
-    match stmt:
-        case ast.Pass():
-            return True
-        case ast.Expr(value=ast.Constant(value=str() | EllipsisType())):
-            return True
-        case _:
-            return False
-
-
-def _is_interface_stub(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Report whether the body only raises `NotImplementedError` (+ docstring)."""
-    has_raise = False
-    for stmt in node.body:
-        if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str):
-            continue  # docstring
-        if _raises_not_implemented(stmt):
-            has_raise = True
-            continue
-        return False
-    return has_raise
-
-
-def _raises_not_implemented(stmt: ast.stmt) -> bool:
-    if not isinstance(stmt, ast.Raise):
-        return False
-    exc = stmt.exc
-    target = exc.func if isinstance(exc, ast.Call) else exc
-    return isinstance(target, ast.Name) and target.id == "NotImplementedError"
-
-
 def _is_overload(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     for dec in node.decorator_list:
         match dec:
@@ -215,37 +205,70 @@ def _is_overload(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     return False
 
 
-def _is_bare_positional_tuple(annotation: ast.expr) -> bool:
-    """Report whether `annotation` is `tuple[A, B, ...]` with >=2 heterogeneous elements."""
+def _returns_tuple_literal(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Detect an inferred fixed tuple without descending into nested scopes."""
+    pending: list[ast.AST] = [*node.body]
+    while pending:
+        current = pending.pop()
+        if (
+            isinstance(current, ast.Return)
+            and isinstance(current.value, ast.Tuple)
+            and len(current.value.elts) >= _MIN_ELEMENTS
+        ):
+            return True
+        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+            continue
+        pending.extend(children(current))
+    return False
+
+
+def _is_bare_positional_tuple(
+    annotation: ast.expr,
+    aliases: dict[str, ast.expr] | None = None,
+    resolving: frozenset[str] = frozenset(),
+) -> bool:
+    """Report whether an annotation contains a fixed positional tuple with at least two elements."""
+    if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
+        try:
+            parsed = ast.parse(annotation.value, mode="eval").body
+        except SyntaxError:
+            return False
+        return _is_bare_positional_tuple(parsed, aliases, resolving)
+    if isinstance(annotation, ast.Name) and aliases is not None and annotation.id not in resolving:
+        target = aliases.get(annotation.id)
+        return target is not None and _is_bare_positional_tuple(target, aliases, resolving | {annotation.id})
+    if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
+        return _is_bare_positional_tuple(annotation.left, aliases, resolving) or _is_bare_positional_tuple(
+            annotation.right, aliases, resolving
+        )
     if not isinstance(annotation, ast.Subscript):
         return False
-    if _name_of(annotation.value) not in _TUPLE_NAMES:
+    wrapper = _name_of(annotation.value)
+    if wrapper in _SINGLE_RETURN_WRAPPERS:
+        inner = (
+            annotation.slice.elts[0]
+            if wrapper == "Annotated" and isinstance(annotation.slice, ast.Tuple)
+            else annotation.slice
+        )
+        return _is_bare_positional_tuple(inner, aliases, resolving)
+    if wrapper in _UNION_NAMES:
+        members = annotation.slice.elts if isinstance(annotation.slice, ast.Tuple) else [annotation.slice]
+        return any(_is_bare_positional_tuple(member, aliases, resolving) for member in members)
+    if wrapper in _COROUTINE_NAMES:
+        members = annotation.slice.elts if isinstance(annotation.slice, ast.Tuple) else [annotation.slice]
+        return bool(members) and _is_bare_positional_tuple(members[-1], aliases, resolving)
+    if wrapper not in _TUPLE_NAMES:
         return False
     if not isinstance(annotation.slice, ast.Tuple):
         return False
     elements = annotation.slice.elts
     if len(elements) < _MIN_ELEMENTS:
         return False
-    if any(_is_ellipsis(el) for el in elements):
-        return False
-    if _all_equal(elements):
-        return False
-    return not _is_literal(elements[0])
-
-
-def _all_equal(elements: list[ast.expr]) -> bool:
-    """Report whether every element is structurally identical (a homogeneous pair/tuple)."""
-    first = elements[0]
-    return all(_ast_equal(el, first) for el in elements[1:])
+    return not any(_is_ellipsis(el) for el in elements)
 
 
 def _is_ellipsis(node: ast.expr) -> bool:
     return isinstance(node, ast.Constant) and node.value is Ellipsis
-
-
-def _is_literal(node: ast.expr) -> bool:
-    """Report whether `node` is a `Literal[...]` subscript (discriminated-union tag)."""
-    return isinstance(node, ast.Subscript) and _name_of(node.value) in _LITERAL_NAMES
 
 
 def _name_of(node: ast.expr) -> str | None:
@@ -255,8 +278,3 @@ def _name_of(node: ast.expr) -> str | None:
     if isinstance(node, ast.Attribute):
         return node.attr
     return None
-
-
-def _ast_equal(a: ast.expr, b: ast.expr) -> bool:
-    """Compare `a` and `b` structurally, ignoring source positions."""
-    return ast.dump(a) == ast.dump(b)

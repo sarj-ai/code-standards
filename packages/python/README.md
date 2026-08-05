@@ -10,7 +10,7 @@ uv tool install sarj-python-lint
 
 ```yaml
 - repo: https://github.com/sarj-ai/standards
-  rev: python-v0.47.1
+  rev: python-v0.48.0
   hooks:
     - id: sarj-no-sequential-await
     - id: sarj-inefficient-string-concat-in-loop
@@ -304,6 +304,24 @@ duplicated ruff.
     - id: sarj-prefer-or-pattern                   # SARJ070
     - id: sarj-require-port-for-service            # SARJ071
 ```
+
+`require-port-for-service` treats a local concrete superclass differently from
+an abstract/Protocol port and follows local port inheritance transitively.
+Class-size enforcement stays with Ruff `PLR0904` (enabled by the strict `ALL`
+selection); a second custom size rule would duplicate that owner.
+
+Tuple boundaries are deliberately stricter than Ruff: SARJ026 rejects fixed
+multi-field tuple annotations on public production functions, including local
+aliases and abstract/NotImplemented contracts, while SARJ044 applies the same
+named-result requirement to pytest fixtures. Variadic `tuple[T, ...]` remains a
+sequence rather than a positional record. Prefer `typing.NamedTuple`, a frozen
+dataclass, or a frozen validation model at schema boundaries.
+
+SARJ093 recognizes `str`, `int`, UUID and supported containers as non-nominal ID
+carriers, while preserving `NewType` aliases as nominal identities. SARJ006
+keeps wire-derived values open, respects `Literal`/enum annotations across
+closures and comprehensions, and recognizes explicit and Django-style choice
+collections.
 ### Suppression ratchet (`sarj-ratchet`, 0.21.0)
 
 ```yaml

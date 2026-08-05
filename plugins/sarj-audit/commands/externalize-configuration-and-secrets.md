@@ -2,10 +2,6 @@
 
 Audit deploy-time configuration and secret handling using the shared [audit protocol](../README.md#audit-protocol).
 
-## Automated baseline
-
-Run secret scanners plus applicable `no-raw-env`, `no-secret-in-log`, `no-repeated-string-literal`, and `prefer-module-level-constant` rules.
-
 ## Judgment checks
 
 - Credentials, tokens, private keys, sensitive endpoints, or customer data committed in source, examples, fixtures, logs, or generated artifacts.

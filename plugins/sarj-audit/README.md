@@ -11,11 +11,12 @@ Judgment-layer audits that complement deterministic Sarj lint rules. Commands ru
 | Reliability | `error-handling`, `idempotency-and-atomicity`, `concurrency-and-performance`, `observability` |
 | Data | `database-schemas-and-migrations` |
 | Maintainability | `dead-and-duplicate-code`, `readability-and-naming`, `magic-values`, `libraries` |
-| Delivery | `linting`, `strengthen-ci-cd-and-tooling`, `test-quality-and-strategy` |
+| Delivery | `strengthen-ci-cd-and-tooling`, `test-quality-and-strategy` |
 
 Former command topics remain available through focused commands:
 
-- comments and stepdown ordering are deterministic lint rules, surfaced by `linting`;
+- lint coverage, comments, and stepdown ordering are deterministic concerns owned by
+  `sarj-standards check`, `doctor`, `show rules`, and `lint-rule-generator`;
 - dependency injection is part of `service-layer`;
 - explicit attribute validation and Zod modeling are part of `data-contracts`;
 - stack detection is shared by every command through the [audit protocol](#audit-protocol); `stack-detection` remains a concise discovery-only command;
@@ -30,6 +31,8 @@ Former command topics remain available through focused commands:
 ## Audit protocol
 
 Every command follows the same read-only workflow unless the user separately requests implementation.
+Domain commands contain only judgment checks. Deterministic checks are centralized in
+`sarj-standards`; do not duplicate their findings in an audit report.
 
 ### Discover
 

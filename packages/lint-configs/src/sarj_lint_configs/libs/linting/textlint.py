@@ -131,6 +131,9 @@ _DIRECTIVE_RE = re.compile(
     re.IGNORECASE,
 )
 _SARJ_SUPPRESSION_RE = re.compile(r"^sarj-noqa:\s*(?P<codes>SARJ\d+(?:\s*,\s*SARJ\d+)*)\s*$", re.IGNORECASE)
+_WORKFLOW_ACTION_RE = re.compile(r"^\s*(?:-\s*)?uses:\s*(?P<value>[^\s#]+)", re.IGNORECASE)
+_FULL_GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$", re.IGNORECASE)
+_FULL_IMAGE_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$", re.IGNORECASE)
 _MARKDOWN_SUPPRESSION_RE = re.compile(
     r"^\s*<!--\s*sarj-noqa:\s*(?P<codes>SARJ\d+(?:\s*,\s*SARJ\d+)*)\s*-->\s*$",
     re.IGNORECASE | re.MULTILINE,
@@ -193,6 +196,12 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
             "AI execution brief, audit report, or change diary",
             blocking=False,
         ),
+        # Supply-chain rules start as warnings so existing consumers can ratchet deliberately.
+        "unpinned-github-action": RuleMeta(
+            "SARJ303",
+            "remote GitHub Action or container action without an immutable digest",
+            blocking=False,
+        ),
     }
 )
 
@@ -225,6 +234,7 @@ def check_paths(paths: Sequence[str], *, root: Path | None = None) -> list[Findi
         if any(fnmatch(relative, pattern) for pattern in excluded_patterns):
             continue
         path_findings = [
+            *_workflow_action_findings(path, relative, source),
             *_artifact_findings(path, relative, source, durable_patterns),
             *_comment_findings(path, source),
         ]
@@ -257,6 +267,50 @@ def _markdown_suppressions(source: str) -> frozenset[str]:
         for match in _MARKDOWN_SUPPRESSION_RE.finditer(prose)
         for code in match.group("codes").split(",")
     )
+
+
+def _workflow_action_findings(path: Path, relative: str, source: str) -> list[Finding]:
+    """Reject mutable remote refs in GitHub workflow ``uses`` entries."""
+    if not relative.startswith(".github/workflows/") or path.suffix.lower() not in {".yaml", ".yml"}:
+        return []
+    lines = source.splitlines()
+    findings: list[Finding] = []
+    for index, line in enumerate(lines):
+        match = _WORKFLOW_ACTION_RE.match(line)
+        if match is None:
+            continue
+        indent = len(line) - len(line.lstrip())
+        if _inside_yaml_block_scalar(lines, index, indent) or _suppresses_previous_line(lines, index, "SARJ303"):
+            continue
+        value = match.group("value").strip("\"'")
+        if value.startswith("./"):
+            continue
+        if value.startswith("docker://"):
+            digest = value.removeprefix("docker://").partition("@")[2]
+            pinned = bool(_FULL_IMAGE_DIGEST_RE.fullmatch(digest))
+        else:
+            reference = value.rpartition("@")[2]
+            pinned = bool(_FULL_GIT_SHA_RE.fullmatch(reference))
+        if not pinned:
+            findings.append(
+                Finding(
+                    path,
+                    index + 1,
+                    "SARJ303",
+                    "Remote action uses a mutable ref — pin it to a full commit SHA or container sha256 digest.",
+                )
+            )
+    return findings
+
+
+def _suppresses_previous_line(lines: list[str], index: int, code: str) -> bool:
+    if index == 0:
+        return False
+    parsed = _standalone_comment(Path("workflow.yml"), lines[index - 1])
+    if parsed is None:
+        return False
+    match = _SARJ_SUPPRESSION_RE.fullmatch(parsed[1])
+    return match is not None and code in {item.strip().upper() for item in match.group("codes").split(",")}
 
 
 def _artifact_findings(
@@ -494,10 +548,13 @@ def _commented_config_runs(path: Path, lines: list[str]) -> set[int]:
         }
         if "SARJ301" in suppressions:
             continue
-        if any(_DIRECTIVE_RE.match(body) and _SARJ_SUPPRESSION_RE.match(body) is None for _line, body in run):
+        effective = [(line, body) for line, body in run if _SARJ_SUPPRESSION_RE.match(body) is None]
+        if not effective:
             continue
-        shaped = [line for line, body in run if _looks_commented_config(path, body)]
-        if len(shaped) >= _COMMENTED_CONFIG_RUN_MIN and len(shaped) / len(run) >= _COMMENTED_CONFIG_RUN_RATIO:
+        if any(_DIRECTIVE_RE.match(body) for _line, body in effective):
+            continue
+        shaped = [line for line, body in effective if _looks_commented_config(path, body)]
+        if len(shaped) >= _COMMENTED_CONFIG_RUN_MIN and len(shaped) / len(effective) >= _COMMENTED_CONFIG_RUN_RATIO:
             leaders.add(shaped[0])
     return leaders
 

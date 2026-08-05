@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from typing import TYPE_CHECKING
@@ -27,10 +28,27 @@ if TYPE_CHECKING:
 
 
 _EMPTY_DIGEST = "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+_GIT_ROUTING_VARIABLES = frozenset({"GIT_DIR", "GIT_INDEX_FILE", "GIT_PREFIX", "GIT_WORK_TREE"})
 
 
 def _source(root: Path, *, digest: str = _EMPTY_DIGEST) -> CorpusSource:
     return CorpusSource("sample", root, CorpusKind.LOCAL, digest, ("**/*.py",), ("vendor/**",))
+
+
+def _isolated_git_environment() -> dict[str, str]:
+    environment = {
+        name: value
+        for name, value in os.environ.items()  # ruff: ignore[banned-api] -- reproduce and sanitize hook routing.
+        if name not in _GIT_ROUTING_VARIABLES
+    }
+    environment.update(
+        {
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_SYSTEM": os.devnull,
+        }
+    )
+    return environment
 
 
 def test_snapshot_is_stable_and_sensitive_to_selected_content(tmp_path: Path) -> None:
@@ -211,6 +229,9 @@ def test_git_corpus_root_must_match_repository_top_level(monkeypatch: pytest.Mon
         return "/usr/bin/git"
 
     def run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        argv = _args[0]
+        if isinstance(argv, tuple) and "ls-files" in argv:
+            return subprocess.CompletedProcess(("git",), 0, "app.py\0")
         return completed
 
     monkeypatch.setattr(shutil, "which", which)
@@ -246,11 +267,66 @@ def test_git_corpus_ignores_ambient_repository_routing(monkeypatch: pytest.Monke
         assert isinstance(environment, dict)
         assert "GIT_DIR" not in environment
         assert "GIT_WORK_TREE" not in environment
-        return subprocess.CompletedProcess(("git",), 0, f"{corpus}\n{revision}\n")
+        assert environment["GIT_CONFIG_GLOBAL"] == os.devnull
+        assert environment["GIT_CONFIG_NOSYSTEM"] == "1"
+        argv = _args[0]
+        stdout = "app.py\0" if isinstance(argv, tuple) and "ls-files" in argv else f"{corpus}\n{revision}\n"
+        return subprocess.CompletedProcess(("git",), 0, stdout)
 
     monkeypatch.setattr(subprocess, "run", run)
 
     assert snapshot(source).revision == revision
+
+
+def test_git_corpus_selects_only_tracked_existing_files(tmp_path: Path) -> None:
+    if shutil.which("git") is None:
+        pytest.skip("git is required")
+    corpus = tmp_path / "repository"
+    corpus.mkdir()
+    tracked = corpus / "tracked.py"
+    tracked.write_text("VALUE = 1\n", encoding="utf-8")
+    (corpus / "generated.py").write_text("VALUE = 2\n", encoding="utf-8")
+    environment = _isolated_git_environment()
+    subprocess.run(("git", "init", "-q"), cwd=corpus, check=True, env=environment)
+    subprocess.run(("git", "add", "tracked.py"), cwd=corpus, check=True, env=environment)
+    subprocess.run(
+        (
+            "git",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "user.name=Standards",
+            "-c",
+            "user.email=standards@example.invalid",
+            "commit",
+            "-qm",
+            "pin",
+        ),
+        cwd=corpus,
+        check=True,
+        env=environment,
+    )
+    revision = subprocess.run(
+        ("git", "rev-parse", "HEAD"),
+        cwd=corpus,
+        check=True,
+        capture_output=True,
+        env=environment,
+        text=True,
+    ).stdout.strip()
+    unpinned = CorpusSource(
+        "tracked-only",
+        corpus,
+        CorpusKind.GIT,
+        _EMPTY_DIGEST,
+        ("**/*.py",),
+        revision=revision,
+    )
+
+    actual = snapshot(unpinned)
+
+    assert actual.files == 1
+    assert actual.bytes == tracked.stat().st_size
 
 
 def test_public_manifest_rejects_absolute_nonportable_roots(tmp_path: Path) -> None:

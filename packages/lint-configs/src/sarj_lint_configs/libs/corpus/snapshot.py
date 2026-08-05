@@ -103,19 +103,24 @@ def snapshot(source: CorpusSource) -> CorpusSnapshot:
     )
 
 
-def _files(source: CorpusSource) -> tuple[Path, ...]:
+def selected_files(source: CorpusSource) -> tuple[Path, ...]:
+    """Return the selected regular files in stable relative-path order."""
     if not source.root.is_dir():
         root = "<private-corpus-root>" if source.visibility.value == "private" else source.root
         msg = f"corpus root is not a directory: {root}"
         raise ValueError(msg)
+    candidates = _git_tracked_files(source) if source.kind is CorpusKind.GIT else source.root.rglob("*")
     files: list[Path] = []
-    for path in source.root.rglob("*"):
+    for path in candidates:
         if is_link_like(path) or not path.is_file():
             continue
         relative = path.relative_to(source.root).as_posix()
         if _matches(relative, source.include) and not _matches(relative, source.exclude):
             files.append(path)
     return tuple(sorted(files, key=lambda path: path.relative_to(source.root).as_posix()))
+
+
+_files = selected_files
 
 
 def _matches(path: str, patterns: tuple[str, ...]) -> bool:
@@ -156,11 +161,7 @@ def _git_revision(source: CorpusSource) -> str:
     if executable is None:
         msg = "git is required to verify a pinned corpus"
         raise OSError(msg)
-    environment = {
-        name: value
-        for name, value in os.environ.items()  # ruff: ignore[banned-api] -- discard hook-local repository routing.
-        if name in _GIT_SAFE_ENV
-    }
+    environment = _git_environment()
     completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed local Git query.
         (executable, "rev-parse", "--show-toplevel", "HEAD"),
         cwd=source.root,
@@ -179,3 +180,39 @@ def _git_revision(source: CorpusSource) -> str:
         msg = f"Git repository root does not match corpus {source.report_name} root"
         raise ValueError(msg)
     return revision
+
+
+def _git_tracked_files(source: CorpusSource) -> tuple[Path, ...]:
+    executable = shutil.which("git")
+    if executable is None:
+        msg = "git is required to select tracked corpus files"
+        raise OSError(msg)
+    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed local Git query.
+        (executable, "ls-files", "-z"),
+        cwd=source.root,
+        check=False,
+        capture_output=True,
+        env=_git_environment(),
+        shell=False,
+        text=True,
+    )
+    if completed.returncode:
+        msg = f"could not list tracked files for corpus {source.report_name}"
+        raise ValueError(msg)
+    return tuple(source.root / relative for relative in completed.stdout.split("\0") if relative)
+
+
+def _git_environment() -> dict[str, str]:
+    environment = {
+        name: value
+        for name, value in os.environ.items()  # ruff: ignore[banned-api] -- discard hook-local repository routing.
+        if name in _GIT_SAFE_ENV
+    }
+    environment.update(
+        {
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_SYSTEM": os.devnull,
+        }
+    )
+    return environment

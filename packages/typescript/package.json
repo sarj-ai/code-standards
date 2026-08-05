@@ -1,6 +1,6 @@
 {
   "name": "@sarj/eslint-plugin",
-  "version": "9.13.1",
+  "version": "9.14.0",
   "packageManager": "npm@11.19.0",
   "description": "Custom ESLint rules for hypermodern TypeScript / React / Next.js projects",
   "type": "module",
@@ -65,6 +65,7 @@
     "eslint": "^10.8.0",
     "eslint-plugin-better-tailwindcss": "^4.7.0",
     "eslint-plugin-perfectionist": "^5.10.0",
+    "eslint-plugin-promise": "^7.3.0",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-simple-import-sort": "^14.0.0",

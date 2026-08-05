@@ -44,6 +44,16 @@ memory if available. Investigate repeated parsing, subprocess startup, broad
 filesystem walks, and non-content-addressed caches. Cache only deterministic
 immutable results and bound in-process caches.
 
+Run repository corpora with
+`sarj_lint_configs.libs.rules.run_isolated_corpora`. Git corpora select only
+tracked, existing files. Each repository and each bounded batch must start a
+fresh linter process; never retain results from multiple repositories in one
+ESLint or language-server process. Keep the default 250-file batch unless
+measurement justifies a smaller value, and never exceed the library's hard
+1,000-file cap. A corpus runner change must exercise at least one already-shipped
+rule across multiple corpus roots so process isolation is tested independently
+from candidate-rule behavior.
+
 ## Final decision
 
 Return one of: reject, revise, ship-warning, or promote-error. Include the exact

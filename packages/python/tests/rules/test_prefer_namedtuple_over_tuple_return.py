@@ -74,12 +74,6 @@ def test_fires_on_method():
     [
         "tuple[int, ...]",
         "tuple[str, ...]",
-        "tuple[int, int]",
-        "tuple[str, str]",
-        "tuple[str, str, str]",
-        "tuple[list[int], list[int]]",
-        'tuple[Literal["a", "b"], int]',
-        'tuple[Literal["both"], int, str]',
         "tuple[int]",
         "tuple[str]",
     ],
@@ -87,6 +81,27 @@ def test_fires_on_method():
 def test_does_not_fire_on_permitted_forms(annotation: str):
     diags = _check(f"def f() -> {annotation}: ...\n")
     assert diags == [], annotation
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        "tuple[int, int]",
+        "tuple[str, str]",
+        "tuple[str, str, str]",
+        "tuple[list[int], list[int]]",
+        'tuple[Literal["a", "b"], int]',
+        'tuple[Literal["both"], int, str]',
+        "tuple[int, str] | None",
+        "Optional[tuple[int, str]]",
+        "Union[None, tuple[int, str]]",
+        'Annotated[tuple[int, str], "pair"]',
+        "Awaitable[tuple[int, str]]",
+        "Coroutine[Any, Any, tuple[int, str]]",
+    ],
+)
+def test_fires_on_every_fixed_tuple_return_shape(annotation: str):
+    assert len(_check(f"def f() -> {annotation}: ...\n")) == 1
 
 
 def test_does_not_fire_on_bare_tuple():
@@ -101,6 +116,18 @@ def test_does_not_fire_on_non_tuple_return():
 
 def test_does_not_fire_without_annotation():
     assert _check("def f(): ...\n") == []
+
+
+def test_fires_on_inferred_tuple_literal_return():
+    assert len(_check("def f():\n    return 1, 'a'\n")) == 1
+
+
+def test_explicit_non_tuple_contract_wins_over_tuple_implementation():
+    assert _check("def f() -> object:\n    return 1, 'a'\n") == []
+
+
+def test_private_owning_class_is_not_a_public_boundary():
+    assert _check("class _Internal:\n    def pair(self) -> tuple[int, str]: ...\n") == []
 
 
 def test_does_not_fire_on_private_function():
@@ -136,7 +163,7 @@ def test_reports_indented_col():
 def test_multiple_sorted_by_line():
     src = "def a() -> tuple[int, str]: ...\ndef b() -> tuple[int, int]: ...\ndef c() -> tuple[bytes, str, None]: ...\n"
     diags = _check(src)
-    assert [d.line for d in diags] == [1, 3]
+    assert [d.line for d in diags] == [1, 2, 3]
 
 
 def test_empty_source():
@@ -168,7 +195,7 @@ def test_test_file_is_exempt():
     assert _check(src, path="src/trio/_tests/test_windows_pipes.py") == []
 
 
-def test_not_implemented_stub_is_exempt():
+def test_not_implemented_stub_still_bans_a_new_tuple_contract():
     # Minimized from trio's SocketType.accept: the tuple shape mirrors stdlib
     # socket.accept and is not this module's to change.
     src = """
@@ -176,17 +203,17 @@ class SocketType:
     async def accept(self) -> tuple[SocketType, AddressFormat]:
         raise NotImplementedError
 """
-    assert _check(src) == []
+    assert len(_check(src)) == 1
 
 
-def test_not_implemented_stub_with_docstring_is_exempt():
+def test_not_implemented_stub_with_docstring_still_bans_a_new_tuple_contract():
     src = """
 class SocketType:
     async def accept(self) -> tuple[SocketType, AddressFormat]:
         \"\"\"Mirror of stdlib accept.\"\"\"
         raise NotImplementedError("subclass me")
 """
-    assert _check(src) == []
+    assert len(_check(src)) == 1
 
 
 def test_not_implemented_stub_with_other_statements_still_fires():
@@ -199,20 +226,20 @@ class SocketType:
     assert len(_check(src)) == 1
 
 
-def test_overload_stub_is_exempt():
+def test_overload_only_tuple_contract_fires_once():
     src = """
 @overload
 def pair(x: int) -> tuple[int, str]: ...
 """
-    assert _check(src) == []
+    assert len(_check(src)) == 1
 
 
-def test_qualified_overload_stub_is_exempt():
+def test_qualified_overload_only_tuple_contract_fires_once():
     src = """
 @typing.overload
 def pair(x: int) -> tuple[int, str]: ...
 """
-    assert _check(src) == []
+    assert len(_check(src)) == 1
 
 
 def test_ellipsis_body_still_fires():
@@ -369,14 +396,14 @@ class B({base}):
 
 
 @pytest.mark.parametrize("body", ["pass", "...", '"""Interface declaration."""'])
-def test_abstract_declaration_without_an_implementation_is_exempt(body: str):
+def test_abstract_declaration_still_bans_a_new_tuple_contract(body: str):
     src = f"""
 class UNIXSocketStream(SocketStream):
     @abstractmethod
     async def receive_fds(self, msglen: int, maxfds: int) -> tuple[bytes, list[int]]:
         {body}
 """
-    assert _check(src) == []
+    assert len(_check(src)) == 1
 
 
 def test_abstract_method_with_a_real_body_still_fires():
@@ -414,3 +441,24 @@ def test_generated_source_is_exempt(header: str):
 
 def test_the_same_body_without_a_generated_header_still_fires():
     assert len(_check(_GENERATED_PROBE)) >= 1
+
+
+def test_stringized_fixed_tuple_return_still_fires():
+    src = """
+def pair() -> "tuple[str, int]":
+    return "a", 1
+"""
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "Pair = tuple[str, int]",
+        "Pair: TypeAlias = tuple[str, int]",
+        "type Pair = tuple[str, int]",
+    ],
+)
+def test_local_fixed_tuple_alias_still_fires(declaration: str):
+    src = f"{declaration}\n\ndef pair() -> Pair:\n    return 'a', 1\n"
+    assert len(_check(src)) == 1

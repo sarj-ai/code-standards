@@ -2,10 +2,6 @@
 
 Audit unexplained literals that obscure policy or units using the shared [audit protocol](../README.md#audit-protocol).
 
-## Automated baseline
-
-Run applicable Ruff `PLR2004`, ESLint `no-magic-numbers`, `no-repeated-string-literal`, `prefer-module-level-constant`, `prefer-str-enum`, `prefer-zod-enum`, and `prefer-timedelta-for-durations`.
-
 ## Judgment checks
 
 - Repeated values representing limits, timeouts, retry policy, protocol codes, dimensions, units, or business states.

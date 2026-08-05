@@ -11,6 +11,12 @@ from .contracts import (
     RuleOrigin,
     RuleProblem,
 )
+from .corpus_runner import (
+    CorpusBatchResult,
+    CorpusLintError,
+    IsolatedCorpusReport,
+    run_isolated_corpora,
+)
 from .evaluation import (
     CaseEvaluation,
     EvaluationEvidence,
@@ -26,12 +32,15 @@ __all__ = [
     "AutofixPolicy",
     "CaseEvaluation",
     "CatalogRule",
+    "CorpusBatchResult",
+    "CorpusLintError",
     "EvaluationCase",
     "EvaluationEvidence",
     "EvaluationReport",
     "EvaluationThresholds",
     "ExpectedOutcome",
     "Finding",
+    "IsolatedCorpusReport",
     "Language",
     "PromotionDecision",
     "RuleCatalog",
@@ -39,4 +48,5 @@ __all__ = [
     "RuleOrigin",
     "RuleProblem",
     "evaluate",
+    "run_isolated_corpora",
 ]

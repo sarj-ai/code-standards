@@ -9,7 +9,7 @@ from .manifest import (
     load_private_overlay,
     merge_manifests,
 )
-from .snapshot import CorpusSnapshot, snapshot, verify
+from .snapshot import CorpusSnapshot, selected_files, snapshot, verify
 
 
 __all__ = [
@@ -21,6 +21,7 @@ __all__ = [
     "load_manifest",
     "load_private_overlay",
     "merge_manifests",
+    "selected_files",
     "snapshot",
     "verify",
 ]

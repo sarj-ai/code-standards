@@ -25,16 +25,28 @@ class Order(BaseModel):
     assert len(_check(src)) == 1
 
 
-@pytest.mark.parametrize("attr", ["choices", "states", "statuses", "values", "allowed"])
+@pytest.mark.parametrize("attr", ["choices", "values", "allowed"])
 def test_all_choices_attr_names_corroborate_free_name(attr: str):
     src = f"""
 from pydantic import BaseModel
 
 class Rec(BaseModel):
     {attr} = ("a", "b")
-    label: str
+    label: str = "a"
 """
     assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(("attr", "field"), [("states", "state"), ("statuses", "status")])
+def test_role_named_choice_collections_only_corroborate_the_matching_field(attr: str, field: str):
+    src = f"""
+class Rec:
+    {attr} = ("a", "b")
+    label: str = "a"
+    {field}: str = "a"
+"""
+    [diag] = _check(src)
+    assert f"`{field}: str`" in diag.message
 
 
 @pytest.mark.parametrize("coll", ['["a", "b"]', '("a", "b")', '{"a", "b"}'])
@@ -44,9 +56,60 @@ from pydantic import BaseModel
 
 class Rec(BaseModel):
     choices = {coll}
-    label: str
+    label: str = "a"
 """
     assert len(_check(src)) == 1
+
+
+def test_django_choice_pairs_ignore_the_none_blank_sentinel():
+    src = """
+class Record:
+    status: str
+    status_choices = ((None, "---"), ("active", "Active"), ("disabled", "Disabled"))
+"""
+    assert len(_check(src)) == 1
+
+
+def test_django_choice_mapping_ignores_the_none_blank_sentinel():
+    src = """
+class Record:
+    status: str
+    status_choices = {None: "---", "active": "Active", "disabled": "Disabled"}
+"""
+    assert len(_check(src)) == 1
+
+
+def test_choice_field_accepts_a_local_structural_string_alias():
+    src = """
+Text = str
+class Record:
+    status: Text
+    status_choices = ("active", "disabled")
+"""
+    assert len(_check(src)) == 1
+
+
+def test_choice_field_and_comparison_cluster_report_once():
+    src = """
+class Record:
+    status: str
+    status_choices = ("active", "disabled")
+    def enabled(self) -> bool:
+        return self.status == "active" or self.status == "disabled"
+"""
+    assert len(_check(src)) == 1
+
+
+def test_choice_field_does_not_hide_an_unrelated_module_cluster():
+    src = """
+class Record:
+    status: str
+    status_choices = ("active", "disabled")
+
+def enabled(status: str) -> bool:
+    return status == "active" or status == "disabled"
+"""
+    assert len(_check(src)) == 2
 
 
 def test_choices_attr_name_is_case_insensitive():
@@ -55,7 +118,7 @@ from pydantic import BaseModel
 
 class Rec(BaseModel):
     CHOICES = ["a", "b"]
-    label: str
+    label: str = "a"
 """
     assert len(_check(src)) == 1
 
@@ -66,12 +129,12 @@ from pydantic import BaseModel
 
 class Rec(BaseModel):
     choices: list = ["a", "b"]
-    label: str
+    label: str = "a"
 """
     assert len(_check(src)) == 1
 
 
-def test_empty_choices_collection_still_corroborates():
+def test_empty_choices_collection_is_not_evidence():
     src = """
 from pydantic import BaseModel
 
@@ -79,10 +142,10 @@ class Rec(BaseModel):
     choices = []
     label: str
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
-def test_choices_corroborates_all_free_form_fields():
+def test_choices_does_not_fan_out_to_unrelated_fields():
     src = """
 from pydantic import BaseModel
 
@@ -91,7 +154,7 @@ class Rec(BaseModel):
     label: str
     caption: str
 """
-    assert len(_check(src)) == 2
+    assert _check(src) == []
 
 
 def test_non_string_collection_does_not_corroborate():
@@ -144,7 +207,7 @@ from pydantic import BaseModel
 
 class Rec(BaseModel):
     choices = ["a", "b"]
-    status: str
+    status: str = "a"
 """
     diags = _check(src)
     assert len(diags) == 1
@@ -152,9 +215,8 @@ class Rec(BaseModel):
     assert diags[0].col == 5
 
 
-@pytest.mark.parametrize("ann", ["str | None", "Optional[str]", "list[str]", "dict[str, str]", "tuple[str, ...]"])
+@pytest.mark.parametrize("ann", ["list[str]", "dict[str, str]", "tuple[str, ...]"])
 def test_non_bare_str_annotation_not_flagged(ann: str):
-    """Only an annotation of exactly `str` fires; wrappers/unions do not."""
     src = f"""
 from pydantic import BaseModel
 from typing import Optional
@@ -166,13 +228,25 @@ class Rec(BaseModel):
     assert _check(src) == []
 
 
+@pytest.mark.parametrize("ann", ["str | None", "Optional[str]", "Annotated[str, Meta()]"])
+def test_optional_or_annotated_choice_field_still_flags(ann: str):
+    src = f"""
+from typing import Annotated, Optional
+
+class Rec:
+    choices = ["a", "b"]
+    status: {ann} = "a"
+"""
+    assert len(_check(src)) == 1
+
+
 def test_stringized_str_annotation_choice_field_should_flag():
     src = """
 from pydantic import BaseModel
 
 class Rec(BaseModel):
     choices = ["a", "b"]
-    status: "str"
+    status: "str" = "a"
 """
     assert len(_check(src)) == 1
 
@@ -272,7 +346,7 @@ def route(kind: str) -> int:
     return 0
 """
     diags = _check(src)
-    assert len(diags) == 2
+    assert len(diags) == 1
     assert [d.line for d in diags] == sorted(d.line for d in diags)
 
 
@@ -473,7 +547,7 @@ from pydantic import BaseModel
 
 class Order(BaseModel):
     choices = ["a", "b"]
-    payment_status: str
+    payment_status: str = "a"
 """
     assert len(_check(src, path="test_models.py")) == 1
 
@@ -594,7 +668,7 @@ def read(field) -> int:
     assert _check(src) == []
 
 
-def test_self_attribute_cluster_not_flagged():
+def test_owned_self_attribute_cluster_flags():
     src = """
 class Worker:
     def run(self) -> int:
@@ -604,7 +678,7 @@ class Worker:
             return 2
         return 0
 """
-    assert _check(src) == []
+    assert len(_check(src)) == 1
 
 
 def test_deep_attribute_chain_not_flagged():
@@ -1212,7 +1286,7 @@ from pydantic import BaseModel
 
 class Order(BaseModel):
     choices = ["a", "b"]
-    status: str
+    status: str = "a"
 
 def route(kind: str) -> int:
     if kind == "a":
@@ -1223,7 +1297,253 @@ def route(kind: str) -> int:
 """
     diags = _check(src)
     assert len(diags) == 2
-    assert [d.line for d in diags] == sorted(d.line for d in diags)
+    assert [diagnostic.line for diagnostic in diags] == sorted(diagnostic.line for diagnostic in diags)
+
+
+@pytest.mark.parametrize("path", ["app/generated/client.py", "app/vendor/client.py"])
+def test_generated_or_vendored_files_are_exempt(path: str):
+    src = 'def route(kind: str):\n    return 1 if kind == "a" else 2 if kind == "b" else 0\n'
+    assert _check(src, path=path) == []
+
+
+def test_generated_banner_is_exempt():
+    src = '# This file is auto-generated. Do not edit.\ndef route(kind: str):\n    return kind == "a" or kind == "b"\n'
+    assert _check(src) == []
+
+
+def test_destructured_wire_values_remain_open_vocabulary():
+    src = """
+def route(payload: dict[str, object]) -> int:
+    kind, value = payload["pair"]
+    if kind == "a":
+        return 1
+    if kind == "b":
+        return 2
+    return 0
+"""
+    assert _check(src) == []
+
+
+def test_chained_wire_assignment_remains_open_vocabulary():
+    src = """
+def route(payload: dict[str, object]) -> int:
+    kind = alias = payload.get("kind")
+    if kind == "a":
+        return 1
+    if kind == "b":
+        return 2
+    return 0
+"""
+    assert _check(src) == []
+
+
+def test_transformed_wire_value_remains_open_vocabulary():
+    src = """
+def route(payload: dict[str, object]) -> int:
+    kind = payload.get("kind").strip().lower()
+    if kind == "a":
+        return 1
+    if kind == "b":
+        return 2
+    return 0
+"""
+    assert _check(src) == []
+
+
+def test_string_coerced_wire_value_remains_open_vocabulary():
+    src = """
+def route(item: dict[str, object]) -> int:
+    kind = str(item.get("kind"))
+    if kind == "a":
+        return 1
+    if kind == "b":
+        return 2
+    return 0
+"""
+    assert _check(src) == []
+
+
+def test_cast_wire_value_remains_open_vocabulary():
+    src = """
+from typing import cast
+
+def route(item: dict[str, object]) -> int:
+    kind = cast(str, item.get("kind"))
+    if kind == "a":
+        return 1
+    if kind == "b":
+        return 2
+    return 0
+"""
+    assert _check(src) == []
+
+
+def test_transformed_foreign_call_remains_open_vocabulary():
+    src = """
+import platform
+
+def route() -> int:
+    os_type = platform.system().lower()
+    if os_type == "windows":
+        return 1
+    if os_type == "darwin":
+        return 2
+    return 0
+"""
+    assert _check(src) == []
+
+
+def test_annotated_nominal_enum_parameter_is_not_retreated_as_a_string():
+    src = """
+from typing import Annotated
+
+def route(status: Annotated[Status, Meta()]) -> int:
+    if status == "a":
+        return 1
+    if status == "b":
+        return 2
+    return 0
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    ["Literal['a', 'b'] | None", "Annotated[Literal['a', 'b'], Meta()]", "Union[Literal['a'], Literal['b']]"],
+)
+def test_wrapped_literal_annotation_is_already_closed(annotation: str):
+    src = f"""
+def route(status: {annotation}) -> int:
+    if status == "a":
+        return 1
+    if status == "b":
+        return 2
+    return 0
+"""
+    assert _check(src) == []
+
+
+def test_wire_provenance_survives_fallback_expression():
+    src = """
+def route(payload) -> int:
+    kind = payload.kind or "unknown"
+    if kind == "a":
+        return 1
+    if kind == "b":
+        return 2
+    return 0
+"""
+    assert _check(src) == []
+
+
+def test_comprehension_target_does_not_merge_with_enclosing_name():
+    src = """
+def route(kind: str, values: list[str]) -> bool:
+    outer = kind == "outer"
+    inner = [kind == "inner" for kind in values]
+    return outer or any(inner)
+"""
+    assert _check(src) == []
+
+
+def test_generic_choices_do_not_fan_out_by_shared_default_value():
+    src = """
+class Widget:
+    choices = ["small", "large"]
+    label: str = "small"
+    status: str = "small"
+"""
+    assert _check(src) == []
+
+
+def test_named_status_choices_associate_with_status_only():
+    src = """
+class Widget:
+    STATUS_CHOICES = ["small", "large"]
+    label: str = "small"
+    status: str = "small"
+"""
+    [diag] = _check(src)
+    assert diag.line == 5
+
+
+def test_named_status_choices_associate_without_a_literal_default():
+    src = """
+class Widget:
+    STATUS_CHOICES = ["small", "large"]
+    status: str
+"""
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    "choices",
+    ["[('draft', 'Draft'), ('live', 'Live')]", "{'draft': 'Draft', 'live': 'Live'}"],
+)
+def test_named_django_choice_shapes_associate_with_the_field(choices: str):
+    src = f"""
+class Widget:
+    STATUS_CHOICES = {choices}
+    status: str
+"""
+    assert len(_check(src)) == 1
+
+
+def test_captured_literal_annotation_stays_closed_in_nested_function():
+    src = """
+def outer(status: Literal["a", "b"]):
+    def inner() -> int:
+        if status == "a":
+            return 1
+        if status == "b":
+            return 2
+        return 0
+    return inner()
+"""
+    assert _check(src) == []
+
+
+def test_comprehension_shadow_does_not_inherit_outer_foreign_opacity():
+    src = """
+def route(kind: Status, values: list[str]) -> list[bool]:
+    return [kind == "a" or kind == "b" for kind in values]
+"""
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize("element", ["Status", "Literal['a', 'b']"])
+def test_comprehension_target_inherits_closed_iterable_element_type(element: str):
+    src = f"""
+def route(values: list[{element}]) -> list[bool]:
+    return [status == "a" or status == "b" for status in values]
+"""
+    assert _check(src) == []
+
+
+def test_flattened_pep604_literal_union_is_already_closed():
+    src = """
+def route(status: Literal["a"] | Literal["b"] | None) -> int:
+    if status == "a":
+        return 1
+    if status == "b":
+        return 2
+    return 0
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize("declaration", ["Status = str", "Status = TypeAliasType('Status', str)"])
+def test_structural_string_alias_remains_an_open_string(declaration: str):
+    src = f"""
+{declaration}
+def route(status: Status) -> int:
+    if status == "a":
+        return 1
+    if status == "b":
+        return 2
+    return 0
+"""
+    assert len(_check(src)) == 1
 
 
 # FP-hardening (famous-repo sweep): wire-bound variables (subscript / .get()). #

@@ -2,10 +2,6 @@
 
 Audit brittle, misleading, and missing tests using the shared [audit protocol](../README.md#audit-protocol).
 
-## Automated baseline
-
-Run applicable Sarj rules including `over-mocked-test`, `mock-without-spec`, `prefer-library-fake`, `prefer-real-store-in-tests`, `interaction-only-test`, `zero-assertion-test`, `trivially-true-assertion`, `unused-mock-setup`, `conditional-assertion-in-test`, `duplicate-test-body`, and `xfail-requires-strict`, plus framework checks for focused or skipped tests.
-
 ## Judgment checks
 
 - Critical behavior, failure modes, authorization boundaries, migrations, and regressions without coverage.

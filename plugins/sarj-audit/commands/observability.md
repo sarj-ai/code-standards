@@ -2,10 +2,6 @@
 
 Audit production logs, metrics, and traces using the shared [audit protocol](../README.md#audit-protocol). Silent catches belong in `error-handling`.
 
-## Automated baseline
-
-Run applicable Ruff `T201`, `G004`, and `TRY400`, ESLint `no-console`, and Sarj `no-fstring-in-log`, `no-stdlib-logging`, and `no-secret-in-log`.
-
 ## Judgment checks
 
 - Unstructured application logs, missing exception context, or fields embedded only in prose.

@@ -74,6 +74,10 @@ describe("isStoryFile — shared default", () => {
 describe("isGeneratedFile — shared default (path arm)", () => {
   it.each([
     ["generated directory", "src/generated/api.ts", true],
+    ["double-underscore generated directory", "src/__generated__/api.ts", true],
+    ["root double-underscore generated directory", "__generated__/api.ts", true],
+    ["Windows root generated directory", "generated\\api.ts", true],
+    ["case-insensitive generated directory", "src/Generated/api.ts", true],
     ["OpenAPI output directory", "src/openapi-gen/api.ts", true],
     ["GraphQL types directory", "src/graphql/types/api.ts", true],
     ["gen suffix", "src/api.gen.ts", true],
@@ -178,4 +182,7 @@ describe("isGeneratedFile — banner markers", () => {
   it("only reads the head of the file", () => {
     expect(isGeneratedFile(HAND_WRITTEN, "x\n".repeat(2000) + "@generated\n")).toBe(false);
   });
+});
+it("does not treat an ordinary user-facing string as a generated-file banner", () => {
+  expect(isGeneratedFile("src/editor.ts", "export const warning = 'Do not edit manually';\n")).toBe(false);
 });
