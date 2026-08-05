@@ -1304,7 +1304,18 @@ const config = [
   },
 
   {
-    files: ["**/components/ui/**", "**/components/design-system/**"],
+    files: [
+      "**/*.{test,spec,e2e}.{js,jsx,ts,tsx}",
+      "**/test/**",
+      "**/tests/**",
+      "**/__tests__/**",
+      "**/fixtures/**",
+      "**/e2e/**",
+      "**/e2e-apps/**",
+      "**/perf-regression/**",
+      "**/components/ui/**",
+      "**/components/design-system/**",
+    ],
     rules: {
       "@sarj/prefer-shadcn-primitives": "off",
     },

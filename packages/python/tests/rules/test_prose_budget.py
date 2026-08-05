@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from sarj_python_lint.rules import _prose_budget
 from sarj_python_lint.rules._prose_budget import groups, sentence_units
 
 
@@ -47,3 +48,22 @@ def test_groups_excludes_directives_licenses_and_inline_comments() -> None:
 )
 def test_groups_excludes_generated_and_vendored_files(path: Path) -> None:
     assert groups(path, '"""One. Two. Three."""\n') == []
+
+
+def test_groups_extracts_once_for_adjacent_rules(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = 0
+
+    def extract(_path: Path, _source: str) -> list[_prose_budget.ProseGroup]:
+        nonlocal calls
+        calls += 1
+        return [_prose_budget.ProseGroup(1, 1, "Fact.", "comment")]
+
+    monkeypatch.setattr(_prose_budget, "_last_groups", None)
+    monkeypatch.setattr(_prose_budget, "_extract_groups", extract)
+    source = "# Fact.\n"
+
+    first = groups(Path("app.py"), source)
+    first.clear()
+
+    assert len(groups(Path("app.py"), source)) == 1
+    assert calls == 1

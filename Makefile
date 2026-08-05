@@ -5,29 +5,25 @@ MAKEFLAGS += --warn-undefined-variables --no-builtin-rules
 CONFIG_SRC := packages/lint-configs/src/sarj_lint_configs/configs
 STANDARDS := uv run --project packages/lint-configs --frozen sarj-standards
 
-.PHONY: help setup build verify test lint format-check typecheck repo-check check-no-private-refs check-file-conventions promote-strict check-versions-synced publish publish-typescript publish-python publish-sql \
+.PHONY: help setup build verify doctor test lint format-check typecheck repo-check check-no-private-refs check-file-conventions check-versions-synced release-check release-check-tags release-check-typescript publish publish-typescript publish-python publish-sql \
         publish-iac publish-lint-configs publish-tsconfig sync-rule-ledger
 
 help:
-	@echo "Targets: setup | verify | build | test | lint | typecheck | promote-strict"
-	@echo "         check-{versions-synced,no-private-refs,file-conventions}"
+	@echo "Targets: setup | verify | doctor | build | test | lint | typecheck"
+	@echo "         check-{versions-synced,no-private-refs,file-conventions} | release-check"
 	@echo "         publish-{typescript,python,sql,iac,lint-configs,tsconfig} | publish (all)"
 	@echo "Releases trigger via tag push: typescript-v* python-v* sql-v* iac-v* lint-configs-v* tsconfig-v*"
 
-# Lefthook must be installed before the first commit, so hooks come first.
 setup:
-	uv sync --project packages/lint-configs --frozen
-	packages/lint-configs/.venv/bin/sarj-standards repo hooks install --dest .
-	cd packages/python       && uv sync --frozen
-	cd packages/sql          && uv sync --frozen
-	cd packages/iac          && uv sync --frozen
-	cd packages/lint-configs && uv sync --frozen
-	cd packages/typescript   && npm install --no-audit --no-fund
+	$(STANDARDS) repo setup --dest .
 
 # The gate CONTRIBUTING/CLAUDE.md tells contributors to run before review. It did
 # not exist, so `make verify` failed with "No rule to make target" and the
 # documented workflow could not be followed as written.
-verify: format-check lint typecheck test repo-check check-no-private-refs
+verify: doctor format-check lint typecheck test repo-check check-no-private-refs
+
+doctor:
+	@$(STANDARDS) doctor
 
 format-check:
 	uv run --project packages/lint-configs --frozen ruff format --check \
@@ -35,11 +31,6 @@ format-check:
 	  packages/sql/src packages/sql/tests \
 	  packages/iac/src packages/iac/tests \
 	  packages/lint-configs/src packages/lint-configs/tests
-
-promote-strict:
-	@echo "Promoting all warning-level standards to errors globally..."
-	@sed -i '' 's/: "warn"/: "error"/g' $(CONFIG_SRC)/eslint.strict.mjs
-	@echo "Done."
 
 build:
 	cd packages/typescript     && npm run build
@@ -122,24 +113,35 @@ check-versions-synced:
 repo-check:
 	@$(STANDARDS) repo check
 
+# Exercise the immutable artifact that a release would publish. This deliberately
+# installs from the lockfile and packs to a temporary directory: local release
+# checks cannot accidentally bless a stale ignored `dist/` tree or leave a
+# publishable tarball behind in the repository.
+release-check: check-versions-synced release-check-tags release-check-typescript
+
+release-check-tags:
+	$(STANDARDS) repo release check-tag typescript-v$$(node -p "require('./packages/typescript/package.json').version") --dest .
+	! $(STANDARDS) repo release check-tag typescript-v0.0.0 --dest .
+
+release-check-typescript:
+	$(STANDARDS) repo release typescript check --dest .
+
 publish-typescript:
-	@test -n "$$NPM_TOKEN" || (echo "error: NPM_TOKEN unset"; exit 1)
-	cd packages/typescript && npm publish --access public
+	$(STANDARDS) repo release publish typescript --dest .
 
 publish-python:
-	cd packages/python && uv build --wheel --sdist && uv publish
+	$(STANDARDS) repo release publish python --dest .
 
 publish-sql:
-	cd packages/sql && uv build --wheel --sdist && uv publish
+	$(STANDARDS) repo release publish sql --dest .
 
 publish-iac:
-	cd packages/iac && uv build --wheel --sdist && uv publish
+	$(STANDARDS) repo release publish iac --dest .
 
 publish-lint-configs:
-	cd packages/lint-configs && uv build --wheel --sdist && uv publish
+	$(STANDARDS) repo release publish lint-configs --dest .
 
 publish-tsconfig:
-	@test -n "$$NPM_TOKEN" || (echo "error: NPM_TOKEN unset"; exit 1)
-	cd packages/tsconfig && npm publish --access public
+	$(STANDARDS) repo release publish tsconfig --dest .
 
 publish: publish-typescript publish-python publish-sql publish-iac publish-lint-configs publish-tsconfig

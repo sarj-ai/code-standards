@@ -329,10 +329,10 @@ def test_sync_routes_python_and_typescript_configs(tmp_path: Path) -> None:
     assert (tmp_path / ".yamllint.yaml").is_file()
 
 
-def test_only_routed_destination_must_exist(tmp_path: Path) -> None:
+def test_repository_root_must_exist_even_with_an_explicit_routed_destination(tmp_path: Path) -> None:
     python_dest = tmp_path / "python"
     python_dest.mkdir()
-    subprocess.run(
+    proc = subprocess.run(
         [
             sys.executable,
             "-m",
@@ -345,9 +345,13 @@ def test_only_routed_destination_must_exist(tmp_path: Path) -> None:
             "--python-dest",
             str(python_dest),
         ],
-        check=True,
+        capture_output=True,
+        text=True,
+        check=False,
     )
-    assert (python_dest / ".ruff-strict.toml").is_file()
+    assert proc.returncode == 2
+    assert "is not a directory" in proc.stderr
+    assert not (python_dest / ".ruff-strict.toml").exists()
 
 
 def test_sync_rejects_symlink_destination_file(tmp_path: Path) -> None:
@@ -396,7 +400,7 @@ def test_sync_rejects_non_regular_destination_file(tmp_path: Path) -> None:
     assert proc.returncode == 2
 
 
-def test_sync_rejects_symlink_destination_directory(tmp_path: Path) -> None:
+def test_sync_accepts_a_symlinked_repository_root_but_not_a_symlinked_file(tmp_path: Path) -> None:
     real_dest = tmp_path / "real"
     real_dest.mkdir()
     linked_dest = tmp_path / "linked"
@@ -416,10 +420,11 @@ def test_sync_rejects_symlink_destination_directory(tmp_path: Path) -> None:
         text=True,
         check=False,
     )
-    assert proc.returncode != 0
+    assert proc.returncode == 0
+    assert (real_dest / ".ruff-strict.toml").is_file()
 
 
-def test_sync_rejects_symlink_in_destination_path(tmp_path: Path) -> None:
+def test_sync_accepts_a_symlinked_ancestor_that_resolves_inside_the_root(tmp_path: Path) -> None:
     real_dest = tmp_path / "real"
     nested_dest = real_dest / "nested"
     nested_dest.mkdir(parents=True)
@@ -441,8 +446,37 @@ def test_sync_rejects_symlink_in_destination_path(tmp_path: Path) -> None:
         text=True,
         check=False,
     )
-    assert proc.returncode != 0
-    assert not (nested_dest / ".ruff-strict.toml").exists()
+    assert proc.returncode == 0
+    assert (nested_dest / ".ruff-strict.toml").is_file()
+
+
+def test_sync_rejects_an_explicit_destination_outside_the_repository(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "sarj_lint_configs",
+            "sync",
+            "--only",
+            "ruff",
+            "--dest",
+            str(root),
+            "--python-dest",
+            str(outside),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 2
+    assert "escapes repository root" in proc.stderr
+    assert not (outside / ".ruff-strict.toml").exists()
 
 
 def test_sync_check_detects_drift(tmp_path: Path) -> None:

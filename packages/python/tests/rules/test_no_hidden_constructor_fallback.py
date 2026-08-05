@@ -480,6 +480,44 @@ class Generator:
     assert len(_check(service.read_text(), service)) == 1
 
 
+@pytest.mark.parametrize(
+    "body",
+    [
+        "self.model = model if model is not None else settings.MODEL",
+        "self.model = settings.MODEL if model is None else model",
+        "if model is None:\n            model = settings.MODEL\n        self.model = model",
+    ],
+)
+def test_none_aware_fallbacks_do_not_claim_falsey_values_are_omitted(tmp_path: Path, body: str) -> None:
+    service = _settings_project(
+        tmp_path,
+        f"""from app.config import settings
+
+class Generator:
+    def __init__(self, *, model: str | None = None) -> None:
+        {body}
+""",
+    )
+    findings = _check(service.read_text(), service)
+    assert len(findings) == 1
+    assert "falsey" not in findings[0].message
+
+
+def test_boolean_or_fallback_explains_falsey_value_behavior(tmp_path: Path) -> None:
+    service = _settings_project(
+        tmp_path,
+        """from app.config import settings
+
+class Generator:
+    def __init__(self, *, model: str | None = None) -> None:
+        self.model = model or settings.MODEL
+""",
+    )
+    findings = _check(service.read_text(), service)
+    assert len(findings) == 1
+    assert "falsey" in findings[0].message
+
+
 def test_one_warning_lists_every_hidden_parameter(tmp_path: Path) -> None:
     service = _settings_project(
         tmp_path,

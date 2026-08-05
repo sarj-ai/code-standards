@@ -5,13 +5,15 @@ from __future__ import annotations
 from importlib.metadata import version
 from pathlib import Path
 import re
-from typing import TYPE_CHECKING, Final, Protocol
+from typing import TYPE_CHECKING, Final, Protocol, TypeIs
 
 import pytest
 from sarj_iac_lint.rules import REGISTRY as IAC_REGISTRY
 from sarj_python_lint.rules import REGISTRY as PYTHON_REGISTRY
 from sarj_sql_lint.rules import REGISTRY as SQL_REGISTRY
+import yaml
 
+from sarj_lint_configs import manifest
 from sarj_lint_configs.manifest import SIBLING_PACKAGES
 from sarj_lint_configs.textlint import REGISTRY as TEXT_REGISTRY
 
@@ -75,6 +77,17 @@ def _pins(text: str) -> list[tuple[str, str]]:
     return [(match.group(1), match.group(2)) for match in _PIN_RE.finditer(text)]
 
 
+def _is_object_list(value: object) -> TypeIs[list[object]]:
+    return isinstance(value, list)
+
+
+def _published_hook() -> Mapping[str, object]:
+    parsed: object = yaml.safe_load(_HOOKS_PATH.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    assert _is_object_list(parsed)
+    assert parsed
+    return manifest.as_table(parsed[0])
+
+
 def test_no_pre_commit_hook_pins_a_stale_sibling_version() -> None:
     """A pin that outlives its release ships an old linter under a fresh `rev:`."""
     stale = sorted(
@@ -86,3 +99,32 @@ def test_no_pre_commit_hook_pins_a_stale_sibling_version() -> None:
         f"{_HOOKS_PATH.name} pins a version that is no longer current: {stale}. "
         "Bump the pin with the release, or drop it and let the hook track the package."
     )
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["src/app.py", "docs/design.md", "infra/main.tf", ".env.test", "docker/Dockerfile.dev"],
+)
+def test_published_hook_regex_matches_real_repository_paths(path: str) -> None:
+    """YAML single quotes preserve backslashes, so double escaping breaks extensions."""
+    hook = _published_hook()
+    files = hook.get("files")
+    assert isinstance(files, str)
+    pattern = re.compile(files)
+
+    assert pattern.search(path), path
+
+
+@pytest.mark.parametrize("path", ["src/app.ts", "assets/logo.png", "notes/README.txt"])
+def test_published_hook_regex_ignores_unrelated_paths(path: str) -> None:
+    hook = _published_hook()
+    files = hook.get("files")
+    assert isinstance(files, str)
+
+    assert re.compile(files).search(path) is None, path
+
+
+def test_warning_first_rules_are_visible_from_the_published_hook() -> None:
+    hook = _published_hook()
+
+    assert hook.get("verbose") is True

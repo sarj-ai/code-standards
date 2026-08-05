@@ -1,0 +1,41 @@
+"""Detect package-version changes between two repository revisions."""
+
+from __future__ import annotations
+
+import re
+from typing import TYPE_CHECKING
+
+from sarj_lint_configs.libs.release.process import ProcessFailureError, ProcessRunner, run_process
+from sarj_lint_configs.libs.release.tags import RELEASE_TARGETS
+
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+    from pathlib import Path
+
+
+_ADDED_JSON_VERSION = re.compile(r'(?m)^\+\s*"version"\s*:')
+_ADDED_TOML_VERSION = re.compile(r"(?m)^\+version\s*=")
+
+
+def changed_release_targets(
+    root: Path,
+    *,
+    before: str,
+    after: str,
+    runner: ProcessRunner = run_process,
+) -> Mapping[str, bool]:
+    """Return deterministic target flags for a GitHub release workflow."""
+    changed: dict[str, bool] = {}
+    for name, target in RELEASE_TARGETS.items():
+        try:
+            result = runner(
+                ("git", "diff", "--no-color", before, after, "--", target.manifest.as_posix()),
+                cwd=root,
+                capture_output=True,
+            )
+        except ProcessFailureError:
+            return dict.fromkeys(RELEASE_TARGETS, False)
+        pattern = _ADDED_JSON_VERSION if target.format == "json" else _ADDED_TOML_VERSION
+        changed[name] = pattern.search(result.stdout) is not None
+    return changed

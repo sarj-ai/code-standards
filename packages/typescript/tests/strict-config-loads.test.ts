@@ -148,6 +148,14 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
         entry.rules?.["@sarj/prefer-shadcn-primitives"] === "off",
     );
     expect(designSystemEntry).toBeDefined();
+    expect(designSystemEntry?.files).toEqual(
+      expect.arrayContaining([
+        "**/*.{test,spec,e2e}.{js,jsx,ts,tsx}",
+        "**/fixtures/**",
+        "**/e2e-apps/**",
+        "**/perf-regression/**",
+      ]),
+    );
   });
 
   /**

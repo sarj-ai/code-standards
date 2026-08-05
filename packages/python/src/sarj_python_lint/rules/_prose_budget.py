@@ -10,6 +10,7 @@ import tokenize
 from typing import TYPE_CHECKING, Final
 
 from sarj_python_lint.rule_base import parse_or_none
+from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._docstrings import PROMPT_DECORATOR_MARKERS, decorator_markers, sections
 from sarj_python_lint.rules._paths import is_generated
 
@@ -51,6 +52,9 @@ class ProseGroup:
     text: str
     kind: str
     typed_sections: frozenset[str] = frozenset()
+
+
+_last_groups: tuple[str, str, tuple[ProseGroup, ...]] | None = None
 
 
 def sentence_units(text: str) -> int:
@@ -98,6 +102,17 @@ def _without_examples_metadata(text: str) -> str:
 
 def groups(path: Path, source: str) -> list[ProseGroup]:
     """Extract docstrings and contiguous own-line comment runs from one file."""
+    global _last_groups  # ruff: ignore[global-statement] -- rules run sequentially per file.
+    path_key = str(path)
+    if _last_groups is not None and _last_groups[0] == path_key and _last_groups[1] is source:
+        return list(_last_groups[2])
+    extracted = _extract_groups(path, source)
+    _last_groups = (path_key, source, tuple(extracted))
+    return extracted
+
+
+def _extract_groups(path: Path, source: str) -> list[ProseGroup]:
+    """Perform the shared parse and tokenization once for adjacent prose rules."""
     if is_generated(path, source):
         return []
     tree = parse_or_none(path, source)
@@ -140,8 +155,8 @@ def _comment_run(run: list[tokenize.TokenInfo]) -> ProseGroup:
 
 def _docstring_groups(tree: ast.Module) -> list[ProseGroup]:
     out: list[ProseGroup] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) or not node.body:
+    for node in nodes(tree, ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef):
+        if not node.body:
             continue
         first = node.body[0]
         if not (

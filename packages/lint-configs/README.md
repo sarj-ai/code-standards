@@ -6,7 +6,7 @@ as a pip-installable package, plus the commands that adopt them and keep them cu
 ## Adopt
 
 ```bash
-uvx sarj-lint-configs init
+uvx --from sarj-lint-configs sarj-standards init
 ```
 
 `init` detects Python and/or TypeScript, installs the toolchain and hooks, and writes only the configs that ecosystem
@@ -15,9 +15,11 @@ uses, wires them up (`[tool.ruff] extend`, `pyrightconfig.json`,
 `.sarj-standards.toml`, and prints the CI snippet and — for TypeScript — the one
 ESLint peer set that resolves together. Pass `--no-install` to write only the wiring.
 
-`init --dry-run` prints the whole plan without touching anything. `init` never
-overwrites a file that already exists unless you pass `--force`, so it is safe to
-re-run and safe on a repo that is already half-adopted.
+`init --dry-run` prints the whole plan without touching anything. Existing Ruff,
+Pyright, ESLint flat-config, package-manager, and pre-commit files are merged
+only when their structure is unambiguous; user-owned settings are preserved. If
+a file cannot be wired safely, `init` explains the exact manual change and makes
+no changes. A failed sync or dependency install restores every tracked file.
 
 Application repositories can opt into the preferred-library policy at adoption
 time:
@@ -68,8 +70,9 @@ detection with `init --python-dest` / `--typescript-dest`.
 ### npm, pnpm, Yarn and Bun
 
 The peer set below does not install without an override block, and every client
-spells that block differently: npm and Bun nest it under `overrides`, pnpm wants
-`pnpm.overrides` with a `parent>child` selector, Yarn wants `resolutions` with a
+spells that block differently: npm and Bun use `package.json#overrides`, pnpm 11
+wants `overrides` in `pnpm-workspace.yaml` (older standalone pnpm projects use
+`package.json#pnpm.overrides`) with a `parent>child` selector, Yarn wants `resolutions` with a
 `parent/child` path and no `$dep` indirection. `init` detects the client from the
 lockfile (or a `packageManager` field, which Corepack enforces), writes the right
 one, and prints the matching install command. Writing npm's spelling everywhere
@@ -79,6 +82,9 @@ the install failed identically while `package.json` looked fixed.
 ## Keep current
 
 ```bash
+uv run --frozen sarj-standards doctor       # read-only diagnosis with exact fixes
+uv run --frozen sarj-standards upgrade --check  # preview whether an upgrade is needed
+uv run --frozen sarj-standards upgrade      # resolve latest, migrate, install, postflight
 uv run --frozen sarj-standards verify       # run every adoption and lint gate
 uv run --frozen sarj-standards format       # apply formatter and safe lint fixes
 uv run --frozen sarj-standards inspect      # print detected adoption state
@@ -96,6 +102,23 @@ references, and version coverage; `repo sync-ledger`, `repo comment-corpus`,
 `repo hooks install`, and `repo rules manifest` provide the related maintenance
 operations.
 
+The package also owns repository setup and release policy; workflows and the
+Makefile are intentionally thin adapters rather than a second implementation:
+
+```bash
+sarj-standards repo setup --check
+sarj-standards repo release check-tag typescript-v9.12.0
+sarj-standards repo release lock-age packages/typescript/package-lock.json
+sarj-standards repo release typescript check
+sarj-standards repo release publish typescript
+```
+
+Programmatic consumers should import `sarj_lint_configs.api`. Business logic is
+grouped under `sarj_lint_configs.libs` by adoption, linting, repository, setup,
+and release domains; `__main__` is only an entrypoint and `cli/` owns argument
+parsing and presentation. The former top-level modules remain identity-preserving
+compatibility aliases for existing imports and monkeypatches.
+
 `sarj-standards` is the preferred entrypoint. `sarj-lint-configs` remains an
 alias for compatibility. `check` routes Python, SQL, Terraform, YAML/TFTPL,
 TOML, JSONC, Markdown, INI-style config, environment files, shell scripts,
@@ -104,6 +127,11 @@ commented-out config (`SARJ301`), dense config narration (`SARJ300`), and AI
 execution diaries, bug-hunt dumps, or large point-in-time audits that should
 have been reduced to durable README/docs/ADR facts (`SARJ302`). Large documents
 need at least two independent artifact signals, so size alone never reports.
+`SARJ302` is visible but non-blocking for its first minor release; promotion is
+an explicit per-rule metadata change after corpus calibration, never a global
+warning-to-error rewrite. The new constructor and shadcn checks are likewise
+warnings, and shadcn guidance exists only in the application profile, outside
+tests, fixtures, and design-system implementation directories.
 
 Generated or intentionally instructional config can be excluded explicitly;
 there is no blanket directory exemption:
@@ -122,6 +150,31 @@ contracts, invariants, failures, examples, generated docs, directives,
 licenses, and runtime-consumed prompt/tool/route documentation remain valid.
 
 ### `doctor` — one version, not three
+
+Run it without preparation:
+
+```bash
+sarj-standards doctor
+sarj-standards doctor --format json  # stable schema and finding IDs for automation
+```
+
+It is read-only, exits 0 for a healthy or not-yet-adopted repository, 1 for
+actionable drift, and 2 for invalid input such as malformed TOML/JSON. Every
+drift finding includes a concrete remediation. Intentional compatibility
+fixtures can be excluded narrowly with `[doctor] exclude = ["tests/fixtures/**"]`.
+
+Upgrading is one command from an installed environment:
+
+```bash
+sarj-standards upgrade
+```
+
+The command bootstraps the newest published compatibility bundle with `uvx
+--refresh`, previews each changed path, blocks on retired rule references,
+updates the single manifest version, syncs configs, safely repairs wiring and
+peer pins, installs dependencies, and rolls everything back if installation or
+the doctor postflight fails. Use `upgrade --check` in automation or
+`upgrade --offline --no-install` when testing the already-installed bundle.
 
 A consumer repo used to state a Sarj version in three independent places: the
 `pyproject.toml` pin, the pre-commit `rev:`, and whatever a CI job typed on its

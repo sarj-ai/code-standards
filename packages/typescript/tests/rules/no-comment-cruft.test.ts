@@ -90,7 +90,7 @@ ruleTester.run("no-comment-cruft", rule, {
     },
     {
       name: "preserves assertion examples with an illustration lead-in",
-      code: "// For example:\n// expect(result).toEqual({ ok: true });\nconst x = run();",
+      code: "// For example:\n// expectTypeOf(result).toEqualTypeOf<{ callback: () => void }>();\nconst x = run();",
     },
     // Pseudo-code placeholder line is not commented-out code.
     {
@@ -420,6 +420,16 @@ ruleTester.run("no-comment-cruft", rule, {
     {
       name: "flags a disabled generic type assertion",
       code: "test('result', () => {\n  // expectTypeOf(result).toEqualTypeOf<{ ok: true }>();\n});",
+      errors: [{ messageId: "commentedOutCode" }],
+    },
+    {
+      name: "flags disabled generic assertions containing function signatures",
+      code: "test('result', () => {\n  // expectTypeOf(result).toEqualTypeOf<{ callback: (value: string) => Promise<void> }>();\n});",
+      errors: [{ messageId: "commentedOutCode" }],
+    },
+    {
+      name: "flags disabled generic assertions containing call signatures",
+      code: "test('result', () => {\n  // expectTypeOf(result).toEqualTypeOf<{ (value: string): boolean; readonly kind: 'predicate' }>();\n});",
       errors: [{ messageId: "commentedOutCode" }],
     },
     {

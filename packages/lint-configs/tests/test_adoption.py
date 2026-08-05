@@ -16,6 +16,7 @@ import pytest
 from sarj_lint_configs import (
     ESLINT_PEERS,
     ESLINT_STRICT,
+    RUFF_STRICT,
     __version__,
     doctor,
     lifecycle,
@@ -290,7 +291,15 @@ def test_init_installs_dependencies_by_default(monkeypatch: pytest.MonkeyPatch, 
     monkeypatch.setattr(lifecycle, "execute", execute)
 
     assert main(["init", "--dest", str(tmp_path)]) == 0
-    assert commands[0].argv == ("uv", "add", "--dev", f"sarj-lint-configs=={__version__}")
+    assert commands[0].argv == (
+        "uv",
+        "add",
+        "--dev",
+        f"sarj-lint-configs=={__version__}",
+        "sarj-python-lint==0.46.0",
+        "sarj-sql-lint==0.6.1",
+        "sarj-iac-lint==0.5.0",
+    )
 
 
 def test_inspect_reports_detected_adoption(tmp_path: Path) -> None:
@@ -348,6 +357,19 @@ def test_ci_snippet_for_a_typescript_repo_does_not_require_a_python_project(
     proc = _cli("init", "--dest", str(tmp_path))
     assert "uv run --frozen" not in proc.stdout
     assert "uvx --from sarj-lint-configs==" in proc.stdout
+
+
+def test_nested_python_project_is_used_by_generated_hooks_and_ci(tmp_path: Path) -> None:
+    python = tmp_path / "python"
+    python.mkdir()
+    _python_repo(python)
+
+    plan = scaffold.build_plan(tmp_path, force=False)
+    hook = next(contents for path, contents in plan.writes if path.name == ".pre-commit-config.yaml")
+    snippet = scaffold.ci_snippet(plan, version=manifest.adopted_version())
+
+    assert "uv run --project python --frozen sarj-standards" in hook
+    assert "uv run --project python --frozen sarj-standards" in snippet
 
 
 def test_init_is_idempotent(tmp_path: Path) -> None:
@@ -485,6 +507,37 @@ def test_the_generated_precommit_hook_actually_runs(tmp_path: Path) -> None:
         assert proc.returncode == 0, f"{entry!r} failed: {proc.stdout}{proc.stderr}"
 
 
+def test_generated_check_hook_keeps_warning_first_output_visible(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+
+    assert _cli("init", "--dest", str(tmp_path), "--no-install").returncode == 0
+
+    config = (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+    check_block = config.split("id: sarj-standards-check", 1)[1]
+    assert "verbose: true" in check_block
+
+
+def test_init_adds_warning_visibility_to_an_existing_complete_check_hook(tmp_path: Path) -> None:
+    _python_repo(tmp_path)
+    config = tmp_path / ".pre-commit-config.yaml"
+    config.write_text(
+        "repos:\n"
+        "  - repo: local\n"
+        "    hooks:\n"
+        "      - id: sarj-standards-drift\n"
+        "        entry: sarj-standards doctor\n"
+        "      - id: sarj-standards-check\n"
+        "        entry: sarj-standards check\n",
+        encoding="utf-8",
+    )
+
+    assert _cli("init", "--dest", str(tmp_path), "--no-install").returncode == 0
+
+    updated = config.read_text(encoding="utf-8")
+    assert updated.count("verbose: true") == 1
+    assert updated.index("verbose: true") > updated.index("id: sarj-standards-check")
+
+
 def test_a_typescript_only_precommit_hook_does_not_invoke_uv_run(tmp_path: Path) -> None:
     _ = _typescript_repo(tmp_path)
     assert _cli("init", "--dest", str(tmp_path)).returncode == 0
@@ -505,6 +558,33 @@ def test_detection_finds_a_package_json_in_a_subproject(tmp_path: Path) -> None:
     assert (found.python, found.typescript) == (True, True)
     assert found.python_root == tmp_path
     assert found.typescript_root == tmp_path / "services" / "web"
+
+
+def test_init_fails_loudly_on_independent_project_roots(tmp_path: Path) -> None:
+    for name in ("api", "worker"):
+        project = tmp_path / name
+        project.mkdir()
+        _python_repo(project)
+
+    proc = _cli("init", "--dest", str(tmp_path))
+
+    assert proc.returncode == 2
+    assert "multiple independent Python roots" in proc.stderr
+    assert "--python-dest" in proc.stderr
+    assert not (tmp_path / manifest.MANIFEST_NAME).exists()
+
+
+def test_explicit_project_root_resolves_independent_root_ambiguity(tmp_path: Path) -> None:
+    for name in ("api", "worker"):
+        project = tmp_path / name
+        project.mkdir()
+        _python_repo(project)
+
+    proc = _cli("init", "--dest", str(tmp_path), "--python-dest", "api")
+
+    assert proc.returncode == 0, proc.stderr
+    assert (tmp_path / "api" / ".ruff-strict.toml").is_file()
+    assert not (tmp_path / "worker" / ".ruff-strict.toml").exists()
 
 
 def test_detection_ignores_node_modules(tmp_path: Path) -> None:
@@ -642,7 +722,7 @@ def test_doctor_warns_when_no_manifest_exists(tmp_path: Path) -> None:
     _ = _python_repo(tmp_path)
     proc = _cli("doctor", "--dest", str(tmp_path))
     assert proc.returncode == 0, "an un-adopted repo is not yet drifted"
-    assert "run `sarj-lint-configs init`" in proc.stdout
+    assert "run `sarj-standards init`" in proc.stdout
 
 
 def test_doctor_reports_manifest_version_drift(tmp_path: Path) -> None:
@@ -653,6 +733,52 @@ def test_doctor_reports_manifest_version_drift(tmp_path: Path) -> None:
     proc = _cli("doctor", "--dest", str(tmp_path))
     assert proc.returncode == 1
     assert __version__ in proc.stdout
+
+
+def test_doctor_json_has_a_stable_schema_and_actionable_ids(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+
+    proc = _cli("doctor", "--format", "json", "--dest", str(tmp_path))
+
+    assert proc.returncode == 0
+    payload: dict[str, object] = json.loads(proc.stdout)  # pyright: ignore[reportAny]
+    assert payload["schema"] == 1
+    assert manifest.as_table(payload["summary"]) == {
+        "checked": 1,
+        "drifted": 0,
+        "warnings": 1,
+        "invalid": 0,
+    }
+    findings = manifest.list_field(payload, "findings")
+    first = manifest.as_table(findings[0])
+    assert first["id"] == "doctor.manifest.absent"
+    assert first["remediation"] == "run `sarj-standards init`"
+
+
+def test_doctor_reports_a_malformed_manifest_without_a_traceback(tmp_path: Path) -> None:
+    _ = (tmp_path / manifest.MANIFEST_NAME).write_text("configs = 3\n", encoding="utf-8")
+
+    proc = _cli("doctor", "--dest", str(tmp_path))
+
+    assert proc.returncode == 2
+    assert "doctor.manifest.invalid" in proc.stdout
+    assert "Traceback" not in proc.stderr
+
+
+def test_doctor_rejects_manifest_destinations_that_escape_the_repo(tmp_path: Path) -> None:
+    adopted = manifest.Manifest(
+        version=manifest.adopted_version(),
+        configs=("ruff",),
+        python_dest="..",
+        typescript_dest=".",
+    )
+    _ = (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+
+    proc = _cli("doctor", "--dest", str(tmp_path))
+
+    assert proc.returncode == 1
+    assert "doctor.manifest.destination" in proc.stdout
+    assert "escapes the repository root" in proc.stdout
 
 
 @pytest.mark.parametrize(
@@ -748,7 +874,7 @@ def test_the_expected_precommit_rev_names_a_tag_the_release_workflow_publishes()
     workflow = (REPO_ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
     prefix = expected.rsplit("-v", 1)[0]
     assert f"'{prefix}-v*'" in workflow, f"release.yml never triggers on {prefix}-v* tags"
-    assert f"maybe_tag {prefix} " in workflow, f"release.yml never creates a {prefix}-v tag"
+    assert f"repo release create-tags {prefix} " in workflow, f"release.yml never creates a {prefix}-v tag"
 
 
 def test_release_version_detection_does_not_short_circuit_git_diff() -> None:
@@ -775,6 +901,17 @@ def test_sync_check_reports_drift_after_a_synced_config_is_deleted(tmp_path: Pat
     assert f"drift: {tmp_path / '.ruff-strict.toml'}" in proc.stdout
 
 
+def test_init_replaces_stale_manifest_owned_configs_without_force(tmp_path: Path) -> None:
+    _python_repo(tmp_path)
+    strict = tmp_path / ".ruff-strict.toml"
+    strict.write_text("stale\n", encoding="utf-8")
+
+    proc = _cli("init", "--dest", str(tmp_path))
+
+    assert proc.returncode == 0, proc.stderr
+    assert strict.read_bytes() == RUFF_STRICT.read_bytes()
+
+
 #: Hand-edited fixtures for files owned by `init`.
 _SCAFFOLDED_FILES = {
     manifest.MANIFEST_NAME: '# hand-edited\nversion = "0.0.1"\nconfigs = ["ruff"]\n',
@@ -791,25 +928,85 @@ def _repo_with_hand_edited_files(root: Path) -> Path:
     return root
 
 
-@pytest.mark.parametrize("name", sorted(_SCAFFOLDED_FILES))
-def test_init_never_overwrites_an_existing_file_without_force(tmp_path: Path, name: str) -> None:
+def test_init_preserves_an_existing_manifest_without_force(tmp_path: Path) -> None:
     _ = _repo_with_hand_edited_files(tmp_path)
     proc = _cli("init", "--dest", str(tmp_path))
     assert proc.returncode == 0, proc.stderr
-    assert (tmp_path / name).read_text() == _SCAFFOLDED_FILES[name]
-    assert f"skip:  {tmp_path / name}" in proc.stdout
+    path = tmp_path / manifest.MANIFEST_NAME
+    assert path.read_text() == _SCAFFOLDED_FILES[manifest.MANIFEST_NAME]
+    assert f"skip:  {path}" in proc.stdout
 
 
-@pytest.mark.parametrize("name", sorted(_SCAFFOLDED_FILES))
-def test_init_force_does_overwrite_the_files_it_owns(tmp_path: Path, name: str) -> None:
+def test_init_safely_wires_existing_python_and_typescript_configs(tmp_path: Path) -> None:
+    _ = _repo_with_hand_edited_files(tmp_path)
+
+    proc = _cli("init", "--dest", str(tmp_path))
+
+    assert proc.returncode == 0, proc.stderr
+    pyright: dict[str, object] = json.loads(  # pyright: ignore[reportAny]
+        (tmp_path / "pyrightconfig.json").read_text()
+    )
+    assert pyright == {"typeCheckingMode": "standard", "extends": ".pyright-strict.json"}
+    eslint = (tmp_path / "eslint.config.mjs").read_text()
+    assert 'import strict from "./eslint.strict.mjs"' in eslint
+    assert "...strict" in eslint
+    assert "// hand-rolled" in eslint
+
+
+def test_init_wires_the_existing_eslint_js_entrypoint_without_creating_a_shadow(tmp_path: Path) -> None:
+    _typescript_repo(tmp_path)
+    entrypoint = tmp_path / "eslint.config.js"
+    entrypoint.write_text("export default [];\n", encoding="utf-8")
+
+    proc = _cli("init", "--dest", str(tmp_path))
+
+    assert proc.returncode == 0, proc.stderr
+    assert "eslint.strict.mjs" in entrypoint.read_text(encoding="utf-8")
+    assert not (tmp_path / "eslint.config.mjs").exists()
+
+
+def test_init_accepts_an_eslint_entrypoint_that_reexports_a_wired_local_config(tmp_path: Path) -> None:
+    _typescript_repo(tmp_path)
+    packages = tmp_path / "packages"
+    packages.mkdir()
+    (tmp_path / "eslint.config.js").write_text(
+        'export { default } from "./packages/eslint.config.base.js";\n',
+        encoding="utf-8",
+    )
+    base = packages / "eslint.config.base.js"
+    base.write_text('import strict from "../eslint.strict.mjs";\nexport default [...strict];\n', encoding="utf-8")
+
+    proc = _cli("init", "--dest", str(tmp_path))
+
+    assert proc.returncode == 0, proc.stderr
+    assert "already imports eslint.strict.mjs" in proc.stdout
+    assert 'export { default } from "./packages/eslint.config.base.js"' in (tmp_path / "eslint.config.js").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_init_rejects_ambiguous_eslint_entrypoints_without_changes(tmp_path: Path) -> None:
+    _typescript_repo(tmp_path)
+    (tmp_path / "eslint.config.js").write_text("export default [];\n", encoding="utf-8")
+    (tmp_path / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
+
+    proc = _cli("init", "--dest", str(tmp_path))
+
+    assert proc.returncode == 2
+    assert "multiple active ESLint flat configs" in proc.stderr
+    assert not (tmp_path / manifest.MANIFEST_NAME).exists()
+
+
+def test_init_force_replaces_the_owned_manifest_but_preserves_entrypoint_content(tmp_path: Path) -> None:
     _ = _repo_with_hand_edited_files(tmp_path)
     proc = _cli("init", "--force", "--dest", str(tmp_path))
     assert proc.returncode == 0, proc.stderr
-    assert (tmp_path / name).read_text() != _SCAFFOLDED_FILES[name]
-    assert f"wrote: {tmp_path / name}" in proc.stdout
+    assert (tmp_path / manifest.MANIFEST_NAME).read_text() != _SCAFFOLDED_FILES[manifest.MANIFEST_NAME]
+    assert "standard" in json.loads((tmp_path / "pyrightconfig.json").read_text())["typeCheckingMode"]
+    assert "// hand-rolled" in (tmp_path / "eslint.config.mjs").read_text()
 
 
-def test_an_existing_precommit_config_is_left_alone_and_the_block_is_printed(tmp_path: Path) -> None:
+def test_an_existing_precommit_config_is_extended_without_losing_hooks(tmp_path: Path) -> None:
     _ = _python_repo(tmp_path)
     existing = (
         "repos:\n"
@@ -823,12 +1020,34 @@ def test_an_existing_precommit_config_is_left_alone_and_the_block_is_printed(tmp
 
     proc = _cli("init", "--dest", str(tmp_path))
     assert proc.returncode == 0, proc.stderr
-    assert config.read_text() == existing
-    assert "add this to .pre-commit-config.yaml" in proc.stdout
-    assert "sarj-standards-drift" in proc.stdout
+    updated = config.read_text()
+    assert "id: ruff" in updated
+    assert "id: sarj-standards-drift" in updated
+    assert "id: sarj-standards-check" in updated
 
 
-def test_a_repo_with_its_own_ruff_table_is_told_rather_than_given_a_second_one(tmp_path: Path) -> None:
+def test_init_preserves_an_existing_baselined_sarj_hook_without_adding_a_bypass(tmp_path: Path) -> None:
+    _python_repo(tmp_path)
+    config = tmp_path / ".pre-commit-config.yaml"
+    config.write_text(
+        "repos:\n"
+        "  - repo: local\n"
+        "    hooks:\n"
+        "      - id: sarj-standards\n"
+        "        entry: python/check_sarj_standards.py --baseline python/baseline.json\n",
+        encoding="utf-8",
+    )
+
+    proc = _cli("init", "--dest", str(tmp_path))
+
+    assert proc.returncode == 0, proc.stderr
+    updated = config.read_text(encoding="utf-8")
+    assert "--baseline python/baseline.json" in updated
+    assert "id: sarj-standards-drift" in updated
+    assert "id: sarj-standards-check" not in updated
+
+
+def test_a_repo_with_its_own_ruff_table_is_wired_without_losing_settings(tmp_path: Path) -> None:
     _ = _python_repo(tmp_path)
     pyproject = tmp_path / "pyproject.toml"
     _ = pyproject.write_text(
@@ -840,4 +1059,47 @@ def test_a_repo_with_its_own_ruff_table_is_told_rather_than_given_a_second_one(t
     text = pyproject.read_text()
     assert text.count("[tool.ruff]") == 1
     assert tomllib.loads(text)["tool"]["ruff"]["line-length"] == 100
-    assert "[tool.ruff] table already" in proc.stdout
+    assert tomllib.loads(text)["tool"]["ruff"]["extend"] == ".ruff-strict.toml"
+
+
+def test_init_rejects_a_symlinked_mutation_target(tmp_path: Path) -> None:
+    outside = tmp_path.parent / f"{tmp_path.name}-outside.toml"
+    outside.write_text('[project]\nname = "outside"\n', encoding="utf-8")
+    (tmp_path / "pyproject.toml").symlink_to(outside)
+
+    proc = _cli("init", "--dest", str(tmp_path), "--no-install")
+
+    assert proc.returncode == 2
+    assert "symlink mutation target" in proc.stderr
+    assert outside.read_text(encoding="utf-8") == '[project]\nname = "outside"\n'
+    assert not (tmp_path / manifest.MANIFEST_NAME).exists()
+
+
+def test_init_does_not_accept_comment_only_ruff_wiring(tmp_path: Path) -> None:
+    _python_repo(tmp_path)
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        '[project]\nname = "app"\nversion = "0.1.0"\n# extend = ".ruff-strict.toml"\n',
+        encoding="utf-8",
+    )
+
+    proc = _cli("init", "--dest", str(tmp_path), "--no-install")
+
+    assert proc.returncode == 0, proc.stderr
+    assert tomllib.loads(pyproject.read_text(encoding="utf-8"))["tool"]["ruff"]["extend"] == ".ruff-strict.toml"
+
+
+def test_init_does_not_duplicate_a_partially_adopted_hook(tmp_path: Path) -> None:
+    _python_repo(tmp_path)
+    config = tmp_path / ".pre-commit-config.yaml"
+    config.write_text(
+        "repos:\n  - repo: local\n    hooks:\n      - id: sarj-standards-drift\n        entry: old doctor\n",
+        encoding="utf-8",
+    )
+
+    proc = _cli("init", "--dest", str(tmp_path), "--no-install")
+
+    assert proc.returncode == 0, proc.stderr
+    updated = config.read_text(encoding="utf-8")
+    assert updated.count("id: sarj-standards-drift") == 1
+    assert updated.count("id: sarj-standards-check") == 1
