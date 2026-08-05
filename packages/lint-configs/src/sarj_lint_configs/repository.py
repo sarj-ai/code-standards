@@ -21,6 +21,7 @@ from .manifest import as_table, list_field, table_field, text_field
 
 
 _CONFLICT_RE: Final = re.compile(r"^(?:<<<<<<< |>>>>>>> |\|\|\|\|\|\|\| )", re.MULTILINE)
+_GITHUB_MERGE_SUBJECT_RE: Final = re.compile(r"^Merge pull request #[1-9][0-9]* from [A-Za-z0-9_.-]+/[A-Za-z0-9._/-]+$")
 _PRIVATE_REFS_FILE: Final = ".sarj-private-refs.toml"
 _TEST_COMMAND_RE: Final = re.compile(r"(?:npm test|pytest|make (?:verify|test)\b)")
 _PYPROJECT_VERSION_RE: Final = re.compile(r'^version = "([^"]+)"$', re.MULTILINE)
@@ -209,6 +210,9 @@ def _commit_findings(
     findings: list[Finding] = []
     for revision in revisions:
         message = _git(root, "show", "--quiet", "--format=%H%n%s%n%b", revision).stdout
+        parents = _git(root, "show", "--quiet", "--format=%P", revision).stdout.split()
+        if len(parents) > 1:
+            message = _without_generated_merge_subject(message)
         if _matches_private_ref(message, broad, scoped) or _CONFLICT_RE.search(message):
             findings.append(Finding("private-refs", revision, "private reference or conflict marker in commit message"))
         changed = _git(
@@ -233,6 +237,14 @@ def _commit_findings(
                 continue
             findings.extend(_private_text_findings(where, text, broad, scoped))
     return findings
+
+
+def _without_generated_merge_subject(message: str) -> str:
+    commit_hash, separator, remainder = message.partition("\n")
+    subject, body_separator, body = remainder.partition("\n")
+    if separator and _GITHUB_MERGE_SUBJECT_RE.fullmatch(subject):
+        return f"{commit_hash}\n{body}" if body_separator else commit_hash
+    return message
 
 
 def _private_text_findings(
