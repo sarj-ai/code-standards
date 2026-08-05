@@ -96,6 +96,31 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
     ).toBe(true);
   });
 
+  it("gives cross-accessibility ordering one diagnostic owner", async () => {
+    const messages = await lint("stepdown-conflict.ts");
+    const ordering = messages.filter((message) =>
+      ["@typescript-eslint/member-ordering", "@sarj/stepdown", "perfectionist/sort-classes"].includes(message.ruleId ?? ""),
+    );
+    expect(ordering.map((message) => message.ruleId)).toEqual(["@typescript-eslint/member-ordering"]);
+  });
+
+  it("covers constructors and accessors without a stepdown ownership gap", async () => {
+    const messages = await lint("stepdown-callable-conflicts.ts");
+    const ordering = messages.filter((message) =>
+      ["@typescript-eslint/member-ordering", "@sarj/stepdown", "perfectionist/sort-classes"].includes(message.ruleId ?? ""),
+    );
+    expect(ordering.map((message) => message.ruleId)).toEqual([
+      "@typescript-eslint/member-ordering",
+      "@typescript-eslint/member-ordering",
+      "@typescript-eslint/member-ordering",
+    ]);
+  });
+
+  it("enforces await instead of then inside async code", async () => {
+    const ruleIds = (await lint("promise-probe.ts")).map((message) => message.ruleId);
+    expect(ruleIds).toContain("promise/prefer-await-to-then");
+  });
+
   /**
    * The config shipped with no `ignores`, so `eslint .` linted build output.
    *

@@ -1,4 +1,4 @@
-"""SARJ093 flags boundaries where multiple ID roles share primitive string types.
+"""SARJ093 flags boundaries where multiple ID roles share primitive ID carrier types.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_nominal_id_types.py
 """
@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, is_suppressed, parse_or_none
-from sarj_python_lint.rules._ast_index import walk
 from sarj_python_lint.rules._paths import is_generated, is_test_path
 
 
@@ -18,19 +17,36 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-_TRANSPARENT_WRAPPERS = frozenset({"List", "Mapped", "Optional", "Sequence", "list"})
+_TRANSPARENT_WRAPPERS = frozenset(
+    {
+        "AbstractSet",
+        "AsyncIterable",
+        "AsyncIterator",
+        "Collection",
+        "FrozenSet",
+        "Iterable",
+        "Iterator",
+        "List",
+        "Mapped",
+        "Optional",
+        "Sequence",
+        "Set",
+        "Tuple",
+        "frozenset",
+        "list",
+        "set",
+        "tuple",
+    }
+)
 _UNION_WRAPPERS = frozenset({"Union"})
 _MIN_ID_ROLES = 2
+_VARIADIC_TUPLE_ARITY = 2
 _OPERATIONAL_IDS = frozenset(
     {
         "correlation_id",
-        "event_id",
-        "job_id",
-        "message_id",
         "operation_id",
         "request_id",
         "span_id",
-        "task_id",
         "trace_id",
         "unique_id",
     }
@@ -44,14 +60,14 @@ _RAW_SCHEMA_SUFFIXES = ("Config", "Credentials", "Settings")
 class _IdRole:
     name: str
     annotation: ast.expr
-    raw_string: bool
+    raw_primitive: bool
 
 
 class PreferNominalIdTypes(Rule):
     id: str = "prefer-nominal-id-types"
     code: str = "SARJ093"
     description: str = (
-        "A production boundary with multiple ID-shaped roles should use nominal ID types, not primitive strings."
+        "A production boundary with multiple ID-shaped roles should use nominal ID types, not primitive carriers."
     )
 
     @override
@@ -77,11 +93,11 @@ class PreferNominalIdTypes(Rule):
             for descendant in ast.walk(candidate)
             if descendant is not candidate
         }
-        for node in walk(tree):
+        for node in _boundary_nodes(tree):
             if node in exempt_schema_nodes:
                 continue
             roles = _boundary_roles(node)
-            raw = [role for role in roles if role.raw_string]
+            raw = [role for role in roles if role.raw_primitive]
             if not raw or len({role.name for role in roles}) < _MIN_ID_ROLES:
                 continue
             first = raw[0]
@@ -95,7 +111,7 @@ class PreferNominalIdTypes(Rule):
                     col=first.annotation.col_offset + 1,
                     code=self.code,
                     message=(
-                        f"{names} are multiple ID-shaped roles at one boundary, but at least one uses primitive `str`; "
+                        f"{names} are multiple ID-shaped roles at one boundary, but at least one uses a non-nominal ID carrier; "
                         "introduce or reuse `NewType` identifier types and propagate them through the boundary."
                     ),
                 )
@@ -108,6 +124,10 @@ def _boundary_roles(node: ast.AST) -> list[_IdRole]:
         if node.name.startswith("_") and node.name != "__init__":
             return []
         arguments = [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
+        if node.args.vararg is not None:
+            arguments.append(node.args.vararg)
+        if node.args.kwarg is not None:
+            arguments.append(node.args.kwarg)
         return [role for argument in arguments if (role := _role(argument.arg, argument.annotation)) is not None]
     if isinstance(node, ast.ClassDef):
         if _is_raw_schema_class(node):
@@ -121,15 +141,29 @@ def _boundary_roles(node: ast.AST) -> list[_IdRole]:
     return []
 
 
+def _boundary_nodes(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef]:
+    """Return module functions, classes, and direct methods—not nested implementation closures."""
+    result: list[ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef] = []
+    for statement in tree.body:
+        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            result.append(statement)
+        elif isinstance(statement, ast.ClassDef):
+            result.append(statement)
+            result.extend(
+                member for member in statement.body if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef))
+            )
+    return result
+
+
 def _role(name: str, annotation: ast.expr | None, *, allow_bare_id: bool = False) -> _IdRole | None:
     if annotation is None or name in _OPERATIONAL_IDS:
         return None
     if not (name.endswith(("_id", "_ids")) or (allow_bare_id and name == "id")):
         return None
-    raw_string = _is_raw_string_id(annotation)
-    if not raw_string and not _is_nominal_id(annotation):
+    raw_primitive = _is_raw_primitive_id(annotation)
+    if not raw_primitive and not _is_nominal_id(annotation):
         return None
-    return _IdRole(name=name, annotation=annotation, raw_string=raw_string)
+    return _IdRole(name=name, annotation=annotation, raw_primitive=raw_primitive)
 
 
 def _qualified_tail(node: ast.expr) -> str:
@@ -148,18 +182,32 @@ def _is_external_adapter_path(path: Path) -> bool:
     parts = {part.lower() for part in path.parts}
     return (
         "providers" in parts
+        or ("adapters" in parts and ("models" in parts or path.name == "models.py"))
         or "integration" in parts
         or ("integrations" in parts and ("models" in parts or path.name == "models.py"))
     )
 
 
-def _is_raw_string_id(annotation: ast.expr) -> bool:
+def _stringized_annotation(annotation: ast.expr) -> ast.expr | None:
+    if not isinstance(annotation, ast.Constant) or not isinstance(annotation.value, str):
+        return None
+    try:
+        return ast.parse(annotation.value, mode="eval").body
+    except SyntaxError:
+        return None
+
+
+def _is_raw_primitive_id(annotation: ast.expr) -> bool:
+    if (parsed := _stringized_annotation(annotation)) is not None:
+        return _is_raw_primitive_id(parsed)
     if isinstance(annotation, ast.Name):
-        return annotation.id == "str"
+        return annotation.id in {"UUID", "int", "str"}
+    if isinstance(annotation, ast.Attribute):
+        return annotation.attr == "UUID"
     if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
         members = _flatten_union(annotation)
-        return any(_is_raw_string_id(member) for member in members) and all(
-            _is_raw_string_id(member) or _is_nominal_id(member) or _is_none(member) for member in members
+        return any(_is_raw_primitive_id(member) for member in members) and all(
+            _is_raw_primitive_id(member) or _is_nominal_id(member) or _is_none(member) for member in members
         )
     if not isinstance(annotation, ast.Subscript):
         return False
@@ -168,14 +216,22 @@ def _is_raw_string_id(annotation: ast.expr) -> bool:
         return (
             isinstance(annotation.slice, ast.Tuple)
             and bool(annotation.slice.elts)
-            and _is_raw_string_id(annotation.slice.elts[0])
+            and _is_raw_primitive_id(annotation.slice.elts[0])
+        )
+    if wrapper in {"Tuple", "tuple"} and isinstance(annotation.slice, ast.Tuple):
+        elements = annotation.slice.elts
+        return (
+            len(elements) == _VARIADIC_TUPLE_ARITY
+            and isinstance(elements[1], ast.Constant)
+            and elements[1].value is Ellipsis
+            and _is_raw_primitive_id(elements[0])
         )
     if wrapper in _TRANSPARENT_WRAPPERS:
-        return _is_raw_string_id(annotation.slice)
+        return _is_raw_primitive_id(annotation.slice)
     if wrapper in _UNION_WRAPPERS:
         members = list(annotation.slice.elts) if isinstance(annotation.slice, ast.Tuple) else [annotation.slice]
-        return any(_is_raw_string_id(member) for member in members) and all(
-            _is_raw_string_id(member) or _is_nominal_id(member) or _is_none(member) for member in members
+        return any(_is_raw_primitive_id(member) for member in members) and all(
+            _is_raw_primitive_id(member) or _is_nominal_id(member) or _is_none(member) for member in members
         )
     return False
 
@@ -193,6 +249,8 @@ def _is_none(annotation: ast.expr) -> bool:
 
 
 def _is_nominal_id(annotation: ast.expr) -> bool:
+    if (parsed := _stringized_annotation(annotation)) is not None:
+        return _is_nominal_id(parsed)
     if isinstance(annotation, (ast.Name, ast.Attribute)):
         tail = _qualified_tail(annotation)
         return tail.endswith(("Id", "ID"))
@@ -202,6 +260,14 @@ def _is_nominal_id(annotation: ast.expr) -> bool:
             _is_nominal_id(member) or _is_none(member) for member in members
         )
     if isinstance(annotation, ast.Subscript) and _qualified_tail(annotation.value) in _TRANSPARENT_WRAPPERS:
+        if _qualified_tail(annotation.value) in {"Tuple", "tuple"} and isinstance(annotation.slice, ast.Tuple):
+            elements = annotation.slice.elts
+            return (
+                len(elements) == _VARIADIC_TUPLE_ARITY
+                and isinstance(elements[1], ast.Constant)
+                and elements[1].value is Ellipsis
+                and _is_nominal_id(elements[0])
+            )
         return _is_nominal_id(annotation.slice)
     if (
         isinstance(annotation, ast.Subscript)

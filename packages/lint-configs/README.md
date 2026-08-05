@@ -127,7 +127,7 @@ Makefile are intentionally thin adapters rather than a second implementation:
 
 ```bash
 sarj-standards maintain setup --check
-sarj-standards maintain release check-tag typescript-v9.13.1
+sarj-standards maintain release check-tag typescript-v9.14.0
 sarj-standards maintain release lock-age packages/typescript/package-lock.json --exclude-file .github/release-age-exclusions.txt
 sarj-standards maintain release typescript check
 sarj-standards maintain release publish typescript
@@ -181,6 +181,12 @@ an explicit per-rule metadata change after corpus calibration, never a global
 warning-to-error rewrite. The new constructor and shadcn checks are likewise
 warnings, and shadcn guidance exists only in the application profile, outside
 tests, fixtures, and design-system implementation directories.
+
+`SARJ303` warns when a remote `uses:` entry under `.github/workflows` is pinned
+to a tag, branch, expression, or container tag. Pin Marketplace actions and
+reusable workflows to a full 40-character commit SHA, and container actions to
+a full `sha256` digest. Local `./` actions remain valid. The rule is warning-only
+for its first release and supports a local preceding `# sarj-noqa: SARJ303`.
 
 Generated or intentionally instructional config can be excluded explicitly;
 there is no blanket directory exemption:

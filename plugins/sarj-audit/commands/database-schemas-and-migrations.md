@@ -2,10 +2,6 @@
 
 Audit schema and migration safety using the shared [audit protocol](../README.md#audit-protocol).
 
-## Automated baseline
-
-Run the applicable SQL rules: `idempotent-ddl`, `index-concurrently`, `add-constraint-not-valid`, `no-pg-enum`, `require-fk-index`, `require-lock-timeout`, `enforce-timestamptz`, `prefer-text-over-varchar`, `prefer-jsonb`, and `prefer-uuidv7-default`.
-
 ## Judgment checks
 
 - Destructive or table-rewriting changes without a staged rollout, safe backfill, compatibility window, and rollback plan.

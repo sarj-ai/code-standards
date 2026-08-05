@@ -17,6 +17,7 @@ import noInsecureRandomId from "./rules/no-insecure-random-id.js";
 import noJsonStringifyError from "./rules/no-json-stringify-error.js";
 import noLogOnlyCatch from "./rules/no-log-only-catch.js";
 import noLongComment from "./rules/no-long-comment.js";
+import noGenericSingleExportModule from "./rules/no-generic-single-export-module.js";
 import noOffsetPagination from "./rules/no-offset-pagination.js";
 import noPositionalTupleReturn from "./rules/no-positional-tuple-return.js";
 import noRawEnv from "./rules/no-raw-env.js";
@@ -64,6 +65,7 @@ import requireInterfaceForInjectedService from "./rules/require-interface-for-in
 import requireStaticNextMatcher from "./rules/require-static-next-matcher.js";
 import requireZodFormValidation from "./rules/require-zod-form-validation.js";
 import storeInsertRequiresOnConflict from "./rules/store-insert-requires-on-conflict.js";
+import stepdown from "./rules/stepdown.js";
 import zodNamingConvention from "./rules/zod-naming-convention.js";
 import { renamedRules } from "./rules/_renames.js";
 import { retiredRules } from "./rules/_retired.js";
@@ -84,6 +86,7 @@ const rules = {
   "no-json-stringify-error": noJsonStringifyError,
   "no-log-only-catch": noLogOnlyCatch,
   "no-long-comment": noLongComment,
+  "no-generic-single-export-module": noGenericSingleExportModule,
   "no-offset-pagination": noOffsetPagination,
   "no-positional-tuple-return": noPositionalTupleReturn,
   "no-raw-env": noRawEnv,
@@ -131,12 +134,13 @@ const rules = {
   "require-static-next-matcher": requireStaticNextMatcher,
   "require-zod-form-validation": requireZodFormValidation,
   "store-insert-requires-on-conflict": storeInsertRequiresOnConflict,
+  "stepdown": stepdown,
   "zod-naming-convention": zodNamingConvention,
 };
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "9.13.1",
+  version: "9.14.0",
 } as const;
 
 /** Rules registered for application-profile configs but intentionally absent from general presets. */
@@ -161,6 +165,7 @@ const recommendedRules = {
   "@sarj/no-json-stringify-error": "warn",
   "@sarj/no-log-only-catch": "warn",
   "@sarj/no-long-comment": "warn",
+  "@sarj/no-generic-single-export-module": "warn",
   "@sarj/no-offset-pagination": "warn",
   "@sarj/no-positional-tuple-return": "warn",
   "@sarj/no-repeated-string-literal": "warn",
@@ -202,6 +207,7 @@ const recommendedRules = {
   "@sarj/require-static-next-matcher": "error",
   "@sarj/require-zod-form-validation": "error",
   "@sarj/store-insert-requires-on-conflict": "warn",
+  "@sarj/stepdown": "warn",
   "@sarj/zod-naming-convention": "warn",
 } as const;
 
@@ -221,6 +227,7 @@ const strictRules = {
   "@sarj/no-json-stringify-error": "error",
   "@sarj/no-log-only-catch": "error",
   "@sarj/no-long-comment": "error",
+  "@sarj/no-generic-single-export-module": "warn",
   "@sarj/no-offset-pagination": "error",
   "@sarj/no-positional-tuple-return": "error",
   "@sarj/no-raw-env": "error",
@@ -265,6 +272,7 @@ const strictRules = {
   "@sarj/require-static-next-matcher": "error",
   "@sarj/require-zod-form-validation": "error",
   "@sarj/store-insert-requires-on-conflict": "error",
+  "@sarj/stepdown": "warn",
   "@sarj/zod-naming-convention": "error",
 } as const;
 

@@ -2,10 +2,6 @@
 
 Audit removable and duplicated code using the shared [audit protocol](../README.md#audit-protocol).
 
-## Automated baseline
-
-Use repository-configured tools first. Typical checks are Ruff `F401`, `F841`, and `ERA001`; TypeScript unused/unreachable checks; Vulture; Knip; jscpd; and Sarj `duplicate-test-body`, `no-unreachable-after-terminal`, and `single-public-export`.
-
 ## Judgment checks
 
 - Unreferenced modules, exports, branches, dependencies, feature flags, and compatibility paths.

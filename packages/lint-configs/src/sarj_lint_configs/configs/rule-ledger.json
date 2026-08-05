@@ -34,6 +34,7 @@
       "no-dynamic-sql",
       "no-enum",
       "no-fat-try-blocks",
+      "no-generic-single-export-module",
       "no-hand-rolled-sleep",
       "no-hand-rolled-spinner",
       "no-insecure-random-id",
@@ -85,6 +86,7 @@
       "require-interface-for-injected-service",
       "require-static-next-matcher",
       "require-zod-form-validation",
+      "stepdown",
       "store-insert-requires-on-conflict",
       "zod-naming-convention"
     ],
@@ -191,7 +193,8 @@
     "text": [
       "commented-out-config",
       "config-comment-wall",
-      "ephemeral-ai-artifact"
+      "ephemeral-ai-artifact",
+      "unpinned-github-action"
     ]
   },
   "codes": {
@@ -298,7 +301,8 @@
     "text": [
       "SARJ300",
       "SARJ301",
-      "SARJ302"
+      "SARJ302",
+      "SARJ303"
     ]
   },
   "retired": [

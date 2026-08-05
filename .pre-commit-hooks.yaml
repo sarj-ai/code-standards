@@ -6,7 +6,7 @@
   # New rules can report without blocking for one release. Pre-commit normally
   # hides successful-hook output, so verbose keeps those warnings visible.
   verbose: true
-  additional_dependencies: ["sarj-lint-configs==0.49.1"]
+  additional_dependencies: ["sarj-lint-configs==0.50.0"]
 
 - id: sarj-no-sequential-await
   name: 'sarj-lint: no sequential `await` in for-loop'

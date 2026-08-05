@@ -2,10 +2,6 @@
 
 Audit separation of concerns and dependency direction using the shared [audit protocol](../README.md#audit-protocol). This command incorporates the former dependency-injection audit.
 
-## Automated baseline
-
-Run applicable complexity checks plus Sarj `require-interface-for-injected-service` and `require-port-for-service`.
-
 ## Judgment checks
 
 - Handlers or UI components containing business policy, persistence queries, or direct third-party orchestration.

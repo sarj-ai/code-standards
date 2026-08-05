@@ -112,6 +112,13 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
     expect(testConfig.rules?.["no-await-in-loop"]?.[0]).toBe(0);
     expect(plainConfig.rules?.["@typescript-eslint/require-await"]?.[0]).toBe(2);
     expect(plainConfig.rules?.["no-await-in-loop"]?.[0]).toBe(2);
+    expect(plainConfig.rules?.["promise/prefer-await-to-then"]?.[0]).toBe(1);
+    expect(plainConfig.rules?.["@typescript-eslint/member-ordering"]?.[0]).toBe(1);
+    expect(plainConfig.rules?.["perfectionist/sort-classes"]?.[0]).toBe(0);
+    expect(plainConfig.rules?.["@typescript-eslint/no-explicit-any"]?.[0]).toBe(2);
+    expect(plainConfig.rules?.["@typescript-eslint/consistent-type-assertions"]?.[0]).toBe(2);
+    expect(plainConfig.rules?.["simple-import-sort/imports"]?.[0]).toBe(2);
+    expect(plainConfig.rules?.["simple-import-sort/exports"]?.[0]).toBe(2);
 
     // Component identifiers are PascalCase, while component filenames remain
     // kebab-case under the shared filename policy.

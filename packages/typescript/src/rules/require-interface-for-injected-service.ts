@@ -26,6 +26,9 @@ const HTTP_TRANSPORT_TYPE_RE = /^(?:KyInstance|AxiosInstance|Session)$/;
 const BUILTIN_CONTAINER_TYPE_RE =
   /^(?:Record|Map|WeakMap|Set|WeakSet|Array|ReadonlyArray|ReadonlyMap|ReadonlySet|Promise|Partial|Required|Readonly|Pick|Omit|Exclude|Extract|NonNullable|Awaited|Parameters|ReturnType|InstanceType)$/;
 
+/** Nominal leaf values are constructor data, not collaborators with swappable behavior. */
+const VALUE_TYPE_RE = /^(?:ArrayBuffer|Blob|Buffer|Date|RegExp|URL|URLSearchParams)$/;
+
 const TRANSPORT_WRAPPER_NAME_RE = /Client$/;
 
 /** Router-factory call that marks HTTP wiring. */
@@ -42,10 +45,37 @@ interface Collaborator {
   readonly display: string;
 }
 
-/** The class's own declaration is what `export`s it; anonymous defaults have no name to report. */
-const isExportedClass = (node: TSESTree.ClassDeclaration): boolean =>
+const detachedValueExports = (program: TSESTree.Program): ReadonlySet<string> => {
+  const names = new Set<string>();
+  for (const statement of program.body) {
+    if (
+      statement.type === AST_NODE_TYPES.ExportNamedDeclaration &&
+      statement.declaration === null &&
+      statement.source === null &&
+      statement.exportKind !== "type"
+    ) {
+      for (const specifier of statement.specifiers) {
+        if (specifier.exportKind !== "type") names.add(specifier.local.name);
+      }
+    } else if (
+      statement.type === AST_NODE_TYPES.ExportDefaultDeclaration &&
+      statement.declaration.type === AST_NODE_TYPES.Identifier
+    ) {
+      names.add(statement.declaration.name);
+    } else if (
+      statement.type === AST_NODE_TYPES.TSExportAssignment &&
+      statement.expression.type === AST_NODE_TYPES.Identifier
+    ) {
+      names.add(statement.expression.name);
+    }
+  }
+  return names;
+};
+
+const isExportedClass = (node: TSESTree.ClassDeclaration, detached: ReadonlySet<string>): boolean =>
   node.parent.type === AST_NODE_TYPES.ExportNamedDeclaration ||
-  node.parent.type === AST_NODE_TYPES.ExportDefaultDeclaration;
+  node.parent.type === AST_NODE_TYPES.ExportDefaultDeclaration ||
+  (node.id !== null && detached.has(node.id.name));
 
 /** `catalog.Client` -> `"catalog.Client"`; a nested qualifier is flattened the same way. */
 const qualifiedName = (name: TSESTree.EntityName): string =>
@@ -59,9 +89,16 @@ const qualifiedName = (name: TSESTree.EntityName): string =>
 const readTypeReference = (
   annotation: TSESTree.TypeNode | undefined,
 ): { readonly typeName: string; readonly display: string } | null => {
-  // A bare type reference is the only shape that names a nominal collaborator.
-  // A union, an array, or a function type is data or a callback, never something
-  // a consumer would want to swap wholesale.
+  // A bare type reference, optionally nullable, names a nominal collaborator.
+  // Arrays, functions, and multi-type unions are data/callbacks rather than a
+  // single implementation a consumer would swap wholesale.
+  if (annotation?.type === AST_NODE_TYPES.TSUnionType) {
+    const members = annotation.types.filter((member) =>
+      member.type !== AST_NODE_TYPES.TSUndefinedKeyword &&
+      member.type !== AST_NODE_TYPES.TSNullKeyword,
+    );
+    annotation = members.length === 1 ? members[0] : undefined;
+  }
   if (annotation === undefined || annotation.type !== AST_NODE_TYPES.TSTypeReference) return null;
   const { typeName } = annotation;
   const rightmost =
@@ -247,18 +284,38 @@ const readConstructor = (
   let constructedFields = 0;
 
   if (body !== null && body !== undefined) {
-    for (const statement of body.body) {
-      if (statement.type !== AST_NODE_TYPES.ExpressionStatement) continue;
-      const expression = statement.expression;
+    const pending: TSESTree.Node[] = [...body.body];
+    while (pending.length > 0) {
+      const current = pending.pop();
+      if (current === undefined) break;
       if (
-        expression.type !== AST_NODE_TYPES.AssignmentExpression ||
+        current.type === AST_NODE_TYPES.ArrowFunctionExpression ||
+        current.type === AST_NODE_TYPES.FunctionExpression ||
+        current.type === AST_NODE_TYPES.FunctionDeclaration ||
+        current.type === AST_NODE_TYPES.ClassExpression ||
+        current.type === AST_NODE_TYPES.ClassDeclaration
+      ) continue;
+      const expression = current.type === AST_NODE_TYPES.ExpressionStatement ? current.expression : null;
+      if (
+        expression?.type !== AST_NODE_TYPES.AssignmentExpression ||
         expression.operator !== "=" ||
         expression.left.type !== AST_NODE_TYPES.MemberExpression ||
         expression.left.object.type !== AST_NODE_TYPES.ThisExpression
       ) {
+        for (const key of Object.keys(current) as (keyof TSESTree.Node)[]) {
+          if (key === "parent") continue;
+          const value = current[key];
+          for (const child of (Array.isArray(value) ? value : [value]) as unknown[]) {
+            if (child !== null && typeof child === "object" && typeof (child as { type?: unknown }).type === "string") {
+              pending.push(child as TSESTree.Node);
+            }
+          }
+        }
         continue;
       }
-      const source = expression.right;
+      const source = expression.right.type === AST_NODE_TYPES.TSNonNullExpression
+        ? expression.right.expression
+        : expression.right;
       if (source.type === AST_NODE_TYPES.NewExpression) {
         constructedFields += 1;
       } else if (source.type === AST_NODE_TYPES.Identifier) {
@@ -287,6 +344,7 @@ const readConstructor = (
       // rejects wearing a nominal name.
       if (typeParameters.has(reference.typeName)) continue;
       if (BUILTIN_CONTAINER_TYPE_RE.test(reference.typeName)) continue;
+      if (VALUE_TYPE_RE.test(reference.typeName)) continue;
       if (declared().functionAliases.has(reference.typeName)) continue;
       collaborators.push(reference);
     }
@@ -382,6 +440,16 @@ const isTransportWrapper = (
 const publicMethodNames = (body: TSESTree.ClassBody): string[] => {
   const names: string[] = [];
   for (const member of body.body) {
+    if (member.type === AST_NODE_TYPES.PropertyDefinition) {
+      if (member.static || member.accessibility === "private" || member.accessibility === "protected") continue;
+      if (
+        member.value?.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
+        member.value?.type !== AST_NODE_TYPES.FunctionExpression &&
+        member.typeAnnotation?.typeAnnotation.type !== AST_NODE_TYPES.TSFunctionType
+      ) continue;
+      names.push(member.key.type === AST_NODE_TYPES.Identifier ? member.key.name : "…");
+      continue;
+    }
     if (member.type !== AST_NODE_TYPES.MethodDefinition) continue;
     if (member.kind !== "method" || member.static) continue;
     if (member.accessibility === "private" || member.accessibility === "protected") continue;
@@ -398,12 +466,12 @@ export default createRule<Options, MessageIds>({
     type: "suggestion",
     docs: {
       description:
-        "An exported service class with constructor-injected collaborators must implement an interface, so consumers depend on a port they can substitute instead of mocking the class.",
+        "An exported service class with constructor-injected collaborators should declare the interface its public callable surface implements.",
     },
     schema: [],
     messages: {
       requireInterface:
-        "`{{name}}` stores injected collaborator(s) ({{deps}}) but implements no interface, so every consumer depends on this concrete class and can only be tested by mocking it. Declare an interface with its public method signature(s) ({{methods}}) and `class {{name}} implements <Interface>`.",
+        "`{{name}}` stores injected collaborator(s) ({{deps}}) but declares no service interface. Extract its public callable surface ({{methods}}) into a port and declare `class {{name}} implements <Interface>` so consumers can inject that port.",
     },
   },
   defaultOptions: [],
@@ -415,20 +483,22 @@ export default createRule<Options, MessageIds>({
     // One pass over the module's top level, and only for a file that actually
     // has an options-object constructor to read.
     let declaredTypes: FileTypeIndex | null = null;
+    const detachedExports = detachedValueExports(context.sourceCode.ast);
     const objectTypes = (): FileTypeIndex =>
       (declaredTypes ??= fileTypeIndex(context.sourceCode.ast));
 
     return {
       ClassDeclaration(node: TSESTree.ClassDeclaration): void {
         if (node.id === null) return;
-        if (!isExportedClass(node)) return;
+        if (!isExportedClass(node, detachedExports)) return;
         // The port itself must never fire, and a class that extends anything —
         // an abstract base, a framework class, `Error` — already has one.
         if (node.abstract === true) return;
         if (node.superClass !== null) return;
         if (node.implements.length > 0) return;
-        // A framework that instantiates by class token (NestJS `@Injectable()`)
-        // makes the class its own contract.
+        // Decorated classes are framework-owned construction surfaces. Syntax
+        // alone cannot reliably distinguish DI decorators (including aliases)
+        // from controllers, components, resolvers, scoped providers, and more.
         if (node.decorators.length > 0) return;
 
         const ctor = node.body.body.find(

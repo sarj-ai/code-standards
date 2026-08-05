@@ -13,13 +13,10 @@ type Options = readonly [];
 
 const MIN_ELEMENTS = 2;
 
-/** The pair length an accessor/mutator tuple has. */
-const ACCESSOR_PAIR_LENGTH = 2;
-
 /** Type wrappers whose single type argument is the value actually returned. */
 const AWAITABLE_TYPES: ReadonlySet<string> = new Set(["Promise", "PromiseLike", "Awaited"]);
 
-/** The tuple type a return annotation resolves to, unwrapping `Promise<...>`. */
+/** The first boundary tuple in a return annotation, unwrapping transparent wrappers and unions. */
 function tupleReturnType(node: TSESTree.TypeNode): TSESTree.TSTupleType | null {
   if (node.type === AST_NODE_TYPES.TSTupleType) {
     return node;
@@ -29,46 +26,19 @@ function tupleReturnType(node: TSESTree.TypeNode): TSESTree.TSTupleType | null {
     node.typeName.type === AST_NODE_TYPES.Identifier &&
     AWAITABLE_TYPES.has(node.typeName.name)
   ) {
-    const argument = node.typeArguments?.params[0];
+    const argument = node.typeArguments?.params.at(0);
     return argument === undefined ? null : tupleReturnType(argument);
   }
+  if (node.type === AST_NODE_TYPES.TSTypeOperator && node.operator === "readonly") {
+    return node.typeAnnotation === undefined ? null : tupleReturnType(node.typeAnnotation);
+  }
+  if (node.type === AST_NODE_TYPES.TSUnionType || node.type === AST_NODE_TYPES.TSIntersectionType) {
+    for (const member of node.types) {
+      const tuple = tupleReturnType(member);
+      if (tuple !== null) return tuple;
+    }
+  }
   return null;
-}
-
-/** Source text with all whitespace runs collapsed, for structural comparison. */
-function normalizedText(sourceCode: { getText: (node: TSESTree.Node) => string }, node: TSESTree.Node): string {
-  return sourceCode.getText(node).replaceAll(/\s+/g, " ").trim();
-}
-
-/**
- * True when the tuple is one of the permitted shapes: variadic, labeled, tagged
- * by a leading literal type, or structurally homogeneous.
- */
-function isPermittedTuple(
-  tuple: TSESTree.TSTupleType,
-  sourceCode: { getText: (node: TSESTree.Node) => string },
-): boolean {
-  const elements = tuple.elementTypes;
-  if (elements.length < MIN_ELEMENTS) {
-    return true;
-  }
-  if (elements.some((element) => element.type === AST_NODE_TYPES.TSRestType)) {
-    return true;
-  }
-  if (elements.some((element) => element.type === AST_NODE_TYPES.TSNamedTupleMember)) {
-    return true;
-  }
-  if (elements[0]?.type === AST_NODE_TYPES.TSLiteralType) {
-    return true;
-  }
-  if (
-    elements.length === ACCESSOR_PAIR_LENGTH &&
-    elements.some((element) => element.type === AST_NODE_TYPES.TSFunctionType)
-  ) {
-    return true;
-  }
-  const texts = new Set(elements.map((element) => normalizedText(sourceCode, element)));
-  return texts.size === 1;
 }
 
 /** The declared name of a function-ish node, or null for an anonymous one. */
@@ -201,12 +171,12 @@ export default createRule<Options, MessageIds>({
     type: "suggestion",
     docs: {
       description:
-        "Disallow returning a positional tuple of distinct fields from an exported function; return a named object so call sites cannot mismatch slots.",
+        "Disallow returning a multi-field tuple from an exported function; return a named object so call sites cannot mismatch slots.",
     },
     schema: [],
     messages: {
       noPositionalTupleReturn:
-        "Exported `{{name}}` returns a positional {{count}}-tuple, so every call site re-invents the field names and can disagree. Return a named object (or label the tuple members) instead.",
+        "Exported `{{name}}` returns a {{count}}-field tuple, so consumers depend on positional slots that can be reordered silently. Return a named object instead.",
     },
   },
   defaultOptions: [],
@@ -223,11 +193,11 @@ export default createRule<Options, MessageIds>({
         return;
       }
       const tuple = tupleReturnType(annotation);
-      if (tuple === null || isPermittedTuple(tuple, context.sourceCode)) {
+      if (tuple === null || tuple.elementTypes.length < MIN_ELEMENTS) {
         return;
       }
       const name = functionName(node);
-      if (name === null || name.startsWith("_") || /^use[A-Z]/.test(name)) {
+      if (name === null) {
         return;
       }
       if (!isExported(node, specifierExports)) {

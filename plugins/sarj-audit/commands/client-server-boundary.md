@@ -2,10 +2,6 @@
 
 Audit misplaced work across client, server, and database layers using the shared [audit protocol](../README.md#audit-protocol).
 
-## Automated baseline
-
-Run applicable rules: `no-client-side-data-fetching`, `prefer-server-actions`, `no-unnecessary-use-client`, `no-raw-fetch-outside-clients`, `no-offset-pagination`, and `no-aggregation-in-store-query`.
-
 ## Judgment checks
 
 - Data loading, authorization, secret-bearing work, or stable computation performed in client code when the framework supports a server boundary.

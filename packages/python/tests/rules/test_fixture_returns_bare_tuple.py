@@ -55,12 +55,32 @@ def test_skips_non_test_paths(path: str):
 def test_flags_every_fixture_spelling(decorator: str):
     src = f"""
 import pytest
+import pytest_asyncio
+from pytest import fixture
 
 {decorator}
 def pair():
     return a, b
 """
     assert len(_check(src)) == 1
+
+
+def test_unimported_or_unrelated_fixture_decorators_are_ignored():
+    src = """
+class framework:
+    @staticmethod
+    def fixture(fn):
+        return fn
+
+@fixture
+def first():
+    return a, b
+
+@framework.fixture
+def second():
+    return a, b
+"""
+    assert _check(src) == []
 
 
 def test_flags_yielded_bare_tuple():
@@ -255,12 +275,7 @@ def a_fix(flag):
     assert [d.line for d in diags] == sorted(d.line for d in diags)
 
 
-# FP guard from a first-party review regression: distinct static types make a  #
-# reorder a type error, which is the same protection a NamedTuple buys.        #
-
-
-def test_distinctly_typed_tuple_annotation_is_exempt():
-    # A first-party fixture typed this way — swapping these is a pyright error.
+def test_distinctly_typed_tuple_annotation_still_requires_named_fields():
     src = """
 import pytest
 
@@ -268,7 +283,7 @@ import pytest
 def setup_orgs_and_users() -> tuple[PsqlOrganizationStore, PsqlUserStore]:
     return org_store, user_store
 """
-    assert _check(src) == []
+    assert len(_check(src)) == 1
 
 
 def test_repeated_type_in_annotation_still_fires():
@@ -307,7 +322,7 @@ def names() -> tuple[str, ...]:
     assert len(_check(src)) == 1
 
 
-def test_typing_tuple_alias_is_also_recognised():
+def test_typing_tuple_annotation_still_requires_named_fields():
     src = """
 import pytest
 import typing
@@ -316,4 +331,86 @@ import typing
 def pair() -> typing.Tuple[OrgStore, UserStore]:
     return org, user
 """
+    assert len(_check(src)) == 1
+
+
+def test_tuple_return_annotation_catches_returned_alias():
+    src = """
+import pytest
+
+@pytest.fixture
+def pair() -> tuple[OrgStore, UserStore]:
+    return existing_pair
+"""
+    assert len(_check(src)) == 1
+
+
+def test_generator_tuple_annotation_catches_yielded_alias():
+    src = """
+import pytest
+from collections.abc import Iterator
+
+@pytest.fixture
+def pair() -> Iterator[tuple[OrgStore, UserStore]]:
+    yield existing_pair
+"""
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize("wrapper", ["Iterable", "Iterator", "AsyncIterable", "AsyncIterator"])
+def test_collection_of_tuples_returned_as_a_value_is_not_the_fixture_tuple(wrapper: str):
+    src = f"""
+import pytest
+
+@pytest.fixture
+def rows() -> {wrapper}[tuple[OrgStore, UserStore]]:
+    return existing_rows
+"""
     assert _check(src) == []
+
+
+def test_stringized_tuple_annotation_catches_returned_alias():
+    src = """
+import pytest
+
+@pytest.fixture
+def pair() -> "tuple[OrgStore, UserStore]":
+    return existing_pair
+"""
+    assert len(_check(src)) == 1
+
+
+def test_local_tuple_type_alias_catches_returned_alias():
+    src = """
+import pytest
+
+Pair = tuple[OrgStore, UserStore]
+
+@pytest.fixture
+def pair() -> Pair:
+    return existing_pair
+"""
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize("module", ["pytest", "pytest_asyncio"])
+def test_imported_fixture_alias_is_recognized(module: str):
+    src = f"""
+from {module} import fixture as fx
+
+@fx
+def pair() -> tuple[OrgStore, UserStore]:
+    return existing_pair
+"""
+    assert len(_check(src)) == 1
+
+
+def test_generated_fixture_file_is_exempt():
+    src = """
+import pytest
+
+@pytest.fixture
+def pair() -> tuple[OrgStore, UserStore]:
+    return org, user
+"""
+    assert _check(src, path="python/app/tests/generated/fixtures.py") == []

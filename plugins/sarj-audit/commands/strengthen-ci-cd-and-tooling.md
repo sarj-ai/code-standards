@@ -1,10 +1,6 @@
 # CI/CD and tooling
 
-Audit delivery and toolchain reliability using the shared [audit protocol](../README.md#audit-protocol). General lint-rule coverage belongs in `linting`; dead code belongs in `dead-and-duplicate-code`.
-
-## Automated baseline
-
-Run repository-configured validators such as actionlint, zizmor, Hadolint, shellcheck, TFLint, `terraform validate`, lockfile consistency checks, and language type/lint/test commands.
+Audit delivery and toolchain reliability using the shared [audit protocol](../README.md#audit-protocol). General lint-rule coverage belongs in `lint-rule-generator`; dead code belongs in `dead-and-duplicate-code`.
 
 ## Judgment checks
 

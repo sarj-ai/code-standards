@@ -32,6 +32,17 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         }
       `,
     },
+    {
+      name: "keeps arbitrary framework-decorated classes conservative",
+      filename: SRC,
+      code: `
+        @sealed
+        export class RequestHandler {
+          constructor(private readonly store: TaskStore) {}
+          handle(): void {}
+        }
+      `,
+    },
     // The port itself. `abstract class X` must never fire.
     {
       filename: SRC,
@@ -142,16 +153,6 @@ ruleTester.run("require-interface-for-injected-service", rule, {
           protected other(): void {}
           static make(): void {}
           #secret(): void {}
-        }
-      `,
-    },
-    {
-      name: "ignores arrow-property APIs because they are not declared methods",
-      filename: SRC,
-      code: `
-        export class RequestHandler {
-          constructor(private readonly store: TaskStore) {}
-          handle = async (): Promise<void> => this.store.run();
         }
       `,
     },
@@ -775,6 +776,44 @@ ruleTester.run("require-interface-for-injected-service", rule, {
   ],
 
   invalid: [
+    {
+      name: "recognizes a nullable collaborator stored through a non-null assertion in control flow",
+      filename: SRC,
+      code: `
+        export class RequestHandler {
+          private readonly store: TaskStore;
+          constructor(store: TaskStore | undefined, enabled: boolean) {
+            if (enabled) this.store = store!;
+            else this.store = fallbackStore();
+          }
+          handle(): void {}
+        }
+      `,
+      errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }],
+    },
+    {
+      name: "counts public arrow properties as callable service surface",
+      filename: SRC,
+      code: `
+        export class RequestHandler {
+          constructor(private readonly store: TaskStore) {}
+          handle = async (): Promise<void> => this.store.run();
+        }
+      `,
+      errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }],
+    },
+    {
+      name: "recognizes a detached named export",
+      filename: SRC,
+      code: `
+        class RequestHandler {
+          constructor(private readonly store: TaskStore) {}
+          handle(): void {}
+        }
+        export { RequestHandler };
+      `,
+      errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }],
+    },
     // GROUND TRUTH — the origin case raised in review on a first-party repo,
     // verbatim in shape. Its sibling in the same directory tree does declare an
     // `ITaskTrackerService` port.

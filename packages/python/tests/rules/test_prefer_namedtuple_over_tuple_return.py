@@ -74,12 +74,6 @@ def test_fires_on_method():
     [
         "tuple[int, ...]",
         "tuple[str, ...]",
-        "tuple[int, int]",
-        "tuple[str, str]",
-        "tuple[str, str, str]",
-        "tuple[list[int], list[int]]",
-        'tuple[Literal["a", "b"], int]',
-        'tuple[Literal["both"], int, str]',
         "tuple[int]",
         "tuple[str]",
     ],
@@ -87,6 +81,27 @@ def test_fires_on_method():
 def test_does_not_fire_on_permitted_forms(annotation: str):
     diags = _check(f"def f() -> {annotation}: ...\n")
     assert diags == [], annotation
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        "tuple[int, int]",
+        "tuple[str, str]",
+        "tuple[str, str, str]",
+        "tuple[list[int], list[int]]",
+        'tuple[Literal["a", "b"], int]',
+        'tuple[Literal["both"], int, str]',
+        "tuple[int, str] | None",
+        "Optional[tuple[int, str]]",
+        "Union[None, tuple[int, str]]",
+        'Annotated[tuple[int, str], "pair"]',
+        "Awaitable[tuple[int, str]]",
+        "Coroutine[Any, Any, tuple[int, str]]",
+    ],
+)
+def test_fires_on_every_fixed_tuple_return_shape(annotation: str):
+    assert len(_check(f"def f() -> {annotation}: ...\n")) == 1
 
 
 def test_does_not_fire_on_bare_tuple():
@@ -136,7 +151,7 @@ def test_reports_indented_col():
 def test_multiple_sorted_by_line():
     src = "def a() -> tuple[int, str]: ...\ndef b() -> tuple[int, int]: ...\ndef c() -> tuple[bytes, str, None]: ...\n"
     diags = _check(src)
-    assert [d.line for d in diags] == [1, 3]
+    assert [d.line for d in diags] == [1, 2, 3]
 
 
 def test_empty_source():
@@ -414,3 +429,24 @@ def test_generated_source_is_exempt(header: str):
 
 def test_the_same_body_without_a_generated_header_still_fires():
     assert len(_check(_GENERATED_PROBE)) >= 1
+
+
+def test_stringized_fixed_tuple_return_still_fires():
+    src = """
+def pair() -> "tuple[str, int]":
+    return "a", 1
+"""
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "Pair = tuple[str, int]",
+        "Pair: TypeAlias = tuple[str, int]",
+        "type Pair = tuple[str, int]",
+    ],
+)
+def test_local_fixed_tuple_alias_still_fires(declaration: str):
+    src = f"{declaration}\n\ndef pair() -> Pair:\n    return 'a', 1\n"
+    assert len(_check(src)) == 1

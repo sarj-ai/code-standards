@@ -2,10 +2,6 @@
 
 Audit runtime race conditions and retry safety using the shared [audit protocol](../README.md#audit-protocol). Migration DDL belongs in `database-schemas-and-migrations`.
 
-## Automated baseline
-
-Run applicable `insert-requires-on-conflict`, `store-insert-requires-on-conflict`, `require-lock-timeout`, and database concurrency checks.
-
 ## Judgment checks
 
 - Check-then-insert/update sequences that are not protected by a unique constraint, atomic statement, transaction, or lock.

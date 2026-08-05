@@ -2,10 +2,6 @@
 
 Audit concurrency correctness and material performance problems using the shared [audit protocol](../README.md#audit-protocol).
 
-## Automated baseline
-
-Run applicable rules such as `no-sequential-await`, `no-silent-promise-catch`, `no-async-callback-in-wait-for`, `inefficient-string-concat-in-loop`, `no-string-concat-in-loop`, and configured async linters.
-
 ## Judgment checks
 
 - Blocking filesystem, network, subprocess, or database calls on an event loop.

@@ -2,10 +2,6 @@
 
 Audit clarity problems not already enforced by deterministic comment or file-ordering rules using the shared [audit protocol](../README.md#audit-protocol).
 
-## Automated baseline
-
-Run configured naming and complexity rules plus applicable `single-public-export`, `enforce-file-structure`, `zod-naming-convention`, and `stepdown` checks. Do not duplicate findings from comment rules.
-
 ## Judgment checks
 
 - Vague dumping-ground modules such as `utils`, `helpers`, or `common` that mix unrelated responsibilities.

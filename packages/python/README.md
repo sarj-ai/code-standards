@@ -10,7 +10,7 @@ uv tool install sarj-python-lint
 
 ```yaml
 - repo: https://github.com/sarj-ai/standards
-  rev: python-v0.47.1
+  rev: python-v0.48.0
   hooks:
     - id: sarj-no-sequential-await
     - id: sarj-inefficient-string-concat-in-loop

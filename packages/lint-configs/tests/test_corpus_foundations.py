@@ -211,6 +211,9 @@ def test_git_corpus_root_must_match_repository_top_level(monkeypatch: pytest.Mon
         return "/usr/bin/git"
 
     def run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        argv = _args[0]
+        if isinstance(argv, tuple) and "ls-files" in argv:
+            return subprocess.CompletedProcess(("git",), 0, "app.py\0")
         return completed
 
     monkeypatch.setattr(shutil, "which", which)
@@ -246,11 +249,50 @@ def test_git_corpus_ignores_ambient_repository_routing(monkeypatch: pytest.Monke
         assert isinstance(environment, dict)
         assert "GIT_DIR" not in environment
         assert "GIT_WORK_TREE" not in environment
-        return subprocess.CompletedProcess(("git",), 0, f"{corpus}\n{revision}\n")
+        argv = _args[0]
+        stdout = "app.py\0" if isinstance(argv, tuple) and "ls-files" in argv else f"{corpus}\n{revision}\n"
+        return subprocess.CompletedProcess(("git",), 0, stdout)
 
     monkeypatch.setattr(subprocess, "run", run)
 
     assert snapshot(source).revision == revision
+
+
+def test_git_corpus_selects_only_tracked_existing_files(tmp_path: Path) -> None:
+    if shutil.which("git") is None:
+        pytest.skip("git is required")
+    corpus = tmp_path / "repository"
+    corpus.mkdir()
+    tracked = corpus / "tracked.py"
+    tracked.write_text("VALUE = 1\n", encoding="utf-8")
+    (corpus / "generated.py").write_text("VALUE = 2\n", encoding="utf-8")
+    subprocess.run(("git", "init", "-q"), cwd=corpus, check=True)
+    subprocess.run(("git", "add", "tracked.py"), cwd=corpus, check=True)
+    subprocess.run(
+        ("git", "-c", "user.name=Standards", "-c", "user.email=standards@example.invalid", "commit", "-qm", "pin"),
+        cwd=corpus,
+        check=True,
+    )
+    revision = subprocess.run(
+        ("git", "rev-parse", "HEAD"),
+        cwd=corpus,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    unpinned = CorpusSource(
+        "tracked-only",
+        corpus,
+        CorpusKind.GIT,
+        _EMPTY_DIGEST,
+        ("**/*.py",),
+        revision=revision,
+    )
+
+    actual = snapshot(unpinned)
+
+    assert actual.files == 1
+    assert actual.bytes == tracked.stat().st_size
 
 
 def test_public_manifest_rejects_absolute_nonportable_roots(tmp_path: Path) -> None:

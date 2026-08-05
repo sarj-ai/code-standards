@@ -331,6 +331,12 @@ false-positive rate, relevant to any repo touching SQL). The two architectural
 rules are **`strict`-only**, since they need per-repo configuration to say
 anything useful.
 
+`no-generic-single-export-module` warns when a `utils`, `helpers`, `common`,
+`constants`, or similarly generic module has one runtime export that already
+provides a precise filename. Ambiguous re-exports, type-only modules,
+conventional framework filenames, tests, generated files, and CommonJS modules
+are excluded. It is warning-first while corpus evidence accumulates.
+
 ## Ported from `sarj_python_lint`
 
 Several rules are ports of the Python linter's SARJ rules, retuned for TypeScript. The false-positive tuning documented in the Python docstrings is ported with them — that tuning is the valuable part.
@@ -348,8 +354,9 @@ Several rules are ports of the Python linter's SARJ rules, retuned for TypeScrip
 | `no-fat-try-blocks` | SARJ007 | Over-broad `catch` handlers swallowing unrelated failures. |
 | `no-cors-wildcard-with-credentials` | SARJ008 | Credentialed cross-origin requests from any origin. |
 | `single-public-export` | SARJ022 | Modules with no single obvious entry point. |
+| `stepdown` | SARJ023 | A private helper placed above its only direct same-scope caller. Indirect references, callbacks, cycles, overloads, and multi-caller helpers are excluded. |
 | `prefer-string-literal-union` | SARJ006 | An open `string` where a closed set is intended. |
 
 Shared helpers live in `src/rules/_*.ts` (`_secret-names.ts`, `_sql.ts`, `_logging.ts`, `_paths.ts`, `_tailwind.ts`) so related rules cannot diverge on what counts as a secret, a SQL statement, a logging call, or a test file.
 
-Deliberately **not** ported: `no-unreachable-after-terminal` (SARJ010) is already covered by `allowUnreachableCode: false` in `@sarj/tsconfig` plus ESLint core `no-unreachable`; `no-aggregation-in-store-query` (SARJ020) assumes a Postgres-OLTP / columnar-mirror split that D1 does not have; `no-query-with-many-joins` (SARJ019), `stepdown` (SARJ023), `prefer-class-row`, `prefer-struct-over-namedtuple`, `prefer-timedelta-for-durations`, and `no-fstring-in-log` have no TypeScript defect class or target API; `prefer-str-enum` is covered by `prefer-string-literal-union` + `no-enum`.
+Deliberately **not** ported: `no-unreachable-after-terminal` (SARJ010) is already covered by `allowUnreachableCode: false` in `@sarj/tsconfig` plus ESLint core `no-unreachable`; `no-aggregation-in-store-query` (SARJ020) assumes a Postgres-OLTP / columnar-mirror split that D1 does not have; `no-query-with-many-joins` (SARJ019), `prefer-class-row`, `prefer-struct-over-namedtuple`, `prefer-timedelta-for-durations`, and `no-fstring-in-log` have no TypeScript defect class or target API; `prefer-str-enum` is covered by `prefer-string-literal-union` + `no-enum`.

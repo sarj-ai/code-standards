@@ -2,10 +2,6 @@
 
 Audit authentication and authorization defects using the shared [audit protocol](../README.md#audit-protocol).
 
-## Automated baseline
-
-Run configured security tooling and applicable Sarj rules, especially `no-optional-tenant-predicate`, `prefer-constant-time-secret-compare`, `no-cors-wildcard-with-credentials`, and `no-secret-in-log`.
-
 ## Judgment checks
 
 - Protected routes without authentication, including alternate methods and background entry points.
