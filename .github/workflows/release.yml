@@ -299,11 +299,13 @@ jobs:
   build-lint-configs:
     needs:
       - detect
+      - publish-typescript
       - publish-python
       - publish-sql
       - publish-iac
     if: >-
       always() &&
+      (needs.publish-typescript.result == 'success' || needs.publish-typescript.result == 'skipped') &&
       (needs.publish-python.result == 'success' || needs.publish-python.result == 'skipped') &&
       (needs.publish-sql.result == 'success' || needs.publish-sql.result == 'skipped') &&
       (needs.publish-iac.result == 'success' || needs.publish-iac.result == 'skipped') &&
@@ -332,6 +334,8 @@ jobs:
           version: '0.11.32'
           enable-cache: false
       - run: uv python install 3.14
+      - name: Require every exact compatibility-bundle sibling to be public
+        run: uv run --frozen python -m sarj_lint_configs.libs.release.registry --root ../..
       - run: uv audit --locked
       - name: Build package and exact local dependency wheels
         run: |
@@ -449,7 +453,9 @@ jobs:
   # After a successful publish on push-to-main, stamp the matching `<pkg>-v<version>`
   # git tag. pre-commit consumers pin Python/SQL rules by git tag (installed from
   # source), so a PyPI release without a tag leaves them unable to resolve `rev:`.
-  # Idempotent: skips a tag that already exists.
+  # Idempotent: skips a tag that already exists. Tags are written only for a
+  # successful publish in this workflow and point at that exact workflow SHA;
+  # registry existence alone is never treated as proof of a publishing commit.
   tag:
     needs:
       - detect

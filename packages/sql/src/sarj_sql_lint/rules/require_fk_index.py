@@ -11,7 +11,7 @@ from typing import final, override
 from sarj_sql_lint.rule_base import Diagnostic, Rule, is_dump_file
 
 
-RESERVED_KEYWORDS: set[str] = {"foreign", "key", "constraint", "alter", "table", "create", "add", "column"}
+RESERVED_KEYWORDS = frozenset({"foreign", "key", "constraint", "alter", "table", "create", "add", "column"})
 
 
 def _mask_literals_and_comments(sql: str) -> str:

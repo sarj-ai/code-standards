@@ -10,6 +10,7 @@ from sarj_iac_lint.rule_base import Diagnostic, Rule
 
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from pathlib import Path
 
 _COMMENT_RE = re.compile(r"^(\s*)(#|//)\s?(.*)$")
@@ -92,7 +93,7 @@ class NoCommentCruft(Rule):
         return diags
 
 
-def _comment_runs(lines: list[str], in_heredoc: list[bool]) -> list[list[tuple[int, str]]]:
+def _comment_runs(lines: list[str], in_heredoc: Sequence[bool]) -> list[list[tuple[int, str]]]:
     """Group comment lines into runs split by HCL, blanks, or heredoc text."""
     runs: list[list[tuple[int, str]]] = []
     current: list[tuple[int, str]] = []
@@ -109,7 +110,7 @@ def _comment_runs(lines: list[str], in_heredoc: list[bool]) -> list[list[tuple[i
     return runs
 
 
-def _code_dominant_lines(lines: list[str], in_heredoc: list[bool]) -> frozenset[int]:
+def _code_dominant_lines(lines: list[str], in_heredoc: Sequence[bool]) -> frozenset[int]:
     """Return lines in runs where at least half the voting lines are HCL."""
     dominant: set[int] = set()
     for run in _comment_runs(lines, in_heredoc):
@@ -122,7 +123,7 @@ def _code_dominant_lines(lines: list[str], in_heredoc: list[bool]) -> frozenset[
     return frozenset(dominant)
 
 
-def _banner_group_leaders(lines: list[str], in_heredoc: list[bool]) -> frozenset[int]:
+def _banner_group_leaders(lines: list[str], in_heredoc: Sequence[bool]) -> frozenset[int]:
     """Return the first rule line of each contiguous comment banner."""
     leaders: set[int] = set()
     for run in _comment_runs(lines, in_heredoc):

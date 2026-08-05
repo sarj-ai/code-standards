@@ -6,11 +6,12 @@ from collections import Counter
 from dataclasses import dataclass, field
 import json
 import re
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
+    from collections.abc import Iterable, Iterator, Mapping
     from pathlib import Path
 
 
@@ -86,22 +87,24 @@ class Failure:
         return f"{head} {_REMEDIATION[self.dimension]}"
 
 
-_REMEDIATION: Final[dict[str, str]] = {
-    "code": (
-        "Fix the finding instead of suppressing it. If this suppression guards a "
-        "genuine boundary, retire one elsewhere, or get the ceiling raise reviewed "
-        "explicitly (`--update --allow-increase`)."
-    ),
-    "package": (
-        "This package may not take on more suppression debt. Burn one down here, "
-        "or get the ceiling raise reviewed explicitly (`--update --allow-increase`)."
-    ),
-    "file": (
-        "Suppressions are piling into one file. Spread-out fixes beat a hot spot: "
-        "burn one down here, or grandfather the file explicitly in the baseline's "
-        "`files.exceptions`."
-    ),
-}
+_REMEDIATION: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "code": (
+            "Fix the finding instead of suppressing it. If this suppression guards a "
+            "genuine boundary, retire one elsewhere, or get the ceiling raise reviewed "
+            "explicitly (`--update --allow-increase`)."
+        ),
+        "package": (
+            "This package may not take on more suppression debt. Burn one down here, "
+            "or get the ceiling raise reviewed explicitly (`--update --allow-increase`)."
+        ),
+        "file": (
+            "Suppressions are piling into one file. Spread-out fixes beat a hot spot: "
+            "burn one down here, or grandfather the file explicitly in the baseline's "
+            "`files.exceptions`."
+        ),
+    }
+)
 
 
 def measure(

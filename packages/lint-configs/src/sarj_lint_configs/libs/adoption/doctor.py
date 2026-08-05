@@ -9,7 +9,10 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
+import subprocess  # ruff: ignore[suspicious-subprocess-import] -- git enumerates authored files without executing repository code.
 import tomllib
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, NamedTuple
 
 from sarj_lint_configs._meta import CONFIGS_DIR
@@ -98,14 +101,16 @@ _PYRIGHT_REPORT_DEPRECATED = re.compile(
 )
 _RUFF_CONFIG_NAMES: Final = frozenset({".ruff.toml", "ruff.toml", "pyproject.toml"})
 _RUFF_REPLACEMENT_KEYS: Final = frozenset({"ignore", "select"})
-_CONFIG_TARGETS: Final = {
-    "ruff": ("ruff.strict.toml", "ruff.application.toml", ".ruff-strict.toml", "python"),
-    "pyright": ("pyright.strict.json", "pyright.strict.json", ".pyright-strict.json", "python"),
-    "eslint": ("eslint.strict.mjs", "eslint.application.mjs", "eslint.strict.mjs", "typescript"),
-    "markdownlint": ("markdownlint.strict.yaml", "markdownlint.strict.yaml", ".markdownlint.yaml", "root"),
-    "taplo": ("taplo.strict.toml", "taplo.strict.toml", ".taplo.toml", "root"),
-    "yamllint": ("yamllint.strict.yaml", "yamllint.strict.yaml", ".yamllint.yaml", "root"),
-}
+_CONFIG_TARGETS: Final = MappingProxyType(
+    {
+        "ruff": ("ruff.strict.toml", "ruff.application.toml", ".ruff-strict.toml", "python"),
+        "pyright": ("pyright.strict.json", "pyright.strict.json", ".pyright-strict.json", "python"),
+        "eslint": ("eslint.strict.mjs", "eslint.application.mjs", "eslint.strict.mjs", "typescript"),
+        "markdownlint": ("markdownlint.strict.yaml", "markdownlint.strict.yaml", ".markdownlint.yaml", "root"),
+        "taplo": ("taplo.strict.toml", "taplo.strict.toml", ".taplo.toml", "root"),
+        "yamllint": ("yamllint.strict.yaml", "yamllint.strict.yaml", ".yamllint.yaml", "root"),
+    }
+)
 
 #: Where a rule identifier can be written: configs and suppression baselines, but
 #: also ordinary source, because an `eslint-disable-next-line @sarj/<rule>` for a
@@ -167,13 +172,24 @@ def diagnose(root: Path) -> list[Finding]:
     )
     findings = [*_check_manifest(root)]
     findings.extend(_check_pin_files(root, files, installed))
+    findings.extend(_check_adopted_python_bundle(root, files, installed))
     findings.extend(_check_precommit_revs(root, files))
-    findings.extend(_check_eslint_plugin(root, files))
+    if not _has_adopted_eslint(root):
+        findings.extend(_check_eslint_plugin(root, files))
     findings.extend(check_retired_rules(root, files))
     findings.extend(check_pyright_deprecated(root, files))
     findings.extend(check_ruff_policy_authority(root, files))
     findings.extend(_check_adoption_wiring(root))
     return sorted(findings, key=lambda finding: (finding.where, finding.id, finding.detail))
+
+
+def _has_adopted_eslint(root: Path) -> bool:
+    """Whether the manifest-owned install-root peer check supersedes loose pins."""
+    try:
+        adopted = manifest.load(root)
+    except OSError, TypeError, ValueError:
+        return False
+    return adopted is not None and "eslint" in adopted.configs
 
 
 def _doctor_exclusions(root: Path) -> tuple[str, ...]:
@@ -363,9 +379,9 @@ def _check_manifest(root: Path) -> Iterator[Finding]:
         Level.DRIFT,
         manifest.MANIFEST_NAME,
         f"declares {found.version} but the installed wheel is {current}"
-        " -- run `sarj-standards upgrade` so every owned site moves together",
+        " -- run `sarj-standards update` so every owned site moves together",
         "doctor.manifest.version",
-        "run `sarj-standards upgrade`",
+        "run `sarj-standards update`",
     )
 
 
@@ -384,16 +400,78 @@ def _check_pin_files(root: Path, files: Sequence[Path], installed: Mapping[str, 
                     f"{name} is not installed here, so the pin is unverified",
                     "doctor.version.unverified",
                 )
-            elif pinned == current:
+            elif pinned == current and match.group("op") == "==":
                 yield Finding(Level.OK, where, "matches the installed wheel", "doctor.version.pin")
             else:
                 yield Finding(
                     Level.DRIFT,
                     where,
-                    f"installed {name} is {current}",
+                    f"installed {name} is {current}; Sarj toolchain dependencies must use exact `==` pins",
                     "doctor.version.pin",
-                    "run `sarj-standards upgrade`",
+                    "run `sarj-standards update`",
                 )
+
+
+def _check_adopted_python_bundle(
+    root: Path,
+    files: Sequence[Path],
+    installed: Mapping[str, str],
+) -> Iterator[Finding]:
+    """Require the exact Python bundle that `init` installs for an adopted repo."""
+    try:
+        adopted = manifest.load(root)
+    except OSError, TypeError, ValueError:
+        return
+    if adopted is None or not set(adopted.configs).intersection(manifest.PYTHON_CONFIGS):
+        return
+    python_root = _manifest_destination(root, adopted.python_dest)
+    if python_root is None:
+        return
+    pyproject = python_root / "pyproject.toml"
+    text = _read(pyproject) if pyproject.is_file() else ""
+    exact = {
+        name
+        for match in _PIN.finditer(text)
+        if match.group("op") == "==" and (name := match.group("name")) and match.group("version") == installed.get(name)
+    }
+    # Exact-version local projects let source workspaces dogfood doctor without impossible self-dependencies.
+    exact.update(_local_bundle_projects(files, installed))
+    missing = tuple(name for name in installed if name not in exact)
+    if not missing:
+        yield Finding(
+            Level.OK,
+            str(pyproject.relative_to(root)),
+            "contains the exact installed Sarj Python bundle",
+            "doctor.python.bundle",
+        )
+        return
+    specs = " ".join(f"{name}=={installed[name]}" for name in missing)
+    where = str(pyproject.relative_to(root))
+    yield Finding(
+        Level.DRIFT,
+        where,
+        f"adoption manifest declares Python standards but exact bundle pins are missing: {', '.join(missing)}",
+        "doctor.python.bundle-missing",
+        f"run `uv add --dev {specs}` in {python_root.relative_to(root).as_posix() or '.'}",
+    )
+
+
+def _local_bundle_projects(files: Sequence[Path], installed: Mapping[str, str]) -> set[str]:
+    """Return exact-version Sarj distributions authored by this checkout."""
+    found: set[str] = set()
+    for path in files:
+        if path.name != "pyproject.toml":
+            continue
+        try:
+            document = manifest.as_table(tomllib.loads(_read(path)))
+        except OSError, tomllib.TOMLDecodeError:
+            continue
+        project = manifest.table_field(document, "project")
+        name = project.get("name")
+        version = project.get("version")
+        if isinstance(name, str) and isinstance(version, str) and installed.get(name) == version:
+            found.add(name)
+    return found
 
 
 def _is_pin_site(path: Path) -> bool:
@@ -406,18 +484,18 @@ def _is_pin_site(path: Path) -> bool:
 
 
 def rewrite_version_pins(text: str, installed: Mapping[str, str]) -> VersionPinRewrite:
-    """Refresh recognized Sarj pins without changing their operator or surrounding syntax."""
+    """Refresh recognized Sarj pins and normalize them to the required exact operator."""
     changed: set[str] = set()
 
     def replacement(match: re.Match[str]) -> str:
         name = match.group("name")
         current = installed.get(name)
-        if current is None or match.group("version") == current:
+        if current is None or (match.group("version") == current and match.group("op") == "=="):
             return match.group(0)
         changed.add(name)
-        relative_start = match.start("version") - match.start()
+        relative_start = match.start("op") - match.start()
         relative_end = match.end("version") - match.start()
-        return f"{match.group(0)[:relative_start]}{current}{match.group(0)[relative_end:]}"
+        return f"{match.group(0)[:relative_start]}=={current}{match.group(0)[relative_end:]}"
 
     return VersionPinRewrite(_PIN.sub(replacement, text), tuple(sorted(changed)))
 
@@ -488,7 +566,7 @@ def _precommit_rev_finding(root: Path, path: Path, rev: str, expected: str | Non
             f"expected {expected} -- the hooks ship from the root package, whose version"
             " your sarj-lint-configs pin already fixes",
             "doctor.precommit.rev",
-            f"pin `{expected}` or migrate to the local hook emitted by `sarj-standards upgrade`",
+            f"pin `{expected}` or migrate to the local hook emitted by `sarj-standards update`",
         )
 
 
@@ -509,11 +587,19 @@ def _check_eslint_plugin(root: Path, files: Sequence[Path]) -> Iterator[Finding]
                 "repair package.json, then rerun doctor",
             )
             continue
-        if pinned is None or pinned.startswith(_LOCAL_SPECIFIERS):
-            # Local specs represent unreleased checkouts, not version drift.
+        if pinned is None:
+            continue
+        if pinned.startswith(_LOCAL_SPECIFIERS):
+            yield Finding(
+                Level.WARN,
+                f"{path.relative_to(root)}: {_ESLINT_PLUGIN}@{pinned}",
+                "local/workspace plugin source cannot prove the published tested version",
+                "doctor.eslint.plugin-unverified",
+                "use the exact published peer outside local plugin development",
+            )
             continue
         where = f"{path.relative_to(root)}: {_ESLINT_PLUGIN}@{pinned}"
-        if _without_range_operator(pinned) == floor:
+        if _is_exact_pin(pinned, floor):
             yield Finding(Level.OK, where, "matches the tested peer set", "doctor.eslint.plugin")
         else:
             yield Finding(
@@ -522,7 +608,7 @@ def _check_eslint_plugin(root: Path, files: Sequence[Path]) -> Iterator[Finding]
                 f"the bundled eslint.strict.mjs is tested against {floor};"
                 " see `sarj-standards peers` for the whole resolvable set",
                 "doctor.eslint.plugin",
-                "run `sarj-standards upgrade`",
+                "run `sarj-standards update`",
             )
 
 
@@ -557,7 +643,7 @@ def _check_adoption_wiring(root: Path) -> Iterator[Finding]:  # ruff: ignore[too
                 manifest.MANIFEST_NAME,
                 f"declares unknown config {name!r}",
                 "doctor.config.unknown",
-                "remove the unknown config or run `sarj-standards upgrade`",
+                "remove the unknown config or run `sarj-standards update`",
             )
             continue
         standard_source, application_source, target_name, kind = spec
@@ -573,7 +659,7 @@ def _check_adoption_wiring(root: Path) -> Iterator[Finding]:  # ruff: ignore[too
                 str(target.relative_to(root)),
                 f"declared {name} config is missing",
                 "doctor.config.missing",
-                "run `sarj-standards upgrade`",
+                "run `sarj-standards update`",
             )
         elif target.read_bytes() != expected.read_bytes():
             yield Finding(
@@ -581,7 +667,7 @@ def _check_adoption_wiring(root: Path) -> Iterator[Finding]:  # ruff: ignore[too
                 str(target.relative_to(root)),
                 f"declared {name} config differs from the installed bundle",
                 "doctor.config.drift",
-                "run `sarj-standards upgrade`",
+                "run `sarj-standards update`",
             )
         else:
             yield Finding(Level.OK, str(target.relative_to(root)), f"{name} config is current", "doctor.config.current")
@@ -708,22 +794,38 @@ def _check_eslint_peer_set(root: Path, typescript_root: Path) -> Iterator[Findin
         return
     try:
         parsed: object = json.loads(_read(package_json))  # pyright: ignore[reportAny] -- untyped stdlib boundary
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as exc:
+        yield Finding(
+            Level.DRIFT,
+            str(package_json.relative_to(root)),
+            f"invalid package.json at line {exc.lineno}, column {exc.colno}: {exc.msg}",
+            "doctor.package-json.invalid",
+            "repair package.json, then rerun doctor",
+        )
         return
     document = manifest.as_table(parsed)
+    if not isinstance(parsed, dict):
+        yield Finding(
+            Level.DRIFT,
+            str(package_json.relative_to(root)),
+            f"package.json must contain a JSON object, found {type(parsed).__name__}",
+            "doctor.package-json.invalid",
+            "repair package.json, then rerun doctor",
+        )
+        return
     declared: dict[str, object] = {}
     for key in ("dependencies", "devDependencies"):
         declared.update(manifest.table_field(document, key))
     for name, expected in sorted(manifest.eslint_peers().items()):
         actual = declared.get(name)
-        if isinstance(actual, str) and _without_range_operator(actual) == expected:
+        if isinstance(actual, str) and _is_exact_pin(actual, expected):
             continue
         yield Finding(
             Level.DRIFT,
             f"{package_json.relative_to(root)}: {name}",
             f"expected exact tested peer {expected}, found {actual!r}",
             "doctor.eslint.peer",
-            "run `sarj-standards upgrade`",
+            "run `sarj-standards update`",
         )
 
     client = packagemanager.detect(package_root)
@@ -739,18 +841,9 @@ def _check_eslint_peer_set(root: Path, typescript_root: Path) -> Iterator[Findin
             str(pnpm_workspace.relative_to(root)),
             "required pnpm peer override is missing",
             "doctor.eslint.override",
-            "run `sarj-standards upgrade`",
+            "run `sarj-standards update`",
         )
         return
-    if package_root != typescript_root:
-        package_json = package_root / "package.json"
-        try:
-            root_parsed: object = json.loads(  # pyright: ignore[reportAny] -- untyped stdlib boundary
-                _read(package_json)
-            )
-        except json.JSONDecodeError:
-            return
-        document = manifest.as_table(root_parsed)
     table: Mapping[str, object] = document
     for key in overrides.key_path:
         table = manifest.table_field(table, key)
@@ -760,7 +853,7 @@ def _check_eslint_peer_set(root: Path, typescript_root: Path) -> Iterator[Findin
             str(package_json.relative_to(root)),
             f"required {client} peer override is missing",
             "doctor.eslint.override",
-            "run `sarj-standards upgrade`",
+            "run `sarj-standards update`",
         )
 
 
@@ -777,16 +870,14 @@ def _contains_expected_mapping(actual: Mapping[str, object], expected: Mapping[s
     return True
 
 
-#: Single-version range operators in longest-first match order.
-_RANGE_OPERATORS: Final = (">=", "<=", "~=", "==", "^", "~", ">", "<", "=", "v")
-
-
-def _without_range_operator(pinned: str) -> str:
-    """Remove at most one leading range operator from a version pin."""
-    for operator in _RANGE_OPERATORS:
-        if pinned.startswith(operator):
-            return pinned[len(operator) :].strip()
-    return pinned
+def _is_exact_pin(pinned: str, expected: str) -> bool:
+    """Accept only spellings that cannot resolve away from the tested version."""
+    normalized = pinned.strip()
+    if normalized.startswith("=="):
+        normalized = normalized[2:].strip()
+    elif normalized.startswith("="):
+        normalized = normalized[1:].strip()
+    return normalized == expected
 
 
 def _package_json_pin(path: Path) -> str | None:
@@ -807,7 +898,31 @@ def _candidate_files(files: Sequence[Path], suffixes: Sequence[str]) -> Iterator
 
 
 def _walk(root: Path) -> tuple[Path, ...]:
-    """List a repo's files once, pruning the directories nothing is ever found in."""
+    """List authored files once, honoring ignore rules when the root is a Git checkout."""
+    git = shutil.which("git")
+    try:
+        completed = (
+            subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed Git executable and argv.
+                (git, "-C", str(root), "ls-files", "--cached", "--others", "--exclude-standard", "-z"),
+                check=False,
+                capture_output=True,
+                shell=False,
+            )
+            if git is not None
+            else None
+        )
+    except OSError:
+        completed = None
+    if completed is not None and completed.returncode == 0:
+        found = []
+        for raw in completed.stdout.split(b"\0"):
+            if not raw:
+                continue
+            path = root / raw.decode("utf-8", errors="surrogateescape")
+            if not path.is_symlink() and path.is_file():
+                found.append(path)
+        return tuple(sorted(found))
+
     found: list[Path] = []
     for parent, directories, names in os.walk(root):
         directories[:] = sorted(name for name in directories if name not in _SKIP_DIRS)

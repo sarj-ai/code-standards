@@ -1,47 +1,126 @@
-"""Child commands run independently of the standards package's environment."""
-
 from __future__ import annotations
 
-import os
-import subprocess
+import json
 from typing import TYPE_CHECKING
 
-from sarj_lint_configs.libs.adoption import lifecycle
+from sarj_lint_configs.libs.adoption import lifecycle, scaffold
+from sarj_lint_configs.libs.adoption.packagemanager import PackageManager
 
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    import pytest
+
+def _project(root: Path, name: str) -> Path:
+    project = root / name
+    project.mkdir(parents=True)
+    (project / "pyproject.toml").write_text("[project]\nname='fixture'\nversion='0.0.0'\n", encoding="utf-8")
+    (project / "pyrightconfig.json").write_text(json.dumps({"include": ["src"]}), encoding="utf-8")
+    return project
 
 
-def test_execute_removes_parent_virtual_environment_for_nested_uv(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    environments: list[dict[str, str] | None] = []
+def test_verification_uses_each_configured_python_project_environment(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='umbrella'\nversion='0.0.0'\n", encoding="utf-8")
+    (tmp_path / "pyrightconfig.json").write_text(json.dumps({"extends": ".pyright-strict.json"}), encoding="utf-8")
+    first = _project(tmp_path, "packages/first")
+    second = _project(tmp_path, "packages/second")
+    ecosystems = scaffold.Ecosystems(True, False, python_root=tmp_path)
 
-    def which(_name: str) -> str:
-        return "/usr/bin/uv"
+    commands = lifecycle.verification_commands(ecosystems)
 
-    def run(
-        argv: list[str],
-        *,
-        cwd: Path,
-        check: bool,
-        env: dict[str, str] | None,
-    ) -> subprocess.CompletedProcess[bytes]:
-        del cwd, check
-        environments.append(env)
-        return subprocess.CompletedProcess(argv, 0)
+    assert [command.cwd for command in commands] == [first, first, second, second]
+    assert all(command.argv[:3] == ("uv", "run", "--project") for command in commands)
+    assert {command.label for command in commands} == {"Ruff", "BasedPyright"}
 
-    monkeypatch.setenv("VIRTUAL_ENV", "/parent/.venv")
-    monkeypatch.setattr("sarj_lint_configs.libs.adoption.lifecycle.shutil.which", which)
-    monkeypatch.setattr("sarj_lint_configs.libs.adoption.lifecycle.subprocess.run", run)
 
-    status = lifecycle.execute((lifecycle.Command("Python", ("uv", "sync"), tmp_path),))
+def test_scoped_root_pyright_config_keeps_the_root_project(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='root'\nversion='0.0.0'\n", encoding="utf-8")
+    (tmp_path / "pyrightconfig.json").write_text(json.dumps({"include": ["src"]}), encoding="utf-8")
+    _ = _project(tmp_path, "packages/child")
+    ecosystems = scaffold.Ecosystems(True, False, python_root=tmp_path)
 
-    assert status == 0
-    expected = dict(os.environ)  # ruff: ignore[banned-api] — test the exact environment boundary passed to nested uv.
-    expected.pop("VIRTUAL_ENV")
-    assert environments == [expected]
+    commands = lifecycle.verification_commands(ecosystems)
+
+    assert tmp_path in {command.cwd for command in commands}
+
+
+def test_staged_eslint_uses_detected_project_cwd_and_package_manager(tmp_path: Path) -> None:
+    project = tmp_path / "web"
+    project.mkdir()
+    (project / "package.json").write_text(
+        json.dumps({"packageManager": "pnpm@10.0.0"}),
+        encoding="utf-8",
+    )
+    source = project / "src"
+    source.mkdir()
+    first = source / "name with spaces.ts"
+    second = source / "component.tsx"
+    first.write_text("export const value = 1;\n", encoding="utf-8")
+    second.write_text("export const Component = () => null;\n", encoding="utf-8")
+
+    commands = lifecycle.staged_eslint_commands(
+        tmp_path,
+        [str(second), "web/src/name with spaces.ts", str(first)],
+    )
+
+    assert len(commands) == 1
+    assert commands[0].cwd == project
+    assert commands[0].argv == (
+        "pnpm",
+        "exec",
+        "eslint",
+        "--",
+        "src/component.tsx",
+        "src/name with spaces.ts",
+    )
+
+
+def test_staged_eslint_omits_deletions_symlinks_and_unrelated_paths(tmp_path: Path) -> None:
+    (tmp_path / "package.json").write_text("{}\n", encoding="utf-8")
+    source = tmp_path / "source.ts"
+    source.write_text("export const value = 1;\n", encoding="utf-8")
+    symlink = tmp_path / "linked.ts"
+    symlink.symlink_to(source)
+    outside = tmp_path.parent / "outside.ts"
+    outside.write_text("export const outside = 1;\n", encoding="utf-8")
+
+    commands = lifecycle.staged_eslint_commands(
+        tmp_path,
+        ["deleted.ts", "README.md", str(symlink), str(outside), "source.ts"],
+    )
+
+    assert len(commands) == 1
+    assert commands[0].argv == ("npx", "--no-install", "eslint", "--", "source.ts")
+    assert lifecycle.staged_eslint_commands(tmp_path, [str(symlink)]) == []
+
+
+def test_staged_eslint_skips_detection_when_no_javascript_or_typescript_exists(tmp_path: Path) -> None:
+    # Keep Markdown-only commits fast: ecosystem discovery can walk a large repository.
+    markdown = tmp_path / "README.md"
+    markdown.write_text("# Project\n", encoding="utf-8")
+
+    commands = lifecycle.staged_eslint_commands(tmp_path, [str(markdown)])
+
+    assert commands == []
+
+
+def test_staged_eslint_supports_every_eslint_module_suffix(tmp_path: Path) -> None:
+    (tmp_path / "package.json").write_text("{}\n", encoding="utf-8")
+    names = [f"module{suffix}" for suffix in (".cjs", ".cts", ".js", ".jsx", ".mjs", ".mts", ".ts", ".tsx")]
+    for name in names:
+        (tmp_path / name).write_text("export const value = 1;\n", encoding="utf-8")
+
+    commands = lifecycle.staged_eslint_commands(tmp_path, names)
+
+    assert commands[0].argv == ("npx", "--no-install", "eslint", "--", *names)
+
+
+def test_staged_eslint_uses_npm_by_default(tmp_path: Path) -> None:
+    (tmp_path / "package.json").write_text("{}\n", encoding="utf-8")
+    source = tmp_path / "source.ts"
+    source.write_text("export const value = 1;\n", encoding="utf-8")
+
+    command = lifecycle.staged_eslint_commands(tmp_path, ["source.ts"])[0]
+
+    assert scaffold.detect(tmp_path).client is PackageManager.NPM
+    assert command.argv[:3] == ("npx", "--no-install", "eslint")

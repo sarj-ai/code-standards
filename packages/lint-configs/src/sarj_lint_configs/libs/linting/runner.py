@@ -8,6 +8,7 @@ from importlib import import_module
 import os
 from pathlib import Path
 import stat
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from . import textlint
@@ -43,15 +44,17 @@ class _Tool(StrEnum):
     TEXT = "text"
 
 
-_SUFFIX_TO_TOOL = {
-    ".hcl": _Tool.IAC,
-    ".py": _Tool.PYTHON,
-    ".sql": _Tool.SQL,
-    ".tf": _Tool.IAC,
-    ".tfvars": _Tool.IAC,
-    ".yaml": _Tool.IAC,
-    ".yml": _Tool.IAC,
-}
+_SUFFIX_TO_TOOL = MappingProxyType(
+    {
+        ".hcl": _Tool.IAC,
+        ".py": _Tool.PYTHON,
+        ".sql": _Tool.SQL,
+        ".tf": _Tool.IAC,
+        ".tfvars": _Tool.IAC,
+        ".yaml": _Tool.IAC,
+        ".yml": _Tool.IAC,
+    }
+)
 _IGNORED_DIRS = frozenset(
     {
         ".build",
@@ -156,6 +159,17 @@ def run(
     if grouped.text:
         statuses.append(textlint.run(grouped.text))
     return max(statuses)
+
+
+def create_python_baseline(files: Sequence[str], output: str) -> int:
+    """Snapshot current Python findings; later checks enforce the shrink-only ceiling."""
+    grouped = group_paths(files)
+    return _run_tool(
+        "sarj_python_lint",
+        grouped.python,
+        selected=None,
+        extra_args=("--update-baseline", output),
+    )
 
 
 def _run_tool(

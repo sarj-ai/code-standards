@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 import re
 from typing import NamedTuple
 
@@ -59,8 +60,13 @@ def mask_line(line: str) -> str:
     return "".join(out)
 
 
-def heredoc_body_mask(lines: list[str]) -> list[bool]:
-    """Flag lines that reside inside heredoc bodies."""
+def heredoc_body_mask(lines: list[str]) -> tuple[bool, ...]:
+    """Flag heredoc bodies, sharing the immutable result across rule passes."""
+    return _cached_heredoc_body_mask(tuple(lines))
+
+
+@lru_cache(maxsize=32)
+def _cached_heredoc_body_mask(lines: tuple[str, ...]) -> tuple[bool, ...]:
     mask = [False] * len(lines)
     term: str | None = None
     for idx, line in enumerate(lines):
@@ -73,7 +79,7 @@ def heredoc_body_mask(lines: list[str]) -> list[bool]:
         m = _HEREDOC_RE.search(mask_line(line))
         if m is not None:
             term = m.group(1)
-    return mask
+    return tuple(mask)
 
 
 # Tokenize strings (including interpolations), identifier paths, operators, and structural punctuation.
@@ -128,6 +134,7 @@ class Block:
         return next((b for b in self.blocks if b.type == block_type), None)
 
 
+@lru_cache(maxsize=32)
 def blocks(source: str) -> tuple[Block, ...]:
     """Parse `source` into a tree of top-level HCL blocks."""
     raw = source.splitlines()

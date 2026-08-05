@@ -29,7 +29,8 @@ uvx sarj-lint-configs init --profile application
 ```
 
 The selected `standard` or `application` profile is recorded in
-`.sarj-standards.toml`, so later `sync`, `sync --check`, and `verify` select the
+`.sarj-standards.toml`, so later `update --configs-only`, `update
+--configs-only --check`, and `check` select the
 same standalone Ruff and ESLint artifacts automatically. Existing manifests
 without a `profile` field remain on `standard`. The application profile is an
 intentional stack policy: it treats cataloged imports such as `argparse` and
@@ -41,7 +42,7 @@ field. Run that manifest gate independently—or measure an unadopted repository
 with:
 
 ```bash
-uvx sarj-lint-configs library-policy --profile application --dest .
+uvx sarj-lint-configs check --dependencies --profile application
 ```
 
 Findings carry stable `LIB###` IDs and migration cautions. Architectural
@@ -63,8 +64,9 @@ The project root is found by **lockfile**, not by `package.json`: a repo can car
 a root `package.json` declaring nothing but `packageManager` while the real
 project is a directory down.
 
-The detected destinations are recorded in `.sarj-standards.toml`, so plain `sync`
-and `sync --check` find them again without CI having to restate them. Override
+The detected destinations are recorded in `.sarj-standards.toml`, so plain
+`update --configs-only` and `update --configs-only --check` find them again
+without CI having to restate them. Override
 detection with `init --python-dest` / `--typescript-dest`.
 
 ### npm, pnpm, Yarn and Bun
@@ -83,19 +85,21 @@ the install failed identically while `package.json` looked fixed.
 
 ```bash
 uv run --frozen sarj-standards doctor       # read-only diagnosis with exact fixes
-uv run --frozen sarj-standards upgrade --check  # preview whether an upgrade is needed
-uv run --frozen sarj-standards upgrade      # resolve latest, migrate, install, postflight
-uv run --frozen sarj-standards verify       # run every adoption and lint gate
-uv run --frozen sarj-standards format       # apply formatter and safe lint fixes
-uv run --frozen sarj-standards inspect      # print detected adoption state
+uv run --frozen sarj-standards update --check   # preview whether an upgrade is needed
+uv run --frozen sarj-standards update       # resolve latest, migrate, install, postflight
+uv run --frozen sarj-standards check        # run every adoption and lint gate
+uv run --frozen sarj-standards fix          # apply formatter and safe lint fixes
+uv run --frozen sarj-standards show state   # print detected adoption state
 uv run --frozen sarj-standards check --noise-only .  # comment/artifact ratchet only
 ```
 
-Run `verify` in CI. `init` prints it as a ready-made job.
+Run `check` in CI. `init` prints it as a ready-made job. With no paths, `check`
+runs the complete repository verification. With paths, it runs the applicable
+custom rules for those paths, which keeps pre-commit fast.
 `check --noise-only` covers Python and text/config inputs; TypeScript comment
 noise is enforced by the generated strict ESLint config.
 
-`verify` checks the whole repository by default. A tool repository whose rule
+`check` checks the whole repository by default. A tool repository whose rule
 fixtures intentionally contain rejected code can narrow only the custom-rule
 pass, without weakening Ruff, BasedPyright, or ESLint:
 
@@ -107,28 +111,53 @@ paths = ["src", "tests", "README.md"]
 Paths are repository-relative and cannot escape the repository root.
 
 Maintainers can declare repository policy in `.sarj-standards.toml` and replace
-ad hoc scripts with `sarj-standards repo check`. The same command checks private
+ad hoc scripts with `sarj-standards maintain check`. The same command checks private
 references, CI history, filenames, rule/test/registry pairing, canonical config
-references, and version coverage; `repo sync-ledger`, `repo comment-corpus`,
-`repo hooks install`, and `repo rules manifest` provide the related maintenance
+references, and version coverage; `maintain sync-ledger`, `maintain
+comment-corpus`, `maintain hooks install`, and `show rules` provide the related maintenance
 operations.
 
 The package also owns repository setup and release policy; workflows and the
 Makefile are intentionally thin adapters rather than a second implementation:
 
 ```bash
-sarj-standards repo setup --check
-sarj-standards repo release check-tag typescript-v9.12.1
-sarj-standards repo release lock-age packages/typescript/package-lock.json --exclude-file .github/release-age-exclusions.txt
-sarj-standards repo release typescript check
-sarj-standards repo release publish typescript
+sarj-standards maintain setup --check
+sarj-standards maintain release check-tag typescript-v9.13.0
+sarj-standards maintain release lock-age packages/typescript/package-lock.json --exclude-file .github/release-age-exclusions.txt
+sarj-standards maintain release typescript check
+sarj-standards maintain release publish typescript
 ```
+
+The former `sync`, `list`, `path`, `peers`, `upgrade`, `verify`, `format`,
+`inspect`, `library-policy`, and `repo` commands remain exact compatibility
+aliases. Existing CI and hooks keep working while new usage stays within the
+seven consumer verbs shown by `sarj-standards --help`.
 
 Programmatic consumers should import `sarj_lint_configs.api`. Business logic is
 grouped under `sarj_lint_configs.libs` by adoption, linting, repository, setup,
 and release domains; `__main__` is only an entrypoint and `cli/` owns argument
 parsing and presentation. The former top-level modules remain identity-preserving
 compatibility aliases for existing imports and monkeypatches.
+
+The Python facade mirrors the consumer vocabulary without parsing CLI output:
+
+```python
+from pathlib import Path
+
+from sarj_lint_configs.api import Standards
+
+standards = Standards(Path.cwd())
+health = standards.doctor()
+preview = standards.init(dry_run=True)
+result = standards.init(install=False)
+status = standards.check(("src", "tests"))
+```
+
+The preferred API is deliberately small: `Standards`, `Result`, `Finding`,
+`Change`, `Inspection`, `Status`, and `__version__`. Each method calls the same
+typed services as the CLI. Existing `sarj_lint_configs.api` exports remain as
+compatibility aliases. Maintainer plan/apply, rule evaluation, corpus, and
+release APIs live in the public `sarj_lint_configs.libs` namespace.
 
 Release-age exception files contain one exact `package@version` per line, with
 optional `#` comments. Name-wide exceptions are rejected in files, so a future
@@ -181,15 +210,16 @@ fixtures can be excluded narrowly with `[doctor] exclude = ["tests/fixtures/**"]
 Upgrading is one command from an installed environment:
 
 ```bash
-sarj-standards upgrade
+sarj-standards update
 ```
 
 The command bootstraps the newest published compatibility bundle with `uvx
 --refresh`, previews each changed path, blocks on retired rule references,
 updates the single manifest version, syncs configs, safely repairs wiring and
 peer pins, installs dependencies, and rolls everything back if installation or
-the doctor postflight fails. Use `upgrade --check` in automation or
-`upgrade --offline --no-install` when testing the already-installed bundle.
+the doctor postflight fails. Use `update --check` in automation. The legacy
+`upgrade --offline --no-install` spelling remains available for maintainers
+testing the already-installed bundle.
 
 A consumer repo used to state a Sarj version in three independent places: the
 `pyproject.toml` pin, the pre-commit `rev:`, and whatever a CI job typed on its
@@ -217,32 +247,26 @@ site should say — including the pre-commit tag, which lives in a different
 namespace (`python-v0.37.0` for `sarj-lint-configs` 0.32.0) that nobody should
 have to translate by hand.
 
-The block `init` writes has no `rev:` at all. A `repo: local` hook runs the CLI
+The block `init` writes has no `rev:` at all. One `repo: local` hook runs the CLI
 from the environment your `pyproject.toml` pin already fixed, which deletes the
-second pin site rather than checking it:
+second pin site and starts the toolchain only once per commit:
 
 ```yaml
 repos:
   - repo: local
     hooks:
-      - id: sarj-standards-drift
-        name: sarj standards -- config + version drift
-        entry: uv run --frozen sarj-lint-configs doctor
-        language: system
-        pass_filenames: false
       - id: sarj-standards-check
-        name: sarj standards -- custom rules
-        entry: uv run --frozen sarj-lint-configs check
+        name: sarj standards -- staged checks
+        entry: uv run --frozen sarj-standards check --staged
         language: system
-        types_or: [python, sql, yaml]
+        verbose: true
+        files: '(?i)(\.py|\.tsx?|\.jsx?|\.sql|\.tf|\.tfvars|\.hcl|\.ya?ml|\.toml|\.jsonc|\.mdx?|\.(?:bash|cfg|conf|env|ini|properties|sh|tftpl|zsh)|(?:^|/)\.env(?:\..*)?$|(?:^|/)(?:Dockerfile(?:\..*)?|Gnumakefile|Justfile|Makefile))$'
 ```
 
 That is the block a **Python** repo gets. A TypeScript-only repo gets the same
-hook with `uvx --from sarj-lint-configs==<version>` instead of `uv run --frozen`
-— `uv run` in a repo with no `pyproject.toml` is `error: Failed to spawn:
-sarj-lint-configs`, exit 2, on every commit — and no `check` hook, because
-`check` runs the Python/SQL/IaC registries and a TypeScript repo has nothing to
-feed them.
+hook with `uvx --from sarj-lint-configs==<version>` instead of `uv run --frozen`;
+`check --staged` routes only staged paths to their applicable linters in either
+ecosystem.
 
 ### Removed and renamed rules — the upgrade that crashes
 
@@ -283,16 +307,16 @@ that leaves a registry is *retired*, and tests in both this package and the
 plugin fail until the ledger matches the live registries again. So the next
 removal is recorded whether or not its author thought about consumers.
 
-### `sync --check` — the synced configs are unmodified
+### `update --configs-only --check` — synced configs are unmodified
 
 Ruff cannot `extend` a config out of an installed package's path portably, which
-is why `sync` writes a copy into your repo instead of you referencing one. A copy
-can be edited, so `sync --check` compares each one byte-for-byte and fails CI when
+is why config refresh writes a copy into your repo instead of you referencing one. A copy
+can be edited, so `update --configs-only --check` compares each one byte-for-byte and fails CI when
 it differs. One consumer's copy of the ESLint config had quietly drifted to 120
 rules against a canonical 145 — missing 30, carrying 5 that no longer exist
 upstream — and nothing caught it.
 
-`sync` and `sync --check` operate on the config set in `.sarj-standards.toml`,
+`update --configs-only` and its `--check` mode operate on the config set in `.sarj-standards.toml`,
 so a Python repo is not asked to carry an ESLint config it never wanted. That
 matters: `sync --check` used to insist on all six files, report permanent drift
 on the two a repo had no use for, and so never made it into anyone's CI.
@@ -396,7 +420,7 @@ rule was not found" until the comment is dropped. `3.0.0` removed
 Polyglot repos can route the two ecosystems to their own roots:
 
 ```bash
-uv run --frozen sarj-lint-configs sync --python-dest python --typescript-dest web --force
+uv run --frozen sarj-standards update --configs-only --python-dest python --typescript-dest web --force
 ```
 
 ## `check` — the custom rules
@@ -410,8 +434,8 @@ Do not copy the runner into consumer repositories. Keeping it inside the wheel
 ensures the CLI implementation and its exact registry dependencies upgrade as one
 tested unit.
 
-Programmatic access: `from sarj_lint_configs import RUFF_STRICT, PYRIGHT_STRICT,
-ESLINT_STRICT, ESLINT_PEERS` (each a `pathlib.Path` into the wheel).
+Legacy config-path exports remain importable for compatibility. New automation
+should use `sarj-standards show config NAME` or the typed adoption libraries.
 
 ## 0.8.0 — `PLC2701` moved out of ruff
 

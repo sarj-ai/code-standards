@@ -91,15 +91,96 @@ def test_create_release_tags_is_idempotent_and_pushes_exact_ref(tmp_path: Path) 
         calls.append(argv)
         if argv[:2] == ("git", "ls-remote"):
             raise ProcessFailureError(argv, 2)
-        if argv[:3] == ("git", "rev-parse", "--verify"):
+        if argv[:3] == ("git", "rev-parse", "--verify") and argv[-1].startswith("refs/tags/"):
             raise ProcessFailureError(argv, 1)
         return ProcessResult(0)
 
-    result = create_release_tags(tmp_path, ("python", "python"), runner=runner)
+    result = create_release_tags(
+        tmp_path,
+        ("python", "python"),
+        commit="publish-sha",
+        runner=runner,
+        publication_checker=lambda _requirement: True,
+    )
 
     assert result.created == ("python-v1.2.3",)
-    assert ("git", "tag", "-a", "python-v1.2.3", "-m", "python 1.2.3") in calls
+    assert ("git", "tag", "-a", "python-v1.2.3", "publish-sha", "-m", "python 1.2.3") in calls
     assert calls[-1] == ("git", "push", "origin", "refs/tags/python-v1.2.3")
+
+
+def test_create_release_tags_rejects_an_unpublished_manifest_version(tmp_path: Path) -> None:
+    _write_release_manifests(tmp_path)
+    calls: list[tuple[str, ...]] = []
+
+    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
+        _ = cwd, capture_output
+        calls.append(argv)
+        if argv[:3] == ("git", "rev-parse", "--verify"):
+            return ProcessResult(0)
+        raise ProcessFailureError(argv, 2)
+
+    with pytest.raises(ValueError, match=r"pypi publication is unavailable: sarj-python-lint@1\.2\.3"):
+        create_release_tags(
+            tmp_path,
+            ("python",),
+            commit="publish-sha",
+            runner=runner,
+            publication_checker=lambda _requirement: False,
+        )
+
+    assert calls == [
+        ("git", "rev-parse", "--verify", "publish-sha^{commit}"),
+        ("git", "ls-remote", "--exit-code", "--tags", "origin", "refs/tags/python-v1.2.3"),
+    ]
+
+
+def test_create_release_tags_rejects_an_existing_tag_on_another_commit(tmp_path: Path) -> None:
+    _write_release_manifests(tmp_path)
+
+    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
+        _ = cwd, capture_output
+        if argv[:3] == ("git", "rev-parse", "--verify"):
+            return ProcessResult(0, "published-commit\n")
+        if argv[-1] == "refs/tags/python-v1.2.3":
+            return ProcessResult(0)
+        if argv[-1] == "refs/tags/python-v1.2.3^{}":
+            return ProcessResult(
+                0,
+                "tag-object\trefs/tags/python-v1.2.3\ndifferent-commit\trefs/tags/python-v1.2.3^{}\n",
+            )
+        raise AssertionError(argv)
+
+    with pytest.raises(ValueError, match="not publishing commit published-commit"):
+        create_release_tags(
+            tmp_path,
+            ("python",),
+            commit="publish-sha",
+            runner=runner,
+            publication_checker=lambda _requirement: True,
+        )
+
+
+def test_create_release_tags_rejects_a_local_tag_on_another_commit(tmp_path: Path) -> None:
+    _write_release_manifests(tmp_path)
+
+    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
+        _ = cwd, capture_output
+        if argv[-1] == "publish-sha^{commit}":
+            return ProcessResult(0, "published-commit\n")
+        if argv[:2] == ("git", "ls-remote"):
+            raise ProcessFailureError(argv, 2)
+        if argv[-1] == "refs/tags/python-v1.2.3^{commit}":
+            return ProcessResult(0, "different-commit\n")
+        raise AssertionError(argv)
+
+    with pytest.raises(ValueError, match=r"existing local tag .* not publishing commit published-commit"):
+        create_release_tags(
+            tmp_path,
+            ("python",),
+            commit="publish-sha",
+            runner=runner,
+            publication_checker=lambda _requirement: True,
+        )
 
 
 def test_remote_tag_network_failure_is_not_misreported_as_missing(tmp_path: Path) -> None:

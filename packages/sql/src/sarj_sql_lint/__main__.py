@@ -11,23 +11,25 @@ from sarj_sql_lint.rule_base import Diagnostic, is_suppressed
 from sarj_sql_lint.rules import REGISTRY
 
 
-SKIP_DIR_NAMES = {
-    "node_modules",
-    ".venv",
-    "venv",
-    ".git",
-    "dist",
-    "build",
-    ".next",
-    "coverage",
-    "__pycache__",
-    ".pytest_cache",
-    ".ruff_cache",
-    ".mypy_cache",
-    ".turbo",
-    ".yarn",
-    ".pnpm-store",
-}
+SKIP_DIR_NAMES = frozenset(
+    {
+        "node_modules",
+        ".venv",
+        "venv",
+        ".git",
+        "dist",
+        "build",
+        ".next",
+        "coverage",
+        "__pycache__",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".mypy_cache",
+        ".turbo",
+        ".yarn",
+        ".pnpm-store",
+    }
+)
 MAX_FILE_BYTES = 500_000
 
 

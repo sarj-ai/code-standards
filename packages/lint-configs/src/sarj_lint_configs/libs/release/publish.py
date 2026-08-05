@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Literal
 
-from sarj_lint_configs.libs.release.process import ProcessRunner, run_process
+from sarj_lint_configs.libs.release.process import ProcessRunner, run_build_process, run_process
 from sarj_lint_configs.libs.release.typescript import run_typescript_release
 
 
@@ -17,17 +18,20 @@ if TYPE_CHECKING:
 
 PublishTarget = Literal["typescript", "python", "sql", "iac", "lint-configs", "tsconfig"]
 _EXPECTED_PYTHON_ARTIFACTS = 1
-_PYTHON_TARGETS: Mapping[str, str] = {
-    "python": "python",
-    "sql": "sql",
-    "iac": "iac",
-    "lint-configs": "lint-configs",
-}
+_PYTHON_TARGETS: Mapping[str, str] = MappingProxyType(
+    {
+        "python": "python",
+        "sql": "sql",
+        "iac": "iac",
+        "lint-configs": "lint-configs",
+    }
+)
 
 
 def publish_target(root: Path, target: PublishTarget, *, runner: ProcessRunner = run_process) -> None:
     """Build and publish exactly one package without shell commands or globs."""
     resolved = root.resolve()
+    build_runner = run_build_process if runner is run_process else runner
     if target == "typescript":
         _ = run_typescript_release("publish", resolved / "packages" / "typescript", runner=runner)
         return
@@ -35,7 +39,7 @@ def publish_target(root: Path, target: PublishTarget, *, runner: ProcessRunner =
         cwd = resolved / "packages" / "tsconfig"
         with TemporaryDirectory(prefix="sarj-tsconfig-release-") as temporary:
             destination = Path(temporary)
-            result = runner(
+            result = build_runner(
                 ("npm", "pack", "--json", "--pack-destination", str(destination)),
                 cwd=cwd,
                 capture_output=True,
@@ -53,7 +57,7 @@ def publish_target(root: Path, target: PublishTarget, *, runner: ProcessRunner =
     cwd = resolved / "packages" / package
     with TemporaryDirectory(prefix=f"sarj-{package}-release-") as temporary:
         destination = Path(temporary)
-        runner(("uv", "build", "--wheel", "--out-dir", str(destination)), cwd=cwd)
+        build_runner(("uv", "build", "--wheel", "--out-dir", str(destination)), cwd=cwd)
         artifacts = tuple(sorted(destination.glob("*.whl")))
         if len(artifacts) != _EXPECTED_PYTHON_ARTIFACTS or any(
             not artifact.is_file() or artifact.stat().st_size == 0 for artifact in artifacts

@@ -14,7 +14,13 @@ from sarj_lint_configs.libs.release.artifacts import (
     required_artifact_paths,
     verify_package_tarball,
 )
-from sarj_lint_configs.libs.release.process import ProcessRunner, run_process
+from sarj_lint_configs.libs.release.process import (
+    ProcessResult,
+    ProcessRunner,
+    run_build_process,
+    run_process,
+    run_process_environment,
+)
 
 
 if TYPE_CHECKING:
@@ -36,7 +42,7 @@ def pack_typescript(
     package_root: Path,
     destination: Path,
     *,
-    runner: ProcessRunner = run_process,
+    runner: ProcessRunner = run_build_process,
 ) -> PackedArtifact:
     """Create and independently verify an npm tarball."""
     destination.mkdir(parents=True, exist_ok=True)
@@ -105,7 +111,7 @@ def _included_paths(value: object) -> tuple[str, ...]:
     return tuple(included)
 
 
-def check_typescript(package_root: Path, *, runner: ProcessRunner = run_process) -> None:
+def check_typescript(package_root: Path, *, runner: ProcessRunner = run_build_process) -> None:
     """Run the reproducible TypeScript release test sequence."""
     for argv in (
         ("npm", "ci", "--no-audit", "--no-fund"),
@@ -128,20 +134,36 @@ def run_typescript_release(
     if mode not in {"check", "pack", "publish"}:
         msg = f"unsupported TypeScript release mode: {mode}"
         raise ValueError(msg)
+    build_runner = run_build_process if runner is run_process else runner
     if mode == "pack":
         if destination is None:
             msg = "pack mode requires a destination directory"
             raise ValueError(msg)
-        return pack_typescript(package_root, destination, runner=runner)
+        return pack_typescript(package_root, destination, runner=build_runner)
     if destination is not None:
         msg = f"{mode} mode does not accept a destination directory"
         raise ValueError(msg)
-    _ = environment  # Authentication is supplied by npm/OIDC, not package policy.
-    check_typescript(package_root, runner=runner)
+    check_typescript(package_root, runner=build_runner)
     with TemporaryDirectory(prefix="sarj-typescript-release-") as temporary:
-        artifact = pack_typescript(package_root, Path(temporary), runner=runner)
+        artifact = pack_typescript(package_root, Path(temporary), runner=build_runner)
         if mode == "publish":
-            runner(
+            publish_runner = runner
+            if runner is run_process and environment is not None:
+
+                def publish_runner(
+                    argv: tuple[str, ...],
+                    *,
+                    cwd: Path,
+                    capture_output: bool = False,
+                ) -> ProcessResult:
+                    return run_process_environment(
+                        argv,
+                        cwd=cwd,
+                        capture_output=capture_output,
+                        environment=environment,
+                    )
+
+            publish_runner(
                 ("npm", "publish", str(artifact.path), "--access", "public", "--ignore-scripts"),
                 cwd=package_root,
             )

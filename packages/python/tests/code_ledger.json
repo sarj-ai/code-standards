@@ -94,5 +94,6 @@
   "SARJ092": "no-typed-doc-sections",
   "SARJ093": "prefer-nominal-id-types",
   "SARJ094": "fastapi-openapi-contract",
-  "SARJ095": "no-hidden-constructor-fallback"
+  "SARJ095": "no-hidden-constructor-fallback",
+  "SARJ096": "prefer-immutable-module-constant"
 }

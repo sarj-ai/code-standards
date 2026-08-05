@@ -10,7 +10,10 @@ from sarj_lint_configs.libs.release.process import (
     ProcessFailureError,
     ProcessResult,
     ProcessRunner,
+    credential_free_environment,
+    run_build_process,
     run_process,
+    run_process_environment,
 )
 from sarj_lint_configs.libs.release.publish import PublishTarget, publish_target
 from sarj_lint_configs.libs.release.release_age import (
@@ -63,6 +66,7 @@ __all__ = (
     "check_lockfile_release_age",
     "check_typescript",
     "create_release_tags",
+    "credential_free_environment",
     "fetch_npm_packument",
     "load_exact_exclusions",
     "locked_registry_packages",
@@ -71,7 +75,9 @@ __all__ = (
     "publish_target",
     "read_manifest_version",
     "required_artifact_paths",
+    "run_build_process",
     "run_process",
+    "run_process_environment",
     "run_typescript_release",
     "validate_release_tag",
     "verify_built_package",

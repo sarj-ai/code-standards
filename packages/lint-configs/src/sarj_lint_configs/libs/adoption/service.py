@@ -26,6 +26,12 @@ class SyncOutcome(StrEnum):
     INVALID = "invalid"
 
 
+class _DestinationKind(StrEnum):
+    DEFAULT = "default"
+    PYTHON = "python"
+    TYPESCRIPT = "typescript"
+
+
 @dataclass(frozen=True, slots=True)
 class SyncTarget:
     name: str
@@ -101,15 +107,21 @@ def plan_sync(
     adopted = _load_optional_manifest(resolved)
     selected = _selected_configs(configs, adopted)
     selected_profile = profile or (adopted.profile if adopted is not None else "standard")
-    destinations: dict[str, Path] = {}
+    destinations: dict[_DestinationKind, Path] = {}
 
-    def destination(kind: str, override: str | None) -> Path:
+    def destination(kind: _DestinationKind, override: str | None) -> Path:
         if kind not in destinations:
             recorded = None
             if adopted is not None:
-                recorded = adopted.typescript_dest if kind == "typescript" else adopted.python_dest
+                match kind:
+                    case _DestinationKind.TYPESCRIPT:
+                        recorded = adopted.typescript_dest
+                    case _DestinationKind.PYTHON:
+                        recorded = adopted.python_dest
+                    case _DestinationKind.DEFAULT:
+                        pass
             requested = override or (str(resolved) if recorded is None else str(resolved / recorded))
-            destinations[kind] = _contained_destination(resolved, requested, label=kind)
+            destinations[kind] = _contained_destination(resolved, requested, label=kind.value)
         return destinations[kind]
 
     targets: list[SyncTarget] = []
@@ -121,11 +133,11 @@ def plan_sync(
             else standard_source
         )
         if name == "eslint":
-            base = destination("typescript", typescript_dest)
+            base = destination(_DestinationKind.TYPESCRIPT, typescript_dest)
         elif name in PYTHON_CONFIGS:
-            base = destination("python", python_dest)
+            base = destination(_DestinationKind.PYTHON, python_dest)
         else:
-            base = destination("default", None)
+            base = destination(_DestinationKind.DEFAULT, None)
         targets.append(SyncTarget(name, CONFIGS_DIR / source_name, base / target_name))
     return SyncPlan(resolved, selected_profile, tuple(targets))
 
@@ -274,10 +286,10 @@ def _sync_one(target: SyncTarget, *, root: Path, force: bool, check: bool) -> Sy
         return SyncOutcome.OK
     if destination.exists() and not destination.is_file():
         return SyncOutcome.INVALID
-    if check:
-        if not destination.is_file() or destination.read_bytes() != target.source.read_bytes():
-            return SyncOutcome.DRIFT
+    if destination.is_file() and destination.read_bytes() == target.source.read_bytes():
         return SyncOutcome.OK
+    if check:
+        return SyncOutcome.DRIFT
     if destination.exists() and not force:
         return SyncOutcome.SKIPPED
     _ = shutil.copyfile(target.source, destination)

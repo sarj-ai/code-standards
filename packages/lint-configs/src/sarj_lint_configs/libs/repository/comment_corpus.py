@@ -14,6 +14,7 @@ import re
 import secrets
 import stat
 import tokenize
+from types import MappingProxyType
 from typing import TYPE_CHECKING, TypedDict
 
 
@@ -22,8 +23,12 @@ if TYPE_CHECKING:
     from typing import TextIO
 
 
-_SUFFIXES = {".py": "python", ".js": "typescript", ".jsx": "typescript", ".ts": "typescript", ".tsx": "typescript"}
-_SKIP_PARTS = {".git", ".venv", ".worktrees", "node_modules", "dist", "build", "coverage", "vendor", "vendored"}
+_SUFFIXES = MappingProxyType(
+    {".py": "python", ".js": "typescript", ".jsx": "typescript", ".ts": "typescript", ".tsx": "typescript"}
+)
+_SKIP_PARTS = frozenset(
+    {".git", ".venv", ".worktrees", "node_modules", "dist", "build", "coverage", "vendor", "vendored"}
+)
 _BOUNDARY_RE = re.compile(r"(?<=[.!?])[\"'`)\]]*\s+(?=[A-Z0-9`])")
 _BULLET_RE = re.compile(r"^\s*(?:[-*+] |\d+[.)] )")
 _SECOND_SENTENCE = 2

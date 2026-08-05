@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from typing import TYPE_CHECKING
 
 import pytest
@@ -136,6 +137,18 @@ def test_doctor_accepts_one_standalone_ruff_config(tmp_path: Path) -> None:
     (tmp_path / "ruff.toml").write_text('[lint]\nselect = ["ALL"]\n', encoding="utf-8")
 
     assert not list(check_ruff_policy_authority(tmp_path))
+
+
+def test_doctor_honors_gitignore_when_scanning_rule_references(tmp_path: Path) -> None:
+    _ = subprocess.run(("git", "init", "-q", str(tmp_path)), check=True)
+    (tmp_path / ".gitignore").write_text("generated/\n", encoding="utf-8")
+    generated = tmp_path / "generated"
+    generated.mkdir()
+    (generated / "fixture.py").write_text("# sarj-noqa: SARJ061\n", encoding="utf-8")
+
+    findings = doctor.diagnose(tmp_path)
+
+    assert not [finding for finding in findings if finding.id == "doctor.rule.retired"]
 
 
 def test_doctor_rejects_consumer_config_that_reenables_conflicting_docstring_rules(tmp_path: Path) -> None:

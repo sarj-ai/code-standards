@@ -6,6 +6,7 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from types import MappingProxyType
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
@@ -30,7 +31,7 @@ _SPEC_KEYWORDS = frozenset({"spec", "spec_set", "autospec", "new", "new_callable
 
 
 # Positional arity reveals when each mock constructor already received its spec or replacement.
-_REPLACEMENT_ARITY = {"Mock": 1, "MagicMock": 1, "AsyncMock": 1, "patch": 2, "patch.object": 3}
+_REPLACEMENT_ARITY = MappingProxyType({"Mock": 1, "MagicMock": 1, "AsyncMock": 1, "patch": 2, "patch.object": 3})
 
 # Attributes every mock answers regardless of what it stands in for.
 _MOCK_API_ATTRS = frozenset(

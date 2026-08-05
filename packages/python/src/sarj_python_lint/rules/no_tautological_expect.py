@@ -6,6 +6,7 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from types import MappingProxyType
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
@@ -40,12 +41,14 @@ _SAMENESS_OPS = (ast.Eq, ast.Is)
 # Enough of the operand to identify it in the message without pasting a screenful.
 _OPERAND_PREVIEW_CHARS = 40
 
-_CONTAINER_KINDS: dict[type[ast.expr], str] = {
-    ast.List: "list",
-    ast.Set: "set",
-    ast.Dict: "dict",
-    ast.Tuple: "tuple",
-}
+_CONTAINER_KINDS = MappingProxyType(
+    {
+        ast.List: "list",
+        ast.Set: "set",
+        ast.Dict: "dict",
+        ast.Tuple: "tuple",
+    }
+)
 
 
 class NoTautologicalExpect(Rule):

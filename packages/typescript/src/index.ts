@@ -44,6 +44,7 @@ import noZodNativeEnum from "./rules/no-zod-native-enum.js";
 import preferConstantTimeSecretCompare from "./rules/prefer-constant-time-secret-compare.js";
 import preferDiscriminatedUnion from "./rules/prefer-discriminated-union.js";
 import preferInputGroupSearch from "./rules/prefer-input-group-search.js";
+import preferImmutableModuleConstant from "./rules/prefer-immutable-module-constant.js";
 import preferShadcnPrimitives from "./rules/prefer-shadcn-primitives.js";
 import preferModuleLevelConstant from "./rules/prefer-module-level-constant.js";
 import preferModuleLevelSchema from "./rules/prefer-module-level-schema.js";
@@ -110,6 +111,7 @@ const rules = {
   "prefer-constant-time-secret-compare": preferConstantTimeSecretCompare,
   "prefer-discriminated-union": preferDiscriminatedUnion,
   "prefer-input-group-search": preferInputGroupSearch,
+  "prefer-immutable-module-constant": preferImmutableModuleConstant,
   "prefer-shadcn-primitives": preferShadcnPrimitives,
   "prefer-module-level-constant": preferModuleLevelConstant,
   "prefer-module-level-schema": preferModuleLevelSchema,
@@ -134,7 +136,7 @@ const rules = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "9.12.1",
+  version: "9.13.0",
 } as const;
 
 /** Rules registered for application-profile configs but intentionally absent from general presets. */
@@ -182,6 +184,7 @@ const recommendedRules = {
   "@sarj/prefer-constant-time-secret-compare": "error",
   "@sarj/prefer-discriminated-union": "warn",
   "@sarj/prefer-input-group-search": "error",
+  "@sarj/prefer-immutable-module-constant": "warn",
   "@sarj/prefer-module-level-constant": "warn",
   "@sarj/prefer-module-level-schema": "warn",
   "@sarj/prefer-non-nullable-collection": "warn",
@@ -244,6 +247,7 @@ const strictRules = {
   "@sarj/prefer-constant-time-secret-compare": "error",
   "@sarj/prefer-discriminated-union": "error",
   "@sarj/prefer-input-group-search": "error",
+  "@sarj/prefer-immutable-module-constant": "warn",
   "@sarj/prefer-module-level-constant": "error",
   "@sarj/prefer-module-level-schema": "error",
   "@sarj/prefer-non-nullable-collection": "error",

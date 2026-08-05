@@ -1,0 +1,4 @@
+interface:
+  display_name: "Lint Rule Generator"
+  short_description: "Design and validate low-noise lint rules"
+  default_prompt: "Use $lint-rule-generator to design and corpus-test a deterministic lint rule."

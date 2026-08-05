@@ -53,7 +53,28 @@ def test_upgrade_repairs_the_bundle_without_losing_manifest_extensions(tmp_path:
     manifest_text = (tmp_path / manifest.MANIFEST_NAME).read_text(encoding="utf-8")
     assert f'version = "{manifest.adopted_version()}"' in manifest_text
     assert "[consumer]\nkeep = true" in manifest_text
-    assert not [finding for finding in doctor.diagnose(tmp_path) if finding.level is doctor.Level.DRIFT]
+    assert {finding.id for finding in doctor.diagnose(tmp_path) if finding.level is doctor.Level.DRIFT} == {
+        "doctor.python.bundle-missing"
+    }
+
+
+def test_upgrade_repairs_preexisting_replacement_ruff_policy(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        '[project]\nname = "app"\nversion = "0.1.0"\n\n'
+        '[tool.ruff]\nextend = ".ruff-strict.toml"\n\n'
+        '[tool.ruff.lint]\nselect = ["ALL"]\nignore = ["D"]\n',
+        encoding="utf-8",
+    )
+
+    plan = upgrade.build_plan(tmp_path)
+
+    assert "repair adoption wiring" in upgrade.render(plan.changes)
+    assert upgrade.apply(plan, install=False) == 0
+    updated = pyproject.read_text(encoding="utf-8")
+    assert 'extend-select = ["ALL"]' in updated
+    assert 'extend-ignore = ["D"]' in updated
 
 
 def test_upgrade_no_install_skips_dependency_install(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -68,6 +89,116 @@ def test_upgrade_no_install_skips_dependency_install(monkeypatch: pytest.MonkeyP
 
     assert cli.main(["upgrade", "--offline", "--no-install", "--dest", str(tmp_path)]) == 0
     assert install_values == [False]
+
+
+def test_upgrade_no_install_keeps_valid_config_with_pending_dependency_drift(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+
+    status = cli.main(["update", "--offline", "--no-install", str(tmp_path)])
+
+    assert status == 0
+    assert f'version = "{manifest.adopted_version()}"' in (tmp_path / manifest.MANIFEST_NAME).read_text(
+        encoding="utf-8"
+    )
+    pending = upgrade.pending_install_findings(tmp_path)
+    assert {finding.id for finding in pending} == {"doctor.python.bundle-missing"}
+
+
+def test_upgrade_no_install_explains_incomplete_setup_and_next_command(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _outdated_python_repo(tmp_path)
+
+    status = cli.main(["upgrade", "--offline", "--no-install", "--dest", str(tmp_path)])
+
+    output = capsys.readouterr().out
+    assert status == 0
+    assert "updated configuration:" in output
+    assert "setup is incomplete (1 dependency finding(s))" in output
+    assert "pending: doctor.python.bundle-missing" in output
+    assert "uv add --dev" in output
+    assert "then `sarj-standards doctor`" in output
+    assert "upgraded:" not in output
+
+
+def test_upgrade_with_install_still_rolls_back_dependency_drift(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _outdated_python_repo(tmp_path)
+    before = {path: path.read_bytes() for path in tmp_path.iterdir() if path.is_file()}
+    finding = doctor.Finding(
+        doctor.Level.DRIFT,
+        "pyproject.toml",
+        "forced missing dependency",
+        "doctor.python.bundle-missing",
+    )
+
+    def execute(_commands: object) -> int:
+        return 0
+
+    def diagnose(_root: Path) -> list[doctor.Finding]:
+        return [finding]
+
+    monkeypatch.setattr(upgrade.lifecycle, "execute", execute)
+    monkeypatch.setattr(doctor, "diagnose", diagnose)
+
+    assert upgrade.apply(upgrade.build_plan(tmp_path), install=True) == 1
+    assert {path: path.read_bytes() for path in tmp_path.iterdir() if path.is_file()} == before
+
+
+def test_upgrade_no_install_rolls_back_when_dependency_and_configuration_drift_remain(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _outdated_python_repo(tmp_path)
+    before = {path: path.read_bytes() for path in tmp_path.iterdir() if path.is_file()}
+    findings = [
+        doctor.Finding(
+            doctor.Level.DRIFT,
+            "pyproject.toml",
+            "forced missing dependency",
+            "doctor.python.bundle-missing",
+        ),
+        doctor.Finding(doctor.Level.DRIFT, "eslint.config.mjs", "forced broken wiring", "doctor.eslint.wiring"),
+    ]
+
+    def diagnose(_root: Path) -> list[doctor.Finding]:
+        return findings
+
+    monkeypatch.setattr(doctor, "diagnose", diagnose)
+
+    assert upgrade.apply(upgrade.build_plan(tmp_path), install=False) == 1
+    assert {path: path.read_bytes() for path in tmp_path.iterdir() if path.is_file()} == before
+
+
+def test_upgrade_check_explains_doctor_drift_when_bundle_is_current(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _outdated_python_repo(tmp_path)
+    assert upgrade.apply(upgrade.build_plan(tmp_path), install=False) == 0
+    finding = doctor.Finding(
+        doctor.Level.DRIFT,
+        "package.json: eslint",
+        "expected exact tested peer",
+        "doctor.eslint.peer",
+        "run `sarj-standards update`",
+    )
+
+    def diagnosed(_root: Path) -> list[doctor.Finding]:
+        return [finding]
+
+    monkeypatch.setattr(doctor, "diagnose", diagnosed)
+
+    status = cli.main(["upgrade", "--offline", "--check", "--dest", str(tmp_path)])
+
+    output = capsys.readouterr().out
+    assert status == 1
+    assert "already matches standards" not in output
+    assert "bundle current:" in output
+    assert "doctor found 1 configuration drift" in output
+    assert "drift: doctor.eslint.peer package.json: eslint" in output
+    assert "fix: run `sarj-standards update`" in output
 
 
 def test_upgrade_rolls_back_every_touched_file_when_postflight_fails(
@@ -191,17 +322,22 @@ def test_upgrade_refreshes_every_doctor_owned_pin_site_without_thrashing(tmp_pat
     plan = upgrade.build_plan(tmp_path)
 
     assert "refresh sarj-lint-configs version pin" in upgrade.render(plan.changes)
-    assert upgrade.apply(plan, install=False) == 0
+    status = upgrade.apply(plan, install=False)
+    remaining = [finding for finding in doctor.diagnose(tmp_path) if finding.level is doctor.Level.DRIFT]
+    assert status == 0, remaining
     precommit = (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     workflow = (workflows / "standards.yml").read_text(encoding="utf-8")
     package_json = (tmp_path / "package.json").read_text(encoding="utf-8")
-    assert f"sarj-lint-configs=={lint_configs}" in precommit
+    assert "uv run --frozen sarj-standards check --staged" in precommit
+    assert "sarj-standards-drift" not in precommit
     assert f"sarj-lint-configs=={lint_configs}" in workflow
     assert f"sarj-lint-configs=={lint_configs}" in package_json
     assert "verbose: true" in (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     assert f"sarj-python-lint=={python_lint}" in pyproject.read_text(encoding="utf-8")
-    assert f"sarj-python-lint>={python_lint}" in (tmp_path / "requirements-dev.txt").read_text(encoding="utf-8")
-    assert not [finding for finding in doctor.diagnose(tmp_path) if finding.level is doctor.Level.DRIFT]
+    assert f"sarj-python-lint=={python_lint}" in (tmp_path / "requirements-dev.txt").read_text(encoding="utf-8")
+    assert {finding.id for finding in doctor.diagnose(tmp_path) if finding.level is doctor.Level.DRIFT} == {
+        "doctor.python.bundle-missing"
+    }
 
 
 def test_upgrade_rolls_back_a_migrated_workflow_pin_on_postflight_failure(
