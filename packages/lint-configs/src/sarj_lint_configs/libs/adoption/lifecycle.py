@@ -57,7 +57,7 @@ def install_commands(
         versions = manifest.installed_versions()
         bundle = tuple(f"{name}=={version}" for name, version in versions.items())
         release_age_exemptions = tuple(
-            argument for name in versions for argument in ("--exclude-newer-package", f"{name}=9999-12-31")
+            argument for name in versions for argument in ("--exclude-newer-package", f"{name}=2099-12-31")
         )
         commands.append(
             Command(

@@ -63,9 +63,9 @@ def test_python_install_exact_pins_override_consumer_release_age_cutoffs(
         "add",
         "--dev",
         "--exclude-newer-package",
-        "sarj-lint-configs=9999-12-31",
+        "sarj-lint-configs=2099-12-31",
         "--exclude-newer-package",
-        "sarj-python-lint=9999-12-31",
+        "sarj-python-lint=2099-12-31",
         "sarj-lint-configs==1.2.3",
         "sarj-python-lint==4.5.6",
     )
