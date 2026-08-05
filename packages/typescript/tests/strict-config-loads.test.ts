@@ -33,6 +33,7 @@
 import { ESLint, type Linter } from "eslint";
 import { describe, expect, it } from "vitest";
 
+import applicationConfig from "../../lint-configs/src/sarj_lint_configs/configs/eslint.application.mjs";
 import strictConfig from "../../lint-configs/src/sarj_lint_configs/configs/eslint.strict.mjs";
 
 /**
@@ -131,6 +132,22 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
       | [number, { cases: Record<string, boolean> }]
       | undefined;
     expect(baseFilenameCase?.[1].cases.pascalCase).toBeUndefined();
+  });
+
+  it("scopes shadcn primitive guidance outside design-system implementations", () => {
+    const entries = applicationConfig as Linter.Config[];
+    const globalEntry = entries.find(
+      (entry) =>
+        entry.rules?.["@sarj/prefer-shadcn-primitives"] === "warn",
+    );
+    expect(globalEntry).toBeDefined();
+
+    const designSystemEntry = entries.find(
+      (entry) =>
+        entry.files?.includes("**/components/ui/**") &&
+        entry.rules?.["@sarj/prefer-shadcn-primitives"] === "off",
+    );
+    expect(designSystemEntry).toBeDefined();
   });
 
   /**

@@ -44,6 +44,7 @@ import noZodNativeEnum from "./rules/no-zod-native-enum.js";
 import preferConstantTimeSecretCompare from "./rules/prefer-constant-time-secret-compare.js";
 import preferDiscriminatedUnion from "./rules/prefer-discriminated-union.js";
 import preferInputGroupSearch from "./rules/prefer-input-group-search.js";
+import preferShadcnPrimitives from "./rules/prefer-shadcn-primitives.js";
 import preferModuleLevelConstant from "./rules/prefer-module-level-constant.js";
 import preferModuleLevelSchema from "./rules/prefer-module-level-schema.js";
 import preferNativeRandomUuid from "./rules/prefer-native-random-uuid.js";
@@ -109,6 +110,7 @@ const rules = {
   "prefer-constant-time-secret-compare": preferConstantTimeSecretCompare,
   "prefer-discriminated-union": preferDiscriminatedUnion,
   "prefer-input-group-search": preferInputGroupSearch,
+  "prefer-shadcn-primitives": preferShadcnPrimitives,
   "prefer-module-level-constant": preferModuleLevelConstant,
   "prefer-module-level-schema": preferModuleLevelSchema,
   "prefer-native-random-uuid": preferNativeRandomUuid,
@@ -139,6 +141,7 @@ const meta = {
 const applicationOnlyRules = [
   "no-restricted-library-load",
   "prefer-native-random-uuid",
+  "prefer-shadcn-primitives",
 ] as const;
 
 const recommendedRules = {

@@ -35,7 +35,8 @@ export const retiredRules: Readonly<Record<string, RetiredRule>> = {
   },
   "prefer-shadcn": {
     removedIn: "3.0.0",
-    reason: "Delete the entry; use `react/forbid-elements` for element restrictions.",
+    reason:
+      "Delete the retired entry; application-profile consumers can separately adopt `@sarj/prefer-shadcn-primitives`.",
   },
   "primary-export-file-name": {
     removedIn: "4.0.0",

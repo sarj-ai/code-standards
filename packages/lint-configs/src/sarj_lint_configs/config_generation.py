@@ -79,6 +79,13 @@ def render_eslint_application() -> str:
         f"        {{ libraries: {indented_runtime_policy} }},\n"
         "      ],\n"
         '      "@sarj/prefer-native-random-uuid": "error",\n'
+        '      "@sarj/prefer-shadcn-primitives": "warn",\n'
+        "    },\n"
+        "  },\n"
+        "\n  {\n"
+        '    files: ["**/components/ui/**", "**/components/design-system/**"],\n'
+        "    rules: {\n"
+        '      "@sarj/prefer-shadcn-primitives": "off",\n'
         "    },\n"
         "  },\n"
     )
