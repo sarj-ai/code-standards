@@ -243,21 +243,21 @@
   entry: sarj-iac-lint check --rule require-deletion-protection
   language: python
   files: '\.(tf|hcl)$'
-  additional_dependencies: ['sarj-iac-lint==0.5.1']
+  additional_dependencies: ['sarj-iac-lint==0.5.2']
 
 - id: sarj-no-comment-cruft-iac
   name: 'sarj-lint(iac): commented-out Terraform / section-banner comments'
   entry: sarj-iac-lint check --rule no-comment-cruft
   language: python
   files: '\.(tf|hcl|tfvars)$'
-  additional_dependencies: ['sarj-iac-lint==0.5.1']
+  additional_dependencies: ['sarj-iac-lint==0.5.2']
 
 - id: sarj-require-prevent-destroy-on-irreplaceable
   name: 'sarj-lint(iac): irreplaceable resource without lifecycle prevent_destroy'
   entry: sarj-iac-lint check --rule require-prevent-destroy-on-irreplaceable
   language: python
   files: '\.(tf|hcl)$'
-  additional_dependencies: ['sarj-iac-lint==0.5.1']
+  additional_dependencies: ['sarj-iac-lint==0.5.2']
 
 - id: sarj-mock-without-spec
   name: 'sarj-lint: mock built without spec= accepts any attribute'
