@@ -86,6 +86,11 @@ For TypeScript, `sarj-standards show peers` (with the init-generated launcher) p
 `eslint.strict.mjs` needs at versions that install together — there is no
 `@latest` combination that does.
 
+Pre-commit runs the version already pinned by the consumer repository; it does
+not silently download new rules. Run `sarj-standards update --check` in scheduled
+automation and review the resulting `sarj-standards update` change to receive a
+new release coherently across hooks, configs, Python pins, and npm peers.
+
 See [`packages/lint-configs/README.md`](packages/lint-configs/README.md) for how
 to extend the configs without forking them, polyglot destination routing, and the
 generated pre-commit block.

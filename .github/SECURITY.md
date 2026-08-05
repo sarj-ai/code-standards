@@ -2,24 +2,19 @@
 
 ## Reporting a vulnerability
 
-Please use GitHub's private vulnerability reporting for this repository. Do not
-open a public issue for a suspected vulnerability, leaked credential, malicious
-dependency, or package-registry compromise.
+Please do not open a public issue for a suspected vulnerability in the packages,
+release workflow, or build infrastructure. Use GitHub's
+[private vulnerability reporting](https://github.com/sarj-ai/standards/security/advisories/new)
+so reports and supporting evidence remain confidential.
 
-Include the affected package and version, reproduction details, impact, and any
-known mitigations. We will acknowledge a report as soon as practical and keep
-coordination private until a fix is available.
+Include the affected package and version, impact, reproduction steps, and any
+suggested mitigation. We will acknowledge a report within 3 business days,
+provide a status update within 7 business days, and coordinate disclosure after
+a fix is available. Please allow up to 90 days for coordinated disclosure unless
+active exploitation or another material risk requires a faster timeline.
 
-## Supported releases
+## Supported versions
 
-Only the latest release of each `@sarj/*` npm package and `sarj-*` PyPI package
-receives security fixes. Consumers should pin exact versions or lockfiles and
-update after reviewing provenance and release notes.
-
-## Release integrity
-
-Releases are built only by GitHub Actions after a version-changing merge to
-`main`. npm and PyPI authentication uses short-lived OIDC trusted publishing;
-long-lived registry tokens are not used. PyPI publishes wheels with attestations.
-All third-party Actions are pinned to full commit SHAs.
-
+Security fixes are released for the latest published version. Consumers should
+use `sarj-standards update --check` to detect a coherent bundle upgrade and
+review the generated changes before applying them.
