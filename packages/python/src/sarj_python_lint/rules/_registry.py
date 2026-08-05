@@ -37,6 +37,9 @@ from sarj_python_lint.rules.no_first_party_private_import import (
 )
 from sarj_python_lint.rules.no_fstring_in_log import NoFstringInLog
 from sarj_python_lint.rules.no_gen_random_uuid_in_sql import NoGenRandomUuidInSql
+from sarj_python_lint.rules.no_hidden_constructor_fallback import (
+    NoHiddenConstructorFallback,
+)
 from sarj_python_lint.rules.no_isinstance_union_chain import NoIsinstanceUnionChain
 from sarj_python_lint.rules.no_long_comment import NoLongComment
 from sarj_python_lint.rules.no_offset_pagination import NoOffsetPagination
@@ -167,6 +170,7 @@ REGISTRY: dict[str, type[Rule]] = {
     TrailingValueNarration.id: TrailingValueNarration,
     NoStdlibLogging.id: NoStdlibLogging,
     NoGenRandomUuidInSql.id: NoGenRandomUuidInSql,
+    NoHiddenConstructorFallback.id: NoHiddenConstructorFallback,
     NoFileLevelEscapeHatchNoqa.id: NoFileLevelEscapeHatchNoqa,
     NoOptionalTenantPredicate.id: NoOptionalTenantPredicate,
     NoTautologicalExpect.id: NoTautologicalExpect,

@@ -108,6 +108,7 @@
       "no-first-party-private-import",
       "no-fstring-in-log",
       "no-gen-random-uuid-in-sql",
+      "no-hidden-constructor-fallback",
       "no-isinstance-union-chain",
       "no-long-comment",
       "no-offset-pagination",
@@ -268,7 +269,8 @@
       "SARJ091",
       "SARJ092",
       "SARJ093",
-      "SARJ094"
+      "SARJ094",
+      "SARJ095"
     ],
     "sql": [
       "SARJ101",
