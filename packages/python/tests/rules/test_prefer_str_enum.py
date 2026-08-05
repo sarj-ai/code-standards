@@ -61,6 +61,15 @@ class Rec(BaseModel):
     assert len(_check(src)) == 1
 
 
+def test_django_choice_pairs_ignore_the_none_blank_sentinel():
+    src = """
+class Record:
+    status: str
+    status_choices = ((None, "---"), ("active", "Active"), ("disabled", "Disabled"))
+"""
+    assert len(_check(src)) == 1
+
+
 def test_choices_attr_name_is_case_insensitive():
     src = """
 from pydantic import BaseModel

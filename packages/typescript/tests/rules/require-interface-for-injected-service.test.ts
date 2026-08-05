@@ -21,6 +21,46 @@ const SRC = "/repo/src/domain/record-normalizer/service.ts";
 ruleTester.run("require-interface-for-injected-service", rule, {
   valid: [
     {
+      name: "combines segregated implemented port surfaces",
+      filename: SRC,
+      code: `
+        interface Reader { read(): void; }
+        interface Writer { write(): void; }
+        export class RequestHandler implements Reader, Writer {
+          constructor(private readonly store: TaskStore) {}
+          read(): void {}
+          write(): void {}
+        }
+      `,
+    },
+    {
+      name: "resolves intersection and reference aliases used as ports",
+      filename: SRC,
+      code: `
+        interface Reader { read(): void; }
+        interface Writer { write(): void; }
+        type Combined = Reader & Writer;
+        type RequestPort = Combined;
+        export class RequestHandler implements RequestPort {
+          constructor(private readonly store: TaskStore) {}
+          read(): void {}
+          write(): void {}
+        }
+      `,
+    },
+    {
+      name: "recognizes callable type aliases on both a port and its implementation",
+      filename: SRC,
+      code: `
+        type Run = () => void;
+        interface RequestPort { run: Run; }
+        export class RequestHandler implements RequestPort {
+          constructor(private readonly store: TaskStore) {}
+          run: Run = () => {};
+        }
+      `,
+    },
+    {
       name: "recognizes a service surface inherited by a local port interface",
       filename: SRC,
       code: `
@@ -800,6 +840,30 @@ ruleTester.run("require-interface-for-injected-service", rule, {
   ],
 
   invalid: [
+    {
+      name: "implementing a local concrete class does not declare a port",
+      filename: SRC,
+      code: `
+        class Concrete { handle(): void {} }
+        export class RequestHandler implements Concrete {
+          constructor(private readonly store: TaskStore) {}
+          handle(): void {}
+        }
+      `,
+      errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }],
+    },
+    {
+      name: "a local empty type alias is not a service port",
+      filename: SRC,
+      code: `
+        type Empty = {};
+        export class RequestHandler implements Empty {
+          constructor(private readonly store: TaskStore) {}
+          handle(): void {}
+        }
+      `,
+      errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }],
+    },
     {
       name: "recognizes nullish assignment and type-asserted constructor storage",
       filename: SRC,

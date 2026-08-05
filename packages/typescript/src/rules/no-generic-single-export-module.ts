@@ -135,7 +135,11 @@ function runtimeExports(program: TSESTree.Program): RuntimeExports {
     }
     if (statement.type === AST_NODE_TYPES.ExportDefaultDeclaration) {
       const declaration = statement.declaration;
-      if (declaration.type === AST_NODE_TYPES.Identifier) exports.push({ key: "default", name: declaration.name, node: statement });
+      if (declaration.type === AST_NODE_TYPES.Identifier) {
+        if (!typeBindings.has(declaration.name)) {
+          exports.push({ key: "default", name: declaration.name, node: statement });
+        }
+      }
       else if (
         (declaration.type === AST_NODE_TYPES.FunctionDeclaration || declaration.type === AST_NODE_TYPES.ClassDeclaration) &&
         declaration.id !== null &&

@@ -174,13 +174,20 @@ def _boundary_nodes(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctio
     result: list[ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef] = []
     for statement in tree.body:
         if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            result.append(statement)
+            if not _is_overload(statement):
+                result.append(statement)
         elif isinstance(statement, ast.ClassDef):
             result.append(statement)
             result.extend(
-                member for member in statement.body if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef))
+                member
+                for member in statement.body
+                if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)) and not _is_overload(member)
             )
     return result
+
+
+def _is_overload(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    return any(_qualified_tail(decorator) == "overload" for decorator in node.decorator_list)
 
 
 def _role(
@@ -195,7 +202,7 @@ def _role(
         return None
     if not (name.endswith(("_id", "_ids")) or (allow_bare_id and name == "id")):
         return None
-    raw_primitive = _is_raw_primitive_id(annotation, raw_aliases)
+    raw_primitive = _is_raw_primitive_id(annotation, raw_aliases, nominal_aliases)
     if not raw_primitive and not _is_nominal_id(annotation, raw_aliases, nominal_aliases):
         return None
     return _IdRole(name=name, annotation=annotation, raw_primitive=raw_primitive)
@@ -262,7 +269,7 @@ def _type_alias_type_value(value: ast.expr) -> ast.expr | None:
 def _nominal_alias_names(tree: ast.Module) -> frozenset[str]:
     new_type_calls = {"NewType"}
     for statement in tree.body:
-        if isinstance(statement, ast.ImportFrom) and statement.module == "typing":
+        if isinstance(statement, ast.ImportFrom) and statement.module in {"typing", "typing_extensions"}:
             new_type_calls.update(alias.asname or alias.name for alias in statement.names if alias.name == "NewType")
     names: set[str] = set()
     for statement in tree.body:
@@ -290,17 +297,23 @@ def _stringized_annotation(annotation: ast.expr) -> ast.expr | None:
         return None
 
 
-def _is_raw_primitive_id(annotation: ast.expr, raw_aliases: frozenset[str] = frozenset()) -> bool:
+def _is_raw_primitive_id(
+    annotation: ast.expr,
+    raw_aliases: frozenset[str] = frozenset(),
+    nominal_aliases: frozenset[str] = frozenset(),
+) -> bool:
     if (parsed := _stringized_annotation(annotation)) is not None:
-        return _is_raw_primitive_id(parsed, raw_aliases)
+        return _is_raw_primitive_id(parsed, raw_aliases, nominal_aliases)
     if isinstance(annotation, ast.Name):
         return annotation.id in {"UUID", "int", "str"} or annotation.id in raw_aliases
     if isinstance(annotation, ast.Attribute):
         return annotation.attr == "UUID"
     if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
         members = _flatten_union(annotation)
-        return any(_is_raw_primitive_id(member, raw_aliases) for member in members) and all(
-            _is_raw_primitive_id(member, raw_aliases) or _is_nominal_id(member, raw_aliases) or _is_none(member)
+        return any(_is_raw_primitive_id(member, raw_aliases, nominal_aliases) for member in members) and all(
+            _is_raw_primitive_id(member, raw_aliases, nominal_aliases)
+            or _is_nominal_id(member, raw_aliases, nominal_aliases)
+            or _is_none(member)
             for member in members
         )
     if not isinstance(annotation, ast.Subscript):
@@ -310,7 +323,7 @@ def _is_raw_primitive_id(annotation: ast.expr, raw_aliases: frozenset[str] = fro
         return (
             isinstance(annotation.slice, ast.Tuple)
             and bool(annotation.slice.elts)
-            and _is_raw_primitive_id(annotation.slice.elts[0], raw_aliases)
+            and _is_raw_primitive_id(annotation.slice.elts[0], raw_aliases, nominal_aliases)
         )
     if wrapper in {"Tuple", "tuple"} and isinstance(annotation.slice, ast.Tuple):
         elements = annotation.slice.elts
@@ -318,14 +331,16 @@ def _is_raw_primitive_id(annotation: ast.expr, raw_aliases: frozenset[str] = fro
             len(elements) == _VARIADIC_TUPLE_ARITY
             and isinstance(elements[1], ast.Constant)
             and elements[1].value is Ellipsis
-            and _is_raw_primitive_id(elements[0], raw_aliases)
+            and _is_raw_primitive_id(elements[0], raw_aliases, nominal_aliases)
         )
     if wrapper in _TRANSPARENT_WRAPPERS:
-        return _is_raw_primitive_id(annotation.slice, raw_aliases)
+        return _is_raw_primitive_id(annotation.slice, raw_aliases, nominal_aliases)
     if wrapper in _UNION_WRAPPERS:
         members = list(annotation.slice.elts) if isinstance(annotation.slice, ast.Tuple) else [annotation.slice]
-        return any(_is_raw_primitive_id(member, raw_aliases) for member in members) and all(
-            _is_raw_primitive_id(member, raw_aliases) or _is_nominal_id(member, raw_aliases) or _is_none(member)
+        return any(_is_raw_primitive_id(member, raw_aliases, nominal_aliases) for member in members) and all(
+            _is_raw_primitive_id(member, raw_aliases, nominal_aliases)
+            or _is_nominal_id(member, raw_aliases, nominal_aliases)
+            or _is_none(member)
             for member in members
         )
     return False

@@ -178,7 +178,7 @@ function moduleDefinitions(program: TSESTree.Program): Definition[] {
       definitions.push({ name: node.id.name, node, functionNode: node, bindingNode: node });
       continue;
     }
-    if (node?.type !== AST_NODE_TYPES.VariableDeclaration) continue;
+    if (node?.type !== AST_NODE_TYPES.VariableDeclaration || node.kind !== "const") continue;
     for (const declarator of node.declarations) {
       if (
         declarator.id.type === AST_NODE_TYPES.Identifier &&
@@ -221,6 +221,10 @@ function moduleScope(
   for (const definition of scopeDefinitions) {
     const variable = context.sourceCode.getDeclaredVariables(definition.bindingNode!)[0];
     for (const reference of variable?.references ?? []) {
+      if (reference.isWrite() && reference.init !== true) {
+        pinned.add(definition.name);
+        continue;
+      }
       if (!reference.isRead()) continue;
       const identifier = reference.identifier;
       const ancestors = context.sourceCode.getAncestors(identifier);
@@ -256,6 +260,14 @@ function referencedMethod(
   const isClassReference =
     objectVariable !== null && classVariables.has(objectVariable);
   if (node.object.type !== AST_NODE_TYPES.ThisExpression && !isClassReference) return null;
+  if (node.property.type === AST_NODE_TYPES.PrivateIdentifier) return `#${node.property.name}`;
+  if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) return node.property.name;
+  return node.computed && node.property.type === AST_NODE_TYPES.Literal && typeof node.property.value === "string"
+    ? node.property.value
+    : null;
+}
+
+function referencedPropertyName(node: TSESTree.MemberExpression): string | null {
   if (node.property.type === AST_NODE_TYPES.PrivateIdentifier) return `#${node.property.name}`;
   if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) return node.property.name;
   return node.computed && node.property.type === AST_NODE_TYPES.Literal && typeof node.property.value === "string"
@@ -333,36 +345,62 @@ function classScope(
     if (caller === null || method.value.body === null) continue;
     const methodClassVariables = new Set(classVariables);
     const methodAliases = new Set<NonNullable<ReturnType<typeof ASTUtils.findVariable>>>();
-    for (const statement of method.value.body.body) {
-      walk(statement, context.sourceCode.visitorKeys, (current, nestedFunction) => {
-        if (
-          nestedFunction ||
-          current.type !== AST_NODE_TYPES.VariableDeclarator ||
-          current.parent.type !== AST_NODE_TYPES.VariableDeclaration ||
-          current.parent.kind !== "const" ||
-          current.id.type !== AST_NODE_TYPES.Identifier
-        ) return;
-        let initializer = current.init;
-        while (
-          initializer?.type === AST_NODE_TYPES.TSAsExpression ||
-          initializer?.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-          initializer?.type === AST_NODE_TYPES.TSNonNullExpression
-        ) initializer = initializer.expression;
-        if (initializer?.type !== AST_NODE_TYPES.ThisExpression) return;
-        const variable = context.sourceCode.getDeclaredVariables(current)[0];
-        if (variable !== undefined) {
-          methodClassVariables.add(variable);
-          methodAliases.add(variable);
+    const thisValue = (value: TSESTree.Expression | null | undefined): boolean => {
+      let current = value;
+      while (
+        current?.type === AST_NODE_TYPES.TSAsExpression ||
+        current?.type === AST_NODE_TYPES.TSSatisfiesExpression ||
+        current?.type === AST_NODE_TYPES.TSNonNullExpression
+      ) current = current.expression;
+      return current?.type === AST_NODE_TYPES.ThisExpression;
+    };
+    const collectAlias = (current: TSESTree.Node, nestedFunction: boolean): void => {
+      if (
+        nestedFunction ||
+        (current.type !== AST_NODE_TYPES.VariableDeclarator &&
+          current.type !== AST_NODE_TYPES.AssignmentPattern)
+      ) return;
+      if (
+        current.type === AST_NODE_TYPES.VariableDeclarator &&
+        (current.parent.type !== AST_NODE_TYPES.VariableDeclaration || current.parent.kind !== "const")
+      ) return;
+      const binding = current.type === AST_NODE_TYPES.VariableDeclarator ? current.id : current.left;
+      const value = current.type === AST_NODE_TYPES.VariableDeclarator ? current.init : current.right;
+      if (!thisValue(value)) return;
+      if (binding.type === AST_NODE_TYPES.ObjectPattern) {
+        for (const property of binding.properties) {
+          if (property.type === AST_NODE_TYPES.RestElement) {
+            for (const name of privateNames) pinned.add(name);
+          } else if (property.key.type === AST_NODE_TYPES.Identifier && privateNames.has(property.key.name)) {
+            pinned.add(property.key.name);
+          }
         }
-      });
+        return;
+      }
+      if (binding.type !== AST_NODE_TYPES.Identifier) return;
+      const variable = ASTUtils.findVariable(context.sourceCode.getScope(binding), binding.name);
+      if (variable !== null) {
+        methodClassVariables.add(variable);
+        methodAliases.add(variable);
+      }
+    };
+    for (const parameter of method.value.params) {
+      walk(parameter, context.sourceCode.visitorKeys, collectAlias);
+    }
+    for (const statement of method.value.body.body) {
+      walk(statement, context.sourceCode.visitorKeys, collectAlias);
     }
     const visitCall = (current: TSESTree.Node, nestedFunction: boolean): void => {
       if (
         current.type === AST_NODE_TYPES.VariableDeclarator &&
         current.id.type === AST_NODE_TYPES.ObjectPattern &&
-        current.init?.type === AST_NODE_TYPES.ThisExpression
+        thisValue(current.init)
       ) {
         for (const property of current.id.properties) {
+          if (property.type === AST_NODE_TYPES.RestElement) {
+            for (const name of privateNames) pinned.add(name);
+            continue;
+          }
           if (
             property.type === AST_NODE_TYPES.Property &&
             property.key.type === AST_NODE_TYPES.Identifier &&
@@ -372,7 +410,11 @@ function classScope(
       }
       if (current.type !== AST_NODE_TYPES.MemberExpression) return;
       const target = referencedMethod(context, current, methodClassVariables);
-      if (target === null) return;
+      if (target === null) {
+        const possibleTarget = referencedPropertyName(current);
+        if (possibleTarget !== null && privateNames.has(possibleTarget)) pinned.add(possibleTarget);
+        return;
+      }
       if (!privateNames.has(target)) return;
       const objectVariable = current.object.type === AST_NODE_TYPES.Identifier
         ? ASTUtils.findVariable(context.sourceCode.getScope(current.object), current.object.name)
@@ -410,10 +452,11 @@ function classScope(
     walk(member, context.sourceCode.visitorKeys, (current) => {
       if (current.type !== AST_NODE_TYPES.MemberExpression) return;
       const target = referencedMethod(context, current, classVariables);
-      if (target !== null && privateNames.has(target)) pinned.add(target);
+      const possibleTarget = target ?? referencedPropertyName(current);
+      if (possibleTarget !== null && privateNames.has(possibleTarget)) pinned.add(possibleTarget);
     });
   }
-  for (const name of computedReferenceNames) if (privateNames.has(name)) pinned.add(name);
+  for (const name of privateNames) if (computedReferenceNames.has(name)) pinned.add(name);
 
   const accessibility = new Map(
     scopeDefinitions.map((definition) => {

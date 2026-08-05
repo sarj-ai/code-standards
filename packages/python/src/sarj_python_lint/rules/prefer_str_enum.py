@@ -758,15 +758,23 @@ def _string_collection_values(node: ast.AST | None) -> set[str] | None:
         return None if None in keys else {key for key in keys if key is not None}
     if not isinstance(node, (ast.List, ast.Tuple, ast.Set)):
         return None
-    values = {
-        _str_const(element.elts[0])
-        if isinstance(element, (ast.List, ast.Tuple)) and len(element.elts) == _CHOICE_PAIR_ARITY
-        else _str_const(element)
-        for element in node.elts
-    }
-    if None in values:
-        return None
-    return {value for value in values if value is not None}
+    values: set[str] = set()
+    for element in node.elts:
+        candidate = (
+            element.elts[0]
+            if isinstance(element, (ast.List, ast.Tuple)) and len(element.elts) == _CHOICE_PAIR_ARITY
+            else element
+        )
+        # Django choice tables commonly use `(None, "---")` for the blank
+        # option. It is not a string enum member, but it must not obscure the
+        # closed string vocabulary alongside it.
+        if _is_none_annotation(candidate):
+            continue
+        value = _str_const(candidate)
+        if value is None:
+            return None
+        values.add(value)
+    return values
 
 
 def _parse_string_annotation(value: str) -> ast.expr | None:

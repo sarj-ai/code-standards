@@ -45,6 +45,10 @@ ruleTester.run("stepdown", rule, {
       code: "const run = () => load();\nconst load = () => 1;",
     },
     {
+      name: "does not reason about a reassigned function binding",
+      code: "let load = () => 1;\nload = () => 2;\nfunction run() { return load(); }",
+    },
+    {
       name: "allows recursive call-graph cycles",
       code: "function odd(n: number): boolean { return n > 0 && even(n - 1); }\nfunction even(n: number): boolean { return n === 0 || odd(n - 1); }",
     },
@@ -75,6 +79,22 @@ ruleTester.run("stepdown", rule, {
     {
       name: "allows a private method destructured from this",
       code: "class Service { private load() { return 1; } private run() { const { load } = this; return this.load() + load.call(this); } }",
+    },
+    {
+      name: "allows wrapped and rest destructuring from this",
+      code: "class Service { private load() { return 1; } private run() { const { load, ...rest } = this as Service; return this.load() + load.call(rest); } }",
+    },
+    {
+      name: "allows a private method referenced through a default this alias",
+      code: "class Service { private load() { return 1; } private run(self = this) { return this.load() + self.load(); } }",
+    },
+    {
+      name: "allows another instance to reference the same private method",
+      code: "class Service { private load() { return 1; } private run(other: Service) { return this.load() + other.load(); } }",
+    },
+    {
+      name: "allows another instance reference from a class field",
+      code: "class Service { private load() { return 1; } private run() { return this.load(); } other!: Service; handler = () => this.other.load(); }",
     },
     {
       name: "allows a private static helper referenced by a method decorator",

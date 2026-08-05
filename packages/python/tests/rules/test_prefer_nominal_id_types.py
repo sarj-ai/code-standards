@@ -216,9 +216,28 @@ def test_type_alias_type_primitive_is_not_mistaken_for_nominal_id():
     "declaration",
     [
         "from typing import NewType as NT\nUserKey = NT('UserKey', str)",
+        "from typing_extensions import NewType as NT\nUserKey = NT('UserKey', str)",
         "UserKey: TypeAlias = NewType('UserKey', str)",
     ],
 )
 def test_suffixless_newtype_alias_spellings_count_as_nominal(declaration: str):
     src = f"{declaration}\n\ndef sync(user_id: UserKey, org_id: str) -> None: ...\n"
+    assert len(_check(src)) == 1
+
+
+def test_overload_signatures_do_not_duplicate_the_implementation_diagnostic():
+    src = """
+@overload
+def move(file_id: str, folder_id: str) -> None: ...
+@overload
+def move(file_id: str, folder_id: str, *, replace: bool) -> None: ...
+def move(file_id: str, folder_id: str, *, replace: bool = False) -> None: ...
+"""
+    diagnostics = _check(src)
+    assert len(diagnostics) == 1
+    assert diagnostics[0].code == "SARJ093"
+
+
+def test_suffixless_newtype_inside_a_union_is_still_nominal():
+    src = "UserKey = NewType('UserKey', str)\ndef sync(user_id: str | UserKey, org_id: OrgId) -> None: ...\n"
     assert len(_check(src)) == 1

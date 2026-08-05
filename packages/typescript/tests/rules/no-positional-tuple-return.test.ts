@@ -69,6 +69,26 @@ ruleTester.run("no-positional-tuple-return", rule, {
   ],
   invalid: [
     {
+      name: "rejects an anonymous default function",
+      code: "export default function (): [string, number] { return impl(); }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects an anonymous default arrow",
+      code: "export default ((): [string, number] => impl());",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects a public method on an exported class expression",
+      code: "export const Loader = class { load(): [string, number] { return impl(); } };",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects a method on an exported object",
+      code: "export const loader = { load(): [string, number] { return impl(); } };",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
       name: "rejects a public arrow property on an exported class",
       code: "export class Loader { load = (): [string, number] => impl(); }",
       errors: [{ messageId: "noPositionalTupleReturn" }],

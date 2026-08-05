@@ -57,7 +57,8 @@ function tupleReturnType(
 /** The declared name of a function-ish node, or null for an anonymous one. */
 function functionName(node: TSESTree.Node): string | null {
   if (node.type === AST_NODE_TYPES.FunctionDeclaration) {
-    return node.id?.name ?? null;
+    if (node.id !== null) return node.id.name;
+    return node.parent?.type === AST_NODE_TYPES.ExportDefaultDeclaration ? "default" : null;
   }
   let wrapped = node;
   while (
@@ -69,6 +70,7 @@ function functionName(node: TSESTree.Node): string | null {
     wrapped = wrapped.parent;
   }
   const parent = wrapped.parent;
+  if (parent?.type === AST_NODE_TYPES.ExportDefaultDeclaration) return "default";
   if (parent?.type === AST_NODE_TYPES.VariableDeclarator && parent.id.type === AST_NODE_TYPES.Identifier) {
     return parent.id.name;
   }
@@ -132,7 +134,16 @@ function moduleScopeBindingName(node: TSESTree.Node): string | null {
   }
   if (topLevel === null) return null;
   if (topLevel.type === AST_NODE_TYPES.FunctionDeclaration) {
-    return topLevel === node ? topLevel.id?.name ?? null : null;
+    if (topLevel !== node) return null;
+    return topLevel.id?.name ?? (current.type === AST_NODE_TYPES.ExportDefaultDeclaration ? "default" : null);
+  }
+  if (
+    (topLevel.type === AST_NODE_TYPES.ArrowFunctionExpression ||
+      topLevel.type === AST_NODE_TYPES.FunctionExpression) &&
+    topLevel === node &&
+    current.type === AST_NODE_TYPES.ExportDefaultDeclaration
+  ) {
+    return "default";
   }
   if (topLevel.type === AST_NODE_TYPES.ClassDeclaration) {
     let owner: TSESTree.Node | undefined = node.parent;
@@ -141,7 +152,7 @@ function moduleScopeBindingName(node: TSESTree.Node): string | null {
       owner?.type === AST_NODE_TYPES.TSAbstractMethodDefinition ||
       owner?.type === AST_NODE_TYPES.PropertyDefinition) &&
       owner.value === node
-      ? topLevel.id?.name ?? null
+      ? topLevel.id?.name ?? (current.type === AST_NODE_TYPES.ExportDefaultDeclaration ? "default" : null)
       : null;
   }
   if (topLevel.type === AST_NODE_TYPES.VariableDeclaration) {
@@ -156,6 +167,21 @@ function moduleScopeBindingName(node: TSESTree.Node): string | null {
         declarator.id.type === AST_NODE_TYPES.Identifier &&
         initializer === node
       ) return declarator.id.name;
+      if (
+        declarator.id.type === AST_NODE_TYPES.Identifier &&
+        (initializer?.type === AST_NODE_TYPES.ClassExpression ||
+          initializer?.type === AST_NODE_TYPES.ObjectExpression)
+      ) {
+        let owner: TSESTree.Node | undefined = node.parent;
+        const container = initializer.type === AST_NODE_TYPES.ClassExpression ? initializer.body : initializer;
+        while (owner !== undefined && owner.parent !== container) owner = owner.parent;
+        if (
+          (owner?.type === AST_NODE_TYPES.MethodDefinition ||
+            owner?.type === AST_NODE_TYPES.PropertyDefinition ||
+            owner?.type === AST_NODE_TYPES.Property) &&
+          owner.value === node
+        ) return declarator.id.name;
+      }
     }
   }
   return null;

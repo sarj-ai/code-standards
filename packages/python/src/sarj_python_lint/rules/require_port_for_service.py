@@ -106,7 +106,7 @@ _DATA_DECORATORS = frozenset({"dataclass", "dataclasses", "define", "frozen", "m
 _NON_METHOD_DECORATORS = frozenset({"property", "cached_property", "staticmethod", "classmethod"})
 
 # Method decorators that declare the class is already an interface without an ABC base.
-_INTERFACE_DECORATORS = frozenset({"abstractmethod", "abstractproperty", "overload"})
+_INTERFACE_DECORATORS = frozenset({"abstractmethod", "abstractproperty"})
 
 # Class decorators that bind the class to a declared interface.
 _IMPLEMENTS_DECORATORS = frozenset({"implementer", "implementer_only", "provider", "runtime_checkable", "register"})
@@ -297,11 +297,13 @@ def _has_base(
     local_port_names: frozenset[str] | set[str],
 ) -> bool:
     """Report whether the class inherits a real port or an unknown external/framework base."""
-    if node.keywords:
+    if any(keyword.arg == "metaclass" and _dotted_tail(keyword.value) == "ABCMeta" for keyword in node.keywords):
         return True
     for base in node.bases:
         name = _dotted_tail(base)
         if name in {None, "object"}:
+            continue
+        if name == "Generic":
             continue
         if name in local_class_names:
             if name in local_port_names:
