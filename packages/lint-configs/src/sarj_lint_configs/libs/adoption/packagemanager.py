@@ -12,7 +12,7 @@ from . import manifest
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Iterator, Mapping, Sequence
     from pathlib import Path
 
 
@@ -183,7 +183,7 @@ def install_command(client: PackageManager, *, workspace: bool = False) -> str:
             return f"bun add -d --exact {specs}"
 
 
-def install_argv(client: PackageManager, *, workspace: bool = False) -> tuple[str, ...]:
+def install_argv(client: PackageManager, *, workspace: bool = False) -> Sequence[str]:
     specs = tuple(f"{name}@{pin}" for name, pin in sorted(manifest.eslint_peers().items()))
     match client:
         case PackageManager.NPM:
@@ -197,7 +197,7 @@ def install_argv(client: PackageManager, *, workspace: bool = False) -> tuple[st
             return ("bun", "add", "-d", "--exact", *specs)
 
 
-def exec_argv(client: PackageManager, *command: str) -> tuple[str, ...]:
+def exec_argv(client: PackageManager, *command: str) -> Sequence[str]:
     match client:
         case PackageManager.NPM:
             return ("npx", "--no-install", *command)

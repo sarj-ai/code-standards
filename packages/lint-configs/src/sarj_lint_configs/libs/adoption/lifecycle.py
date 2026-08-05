@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 import json
 import os
@@ -31,7 +32,7 @@ _ESLINT_SUFFIXES = frozenset({".cjs", ".cts", ".js", ".jsx", ".mjs", ".mts", ".t
 @dataclass(frozen=True, slots=True)
 class Command:
     label: str
-    argv: tuple[str, ...]
+    argv: Sequence[str]
     cwd: Path
 
 
