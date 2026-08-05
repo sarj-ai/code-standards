@@ -96,18 +96,32 @@ def verify_built_package(package_root: Path) -> tuple[str, ...]:
     return required
 
 
-def verify_package_tarball(tarball: Path, required: Sequence[str]) -> tuple[str, ...]:
+def verify_package_tarball(
+    tarball: Path,
+    required: Sequence[str],
+    *,
+    expected_name: str | None = None,
+    expected_version: str | None = None,
+) -> tuple[str, ...]:
     """Inspect an npm tarball and require safe, non-empty regular exported files."""
     expected = {"package/LICENSE", *(f"package/{path}" for path in required)}
     try:
         with tarfile.open(tarball, mode="r:gz") as archive:
-            found = _inspect_members(archive, expected)
+            found, identity_verified = _inspect_members(
+                archive,
+                expected,
+                expected_name=expected_name,
+                expected_version=expected_version,
+            )
     except (OSError, tarfile.TarError) as exc:
         msg = f"could not inspect package archive {tarball}: {exc}"
         raise ValueError(msg) from exc
     missing = sorted(expected - found)
     if missing:
         msg = f"packed artifact omits exported entry point: {missing[0].removeprefix('package/')}"
+        raise ValueError(msg)
+    if (expected_name is not None or expected_version is not None) and not identity_verified:
+        msg = "package archive omits package/package.json identity"
         raise ValueError(msg)
     return tuple(required)
 
@@ -125,8 +139,15 @@ def verify_python_wheel_license(wheel: Path) -> None:
         raise ValueError(msg) from exc
 
 
-def _inspect_members(archive: tarfile.TarFile, expected: set[str]) -> set[str]:
+def _inspect_members(
+    archive: tarfile.TarFile,
+    expected: set[str],
+    *,
+    expected_name: str | None,
+    expected_version: str | None,
+) -> tuple[set[str], bool]:
     found: set[str] = set()
+    identity_verified = False
     for member in archive.getmembers():
         path = PurePosixPath(member.name)
         if path.is_absolute() or ".." in path.parts or not path.parts or path.parts[0] != "package":
@@ -149,6 +170,11 @@ def _inspect_members(archive: tarfile.TarFile, expected: set[str]) -> set[str]:
                 msg = "package archive contains invalid package/package.json"
                 raise ValueError(msg) from exc
             manifest_data = string_object_dict(manifest, label="packed package.json")
+            for field, expected_value in (("name", expected_name), ("version", expected_version)):
+                if expected_value is not None and manifest_data.get(field) != expected_value:
+                    msg = f"packed package {field} does not match source manifest"
+                    raise ValueError(msg)
+            identity_verified = True
             scripts = manifest_data.get("scripts")
             if is_object_dict(scripts):
                 dangerous = _INSTALL_LIFECYCLE_SCRIPTS.intersection(scripts)
@@ -160,4 +186,4 @@ def _inspect_members(archive: tarfile.TarFile, expected: set[str]) -> set[str]:
                 msg = f"packed entry point is missing, empty, or not a regular file: {member.name}"
                 raise ValueError(msg)
             found.add(member.name)
-    return found
+    return found, identity_verified

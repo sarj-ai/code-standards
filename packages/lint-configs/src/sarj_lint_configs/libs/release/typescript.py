@@ -57,7 +57,8 @@ def pack_typescript(
         msg = "npm pack returned an invalid artifact manifest"
         raise ValueError(msg)
     included = _included_paths(report.get("files"))
-    required = required_artifact_paths(load_package_json(package_root))
+    package_manifest = load_package_json(package_root)
+    required = required_artifact_paths(package_manifest)
     if not required:
         msg = "package.json declares no publishable entry points"
         raise ValueError(msg)
@@ -66,7 +67,12 @@ def pack_typescript(
         msg = f"npm pack report omits exported entry point: {missing_report}"
         raise ValueError(msg)
     tarball = destination.resolve() / filename
-    verify_package_tarball(tarball, required)
+    name = package_manifest.get("name")
+    version = package_manifest.get("version")
+    if not isinstance(name, str) or not isinstance(version, str):
+        msg = "package.json must declare string name and version fields"
+        raise TypeError(msg)
+    verify_package_tarball(tarball, required, expected_name=name, expected_version=version)
     return PackedArtifact(tarball, included)
 
 

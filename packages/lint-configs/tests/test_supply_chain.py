@@ -56,14 +56,37 @@ def test_typescript_release_does_not_emit_source_maps() -> None:
     assert "sourcemap: false" in config
 
 
-def test_privileged_tag_job_is_dependency_free_and_publish_gated() -> None:
+def test_release_has_no_tag_writer_or_write_capable_token() -> None:
     release = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
-    tag_job = release.partition("\n  tag:\n")[2]
-    assert "egress-policy: block" in tag_job
-    assert "persist-credentials: false" in tag_job
-    assert "setup-uv" not in tag_job
-    assert "uv run" not in tag_job
-    assert "repo release create-tags" not in tag_job
-    assert "needs.publish-python.result == 'success'" in tag_job
-    assert "needs.detect.outputs.python != 'true'" not in tag_job
-    assert '[[ "${peeled:-$existing}" == "$GITHUB_SHA" ]]' in tag_job
+    assert "\n  tag:\n" not in release
+    assert "contents: write" not in release
+    assert "git push" not in release
+
+
+def test_npm_publishers_have_distinct_identities_and_digest_binding() -> None:
+    release = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    assert "environment: npm-release" not in release
+    assert "environment: npm-typescript-release" in release
+    assert "environment: npm-tsconfig-release" in release
+    assert release.count("artifact_sha256:") == 2
+    assert release.count("Verify build-bound artifact digest") == 2
+    assert "test \"$actual_name\" = '@sarj/tsconfig'" in release
+
+
+def test_npm_release_disables_install_scripts_and_keeps_publishers_dependency_free() -> None:
+    release = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    typescript_ci = (REPO_ROOT / ".github/workflows/typescript-ci.yml").read_text(encoding="utf-8")
+
+    assert "npm ci --ignore-scripts" in release
+    assert "npm ci --ignore-scripts --no-audit --no-fund" in typescript_ci
+    assert release.count("npm install --global npm@11.19.0 --ignore-scripts") == 2
+
+    def assert_dependency_free(job: str) -> None:
+        match = re.search(rf"(?ms)^  {job}:\n.*?(?=^  [a-zA-Z0-9_-]+:\n|\Z)", release)
+        assert match is not None
+        publisher = match[0]
+        assert "npm install" not in publisher
+        assert "npm ci" not in publisher
+
+    assert_dependency_free("publish-typescript")
+    assert_dependency_free("publish-tsconfig")

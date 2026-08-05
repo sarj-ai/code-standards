@@ -86,6 +86,11 @@ For TypeScript, `sarj-standards show peers` (with the init-generated launcher) p
 `eslint.strict.mjs` needs at versions that install together — there is no
 `@latest` combination that does.
 
+Pre-commit runs the version already pinned by the consumer repository; it does
+not silently download new rules. Run `sarj-standards update --check` in scheduled
+automation and review the resulting `sarj-standards update` change to receive a
+new release coherently across hooks, configs, Python pins, and npm peers.
+
 See [`packages/lint-configs/README.md`](packages/lint-configs/README.md) for how
 to extend the configs without forking them, polyglot destination routing, and the
 generated pre-commit block.
@@ -105,23 +110,16 @@ generated pre-commit block.
 ## Release
 
 Normal releases are triggered by merging a manifest version bump to `main`;
-`release.yml` publishes via OIDC, then creates the matching version tag.
-Manual tagging is an exceptional recovery workflow.
-
-| Tag pattern | Publishes |
-|---|---|
-| `typescript-vX.Y.Z` | `@sarj/eslint-plugin` to npm |
-| `python-vX.Y.Z` | `sarj-python-lint` to PyPI |
-| `sql-vX.Y.Z` | `sarj-sql-lint` to PyPI |
-| `iac-vX.Y.Z` | `sarj-iac-lint` to PyPI |
-| `lint-configs-vX.Y.Z` | `sarj-lint-configs` to PyPI |
-| `tsconfig-vX.Y.Z` | `@sarj/tsconfig` to npm |
+`release.yml` publishes via package-specific OIDC identities. Release tags are
+not created: all tag creation, mutation, and deletion is blocked, and current
+consumer hooks execute the reviewed package version installed in their own
+lockfile through `repo: local`.
 
 For a rule release, keep the change atomic: update the implementation, registry,
 strict config and tests; bump the owning package manifest; update its generated
 lockfile; and, for Python/SQL/IaC rules, bump the exact dependency and version of
 `sarj-lint-configs`. Run `make verify`. The release workflow
-then publishes and tags every changed package. Consumer repositories run
+then publishes every changed package. Consumer repositories run
 `sarj-standards doctor` and `update --configs-only --check` in CI, so a new release cannot
 silently leave them stale.
 

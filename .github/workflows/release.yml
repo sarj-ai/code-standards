@@ -50,6 +50,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      artifact_sha256: ${{ steps.artifact_identity.outputs.sha256 }}
     defaults:
       run:
         working-directory: packages/typescript
@@ -74,7 +76,10 @@ jobs:
       - run: npm install --global npm@11.19.0 --ignore-scripts
       - name: Enforce lockfile release-age quarantine
         run: uv run --project ../lint-configs --frozen sarj-standards repo release lock-age packages/typescript/package-lock.json --dest ../.. --exclude-file .github/release-age-exclusions.txt
-      - run: npm ci
+      # Dependency lifecycle scripts are an unnecessary code-execution surface.
+      # esbuild's platform binary is installed as an optional dependency, so the
+      # release build does not need package install hooks.
+      - run: npm ci --ignore-scripts
       - run: npm run build
       - run: npm test
       - name: Pack publishable artifact
@@ -85,6 +90,9 @@ jobs:
           f=fs.readdirSync(d).filter(x=>x.endsWith('.tgz'));
           if(f.length!==1)throw new Error('expected exactly one npm artifact');
           fs.renameSync(d+'/'+f[0],d+'/package.tgz')"
+      - name: Bind artifact digest to the build job
+        id: artifact_identity
+        run: echo "sha256=$(sha256sum "$RUNNER_TEMP/npm-artifacts/package.tgz" | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
       - name: Upload publishable artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -95,7 +103,7 @@ jobs:
   publish-typescript:
     needs: build-typescript
     runs-on: ubuntu-latest
-    environment: npm-release
+    environment: npm-typescript-release
     permissions:
       contents: read
       id-token: write
@@ -113,6 +121,10 @@ jobs:
         with:
           name: npm-typescript
           path: ${{ runner.temp }}/npm-artifacts
+      - name: Verify build-bound artifact digest
+        env:
+          EXPECTED_SHA256: ${{ needs.build-typescript.outputs.artifact_sha256 }}
+        run: echo "$EXPECTED_SHA256  $RUNNER_TEMP/npm-artifacts/package.tgz" | sha256sum --check --strict
       - name: Publish with npm trusted publishing
         run: npm publish "$RUNNER_TEMP/npm-artifacts/package.tgz" --access public --ignore-scripts
 
@@ -392,6 +404,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      artifact_sha256: ${{ steps.artifact_identity.outputs.sha256 }}
     defaults:
       run:
         working-directory: packages/tsconfig
@@ -427,6 +441,16 @@ jobs:
           f=fs.readdirSync(d).filter(x=>x.endsWith('.tgz'));
           if(f.length!==1)throw new Error('expected exactly one npm artifact');
           fs.renameSync(d+'/'+f[0],d+'/package.tgz')"
+      - name: Verify artifact identity and bind digest
+        id: artifact_identity
+        run: |
+          manifest="$(tar -xOf "$RUNNER_TEMP/npm-artifacts/package.tgz" package/package.json)"
+          actual_name="$(printf '%s' "$manifest" | node -e "const fs=require('node:fs');process.stdout.write(JSON.parse(fs.readFileSync(0,'utf8')).name)")"
+          actual_version="$(printf '%s' "$manifest" | node -e "const fs=require('node:fs');process.stdout.write(JSON.parse(fs.readFileSync(0,'utf8')).version)")"
+          expected_version="$(node -p "require('./package.json').version")"
+          test "$actual_name" = '@sarj/tsconfig'
+          test "$actual_version" = "$expected_version"
+          echo "sha256=$(sha256sum "$RUNNER_TEMP/npm-artifacts/package.tgz" | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
       - name: Upload publishable artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -437,7 +461,7 @@ jobs:
   publish-tsconfig:
     needs: build-tsconfig
     runs-on: ubuntu-latest
-    environment: npm-release
+    environment: npm-tsconfig-release
     permissions:
       contents: read
       id-token: write
@@ -455,94 +479,9 @@ jobs:
         with:
           name: npm-tsconfig
           path: ${{ runner.temp }}/npm-artifacts
+      - name: Verify build-bound artifact digest
+        env:
+          EXPECTED_SHA256: ${{ needs.build-tsconfig.outputs.artifact_sha256 }}
+        run: echo "$EXPECTED_SHA256  $RUNNER_TEMP/npm-artifacts/package.tgz" | sha256sum --check --strict
       - name: Publish with npm trusted publishing
         run: npm publish "$RUNNER_TEMP/npm-artifacts/package.tgz" --access public --ignore-scripts
-
-  # After a successful publish on push-to-main, stamp the matching `<pkg>-v<version>`
-  # git tag. pre-commit consumers pin Python/SQL rules by git tag (installed from
-  # source), so a PyPI release without a tag leaves them unable to resolve `rev:`.
-  # Idempotent: skips a tag that already exists. Tags are written only for a
-  # successful publish in this workflow and point at that exact workflow SHA;
-  # registry existence alone is never treated as proof of a publishing commit.
-  tag:
-    needs:
-      - detect
-      - publish-typescript
-      - publish-python
-      - publish-sql
-      - publish-iac
-      - publish-lint-configs
-      - publish-tsconfig
-    if: >-
-      always() && !cancelled() &&
-      github.event_name == 'push' && github.ref == 'refs/heads/main' &&
-      (needs.publish-python.result == 'success' ||
-       needs.publish-sql.result == 'success' ||
-       needs.publish-iac.result == 'success' ||
-       needs.publish-lint-configs.result == 'success' ||
-       needs.publish-typescript.result == 'success' ||
-       needs.publish-tsconfig.result == 'success')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Harden the runner
-        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
-        with:
-          egress-policy: block
-          allowed-endpoints: >
-            github.com:443
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Configure release tag identity
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-      - name: Tag only packages published by this run
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PUBLISH_PYTHON: ${{ needs.publish-python.result }}
-          PUBLISH_SQL: ${{ needs.publish-sql.result }}
-          PUBLISH_IAC: ${{ needs.publish-iac.result }}
-          PUBLISH_LINT_CONFIGS: ${{ needs.publish-lint-configs.result }}
-          PUBLISH_TYPESCRIPT: ${{ needs.publish-typescript.result }}
-          PUBLISH_TSCONFIG: ${{ needs.publish-tsconfig.result }}
-        run: |
-          set -euo pipefail
-          targets=()
-          [[ "$PUBLISH_PYTHON" == success ]] && targets+=(python)
-          [[ "$PUBLISH_SQL" == success ]] && targets+=(sql)
-          [[ "$PUBLISH_IAC" == success ]] && targets+=(iac)
-          [[ "$PUBLISH_LINT_CONFIGS" == success ]] && targets+=(lint-configs)
-          [[ "$PUBLISH_TYPESCRIPT" == success ]] && targets+=(typescript)
-          [[ "$PUBLISH_TSCONFIG" == success ]] && targets+=(tsconfig)
-
-          manifest_version() {
-            case "$1" in
-              python|sql|iac|lint-configs)
-                python3 -c 'import pathlib, sys, tomllib; print(tomllib.loads(pathlib.Path(sys.argv[1]).read_text())["project"]["version"])' "packages/$1/pyproject.toml"
-                ;;
-              typescript|tsconfig)
-                python3 -c 'import json, pathlib, sys; print(json.loads(pathlib.Path(sys.argv[1]).read_text())["version"])' "packages/$1/package.json"
-                ;;
-            esac
-          }
-
-          gh auth setup-git
-          for target in "${targets[@]}"; do
-            version="$(manifest_version "$target")"
-            tag="$target-v$version"
-            existing="$(git ls-remote --tags origin "refs/tags/$tag" | awk '{print $1}')"
-            if [[ -n "$existing" ]]; then
-              peeled="$(git ls-remote --tags origin "refs/tags/$tag^{}" | awk '{print $1}')"
-              [[ "${peeled:-$existing}" == "$GITHUB_SHA" ]] || {
-                echo "Existing $tag does not point to published commit $GITHUB_SHA" >&2
-                exit 1
-              }
-              continue
-            fi
-            git tag -a "$tag" -m "$target $version" "$GITHUB_SHA"
-            git push origin "refs/tags/$tag"
-          done
