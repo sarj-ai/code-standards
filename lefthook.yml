@@ -3,7 +3,8 @@ min_version: 2.1.10
 assert_lefthook_installed: true
 
 pre-commit:
-  parallel: true
+  # Several commands use the same uv environment; serial execution prevents sync/typecheck races.
+  parallel: false
   commands:
     # Pre-commit consumers install the ROOT package, so a root version lagging
     # packages/python ships a stale linter under a fresh number.
