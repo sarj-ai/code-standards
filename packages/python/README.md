@@ -93,8 +93,11 @@ there is no autofix because export order and comments can be observable.
 
 `SARJ099` warns only when a one-sentence module docstring re-spells its filename
 and immediate package path, such as `element.py` saying “Element class for
-element operations.” Package initializers, tests, generated files, structured
-or multiline docs, and prose carrying an invariant, consumer, compatibility
+element operations.” Lowercase compound filenames are compared conservatively,
+so `cacheprovider.py` also matches “Implementation of the cache provider,” but
+an extra purpose or constraint keeps the prose. Package initializers, tests,
+generated files, structured or multiline docs, and prose carrying an invariant,
+consumer, compatibility
 constraint, value or external reference are excluded. In particular, the rule
 keeps architecture statements about canonical JSON/SARIF diagnostics. It does
 not overlap `SARJ085`, which remains the owner of class-name restatements.

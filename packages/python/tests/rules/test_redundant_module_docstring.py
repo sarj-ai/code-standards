@@ -24,6 +24,9 @@ def _check(source: str, path: str = "package/element.py") -> list[Diagnostic]:
         ("pydantic/warnings.py", "Pydantic-specific warnings."),
         ("pydantic/errors.py", "Pydantic-specific errors."),
         ("pydantic/validate_call_decorator.py", "Decorator for validating function calls."),
+        ("browser/actor/page.py", "Page class for page-level operations."),
+        ("browser/actor/utils.py", "Utility functions for actor operations."),
+        ("_pytest/cacheprovider.py", "Implementation of the cache provider."),
     ],
 )
 def test_flags_corpus_path_restatements(path: str, docstring: str) -> None:
@@ -48,6 +51,18 @@ def test_flags_corpus_path_restatements(path: str, docstring: str) -> None:
 )
 def test_novel_behavior_architecture_and_consumer_tokens_keep_docstring(docstring: str) -> None:
     assert _check(f'"""{docstring}"""\n\nVALUE = 1\n', "analysis/diagnostics.py") == []
+
+
+@pytest.mark.parametrize(
+    "docstring",
+    [
+        "Cache provider backed by Redis.",
+        "Cache provider with TTL semantics.",
+        "Legacy cache provider retained for compatibility.",
+    ],
+)
+def test_compound_filename_matching_keeps_novel_contracts(docstring: str) -> None:
+    assert _check(f'"""{docstring}"""\n\nVALUE = 1\n', "_pytest/cacheprovider.py") == []
 
 
 @pytest.mark.parametrize(
