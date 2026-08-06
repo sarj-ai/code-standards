@@ -1,7 +1,5 @@
 # sarj-python-lint
 
-<!-- Temporary CI synchronization marker; reverted before merge. -->
-
 Custom Python lint rules via stdlib `ast`. Designed for pre-commit. For SQL rules see [`sarj-sql-lint`](../sql/).
 
 ```bash
