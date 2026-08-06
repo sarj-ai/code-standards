@@ -117,8 +117,8 @@ def verification_commands(ecosystems: scaffold.Ecosystems) -> list[Command]:
     return commands
 
 
-def staged_eslint_commands(root: Path, paths: Iterable[str]) -> list[Command]:
-    """Build one package-manager-aware ESLint command for staged JS/TS files.
+def selected_eslint_commands(root: Path, paths: Iterable[str], *, label: str = "selected") -> list[Command]:
+    """Build one package-manager-aware ESLint command for selected JS/TS files.
 
     Pre-commit passes paths relative to the repository, while callers may pass
     absolute paths.  ESLint must run from the detected TypeScript project so it
@@ -127,7 +127,7 @@ def staged_eslint_commands(root: Path, paths: Iterable[str]) -> list[Command]:
     to another project are deliberately omitted.
     """
     repository = root.resolve()
-    candidates = _staged_eslint_candidates(repository, paths)
+    candidates = _selected_eslint_candidates(repository, paths)
     if not candidates:
         return []
     ecosystems = scaffold.detect(repository)
@@ -146,14 +146,19 @@ def staged_eslint_commands(root: Path, paths: Iterable[str]) -> list[Command]:
         return []
     return [
         Command(
-            "ESLint (staged)",
+            f"ESLint ({label})",
             packagemanager.exec_argv(ecosystems.client, "eslint", "--", *scoped),
             project,
         )
     ]
 
 
-def _staged_eslint_candidates(root: Path, paths: Iterable[str]) -> set[Path]:
+def staged_eslint_commands(root: Path, paths: Iterable[str]) -> list[Command]:
+    """Compatibility wrapper for hook callers."""
+    return selected_eslint_commands(root, paths, label="staged")
+
+
+def _selected_eslint_candidates(root: Path, paths: Iterable[str]) -> set[Path]:
     candidates: set[Path] = set()
     for raw_path in paths:
         path = Path(raw_path)
@@ -161,9 +166,24 @@ def _staged_eslint_candidates(root: Path, paths: Iterable[str]) -> set[Path]:
         if is_link_like(unresolved):
             continue
         candidate = unresolved.resolve()
-        if candidate.suffix.lower() in _ESLINT_SUFFIXES and candidate.is_relative_to(root) and candidate.is_file():
+        if not candidate.is_relative_to(root):
+            continue
+        if (candidate.is_dir() and candidate.name not in _PROJECT_SKIP_DIRS and _contains_eslint_source(candidate)) or (
+            candidate.suffix.lower() in _ESLINT_SUFFIXES and candidate.is_file()
+        ):
             candidates.add(candidate)
     return candidates
+
+
+def _contains_eslint_source(directory: Path) -> bool:
+    for parent, directories, names in os.walk(directory):
+        base = Path(parent)
+        directories[:] = [
+            name for name in directories if name not in _PROJECT_SKIP_DIRS and not is_link_like(base / name)
+        ]
+        if any(Path(name).suffix.lower() in _ESLINT_SUFFIXES and not is_link_like(base / name) for name in names):
+            return True
+    return False
 
 
 def format_commands(ecosystems: scaffold.Ecosystems) -> list[Command]:

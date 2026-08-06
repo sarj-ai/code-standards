@@ -88,7 +88,12 @@ def _declared_manager(package_json: Path) -> PackageManager | None:
     if declared is None:
         return None
     name = declared.split("@", 1)[0]
-    return next((client for client in PackageManager if client == name), None)
+    selected = next((client for client in PackageManager if client == name), None)
+    if selected is None:
+        supported = ", ".join(str(client) for client in PackageManager)
+        msg = f"unsupported packageManager {declared!r} in {package_json}; supported managers: {supported}"
+        raise ValueError(msg)
+    return selected
 
 
 @dataclass(frozen=True)

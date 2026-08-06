@@ -25,6 +25,8 @@ from sarj_lint_configs import (
 )
 from sarj_lint_configs import __main__ as cli
 from sarj_lint_configs.__main__ import main
+from sarj_lint_configs.libs.adoption import hooks as adoption_hooks
+from sarj_lint_configs.libs.adoption import service
 
 
 if TYPE_CHECKING:
@@ -156,6 +158,14 @@ def test_manifest_round_trips(tmp_path: Path) -> None:
     written = manifest.Manifest(version="1.2.3", configs=("ruff", "pyright"), python_dest=".", typescript_dest="web")
     _ = (tmp_path / manifest.MANIFEST_NAME).write_text(written.render())
     assert manifest.load(tmp_path) == written
+
+
+@pytest.mark.parametrize("declared", ["not a version", "1.2.3 nope", "v"])
+def test_manifest_rejects_non_pep440_versions(tmp_path: Path, declared: str) -> None:
+    _ = (tmp_path / manifest.MANIFEST_NAME).write_text(f'version = "{declared}"\nconfigs = []\n')
+
+    with pytest.raises(ValueError, match="valid PEP 440 version"):
+        _ = manifest.load(tmp_path)
 
 
 def test_old_manifest_defaults_to_standard_profile(tmp_path: Path) -> None:
@@ -497,6 +507,37 @@ def test_init_on_an_empty_directory_says_so(tmp_path: Path) -> None:
     assert "no pyproject.toml and no package.json" in proc.stdout
 
 
+def test_init_adopts_shared_configs_without_an_ecosystem(tmp_path: Path) -> None:
+    proc = _cli(
+        "init",
+        "--dest",
+        str(tmp_path),
+        "--configs",
+        "markdownlint",
+        "taplo",
+        "yamllint",
+        "--no-install",
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    adopted = manifest.load(tmp_path)
+    assert adopted is not None
+    assert adopted.configs == ("markdownlint", "taplo", "yamllint")
+    assert (tmp_path / ".markdownlint.yaml").is_file()
+    assert (tmp_path / ".taplo.toml").is_file()
+    assert (tmp_path / ".yamllint.yaml").is_file()
+    assert (tmp_path / ".pre-commit-config.yaml").is_file()
+
+
+@pytest.mark.parametrize("config", ["ruff", "pyright", "eslint"])
+def test_init_rejects_ecosystem_config_without_its_project(tmp_path: Path, config: str) -> None:
+    proc = _cli("init", "--dest", str(tmp_path), "--configs", config, "--no-install")
+
+    assert proc.returncode == 2
+    assert "ecosystem-specific" in proc.stderr
+    assert not (tmp_path / manifest.MANIFEST_NAME).exists()
+
+
 def test_generated_precommit_block_carries_no_rev(tmp_path: Path) -> None:
     _ = _python_repo(tmp_path)
     assert _cli("init", "--dest", str(tmp_path)).returncode == 0
@@ -506,6 +547,22 @@ def test_generated_precommit_block_carries_no_rev(tmp_path: Path) -> None:
     assert "sarj-standards check --staged --" in generated
     assert "package\\.json|pyrightconfig\\.json" in generated
     assert generated.count("id: sarj-standards-check") == 1
+
+
+@pytest.mark.parametrize("heading", ["repos: []\n", "repos: [] # keep this comment\n"])
+def test_init_opens_an_inline_empty_precommit_repo_list(tmp_path: Path, heading: str) -> None:
+    _ = _python_repo(tmp_path)
+    config = tmp_path / ".pre-commit-config.yaml"
+    config.write_text(heading, encoding="utf-8")
+
+    proc = _cli("init", "--dest", str(tmp_path), "--no-install")
+
+    assert proc.returncode == 0, proc.stderr
+    updated = config.read_text(encoding="utf-8")
+    assert "repos: []" not in updated
+    assert "id: sarj-standards-check" in updated
+    if "#" in heading:
+        assert "# keep this comment" in updated
 
 
 def test_init_preserves_an_existing_lefthook_manager(tmp_path: Path) -> None:
@@ -523,6 +580,68 @@ def test_init_preserves_an_existing_lefthook_manager(tmp_path: Path) -> None:
     assert adopted.hook_manager == "lefthook"
 
 
+def test_init_accepts_a_runner_wrapped_lefthook_command(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    (tmp_path / "lefthook.yml").write_text(
+        "pre-commit:\n  commands:\n    standards:\n"
+        "      run: uv run --frozen sarj-standards check --staged -- {staged_files}\n",
+        encoding="utf-8",
+    )
+
+    proc = _cli("init", "--dest", str(tmp_path), "--no-install")
+
+    assert proc.returncode == 0, proc.stderr
+
+
+@pytest.mark.parametrize(
+    "run",
+    [
+        "echo 'sarj-standards check --staged'",
+        "printf 'sarj-standards check --staged'",
+        "true && sarj-standards check --staged",
+    ],
+)
+def test_init_repairs_inert_or_compound_lefthook_commands(tmp_path: Path, run: str) -> None:
+    _ = _python_repo(tmp_path)
+    (tmp_path / "lefthook.yml").write_text(
+        f"pre-commit:\n  commands:\n    standards:\n      run: {run}\n",
+        encoding="utf-8",
+    )
+
+    proc = _cli("init", "--dest", str(tmp_path), "--no-install")
+
+    assert proc.returncode == 0, proc.stderr
+    assert "run: sarj-standards check --staged" in (tmp_path / "lefthook.yml").read_text(encoding="utf-8")
+
+
+def test_init_repairs_a_commented_out_lefthook_command(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    (tmp_path / "lefthook.yml").write_text(
+        "pre-commit:\n  commands: {}\n# sarj-standards check --staged\n",
+        encoding="utf-8",
+    )
+
+    proc = _cli("init", "--dest", str(tmp_path), "--no-install")
+
+    assert proc.returncode == 0, proc.stderr
+    updated = (tmp_path / "lefthook.yml").read_text(encoding="utf-8")
+    assert "# sarj-standards check --staged" in updated
+    assert "run: sarj-standards check --staged" in updated
+
+
+def test_init_rejects_malformed_lefthook_yaml(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    (tmp_path / "lefthook.yml").write_text(
+        "pre-commit:\n  commands: [\n    # sarj-standards check --staged\n",
+        encoding="utf-8",
+    )
+
+    proc = _cli("init", "--dest", str(tmp_path), "--no-install")
+
+    assert proc.returncode == 2
+    assert "cannot safely wire lefthook.yml" in proc.stderr
+
+
 def test_init_can_explicitly_disable_hook_management(tmp_path: Path) -> None:
     _ = _python_repo(tmp_path)
 
@@ -535,7 +654,7 @@ def test_init_can_explicitly_disable_hook_management(tmp_path: Path) -> None:
     assert adopted.hook_manager == "none"
 
 
-def test_init_rejects_unwired_or_missing_lefthook_management(tmp_path: Path) -> None:
+def test_init_repairs_unwired_but_rejects_missing_lefthook_management(tmp_path: Path) -> None:
     _ = _python_repo(tmp_path)
     missing = _cli("init", str(tmp_path), "--hooks", "lefthook", "--no-install")
     assert missing.returncode == 2
@@ -543,8 +662,19 @@ def test_init_rejects_unwired_or_missing_lefthook_management(tmp_path: Path) -> 
 
     (tmp_path / "lefthook.yml").write_text("pre-commit:\n  commands: {}\n", encoding="utf-8")
     unwired = _cli("init", str(tmp_path), "--hooks", "lefthook", "--no-install")
-    assert unwired.returncode == 2
-    assert "sarj-standards check --staged" in unwired.stderr
+    assert unwired.returncode == 0, unwired.stderr
+    assert "run: sarj-standards check --staged" in (tmp_path / "lefthook.yml").read_text(encoding="utf-8")
+
+
+def test_init_repairs_final_lefthook_commands_key_without_a_newline(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    config = tmp_path / "lefthook.yml"
+    config.write_text("pre-commit:\n  commands:", encoding="utf-8")
+
+    proc = _cli("init", str(tmp_path), "--hooks", "lefthook", "--no-install")
+
+    assert proc.returncode == 0, proc.stderr
+    assert adoption_hooks.lefthook_runs_staged_check(tmp_path)
 
 
 @pytest.mark.parametrize("suffix", ["js", "jsx", "mjs", "cjs", "ts", "tsx", "mts", "cts"])
@@ -955,7 +1085,7 @@ def test_doctor_warns_that_a_local_eslint_plugin_checkout_is_unverified(tmp_path
         json.dumps({"name": "web", "devDependencies": {"@sarj/eslint-plugin": specifier}})
     )
     proc = _cli("doctor", "--dest", str(tmp_path))
-    assert proc.returncode == 0
+    assert proc.returncode == 1
     assert "doctor.eslint.plugin-unverified" in proc.stdout
 
 
@@ -1036,8 +1166,10 @@ def test_doctor_git_walk_isolates_hook_environment_and_prunes_generated_paths(
 def test_doctor_warns_when_no_manifest_exists(tmp_path: Path) -> None:
     _ = _python_repo(tmp_path)
     proc = _cli("doctor", "--dest", str(tmp_path))
-    assert proc.returncode == 0, "an un-adopted repo is not yet drifted"
+    assert proc.returncode == 1, "an unadopted repo requires an actionable init"
     assert "run `sarj-standards init`" in proc.stdout
+    assert "fix: run `sarj-standards init`" in proc.stdout
+    assert "fix: run `sarj-standards update`" not in proc.stdout
 
 
 def test_doctor_reports_manifest_version_drift(tmp_path: Path) -> None:
@@ -1055,7 +1187,7 @@ def test_doctor_json_has_a_stable_schema_and_actionable_ids(tmp_path: Path) -> N
 
     proc = _cli("doctor", "--format", "json", "--dest", str(tmp_path))
 
-    assert proc.returncode == 0
+    assert proc.returncode == 1
     payload: dict[str, object] = json.loads(proc.stdout)  # pyright: ignore[reportAny]
     assert payload["schema"] == 1
     assert manifest.as_table(payload["summary"]) == {
@@ -1091,7 +1223,7 @@ def test_doctor_rejects_manifest_destinations_that_escape_the_repo(tmp_path: Pat
 
     proc = _cli("doctor", "--dest", str(tmp_path))
 
-    assert proc.returncode == 1
+    assert proc.returncode == 2
     assert "doctor.manifest.destination" in proc.stdout
     assert "escapes the repository root" in proc.stdout
 
@@ -1454,6 +1586,47 @@ def test_init_rejects_a_symlinked_parent_of_a_mutation_target(tmp_path: Path) ->
     assert proc.returncode == 2
     assert "traverses a symlink or junction" in proc.stderr
     assert not (real / ".ruff-strict.toml").exists()
+
+
+def test_failed_typescript_install_cleans_new_node_modules_and_normalizes_status(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _typescript_repo(tmp_path)
+    plan = service.plan_init(tmp_path, configs=("eslint",), hook_manager="none", force=True)
+
+    def failed_install(_commands: object) -> int:
+        partial = tmp_path / "node_modules" / "partial-install"
+        partial.parent.mkdir()
+        partial.write_text("partial\n", encoding="utf-8")
+        return 1
+
+    monkeypatch.setattr(service.lifecycle, "execute", failed_install)
+
+    result = service.apply_init(plan)
+
+    assert result.status == 2
+    assert result.failure is service.InitFailure.INSTALL
+    assert result.error == "dependency or hook installer exited with status 1"
+    assert not (tmp_path / "node_modules").exists()
+    assert not (tmp_path / manifest.MANIFEST_NAME).exists()
+
+
+def test_failed_install_preserves_preexisting_node_modules(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _typescript_repo(tmp_path)
+    existing = tmp_path / "node_modules" / "keep.txt"
+    existing.parent.mkdir()
+    existing.write_text("keep\n", encoding="utf-8")
+    plan = service.plan_init(tmp_path, configs=("eslint",), hook_manager="none", force=True)
+
+    def fail_install(_commands: Iterable[lifecycle.Command]) -> int:
+        return 1
+
+    monkeypatch.setattr(service.lifecycle, "execute", fail_install)
+
+    result = service.apply_init(plan)
+
+    assert result.status == 2
+    assert existing.read_text(encoding="utf-8") == "keep\n"
 
 
 def test_init_does_not_accept_comment_only_ruff_wiring(tmp_path: Path) -> None:

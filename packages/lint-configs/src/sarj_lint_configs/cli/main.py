@@ -33,6 +33,15 @@ _NEXT_STEPS = (
     '  extend = ".ruff-strict.toml"\n'
     "\n(or run `sarj-lint-configs init`, which writes that and the rest of the wiring)\n"
 )
+_BOOTSTRAP_TIMEOUT_SECONDS = 120
+_INVALID_DOCTOR_IDS = frozenset(
+    {
+        "doctor.manifest.invalid",
+        "doctor.manifest.destination",
+        "doctor.config.unknown",
+        "doctor.package-json.invalid",
+    }
+)
 
 
 class _Args(argparse.Namespace):
@@ -225,7 +234,8 @@ def cmd_doctor(args: _Args) -> int:
     findings = doctor.diagnose(root)
     drifted = sum(1 for finding in findings if finding.level is doctor.Level.DRIFT)
     warned = sum(1 for finding in findings if finding.level is doctor.Level.WARN)
-    invalid = sum(finding.id in {"doctor.manifest.invalid", "doctor.package-json.invalid"} for finding in findings)
+    invalid = sum(finding.id in _INVALID_DOCTOR_IDS for finding in findings)
+    unadopted = any(finding.id == "doctor.manifest.absent" for finding in findings)
     if args.output_format == "json":
         print(
             json.dumps(
@@ -248,18 +258,22 @@ def cmd_doctor(args: _Args) -> int:
         for finding in findings:
             print(f"{finding.level.value:6s} {finding.id} {finding.where}  --  {finding.detail}")
         print(f"\nchecked {len(findings)} configuration site(s); {drifted} drifted; {warned} warning(s).")
-        remediations = list(
-            dict.fromkeys(
-                finding.remediation
-                for finding in findings
-                if finding.level is doctor.Level.DRIFT and finding.remediation
+        remediations = (
+            ["run `sarj-standards init`"]
+            if unadopted
+            else list(
+                dict.fromkeys(
+                    finding.remediation
+                    for finding in findings
+                    if finding.level is doctor.Level.DRIFT and finding.remediation
+                )
             )
         )
         for remediation in remediations:
             print(f"fix: {remediation}")
     if invalid:
         return 2
-    return 1 if drifted else 0
+    return 1 if drifted or unadopted else 0
 
 
 def cmd_upgrade(args: _Args) -> int:
@@ -301,9 +315,19 @@ def cmd_upgrade(args: _Args) -> int:
             command.append("--no-install")
         environment = dict(os.environ)  # ruff: ignore[banned-api] -- preserve the caller environment for uvx
         environment["SARJ_STANDARDS_BOOTSTRAPPED"] = "1"
-        return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed executable and argv
-            command, check=False, env=environment
-        ).returncode
+        try:
+            return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed executable and argv
+                command,
+                check=False,
+                env=environment,
+                timeout=_BOOTSTRAP_TIMEOUT_SECONDS,
+            ).returncode
+        except subprocess.TimeoutExpired:
+            print(
+                "error: resolving the latest standards release timed out; check the network or pass --offline",
+                file=sys.stderr,
+            )
+            return 2
 
     root = _resolve_dest(args.dest)
     try:
@@ -364,11 +388,12 @@ def cmd_init(args: _Args) -> int:
     from sarj_lint_configs.libs.adoption import service  # ruff: ignore[import-outside-top-level] -- lazy route
 
     root = _resolve_dest(args.dest)
+    selected_configs = tuple(dict.fromkeys((*args.configs, *args.only)))
     try:
         init_plan = service.plan_init(
             root,
             force=args.force,
-            configs=args.configs or None,
+            configs=selected_configs or None,
             python_dest=args.python_dest,
             typescript_dest=args.typescript_dest,
             profile=args.profile or "standard",
@@ -393,7 +418,7 @@ def cmd_init(args: _Args) -> int:
         if present
     ]
     print(f"detected: {', '.join(detected) or 'nothing'}")
-    if not plan.ecosystems.any and not args.configs:
+    if not plan.ecosystems.any and not selected_configs:
         for note in plan.notes:
             print(f"note:  {note}")
         return 1
@@ -410,16 +435,13 @@ def cmd_init(args: _Args) -> int:
     else:
         result = service.apply_init(init_plan, install=not args.no_install)
         if result.status:
-            if result.failure is service.InitFailure.INTERRUPTED:
-                print("error: initialization interrupted; file changes were restored", file=sys.stderr)
-            elif result.failure is service.InitFailure.APPLY:
-                detail = f": {result.error}" if result.error else ""
-                print(f"error: initialization failed and file changes were restored{detail}", file=sys.stderr)
-            else:
-                print(
-                    "error: initialization failed; generated files, wiring, and any newly created .venv were restored",
-                    file=sys.stderr,
-                )
+            event = "interrupted" if result.failure is service.InitFailure.INTERRUPTED else "failed"
+            print(
+                f"error: initialization {event}; rollback and generated-environment cleanup were attempted",
+                file=sys.stderr,
+            )
+            if result.error:
+                print(f"detail: {result.error}", file=sys.stderr)
             return result.status
         if result.sync is not None:
             _render_sync(result.sync)
@@ -476,7 +498,7 @@ def _declared_manifest(args: _Args) -> manifest.Manifest | None:
         return None
 
 
-def cmd_library_policy(args: _Args) -> int:
+def cmd_library_policy(args: _Args, *, selected_paths: Iterable[str] | None = None) -> int:
     """Enforce the application profile's direct-dependency policy."""
     from sarj_lint_configs import library_policy  # ruff: ignore[import-outside-top-level] — lazy route
 
@@ -494,7 +516,9 @@ def cmd_library_policy(args: _Args) -> int:
             print("library policy skipped (standard profile)")
         return 0
     try:
-        findings = library_policy.scan(root)
+        findings = (
+            library_policy.scan(root) if selected_paths is None else library_policy.scan_paths(root, selected_paths)
+        )
     except library_policy.ManifestPolicyError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -529,17 +553,36 @@ def cmd_check(args: _Args) -> int:
     from sarj_lint_configs import runner  # ruff: ignore[import-outside-top-level] — lazy route
 
     _validate_check_mode(args)
+    root = _resolve_dest(args.dest)
+    if args.output_format == "json" and not args.dependencies:
+        print(
+            "error: --format json is currently supported only with --dependencies; refusing mixed output",
+            file=sys.stderr,
+        )
+        return 2
     if args.dependencies:
         return cmd_library_policy(args)
     if args.staged and not args.files:
         try:
-            args.files = _staged_files(_resolve_dest(args.dest))
+            args.files = _staged_files(root)
         except (OSError, subprocess.SubprocessError) as exc:
             print(f"error: cannot read staged files: {exc}", file=sys.stderr)
             return 2
-    root = _resolve_dest(args.dest)
     if args.staged and args.files:
         args.files = _safe_staged_paths(root, args.files)
+    elif args.files:
+        try:
+            args.files = _selected_paths(root, args.files)
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+    if (
+        len(args.files) == 1
+        and Path(args.files[0]).resolve() == root
+        and not args.noise_only
+        and args.create_baseline is None
+    ):
+        args.files = []
     try:
         adopted = manifest.load(root)
     except (OSError, TypeError, ValueError) as exc:
@@ -556,7 +599,7 @@ def cmd_check(args: _Args) -> int:
             print("error: run `sarj-standards init` before creating a gradual baseline", file=sys.stderr)
             return 2
         selected = args.files or list(adopted.verify_paths)
-        inputs = [str(root / path) for path in selected]
+        inputs = [str(Path(path) if Path(path).is_absolute() else root / path) for path in selected]
         try:
             status = runner.create_python_baseline(inputs, str(output))
         except ValueError as exc:
@@ -574,13 +617,28 @@ def cmd_check(args: _Args) -> int:
             return health_status
         if not args.files:
             return 0
+    configured_baseline = (
+        None if adopted is None or adopted.python_baseline is None else str(root / adopted.python_baseline)
+    )
     if not args.files:
+        if args.noise_only:
+            from sarj_lint_configs import scaffold  # ruff: ignore[import-outside-top-level] -- lazy mode guard
+
+            if scaffold.detect(root).typescript:
+                print(
+                    "error: --noise-only has no TypeScript rule subset; select Python paths or remove the option",
+                    file=sys.stderr,
+                )
+                return 2
+            selected = list(adopted.verify_paths) if adopted is not None else ["."]
+            return runner.run(
+                [str(root / path) for path in selected],
+                noise_only=True,
+                python_baseline=args.python_baseline or configured_baseline,
+            )
         return cmd_verify(args)
-    selected_paths = [str(Path(raw) if Path(raw).is_absolute() else root / raw) for raw in args.files]
+    selected_paths = list(args.files)
     try:
-        configured_baseline = (
-            None if adopted is None or adopted.python_baseline is None else str(root / adopted.python_baseline)
-        )
         source_status = runner.run(
             selected_paths,
             noise_only=args.noise_only,
@@ -589,19 +647,25 @@ def cmd_check(args: _Args) -> int:
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    eslint_status = 0
-    if args.staged:
-        from sarj_lint_configs import lifecycle  # ruff: ignore[import-outside-top-level] — lazy staged route
+    from sarj_lint_configs import lifecycle  # ruff: ignore[import-outside-top-level] — lazy selected route
 
-        try:
-            eslint_status = lifecycle.execute(lifecycle.staged_eslint_commands(root, selected_paths))
-        except ValueError as exc:
-            print(f"error: cannot run staged ESLint: {exc}", file=sys.stderr)
+    try:
+        eslint_commands = lifecycle.selected_eslint_commands(
+            root,
+            selected_paths,
+            label="staged" if args.staged else "selected",
+        )
+        if args.noise_only and eslint_commands:
+            print("error: --noise-only has no TypeScript rule subset; remove the option", file=sys.stderr)
             return 2
+        eslint_status = lifecycle.execute(eslint_commands)
+    except ValueError as exc:
+        print(f"error: cannot run selected ESLint: {exc}", file=sys.stderr)
+        return 2
     policy_args = _Args()
     policy_args.dest = str(root)
     policy_args.quiet = True
-    policy_status = cmd_library_policy(policy_args)
+    policy_status = cmd_library_policy(policy_args, selected_paths=selected_paths)
     return max(source_status, eslint_status, policy_status)
 
 
@@ -622,6 +686,8 @@ def _validate_check_mode(args: _Args) -> None:
         _user_error("--create-baseline cannot be combined with --baseline")
     if args.create_baseline is not None and args.noise_only:
         _user_error("--create-baseline cannot be combined with --noise-only")
+    if args.profile is not None and not args.dependencies:
+        _user_error("--profile requires --dependencies")
 
 
 def _check_staged_adoption_health(root: Path, *, output_format: str = "text") -> int:
@@ -698,6 +764,37 @@ def _safe_staged_paths(root: Path, paths: Iterable[str]) -> list[str]:
     return list(dict.fromkeys(safe))
 
 
+def _selected_paths(root: Path, paths: Iterable[str]) -> list[str]:
+    """Resolve explicit inputs without allowing repository-boundary aliases."""
+    repository = root.resolve()
+    selected: list[str] = []
+    for raw in paths:
+        supplied = Path(raw)
+        lexical = Path(
+            os.path.abspath(  # ruff: ignore[os-path-abspath] -- inspect lexical symlink components before resolve.
+                supplied if supplied.is_absolute() else repository / supplied
+            )
+        )
+        try:
+            relative = lexical.relative_to(repository)
+        except ValueError as exc:
+            msg = f"input escapes repository root: {raw}"
+            raise ValueError(msg) from exc
+        cursor = repository
+        if any(is_link_like(cursor := cursor / part) for part in relative.parts):
+            msg = f"refusing symlink input: {raw}"
+            raise ValueError(msg)
+        resolved = lexical.resolve()
+        if not resolved.is_relative_to(repository):
+            msg = f"input escapes repository root: {raw}"
+            raise ValueError(msg)
+        if not resolved.exists():
+            msg = f"input does not exist: {raw}"
+            raise ValueError(msg)
+        selected.append(str(resolved))
+    return list(dict.fromkeys(selected))
+
+
 def cmd_format(args: _Args) -> int:
     from sarj_lint_configs import (  # ruff: ignore[import-outside-top-level] — lazy command route
         lifecycle,
@@ -751,6 +848,18 @@ def main(argv: list[str] | None = None) -> int:
         if any(argument == "--dest" or argument.startswith("--dest=") for argument in raw_argv):
             _user_error("pass either positional ROOT or --dest, not both")
         args.dest = args.root
+    try:
+        return _dispatch(args)
+    except KeyboardInterrupt:
+        print("error: interrupted", file=sys.stderr)
+        return 130
+    except (OSError, TypeError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+
+def _dispatch(args: _Args) -> int:
+    """Route one parsed command behind the consumer-facing error boundary."""
     match args.cmd:
         case "sync":
             return cmd_sync(args)
@@ -905,7 +1014,15 @@ def _build_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-locals]
         nargs="+",
         choices=sorted(CONFIG_NAMES),
         default=[],
-        help="override the auto-detected config set",
+        help="legacy multi-value config selection; prefer repeatable --config",
+    )
+    p_init.add_argument(
+        "--config",
+        dest="only",
+        action="append",
+        choices=sorted(CONFIG_NAMES),
+        default=[],
+        help="select one config explicitly (repeatable)",
     )
 
     p_check = sub.add_parser(

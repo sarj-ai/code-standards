@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 from datetime import timedelta
-import subprocess
 import sys
+import threading
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
 
 from sarj_lint_configs.libs.corpus import CorpusKind, CorpusSource, snapshot
-from sarj_lint_configs.libs.rules import CorpusLintError, run_isolated_corpora
+from sarj_lint_configs.libs.rules import CorpusLintError, corpus_runner, run_isolated_corpora
 
 
 if TYPE_CHECKING:
@@ -38,13 +39,14 @@ def test_each_corpus_and_bounded_batch_gets_a_fresh_process(
     (second / "only.py").write_text("VALUE = 1\n", encoding="utf-8")
     calls: list[tuple[tuple[str, ...], Path]] = []
 
-    def run(argv: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:
+    def run(argv: tuple[str, ...], **kwargs: object) -> SimpleNamespace:
         cwd = kwargs["cwd"]
         assert isinstance(cwd, type(tmp_path))
         calls.append((argv, cwd))
-        return subprocess.CompletedProcess(argv, 0, "", "")
+        empty = SimpleNamespace(retained_bytes=0, lines=0, truncated=False)
+        return SimpleNamespace(returncode=0, stdout=empty, stderr=empty)
 
-    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(corpus_runner, "_run_process", run)
 
     report = run_isolated_corpora(
         (_source(first, "first"), _source(second, "second")),
@@ -99,12 +101,57 @@ def test_unexpected_linter_exit_does_not_leak_output(monkeypatch: pytest.MonkeyP
     corpus.mkdir()
     (corpus / "secret.py").write_text("VALUE = 1\n", encoding="utf-8")
 
-    def fail(argv: tuple[str, ...], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(argv, 2, "customer source", "private path")
+    def fail(argv: tuple[str, ...], **_kwargs: object) -> SimpleNamespace:
+        _ = argv
+        private = SimpleNamespace(retained_bytes=15, lines=1, truncated=False)
+        return SimpleNamespace(returncode=2, stdout=private, stderr=private)
 
-    monkeypatch.setattr(subprocess, "run", fail)
+    monkeypatch.setattr(corpus_runner, "_run_process", fail)
 
     with pytest.raises(CorpusLintError, match="exited with 2") as error:
         run_isolated_corpora((_source(corpus, "sample"),), ("linter",))
     assert "customer source" not in str(error.value)
     assert "private path" not in str(error.value)
+
+
+def test_child_output_is_streamed_with_a_deterministic_byte_limit(tmp_path: Path) -> None:
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
+    script = "import os; os.write(1, b'x\\n' * 10000); os.write(2, b'y\\n' * 10000)"
+
+    report = run_isolated_corpora(
+        (_source(corpus, "sample"),),
+        (sys.executable, "-c", script),
+        max_output_bytes=128,
+    )
+
+    batch = report.batches[0]
+    assert (batch.stdout_bytes, batch.stderr_bytes) == (128, 128)
+    assert (batch.stdout_lines, batch.stderr_lines) == (64, 64)
+    assert batch.stdout_truncated
+    assert batch.stderr_truncated
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process-group behavior")
+@pytest.mark.parametrize(
+    ("parent_tail", "marker_name"),
+    [("; time.sleep(60)", "descendant-survived"), ("", "orphan-survived")],
+    ids=("running-parent", "successful-parent"),
+)
+def test_timeout_terminates_descendant_processes(tmp_path: Path, parent_tail: str, marker_name: str) -> None:
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
+    marker = tmp_path / marker_name
+    grandchild = f"import time; from pathlib import Path; time.sleep(0.5); Path({str(marker)!r}).write_text('alive')"
+    script = f"import subprocess, sys, time; subprocess.Popen([sys.executable, '-c', {grandchild!r}]){parent_tail}"
+
+    with pytest.raises(CorpusLintError, match="exceeded"):
+        run_isolated_corpora(
+            (_source(corpus, "sample"),),
+            (sys.executable, "-c", script),
+            timeout=timedelta(milliseconds=100),
+        )
+    _ = threading.Event().wait(0.7)
+    assert not marker.exists()

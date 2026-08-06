@@ -8,7 +8,9 @@ import re
 import shutil
 import tomllib
 from types import MappingProxyType
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
+
+from packaging.version import Version
 
 from sarj_lint_configs._meta import CONFIGS_DIR
 from sarj_lint_configs.libs.filesystem import is_link_like
@@ -26,6 +28,18 @@ _INSTALL_REMEDIABLE_FINDING_IDS = frozenset(
         "doctor.eslint.override",
         "doctor.eslint.peer",
         "doctor.python.bundle-missing",
+    }
+)
+_INSTALL_MUTATED_NAMES: Final = frozenset(
+    {
+        "bun.lock",
+        "bun.lockb",
+        "package-lock.json",
+        "package.json",
+        "pnpm-lock.yaml",
+        "pyproject.toml",
+        "uv.lock",
+        "yarn.lock",
     }
 )
 _CONFIG_SOURCES = MappingProxyType(
@@ -68,13 +82,21 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
     if adopted is None:
         msg = "repository is not adopted; run `sarj-standards init` first"
         raise ValueError(msg)
+    executing_version = Version(manifest.adopted_version())
+    declared_version = Version(adopted.version)
+    if declared_version > executing_version:
+        msg = (
+            f"repository uses newer standards {adopted.version}; executing bundle is "
+            f"{manifest.adopted_version()}. Install the newer sarj-lint-configs release and rerun update"
+        )
+        raise ValueError(msg)
     path = manifest.manifest_path(root)
     current_text = path.read_text(encoding="utf-8")
     parsed: object = tomllib.loads(current_text)
     hooks_table = manifest.table_field(manifest.as_table(parsed), "hooks")
     hook_manager = adopted.hook_manager if "manager" in hooks_table else hooks.detect_manager(root)
     adopted = replace(adopted, hook_manager=hook_manager)
-    ecosystems = scaffold.detect(
+    detected_ecosystems = scaffold.detect(
         root,
         python_dest=adopted.python_dest if any(name in adopted.configs for name in manifest.PYTHON_CONFIGS) else None,
         typescript_dest=(
@@ -85,13 +107,14 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
         root,
         force=False,
         configs=adopted.configs,
-        python_dest=adopted.python_dest if ecosystems.python else None,
-        typescript_dest=adopted.typescript_dest if ecosystems.typescript else None,
+        python_dest=adopted.python_dest if detected_ecosystems.python else None,
+        typescript_dest=adopted.typescript_dest if detected_ecosystems.typescript else None,
         profile=adopted.profile,
         hook_manager=adopted.hook_manager,
     )
     if scaffold_plan.errors:
         raise ValueError("; ".join(scaffold_plan.errors))
+    ecosystems = _install_ecosystems(detected_ecosystems, adopted.configs)
 
     installed = manifest.installed_versions()
     pin_updates = doctor.plan_version_pin_updates(root, installed)
@@ -144,6 +167,20 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
     return UpgradePlan(root, adopted, ecosystems, scaffold_plan, changes, config_writes, pin_writes, manifest_text)
 
 
+def _install_ecosystems(ecosystems: scaffold.Ecosystems, configs: Sequence[str]) -> scaffold.Ecosystems:
+    """Keep install capabilities only for ecosystems explicitly adopted by the manifest."""
+    python = ecosystems.python and any(name in manifest.PYTHON_CONFIGS for name in configs)
+    typescript = ecosystems.typescript and any(name in manifest.TYPESCRIPT_CONFIGS for name in configs)
+    return scaffold.Ecosystems(
+        python=python,
+        typescript=typescript,
+        python_root=ecosystems.python_root if python else None,
+        typescript_root=ecosystems.typescript_root if typescript else None,
+        typescript_install_root=ecosystems.typescript_install_root if typescript else None,
+        client=ecosystems.client,
+    )
+
+
 def unsafe_retired_findings(plan: UpgradePlan) -> list[doctor.Finding]:
     """Return consumer-authored blockers, excluding configs this plan replaces."""
     owned = {target.relative_to(plan.root).as_posix() for _source, target in plan.config_writes}
@@ -158,6 +195,8 @@ def unsafe_retired_findings(plan: UpgradePlan) -> list[doctor.Finding]:
 
 def apply(plan: UpgradePlan, *, install: bool = True) -> int:
     """Apply one validated plan and restore touched files if any step fails."""
+    if Version(plan.adopted.version) > Version(manifest.adopted_version()):
+        return 2
     blockers = unsafe_retired_findings(plan)
     if blockers:
         return 2
@@ -172,20 +211,36 @@ def apply(plan: UpgradePlan, *, install: bool = True) -> int:
     environment = None if plan.ecosystems.python_root is None else plan.ecosystems.python_root / ".venv"
     environment_existed = environment is not None and environment.exists()
     try:
-        status = _apply_and_validate(plan, install=install)
+        status = _apply_and_validate(plan, file_transaction, install=install)
     except KeyboardInterrupt:
-        file_transaction.rollback()
-        _ = _cleanup_new_environment(environment, existed=environment_existed)
+        _recover_or_raise(file_transaction, environment, environment_existed=environment_existed)
         return 130
     except OSError, TypeError, ValueError:
-        file_transaction.rollback()
-        _ = _cleanup_new_environment(environment, existed=environment_existed)
+        _recover_or_raise(file_transaction, environment, environment_existed=environment_existed)
         return 2
     if status:
-        file_transaction.rollback()
-        if not _cleanup_new_environment(environment, existed=environment_existed):
-            return 2
+        _recover_or_raise(file_transaction, environment, environment_existed=environment_existed)
     return status
+
+
+def _recover_or_raise(
+    file_transaction: transaction.FileTransaction,
+    environment: Path | None,
+    *,
+    environment_existed: bool,
+) -> None:
+    errors = tuple(
+        detail
+        for detail in (
+            file_transaction.rollback().render(),
+            None
+            if _cleanup_new_environment(environment, existed=environment_existed)
+            else "could not remove new environment",
+        )
+        if detail
+    )
+    if errors:
+        raise OSError("upgrade recovery incomplete: " + "; ".join(errors))
 
 
 def _cleanup_new_environment(environment: Path | None, *, existed: bool) -> bool:
@@ -198,9 +253,25 @@ def _cleanup_new_environment(environment: Path | None, *, existed: bool) -> bool
     return True
 
 
-def _apply_and_validate(plan: UpgradePlan, *, install: bool) -> int:
+def _apply_and_validate(
+    plan: UpgradePlan,
+    file_transaction: transaction.FileTransaction,
+    *,
+    install: bool,
+) -> int:
     """Apply the plan and return its install/postflight status."""
     _write_plan(plan)
+    file_transaction.mark_written(
+        *(
+            path
+            for path in (
+                manifest.manifest_path(plan.root),
+                *(target for _source, target in plan.config_writes),
+                *(path for path, _contents in (*plan.scaffold_plan.writes, *plan.scaffold_plan.edits)),
+            )
+            if path.name not in _INSTALL_MUTATED_NAMES
+        )
+    )
     if install:
         status = lifecycle.execute(
             lifecycle.install_commands(

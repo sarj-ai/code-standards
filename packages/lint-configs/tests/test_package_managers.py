@@ -62,6 +62,17 @@ def test_the_packagemanager_field_beats_a_stray_lockfile(tmp_path: Path) -> None
     assert packagemanager.detect(root) == PackageManager.YARN
 
 
+def test_an_unsupported_declared_package_manager_fails_closed(tmp_path: Path) -> None:
+    root = _project(tmp_path, "package-lock.json", {"name": "web", "packageManager": "deno@2.4.0"})
+
+    with pytest.raises(ValueError, match=r"unsupported packageManager 'deno@2\.4\.0'"):
+        packagemanager.detect(root)
+
+    proc = _cli("init", "--dest", str(root))
+    assert proc.returncode == 2
+    assert "supported managers: npm, pnpm, yarn, bun" in proc.stderr
+
+
 def test_npm_keeps_the_nested_form() -> None:
     overrides = packagemanager.overrides_for(PackageManager.NPM)
     assert overrides.key_path == ("overrides",)
@@ -157,6 +168,22 @@ def test_pnpm_11_workspace_overrides_are_merged_in_the_workspace_yaml(tmp_path: 
     assert "pnpm" not in package
 
 
+@pytest.mark.parametrize(
+    "flow",
+    ["overrides: {}\n", 'overrides: {"rollup": ">=4"}\n', '"overrides": {}\n'],
+)
+def test_pnpm_workspace_flow_overrides_fail_without_duplicate_keys(tmp_path: Path, flow: str) -> None:
+    _project(tmp_path, "pnpm-lock.yaml")
+    workspace = tmp_path / "pnpm-workspace.yaml"
+    workspace.write_text(flow, encoding="utf-8")
+
+    proc = _cli("init", "--dest", str(tmp_path))
+
+    assert proc.returncode == 2
+    assert "flow-style `overrides` is unsupported" in proc.stderr
+    assert workspace.read_text(encoding="utf-8") == flow
+
+
 def test_init_writes_resolutions_into_a_yarn_repo(tmp_path: Path) -> None:
     _ = _project(tmp_path, "yarn.lock", {"name": "web", "packageManager": "yarn@4.15.0"})
     proc = _cli("init", "--dest", str(tmp_path))
@@ -180,6 +207,23 @@ def test_init_writes_bun_override_without_npm_nested_syntax(tmp_path: Path) -> N
     )
     overrides = manifest.table_field(manifest.as_table(parsed), "overrides")
     assert overrides == {"eslint": manifest.eslint_peers()["eslint"]}
+
+
+def test_npm_preserves_a_scalar_parent_override_under_dot(tmp_path: Path) -> None:
+    _ = _project(
+        tmp_path,
+        "package-lock.json",
+        {"name": "web", "overrides": {"eslint-plugin-react": "7.37.4"}},
+    )
+
+    proc = _cli("init", "--dest", str(tmp_path))
+
+    assert proc.returncode == 0, proc.stderr
+    parsed: object = json.loads((tmp_path / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    overrides = manifest.table_field(manifest.as_table(parsed), "overrides")
+    react = manifest.table_field(overrides, "eslint-plugin-react")
+    assert react["."] == "7.37.4"
+    assert react["eslint"] == "$eslint"
 
 
 def test_merging_pnpm_overrides_keeps_the_rest_of_the_pnpm_table(tmp_path: Path) -> None:
@@ -241,3 +285,21 @@ def test_nested_lockfile_beats_an_unrelated_root_package_json(tmp_path: Path) ->
     assert found.typescript_root == project
     assert found.typescript_install_root == project
     assert found.client is PackageManager.YARN
+
+
+def test_nested_pnpm_preview_matches_the_applied_install_guidance(tmp_path: Path) -> None:
+    _ = (tmp_path / "package.json").write_text('{"name": "tooling"}\n', encoding="utf-8")
+    project = tmp_path / "typescript"
+    project.mkdir()
+    _project(project, "pnpm-lock.yaml", {"name": "web", "packageManager": "pnpm@10.0.0"})
+
+    preview = _cli("init", "--dest", str(tmp_path), "--dry-run")
+    applied = _cli("init", "--dest", str(tmp_path))
+
+    assert preview.returncode == 0, preview.stderr
+    assert applied.returncode == 0, applied.stderr
+    expected = "pnpm add -D --save-exact"
+    assert expected in preview.stdout
+    assert expected in applied.stdout
+    assert "pnpm add -w" not in preview.stdout
+    assert "pnpm add -w" not in applied.stdout

@@ -131,6 +131,21 @@ def test_staged_eslint_skips_detection_when_no_javascript_or_typescript_exists(t
     assert commands == []
 
 
+def test_selected_eslint_accepts_source_directories_and_ignores_generated_trees(tmp_path: Path) -> None:
+    (tmp_path / "package.json").write_text("{}\n", encoding="utf-8")
+    source = tmp_path / "src"
+    source.mkdir()
+    (source / "component.ts").write_text("export const value = 1;\n", encoding="utf-8")
+    generated = tmp_path / "build"
+    generated.mkdir()
+    (generated / "ignored.ts").write_text("invalid !!\n", encoding="utf-8")
+
+    commands = lifecycle.selected_eslint_commands(tmp_path, ["src", "build"])
+
+    assert len(commands) == 1
+    assert commands[0].argv == ("npx", "--no-install", "eslint", "--", "src")
+
+
 def test_staged_eslint_supports_every_eslint_module_suffix(tmp_path: Path) -> None:
     (tmp_path / "package.json").write_text("{}\n", encoding="utf-8")
     names = [f"module{suffix}" for suffix in (".cjs", ".cts", ".js", ".jsx", ".mjs", ".mts", ".ts", ".tsx")]

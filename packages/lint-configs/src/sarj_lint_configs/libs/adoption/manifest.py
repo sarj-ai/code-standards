@@ -9,6 +9,8 @@ import re
 import tomllib
 from typing import TYPE_CHECKING, Final, Literal
 
+from packaging.version import InvalidVersion, Version
+
 from sarj_lint_configs._meta import CONFIGS_DIR, __version__
 
 
@@ -34,7 +36,17 @@ SIBLING_PACKAGES: Final = (_PYTHON_LINT, "sarj-sql-lint", "sarj-iac-lint")
 
 def adopted_version() -> str:
     """Report the `sarj-lint-configs` version this environment provides."""
-    return __version__
+    if __version__ != "0.0.0.dev0":
+        return __version__
+    source_project = CONFIGS_DIR.parents[2] / "pyproject.toml"
+    if not source_project.is_file():
+        return __version__
+    try:
+        parsed: object = tomllib.loads(source_project.read_text(encoding="utf-8"))
+    except OSError, tomllib.TOMLDecodeError:
+        return __version__
+    declared = text_field(table_field(as_table(parsed), "project"), "version")
+    return __version__ if declared is None else declared
 
 
 #: Config bundle selected for each detected ecosystem.
@@ -146,6 +158,11 @@ def load(root: Path) -> Manifest | None:
     if declared is None or not declares_a_list:
         msg = f"{path} must set a string `version` and a list `configs`"
         raise TypeError(msg)
+    try:
+        Version(declared)
+    except InvalidVersion as exc:
+        msg = f"{path} `version` must be a valid PEP 440 version"
+        raise ValueError(msg) from exc
     if not all(isinstance(name, str) for name in names):
         msg = f"{path} `configs` must contain only strings"
         raise TypeError(msg)
@@ -252,7 +269,7 @@ def record_python_baseline(root: Path, relative_path: str) -> None:
 
 def installed_versions() -> dict[str, str]:
     """Report the versions of every Sarj distribution in the current environment."""
-    found = {LINT_CONFIGS: __version__}
+    found = {LINT_CONFIGS: adopted_version()}
     for name in SIBLING_PACKAGES:
         try:
             found[name] = version(name)

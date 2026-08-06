@@ -27,12 +27,38 @@ def test_warning_remains_visible_and_nonblocking_when_error_is_baselined(
 
     assert main([*rules, "--update-baseline", str(baseline), str(target)]) == 0
     assert json.loads(baseline.read_text()) == {str(target): {"SARJ016": 1}}
-    capsys.readouterr()
+    baseline_output = capsys.readouterr().out
+    assert "1 blocking diagnostics over 1 files; 1 warnings excluded" in baseline_output
 
     assert main([*rules, "--baseline", str(baseline), str(target)]) == 0
     checked = capsys.readouterr().out.splitlines()
     assert len(checked) == 1
     assert checked[0].startswith(f"{target}:1:1: SARJ090 warning:")
+
+
+def test_warning_only_baseline_reports_zero_blocking_diagnostics(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    target = tmp_path / "example.py"
+    target.write_text("# First fact. Second fact.\nvalue = 1\n")
+    baseline = tmp_path / "baseline.json"
+
+    assert (
+        main(
+            [
+                "check",
+                "--rule",
+                "prefer-single-sentence-comment",
+                "--update-baseline",
+                str(baseline),
+                str(target),
+            ]
+        )
+        == 0
+    )
+
+    assert json.loads(baseline.read_text()) == {}
+    assert "0 blocking diagnostics over 0 files; 1 warnings excluded" in capsys.readouterr().out
 
 
 def test_baseline_written_from_absolute_repo_path_is_portable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

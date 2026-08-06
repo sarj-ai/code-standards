@@ -19,6 +19,20 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 
+_INSTALL_MUTATED_NAMES = frozenset(
+    {
+        "bun.lock",
+        "bun.lockb",
+        "package-lock.json",
+        "package.json",
+        "pnpm-lock.yaml",
+        "pyproject.toml",
+        "uv.lock",
+        "yarn.lock",
+    }
+)
+
+
 class SyncOutcome(StrEnum):
     OK = "ok"
     WRITTEN = "written"
@@ -202,40 +216,64 @@ def apply_init(plan: InitPlan, *, install: bool = True) -> InitResult:
     if plan.sync is None:
         return InitResult(2, failure=InitFailure.APPLY, error="init plan is not applicable")
     scaffold_targets = tuple(path for path, _contents in (*plan.scaffold.writes, *plan.scaffold.edits))
-    environment = (
+    python_environment = (
         None if plan.scaffold.ecosystems.python_root is None else plan.scaffold.ecosystems.python_root / ".venv"
     )
-    environment_existed = environment is not None and environment.exists()
+    typescript_root = plan.scaffold.ecosystems.typescript_install_root or plan.scaffold.ecosystems.typescript_root
+    node_modules = None if typescript_root is None else typescript_root / "node_modules"
+    generated_trees = tuple((path, path.exists()) for path in (python_environment, node_modules) if path is not None)
     file_transaction: transaction.FileTransaction | None = None
     try:
         file_transaction = transaction.FileTransaction.capture(plan.sync.root, scaffold_targets)
         result = _apply_init_transaction(plan, file_transaction, install=install)
-        cleanup_error = _cleanup_new_environment(environment, existed=environment_existed, failed=bool(result.status))
-        if cleanup_error is not None:
-            return InitResult(result.status or 2, result.sync, result.failure or InitFailure.APPLY, cleanup_error)
     except KeyboardInterrupt:
-        if file_transaction is not None:
-            file_transaction.rollback()
-        cleanup_error = _cleanup_new_environment(environment, existed=environment_existed, failed=True)
-        return InitResult(130, failure=InitFailure.INTERRUPTED, error=cleanup_error)
+        rollback_error = _rollback_error(file_transaction)
+        cleanup_error = _cleanup_new_trees(generated_trees, failed=True)
+        return InitResult(
+            130,
+            failure=InitFailure.INTERRUPTED,
+            error=_join_errors(rollback_error, cleanup_error),
+        )
     except OSError as exc:
-        if file_transaction is not None:
-            file_transaction.rollback()
-        cleanup_error = _cleanup_new_environment(environment, existed=environment_existed, failed=True)
-        error = str(exc) if cleanup_error is None else f"{exc}; {cleanup_error}"
-        return InitResult(2, failure=InitFailure.APPLY, error=error)
+        rollback_error = _rollback_error(file_transaction)
+        cleanup_error = _cleanup_new_trees(generated_trees, failed=True)
+        return InitResult(
+            2,
+            failure=InitFailure.APPLY,
+            error=_join_errors(str(exc), rollback_error, cleanup_error),
+        )
     else:
+        if result.status:
+            rollback_error = _rollback_error(file_transaction)
+            cleanup_error = _cleanup_new_trees(generated_trees, failed=True)
+            error = _join_errors(result.error, rollback_error, cleanup_error)
+            status = 2 if error or result.failure is InitFailure.INSTALL else result.status
+            return InitResult(status, result.sync, result.failure, error)
         return result
 
 
-def _cleanup_new_environment(environment: Path | None, *, existed: bool, failed: bool) -> str | None:
-    if not failed or existed or environment is None or not environment.is_dir():
+def _rollback_error(file_transaction: transaction.FileTransaction | None) -> str | None:
+    if file_transaction is None:
         return None
-    try:
-        shutil.rmtree(environment)
-    except OSError as exc:
-        return f"could not remove newly created environment {environment}: {exc}"
-    return None
+    return file_transaction.rollback().render()
+
+
+def _cleanup_new_trees(trees: tuple[tuple[Path, bool], ...], *, failed: bool) -> str | None:
+    if not failed:
+        return None
+    failures: list[str] = []
+    for path, existed in trees:
+        if existed or not path.is_dir():
+            continue
+        try:
+            shutil.rmtree(path)
+        except OSError as exc:
+            failures.append(f"could not remove newly created environment {path}: {exc}")
+    return "; ".join(failures) or None
+
+
+def _join_errors(*errors: str | None) -> str | None:
+    return "; ".join(error for error in errors if error) or None
 
 
 def _apply_init_transaction(
@@ -249,14 +287,22 @@ def _apply_init_transaction(
     file_transaction.track(*(target.destination for target in plan.sync.targets))
     sync_result = apply_sync(plan.sync, force=True)
     if sync_result.status:
-        file_transaction.rollback()
         return InitResult(sync_result.status, sync_result, InitFailure.SYNC)
     scaffold.apply(plan.scaffold)
+    direct_targets = (
+        *(target.destination for target in plan.sync.targets),
+        *(path for path, _contents in (*plan.scaffold.writes, *plan.scaffold.edits)),
+    )
+    file_transaction.mark_written(*(path for path in direct_targets if path.name not in _INSTALL_MUTATED_NAMES))
     if install:
         install_status = lifecycle.execute(plan.install_commands)
         if install_status:
-            file_transaction.rollback()
-            return InitResult(install_status, sync_result, InitFailure.INSTALL)
+            return InitResult(
+                2,
+                sync_result,
+                InitFailure.INSTALL,
+                f"dependency or hook installer exited with status {install_status}",
+            )
     return InitResult(0, sync_result)
 
 
