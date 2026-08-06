@@ -35,6 +35,9 @@ _NEXT_STEPS = (
     "\n(or run `sarj-lint-configs init`, which writes that and the rest of the wiring)\n"
 )
 _BOOTSTRAP_TIMEOUT_SECONDS = 120
+_GIT_SAFE_ENV = frozenset(
+    {"HOME", "LANG", "LC_ALL", "LC_CTYPE", "PATH", "SYSTEMDRIVE", "SYSTEMROOT", "TMPDIR", "XDG_CONFIG_HOME"}
+)
 _INVALID_DOCTOR_IDS = frozenset(
     {
         "doctor.manifest.invalid",
@@ -831,6 +834,7 @@ def _staged_files(root: Path) -> list[str]:
         cwd=root,
         check=True,
         capture_output=True,
+        env=_git_environment(),
     )
     names = (part.decode("utf-8", errors="surrogateescape") for part in completed.stdout.split(b"\0"))
     return _safe_staged_paths(root, names)
@@ -875,6 +879,7 @@ def _unstaged_versions(root: Path, staged_paths: Iterable[str]) -> tuple[str, ..
         cwd=root,
         check=True,
         capture_output=True,
+        env=_git_environment(),
     )
     unstaged = {part.decode("utf-8", errors="surrogateescape") for part in completed.stdout.split(b"\0") if part}
     repository = root.resolve()
@@ -884,6 +889,15 @@ def _unstaged_versions(root: Path, staged_paths: Iterable[str]) -> tuple[str, ..
         if (resolved := Path(path).resolve()).is_relative_to(repository)
     }
     return tuple(sorted(unstaged & selected))
+
+
+def _git_environment() -> dict[str, str]:
+    """Discard hook-local routing so `--dest` remains the Git repository authority."""
+    return {
+        name: value
+        for name, value in os.environ.items()  # ruff: ignore[banned-api] -- intentionally sanitize Git hook routing.
+        if name in _GIT_SAFE_ENV
+    }
 
 
 def _selected_paths(root: Path, paths: Iterable[str]) -> list[str]:

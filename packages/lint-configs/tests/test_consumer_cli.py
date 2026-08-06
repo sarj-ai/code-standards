@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -21,6 +22,22 @@ if TYPE_CHECKING:
 
 class _DestArgs(Protocol):
     dest: str
+
+
+_GIT_ROUTING_VARIABLES = frozenset(
+    name
+    for name in os.environ  # ruff: ignore[banned-api] — test sanitizes inherited hook-local Git routing variables.
+    if name.startswith("GIT_") and name not in {"GIT_SSH", "GIT_SSH_COMMAND"}
+)
+
+
+def _isolated_git_environment() -> dict[str, str]:
+    """Prevent an enclosing Git hook from routing fixture commands to the real repository."""
+    return {
+        name: value
+        for name, value in os.environ.items()  # ruff: ignore[banned-api] -- explicitly remove hook-local Git routing.
+        if name not in _GIT_ROUTING_VARIABLES
+    }
 
 
 class _CommandArgs(Protocol):
@@ -487,16 +504,19 @@ def test_direct_staged_check_refuses_to_lint_worktree_bytes_that_differ_from_ind
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True)
-    subprocess.run(("git", "config", "user.email", "test@example.com"), cwd=tmp_path, check=True)
-    subprocess.run(("git", "config", "user.name", "Test"), cwd=tmp_path, check=True)
+    environment = _isolated_git_environment()
+    subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True, env=environment)
+    subprocess.run(("git", "config", "user.email", "test@example.com"), cwd=tmp_path, check=True, env=environment)
+    subprocess.run(("git", "config", "user.name", "Test"), cwd=tmp_path, check=True, env=environment)
     source = tmp_path / "service.py"
     source.write_text("VALUE: int = 1\n", encoding="utf-8")
-    subprocess.run(("git", "add", "service.py"), cwd=tmp_path, check=True)
-    subprocess.run(("git", "commit", "-qm", "base"), cwd=tmp_path, check=True)
+    subprocess.run(("git", "add", "service.py"), cwd=tmp_path, check=True, env=environment)
+    subprocess.run(("git", "commit", "-qm", "base"), cwd=tmp_path, check=True, env=environment)
     source.write_text("import logging\n", encoding="utf-8")
-    subprocess.run(("git", "add", "service.py"), cwd=tmp_path, check=True)
-    source.write_text("VALUE: int = 2\n", encoding="utf-8")
+    subprocess.run(("git", "add", "service.py"), cwd=tmp_path, check=True, env=environment)
+    # Change the byte length as well as the content so Git's racy-clean index
+    # optimization cannot make this filesystem-timing regression test flaky.
+    source.write_text("VALUE: int = 200\n", encoding="utf-8")
 
     assert cli.main(["check", "--staged", "--dest", str(tmp_path)]) == 2
     assert cli.main(["check", "--staged", "--dest", str(tmp_path), "service.py"]) == 2

@@ -214,18 +214,21 @@
   name: 'sarj-lint: constant comment is the sole source of a unit or HTTP status meaning'
   entry: sarj-python-lint check --rule prefer-self-documenting-constant
   language: python
+  language_version: *sarj_python_runtime
   types: [python]
 
 - id: sarj-no-duplicate-dunder-all-entry
   name: 'sarj-lint: static package export surface contains a duplicate name'
   entry: sarj-python-lint check --rule no-duplicate-dunder-all-entry
   language: python
+  language_version: *sarj_python_runtime
   types: [python]
 
 - id: sarj-redundant-module-docstring
   name: 'sarj-lint: module docstring only re-spells its file path'
   entry: sarj-python-lint check --rule redundant-module-docstring
   language: python
+  language_version: *sarj_python_runtime
   types: [python]
 
 - id: sarj-prefer-non-nullable-collection

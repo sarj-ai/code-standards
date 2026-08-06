@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from importlib.metadata import version
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -794,8 +795,13 @@ def test_the_generated_precommit_hook_actually_runs(tmp_path: Path) -> None:
     _ = (tmp_path / "src" / "app.py").write_text("VALUE: int = 1\n")
     assert _cli("init", "--dest", str(tmp_path)).returncode == 0
     _add_python_bundle_pins(tmp_path)
-    subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True)
-    subprocess.run(("git", "add", "src/app.py"), cwd=tmp_path, check=True)
+    environment = {
+        name: value
+        for name, value in os.environ.items()  # ruff: ignore[banned-api] -- isolate fixture Git from enclosing hooks.
+        if not name.startswith("GIT_")
+    }
+    subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True, env=environment)
+    subprocess.run(("git", "add", "src/app.py"), cwd=tmp_path, check=True, env=environment)
 
     entries = _precommit_entries((tmp_path / ".pre-commit-config.yaml").read_text())
     assert len(entries) == 1, "one orchestrator avoids duplicate uv startup and whole-repo scans"
