@@ -30,6 +30,8 @@ const BUILTIN_CONTAINER_TYPE_RE =
 const VALUE_TYPE_RE = /^(?:ArrayBuffer|Blob|Buffer|Date|RegExp|URL|URLSearchParams)$/;
 
 const TRANSPORT_WRAPPER_NAME_RE = /Client$/;
+const FLUENT_BUILDER_NAME_RE = /Builder$/;
+const FLUENT_RESULT_TYPE_RE = /(?:Builder|Base|Query|Without)(?:\W|$)/;
 
 /** Router-factory call that marks HTTP wiring. */
 const ROUTER_FACTORY_NAME = "Router";
@@ -473,6 +475,32 @@ const publicMethodNames = (
   return names;
 };
 
+/**
+ * Fluent construction objects return another query/builder stage from every
+ * concrete operation. Their chainable surface is the product, not a service
+ * seam that consumers inject behind a port.
+ */
+const isFluentConstructionBuilder = (
+  node: TSESTree.ClassDeclaration,
+  getText: (node: TSESTree.Node) => string,
+): boolean => {
+  if (node.id === null || !FLUENT_BUILDER_NAME_RE.test(node.id.name)) return false;
+  const methods = node.body.body.filter(
+    (member): member is TSESTree.MethodDefinition =>
+      member.type === AST_NODE_TYPES.MethodDefinition &&
+      member.kind === "method" &&
+      !member.static &&
+      member.accessibility !== "private" &&
+      member.accessibility !== "protected" &&
+      member.value.body !== null,
+  );
+  if (methods.length === 0) return false;
+  return methods.every((member) => {
+    const result = member.value.returnType?.typeAnnotation;
+    return result !== undefined && FLUENT_RESULT_TYPE_RE.test(getText(result));
+  });
+};
+
 function localClassAbstractness(program: TSESTree.Program): ReadonlyMap<string, boolean> {
   const classes = new Map<string, boolean>();
   const parents = new Map<string, string>();
@@ -692,6 +720,7 @@ export default createRule<Options, MessageIds>({
         if (isFrameworkWiring(node.body)) return;
         // A lone third-party transport is not a seam a port could protect.
         if (isTransportWrapper(node.id.name, collaborators, context.sourceCode.ast)) return;
+        if (isFluentConstructionBuilder(node, (result) => context.sourceCode.getText(result))) return;
 
         const methods = publicMethodNames(node.body, objectTypes().functionAliases);
         if (methods.length === 0) return;

@@ -195,6 +195,17 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         }
       `,
     },
+    {
+      name: "fluent construction builders expose their chainable API directly rather than a service port",
+      filename: SRC,
+      code: `
+        export class QueryBuilder {
+          constructor(private readonly dialect: QueryDialect) {}
+          select(): SelectQuery { return null as never; }
+          where(): QueryBuilder { return this; }
+        }
+      `,
+    },
     // Accessors only — `kind === "get"` is not a public method.
     {
       filename: SRC,
@@ -840,6 +851,17 @@ ruleTester.run("require-interface-for-injected-service", rule, {
   ],
 
   invalid: [
+    {
+      name: "a Builder suffix alone does not hide an injected service that returns a finished value",
+      filename: SRC,
+      code: `
+        export class ReportBuilder {
+          constructor(private readonly store: ReportStore) {}
+          build(): Report { return null as never; }
+        }
+      `,
+      errors: [{ messageId: "requireInterface", data: { name: "ReportBuilder", deps: "store: ReportStore", methods: "build" } }],
+    },
     {
       name: "implementing a local concrete class does not declare a port",
       filename: SRC,
