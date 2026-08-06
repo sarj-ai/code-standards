@@ -440,10 +440,42 @@ _REQUIREMENTS_NAME: Final = re.compile(r"^requirements(?:[-_.].*)?\.(?:txt|in)$"
 def scan(root: Path, *, allowed_ids: Iterable[str] = ()) -> tuple[Finding, ...]:
     """Scan authored direct-dependency manifests below ``root``."""
     root = root.resolve()
+    return _scan_manifests(root, _manifest_paths(root), allowed_ids=allowed_ids)
+
+
+def scan_paths(
+    root: Path,
+    paths: Iterable[str | Path],
+    *,
+    allowed_ids: Iterable[str] = (),
+) -> tuple[Finding, ...]:
+    """Scan only explicitly selected dependency manifests inside ``root``."""
+    root = root.resolve()
+    selected: set[Path] = set()
+    for raw_path in paths:
+        candidate = Path(raw_path)
+        candidate = candidate if candidate.is_absolute() else root / candidate
+        resolved = candidate.resolve()
+        if not resolved.is_relative_to(root):
+            msg = f"dependency manifest escapes repository root: {raw_path}"
+            raise ManifestPolicyError(msg)
+        if resolved.is_dir():
+            selected.update(_manifest_paths(resolved))
+        elif resolved.is_file() and _is_manifest_path(resolved, root):
+            selected.add(resolved)
+    return _scan_manifests(root, tuple(sorted(selected)), allowed_ids=allowed_ids)
+
+
+def _scan_manifests(
+    root: Path,
+    paths: Iterable[Path],
+    *,
+    allowed_ids: Iterable[str],
+) -> tuple[Finding, ...]:
     allowed = frozenset(allowed_ids)
     package_index = _package_index()
     findings: list[Finding] = []
-    for path in _manifest_paths(root):
+    for path in paths:
         dependencies: tuple[tuple[Path, Ecosystem, str], ...]
         if path.name == "pyproject.toml":
             dependencies = tuple((path, ecosystem, package) for ecosystem, package in _pyproject_dependencies(path))
@@ -481,14 +513,21 @@ def _manifest_paths(root: Path) -> tuple[Path, ...]:
             continue
         if not path.is_file():
             continue
-        in_requirements_dir = "requirements" in relative_parts[:-1]
-        ignored_requirements_fixture = any(part.lower() in _IGNORED_MANIFEST_DIRS for part in relative_parts[:-1])
-        if path.name in {"pyproject.toml", "package.json"} or (
-            not ignored_requirements_fixture
-            and (_REQUIREMENTS_NAME.match(path.name) or (in_requirements_dir and path.suffix in {".txt", ".in"}))
-        ):
+        if _is_manifest_path(path, root):
             paths.append(path)
     return tuple(sorted(paths))
+
+
+def _is_manifest_path(path: Path, root: Path) -> bool:
+    relative_parts = path.relative_to(root).parts
+    in_requirements_dir = "requirements" in relative_parts[:-1]
+    ignored_requirements_fixture = any(part.lower() in _IGNORED_MANIFEST_DIRS for part in relative_parts[:-1])
+    return path.name in {"pyproject.toml", "package.json"} or (
+        not ignored_requirements_fixture
+        and (
+            _REQUIREMENTS_NAME.match(path.name) is not None or (in_requirements_dir and path.suffix in {".txt", ".in"})
+        )
+    )
 
 
 def _requirement_name(spec: str, where: str) -> str:

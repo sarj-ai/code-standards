@@ -23,7 +23,15 @@ from ._meta import (
 from .libs.adoption.doctor import Finding as DoctorFinding
 from .libs.adoption.doctor import Level as DoctorLevel
 from .libs.adoption.doctor import diagnose
-from .libs.adoption.lifecycle import Command, Inspection, execute, format_commands, inspect, verification_commands
+from .libs.adoption.lifecycle import (
+    Command,
+    Inspection,
+    execute,
+    format_commands,
+    inspect,
+    selected_eslint_commands,
+    verification_commands,
+)
 from .libs.adoption.manifest import Manifest
 from .libs.adoption.manifest import load as load_manifest
 from .libs.adoption.scaffold import Plan as ScaffoldPlan
@@ -50,8 +58,11 @@ from .libs.adoption.service import (
 from .libs.adoption.upgrade import UpgradePlan
 from .libs.adoption.upgrade import apply as apply_upgrade
 from .libs.adoption.upgrade import build_plan as plan_upgrade
+from .libs.filesystem import is_link_like
 from .libs.linting.library_policy import Finding as LibraryPolicyFinding
+from .libs.linting.library_policy import ManifestPolicyError
 from .libs.linting.library_policy import scan as check_library_policy
+from .libs.linting.library_policy import scan_paths as check_selected_library_policy
 from .libs.linting.runner import GroupedPaths, group_paths
 from .libs.linting.runner import run as check
 from .libs.linting.textlint import Finding as TextFinding
@@ -92,6 +103,9 @@ if TYPE_CHECKING:
 
 _INVALID_EXIT = 2
 _INTERRUPTED_EXIT = 130
+_INVALID_DOCTOR_FINDING_IDS = frozenset(
+    {"doctor.manifest.destination", "doctor.config.unknown", "doctor.package-json.invalid"}
+)
 
 
 class Status(StrEnum):
@@ -176,7 +190,34 @@ class Standards:
 
     def check(self, paths: Sequence[str] | None = None) -> Result:
         if paths is not None:
-            return _operation_result(check([str(self.root / path) for path in paths]))
+            try:
+                selected = _contained_paths(self.root, paths)
+            except ValueError as exc:
+                return Result(
+                    Status.INVALID,
+                    findings=(Finding("check.input.invalid", "error", str(exc)),),
+                    exit_code=_INVALID_EXIT,
+                )
+            try:
+                adopted = load_manifest(self.root)
+                policy_findings = (
+                    check_selected_library_policy(self.root, selected)
+                    if adopted is not None and adopted.profile == "application"
+                    else ()
+                )
+            except (OSError, TypeError, ValueError, ManifestPolicyError) as exc:
+                return Result(
+                    Status.INVALID,
+                    findings=(Finding("check.policy.invalid", "error", str(exc)),),
+                    exit_code=_INVALID_EXIT,
+                )
+            findings = tuple(
+                Finding(item.id, "error", item.message, str(item.path), f"use {item.replacement}")
+                for item in policy_findings
+            )
+            source_status = check(selected)
+            eslint_status = execute(selected_eslint_commands(self.root, selected))
+            return _operation_result(max(source_status, eslint_status, 1 if findings else 0), findings=findings)
         return _operation_result(_verify(self.root))
 
     def fix(self) -> Result:
@@ -204,9 +245,13 @@ class Standards:
 
 
 def _doctor_status(findings: Sequence[DoctorFinding]) -> int:
-    if any(finding.id.endswith(".invalid") for finding in findings):
+    if any(finding.id.endswith(".invalid") or finding.id in _INVALID_DOCTOR_FINDING_IDS for finding in findings):
         return _INVALID_EXIT
-    return 1 if any(finding.level is DoctorLevel.DRIFT for finding in findings) else 0
+    return (
+        1
+        if any(finding.level is DoctorLevel.DRIFT or finding.id == "doctor.manifest.absent" for finding in findings)
+        else 0
+    )
 
 
 def _verify(root: Path) -> int:
@@ -240,6 +285,7 @@ def _init_changes(plan: InitPlan, *, install: bool) -> tuple[Change, ...]:
                 target.destination,
             )
             for target in (() if plan.sync is None else plan.sync.targets)
+            if _sync_target_changes(target.source, target.destination)
         ),
         *(Change("run", command.label) for command in plan.install_commands if install),
     )
@@ -276,7 +322,7 @@ def initialize(
 ) -> InitResult:
     """Adopt standards completely through the same transactional service as the CLI."""
     plan = plan_init(
-        root,
+        _repository_root(root),
         profile=profile,
         configs=configs,
         python_dest=python_root,
@@ -298,7 +344,7 @@ def sync_configs(
 ) -> ConfigSyncResult:
     """Refresh or check bundled configuration files without upgrading dependencies."""
     plan = plan_sync(
-        root,
+        _repository_root(root),
         configs=configs,
         profile=profile,
         python_dest=python_root,
@@ -309,7 +355,8 @@ def sync_configs(
 
 def update(root: Path, *, install: bool = True) -> int:
     """Apply the executing package's coherent upgrade plan."""
-    return apply_upgrade(plan_upgrade(root), install=install)
+    resolved = _repository_root(root)
+    return apply_upgrade(plan_upgrade(resolved), install=install)
 
 
 def fix(root: Path) -> int:
@@ -319,8 +366,54 @@ def fix(root: Path) -> int:
 
 
 check_rules = check
-doctor = diagnose
-show_state = inspect
+
+
+def doctor(root: Path) -> list[DoctorFinding]:
+    """Diagnose an existing repository through the same root contract as the facade."""
+    return diagnose(_repository_root(root))
+
+
+def show_state(root: Path) -> Inspection:
+    """Inspect an existing repository through the same root contract as the facade."""
+    return inspect(_repository_root(root))
+
+
+def _repository_root(root: str | Path) -> Path:
+    resolved = Path(root).resolve()
+    if not resolved.is_dir():
+        msg = f"repository root {resolved} is not a directory"
+        raise ValueError(msg)
+    return resolved
+
+
+def _contained_paths(root: Path, paths: Sequence[str]) -> list[str]:
+    selected: list[str] = []
+    for raw in paths:
+        supplied = Path(raw)
+        candidate = supplied if supplied.is_absolute() else root / supplied
+        try:
+            relative = candidate.absolute().relative_to(root)
+        except ValueError as exc:
+            msg = f"input must exist inside repository root: {raw}"
+            raise ValueError(msg) from exc
+        cursor = root
+        if any(is_link_like(cursor := cursor / part) for part in relative.parts):
+            msg = f"input must not traverse a symlink: {raw}"
+            raise ValueError(msg)
+        resolved = candidate.resolve()
+        if not resolved.is_relative_to(root) or not resolved.exists():
+            msg = f"input must exist inside repository root: {raw}"
+            raise ValueError(msg)
+        selected.append(str(resolved))
+    return list(dict.fromkeys(selected))
+
+
+def _sync_target_changes(source: Path, destination: Path) -> bool:
+    try:
+        return not destination.is_file() or source.read_bytes() != destination.read_bytes()
+    except OSError:
+        return True
+
 
 __all__ = [
     "CONFIGS_DIR",

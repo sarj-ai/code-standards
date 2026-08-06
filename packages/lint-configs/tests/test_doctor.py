@@ -1,3 +1,6 @@
+# sarj-doctor-ignore-retired-rules -- this module intentionally embeds retired
+# identifiers to prove that doctor diagnoses consumer repositories correctly.
+
 from __future__ import annotations
 
 import subprocess
@@ -190,3 +193,80 @@ def test_doctor_honors_explicit_fixture_exclusions(tmp_path: Path) -> None:
     findings = doctor.diagnose(tmp_path)
 
     assert not [finding for finding in findings if finding.id == "doctor.rule.retired"]
+
+
+def test_doctor_honors_explicit_retired_rule_fixture_directive(tmp_path: Path) -> None:
+    fixture = tmp_path / "test_rule_history.py"
+    fixture.write_text(
+        "# sarj-doctor-ignore-retired-rules -- intentional compatibility fixture\n# sarj-noqa: SARJ061\n",
+        encoding="utf-8",
+    )
+
+    findings = doctor.diagnose(tmp_path)
+
+    assert not [finding for finding in findings if finding.id == "doctor.rule.retired"]
+
+
+def test_doctor_deduplicates_indistinguishable_pin_findings(tmp_path: Path) -> None:
+    (tmp_path / "requirements.txt").write_text(
+        "sarj-lint-configs==0.0.1\nsarj-lint-configs==0.0.1\n",
+        encoding="utf-8",
+    )
+
+    findings = [finding for finding in doctor.diagnose(tmp_path) if finding.id == "doctor.version.pin"]
+
+    assert len(findings) == 1
+
+
+def test_doctor_ignores_malformed_unrelated_nested_package_json(tmp_path: Path) -> None:
+    fixture = tmp_path / "tests" / "fixtures" / "broken" / "package.json"
+    fixture.parent.mkdir(parents=True)
+    fixture.write_text("{\n", encoding="utf-8")
+
+    findings = doctor.diagnose(tmp_path)
+
+    assert not [finding for finding in findings if finding.id == "doctor.package-json.invalid"]
+
+
+def test_doctor_reports_malformed_nested_package_json_that_names_the_plugin(tmp_path: Path) -> None:
+    package = tmp_path / "packages" / "broken" / "package.json"
+    package.parent.mkdir(parents=True)
+    package.write_text('{"devDependencies":{"@sarj/eslint-plugin":\n', encoding="utf-8")
+
+    findings = doctor.diagnose(tmp_path)
+
+    assert [finding for finding in findings if finding.id == "doctor.package-json.invalid"]
+
+
+def test_doctor_keeps_independent_findings_when_one_destination_is_invalid(tmp_path: Path) -> None:
+    adopted = manifest.Manifest(
+        version=manifest.adopted_version(),
+        configs=("unknown-config", "ruff"),
+        python_dest="..",
+        typescript_dest=".",
+        hook_manager="none",
+    )
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+
+    findings = doctor.diagnose(tmp_path)
+
+    assert {finding.id for finding in findings} >= {
+        "doctor.config.unknown",
+        "doctor.manifest.destination",
+    }
+
+
+def test_doctor_falls_back_to_bounded_filesystem_walk_when_git_times_out(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (tmp_path / "requirements.txt").write_text("sarj-lint-configs==0.0.1\n", encoding="utf-8")
+
+    def timed_out(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        command = "git"
+        raise subprocess.TimeoutExpired(command, 5)
+
+    monkeypatch.setattr(doctor.subprocess, "run", timed_out)
+
+    findings = doctor.diagnose(tmp_path)
+
+    assert [finding for finding in findings if finding.id == "doctor.version.pin"]

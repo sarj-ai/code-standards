@@ -447,5 +447,5 @@ def test_directory_argument_cannot_false_green(tmp_path: Path) -> None:
         text=True,
         check=False,
     )
-    assert proc.returncode == 1
-    assert "SARJ" in proc.stdout
+    assert proc.returncode == 2
+    assert "input escapes repository root" in proc.stderr

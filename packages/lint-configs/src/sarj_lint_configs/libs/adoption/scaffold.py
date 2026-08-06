@@ -66,6 +66,7 @@ _ESLINT_CONFIG_NAMES: Final = (
 )
 _PYRIGHT_CONFIG: Final = "pyrightconfig.json"
 _PRECOMMIT_CONFIG_NAMES: Final = (".pre-commit-config.yaml", ".pre-commit-config.yml")
+_ECOSYSTEM_CONFIGS: Final = frozenset((*manifest.PYTHON_CONFIGS, *manifest.TYPESCRIPT_CONFIGS))
 
 _RUFF_EXTEND = re.compile(r"^[ \t]*\[tool\.ruff\][ \t]*$", re.MULTILINE)
 _RUFF_LINT_SECTION = re.compile(
@@ -208,8 +209,18 @@ def build_plan(
         _report_independent_roots(root, ecosystems.typescript_root, candidates, "TypeScript", plan)
 
     if not ecosystems.any:
-        plan.notes.append("no pyproject.toml and no package.json found -- pass --configs to scaffold anyway")
-        return plan
+        if configs is None:
+            plan.notes.append("no pyproject.toml and no package.json found -- pass --configs to scaffold anyway")
+            return plan
+        unsupported = tuple(name for name in selected if name in _ECOSYSTEM_CONFIGS)
+        if unsupported:
+            names = ", ".join(unsupported)
+            plan.errors.append(
+                f"cannot scaffold ecosystem-specific config(s) without an owning project: {names}; "
+                "add pyproject.toml/package.json or select only markdownlint, taplo, and yamllint"
+            )
+            return plan
+        plan.notes.append("no Python or TypeScript project found; adopting repository-wide shared configs only")
 
     _plan_manifest(root, plan, force=force)
     if (
@@ -230,9 +241,12 @@ def build_plan(
         if hooks.lefthook_config(root) is None:
             plan.errors.append("--hooks lefthook requires lefthook.yml or lefthook.yaml")
         elif not hooks.lefthook_runs_staged_check(root):
-            plan.errors.append(
-                "Lefthook pre-commit must run `sarj-standards check --staged`; add the command and rerun init"
-            )
+            try:
+                plan.writes.append(hooks.wire_lefthook_staged_check(root))
+            except ValueError as exc:
+                plan.errors.append(str(exc))
+            else:
+                plan.notes.append("added the canonical staged check to the existing Lefthook configuration")
         else:
             plan.notes.append("preserving validated Lefthook management; no pre-commit config was generated")
     else:
@@ -440,7 +454,11 @@ def _plan_npm_overrides(root: Path, plan: Plan, client: PackageManager) -> None:
     pnpm_workspace = root / "pnpm-workspace.yaml"
     if client is PackageManager.PNPM and pnpm_workspace.is_file():
         current = pnpm_workspace.read_text(encoding="utf-8")
-        merged = _merged_pnpm_workspace(current, overrides.entries)
+        try:
+            merged = _merged_pnpm_workspace(current, overrides.entries)
+        except ValueError as exc:
+            plan.errors.append(f"cannot safely merge pnpm overrides into {pnpm_workspace}: {exc}")
+            return
         if merged == current:
             plan.skips.append((pnpm_workspace, "already carries the pnpm peer overrides"))
         else:
@@ -477,6 +495,9 @@ def _plan_npm_overrides(root: Path, plan: Plan, client: PackageManager) -> None:
 
 def _merged_pnpm_workspace(text: str, entries: Mapping[str, object]) -> str:
     """Merge pnpm 11 workspace overrides without reformatting its policy file."""
+    if re.search(r"""(?m)^(?:overrides|"overrides"|'overrides'):[ \t]*[^\s#]""", text):
+        msg = "flow-style `overrides` is unsupported; convert it to a YAML block mapping and rerun init"
+        raise ValueError(msg)
     current = packagemanager.pnpm_workspace_values(text)
     for key, value in entries.items():
         if key not in current or current[key] == str(value):
@@ -512,8 +533,11 @@ def _merged_npm_overrides(text: str, overrides: Overrides) -> str | None:
     for name, value in overrides.entries.items():
         # A consumer may already override the same package for a different
         # reason, so merge the inner table rather than replacing it.
+        current_value = updated.get(name)
         current_entry = manifest.table_field(updated, name)
         new_entry = manifest.as_table(value)
+        if new_entry and current_value is not None and not isinstance(current_value, dict):
+            current_entry = {".": current_value}
         updated[name] = {**current_entry, **new_entry} if new_entry else value
     if updated == existing and _has_path(data, overrides.key_path):
         return None
@@ -587,15 +611,16 @@ def _plan_precommit(root: Path, plan: Plan, *, force: bool) -> None:
         )
         return
     path = existing[0] if existing else root / _PRECOMMIT_CONFIG_NAMES[0]
+    owns_python = plan.ecosystems.python and any(name in plan.configs for name in manifest.PYTHON_CONFIGS)
     block = precommit_block(
-        python=plan.ecosystems.python,
+        python=owns_python,
         version=manifest.adopted_version(),
         python_dest=dest_of(root, plan.ecosystems.python_root),
     )
     if path.is_file():
         text = path.read_text(encoding="utf-8")
         runner_prefix = _runner_prefix(
-            python=plan.ecosystems.python,
+            python=owns_python,
             version=manifest.adopted_version(),
             python_dest=dest_of(root, plan.ecosystems.python_root),
         )
@@ -609,7 +634,14 @@ def _plan_precommit(root: Path, plan: Plan, *, force: bool) -> None:
                 plan.skips.append((path, "already runs the canonical sarj-standards hook"))
             else:
                 plan.writes.append((path, canonical))
-        elif re.search(r"(?m)^repos:\s*$", text):
+        elif inline := re.search(r"(?m)^repos:\s*\[\s*\]\s*(?P<comment>#.*)?$", text):
+            comment = inline.group("comment")
+            opened = "repos:" if comment is None else f"repos: {comment}"
+            text = f"{text[: inline.start()]}{opened}{text[inline.end() :]}"
+            missing = _precommit_check_block(runner_prefix)
+            addition = missing if text.endswith("\n") else "\n" + missing
+            plan.writes.append((path, text + addition))
+        elif re.search(r"(?m)^repos:\s*(?:#.*)?$", text):
             missing = _precommit_check_block(runner_prefix)
             addition = missing if text.endswith("\n") else "\n" + missing
             plan.edits.append((path, addition))

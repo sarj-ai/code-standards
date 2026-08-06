@@ -134,6 +134,7 @@ _REFERENCE_SUFFIXES: Final = (
 )
 _RULE_MAPPING_REFERENCE = re.compile(r"^\s*(?:-\s*)?(?:id|entry)\s*:\s*.*sarj", re.IGNORECASE)
 _ESLINT_RULE_REFERENCE = re.compile(r"[\"']@sarj/[^\"']+[\"']\s*:")
+_IGNORE_RETIRED_RULE_REFERENCES = "sarj-doctor-ignore-retired-rules"
 
 _SKIP_DIRS: Final = frozenset(
     {
@@ -162,6 +163,7 @@ _SKIP_DIRS: Final = frozenset(
 _GIT_SAFE_ENV: Final = frozenset(
     {"HOME", "LANG", "LC_ALL", "LC_CTYPE", "PATH", "SYSTEMDRIVE", "SYSTEMROOT", "TMPDIR", "XDG_CONFIG_HOME"}
 )
+_GIT_DISCOVERY_TIMEOUT_SECONDS: Final = 5.0
 
 
 def diagnose(root: Path) -> list[Finding]:
@@ -184,7 +186,8 @@ def diagnose(root: Path) -> list[Finding]:
     findings.extend(check_pyright_deprecated(root, files))
     findings.extend(check_ruff_policy_authority(root, files))
     findings.extend(_check_adoption_wiring(root))
-    return sorted(findings, key=lambda finding: (finding.where, finding.id, finding.detail))
+    unique = dict.fromkeys(findings)
+    return sorted(unique, key=lambda finding: (finding.where, finding.id, finding.detail))
 
 
 def _check_hook_manager(root: Path) -> Iterator[Finding]:
@@ -255,6 +258,8 @@ def check_retired_rules(root: Path, files: Sequence[Path] | None = None) -> Iter
 
 def _reference_text(path: Path, text: str) -> str:
     """Keep only syntactic rule-reference sites, never explanatory prose."""
+    if _IGNORE_RETIRED_RULE_REFERENCES in text:
+        return ""
     lowered = path.name.lower()
     if "baseline" in lowered:
         return text
@@ -600,9 +605,12 @@ def _check_eslint_plugin(root: Path, files: Sequence[Path]) -> Iterator[Finding]
     for path in _candidate_files(files, (".json",)):
         if path.name != "package.json":
             continue
+        text = _read(path)
         try:
-            pinned = _package_json_pin(path)
+            pinned = _package_json_pin_text(text)
         except json.JSONDecodeError as exc:
+            if path != root / "package.json" and _ESLINT_PLUGIN not in text:
+                continue
             yield Finding(
                 Level.DRIFT,
                 str(path.relative_to(root)),
@@ -656,9 +664,6 @@ def _check_adoption_wiring(root: Path) -> Iterator[Finding]:  # ruff: ignore[too
                 "doctor.manifest.destination",
                 f"set `dest.{kind}` to an existing directory inside the repository",
             )
-    if any(value is None for value in destinations.values()):
-        return
-
     for name in adopted.configs:
         spec = _CONFIG_TARGETS.get(name)
         if spec is None:
@@ -928,8 +933,8 @@ def _is_exact_pin(pinned: str, expected: str) -> bool:
     return normalized == expected
 
 
-def _package_json_pin(path: Path) -> str | None:
-    parsed: object = json.loads(_read(path))  # pyright: ignore[reportAny] — json.loads is an untyped stdlib boundary; the shape is narrowed below
+def _package_json_pin_text(text: str) -> str | None:
+    parsed: object = json.loads(text)  # pyright: ignore[reportAny] — json.loads is an untyped stdlib boundary; the shape is narrowed below
     package_json = manifest.as_table(parsed)
     for field in ("dependencies", "devDependencies"):
         pinned = manifest.as_table(package_json.get(field)).get(_ESLINT_PLUGIN)
@@ -961,11 +966,12 @@ def _walk(root: Path) -> tuple[Path, ...]:
                 capture_output=True,
                 env=git_environment,
                 shell=False,
+                timeout=_GIT_DISCOVERY_TIMEOUT_SECONDS,
             )
             if git is not None
             else None
         )
-    except OSError:
+    except OSError, subprocess.TimeoutExpired:
         completed = None
     if completed is not None and completed.returncode == 0:
         found = []

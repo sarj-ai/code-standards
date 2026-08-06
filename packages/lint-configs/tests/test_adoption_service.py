@@ -80,7 +80,8 @@ def test_init_service_rolls_back_every_file_when_install_fails(
     monkeypatch.setattr(lifecycle, "execute", fail_install)
     result = apply_init(plan)
 
-    assert result.status == 7
+    assert result.status == 2
+    assert result.error == "dependency or hook installer exited with status 7"
     assert result.failure is InitFailure.INSTALL
     assert (tmp_path / "pyproject.toml").read_bytes() == original
     assert not (tmp_path / ".ruff-strict.toml").exists()

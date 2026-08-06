@@ -1,5 +1,8 @@
 """Keep the shipped rule ledger equal to the registries, so removals cannot be silent."""
 
+# sarj-doctor-ignore-retired-rules -- the ledger contract below intentionally
+# names every retired identifier and its migration target.
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable

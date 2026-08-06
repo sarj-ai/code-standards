@@ -1,13 +1,18 @@
 """A standards upgrade is previewable, coherent, and rollback-safe."""
 
+# sarj-doctor-ignore-retired-rules -- upgrade fixtures intentionally contain
+# retired identifiers so migration behavior remains covered.
+
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 import pytest
 
 from sarj_lint_configs import __main__ as cli
 from sarj_lint_configs import doctor, manifest, upgrade
+from sarj_lint_configs.libs.adoption import transaction
 
 
 if TYPE_CHECKING:
@@ -42,6 +47,50 @@ def test_upgrade_preview_is_read_only_and_names_every_change(tmp_path: Path) -> 
     assert "sync ruff config" in upgrade.render(plan.changes)
     assert "adopt lint-configs" in upgrade.render(plan.changes)
     assert {path: path.read_bytes() for path in tmp_path.iterdir() if path.is_file()} == before
+
+
+def test_upgrade_rejects_a_manifest_newer_than_the_executing_bundle_without_writes(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    path = tmp_path / manifest.MANIFEST_NAME
+    path.write_text(path.read_text().replace('version = "0.0.1"', 'version = "9999.0"'))
+    before = {candidate: candidate.read_bytes() for candidate in tmp_path.iterdir() if candidate.is_file()}
+
+    with pytest.raises(ValueError, match=r"newer standards 9999\.0"):
+        upgrade.build_plan(tmp_path)
+    assert {candidate: candidate.read_bytes() for candidate in tmp_path.iterdir() if candidate.is_file()} == before
+
+
+def test_upgrade_apply_rejects_a_forged_newer_plan_without_writes(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    plan = upgrade.build_plan(tmp_path)
+    newer = replace(plan, adopted=replace(plan.adopted, version="9999.0"))
+    before = {candidate: candidate.read_bytes() for candidate in tmp_path.iterdir() if candidate.is_file()}
+
+    assert upgrade.apply(newer, install=False) == 2
+    assert {candidate: candidate.read_bytes() for candidate in tmp_path.iterdir() if candidate.is_file()} == before
+
+
+def test_upgrade_installs_only_ecosystems_adopted_by_the_manifest(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "app"\nversion = "0.1.0"\n')
+    (tmp_path / "package.json").write_text('{"name":"web","private":true}\n')
+    adopted = manifest.Manifest(
+        version="0.0.1",
+        configs=("markdownlint",),
+        python_dest=".",
+        typescript_dest=".",
+    )
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render())
+    (tmp_path / ".markdownlint.yaml").write_text("stale\n")
+
+    plan = upgrade.build_plan(tmp_path)
+
+    assert not plan.ecosystems.python
+    assert not plan.ecosystems.typescript
+    assert plan.ecosystems.python_root is None
+    assert plan.ecosystems.typescript_install_root is None
+    precommit = next(contents for path, contents in plan.scaffold_plan.writes if path.name == ".pre-commit-config.yaml")
+    assert f"uvx --from sarj-lint-configs=={manifest.adopted_version()}" in precommit
+    assert "uv run --frozen sarj-standards" not in precommit
 
 
 def test_upgrade_repairs_the_bundle_without_losing_manifest_extensions(tmp_path: Path) -> None:
@@ -376,3 +425,27 @@ def test_upgrade_rolls_back_a_migrated_workflow_pin_on_postflight_failure(
 
     assert upgrade.apply(plan, install=False) == 1
     assert workflow.read_bytes() == before
+
+
+def test_upgrade_surfaces_incomplete_rollback(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    plan = upgrade.build_plan(tmp_path)
+    conflict = tmp_path / manifest.MANIFEST_NAME
+
+    def failed_apply(
+        _plan: upgrade.UpgradePlan,
+        _file_transaction: transaction.FileTransaction,
+        *,
+        install: bool,
+    ) -> int:
+        _ = install
+        return 1
+
+    def incomplete(_transaction: transaction.FileTransaction) -> transaction.RollbackReport:
+        return transaction.RollbackReport((transaction.RollbackIssue(conflict, "changed concurrently"),))
+
+    monkeypatch.setattr(upgrade, "_apply_and_validate", failed_apply)
+    monkeypatch.setattr(transaction.FileTransaction, "rollback", incomplete)
+
+    with pytest.raises(OSError, match=r"upgrade recovery incomplete.*changed concurrently"):
+        upgrade.apply(plan, install=False)

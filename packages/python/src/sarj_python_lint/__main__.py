@@ -260,9 +260,13 @@ def main(argv: list[str] | None = None) -> int:
 
     diags = _check(args.rule, args.files)
     if args.update_baseline is not None:
-        args.update_baseline.write_text(json.dumps(_baseline_counts(diags), indent=2, sort_keys=True) + "\n")
+        counts = _baseline_counts(diags)
+        blocking = sum(d.severity is Severity.ERROR for d in diags)
+        warnings = len(diags) - blocking
+        args.update_baseline.write_text(json.dumps(counts, indent=2, sort_keys=True) + "\n")
         sys.stdout.write(
-            f"baseline written: {args.update_baseline} ({len(diags)} diagnostics over {len(_baseline_counts(diags))} files)\n"
+            f"baseline written: {args.update_baseline} "
+            f"({blocking} blocking diagnostics over {len(counts)} files; {warnings} warnings excluded)\n"
         )
         return 0
     if args.baseline is not None:

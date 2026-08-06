@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 from pathlib import Path
+import stat
 from typing import Final, Self
 
 from sarj_lint_configs.libs.filesystem import is_link_like
@@ -64,11 +65,45 @@ def validate_targets(root: Path, paths: tuple[Path, ...]) -> None:
 
 
 @dataclass
+class FileSnapshot:
+    """Recoverable state for one file that existed before an operation."""
+
+    contents: bytes | None
+    mode: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class RollbackIssue:
+    """One path that could not be restored without risking more data loss."""
+
+    path: Path
+    detail: str
+
+
+@dataclass(frozen=True, slots=True)
+class RollbackReport:
+    """Best-effort rollback outcome; recovery failures never raise recursively."""
+
+    issues: tuple[RollbackIssue, ...] = ()
+
+    @property
+    def ok(self) -> bool:
+        return not self.issues
+
+    def render(self) -> str | None:
+        if not self.issues:
+            return None
+        return "; ".join(f"could not restore {issue.path}: {issue.detail}" for issue in self.issues)
+
+
+@dataclass
 class FileTransaction:
     """Snapshot likely mutation targets and restore them after a failed operation."""
 
     root: Path
-    before: dict[Path, bytes | None]
+    before: dict[Path, FileSnapshot]
+    written: dict[Path, bytes | None]
+    absent_parents: set[Path]
 
     @classmethod
     def capture(cls, root: Path, extra: tuple[Path, ...] = ()) -> Self:
@@ -85,25 +120,101 @@ class FileTransaction:
                     directory / name
                     for name in ("package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock", "bun.lockb")
                 )
-        before: dict[Path, bytes | None] = {}
+        before: dict[Path, FileSnapshot] = {}
+        absent_parents: set[Path] = set()
         for path in candidates:
+            if is_link_like(path):
+                continue
             try:
                 path.resolve().relative_to(resolved)
             except OSError, ValueError:
                 continue
-            before[path] = path.read_bytes() if path.is_file() else None
-        return cls(resolved, before)
+            before[path] = _snapshot(path)
+            absent_parents.update(_absent_parents(resolved, path.parent))
+        return cls(resolved, before, {}, absent_parents)
 
     def track(self, *paths: Path) -> None:
         for path in paths:
-            if path not in self.before:
-                self.before[path] = path.read_bytes() if path.is_file() else None
-
-    def rollback(self) -> None:
-        for path, contents in self.before.items():
-            if contents is None:
-                if path.is_file() or is_link_like(path):
-                    path.unlink()
+            if is_link_like(path):
                 continue
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(contents)
+            if path not in self.before:
+                self.before[path] = _snapshot(path)
+                self.absent_parents.update(_absent_parents(self.root, path.parent))
+
+    def mark_written(self, *paths: Path) -> None:
+        """Record direct writes so later concurrent edits are not overwritten."""
+        for path in paths:
+            self.written[path] = path.read_bytes() if path.is_file() else None
+
+    def rollback(self) -> RollbackReport:
+        issues: list[RollbackIssue] = []
+        for path, snapshot in self.before.items():
+            expected = self.written.get(path, _UNTRACKED)
+            issue = _restore_path(path, snapshot, expected)
+            if issue is not None:
+                issues.append(issue)
+        for parent in sorted(self.absent_parents, key=lambda item: len(item.parts), reverse=True):
+            try:
+                parent.rmdir()
+            except FileNotFoundError:
+                continue
+            except OSError:
+                # A non-empty directory contains state the transaction does not own.
+                continue
+        return RollbackReport(tuple(issues))
+
+
+class _Untracked:
+    """Sentinel type for paths without a recorded standards write."""
+
+
+_UNTRACKED: Final = _Untracked()
+
+
+def _snapshot(path: Path) -> FileSnapshot:
+    if not path.is_file():
+        return FileSnapshot(None, None)
+    metadata = path.stat(follow_symlinks=False)
+    return FileSnapshot(path.read_bytes(), stat.S_IMODE(metadata.st_mode))
+
+
+def _restore_path(
+    path: Path,
+    snapshot: FileSnapshot,
+    expected: bytes | _Untracked | None,
+) -> RollbackIssue | None:
+    try:
+        current = path.read_bytes() if path.is_file() else None
+    except OSError as exc:
+        return RollbackIssue(path, str(exc))
+    if not isinstance(expected, _Untracked) and current != expected:
+        return RollbackIssue(path, "changed concurrently after the standards write")
+    try:
+        _apply_snapshot(path, snapshot)
+    except OSError as exc:
+        return RollbackIssue(path, str(exc))
+    return None
+
+
+def _apply_snapshot(path: Path, snapshot: FileSnapshot) -> None:
+    if snapshot.contents is None:
+        if path.is_file() or is_link_like(path):
+            path.unlink()
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        path.chmod(stat.S_IWUSR | (snapshot.mode or 0))
+    path.write_bytes(snapshot.contents)
+    if snapshot.mode is not None:
+        path.chmod(snapshot.mode)
+
+
+def _absent_parents(root: Path, parent: Path) -> set[Path]:
+    missing: set[Path] = set()
+    current = parent
+    while current != root and current.is_relative_to(root):
+        if current.exists():
+            break
+        missing.add(current)
+        current = current.parent
+    return missing

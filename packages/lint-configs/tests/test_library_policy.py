@@ -125,6 +125,26 @@ def test_scan_allows_selected_mapping_ids(tmp_path: Path) -> None:
     assert [finding.id for finding in findings] == ["LIB004"]
 
 
+def test_scan_paths_checks_only_selected_manifests(tmp_path: Path) -> None:
+    selected = tmp_path / "requirements.txt"
+    selected.write_text("requests\n", encoding="utf-8")
+    unrelated = tmp_path / "nested" / "package.json"
+    unrelated.parent.mkdir()
+    unrelated.write_text('{"dependencies":{"axios":"1"}}', encoding="utf-8")
+
+    assert [finding.id for finding in library_policy.scan_paths(tmp_path, [str(selected)])] == ["LIB004"]
+    assert [finding.id for finding in library_policy.scan_paths(tmp_path, [str(unrelated)])] == ["LIB101"]
+
+
+def test_scan_paths_ignores_selected_source_files(tmp_path: Path) -> None:
+    (tmp_path / "package.json").write_text('{"dependencies":{"axios":"1"}}', encoding="utf-8")
+    source = tmp_path / "src" / "component.ts"
+    source.parent.mkdir()
+    source.write_text("export const value = 1;\n", encoding="utf-8")
+
+    assert library_policy.scan_paths(tmp_path, [str(source)]) == ()
+
+
 @pytest.mark.parametrize(
     ("name", "content"),
     [
