@@ -93,6 +93,20 @@ run('two', () => { const x = parse('b'); save(x); return x; });`,
 test('one', () => { const x = parse('a'); save(x); cleanup(x); });
 test('two', () => { const x = parse('b'); save(x); cleanup(x); });`,
     },
+    {
+      name: "ignores a locally defined function named it",
+      filename: TEST_FILE,
+      code: `const it = (_name: string, callback: () => void) => callback();
+it('one', () => { const x = parse('a'); save(x); cleanup(x); });
+it('two', () => { const x = parse('b'); save(x); cleanup(x); });`,
+    },
+    {
+      name: "ignores test imported from a non-runner module",
+      filename: TEST_FILE,
+      code: `import { test } from './application-test-helper';
+test('one', () => { const x = parse('a'); save(x); cleanup(x); });
+test('two', () => { const x = parse('b'); save(x); cleanup(x); });`,
+    },
   ],
   invalid: [
     {

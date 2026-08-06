@@ -23,8 +23,8 @@ def _check(source: str, name: str = "main.tf") -> list[Diagnostic]:
 
 
 def test_type_lists_are_disjoint_from_sarj201():
-    # A resource must never draw both diagnostics: SARJ201 covers types with a
-    # deletion_protection argument, SARJ203 covers types without one.
+    # A resource must never draw both diagnostics: SARJ201 owns the curated
+    # stateful service set; SARJ203 owns the bucket/secret/registry set.
     assert not (IRREPLACEABLE_TYPES & PROTECTED_TYPES)
 
 
@@ -47,6 +47,69 @@ def test_allows_prevent_destroy():
     src = """
 resource "google_secret_manager_secret" "app_managed" {
   secret_id = "x"
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "resource_type",
+    [
+        "google_storage_bucket",
+        "google_secret_manager_secret",
+        "google_artifact_registry_repository",
+    ],
+)
+def test_allows_documented_google_deletion_policy_prevent(resource_type: str):
+    src = f"""resource "{resource_type}" "main" {{
+  name            = "prod"
+  deletion_policy = "PREVENT"
+}}
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize("value", ['"DELETE"', '"ABANDON"', "var.deletion_policy", "null"])
+def test_google_deletion_policy_must_be_literal_prevent(value: str):
+    src = f"""resource "google_storage_bucket" "main" {{
+  name            = "prod"
+  deletion_policy = {value}
+}}
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "deletion_policy" in diags[0].message
+
+
+def test_allows_secret_manager_deletion_protection_true():
+    src = """resource "google_secret_manager_secret" "main" {
+  secret_id           = "prod"
+  deletion_protection = true
+}
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize("value", ["false", "var.deletion_protection", "null"])
+def test_secret_manager_deletion_protection_must_be_literal_true(value: str):
+    src = f"""resource "google_secret_manager_secret" "main" {{
+  secret_id           = "prod"
+  deletion_protection = {value}
+}}
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "deletion_protection" in diags[0].message
+
+
+def test_lifecycle_guard_overrides_unproven_google_provider_guards():
+    src = """resource "google_secret_manager_secret" "main" {
+  secret_id           = "prod"
+  deletion_policy     = var.deletion_policy
+  deletion_protection = false
   lifecycle {
     prevent_destroy = true
   }

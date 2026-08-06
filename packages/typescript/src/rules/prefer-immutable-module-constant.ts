@@ -13,6 +13,7 @@ type MessageIds = "preferAsConst" | "preferReadonlyCollection";
 type Options = readonly [];
 
 const CONSTANT_NAME = /^_?[A-Z][A-Z0-9_]*$/;
+const JAVASCRIPT_FILE_RE = /\.[cm]?jsx?$/i;
 const MUTATING_METHODS: ReadonlySet<string> = new Set([
   "add",
   "clear",
@@ -224,7 +225,11 @@ export default createRule<Options, MessageIds>({
       const variable = ASTUtils.findVariable(sourceCode.getScope(identifier), identifier.name);
       return variable === null || variable.defs.length === 0;
     };
-    if (isTestFile(context.filename) || isGeneratedFile(context.filename, sourceCode.getText())) {
+    if (
+      JAVASCRIPT_FILE_RE.test(context.filename) ||
+      isTestFile(context.filename) ||
+      isGeneratedFile(context.filename, sourceCode.getText())
+    ) {
       return {};
     }
     const exportedNames = new Set<string>();
