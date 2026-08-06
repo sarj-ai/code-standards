@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+import os
 from pathlib import Path
+import shutil
+import subprocess  # ruff: ignore[suspicious-subprocess-import] -- latest updates execute a fixed uvx argv.
 from typing import TYPE_CHECKING
 
 from ._meta import (
@@ -55,7 +58,7 @@ from .libs.adoption.service import (
 from .libs.adoption.service import (
     SyncResult as ConfigSyncResult,
 )
-from .libs.adoption.upgrade import UpgradePlan
+from .libs.adoption.upgrade import UpgradePlan, is_install_remediable
 from .libs.adoption.upgrade import apply as apply_upgrade
 from .libs.adoption.upgrade import build_plan as plan_upgrade
 from .libs.diagnostics import (
@@ -147,6 +150,13 @@ class AnalysisMode(StrEnum):
 
     POLICY = "policy"
     RAW = "raw"
+
+
+class UpdateTarget(StrEnum):
+    """Which compatibility bundle an update should apply."""
+
+    LATEST = "latest"
+    INSTALLED = "installed"
 
 
 @dataclass(frozen=True, slots=True)
@@ -364,7 +374,20 @@ class Standards:
         status = _doctor_status(diagnosed)
         return _operation_result(status, findings=findings)
 
-    def update(self, *, install: bool = True, check_only: bool = False) -> Result:
+    def update(
+        self,
+        *,
+        install: bool = True,
+        check_only: bool = False,
+        target: UpdateTarget | str = UpdateTarget.LATEST,
+    ) -> Result:
+        try:
+            selected_target = UpdateTarget(target)
+        except ValueError:
+            finding = Finding("update.target.invalid", "error", f"unknown update target {target!r}")
+            return Result(Status.INVALID, findings=(finding,), exit_code=_INVALID_EXIT)
+        if selected_target is UpdateTarget.LATEST:
+            return self._update_latest(install=install, check_only=check_only)
         try:
             plan = plan_upgrade(self.root)
         except (OSError, TypeError, ValueError) as exc:
@@ -393,8 +416,70 @@ class Standards:
             finding = Finding("update.apply.failed", "error", f"upgrade exited with status {applied}")
             return Result(Status.FAILED, (finding,), planned, applied)
         diagnosed = diagnose(self.root)
+        if not install:
+            diagnosed = [
+                DoctorFinding(
+                    DoctorLevel.WARN,
+                    finding.where,
+                    f"{finding.detail}; installation intentionally skipped",
+                    finding.id,
+                    finding.remediation,
+                )
+                if finding.level is DoctorLevel.DRIFT and is_install_remediable(finding)
+                else finding
+                for finding in diagnosed
+            ]
         changes = tuple(Change("update", change.reason, change.path) for change in plan.changes)
         return _operation_result(_doctor_status(diagnosed), changes, findings=_doctor_findings(diagnosed))
+
+    def _update_latest(self, *, install: bool, check_only: bool) -> Result:
+        executable = shutil.which("uvx")
+        if executable is None:
+            finding = Finding(
+                "update.latest.unavailable",
+                "error",
+                "uvx is required to resolve the latest standards release; install uv or target='installed'",
+            )
+            return Result(Status.FAILED, findings=(finding,), exit_code=_INVALID_EXIT)
+        command = [
+            executable,
+            "--refresh",
+            "--from",
+            "sarj-lint-configs",
+            "sarj-standards",
+            "update",
+            "--offline",
+            "--dest",
+            str(self.root),
+        ]
+        if check_only:
+            command.append("--check")
+        if not install:
+            command.append("--no-install")
+        environment = dict(os.environ)  # ruff: ignore[banned-api] -- preserve caller environment for the fixed uvx process.
+        environment["SARJ_STANDARDS_BOOTSTRAPPED"] = "1"
+        try:
+            completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed executable and argv.
+                command,
+                check=False,
+                capture_output=True,
+                text=True,
+                env=environment,
+                timeout=120,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            finding = Finding("update.latest.failed", "error", str(exc))
+            return Result(Status.FAILED, findings=(finding,), exit_code=_INVALID_EXIT)
+        output = (completed.stderr or completed.stdout).strip()
+        if completed.returncode == 0:
+            status = Status.OK if check_only else Status.CHANGED
+            changes = () if check_only else (Change("update", "applied the latest resolved compatibility bundle"),)
+            return Result(status, changes=changes)
+        if completed.returncode == 1:
+            finding = Finding("update.latest.available", "warning", output or "a standards update is available")
+            return Result(Status.DRIFT, findings=(finding,), exit_code=1)
+        finding = Finding("update.latest.failed", "error", output or "latest standards update failed")
+        return Result(Status.FAILED, findings=(finding,), exit_code=completed.returncode)
 
     def inspect(self) -> Inspection:
         return inspect(self.root)
@@ -678,6 +763,7 @@ __all__ = [
     "TextFinding",
     "ToolReport",
     "TrustMode",
+    "UpdateTarget",
     "UpgradePlan",
     "ValidatedReleaseTag",
     "__version__",

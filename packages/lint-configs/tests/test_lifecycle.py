@@ -64,11 +64,18 @@ def test_python_install_exact_pins_override_consumer_release_age_cutoffs(
         "--dev",
         "--exclude-newer-package",
         "sarj-lint-configs=2099-12-31",
-        "--exclude-newer-package",
-        "sarj-python-lint=2099-12-31",
         "sarj-lint-configs==1.2.3",
-        "sarj-python-lint==4.5.6",
     )
+
+
+@pytest.mark.parametrize("python", [True, False])
+def test_precommit_install_is_explicitly_scoped_to_commit_stage(tmp_path: Path, python: bool) -> None:
+    (tmp_path / ".git").mkdir()
+    ecosystems = scaffold.Ecosystems(python, not python, python_root=tmp_path if python else None)
+
+    command = lifecycle.install_commands(tmp_path, ecosystems)[-1]
+
+    assert command.argv[-4:] == ("pre-commit", "install", "--hook-type", "pre-commit")
 
 
 def test_staged_eslint_uses_detected_project_cwd_and_package_manager(tmp_path: Path) -> None:

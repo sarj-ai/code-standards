@@ -56,10 +56,9 @@ def install_commands(
     commands: list[Command] = []
     if ecosystems.python_root is not None:
         versions = manifest.installed_versions()
-        bundle = tuple(f"{name}=={version}" for name, version in versions.items())
-        release_age_exemptions = tuple(
-            argument for name in versions for argument in ("--exclude-newer-package", f"{name}=2099-12-31")
-        )
+        authority = "sarj-lint-configs"
+        bundle = (f"{authority}=={versions[authority]}",)
+        release_age_exemptions = ("--exclude-newer-package", f"{authority}=2099-12-31")
         commands.append(
             Command(
                 "Python standards",
@@ -86,9 +85,11 @@ def install_commands(
                 str(ecosystems.python_root),
                 "pre-commit",
                 "install",
+                "--hook-type",
+                "pre-commit",
             )
             if ecosystems.python_root is not None
-            else ("uvx", "--from", "pre-commit", "pre-commit", "install")
+            else ("uvx", "--from", "pre-commit", "pre-commit", "install", "--hook-type", "pre-commit")
         )
         commands.append(Command("pre-commit hooks", hook_argv, root))
     return commands

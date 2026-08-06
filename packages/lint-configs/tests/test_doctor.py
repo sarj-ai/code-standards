@@ -61,6 +61,23 @@ def test_doctor_rejects_non_string_manifest_destinations_without_a_traceback(
     assert "must be a non-empty string" in capsys.readouterr().out
 
 
+def test_staged_adoption_health_does_not_walk_unrelated_sources(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "src").mkdir()
+    staged = tmp_path / "src" / "changed.py"
+    staged.write_text("value = 1\n", encoding="utf-8")
+
+    def unexpected_walk(_root: Path) -> tuple[Path, ...]:
+        raise AssertionError
+
+    monkeypatch.setattr(doctor, "_walk", unexpected_walk)
+
+    findings = doctor.diagnose_adoption_health(tmp_path, (staged,))
+
+    assert [finding.id for finding in findings] == ["doctor.manifest.absent"]
+
+
 @pytest.mark.parametrize("key", ["ignore", "select"])
 def test_doctor_rejects_replacement_rule_policy_in_extending_ruff_config(tmp_path: Path, key: str) -> None:
     (tmp_path / "pyproject.toml").write_text(

@@ -13,6 +13,7 @@ import tomllib
 from typing import TYPE_CHECKING
 
 import pytest
+import yaml
 
 from sarj_lint_configs import (
     ESLINT_PEERS,
@@ -386,12 +387,6 @@ def test_init_installs_dependencies_by_default(monkeypatch: pytest.MonkeyPatch, 
         "--dev",
         "--exclude-newer-package",
         "sarj-lint-configs=2099-12-31",
-        "--exclude-newer-package",
-        "sarj-python-lint=2099-12-31",
-        "--exclude-newer-package",
-        "sarj-sql-lint=2099-12-31",
-        "--exclude-newer-package",
-        "sarj-iac-lint=2099-12-31",
         f"sarj-lint-configs=={__version__}",
         "sarj-python-lint==0.51.3",
         "sarj-sql-lint==0.6.4",
@@ -882,6 +877,60 @@ def test_doctor_detects_a_disabled_generated_precommit_hook(tmp_path: Path) -> N
     assert [finding for finding in findings if finding.id == "doctor.hooks.precommit"]
 
 
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("files: '(?i)", "files: '$^"),
+        ("stages: [pre-commit]", "stages: [pre-push]"),
+        ("pass_filenames: true", "pass_filenames: false"),
+        ("require_serial: true", "require_serial: false"),
+    ],
+)
+def test_doctor_rejects_inert_or_semantically_changed_precommit_hook(tmp_path: Path, old: str, new: str) -> None:
+    _ = _python_repo(tmp_path)
+    assert _cli("init", "--dest", str(tmp_path), "--no-install").returncode == 0
+    config = tmp_path / ".pre-commit-config.yaml"
+    contents = config.read_text(encoding="utf-8")
+    assert old in contents
+    config.write_text(contents.replace(old, new), encoding="utf-8")
+
+    findings = doctor.diagnose(tmp_path)
+
+    assert [finding for finding in findings if finding.id == "doctor.hooks.precommit"]
+
+
+def test_doctor_warns_when_the_checkout_hook_is_not_installed(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True)
+    assert _cli("init", "--dest", str(tmp_path), "--no-install").returncode == 0
+
+    findings = doctor.diagnose(tmp_path)
+
+    assert [
+        finding
+        for finding in findings
+        if finding.id == "doctor.hooks.precommit-install" and finding.level is doctor.Level.WARN
+    ]
+    hook = tmp_path / ".git" / "hooks" / "pre-commit"
+    hook.write_text("#!/bin/sh\n# pre_commit hook-type=pre-commit\n", encoding="utf-8")
+    assert not [finding for finding in doctor.diagnose(tmp_path) if finding.id == "doctor.hooks.precommit-install"]
+
+
+def test_doctor_repair_converges_configuration_without_installing(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    assert _cli("init", "--dest", str(tmp_path), "--no-install").returncode == 0
+    config = tmp_path / ".pre-commit-config.yaml"
+    config.write_text(
+        config.read_text(encoding="utf-8").replace("stages: [pre-commit]", "stages: [pre-push]"),
+        encoding="utf-8",
+    )
+
+    repaired = _cli("doctor", "--repair", "--no-install", "--dest", str(tmp_path))
+
+    assert repaired.returncode == 0, repaired.stdout + repaired.stderr
+    assert "stages: [pre-commit]" in config.read_text(encoding="utf-8")
+
+
 @pytest.mark.parametrize("path", ["requirements.txt", "requirements-dev.in", "requirements/prod.txt"])
 def test_generated_check_hook_includes_application_requirement_manifests(tmp_path: Path, path: str) -> None:
     _ = _python_repo(tmp_path)
@@ -916,6 +965,63 @@ def test_init_migrates_existing_generated_hooks_to_one_staged_hook(tmp_path: Pat
     assert "check --staged" in updated
 
 
+def test_init_consolidates_owned_hooks_across_local_repository_blocks(tmp_path: Path) -> None:
+    _python_repo(tmp_path)
+    config = tmp_path / ".pre-commit-config.yaml"
+    config.write_text(
+        "repos:\n"
+        "  - repo: local\n"
+        "    hooks:\n"
+        "      - id: keep-first\n"
+        "        entry: true\n"
+        "      - id: sarj-standards-drift\n"
+        "        entry: sarj-standards doctor\n"
+        "  - repo: local\n"
+        "    hooks:\n"
+        "      - id: sarj-standards-check\n"
+        "        entry: sarj-standards check\n"
+        "      - id: keep-second\n"
+        "        entry: true\n",
+        encoding="utf-8",
+    )
+
+    assert _cli("init", "--dest", str(tmp_path), "--no-install").returncode == 0
+    first = config.read_text(encoding="utf-8")
+    assert first.count("id: sarj-standards-check") == 1
+    assert "id: sarj-standards-drift" not in first
+    assert "id: keep-first" in first
+    assert "id: keep-second" in first
+    assert not [
+        finding
+        for finding in doctor.diagnose(tmp_path)
+        if finding.id == "doctor.hooks.precommit" and finding.level is doctor.Level.DRIFT
+    ]
+
+    assert _cli("update", "--offline", "--no-install", "--dest", str(tmp_path)).returncode == 0
+    assert config.read_text(encoding="utf-8") == first
+
+
+def test_init_refuses_to_discard_custom_local_hook_scope(tmp_path: Path) -> None:
+    _python_repo(tmp_path)
+    config = tmp_path / ".pre-commit-config.yaml"
+    config.write_text(
+        "repos:\n"
+        "  - repo: local\n"
+        "    hooks:\n"
+        "      - id: sarj-standards-check\n"
+        "        entry: sarj-standards check --staged --\n"
+        "        exclude: ^generated/\n",
+        encoding="utf-8",
+    )
+    before = config.read_bytes()
+
+    result = _cli("init", "--dest", str(tmp_path), "--no-install")
+
+    assert result.returncode == 2
+    assert "customized local Sarj hook (exclude)" in result.stderr
+    assert config.read_bytes() == before
+
+
 def test_a_typescript_only_precommit_hook_does_not_invoke_uv_run(tmp_path: Path) -> None:
     _ = _typescript_repo(tmp_path)
     assert _cli("init", "--dest", str(tmp_path)).returncode == 0
@@ -926,6 +1032,27 @@ def test_a_typescript_only_precommit_hook_does_not_invoke_uv_run(tmp_path: Path)
     # `check` runs the Python/SQL/IaC registries; a TypeScript repo has nothing
     # to feed them, and a hook that lints nothing is a hook that hides.
     assert "sarj-standards check" in generated
+
+
+@pytest.mark.parametrize("ecosystem", ["python", "typescript"])
+def test_show_ci_renders_a_complete_pinned_workflow(tmp_path: Path, ecosystem: str) -> None:
+    _ = _python_repo(tmp_path) if ecosystem == "python" else _typescript_repo(tmp_path)
+    assert _cli("init", "--dest", str(tmp_path), "--no-install").returncode == 0
+
+    rendered = _cli("show", "ci", str(tmp_path))
+
+    assert rendered.returncode == 0, rendered.stderr
+    parsed: object = yaml.safe_load(rendered.stdout)  # pyright: ignore[reportAny] -- parser result is narrowed below.
+    assert isinstance(parsed, dict)
+    assert "permissions:\n  contents: read" in rendered.stdout
+    assert "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" in rendered.stdout
+    assert "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9" in rendered.stdout
+    assert "sarj-standards check" in rendered.stdout
+    if ecosystem == "python":
+        assert "uv sync --locked" in rendered.stdout
+    else:
+        assert "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020" in rendered.stdout
+        assert "npm ci --no-audit --no-fund" in rendered.stdout
 
 
 def test_detection_finds_a_package_json_in_a_subproject(tmp_path: Path) -> None:

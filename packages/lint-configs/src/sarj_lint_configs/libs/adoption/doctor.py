@@ -192,6 +192,55 @@ def diagnose(root: Path) -> list[Finding]:
     return sorted(unique, key=lambda finding: (finding.where, finding.id, finding.detail))
 
 
+def diagnose_adoption_health(root: Path, selected: Sequence[Path] = ()) -> list[Finding]:
+    """Check staged-gate adoption sites without traversing unrelated source files."""
+    installed = manifest.installed_versions()
+    files = _adoption_health_files(root, selected)
+    findings = [*_check_manifest(root)]
+    findings.extend(_check_hook_manager(root))
+    findings.extend(_check_pin_files(root, files, installed))
+    findings.extend(_check_adopted_python_bundle(root, files, installed))
+    findings.extend(_check_precommit_revs(root, files))
+    if not _has_adopted_eslint(root):
+        findings.extend(_check_eslint_plugin(root, files))
+    findings.extend(check_retired_rules(root, files))
+    findings.extend(check_pyright_deprecated(root, files))
+    findings.extend(check_ruff_policy_authority(root, files))
+    findings.extend(_check_adoption_wiring(root))
+    return sorted(dict.fromkeys(findings), key=lambda finding: (finding.where, finding.id, finding.detail))
+
+
+def _adoption_health_files(root: Path, selected: Sequence[Path]) -> tuple[Path, ...]:
+    candidates = [*selected, manifest.manifest_path(root)]
+    candidates.extend(
+        root / name for name in (*hooks.PRECOMMIT_NAMES, "pyproject.toml", "package.json", "pyrightconfig.json")
+    )
+    candidates.extend(root.glob("requirements*.txt"))
+    candidates.extend(root.glob("requirements*.in"))
+    candidates.extend(root.glob("*/pyproject.toml"))
+    candidates.extend(root.glob("*/*/pyproject.toml"))
+    candidates.extend((root / ".github" / "workflows").glob("*.yml"))
+    candidates.extend((root / ".github" / "workflows").glob("*.yaml"))
+    try:
+        adopted = manifest.load(root)
+    except OSError, TypeError, ValueError:
+        adopted = None
+    if adopted is not None:
+        for destination in (adopted.python_dest, adopted.typescript_dest):
+            base = _manifest_destination(root, destination)
+            if base is not None:
+                candidates.extend(base / name for name in ("pyproject.toml", "package.json", "pyrightconfig.json"))
+    repository = root.resolve()
+    contained: list[Path] = []
+    for path in candidates:
+        if not path.is_file():
+            continue
+        resolved = path.resolve()
+        if resolved.is_relative_to(repository):
+            contained.append(resolved)
+    return tuple(dict.fromkeys(contained))
+
+
 def _check_hook_manager(root: Path) -> Iterator[Finding]:
     try:
         adopted = manifest.load(root)
@@ -207,6 +256,14 @@ def _check_hook_manager(root: Path) -> Iterator[Finding]:
                 "runs exactly one canonical staged check",
                 "doctor.hooks.precommit",
             )
+            if _git_worktree(root) and not _installed_precommit_hook(root):
+                yield Finding(
+                    Level.WARN,
+                    ".git/hooks/pre-commit",
+                    "the configuration is healthy, but this checkout has no installed commit hook",
+                    "doctor.hooks.precommit-install",
+                    "run `sarj-standards doctor --repair`",
+                )
             return
         yield Finding(
             Level.DRIFT,
@@ -227,6 +284,44 @@ def _check_hook_manager(root: Path) -> Iterator[Finding]:
         "doctor.hooks.lefthook",
         "add a Lefthook pre-commit command that runs `sarj-standards check --staged`",
     )
+
+
+def _git_worktree(root: Path) -> bool:
+    git = shutil.which("git")
+    if git is None:
+        return False
+    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed executable and argv.
+        (git, "rev-parse", "--is-inside-work-tree"),
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return completed.returncode == 0 and completed.stdout.strip() == "true"
+
+
+def _installed_precommit_hook(root: Path) -> bool:
+    git = shutil.which("git")
+    if git is None:
+        return False
+    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed executable and argv.
+        (git, "rev-parse", "--git-path", "hooks/pre-commit"),
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode:
+        return False
+    hook = Path(completed.stdout.strip())
+    path = hook if hook.is_absolute() else root / hook
+    if not path.is_file():
+        return False
+    try:
+        contents = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return "hook-type=pre-commit" in contents or "pre_commit" in contents
 
 
 def _has_adopted_eslint(root: Path) -> bool:
@@ -484,12 +579,13 @@ def _check_adopted_python_bundle(
     }
     # Exact-version local projects let source workspaces dogfood doctor without impossible self-dependencies.
     exact.update(_local_bundle_projects(files, installed))
-    missing = tuple(name for name in installed if name not in exact)
+    authority = "sarj-lint-configs"
+    missing = () if authority in exact else (authority,)
     if not missing:
         yield Finding(
             Level.OK,
             str(pyproject.relative_to(root)),
-            "contains the exact installed Sarj Python bundle",
+            "contains the exact lint-configs pin that owns the transitive Sarj bundle",
             "doctor.python.bundle",
         )
         return
@@ -701,7 +797,7 @@ def _check_adoption_wiring(root: Path) -> Iterator[Finding]:  # ruff: ignore[too
                 manifest.MANIFEST_NAME,
                 f"declares unknown config {name!r}",
                 "doctor.config.unknown",
-                "remove the unknown config or run `sarj-standards update`",
+                "remove or correct the unknown config name in the adoption manifest",
             )
             continue
         standard_source, application_source, target_name, kind = spec

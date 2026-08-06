@@ -13,6 +13,20 @@ from sarj_lint_configs._meta import (
     YAMLLINT_STRICT,
     __version__,
 )
+from sarj_lint_configs.api import (
+    AnalysisReport,
+    Change,
+    Diagnostic,
+    Finding,
+    Result,
+    Standards,
+    Status,
+    UpdateTarget,
+    to_github,
+    to_json,
+    to_sarif,
+    to_text,
+)
 
 
 __all__ = [
@@ -26,5 +40,17 @@ __all__ = [
     "RUFF_STRICT",
     "TAPLO_STRICT",
     "YAMLLINT_STRICT",
+    "AnalysisReport",
+    "Change",
+    "Diagnostic",
+    "Finding",
+    "Result",
+    "Standards",
+    "Status",
+    "UpdateTarget",
     "__version__",
+    "to_github",
+    "to_json",
+    "to_sarif",
+    "to_text",
 ]
