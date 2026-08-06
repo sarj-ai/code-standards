@@ -23,6 +23,7 @@ _SPECIAL_MODULES = frozenset({"__init__.py", "__main__.py"})
 _SUMMARY_ONLY = frozenset({"summary"})
 _SENTENCE_END_RE = re.compile(r"[.!?](?=\s|$)")
 _WORD_RE = re.compile(r"[A-Za-z][A-Za-z0-9']*")
+_MIN_DOUBLED_STEM_LENGTH = 2
 
 # These words describe existence rather than purpose; unknown words are evidence
 # that the docstring may say something the path cannot.
@@ -96,7 +97,18 @@ class RedundantModuleDocstring(Rule):
 
 def _restates_path(docstring: str, path: Path) -> bool:
     path_stems = _path_stems(path)
-    if restates(docstring, path_stems | _MODULE_FILLER_STEMS):
+    known_stems = path_stems | _MODULE_FILLER_STEMS
+    if restates(docstring, known_stems):
+        return True
+
+    # Common doubled-consonant inflections lose a suffix but keep the doubled
+    # consonant in the shared conservative stemmer (``logging`` -> ``logg``).
+    content_stems = tuple(
+        _module_stem(word)
+        for match in _WORD_RE.finditer(docstring)
+        if (word := match.group(0).lower()) not in STOPWORDS
+    )
+    if content_stems and all(content in known_stems for content in content_stems):
         return True
 
     # Lowercase compound filenames do not expose word boundaries to
@@ -114,4 +126,16 @@ def _restates_path(docstring: str, path: Path) -> bool:
 
 def _path_stems(path: Path) -> set[str]:
     tokens = [*split_identifier(path.stem), *split_identifier(path.parent.name)]
-    return {stem(token) for token in tokens}
+    return {_module_stem(token) for token in tokens}
+
+
+def _module_stem(word: str) -> str:
+    result = stem(word)
+    if (
+        result != word
+        and len(result) >= _MIN_DOUBLED_STEM_LENGTH
+        and result[-1] == result[-2]
+        and result[-1] not in "aeiou"
+    ):
+        return result[:-1]
+    return result

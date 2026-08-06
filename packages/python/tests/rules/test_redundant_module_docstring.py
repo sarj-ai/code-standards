@@ -27,6 +27,7 @@ def _check(source: str, path: str = "package/element.py") -> list[Diagnostic]:
         ("browser/actor/page.py", "Page class for page-level operations."),
         ("browser/actor/utils.py", "Utility functions for actor operations."),
         ("_pytest/cacheprovider.py", "Implementation of the cache provider."),
+        ("celery/utils/log.py", "Logging utilities."),
     ],
 )
 def test_flags_corpus_path_restatements(path: str, docstring: str) -> None:
@@ -59,10 +60,12 @@ def test_novel_behavior_architecture_and_consumer_tokens_keep_docstring(docstrin
         "Cache provider backed by Redis.",
         "Cache provider with TTL semantics.",
         "Legacy cache provider retained for compatibility.",
+        "Logging utilities redact credentials.",
     ],
 )
-def test_compound_filename_matching_keeps_novel_contracts(docstring: str) -> None:
-    assert _check(f'"""{docstring}"""\n\nVALUE = 1\n', "_pytest/cacheprovider.py") == []
+def test_filename_matching_keeps_novel_contracts(docstring: str) -> None:
+    path = "celery/utils/log.py" if docstring.startswith("Logging") else "_pytest/cacheprovider.py"
+    assert _check(f'"""{docstring}"""\n\nVALUE = 1\n', path) == []
 
 
 @pytest.mark.parametrize(
