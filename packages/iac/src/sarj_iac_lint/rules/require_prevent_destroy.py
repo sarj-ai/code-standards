@@ -1,4 +1,4 @@
-"""SARJ203: Bucket, secret, or artifact registry with no deletion_protection requires lifecycle.prevent_destroy."""
+"""SARJ203: Irreplaceable stores require a provider-side or Terraform deletion guard."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
     from sarj_iac_lint._hcl import Block
 
-# Resource types lacking provider-side deletion_protection across GCP, AWS, and Azure.
+# Irreplaceable storage, secret, and registry resource types across GCP, AWS, and Azure.
 IRREPLACEABLE_TYPES = frozenset(
     {
         # GCP
@@ -35,24 +35,35 @@ _RESOURCE = "resource"
 _LIFECYCLE = "lifecycle"
 _PREVENT_DESTROY = "prevent_destroy"
 _FORCE_DESTROY = "force_destroy"
+_DELETION_POLICY = "deletion_policy"
+_DELETION_PROTECTION = "deletion_protection"
+
+_GOOGLE_DELETION_POLICY_TYPES = frozenset(
+    {
+        "google_storage_bucket",
+        "google_secret_manager_secret",
+        "google_artifact_registry_repository",
+    }
+)
+_GOOGLE_DELETION_PROTECTION_TYPES = frozenset({"google_secret_manager_secret"})
 
 _HCL_SUFFIXES = (".tf", ".hcl")
 
 
 @final
 class RequirePreventDestroyOnIrreplaceable(Rule):
-    """Bucket / secret / registry with no lifecycle.prevent_destroy guard."""
+    """Bucket, secret, or registry without an effective deletion guard."""
 
     id = "require-prevent-destroy-on-irreplaceable"
     code = "SARJ203"
     description = (
-        "Bucket, secret, or artifact registry exposes no deletion_protection — "
-        "guard it with lifecycle { prevent_destroy = true } so a plan cannot destroy it."
+        "Bucket, secret, or artifact registry must use a supported literal provider-side "
+        "deletion guard or lifecycle { prevent_destroy = true }."
     )
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        """Flag irreplaceable stores lacking `lifecycle { prevent_destroy = true }`."""
+        """Flag irreplaceable stores lacking an effective literal deletion guard."""
         if not str(path).endswith(_HCL_SUFFIXES):
             return []
         top = blocks(source)
@@ -71,9 +82,9 @@ class RequirePreventDestroyOnIrreplaceable(Rule):
                     col=block.col,
                     code=self.code,
                     message=(
-                        f'resource "{rtype}" "{rname}" is irreplaceable and {detail} — it exposes no '
-                        "deletion_protection argument, so add lifecycle { prevent_destroy = true } "
-                        "to make a destroy fail at plan time."
+                        f'resource "{rtype}" "{rname}" is irreplaceable and {detail} — use a supported '
+                        "literal provider-side deletion guard where available, or add "
+                        "lifecycle { prevent_destroy = true } to make a destroy fail at plan time."
                     ),
                 )
             )
@@ -86,15 +97,45 @@ def _violation(block: Block) -> str | None:
     if force is not None and _literal(force.value) == "true":
         # A literal true is an explicit declaration that the store is disposable.
         return None
+    provider_protected, provider_problem = _provider_guard(block)
+    if provider_protected:
+        return None
     lifecycle = block.child(_LIFECYCLE)
     if lifecycle is None:
         if force is not None and _literal(force.value) != "false":
             return f"has force_destroy = {force.value.strip()}, but force_destroy is not literal true"
+        if provider_problem is not None:
+            return provider_problem
+        if block.labels[0] in _GOOGLE_DELETION_POLICY_TYPES:
+            return "has no provider-side deletion guard and no lifecycle block"
         return "has no lifecycle block"
     guard = lifecycle.attribute(_PREVENT_DESTROY)
     if guard is None:
         return "has a lifecycle block without prevent_destroy"
-    return None if _literal(guard.value) == "true" else "sets prevent_destroy = false"
+    return (
+        None
+        if _literal(guard.value) == "true"
+        else f"sets prevent_destroy = {guard.value.strip()}, which is not literal true"
+    )
+
+
+def _provider_guard(block: Block) -> tuple[bool, str | None]:
+    """Resolve only provider guards documented for the exact Google resource type."""
+    resource_type = block.labels[0]
+    problems: list[str] = []
+    if resource_type in _GOOGLE_DELETION_POLICY_TYPES:
+        policy = block.attribute(_DELETION_POLICY)
+        if policy is not None:
+            if _literal(policy.value) == "prevent":
+                return True, None
+            problems.append(f"sets deletion_policy = {policy.value.strip()}, which is not literal PREVENT")
+    if resource_type in _GOOGLE_DELETION_PROTECTION_TYPES:
+        protection = block.attribute(_DELETION_PROTECTION)
+        if protection is not None:
+            if _literal(protection.value) == "true":
+                return True, None
+            problems.append(f"sets deletion_protection = {protection.value.strip()}, which is not literal true")
+    return False, "; and ".join(problems) if problems else None
 
 
 def _literal(value: str) -> str:

@@ -79,6 +79,21 @@ ruleTester.run("test-loops-over-literal-cases", rule, {
       filename: TEST_FILE,
       code: "const expect = (value: unknown) => consume(value); test('runner', () => { for (const value of ['a', 'b']) expect(parse(value)); });",
     },
+    {
+      name: "ignores a locally defined function named it",
+      filename: TEST_FILE,
+      code: "const it = (_name: string, callback: () => void) => callback(); it('local', () => { for (const value of ['a', 'b']) expect(parse(value)).toBe(value); });",
+    },
+    {
+      name: "ignores a locally defined assertion named assert",
+      filename: TEST_FILE,
+      code: "const assert = { equal: (left: unknown, right: unknown) => consume(left, right) }; test('runner', () => { for (const value of ['a', 'b']) assert.equal(parse(value), value); });",
+    },
+    {
+      name: "ignores test imported from a non-runner module",
+      filename: TEST_FILE,
+      code: "import { test } from './application-test-helper'; test('local', () => { for (const value of ['a', 'b']) expect(parse(value)).toBe(value); });",
+    },
   ],
   invalid: [
     {

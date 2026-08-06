@@ -670,6 +670,7 @@ def test_placeholder_domain_language_and_owned_debt_are_preserved() -> None:
     assert _standalone("in a real implementation this would call the API, but offline mode avoids the network") == []
     assert _standalone("in a real implementation this would call the API because offline mode uses a fake") == []
     assert _standalone("in a real app this would fetch the API see PROJ-123") == []
+    assert _standalone("in a real app this would fetch the API; tracked at https://example.com/PROJ-123") == []
 
 
 def test_ai_attribution_does_not_exempt_actual_comment_cruft() -> None:

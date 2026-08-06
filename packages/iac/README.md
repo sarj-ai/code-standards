@@ -13,7 +13,7 @@ uv tool install sarj-iac-lint
 |------|------|---------------|
 | SARJ201 | `require-deletion-protection` | A stateful resource (Cloud SQL, GKE, BigQuery, Spanner, AlloyDB, Bigtable, RDS, DynamoDB, ElastiCache, DocumentDB, Neptune, Azure databases, Cosmos DB, ...) without `deletion_protection = true`. |
 | SARJ202 | `no-comment-cruft` | Commented-out Terraform/HCL and section-banner / divider comments. |
-| SARJ203 | `require-prevent-destroy-on-irreplaceable` | A bucket, Secret Manager secret, or artifact registry — which expose no `deletion_protection` argument at all — without `lifecycle { prevent_destroy = true }`. |
+| SARJ203 | `require-prevent-destroy-on-irreplaceable` | An irreplaceable bucket, secret, or artifact registry without an effective provider-side deletion guard or `lifecycle { prevent_destroy = true }`. |
 
 Terraform safety rules scan `.tf` files; comment hygiene also scans `.hcl` and `.tfvars`. `.yaml`/`.yml`
 (Helm/k8s/Compose) are scanned by `no-comment-cruft` for banners only.
@@ -41,7 +41,7 @@ Diagnostic format is `path:line:col: CODE message` — Ruff-compatible.
 
 ## Adoption
 
-All four rules are designed for hard (blocking) adoption; inspect existing
+All three rules are designed for hard (blocking) adoption; inspect existing
 findings before enabling them repository-wide.
 
 Variable/expression-gated protection is not proof of protection:
@@ -50,9 +50,17 @@ Variable/expression-gated protection is not proof of protection:
 must sit on the resource itself: a flag nested in `settings { ... }` is the
 API-side switch and does not stop `terraform destroy`.
 
-`require-prevent-destroy-on-irreplaceable` covers the stores SARJ201 cannot,
-because they have no protection argument to check. It exempts only resources
-explicitly declared disposable with literal `force_destroy = true`.
+Memorystore Redis is protected when `deletion_protection` is omitted; an
+explicit `false` remains unsafe. Redis and Filestore also accept
+`deletion_policy = "PREVENT"` as a provider-side deletion guard.
+
+`require-prevent-destroy-on-irreplaceable` accepts the current Google provider's
+literal `deletion_policy = "PREVENT"` for Cloud Storage buckets, Secret Manager
+secrets, and Artifact Registry repositories. Secret Manager also accepts literal
+`deletion_protection = true`. Other values and expressions are not proof of
+protection; `lifecycle { prevent_destroy = true }` remains the portable guard.
+The rule also exempts resources explicitly declared disposable with literal
+`force_destroy = true`.
 
 ## Suppression
 

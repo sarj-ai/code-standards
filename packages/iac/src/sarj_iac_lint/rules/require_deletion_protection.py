@@ -25,6 +25,8 @@ PROTECTED_TYPES = frozenset(
         "google_spanner_database",
         "google_alloydb_cluster",
         "google_bigtable_instance",
+        "google_redis_instance",
+        "google_filestore_instance",
         # AWS
         "aws_db_instance",
         "aws_rds_cluster",
@@ -58,7 +60,15 @@ _VIEW_CHILDREN = ("view", "materialized_view")
 
 # Both spellings are legitimate *instance-level* argument names across providers.
 _PROTECTION_ATTRS = ("deletion_protection", "deletion_protection_enabled")
-_RESOURCE_PROTECTION_ATTRS: MappingProxyType[str, tuple[str, ...]] = MappingProxyType({})
+_RESOURCE_PROTECTION_ATTRS: MappingProxyType[str, tuple[str, ...]] = MappingProxyType(
+    {
+        "google_redis_instance": ("deletion_protection",),
+        "google_filestore_instance": ("deletion_protection_enabled",),
+    }
+)
+_DELETION_POLICY_TYPES = frozenset({"google_redis_instance", "google_filestore_instance"})
+_DEFAULT_PROTECTED_TYPES = frozenset({"google_redis_instance"})
+_DELETION_POLICY = "deletion_policy"
 
 _HCL_SUFFIXES = (".tf", ".hcl")
 
@@ -119,7 +129,12 @@ def _violation(block: Block) -> str | None:
         guard = lifecycle.attribute(_PREVENT_DESTROY)
         if guard is not None and _literal(guard.value) == "true":
             return None
-    attrs = _RESOURCE_PROTECTION_ATTRS.get(block.labels[0], _PROTECTION_ATTRS)
+    resource_type = block.labels[0]
+    if resource_type in _DELETION_POLICY_TYPES:
+        policy = block.attribute(_DELETION_POLICY)
+        if policy is not None and _literal(policy.value) == "prevent":
+            return None
+    attrs = _RESOURCE_PROTECTION_ATTRS.get(resource_type, _PROTECTION_ATTRS)
     attr = block.attribute(*attrs)
     if attr is not None:
         literal = _literal(attr.value)
@@ -128,6 +143,8 @@ def _violation(block: Block) -> str | None:
         if literal == "false":
             return f"{attr.name} = false"
         return f"{attr.name} = {attr.value.strip()} is not a literal true"
+    if resource_type in _DEFAULT_PROTECTED_TYPES:
+        return None
     nested = _nested_protection(block)
     if nested is not None:
         return (

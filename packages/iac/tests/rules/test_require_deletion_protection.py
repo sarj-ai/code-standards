@@ -50,6 +50,59 @@ resource "google_container_cluster" "data" {
     assert _check(src) == []
 
 
+def test_redis_is_protected_when_deletion_protection_is_omitted():
+    src = """
+resource "google_redis_instance" "cache" {
+  name           = "session-cache"
+  memory_size_gb = 4
+}
+"""
+    assert _check(src) == []
+
+
+def test_redis_explicit_false_is_unprotected():
+    src = """
+resource "google_redis_instance" "cache" {
+  name                = "session-cache"
+  deletion_protection = false
+}
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "deletion_protection = false" in diags[0].message
+
+
+@pytest.mark.parametrize("resource_type", ["google_redis_instance", "google_filestore_instance"])
+def test_provider_deletion_policy_prevent_is_protection(resource_type: str):
+    protection = "deletion_protection = false" if resource_type == "google_redis_instance" else ""
+    src = f"""resource "{resource_type}" "main" {{
+  name = "prod"
+  {protection}
+  deletion_policy = "PREVENT"
+}}
+"""
+    assert _check(src) == []
+
+
+def test_filestore_requires_a_deletion_guard():
+    src = """
+resource "google_filestore_instance" "files" {
+  name = "prod-files"
+}
+"""
+    assert len(_check(src)) == 1
+
+
+def test_filestore_deletion_protection_enabled_is_accepted():
+    src = """
+resource "google_filestore_instance" "files" {
+  name                        = "prod-files"
+  deletion_protection_enabled = true
+}
+"""
+    assert _check(src) == []
+
+
 @pytest.mark.parametrize("value", ["false", "var.guard"])
 def test_literal_prevent_destroy_overrides_an_unproven_provider_guard(value: str):
     src = f"""resource "google_container_cluster" "data" {{
@@ -450,9 +503,12 @@ def test_every_protected_type_is_wired_in(resource_type: str):
     """Verify deleting any single row from PROTECTED_TYPES fails this test case."""
     src = f'resource "{resource_type}" "example" {{\n  name = "example"\n}}\n'
     diags = _check(src)
-    assert len(diags) == 1
-    assert diags[0].code == "SARJ201"
-    assert resource_type in diags[0].message
+    if resource_type == "google_redis_instance":
+        assert diags == []
+    else:
+        assert len(diags) == 1
+        assert diags[0].code == "SARJ201"
+        assert resource_type in diags[0].message
 
 
 def test_the_curated_set_is_exactly_this():
@@ -464,6 +520,8 @@ def test_the_curated_set_is_exactly_this():
         "google_spanner_database",
         "google_alloydb_cluster",
         "google_bigtable_instance",
+        "google_redis_instance",
+        "google_filestore_instance",
         "aws_db_instance",
         "aws_rds_cluster",
         "aws_rds_global_cluster",

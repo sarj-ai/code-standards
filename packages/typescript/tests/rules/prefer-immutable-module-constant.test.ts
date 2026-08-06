@@ -36,6 +36,8 @@ ruleTester.run("prefer-immutable-module-constant", rule, {
     "const VALUES = ([1, 2] as const)!;",
     "type Routes = readonly string[]; export const routes: Routes = [];",
     "type Routes = ReadonlyArray<string>; export const routes: Routes = [];",
+    { code: "export const routes = ['home'];", filename: "src/routes.js" },
+    { code: "export const routes = ['home'];", filename: "src/routes.mjs" },
     "function build() { const VALUES = [1, 2, 3]; return VALUES; }",
     "let VALUES = [1, 2, 3];",
     "const VALUES = createValues();",
