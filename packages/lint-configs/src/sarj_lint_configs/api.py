@@ -204,19 +204,49 @@ class Standards:
         install: bool = True,
         dry_run: bool = False,
     ) -> Result:
-        plan = plan_init(
-            self.root,
-            profile=profile,
-            configs=configs,
-            python_dest=python_root,
-            typescript_dest=typescript_root,
-            force=force,
-        )
+        try:
+            plan = plan_init(
+                self.root,
+                profile=profile,
+                configs=configs,
+                python_dest=python_root,
+                typescript_dest=typescript_root,
+                force=force,
+            )
+        except (KeyError, OSError, TypeError, ValueError) as exc:
+            return Result(
+                Status.INVALID,
+                findings=(Finding("init.input.invalid", "error", str(exc)),),
+                exit_code=_INVALID_EXIT,
+            )
         changes = _init_changes(plan, install=install)
+        if plan.scaffold.errors or plan.sync is None:
+            detail = "; ".join(plan.scaffold.errors) or "init plan is not applicable"
+            return Result(
+                Status.INVALID,
+                findings=(Finding("init.plan.invalid", "error", detail),),
+                changes=changes,
+                exit_code=_INVALID_EXIT,
+            )
         if dry_run:
             return Result(Status.CHANGED if changes else Status.OK, changes=changes)
         applied = apply_init(plan, install=install)
-        return _operation_result(applied.status, changes)
+        findings = (
+            ()
+            if applied.error is None
+            else (
+                Finding(
+                    f"init.{applied.failure.value if applied.failure is not None else 'apply'}.failed",
+                    "error",
+                    applied.error,
+                ),
+            )
+        )
+        if applied.status:
+            status = Status.INTERRUPTED if applied.status == _INTERRUPTED_EXIT else Status.FAILED
+            return Result(status, findings, changes, applied.status)
+        diagnosed = diagnose(self.root)
+        return _operation_result(_doctor_status(diagnosed), changes, findings=_doctor_findings(diagnosed))
 
     def check(self, paths: Sequence[str] | None = None) -> Result:
         if paths is not None:
@@ -287,8 +317,24 @@ class Standards:
                 issue = ExecutionIssue("sarj-library-policy", "policy-failure", f"{type(exc).__name__}: {exc}")
                 policy = ToolReport("sarj-library-policy", Completion.FAILED, issues=(issue,))
             native = report_from_tools(self.root, (*native.tools, policy))
+        coverage: list[CoverageNotice] = []
+        routed = {
+            *selected_groups.python,
+            *selected_groups.sql,
+            *selected_groups.iac,
+            *selected_groups.text,
+            *selected_groups.typescript,
+        }
+        unsupported = sum(Path(item).is_file() and item not in routed for item in selected)
+        if unsupported:
+            coverage.append(
+                CoverageNotice(
+                    "sarj-standards",
+                    "no bundled analyzer accepts the selected file type",
+                    unsupported,
+                )
+            )
         if not external:
-            coverage: list[CoverageNotice] = []
             if selected_groups.typescript:
                 coverage.append(
                     CoverageNotice(
@@ -297,36 +343,15 @@ class Standards:
                         len(selected_groups.typescript),
                     )
                 )
-            routed = {
-                *selected_groups.python,
-                *selected_groups.sql,
-                *selected_groups.iac,
-                *selected_groups.text,
-                *selected_groups.typescript,
-            }
-            unsupported = sum(Path(item).is_file() and item not in routed for item in selected)
-            if unsupported:
-                coverage.append(
-                    CoverageNotice(
-                        "sarj-standards",
-                        "no bundled analyzer accepts the selected file type",
-                        unsupported,
-                    )
-                )
-            return AnalysisReport(
-                native.root,
-                Completion.PARTIAL if coverage and native.completion is Completion.COMPLETE else native.completion,
-                native.conclusion if native.diagnostics else Conclusion.INCONCLUSIVE if coverage else native.conclusion,
-                native.tools,
-                tuple(coverage),
-            )
+            return _with_coverage(native, coverage)
         external_reports = analyze_external(selected, root=self.root, trust=normalized_trust)
         if selected_groups.typescript and not any(report.name == "eslint" for report in external_reports):
             issue = ExecutionIssue(
                 "eslint", "coverage-missing", "no ESLint project accepted the selected TypeScript files"
             )
             external_reports = (*external_reports, ToolReport("eslint", Completion.FAILED, issues=(issue,)))
-        return report_from_tools(self.root, (*native.tools, *external_reports))
+        combined = report_from_tools(self.root, (*native.tools, *external_reports))
+        return _with_coverage(combined, coverage)
 
     def fix(self) -> Result:
         return _operation_result(fix(self.root))
@@ -340,13 +365,36 @@ class Standards:
         return _operation_result(status, findings=findings)
 
     def update(self, *, install: bool = True, check_only: bool = False) -> Result:
-        plan = plan_upgrade(self.root)
-        changes = tuple(Change("update", change.reason, change.path) for change in plan.changes)
+        try:
+            plan = plan_upgrade(self.root)
+        except (OSError, TypeError, ValueError) as exc:
+            return Result(
+                Status.INVALID,
+                findings=(Finding("update.plan.invalid", "error", str(exc)),),
+                exit_code=_INVALID_EXIT,
+            )
+        planned = tuple(Change("plan", change.reason, change.path) for change in plan.changes)
         if check_only:
-            doctor_status = _doctor_status(diagnose(self.root))
-            status = doctor_status or (1 if changes else 0)
-            return _operation_result(status, changes)
-        return _operation_result(apply_upgrade(plan, install=install), changes)
+            diagnosed = diagnose(self.root)
+            findings = _doctor_findings(diagnosed)
+            doctor_status = _doctor_status(diagnosed)
+            status = doctor_status or (1 if planned else 0)
+            return _operation_result(status, planned, findings=findings)
+        try:
+            applied = apply_upgrade(plan, install=install)
+        except KeyboardInterrupt:
+            return Result(Status.INTERRUPTED, changes=planned, exit_code=_INTERRUPTED_EXIT)
+        except (OSError, TypeError, ValueError) as exc:
+            finding = Finding("update.apply.failed", "error", str(exc))
+            return Result(Status.FAILED, (finding,), planned, _INVALID_EXIT)
+        if applied == _INTERRUPTED_EXIT:
+            return Result(Status.INTERRUPTED, changes=planned, exit_code=_INTERRUPTED_EXIT)
+        if applied:
+            finding = Finding("update.apply.failed", "error", f"upgrade exited with status {applied}")
+            return Result(Status.FAILED, (finding,), planned, applied)
+        diagnosed = diagnose(self.root)
+        changes = tuple(Change("update", change.reason, change.path) for change in plan.changes)
+        return _operation_result(_doctor_status(diagnosed), changes, findings=_doctor_findings(diagnosed))
 
     def inspect(self) -> Inspection:
         return inspect(self.root)
@@ -360,6 +408,10 @@ def _doctor_status(findings: Sequence[DoctorFinding]) -> int:
         if any(finding.level is DoctorLevel.DRIFT or finding.id == "doctor.manifest.absent" for finding in findings)
         else 0
     )
+
+
+def _doctor_findings(findings: Sequence[DoctorFinding]) -> tuple[Finding, ...]:
+    return tuple(Finding(item.id, item.level.value, item.detail, item.where, item.remediation) for item in findings)
 
 
 def _verify(root: Path) -> int:
@@ -422,6 +474,15 @@ def _failed_analysis(root: Path, kind: str, message: str) -> AnalysisReport:
     issue = ExecutionIssue("sarj-standards", kind, message)
     tool = ToolReport("sarj-standards", Completion.FAILED, issues=(issue,))
     return AnalysisReport(root, Completion.FAILED, Conclusion.INCONCLUSIVE, (tool,))
+
+
+def _with_coverage(report: AnalysisReport, coverage: Sequence[CoverageNotice]) -> AnalysisReport:
+    notices = tuple(coverage)
+    if not notices:
+        return report
+    completion = Completion.PARTIAL if report.completion is Completion.COMPLETE else report.completion
+    conclusion = report.conclusion if report.diagnostics else Conclusion.INCONCLUSIVE
+    return AnalysisReport(report.root, completion, conclusion, report.tools, notices)
 
 
 def _analysis_inputs(root: Path, paths: Sequence[str] | None, *, mode: AnalysisMode = AnalysisMode.POLICY) -> list[str]:

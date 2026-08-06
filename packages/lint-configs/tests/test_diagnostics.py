@@ -11,13 +11,16 @@ from sarj_lint_configs import api
 from sarj_lint_configs.libs.adoption.manifest import as_table, list_field, table_field
 from sarj_lint_configs.libs.diagnostics import (
     ANALYSIS_SCHEMA,
+    SCHEMA_URI,
     AnalysisReport,
     Completion,
     Conclusion,
+    CoverageNotice,
     Diagnostic,
     ExecutionIssue,
     Location,
     Position,
+    Region,
     Severity,
     SourceDocument,
     ToolReport,
@@ -26,10 +29,12 @@ from sarj_lint_configs.libs.diagnostics import (
     to_sarif,
     to_text,
 )
+from sarj_lint_configs.libs.linting.analysis import analyze as analyze_paths
 from sarj_lint_configs.libs.linting.analysis import report_from_tools
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
 
@@ -45,15 +50,96 @@ def test_versioned_json_schema_is_bundled() -> None:
     raw: object = json.loads(ANALYSIS_SCHEMA.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
     schema = as_table(raw)
 
-    assert schema["$id"] == "https://standards.sarj.ai/schemas/analysis/v1"
+    assert schema["$id"] == SCHEMA_URI
     assert "diagnostic" in table_field(schema, "$defs")
 
 
-def test_source_document_rejects_byte_span_inside_utf8_codepoint(tmp_path: Path) -> None:
-    document = SourceDocument(tmp_path / "unicode.py", "😀\n")
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda: Diagnostic("", "message", Severity.ERROR, "fixture", Location("example.py")),
+        lambda: Diagnostic("E001", "message", Severity.ERROR, "", Location("example.py")),
+        lambda: Diagnostic("E001", "message", Severity.ERROR, "fixture", Location("example.py"), help_url="not a uri"),
+        lambda: ExecutionIssue("", "failure", "message"),
+        lambda: ToolReport("", Completion.COMPLETE),
+    ],
+)
+def test_public_models_reject_values_that_violate_their_schema(build: Callable[[], object]) -> None:
+    with pytest.raises(ValueError, match="must"):
+        build()
 
-    with pytest.raises(ValueError, match="splits a UTF-8 code point"):
-        document.region(start_byte=1, end_byte=4)
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda: Position(True, 0, 0),
+        lambda: CoverageNotice("fixture", "reason", True),
+        lambda: ExecutionIssue("fixture", "failure", "message", True),
+    ],
+)
+def test_public_models_reject_boolean_in_integer_fields(build: Callable[[], object]) -> None:
+    with pytest.raises(TypeError, match="must be an integer"):
+        build()
+
+
+@pytest.mark.parametrize("path", ["/absolute.py", "../escape.py", "C:\\private\\file.py", "C:relative.py"])
+def test_location_requires_portable_repository_relative_path(path: str) -> None:
+    with pytest.raises(ValueError, match="repository-relative"):
+        Location(path)
+
+
+def _invalid_severity() -> Diagnostic:
+    return Diagnostic(
+        "E001",
+        "message",
+        "error",  # pyright: ignore[reportArgumentType] -- exercise runtime validation.
+        "fixture",
+        Location("example.py"),
+    )
+
+
+def _invalid_location() -> Diagnostic:
+    return Diagnostic(
+        "E001",
+        "message",
+        Severity.ERROR,
+        "fixture",
+        "example.py",  # pyright: ignore[reportArgumentType] -- exercise runtime validation.
+    )
+
+
+def _invalid_position() -> Location:
+    return Location("example.py", position="bad")  # pyright: ignore[reportArgumentType] -- runtime boundary.
+
+
+def _invalid_diagnostics() -> ToolReport:
+    return ToolReport(
+        "fixture",
+        Completion.COMPLETE,
+        diagnostics=("bad",),  # pyright: ignore[reportArgumentType] -- exercise runtime validation.
+    )
+
+
+@pytest.mark.parametrize("build", [_invalid_severity, _invalid_location, _invalid_position, _invalid_diagnostics])
+def test_public_models_reject_invalid_nested_runtime_types(build: Callable[[], object]) -> None:
+    with pytest.raises(TypeError, match="must be"):
+        build()
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ("unicode.py", "😀\n", 1, 4, "splits a UTF-8 code point"),
+        ("windows.py", "a\r\n", 2, 2, "splits a CRLF"),
+    ],
+    ids=("inside-utf8-codepoint", "inside-crlf"),
+)
+def test_source_document_rejects_invalid_byte_boundary(tmp_path: Path, case: tuple[str, str, int, int, str]) -> None:
+    filename, text, start, end, message = case
+    document = SourceDocument(tmp_path / filename, text)
+
+    with pytest.raises(ValueError, match=message):
+        document.region(start_byte=start, end_byte=end)
 
 
 def test_source_document_rejects_utf16_position_inside_surrogate_pair(tmp_path: Path) -> None:
@@ -61,6 +147,18 @@ def test_source_document_rejects_utf16_position_inside_surrogate_pair(tmp_path: 
 
     assert document.utf16_point(line=0, character=1) is None
     assert document.utf16_point(line=0, character=2) == Position(0, 2, 4)
+
+
+def test_source_document_only_treats_protocol_newlines_as_line_breaks(tmp_path: Path) -> None:
+    document = SourceDocument(tmp_path / "control.py", "x=1\f; import logging\n")
+
+    assert document.point(line=1, column=7) == Position(0, 6, 6)
+    assert document.utf16_point(line=1, character=0) == Position(1, 0, 21)
+
+
+def test_region_rejects_backwards_editor_coordinates() -> None:
+    with pytest.raises(ValueError, match="coordinates run backwards"):
+        Region(Position(5, 9, 0), Position(0, 0, 1))
 
 
 def test_source_document_converts_python_utf8_byte_columns(tmp_path: Path) -> None:
@@ -205,6 +303,24 @@ def test_sarif_qualifies_rule_identity_by_analyzer(tmp_path: Path) -> None:
     assert [as_table(result)["ruleId"] for result in list_field(run, "results")] == ["tool-a/E001", "tool-b/E001"]
 
 
+def test_sarif_percent_encodes_artifact_uri(tmp_path: Path) -> None:
+    diagnostic = Diagnostic("E001", "found", Severity.ERROR, "fixture", Location("dir/a b#c%.py"))
+    report = AnalysisReport(
+        tmp_path,
+        Completion.COMPLETE,
+        Conclusion.FINDINGS,
+        (ToolReport("fixture", Completion.COMPLETE, diagnostics=(diagnostic,)),),
+    )
+
+    raw: object = json.loads(to_sarif(report))  # pyright: ignore[reportAny]
+    run = as_table(list_field(as_table(raw), "runs")[0])
+    result = as_table(list_field(run, "results")[0])
+    location = as_table(list_field(result, "locations")[0])
+    artifact = table_field(table_field(location, "physicalLocation"), "artifactLocation")
+
+    assert artifact["uri"] == "dir/a%20b%23c%25.py"
+
+
 def test_text_renderer_keeps_truthful_location_and_summary(tmp_path: Path) -> None:
     diagnostic = Diagnostic(
         "TEST005",
@@ -267,6 +383,26 @@ def test_github_renderer_uses_one_based_position_for_located_findings(tmp_path: 
     )
 
     assert to_github(report).startswith("::error file=src/example.py,line=3,col=5,title=fixture/TEST007::located\n")
+
+
+def test_github_renderer_preserves_region_endpoint(tmp_path: Path) -> None:
+    diagnostic = Diagnostic(
+        "TEST008",
+        "range",
+        Severity.ERROR,
+        "fixture",
+        Location("src/example.py", region=Region(Position(2, 4, 10), Position(2, 8, 14))),
+    )
+    report = AnalysisReport(
+        tmp_path,
+        Completion.COMPLETE,
+        Conclusion.FINDINGS,
+        (ToolReport("fixture", Completion.COMPLETE, diagnostics=(diagnostic,)),),
+    )
+
+    rendered = to_github(report)
+
+    assert "line=3,col=5,endLine=3,endColumn=9" in rendered
 
 
 def test_github_renderer_caps_annotations_and_prioritizes_errors(tmp_path: Path) -> None:
@@ -359,6 +495,30 @@ def test_standards_analyze_never_reports_unsupported_explicit_file_as_clean(tmp_
     assert report.conclusion is Conclusion.INCONCLUSIVE
     assert report.coverage[0].source == "sarj-standards"
     assert report.exit_code == 2
+
+
+def test_external_analysis_never_reports_unsupported_explicit_file_as_clean(tmp_path: Path) -> None:
+    (tmp_path / "notes.bin").write_bytes(b"not covered\n")
+
+    report = api.Standards(tmp_path).analyze(["notes.bin"], external=True)
+
+    assert report.completion is Completion.PARTIAL
+    assert report.conclusion is Conclusion.INCONCLUSIVE
+    assert report.coverage[0].source == "sarj-standards"
+    assert report.exit_code == 2
+
+
+def test_public_native_analysis_rejects_paths_outside_root(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    outside = tmp_path / "outside.py"
+    outside.write_text("value = 1\n", encoding="utf-8")
+
+    report = analyze_paths([str(outside)], root=root)
+
+    assert report.completion is Completion.FAILED
+    assert report.issues[0].kind == "invalid-input"
+    assert str(tmp_path) not in report.issues[0].message
 
 
 def test_standards_analyze_preserves_native_findings_when_typescript_is_uncovered(tmp_path: Path) -> None:

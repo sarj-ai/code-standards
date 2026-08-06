@@ -118,7 +118,7 @@ def verification_commands(ecosystems: scaffold.Ecosystems) -> list[Command]:
 
 
 def selected_eslint_commands(root: Path, paths: Iterable[str], *, label: str = "selected") -> list[Command]:
-    """Build one package-manager-aware ESLint command for selected JS/TS files.
+    """Build package-manager-aware ESLint commands for every selected JS/TS project.
 
     Pre-commit passes paths relative to the repository, while callers may pass
     absolute paths.  ESLint must run from the detected TypeScript project so it
@@ -130,27 +130,43 @@ def selected_eslint_commands(root: Path, paths: Iterable[str], *, label: str = "
     candidates = _selected_eslint_candidates(repository, paths)
     if not candidates:
         return []
-    ecosystems = scaffold.detect(repository)
-    project = ecosystems.typescript_root
-    if project is None:
-        return []
-    project = project.resolve()
-    scoped = sorted(
-        {
-            candidate.relative_to(project).as_posix()
-            for candidate in candidates
-            if candidate == project or candidate.is_relative_to(project)
-        }
-    )
-    if not scoped:
-        return []
-    return [
-        Command(
-            f"ESLint ({label})",
-            packagemanager.exec_argv(ecosystems.client, "eslint", "--", *scoped),
-            project,
+    grouped: dict[Path, set[str]] = {}
+    unowned: list[Path] = []
+    for candidate in candidates:
+        project = _owning_typescript_project(candidate, repository)
+        if project is None:
+            unowned.append(candidate)
+            continue
+        grouped.setdefault(project, set()).add(candidate.relative_to(project).as_posix())
+    if unowned and label == "analysis":
+        msg = f"no TypeScript project accepts {len(unowned)} selected JavaScript/TypeScript path(s)"
+        raise ValueError(msg)
+    commands: list[Command] = []
+    for project, scoped in sorted(grouped.items(), key=lambda item: str(item[0])):
+        install_root = packagemanager.workspace_root(project, repository)
+        client = packagemanager.detect(install_root)
+        commands.append(
+            Command(
+                f"ESLint ({label}: {project.relative_to(repository).as_posix() or '.'})",
+                packagemanager.exec_argv(client, "eslint", "--", *sorted(scoped)),
+                project,
+            )
         )
-    ]
+    return commands
+
+
+def _owning_typescript_project(candidate: Path, repository: Path) -> Path | None:
+    start = candidate if candidate.is_dir() else candidate.parent
+    bounded = (start, *(parent for parent in start.parents if parent == repository or repository in parent.parents))
+    config_names = ("eslint.config.js", "eslint.config.cjs", "eslint.config.mjs", "eslint.config.ts")
+    configured = next((path for path in bounded if any((path / name).is_file() for name in config_names)), None)
+    if configured is not None:
+        return configured
+    lock_names = tuple(name for name, _client in packagemanager.LOCKFILES)
+    locked = next((path for path in bounded if any((path / name).is_file() for name in lock_names)), None)
+    if locked is not None:
+        return locked
+    return next((path for path in bounded if (path / "package.json").is_file()), None)
 
 
 def staged_eslint_commands(root: Path, paths: Iterable[str]) -> list[Command]:
@@ -168,22 +184,35 @@ def _selected_eslint_candidates(root: Path, paths: Iterable[str]) -> set[Path]:
         candidate = unresolved.resolve()
         if not candidate.is_relative_to(root):
             continue
-        if (candidate.is_dir() and candidate.name not in _PROJECT_SKIP_DIRS and _contains_eslint_source(candidate)) or (
-            candidate.suffix.lower() in _ESLINT_SUFFIXES and candidate.is_file()
-        ):
+        if candidate.is_dir() and candidate.name not in _PROJECT_SKIP_DIRS:
+            sources = _eslint_sources(candidate)
+            owners = {_owning_typescript_project(source, root) for source in sources}
+            if sources and None not in owners and len(owners) == 1:
+                candidates.add(candidate)
+            else:
+                candidates.update(sources)
+        elif candidate.suffix.lower() in _ESLINT_SUFFIXES and candidate.is_file():
             candidates.add(candidate)
     return candidates
 
 
 def _contains_eslint_source(directory: Path) -> bool:
+    return next(iter(_eslint_sources(directory)), None) is not None
+
+
+def _eslint_sources(directory: Path) -> set[Path]:
+    sources: set[Path] = set()
     for parent, directories, names in os.walk(directory):
         base = Path(parent)
         directories[:] = [
             name for name in directories if name not in _PROJECT_SKIP_DIRS and not is_link_like(base / name)
         ]
-        if any(Path(name).suffix.lower() in _ESLINT_SUFFIXES and not is_link_like(base / name) for name in names):
-            return True
-    return False
+        sources.update(
+            base / name
+            for name in names
+            if Path(name).suffix.lower() in _ESLINT_SUFFIXES and not is_link_like(base / name)
+        )
+    return sources
 
 
 def format_commands(ecosystems: scaffold.Ecosystems) -> list[Command]:

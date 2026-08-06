@@ -72,7 +72,8 @@ class VersionPinRewrite(NamedTuple):
 
 #: `sarj-python-lint==0.25.0`, `"sarj-lint-configs>=0.9"`, `--from sarj-sql-lint==1.2.3`.
 _PIN = re.compile(
-    r"(?P<name>sarj-(?:python|sql|iac)-lint|sarj-lint-configs)\s*(?P<op>==|>=|~=)\s*(?P<version>[0-9][0-9A-Za-z.\-]*)"
+    r"(?P<name>sarj-(?:python|sql|iac)-lint|sarj-lint-configs)\s*(?P<op>==|>=|~=)\s*"
+    r"(?P<version>[0-9][0-9A-Za-z._+\-]*)"
 )
 
 #: `rev: python-v0.19.0`, `rev: "lint-configs-v0.10.0"`, `rev: 9d073e83b2...`.
@@ -196,7 +197,24 @@ def _check_hook_manager(root: Path) -> Iterator[Finding]:
         adopted = manifest.load(root)
     except OSError, TypeError, ValueError:
         return
-    if adopted is None or adopted.hook_manager != "lefthook":
+    if adopted is None or adopted.hook_manager == "none":
+        return
+    if adopted.hook_manager == "pre-commit":
+        if hooks.precommit_runs_staged_check(root):
+            yield Finding(
+                Level.OK,
+                ".pre-commit-config.yaml",
+                "runs exactly one canonical staged check",
+                "doctor.hooks.precommit",
+            )
+            return
+        yield Finding(
+            Level.DRIFT,
+            ".pre-commit-config.yaml",
+            "pre-commit does not run exactly one canonical `sarj-standards check --staged` hook",
+            "doctor.hooks.precommit",
+            "run `sarj-standards update --offline`",
+        )
         return
     path = hooks.lefthook_config(root)
     if path is not None and hooks.lefthook_runs_staged_check(root):
@@ -566,12 +584,9 @@ def _expected_hook_revision(hook_ids: Sequence[str]) -> str | None:
 
 def _standards_repo_blocks(text: str) -> Iterator[str]:
     """Yield only YAML list items for the sarj-ai/standards repository."""
-    starts = list(re.finditer(r"(?m)^\s*-\s+repo:\s*[^\n]*sarj-ai/standards[^\n]*$", text))
-    all_repos = list(re.finditer(r"(?m)^\s*-\s+repo:\s*", text))
-    for start in starts:
-        start_offset = start.start()
-        end = next((offset for item in all_repos if (offset := item.start()) > start_offset), len(text))
-        yield text[start.start() : end]
+    for block in hooks.precommit_repo_blocks(text):
+        if hooks.is_official_standards_repo(block.repository):
+            yield block.text
 
 
 def _precommit_rev_finding(root: Path, path: Path, rev: str, expected: str | None) -> Iterator[Finding]:
@@ -620,6 +635,15 @@ def _check_eslint_plugin(root: Path, files: Sequence[Path]) -> Iterator[Finding]
                 Level.DRIFT,
                 str(path.relative_to(root)),
                 f"invalid package.json at line {exc.lineno}, column {exc.colno}: {exc.msg}",
+                "doctor.package-json.invalid",
+                "repair package.json, then rerun doctor",
+            )
+            continue
+        except RecursionError:
+            yield Finding(
+                Level.DRIFT,
+                str(path.relative_to(root)),
+                "invalid package.json: document nesting is too deep",
                 "doctor.package-json.invalid",
                 "repair package.json, then rerun doctor",
             )
@@ -857,6 +881,15 @@ def _check_eslint_peer_set(root: Path, typescript_root: Path) -> Iterator[Findin
             Level.DRIFT,
             str(package_json.relative_to(root)),
             f"invalid package.json at line {exc.lineno}, column {exc.colno}: {exc.msg}",
+            "doctor.package-json.invalid",
+            "repair package.json, then rerun doctor",
+        )
+        return
+    except RecursionError:
+        yield Finding(
+            Level.DRIFT,
+            str(package_json.relative_to(root)),
+            "invalid package.json: document nesting is too deep",
             "doctor.package-json.invalid",
             "repair package.json, then rerun doctor",
         )

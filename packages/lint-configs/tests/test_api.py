@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pytest
+
 from sarj_lint_configs import api
 
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
-
-    import pytest
 
 
 def test_every_declared_public_api_resolves() -> None:
@@ -155,3 +155,62 @@ def test_standards_facade_init_exposes_project_roots_and_truthful_no_install_pre
     assert any(change.path == python_root / ".ruff-strict.toml" for change in result.changes)
     assert all(change.action != "run" for change in result.changes)
     assert not (python_root / ".ruff-strict.toml").exists()
+
+
+def test_standards_facade_init_dry_run_reports_invalid_plan(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "fixture"\nversion = "0.0.0"\nrequires-python = ">=3.14"\n', encoding="utf-8"
+    )
+    (tmp_path / ".pre-commit-config.yaml").write_text("repos: []\n", encoding="utf-8")
+    (tmp_path / ".pre-commit-config.yml").write_text("repos: []\n", encoding="utf-8")
+
+    result = api.Standards(tmp_path).init(dry_run=True, install=False)
+
+    assert result.status is api.Status.INVALID
+    assert result.exit_code == 2
+    assert result.findings[0].id == "init.plan.invalid"
+    assert "multiple pre-commit configurations" in result.findings[0].message
+
+
+def test_standards_facade_update_returns_invalid_result_for_bad_manifest(tmp_path: Path) -> None:
+    (tmp_path / ".sarj-standards.toml").write_text('version = "not a version"\n', encoding="utf-8")
+
+    result = api.Standards(tmp_path).update(install=False)
+
+    assert result.status is api.Status.INVALID
+    assert result.exit_code == 2
+    assert result.findings[0].id == "update.plan.invalid"
+
+
+def test_standards_facade_update_check_exposes_doctor_findings(tmp_path: Path) -> None:
+    result = api.Standards(tmp_path).update(check_only=True)
+
+    assert result.status is api.Status.INVALID
+    assert result.findings[0].id == "update.plan.invalid"
+
+
+def test_standards_facade_init_rejects_invalid_existing_manifest(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "fixture"\nversion = "0.0.0"\n', encoding="utf-8")
+    manifest = tmp_path / ".sarj-standards.toml"
+    manifest.write_text("bad = [\n", encoding="utf-8")
+
+    result = api.Standards(tmp_path).init(install=False, dry_run=True)
+
+    assert result.status is api.Status.INVALID
+    assert result.findings[0].id == "init.input.invalid"
+    assert manifest.read_text(encoding="utf-8") == "bad = [\n"
+
+
+@pytest.mark.parametrize("configs", [("bogus",), (), "ruff"], ids=("unknown", "empty", "string"))
+def test_standards_facade_init_rejects_invalid_configs(tmp_path: Path, configs: object) -> None:
+    result = api.Standards(tmp_path).init(configs=configs, install=False)  # type: ignore[arg-type]
+
+    assert result.status is api.Status.INVALID
+    assert result.findings[0].id == "init.input.invalid"
+
+
+def test_standards_facade_init_rejects_invalid_runtime_profile(tmp_path: Path) -> None:
+    result = api.Standards(tmp_path).init(profile="bogus", install=False)  # type: ignore[arg-type]
+
+    assert result.status is api.Status.INVALID
+    assert result.findings[0].id == "init.input.invalid"

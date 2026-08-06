@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Final
+from urllib.parse import urlparse
 
 
 SCHEMA_VERSION: Final = 1
@@ -53,6 +54,9 @@ class CoverageNotice:
     file_count: int
 
     def __post_init__(self) -> None:
+        _require_text(self.source, "coverage source")
+        _require_text(self.reason, "coverage reason")
+        _require_int(self.file_count, "coverage file count")
         if self.file_count < 1:
             msg = "coverage notice must describe at least one file"
             raise ValueError(msg)
@@ -70,6 +74,9 @@ class Position:
     byte_offset: int
 
     def __post_init__(self) -> None:
+        _require_int(self.line, "position line")
+        _require_int(self.character, "position character")
+        _require_int(self.byte_offset, "position byte offset")
         if min(self.line, self.character, self.byte_offset) < 0:
             msg = "source positions cannot be negative"
             raise ValueError(msg)
@@ -87,8 +94,13 @@ class Region:
     end: Position
 
     def __post_init__(self) -> None:
+        _require_instance(self.start, Position, "source region start")
+        _require_instance(self.end, Position, "source region end")
         if self.end.byte_offset < self.start.byte_offset:
             msg = "source region end precedes its start"
+            raise ValueError(msg)
+        if (self.end.line, self.end.character) < (self.start.line, self.start.character):
+            msg = "source region coordinates run backwards"
             raise ValueError(msg)
 
     def as_dict(self) -> dict[str, dict[str, int]]:
@@ -104,9 +116,19 @@ class Location:
     region: Region | None = None
 
     def __post_init__(self) -> None:
+        _require_text(self.path, "location path")
+        path = Path(self.path)
+        windows = PureWindowsPath(self.path)
+        if path.is_absolute() or windows.is_absolute() or windows.drive or ".." in path.parts or "\\" in self.path:
+            msg = "diagnostic location must be a repository-relative path"
+            raise ValueError(msg)
         if self.position is not None and self.region is not None:
             msg = "a diagnostic location cannot carry both a point and a region"
             raise ValueError(msg)
+        if self.position is not None:
+            _require_instance(self.position, Position, "diagnostic position")
+        if self.region is not None:
+            _require_instance(self.region, Region, "diagnostic region")
 
     def as_dict(self) -> dict[str, object]:
         result: dict[str, object] = {"path": self.path}
@@ -129,6 +151,23 @@ class Diagnostic:
     rule_id: str | None = None
     help: str | None = None
     help_url: str | None = None
+
+    def __post_init__(self) -> None:
+        _require_text(self.code, "diagnostic code")
+        _require_text(self.message, "diagnostic message", allow_empty=True)
+        _require_text(self.source, "diagnostic source")
+        _require_instance(self.severity, Severity, "diagnostic severity")
+        _require_instance(self.location, Location, "diagnostic location")
+        if self.rule_id is not None:
+            _require_text(self.rule_id, "diagnostic rule id")
+        if self.help is not None:
+            _require_text(self.help, "diagnostic help", allow_empty=True)
+        if self.help_url is not None:
+            _require_text(self.help_url, "diagnostic help URL")
+            parsed = urlparse(self.help_url)
+            if not parsed.scheme or any(value.isspace() for value in self.help_url):
+                msg = "diagnostic help URL must be an absolute URI"
+                raise ValueError(msg)
 
     def as_dict(self) -> dict[str, object]:
         result: dict[str, object] = {
@@ -156,6 +195,13 @@ class ExecutionIssue:
     message: str
     exit_code: int | None = None
 
+    def __post_init__(self) -> None:
+        _require_text(self.source, "execution issue source")
+        _require_text(self.kind, "execution issue kind")
+        _require_text(self.message, "execution issue message", allow_empty=True)
+        if self.exit_code is not None:
+            _require_int(self.exit_code, "execution issue exit code")
+
     def as_dict(self) -> dict[str, object]:
         result: dict[str, object] = {"source": self.source, "kind": self.kind, "message": self.message}
         if self.exit_code is not None:
@@ -173,6 +219,10 @@ class ToolReport:
     issues: tuple[ExecutionIssue, ...] = ()
 
     def __post_init__(self) -> None:
+        _require_text(self.name, "tool name")
+        _require_instance(self.completion, Completion, "tool completion")
+        _require_tuple_items(self.diagnostics, Diagnostic, "tool diagnostics")
+        _require_tuple_items(self.issues, ExecutionIssue, "tool issues")
         if self.completion is Completion.COMPLETE and self.issues:
             msg = "a complete tool report cannot contain execution issues"
             raise ValueError(msg)
@@ -200,6 +250,11 @@ class AnalysisReport:
     coverage: tuple[CoverageNotice, ...] = ()
 
     def __post_init__(self) -> None:
+        _require_instance(self.root, Path, "analysis root")
+        _require_instance(self.completion, Completion, "analysis completion")
+        _require_instance(self.conclusion, Conclusion, "analysis conclusion")
+        _require_tuple_items(self.tools, ToolReport, "analysis tools")
+        _require_tuple_items(self.coverage, CoverageNotice, "analysis coverage")
         has_issues = any(tool.issues for tool in self.tools)
         has_findings = any(tool.diagnostics for tool in self.tools)
         is_incomplete = has_issues or bool(self.coverage)
@@ -251,3 +306,34 @@ class AnalysisReport:
             "tools": [item.as_dict() for item in self.tools],
             "coverage": [item.as_dict() for item in self.coverage],
         }
+
+
+def _require_text(value: object, label: str, *, allow_empty: bool = False) -> None:
+    if type(value) is not str or (not allow_empty and not value):
+        msg = f"{label} must not be empty"
+        raise ValueError(msg)
+
+
+def _require_int(value: int, label: str) -> None:
+    if type(value) is not int:
+        msg = f"{label} must be an integer"
+        raise TypeError(msg)
+
+
+def _require_instance(value: object, expected: type[object], label: str) -> None:
+    if not isinstance(value, expected):
+        msg = f"{label} must be {expected.__name__}"
+        raise TypeError(msg)
+
+
+def _require_tuple_items(value: object, expected: type[object], label: str) -> None:
+    if not isinstance(value, tuple):
+        invalid = True
+    else:
+        invalid = type(value) is not tuple or any(  # pyright: ignore[reportUnknownArgumentType] -- validated below.
+            not isinstance(item, expected)
+            for item in value  # pyright: ignore[reportUnknownVariableType] -- tuple elements are validated here.
+        )
+    if invalid:
+        msg = f"{label} must be a tuple of {expected.__name__} values"
+        raise TypeError(msg)

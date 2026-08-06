@@ -238,6 +238,23 @@ def test_doctor_reports_malformed_nested_package_json_that_names_the_plugin(tmp_
     assert [finding for finding in findings if finding.id == "doctor.package-json.invalid"]
 
 
+def test_doctor_reports_excessively_nested_package_json_without_recursing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    package = tmp_path / "packages" / "broken" / "package.json"
+    package.parent.mkdir(parents=True)
+    package.write_text('{"devDependencies":{"@sarj/eslint-plugin":"1"}}', encoding="utf-8")
+
+    def too_deep(_text: str) -> str | None:
+        raise RecursionError
+
+    monkeypatch.setattr(doctor, "_package_json_pin_text", too_deep)
+
+    findings = doctor.diagnose(tmp_path)
+
+    assert [finding for finding in findings if finding.id == "doctor.package-json.invalid"]
+
+
 def test_doctor_keeps_independent_findings_when_one_destination_is_invalid(tmp_path: Path) -> None:
     adopted = manifest.Manifest(
         version=manifest.adopted_version(),

@@ -146,6 +146,23 @@ def test_selected_eslint_accepts_source_directories_and_ignores_generated_trees(
     assert commands[0].argv == ("npx", "--no-install", "eslint", "--", "src")
 
 
+def test_selected_eslint_partitions_sibling_projects_without_dropping_files(tmp_path: Path) -> None:
+    selected: list[str] = []
+    for name in ("a", "b"):
+        project = tmp_path / name
+        project.mkdir()
+        (project / "package.json").write_text("{}\n", encoding="utf-8")
+        (project / "package-lock.json").write_text('{"lockfileVersion": 3}\n', encoding="utf-8")
+        source = project / "app.ts"
+        source.write_text("export const value = 1;\n", encoding="utf-8")
+        selected.append(str(source))
+
+    commands = lifecycle.selected_eslint_commands(tmp_path, selected, label="analysis")
+
+    assert [command.cwd for command in commands] == [tmp_path / "a", tmp_path / "b"]
+    assert all(command.argv[-1] == "app.ts" for command in commands)
+
+
 def test_staged_eslint_supports_every_eslint_module_suffix(tmp_path: Path) -> None:
     (tmp_path / "package.json").write_text("{}\n", encoding="utf-8")
     names = [f"module{suffix}" for suffix in (".cjs", ".cts", ".js", ".jsx", ".mjs", ".mts", ".ts", ".tsx")]

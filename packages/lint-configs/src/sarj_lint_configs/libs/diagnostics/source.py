@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from array import array
 from bisect import bisect_right
 from dataclasses import dataclass, field
 from pathlib import Path
+import re
 from typing import TYPE_CHECKING
 
 from .models import Position, Region
@@ -23,9 +25,13 @@ class SourceDocument:
     _lines: tuple[str, ...] = field(init=False, repr=False)
     _line_byte_offsets: tuple[int, ...] = field(init=False, repr=False)
     _byte_length: int = field(init=False, repr=False)
+    _utf16_indexes: dict[int, tuple[array[int], array[int], array[int], array[int]]] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        self._lines = tuple(self.text.splitlines(keepends=True)) or ("",)
+        lines = tuple(re.findall(r".*?(?:\r\n|\r|\n)|.+\Z", self.text, flags=re.DOTALL)) or ("",)
+        if self.text.endswith(("\n", "\r")):
+            lines = (*lines, "")
+        self._lines = lines
         offsets: list[int] = []
         offset = 0
         for line in self._lines:
@@ -33,10 +39,11 @@ class SourceDocument:
             offset += len(line.encode("utf-8"))
         self._line_byte_offsets = tuple(offsets)
         self._byte_length = offset
+        self._utf16_indexes = {}
 
     @classmethod
     def read(cls, path: Path) -> Self:
-        return cls(path, path.read_text(encoding="utf-8", errors="replace"))
+        return cls(path, path.read_text(encoding="utf-8"))
 
     def point(self, *, line: int, column: int) -> Position | None:
         """Convert a one-based code-point line/column without inventing coordinates."""
@@ -60,23 +67,53 @@ class SourceDocument:
         content = self._lines[line].rstrip("\r\n")
         if character == 0:
             return Position(line=line, character=0, byte_offset=self._line_byte_offsets[line])
-        units = 0
-        prefix_values: list[str] = []
-        for value in content:
-            units += len(value.encode("utf-16-le")) // 2
-            prefix_values.append(value)
-            if units == character:
-                break
-            if units > character:
+        if content.isascii():
+            if character > len(content):
                 return None
-        if units < character:
+            return Position(
+                line=line,
+                character=character,
+                byte_offset=self._line_byte_offsets[line] + character,
+            )
+        index = self._utf16_indexes.get(line)
+        if index is None:
+            index = self._build_utf16_index(content)
+            self._utf16_indexes[line] = index
+        starts, ends, unit_extras, byte_extras = index
+        event_index = bisect_right(ends, character)
+        if event_index < len(starts) and starts[event_index] < character < ends[event_index]:
             return None
-        prefix = "".join(prefix_values)
+        unit_extra = unit_extras[event_index - 1] if event_index else 0
+        byte_extra = byte_extras[event_index - 1] if event_index else 0
+        codepoint_index = character - unit_extra
+        if codepoint_index < 0 or codepoint_index > len(content):
+            return None
         return Position(
             line=line,
             character=character,
-            byte_offset=self._line_byte_offsets[line] + len(prefix.encode("utf-8")),
+            byte_offset=self._line_byte_offsets[line] + codepoint_index + byte_extra,
         )
+
+    @staticmethod
+    def _build_utf16_index(content: str) -> tuple[array[int], array[int], array[int], array[int]]:
+        starts = array("I")
+        ends = array("I")
+        unit_extras = array("I")
+        byte_extras = array("I")
+        utf16_offset = 0
+        byte_offset = 0
+        for codepoint_index, value in enumerate(content):
+            units = len(value.encode("utf-16-le")) // 2
+            byte_length = len(value.encode("utf-8"))
+            if units != 1 or byte_length != 1:
+                end = utf16_offset + units
+                starts.append(utf16_offset)
+                ends.append(end)
+                unit_extras.append(end - codepoint_index - 1)
+                byte_extras.append(byte_offset + byte_length - codepoint_index - 1)
+            utf16_offset += units
+            byte_offset += byte_length
+        return starts, ends, unit_extras, byte_extras
 
     def byte_point(self, *, line: int, column: int) -> Position | None:
         """Convert a one-based line and UTF-8 byte column without guessing."""
@@ -110,7 +147,12 @@ class SourceDocument:
             raise ValueError(msg)
         line = bisect_right(self._line_byte_offsets, offset) - 1
         line_start = self._line_byte_offsets[line]
-        prefix = self._lines[line].encode("utf-8")[: offset - line_start]
+        relative = offset - line_start
+        encoded_line = self._lines[line].encode("utf-8")
+        if relative > 0 and relative < len(encoded_line) and encoded_line[relative - 1 : relative + 1] == b"\r\n":
+            msg = "source byte offset splits a CRLF line terminator"
+            raise ValueError(msg)
+        prefix = encoded_line[:relative]
         try:
             decoded = prefix.decode("utf-8")
         except UnicodeDecodeError as exc:

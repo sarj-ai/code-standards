@@ -71,10 +71,12 @@ class _RegistryModule(Protocol):
 
 def analyze(files: Sequence[str], *, root: Path, python_baseline: Path | None = None) -> AnalysisReport:
     """Run applicable bundled analyzers without parsing their console output."""
+    root = root.resolve()
     try:
-        grouped = group_paths(files)
+        contained = tuple(_contained_path(item, root) for item in files)
+        grouped = group_paths(contained)
     except (OSError, ValueError) as exc:
-        issue = ExecutionIssue("sarj-standards", "invalid-input", str(exc))
+        issue = ExecutionIssue("sarj-standards", "invalid-input", str(exc).replace(str(root), "."))
         tool = ToolReport("sarj-standards", Completion.FAILED, issues=(issue,))
         return AnalysisReport(root, Completion.FAILED, Conclusion.INCONCLUSIVE, (tool,))
 
@@ -95,6 +97,17 @@ def analyze(files: Sequence[str], *, root: Path, python_baseline: Path | None = 
         if report is not None
     )
     return report_from_tools(root, reports)
+
+
+def _contained_path(value: str, root: Path) -> str:
+    path = Path(value)
+    resolved = (path if path.is_absolute() else root / path).resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError as exc:
+        msg = "analysis path is outside the repository root"
+        raise ValueError(msg) from exc
+    return str(resolved)
 
 
 def report_from_tools(root: Path, reports: Sequence[ToolReport]) -> AnalysisReport:
@@ -295,5 +308,6 @@ def _normalize_text(
 def _relative_path(path: Path, root: Path) -> str:
     try:
         return path.relative_to(root).as_posix()
-    except ValueError:
-        return str(path)
+    except ValueError as exc:
+        msg = "analyzer reported a path outside the repository root"
+        raise ValueError(msg) from exc

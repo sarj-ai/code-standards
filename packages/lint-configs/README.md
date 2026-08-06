@@ -355,10 +355,11 @@ repos:
     hooks:
       - id: sarj-standards-check
         name: sarj standards -- staged checks
-        entry: uv run --frozen sarj-standards check --staged
+        entry: uv run --frozen sarj-standards check --staged --
         language: system
         verbose: true
-        files: '(?i)(\.py|\.tsx?|\.jsx?|\.sql|\.tf|\.tfvars|\.hcl|\.ya?ml|\.toml|\.jsonc|\.mdx?|\.(?:bash|cfg|conf|env|ini|properties|sh|tftpl|zsh)|(?:^|/)\.env(?:\..*)?$|(?:^|/)requirements(?:/.*|[^/]*\.(?:txt|in))$|(?:^|/)(?:Dockerfile(?:\..*)?|Gnumakefile|Justfile|Makefile))$'
+        pass_filenames: false
+        # `init` supplies the generated matcher for every supported source/config file.
 ```
 
 That is the block a **Python** repo gets. A TypeScript-only repo gets the same

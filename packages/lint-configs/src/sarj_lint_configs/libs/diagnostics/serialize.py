@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from heapq import nsmallest
 import json
+from urllib.parse import quote
 
 from .models import AnalysisReport, Diagnostic, Severity
 
@@ -141,13 +142,20 @@ def _github_diagnostic(diagnostic: Diagnostic) -> str:
         diagnostic.location.region.start if diagnostic.location.region is not None else diagnostic.location.position
     )
     if position is not None:
-        properties.extend(
-            (
-                f"file={_github_property(diagnostic.location.path)}",
-                f"line={position.line + 1}",
-                f"col={position.character + 1}",
+        properties.extend((f"file={_github_property(diagnostic.location.path)}", f"line={position.line + 1}"))
+        region = diagnostic.location.region
+        if region is None:
+            properties.append(f"col={position.character + 1}")
+        elif region.end.line == region.start.line:
+            properties.extend(
+                (
+                    f"col={position.character + 1}",
+                    f"endLine={region.end.line + 1}",
+                    f"endColumn={region.end.character + 1}",
+                )
             )
-        )
+        else:
+            properties.append(f"endLine={region.end.line + 1}")
     properties.append(f"title={_github_property(f'{diagnostic.source}/{diagnostic.code}')}")
     message = diagnostic.message if position is not None else f"{diagnostic.location.path}: {diagnostic.message}"
     return f"::{level} {','.join(properties)}::{_github_message(message)}"
@@ -193,7 +201,7 @@ def _sarif_rules(report: AnalysisReport) -> list[dict[str, object]]:
 
 def _sarif_result(diagnostic: Diagnostic) -> dict[str, object]:
     location = diagnostic.location
-    physical: dict[str, object] = {"artifactLocation": {"uri": location.path}}
+    physical: dict[str, object] = {"artifactLocation": {"uri": quote(location.path, safe="/")}}
     if location.region is not None:
         physical["region"] = {
             "startLine": location.region.start.line + 1,

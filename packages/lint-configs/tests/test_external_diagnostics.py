@@ -77,6 +77,32 @@ def test_basedpyright_utf16_range_preserves_astral_character(tmp_path: Path) -> 
     assert finding.location.region.end.byte_offset == 13
 
 
+def test_basedpyright_accepts_range_ending_at_trailing_newline_eof(tmp_path: Path) -> None:
+    source = tmp_path / "example.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    payload = json.dumps(
+        {
+            "generalDiagnostics": [
+                {
+                    "file": str(source),
+                    "severity": "error",
+                    "message": "example",
+                    "rule": "reportExample",
+                    "range": {
+                        "start": {"line": 0, "character": 0},
+                        "end": {"line": 1, "character": 0},
+                    },
+                }
+            ]
+        }
+    )
+
+    finding = parse_basedpyright(payload, root=tmp_path)[0]
+
+    assert finding.location.region is not None
+    assert finding.location.region.end.byte_offset == len("value = 1\n")
+
+
 def test_eslint_without_end_location_keeps_a_truthful_point(tmp_path: Path) -> None:
     source = tmp_path / "example.ts"
     source.write_text("const value = 1;\n", encoding="utf-8")
@@ -152,6 +178,61 @@ def test_signal_terminated_tool_is_an_execution_failure(tmp_path: Path) -> None:
     assert all(report.issues[0].exit_code == -9 for report in reports)
 
 
+def test_finding_exit_without_diagnostics_fails_the_external_protocol(tmp_path: Path) -> None:
+    source = tmp_path / "example.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+
+    def empty_finding_exit(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        _ = cwd
+        payload = '{"generalDiagnostics":[]}' if argv[0] == "basedpyright" else "[]"
+        return ProcessOutput(1, payload, "")
+
+    reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=empty_finding_exit)
+
+    assert all(report.completion is Completion.FAILED for report in reports)
+    assert all(report.issues[0].kind == "protocol-mismatch" for report in reports)
+
+
+def test_basedpyright_parser_rejects_unknown_severity(tmp_path: Path) -> None:
+    source = tmp_path / "example.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    payload = json.dumps(
+        {
+            "generalDiagnostics": [
+                {
+                    "file": str(source),
+                    "severity": "fatal",
+                    "message": "bad severity",
+                    "range": {
+                        "start": {"line": 0, "character": 0},
+                        "end": {"line": 0, "character": 1},
+                    },
+                }
+            ]
+        }
+    )
+
+    with pytest.raises(ValueError, match="severity"):
+        parse_basedpyright(payload, root=tmp_path)
+
+
+@pytest.mark.parametrize(("severity", "message"), [(99, "bad severity"), (True, "bad")], ids=("unknown", "boolean"))
+def test_eslint_parser_rejects_invalid_severity(tmp_path: Path, severity: int | bool, message: str) -> None:
+    source = tmp_path / "example.ts"
+    source.write_text("export const value = 1;\n", encoding="utf-8")
+    payload = json.dumps(
+        [
+            {
+                "filePath": str(source),
+                "messages": [{"severity": severity, "message": message, "line": 1, "column": 1}],
+            }
+        ]
+    )
+
+    with pytest.raises(ValueError, match="severity"):
+        parse_eslint(payload, root=tmp_path)
+
+
 def test_external_process_output_is_bounded(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -164,6 +245,52 @@ def test_external_process_output_is_bounded(
             (sys.executable, "-c", "import sys; sys.stdout.write('x' * 10000)"),
             cwd=tmp_path,
         )
+
+
+def test_malformed_nested_json_becomes_a_bounded_tool_failure(tmp_path: Path) -> None:
+    source = tmp_path / "example.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+
+    def nested(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        _ = argv, cwd
+        return ProcessOutput(0, "[" * 100_000, "")
+
+    reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=nested)
+
+    assert all(report.completion is Completion.FAILED for report in reports)
+    assert all(len(report.issues[0].message) <= 1024 for report in reports)
+
+
+def test_external_failure_redacts_secrets_and_absolute_paths(tmp_path: Path) -> None:
+    source = tmp_path / "example.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+
+    def failed(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        _ = argv, cwd
+        return ProcessOutput(2, "", "token=SUPERSECRET /Users/alice/private/config")
+
+    reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=failed)
+    messages = "\n".join(issue.message for report in reports for issue in report.issues)
+
+    assert "SUPERSECRET" not in messages
+    assert "/Users/alice" not in messages
+    assert "<redacted>" in messages
+
+
+def test_eslint_rejects_boolean_coordinates(tmp_path: Path) -> None:
+    source = tmp_path / "example.ts"
+    source.write_text("export const value = 1;\n", encoding="utf-8")
+    payload = json.dumps(
+        [
+            {
+                "filePath": str(source),
+                "messages": [{"severity": 2, "message": "bad", "line": True, "column": True}],
+            }
+        ]
+    )
+
+    with pytest.raises(TypeError, match="missing its start position"):
+        parse_eslint(payload, root=tmp_path)
 
 
 def test_python_external_tools_use_structured_output_without_uv(tmp_path: Path) -> None:

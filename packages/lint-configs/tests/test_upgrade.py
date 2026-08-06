@@ -49,6 +49,29 @@ def test_upgrade_preview_is_read_only_and_names_every_change(tmp_path: Path) -> 
     assert {path: path.read_bytes() for path in tmp_path.iterdir() if path.is_file()} == before
 
 
+def test_upgrade_plan_normalizes_a_repository_alias(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    _outdated_python_repo(repository)
+    alias = tmp_path / "alias"
+    alias.symlink_to(repository, target_is_directory=True)
+
+    plan = upgrade.build_plan(alias)
+
+    assert plan.root == repository.resolve()
+
+
+@pytest.mark.parametrize("suffix", ["+corp", "_rc1"])
+def test_pin_rewrite_does_not_accept_a_version_suffix_as_the_installed_release(suffix: str) -> None:
+    current = manifest.installed_versions()["sarj-lint-configs"]
+    text = f"sarj-lint-configs=={current}{suffix}\n"
+
+    rewritten = doctor.rewrite_version_pins(text, {"sarj-lint-configs": current})
+
+    assert rewritten.contents == f"sarj-lint-configs=={current}\n"
+    assert rewritten.packages == ("sarj-lint-configs",)
+
+
 def test_upgrade_rejects_a_manifest_newer_than_the_executing_bundle_without_writes(tmp_path: Path) -> None:
     _outdated_python_repo(tmp_path)
     path = tmp_path / manifest.MANIFEST_NAME
@@ -403,6 +426,62 @@ def test_upgrade_refreshes_every_doctor_owned_pin_site_without_thrashing(tmp_pat
     assert {finding.id for finding in doctor.diagnose(tmp_path) if finding.level is doctor.Level.DRIFT} == {
         "doctor.python.bundle-missing"
     }
+
+
+def test_upgrade_migrates_plain_official_remote_umbrella_hook(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    config = tmp_path / ".pre-commit-config.yaml"
+    config.write_text(
+        "repos:\n"
+        "  - repo: https://github.com/pre-commit/pre-commit-hooks\n"
+        "    rev: v5.0.0\n"
+        "    hooks:\n"
+        "      - id: trailing-whitespace\n"
+        "  - repo: 'https://github.com/sarj-ai/standards.git'\n"
+        "    rev: lint-configs-v0.1.0\n"
+        "    hooks:\n"
+        "      - id: sarj-standards\n"
+        "\n"
+        "# Keep this pre-commit setting comment.\n"
+        "default_stages: [pre-commit, pre-push]\n"
+        "ci:\n"
+        "  autofix_prs: false\n",
+        encoding="utf-8",
+    )
+
+    assert upgrade.apply(upgrade.build_plan(tmp_path), install=False) == 0
+
+    migrated = config.read_text(encoding="utf-8")
+    assert "pre-commit/pre-commit-hooks" in migrated
+    assert "github.com/sarj-ai/standards" not in migrated
+    assert migrated.count("id: sarj-standards-check") == 1
+    assert "check --staged --" in migrated
+    assert "# Keep this pre-commit setting comment." in migrated
+    assert "default_stages: [pre-commit, pre-push]" in migrated
+    assert "  autofix_prs: false" in migrated
+    before = migrated
+    assert upgrade.apply(upgrade.build_plan(tmp_path), install=False) == 0
+    assert config.read_text(encoding="utf-8") == before
+
+
+def test_upgrade_refuses_to_expand_custom_remote_hook_scope(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    config = tmp_path / ".pre-commit-config.yaml"
+    config.write_text(
+        "repos:\n"
+        "  - repo: https://github.com/sarj-ai/standards\n"
+        "    rev: python-v0.1.0\n"
+        "    hooks:\n"
+        "      - id: sarj-no-comment-cruft\n"
+        "        exclude: ^generated/\n",
+        encoding="utf-8",
+    )
+    before = config.read_bytes()
+
+    with pytest.raises(ValueError, match="preserve its scope manually"):
+        upgrade.build_plan(tmp_path)
+
+    assert config.read_bytes() == before
 
 
 def test_upgrade_rolls_back_a_migrated_workflow_pin_on_postflight_failure(

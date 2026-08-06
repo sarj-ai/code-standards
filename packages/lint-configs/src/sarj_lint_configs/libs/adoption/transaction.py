@@ -57,6 +57,9 @@ def validate_targets(root: Path, paths: tuple[Path, ...]) -> None:
         if path.exists() and not path.is_file():
             msg = f"refusing non-file mutation target {path}"
             raise OSError(msg)
+        if path.is_file() and path.stat(follow_symlinks=False).st_nlink > 1:
+            msg = f"refusing hard-linked mutation target {path}"
+            raise OSError(msg)
         try:
             path.resolve().relative_to(resolved_root)
         except (OSError, ValueError) as exc:
@@ -129,6 +132,9 @@ class FileTransaction:
                 path.resolve().relative_to(resolved)
             except OSError, ValueError:
                 continue
+            if path.is_file() and path.stat(follow_symlinks=False).st_nlink > 1:
+                msg = f"refusing hard-linked transaction target {path}"
+                raise OSError(msg)
             before[path] = _snapshot(path)
             absent_parents.update(_absent_parents(resolved, path.parent))
         return cls(resolved, before, {}, absent_parents)
