@@ -10,7 +10,7 @@ uv tool install sarj-python-lint
 
 ```yaml
 - repo: https://github.com/sarj-ai/standards
-  rev: python-v0.51.1
+  rev: python-v0.51.2
   hooks:
     - id: sarj-no-sequential-await
     - id: sarj-inefficient-string-concat-in-loop
@@ -95,7 +95,8 @@ there is no autofix because export order and comments can be observable.
 and immediate package path, such as `element.py` saying “Element class for
 element operations.” Lowercase compound filenames are compared conservatively,
 so `cacheprovider.py` also matches “Implementation of the cache provider,” but
-an extra purpose or constraint keeps the prose. Package initializers, tests,
+common inflections such as `log.py` and “Logging utilities” also align. An
+extra purpose or constraint keeps the prose. Package initializers, tests,
 generated files, structured or multiline docs, and prose carrying an invariant,
 consumer, compatibility
 constraint, value or external reference are excluded. In particular, the rule
