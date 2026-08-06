@@ -195,7 +195,9 @@ ruleTester.run("enforce-file-structure", rule, {
         import { checkTokenValidity } from "../token-validation";
       `,
     },
-    // Generated GraphQL type files may emit helper types before imports.
+  ],
+  invalid: [
+    // A generated-looking comment after hand-written code cannot exempt the file.
     {
       filename: "/repo/src/workspace/types/GraphRoot.types.ts",
       code: `
@@ -204,9 +206,8 @@ ruleTester.run("enforce-file-structure", rule, {
         // Generated GraphQL types, do not edit manually.
         import * as Types from "../../graphql/types";
       `,
+      errors: [{ messageId: "importsFirst" }],
     },
-  ],
-  invalid: [
     // One contiguous misplaced-import run is one defect.
     {
       filename: NON_ACTION_FILENAME,

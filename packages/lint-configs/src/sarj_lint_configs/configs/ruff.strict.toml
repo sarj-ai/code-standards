@@ -113,6 +113,15 @@ ignore = [
   # code, where the exemption is true, instead of silencing three security
   # checks repo-wide. Do not re-add them here.
 
+  # Sarj owns these comment concerns with narrower, syntax-aware rules and
+  # tracked-reference exemptions. Ruff's generic variants double-report
+  # commented code and reject even ticket-backed TODOs.
+  "ERA001",
+  "FIX002",
+  "TD002",
+  "TD003",
+  "TD004",
+
   # Complexity is a code-smell heuristic, not a correctness rule, and these five
   # thresholds fight the style this same config mandates:
   #   C901    (>10 paths)     23 / 57 / 36

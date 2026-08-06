@@ -93,15 +93,28 @@ resource "google_storage_bucket" "scratch" {
     assert _check(src) == []
 
 
-def test_force_destroy_expression_exempts():
-    # `prevent_destroy` must be a literal, so it cannot express this env gate.
+def test_force_destroy_expression_does_not_exempt():
     src = """
 resource "google_storage_bucket" "recordings" {
   name          = "recordings"
   force_destroy = !var.enable_deletion_protection
 }
 """
-    assert _check(src) == []
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "force_destroy is not literal true" in diags[0].message
+
+
+@pytest.mark.parametrize("value", ["null", "NULL", "var.force_destroy", "local.disposable"])
+def test_null_or_unknown_force_destroy_does_not_exempt(value: str):
+    src = f"""resource "google_storage_bucket" "recordings" {{
+  name          = "recordings"
+  force_destroy = {value}
+}}
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "force_destroy is not literal true" in diags[0].message
 
 
 def test_explicit_force_destroy_false_does_not_exempt():
@@ -115,7 +128,7 @@ resource "google_storage_bucket" "blob" {
     assert len(_check(src)) == 1
 
 
-def test_terraform_managed_version_exempts_the_secret():
+def test_terraform_managed_version_does_not_replace_destroy_protection():
     src = """
 resource "google_secret_manager_secret" "db_password" {
   secret_id = "db-password"
@@ -126,7 +139,7 @@ resource "google_secret_manager_secret_version" "db_password" {
   secret_data = random_password.db.result
 }
 """
-    assert _check(src) == []
+    assert len(_check(src)) == 1
 
 
 def test_version_for_a_different_secret_does_not_exempt():
@@ -145,8 +158,7 @@ resource "google_secret_manager_secret_version" "managed" {
 }
 """
     diags = _check(src)
-    assert len(diags) == 1
-    assert "unmanaged" in diags[0].message
+    assert len(diags) == 2
 
 
 def test_version_guard_does_not_exempt_buckets():
@@ -170,6 +182,12 @@ def test_ignores_types_with_their_own_deletion_protection():
 def test_ignores_non_tf_files():
     src = 'resource "google_secret_manager_secret" "s" {\n}\n'
     assert _check(src, name="notes.txt") == []
+
+
+def test_tf_json_is_explicitly_out_of_scope():
+    source = '{"resource":{"aws_s3_bucket":{"main":{"force_destroy":false}}}}'
+
+    assert _check(source, name="main.tf.json") == []
 
 
 def test_flags_each_unguarded_resource():

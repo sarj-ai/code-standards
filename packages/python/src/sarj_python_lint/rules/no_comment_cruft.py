@@ -117,6 +117,14 @@ _META_COMMENTARY_RE = re.compile(
     re.IGNORECASE,
 )
 
+_EDITORIAL_PLACEHOLDER_RE = re.compile(
+    r"^(?:(?:implementation omitted|existing code here|your code here|rest of (?:the )?code (?:is )?unchanged|"
+    r"same as above|placeholder implementation)\s*[.!]?|"
+    r"in a real (?:app(?:lication)?|implementation),?\s+(?:this|we|you|it)\s+would\s+"
+    r"(?:call|fetch|generate|download|persist|save|send|store|write)\b[^,;]*[.!]?)$",
+    re.IGNORECASE,
+)
+
 # Known one-word section labels are structural signposts rather than prose.
 _SECTION_LABEL_WORDS = frozenset(
     {
@@ -267,17 +275,6 @@ def _is_directive(body: str) -> bool:
     return False
 
 
-def _is_sentence_continuation(prev_body: str | None) -> bool:
-    """Report whether the previous comment line leaves a sentence unfinished."""
-    return bool(prev_body) and not _SENTENCE_END_RE.search(prev_body)
-
-
-def _is_section_label(body: str) -> bool:
-    """Report whether the comment is a bare one-word section signpost."""
-    match = _SECTION_LABEL_RE.match(body)
-    return match is not None and match.group(1).lower() in _SECTION_LABEL_WORDS
-
-
 def _is_redundant_narration(
     body: str,
     prev_body: str | None,
@@ -325,6 +322,17 @@ def _is_redundant_narration(
     return isolated_enumeration and bool(_ENUMERATION_RE.match(c))
 
 
+def _is_sentence_continuation(prev_body: str | None) -> bool:
+    """Report whether the previous comment line leaves a sentence unfinished."""
+    return bool(prev_body) and not _SENTENCE_END_RE.search(prev_body)
+
+
+def _is_section_label(body: str) -> bool:
+    """Report whether the comment is a bare one-word section signpost."""
+    match = _SECTION_LABEL_RE.match(body)
+    return match is not None and match.group(1).lower() in _SECTION_LABEL_WORDS
+
+
 def _is_heading_underline(body: str, prev_body: str | None) -> bool:
     """Report whether a punctuation-only banner underlines a texty comment line."""
     if not _BANNER_FULL_RE.match(body):
@@ -332,6 +340,16 @@ def _is_heading_underline(body: str, prev_body: str | None) -> bool:
     if prev_body is None:
         return False
     return any(_is_word_char(ch) for ch in prev_body) and not _is_banner(prev_body) and not _looks_like_code(prev_body)
+
+
+def _is_banner(body: str) -> bool:
+    if not body:
+        return False
+    if _BANNER_FULL_RE.match(body):
+        return True
+    if _BANNER_RUN_RE.search(body):
+        return True
+    return _is_region_marker(body)
 
 
 def _is_region_marker(body: str) -> bool:
@@ -347,16 +365,6 @@ def _is_region_marker(body: str) -> bool:
     return len(title.split()) <= _REGION_TITLE_MAX_WORDS
 
 
-def _is_banner(body: str) -> bool:
-    if not body:
-        return False
-    if _BANNER_FULL_RE.match(body):
-        return True
-    if _BANNER_RUN_RE.search(body):
-        return True
-    return _is_region_marker(body)
-
-
 def _looks_like_code(body: str) -> bool:
     c = body.strip()
     if not c:
@@ -368,9 +376,9 @@ def _looks_like_code(body: str) -> bool:
     if _RISKY_STMT_RE.match(c):
         return bool(_CODE_SIGNAL_RE.search(c)) and _compiles(c)
     if _CODE_HEADER_RE.match(c):
-        return _compiles(c + "\n    pass")
+        return _compiles(f"{c}\n    pass")
     if c.startswith("@"):
-        return _compiles(c + "\ndef _f():\n    pass")
+        return _compiles(f"{c}\ndef _f():\n    pass")
     if _ASSIGN_OR_CALL_RE.match(c):
         # Implicit type condition documentation (e.g. under `else:`)
         if c.startswith(("isinstance(", "issubclass(")):
@@ -493,6 +501,12 @@ class NoCommentCruft(Rule):
     ) -> str | None:
         if _CODE_REGEN_CALL_RE.match(body):
             return None
+        if (
+            _EDITORIAL_PLACEHOLDER_RE.fullmatch(body.strip())
+            and _RATIONALE_RE.search(body) is None
+            and not narration_protected
+        ):
+            return "Placeholder implementation comment — implement the behavior or use an explicit unsupported path."
         if re.match(r"^(?:todo|fixme)\b", body, re.IGNORECASE):
             if not narration_protected:
                 return "Untracked TODO/FIXME marker — add an issue ticket or context link."

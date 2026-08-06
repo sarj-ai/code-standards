@@ -27,13 +27,15 @@ resource "google_sql_database_instance" "main" {
     assert "no deletion_protection" in diags[0].message
 
 
-def test_allows_variable_gated_protection():
+def test_flags_variable_gated_protection_as_unverifiable():
     src = """
 resource "google_sql_database_instance" "logto" {
   deletion_protection = var.gke_deletion_protection
 }
 """
-    assert _check(src) == []
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "not a literal true" in diags[0].message
 
 
 def test_allows_prevent_destroy_lifecycle():
@@ -45,6 +47,17 @@ resource "google_container_cluster" "data" {
   }
 }
 """
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize("value", ["false", "var.guard"])
+def test_literal_prevent_destroy_overrides_an_unproven_provider_guard(value: str):
+    src = f"""resource "google_container_cluster" "data" {{
+  deletion_protection = {value}
+  lifecycle {{
+    prevent_destroy = true
+  }}
+}}"""
     assert _check(src) == []
 
 
@@ -268,7 +281,7 @@ resource "google_bigquery_dataset" "d" {
     assert len(_check(src)) == 1
 
 
-def test_multiline_expression_value_is_protected():
+def test_multiline_expression_value_is_unverifiable():
     src = """
 resource "google_sql_database_instance" "main" {
   deletion_protection = (
@@ -276,7 +289,9 @@ resource "google_sql_database_instance" "main" {
   )
 }
 """
-    assert _check(src) == []
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "not a literal true" in diags[0].message
 
 
 def test_multiline_false_is_disabled():
@@ -375,15 +390,21 @@ resource "google_bigquery_table" "events" {
     assert len(_check(src)) == 1
 
 
-def test_ignores_redis_instance_which_has_no_such_argument():
-    """Verify google_redis_instance is ignored as it lacks a deletion_protection argument."""
-    src = """
-resource "google_redis_instance" "cache" {
-  name           = "session-cache"
-  memory_size_gb = 4
-}
+@pytest.mark.parametrize("value", ["null", "NULL", "var.guard", "local.guard", "true && var.guard"])
+def test_flags_null_or_unverifiable_protection(value: str):
+    src = f"""resource "google_sql_database_instance" "main" {{
+  deletion_protection = {value}
+}}
 """
-    assert _check(src) == []
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "not a literal true" in diags[0].message
+
+
+def test_tf_json_is_explicitly_out_of_scope():
+    source = '{"resource":{"aws_db_instance":{"main":{"deletion_protection":false}}}}'
+
+    assert _check(source, name="main.tf.json") == []
 
 
 def test_still_flags_a_curated_type_next_to_the_removed_one():

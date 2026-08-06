@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import re
-from types import MappingProxyType
 from typing import TYPE_CHECKING, final, override
 
 from sarj_iac_lint._hcl import blocks
@@ -33,23 +31,12 @@ IRREPLACEABLE_TYPES = frozenset(
     }
 )
 
-# Mapping of secret version resource types to the secret types they supply.
-_VERSION_SOURCES = MappingProxyType(
-    {
-        "google_secret_manager_secret_version": "google_secret_manager_secret",
-        "aws_secretsmanager_secret_version": "aws_secretsmanager_secret",
-    }
-)
-
 _RESOURCE = "resource"
 _LIFECYCLE = "lifecycle"
 _PREVENT_DESTROY = "prevent_destroy"
 _FORCE_DESTROY = "force_destroy"
 
-# A `<resource_type>.<resource_name>` traversal inside an attribute value.
-_REFERENCE_RE = re.compile(r"\b([a-z][a-z0-9_]*)\.([A-Za-z_][\w-]*)")
-
-_HCL_SUFFIXES = (".tf", ".tf.json", ".hcl")
+_HCL_SUFFIXES = (".tf", ".hcl")
 
 
 @final
@@ -69,12 +56,9 @@ class RequirePreventDestroyOnIrreplaceable(Rule):
         if not str(path).endswith(_HCL_SUFFIXES):
             return []
         top = blocks(source)
-        reconstructable = _terraform_owned_secrets(top)
         diags: list[Diagnostic] = []
         for block in top:
             if block.type != _RESOURCE or not block.labels or block.labels[0] not in IRREPLACEABLE_TYPES:
-                continue
-            if (block.labels[0], block.labels[-1]) in reconstructable:
                 continue
             detail = _violation(block)
             if detail is None:
@@ -99,35 +83,18 @@ class RequirePreventDestroyOnIrreplaceable(Rule):
 def _violation(block: Block) -> str | None:
     """Describe why `block` is unguarded, or None when it is guarded or exempt."""
     force = block.attribute(_FORCE_DESTROY)
-    if force is not None and _literal(force.value) != "false":
-        # A true or environment-gated force_destroy explicitly marks the store disposable;
-        # prevent_destroy cannot mirror that expression because Terraform requires a literal.
+    if force is not None and _literal(force.value) == "true":
+        # A literal true is an explicit declaration that the store is disposable.
         return None
     lifecycle = block.child(_LIFECYCLE)
     if lifecycle is None:
+        if force is not None and _literal(force.value) != "false":
+            return f"has force_destroy = {force.value.strip()}, but force_destroy is not literal true"
         return "has no lifecycle block"
     guard = lifecycle.attribute(_PREVENT_DESTROY)
     if guard is None:
         return "has a lifecycle block without prevent_destroy"
     return None if _literal(guard.value) == "true" else "sets prevent_destroy = false"
-
-
-def _terraform_owned_secrets(top: tuple[Block, ...]) -> frozenset[tuple[str, str]]:
-    """Collect secrets reconstructed by a version resource in the same file."""
-    owned: set[tuple[str, str]] = set()
-    for block in top:
-        if block.type != _RESOURCE or not block.labels:
-            continue
-        secret_type = _VERSION_SOURCES.get(block.labels[0])
-        if secret_type is None:
-            continue
-        owned.update(
-            (secret_type, m.group(2))
-            for attr in block.attributes
-            for m in _REFERENCE_RE.finditer(attr.value)
-            if m.group(1) == secret_type
-        )
-    return frozenset(owned)
 
 
 def _literal(value: str) -> str:

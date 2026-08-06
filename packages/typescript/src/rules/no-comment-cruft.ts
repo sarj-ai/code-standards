@@ -24,6 +24,7 @@ type MessageIds =
   | "fileHeaderPreamble"
   | "commentWall"
   | "redundantNarration"
+  | "placeholderImplementation"
   | "untrackedTodo";
 type Options = readonly [];
 
@@ -45,6 +46,9 @@ const STEP_NARRATION_RE =
 // These phrases name debt; `isBareDeferral` handles content-free `for now` notes.
 const META_COMMENTARY_RE =
   /\b(?:keeping (?:it|this) simple|could be (?:refactored|improved|cleaned up|simplified)|refactor(?:ed|ing)? (?:later|this)|not sure (?:if|whether|why|how)|quick[- ](?:and[- ]dirty|fix)|(?:a |bit of a )?hacky|is a hack|temporary (?:solution|workaround|fix|hack)|revisit (?:this|later|below)|clean (?:this|it) up|not ideal|placeholder for now)\b/i;
+
+const EDITORIAL_PLACEHOLDER_RE =
+  /^(?:(?:implementation omitted|existing code here|your code here|rest of (?:the )?code (?:is )?unchanged|same as above|placeholder implementation)\s*[.!]?|in a real (?:app(?:lication)?|implementation),?\s+(?:this|we|you|it)\s+would\s+(?:call|fetch|generate|download|persist|save|send|store|write)\b[^,;]*[.!]?)$/i;
 
 const FOR_NOW_RE = /\bfor now\b/i;
 
@@ -464,6 +468,8 @@ export default createRule<Options, MessageIds>({
         "Statement comment wall ({{count}} narrated steps) — delete the walkthrough and name the operations in code; keep only constraints or rationale.",
       redundantNarration:
         "Comment narrates the code — delete it or say *why*, not *what*. Code is self-documenting.",
+      placeholderImplementation:
+        "Placeholder implementation comment — implement the behavior or use an explicit unsupported path.",
       untrackedTodo:
         "Untracked TODO/FIXME marker — add an issue ticket or context link.",
     },
@@ -633,6 +639,16 @@ export default createRule<Options, MessageIds>({
                 messageId: "untrackedTodo",
               });
             }
+            continue;
+          }
+
+          if (
+            texts.length === 1 &&
+            firstText !== undefined &&
+            EDITORIAL_PLACEHOLDER_RE.test(firstText) &&
+            !runCitesAReference(comments, i)
+          ) {
+            context.report({ node: comment, messageId: "placeholderImplementation" });
             continue;
           }
 

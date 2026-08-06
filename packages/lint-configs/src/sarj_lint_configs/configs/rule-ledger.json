@@ -24,6 +24,7 @@
   ],
   "rules": {
     "eslint": [
+      "duplicate-test-body",
       "enforce-file-structure",
       "no-async-callback-in-wait-for",
       "no-client-side-data-fetching",
@@ -88,6 +89,7 @@
       "require-zod-form-validation",
       "stepdown",
       "store-insert-requires-on-conflict",
+      "test-loops-over-literal-cases",
       "zod-naming-convention"
     ],
     "python": [
