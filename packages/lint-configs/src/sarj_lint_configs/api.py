@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 import os
 from pathlib import Path
+import shlex
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- latest updates execute a fixed uvx argv.
 from typing import TYPE_CHECKING
@@ -23,6 +24,7 @@ from ._meta import (
     YAMLLINT_STRICT,
     __version__,
 )
+from .libs.adoption import launcher
 from .libs.adoption.doctor import Finding as DoctorFinding
 from .libs.adoption.doctor import Level as DoctorLevel
 from .libs.adoption.doctor import diagnose
@@ -32,6 +34,7 @@ from .libs.adoption.lifecycle import (
     execute,
     format_commands,
     inspect,
+    install_commands,
     selected_eslint_commands,
     verification_commands,
 )
@@ -430,7 +433,19 @@ class Standards:
                 for finding in diagnosed
             ]
         changes = tuple(Change("update", change.reason, change.path) for change in plan.changes)
-        return _operation_result(_doctor_status(diagnosed), changes, findings=_doctor_findings(diagnosed))
+        findings = list(_doctor_findings(diagnosed))
+        if not install:
+            skipped = install_commands(self.root, plan.ecosystems, hook_manager=plan.adopted.hook_manager)
+            findings.extend(
+                Finding(
+                    "update.setup.skipped",
+                    "warning",
+                    f"{command.label} setup was intentionally skipped",
+                    remediation=f"run `{shlex.join(command.argv)}` in {command.cwd}",
+                )
+                for command in skipped
+            )
+        return _operation_result(_doctor_status(diagnosed), changes, findings=tuple(findings))
 
     def _update_latest(self, *, install: bool, check_only: bool) -> Result:
         executable = shutil.which("uvx")
@@ -442,11 +457,7 @@ class Standards:
             )
             return Result(Status.FAILED, findings=(finding,), exit_code=_INVALID_EXIT)
         command = [
-            executable,
-            "--refresh",
-            "--from",
-            "sarj-lint-configs",
-            "sarj-standards",
+            *launcher.argv(executable=executable, refresh=True),
             "update",
             "--offline",
             "--dest",

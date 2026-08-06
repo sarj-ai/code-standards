@@ -223,6 +223,9 @@ def test_standards_facade_update_targets_latest_by_default(tmp_path: Path, monke
     assert commands == [
         [
             "/usr/bin/uvx",
+            "--isolated",
+            "--python",
+            "3.14",
             "--refresh",
             "--from",
             "sarj-lint-configs",
@@ -241,6 +244,12 @@ def test_standards_facade_installed_no_install_reports_dependency_setup_as_pendi
 ) -> None:
     class EmptyPlan:
         changes: tuple[()] = ()
+        ecosystems: tuple[()] = ()
+
+        class Adopted:
+            hook_manager: str | None = None
+
+        adopted: Adopted = Adopted()
 
     def plan(_root: Path) -> EmptyPlan:
         return EmptyPlan()
@@ -248,9 +257,9 @@ def test_standards_facade_installed_no_install_reports_dependency_setup_as_pendi
     pending = api.DoctorFinding(
         api.DoctorLevel.DRIFT,
         "pyproject.toml",
-        "lint-configs pin is missing",
-        "doctor.python.bundle-missing",
-        "run uv add",
+        "lint-configs is installed inside the consumer environment",
+        "doctor.python.legacy-in-project-tool",
+        "run uv remove",
     )
 
     def apply(_plan: object, *, install: bool) -> int:
@@ -260,9 +269,14 @@ def test_standards_facade_installed_no_install_reports_dependency_setup_as_pendi
     def diagnosed(_root: Path) -> list[api.DoctorFinding]:
         return [pending]
 
+    def commands(_root: Path, _ecosystems: object, *, hook_manager: str | None) -> list[object]:
+        _ = hook_manager
+        return []
+
     monkeypatch.setattr(api, "plan_upgrade", plan)
     monkeypatch.setattr(api, "apply_upgrade", apply)
     monkeypatch.setattr(api, "diagnose", diagnosed)
+    monkeypatch.setattr(api, "install_commands", commands)
 
     result = api.Standards(tmp_path).update(install=False, target=api.UpdateTarget.INSTALLED)
 

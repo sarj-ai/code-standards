@@ -73,10 +73,11 @@ def test_an_unsupported_declared_package_manager_fails_closed(tmp_path: Path) ->
     assert "supported managers: npm, pnpm, yarn, bun" in proc.stderr
 
 
-def test_npm_keeps_the_nested_form() -> None:
+def test_npm_keeps_the_nested_form_with_resolved_root_references() -> None:
     overrides = packagemanager.overrides_for(PackageManager.NPM)
     assert overrides.key_path == ("overrides",)
-    assert overrides.entries == manifest.eslint_overrides()
+    assert overrides.entries["eslint-plugin-react"] == {"eslint": manifest.eslint_peers()["eslint"]}
+    assert "$" not in json.dumps(overrides.as_document())
 
 
 def test_pnpm_gets_a_flat_selector_under_its_own_key() -> None:
@@ -102,31 +103,29 @@ def test_bun_gets_a_flat_eslint_override_it_actually_honors() -> None:
 @pytest.mark.parametrize(
     ("client", "prefix"),
     [
-        (PackageManager.NPM, "npm install -D --save-exact"),
-        (PackageManager.PNPM, "pnpm add -D --save-exact"),
-        (PackageManager.YARN, "yarn add -D --exact"),
-        (PackageManager.BUN, "bun add -d --exact"),
+        (PackageManager.NPM, "npm install --ignore-scripts"),
+        (PackageManager.PNPM, "pnpm install --no-frozen-lockfile --ignore-scripts"),
+        (PackageManager.YARN, "yarn install --mode=skip-builds"),
+        (PackageManager.BUN, "bun install --ignore-scripts"),
     ],
 )
 def test_the_install_command_is_the_one_that_client_understands(client: PackageManager, prefix: str) -> None:
     command = packagemanager.install_command(client)
     assert command.startswith(prefix)
-    for name, pin in manifest.eslint_peers().items():
-        assert f"{name}@{pin}" in command
+    assert " add " not in command
 
 
 @pytest.mark.parametrize("client", list(PackageManager))
-def test_install_argv_preserves_every_exact_peer(client: PackageManager) -> None:
+def test_install_argv_matches_the_printed_script_free_command(client: PackageManager) -> None:
     argv = packagemanager.install_argv(client)
-    peers = manifest.eslint_peers()
-    assert len(peers) >= 9
-    for name, pin in peers.items():
-        assert f"{name}@{pin}" in argv
+    assert argv == tuple(packagemanager.install_command(client).split())
+    assert all("@sarj" not in part for part in argv)
 
 
 def test_pnpm_workspace_install_targets_the_workspace_root() -> None:
-    assert packagemanager.install_argv(PackageManager.PNPM, workspace=True)[2] == "-w"
-    assert packagemanager.install_command(PackageManager.PNPM, workspace=True).startswith("pnpm add -w ")
+    assert packagemanager.install_argv(PackageManager.PNPM, workspace=True) == packagemanager.install_argv(
+        PackageManager.PNPM
+    )
 
 
 def test_conflicting_lockfiles_fail_instead_of_selecting_by_accident(tmp_path: Path) -> None:
@@ -147,7 +146,7 @@ def test_init_writes_pnpm_overrides_into_a_pnpm_repo(tmp_path: Path) -> None:
     assert "overrides" not in written, "a bare `overrides` key is ignored by pnpm"
     pnpm = manifest.table_field(written, "pnpm")
     assert "eslint-plugin-react>eslint" in manifest.table_field(pnpm, "overrides")
-    assert "pnpm add -D --save-exact" in proc.stdout
+    assert "pnpm install --no-frozen-lockfile --ignore-scripts" in proc.stdout
 
 
 def test_pnpm_11_workspace_overrides_are_merged_in_the_workspace_yaml(tmp_path: Path) -> None:
@@ -194,7 +193,7 @@ def test_init_writes_resolutions_into_a_yarn_repo(tmp_path: Path) -> None:
     assert "overrides" not in written, "a bare `overrides` key is ignored by Yarn"
     resolutions = manifest.table_field(written, "resolutions")
     assert resolutions["eslint-plugin-react/eslint"] == manifest.eslint_peers()["eslint"]
-    assert "yarn add -D --exact" in proc.stdout
+    assert "yarn install --mode=skip-builds" in proc.stdout
 
 
 def test_init_writes_bun_override_without_npm_nested_syntax(tmp_path: Path) -> None:
@@ -223,7 +222,7 @@ def test_npm_preserves_a_scalar_parent_override_under_dot(tmp_path: Path) -> Non
     overrides = manifest.table_field(manifest.as_table(parsed), "overrides")
     react = manifest.table_field(overrides, "eslint-plugin-react")
     assert react["."] == "7.37.4"
-    assert react["eslint"] == "$eslint"
+    assert react["eslint"] == manifest.eslint_peers()["eslint"]
 
 
 def test_merging_pnpm_overrides_keeps_the_rest_of_the_pnpm_table(tmp_path: Path) -> None:
@@ -248,7 +247,7 @@ def test_a_second_init_on_a_pnpm_repo_changes_nothing(tmp_path: Path) -> None:
     second = _cli("init", "--dest", str(tmp_path))
     assert second.returncode == 0
     assert (tmp_path / "package.json").read_text(encoding="utf-8") == before
-    assert "already carries the pnpm peer overrides" in second.stdout
+    assert "already pins the tested ESLint peers and pnpm overrides" in second.stdout
 
 
 def test_the_project_root_is_the_lockfiles_directory_not_the_topmost_package_json(
@@ -298,7 +297,7 @@ def test_nested_pnpm_preview_matches_the_applied_install_guidance(tmp_path: Path
 
     assert preview.returncode == 0, preview.stderr
     assert applied.returncode == 0, applied.stderr
-    expected = "pnpm add -D --save-exact"
+    expected = "pnpm install --no-frozen-lockfile --ignore-scripts"
     assert expected in preview.stdout
     assert expected in applied.stdout
     assert "pnpm add -w" not in preview.stdout

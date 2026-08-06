@@ -117,7 +117,7 @@ def overrides_for(client: PackageManager) -> Overrides:
     npm_entries = manifest.eslint_overrides()
     match client:
         case PackageManager.NPM:
-            return Overrides(("overrides",), npm_entries)
+            return Overrides(("overrides",), {name: _resolved_tree(value) for name, value in npm_entries.items()})
         case PackageManager.PNPM:
             return Overrides(("pnpm", "overrides"), dict(_flatten(npm_entries, ">")))
         case PackageManager.YARN:
@@ -173,33 +173,31 @@ def _resolved(value: object, peers: Mapping[str, str]) -> str:
     return peers.get(value.removeprefix("$"), value)
 
 
+def _resolved_tree(value: object) -> object:
+    """Replace npm `$dep` references that npm 11 misresolves during peer updates."""
+    nested = manifest.as_table(value)
+    if nested:
+        return {name: _resolved_tree(pin) for name, pin in nested.items()}
+    return _resolved(value, manifest.eslint_peers())
+
+
 def install_command(client: PackageManager, *, workspace: bool = False) -> str:
-    """Build the command that installs every ESLint peer at a resolvable version."""
-    specs = " ".join(f"{name}@{pin}" for name, pin in sorted(manifest.eslint_peers().items()))
+    """Build the script-free command that locks package.json's exact peers."""
     match client:
         case PackageManager.NPM:
-            return f"npm install -D --save-exact {specs}"
+            return "npm install --ignore-scripts --no-audit --no-fund"
         case PackageManager.PNPM:
-            root_flag = " -w" if workspace else ""
-            return f"pnpm add{root_flag} -D --save-exact {specs}"
+            _ = workspace
+            return "pnpm install --no-frozen-lockfile --ignore-scripts"
         case PackageManager.YARN:
-            return f"yarn add -D --exact {specs}"
+            return "yarn install --mode=skip-builds"
         case PackageManager.BUN:
-            return f"bun add -d --exact {specs}"
+            return "bun install --ignore-scripts"
 
 
 def install_argv(client: PackageManager, *, workspace: bool = False) -> Sequence[str]:
-    specs = tuple(f"{name}@{pin}" for name, pin in sorted(manifest.eslint_peers().items()))
-    match client:
-        case PackageManager.NPM:
-            return ("npm", "install", "-D", "--save-exact", *specs)
-        case PackageManager.PNPM:
-            root_flag = ("-w",) if workspace else ()
-            return ("pnpm", "add", *root_flag, "-D", "--save-exact", *specs)
-        case PackageManager.YARN:
-            return ("yarn", "add", "-D", "--exact", *specs)
-        case PackageManager.BUN:
-            return ("bun", "add", "-d", "--exact", *specs)
+    _ = workspace
+    return tuple(install_command(client).split())
 
 
 def exec_argv(client: PackageManager, *command: str) -> Sequence[str]:

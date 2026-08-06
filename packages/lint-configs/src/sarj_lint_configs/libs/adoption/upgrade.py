@@ -27,7 +27,16 @@ _INSTALL_REMEDIABLE_FINDING_IDS = frozenset(
     {
         "doctor.eslint.override",
         "doctor.eslint.peer",
-        "doctor.python.bundle-missing",
+        "doctor.python.legacy-in-project-tool",
+    }
+)
+_MANUAL_POSTFLIGHT_FINDING_IDS = frozenset(
+    {
+        "doctor.eslint.shadowed-config",
+        "doctor.precommit.rev",
+        "doctor.pyright.deprecated",
+        "doctor.ruff.authority",
+        "doctor.rule.retired",
     }
 )
 _INSTALL_MUTATED_NAMES: Final = frozenset(
@@ -201,7 +210,7 @@ def apply(plan: UpgradePlan, *, install: bool = True) -> int:
     """Apply one validated plan and restore touched files if any step fails."""
     if Version(plan.adopted.version) > Version(manifest.adopted_version()):
         return 2
-    blockers = unsafe_retired_findings(plan)
+    blockers = unsafe_retired_findings(plan) if changes_bundle_version(plan) else []
     if blockers:
         return 2
 
@@ -290,7 +299,13 @@ def _apply_and_validate(
     drifted = [finding for finding in findings if finding.level is doctor.Level.DRIFT]
     if not install:
         drifted = [finding for finding in drifted if not is_install_remediable(finding)]
+    drifted = [finding for finding in drifted if finding.id not in _MANUAL_POSTFLIGHT_FINDING_IDS]
     return 1 if drifted else 0
+
+
+def changes_bundle_version(plan: UpgradePlan) -> bool:
+    """Whether applying the plan crosses a rule-compatibility boundary."""
+    return Version(plan.adopted.version) < Version(manifest.adopted_version())
 
 
 def is_install_remediable(finding: doctor.Finding) -> bool:

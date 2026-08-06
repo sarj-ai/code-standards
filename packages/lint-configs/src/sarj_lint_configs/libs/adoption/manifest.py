@@ -340,10 +340,3 @@ def eslint_overrides() -> dict[str, object]:
         PEERS_JSON.read_text(encoding="utf-8")
     )
     return table_field(as_table(parsed), "npmOverrides")
-
-
-def eslint_install_command() -> str:
-    """Build the npm command that installs every ESLint peer at a resolvable version."""
-    peers = eslint_peers()
-    specs = " ".join(f"{name}@{pin}" for name, pin in sorted(peers.items()))
-    return f"npm install -D --save-exact {specs}"

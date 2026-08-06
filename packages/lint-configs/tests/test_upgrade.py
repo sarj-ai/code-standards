@@ -39,6 +39,12 @@ def _outdated_python_repo(root: Path) -> Path:
     return root
 
 
+def _add_legacy_in_project_tool(root: Path) -> None:
+    pyproject = root / "pyproject.toml"
+    current = pyproject.read_text(encoding="utf-8")
+    pyproject.write_text(f'{current}\n[dependency-groups]\ndev = ["sarj-lint-configs==0.1.0"]\n', encoding="utf-8")
+
+
 def test_upgrade_preview_is_read_only_and_names_every_change(tmp_path: Path) -> None:
     _outdated_python_repo(tmp_path)
     before = {path: path.read_bytes() for path in tmp_path.iterdir() if path.is_file()}
@@ -113,11 +119,11 @@ def test_upgrade_installs_only_ecosystems_adopted_by_the_manifest(tmp_path: Path
     assert plan.ecosystems.python_root is None
     assert plan.ecosystems.typescript_install_root is None
     precommit = next(contents for path, contents in plan.scaffold_plan.writes if path.name == ".pre-commit-config.yaml")
-    assert f"uvx --from sarj-lint-configs=={manifest.adopted_version()}" in precommit
+    assert f"uvx --isolated --python 3.14 --from sarj-lint-configs=={manifest.adopted_version()}" in precommit
     assert "uv run --frozen sarj-standards" not in precommit
 
 
-def test_upgrade_repairs_the_bundle_without_losing_manifest_extensions(tmp_path: Path) -> None:
+def test_upgrade_repairs_configs_without_requiring_a_consumer_bundle(tmp_path: Path) -> None:
     _outdated_python_repo(tmp_path)
 
     status = upgrade.apply(upgrade.build_plan(tmp_path), install=False)
@@ -126,9 +132,7 @@ def test_upgrade_repairs_the_bundle_without_losing_manifest_extensions(tmp_path:
     manifest_text = (tmp_path / manifest.MANIFEST_NAME).read_text(encoding="utf-8")
     assert f'version = "{manifest.adopted_version()}"' in manifest_text
     assert "[consumer]\nkeep = true" in manifest_text
-    assert {finding.id for finding in doctor.diagnose(tmp_path) if finding.level is doctor.Level.DRIFT} == {
-        "doctor.python.bundle-missing"
-    }
+    assert {finding.id for finding in doctor.diagnose(tmp_path) if finding.level is doctor.Level.DRIFT} == set()
 
 
 def test_legacy_upgrade_detects_and_persists_lefthook_manager(tmp_path: Path) -> None:
@@ -182,6 +186,7 @@ def test_upgrade_no_install_skips_dependency_install(monkeypatch: pytest.MonkeyP
 
 def test_upgrade_no_install_keeps_valid_config_with_pending_dependency_drift(tmp_path: Path) -> None:
     _outdated_python_repo(tmp_path)
+    _add_legacy_in_project_tool(tmp_path)
 
     status = cli.main(["update", "--offline", "--no-install", str(tmp_path)])
 
@@ -190,24 +195,40 @@ def test_upgrade_no_install_keeps_valid_config_with_pending_dependency_drift(tmp
         encoding="utf-8"
     )
     pending = upgrade.pending_install_findings(tmp_path)
-    assert {finding.id for finding in pending} == {"doctor.python.bundle-missing"}
+    assert {finding.id for finding in pending} == {"doctor.python.legacy-in-project-tool"}
 
 
 def test_upgrade_no_install_explains_incomplete_setup_and_next_command(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _outdated_python_repo(tmp_path)
+    _add_legacy_in_project_tool(tmp_path)
 
     status = cli.main(["upgrade", "--offline", "--no-install", "--dest", str(tmp_path)])
 
     output = capsys.readouterr().out
     assert status == 0
     assert "updated configuration:" in output
-    assert "setup is incomplete (1 dependency finding(s))" in output
-    assert "pending: doctor.python.bundle-missing" in output
-    assert "uv add --dev" in output
+    assert "setup is incomplete (1 setup command(s) skipped; 1 finding(s) pending)" in output
+    assert "pending: doctor.python.legacy-in-project-tool" in output
+    assert "uv remove --dev sarj-lint-configs" in output
     assert "then `sarj-standards doctor`" in output
     assert "upgraded:" not in output
+
+
+def test_update_no_install_prints_a_clean_typescript_lock_command(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / "package.json").write_text('{"name":"web"}\n', encoding="utf-8")
+    assert cli.main(["init", "--dest", str(tmp_path), "--no-install"]) == 0
+    _ = capsys.readouterr()
+
+    status = cli.main(["update", "--offline", "--no-install", str(tmp_path)])
+
+    output = capsys.readouterr().out
+    assert status == 0
+    assert "setup is incomplete (1 setup command(s) skipped; 0 finding(s) pending)" in output
+    assert "npm install --ignore-scripts --no-audit --no-fund" in output
 
 
 def test_upgrade_with_install_still_rolls_back_dependency_drift(
@@ -219,7 +240,7 @@ def test_upgrade_with_install_still_rolls_back_dependency_drift(
         doctor.Level.DRIFT,
         "pyproject.toml",
         "forced missing dependency",
-        "doctor.python.bundle-missing",
+        "doctor.python.legacy-in-project-tool",
     )
 
     def execute(_commands: object) -> int:
@@ -245,7 +266,7 @@ def test_upgrade_no_install_rolls_back_when_dependency_and_configuration_drift_r
             doctor.Level.DRIFT,
             "pyproject.toml",
             "forced missing dependency",
-            "doctor.python.bundle-missing",
+            "doctor.python.legacy-in-project-tool",
         ),
         doctor.Finding(doctor.Level.DRIFT, "eslint.config.mjs", "forced broken wiring", "doctor.eslint.wiring"),
     ]
@@ -257,6 +278,32 @@ def test_upgrade_no_install_rolls_back_when_dependency_and_configuration_drift_r
 
     assert upgrade.apply(upgrade.build_plan(tmp_path), install=False) == 1
     assert {path: path.read_bytes() for path in tmp_path.iterdir() if path.is_file()} == before
+
+
+@pytest.mark.parametrize(
+    "finding_id",
+    [
+        "doctor.eslint.shadowed-config",
+        "doctor.precommit.rev",
+        "doctor.pyright.deprecated",
+        "doctor.ruff.authority",
+        "doctor.rule.retired",
+    ],
+)
+def test_current_bundle_repairs_do_not_roll_back_for_manual_debt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, finding_id: str
+) -> None:
+    _outdated_python_repo(tmp_path)
+    assert upgrade.apply(upgrade.build_plan(tmp_path), install=False) == 0
+    plan = upgrade.build_plan(tmp_path)
+    finding = doctor.Finding(doctor.Level.DRIFT, "consumer.file", "manual migration remains", finding_id)
+
+    def diagnosed(_root: Path) -> list[doctor.Finding]:
+        return [finding]
+
+    monkeypatch.setattr(doctor, "diagnose", diagnosed)
+
+    assert upgrade.apply(plan, install=False) == 0
 
 
 def test_upgrade_check_explains_doctor_drift_when_bundle_is_current(
@@ -417,16 +464,14 @@ def test_upgrade_refreshes_every_doctor_owned_pin_site_without_thrashing(tmp_pat
     precommit = (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     workflow = (workflows / "standards.yml").read_text(encoding="utf-8")
     package_json = (tmp_path / "package.json").read_text(encoding="utf-8")
-    assert "uv run --frozen sarj-standards check --staged" in precommit
+    assert f"uvx --isolated --python 3.14 --from sarj-lint-configs=={lint_configs}" in precommit
     assert "sarj-standards-drift" not in precommit
     assert f"sarj-lint-configs=={lint_configs}" in workflow
     assert f"sarj-lint-configs=={lint_configs}" in package_json
     assert "verbose: true" in (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     assert f"sarj-python-lint=={python_lint}" in pyproject.read_text(encoding="utf-8")
     assert f"sarj-python-lint=={python_lint}" in (tmp_path / "requirements-dev.txt").read_text(encoding="utf-8")
-    assert {finding.id for finding in doctor.diagnose(tmp_path) if finding.level is doctor.Level.DRIFT} == {
-        "doctor.python.bundle-missing"
-    }
+    assert {finding.id for finding in doctor.diagnose(tmp_path) if finding.level is doctor.Level.DRIFT} == set()
 
 
 def test_upgrade_migrates_plain_official_remote_umbrella_hook(tmp_path: Path) -> None:

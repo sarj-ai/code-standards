@@ -2,7 +2,6 @@
 # consumer repos it was taken from as `repo A` and `repo B`; those labels are
 # stable throughout this file.
 line-length = 120
-target-version = "py314"
 extend-exclude = ["sdk"]
 
 [format]

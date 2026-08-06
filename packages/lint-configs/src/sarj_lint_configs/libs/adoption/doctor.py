@@ -16,6 +16,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, NamedTuple
 
 from sarj_lint_configs._meta import CONFIGS_DIR
+from sarj_lint_configs.libs.filesystem import is_link_like
 from sarj_lint_configs.libs.repository import ledger
 
 from . import hooks, manifest, packagemanager
@@ -180,7 +181,7 @@ def diagnose(root: Path) -> list[Finding]:
     findings = [*_check_manifest(root)]
     findings.extend(_check_hook_manager(root))
     findings.extend(_check_pin_files(root, files, installed))
-    findings.extend(_check_adopted_python_bundle(root, files, installed))
+    findings.extend(_check_legacy_in_project_launcher(root))
     findings.extend(_check_precommit_revs(root, files))
     if not _has_adopted_eslint(root):
         findings.extend(_check_eslint_plugin(root, files))
@@ -199,7 +200,7 @@ def diagnose_adoption_health(root: Path, selected: Sequence[Path] = ()) -> list[
     findings = [*_check_manifest(root)]
     findings.extend(_check_hook_manager(root))
     findings.extend(_check_pin_files(root, files, installed))
-    findings.extend(_check_adopted_python_bundle(root, files, installed))
+    findings.extend(_check_legacy_in_project_launcher(root))
     findings.extend(_check_precommit_revs(root, files))
     if not _has_adopted_eslint(root):
         findings.extend(_check_eslint_plugin(root, files))
@@ -555,67 +556,29 @@ def _check_pin_files(root: Path, files: Sequence[Path], installed: Mapping[str, 
                 )
 
 
-def _check_adopted_python_bundle(
-    root: Path,
-    files: Sequence[Path],
-    installed: Mapping[str, str],
-) -> Iterator[Finding]:
-    """Require the exact Python bundle that `init` installs for an adopted repo."""
+def _check_legacy_in_project_launcher(root: Path) -> Iterator[Finding]:
+    """Flag the pre-isolation dependency that couples Standards to consumer Python."""
     try:
         adopted = manifest.load(root)
     except OSError, TypeError, ValueError:
         return
-    if adopted is None or not set(adopted.configs).intersection(manifest.PYTHON_CONFIGS):
+    if adopted is None:
         return
     python_root = _manifest_destination(root, adopted.python_dest)
     if python_root is None:
         return
     pyproject = python_root / "pyproject.toml"
     text = _read(pyproject) if pyproject.is_file() else ""
-    exact = {
-        name
-        for match in _PIN.finditer(text)
-        if match.group("op") == "==" and (name := match.group("name")) and match.group("version") == installed.get(name)
-    }
-    # Exact-version local projects let source workspaces dogfood doctor without impossible self-dependencies.
-    exact.update(_local_bundle_projects(files, installed))
-    authority = "sarj-lint-configs"
-    missing = () if authority in exact else (authority,)
-    if not missing:
-        yield Finding(
-            Level.OK,
-            str(pyproject.relative_to(root)),
-            "contains the exact lint-configs pin that owns the transitive Sarj bundle",
-            "doctor.python.bundle",
-        )
+    if not any(match.group("name") == "sarj-lint-configs" for match in _PIN.finditer(text)):
         return
-    specs = " ".join(f"{name}=={installed[name]}" for name in missing)
     where = str(pyproject.relative_to(root))
     yield Finding(
         Level.DRIFT,
         where,
-        f"adoption manifest declares Python standards but exact bundle pins are missing: {', '.join(missing)}",
-        "doctor.python.bundle-missing",
-        f"run `uv add --dev {specs}` in {python_root.relative_to(root).as_posix() or '.'}",
+        "sarj-lint-configs is installed inside the consumer project; the isolated launcher owns the tool runtime",
+        "doctor.python.legacy-in-project-tool",
+        f"run `uv remove --dev sarj-lint-configs` in {python_root.relative_to(root).as_posix() or '.'}",
     )
-
-
-def _local_bundle_projects(files: Sequence[Path], installed: Mapping[str, str]) -> set[str]:
-    """Return exact-version Sarj distributions authored by this checkout."""
-    found: set[str] = set()
-    for path in files:
-        if path.name != "pyproject.toml":
-            continue
-        try:
-            document = manifest.as_table(tomllib.loads(_read(path)))
-        except OSError, tomllib.TOMLDecodeError:
-            continue
-        project = manifest.table_field(document, "project")
-        name = project.get("name")
-        version = project.get("version")
-        if isinstance(name, str) and isinstance(version, str) and installed.get(name) == version:
-            found.add(name)
-    return found
 
 
 def _is_pin_site(path: Path) -> bool:
@@ -816,6 +779,16 @@ def _check_adoption_wiring(root: Path) -> Iterator[Finding]:  # ruff: ignore[too
                 "run `sarj-standards update`",
             )
         elif target.read_bytes() != expected.read_bytes():
+            if is_link_like(target):
+                linked = target.resolve(strict=False)
+                yield Finding(
+                    Level.DRIFT,
+                    str(target.relative_to(root)),
+                    f"declared {name} config is a source-controlled link to {linked.relative_to(root) if linked.is_relative_to(root) else linked} and differs from the executing bundle",
+                    "doctor.config.source-drift",
+                    "update or rebase the Standards source checkout; automatic repair will not replace a source-controlled link",
+                )
+                continue
             yield Finding(
                 Level.DRIFT,
                 str(target.relative_to(root)),

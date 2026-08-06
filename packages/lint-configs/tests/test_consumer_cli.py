@@ -44,6 +44,11 @@ class _CommandArgs(Protocol):
     cmd: str
 
 
+class _CheckArgs(Protocol):
+    repair: bool
+    no_install: bool
+
+
 def _help(*parts: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, "-m", "sarj_lint_configs", *parts, "--help"],
@@ -238,7 +243,9 @@ def test_analyze_cli_never_invokes_external_tools(
 def test_check_without_paths_runs_the_complete_check(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: list[str] = []
 
-    def verify(_args: object) -> int:
+    def verify(args: _CheckArgs) -> int:
+        assert args.repair is False
+        assert args.no_install is False
         seen.append("verify")
         return 7
 

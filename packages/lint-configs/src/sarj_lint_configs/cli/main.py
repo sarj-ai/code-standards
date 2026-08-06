@@ -76,6 +76,7 @@ class _Args(argparse.Namespace):
     rules_cmd: str = ""
     hooks_cmd: str = ""
     no_install: bool = False
+    repair: bool = False
     profile: manifest.Profile | None = None
     output_format: str = "text"
     offline: bool = False
@@ -239,8 +240,9 @@ def cmd_doctor(args: _Args) -> int:
     from sarj_lint_configs import doctor, upgrade  # ruff: ignore[import-outside-top-level] — lazy route
 
     root = _resolve_dest(args.dest)
-    repair: bool = args.repair  # pyright: ignore[reportAny] -- argparse namespace is populated by this command parser.
+    repair = args.repair
     no_install: bool = args.no_install
+    repair_status = 0
     if repair:
         try:
             adopted = manifest.load(root)
@@ -252,7 +254,10 @@ def cmd_doctor(args: _Args) -> int:
             return 2
         repair_status = upgrade.apply(upgrade.build_plan(root), install=not no_install)
         if repair_status:
-            return repair_status
+            print(
+                "error: automatic repair did not converge; tracked configuration changes were restored",
+                file=sys.stderr,
+            )
     findings = doctor.diagnose(root)
     if repair and no_install:
         findings = [
@@ -307,8 +312,8 @@ def cmd_doctor(args: _Args) -> int:
         for remediation in remediations:
             print(f"fix: {remediation}")
     if invalid:
-        return 2
-    return 1 if drifted or unadopted else 0
+        return max(repair_status, 2)
+    return max(repair_status, 1 if drifted or unadopted else 0)
 
 
 def cmd_upgrade(args: _Args) -> int:
@@ -333,12 +338,10 @@ def cmd_upgrade(args: _Args) -> int:
                 file=sys.stderr,
             )
             return 2
+        from sarj_lint_configs.libs.adoption import launcher  # ruff: ignore[import-outside-top-level] -- lazy route
+
         command = [
-            executable,
-            "--refresh",
-            "--from",
-            "sarj-lint-configs",
-            "sarj-standards",
+            *launcher.argv(executable=executable, refresh=True),
             "upgrade",
             "--offline",
             "--dest",
@@ -370,7 +373,7 @@ def cmd_upgrade(args: _Args) -> int:
     except (OSError, TypeError, ValueError) as exc:
         print(f"error: cannot plan upgrade: {exc}", file=sys.stderr)
         return 2
-    blockers = upgrade.unsafe_retired_findings(plan)
+    blockers = upgrade.unsafe_retired_findings(plan) if upgrade.changes_bundle_version(plan) else []
     if blockers:
         for finding in blockers:
             print(f"error: {finding.where} -- {finding.detail}", file=sys.stderr)
@@ -397,21 +400,28 @@ def cmd_upgrade(args: _Args) -> int:
     status = upgrade.apply(plan, install=not args.no_install)
     if status:
         print("error: upgrade failed; tracked configuration files were restored", file=sys.stderr)
+        remaining = [finding for finding in doctor.diagnose(root) if finding.level is doctor.Level.DRIFT]
+        for finding in remaining:
+            print(f"error: {finding.id} {finding.where} -- {finding.detail}", file=sys.stderr)
+        for remediation in dict.fromkeys(finding.remediation for finding in remaining if finding.remediation):
+            print(f"fix: {remediation}", file=sys.stderr)
         return status
     pending = upgrade.pending_install_findings(root) if args.no_install else []
-    if pending:
+    skipped_commands = (
+        lifecycle.install_commands(root, plan.ecosystems, hook_manager=plan.adopted.hook_manager)
+        if args.no_install
+        else []
+    )
+    if pending or skipped_commands:
         print(
             f"updated configuration: {root} now uses standards {__version__};"
-            f" setup is incomplete ({len(pending)} dependency finding(s))"
+            f" setup is incomplete ({len(skipped_commands)} setup command(s) skipped;"
+            f" {len(pending)} finding(s) pending)"
         )
         for finding in pending:
             print(f"pending: {finding.id} {finding.where} -- {finding.detail}")
         print("next: run the skipped setup command(s), then `sarj-standards doctor`:")
-        for command in lifecycle.install_commands(
-            root,
-            plan.ecosystems,
-            hook_manager=plan.adopted.hook_manager,
-        ):
+        for command in skipped_commands:
             print(f"      {shlex.join(command.argv)}  (in {command.cwd})")
         return 0
     print(f"upgraded: {root} now uses standards {__version__}")
@@ -496,8 +506,8 @@ def cmd_init(args: _Args) -> int:
         print("\nnext:  dependency and hook installation was skipped; run:")
         for command in init_plan.install_commands:
             print(f"       {shlex.join(command.argv)}  (in {command.cwd})")
-    print("\nafter checkout and frozen dependency installation, add this CI step:\n")
-    print(service.scaffold.ci_snippet(plan, version=manifest.adopted_version()))
+    print("\nnext: generate a complete pinned GitHub Actions workflow with:")
+    print(f"      sarj-standards show ci {root}")
     return 0
 
 

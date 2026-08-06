@@ -4,7 +4,6 @@
   // MUST be JSON(C), not TOML: pyright's `extends` silently ignores a bare-key
   // .toml file (it loads JSON only), so a .toml strict config never actually
   // applies — the type checker just runs on its defaults. JSONC keeps comments.
-  "pythonVersion": "3.14",
   "typeCheckingMode": "strict",
   "strictListInference": true,
   "strictDictionaryInference": true,

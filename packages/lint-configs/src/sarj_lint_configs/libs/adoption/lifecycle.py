@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- commands are fixed argv assembled from detected ecosystems.
 import sys
@@ -54,18 +55,6 @@ def install_commands(
     hook_manager: manifest.HookManager = "pre-commit",
 ) -> list[Command]:
     commands: list[Command] = []
-    if ecosystems.python_root is not None:
-        versions = manifest.installed_versions()
-        authority = "sarj-lint-configs"
-        bundle = (f"{authority}=={versions[authority]}",)
-        release_age_exemptions = ("--exclude-newer-package", f"{authority}=2099-12-31")
-        commands.append(
-            Command(
-                "Python standards",
-                ("uv", "add", "--dev", *release_age_exemptions, *bundle),
-                ecosystems.python_root,
-            )
-        )
     if ecosystems.typescript_root is not None:
         install_root = ecosystems.typescript_install_root or ecosystems.typescript_root
         is_workspace = install_root != ecosystems.typescript_root or (install_root / "pnpm-workspace.yaml").is_file()
@@ -76,23 +65,27 @@ def install_commands(
                 install_root,
             )
         )
-    if (root / ".git").exists() and hook_manager == "pre-commit":
-        hook_argv = (
-            (
-                "uv",
-                "run",
-                "--project",
-                str(ecosystems.python_root),
-                "pre-commit",
-                "install",
-                "--hook-type",
-                "pre-commit",
+    if ecosystems.python_root is not None and _has_legacy_in_project_bundle(ecosystems.python_root):
+        commands.append(
+            Command(
+                "remove legacy in-project standards",
+                ("uv", "remove", "--dev", "sarj-lint-configs"),
+                ecosystems.python_root,
             )
-            if ecosystems.python_root is not None
-            else ("uvx", "--from", "pre-commit", "pre-commit", "install", "--hook-type", "pre-commit")
         )
+    if (root / ".git").exists() and hook_manager == "pre-commit":
+        hook_argv = ("uvx", "--from", "pre-commit", "pre-commit", "install", "--hook-type", "pre-commit")
         commands.append(Command("pre-commit hooks", hook_argv, root))
     return commands
+
+
+def _has_legacy_in_project_bundle(python_root: Path) -> bool:
+    pyproject = python_root / "pyproject.toml"
+    try:
+        text = pyproject.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return re.search(r"(?i)\bsarj[-_]lint[-_]configs\s*(?:\[[^]]+\])?\s*(?:==|>=|<=|~=|!=|>|<|@)", text) is not None
 
 
 def verification_commands(ecosystems: scaffold.Ecosystems) -> list[Command]:
@@ -101,14 +94,8 @@ def verification_commands(ecosystems: scaffold.Ecosystems) -> list[Command]:
         for project in _python_verification_roots(ecosystems.python_root):
             commands.extend(
                 (
-                    Command(
-                        "Ruff", ("uv", "run", "--project", str(project), "--frozen", "ruff", "check", "."), project
-                    ),
-                    Command(
-                        "BasedPyright",
-                        ("uv", "run", "--project", str(project), "--frozen", "basedpyright"),
-                        project,
-                    ),
+                    Command("Ruff", (_environment_binary("ruff"), "check", "."), project),
+                    Command("BasedPyright", (_environment_binary("basedpyright"),), project),
                 )
             )
     if ecosystems.typescript_root is not None:
@@ -264,9 +251,8 @@ def execute(commands: Iterable[Command]) -> int:
 
 
 def _command_environment(command: Command) -> dict[str, str] | None:
-    if command.argv[0] not in {"uv", "uvx"}:
-        return None
-    environment = os.environ.copy()  # ruff: ignore[banned-api] -- nested uv must not inherit the package runner's venv.
+    _ = command
+    environment = os.environ.copy()  # ruff: ignore[banned-api] -- tools must not mistake the isolated runner for the consumer environment.
     environment.pop("VIRTUAL_ENV", None)
     return environment
 

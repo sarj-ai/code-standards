@@ -106,6 +106,16 @@ def test_every_eslint_import_has_a_pinned_peer() -> None:
     assert imported - pinned == set(), "eslint.strict.mjs imports a package with no pin in eslint.peers.json"
 
 
+def test_eslint_config_degrades_cleanly_without_a_type_project() -> None:
+    text = ESLINT_STRICT.read_text(encoding="utf-8")
+
+    assert 'existsSync("tsconfig.json") || existsSync("jsconfig.json")' in text
+    assert "projectService: HAS_TYPE_PROJECT" in text
+    assert "UNTYPED_RULE_OVERRIDES" in text
+    assert '"**/eslint.strict.mjs"' in text
+    assert '"**/eslint.config.mjs"' in text
+
+
 def test_peer_pins_are_exact_versions() -> None:
     """A range would reintroduce the failure the file exists to fix.
 
@@ -129,7 +139,7 @@ def test_peers_manifest_carries_the_overrides_that_make_it_installable() -> None
 def test_peers_command_prints_one_install_command() -> None:
     proc = _cli("peers")
     assert proc.returncode == 0
-    assert "npm install -D --save-exact" in proc.stdout
+    assert "npm install --ignore-scripts --no-audit --no-fund" in proc.stdout
     for name in manifest.eslint_peers():
         assert name in proc.stdout
 
@@ -327,7 +337,31 @@ def test_init_wires_an_empty_pyright_config(tmp_path: Path) -> None:
     proc = _cli("init", "--dest", str(tmp_path), "--no-install")
 
     assert proc.returncode == 0, proc.stderr
-    assert json.loads((tmp_path / "pyrightconfig.json").read_text()) == {"extends": ".pyright-strict.json"}
+    assert json.loads((tmp_path / "pyrightconfig.json").read_text()) == {
+        "extends": ".pyright-strict.json",
+        "pythonVersion": "3.14",
+    }
+
+
+def test_init_separates_the_tool_runtime_from_an_older_consumer_target(tmp_path: Path) -> None:
+    _python_repo(tmp_path)
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        pyproject.read_text(encoding="utf-8").replace('requires-python = ">=3.14"', 'requires-python = ">=3.10"'),
+        encoding="utf-8",
+    )
+
+    proc = _cli("init", "--dest", str(tmp_path), "--no-install")
+
+    assert proc.returncode == 0, proc.stderr
+    parsed: object = json.loads(  # pyright: ignore[reportAny] -- JSON is narrowed at the boundary below.
+        (tmp_path / "pyrightconfig.json").read_text(encoding="utf-8")
+    )
+    pyright = manifest.as_table(parsed)
+    assert pyright["pythonVersion"] == "3.10"
+    assert "target-version" not in (tmp_path / ".ruff-strict.toml").read_text(encoding="utf-8")
+    hook = (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+    assert "uvx --isolated --python 3.14" in hook
 
 
 def test_init_application_profile_selects_application_artifacts(tmp_path: Path) -> None:
@@ -370,7 +404,7 @@ def test_application_ruff_config_rejects_preferred_stack_import(tmp_path: Path) 
     assert "LIB001" in proc.stdout
 
 
-def test_init_installs_dependencies_by_default(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_init_keeps_standards_out_of_the_consumer_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _ = _python_repo(tmp_path)
     commands: list[lifecycle.Command] = []
 
@@ -381,17 +415,8 @@ def test_init_installs_dependencies_by_default(monkeypatch: pytest.MonkeyPatch, 
     monkeypatch.setattr(lifecycle, "execute", execute)
 
     assert main(["init", "--dest", str(tmp_path)]) == 0
-    assert commands[0].argv == (
-        "uv",
-        "add",
-        "--dev",
-        "--exclude-newer-package",
-        "sarj-lint-configs=2099-12-31",
-        f"sarj-lint-configs=={__version__}",
-        "sarj-python-lint==0.51.3",
-        "sarj-sql-lint==0.6.4",
-        "sarj-iac-lint==0.6.1",
-    )
+    assert commands == []
+    assert "sarj-lint-configs" not in (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
 
 
 def test_init_no_install_prints_every_skipped_setup_command(tmp_path: Path) -> None:
@@ -402,9 +427,10 @@ def test_init_no_install_prints_every_skipped_setup_command(tmp_path: Path) -> N
 
     assert proc.returncode == 0, proc.stderr
     assert "dependency and hook installation was skipped" in proc.stdout
-    assert "uv add --dev" in proc.stdout
-    assert f"sarj-lint-configs=={__version__}" in proc.stdout
+    assert "uv add --dev" not in proc.stdout
     assert "pre-commit install" in proc.stdout
+    hook = (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+    assert f"--isolated --python 3.14 --from sarj-lint-configs=={__version__}" in hook
 
 
 def test_inspect_reports_detected_adoption(tmp_path: Path) -> None:
@@ -436,8 +462,7 @@ def test_init_writes_a_typescript_entrypoint_with_an_override_seam(tmp_path: Pat
 @pytest.mark.parametrize(
     "expected",
     [
-        pytest.param("npm install -D --save-exact", id="install-command"),
-        pytest.param("eslint-plugin-unicorn@", id="pinned-peer"),
+        pytest.param("npm install --ignore-scripts", id="install-command"),
         pytest.param("overrides", id="npm-overrides-block"),
         pytest.param("eslint-plugin-react", id="the-package-the-overrides-unblock"),
     ],
@@ -447,13 +472,18 @@ def test_init_gives_a_typescript_repo_everything_npm_needs(tmp_path: Path, expec
     _ = _typescript_repo(tmp_path)
     proc = _cli("init", "--dest", str(tmp_path))
     assert expected in proc.stdout
+    parsed: object = json.loads(  # pyright: ignore[reportAny] -- untyped stdlib boundary
+        (tmp_path / "package.json").read_text(encoding="utf-8")
+    )
+    package = manifest.as_table(parsed)
+    assert manifest.table_field(package, "devDependencies") == manifest.eslint_peers()
 
 
 def test_init_prints_a_ci_snippet_with_the_unified_gate(tmp_path: Path) -> None:
     _ = _python_repo(tmp_path)
     proc = _cli("init", "--dest", str(tmp_path))
-    assert "sarj-standards check" in proc.stdout
-    assert "sarj-standards analyze" not in proc.stdout
+    assert "sarj-standards show ci" in proc.stdout
+    assert "add this CI step" not in proc.stdout
 
 
 def test_ci_snippet_for_a_typescript_repo_does_not_require_a_python_project(
@@ -462,10 +492,10 @@ def test_ci_snippet_for_a_typescript_repo_does_not_require_a_python_project(
     _ = _typescript_repo(tmp_path)
     proc = _cli("init", "--dest", str(tmp_path))
     assert "uv run --frozen" not in proc.stdout
-    assert "uvx --from sarj-lint-configs==" in proc.stdout
+    assert "sarj-standards show ci" in proc.stdout
 
 
-def test_nested_python_project_is_used_by_generated_hooks_and_ci(tmp_path: Path) -> None:
+def test_nested_python_project_uses_the_same_isolated_launcher(tmp_path: Path) -> None:
     python = tmp_path / "python"
     python.mkdir()
     _python_repo(python)
@@ -474,8 +504,10 @@ def test_nested_python_project_is_used_by_generated_hooks_and_ci(tmp_path: Path)
     hook = next(contents for path, contents in plan.writes if path.name == ".pre-commit-config.yaml")
     snippet = scaffold.ci_snippet(plan, version=manifest.adopted_version())
 
-    assert "uv run --project python --frozen sarj-standards" in hook
-    assert "uv run --project python --frozen sarj-standards" in snippet
+    expected = f"uvx --isolated --python 3.14 --from sarj-lint-configs=={manifest.adopted_version()}"
+    assert expected in hook
+    assert expected in snippet
+    assert "--project python" not in hook
 
 
 def test_init_is_idempotent(tmp_path: Path) -> None:
@@ -733,7 +765,9 @@ def test_init_writes_the_npm_overrides_into_package_json(tmp_path: Path) -> None
 
     parsed: object = json.loads((tmp_path / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny] — untyped stdlib boundary
     written = manifest.as_table(parsed)
-    assert manifest.table_field(written, "overrides") == manifest.eslint_overrides()
+    overrides = manifest.table_field(written, "overrides")
+    assert set(overrides) == set(manifest.eslint_overrides())
+    assert manifest.table_field(overrides, "eslint-plugin-react")["eslint"] == manifest.eslint_peers()["eslint"]
     assert written["name"] == "web", "the consumer's own keys must survive the merge"
 
 
@@ -760,7 +794,7 @@ def test_init_leaves_a_package_json_that_already_has_the_overrides_alone(
     second = _cli("init", "--dest", str(tmp_path))
     assert second.returncode == 0
     assert (tmp_path / "package.json").read_text(encoding="utf-8") == before
-    assert "already carries the npm peer overrides" in second.stdout
+    assert "already pins the tested ESLint peers and npm overrides" in second.stdout
 
 
 def test_init_wires_the_subproject_that_actually_installs_eslint(tmp_path: Path) -> None:
@@ -829,7 +863,6 @@ def test_the_generated_precommit_hook_actually_runs(tmp_path: Path) -> None:
     _ = _python_repo(tmp_path)
     _ = (tmp_path / "src" / "app.py").write_text("VALUE: int = 1\n")
     assert _cli("init", "--dest", str(tmp_path)).returncode == 0
-    _add_python_bundle_pins(tmp_path)
     environment = {
         name: value
         for name, value in os.environ.items()  # ruff: ignore[banned-api] -- isolate fixture Git from enclosing hooks.
@@ -931,6 +964,21 @@ def test_doctor_repair_converges_configuration_without_installing(tmp_path: Path
     assert "stages: [pre-commit]" in config.read_text(encoding="utf-8")
 
 
+def test_doctor_repair_restores_owned_config_while_reporting_manual_retired_rule_debt(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    assert _cli("init", "--dest", str(tmp_path), "--no-install").returncode == 0
+    config = tmp_path / ".ruff-strict.toml"
+    config.unlink()
+    retired = "@sarj/no-" + "unsafe-cast"
+    (tmp_path / "legacy-eslint.config.mjs").write_text(f'export default [{{ rules: {{ "{retired}": "off" }} }}];\n')
+
+    repaired = _cli("doctor", "--repair", "--no-install", "--dest", str(tmp_path))
+
+    assert repaired.returncode == 1
+    assert config.is_file()
+    assert "doctor.rule.retired" in repaired.stdout
+
+
 @pytest.mark.parametrize("path", ["requirements.txt", "requirements-dev.in", "requirements/prod.txt"])
 def test_generated_check_hook_includes_application_requirement_manifests(tmp_path: Path, path: str) -> None:
     _ = _python_repo(tmp_path)
@@ -1022,13 +1070,65 @@ def test_init_refuses_to_discard_custom_local_hook_scope(tmp_path: Path) -> None
     assert config.read_bytes() == before
 
 
+def test_init_preserves_zero_indented_precommit_repository_style(tmp_path: Path) -> None:
+    _python_repo(tmp_path)
+    config = tmp_path / ".pre-commit-config.yaml"
+    config.write_text(
+        "default_language_version:\n  python: python3\nrepos:\n- repo: local\n  hooks:\n"
+        "  - id: existing\n    name: existing\n    entry: true\n    language: system\n",
+        encoding="utf-8",
+    )
+
+    assert _cli("init", "--dest", str(tmp_path), "--no-install").returncode == 0
+
+    parsed: object = yaml.safe_load(config.read_text(encoding="utf-8"))  # pyright: ignore[reportAny] -- narrowed below.
+    repositories = manifest.list_field(manifest.as_table(parsed), "repos")
+    assert len(repositories) == 2
+    assert adoption_hooks.precommit_runs_staged_check(tmp_path)
+
+
+def test_init_refuses_to_create_duplicate_ruff_additive_keys(tmp_path: Path) -> None:
+    _python_repo(tmp_path)
+    pyproject = tmp_path / "pyproject.toml"
+    current = pyproject.read_text(encoding="utf-8")
+    pyproject.write_text(
+        f'{current}\n[tool.ruff.lint]\nselect = ["E4"]\nextend-select = ["ASYNC"]\n',
+        encoding="utf-8",
+    )
+    before = pyproject.read_bytes()
+
+    result = _cli("init", "--dest", str(tmp_path), "--no-install")
+
+    assert result.returncode == 2
+    assert "defines both select/extend-select" in result.stderr
+    assert pyproject.read_bytes() == before
+
+
+def test_init_deduplicates_redundant_select_all_before_extending_ruff(tmp_path: Path) -> None:
+    _python_repo(tmp_path)
+    pyproject = tmp_path / "pyproject.toml"
+    current = pyproject.read_text(encoding="utf-8")
+    pyproject.write_text(
+        f'{current}\n[tool.ruff.lint]\nselect = ["ALL"]\nextend-select = ["ASYNC"]\n',
+        encoding="utf-8",
+    )
+
+    result = _cli("init", "--dest", str(tmp_path), "--no-install")
+
+    assert result.returncode == 0, result.stderr
+    parsed = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    tool = manifest.table_field(manifest.as_table(parsed), "tool")
+    ruff = manifest.table_field(tool, "ruff")
+    assert "select" not in manifest.table_field(ruff, "lint")
+
+
 def test_a_typescript_only_precommit_hook_does_not_invoke_uv_run(tmp_path: Path) -> None:
     _ = _typescript_repo(tmp_path)
     assert _cli("init", "--dest", str(tmp_path)).returncode == 0
 
     generated = (tmp_path / ".pre-commit-config.yaml").read_text()
     assert "uv run --frozen" not in generated
-    assert f"uvx --from sarj-lint-configs=={__version__}" in generated
+    assert f"uvx --isolated --python 3.14 --from sarj-lint-configs=={__version__}" in generated
     # `check` runs the Python/SQL/IaC registries; a TypeScript repo has nothing
     # to feed them, and a hook that lints nothing is a hook that hides.
     assert "sarj-standards check" in generated
@@ -1098,25 +1198,40 @@ def test_detection_ignores_node_modules(tmp_path: Path) -> None:
     assert scaffold.detect(tmp_path).typescript is False
 
 
-def test_doctor_detects_bundle_pins_skipped_by_init_no_install(tmp_path: Path) -> None:
+def test_doctor_accepts_isolated_python_adoption_without_consumer_bundle(tmp_path: Path) -> None:
     _ = _python_repo(tmp_path)
     assert _cli("init", "--dest", str(tmp_path), "--no-install").returncode == 0
     proc = _cli("doctor", "--dest", str(tmp_path))
+    assert proc.returncode == 0, proc.stdout
+    assert "doctor.python.legacy-in-project-tool" not in proc.stdout
+
+
+def test_doctor_explains_source_controlled_config_drift(tmp_path: Path) -> None:
+    _python_repo(tmp_path)
+    assert _cli("init", "--dest", str(tmp_path), "--no-install").returncode == 0
+    target = tmp_path / ".ruff-strict.toml"
+    source = tmp_path / "canonical-ruff.toml"
+    source.write_text("stale\n", encoding="utf-8")
+    target.unlink()
+    target.symlink_to(source.name)
+
+    proc = _cli("doctor", "--dest", str(tmp_path))
+
     assert proc.returncode == 1, proc.stdout
-    assert "doctor.python.bundle-missing" in proc.stdout
-    assert f"sarj-lint-configs=={__version__}" in proc.stdout
-    assert "uv add --dev" in proc.stdout
+    assert "doctor.config.source-drift" in proc.stdout
+    assert "update or rebase the Standards source checkout" in proc.stdout
 
 
-def test_doctor_accepts_the_exact_installed_python_bundle(tmp_path: Path) -> None:
+def test_doctor_migrates_the_exact_legacy_in_project_bundle(tmp_path: Path) -> None:
     _ = _python_repo(tmp_path)
     assert _cli("init", "--dest", str(tmp_path), "--no-install").returncode == 0
     _add_python_bundle_pins(tmp_path)
 
     proc = _cli("doctor", "--dest", str(tmp_path))
 
-    assert proc.returncode == 0, proc.stdout
-    assert "doctor.python.bundle" in proc.stdout
+    assert proc.returncode == 1, proc.stdout
+    assert "doctor.python.legacy-in-project-tool" in proc.stdout
+    assert "uv remove --dev sarj-lint-configs" in proc.stdout
 
 
 def test_doctor_accepts_exact_local_bundle_projects_for_source_workspace(tmp_path: Path) -> None:
@@ -1139,7 +1254,7 @@ def test_doctor_accepts_exact_local_bundle_projects_for_source_workspace(tmp_pat
     proc = _cli("doctor", "--dest", str(tmp_path))
 
     assert proc.returncode == 0, proc.stdout
-    assert "doctor.python.bundle" in proc.stdout
+    assert "doctor.python.legacy-in-project-tool" not in proc.stdout
 
 
 @pytest.mark.parametrize("contents", ["{\n", "[]\n"], ids=["malformed", "non-object"])
@@ -1169,7 +1284,7 @@ def test_doctor_rejects_non_exact_python_bundle_range(tmp_path: Path) -> None:
 
     assert proc.returncode == 1, proc.stdout
     assert "exact `==` pins" in proc.stdout
-    assert "doctor.python.bundle-missing" in proc.stdout
+    assert "doctor.python.legacy-in-project-tool" in proc.stdout
 
 
 def test_doctor_catches_a_stale_pyproject_pin(tmp_path: Path) -> None:
@@ -1414,7 +1529,12 @@ def test_adopted_workspace_checks_the_install_root_not_nested_plugin_ranges(tmp_
     findings = doctor.diagnose(tmp_path)
 
     assert not [finding for finding in findings if finding.where.startswith("web/packages/legacy/package.json")]
-    assert [finding for finding in findings if finding.id == "doctor.eslint.peer"]
+    assert not [finding for finding in findings if finding.id == "doctor.eslint.peer"]
+    parsed: object = json.loads(  # pyright: ignore[reportAny] -- untyped stdlib boundary
+        (web / "package.json").read_text(encoding="utf-8")
+    )
+    install_package = manifest.as_table(parsed)
+    assert manifest.table_field(install_package, "devDependencies") == manifest.eslint_peers()
 
 
 def test_doctor_skips_vendored_trees(tmp_path: Path) -> None:
@@ -1701,7 +1821,11 @@ def test_init_safely_wires_existing_python_and_typescript_configs(tmp_path: Path
     pyright: dict[str, object] = json.loads(  # pyright: ignore[reportAny]
         (tmp_path / "pyrightconfig.json").read_text()
     )
-    assert pyright == {"typeCheckingMode": "standard", "extends": ".pyright-strict.json"}
+    assert pyright == {
+        "typeCheckingMode": "standard",
+        "extends": ".pyright-strict.json",
+        "pythonVersion": "3.14",
+    }
     eslint = (tmp_path / "eslint.config.mjs").read_text()
     assert 'import strict from "./eslint.strict.mjs"' in eslint
     assert "...strict" in eslint
@@ -1857,7 +1981,6 @@ def test_init_makes_existing_ruff_policy_additive_and_immediately_doctor_clean(t
     )
 
     proc = _cli("init", "--dest", str(tmp_path))
-    _add_python_bundle_pins(tmp_path)
 
     assert proc.returncode == 0, proc.stderr
     text = pyproject.read_text(encoding="utf-8")
