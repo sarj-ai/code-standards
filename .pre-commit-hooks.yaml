@@ -6,7 +6,7 @@
   # New rules can report without blocking for one release. Pre-commit normally
   # hides successful-hook output, so verbose keeps those warnings visible.
   verbose: true
-  additional_dependencies: ["sarj-lint-configs==0.51.0"]
+  additional_dependencies: ["sarj-lint-configs==0.52.0"]
 
 - id: sarj-no-sequential-await
   name: 'sarj-lint: no sequential `await` in for-loop'
@@ -173,6 +173,24 @@
 - id: sarj-prefer-immutable-module-constant
   name: 'sarj-lint: module constant exposes mutable collection state'
   entry: sarj-python-lint check --rule prefer-immutable-module-constant
+  language: python
+  types: [python]
+
+- id: sarj-prefer-self-documenting-constant
+  name: 'sarj-lint: constant comment is the sole source of a unit or HTTP status meaning'
+  entry: sarj-python-lint check --rule prefer-self-documenting-constant
+  language: python
+  types: [python]
+
+- id: sarj-no-duplicate-dunder-all-entry
+  name: 'sarj-lint: static package export surface contains a duplicate name'
+  entry: sarj-python-lint check --rule no-duplicate-dunder-all-entry
+  language: python
+  types: [python]
+
+- id: sarj-redundant-module-docstring
+  name: 'sarj-lint: module docstring only re-spells its file path'
+  entry: sarj-python-lint check --rule redundant-module-docstring
   language: python
   types: [python]
 

@@ -95,5 +95,8 @@
   "SARJ093": "prefer-nominal-id-types",
   "SARJ094": "fastapi-openapi-contract",
   "SARJ095": "no-hidden-constructor-fallback",
-  "SARJ096": "prefer-immutable-module-constant"
+  "SARJ096": "prefer-immutable-module-constant",
+  "SARJ097": "prefer-self-documenting-constant",
+  "SARJ098": "no-duplicate-dunder-all-entry",
+  "SARJ099": "redundant-module-docstring"
 }

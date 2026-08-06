@@ -10,7 +10,7 @@ uv tool install sarj-python-lint
 
 ```yaml
 - repo: https://github.com/sarj-ai/standards
-  rev: python-v0.49.0
+  rev: python-v0.50.0
   hooks:
     - id: sarj-no-sequential-await
     - id: sarj-inefficient-string-concat-in-loop
@@ -19,6 +19,9 @@ uv tool install sarj-python-lint
     - id: sarj-pydantic-at-boundaries
     - id: sarj-fastapi-openapi-contract            # SARJ094
     - id: sarj-no-hidden-constructor-fallback      # SARJ095 (warning)
+    - id: sarj-prefer-self-documenting-constant    # SARJ097 (warning)
+    - id: sarj-no-duplicate-dunder-all-entry       # SARJ098 (warning)
+    - id: sarj-redundant-module-docstring          # SARJ099 (warning)
     - id: sarj-prefer-class-row
     - id: sarj-prefer-timedelta-for-durations
     - id: sarj-prefer-struct-over-namedtuple
@@ -66,6 +69,35 @@ constructor warnings across two repositories, all three actionable. A pinned
 compatibility evidence rather than a precision claim. An environment-variable
 arm was rejected before shipping: it reported a public first-party library and
 two intentional LiteLLM integration constructors, all non-actionable.
+
+### Self-documenting constants
+
+`SARJ097` warns when an immediately attached, same-indent comment is the only
+place a numeric module or class constant names its unit. It also replaces bare
+HTTP integers in commented `*STATUS_CODES` collections with a recommendation to
+use `http.HTTPStatus` members. A unit already present in the constant name and
+unit-bearing values such as `timedelta(seconds=10)` are accepted.
+
+The first release intentionally avoids judging boolean-policy comments or
+trying to delete rationale. It does not autofix: diagnostics ask callers to
+encode the proven fact in the name or value while preserving compatibility,
+security and vendor-contract reasoning that code cannot express.
+
+### Export and module-docstring noise
+
+`SARJ098` reports an exact duplicate string inside one static package
+`__all__` declaration. It deliberately accepts explicit re-export facades:
+imports bind the package namespace, while `__all__` defines its supported
+export surface. Dynamic or subsequently mutated export lists are skipped, and
+there is no autofix because export order and comments can be observable.
+
+`SARJ099` warns only when a one-sentence module docstring re-spells its filename
+and immediate package path, such as `element.py` saying “Element class for
+element operations.” Package initializers, tests, generated files, structured
+or multiline docs, and prose carrying an invariant, consumer, compatibility
+constraint, value or external reference are excluded. In particular, the rule
+keeps architecture statements about canonical JSON/SARIF diagnostics. It does
+not overlap `SARJ085`, which remains the owner of class-name restatements.
 
 ### Test-quality rules (0.15.0)
 
