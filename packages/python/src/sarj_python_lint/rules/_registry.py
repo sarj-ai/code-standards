@@ -30,6 +30,7 @@ from sarj_python_lint.rules.no_comment_cruft import NoCommentCruft
 from sarj_python_lint.rules.no_cors_wildcard_with_credentials import (
     NoCorsWildcardWithCredentials,
 )
+from sarj_python_lint.rules.no_duplicate_dunder_all_entry import NoDuplicateDunderAllEntry
 from sarj_python_lint.rules.no_fat_try_blocks import NoFatTryBlocks
 from sarj_python_lint.rules.no_file_level_escape_hatch_noqa import NoFileLevelEscapeHatchNoqa
 from sarj_python_lint.rules.no_file_level_suppression import NoFileLevelSuppression
@@ -88,6 +89,9 @@ from sarj_python_lint.rules.prefer_non_nullable_collection import (
 )
 from sarj_python_lint.rules.prefer_or_pattern import PreferOrPattern
 from sarj_python_lint.rules.prefer_real_store_in_tests import PreferRealStoreInTests
+from sarj_python_lint.rules.prefer_self_documenting_constant import (
+    PreferSelfDocumentingConstant,
+)
 from sarj_python_lint.rules.prefer_self_type_annotation import PreferSelfTypeAnnotation
 from sarj_python_lint.rules.prefer_single_sentence_comment import PreferSingleSentenceComment
 from sarj_python_lint.rules.prefer_str_enum import PreferStrEnum
@@ -105,6 +109,7 @@ from sarj_python_lint.rules.prefer_walrus_stream_loop import PreferWalrusStreamL
 from sarj_python_lint.rules.pydantic_at_boundaries import PydanticAtBoundaries
 from sarj_python_lint.rules.redundant_class_docstring import RedundantClassDocstring
 from sarj_python_lint.rules.redundant_docstring import RedundantDocstring
+from sarj_python_lint.rules.redundant_module_docstring import RedundantModuleDocstring
 from sarj_python_lint.rules.require_port_for_service import RequirePortForService
 from sarj_python_lint.rules.restated_test_docstring import RestatedTestDocstring
 from sarj_python_lint.rules.single_public_export import SinglePublicExport
@@ -200,8 +205,11 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         PreferWalrusComprehensionFilter.id: PreferWalrusComprehensionFilter,
         PreferWalrusStreamLoop.id: PreferWalrusStreamLoop,
         PreferSelfTypeAnnotation.id: PreferSelfTypeAnnotation,
+        PreferSelfDocumentingConstant.id: PreferSelfDocumentingConstant,
+        NoDuplicateDunderAllEntry.id: NoDuplicateDunderAllEntry,
         DuplicatedOverrideDocstring.id: DuplicatedOverrideDocstring,
         RedundantClassDocstring.id: RedundantClassDocstring,
+        RedundantModuleDocstring.id: RedundantModuleDocstring,
         DocstringArgsRestateSignature.id: DocstringArgsRestateSignature,
         DocstringReturnsRestateSignature.id: DocstringReturnsRestateSignature,
         RestatedTestDocstring.id: RestatedTestDocstring,

@@ -54,6 +54,16 @@ def test_one_novel_word_keeps_the_docstring():
     assert _cls("ReservationSummary", "Summary of a reservation, excluding cancelled holds.") == []
 
 
+def test_consumer_and_versioning_contract_keeps_the_docstring() -> None:
+    assert (
+        _cls(
+            "AnalysisReport",
+            "Versioned result for IDEs, CI annotations, and programmatic consumers.",
+        )
+        == []
+    )
+
+
 def test_nested_class_is_checked():
     src = 'class Outer:\n    class RetryPolicy:\n        """The retry policy."""\n\n        x: int = 1\n'
     assert len(_check(src)) == 1

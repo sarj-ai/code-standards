@@ -108,6 +108,7 @@
       "no-aggregation-in-store-query",
       "no-comment-cruft",
       "no-cors-wildcard-with-credentials",
+      "no-duplicate-dunder-all-entry",
       "no-fat-try-blocks",
       "no-file-level-escape-hatch-noqa",
       "no-file-level-suppression",
@@ -147,6 +148,7 @@
       "prefer-non-nullable-collection",
       "prefer-or-pattern",
       "prefer-real-store-in-tests",
+      "prefer-self-documenting-constant",
       "prefer-self-type-annotation",
       "prefer-single-sentence-comment",
       "prefer-str-enum",
@@ -158,6 +160,7 @@
       "pydantic-at-boundaries",
       "redundant-class-docstring",
       "redundant-docstring",
+      "redundant-module-docstring",
       "require-port-for-service",
       "restated-test-docstring",
       "single-public-export",
@@ -279,7 +282,10 @@
       "SARJ093",
       "SARJ094",
       "SARJ095",
-      "SARJ096"
+      "SARJ096",
+      "SARJ097",
+      "SARJ098",
+      "SARJ099"
     ],
     "sql": [
       "SARJ101",
