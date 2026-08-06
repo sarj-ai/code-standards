@@ -84,6 +84,50 @@ def test_provider_deletion_policy_prevent_is_protection(resource_type: str):
     assert _check(src) == []
 
 
+@pytest.mark.parametrize(
+    "resource_type",
+    [
+        "google_bigquery_dataset",
+        "google_bigquery_table",
+        "google_bigtable_instance",
+        "google_container_cluster",
+        "google_filestore_instance",
+        "google_redis_instance",
+        "google_spanner_database",
+        "google_sql_database_instance",
+    ],
+)
+def test_current_google_provider_deletion_policy_prevent_is_protection(resource_type: str):
+    src = f"""resource "{resource_type}" "main" {{
+  name                = "prod"
+  deletion_protection = false
+  deletion_policy     = "PREVENT"
+}}
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize("value", ['"DELETE"', '"ABANDON"', "var.deletion_policy", "null"])
+def test_google_deletion_policy_must_be_literal_prevent(value: str):
+    src = f"""resource "google_sql_database_instance" "main" {{
+  name            = "prod"
+  deletion_policy = {value}
+}}
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "deletion_policy" in diags[0].message
+
+
+def test_alloydb_force_deletion_policy_is_not_mistaken_for_protection():
+    src = """resource "google_alloydb_cluster" "main" {
+  cluster_id      = "prod"
+  deletion_policy = "FORCE"
+}
+"""
+    assert len(_check(src)) == 1
+
+
 def test_filestore_requires_a_deletion_guard():
     src = """
 resource "google_filestore_instance" "files" {

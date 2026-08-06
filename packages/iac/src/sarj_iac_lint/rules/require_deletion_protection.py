@@ -66,7 +66,18 @@ _RESOURCE_PROTECTION_ATTRS: MappingProxyType[str, tuple[str, ...]] = MappingProx
         "google_filestore_instance": ("deletion_protection_enabled",),
     }
 )
-_DELETION_POLICY_TYPES = frozenset({"google_redis_instance", "google_filestore_instance"})
+_DELETION_POLICY_TYPES = frozenset(
+    {
+        "google_bigquery_dataset",
+        "google_bigquery_table",
+        "google_bigtable_instance",
+        "google_container_cluster",
+        "google_filestore_instance",
+        "google_redis_instance",
+        "google_spanner_database",
+        "google_sql_database_instance",
+    }
+)
 _DEFAULT_PROTECTED_TYPES = frozenset({"google_redis_instance"})
 _DELETION_POLICY = "deletion_policy"
 
@@ -107,7 +118,8 @@ class RequireDeletionProtection(Rule):
                     code=self.code,
                     message=(
                         f'resource "{rtype}" "{rname}" has {detail} — keep '
-                        "deletion_protection = true (or lifecycle.prevent_destroy) "
+                        'deletion_protection = true, deletion_policy = "PREVENT", '
+                        "or lifecycle.prevent_destroy "
                         "so a stray apply/destroy cannot wipe prod data."
                     ),
                 )
@@ -130,10 +142,13 @@ def _violation(block: Block) -> str | None:
         if guard is not None and _literal(guard.value) == "true":
             return None
     resource_type = block.labels[0]
+    policy_problem: str | None = None
     if resource_type in _DELETION_POLICY_TYPES:
         policy = block.attribute(_DELETION_POLICY)
-        if policy is not None and _literal(policy.value) == "prevent":
-            return None
+        if policy is not None:
+            if _literal(policy.value) == "prevent":
+                return None
+            policy_problem = f"deletion_policy = {policy.value.strip()} is not literal PREVENT"
     attrs = _RESOURCE_PROTECTION_ATTRS.get(resource_type, _PROTECTION_ATTRS)
     attr = block.attribute(*attrs)
     if attr is not None:
@@ -151,6 +166,8 @@ def _violation(block: Block) -> str | None:
             f"deletion_protection only inside `{nested}` — that is the API-side flag; the "
             "instance-level argument, which is what refuses a terraform destroy, is missing"
         )
+    if policy_problem is not None:
+        return policy_problem
     return "no deletion_protection / prevent_destroy"
 
 

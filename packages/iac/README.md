@@ -51,8 +51,10 @@ must sit on the resource itself: a flag nested in `settings { ... }` is the
 API-side switch and does not stop `terraform destroy`.
 
 Memorystore Redis is protected when `deletion_protection` is omitted; an
-explicit `false` remains unsafe. Redis and Filestore also accept
-`deletion_policy = "PREVENT"` as a provider-side deletion guard.
+explicit `false` remains unsafe. Current Google resources covered by SARJ201
+also accept their documented literal `deletion_policy = "PREVENT"` guard;
+AlloyDB is deliberately excluded because its same-named policy means
+`DEFAULT`/`FORCE`, not Terraform deletion prevention.
 
 `require-prevent-destroy-on-irreplaceable` accepts the current Google provider's
 literal `deletion_policy = "PREVENT"` for Cloud Storage buckets, Secret Manager
