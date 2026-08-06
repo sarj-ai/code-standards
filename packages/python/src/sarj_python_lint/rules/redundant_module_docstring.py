@@ -23,6 +23,7 @@ _SPECIAL_MODULES = frozenset({"__init__.py", "__main__.py"})
 _SUMMARY_ONLY = frozenset({"summary"})
 _SENTENCE_END_RE = re.compile(r"[.!?](?=\s|$)")
 _WORD_RE = re.compile(r"[A-Za-z][A-Za-z0-9']*")
+_WORKING_WITH_RE = re.compile(r"\bworking\s+with\b", re.IGNORECASE)
 _MIN_DOUBLED_STEM_LENGTH = 2
 
 # These words describe existence rather than purpose; unknown words are evidence
@@ -32,6 +33,7 @@ _MODULE_FILLER_STEMS = frozenset(
     for word in (
         "class",
         "function",
+        "helper",
         "implementation",
         "level",
         "module",
@@ -96,16 +98,17 @@ class RedundantModuleDocstring(Rule):
 
 
 def _restates_path(docstring: str, path: Path) -> bool:
+    comparison = _WORKING_WITH_RE.sub("", docstring)
     path_stems = _path_stems(path)
     known_stems = path_stems | _MODULE_FILLER_STEMS
-    if restates(docstring, known_stems):
+    if restates(comparison, known_stems):
         return True
 
     # Common doubled-consonant inflections lose a suffix but keep the doubled
     # consonant in the shared conservative stemmer (``logging`` -> ``logg``).
     content_stems = tuple(
         _module_stem(word)
-        for match in _WORD_RE.finditer(docstring)
+        for match in _WORD_RE.finditer(comparison)
         if (word := match.group(0).lower()) not in STOPWORDS
     )
     if content_stems and all(content in known_stems for content in content_stems):
@@ -117,7 +120,7 @@ def _restates_path(docstring: str, path: Path) -> bool:
     # docstring.
     content_words = tuple(
         word
-        for match in _WORD_RE.finditer(docstring)
+        for match in _WORD_RE.finditer(comparison)
         if (word := match.group(0).lower()) not in STOPWORDS and stem(word) not in _MODULE_FILLER_STEMS
     )
     path_tokens = {*split_identifier(path.stem), *split_identifier(path.parent.name)}

@@ -28,6 +28,9 @@ def _check(source: str, path: str = "package/element.py") -> list[Diagnostic]:
         ("browser/actor/utils.py", "Utility functions for actor operations."),
         ("_pytest/cacheprovider.py", "Implementation of the cache provider."),
         ("celery/utils/log.py", "Logging utilities."),
+        ("scrapy/utils/signal.py", "Helper functions for working with signals."),
+        ("scrapy/utils/template.py", "Helper functions for working with templates."),
+        ("prefect/client/utilities.py", "Utilities for working with clients."),
     ],
 )
 def test_flags_corpus_path_restatements(path: str, docstring: str) -> None:
@@ -65,6 +68,17 @@ def test_novel_behavior_architecture_and_consumer_tokens_keep_docstring(docstrin
 )
 def test_filename_matching_keeps_novel_contracts(docstring: str) -> None:
     path = "celery/utils/log.py" if docstring.startswith("Logging") else "_pytest/cacheprovider.py"
+    assert _check(f'"""{docstring}"""\n\nVALUE = 1\n', path) == []
+
+
+@pytest.mark.parametrize(
+    ("path", "docstring"),
+    [
+        ("scrapy/utils/signal.py", "Signal utilities that work offline."),
+        ("scrapy/utils/signal.py", "Utilities for workers receiving signals."),
+    ],
+)
+def test_work_vocabulary_outside_structural_phrase_keeps_docstring(path: str, docstring: str) -> None:
     assert _check(f'"""{docstring}"""\n\nVALUE = 1\n', path) == []
 
 
