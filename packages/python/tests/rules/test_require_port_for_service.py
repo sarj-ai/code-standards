@@ -549,8 +549,9 @@ def test_value_parameters_are_not_collaborators(annotation: str) -> None:
         "structlog.Logger",
         "Clock",
         "JobContext",
+        "ViewportSize",
     ],
-    ids=["Settings", "Config", "Configuration", "Options", "Logger", "dotted-Logger", "Clock", "Context"],
+    ids=["Settings", "Config", "Configuration", "Options", "Logger", "dotted-Logger", "Clock", "Context", "Size"],
 )
 def test_configuration_and_ambient_runtime_are_not_collaborators(annotation: str) -> None:
     assert _check(_SERVICE.replace("store: ThingStore", f"store: {annotation}")) == []

@@ -147,7 +147,7 @@ function moduleScopeBindingName(node: TSESTree.Node): string | null {
   }
   if (topLevel.type === AST_NODE_TYPES.ClassDeclaration) {
     let owner: TSESTree.Node | undefined = node.parent;
-    while (owner !== undefined && owner.parent !== topLevel.body) owner = owner.parent;
+    while (owner != null && owner.parent !== topLevel.body) owner = owner.parent;
     return (owner?.type === AST_NODE_TYPES.MethodDefinition ||
       owner?.type === AST_NODE_TYPES.TSAbstractMethodDefinition ||
       owner?.type === AST_NODE_TYPES.PropertyDefinition) &&
@@ -174,7 +174,7 @@ function moduleScopeBindingName(node: TSESTree.Node): string | null {
       ) {
         let owner: TSESTree.Node | undefined = node.parent;
         const container = initializer.type === AST_NODE_TYPES.ClassExpression ? initializer.body : initializer;
-        while (owner !== undefined && owner.parent !== container) owner = owner.parent;
+        while (owner != null && owner.parent !== container) owner = owner.parent;
         if (
           (owner?.type === AST_NODE_TYPES.MethodDefinition ||
             owner?.type === AST_NODE_TYPES.PropertyDefinition ||
@@ -406,7 +406,10 @@ export default createRule<Options, MessageIds>({
       const tuple = tupleReturnType(annotation, aliases);
       if (tuple === null || tuple.elementTypes.length < MIN_ELEMENTS) return;
       context.report({
-        node: tuple,
+        // Report the public boundary's annotation, not a shared alias declaration.
+        // Otherwise every exported function returning the same alias produces a
+        // stack of diagnostics at the alias's single source location.
+        node: annotation,
         messageId: "noPositionalTupleReturn",
         data: { name, count: String(tuple.elementTypes.length) },
       });

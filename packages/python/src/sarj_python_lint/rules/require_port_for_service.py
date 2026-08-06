@@ -72,9 +72,9 @@ _PRIMITIVE_ANNOTATIONS = frozenset(
     }
 )
 
-# Injected types that are configuration or ambient runtime, not a substitutable
-# collaborator: nobody swaps a `ServerSettings` or a LiveKit `JobContext` in a test.
-_WEAK_COLLABORATOR_RE = re.compile(r"(?:Settings|Config|Configuration|Options|Logger|Log|Clock|Context)$")
+# Injected types that are configuration, measurements, or ambient runtime, not a
+# substitutable collaborator: nobody swaps `ServerSettings` or `ViewportSize` in a test.
+_WEAK_COLLABORATOR_RE = re.compile(r"(?:Settings|Config|Configuration|Options|Logger|Log|Clock|Context|Size)$")
 
 # Annotation wrappers that are transparent — the collaborator is inside them.
 _TRANSPARENT_GENERICS = frozenset({"Optional", "Union", "Annotated", "Awaitable", "Coroutine", "Final", "ClassVar"})

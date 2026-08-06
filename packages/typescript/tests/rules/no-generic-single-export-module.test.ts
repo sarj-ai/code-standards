@@ -18,6 +18,11 @@ ruleTester.run("no-generic-single-export-module", rule, {
     { filename: "/repo/src/order-parser.ts", code: "export function parseOrder() { return {}; }" },
     { filename: "/repo/src/utils.ts", code: "export function parseOrder() { return {}; }\nexport function formatOrder() { return ''; }" },
     { filename: "/repo/src/types.ts", code: "export interface Order { id: string }" },
+    {
+      name: "keeps a types module whose public responsibility is multiple type contracts",
+      filename: "/repo/src/types.ts",
+      code: "export interface Order { id: string } export type OrderId = string; export abstract class FetchEventLike {}",
+    },
     { filename: "/repo/src/utils.ts", code: "export default function () { return 1; }" },
     { filename: "/repo/src/utils.ts", code: "export * from './order-parser.js';" },
     { filename: "/repo/src/index.ts", code: "export { parseOrder } from './order-parser.js';" },
