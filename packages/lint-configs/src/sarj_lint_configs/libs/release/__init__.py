@@ -6,6 +6,11 @@ from sarj_lint_configs.libs.release.artifacts import (
     verify_package_tarball,
     verify_python_wheel_license,
 )
+from sarj_lint_configs.libs.release.causality import (
+    CausalityViolation,
+    ReleaseCausalityReport,
+    check_release_causality,
+)
 from sarj_lint_configs.libs.release.changes import changed_release_targets
 from sarj_lint_configs.libs.release.process import (
     ProcessFailureError,
@@ -49,6 +54,7 @@ from sarj_lint_configs.libs.release.typescript import (
 
 __all__ = (
     "RELEASE_TARGETS",
+    "CausalityViolation",
     "PackageIdentity",
     "PackedArtifact",
     "PackumentFetcher",
@@ -59,12 +65,14 @@ __all__ = (
     "ReleaseAgeFailure",
     "ReleaseAgePolicy",
     "ReleaseAgeReport",
+    "ReleaseCausalityReport",
     "ReleaseMode",
     "ReleaseTarget",
     "TagSyncResult",
     "ValidatedReleaseTag",
     "changed_release_targets",
     "check_lockfile_release_age",
+    "check_release_causality",
     "check_typescript",
     "create_release_tags",
     "credential_free_environment",

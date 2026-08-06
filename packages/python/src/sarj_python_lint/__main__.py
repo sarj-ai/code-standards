@@ -93,6 +93,11 @@ def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
     return diags
 
 
+def analyze(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
+    """Return native diagnostics without rendering CLI output."""
+    return _check(rule_ids, paths)
+
+
 _PROSE_PRECEDENCE = MappingProxyType(
     {
         "SARJ084": frozenset({"SARJ050"}),
@@ -258,7 +263,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "explain":
         return _explain(args.which)
 
-    diags = _check(args.rule, args.files)
+    diags = analyze(args.rule, args.files)
     if args.update_baseline is not None:
         counts = _baseline_counts(diags)
         blocking = sum(d.severity is Severity.ERROR for d in diags)

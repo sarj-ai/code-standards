@@ -28,5 +28,10 @@ jobs:
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - name: Repository policy
         run: make repo-check
+      - name: Release causality
+        env:
+          BEFORE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          AFTER: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: uv run --project packages/lint-configs --frozen sarj-standards repo release causality --before "$BEFORE" --after "$AFTER"
       - name: Python formatting
         run: make format-check

@@ -381,7 +381,7 @@ wheels = [
 
 [[package]]
 name = "sarj-iac-lint"
-version = "0.6.0"
+version = "0.6.1"
 source = { editable = "../iac" }
 
 [package.metadata]
@@ -446,7 +446,7 @@ dev = [
 
 [[package]]
 name = "sarj-sql-lint"
-version = "0.6.3"
+version = "0.6.4"
 source = { editable = "../sql" }
 dependencies = [
     { name = "sqlfluff" },

@@ -156,13 +156,25 @@ health = standards.doctor()
 preview = standards.init(dry_run=True)
 result = standards.init(install=False)
 status = standards.check(("src", "tests"))
+analysis = standards.analyze(("src", "tests"))
+
+# Stable schema-v1 JSON for internal automation, and SARIF 2.1.0 for CI/editors.
+from sarj_lint_configs.api import to_json, to_sarif
+
+json_report = to_json(analysis)
+sarif_report = to_sarif(analysis)
 ```
 
 The preferred API is deliberately small: `Standards`, `Result`, `Finding`,
-`Change`, `Inspection`, `Status`, and `__version__`. Each method calls the same
-typed services as the CLI. Existing `sarj_lint_configs.api` exports remain as
-compatibility aliases. Maintainer plan/apply, rule evaluation, corpus, and
-release APIs live in the public `sarj_lint_configs.libs` namespace.
+`AnalysisReport`, `Diagnostic`, `Change`, `Inspection`, `Status`, and
+`__version__`. `check()` retains its existing exit-oriented `Result`; `analyze()`
+returns normalized findings without parsing console output. Its completion and
+conclusion are separate, so a crashed tool cannot masquerade as clean code.
+Locations retain byte offsets internally and serialize as zero-based UTF-16
+positions; ranges are emitted only when an analyzer supplied a real end point.
+Existing `sarj_lint_configs.api` exports remain as compatibility aliases.
+Maintainer plan/apply, rule evaluation, corpus, and release APIs live in the
+public `sarj_lint_configs.libs` namespace.
 
 Release-age exception files contain one exact `package@version` per line, with
 optional `#` comments. Name-wide exceptions are rejected in files, so a future

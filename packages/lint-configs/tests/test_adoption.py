@@ -393,8 +393,8 @@ def test_init_installs_dependencies_by_default(monkeypatch: pytest.MonkeyPatch, 
         "sarj-iac-lint=2099-12-31",
         f"sarj-lint-configs=={__version__}",
         "sarj-python-lint==0.50.0",
-        "sarj-sql-lint==0.6.3",
-        "sarj-iac-lint==0.6.0",
+        "sarj-sql-lint==0.6.4",
+        "sarj-iac-lint==0.6.1",
     )
 
 

@@ -1192,6 +1192,14 @@ def _run_repo(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one lazy 
                 for target, value in changed.items():
                     _ = output.write(f"{target}={'true' if value else 'false'}\n")
             return 0
+        if args.release_cmd == "causality":
+            report = release.check_release_causality(root, before=args.before, after=args.after)
+            if report.violations:
+                print("\n".join(violation.render() for violation in report.violations))
+                return 1
+            changed = ", ".join(report.changed_targets) or "none"
+            print(f"release causality ✓ (publishable targets changed: {changed})")
+            return 0
         if args.release_cmd == "lock-age" and args.lockfile is not None:
             environment_policy = release.ReleaseAgePolicy.from_strings(
                 os.environ.get("MIN_RELEASE_AGE_DAYS"),  # ruff: ignore[banned-api] -- compatibility with the retired release script.
@@ -1319,6 +1327,13 @@ def _add_repo_parsers(repo: argparse.ArgumentParser) -> None:  # ruff: ignore[to
     changes.add_argument("--after", required=True)
     changes.add_argument("--github-output", type=Path, required=True)
     changes.add_argument("--dest", default=".", help="standards repository root (default: cwd)")
+    causality = release_commands.add_parser(
+        "causality",
+        help="require every publishable package change to bump its version",
+    )
+    causality.add_argument("--before", required=True)
+    causality.add_argument("--after", required=True)
+    causality.add_argument("--dest", default=".", help="standards repository root (default: cwd)")
     age = release_commands.add_parser("lock-age", help="enforce npm lockfile minimum release age")
     age.add_argument("lockfile", type=Path)
     age.add_argument("--dest", default=".", help="standards repository root (default: cwd)")

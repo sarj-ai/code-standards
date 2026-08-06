@@ -58,7 +58,24 @@ from .libs.adoption.service import (
 from .libs.adoption.upgrade import UpgradePlan
 from .libs.adoption.upgrade import apply as apply_upgrade
 from .libs.adoption.upgrade import build_plan as plan_upgrade
+from .libs.diagnostics import (
+    ANALYSIS_SCHEMA,
+    AnalysisReport,
+    Completion,
+    Conclusion,
+    Diagnostic,
+    ExecutionIssue,
+    Location,
+    Position,
+    Region,
+    Severity,
+    SourceDocument,
+    ToolReport,
+    to_json,
+    to_sarif,
+)
 from .libs.filesystem import is_link_like
+from .libs.linting.analysis import analyze as analyze_paths
 from .libs.linting.library_policy import Finding as LibraryPolicyFinding
 from .libs.linting.library_policy import ManifestPolicyError
 from .libs.linting.library_policy import scan as check_library_policy
@@ -220,6 +237,19 @@ class Standards:
             return _operation_result(max(source_status, eslint_status, 1 if findings else 0), findings=findings)
         return _operation_result(_verify(self.root))
 
+    def analyze(self, paths: Sequence[str] | None = None) -> AnalysisReport:
+        """Return native source findings through the versioned diagnostic protocol.
+
+        Unlike :meth:`check`, this method never renders analyzer output and keeps
+        execution failures separate from code findings. External tool adapters
+        can therefore be added without changing the report contract.
+        """
+        try:
+            selected = _analysis_inputs(self.root, paths)
+        except (OSError, TypeError, ValueError) as exc:
+            return _failed_analysis(self.root, "invalid-input", str(exc))
+        return analyze_paths(selected, root=self.root)
+
     def fix(self) -> Result:
         return _operation_result(fix(self.root))
 
@@ -308,6 +338,20 @@ def _operation_result(
     else:
         status = Status.FAILED
     return Result(status, findings, changes, exit_code)
+
+
+def _failed_analysis(root: Path, kind: str, message: str) -> AnalysisReport:
+    issue = ExecutionIssue("sarj-standards", kind, message)
+    tool = ToolReport("sarj-standards", Completion.FAILED, issues=(issue,))
+    return AnalysisReport(root, Completion.FAILED, Conclusion.FAILED, (tool,))
+
+
+def _analysis_inputs(root: Path, paths: Sequence[str] | None) -> list[str]:
+    if paths is not None:
+        return _contained_paths(root, paths)
+    adopted = load_manifest(root)
+    verify_paths = adopted.verify_paths if adopted is not None else (".",)
+    return [str(root / path) for path in verify_paths]
 
 
 def initialize(
@@ -416,6 +460,7 @@ def _sync_target_changes(source: Path, destination: Path) -> bool:
 
 
 __all__ = [
+    "ANALYSIS_SCHEMA",
     "CONFIGS_DIR",
     "ESLINT_APPLICATION",
     "ESLINT_PEERS",
@@ -426,13 +471,18 @@ __all__ = [
     "RUFF_STRICT",
     "TAPLO_STRICT",
     "YAMLLINT_STRICT",
+    "AnalysisReport",
     "Change",
     "Command",
+    "Completion",
+    "Conclusion",
     "ConfigSyncOutcome",
     "ConfigSyncPlan",
     "ConfigSyncResult",
+    "Diagnostic",
     "DoctorFinding",
     "DoctorLevel",
+    "ExecutionIssue",
     "Finding",
     "GroupedPaths",
     "InitPlan",
@@ -440,8 +490,11 @@ __all__ = [
     "Inspection",
     "LedgerSyncResult",
     "LibraryPolicyFinding",
+    "Location",
     "Manifest",
     "PackedArtifact",
+    "Position",
+    "Region",
     "ReleaseAgePolicy",
     "ReleaseAgeReport",
     "ReleaseTarget",
@@ -450,13 +503,17 @@ __all__ = [
     "Result",
     "ScaffoldPlan",
     "SetupPlan",
+    "Severity",
+    "SourceDocument",
     "Standards",
     "Status",
     "TagSyncResult",
     "TextFinding",
+    "ToolReport",
     "UpgradePlan",
     "ValidatedReleaseTag",
     "__version__",
+    "analyze_paths",
     "apply_init",
     "apply_scaffold",
     "apply_setup",
@@ -492,6 +549,8 @@ __all__ = [
     "show_state",
     "sync_configs",
     "sync_ledger",
+    "to_json",
+    "to_sarif",
     "update",
     "validate_release_tag",
     "verify_package_tarball",

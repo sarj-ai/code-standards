@@ -80,6 +80,11 @@ def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
     return diags
 
 
+def analyze(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
+    """Return native diagnostics without rendering CLI output."""
+    return _check(rule_ids, paths)
+
+
 class _Args(argparse.Namespace):
     cmd: str | None
     rule: list[str]
@@ -111,7 +116,7 @@ def main(argv: list[str] | None = None) -> int:
             sys.stdout.write(f"{inst.code:8}  {rid:40}  {inst.description}\n")
         return 0
 
-    diags = _check(args.rule, args.files)
+    diags = analyze(args.rule, args.files)
     for d in diags:
         sys.stdout.write(d.format() + "\n")
     return 1 if diags else 0
