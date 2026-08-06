@@ -42,6 +42,10 @@ ruleTester.run("no-positional-tuple-return", rule, {
       code: "function outer(): void { const local = (): [string, number] => impl(); local(); } export { outer };",
     },
     {
+      name: "does not crash on tuple-returning functions nested in an exported class heritage expression",
+      code: "export class Rollup extends factory({ make() { const pair = (): [string, number] => impl(); return pair; } }) {}",
+    },
+    {
       name: "ignores generated declaration files when the rule is used standalone",
       filename: "/repo/src/__generated__/api.ts",
       code: "export function pair(): [string, number] { return impl(); }",
@@ -102,6 +106,18 @@ ruleTester.run("no-positional-tuple-return", rule, {
       name: "resolves a local tuple alias used by an exported function",
       code: "type Pair = [string, number]; export function pair(): Pair { return impl(); }",
       errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "reports each public use of a shared tuple alias at its own boundary",
+      code: `
+        type Pair = [string, number];
+        export function first(): Pair { return impl(); }
+        export function second(): Pair { return impl(); }
+      `,
+      errors: [
+        { messageId: "noPositionalTupleReturn", line: 3 },
+        { messageId: "noPositionalTupleReturn", line: 4 },
+      ],
     },
     {
       name: "rejects a tuple return on an exported interface method",

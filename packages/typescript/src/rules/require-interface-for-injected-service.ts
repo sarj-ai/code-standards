@@ -30,6 +30,8 @@ const BUILTIN_CONTAINER_TYPE_RE =
 const VALUE_TYPE_RE = /^(?:ArrayBuffer|Blob|Buffer|Date|RegExp|URL|URLSearchParams)$/;
 
 const TRANSPORT_WRAPPER_NAME_RE = /Client$/;
+/** Error values carry diagnostic data; their callable formatting surface is not a service port. */
+const ERROR_VALUE_NAME_RE = /Error$/;
 const FLUENT_BUILDER_NAME_RE = /Builder$/;
 const FLUENT_RESULT_TYPE_RE = /(?:Builder|Base|Query|Without)(?:\W|$)/;
 
@@ -480,11 +482,11 @@ const publicMethodNames = (
  * concrete operation. Their chainable surface is the product, not a service
  * seam that consumers inject behind a port.
  */
-const isFluentConstructionBuilder = (
+const isFluentConstructionObject = (
   node: TSESTree.ClassDeclaration,
   getText: (node: TSESTree.Node) => string,
 ): boolean => {
-  if (node.id === null || !FLUENT_BUILDER_NAME_RE.test(node.id.name)) return false;
+  if (node.id === null) return false;
   const methods = node.body.body.filter(
     (member): member is TSESTree.MethodDefinition =>
       member.type === AST_NODE_TYPES.MethodDefinition &&
@@ -497,7 +499,13 @@ const isFluentConstructionBuilder = (
   if (methods.length === 0) return false;
   return methods.every((member) => {
     const result = member.value.returnType?.typeAnnotation;
-    return result !== undefined && FLUENT_RESULT_TYPE_RE.test(getText(result));
+    if (result === undefined) return false;
+    const returnsOwnType =
+      result.type === AST_NODE_TYPES.TSTypeReference &&
+      result.typeName.type === AST_NODE_TYPES.Identifier &&
+      result.typeName.name === node.id?.name;
+    return returnsOwnType ||
+      (FLUENT_BUILDER_NAME_RE.test(node.id?.name ?? "") && FLUENT_RESULT_TYPE_RE.test(getText(result)));
   });
 };
 
@@ -691,6 +699,7 @@ export default createRule<Options, MessageIds>({
       ClassDeclaration(node: TSESTree.ClassDeclaration): void {
         if (node.id === null) return;
         if (!isExportedClass(node, detachedExports)) return;
+        if (ERROR_VALUE_NAME_RE.test(node.id.name)) return;
         // The port itself must never fire.
         if (node.abstract === true) return;
         // Decorated classes are framework-owned construction surfaces. Syntax
@@ -720,7 +729,7 @@ export default createRule<Options, MessageIds>({
         if (isFrameworkWiring(node.body)) return;
         // A lone third-party transport is not a seam a port could protect.
         if (isTransportWrapper(node.id.name, collaborators, context.sourceCode.ast)) return;
-        if (isFluentConstructionBuilder(node, (result) => context.sourceCode.getText(result))) return;
+        if (isFluentConstructionObject(node, (result) => context.sourceCode.getText(result))) return;
 
         const methods = publicMethodNames(node.body, objectTypes().functionAliases);
         if (methods.length === 0) return;

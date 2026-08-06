@@ -86,11 +86,13 @@ OPEN_DOMAIN_CODE_NAMES = frozenset(
     {
         "attr",
         "attribute",
+        "action_name",
         "language",
         "lang",
         "country",
         "currency",
         "event_name",
+        "extension",
         "timezone",
         "tz",
         "locale",

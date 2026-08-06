@@ -142,6 +142,27 @@ ruleTester.run("require-interface-for-injected-service", rule, {
       `,
     },
     {
+      name: "ignores error-value classes that do not extend the built-in Error",
+      filename: SRC,
+      code: `
+        export class BrandError {
+          constructor(readonly issue: SchemaIssue) {}
+          toString(): string { return this.issue.toString(); }
+        }
+      `,
+    },
+    {
+      name: "ignores immutable fluent values whose operations return the same value type",
+      filename: SRC,
+      code: `
+        export class Transformation<T> {
+          constructor(readonly decode: Decoder<T>, readonly encode: Encoder<T>) {}
+          flip(): Transformation<T> { return new Transformation(this.decode, this.encode); }
+          compose(other: Transformation<T>): Transformation<T> { return other; }
+        }
+      `,
+    },
+    {
       filename: "/repo/src/components/boundary.tsx",
       code: `
         export default class WidgetErrorBoundary extends React.Component<Props, State> {

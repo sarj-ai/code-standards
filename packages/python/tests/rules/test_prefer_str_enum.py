@@ -1669,7 +1669,7 @@ def convert(tool_choice: {annotation}) -> str:
 
 @pytest.mark.parametrize(
     "name",
-    ["name", "attr", "attribute", "event_name", "key", "tool_name", "user_input"],
+    ["name", "attr", "attribute", "action_name", "event_name", "extension", "key", "tool_name", "user_input"],
 )
 def test_generic_open_domain_names_are_not_inferred_as_enums(name: str):
     src = f"""

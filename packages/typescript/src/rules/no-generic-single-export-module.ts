@@ -171,6 +171,28 @@ function runtimeExports(program: TSESTree.Program): RuntimeExports {
   return { exports: [...unique.values()], ambiguous };
 }
 
+/** Public type contracts that make a `type(s).ts` module accurately named. */
+function publicTypeExportCount(program: TSESTree.Program): number {
+  const names = new Set<string>();
+  const typeBindings = typeOnlyBindings(program);
+  for (const statement of program.body) {
+    if (statement.type !== AST_NODE_TYPES.ExportNamedDeclaration) continue;
+    const declaration = statement.declaration;
+    if (
+      declaration?.type === AST_NODE_TYPES.TSInterfaceDeclaration ||
+      declaration?.type === AST_NODE_TYPES.TSTypeAliasDeclaration
+    ) names.add(declaration.id.name);
+    for (const specifier of statement.specifiers) {
+      const local = specifier.local.type === AST_NODE_TYPES.Identifier ? specifier.local.name : specifier.local.value;
+      if (statement.exportKind !== "type" && specifier.exportKind !== "type" && !typeBindings.has(local)) {
+        continue;
+      }
+      names.add(specifier.exported.type === AST_NODE_TYPES.Identifier ? specifier.exported.name : specifier.exported.value);
+    }
+  }
+  return names.size;
+}
+
 function kebabCase(name: string): string {
   return name
     .replaceAll(/oauth/giu, "Oauth")
@@ -256,6 +278,7 @@ export default createRule<Options, MessageIds>({
       },
       "Program:exit"(program): void {
         if (hasCommonJsExport) return;
+        if ((stem === "type" || stem === "types") && publicTypeExportCount(program) >= 2) return;
         const exports = runtimeExports(program);
         if (exports.ambiguous || exports.exports.length !== 1) return;
         const onlyExport = exports.exports[0];
