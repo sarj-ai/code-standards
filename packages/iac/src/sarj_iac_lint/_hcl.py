@@ -66,6 +66,90 @@ def heredoc_body_mask(lines: list[str]) -> tuple[bool, ...]:
     return _cached_heredoc_body_mask(tuple(lines))
 
 
+def mask_block_comments(source: str) -> str:
+    """Blank HCL block comments outside strings while preserving positions."""
+    chars = list(source)
+    in_string = False
+    in_comment = False
+    index = 0
+    while index < len(chars):
+        char = chars[index]
+        following = chars[index + 1] if index + 1 < len(chars) else ""
+        if in_comment:
+            if char == "*" and following == "/":
+                chars[index] = chars[index + 1] = " "
+                in_comment = False
+                index += 2
+                continue
+            if char != "\n":
+                chars[index] = " "
+            index += 1
+            continue
+        if in_string:
+            if char == "\\":
+                index += 2
+                continue
+            if char == '"':
+                in_string = False
+            index += 1
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "/" and following == "*":
+            chars[index] = chars[index + 1] = " "
+            in_comment = True
+            index += 2
+            continue
+        index += 1
+    return "".join(chars)
+
+
+def masked_hcl_lines(source: str) -> list[str]:
+    """Mask block comments and heredoc bodies in one mutually aware pass."""
+    output: list[str] = []
+    in_block_comment = False
+    heredoc_term: str | None = None
+    for raw_line in source.splitlines():
+        if heredoc_term is not None:
+            output.append("")
+            if raw_line.strip() == heredoc_term:
+                heredoc_term = None
+            continue
+        chars = list(raw_line)
+        in_string = False
+        index = 0
+        while index < len(chars):
+            char = chars[index]
+            following = chars[index + 1] if index + 1 < len(chars) else ""
+            if in_block_comment:
+                if char == "*" and following == "/":
+                    chars[index] = chars[index + 1] = " "
+                    in_block_comment = False
+                    index += 2
+                    continue
+                chars[index] = " "
+            elif in_string:
+                if char == "\\":
+                    index += 2
+                    continue
+                if char == '"':
+                    in_string = False
+            elif char == '"':
+                in_string = True
+            elif char == "/" and following == "*":
+                chars[index] = chars[index + 1] = " "
+                in_block_comment = True
+                index += 2
+                continue
+            index += 1
+        line = "".join(chars)
+        output.append(line)
+        marker = _HEREDOC_RE.search(mask_line(line))
+        if marker is not None:
+            heredoc_term = marker.group(1)
+    return output
+
+
 @lru_cache(maxsize=32)
 def _cached_heredoc_body_mask(lines: tuple[str, ...]) -> tuple[bool, ...]:
     mask = [False] * len(lines)
@@ -138,9 +222,7 @@ class Block:
 @lru_cache(maxsize=32)
 def blocks(source: str) -> tuple[Block, ...]:
     """Parse `source` into a tree of top-level HCL blocks."""
-    raw = source.splitlines()
-    hmask = heredoc_body_mask(raw)
-    lines = ["" if h else strip_inline_comment(ln) for ln, h in zip(raw, hmask, strict=True)]
+    lines = [strip_inline_comment(line) for line in masked_hcl_lines(source)]
     toks = [
         _Tok(m.group(0), lineno, m.start() + 1)
         for lineno, line in enumerate(lines, start=1)

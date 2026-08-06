@@ -131,7 +131,7 @@ def test_requested_ruff_families_remain_globally_enabled() -> None:
     raw_ignored = manifest.list_field(lint, "ignore")
     assert all(isinstance(code, str) for code in raw_ignored)
     ignored = {code for code in raw_ignored if isinstance(code, str)}
-    assert not any(code.startswith(("ANN", "F", "UP")) for code in ignored)
+    assert not any(code.startswith(("ANN", "UP")) or re.fullmatch(r"F\d+", code) is not None for code in ignored)
     assert {"PLC0415", "BLE001"}.isdisjoint(ignored)
 
 

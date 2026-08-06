@@ -462,6 +462,7 @@ const config = [
     // Dead eslint-disable directives are an error (parity with ruff RUF100).
     linterOptions: {
       reportUnusedDisableDirectives: "error",
+      reportUnusedInlineConfigs: "error",
     },
     plugins: {
       "@typescript-eslint": tseslint.plugin,
@@ -634,6 +635,7 @@ const config = [
       "@typescript-eslint/no-invalid-void-type": "error",
       "@typescript-eslint/no-unnecessary-template-expression": "error",
       "@typescript-eslint/no-import-type-side-effects": "error",
+      "@typescript-eslint/consistent-type-exports": "warn",
       "@typescript-eslint/array-type": "error",
       // `no-else-return` used to sit here. It is gone because
       // `unicorn/no-useless-else` (enabled below) is a strict superset: it flags
@@ -675,6 +677,11 @@ const config = [
       "react/jsx-no-script-url": "error",
       "react/self-closing-comp": "error",
       "react/jsx-no-useless-fragment": "error",
+      "react/jsx-key": "error",
+      "react/no-children-prop": "error",
+      "react/no-invalid-html-attribute": "error",
+      "react/style-prop-object": "error",
+      "react/button-has-type": "error",
       "react/jsx-boolean-value": ["error", "never"],
 
       "unicorn/consistent-function-scoping": "error",
@@ -802,6 +809,10 @@ const config = [
       // rule for the whole file — including ones added later — which is the
       // file-level-suppression escape hatch flagged repeatedly in review.
       "@eslint-community/eslint-comments/no-unlimited-disable": "error",
+      "@eslint-community/eslint-comments/disable-enable-pair": [
+        "error",
+        { allowWholeFile: false },
+      ],
       "@eslint-community/eslint-comments/no-restricted-disable": [
         "warn",
         "no-console",
@@ -1000,6 +1011,8 @@ const config = [
       "@sarj/no-unsafe-mock-casting": "error",
       "@sarj/prefer-whole-object-assertion": "error",
       "@sarj/no-async-callback-in-wait-for": "error",
+      "@sarj/duplicate-test-body": "warn",
+      "@sarj/test-loops-over-literal-cases": "warn",
       // Both architectural rules stay enabled in the shared baseline. The
       // fetch rule ships conservative client/service defaults; consumers can
       // replace its `allow` list. The storage rule is intentionally inert until
@@ -1065,13 +1078,13 @@ const config = [
     },
   },
 
-  // better-tailwindcss: class-string hygiene for Tailwind repos. Scoped to JSX/TSX
-  // (where className strings live) and harmless where no Tailwind classes exist —
+  // better-tailwindcss: class-string hygiene for Tailwind repos. Include plain
+  // JS/TS because class helpers and variant definitions commonly live there.
   // these three rules only inspect literal class strings, so non-Tailwind repos
   // simply see zero findings. Kept in its own block so the plugin is only wired
   // where it applies.
   {
-    files: ["**/*.{jsx,tsx}"],
+    files: ["**/*.{js,jsx,ts,tsx}"],
     plugins: {
       "better-tailwindcss": betterTailwindcss,
     },
@@ -1079,6 +1092,8 @@ const config = [
       "better-tailwindcss/no-conflicting-classes": "error",
       "better-tailwindcss/no-duplicate-classes": "error",
       "better-tailwindcss/no-deprecated-classes": "error",
+      "better-tailwindcss/no-unnecessary-whitespace": "error",
+      "better-tailwindcss/enforce-shorthand-classes": "warn",
     },
   },
   // React component IDENTIFIERS must be PascalCase for JSX to distinguish them

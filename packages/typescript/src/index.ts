@@ -3,6 +3,7 @@
  */
 
 import enforceFileStructure from "./rules/enforce-file-structure.js";
+import duplicateTestBody from "./rules/duplicate-test-body.js";
 import noAsyncCallbackInWaitFor from "./rules/no-async-callback-in-wait-for.js";
 import noClientSideDataFetching from "./rules/no-client-side-data-fetching.js";
 import noCommentCruft from "./rules/no-comment-cruft.js";
@@ -42,6 +43,7 @@ import noTypeMemberCommentWall from "./rules/no-type-member-comment-wall.js";
 import noUnnecessaryUseClient from "./rules/no-unnecessary-use-client.js";
 import noUnsafeMockCasting from "./rules/no-unsafe-mock-casting.js";
 import noZodNativeEnum from "./rules/no-zod-native-enum.js";
+import testLoopsOverLiteralCases from "./rules/test-loops-over-literal-cases.js";
 import preferConstantTimeSecretCompare from "./rules/prefer-constant-time-secret-compare.js";
 import preferDiscriminatedUnion from "./rules/prefer-discriminated-union.js";
 import preferInputGroupSearch from "./rules/prefer-input-group-search.js";
@@ -71,7 +73,8 @@ import { renamedRules } from "./rules/_renames.js";
 import { retiredRules } from "./rules/_retired.js";
 
 const rules = {
-"enforce-file-structure": enforceFileStructure,
+  "duplicate-test-body": duplicateTestBody,
+  "enforce-file-structure": enforceFileStructure,
   "no-async-callback-in-wait-for": noAsyncCallbackInWaitFor,
   "no-client-side-data-fetching": noClientSideDataFetching,
   "no-comment-cruft": noCommentCruft,
@@ -111,6 +114,7 @@ const rules = {
   "no-unnecessary-use-client": noUnnecessaryUseClient,
   "no-unsafe-mock-casting": noUnsafeMockCasting,
   "no-zod-native-enum": noZodNativeEnum,
+  "test-loops-over-literal-cases": testLoopsOverLiteralCases,
   "prefer-constant-time-secret-compare": preferConstantTimeSecretCompare,
   "prefer-discriminated-union": preferDiscriminatedUnion,
   "prefer-input-group-search": preferInputGroupSearch,
@@ -140,7 +144,7 @@ const rules = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "9.14.0",
+  version: "9.15.0",
 } as const;
 
 /** Rules registered for application-profile configs but intentionally absent from general presets. */
@@ -151,7 +155,8 @@ const applicationOnlyRules = [
 ] as const;
 
 const recommendedRules = {
-"@sarj/enforce-file-structure": "warn",
+  "@sarj/duplicate-test-body": "warn",
+  "@sarj/enforce-file-structure": "warn",
   "@sarj/no-async-callback-in-wait-for": "warn",
   "@sarj/no-client-side-data-fetching": "warn",
   "@sarj/no-comment-cruft": "warn",
@@ -186,6 +191,7 @@ const recommendedRules = {
   "@sarj/no-unnecessary-use-client": "warn",
   "@sarj/no-unsafe-mock-casting": "warn",
   "@sarj/no-zod-native-enum": "warn",
+  "@sarj/test-loops-over-literal-cases": "warn",
   "@sarj/prefer-constant-time-secret-compare": "error",
   "@sarj/prefer-discriminated-union": "warn",
   "@sarj/prefer-input-group-search": "error",
@@ -212,7 +218,8 @@ const recommendedRules = {
 } as const;
 
 const strictRules = {
-"@sarj/enforce-file-structure": "error",
+  "@sarj/duplicate-test-body": "warn",
+  "@sarj/enforce-file-structure": "error",
   "@sarj/no-async-callback-in-wait-for": "error",
   "@sarj/no-client-side-data-fetching": "error",
   "@sarj/no-comment-cruft": "error",
@@ -251,6 +258,7 @@ const strictRules = {
   "@sarj/no-unnecessary-use-client": "error",
   "@sarj/no-unsafe-mock-casting": "error",
   "@sarj/no-zod-native-enum": "error",
+  "@sarj/test-loops-over-literal-cases": "warn",
   "@sarj/prefer-constant-time-secret-compare": "error",
   "@sarj/prefer-discriminated-union": "error",
   "@sarj/prefer-input-group-search": "error",

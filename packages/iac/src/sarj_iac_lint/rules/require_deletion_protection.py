@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import MappingProxyType
 from typing import TYPE_CHECKING, final, override
 
 from sarj_iac_lint._hcl import blocks
@@ -13,7 +14,7 @@ if TYPE_CHECKING:
 
     from sarj_iac_lint._hcl import Block
 
-# Stateful resources exposing deletion_protection[_enabled]; Redis has no supported protection argument.
+# Stateful resources exposing deletion_protection[_enabled].
 PROTECTED_TYPES = frozenset(
     {
         # GCP
@@ -57,8 +58,9 @@ _VIEW_CHILDREN = ("view", "materialized_view")
 
 # Both spellings are legitimate *instance-level* argument names across providers.
 _PROTECTION_ATTRS = ("deletion_protection", "deletion_protection_enabled")
+_RESOURCE_PROTECTION_ATTRS: MappingProxyType[str, tuple[str, ...]] = MappingProxyType({})
 
-_HCL_SUFFIXES = (".tf", ".tf.json", ".hcl")
+_HCL_SUFFIXES = (".tf", ".hcl")
 
 
 @final
@@ -112,15 +114,20 @@ def _is_bigquery_view(block: Block) -> bool:
 
 def _violation(block: Block) -> str | None:
     """Describe why `block` is unprotected, or None when it is protected."""
-    attr = block.attribute(*_PROTECTION_ATTRS)
-    if attr is not None:
-        # Expressions are policy-controlled; only a literal false is demonstrably unsafe.
-        return f"{attr.name} = false" if _literal(attr.value) == "false" else None
     lifecycle = block.child(_LIFECYCLE)
     if lifecycle is not None:
         guard = lifecycle.attribute(_PREVENT_DESTROY)
         if guard is not None and _literal(guard.value) == "true":
             return None
+    attrs = _RESOURCE_PROTECTION_ATTRS.get(block.labels[0], _PROTECTION_ATTRS)
+    attr = block.attribute(*attrs)
+    if attr is not None:
+        literal = _literal(attr.value)
+        if literal == "true":
+            return None
+        if literal == "false":
+            return f"{attr.name} = false"
+        return f"{attr.name} = {attr.value.strip()} is not a literal true"
     nested = _nested_protection(block)
     if nested is not None:
         return (
