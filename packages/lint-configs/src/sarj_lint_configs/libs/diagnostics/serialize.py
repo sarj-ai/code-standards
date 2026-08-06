@@ -1,0 +1,227 @@
+"""Standard machine formats for canonical Standards diagnostics."""
+
+from __future__ import annotations
+
+from heapq import nsmallest
+import json
+
+from .models import AnalysisReport, Diagnostic, Severity
+
+
+_GITHUB_ANNOTATION_LIMIT = 10
+
+
+def to_json(report: AnalysisReport, *, indent: int | None = 2) -> str:
+    """Serialize the stable Standards schema deterministically."""
+    return json.dumps(report.as_dict(), indent=indent, sort_keys=True) + "\n"
+
+
+def to_sarif(report: AnalysisReport) -> str:
+    """Serialize SARIF 2.1.0 for GitHub, editors, and analysis aggregators."""
+    rules = _sarif_rules(report)
+    payload: dict[str, object] = {
+        "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+        "version": "2.1.0",
+        "runs": [
+            {
+                "tool": {
+                    "driver": {
+                        "name": "sarj-standards",
+                        "informationUri": "https://github.com/sarj-ai/standards",
+                        "rules": rules,
+                    }
+                },
+                "results": [_sarif_result(item) for item in report.diagnostics],
+                "columnKind": "utf16CodeUnits",
+                "invocations": [
+                    {
+                        "executionSuccessful": report.completion.value == "complete",
+                        "toolExecutionNotifications": [
+                            {"descriptor": {"id": issue.kind}, "message": {"text": issue.message}, "level": "error"}
+                            for issue in report.issues
+                        ]
+                        + [
+                            {
+                                "descriptor": {"id": "coverage-notice"},
+                                "message": {"text": _coverage_line(item.source, item.reason, item.file_count)},
+                                "level": "warning",
+                            }
+                            for item in report.coverage
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    return json.dumps(payload, indent=2, sort_keys=True) + "\n"
+
+
+def to_text(report: AnalysisReport) -> str:
+    """Render deterministic human-readable diagnostics and execution issues."""
+    lines = [_text_diagnostic(item) for item in report.diagnostics]
+    lines.extend(f"{issue.source}: {issue.kind}: {issue.message}" for issue in report.issues)
+    lines.extend(_coverage_line(item.source, item.reason, item.file_count) for item in report.coverage)
+    lines.append(_summary(report))
+    return "\n".join(lines) + "\n"
+
+
+def to_github(report: AnalysisReport, *, max_annotations_per_level: int = _GITHUB_ANNOTATION_LIMIT) -> str:
+    """Render GitHub workflow commands without changing diagnostic semantics."""
+    if not 0 <= max_annotations_per_level <= _GITHUB_ANNOTATION_LIMIT:
+        msg = "max_annotations_per_level must be between 0 and 10"
+        raise ValueError(msg)
+    issues = [
+        f"::error title={_github_property(f'{issue.source}/{issue.kind}')}::{_github_message(issue.message)}"
+        for issue in report.issues[:max_annotations_per_level]
+    ]
+    counts = dict.fromkeys(Severity, 0)
+    for tool in report.tools:
+        for diagnostic in tool.diagnostics:
+            counts[diagnostic.severity] += 1
+    error_budget = max_annotations_per_level - len(issues)
+    selected = {
+        severity: nsmallest(
+            error_budget if severity is Severity.ERROR else max_annotations_per_level,
+            (diagnostic for tool in report.tools for diagnostic in tool.diagnostics if diagnostic.severity is severity),
+            key=_github_priority,
+        )
+        for severity in Severity
+    }
+    lines = [
+        *issues,
+        *(_github_diagnostic(item) for item in selected[Severity.ERROR]),
+        *(_github_diagnostic(item) for item in selected[Severity.WARNING]),
+        *(_github_diagnostic(item) for item in selected[Severity.INFO]),
+    ]
+    omitted = (
+        max(0, len(report.issues) + counts[Severity.ERROR] - max_annotations_per_level)
+        + max(0, counts[Severity.WARNING] - max_annotations_per_level)
+        + max(0, counts[Severity.INFO] - max_annotations_per_level)
+    )
+    if omitted:
+        lines.append(
+            f"sarj-standards: {omitted} annotation(s) omitted by GitHub's per-level limits; "
+            "use JSON or SARIF for the complete report"
+        )
+    lines.extend(_coverage_line(item.source, item.reason, item.file_count) for item in report.coverage)
+    lines.append(_summary(report))
+    return "\n".join(lines) + "\n"
+
+
+def _github_priority(diagnostic: Diagnostic) -> tuple[object, ...]:
+    severity = {Severity.ERROR: 0, Severity.WARNING: 1, Severity.INFO: 2}[diagnostic.severity]
+    location = diagnostic.location
+    position = location.region.start if location.region is not None else location.position
+    return (
+        severity,
+        location.path,
+        -1 if position is None else position.line,
+        -1 if position is None else position.character,
+        diagnostic.source,
+        diagnostic.code,
+        diagnostic.message,
+    )
+
+
+def _text_diagnostic(diagnostic: Diagnostic) -> str:
+    position = (
+        diagnostic.location.region.start if diagnostic.location.region is not None else diagnostic.location.position
+    )
+    suffix = "" if position is None else f":{position.line + 1}:{position.character + 1}"
+    return (
+        f"{diagnostic.location.path}{suffix}: {diagnostic.severity.value} "
+        f"{diagnostic.code} {diagnostic.message} [{diagnostic.source}]"
+    )
+
+
+def _github_diagnostic(diagnostic: Diagnostic) -> str:
+    level = "notice" if diagnostic.severity is Severity.INFO else diagnostic.severity.value
+    properties: list[str] = []
+    position = (
+        diagnostic.location.region.start if diagnostic.location.region is not None else diagnostic.location.position
+    )
+    if position is not None:
+        properties.extend(
+            (
+                f"file={_github_property(diagnostic.location.path)}",
+                f"line={position.line + 1}",
+                f"col={position.character + 1}",
+            )
+        )
+    properties.append(f"title={_github_property(f'{diagnostic.source}/{diagnostic.code}')}")
+    message = diagnostic.message if position is not None else f"{diagnostic.location.path}: {diagnostic.message}"
+    return f"::{level} {','.join(properties)}::{_github_message(message)}"
+
+
+def _github_message(value: str) -> str:
+    return value.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+
+def _github_property(value: str) -> str:
+    return _github_message(value).replace(":", "%3A").replace(",", "%2C")
+
+
+def _summary(report: AnalysisReport) -> str:
+    counts = dict.fromkeys(Severity, 0)
+    for tool in report.tools:
+        for diagnostic in tool.diagnostics:
+            counts[diagnostic.severity] += 1
+    return (
+        f"sarj-standards: {counts[Severity.ERROR]} error(s), {counts[Severity.WARNING]} warning(s), "
+        f"{counts[Severity.INFO]} notice(s), {len(report.issues)} execution issue(s)"
+    )
+
+
+def _coverage_line(source: str, reason: str, file_count: int) -> str:
+    return f"sarj-standards coverage: {source} did not analyze {file_count} selected file(s): {reason}"
+
+
+def _sarif_rules(report: AnalysisReport) -> list[dict[str, object]]:
+    by_code: dict[tuple[str, str], Diagnostic] = {}
+    for diagnostic in report.diagnostics:
+        by_code.setdefault((diagnostic.source, diagnostic.code), diagnostic)
+    return [
+        {
+            "id": _sarif_rule_id(item),
+            "name": item.rule_id or code,
+            "shortDescription": {"text": item.help or item.rule_id or code},
+            **({"helpUri": item.help_url} if item.help_url is not None else {}),
+        }
+        for (_source, code), item in sorted(by_code.items())
+    ]
+
+
+def _sarif_result(diagnostic: Diagnostic) -> dict[str, object]:
+    location = diagnostic.location
+    physical: dict[str, object] = {"artifactLocation": {"uri": location.path}}
+    if location.region is not None:
+        physical["region"] = {
+            "startLine": location.region.start.line + 1,
+            "startColumn": location.region.start.character + 1,
+            "endLine": location.region.end.line + 1,
+            "endColumn": location.region.end.character + 1,
+        }
+    elif location.position is not None:
+        physical["region"] = {
+            "startLine": location.position.line + 1,
+            "startColumn": location.position.character + 1,
+        }
+    return {
+        "ruleId": _sarif_rule_id(diagnostic),
+        "level": _sarif_level(diagnostic.severity),
+        "message": {"text": diagnostic.message},
+        "locations": [{"physicalLocation": physical}],
+        "properties": {"source": diagnostic.source, "code": diagnostic.code, "repositoryRoot": "."},
+    }
+
+
+def _sarif_rule_id(diagnostic: Diagnostic) -> str:
+    return f"{diagnostic.source}/{diagnostic.code}"
+
+
+def _sarif_level(severity: Severity) -> str:
+    if severity is Severity.ERROR:
+        return "error"
+    if severity is Severity.WARNING:
+        return "warning"
+    return "note"

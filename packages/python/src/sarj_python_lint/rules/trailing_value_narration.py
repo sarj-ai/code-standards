@@ -9,7 +9,7 @@ import re
 import tokenize
 from typing import TYPE_CHECKING, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule
+from sarj_python_lint.rule_base import ColumnEncoding, Diagnostic, Rule
 from sarj_python_lint.rules._comments import (
     code_tokens,
     has_external_reference,
@@ -150,5 +150,14 @@ class TrailingValueNarration(Rule):
             if line > len(lines) or line in nested:
                 continue
             if _narrates_value(body, lines[line - 1][:col]):
-                diags.append(Diagnostic(path=path, line=line, col=col + 1, code=self.code, message=self.description))
+                diags.append(
+                    Diagnostic(
+                        path=path,
+                        line=line,
+                        col=col + 1,
+                        code=self.code,
+                        message=self.description,
+                        column_encoding=ColumnEncoding.CODEPOINTS,
+                    )
+                )
         return diags

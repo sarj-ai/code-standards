@@ -77,6 +77,7 @@ the same for other layouts.
 | Command | Answers |
 |---|---|
 | `uv run --frozen sarj-standards check` | Run version, config, custom-rule, Ruff, BasedPyright, and ESLint gates. |
+| `uv run --frozen sarj-standards analyze --format github` | Emit native Python, SQL, IaC, and text findings as CI annotations. |
 | `uv run --frozen sarj-standards fix` | Format Python and apply safe Ruff and ESLint fixes. |
 | `uv run --frozen sarj-standards doctor` | Diagnose drift and print exact remediation. |
 | `uv run --frozen sarj-standards update --check` | Preview a coherent toolchain update. |

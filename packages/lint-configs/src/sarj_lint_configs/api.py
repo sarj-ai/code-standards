@@ -58,7 +58,30 @@ from .libs.adoption.service import (
 from .libs.adoption.upgrade import UpgradePlan
 from .libs.adoption.upgrade import apply as apply_upgrade
 from .libs.adoption.upgrade import build_plan as plan_upgrade
+from .libs.diagnostics import (
+    ANALYSIS_SCHEMA,
+    AnalysisReport,
+    Completion,
+    Conclusion,
+    CoverageNotice,
+    Diagnostic,
+    ExecutionIssue,
+    Location,
+    Position,
+    Region,
+    Severity,
+    SourceDocument,
+    ToolReport,
+    TrustMode,
+    to_github,
+    to_json,
+    to_sarif,
+    to_text,
+)
 from .libs.filesystem import is_link_like
+from .libs.linting.analysis import analyze as analyze_paths
+from .libs.linting.analysis import report_from_tools
+from .libs.linting.external import analyze_external
 from .libs.linting.library_policy import Finding as LibraryPolicyFinding
 from .libs.linting.library_policy import ManifestPolicyError
 from .libs.linting.library_policy import scan as check_library_policy
@@ -117,6 +140,13 @@ class Status(StrEnum):
     INVALID = "invalid"
     FAILED = "failed"
     INTERRUPTED = "interrupted"
+
+
+class AnalysisMode(StrEnum):
+    """Whether analysis follows adopted policy or scans the requested native corpus raw."""
+
+    POLICY = "policy"
+    RAW = "raw"
 
 
 @dataclass(frozen=True, slots=True)
@@ -220,6 +250,84 @@ class Standards:
             return _operation_result(max(source_status, eslint_status, 1 if findings else 0), findings=findings)
         return _operation_result(_verify(self.root))
 
+    def analyze(
+        self,
+        paths: Sequence[str] | None = None,
+        *,
+        external: bool = False,
+        trust: TrustMode | str = TrustMode.SAFE,
+        mode: AnalysisMode | str = AnalysisMode.POLICY,
+    ) -> AnalysisReport:
+        """Return native source findings through the versioned diagnostic protocol.
+
+        Unlike :meth:`check`, this method never renders analyzer output and keeps
+        execution failures separate from code findings. External tool adapters
+        can therefore be added without changing the report contract.
+        """
+        try:
+            normalized_trust = TrustMode(trust)
+            normalized_mode = AnalysisMode(mode)
+        except ValueError as exc:
+            return _failed_analysis(self.root, "invalid-input", str(exc))
+        try:
+            adopted = load_manifest(self.root) if normalized_mode is AnalysisMode.POLICY else None
+            selected = _analysis_inputs(self.root, paths, mode=normalized_mode)
+        except (OSError, TypeError, ValueError) as exc:
+            return _failed_analysis(self.root, "invalid-input", str(exc))
+        try:
+            selected_groups = group_paths(selected)
+        except (OSError, TypeError, ValueError) as exc:
+            return _failed_analysis(self.root, "invalid-input", str(exc))
+        baseline = None if adopted is None or adopted.python_baseline is None else self.root / adopted.python_baseline
+        native = analyze_paths(selected, root=self.root, python_baseline=baseline)
+        if adopted is not None and adopted.profile == "application":
+            try:
+                policy = _policy_report(self.root, selected)
+            except (OSError, TypeError, ValueError, ManifestPolicyError) as exc:
+                issue = ExecutionIssue("sarj-library-policy", "policy-failure", f"{type(exc).__name__}: {exc}")
+                policy = ToolReport("sarj-library-policy", Completion.FAILED, issues=(issue,))
+            native = report_from_tools(self.root, (*native.tools, policy))
+        if not external:
+            coverage: list[CoverageNotice] = []
+            if selected_groups.typescript:
+                coverage.append(
+                    CoverageNotice(
+                        "eslint",
+                        "native analysis does not run TypeScript; use check or external trusted analysis",
+                        len(selected_groups.typescript),
+                    )
+                )
+            routed = {
+                *selected_groups.python,
+                *selected_groups.sql,
+                *selected_groups.iac,
+                *selected_groups.text,
+                *selected_groups.typescript,
+            }
+            unsupported = sum(Path(item).is_file() and item not in routed for item in selected)
+            if unsupported:
+                coverage.append(
+                    CoverageNotice(
+                        "sarj-standards",
+                        "no bundled analyzer accepts the selected file type",
+                        unsupported,
+                    )
+                )
+            return AnalysisReport(
+                native.root,
+                Completion.PARTIAL if coverage and native.completion is Completion.COMPLETE else native.completion,
+                native.conclusion if native.diagnostics else Conclusion.INCONCLUSIVE if coverage else native.conclusion,
+                native.tools,
+                tuple(coverage),
+            )
+        external_reports = analyze_external(selected, root=self.root, trust=normalized_trust)
+        if selected_groups.typescript and not any(report.name == "eslint" for report in external_reports):
+            issue = ExecutionIssue(
+                "eslint", "coverage-missing", "no ESLint project accepted the selected TypeScript files"
+            )
+            external_reports = (*external_reports, ToolReport("eslint", Completion.FAILED, issues=(issue,)))
+        return report_from_tools(self.root, (*native.tools, *external_reports))
+
     def fix(self) -> Result:
         return _operation_result(fix(self.root))
 
@@ -308,6 +416,46 @@ def _operation_result(
     else:
         status = Status.FAILED
     return Result(status, findings, changes, exit_code)
+
+
+def _failed_analysis(root: Path, kind: str, message: str) -> AnalysisReport:
+    issue = ExecutionIssue("sarj-standards", kind, message)
+    tool = ToolReport("sarj-standards", Completion.FAILED, issues=(issue,))
+    return AnalysisReport(root, Completion.FAILED, Conclusion.INCONCLUSIVE, (tool,))
+
+
+def _analysis_inputs(root: Path, paths: Sequence[str] | None, *, mode: AnalysisMode = AnalysisMode.POLICY) -> list[str]:
+    if paths is not None:
+        return _contained_paths(root, paths)
+    if mode is AnalysisMode.RAW:
+        return [str(root)]
+    adopted = load_manifest(root)
+    verify_paths = adopted.verify_paths if adopted is not None else (".",)
+    return [str(root / path) for path in verify_paths]
+
+
+def _policy_report(root: Path, selected: Sequence[str]) -> ToolReport:
+    findings = check_selected_library_policy(root, selected)
+    documents: dict[Path, SourceDocument] = {}
+    diagnostics: list[Diagnostic] = []
+    for finding in findings:
+        resolved = (root / finding.path).resolve()
+        relative = resolved.relative_to(root)
+        if resolved not in documents:
+            documents[resolved] = SourceDocument.read(resolved)
+        position = documents[resolved].point(line=finding.line, column=finding.column)
+        diagnostics.append(
+            Diagnostic(
+                finding.id,
+                finding.message,
+                Severity.ERROR,
+                "sarj-library-policy",
+                Location(relative.as_posix(), position=position),
+                rule_id=finding.id,
+                help=f"Replace {finding.package} with {finding.replacement}",
+            )
+        )
+    return ToolReport("sarj-library-policy", Completion.COMPLETE, diagnostics=tuple(diagnostics))
 
 
 def initialize(
@@ -416,6 +564,7 @@ def _sync_target_changes(source: Path, destination: Path) -> bool:
 
 
 __all__ = [
+    "ANALYSIS_SCHEMA",
     "CONFIGS_DIR",
     "ESLINT_APPLICATION",
     "ESLINT_PEERS",
@@ -426,13 +575,20 @@ __all__ = [
     "RUFF_STRICT",
     "TAPLO_STRICT",
     "YAMLLINT_STRICT",
+    "AnalysisMode",
+    "AnalysisReport",
     "Change",
     "Command",
+    "Completion",
+    "Conclusion",
     "ConfigSyncOutcome",
     "ConfigSyncPlan",
     "ConfigSyncResult",
+    "CoverageNotice",
+    "Diagnostic",
     "DoctorFinding",
     "DoctorLevel",
+    "ExecutionIssue",
     "Finding",
     "GroupedPaths",
     "InitPlan",
@@ -440,8 +596,11 @@ __all__ = [
     "Inspection",
     "LedgerSyncResult",
     "LibraryPolicyFinding",
+    "Location",
     "Manifest",
     "PackedArtifact",
+    "Position",
+    "Region",
     "ReleaseAgePolicy",
     "ReleaseAgeReport",
     "ReleaseTarget",
@@ -450,13 +609,18 @@ __all__ = [
     "Result",
     "ScaffoldPlan",
     "SetupPlan",
+    "Severity",
+    "SourceDocument",
     "Standards",
     "Status",
     "TagSyncResult",
     "TextFinding",
+    "ToolReport",
+    "TrustMode",
     "UpgradePlan",
     "ValidatedReleaseTag",
     "__version__",
+    "analyze_paths",
     "apply_init",
     "apply_scaffold",
     "apply_setup",
@@ -492,6 +656,10 @@ __all__ = [
     "show_state",
     "sync_configs",
     "sync_ledger",
+    "to_github",
+    "to_json",
+    "to_sarif",
+    "to_text",
     "update",
     "validate_release_tag",
     "verify_package_tarball",

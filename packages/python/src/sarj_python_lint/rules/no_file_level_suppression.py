@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule
+from sarj_python_lint.rule_base import ColumnEncoding, Diagnostic, Rule
 from sarj_python_lint.rules._suppression_comments import Comment, scan_comments_or_none
 
 
@@ -60,7 +60,14 @@ class NoFileLevelSuppression(Rule):
         if comments is None:
             return []
         diags = [
-            Diagnostic(path=path, line=comment.line, col=comment.col, code=self.code, message=message)
+            Diagnostic(
+                path=path,
+                line=comment.line,
+                col=comment.col,
+                code=self.code,
+                message=message,
+                column_encoding=ColumnEncoding.CODEPOINTS,
+            )
             for comment in comments
             if (message := _blanket_message(comment)) is not None
         ]

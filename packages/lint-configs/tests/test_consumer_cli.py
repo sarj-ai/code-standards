@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import os
 import re
 import subprocess
 import sys
@@ -10,7 +12,7 @@ from typing import TYPE_CHECKING, Protocol
 import pytest
 
 from sarj_lint_configs import __main__ as cli
-from sarj_lint_configs import doctor, manifest
+from sarj_lint_configs import api, doctor, manifest
 
 
 if TYPE_CHECKING:
@@ -20,6 +22,22 @@ if TYPE_CHECKING:
 
 class _DestArgs(Protocol):
     dest: str
+
+
+_GIT_ROUTING_VARIABLES = frozenset(
+    name
+    for name in os.environ  # ruff: ignore[banned-api] — test sanitizes inherited hook-local Git routing variables.
+    if name.startswith("GIT_") and name not in {"GIT_SSH", "GIT_SSH_COMMAND"}
+)
+
+
+def _isolated_git_environment() -> dict[str, str]:
+    """Prevent an enclosing Git hook from routing fixture commands to the real repository."""
+    return {
+        name: value
+        for name, value in os.environ.items()  # ruff: ignore[banned-api] -- explicitly remove hook-local Git routing.
+        if name not in _GIT_ROUTING_VARIABLES
+    }
 
 
 class _CommandArgs(Protocol):
@@ -43,8 +61,178 @@ def test_top_level_help_prioritizes_consumer_verbs(legacy: str) -> None:
     result = _help()
 
     assert result.returncode == 0
-    assert "{init,check,fix,doctor,update,show,maintain}" in result.stdout
+    assert "{init,check,analyze,fix,doctor,update,show,maintain}" in result.stdout
     assert re.search(rf"^    {legacy}\s", result.stdout, re.MULTILINE) is None
+
+
+def test_analyze_json_is_machine_clean_and_uses_report_exit(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    source = tmp_path / "service.py"
+    source.write_text("import logging\n", encoding="utf-8")
+
+    assert cli.main(["analyze", "--dest", str(tmp_path), "--format", "json", "service.py"]) == 1
+
+    captured = capsys.readouterr()
+    payload: object = json.loads(captured.out)  # pyright: ignore[reportAny]
+    assert isinstance(payload, dict)
+    assert payload["exitCode"] == 1
+    assert not captured.err
+
+
+def test_analyze_cli_requires_explicit_trust_before_external_eslint(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "app.ts"
+    source.write_text("export const value = 1;\n", encoding="utf-8")
+    seen: list[api.TrustMode] = []
+
+    def external_reports(
+        _files: Sequence[str],
+        *,
+        root: Path,
+        trust: api.TrustMode,
+    ) -> tuple[api.ToolReport, ...]:
+        _ = root
+        seen.append(trust)
+        return (api.ToolReport("eslint", api.Completion.COMPLETE),)
+
+    monkeypatch.setattr(api, "analyze_external", external_reports)
+
+    assert cli.main(["analyze", "--dest", str(tmp_path), "--external", "--trust", "trusted", "app.ts"]) == 0
+    assert seen == [api.TrustMode.TRUSTED]
+
+
+@pytest.mark.parametrize("output_format", ["text", "json", "sarif", "github"])
+def test_analyze_clean_input_supports_every_format(
+    output_format: str,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    (tmp_path / "service.py").write_text("VALUE: int = 1\n", encoding="utf-8")
+
+    assert cli.main(["analyze", "--dest", str(tmp_path), "--format", output_format, "service.py"]) == 0
+
+    captured = capsys.readouterr()
+    assert captured.out
+    assert not captured.err
+
+
+def test_analyze_writes_machine_output_atomically(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    (tmp_path / "service.py").write_text("VALUE: int = 1\n", encoding="utf-8")
+
+    assert (
+        cli.main(["analyze", "--dest", str(tmp_path), "--format", "sarif", "--output", "report.sarif", "service.py"])
+        == 0
+    )
+
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert not captured.err
+    payload: object = json.loads((tmp_path / "report.sarif").read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    assert isinstance(payload, dict)
+    assert payload["version"] == "2.1.0"
+
+
+def test_analyze_rejects_output_for_human_formats(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert cli.main(["analyze", "--dest", str(tmp_path), "--output", "report.txt"]) == 2
+
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert "--output is supported only" in captured.err
+
+
+@pytest.mark.parametrize("output", ["../report.json", "source.py"])
+def test_analyze_rejects_unsafe_or_mistyped_output(
+    output: str,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    (tmp_path / "source.py").write_text("VALUE: int = 1\n", encoding="utf-8")
+
+    assert cli.main(["analyze", "--dest", str(tmp_path), "--format", "json", "--output", output, "source.py"]) == 2
+
+    assert "error:" in capsys.readouterr().err
+
+
+def test_analyze_rejects_absolute_output_outside_repository(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    source = tmp_path / "source.py"
+    source.write_text("VALUE: int = 1\n", encoding="utf-8")
+    output = tmp_path.parent / "outside-report.json"
+
+    assert (
+        cli.main(
+            [
+                "analyze",
+                "--dest",
+                str(tmp_path),
+                "--format",
+                "json",
+                "--output",
+                str(output),
+                "source.py",
+            ]
+        )
+        == 2
+    )
+
+    assert "error:" in capsys.readouterr().err
+
+
+def test_analyze_rejects_a_symlinked_output_parent(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    linked = tmp_path / "linked"
+    linked.symlink_to(outside, target_is_directory=True)
+    (tmp_path / "source.py").write_text("VALUE: int = 1\n", encoding="utf-8")
+
+    assert (
+        cli.main(
+            [
+                "analyze",
+                "--dest",
+                str(tmp_path),
+                "--format",
+                "json",
+                "--output",
+                "linked/report.json",
+                "source.py",
+            ]
+        )
+        == 2
+    )
+
+    assert "error:" in capsys.readouterr().err
+
+
+def test_analyze_cli_never_invokes_external_tools(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    (tmp_path / "service.py").write_text("VALUE: int = 1\n", encoding="utf-8")
+
+    def unexpected(*_args: object, **_kwargs: object) -> object:
+        pytest.fail("native analyze must not discover or execute external tools")
+
+    monkeypatch.setattr(api, "analyze_external", unexpected)
+
+    assert cli.main(["analyze", "--dest", str(tmp_path), "service.py"]) == 0
+    assert "sarj-standards:" in capsys.readouterr().out
 
 
 def test_check_without_paths_runs_the_complete_check(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -312,6 +500,32 @@ def test_check_staged_routes_only_discovered_paths(monkeypatch: pytest.MonkeyPat
     assert seen == [[str(staged)]]
 
 
+def test_direct_staged_check_refuses_to_lint_worktree_bytes_that_differ_from_index(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    environment = _isolated_git_environment()
+    subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True, env=environment)
+    subprocess.run(("git", "config", "user.email", "test@example.com"), cwd=tmp_path, check=True, env=environment)
+    subprocess.run(("git", "config", "user.name", "Test"), cwd=tmp_path, check=True, env=environment)
+    source = tmp_path / "service.py"
+    source.write_text("VALUE: int = 1\n", encoding="utf-8")
+    subprocess.run(("git", "add", "service.py"), cwd=tmp_path, check=True, env=environment)
+    subprocess.run(("git", "commit", "-qm", "base"), cwd=tmp_path, check=True, env=environment)
+    source.write_text("import logging\n", encoding="utf-8")
+    subprocess.run(("git", "add", "service.py"), cwd=tmp_path, check=True, env=environment)
+    # Change the byte length as well as the content so Git's racy-clean index
+    # optimization cannot make this filesystem-timing regression test flaky.
+    source.write_text("VALUE: int = 200\n", encoding="utf-8")
+
+    assert cli.main(["check", "--staged", "--dest", str(tmp_path)]) == 2
+    assert cli.main(["check", "--staged", "--dest", str(tmp_path), "service.py"]) == 2
+
+    captured = capsys.readouterr()
+    assert "unstaged content" in captured.err
+    assert "service.py" in captured.err
+
+
 def test_check_staged_filters_unsafe_hook_supplied_paths(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -339,6 +553,10 @@ def test_check_staged_filters_unsafe_hook_supplied_paths(
     def clean_policy(_args: object, **_kwargs: object) -> int:
         return 0
 
+    def staged_files(_root: Path) -> list[str]:
+        return [str(kept)]
+
+    monkeypatch.setattr(cli, "_staged_files", staged_files)
     monkeypatch.setattr(cli, "_check_staged_adoption_health", clean_health)
     monkeypatch.setattr("sarj_lint_configs.runner.run", run_rules)
     monkeypatch.setattr("sarj_lint_configs.lifecycle.selected_eslint_commands", no_eslint)

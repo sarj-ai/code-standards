@@ -381,7 +381,7 @@ wheels = [
 
 [[package]]
 name = "sarj-iac-lint"
-version = "0.6.0"
+version = "0.6.1"
 source = { editable = "../iac" }
 
 [package.metadata]
@@ -395,7 +395,7 @@ dev = [
 
 [[package]]
 name = "sarj-lint-configs"
-version = "0.52.0"
+version = "0.53.0"
 source = { editable = "." }
 dependencies = [
     { name = "basedpyright" },
@@ -432,7 +432,7 @@ dev = [{ name = "pytest", specifier = ">=9.0" }]
 
 [[package]]
 name = "sarj-python-lint"
-version = "0.50.0"
+version = "0.51.0"
 source = { editable = "../python" }
 
 [package.metadata]
@@ -446,7 +446,7 @@ dev = [
 
 [[package]]
 name = "sarj-sql-lint"
-version = "0.6.3"
+version = "0.6.4"
 source = { editable = "../sql" }
 dependencies = [
     { name = "sqlfluff" },

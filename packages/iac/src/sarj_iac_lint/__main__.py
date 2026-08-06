@@ -80,6 +80,11 @@ def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
     return diags
 
 
+def analyze(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
+    """Return native diagnostics without rendering CLI output."""
+    return _check(rule_ids, paths)
+
+
 class _Args(argparse.Namespace):
     cmd: str | None
     rule: list[str]
@@ -118,7 +123,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     try:
-        diags = _check(args.rule, args.files)
+        diags = analyze(args.rule, args.files)
     except ValueError as exc:
         sys.stderr.write(f"error: {exc}\n")
         return 2

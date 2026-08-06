@@ -1,4 +1,4 @@
-version = "0.52.0"
+version = "0.53.0"
 profile = "standard"
 configs = ["ruff", "pyright"]
 
@@ -129,12 +129,6 @@ selector = "sarj-iac-lint"
 [[repository.version_references]]
 path = "packages/lint-configs/uv.lock"
 format = "uv-lock"
-version = "lint_configs"
-selector = "sarj-lint-configs"
-
-[[repository.version_references]]
-path = ".pre-commit-hooks.yaml"
-format = "exact-pin"
 version = "lint_configs"
 selector = "sarj-lint-configs"
 

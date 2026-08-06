@@ -7,6 +7,7 @@ from importlib.metadata import PackageNotFoundError, version
 import json
 import re
 import tomllib
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Literal
 
 from packaging.version import InvalidVersion, Version
@@ -15,7 +16,7 @@ from sarj_lint_configs._meta import CONFIGS_DIR, __version__
 
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
     from pathlib import Path
 
 
@@ -32,6 +33,15 @@ PEERS_JSON: Final = CONFIGS_DIR / "eslint.peers.json"
 LINT_CONFIGS: Final = "sarj-lint-configs"
 _PYTHON_LINT: Final = "sarj-python-lint"
 SIBLING_PACKAGES: Final = (_PYTHON_LINT, "sarj-sql-lint", "sarj-iac-lint")
+_HOOK_ALIASES: Final = MappingProxyType(
+    {
+        "ban-create-trigger": "sql",
+        "ban-postgres-enums": "sql",
+        "fakes-in-shared-location": "python",
+        "no-raw-connection-in-tests": "python",
+        "suppression-ratchet": "python",
+    }
+)
 
 
 def adopted_version() -> str:
@@ -278,10 +288,38 @@ def installed_versions() -> dict[str, str]:
     return found
 
 
-def expected_precommit_rev() -> str | None:
+def expected_precommit_rev(hook_ids: Sequence[str] = ()) -> str | None:
     """Derive the `rev:` a repo's pre-commit config must carry."""
-    installed = text_field(installed_versions(), _PYTHON_LINT)
-    return None if installed is None else f"python-v{installed}"
+    if not hook_ids:
+        installed = text_field(installed_versions(), _PYTHON_LINT)
+        return None if installed is None else f"python-v{installed}"
+    if "sarj-standards" in hook_ids:
+        return f"lint-configs-v{adopted_version()}"
+    from sarj_lint_configs.libs.repository import (  # ruff: ignore[import-outside-top-level] -- avoid adoption import cycle
+        ledger,
+    )
+
+    rules = ledger.load().rules
+    families: set[str] = set()
+    for hook_id in hook_ids:
+        rule_id = hook_id.removeprefix("sarj-")
+        if alias := _HOOK_ALIASES.get(rule_id):
+            families.add(alias)
+        elif rule_id.endswith("-iac") and rule_id.removesuffix("-iac") in rules.get("iac", ()):
+            families.add("iac")
+        elif rule_id in rules.get("python", ()):
+            families.add("python")
+        elif rule_id in rules.get("sql", ()):
+            families.add("sql")
+        elif rule_id in rules.get("iac", ()):
+            families.add("iac")
+        else:
+            return None
+    if len(families) != 1:
+        return f"lint-configs-v{adopted_version()}"
+    family = next(iter(families))
+    installed = text_field(installed_versions(), f"sarj-{family}-lint")
+    return None if installed is None else f"{family}-v{installed}"
 
 
 def eslint_peers() -> dict[str, str]:

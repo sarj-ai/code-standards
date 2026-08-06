@@ -21,7 +21,19 @@ def test_every_declared_public_api_resolves() -> None:
 
 
 def test_public_api_keeps_pre_facade_compatibility_exports() -> None:
-    preferred = {"Change", "Finding", "Inspection", "Result", "Standards", "Status", "__version__"}
+    preferred = {
+        "AnalysisReport",
+        "Change",
+        "Diagnostic",
+        "Finding",
+        "Inspection",
+        "Result",
+        "Standards",
+        "Status",
+        "to_json",
+        "to_sarif",
+        "__version__",
+    }
     compatibility = {"RUFF_STRICT", "plan_upgrade", "check_text", "ReleaseTarget", "initialize", "sync_configs"}
 
     assert preferred | compatibility <= set(api.__all__)

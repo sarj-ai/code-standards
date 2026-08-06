@@ -93,6 +93,18 @@ def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
     return diags
 
 
+def analyze(
+    rule_ids: list[str],
+    paths: list[Path],
+    *,
+    baseline: Path | None = None,
+    root: Path | None = None,
+) -> list[Diagnostic]:
+    """Return native diagnostics without rendering CLI output."""
+    diagnostics = _check(rule_ids, paths)
+    return diagnostics if baseline is None else _apply_baseline(diagnostics, _read_baseline(baseline), root=root)
+
+
 _PROSE_PRECEDENCE = MappingProxyType(
     {
         "SARJ084": frozenset({"SARJ050"}),
@@ -166,10 +178,10 @@ def _baseline_counts(diags: list[Diagnostic]) -> dict[str, dict[str, int]]:
     return counts
 
 
-def _baseline_path(path: Path) -> str:
+def _baseline_path(path: Path, *, root: Path | None = None) -> str:
     """Make baselines portable when a caller supplies repository-absolute paths."""
     try:
-        return path.resolve().relative_to(Path.cwd().resolve()).as_posix()
+        return path.resolve().relative_to((Path.cwd() if root is None else root).resolve()).as_posix()
     except ValueError:
         return str(path)
 
@@ -193,7 +205,12 @@ def _read_baseline(path: Path) -> dict[str, dict[str, int]]:
     return counts
 
 
-def _apply_baseline(diags: list[Diagnostic], baseline: dict[str, dict[str, int]]) -> list[Diagnostic]:
+def _apply_baseline(
+    diags: list[Diagnostic],
+    baseline: dict[str, dict[str, int]],
+    *,
+    root: Path | None = None,
+) -> list[Diagnostic]:
     """Suppress up to the baselined count per (path, code); excess diags survive."""
     seen: Counter[tuple[str, str]] = Counter()
     out: list[Diagnostic] = []
@@ -201,7 +218,7 @@ def _apply_baseline(diags: list[Diagnostic], baseline: dict[str, dict[str, int]]
         if d.severity is Severity.WARNING:
             out.append(d)
             continue
-        path_key = _baseline_path(d.path)
+        path_key = _baseline_path(d.path, root=root)
         key = (path_key, d.code)
         seen[key] += 1
         # The raw lookup preserves compatibility with baselines written before
@@ -258,7 +275,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "explain":
         return _explain(args.which)
 
-    diags = _check(args.rule, args.files)
+    diags = analyze(args.rule, args.files)
     if args.update_baseline is not None:
         counts = _baseline_counts(diags)
         blocking = sum(d.severity is Severity.ERROR for d in diags)

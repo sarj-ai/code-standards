@@ -10,7 +10,7 @@ import re
 import tokenize
 from typing import TYPE_CHECKING, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule
+from sarj_python_lint.rule_base import ColumnEncoding, Diagnostic, Rule
 from sarj_python_lint.rules._comments import (
     comment_runs,
     has_external_reference,
@@ -469,6 +469,7 @@ class NoCommentCruft(Rule):
                         f"Statement comment wall ({len(walls[line])} narrated steps) — "
                         "delete the walkthrough and name the operations in code; keep only constraints or rationale."
                     ),
+                    column_encoding=ColumnEncoding.CODEPOINTS,
                 )
                 continue
             if line in wall_members:
@@ -485,7 +486,14 @@ class NoCommentCruft(Rule):
                 in_license_header=line in license_header,
             )
             if msg is not None:
-                diags[line] = Diagnostic(path=path, line=line, col=col + 1, code=self.code, message=msg)
+                diags[line] = Diagnostic(
+                    path=path,
+                    line=line,
+                    col=col + 1,
+                    code=self.code,
+                    message=msg,
+                    column_encoding=ColumnEncoding.CODEPOINTS,
+                )
         self._flag_leading_preamble(standalone, first_code_line, path, diags)
         return [diags[k] for k in sorted(diags)]
 
@@ -564,4 +572,5 @@ class NoCommentCruft(Rule):
                         f"File-header comment preamble ({len(leading)} lines) — "
                         "use a module docstring for the why, not a block of comments."
                     ),
+                    column_encoding=ColumnEncoding.CODEPOINTS,
                 )

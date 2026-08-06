@@ -9,7 +9,7 @@ import re
 import tokenize
 from typing import TYPE_CHECKING, Final
 
-from sarj_python_lint.rule_base import parse_or_none
+from sarj_python_lint.rule_base import ColumnEncoding, parse_or_none
 from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._docstrings import PROMPT_DECORATOR_MARKERS, decorator_markers, sections
 from sarj_python_lint.rules._paths import is_generated
@@ -52,6 +52,11 @@ class ProseGroup:
     text: str
     kind: str
     typed_sections: frozenset[str] = frozenset()
+
+    @property
+    def column_encoding(self) -> ColumnEncoding:
+        """Return the coordinate convention of the parser that found this prose."""
+        return ColumnEncoding.CODEPOINTS if self.kind == "comment" else ColumnEncoding.UTF8_BYTES
 
 
 _last_groups: tuple[str, str, tuple[ProseGroup, ...]] | None = None

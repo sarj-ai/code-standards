@@ -9,7 +9,7 @@ import re
 import tokenize
 from typing import TYPE_CHECKING, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule
+from sarj_python_lint.rule_base import ColumnEncoding, Diagnostic, Rule
 from sarj_python_lint.rules._comments import nested_comment_lines, standalone_comments
 from sarj_python_lint.rules._paths import is_generated, is_test_path
 
@@ -46,7 +46,14 @@ class TestPhaseLabelComment(Rule):
         except tokenize.TokenError, IndentationError, SyntaxError:
             return []
         return [
-            Diagnostic(path=path, line=line, col=col + 1, code=self.code, message=self.description)
+            Diagnostic(
+                path=path,
+                line=line,
+                col=col + 1,
+                code=self.code,
+                message=self.description,
+                column_encoding=ColumnEncoding.CODEPOINTS,
+            )
             for line, col, body in standalone
             if line not in nested and _PHASE_RE.match(body)
         ]
