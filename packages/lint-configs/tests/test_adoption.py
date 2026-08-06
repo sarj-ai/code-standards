@@ -944,7 +944,17 @@ def test_doctor_warns_when_the_checkout_hook_is_not_installed(tmp_path: Path) ->
         for finding in findings
         if finding.id == "doctor.hooks.precommit-install" and finding.level is doctor.Level.WARN
     ]
-    hook = tmp_path / ".git" / "hooks" / "pre-commit"
+    hook_location = subprocess.run(
+        ("git", "rev-parse", "--git-path", "hooks/pre-commit"),
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    hook = Path(hook_location)
+    if not hook.is_absolute():
+        hook = tmp_path / hook
+    hook.parent.mkdir(parents=True, exist_ok=True)
     hook.write_text("#!/bin/sh\n# pre_commit hook-type=pre-commit\n", encoding="utf-8")
     assert not [finding for finding in doctor.diagnose(tmp_path) if finding.id == "doctor.hooks.precommit-install"]
 
