@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from bisect import bisect_right
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -21,6 +22,7 @@ class SourceDocument:
     text: str
     _lines: tuple[str, ...] = field(init=False, repr=False)
     _line_byte_offsets: tuple[int, ...] = field(init=False, repr=False)
+    _byte_length: int = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         self._lines = tuple(self.text.splitlines(keepends=True)) or ("",)
@@ -30,6 +32,7 @@ class SourceDocument:
             offsets.append(offset)
             offset += len(line.encode("utf-8"))
         self._line_byte_offsets = tuple(offsets)
+        self._byte_length = offset
 
     @classmethod
     def read(cls, path: Path) -> Self:
@@ -75,21 +78,48 @@ class SourceDocument:
             byte_offset=self._line_byte_offsets[line] + len(prefix.encode("utf-8")),
         )
 
+    def byte_point(self, *, line: int, column: int) -> Position | None:
+        """Convert a one-based line and UTF-8 byte column without guessing."""
+        if line < 1 or column < 1 or line > len(self._lines):
+            return None
+        content = self._lines[line - 1].rstrip("\r\n")
+        byte_column = column - 1
+        encoded = content.encode("utf-8")
+        if byte_column > len(encoded):
+            return None
+        try:
+            prefix = encoded[:byte_column].decode("utf-8")
+        except ValueError:
+            return None
+        return Position(
+            line=line - 1,
+            character=len(prefix.encode("utf-16-le")) // 2,
+            byte_offset=self._line_byte_offsets[line - 1] + byte_column,
+        )
+
     def region(self, *, start_byte: int, end_byte: int) -> Region:
         """Convert an exact half-open UTF-8 byte span into a UTF-16 range."""
-        if start_byte < 0 or end_byte < start_byte or end_byte > len(self.text.encode("utf-8")):
+        if start_byte < 0 or end_byte < start_byte or end_byte > self._byte_length:
             msg = "source byte range is outside the document"
             raise ValueError(msg)
         return Region(self._position_at_byte(start_byte), self._position_at_byte(end_byte))
 
     def _position_at_byte(self, offset: int) -> Position:
-        encoded = self.text.encode("utf-8")
-        prefix = encoded[:offset]
+        if offset < 0 or offset > self._byte_length:
+            msg = "source byte offset is outside the document"
+            raise ValueError(msg)
+        line = bisect_right(self._line_byte_offsets, offset) - 1
+        line_start = self._line_byte_offsets[line]
+        prefix = self._lines[line].encode("utf-8")[: offset - line_start]
         try:
             decoded = prefix.decode("utf-8")
         except UnicodeDecodeError as exc:
             msg = "source byte offset splits a UTF-8 code point"
             raise ValueError(msg) from exc
-        line = decoded.count("\n")
+        local_newlines = decoded.count("\n")
         current = decoded.rpartition("\n")[2]
-        return Position(line=line, character=len(current.encode("utf-16-le")) // 2, byte_offset=offset)
+        return Position(
+            line=line + local_newlines,
+            character=len(current.encode("utf-16-le")) // 2,
+            byte_offset=offset,
+        )

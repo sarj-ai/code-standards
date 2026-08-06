@@ -28,16 +28,29 @@ if TYPE_CHECKING:
 
 @runtime_checkable
 class _NativeDiagnostic(Protocol):
-    path: Path
-    line: int
-    col: int
-    code: str
-    message: str
+    @property
+    def path(self) -> Path: ...
+
+    @property
+    def line(self) -> int: ...
+
+    @property
+    def col(self) -> int: ...
+
+    @property
+    def code(self) -> str: ...
+
+    @property
+    def message(self) -> str: ...
+
+    @property
+    def column_encoding(self) -> object: ...
 
 
 @runtime_checkable
 class _SeverityDiagnostic(_NativeDiagnostic, Protocol):
-    severity: object
+    @property
+    def severity(self) -> object: ...
 
 
 class _RuleMetadata(Protocol):
@@ -56,19 +69,25 @@ class _RegistryModule(Protocol):
     REGISTRY: Mapping[str, type[_RuleMetadata]]
 
 
-def analyze(files: Sequence[str], *, root: Path) -> AnalysisReport:
+def analyze(files: Sequence[str], *, root: Path, python_baseline: Path | None = None) -> AnalysisReport:
     """Run applicable bundled analyzers without parsing their console output."""
     try:
         grouped = group_paths(files)
     except (OSError, ValueError) as exc:
         issue = ExecutionIssue("sarj-standards", "invalid-input", str(exc))
         tool = ToolReport("sarj-standards", Completion.FAILED, issues=(issue,))
-        return AnalysisReport(root, Completion.FAILED, Conclusion.FAILED, (tool,))
+        return AnalysisReport(root, Completion.FAILED, Conclusion.INCONCLUSIVE, (tool,))
 
     reports = tuple(
         report
         for report in (
-            _native_report("sarj-python-lint", "sarj_python_lint", grouped.python, root),
+            _native_report(
+                "sarj-python-lint",
+                "sarj_python_lint",
+                grouped.python,
+                root,
+                python_baseline=python_baseline,
+            ),
             _native_report("sarj-sql-lint", "sarj_sql_lint", grouped.sql, root),
             _native_report("sarj-iac-lint", "sarj_iac_lint", grouped.iac, root),
             _text_report(grouped, root),
@@ -80,37 +99,90 @@ def analyze(files: Sequence[str], *, root: Path) -> AnalysisReport:
 
 def report_from_tools(root: Path, reports: Sequence[ToolReport]) -> AnalysisReport:
     """Derive consistent report axes from independent tool reports."""
-    normalized = tuple(reports)
+    normalized = tuple(
+        ToolReport(
+            report.name,
+            report.completion,
+            diagnostics=tuple(sorted(report.diagnostics, key=_diagnostic_key)),
+            issues=tuple(sorted(report.issues, key=lambda issue: (issue.source, issue.kind, issue.message))),
+        )
+        for report in sorted(reports, key=lambda report: report.name)
+    )
     issues = tuple(issue for report in normalized for issue in report.issues)
     diagnostics = tuple(item for report in normalized for item in report.diagnostics)
     if issues:
         completion = (
-            Completion.FAILED if normalized and all(report.issues for report in normalized) else Completion.PARTIAL
+            Completion.FAILED
+            if normalized and all(report.completion is Completion.FAILED for report in normalized)
+            else Completion.PARTIAL
         )
-        conclusion = Conclusion.FAILED
+        conclusion = Conclusion.FINDINGS if diagnostics else Conclusion.INCONCLUSIVE
     else:
         completion = Completion.COMPLETE
         conclusion = Conclusion.FINDINGS if diagnostics else Conclusion.PASSED
     return AnalysisReport(root, completion, conclusion, normalized)
 
 
-def _native_report(name: str, package: str, files: Sequence[str], root: Path) -> ToolReport | None:
+def _diagnostic_key(diagnostic: Diagnostic) -> tuple[object, ...]:
+    location = diagnostic.location
+    position = location.region.start if location.region is not None else location.position
+    end = location.region.end if location.region is not None else None
+    return (
+        diagnostic.source,
+        diagnostic.code,
+        location.path,
+        -1 if position is None else position.line,
+        -1 if position is None else position.character,
+        -1 if end is None else end.line,
+        -1 if end is None else end.character,
+        diagnostic.severity.value,
+        diagnostic.message,
+    )
+
+
+def _native_report(
+    name: str,
+    package: str,
+    files: Sequence[str],
+    root: Path,
+    *,
+    python_baseline: Path | None = None,
+) -> ToolReport | None:
     if not files:
         return None
     try:
-        return _run_native(name, package, files, root)
+        return _run_native(name, package, files, root, python_baseline=python_baseline)
     except Exception as exc:  # ruff: ignore[blind-except] -- one analyzer failure must not erase other tool results.
         issue = ExecutionIssue(name, "analyzer-failure", f"{type(exc).__name__}: {exc}")
         return ToolReport(name, Completion.FAILED, issues=(issue,))
 
 
-def _run_native(name: str, package: str, files: Sequence[str], root: Path) -> ToolReport:
+def _run_native(
+    name: str,
+    package: str,
+    files: Sequence[str],
+    root: Path,
+    *,
+    python_baseline: Path | None,
+) -> ToolReport:
     checker_module, registry_module = _load_native(package)
     metadata = _metadata(registry_module.REGISTRY)
-    raw = checker_module.analyze(sorted(registry_module.REGISTRY), [Path(item) for item in files])
+    paths = [Path(item) for item in files]
+    native_result: Sequence[_NativeDiagnostic]
+    if package == "sarj_python_lint":
+        from sarj_python_lint.__main__ import analyze as analyze_python  # ruff: ignore[import-outside-top-level]
+
+        native_result = analyze_python(
+            sorted(registry_module.REGISTRY),
+            paths,
+            baseline=python_baseline,
+            root=root,
+        )
+    else:
+        native_result = checker_module.analyze(sorted(registry_module.REGISTRY), paths)
     cache: dict[Path, SourceDocument | None] = {}
     diagnostics = tuple(
-        _normalize_native(item, source=name, root=root, metadata=metadata, documents=cache) for item in raw
+        _normalize_native(item, source=name, root=root, metadata=metadata, documents=cache) for item in native_result
     )
     return ToolReport(name, Completion.COMPLETE, diagnostics=diagnostics)
 
@@ -148,7 +220,13 @@ def _normalize_native(
         except OSError:
             document = None
         documents[resolved] = document
-    position = None if document is None else document.point(line=item.line, column=item.col)
+    position = None
+    if document is not None:
+        position = (
+            document.byte_point(line=item.line, column=item.col)
+            if source == "sarj-python-lint" and str(item.column_encoding) == "utf8-bytes"
+            else document.point(line=item.line, column=item.col)
+        )
     rule_id, help_text = metadata.get(item.code, (None, None))
     return Diagnostic(
         code=item.code,

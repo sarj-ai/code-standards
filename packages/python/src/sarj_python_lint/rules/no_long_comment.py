@@ -25,7 +25,15 @@ class NoLongComment(Rule):
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
         return [
-            Diagnostic(path, group.line, group.col, self.code, self.description, Severity.WARNING)
+            Diagnostic(
+                path,
+                group.line,
+                group.col,
+                self.code,
+                self.description,
+                Severity.WARNING,
+                column_encoding=group.column_encoding,
+            )
             for group in groups(path, source)
             if group.kind == "comment"
             and not group.typed_sections

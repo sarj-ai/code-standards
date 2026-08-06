@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING, final, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule
+from sarj_python_lint.rule_base import ColumnEncoding, Diagnostic, Rule
 from sarj_python_lint.rules._suppression_comments import scan_comments_or_none
 
 
@@ -51,6 +51,7 @@ class NoFileLevelEscapeHatchNoqa(Rule):
                 col=comment.col,
                 code=self.code,
                 message=_message(hatched),
+                column_encoding=ColumnEncoding.CODEPOINTS,
             )
             for comment in comments
             if (hatched := _hatch_codes(comment.body))

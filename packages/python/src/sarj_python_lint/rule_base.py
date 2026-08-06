@@ -50,6 +50,13 @@ class Severity(StrEnum):
     ERROR = "error"
 
 
+class ColumnEncoding(StrEnum):
+    """Coordinate system used by a native diagnostic's one-based column."""
+
+    UTF8_BYTES = "utf8-bytes"
+    CODEPOINTS = "codepoints"
+
+
 @dataclass(frozen=True, slots=True)
 class Diagnostic:
     """A single lint finding."""
@@ -60,6 +67,7 @@ class Diagnostic:
     code: str
     message: str
     severity: Severity = Severity.ERROR
+    column_encoding: ColumnEncoding = ColumnEncoding.UTF8_BYTES
 
     def format(self) -> str:
         """Render the finding ruff-compatibly as `path:line:col: CODE message`."""

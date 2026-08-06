@@ -44,6 +44,7 @@ class _Tool(StrEnum):
     SQL = "sql"
     IAC = "iac"
     TEXT = "text"
+    TYPESCRIPT = "typescript"
 
 
 _SUFFIX_TO_TOOL = MappingProxyType(
@@ -53,6 +54,14 @@ _SUFFIX_TO_TOOL = MappingProxyType(
         ".sql": _Tool.SQL,
         ".tf": _Tool.IAC,
         ".tfvars": _Tool.IAC,
+        ".cjs": _Tool.TYPESCRIPT,
+        ".cts": _Tool.TYPESCRIPT,
+        ".js": _Tool.TYPESCRIPT,
+        ".jsx": _Tool.TYPESCRIPT,
+        ".mjs": _Tool.TYPESCRIPT,
+        ".mts": _Tool.TYPESCRIPT,
+        ".ts": _Tool.TYPESCRIPT,
+        ".tsx": _Tool.TYPESCRIPT,
         ".yaml": _Tool.IAC,
         ".yml": _Tool.IAC,
     }
@@ -100,7 +109,8 @@ _IGNORED_DIRS = frozenset(
         "venv",
     }
 )
-_MAX_DISCOVERED_FILE_BYTES = 500 * 1024
+_MAX_SOURCE_FILE_BYTES = 2 * 1024 * 1024
+_MAX_MARKDOWN_FILE_BYTES = 16 * 1024 * 1024
 _IGNORED_DISCOVERED_FILES = frozenset({".env", ".env.mcp"})
 _PYTHON_NOISE_RULES = frozenset(
     {
@@ -132,6 +142,7 @@ class GroupedPaths:
     sql: list[str] = field(default_factory=list)
     iac: list[str] = field(default_factory=list)
     text: list[str] = field(default_factory=list)
+    typescript: list[str] = field(default_factory=list)
 
 
 def run(
@@ -219,6 +230,8 @@ def group_paths(files: Sequence[str]) -> GroupedPaths:
         if not path.exists():
             msg = f"input does not exist: {raw_path}"
             raise ValueError(msg)
+        if path.is_file() and _owns_path(path):
+            _validate_source_file(path, raw_path)
         inputs.append((raw_path, path, path.is_dir()))
 
     roots = _minimal_roots(path for _raw, path, is_directory in inputs if is_directory)
@@ -258,15 +271,31 @@ def _route_directory(grouped: GroupedPaths, path: Path, seen: set[Path]) -> None
                 continue
             try:
                 metadata = child.stat(follow_symlinks=False)
-                oversized_non_markdown = metadata.st_size > _MAX_DISCOVERED_FILE_BYTES and child.suffix.lower() not in {
-                    ".md",
-                    ".mdx",
-                }
-                if not stat.S_ISREG(metadata.st_mode) or oversized_non_markdown:
+                if not stat.S_ISREG(metadata.st_mode):
                     continue
+                _validate_source_size(child, metadata.st_size)
             except OSError:
                 continue
             _route_unique_path(grouped, child, str(child), seen)
+
+
+def _validate_source_file(path: Path, display: str) -> None:
+    try:
+        metadata = path.stat(follow_symlinks=False)
+    except OSError as exc:
+        msg = f"cannot inspect source input: {display}"
+        raise ValueError(msg) from exc
+    if not stat.S_ISREG(metadata.st_mode):
+        msg = f"source input is not a regular file: {display}"
+        raise ValueError(msg)
+    _validate_source_size(path, metadata.st_size)
+
+
+def _validate_source_size(path: Path, size: int) -> None:
+    limit = _MAX_MARKDOWN_FILE_BYTES if path.suffix.lower() in {".md", ".mdx"} else _MAX_SOURCE_FILE_BYTES
+    if size > limit:
+        msg = f"source input exceeds the {limit // (1024 * 1024)} MiB analysis limit: {path}"
+        raise ValueError(msg)
 
 
 def _owns_path(path: Path) -> bool:
@@ -306,6 +335,8 @@ def _append_path(grouped: GroupedPaths, tool: _Tool | None, path: str) -> None:
             grouped.iac.append(path)
         case _Tool.TEXT:
             grouped.text.append(path)
+        case _Tool.TYPESCRIPT:
+            grouped.typescript.append(path)
         case None:
             return
 

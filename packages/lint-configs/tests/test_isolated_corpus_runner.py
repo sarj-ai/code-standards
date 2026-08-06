@@ -69,6 +69,22 @@ def test_batch_size_is_deterministically_bounded(tmp_path: Path) -> None:
         run_isolated_corpora((_source(corpus, "sample"),), ("linter",), batch_size=1_001)
 
 
+def test_batches_are_also_bounded_by_encoded_argv_bytes(tmp_path: Path) -> None:
+    files = tuple(tmp_path / ("x" * 200) / f"file-{index}.py" for index in range(400))
+
+    batches = corpus_runner.argv_batches(
+        files,
+        ("linter", "check"),
+        batch_size=1_000,
+    )
+
+    assert len(batches) > 1
+    assert all(
+        sum(len(str(argument).encode()) + 1 for argument in ("linter", "check", *batch)) <= 64 * 1024
+        for batch in batches
+    )
+
+
 def test_runner_exercises_committed_rule_in_isolated_repositories(tmp_path: Path) -> None:
     unsafe = tmp_path / "unsafe"
     clean = tmp_path / "clean"

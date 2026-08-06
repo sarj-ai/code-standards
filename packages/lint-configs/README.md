@@ -98,7 +98,8 @@ uv run --frozen sarj-standards show state   # print detected adoption state
 uv run --frozen sarj-standards check --noise-only .  # comment/artifact ratchet only
 ```
 
-Run `check` in CI. `init` prints it as a ready-made job. With no paths, `check`
+Run `check` in CI. `init` prints the exact install and check steps for the
+detected project layout. With no paths, `check`
 runs the complete repository verification. With paths, it runs the applicable
 custom rules for those paths, which keeps pre-commit fast.
 `check --noise-only` covers Python and text/config inputs; TypeScript comment
@@ -136,7 +137,7 @@ sarj-standards maintain release publish typescript
 The former `sync`, `list`, `path`, `peers`, `upgrade`, `verify`, `format`,
 `inspect`, `library-policy`, and `repo` commands remain exact compatibility
 aliases. Existing CI and hooks keep working while new usage stays within the
-seven consumer verbs shown by `sarj-standards --help`.
+consumer verbs shown by `sarj-standards --help`.
 
 Programmatic consumers should import `sarj_lint_configs.api`. Business logic is
 grouped under `sarj_lint_configs.libs` by adoption, linting, repository, setup,
@@ -171,6 +172,56 @@ from sarj_lint_configs.api import to_json, to_sarif
 json_report = to_json(analysis)
 sarif_report = to_sarif(analysis)
 ```
+
+The same normalized native diagnostics are available directly in CI without a
+Python wrapper:
+
+```bash
+# Human output, schema-v1 JSON, GitHub workflow annotations, or SARIF 2.1.0.
+uv run --frozen sarj-standards analyze
+uv run --frozen sarj-standards analyze --format json
+uv run --frozen sarj-standards analyze --format github
+uv run --frozen sarj-standards analyze --format sarif --output sarj.sarif
+uv run --frozen sarj-standards analyze --mode raw  # ignore adopted scope/baselines for calibration
+# In CI for your own trusted mixed Python/TypeScript checkout:
+uv run --frozen sarj-standards analyze --external --trust trusted --format github
+```
+
+`analyze` is intentionally read-only and native-only. In its default `policy`
+mode it applies the manifest's verification scope, gradual Python baseline,
+bundled Python/SQL/IaC/text rules, and application dependency policy. `--mode
+raw` scans the requested native corpus without those adoption filters. Neither
+mode discovers executables, installs tools, or executes repository JavaScript.
+Exit 0 means every selected file was covered and findings were warning-only or
+absent; 1 means at least one error diagnostic; 2 means invalid or incomplete
+analysis. Native-only TypeScript or unsupported explicit files therefore return
+2 with a coverage notice instead of masquerading as clean. JSON and SARIF
+written to stdout contain only their payload; `--output` writes either format
+atomically.
+
+Keep `sarj-standards check` as the canonical merge gate. It additionally checks
+adoption/config drift, Ruff, BasedPyright, application dependency policy, and
+ESLint; TypeScript is therefore enforced by `check`, not native-only `analyze`.
+Use the GitHub format only when a separate native annotation lane is useful.
+For a root Python project, this is a complete minimal job; nested projects use
+the launcher and lock path printed by `init`:
+
+```yaml
+permissions:
+  contents: read
+steps:
+  - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+  - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+    with:
+      enable-cache: true
+      cache-dependency-glob: uv.lock
+  - run: uv sync --frozen
+  - run: uv run --frozen sarj-standards analyze --format github
+```
+
+GitHub output is deterministically capped at ten annotations per severity;
+JSON and SARIF retain the complete result. Pass
+`--max-annotations-per-level 0..10` to lower that log budget.
 
 The preferred API is deliberately small: `Standards`, `Result`, `Finding`,
 `AnalysisReport`, `Diagnostic`, `Change`, `Inspection`, `Status`, and
@@ -232,8 +283,9 @@ sarj-standards doctor
 sarj-standards doctor --format json  # stable schema and finding IDs for automation
 ```
 
-It is read-only, exits 0 for a healthy or not-yet-adopted repository, 1 for
-actionable drift, and 2 for invalid input such as malformed TOML/JSON. Every
+It is read-only, exits 0 for a healthy adopted repository, 1 for actionable
+drift (including a repository that has not adopted Standards yet), and 2 for
+invalid input such as malformed TOML/JSON. Every
 drift finding includes a concrete remediation. Intentional compatibility
 fixtures can be excluded narrowly with `[doctor] exclude = ["tests/fixtures/**"]`.
 
@@ -287,6 +339,12 @@ site should say. It still diagnoses legacy pre-commit tag pins so an old
 adoption cannot drift silently, but new adoption does not create that second
 version site.
 
+Do not use generic `pre-commit autoupdate` for a legacy remote Standards block:
+the repository publishes separate aggregate, Python, SQL, and IaC tag families,
+so a lexically newest tag is not necessarily the hook's package. Run
+`sarj-standards update`; it derives the compatible revision from the hook IDs
+and migrates supported consumers to the single local orchestrator.
+
 The block `init` writes has no `rev:` at all. One `repo: local` hook runs the CLI
 from the environment your `pyproject.toml` pin already fixed, which deletes the
 second pin site and starts the toolchain only once per commit:
@@ -300,7 +358,7 @@ repos:
         entry: uv run --frozen sarj-standards check --staged
         language: system
         verbose: true
-        files: '(?i)(\.py|\.tsx?|\.jsx?|\.sql|\.tf|\.tfvars|\.hcl|\.ya?ml|\.toml|\.jsonc|\.mdx?|\.(?:bash|cfg|conf|env|ini|properties|sh|tftpl|zsh)|(?:^|/)\.env(?:\..*)?$|(?:^|/)(?:Dockerfile(?:\..*)?|Gnumakefile|Justfile|Makefile))$'
+        files: '(?i)(\.py|\.tsx?|\.jsx?|\.sql|\.tf|\.tfvars|\.hcl|\.ya?ml|\.toml|\.jsonc|\.mdx?|\.(?:bash|cfg|conf|env|ini|properties|sh|tftpl|zsh)|(?:^|/)\.env(?:\..*)?$|(?:^|/)requirements(?:/.*|[^/]*\.(?:txt|in))$|(?:^|/)(?:Dockerfile(?:\..*)?|Gnumakefile|Justfile|Makefile))$'
 ```
 
 That is the block a **Python** repo gets. A TypeScript-only repo gets the same

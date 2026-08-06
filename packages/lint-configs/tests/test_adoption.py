@@ -457,6 +457,7 @@ def test_init_prints_a_ci_snippet_with_the_unified_gate(tmp_path: Path) -> None:
     _ = _python_repo(tmp_path)
     proc = _cli("init", "--dest", str(tmp_path))
     assert "sarj-standards check" in proc.stdout
+    assert "sarj-standards analyze" not in proc.stdout
 
 
 def test_ci_snippet_for_a_typescript_repo_does_not_require_a_python_project(
@@ -793,6 +794,8 @@ def test_the_generated_precommit_hook_actually_runs(tmp_path: Path) -> None:
     _ = (tmp_path / "src" / "app.py").write_text("VALUE: int = 1\n")
     assert _cli("init", "--dest", str(tmp_path)).returncode == 0
     _add_python_bundle_pins(tmp_path)
+    subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True)
+    subprocess.run(("git", "add", "src/app.py"), cwd=tmp_path, check=True)
 
     entries = _precommit_entries((tmp_path / ".pre-commit-config.yaml").read_text())
     assert len(entries) == 1, "one orchestrator avoids duplicate uv startup and whole-repo scans"
@@ -815,6 +818,17 @@ def test_generated_check_hook_keeps_warning_first_output_visible(tmp_path: Path)
     config = (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     check_block = config.split("id: sarj-standards-check", 1)[1]
     assert "verbose: true" in check_block
+
+
+@pytest.mark.parametrize("path", ["requirements.txt", "requirements-dev.in", "requirements/prod.txt"])
+def test_generated_check_hook_includes_application_requirement_manifests(tmp_path: Path, path: str) -> None:
+    _ = _python_repo(tmp_path)
+    assert _cli("init", "--dest", str(tmp_path), "--no-install").returncode == 0
+
+    config = (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+    pattern_text = re.search(r"(?m)^\s*files: '(?P<pattern>.+)'$", config)
+    assert pattern_text is not None
+    assert re.search(pattern_text.group("pattern"), path), path
 
 
 def test_init_migrates_existing_generated_hooks_to_one_staged_hook(tmp_path: Path) -> None:
@@ -1012,6 +1026,51 @@ def test_doctor_catches_a_stale_precommit_rev(tmp_path: Path) -> None:
     proc = _cli("doctor", "--dest", str(tmp_path))
     assert proc.returncode == 1
     assert "python-v0.19.0" in proc.stdout
+
+
+def test_doctor_uses_bundle_revision_for_remote_umbrella_hook(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    expected = f"lint-configs-v{manifest.adopted_version()}"
+    _ = (tmp_path / ".pre-commit-config.yaml").write_text(
+        "repos:\n  - repo: https://github.com/sarj-ai/standards\n"
+        f"    rev: {expected}\n    hooks:\n      - id: sarj-standards\n",
+        encoding="utf-8",
+    )
+
+    proc = _cli("doctor", "--dest", str(tmp_path))
+
+    assert proc.returncode == 1, proc.stdout
+    assert f"rev {expected}" in proc.stdout
+    assert "matches the installed hook package" in proc.stdout
+    assert "expected python-v" not in proc.stdout
+
+
+@pytest.mark.parametrize(
+    ("hook_id", "distribution", "tag_family"),
+    [
+        ("sarj-no-comment-cruft", "sarj-python-lint", "python"),
+        ("sarj-prefer-jsonb", "sarj-sql-lint", "sql"),
+        ("sarj-require-deletion-protection", "sarj-iac-lint", "iac"),
+    ],
+)
+def test_doctor_uses_the_remote_hooks_package_family(
+    hook_id: str,
+    distribution: str,
+    tag_family: str,
+    tmp_path: Path,
+) -> None:
+    _ = _python_repo(tmp_path)
+    expected = f"{tag_family}-v{version(distribution)}"
+    _ = (tmp_path / ".pre-commit-config.yaml").write_text(
+        "repos:\n  - repo: https://github.com/sarj-ai/standards\n"
+        f"    rev: {expected}\n    hooks:\n      - id: {hook_id}\n",
+        encoding="utf-8",
+    )
+
+    proc = _cli("doctor", "--dest", str(tmp_path))
+
+    assert f"rev {expected}" in proc.stdout
+    assert "matches the installed hook package" in proc.stdout
 
 
 def test_doctor_catches_a_precommit_rev_pinned_to_a_raw_commit(tmp_path: Path) -> None:

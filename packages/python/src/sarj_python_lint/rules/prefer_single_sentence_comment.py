@@ -25,7 +25,15 @@ class PreferSingleSentenceComment(Rule):
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
         return [
-            Diagnostic(path, group.line, group.col, self.code, self.description, severity=Severity.WARNING)
+            Diagnostic(
+                path,
+                group.line,
+                group.col,
+                self.code,
+                self.description,
+                severity=Severity.WARNING,
+                column_encoding=group.column_encoding,
+            )
             for group in groups(path, source)
             if not group.typed_sections and sentence_units(group.text) == self._WARNING_SENTENCES
         ]

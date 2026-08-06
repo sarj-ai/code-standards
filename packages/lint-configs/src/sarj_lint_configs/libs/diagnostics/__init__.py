@@ -7,6 +7,7 @@ from .models import (
     AnalysisReport,
     Completion,
     Conclusion,
+    CoverageNotice,
     Diagnostic,
     ExecutionIssue,
     Location,
@@ -16,7 +17,7 @@ from .models import (
     ToolReport,
     TrustMode,
 )
-from .serialize import to_json, to_sarif
+from .serialize import to_github, to_json, to_sarif, to_text
 from .source import SourceDocument
 
 
@@ -27,6 +28,7 @@ __all__ = [
     "AnalysisReport",
     "Completion",
     "Conclusion",
+    "CoverageNotice",
     "Diagnostic",
     "ExecutionIssue",
     "Location",
@@ -36,6 +38,8 @@ __all__ = [
     "SourceDocument",
     "ToolReport",
     "TrustMode",
+    "to_github",
     "to_json",
     "to_sarif",
+    "to_text",
 ]

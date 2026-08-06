@@ -79,6 +79,7 @@ _PIN = re.compile(
 #:
 #: Raw commit pins can silently become stale, so report them as unverifiable.
 _REV = re.compile(r"""rev:\s*['"]?(?P<rev>[a-z-]+-v[0-9][0-9A-Za-z.\-]*|[0-9a-f]{7,40})['"]?""")
+_HOOK_ID = re.compile(r"(?m)^\s*-\s+id:\s*(?P<id>[^\s#]+)")
 
 #: A `rev:` that is a raw commit, not a release tag.
 _SHA_REV = re.compile(r"^[0-9a-f]{7,40}$")
@@ -550,12 +551,17 @@ def plan_version_pin_updates(
 
 
 def _check_precommit_revs(root: Path, files: Sequence[Path]) -> Iterator[Finding]:
-    expected = manifest.expected_precommit_rev()
     for path in _candidate_files(files, (".yml", ".yaml")):
         text = _read(path)
         for block in _standards_repo_blocks(text):
+            hook_ids = tuple(match.group("id").strip("\"'") for match in _HOOK_ID.finditer(block))
+            expected = _expected_hook_revision(hook_ids)
             for match in _REV.finditer(block):
                 yield from _precommit_rev_finding(root, path, match.group("rev"), expected)
+
+
+def _expected_hook_revision(hook_ids: Sequence[str]) -> str | None:
+    return manifest.expected_precommit_rev(hook_ids)
 
 
 def _standards_repo_blocks(text: str) -> Iterator[str]:
@@ -592,8 +598,7 @@ def _precommit_rev_finding(root: Path, path: Path, rev: str, expected: str | Non
         yield Finding(
             Level.DRIFT,
             where,
-            f"expected {expected} -- the hooks ship from the root package, whose version"
-            " your sarj-lint-configs pin already fixes",
+            f"expected {expected} -- that release tag selects the revision-local hook source",
             "doctor.precommit.rev",
             f"pin `{expected}` or migrate to the local hook emitted by `sarj-standards update`",
         )

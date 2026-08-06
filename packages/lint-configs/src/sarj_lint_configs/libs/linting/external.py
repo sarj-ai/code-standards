@@ -5,9 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 import json
+import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed argv, no shell, bounded timeout.
+import threading
+import time
 from typing import TYPE_CHECKING, Protocol
 
 from sarj_lint_configs.libs.adoption.lifecycle import selected_eslint_commands
@@ -29,10 +33,14 @@ from .runner import group_paths
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from typing import BinaryIO
 
 
 _TIMEOUT_SECONDS = 120
 _ESLINT_ERROR = 2
+_MAX_STDOUT_BYTES = 16 * 1024 * 1024
+_MAX_STDERR_BYTES = 64 * 1024
+_READ_BYTES = 64 * 1024
 
 
 class _ExternalSeverity(StrEnum):
@@ -50,6 +58,10 @@ class ProcessOutput:
     stderr: str
 
 
+class OutputLimitError(OSError):
+    """An analyzer exceeded the memory-safe structured-output contract."""
+
+
 class ProcessRunner(Protocol):
     def __call__(self, argv: Sequence[str], *, cwd: Path) -> ProcessOutput: ...
 
@@ -58,12 +70,13 @@ def analyze_external(
     files: Sequence[str],
     *,
     root: Path,
-    trust: TrustMode,
+    trust: TrustMode | str,
     runner: ProcessRunner | None = None,
 ) -> tuple[ToolReport, ...]:
     """Run installed analyzers; executable repository config requires explicit trust."""
     execute = run_process if runner is None else runner
     try:
+        normalized_trust = TrustMode(trust)
         grouped = group_paths(files)
     except (OSError, ValueError) as exc:
         issue = ExecutionIssue("external", "invalid-input", str(exc))
@@ -97,7 +110,7 @@ def analyze_external(
         reports.append(ToolReport("eslint", Completion.FAILED, issues=(issue,)))
         return tuple(reports)
     for command in eslint_commands:
-        if trust is TrustMode.SAFE:
+        if normalized_trust is TrustMode.SAFE:
             issue = ExecutionIssue(
                 "eslint",
                 "trust-required",
@@ -123,15 +136,85 @@ def run_process(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
     if executable is None:
         msg = f"required analyzer executable is missing: {argv[0]}"
         raise FileNotFoundError(msg)
-    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed argv and shell stays disabled.
+    process = subprocess.Popen(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed argv and shell stays disabled.
         [executable, *argv[1:]],
         cwd=cwd,
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=_TIMEOUT_SECONDS,
+        shell=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=os.name == "posix",
     )
-    return ProcessOutput(completed.returncode, completed.stdout, completed.stderr)
+    stdout = process.stdout
+    stderr = process.stderr
+    if stdout is None or stderr is None:  # pragma: no cover - PIPE guarantees streams.
+        process.kill()
+        msg = "analyzer process did not expose output pipes"
+        raise OSError(msg)
+    exceeded = threading.Event()
+    captures: list[bytes | None] = [None, None]
+    threads = (
+        threading.Thread(target=_capture_stream, args=(stdout, _MAX_STDOUT_BYTES, exceeded, captures, 0), daemon=True),
+        threading.Thread(target=_capture_stream, args=(stderr, _MAX_STDERR_BYTES, exceeded, captures, 1), daemon=True),
+    )
+    for thread in threads:
+        thread.start()
+    deadline = time.monotonic() + _TIMEOUT_SECONDS
+    while process.poll() is None and not exceeded.is_set():
+        if time.monotonic() >= deadline:
+            _terminate_process(process)
+            _ = process.wait()
+            for thread in threads:
+                thread.join()
+            raise subprocess.TimeoutExpired(argv, _TIMEOUT_SECONDS)
+        time.sleep(0.01)
+    if exceeded.is_set():
+        _terminate_process(process)
+    returncode = process.wait()
+    for thread in threads:
+        thread.join()
+    if exceeded.is_set():
+        msg = "analyzer output exceeded the 16 MiB stdout or 64 KiB stderr limit"
+        raise OutputLimitError(msg)
+    stdout_bytes, stderr_bytes = captures
+    if stdout_bytes is None or stderr_bytes is None:  # pragma: no cover - drain threads always assign.
+        msg = "analyzer process output could not be captured"
+        raise OSError(msg)
+    return ProcessOutput(
+        returncode,
+        stdout_bytes.decode("utf-8", errors="replace"),
+        stderr_bytes.decode("utf-8", errors="replace"),
+    )
+
+
+def _capture_stream(
+    stream: BinaryIO,
+    limit: int,
+    exceeded: threading.Event,
+    captures: list[bytes | None],
+    index: int,
+) -> None:
+    data = bytearray()
+    try:
+        while chunk := stream.read(_READ_BYTES):
+            remaining = limit - len(data)
+            if remaining > 0:
+                data.extend(chunk[:remaining])
+            if len(chunk) > remaining:
+                exceeded.set()
+                break
+    finally:
+        stream.close()
+        captures[index] = bytes(data)
+
+
+def _terminate_process(process: subprocess.Popen[bytes]) -> None:
+    if os.name == "posix":
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            return
+    else:  # pragma: no cover - Windows CI covers the fallback.
+        process.kill()
 
 
 def _invoke(
@@ -160,7 +243,7 @@ def _invoke_unchecked(
     parser: ProtocolParser,
 ) -> ToolReport:
     output = runner(argv, cwd=cwd)
-    if output.returncode > 1:
+    if output.returncode not in {0, 1}:
         message = output.stderr.strip() or f"{name} exited {output.returncode}"
         issue = ExecutionIssue(name, "tool-failure", message, output.returncode)
         return ToolReport(name, Completion.FAILED, issues=(issue,))
@@ -309,7 +392,13 @@ def _integer(table: dict[str, object], key: str) -> int:
 
 def _path(table: dict[str, object], key: str, root: Path) -> Path:
     path = Path(_text(table, key))
-    return path if path.is_absolute() else root / path
+    resolved = (path if path.is_absolute() else root / path).resolve()
+    try:
+        resolved.relative_to(root.resolve())
+    except ValueError as exc:
+        msg = "analyzer reported a path outside the repository root"
+        raise ValueError(msg) from exc
+    return resolved
 
 
 def _document(path: Path, cache: dict[Path, SourceDocument | None]) -> SourceDocument:
@@ -318,7 +407,7 @@ def _document(path: Path, cache: dict[Path, SourceDocument | None]) -> SourceDoc
         cache[resolved] = SourceDocument.read(resolved)
     document = cache[resolved]
     if document is None:
-        msg = f"cannot read analyzer source: {resolved}"
+        msg = "cannot read analyzer source"
         raise OSError(msg)
     return document
 
@@ -326,7 +415,7 @@ def _document(path: Path, cache: dict[Path, SourceDocument | None]) -> SourceDoc
 def _one_based_position(value: dict[str, object], path: Path, cache: dict[Path, SourceDocument | None]) -> Position:
     position = _document(path, cache).point(line=_integer(value, "row"), column=_integer(value, "column"))
     if position is None:
-        msg = f"analyzer position is outside source: {path}"
+        msg = "analyzer position is outside source"
         raise ValueError(msg)
     return position
 
@@ -334,7 +423,7 @@ def _one_based_position(value: dict[str, object], path: Path, cache: dict[Path, 
 def _zero_based_position(value: dict[str, object], path: Path, cache: dict[Path, SourceDocument | None]) -> Position:
     position = _document(path, cache).utf16_point(line=_integer(value, "line"), character=_integer(value, "character"))
     if position is None:
-        msg = f"analyzer position is outside source: {path}"
+        msg = "analyzer position is outside source"
         raise ValueError(msg)
     return position
 
@@ -381,5 +470,6 @@ def _severity_text(value: str) -> Severity:
 def _relative(path: Path, root: Path) -> str:
     try:
         return path.resolve().relative_to(root.resolve()).as_posix()
-    except ValueError:
-        return str(path.resolve())
+    except ValueError as exc:
+        msg = "analyzer reported a path outside the repository root"
+        raise ValueError(msg) from exc

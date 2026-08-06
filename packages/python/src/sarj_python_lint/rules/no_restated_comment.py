@@ -10,7 +10,7 @@ import re
 import tokenize
 from typing import TYPE_CHECKING, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule
+from sarj_python_lint.rule_base import ColumnEncoding, Diagnostic, Rule
 from sarj_python_lint.rules._comments import (
     code_tokens,
     comment_runs,
@@ -85,22 +85,6 @@ _CALL_SHAPE_RE = re.compile(r"^\s*(?:await\s+)?[\w.]+\s*\(")
 _ASSERT_SHAPE_RE = re.compile(r"^\s*assert\b")
 
 
-def _statement_shape(line: str) -> str | None:
-    if _IMPORT_SHAPE_RE.match(line):
-        return "import"
-    if _KV_SHAPE_RE.match(line):
-        return "kv"
-    if _ASSIGN_SHAPE_RE.match(line):
-        return "assign"
-    if _ASSERT_SHAPE_RE.match(line):
-        return "assert"
-    if _CALL_SHAPE_RE.match(line):
-        return "call"
-    if _ELEMENT_SHAPE_RE.match(line):
-        return "element"
-    return None
-
-
 def _indent_of(line: str) -> int:
     return len(line) - len(line.lstrip())
 
@@ -132,6 +116,22 @@ def _is_group_label(lines: list[str], index: int) -> bool:
     if not nxt.strip():
         return False
     return _indent_of(nxt) == _indent_of(first) and _statement_shape(nxt) == shape
+
+
+def _statement_shape(line: str) -> str | None:
+    if _IMPORT_SHAPE_RE.match(line):
+        return "import"
+    if _KV_SHAPE_RE.match(line):
+        return "kv"
+    if _ASSIGN_SHAPE_RE.match(line):
+        return "assign"
+    if _ASSERT_SHAPE_RE.match(line):
+        return "assert"
+    if _CALL_SHAPE_RE.match(line):
+        return "call"
+    if _ELEMENT_SHAPE_RE.match(line):
+        return "element"
+    return None
 
 
 def _region_size(lines: list[str], index: int) -> int:
@@ -204,6 +204,7 @@ class NoRestatedComment(Rule):
                         col=col + 1,
                         code=self.code,
                         message=self.description,
+                        column_encoding=ColumnEncoding.CODEPOINTS,
                     )
                 )
         return diags

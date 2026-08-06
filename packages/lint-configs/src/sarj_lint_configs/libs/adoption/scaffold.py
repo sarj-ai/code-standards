@@ -701,7 +701,7 @@ def _precommit_hook(runner_prefix: str) -> str:
         f"        entry: {runner_prefix} check --staged --\n"
         "        language: system\n"
         "        verbose: true\n"
-        "        files: '(?i)(\\.py|\\.[cm]?[jt]s|\\.[jt]sx|\\.sql|\\.tf|\\.tfvars|\\.hcl|\\.ya?ml|\\.toml|\\.jsonc|\\.mdx?|\\.(?:bash|cfg|conf|env|ini|properties|sh|tftpl|zsh)|(?:^|/)\\.env(?:\\..*)?$|(?:^|/)(?:Dockerfile(?:\\..*)?|Gnumakefile|Justfile|Makefile|package\\.json|pyrightconfig\\.json))$'\n"
+        "        files: '(?i)(\\.py|\\.[cm]?[jt]s|\\.[jt]sx|\\.sql|\\.tf|\\.tfvars|\\.hcl|\\.ya?ml|\\.toml|\\.jsonc|\\.mdx?|\\.(?:bash|cfg|conf|env|ini|properties|sh|tftpl|zsh)|(?:^|/)\\.env(?:\\..*)?$|(?:^|/)requirements(?:/.*|[^/]*\\.(?:txt|in))$|(?:^|/)(?:Dockerfile(?:\\..*)?|Gnumakefile|Justfile|Makefile|package\\.json|pyrightconfig\\.json))$'\n"
     )
 
 

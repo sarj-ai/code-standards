@@ -70,13 +70,14 @@ def test_directory_walk_prunes_ignored_directories(
     assert not any("node_modules" in root for root in visited)
 
 
-def test_directory_walk_skips_oversized_discovered_files(tmp_path: Path) -> None:
+def test_directory_walk_rejects_oversized_discovered_files_truthfully(tmp_path: Path) -> None:
     large = tmp_path / "large.py"
-    large.write_bytes(b"x" * (500 * 1024 + 1))
+    large.write_bytes(b"x" * (2 * 1024 * 1024 + 1))
     small = tmp_path / "small.py"
     small.touch()
 
-    assert runner.group_paths([str(tmp_path)]).python == [str(small)]
+    with pytest.raises(ValueError, match="2 MiB analysis limit"):
+        runner.group_paths([str(tmp_path)])
 
 
 def test_directory_walk_preserves_oversized_markdown_for_artifact_rule(tmp_path: Path) -> None:
@@ -106,11 +107,17 @@ def test_directory_walk_skips_secret_env_files_but_explicit_inputs_remain_checka
     assert runner.group_paths([str(secret)]).text == [str(secret)]
 
 
-def test_explicit_oversized_file_is_still_routed(tmp_path: Path) -> None:
-    large = tmp_path / "large.py"
-    large.write_bytes(b"x" * (500 * 1024 + 1))
+@pytest.mark.parametrize(
+    ("name", "limit_mib"),
+    [("large.py", 2), ("audit-report.md", 16)],
+    ids=("source", "markdown"),
+)
+def test_explicit_oversized_file_is_rejected_truthfully(tmp_path: Path, name: str, limit_mib: int) -> None:
+    large = tmp_path / name
+    large.write_bytes(b"x" * (limit_mib * 1024 * 1024 + 1))
 
-    assert runner.group_paths([str(large)]).python == [str(large)]
+    with pytest.raises(ValueError, match=rf"{limit_mib} MiB analysis limit"):
+        runner.group_paths([str(large)])
 
 
 def test_overlapping_inputs_route_each_file_once(tmp_path: Path) -> None:

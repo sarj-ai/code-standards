@@ -13,14 +13,15 @@
     "exitCode",
     "diagnostics",
     "issues",
-    "tools"
+    "tools",
+    "coverage"
   ],
   "properties": {
     "$schema": { "const": "https://standards.sarj.ai/schemas/analysis/v1" },
     "schemaVersion": { "const": 1 },
     "root": { "type": "string" },
     "completion": { "enum": ["complete", "partial", "failed"] },
-    "conclusion": { "enum": ["passed", "findings", "failed"] },
+    "conclusion": { "enum": ["passed", "findings", "inconclusive"] },
     "exitCode": { "enum": [0, 1, 2] },
     "diagnostics": {
       "type": "array",
@@ -33,6 +34,10 @@
     "tools": {
       "type": "array",
       "items": { "$ref": "#/$defs/tool" }
+    },
+    "coverage": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/coverage" }
     }
   },
   "$defs": {
@@ -100,6 +105,16 @@
         "completion": { "enum": ["complete", "partial", "failed"] },
         "diagnosticCount": { "type": "integer", "minimum": 0 },
         "issueCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "reason", "fileCount"],
+      "properties": {
+        "source": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 },
+        "fileCount": { "type": "integer", "minimum": 1 }
       }
     }
   }

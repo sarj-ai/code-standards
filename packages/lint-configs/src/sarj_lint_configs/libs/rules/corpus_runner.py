@@ -23,6 +23,10 @@ _SAFE_ENVIRONMENT: Final = frozenset(
 )
 _MAX_BATCH_SIZE = 1_000
 _DEFAULT_MAX_OUTPUT_BYTES = 1_048_576
+_MAX_OUTPUT_BYTES = 8 * 1_048_576
+_MAX_ARGV_BYTES = 64 * 1024
+_DEFAULT_MAX_FILES_PER_CORPUS = 50_000
+_DEFAULT_MAX_BATCHES = 1_000
 _READ_SIZE = 65_536
 
 
@@ -87,6 +91,9 @@ def run_isolated_corpora(
     batch_size: int = 250,
     timeout: timedelta = timedelta(minutes=2),
     max_output_bytes: int = _DEFAULT_MAX_OUTPUT_BYTES,
+    total_timeout: timedelta = timedelta(minutes=15),
+    max_files_per_corpus: int = _DEFAULT_MAX_FILES_PER_CORPUS,
+    max_batches: int = _DEFAULT_MAX_BATCHES,
     accepted_returncodes: frozenset[int] = frozenset({0, 1}),
 ) -> IsolatedCorpusReport:
     """Lint verified corpora without sharing a long-lived linter or retained findings."""
@@ -102,31 +109,78 @@ def run_isolated_corpora(
     if timeout <= timedelta():
         msg = "corpus batch timeout must be positive"
         raise ValueError(msg)
-    if max_output_bytes <= 0:
-        msg = "corpus batch output limit must be positive"
+    if not 1 <= max_output_bytes <= _MAX_OUTPUT_BYTES:
+        msg = f"corpus batch output limit must be between 1 and {_MAX_OUTPUT_BYTES} bytes"
+        raise ValueError(msg)
+    if total_timeout <= timedelta():
+        msg = "corpus total timeout must be positive"
+        raise ValueError(msg)
+    if max_files_per_corpus <= 0 or max_batches <= 0:
+        msg = "corpus file and batch limits must be positive"
         raise ValueError(msg)
     if not accepted_returncodes:
         msg = "accepted return codes must not be empty"
         raise ValueError(msg)
 
     results: list[CorpusBatchResult] = []
+    deadline = time.monotonic() + total_timeout.total_seconds()
     for source in sources:
         verify(source)
         files = selected_files(source)
-        for ordinal, offset in enumerate(range(0, len(files), batch_size), start=1):
-            batch = files[offset : offset + batch_size]
+        if len(files) > max_files_per_corpus:
+            msg = f"corpus {source.report_name} exceeds the {max_files_per_corpus}-file evaluation limit"
+            raise CorpusLintError(msg)
+        batches = argv_batches(files, command, batch_size=batch_size)
+        if len(results) + len(batches) > max_batches:
+            msg = f"corpus evaluation exceeds the {max_batches}-batch limit"
+            raise CorpusLintError(msg)
+        for ordinal, batch in enumerate(batches, start=1):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                msg = f"corpus evaluation exceeded {total_timeout.total_seconds():g}s total"
+                raise CorpusLintError(msg)
             results.append(
                 _run_batch(
                     source,
                     command,
                     batch,
                     ordinal=ordinal,
-                    timeout=timeout,
+                    timeout=min(timeout, timedelta(seconds=remaining)),
                     max_output_bytes=max_output_bytes,
                     accepted_returncodes=accepted_returncodes,
                 )
             )
     return IsolatedCorpusReport(tuple(results))
+
+
+def argv_batches(
+    files: tuple[Path, ...],
+    command: tuple[str, ...],
+    *,
+    batch_size: int,
+) -> tuple[tuple[Path, ...], ...]:
+    """Bound batches by both file count and conservative encoded argv bytes."""
+    base_bytes = sum(len(os.fsencode(argument)) + 1 for argument in command)
+    if base_bytes >= _MAX_ARGV_BYTES:
+        msg = "corpus linter command exceeds the argv byte budget"
+        raise CorpusLintError(msg)
+    batches: list[tuple[Path, ...]] = []
+    current: list[Path] = []
+    current_bytes = base_bytes
+    for path in files:
+        argument_bytes = len(os.fsencode(str(path))) + 1
+        if current and (len(current) >= batch_size or current_bytes + argument_bytes > _MAX_ARGV_BYTES):
+            batches.append(tuple(current))
+            current = []
+            current_bytes = base_bytes
+        if current_bytes + argument_bytes > _MAX_ARGV_BYTES:
+            msg = "one corpus path exceeds the argv byte budget"
+            raise CorpusLintError(msg)
+        current.append(path)
+        current_bytes += argument_bytes
+    if current:
+        batches.append(tuple(current))
+    return tuple(batches)
 
 
 def _run_batch(

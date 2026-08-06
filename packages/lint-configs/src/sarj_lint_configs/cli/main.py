@@ -11,6 +11,7 @@ import shlex
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- repository commands report failures from fixed-argument child processes.
 import sys
+import tempfile
 from typing import TYPE_CHECKING, NoReturn
 
 from sarj_lint_configs import CONFIGS_DIR, __version__, manifest
@@ -83,6 +84,8 @@ class _Args(argparse.Namespace):
     release_exclude: list[str]
     release_exclude_file: list[Path]
     output: Path | None = None
+    external: bool = False
+    trust: str = "safe"
     before: str = ""
     after: str = ""
     github_output: Path | None = None
@@ -96,6 +99,8 @@ class _Args(argparse.Namespace):
     show_cmd: str = ""
     staged: bool = False
     release_commit: str = ""
+    max_annotations_per_level: int = 10
+    analysis_mode: str = "policy"
 
     def __init__(self) -> None:
         super().__init__()
@@ -461,7 +466,7 @@ def cmd_init(args: _Args) -> int:
         print("\nnext:  dependency and hook installation was skipped; run:")
         for command in init_plan.install_commands:
             print(f"       {shlex.join(command.argv)}  (in {command.cwd})")
-    print("\nadd this to your CI workflow:\n")
+    print("\nafter checkout and frozen dependency installation, add this CI step:\n")
     print(service.scaffold.ci_snippet(plan, version=manifest.adopted_version()))
     return 0
 
@@ -548,7 +553,7 @@ def cmd_library_policy(args: _Args, *, selected_paths: Iterable[str] | None = No
     return 1 if findings else 0
 
 
-def cmd_check(args: _Args) -> int:
+def cmd_check(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one command coordinates compatible lint phases.
     """Run source rules and the application dependency policy together."""
     from sarj_lint_configs import runner  # ruff: ignore[import-outside-top-level] — lazy route
 
@@ -562,14 +567,25 @@ def cmd_check(args: _Args) -> int:
         return 2
     if args.dependencies:
         return cmd_library_policy(args)
-    if args.staged and not args.files:
+    if args.staged:
         try:
-            args.files = _staged_files(root)
+            staged = _staged_files(root)
         except (OSError, subprocess.SubprocessError) as exc:
             print(f"error: cannot read staged files: {exc}", file=sys.stderr)
             return 2
-    if args.staged and args.files:
-        args.files = _safe_staged_paths(root, args.files)
+        if args.files:
+            staged_set = frozenset(staged)
+            args.files = [path for path in _safe_staged_paths(root, args.files) if path in staged_set]
+        else:
+            args.files = staged
+        drifted = _unstaged_versions(root, args.files)
+        if drifted:
+            print(
+                "error: --staged found files with unstaged content; run through pre-commit "
+                "(which safely stashes it) or stage the intended versions: " + ", ".join(drifted),
+                file=sys.stderr,
+            )
+            return 2
     elif args.files:
         try:
             args.files = _selected_paths(root, args.files)
@@ -669,6 +685,88 @@ def cmd_check(args: _Args) -> int:
     return max(source_status, eslint_status, policy_status)
 
 
+def cmd_analyze(args: _Args) -> int:
+    """Render canonical native diagnostics for CI and programmatic consumers."""
+    from sarj_lint_configs.api import (  # ruff: ignore[import-outside-top-level] -- keep CLI startup cheap
+        AnalysisMode,
+        Standards,
+    )
+    from sarj_lint_configs.libs.diagnostics import (  # ruff: ignore[import-outside-top-level] -- selected command only
+        to_github,
+        to_json,
+        to_sarif,
+        to_text,
+    )
+
+    if args.output is not None and str(args.output) != "-" and args.output_format not in {"json", "sarif"}:
+        print("error: --output is supported only with --format json or sarif", file=sys.stderr)
+        return 2
+    report = Standards(_resolve_dest(args.dest)).analyze(
+        args.files or None,
+        external=args.external,
+        trust=args.trust,
+        mode=AnalysisMode(args.analysis_mode),
+    )
+    payload = (
+        to_github(report, max_annotations_per_level=args.max_annotations_per_level)
+        if args.output_format == "github"
+        else {"json": to_json, "sarif": to_sarif, "text": to_text}[args.output_format](report)
+    )
+    if args.output is None or str(args.output) == "-":
+        print(payload, end="")
+    else:
+        _write_report(_resolve_dest(args.dest), args.output, payload, output_format=args.output_format)
+    return report.exit_code
+
+
+def _write_report(root: Path, output: Path, payload: str, *, output_format: str) -> None:
+    candidate = output if output.is_absolute() else root / output
+    lexical = Path(os.path.abspath(candidate))  # ruff: ignore[os-path-abspath] -- preserve symlink components for rejection
+    try:
+        relative = lexical.relative_to(root)
+    except ValueError as exc:
+        msg = f"report output must stay inside repository root: {output}"
+        raise OSError(msg) from exc
+    current = root
+    for part in relative.parent.parts:
+        current /= part
+        if is_link_like(current):
+            msg = f"report output parent must not traverse a symlink: {current}"
+            raise OSError(msg)
+    destination = lexical.resolve(strict=False)
+    try:
+        destination.relative_to(root)
+    except ValueError as exc:
+        msg = f"report output must stay inside repository root: {output}"
+        raise OSError(msg) from exc
+    expected_suffix = destination.name.endswith(".sarif") or destination.name.endswith(".sarif.json")
+    extension_matches = {
+        "json": destination.suffix == ".json",
+        "sarif": expected_suffix,
+    }[output_format]
+    if not extension_matches:
+        msg = f"report output extension does not match {output_format}: {output}"
+        raise OSError(msg)
+    parent = destination.parent
+    if not parent.is_dir():
+        msg = f"report output parent does not exist: {parent}"
+        raise OSError(msg)
+    if destination.is_dir() or is_link_like(destination):
+        msg = f"report output must be a regular file: {destination}"
+        raise OSError(msg)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{destination.name}.", suffix=".tmp", dir=parent)
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            _ = handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        temporary.replace(destination)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
 def _validate_check_mode(args: _Args) -> None:
     """Reject option combinations whose values would otherwise be ignored."""
     if args.dependencies:
@@ -762,6 +860,30 @@ def _safe_staged_paths(root: Path, paths: Iterable[str]) -> list[str]:
         if resolved.is_relative_to(repository) and resolved.is_file():
             safe.append(str(resolved))
     return list(dict.fromkeys(safe))
+
+
+def _unstaged_versions(root: Path, staged_paths: Iterable[str]) -> tuple[str, ...]:
+    """Refuse direct staged checks when they would read different worktree bytes."""
+    if not (root / ".git").exists():
+        return ()
+    git = shutil.which("git")
+    if git is None:
+        msg = "git is required for --staged"
+        raise OSError(msg)
+    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed argv, no shell.
+        [git, "diff", "--name-only", "--diff-filter=ACMR", "-z"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    )
+    unstaged = {part.decode("utf-8", errors="surrogateescape") for part in completed.stdout.split(b"\0") if part}
+    repository = root.resolve()
+    selected = {
+        resolved.relative_to(repository).as_posix()
+        for path in staged_paths
+        if (resolved := Path(path).resolve()).is_relative_to(repository)
+    }
+    return tuple(sorted(unstaged & selected))
 
 
 def _selected_paths(root: Path, paths: Iterable[str]) -> list[str]:
@@ -887,6 +1009,8 @@ def _dispatch(args: _Args) -> int:
             return cmd_library_policy(args)
         case "check":
             return cmd_check(args)
+        case "analyze":
+            return cmd_analyze(args)
         case "show":
             return cmd_show(args)
         case "repo" | "maintain":
@@ -908,7 +1032,7 @@ def _build_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-locals]
     sub = parser.add_subparsers(
         dest="cmd",
         required=True,
-        metavar="{init,check,fix,doctor,update,show,maintain}",
+        metavar="{init,check,analyze,fix,doctor,update,show,maintain}",
         title="commands",
     )
 
@@ -1073,6 +1197,56 @@ def _build_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-locals]
         "files",
         nargs="*",
         help="selected paths; when omitted, check the complete repository",
+    )
+
+    analyze = sub.add_parser(
+        "analyze",
+        help="emit canonical native diagnostics for CI and editor integrations",
+    )
+    analyze.add_argument("--dest", default=".", help="repository root (default: cwd)")
+    analyze.add_argument(
+        "--format",
+        dest="output_format",
+        choices=("text", "json", "sarif", "github"),
+        default="text",
+        help="diagnostic output format (default: text)",
+    )
+    analyze.add_argument(
+        "--mode",
+        dest="analysis_mode",
+        choices=("policy", "raw"),
+        default="policy",
+        help="apply adopted native policy, or scan the requested native corpus raw (default: policy)",
+    )
+    analyze.add_argument(
+        "--external",
+        action="store_true",
+        help="also run installed Ruff/BasedPyright and applicable ESLint projects",
+    )
+    analyze.add_argument(
+        "--trust",
+        choices=("safe", "trusted"),
+        default="safe",
+        help="allow executable repository ESLint config only for a trusted checkout (default: safe)",
+    )
+    analyze.add_argument(
+        "--output",
+        type=Path,
+        help="write JSON or SARIF atomically to PATH; use - for stdout",
+    )
+    analyze.add_argument(
+        "--max-annotations-per-level",
+        dest="max_annotations_per_level",
+        type=int,
+        choices=range(11),
+        default=10,
+        help="maximum GitHub annotations per severity, 0-10 (default: 10)",
+    )
+    analyze.add_argument(
+        "files",
+        nargs="*",
+        metavar="PATH",
+        help="selected contained paths; omitted uses adopted verify paths",
     )
 
     p_library_policy = sub.add_parser("library-policy")

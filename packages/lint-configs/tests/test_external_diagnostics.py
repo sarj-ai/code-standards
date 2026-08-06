@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import sys
 from typing import TYPE_CHECKING
 
 import pytest
 
 from sarj_lint_configs.libs.diagnostics import Completion, Severity, TrustMode
+from sarj_lint_configs.libs.linting import external as external_module
 from sarj_lint_configs.libs.linting.external import (
     ProcessOutput,
     analyze_external,
@@ -120,6 +122,50 @@ def test_safe_mode_never_executes_repository_eslint_config(tmp_path: Path) -> No
     assert reports[0].issues[0].kind == "trust-required"
 
 
+def test_string_safe_mode_never_executes_repository_eslint_config(tmp_path: Path) -> None:
+    (tmp_path / "package.json").write_text('{"name":"fixture"}\n', encoding="utf-8")
+    (tmp_path / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
+    (tmp_path / "eslint.config.mjs").write_text("throw new Error('must not execute');\n", encoding="utf-8")
+    source = tmp_path / "example.ts"
+    source.write_text("export const value = 1;\n", encoding="utf-8")
+
+    def forbidden(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        _ = argv, cwd
+        pytest.fail("string safe mode executed repository code")
+
+    reports = analyze_external([str(source)], root=tmp_path, trust="safe", runner=forbidden)
+
+    assert reports[0].issues[0].kind == "trust-required"
+
+
+def test_signal_terminated_tool_is_an_execution_failure(tmp_path: Path) -> None:
+    source = tmp_path / "example.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+
+    def terminated(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        _ = argv, cwd
+        return ProcessOutput(-9, "[]", "")
+
+    reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=terminated)
+
+    assert all(report.completion is Completion.FAILED for report in reports)
+    assert all(report.issues[0].exit_code == -9 for report in reports)
+
+
+def test_external_process_output_is_bounded(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(external_module, "_MAX_STDOUT_BYTES", 128)
+    monkeypatch.setattr(external_module, "_MAX_STDERR_BYTES", 64)
+
+    with pytest.raises(external_module.OutputLimitError, match="output exceeded"):
+        external_module.run_process(
+            (sys.executable, "-c", "import sys; sys.stdout.write('x' * 10000)"),
+            cwd=tmp_path,
+        )
+
+
 def test_python_external_tools_use_structured_output_without_uv(tmp_path: Path) -> None:
     source = tmp_path / "example.py"
     source.write_text("value = 1\n", encoding="utf-8")
@@ -137,3 +183,36 @@ def test_python_external_tools_use_structured_output_without_uv(tmp_path: Path) 
     assert [report.name for report in reports] == ["ruff", "basedpyright"]
     assert all(report.completion is Completion.COMPLETE for report in reports)
     assert all(argv[0] != "uv" for argv in seen)
+
+
+def test_external_analyzer_cannot_leak_a_path_outside_repository(tmp_path: Path) -> None:
+    source = tmp_path / "example.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    outside = tmp_path.parent / "private.py"
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        _ = cwd
+        if argv[0] == "ruff":
+            return ProcessOutput(
+                1,
+                json.dumps(
+                    [
+                        {
+                            "filename": str(outside),
+                            "location": {"row": 1, "column": 1},
+                            "end_location": {"row": 1, "column": 2},
+                            "code": "E001",
+                            "message": "outside",
+                        }
+                    ]
+                ),
+                "",
+            )
+        return ProcessOutput(0, '{"generalDiagnostics":[]}', "")
+
+    reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=runner)
+    ruff = next(report for report in reports if report.name == "ruff")
+
+    assert ruff.completion is Completion.FAILED
+    assert ruff.issues[0].message == "ValueError: analyzer reported a path outside the repository root"
+    assert str(tmp_path.parent) not in ruff.issues[0].message

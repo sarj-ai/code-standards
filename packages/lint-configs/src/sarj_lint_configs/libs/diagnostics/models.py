@@ -34,7 +34,7 @@ class Conclusion(StrEnum):
 
     PASSED = "passed"
     FINDINGS = "findings"
-    FAILED = "failed"
+    INCONCLUSIVE = "inconclusive"
 
 
 class TrustMode(StrEnum):
@@ -42,6 +42,23 @@ class TrustMode(StrEnum):
 
     SAFE = "safe"
     TRUSTED = "trusted"
+
+
+@dataclass(frozen=True, slots=True)
+class CoverageNotice:
+    """Requested source that an intentionally narrow analysis did not evaluate."""
+
+    source: str
+    reason: str
+    file_count: int
+
+    def __post_init__(self) -> None:
+        if self.file_count < 1:
+            msg = "coverage notice must describe at least one file"
+            raise ValueError(msg)
+
+    def as_dict(self) -> dict[str, object]:
+        return {"source": self.source, "reason": self.reason, "fileCount": self.file_count}
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,14 +197,25 @@ class AnalysisReport:
     completion: Completion
     conclusion: Conclusion
     tools: tuple[ToolReport, ...]
+    coverage: tuple[CoverageNotice, ...] = ()
 
     def __post_init__(self) -> None:
         has_issues = any(tool.issues for tool in self.tools)
         has_findings = any(tool.diagnostics for tool in self.tools)
-        if (self.completion is Completion.COMPLETE) == has_issues:
-            msg = "analysis completion contradicts its tool execution issues"
+        is_incomplete = has_issues or bool(self.coverage)
+        expected_completion = (
+            Completion.FAILED
+            if self.tools and all(tool.completion is Completion.FAILED for tool in self.tools)
+            else Completion.COMPLETE
+            if not is_incomplete and all(tool.completion is Completion.COMPLETE for tool in self.tools)
+            else Completion.PARTIAL
+        )
+        if self.completion is not expected_completion:
+            msg = f"analysis completion must be {expected_completion.value} for its tool and coverage states"
             raise ValueError(msg)
-        expected = Conclusion.FAILED if has_issues else Conclusion.FINDINGS if has_findings else Conclusion.PASSED
+        expected = (
+            Conclusion.FINDINGS if has_findings else Conclusion.INCONCLUSIVE if is_incomplete else Conclusion.PASSED
+        )
         if self.conclusion is not expected:
             msg = f"analysis conclusion must be {expected.value} for its findings and issues"
             raise ValueError(msg)
@@ -202,7 +230,7 @@ class AnalysisReport:
 
     @property
     def exit_code(self) -> int:
-        if self.issues:
+        if self.issues or self.coverage:
             return 2
         return 1 if any(item.severity is Severity.ERROR for item in self.diagnostics) else 0
 
@@ -214,11 +242,12 @@ class AnalysisReport:
         return {
             "$schema": SCHEMA_URI,
             "schemaVersion": SCHEMA_VERSION,
-            "root": str(self.root),
+            "root": ".",
             "completion": self.completion.value,
             "conclusion": self.conclusion.value,
             "exitCode": self.exit_code,
             "diagnostics": [item.as_dict() for item in self.diagnostics],
             "issues": [item.as_dict() for item in self.issues],
             "tools": [item.as_dict() for item in self.tools],
+            "coverage": [item.as_dict() for item in self.coverage],
         }
