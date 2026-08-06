@@ -14,6 +14,7 @@ from .models import (
     Region,
     Severity,
     ToolReport,
+    TrustMode,
 )
 from .serialize import to_json, to_sarif
 from .source import SourceDocument
@@ -34,6 +35,7 @@ __all__ = [
     "Severity",
     "SourceDocument",
     "ToolReport",
+    "TrustMode",
     "to_json",
     "to_sarif",
 ]

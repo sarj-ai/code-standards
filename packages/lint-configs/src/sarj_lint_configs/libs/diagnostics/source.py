@@ -50,6 +50,31 @@ class SourceDocument:
             byte_offset=self._line_byte_offsets[line - 1] + len(prefix.encode("utf-8")),
         )
 
+    def utf16_point(self, *, line: int, character: int) -> Position | None:
+        """Resolve an already-zero-based UTF-16 position to its byte offset."""
+        if line < 0 or character < 0 or line >= len(self._lines):
+            return None
+        content = self._lines[line].rstrip("\r\n")
+        if character == 0:
+            return Position(line=line, character=0, byte_offset=self._line_byte_offsets[line])
+        units = 0
+        prefix_values: list[str] = []
+        for value in content:
+            units += len(value.encode("utf-16-le")) // 2
+            prefix_values.append(value)
+            if units == character:
+                break
+            if units > character:
+                return None
+        if units < character:
+            return None
+        prefix = "".join(prefix_values)
+        return Position(
+            line=line,
+            character=character,
+            byte_offset=self._line_byte_offsets[line] + len(prefix.encode("utf-8")),
+        )
+
     def region(self, *, start_byte: int, end_byte: int) -> Region:
         """Convert an exact half-open UTF-8 byte span into a UTF-16 range."""
         if start_byte < 0 or end_byte < start_byte or end_byte > len(self.text.encode("utf-8")):

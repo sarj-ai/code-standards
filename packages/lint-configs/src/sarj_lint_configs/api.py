@@ -71,11 +71,14 @@ from .libs.diagnostics import (
     Severity,
     SourceDocument,
     ToolReport,
+    TrustMode,
     to_json,
     to_sarif,
 )
 from .libs.filesystem import is_link_like
 from .libs.linting.analysis import analyze as analyze_paths
+from .libs.linting.analysis import report_from_tools
+from .libs.linting.external import analyze_external
 from .libs.linting.library_policy import Finding as LibraryPolicyFinding
 from .libs.linting.library_policy import ManifestPolicyError
 from .libs.linting.library_policy import scan as check_library_policy
@@ -237,7 +240,13 @@ class Standards:
             return _operation_result(max(source_status, eslint_status, 1 if findings else 0), findings=findings)
         return _operation_result(_verify(self.root))
 
-    def analyze(self, paths: Sequence[str] | None = None) -> AnalysisReport:
+    def analyze(
+        self,
+        paths: Sequence[str] | None = None,
+        *,
+        external: bool = False,
+        trust: TrustMode = TrustMode.SAFE,
+    ) -> AnalysisReport:
         """Return native source findings through the versioned diagnostic protocol.
 
         Unlike :meth:`check`, this method never renders analyzer output and keeps
@@ -248,7 +257,11 @@ class Standards:
             selected = _analysis_inputs(self.root, paths)
         except (OSError, TypeError, ValueError) as exc:
             return _failed_analysis(self.root, "invalid-input", str(exc))
-        return analyze_paths(selected, root=self.root)
+        native = analyze_paths(selected, root=self.root)
+        if not external:
+            return native
+        external_reports = analyze_external(selected, root=self.root, trust=trust)
+        return report_from_tools(self.root, (*native.tools, *external_reports))
 
     def fix(self) -> Result:
         return _operation_result(fix(self.root))
@@ -510,6 +523,7 @@ __all__ = [
     "TagSyncResult",
     "TextFinding",
     "ToolReport",
+    "TrustMode",
     "UpgradePlan",
     "ValidatedReleaseTag",
     "__version__",

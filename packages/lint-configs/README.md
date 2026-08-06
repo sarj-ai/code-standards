@@ -158,6 +158,13 @@ result = standards.init(install=False)
 status = standards.check(("src", "tests"))
 analysis = standards.analyze(("src", "tests"))
 
+# Installed Ruff and BasedPyright are opt-in. ESLint configuration is executable
+# JavaScript, so it additionally requires an explicit trusted-repository choice.
+from sarj_lint_configs.api import TrustMode
+
+full_analysis = standards.analyze(("src", "tests"), external=True)
+trusted_analysis = standards.analyze(("src", "tests"), external=True, trust=TrustMode.TRUSTED)
+
 # Stable schema-v1 JSON for internal automation, and SARIF 2.1.0 for CI/editors.
 from sarj_lint_configs.api import to_json, to_sarif
 

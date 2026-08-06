@@ -53,6 +53,13 @@ def test_source_document_rejects_byte_span_inside_utf8_codepoint(tmp_path: Path)
         document.region(start_byte=1, end_byte=4)
 
 
+def test_source_document_rejects_utf16_position_inside_surrogate_pair(tmp_path: Path) -> None:
+    document = SourceDocument(tmp_path / "unicode.py", "😀\n")
+
+    assert document.utf16_point(line=0, character=1) is None
+    assert document.utf16_point(line=0, character=2) == Position(0, 2, 4)
+
+
 def test_json_uses_utf16_positions_without_leaking_internal_byte_offsets(tmp_path: Path) -> None:
     diagnostic = Diagnostic(
         "TEST001",

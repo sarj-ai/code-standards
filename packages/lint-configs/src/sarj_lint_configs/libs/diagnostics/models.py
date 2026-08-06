@@ -37,6 +37,13 @@ class Conclusion(StrEnum):
     FAILED = "failed"
 
 
+class TrustMode(StrEnum):
+    """Whether repository-controlled executable analyzer configuration may run."""
+
+    SAFE = "safe"
+    TRUSTED = "trusted"
+
+
 @dataclass(frozen=True, slots=True)
 class Position:
     """A zero-based UTF-16 editor position plus its internal byte offset."""

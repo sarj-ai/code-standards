@@ -75,15 +75,23 @@ def analyze(files: Sequence[str], *, root: Path) -> AnalysisReport:
         )
         if report is not None
     )
-    issues = tuple(issue for report in reports for issue in report.issues)
-    diagnostics = tuple(item for report in reports for item in report.diagnostics)
+    return report_from_tools(root, reports)
+
+
+def report_from_tools(root: Path, reports: Sequence[ToolReport]) -> AnalysisReport:
+    """Derive consistent report axes from independent tool reports."""
+    normalized = tuple(reports)
+    issues = tuple(issue for report in normalized for issue in report.issues)
+    diagnostics = tuple(item for report in normalized for item in report.diagnostics)
     if issues:
-        completion = Completion.FAILED if reports and all(report.issues for report in reports) else Completion.PARTIAL
+        completion = (
+            Completion.FAILED if normalized and all(report.issues for report in normalized) else Completion.PARTIAL
+        )
         conclusion = Conclusion.FAILED
     else:
         completion = Completion.COMPLETE
         conclusion = Conclusion.FINDINGS if diagnostics else Conclusion.PASSED
-    return AnalysisReport(root, completion, conclusion, reports)
+    return AnalysisReport(root, completion, conclusion, normalized)
 
 
 def _native_report(name: str, package: str, files: Sequence[str], root: Path) -> ToolReport | None:
