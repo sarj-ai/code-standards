@@ -72,7 +72,10 @@ def test_allows_documented_google_deletion_policy_prevent(resource_type: str):
     assert _check(src) == []
 
 
-@pytest.mark.parametrize("value", ['"DELETE"', '"ABANDON"', "var.deletion_policy", "null"])
+@pytest.mark.parametrize(
+    "value",
+    ['"DELETE"', '"ABANDON"', '"prevent"', '"PrEvEnT"', "PREVENT", "var.deletion_policy", "null"],
+)
 def test_google_deletion_policy_must_be_literal_prevent(value: str):
     src = f"""resource "google_storage_bucket" "main" {{
   name            = "prod"
