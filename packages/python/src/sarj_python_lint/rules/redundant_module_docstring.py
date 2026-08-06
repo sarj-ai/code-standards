@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, final, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, Severity, parse_or_none
 from sarj_python_lint.rules._comments import is_protected, split_identifier, stem
-from sarj_python_lint.rules._docstrings import VALUE_MARKER_RE, restates, sections
+from sarj_python_lint.rules._docstrings import STOPWORDS, VALUE_MARKER_RE, restates, sections
 from sarj_python_lint.rules._paths import is_generated, is_test_path
 
 
@@ -22,15 +22,20 @@ if TYPE_CHECKING:
 _SPECIAL_MODULES = frozenset({"__init__.py", "__main__.py"})
 _SUMMARY_ONLY = frozenset({"summary"})
 _SENTENCE_END_RE = re.compile(r"[.!?](?=\s|$)")
+_WORD_RE = re.compile(r"[A-Za-z][A-Za-z0-9']*")
 
 # These words describe existence rather than purpose; unknown words are evidence
 # that the docstring may say something the path cannot.
 _MODULE_FILLER_STEMS = frozenset(
     stem(word)
     for word in (
+        "class",
+        "function",
         "implementation",
+        "level",
         "module",
         "operation",
+        "utility",
     )
 )
 
@@ -61,8 +66,7 @@ class RedundantModuleDocstring(Rule):
         docstring = ast.get_docstring(tree, clean=True)
         if not docstring or not self._is_plain_summary(expression, docstring):
             return []
-        known = _path_stems(path) | _MODULE_FILLER_STEMS
-        if not restates(docstring, known):
+        if not _restates_path(docstring, path):
             return []
         return [
             Diagnostic(
@@ -88,6 +92,24 @@ class RedundantModuleDocstring(Rule):
         if len(_SENTENCE_END_RE.findall(docstring)) > 1:
             return False
         return not VALUE_MARKER_RE.search(docstring) and not is_protected(docstring)
+
+
+def _restates_path(docstring: str, path: Path) -> bool:
+    path_stems = _path_stems(path)
+    if restates(docstring, path_stems | _MODULE_FILLER_STEMS):
+        return True
+
+    # Lowercase compound filenames do not expose word boundaries to
+    # ``split_identifier``; require the entire non-filler phrase to
+    # reconstruct one path token so an extra purpose or constraint keeps the
+    # docstring.
+    content_words = tuple(
+        word
+        for match in _WORD_RE.finditer(docstring)
+        if (word := match.group(0).lower()) not in STOPWORDS and stem(word) not in _MODULE_FILLER_STEMS
+    )
+    path_tokens = {*split_identifier(path.stem), *split_identifier(path.parent.name)}
+    return bool(content_words) and "".join(content_words) in path_tokens
 
 
 def _path_stems(path: Path) -> set[str]:
