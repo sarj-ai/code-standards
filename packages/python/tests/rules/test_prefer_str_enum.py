@@ -1576,6 +1576,18 @@ def handle(schema):
     assert _check(src) == []
 
 
+def test_wire_compatibility_helper_bound_variable_is_exempt():
+    src = """
+def handle(message):
+    item_type = get_mapping_or_attr(message, "type")
+    if item_type == "program":
+        return 1
+    elif item_type == "program_output":
+        return 2
+"""
+    assert _check(src) == []
+
+
 def test_walrus_subscript_bound_variable_is_exempt():
     src = """
 def walk(inner_schema):
@@ -1631,6 +1643,44 @@ def handle(status: {annotation}) -> int:
     return 0
 """
     assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        'Literal["auto", "required", "none"] | str',
+        'Literal["auto", "required", "none"] | str | None',
+        'Union[Literal["auto", "required", "none"], str, None]',
+    ],
+)
+def test_literal_plus_arbitrary_str_annotation_is_an_explicitly_open_domain(annotation: str):
+    src = f"""
+def convert(tool_choice: {annotation}) -> str:
+    if tool_choice == "auto":
+        return "automatic"
+    if tool_choice == "required":
+        return "forced"
+    if tool_choice == "none":
+        return "disabled"
+    return tool_choice
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["name", "attr", "attribute", "event_name", "key", "tool_name", "user_input"],
+)
+def test_generic_open_domain_names_are_not_inferred_as_enums(name: str):
+    src = f"""
+def inspect({name}: str) -> str:
+    if {name} == "source_agent":
+        return "source"
+    if {name} == "target_agent":
+        return "target"
+    return {name}
+"""
+    assert _check(src) == []
 
 
 def test_value_derived_from_a_typed_name_is_exempt():
