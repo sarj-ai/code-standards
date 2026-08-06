@@ -169,6 +169,15 @@ _GIT_SAFE_ENV: Final = frozenset(
 _GIT_DISCOVERY_TIMEOUT_SECONDS: Final = 5.0
 
 
+def _git_environment() -> dict[str, str]:
+    """Keep user-level Git settings while discarding hook-local repository routing."""
+    return {
+        name: value
+        for name, value in os.environ.items()  # ruff: ignore[banned-api] -- Git hook variables must not redirect child commands.
+        if name in _GIT_SAFE_ENV
+    }
+
+
 def diagnose(root: Path) -> list[Finding]:
     """Check version pins and required policy settings under a repo root."""
     installed = manifest.installed_versions()
@@ -296,6 +305,7 @@ def _git_worktree(root: Path) -> bool:
         cwd=root,
         check=False,
         capture_output=True,
+        env=_git_environment(),
         text=True,
     )
     return completed.returncode == 0 and completed.stdout.strip() == "true"
@@ -310,6 +320,7 @@ def _installed_precommit_hook(root: Path) -> bool:
         cwd=root,
         check=False,
         capture_output=True,
+        env=_git_environment(),
         text=True,
     )
     if completed.returncode:
@@ -1060,18 +1071,13 @@ def _candidate_files(files: Sequence[Path], suffixes: Sequence[str]) -> Iterator
 def _walk(root: Path) -> tuple[Path, ...]:
     """List authored files once, honoring ignore rules when the root is a Git checkout."""
     git = shutil.which("git")
-    git_environment = {
-        name: value
-        for name, value in os.environ.items()  # ruff: ignore[banned-api] — Git hook variables must not redirect child scans.
-        if name in _GIT_SAFE_ENV
-    }
     try:
         completed = (
             subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed Git executable and argv.
                 (git, "-C", str(root), "ls-files", "--cached", "--others", "--exclude-standard", "-z"),
                 check=False,
                 capture_output=True,
-                env=git_environment,
+                env=_git_environment(),
                 shell=False,
                 timeout=_GIT_DISCOVERY_TIMEOUT_SECONDS,
             )

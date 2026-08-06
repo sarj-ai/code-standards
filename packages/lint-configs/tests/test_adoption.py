@@ -932,12 +932,17 @@ def test_doctor_rejects_inert_or_semantically_changed_precommit_hook(tmp_path: P
     assert [finding for finding in findings if finding.id == "doctor.hooks.precommit"]
 
 
-def test_doctor_warns_when_the_checkout_hook_is_not_installed(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
-    subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True)
-    assert _cli("init", "--dest", str(tmp_path), "--no-install").returncode == 0
+def test_doctor_warns_when_the_checkout_hook_is_not_installed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    consumer = _python_repo(tmp_path / "consumer")
+    outer = tmp_path / "outer"
+    outer.mkdir()
+    subprocess.run(("git", "init", "-q"), cwd=consumer, check=True, env={})
+    subprocess.run(("git", "init", "-q"), cwd=outer, check=True, env={})
+    monkeypatch.setenv("GIT_DIR", str(outer / ".git"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(outer))
+    assert _cli("init", "--dest", str(consumer), "--no-install").returncode == 0
 
-    findings = doctor.diagnose(tmp_path)
+    findings = doctor.diagnose(consumer)
 
     assert [
         finding
@@ -946,17 +951,18 @@ def test_doctor_warns_when_the_checkout_hook_is_not_installed(tmp_path: Path) ->
     ]
     hook_location = subprocess.run(
         ("git", "rev-parse", "--git-path", "hooks/pre-commit"),
-        cwd=tmp_path,
+        cwd=consumer,
         check=True,
         capture_output=True,
+        env={},
         text=True,
     ).stdout.strip()
     hook = Path(hook_location)
     if not hook.is_absolute():
-        hook = tmp_path / hook
+        hook = consumer / hook
     hook.parent.mkdir(parents=True, exist_ok=True)
     hook.write_text("#!/bin/sh\n# pre_commit hook-type=pre-commit\n", encoding="utf-8")
-    assert not [finding for finding in doctor.diagnose(tmp_path) if finding.id == "doctor.hooks.precommit-install"]
+    assert not [finding for finding in doctor.diagnose(consumer) if finding.id == "doctor.hooks.precommit-install"]
 
 
 def test_doctor_repair_converges_configuration_without_installing(tmp_path: Path) -> None:
