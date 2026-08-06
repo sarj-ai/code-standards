@@ -63,7 +63,11 @@ def analyze_external(
 ) -> tuple[ToolReport, ...]:
     """Run installed analyzers; executable repository config requires explicit trust."""
     execute = run_process if runner is None else runner
-    grouped = group_paths(files)
+    try:
+        grouped = group_paths(files)
+    except (OSError, ValueError) as exc:
+        issue = ExecutionIssue("external", "invalid-input", str(exc))
+        return (ToolReport("external", Completion.FAILED, issues=(issue,)),)
     reports: list[ToolReport] = []
     if grouped.python:
         reports.extend(
@@ -86,7 +90,12 @@ def analyze_external(
                 ),
             )
         )
-    eslint_commands = selected_eslint_commands(root, files, label="analysis")
+    try:
+        eslint_commands = selected_eslint_commands(root, files, label="analysis")
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        issue = ExecutionIssue("eslint", "configuration-failure", f"{type(exc).__name__}: {exc}")
+        reports.append(ToolReport("eslint", Completion.FAILED, issues=(issue,)))
+        return tuple(reports)
     for command in eslint_commands:
         if trust is TrustMode.SAFE:
             issue = ExecutionIssue(
