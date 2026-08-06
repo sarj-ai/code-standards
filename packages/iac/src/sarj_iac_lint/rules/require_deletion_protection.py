@@ -146,7 +146,7 @@ def _violation(block: Block) -> str | None:
     if resource_type in _DELETION_POLICY_TYPES:
         policy = block.attribute(_DELETION_POLICY)
         if policy is not None:
-            if _literal(policy.value) == "prevent":
+            if _quoted_literal(policy.value) == "PREVENT":
                 return None
             policy_problem = f"deletion_policy = {policy.value.strip()} is not literal PREVENT"
     attrs = _RESOURCE_PROTECTION_ATTRS.get(resource_type, _PROTECTION_ATTRS)
@@ -189,3 +189,11 @@ def _literal(value: str) -> str:
     while text.startswith("(") and text.endswith(")"):
         text = text[1:-1].strip()
     return text.strip('"').strip().lower()
+
+
+def _quoted_literal(value: str) -> str | None:
+    """Return an exact double-quoted string, excluding expressions and bare identifiers."""
+    text = value.strip().rstrip(",").strip()
+    while text.startswith("(") and text.endswith(")"):
+        text = text[1:-1].strip()
+    return text[1:-1] if text.startswith('"') and text.endswith('"') else None

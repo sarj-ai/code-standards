@@ -126,7 +126,7 @@ def _provider_guard(block: Block) -> tuple[bool, str | None]:
     if resource_type in _GOOGLE_DELETION_POLICY_TYPES:
         policy = block.attribute(_DELETION_POLICY)
         if policy is not None:
-            if _literal(policy.value) == "prevent":
+            if _quoted_literal(policy.value) == "PREVENT":
                 return True, None
             problems.append(f"sets deletion_policy = {policy.value.strip()}, which is not literal PREVENT")
     if resource_type in _GOOGLE_DELETION_PROTECTION_TYPES:
@@ -144,3 +144,11 @@ def _literal(value: str) -> str:
     while text.startswith("(") and text.endswith(")"):
         text = text[1:-1].strip()
     return text.strip('"').strip().lower()
+
+
+def _quoted_literal(value: str) -> str | None:
+    """Return an exact double-quoted string, excluding expressions and bare identifiers."""
+    text = value.strip().rstrip(",").strip()
+    while text.startswith("(") and text.endswith(")"):
+        text = text[1:-1].strip()
+    return text[1:-1] if text.startswith('"') and text.endswith('"') else None

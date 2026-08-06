@@ -107,7 +107,10 @@ def test_current_google_provider_deletion_policy_prevent_is_protection(resource_
     assert _check(src) == []
 
 
-@pytest.mark.parametrize("value", ['"DELETE"', '"ABANDON"', "var.deletion_policy", "null"])
+@pytest.mark.parametrize(
+    "value",
+    ['"DELETE"', '"ABANDON"', '"prevent"', '"PrEvEnT"', "PREVENT", "var.deletion_policy", "null"],
+)
 def test_google_deletion_policy_must_be_literal_prevent(value: str):
     src = f"""resource "google_sql_database_instance" "main" {{
   name            = "prod"
