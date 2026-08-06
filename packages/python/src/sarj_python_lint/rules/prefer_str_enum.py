@@ -84,16 +84,23 @@ _SCANNER_KEY_SEGMENTS = frozenset({"c", "ch", "chr", "char", "token", "tok", "le
 #: Variable names whose external vocabulary is open-ended rather than an application enum.
 OPEN_DOMAIN_CODE_NAMES = frozenset(
     {
+        "attr",
+        "attribute",
         "language",
         "lang",
         "country",
         "currency",
+        "event_name",
         "timezone",
         "tz",
         "locale",
         "region",
         "code",
         "country_code",
+        "key",
+        "name",
+        "tool_name",
+        "user_input",
     }
 )
 
@@ -116,7 +123,9 @@ _MEMBERSHIP = "in"
 
 #: Call names that read a value out of a payload / stream / environment the
 #: module does not own, so the vocabulary of the result is not the module's.
-_WIRE_CALL_NAMES = frozenset({"get", "getenv", "items", "keys", "next", "pop", "popleft", "values"})
+_WIRE_CALL_NAMES = frozenset(
+    {"get", "get_mapping_or_attr", "getenv", "items", "keys", "next", "pop", "popleft", "values"}
+)
 
 #: Calls that wrap an iterable without changing where its elements came from.
 _ITERABLE_WRAPPERS = frozenset({"enumerate", "iter", "list", "reversed", "set", "sorted", "tuple", "zip"})
@@ -436,6 +445,7 @@ def _opaque_names(
     """Collect the names in `func` a StrEnum recommendation cannot apply to."""
     base = (
         _literal_typed_names(func, alias_names)
+        | _explicitly_open_literal_union_names(func, raw_string_aliases)
         | _foreign_typed_names(func, raw_string_aliases)
         | _wire_bound_names(func, literal_funcs)
     )
@@ -462,6 +472,60 @@ def _literal_typed_names(func: ast.FunctionDef | ast.AsyncFunctionDef, alias_nam
             names.add(node.target.id)
         stack.extend(children(node))
     return frozenset(names)
+
+
+def _explicitly_open_literal_union_names(
+    func: ast.FunctionDef | ast.AsyncFunctionDef,
+    raw_string_aliases: frozenset[str],
+) -> frozenset[str]:
+    """Collect names whose annotation explicitly combines reserved literals with arbitrary strings."""
+    names: set[str] = set()
+    args = func.args
+    for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs):
+        if _is_literal_plus_open_string(arg.annotation, raw_string_aliases):
+            names.add(arg.arg)
+    stack: list[ast.AST] = list(func.body)
+    while stack:
+        node = stack.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
+            continue
+        if (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and _is_literal_plus_open_string(node.annotation, raw_string_aliases)
+        ):
+            names.add(node.target.id)
+        stack.extend(children(node))
+    return frozenset(names)
+
+
+def _is_literal_plus_open_string(
+    annotation: ast.expr | None,
+    raw_string_aliases: frozenset[str],
+) -> bool:
+    """Report an explicit ``Literal[...] | str``-style open string domain."""
+    if annotation is None:
+        return False
+    if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
+        parsed = _parse_string_annotation(annotation.value)
+        return parsed is not None and _is_literal_plus_open_string(parsed, raw_string_aliases)
+    members = _union_annotation_members(annotation)
+    if len(members) < _MIN_TYPE_ALIAS_ARGS:
+        return False
+    has_literal = any(_is_literal_annotation(member, frozenset()) for member in members)
+    has_open_string = any(
+        isinstance(member, ast.Name) and (member.id == "str" or member.id in raw_string_aliases) for member in members
+    )
+    return has_literal and has_open_string
+
+
+def _union_annotation_members(annotation: ast.expr) -> list[ast.expr]:
+    """Flatten PEP 604 and ``typing.Union`` annotations into their members."""
+    if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
+        return [*_union_annotation_members(annotation.left), *_union_annotation_members(annotation.right)]
+    if isinstance(annotation, ast.Subscript) and _trailing_name(annotation.value) == "Union":
+        return list(annotation.slice.elts) if isinstance(annotation.slice, ast.Tuple) else [annotation.slice]
+    return [annotation]
 
 
 def _closed_comprehension_targets(
