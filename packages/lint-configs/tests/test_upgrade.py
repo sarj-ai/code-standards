@@ -1,5 +1,8 @@
 """A standards upgrade is previewable, coherent, and rollback-safe."""
 
+# sarj-doctor-ignore-retired-rules -- upgrade fixtures intentionally contain
+# retired identifiers so migration behavior remains covered.
+
 from __future__ import annotations
 
 from dataclasses import replace

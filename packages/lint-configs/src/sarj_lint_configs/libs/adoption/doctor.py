@@ -134,6 +134,7 @@ _REFERENCE_SUFFIXES: Final = (
 )
 _RULE_MAPPING_REFERENCE = re.compile(r"^\s*(?:-\s*)?(?:id|entry)\s*:\s*.*sarj", re.IGNORECASE)
 _ESLINT_RULE_REFERENCE = re.compile(r"[\"']@sarj/[^\"']+[\"']\s*:")
+_IGNORE_RETIRED_RULE_REFERENCES = "sarj-doctor-ignore-retired-rules"
 
 _SKIP_DIRS: Final = frozenset(
     {
@@ -257,6 +258,8 @@ def check_retired_rules(root: Path, files: Sequence[Path] | None = None) -> Iter
 
 def _reference_text(path: Path, text: str) -> str:
     """Keep only syntactic rule-reference sites, never explanatory prose."""
+    if _IGNORE_RETIRED_RULE_REFERENCES in text:
+        return ""
     lowered = path.name.lower()
     if "baseline" in lowered:
         return text

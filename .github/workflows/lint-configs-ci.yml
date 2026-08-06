@@ -85,7 +85,11 @@ jobs:
         run: |
           uv run ruff check src/ tests/
           uv run basedpyright
-          uv run sarj-lint-configs check .
+          # The compatibility bundle is developed from this package directory,
+          # but Standards is adopted at the repository root. Dogfood that real
+          # manifest and its verification paths instead of treating the package
+          # subdirectory as an unadopted consumer.
+          uv run sarj-lint-configs check --dest ../..
       - name: Build wheel
         run: |
           uv build --wheel

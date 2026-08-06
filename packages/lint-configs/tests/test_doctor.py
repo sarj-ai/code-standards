@@ -1,3 +1,6 @@
+# sarj-doctor-ignore-retired-rules -- this module intentionally embeds retired
+# identifiers to prove that doctor diagnoses consumer repositories correctly.
+
 from __future__ import annotations
 
 import subprocess
@@ -184,6 +187,18 @@ def test_doctor_honors_explicit_fixture_exclusions(tmp_path: Path) -> None:
     )
     (tmp_path / manifest.MANIFEST_NAME).write_text(
         f'{adopted.render()}\n[doctor]\nexclude = ["tests/fixtures/**"]\n',
+        encoding="utf-8",
+    )
+
+    findings = doctor.diagnose(tmp_path)
+
+    assert not [finding for finding in findings if finding.id == "doctor.rule.retired"]
+
+
+def test_doctor_honors_explicit_retired_rule_fixture_directive(tmp_path: Path) -> None:
+    fixture = tmp_path / "test_rule_history.py"
+    fixture.write_text(
+        "# sarj-doctor-ignore-retired-rules -- intentional compatibility fixture\n# sarj-noqa: SARJ061\n",
         encoding="utf-8",
     )
 
