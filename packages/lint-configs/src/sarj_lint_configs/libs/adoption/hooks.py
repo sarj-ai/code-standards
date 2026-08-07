@@ -20,6 +20,12 @@ if TYPE_CHECKING:
 
 LEFTHOOK_NAMES: Final = ("lefthook.yml", "lefthook.yaml")
 PRECOMMIT_NAMES: Final = (".pre-commit-config.yaml", ".pre-commit-config.yml")
+PRECOMMIT_FILES_PATTERN: Final = (
+    r"(?i)(\.py|\.[cm]?[jt]s|\.[jt]sx|\.sql|\.tf|\.tfvars|\.hcl|\.ya?ml|\.toml|\.jsonc|\.mdx?|"
+    r"\.(?:bash|cfg|conf|env|ini|properties|sh|tftpl|zsh)|(?:^|/)\.env(?:\..*)?$|"
+    r"(?:^|/)requirements(?:/.*|[^/]*\.(?:txt|in))$|"
+    r"(?:^|/)(?:Dockerfile(?:\..*)?|Gnumakefile|Justfile|Makefile|package\.json|pyrightconfig\.json))$"
+)
 _COMMANDS_BLOCK: Final = re.compile(r"(?m)^(?P<indent> +)commands:(?P<tail>[^\n]*)$")
 _JOBS_BLOCK: Final = re.compile(r"(?m)^(?P<indent> +)jobs:(?P<tail>[^\n]*)$")
 _MAX_JOB_DEPTH: Final = 64
@@ -176,8 +182,10 @@ def precommit_runs_staged_check(root: Path) -> bool:
         candidate.get("id") == "sarj-standards-check"
         and _runs_staged_check(candidate.get("entry"))
         and candidate.get("language") == "system"
-        and candidate.get("pass_filenames") is False
-        and isinstance(candidate.get("files"), str)
+        and candidate.get("pass_filenames") is True
+        and candidate.get("require_serial") is True
+        and candidate.get("files") == PRECOMMIT_FILES_PATTERN
+        and candidate.get("stages") == ["pre-commit"]
     )
 
 

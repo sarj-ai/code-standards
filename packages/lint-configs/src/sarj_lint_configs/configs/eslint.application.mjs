@@ -1,3 +1,7 @@
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import tseslint from "typescript-eslint";
 import react from "eslint-plugin-react";
 import { fixupPluginRules } from "@eslint/compat";
@@ -10,6 +14,17 @@ import simpleImportSort from "eslint-plugin-simple-import-sort";
 import betterTailwindcss from "eslint-plugin-better-tailwindcss";
 import sarj from "@sarj/eslint-plugin";
 import zod from "eslint-plugin-zod";
+
+const CONFIG_DIRECTORY = dirname(fileURLToPath(import.meta.url));
+const hasTypeProject = (directory) =>
+  existsSync(join(directory, "tsconfig.json")) || existsSync(join(directory, "jsconfig.json"));
+const TYPE_PROJECT_ROOT = [CONFIG_DIRECTORY, process.cwd()].find(hasTypeProject) ?? CONFIG_DIRECTORY;
+const HAS_TYPE_PROJECT = hasTypeProject(TYPE_PROJECT_ROOT);
+const UNTYPED_RULE_OVERRIDES = Object.fromEntries(
+  Object.entries(tseslint.plugin.rules)
+    .filter(([, rule]) => rule.meta?.docs?.requiresTypeChecking === true)
+    .map(([name]) => [`@typescript-eslint/${name}`, "off"]),
+);
 
 // unicorn ships 341 rules; this config used to run 12 of them. The set below
 // was chosen by RUNNING every non-deprecated unicorn 72 rule over 4,356 deduped
@@ -443,6 +458,11 @@ const BUILD_OUTPUT_IGNORES = [
   "**/storybook-static/**",
   "**/__generated__/**",
   "**/generated/**",
+  "**/eslint.config.js",
+  "**/eslint.config.cjs",
+  "**/eslint.config.mjs",
+  "**/eslint.config.ts",
+  "**/eslint.strict.mjs",
   "**/*.min.js",
   "**/*.min.mjs",
   "**/*.min.cjs",
@@ -479,8 +499,8 @@ const config = [
     languageOptions: {
       parser: tseslint.parser,
       parserOptions: {
-        projectService: true,
-        tsconfigRootDir: process.cwd(),
+        projectService: HAS_TYPE_PROJECT,
+        tsconfigRootDir: TYPE_PROJECT_ROOT,
         ecmaFeatures: { jsx: true },
       },
     },
@@ -1021,6 +1041,7 @@ const config = [
       // custom rule:
       //   "@sarj/no-storage-in-stateless-modules": ["error", { modules: [...] }],
       //   "@sarj/no-raw-fetch-outside-clients": ["error", { allow: [...] }],
+      ...(HAS_TYPE_PROJECT ? {} : UNTYPED_RULE_OVERRIDES),
     },
   },
 

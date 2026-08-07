@@ -16,6 +16,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, NamedTuple
 
 from sarj_lint_configs._meta import CONFIGS_DIR
+from sarj_lint_configs.libs.filesystem import is_link_like
 from sarj_lint_configs.libs.repository import ledger
 
 from . import hooks, manifest, packagemanager
@@ -168,6 +169,15 @@ _GIT_SAFE_ENV: Final = frozenset(
 _GIT_DISCOVERY_TIMEOUT_SECONDS: Final = 5.0
 
 
+def _git_environment() -> dict[str, str]:
+    """Keep user-level Git settings while discarding hook-local repository routing."""
+    return {
+        name: value
+        for name, value in os.environ.items()  # ruff: ignore[banned-api] -- Git hook variables must not redirect child commands.
+        if name in _GIT_SAFE_ENV
+    }
+
+
 def diagnose(root: Path) -> list[Finding]:
     """Check version pins and required policy settings under a repo root."""
     installed = manifest.installed_versions()
@@ -180,7 +190,7 @@ def diagnose(root: Path) -> list[Finding]:
     findings = [*_check_manifest(root)]
     findings.extend(_check_hook_manager(root))
     findings.extend(_check_pin_files(root, files, installed))
-    findings.extend(_check_adopted_python_bundle(root, files, installed))
+    findings.extend(_check_legacy_in_project_launcher(root))
     findings.extend(_check_precommit_revs(root, files))
     if not _has_adopted_eslint(root):
         findings.extend(_check_eslint_plugin(root, files))
@@ -190,6 +200,58 @@ def diagnose(root: Path) -> list[Finding]:
     findings.extend(_check_adoption_wiring(root))
     unique = dict.fromkeys(findings)
     return sorted(unique, key=lambda finding: (finding.where, finding.id, finding.detail))
+
+
+def diagnose_adoption_health(root: Path, selected: Sequence[Path] = ()) -> list[Finding]:
+    """Check staged-gate adoption sites without traversing unrelated source files."""
+    installed = manifest.installed_versions()
+    files = _adoption_health_files(root, selected)
+    findings = [*_check_manifest(root)]
+    findings.extend(_check_hook_manager(root))
+    findings.extend(_check_pin_files(root, files, installed))
+    findings.extend(_check_legacy_in_project_launcher(root))
+    findings.extend(_check_precommit_revs(root, files))
+    if not _has_adopted_eslint(root):
+        findings.extend(_check_eslint_plugin(root, files))
+    findings.extend(check_retired_rules(root, files))
+    findings.extend(check_pyright_deprecated(root, files))
+    findings.extend(check_ruff_policy_authority(root, files))
+    findings.extend(_check_adoption_wiring(root))
+    return sorted(dict.fromkeys(findings), key=lambda finding: (finding.where, finding.id, finding.detail))
+
+
+def _adoption_health_files(root: Path, selected: Sequence[Path]) -> tuple[Path, ...]:
+    candidates = [
+        *(path if path.is_absolute() else root / path for path in selected),
+        manifest.manifest_path(root),
+    ]
+    candidates.extend(
+        root / name for name in (*hooks.PRECOMMIT_NAMES, "pyproject.toml", "package.json", "pyrightconfig.json")
+    )
+    candidates.extend(root.glob("requirements*.txt"))
+    candidates.extend(root.glob("requirements*.in"))
+    candidates.extend(root.glob("*/pyproject.toml"))
+    candidates.extend(root.glob("*/*/pyproject.toml"))
+    candidates.extend((root / ".github" / "workflows").glob("*.yml"))
+    candidates.extend((root / ".github" / "workflows").glob("*.yaml"))
+    try:
+        adopted = manifest.load(root)
+    except OSError, TypeError, ValueError:
+        adopted = None
+    if adopted is not None:
+        for destination in (adopted.python_dest, adopted.typescript_dest):
+            base = _manifest_destination(root, destination)
+            if base is not None:
+                candidates.extend(base / name for name in ("pyproject.toml", "package.json", "pyrightconfig.json"))
+    repository = root.resolve()
+    contained: list[Path] = []
+    for path in candidates:
+        if not path.is_file():
+            continue
+        resolved = path.resolve()
+        if resolved.is_relative_to(repository):
+            contained.append(resolved)
+    return tuple(dict.fromkeys(contained))
 
 
 def _check_hook_manager(root: Path) -> Iterator[Finding]:
@@ -207,6 +269,14 @@ def _check_hook_manager(root: Path) -> Iterator[Finding]:
                 "runs exactly one canonical staged check",
                 "doctor.hooks.precommit",
             )
+            if _git_worktree(root) and not _installed_precommit_hook(root):
+                yield Finding(
+                    Level.WARN,
+                    ".git/hooks/pre-commit",
+                    "the configuration is healthy, but this checkout has no installed commit hook",
+                    "doctor.hooks.precommit-install",
+                    "run `sarj-standards doctor --repair`",
+                )
             return
         yield Finding(
             Level.DRIFT,
@@ -227,6 +297,54 @@ def _check_hook_manager(root: Path) -> Iterator[Finding]:
         "doctor.hooks.lefthook",
         "add a Lefthook pre-commit command that runs `sarj-standards check --staged`",
     )
+
+
+def _git_worktree(root: Path) -> bool:
+    git = shutil.which("git")
+    if git is None:
+        return False
+    try:
+        completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed executable and argv.
+            (git, "rev-parse", "--is-inside-work-tree"),
+            cwd=root,
+            check=False,
+            capture_output=True,
+            env=_git_environment(),
+            text=True,
+            timeout=_GIT_DISCOVERY_TIMEOUT_SECONDS,
+        )
+    except OSError, subprocess.TimeoutExpired:
+        return False
+    return completed.returncode == 0 and completed.stdout.strip() == "true"
+
+
+def _installed_precommit_hook(root: Path) -> bool:
+    git = shutil.which("git")
+    if git is None:
+        return False
+    try:
+        completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed executable and argv.
+            (git, "rev-parse", "--git-path", "hooks/pre-commit"),
+            cwd=root,
+            check=False,
+            capture_output=True,
+            env=_git_environment(),
+            text=True,
+            timeout=_GIT_DISCOVERY_TIMEOUT_SECONDS,
+        )
+    except OSError, subprocess.TimeoutExpired:
+        return False
+    if completed.returncode:
+        return False
+    hook = Path(completed.stdout.strip())
+    path = hook if hook.is_absolute() else root / hook
+    if not path.is_file():
+        return False
+    try:
+        contents = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return "hook-type=pre-commit" in contents or "pre_commit" in contents
 
 
 def _has_adopted_eslint(root: Path) -> bool:
@@ -460,66 +578,29 @@ def _check_pin_files(root: Path, files: Sequence[Path], installed: Mapping[str, 
                 )
 
 
-def _check_adopted_python_bundle(
-    root: Path,
-    files: Sequence[Path],
-    installed: Mapping[str, str],
-) -> Iterator[Finding]:
-    """Require the exact Python bundle that `init` installs for an adopted repo."""
+def _check_legacy_in_project_launcher(root: Path) -> Iterator[Finding]:
+    """Flag the pre-isolation dependency that couples Standards to consumer Python."""
     try:
         adopted = manifest.load(root)
     except OSError, TypeError, ValueError:
         return
-    if adopted is None or not set(adopted.configs).intersection(manifest.PYTHON_CONFIGS):
+    if adopted is None:
         return
     python_root = _manifest_destination(root, adopted.python_dest)
     if python_root is None:
         return
     pyproject = python_root / "pyproject.toml"
     text = _read(pyproject) if pyproject.is_file() else ""
-    exact = {
-        name
-        for match in _PIN.finditer(text)
-        if match.group("op") == "==" and (name := match.group("name")) and match.group("version") == installed.get(name)
-    }
-    # Exact-version local projects let source workspaces dogfood doctor without impossible self-dependencies.
-    exact.update(_local_bundle_projects(files, installed))
-    missing = tuple(name for name in installed if name not in exact)
-    if not missing:
-        yield Finding(
-            Level.OK,
-            str(pyproject.relative_to(root)),
-            "contains the exact installed Sarj Python bundle",
-            "doctor.python.bundle",
-        )
+    if not any(match.group("name") == "sarj-lint-configs" for match in _PIN.finditer(text)):
         return
-    specs = " ".join(f"{name}=={installed[name]}" for name in missing)
     where = str(pyproject.relative_to(root))
     yield Finding(
         Level.DRIFT,
         where,
-        f"adoption manifest declares Python standards but exact bundle pins are missing: {', '.join(missing)}",
-        "doctor.python.bundle-missing",
-        f"run `uv add --dev {specs}` in {python_root.relative_to(root).as_posix() or '.'}",
+        "sarj-lint-configs is installed inside the consumer project; the isolated launcher owns the tool runtime",
+        "doctor.python.legacy-in-project-tool",
+        f"run `uv remove --dev sarj-lint-configs` in {python_root.relative_to(root).as_posix() or '.'}",
     )
-
-
-def _local_bundle_projects(files: Sequence[Path], installed: Mapping[str, str]) -> set[str]:
-    """Return exact-version Sarj distributions authored by this checkout."""
-    found: set[str] = set()
-    for path in files:
-        if path.name != "pyproject.toml":
-            continue
-        try:
-            document = manifest.as_table(tomllib.loads(_read(path)))
-        except OSError, tomllib.TOMLDecodeError:
-            continue
-        project = manifest.table_field(document, "project")
-        name = project.get("name")
-        version = project.get("version")
-        if isinstance(name, str) and isinstance(version, str) and installed.get(name) == version:
-            found.add(name)
-    return found
 
 
 def _is_pin_site(path: Path) -> bool:
@@ -701,7 +782,7 @@ def _check_adoption_wiring(root: Path) -> Iterator[Finding]:  # ruff: ignore[too
                 manifest.MANIFEST_NAME,
                 f"declares unknown config {name!r}",
                 "doctor.config.unknown",
-                "remove the unknown config or run `sarj-standards update`",
+                "remove or correct the unknown config name in the adoption manifest",
             )
             continue
         standard_source, application_source, target_name, kind = spec
@@ -720,6 +801,16 @@ def _check_adoption_wiring(root: Path) -> Iterator[Finding]:  # ruff: ignore[too
                 "run `sarj-standards update`",
             )
         elif target.read_bytes() != expected.read_bytes():
+            if is_link_like(target):
+                linked = target.resolve(strict=False)
+                yield Finding(
+                    Level.DRIFT,
+                    str(target.relative_to(root)),
+                    f"declared {name} config is a source-controlled link to {linked.relative_to(root) if linked.is_relative_to(root) else linked} and differs from the executing bundle",
+                    "doctor.config.source-drift",
+                    "update or rebase the Standards source checkout; automatic repair will not replace a source-controlled link",
+                )
+                continue
             yield Finding(
                 Level.DRIFT,
                 str(target.relative_to(root)),
@@ -991,18 +1082,13 @@ def _candidate_files(files: Sequence[Path], suffixes: Sequence[str]) -> Iterator
 def _walk(root: Path) -> tuple[Path, ...]:
     """List authored files once, honoring ignore rules when the root is a Git checkout."""
     git = shutil.which("git")
-    git_environment = {
-        name: value
-        for name, value in os.environ.items()  # ruff: ignore[banned-api] — Git hook variables must not redirect child scans.
-        if name in _GIT_SAFE_ENV
-    }
     try:
         completed = (
             subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed Git executable and argv.
                 (git, "-C", str(root), "ls-files", "--cached", "--others", "--exclude-standard", "-z"),
                 check=False,
                 capture_output=True,
-                env=git_environment,
+                env=_git_environment(),
                 shell=False,
                 timeout=_GIT_DISCOVERY_TIMEOUT_SECONDS,
             )

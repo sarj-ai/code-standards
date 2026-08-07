@@ -44,8 +44,8 @@ Then run any audit, e.g. `/sarj-audit:data-contracts` or `/sarj-audit:concurrenc
 uvx --from sarj-lint-configs sarj-standards init
 ```
 
-`init` detects whether the repo is Python, TypeScript or both; installs the
-toolchain and hooks; syncs only the
+`init` detects whether the repo is Python, TypeScript or both; installs hook
+plumbing and TypeScript peers; syncs only the
 configs that ecosystem uses; wires them into `pyproject.toml`,
 `pyrightconfig.json` and `eslint.config.mjs`; writes a pre-commit block; records
 the adopted version in `.sarj-standards.toml`; and prints the CI snippet plus, for
@@ -57,31 +57,33 @@ Deliberately no version literal above. Pinning a version in prose is how the
 previous instructions came to pin `sarj-lint-configs` at 0.10.0 five minor
 versions after 0.10.0, and to name a peer floor of `@sarj/eslint-plugin` 2.16.0
 for a config that needed 2.17.0 or newer — anyone who followed them got a stale
-toolchain or a broken config. `uv add` resolves the current version; `.sarj-standards.toml` records it;
+toolchain or a broken config. The isolated launcher resolves the current version;
+`.sarj-standards.toml` records it;
 `doctor` proves everything else agrees. Both READMEs are now asserted against the
 shipping versions by a test, so this section cannot rot silently again.
 
 ## Daily use
 
-Use the launcher printed by `init`; it reflects where the bundle was installed:
+Every repository shape uses the same generated launcher prefix:
 
 | Repository shape | Launcher prefix |
 |---|---|
-| Python project at the root | `uv run --frozen` |
-| Python project in `backend/` | `uv run --project backend --frozen` |
-| TypeScript-only repository | `uvx --from sarj-lint-configs==<manifest version>` |
+| Python project at the root | `uvx --isolated --python 3.14 --from sarj-lint-configs==<manifest version>` |
+| Python project in `backend/` | `uvx --isolated --python 3.14 --from sarj-lint-configs==<manifest version>` |
+| TypeScript-only repository | `uvx --isolated --python 3.14 --from sarj-lint-configs==<manifest version>` |
 
-The examples below show the root-Python form. Keep the command after the prefix
-the same for other layouts.
+The tool runtime is separate from the consumer's Python target and environment.
+Use the exact launcher written to pre-commit and emitted by `show ci`; use the
+following stable verbs after `sarj-standards`:
 
 | Command | Answers |
 |---|---|
-| `uv run --frozen sarj-standards check` | Run version, config, custom-rule, Ruff, BasedPyright, and ESLint gates. |
-| `uv run --frozen sarj-standards analyze --format github` | Emit native Python, SQL, IaC, and text findings as CI annotations. |
-| `uv run --frozen sarj-standards fix` | Format Python and apply safe Ruff and ESLint fixes. |
-| `uv run --frozen sarj-standards doctor` | Diagnose drift and print exact remediation. |
-| `uv run --frozen sarj-standards update --check` | Preview a coherent toolchain update. |
-| `uv run --frozen sarj-standards show state` | Show the detected adoption as JSON. |
+| `check` | Run version, config, custom-rule, Ruff, BasedPyright, and ESLint gates. |
+| `analyze --format github` | Emit native Python, SQL, IaC, and text findings as CI annotations. |
+| `fix` | Format Python and apply safe Ruff and ESLint fixes. |
+| `doctor` | Diagnose drift and print exact remediation. |
+| `update --check` | Preview a coherent toolchain update. |
+| `show state` | Show the detected adoption as JSON. |
 
 For TypeScript, `sarj-standards show peers` (with the init-generated launcher) prints every npm package
 `eslint.strict.mjs` needs at versions that install together — there is no
@@ -90,7 +92,7 @@ For TypeScript, `sarj-standards show peers` (with the init-generated launcher) p
 Pre-commit runs the version already pinned by the consumer repository; it does
 not silently download new rules. Run `sarj-standards update --check` in scheduled
 automation and review the resulting `sarj-standards update` change to receive a
-new release coherently across hooks, configs, Python pins, and npm peers.
+new release coherently across the manifest, launchers, configs, and npm peers.
 
 See [`packages/lint-configs/README.md`](packages/lint-configs/README.md) for how
 to extend the configs without forking them, polyglot destination routing, and the

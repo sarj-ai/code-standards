@@ -83,19 +83,24 @@ the install failed identically while `package.json` looked fixed.
 
 ## Keep current
 
-Use the launcher that `init` prints. Root Python projects use `uv run --frozen`;
-nested Python projects use `uv run --project PATH --frozen`; TypeScript-only
-projects use `uvx --from sarj-lint-configs==VERSION`, where VERSION is recorded
-in `.sarj-standards.toml`. The examples below use the root-Python form.
+Use the exact isolated launcher that `init` writes to pre-commit and `show ci`
+emits for CI. It is identical for root Python, nested Python, mixed, and
+TypeScript-only repositories:
+
+`uvx --isolated --python 3.14 --from sarj-lint-configs==VERSION sarj-standards`
+
+VERSION comes from `.sarj-standards.toml`. The tool's Python 3.14 runtime stays
+outside the consumer environment, so projects targeting older Python versions
+remain installable. The stable verbs after `sarj-standards` are:
 
 ```bash
-uv run --frozen sarj-standards doctor       # read-only diagnosis with exact fixes
-uv run --frozen sarj-standards update --check   # preview whether an upgrade is needed
-uv run --frozen sarj-standards update       # resolve latest, migrate, install, postflight
-uv run --frozen sarj-standards check        # run every adoption and lint gate
-uv run --frozen sarj-standards fix          # apply formatter and safe lint fixes
-uv run --frozen sarj-standards show state   # print detected adoption state
-uv run --frozen sarj-standards check --noise-only .  # comment/artifact ratchet only
+doctor                 # read-only diagnosis with exact fixes
+update --check          # preview whether an upgrade is needed
+update                  # resolve latest, migrate, install, postflight
+check                   # run every adoption and lint gate
+fix                     # apply formatter and safe lint fixes
+show state              # print detected adoption state
+check --noise-only .    # comment/artifact ratchet only
 ```
 
 Run `check` in CI. `init` prints the exact install and check steps for the
@@ -178,13 +183,13 @@ Python wrapper:
 
 ```bash
 # Human output, schema-v1 JSON, GitHub workflow annotations, or SARIF 2.1.0.
-uv run --frozen sarj-standards analyze
-uv run --frozen sarj-standards analyze --format json
-uv run --frozen sarj-standards analyze --format github
-uv run --frozen sarj-standards analyze --format sarif --output sarj.sarif
-uv run --frozen sarj-standards analyze --mode raw  # ignore adopted scope/baselines for calibration
+sarj-standards analyze
+sarj-standards analyze --format json
+sarj-standards analyze --format github
+sarj-standards analyze --format sarif --output sarj.sarif
+sarj-standards analyze --mode raw  # ignore adopted scope/baselines for calibration
 # In CI for your own trusted mixed Python/TypeScript checkout:
-uv run --frozen sarj-standards analyze --external --trust trusted --format github
+sarj-standards analyze --external --trust trusted --format github
 ```
 
 `analyze` is intentionally read-only and native-only. In its default `policy`
@@ -216,7 +221,7 @@ steps:
       enable-cache: true
       cache-dependency-glob: uv.lock
   - run: uv sync --frozen
-  - run: uv run --frozen sarj-standards analyze --format github
+  - run: uvx --isolated --python 3.14 --from sarj-lint-configs==VERSION sarj-standards analyze --format github
 ```
 
 GitHub output is deterministically capped at ten annotations per severity;
@@ -345,9 +350,9 @@ so a lexically newest tag is not necessarily the hook's package. Run
 `sarj-standards update`; it derives the compatible revision from the hook IDs
 and migrates supported consumers to the single local orchestrator.
 
-The block `init` writes has no `rev:` at all. One `repo: local` hook runs the CLI
-from the environment your `pyproject.toml` pin already fixed, which deletes the
-second pin site and starts the toolchain only once per commit:
+The block `init` writes has no `rev:` at all. One `repo: local` hook runs the
+manifest-pinned CLI in an isolated environment and starts the toolchain only
+once per commit:
 
 ```yaml
 repos:
@@ -355,17 +360,15 @@ repos:
     hooks:
       - id: sarj-standards-check
         name: sarj standards -- staged checks
-        entry: uv run --frozen sarj-standards check --staged --
+        entry: uvx --isolated --python 3.14 --from sarj-lint-configs==VERSION sarj-standards check --staged --
         language: system
         verbose: true
-        pass_filenames: false
+        pass_filenames: true
         # `init` supplies the generated matcher for every supported source/config file.
 ```
 
-That is the block a **Python** repo gets. A TypeScript-only repo gets the same
-hook with `uvx --from sarj-lint-configs==<version>` instead of `uv run --frozen`;
-`check --staged` routes only staged paths to their applicable linters in either
-ecosystem.
+Every repository shape gets the same launcher form. `check --staged` routes
+only staged paths to their applicable linters in either ecosystem.
 
 ### Removed and renamed rules — the upgrade that crashes
 
@@ -522,7 +525,7 @@ rule was not found" until the comment is dropped. `3.0.0` removed
 Polyglot repos can route the two ecosystems to their own roots:
 
 ```bash
-uv run --frozen sarj-standards update --configs-only --python-dest python --typescript-dest web --force
+sarj-standards update --configs-only --python-dest python --typescript-dest web --force
 ```
 
 ## `check` — the custom rules

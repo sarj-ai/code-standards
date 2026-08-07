@@ -10,7 +10,8 @@ from typing import TYPE_CHECKING
 import pytest
 
 from sarj_lint_configs import manifest, packagemanager, scaffold
-from sarj_lint_configs.packagemanager import PackageManager
+from sarj_lint_configs.libs.adoption import lifecycle
+from sarj_lint_configs.packagemanager import PackageManager, YarnVariant
 
 
 if TYPE_CHECKING:
@@ -73,10 +74,11 @@ def test_an_unsupported_declared_package_manager_fails_closed(tmp_path: Path) ->
     assert "supported managers: npm, pnpm, yarn, bun" in proc.stderr
 
 
-def test_npm_keeps_the_nested_form() -> None:
+def test_npm_keeps_the_nested_form_with_resolved_root_references() -> None:
     overrides = packagemanager.overrides_for(PackageManager.NPM)
     assert overrides.key_path == ("overrides",)
-    assert overrides.entries == manifest.eslint_overrides()
+    assert overrides.entries["eslint-plugin-react"] == {"eslint": manifest.eslint_peers()["eslint"]}
+    assert "$" not in json.dumps(overrides.as_document())
 
 
 def test_pnpm_gets_a_flat_selector_under_its_own_key() -> None:
@@ -102,31 +104,114 @@ def test_bun_gets_a_flat_eslint_override_it_actually_honors() -> None:
 @pytest.mark.parametrize(
     ("client", "prefix"),
     [
-        (PackageManager.NPM, "npm install -D --save-exact"),
-        (PackageManager.PNPM, "pnpm add -D --save-exact"),
-        (PackageManager.YARN, "yarn add -D --exact"),
-        (PackageManager.BUN, "bun add -d --exact"),
+        (PackageManager.NPM, "npm install --ignore-scripts"),
+        (PackageManager.PNPM, "pnpm install --no-frozen-lockfile --ignore-scripts"),
+        (PackageManager.YARN, "yarn install --ignore-scripts"),
+        (PackageManager.BUN, "bun install --ignore-scripts"),
     ],
 )
 def test_the_install_command_is_the_one_that_client_understands(client: PackageManager, prefix: str) -> None:
     command = packagemanager.install_command(client)
     assert command.startswith(prefix)
-    for name, pin in manifest.eslint_peers().items():
-        assert f"{name}@{pin}" in command
+    assert " add " not in command
 
 
 @pytest.mark.parametrize("client", list(PackageManager))
-def test_install_argv_preserves_every_exact_peer(client: PackageManager) -> None:
+def test_install_argv_matches_the_printed_script_free_command(client: PackageManager) -> None:
     argv = packagemanager.install_argv(client)
-    peers = manifest.eslint_peers()
-    assert len(peers) >= 9
-    for name, pin in peers.items():
-        assert f"{name}@{pin}" in argv
+    assert argv == tuple(packagemanager.install_command(client).split())
+    assert all("@sarj" not in part for part in argv)
+
+
+@pytest.mark.parametrize(
+    ("package_json", "expected"),
+    [
+        pytest.param({"name": "web", "packageManager": "yarn@1.22.19"}, YarnVariant.CLASSIC, id="declared-classic"),
+        pytest.param({"name": "web", "packageManager": "yarn@4.15.0"}, YarnVariant.BERRY, id="declared-berry"),
+        pytest.param({"name": "web"}, YarnVariant.CLASSIC, id="bare-lockfile"),
+    ],
+)
+def test_yarn_dialect_follows_the_declared_package_manager(
+    tmp_path: Path, package_json: dict[str, object], expected: YarnVariant
+) -> None:
+    """A bare yarn.lock is Yarn 1; only a declared major or Berry's own config says otherwise."""
+    root = _project(tmp_path, "yarn.lock", package_json)
+
+    assert packagemanager.yarn_variant(root) is expected
+
+
+def test_a_yarnrc_yml_marks_a_berry_checkout_without_a_declaration(tmp_path: Path) -> None:
+    root = _project(tmp_path, "yarn.lock")
+    _ = (root / ".yarnrc.yml").write_text("nodeLinker: node-modules\n", encoding="utf-8")
+
+    assert packagemanager.yarn_variant(root) is YarnVariant.BERRY
+
+
+def test_each_yarn_dialect_gets_flags_it_actually_enforces() -> None:
+    """Yarn 1 silently ignores Berry flags, so the Berry spelling would run scripts there."""
+    classic = packagemanager.install_command(PackageManager.YARN, yarn=YarnVariant.CLASSIC)
+    berry = packagemanager.install_command(PackageManager.YARN, yarn=YarnVariant.BERRY)
+
+    assert classic == "yarn install --ignore-scripts"
+    assert berry == "yarn install --mode=skip-builds"
+    assert packagemanager.install_argv(PackageManager.YARN, yarn=YarnVariant.BERRY) == tuple(berry.split())
+
+
+def test_only_the_berry_note_mentions_berry_only_configuration() -> None:
+    classic = packagemanager.install_note(PackageManager.YARN, yarn=YarnVariant.CLASSIC)
+    berry = packagemanager.install_note(PackageManager.YARN, yarn=YarnVariant.BERRY)
+
+    assert classic is not None
+    assert berry is not None
+    assert "resolutions" in classic
+    assert "npmMinimalAgeGate" not in classic
+    assert "npmMinimalAgeGate" in berry
+
+
+def test_ci_workflow_speaks_the_detected_yarn_dialect(tmp_path: Path) -> None:
+    _ = _project(tmp_path, "yarn.lock")
+
+    classic = scaffold.github_ci_workflow(tmp_path, version="0.0.0")
+    _ = (tmp_path / "package.json").write_text(
+        json.dumps({"name": "web", "packageManager": "yarn@4.15.0"}) + "\n", encoding="utf-8"
+    )
+    berry = scaffold.github_ci_workflow(tmp_path, version="0.0.0")
+
+    assert "yarn install --frozen-lockfile" in classic
+    assert "--immutable" not in classic
+    assert "yarn install --immutable" in berry
+
+
+def test_init_speaks_classic_yarn_when_only_the_lockfile_names_it(tmp_path: Path) -> None:
+    _ = _project(tmp_path, "yarn.lock")
+
+    proc = _cli("init", "--dest", str(tmp_path))
+
+    assert proc.returncode == 0, proc.stderr
+    assert "yarn install --ignore-scripts" in proc.stdout
+    assert "--mode=skip-builds" not in proc.stdout
+    assert "npmMinimalAgeGate" not in proc.stdout
+
+
+def test_lifecycle_install_preserves_the_yarn_dialect(tmp_path: Path) -> None:
+    ecosystems = scaffold.Ecosystems(
+        False,
+        True,
+        typescript_root=tmp_path,
+        typescript_install_root=tmp_path,
+        client=PackageManager.YARN,
+        yarn=YarnVariant.BERRY,
+    )
+
+    commands = lifecycle.install_commands(tmp_path, ecosystems, hook_manager="none")
+
+    assert commands[0].argv == ("yarn", "install", "--mode=skip-builds")
 
 
 def test_pnpm_workspace_install_targets_the_workspace_root() -> None:
-    assert packagemanager.install_argv(PackageManager.PNPM, workspace=True)[2] == "-w"
-    assert packagemanager.install_command(PackageManager.PNPM, workspace=True).startswith("pnpm add -w ")
+    assert packagemanager.install_argv(PackageManager.PNPM, workspace=True) == packagemanager.install_argv(
+        PackageManager.PNPM
+    )
 
 
 def test_conflicting_lockfiles_fail_instead_of_selecting_by_accident(tmp_path: Path) -> None:
@@ -147,7 +232,7 @@ def test_init_writes_pnpm_overrides_into_a_pnpm_repo(tmp_path: Path) -> None:
     assert "overrides" not in written, "a bare `overrides` key is ignored by pnpm"
     pnpm = manifest.table_field(written, "pnpm")
     assert "eslint-plugin-react>eslint" in manifest.table_field(pnpm, "overrides")
-    assert "pnpm add -D --save-exact" in proc.stdout
+    assert "pnpm install --no-frozen-lockfile --ignore-scripts" in proc.stdout
 
 
 def test_pnpm_11_workspace_overrides_are_merged_in_the_workspace_yaml(tmp_path: Path) -> None:
@@ -194,7 +279,7 @@ def test_init_writes_resolutions_into_a_yarn_repo(tmp_path: Path) -> None:
     assert "overrides" not in written, "a bare `overrides` key is ignored by Yarn"
     resolutions = manifest.table_field(written, "resolutions")
     assert resolutions["eslint-plugin-react/eslint"] == manifest.eslint_peers()["eslint"]
-    assert "yarn add -D --exact" in proc.stdout
+    assert "yarn install --mode=skip-builds" in proc.stdout
 
 
 def test_init_writes_bun_override_without_npm_nested_syntax(tmp_path: Path) -> None:
@@ -223,7 +308,7 @@ def test_npm_preserves_a_scalar_parent_override_under_dot(tmp_path: Path) -> Non
     overrides = manifest.table_field(manifest.as_table(parsed), "overrides")
     react = manifest.table_field(overrides, "eslint-plugin-react")
     assert react["."] == "7.37.4"
-    assert react["eslint"] == "$eslint"
+    assert react["eslint"] == manifest.eslint_peers()["eslint"]
 
 
 def test_merging_pnpm_overrides_keeps_the_rest_of_the_pnpm_table(tmp_path: Path) -> None:
@@ -248,7 +333,7 @@ def test_a_second_init_on_a_pnpm_repo_changes_nothing(tmp_path: Path) -> None:
     second = _cli("init", "--dest", str(tmp_path))
     assert second.returncode == 0
     assert (tmp_path / "package.json").read_text(encoding="utf-8") == before
-    assert "already carries the pnpm peer overrides" in second.stdout
+    assert "already pins the tested ESLint peers and pnpm overrides" in second.stdout
 
 
 def test_the_project_root_is_the_lockfiles_directory_not_the_topmost_package_json(
@@ -298,7 +383,7 @@ def test_nested_pnpm_preview_matches_the_applied_install_guidance(tmp_path: Path
 
     assert preview.returncode == 0, preview.stderr
     assert applied.returncode == 0, applied.stderr
-    expected = "pnpm add -D --save-exact"
+    expected = "pnpm install --no-frozen-lockfile --ignore-scripts"
     assert expected in preview.stdout
     assert expected in applied.stdout
     assert "pnpm add -w" not in preview.stdout

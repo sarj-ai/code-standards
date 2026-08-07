@@ -76,6 +76,7 @@ class _Args(argparse.Namespace):
     rules_cmd: str = ""
     hooks_cmd: str = ""
     no_install: bool = False
+    repair: bool = False
     profile: manifest.Profile | None = None
     output_format: str = "text"
     offline: bool = False
@@ -220,8 +221,10 @@ def cmd_peers(args: _Args) -> int:
     client = packagemanager.detect(install_root)
     overrides = packagemanager.overrides_for(client)
     workspace = install_root != (detected.typescript_root or root) or (install_root / "pnpm-workspace.yaml").is_file()
+    yarn = packagemanager.yarn_variant(install_root)
     print(
-        f"\ndetected {client} at {install_root}; install with:\n{packagemanager.install_command(client, workspace=workspace)}"
+        f"\ndetected {client} at {install_root}; install with:\n"
+        f"{packagemanager.install_command(client, workspace=workspace, yarn=yarn)}"
     )
     if client is packagemanager.PackageManager.PNPM and (install_root / "pnpm-workspace.yaml").is_file():
         rendered = "\n".join(f"  {json.dumps(key)}: {json.dumps(value)}" for key, value in overrides.entries.items())
@@ -236,10 +239,41 @@ def cmd_peers(args: _Args) -> int:
 
 def cmd_doctor(args: _Args) -> int:
     """Report every version pin site in a repo and whether it agrees with the rest."""
-    from sarj_lint_configs import doctor  # ruff: ignore[import-outside-top-level] — lazy route
+    from sarj_lint_configs import doctor, upgrade  # ruff: ignore[import-outside-top-level] — lazy route
 
     root = _resolve_dest(args.dest)
+    repair = args.repair
+    no_install: bool = args.no_install
+    repair_status = 0
+    if repair:
+        try:
+            adopted = manifest.load(root)
+        except (OSError, TypeError, ValueError) as exc:
+            print(f"error: cannot repair invalid adoption manifest: {exc}", file=sys.stderr)
+            return 2
+        if adopted is None:
+            print("error: repository is not adopted; run `sarj-standards init`", file=sys.stderr)
+            return 2
+        repair_status = upgrade.apply(upgrade.build_plan(root), install=not no_install)
+        if repair_status:
+            print(
+                "error: automatic repair did not converge; tracked configuration changes were restored",
+                file=sys.stderr,
+            )
     findings = doctor.diagnose(root)
+    if repair and no_install:
+        findings = [
+            doctor.Finding(
+                doctor.Level.WARN,
+                finding.where,
+                f"{finding.detail}; installation intentionally skipped",
+                finding.id,
+                finding.remediation,
+            )
+            if finding.level is doctor.Level.DRIFT and upgrade.is_install_remediable(finding)
+            else finding
+            for finding in findings
+        ]
     drifted = sum(1 for finding in findings if finding.level is doctor.Level.DRIFT)
     warned = sum(1 for finding in findings if finding.level is doctor.Level.WARN)
     invalid = sum(finding.id in _INVALID_DOCTOR_IDS for finding in findings)
@@ -280,8 +314,8 @@ def cmd_doctor(args: _Args) -> int:
         for remediation in remediations:
             print(f"fix: {remediation}")
     if invalid:
-        return 2
-    return 1 if drifted or unadopted else 0
+        return max(repair_status, 2)
+    return max(repair_status, 1 if drifted or unadopted else 0)
 
 
 def cmd_upgrade(args: _Args) -> int:
@@ -306,12 +340,10 @@ def cmd_upgrade(args: _Args) -> int:
                 file=sys.stderr,
             )
             return 2
+        from sarj_lint_configs.libs.adoption import launcher  # ruff: ignore[import-outside-top-level] -- lazy route
+
         command = [
-            executable,
-            "--refresh",
-            "--from",
-            "sarj-lint-configs",
-            "sarj-standards",
+            *launcher.argv(executable=executable, refresh=True),
             "upgrade",
             "--offline",
             "--dest",
@@ -343,7 +375,7 @@ def cmd_upgrade(args: _Args) -> int:
     except (OSError, TypeError, ValueError) as exc:
         print(f"error: cannot plan upgrade: {exc}", file=sys.stderr)
         return 2
-    blockers = upgrade.unsafe_retired_findings(plan)
+    blockers = upgrade.unsafe_retired_findings(plan) if upgrade.changes_bundle_version(plan) else []
     if blockers:
         for finding in blockers:
             print(f"error: {finding.where} -- {finding.detail}", file=sys.stderr)
@@ -370,21 +402,28 @@ def cmd_upgrade(args: _Args) -> int:
     status = upgrade.apply(plan, install=not args.no_install)
     if status:
         print("error: upgrade failed; tracked configuration files were restored", file=sys.stderr)
+        remaining = [finding for finding in doctor.diagnose(root) if finding.level is doctor.Level.DRIFT]
+        for finding in remaining:
+            print(f"error: {finding.id} {finding.where} -- {finding.detail}", file=sys.stderr)
+        for remediation in dict.fromkeys(finding.remediation for finding in remaining if finding.remediation):
+            print(f"fix: {remediation}", file=sys.stderr)
         return status
     pending = upgrade.pending_install_findings(root) if args.no_install else []
-    if pending:
+    skipped_commands = (
+        lifecycle.install_commands(root, plan.ecosystems, hook_manager=plan.adopted.hook_manager)
+        if args.no_install
+        else []
+    )
+    if pending or skipped_commands:
         print(
             f"updated configuration: {root} now uses standards {__version__};"
-            f" setup is incomplete ({len(pending)} dependency finding(s))"
+            f" setup is incomplete ({len(skipped_commands)} setup command(s) skipped;"
+            f" {len(pending)} finding(s) pending)"
         )
         for finding in pending:
             print(f"pending: {finding.id} {finding.where} -- {finding.detail}")
         print("next: run the skipped setup command(s), then `sarj-standards doctor`:")
-        for command in lifecycle.install_commands(
-            root,
-            plan.ecosystems,
-            hook_manager=plan.adopted.hook_manager,
-        ):
+        for command in skipped_commands:
             print(f"      {shlex.join(command.argv)}  (in {command.cwd})")
         return 0
     print(f"upgraded: {root} now uses standards {__version__}")
@@ -469,8 +508,8 @@ def cmd_init(args: _Args) -> int:
         print("\nnext:  dependency and hook installation was skipped; run:")
         for command in init_plan.install_commands:
             print(f"       {shlex.join(command.argv)}  (in {command.cwd})")
-    print("\nafter checkout and frozen dependency installation, add this CI step:\n")
-    print(service.scaffold.ci_snippet(plan, version=manifest.adopted_version()))
+    print("\nnext: generate a complete pinned GitHub Actions workflow with:")
+    print(f"      sarj-standards show ci {root}")
     return 0
 
 
@@ -631,7 +670,7 @@ def cmd_check(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comma
         print("future `sarj-standards check` and pre-commit runs apply it automatically")
         return 0
     if args.staged:
-        health_status = _check_staged_adoption_health(root, output_format=args.output_format)
+        health_status = _check_staged_adoption_health(root, args.files, output_format=args.output_format)
         if health_status:
             return health_status
         if not args.files:
@@ -791,11 +830,19 @@ def _validate_check_mode(args: _Args) -> None:
         _user_error("--profile requires --dependencies")
 
 
-def _check_staged_adoption_health(root: Path, *, output_format: str = "text") -> int:
+def _check_staged_adoption_health(
+    root: Path,
+    staged_paths: Iterable[str] = (),
+    *,
+    output_format: str = "text",
+) -> int:
     """Keep the staged fast path from bypassing generated config and pin drift."""
     from sarj_lint_configs import doctor  # ruff: ignore[import-outside-top-level] — lazy staged route
 
-    drifted = [finding for finding in doctor.diagnose(root) if finding.level is doctor.Level.DRIFT]
+    selected = tuple(Path(path) for path in staged_paths)
+    drifted = [
+        finding for finding in doctor.diagnose_adoption_health(root, selected) if finding.level is doctor.Level.DRIFT
+    ]
     invalid = any(finding.id in {"doctor.manifest.invalid", "doctor.package-json.invalid"} for finding in drifted)
     status = 2 if invalid else 1 if drifted else 0
     if output_format == "json" and status:
@@ -973,6 +1020,11 @@ def cmd_show(args: _Args) -> int:
             args.repo_cmd = "rules"
             args.rules_cmd = "manifest"
             return _cmd_repo(args)
+        case "ci":
+            from sarj_lint_configs import scaffold  # ruff: ignore[import-outside-top-level] -- selected route
+
+            print(scaffold.github_ci_workflow(_resolve_dest(args.dest), version=__version__), end="")
+            return 0
         case _:
             return 2
 
@@ -1104,6 +1156,16 @@ def _build_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-locals]
         choices=("text", "json"),
         default="text",
         help="output format (default: text)",
+    )
+    p_doctor.add_argument(
+        "--repair",
+        action="store_true",
+        help="transactionally repair adoption drift with the executing compatibility bundle, then re-diagnose",
+    )
+    p_doctor.add_argument(
+        "--no-install",
+        action="store_true",
+        help="with --repair, update configuration without installing dependencies or hooks",
     )
 
     p_upgrade = sub.add_parser("upgrade")
@@ -1324,6 +1386,9 @@ def _build_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-locals]
     rules = show_commands.add_parser("rules", help="print the machine-readable custom-rule inventory")
     rules.add_argument("root", nargs="?", help="repository root (default: current directory)")
     rules.add_argument("--dest", default=".", help=argparse.SUPPRESS)
+    ci = show_commands.add_parser("ci", help="print a complete pinned GitHub Actions standards workflow")
+    ci.add_argument("root", nargs="?", help="repository root (default: current directory)")
+    ci.add_argument("--dest", default=".", help=argparse.SUPPRESS)
 
     _add_repo_parsers(sub.add_parser("maintain", help="repository policy, hooks, rule ledgers, and releases"))
     _add_repo_parsers(sub.add_parser("repo"))

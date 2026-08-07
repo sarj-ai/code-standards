@@ -44,6 +44,11 @@ class _CommandArgs(Protocol):
     cmd: str
 
 
+class _CheckArgs(Protocol):
+    repair: bool
+    no_install: bool
+
+
 def _help(*parts: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, "-m", "sarj_lint_configs", *parts, "--help"],
@@ -238,7 +243,9 @@ def test_analyze_cli_never_invokes_external_tools(
 def test_check_without_paths_runs_the_complete_check(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: list[str] = []
 
-    def verify(_args: object) -> int:
+    def verify(args: _CheckArgs) -> int:
+        assert args.repair is False
+        assert args.no_install is False
         seen.append("verify")
         return 7
 
@@ -539,7 +546,7 @@ def test_check_staged_filters_unsafe_hook_supplied_paths(
     symlink.symlink_to(kept)
     seen: list[list[str]] = []
 
-    def clean_health(_root: Path, **_kwargs: object) -> int:
+    def clean_health(_root: Path, _staged: Sequence[str], **_kwargs: object) -> int:
         return 0
 
     def run_rules(files: Sequence[str], **_kwargs: object) -> int:
@@ -606,7 +613,7 @@ def test_check_staged_runs_scoped_eslint_and_propagates_its_status(
     def staged_files(_root: Path) -> list[str]:
         return [str(staged)]
 
-    def clean_health(_root: Path, **_kwargs: object) -> int:
+    def clean_health(_root: Path, _staged: Sequence[str], **_kwargs: object) -> int:
         return 0
 
     def clean_policy(_args: object, **_kwargs: object) -> int:
@@ -643,7 +650,7 @@ def test_check_staged_fails_on_adoption_drift_before_source_rules(
     def staged_files(_root: Path) -> list[str]:
         return [str(staged)]
 
-    def diagnosed(_root: Path) -> list[doctor.Finding]:
+    def diagnosed(_root: Path, _selected: Sequence[Path]) -> list[doctor.Finding]:
         return [finding]
 
     def run_rules(files: Sequence[str], **_kwargs: object) -> int:
@@ -651,7 +658,7 @@ def test_check_staged_fails_on_adoption_drift_before_source_rules(
         return 0
 
     monkeypatch.setattr(cli, "_staged_files", staged_files)
-    monkeypatch.setattr(doctor, "diagnose", diagnosed)
+    monkeypatch.setattr(doctor, "diagnose_adoption_health", diagnosed)
     monkeypatch.setattr("sarj_lint_configs.runner.run", run_rules)
 
     assert cli.main(["check", "--staged", "--dest", str(tmp_path)]) == 1

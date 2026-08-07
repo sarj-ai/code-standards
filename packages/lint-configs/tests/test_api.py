@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import subprocess
 from typing import TYPE_CHECKING
 
 import pytest
 
+import sarj_lint_configs
 from sarj_lint_configs import api
 
 
@@ -18,6 +20,12 @@ def test_every_declared_public_api_resolves() -> None:
     assert api.__all__
     assert all(hasattr(api, name) for name in api.__all__)
     assert len(api.__all__) == len(set(api.__all__))
+
+
+def test_package_root_exposes_the_small_consumer_facade() -> None:
+    assert sarj_lint_configs.Standards is api.Standards
+    assert sarj_lint_configs.Result is api.Result
+    assert sarj_lint_configs.UpdateTarget is api.UpdateTarget
 
 
 def test_public_api_keeps_pre_facade_compatibility_exports() -> None:
@@ -175,7 +183,7 @@ def test_standards_facade_init_dry_run_reports_invalid_plan(tmp_path: Path) -> N
 def test_standards_facade_update_returns_invalid_result_for_bad_manifest(tmp_path: Path) -> None:
     (tmp_path / ".sarj-standards.toml").write_text('version = "not a version"\n', encoding="utf-8")
 
-    result = api.Standards(tmp_path).update(install=False)
+    result = api.Standards(tmp_path).update(install=False, target=api.UpdateTarget.INSTALLED)
 
     assert result.status is api.Status.INVALID
     assert result.exit_code == 2
@@ -183,10 +191,139 @@ def test_standards_facade_update_returns_invalid_result_for_bad_manifest(tmp_pat
 
 
 def test_standards_facade_update_check_exposes_doctor_findings(tmp_path: Path) -> None:
-    result = api.Standards(tmp_path).update(check_only=True)
+    result = api.Standards(tmp_path).update(check_only=True, target=api.UpdateTarget.INSTALLED)
 
     assert result.status is api.Status.INVALID
     assert result.findings[0].id == "update.plan.invalid"
+
+
+def test_standards_facade_update_targets_latest_by_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    class EmptyPlan:
+        changes: tuple[()] = ()
+
+    commands: list[list[str]] = []
+
+    def run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, "upgraded", "")
+
+    def plan(_root: Path) -> EmptyPlan:
+        return EmptyPlan()
+
+    def which(_name: str) -> str:
+        return "/usr/bin/uvx"
+
+    monkeypatch.setattr(api, "plan_upgrade", plan)
+    monkeypatch.setattr("sarj_lint_configs.api.shutil.which", which)
+    monkeypatch.setattr("sarj_lint_configs.api.subprocess.run", run)
+
+    result = api.Standards(tmp_path).update(install=False)
+
+    assert result.status is api.Status.CHANGED
+    assert commands == [
+        [
+            "/usr/bin/uvx",
+            "--isolated",
+            "--python",
+            "3.14",
+            "--refresh",
+            "--from",
+            "sarj-lint-configs",
+            "sarj-standards",
+            "update",
+            "--offline",
+            "--dest",
+            str(tmp_path),
+            "--no-install",
+        ]
+    ]
+
+
+@pytest.mark.parametrize(
+    ("check_only", "expected_status", "expected_finding"),
+    [
+        (True, api.Status.DRIFT, "update.latest.available"),
+        (False, api.Status.FAILED, "update.latest.failed"),
+    ],
+)
+def test_latest_update_exit_one_is_truthful_and_has_no_parent_timeout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    check_only: bool,
+    expected_status: api.Status,
+    expected_finding: str,
+) -> None:
+    class EmptyPlan:
+        changes: tuple[()] = ()
+
+    calls: list[dict[str, object]] = []
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(kwargs)
+        return subprocess.CompletedProcess(command, 1, "", "postflight drift")
+
+    def plan(_root: Path) -> EmptyPlan:
+        return EmptyPlan()
+
+    def which(_name: str) -> str:
+        return "/usr/bin/uvx"
+
+    monkeypatch.setattr(api, "plan_upgrade", plan)
+    monkeypatch.setattr("sarj_lint_configs.api.shutil.which", which)
+    monkeypatch.setattr("sarj_lint_configs.api.subprocess.run", run)
+
+    result = api.Standards(tmp_path).update(install=False, check_only=check_only)
+
+    assert result.status is expected_status
+    assert result.findings[0].id == expected_finding
+    assert "timeout" not in calls[0]
+
+
+def test_standards_facade_installed_no_install_reports_dependency_setup_as_pending(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class EmptyPlan:
+        changes: tuple[()] = ()
+        ecosystems: tuple[()] = ()
+
+        class Adopted:
+            hook_manager: str | None = None
+
+        adopted: Adopted = Adopted()
+
+    def plan(_root: Path) -> EmptyPlan:
+        return EmptyPlan()
+
+    pending = api.DoctorFinding(
+        api.DoctorLevel.DRIFT,
+        "pyproject.toml",
+        "lint-configs is installed inside the consumer environment",
+        "doctor.python.legacy-in-project-tool",
+        "run uv remove",
+    )
+
+    def apply(_plan: object, *, install: bool) -> int:
+        _ = install
+        return 0
+
+    def diagnosed(_root: Path) -> list[api.DoctorFinding]:
+        return [pending]
+
+    def commands(_root: Path, _ecosystems: object, *, hook_manager: str | None) -> list[object]:
+        _ = hook_manager
+        return []
+
+    monkeypatch.setattr(api, "plan_upgrade", plan)
+    monkeypatch.setattr(api, "apply_upgrade", apply)
+    monkeypatch.setattr(api, "diagnose", diagnosed)
+    monkeypatch.setattr(api, "install_commands", commands)
+
+    result = api.Standards(tmp_path).update(install=False, target=api.UpdateTarget.INSTALLED)
+
+    assert result.ok
+    assert result.findings[0].level == "warn"
+    assert "intentionally skipped" in result.findings[0].message
 
 
 def test_standards_facade_init_rejects_invalid_existing_manifest(tmp_path: Path) -> None:

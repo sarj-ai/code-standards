@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from sarj_lint_configs import __main__ as cli
-from sarj_lint_configs import doctor, manifest
+from sarj_lint_configs import doctor, manifest, scaffold
 from sarj_lint_configs.doctor import Level, check_pyright_deprecated, check_ruff_policy_authority
 
 
@@ -59,6 +59,66 @@ def test_doctor_rejects_non_string_manifest_destinations_without_a_traceback(
 
     assert cli.main(["doctor", "--dest", str(tmp_path)]) == 2
     assert "must be a non-empty string" in capsys.readouterr().out
+
+
+def test_staged_adoption_health_does_not_walk_unrelated_sources(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "src").mkdir()
+    staged = tmp_path / "src" / "changed.py"
+    staged.write_text("value = 1\n", encoding="utf-8")
+
+    def unexpected_walk(_root: Path) -> tuple[Path, ...]:
+        raise AssertionError
+
+    monkeypatch.setattr(doctor, "_walk", unexpected_walk)
+
+    findings = doctor.diagnose_adoption_health(tmp_path, (staged,))
+
+    assert [finding.id for finding in findings] == ["doctor.manifest.absent"]
+
+
+def test_staged_relative_paths_are_resolved_from_the_repository_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    selected = tmp_path / "deep" / "nested" / "project" / "pyproject.toml"
+    selected.parent.mkdir(parents=True)
+    selected.write_text(
+        '[tool.ruff]\nextend = ".ruff-strict.toml"\n[tool.ruff.lint]\nselect = ["ALL"]\n',
+        encoding="utf-8",
+    )
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+
+    findings = doctor.diagnose_adoption_health(tmp_path, (selected.relative_to(tmp_path),))
+
+    assert "doctor.ruff.replaces-policy" in {finding.id for finding in findings}
+
+
+@pytest.mark.parametrize("timed_out_argument", ["--is-inside-work-tree", "--git-path"])
+def test_git_discovery_timeouts_are_nonfatal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    timed_out_argument: str,
+) -> None:
+    (tmp_path / ".pre-commit-config.yaml").write_text(
+        f"repos:\n{scaffold.precommit_block(python=True, version=manifest.adopted_version())}",
+        encoding="utf-8",
+    )
+
+    def run(command: tuple[str, ...], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if timed_out_argument in command:
+            raise subprocess.TimeoutExpired(command, 5)
+        return subprocess.CompletedProcess(command, 0, "true\n", "")
+
+    def which(_name: str) -> str:
+        return "/usr/bin/git"
+
+    monkeypatch.setattr("sarj_lint_configs.libs.adoption.doctor.shutil.which", which)
+    monkeypatch.setattr("sarj_lint_configs.libs.adoption.doctor.subprocess.run", run)
+
+    assert doctor.diagnose_adoption_health(tmp_path)
 
 
 @pytest.mark.parametrize("key", ["ignore", "select"])

@@ -1,16 +1,12 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import pytest
 
-from sarj_lint_configs.libs.adoption import lifecycle, manifest, scaffold
+from sarj_lint_configs.libs.adoption import lifecycle, scaffold
 from sarj_lint_configs.libs.adoption.packagemanager import PackageManager
-
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 def _project(root: Path, name: str) -> Path:
@@ -21,7 +17,7 @@ def _project(root: Path, name: str) -> Path:
     return project
 
 
-def test_verification_uses_each_configured_python_project_environment(tmp_path: Path) -> None:
+def test_verification_uses_isolated_tool_binaries_in_each_python_project(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text("[project]\nname='umbrella'\nversion='0.0.0'\n", encoding="utf-8")
     (tmp_path / "pyrightconfig.json").write_text(json.dumps({"extends": ".pyright-strict.json"}), encoding="utf-8")
     first = _project(tmp_path, "packages/first")
@@ -31,7 +27,7 @@ def test_verification_uses_each_configured_python_project_environment(tmp_path: 
     commands = lifecycle.verification_commands(ecosystems)
 
     assert [command.cwd for command in commands] == [first, first, second, second]
-    assert all(command.argv[:3] == ("uv", "run", "--project") for command in commands)
+    assert {Path(command.argv[0]).stem for command in commands} == {"ruff", "basedpyright"}
     assert {command.label for command in commands} == {"Ruff", "BasedPyright"}
 
 
@@ -46,29 +42,36 @@ def test_scoped_root_pyright_config_keeps_the_root_project(tmp_path: Path) -> No
     assert tmp_path in {command.cwd for command in commands}
 
 
-def test_python_install_exact_pins_override_consumer_release_age_cutoffs(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    monkeypatch.setattr(
-        manifest,
-        "installed_versions",
-        lambda: {"sarj-lint-configs": "1.2.3", "sarj-python-lint": "4.5.6"},
+def test_setup_removes_the_legacy_in_project_tool_dependency(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "old-python-app"\nrequires-python = ">=3.10"\n'
+        '\n[dependency-groups]\ndev = ["sarj-lint-configs==1.2.3"]\n',
+        encoding="utf-8",
     )
     ecosystems = scaffold.Ecosystems(True, False, python_root=tmp_path)
 
     (command,) = lifecycle.install_commands(tmp_path, ecosystems, hook_manager="none")
 
-    assert command.argv == (
-        "uv",
-        "add",
-        "--dev",
-        "--exclude-newer-package",
-        "sarj-lint-configs=2099-12-31",
-        "--exclude-newer-package",
-        "sarj-python-lint=2099-12-31",
-        "sarj-lint-configs==1.2.3",
-        "sarj-python-lint==4.5.6",
+    assert command.argv == ("uv", "remove", "--dev", "sarj-lint-configs")
+
+
+def test_setup_does_not_install_standards_into_a_consumer_project(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "old-python-app"\nrequires-python = ">=3.10"\n', encoding="utf-8"
     )
+    ecosystems = scaffold.Ecosystems(True, False, python_root=tmp_path)
+
+    assert lifecycle.install_commands(tmp_path, ecosystems, hook_manager="none") == []
+
+
+@pytest.mark.parametrize("python", [True, False])
+def test_precommit_install_is_explicitly_scoped_to_commit_stage(tmp_path: Path, python: bool) -> None:
+    (tmp_path / ".git").mkdir()
+    ecosystems = scaffold.Ecosystems(python, not python, python_root=tmp_path if python else None)
+
+    command = lifecycle.install_commands(tmp_path, ecosystems)[-1]
+
+    assert command.argv[-4:] == ("pre-commit", "install", "--hook-type", "pre-commit")
 
 
 def test_staged_eslint_uses_detected_project_cwd_and_package_manager(tmp_path: Path) -> None:

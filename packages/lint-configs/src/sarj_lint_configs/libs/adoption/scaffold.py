@@ -12,12 +12,14 @@ import textwrap
 import tomllib
 from typing import TYPE_CHECKING, Final
 
+from packaging.specifiers import InvalidSpecifier, SpecifierSet
+from packaging.version import InvalidVersion, Version
 import yaml
 
 from sarj_lint_configs.libs.filesystem import is_link_like
 
-from . import hooks, manifest, packagemanager
-from .packagemanager import LOCKFILES, Overrides, PackageManager
+from . import hooks, launcher, manifest, packagemanager
+from .packagemanager import LOCKFILES, Overrides, PackageManager, YarnVariant
 
 
 if TYPE_CHECKING:
@@ -34,6 +36,7 @@ class Ecosystems:
     typescript_root: Path | None = None
     typescript_install_root: Path | None = None
     client: PackageManager = PackageManager.NPM
+    yarn: YarnVariant = YarnVariant.CLASSIC
 
     @property
     def any(self) -> bool:
@@ -69,6 +72,9 @@ _ESLINT_CONFIG_NAMES: Final = (
 _PYRIGHT_CONFIG: Final = "pyrightconfig.json"
 _PRECOMMIT_CONFIG_NAMES: Final = (".pre-commit-config.yaml", ".pre-commit-config.yml")
 _ECOSYSTEM_CONFIGS: Final = frozenset((*manifest.PYTHON_CONFIGS, *manifest.TYPESCRIPT_CONFIGS))
+_CUSTOM_HOOK_SCOPE_KEYS: Final = frozenset({"always_run", "args", "exclude", "exclude_types", "types", "types_or"})
+_RUFF_REDUNDANT_SELECT_ALL: Final = re.compile(r"(?m)^[ \t]*select\s*=\s*\[\s*['\"]ALL['\"]\s*\]\s*(?:#.*)?\r?\n?")
+_PYTHON_MAJOR: Final = 3
 
 _RUFF_EXTEND = re.compile(r"^[ \t]*\[tool\.ruff\][ \t]*$", re.MULTILINE)
 _RUFF_LINT_SECTION = re.compile(
@@ -111,13 +117,19 @@ def detect(
     python_root = _override(root, python_dest) or _python_root(root)
     typescript_root = _override(root, typescript_dest) or _typescript_root(root)
     install_root = packagemanager.workspace_root(typescript_root, root) if typescript_root else None
+    client = packagemanager.detect(install_root) if install_root else PackageManager.NPM
     return Ecosystems(
         python=python_root is not None,
         typescript=typescript_root is not None,
         python_root=python_root,
         typescript_root=typescript_root,
         typescript_install_root=install_root,
-        client=packagemanager.detect(install_root) if install_root else PackageManager.NPM,
+        client=client,
+        yarn=(
+            packagemanager.yarn_variant(install_root)
+            if install_root is not None and client is PackageManager.YARN
+            else YarnVariant.CLASSIC
+        ),
     )
 
 
@@ -312,6 +324,7 @@ def _plan_manifest(root: Path, plan: Plan, *, force: bool) -> None:
 
 def _plan_python(root: Path, plan: Plan, *, force: bool) -> None:
     pyproject = root / "pyproject.toml"
+    python_target: str | None = None
     if pyproject.is_file():
         text = pyproject.read_text(encoding="utf-8")
         try:
@@ -319,7 +332,21 @@ def _plan_python(root: Path, plan: Plan, *, force: bool) -> None:
         except tomllib.TOMLDecodeError as exc:
             plan.errors.append(f"cannot safely wire {pyproject}: {exc}")
             return
+        python_target = _python_target(manifest.as_table(parsed))
         ruff = manifest.as_table(manifest.as_table(manifest.as_table(parsed).get("tool")).get("ruff"))
+        lint = manifest.as_table(ruff.get("lint"))
+        conflicts = tuple(
+            (key, f"extend-{key}")
+            for key in ("select", "ignore")
+            if key in lint and f"extend-{key}" in lint and not (key == "select" and lint.get("select") == ["ALL"])
+        )
+        if conflicts:
+            rendered = ", ".join(f"{first}/{second}" for first, second in conflicts)
+            plan.errors.append(
+                f"cannot safely wire {pyproject}: [tool.ruff.lint] defines both {rendered}; "
+                "combine each pair under the extend-* key, then rerun init"
+            )
+            return
         updated = _extend_ruff_replacement_policy(text)
         if ruff.get("extend") == ".ruff-strict.toml" and updated != text:
             plan.writes.append((pyproject, updated))
@@ -338,19 +365,51 @@ def _plan_python(root: Path, plan: Plan, *, force: bool) -> None:
         document, error = _json_object(pyright)
         if error is not None:
             plan.errors.append(f"cannot safely wire {pyright}: {error}")
-        elif document is not None and document.get("extends") == ".pyright-strict.json":
-            plan.skips.append((pyright, "already extends .pyright-strict.json"))
         elif document is not None:
+            changed = document.get("extends") != ".pyright-strict.json"
             document["extends"] = ".pyright-strict.json"
-            plan.writes.append((pyright, json.dumps(document, indent=_indent_of(pyright.read_text())) + "\n"))
+            if python_target is not None and "pythonVersion" not in document:
+                document["pythonVersion"] = python_target
+                changed = True
+            if changed:
+                plan.writes.append((pyright, json.dumps(document, indent=_indent_of(pyright.read_text())) + "\n"))
+            else:
+                plan.skips.append((pyright, "already extends .pyright-strict.json"))
     else:
+        generated_document: dict[str, object] = {"extends": ".pyright-strict.json"}
+        if python_target is not None:
+            generated_document["pythonVersion"] = python_target
         _record(
             plan,
             pyright,
-            '{ "extends": ".pyright-strict.json" }\n',
+            json.dumps(generated_document, indent=2) + "\n",
             force=force,
             reason='exists; add `"extends": ".pyright-strict.json"` yourself',
         )
+
+
+def _python_target(document: Mapping[str, object]) -> str | None:
+    requires_python = manifest.table_field(document, "project").get("requires-python")
+    if not isinstance(requires_python, str):
+        return None
+    try:
+        specifiers = SpecifierSet(requires_python)
+    except InvalidSpecifier:
+        return None
+    boundary_versions: list[Version] = []
+    for specifier in specifiers:
+        try:
+            boundary_versions.append(Version(specifier.version.rstrip(".*")))
+        except InvalidVersion:
+            continue
+    for minor in range(8, 15):
+        candidates = [Version(f"3.{minor}.0"), Version(f"3.{minor}.999"), *boundary_versions]
+        if any(
+            candidate.major == _PYTHON_MAJOR and candidate.minor == minor and candidate in specifiers
+            for candidate in candidates
+        ):
+            return f"3.{minor}"
+    return None
 
 
 def _extend_ruff_replacement_policy(text: str) -> str:
@@ -361,7 +420,10 @@ def _extend_ruff_replacement_policy(text: str) -> str:
             replacement = "extend-select" if match.group("key") == "select" else "extend-ignore"
             return f"{match.group('indent')}{replacement}{match.group('equals')}"
 
-        body = _RUFF_REPLACEMENT_KEY.sub(rewrite_key, section.group("body"))
+        body = section.group("body")
+        if _RUFF_REPLACEMENT_KEY.search(body) and re.search(r"(?m)^\s*extend-select\s*=", body):
+            body = _RUFF_REDUNDANT_SELECT_ALL.sub("", body)
+        body = _RUFF_REPLACEMENT_KEY.sub(rewrite_key, body)
         return f"{section.group('header')}{body}"
 
     return _RUFF_LINT_SECTION.sub(rewrite_section, text)
@@ -413,9 +475,9 @@ def _plan_typescript(root: Path, plan: Plan, *, force: bool) -> None:
     is_workspace = install_root != root or (install_root / "pnpm-workspace.yaml").is_file()
     plan.notes.append(
         f"detected {client} -- install the tested ESLint peer set:\n"
-        f"    {packagemanager.install_command(client, workspace=is_workspace)}"
+        f"    {packagemanager.install_command(client, workspace=is_workspace, yarn=plan.ecosystems.yarn)}"
     )
-    caveat = packagemanager.install_note(client)
+    caveat = packagemanager.install_note(client, yarn=plan.ecosystems.yarn)
     if caveat is not None:
         plan.notes.append(caveat)
 
@@ -449,11 +511,10 @@ def _eslint_wiring_reaches_strict(path: Path, root: Path, seen: set[Path] | None
 
 
 def _plan_npm_overrides(root: Path, plan: Plan, client: PackageManager) -> None:
-    """Write the overrides without which the peer set cannot be installed at all."""
+    """Pin peers in package.json and write the client-specific overrides."""
     overrides = packagemanager.overrides_for(client)
-    if not overrides.entries:
-        return
     pnpm_workspace = root / "pnpm-workspace.yaml"
+    package_overrides: Overrides | None = overrides
     if client is PackageManager.PNPM and pnpm_workspace.is_file():
         current = pnpm_workspace.read_text(encoding="utf-8")
         try:
@@ -465,7 +526,7 @@ def _plan_npm_overrides(root: Path, plan: Plan, client: PackageManager) -> None:
             plan.skips.append((pnpm_workspace, "already carries the pnpm peer overrides"))
         else:
             plan.writes.append((pnpm_workspace, merged))
-        return
+        package_overrides = None
     printed = textwrap.indent(json.dumps(overrides.as_document(), indent=2), "    ")
     package_json = root / "package.json"
     if not package_json.is_file():
@@ -476,7 +537,7 @@ def _plan_npm_overrides(root: Path, plan: Plan, client: PackageManager) -> None:
         )
         return
     try:
-        merged = _merged_npm_overrides(package_json.read_text(encoding="utf-8"), overrides)
+        merged = _merged_npm_overrides(package_json.read_text(encoding="utf-8"), package_overrides)
     except TypeError, ValueError:
         plan.notes.append(
             f"package.json could not be parsed, so the {client} overrides were not"
@@ -485,11 +546,11 @@ def _plan_npm_overrides(root: Path, plan: Plan, client: PackageManager) -> None:
         )
         return
     if merged is None:
-        plan.skips.append((package_json, f"already carries the {client} peer overrides"))
+        plan.skips.append((package_json, f"already pins the tested ESLint peers and {client} overrides"))
         return
     plan.writes.append((package_json, merged))
     plan.notes.append(
-        f"merged the {client} overrides into {package_json}:\n{printed}\n"
+        f"pinned the tested ESLint peers and merged the {client} overrides into {package_json}:\n{printed}\n"
         f"    {client} cannot resolve the tree without them -- eslint-plugin-react"
         " peers eslint <=9.7 and the unicorn floor needs >=10.4."
     )
@@ -519,31 +580,40 @@ def _merged_pnpm_workspace(text: str, entries: Mapping[str, object]) -> str:
     return text[:insertion] + rendered + text[insertion:]
 
 
-def _merged_npm_overrides(text: str, overrides: Overrides) -> str | None:
-    """Merge the ESLint peer overrides into a package.json's text."""
+def _merged_npm_overrides(text: str, overrides: Overrides | None) -> str | None:
+    """Merge exact ESLint peers and optional overrides into package.json text."""
     parsed: object = json.loads(text)  # pyright: ignore[reportAny] -- untyped stdlib boundary
     data = manifest.as_table(parsed)
     if not data:
         msg = "package.json must contain a non-empty JSON object"
         raise TypeError(msg)
-    *outer, final = overrides.key_path
-    container = data
-    for key in outer:
-        container = manifest.table_field(container, key)
-    existing = manifest.table_field(container, final)
-    updated = dict(existing)
-    for name, value in overrides.entries.items():
-        # A consumer may already override the same package for a different
-        # reason, so merge the inner table rather than replacing it.
-        current_value = updated.get(name)
-        current_entry = manifest.table_field(updated, name)
-        new_entry = manifest.as_table(value)
-        if new_entry and current_value is not None and not isinstance(current_value, dict):
-            current_entry = {".": current_value}
-        updated[name] = {**current_entry, **new_entry} if new_entry else value
-    if updated == existing and _has_path(data, overrides.key_path):
+    changed = False
+    existing_peers = manifest.table_field(data, "devDependencies")
+    updated_peers = {**existing_peers, **manifest.eslint_peers()}
+    if updated_peers != existing_peers:
+        data["devDependencies"] = updated_peers
+        changed = True
+    if overrides is not None:
+        *outer, final = overrides.key_path
+        container = data
+        for key in outer:
+            container = manifest.table_field(container, key)
+        existing = manifest.table_field(container, final)
+        updated = dict(existing)
+        for name, value in overrides.entries.items():
+            # A consumer may already override the same package for a different
+            # reason, so merge the inner table rather than replacing it.
+            current_value = updated.get(name)
+            current_entry = manifest.table_field(updated, name)
+            new_entry = manifest.as_table(value)
+            if new_entry and current_value is not None and not isinstance(current_value, dict):
+                current_entry = {".": current_value}
+            updated[name] = {**current_entry, **new_entry} if new_entry else value
+        if updated != existing or not _has_path(data, overrides.key_path):
+            _set_path(data, overrides.key_path, updated)
+            changed = True
+    if not changed:
         return None
-    _set_path(data, overrides.key_path, updated)
     rendered = json.dumps(data, indent=_indent_of(text))
     return rendered + "\n" if text.endswith("\n") else rendered
 
@@ -621,11 +691,7 @@ def _plan_precommit(root: Path, plan: Plan, *, force: bool) -> None:
     )
     if path.is_file():
         text = path.read_text(encoding="utf-8")
-        runner_prefix = _runner_prefix(
-            python=owns_python,
-            version=manifest.adopted_version(),
-            python_dest=dest_of(root, plan.ecosystems.python_root),
-        )
+        runner_prefix = _runner_prefix(version=manifest.adopted_version())
         migrated, migration_error = _migrate_official_remote_hook(text, runner_prefix)
         if migration_error is not None:
             plan.errors.append(f"cannot safely migrate {path}: {migration_error}")
@@ -647,7 +713,7 @@ def _plan_precommit(root: Path, plan: Plan, *, force: bool) -> None:
             comment = inline.group("comment")
             opened = "repos:" if comment is None else f"repos: {comment}"
             text = f"{text[: inline.start()]}{opened}{text[inline.end() :]}"
-            missing = _precommit_check_block(runner_prefix)
+            missing = _precommit_check_block(runner_prefix, item_indent=_precommit_item_indent(text))
             addition = missing if text.endswith("\n") else "\n" + missing
             plan.writes.append((path, text + addition))
         elif re.search(r"(?m)^repos:\s*(?:#.*)?$", text):
@@ -709,23 +775,80 @@ def _precommit_item_indent(text: str) -> int:
 
 def _canonicalize_owned_hooks(text: str, runner_prefix: str) -> str:
     """Replace recognized generated hooks with one current staged hook."""
-    local_blocks = tuple(block for block in hooks.precommit_repo_blocks(text) if block.repository == "local")
+    local_blocks = tuple(
+        block
+        for block in hooks.precommit_repo_blocks(text)
+        if block.repository == "local" and _has_owned_hook_in_block(block.text)
+    )
+    if not local_blocks:
+        return text
+    for block in local_blocks:
+        custom_keys = _owned_hook_custom_keys(block.text)
+        if custom_keys:
+            names = ", ".join(sorted(custom_keys))
+            msg = (
+                f"cannot replace a customized local Sarj hook ({names}); remove those keys or migrate their scope "
+                "to the canonical umbrella hook explicitly"
+            )
+            raise ValueError(msg)
+    keeper = local_blocks[0]
     canonical = text
     for block in reversed(local_blocks):
-        replacement = _canonicalize_local_hook_block(block.text, runner_prefix, item_indent=block.indent)
+        replacement = _canonicalize_local_hook_block(
+            block.text,
+            runner_prefix,
+            item_indent=block.indent,
+            insert_canonical=block.start == keeper.start,
+        )
         canonical = canonical[: block.start] + replacement + canonical[block.end :]
     return canonical
 
 
 def _has_owned_hooks(text: str) -> bool:
     return any(
-        re.search(r"(?m)^\s*-\s+id:\s+['\"]?sarj-standards-(?:check|drift)['\"]?\s*(?:#.*)?$", block.text) is not None
+        _has_owned_hook_in_block(block.text)
         for block in hooks.precommit_repo_blocks(text)
         if block.repository == "local"
     )
 
 
-def _canonicalize_local_hook_block(text: str, runner_prefix: str, *, item_indent: int) -> str:
+def _has_owned_hook_in_block(text: str) -> bool:
+    return (
+        re.search(
+            r"(?m)^\s*-\s+id:\s+['\"]?sarj-standards-(?:check|drift)['\"]?\s*(?:#.*)?$",
+            text,
+        )
+        is not None
+    )
+
+
+def _owned_hook_custom_keys(text: str) -> frozenset[str]:
+    lines = text.splitlines(keepends=True)
+    owned = {"sarj-standards-check", "sarj-standards-drift"}
+    found: set[str] = set()
+    for index, line in enumerate(lines):
+        match = re.match(
+            r"^(?P<indent>\s*)-\s+id:\s+['\"]?(?P<id>[^\s'\"#]+)['\"]?\s*(?:#.*)?$",
+            line.rstrip("\r\n"),
+        )
+        if match is None or match["id"] not in owned:
+            continue
+        end = hooks.yaml_list_item_end(lines, index, len(match["indent"]))
+        for property_line in lines[index + 1 : end]:
+            if (key_match := re.match(r"^\s+(?P<key>[a-z_][a-z0-9_-]*):", property_line)) and key_match[
+                "key"
+            ] in _CUSTOM_HOOK_SCOPE_KEYS:
+                found.add(key_match["key"])
+    return frozenset(found)
+
+
+def _canonicalize_local_hook_block(
+    text: str,
+    runner_prefix: str,
+    *,
+    item_indent: int,
+    insert_canonical: bool,
+) -> str:
     """Canonicalize only hooks inside an explicitly local pre-commit repository."""
     lines = text.splitlines(keepends=True)
     owned = {"sarj-standards-check", "sarj-standards-drift"}
@@ -746,7 +869,7 @@ def _canonicalize_local_hook_block(text: str, runner_prefix: str, *, item_indent
     removed = {index for start, end in spans for index in range(start, end)}
     output: list[str] = []
     for index, line in enumerate(lines):
-        if index == first:
+        if insert_canonical and index == first:
             output.append(_precommit_hook(runner_prefix, hook_indent=item_indent + 4))
         if index not in removed:
             output.append(line)
@@ -755,7 +878,8 @@ def _canonicalize_local_hook_block(text: str, runner_prefix: str, *, item_indent
 
 def precommit_block(*, python: bool, version: str, python_dest: str = ".") -> str:
     """Render one staged-file orchestrator, deliberately without a second version pin."""
-    runner_prefix = _runner_prefix(python=python, version=version, python_dest=python_dest)
+    _ = python, python_dest
+    runner_prefix = _runner_prefix(version=version)
     return _precommit_check_block(runner_prefix)
 
 
@@ -777,8 +901,10 @@ def _precommit_hook(runner_prefix: str, *, hook_indent: int = 6) -> str:
         f"{field}entry: {runner_prefix} check --staged --\n"
         f"{field}language: system\n"
         f"{field}verbose: true\n"
-        f"{field}pass_filenames: false\n"
-        f"{field}files: '(?i)(\\.py|\\.[cm]?[jt]s|\\.[jt]sx|\\.sql|\\.tf|\\.tfvars|\\.hcl|\\.ya?ml|\\.toml|\\.jsonc|\\.mdx?|\\.(?:bash|cfg|conf|env|ini|properties|sh|tftpl|zsh)|(?:^|/)\\.env(?:\\..*)?$|(?:^|/)requirements(?:/.*|[^/]*\\.(?:txt|in))$|(?:^|/)(?:Dockerfile(?:\\..*)?|Gnumakefile|Justfile|Makefile|package\\.json|pyrightconfig\\.json))$'\n"
+        f"{field}pass_filenames: true\n"
+        f"{field}require_serial: true\n"
+        f"{field}files: '{hooks.PRECOMMIT_FILES_PATTERN}'\n"
+        f"{field}stages: [pre-commit]\n"
     )
 
 
@@ -806,12 +932,8 @@ def apply(plan: Plan) -> None:
 
 def ci_snippet(plan: Plan, *, version: str) -> str:
     """Render the CI job that keeps a repo honest between upgrades."""
-    python_dest = dest_of(plan.root, plan.ecosystems.python_root) if plan.root is not None else "."
-    runner_prefix = _runner_prefix(
-        python=plan.ecosystems.python,
-        version=version,
-        python_dest=python_dest,
-    )
+    _ = plan  # Retain the public call shape for compatibility with existing integrations.
+    runner_prefix = _runner_prefix(version=version)
     lines = [
         "      - name: sarj standards",
         f"        run: {runner_prefix} check",
@@ -819,8 +941,57 @@ def ci_snippet(plan: Plan, *, version: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _runner_prefix(*, python: bool, version: str, python_dest: str) -> str:
-    if not python:
-        return f"uvx --from sarj-lint-configs=={version} sarj-standards"
-    project = "" if python_dest == "." else f" --project {shlex.quote(python_dest)}"
-    return f"uv run{project} --frozen sarj-standards"
+def github_ci_workflow(root: Path, *, version: str) -> str:
+    """Render a complete, pinned GitHub Actions workflow for an adopted repository."""
+    ecosystems = detect(root)
+    adopted = manifest.load(root)
+    python_dest = "." if adopted is None else adopted.python_dest
+    runner = _runner_prefix(version=version)
+    lines = [
+        "name: Standards",
+        "",
+        "on:",
+        "  pull_request:",
+        "  push:",
+        "    branches: [main]",
+        "",
+        "permissions:",
+        "  contents: read",
+        "",
+        "jobs:",
+        "  standards:",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7",
+        "      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0",
+        "        with:",
+        "          enable-cache: true",
+        "          cache-dependency-glob: '**/uv.lock'",
+    ]
+    if ecosystems.typescript:
+        lines.extend(
+            (
+                "      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7",
+                "      - name: Install JavaScript dependencies",
+                f"        run: corepack enable && {_ci_javascript_install(ecosystems.client, ecosystems.yarn)}",
+            )
+        )
+    if ecosystems.python:
+        project = "" if python_dest == "." else f" --project {shlex.quote(python_dest)}"
+        lines.extend(("      - name: Install Python dependencies", f"        run: uv sync --locked{project}"))
+    lines.extend(("      - name: Run standards", f"        run: {runner} check"))
+    return "\n".join(lines) + "\n"
+
+
+def _ci_javascript_install(client: PackageManager, yarn: YarnVariant) -> str:
+    if client is PackageManager.YARN:
+        return "yarn install --immutable" if yarn is YarnVariant.BERRY else "yarn install --frozen-lockfile"
+    return {
+        PackageManager.NPM: "npm ci --no-audit --no-fund",
+        PackageManager.PNPM: "pnpm install --frozen-lockfile",
+        PackageManager.BUN: "bun install --frozen-lockfile",
+    }[client]
+
+
+def _runner_prefix(*, version: str) -> str:
+    return launcher.pinned(version)
