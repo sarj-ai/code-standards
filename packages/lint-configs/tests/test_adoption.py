@@ -679,6 +679,46 @@ def test_init_repairs_final_lefthook_commands_key_without_a_newline(tmp_path: Pa
     assert adoption_hooks.lefthook_runs_staged_check(tmp_path)
 
 
+def test_init_preserves_and_extends_lefthook_v2_jobs(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    config = tmp_path / "lefthook.yml"
+    original_job = "    - name: existing\n      run: make lint\n"
+    config.write_text(f"pre-commit:\n  jobs:\n{original_job}\npre-push:\n  commands: {{}}\n", encoding="utf-8")
+
+    proc = _cli("init", str(tmp_path), "--hooks", "lefthook", "--no-install")
+
+    assert proc.returncode == 0, proc.stderr
+    updated = config.read_text(encoding="utf-8")
+    assert original_job in updated
+    assert "- name: sarj-standards\n      run: sarj-standards check --staged" in updated
+    assert "pre-push:\n  commands: {}" in updated
+    assert adoption_hooks.lefthook_runs_staged_check(tmp_path)
+
+
+def test_nested_lefthook_v2_job_can_already_run_staged_check(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    config = tmp_path / "lefthook.yml"
+    original = (
+        "pre-commit:\n  jobs:\n    - name: checks\n      group:\n        jobs:\n"
+        "          - name: standards\n            run: sarj-standards check --staged\n"
+    )
+    config.write_text(original, encoding="utf-8")
+
+    proc = _cli("init", str(tmp_path), "--hooks", "lefthook", "--no-install")
+
+    assert proc.returncode == 0, proc.stderr
+    assert config.read_text(encoding="utf-8") == original
+
+
+def test_lefthook_cycle_fails_closed_without_recursing(tmp_path: Path) -> None:
+    (tmp_path / "lefthook.yml").write_text(
+        "pre-commit:\n  jobs: &jobs\n    - name: recursive\n      group:\n        jobs: *jobs\n",
+        encoding="utf-8",
+    )
+
+    assert not adoption_hooks.lefthook_runs_staged_check(tmp_path)
+
+
 @pytest.mark.parametrize("suffix", ["js", "jsx", "mjs", "cjs", "ts", "tsx", "mts", "cts"])
 def test_generated_precommit_block_routes_every_supported_javascript_suffix(tmp_path: Path, suffix: str) -> None:
     _ = _typescript_repo(tmp_path)
@@ -824,6 +864,22 @@ def test_generated_check_hook_keeps_warning_first_output_visible(tmp_path: Path)
     config = (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     check_block = config.split("id: sarj-standards-check", 1)[1]
     assert "verbose: true" in check_block
+
+
+def test_doctor_detects_a_disabled_generated_precommit_hook(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    assert _cli("init", "--dest", str(tmp_path), "--no-install").returncode == 0
+    config = tmp_path / ".pre-commit-config.yaml"
+    config.write_text(
+        config.read_text(encoding="utf-8").replace(
+            "entry: uv run --frozen sarj-standards check --staged --", "entry: echo standards-disabled"
+        ),
+        encoding="utf-8",
+    )
+
+    findings = doctor.diagnose(tmp_path)
+
+    assert [finding for finding in findings if finding.id == "doctor.hooks.precommit"]
 
 
 @pytest.mark.parametrize("path", ["requirements.txt", "requirements-dev.in", "requirements/prod.txt"])
@@ -1032,6 +1088,65 @@ def test_doctor_catches_a_stale_precommit_rev(tmp_path: Path) -> None:
     proc = _cli("doctor", "--dest", str(tmp_path))
     assert proc.returncode == 1
     assert "python-v0.19.0" in proc.stdout
+
+
+@pytest.mark.parametrize(
+    "repository",
+    [
+        "https://github.com/not-sarj-ai/standards",
+        "https://github.com/sarj-ai/standards-fork",
+    ],
+)
+def test_doctor_does_not_claim_lookalike_precommit_repositories(tmp_path: Path, repository: str) -> None:
+    _ = _python_repo(tmp_path)
+    _ = (tmp_path / ".pre-commit-config.yaml").write_text(
+        f"repos:\n  - repo: {repository}\n    rev: stale\n    hooks:\n      - id: sarj-standards\n",
+        encoding="utf-8",
+    )
+
+    proc = _cli("doctor", "--dest", str(tmp_path))
+
+    assert "rev stale" not in proc.stdout
+
+
+def test_init_does_not_rewrite_a_remote_hook_with_a_generated_id(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    config = tmp_path / ".pre-commit-config.yaml"
+    remote = (
+        "  - repo: https://github.com/example/custom-hooks\n"
+        "    rev: v1\n"
+        "    hooks:\n"
+        "      - id: sarj-standards-check\n"
+        "        args: [--custom]\n"
+    )
+    config.write_text(f"repos:\n{remote}", encoding="utf-8")
+
+    assert _cli("init", "--dest", str(tmp_path), "--no-install").returncode == 0
+
+    generated = config.read_text(encoding="utf-8")
+    assert remote in generated
+    assert generated.count("id: sarj-standards-check") == 2
+    assert "args: [--custom]" in generated
+
+
+def test_init_recognizes_a_quoted_commented_local_generated_hook(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    config = tmp_path / ".pre-commit-config.yaml"
+    config.write_text(
+        "repos:\n"
+        "  - repo: local\n"
+        "    hooks:\n"
+        "      - id: 'sarj-standards-check' # generated\n"
+        "        entry: stale\n"
+        "        language: system\n",
+        encoding="utf-8",
+    )
+
+    assert _cli("init", "--dest", str(tmp_path), "--no-install").returncode == 0
+
+    generated = config.read_text(encoding="utf-8")
+    assert generated.count("id: sarj-standards-check") == 1
+    assert "entry: stale" not in generated
 
 
 def test_doctor_uses_bundle_revision_for_remote_umbrella_hook(tmp_path: Path) -> None:

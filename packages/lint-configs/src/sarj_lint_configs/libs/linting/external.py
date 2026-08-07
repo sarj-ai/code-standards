@@ -7,6 +7,7 @@ from enum import StrEnum
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import signal
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed argv, no shell, bounded timeout.
@@ -28,7 +29,7 @@ from sarj_lint_configs.libs.diagnostics import (
     TrustMode,
 )
 
-from .runner import group_paths
+from .runner import GroupedPaths, group_paths
 
 
 if TYPE_CHECKING:
@@ -77,7 +78,7 @@ def analyze_external(
     execute = run_process if runner is None else runner
     try:
         normalized_trust = TrustMode(trust)
-        grouped = group_paths(files)
+        root, contained, grouped = _prepare_inputs(files, root)
     except (OSError, ValueError) as exc:
         issue = ExecutionIssue("external", "invalid-input", str(exc))
         return (ToolReport("external", Completion.FAILED, issues=(issue,)),)
@@ -104,9 +105,10 @@ def analyze_external(
             )
         )
     try:
-        eslint_commands = selected_eslint_commands(root, files, label="analysis")
+        eslint_commands = selected_eslint_commands(root, contained, label="analysis")
     except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
-        issue = ExecutionIssue("eslint", "configuration-failure", f"{type(exc).__name__}: {exc}")
+        message = _redact_message(f"{type(exc).__name__}: {exc}", root)
+        issue = ExecutionIssue("eslint", "configuration-failure", message)
         reports.append(ToolReport("eslint", Completion.FAILED, issues=(issue,)))
         return tuple(reports)
     for command in eslint_commands:
@@ -156,22 +158,20 @@ def run_process(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         threading.Thread(target=_capture_stream, args=(stdout, _MAX_STDOUT_BYTES, exceeded, captures, 0), daemon=True),
         threading.Thread(target=_capture_stream, args=(stderr, _MAX_STDERR_BYTES, exceeded, captures, 1), daemon=True),
     )
-    for thread in threads:
-        thread.start()
-    deadline = time.monotonic() + _TIMEOUT_SECONDS
-    while process.poll() is None and not exceeded.is_set():
-        if time.monotonic() >= deadline:
+    try:
+        _start_capture_threads(threads)
+        returncode = _wait_for_process(process, threads, exceeded, argv)
+    except BaseException:
+        if process.poll() is None:
             _terminate_process(process)
-            _ = process.wait()
-            for thread in threads:
-                thread.join()
-            raise subprocess.TimeoutExpired(argv, _TIMEOUT_SECONDS)
-        time.sleep(0.01)
-    if exceeded.is_set():
-        _terminate_process(process)
-    returncode = process.wait()
-    for thread in threads:
-        thread.join()
+        try:
+            _ = process.wait(timeout=5)
+        except OSError, subprocess.SubprocessError:
+            process.kill()
+        for thread in threads:
+            if thread.ident is not None:
+                thread.join(timeout=5)
+        raise
     if exceeded.is_set():
         msg = "analyzer output exceeded the 16 MiB stdout or 64 KiB stderr limit"
         raise OutputLimitError(msg)
@@ -184,6 +184,32 @@ def run_process(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         stdout_bytes.decode("utf-8", errors="replace"),
         stderr_bytes.decode("utf-8", errors="replace"),
     )
+
+
+def _start_capture_threads(threads: Sequence[threading.Thread]) -> None:
+    for thread in threads:
+        thread.start()
+
+
+def _wait_for_process(
+    process: subprocess.Popen[bytes],
+    threads: Sequence[threading.Thread],
+    exceeded: threading.Event,
+    argv: Sequence[str],
+) -> int:
+    deadline = time.monotonic() + _TIMEOUT_SECONDS
+    while process.poll() is None and not exceeded.is_set():
+        if time.monotonic() >= deadline:
+            _terminate_process(process)
+            _ = process.wait(timeout=5)
+            _join_capture_threads(threads)
+            raise subprocess.TimeoutExpired(argv, _TIMEOUT_SECONDS)
+        time.sleep(0.01)
+    if exceeded.is_set():
+        _terminate_process(process)
+    returncode = process.wait(timeout=5 if exceeded.is_set() else None)
+    _join_capture_threads(threads)
+    return returncode
 
 
 def _capture_stream(
@@ -213,8 +239,31 @@ def _terminate_process(process: subprocess.Popen[bytes]) -> None:
             os.killpg(process.pid, signal.SIGKILL)
         except ProcessLookupError:
             return
-    else:  # pragma: no cover - Windows CI covers the fallback.
-        process.kill()
+    else:  # pragma: no cover - Windows CI covers the process-tree strategy.
+        try:
+            taskkill = shutil.which("taskkill")
+            if taskkill is None:
+                msg = "taskkill is unavailable"
+                raise FileNotFoundError(msg)
+            subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- resolved system binary, fixed argv.
+                (taskkill, "/PID", str(process.pid), "/T", "/F"),
+                check=False,
+                capture_output=True,
+                shell=False,
+                timeout=5,
+            )
+        except OSError, subprocess.SubprocessError:
+            process.kill()
+        if process.poll() is None:
+            process.kill()
+
+
+def _join_capture_threads(threads: Sequence[threading.Thread]) -> None:
+    for thread in threads:
+        thread.join(timeout=5)
+    if any(thread.is_alive() for thread in threads):
+        msg = "analyzer output streams did not close after process termination"
+        raise OSError(msg)
 
 
 def _invoke(
@@ -228,8 +277,9 @@ def _invoke(
 ) -> ToolReport:
     try:
         return _invoke_unchecked(name, argv, cwd=cwd, root=root, runner=runner, parser=parser)
-    except (OSError, TypeError, ValueError, json.JSONDecodeError, subprocess.SubprocessError) as exc:
-        issue = ExecutionIssue(name, "tool-failure", f"{type(exc).__name__}: {exc}")
+    except (OSError, TypeError, ValueError, RecursionError, json.JSONDecodeError, subprocess.SubprocessError) as exc:
+        message = _redact_message(f"{type(exc).__name__}: {exc}", root)
+        issue = ExecutionIssue(name, "tool-failure", message)
         return ToolReport(name, Completion.FAILED, issues=(issue,))
 
 
@@ -244,10 +294,14 @@ def _invoke_unchecked(
 ) -> ToolReport:
     output = runner(argv, cwd=cwd)
     if output.returncode not in {0, 1}:
-        message = output.stderr.strip() or f"{name} exited {output.returncode}"
+        message = _redact_message(output.stderr.strip() or f"{name} exited {output.returncode}", root)
         issue = ExecutionIssue(name, "tool-failure", message, output.returncode)
         return ToolReport(name, Completion.FAILED, issues=(issue,))
     diagnostics = parser(output.stdout, root=root)
+    if output.returncode == 1 and not diagnostics:
+        message = _redact_message(output.stderr.strip() or f"{name} exited 1 but reported no diagnostics", root)
+        issue = ExecutionIssue(name, "protocol-mismatch", message, output.returncode)
+        return ToolReport(name, Completion.FAILED, issues=(issue,))
     return ToolReport(name, Completion.COMPLETE, diagnostics=diagnostics)
 
 
@@ -326,11 +380,19 @@ def parse_eslint(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
                 if end is not None
                 else Location(_relative(path, root), position=start)
             )
+            severity_value = item.get("severity")
+            if type(severity_value) is int and severity_value == _ESLINT_ERROR:
+                severity = Severity.ERROR
+            elif type(severity_value) is int and severity_value == 1:
+                severity = Severity.WARNING
+            else:
+                msg = f"unsupported ESLint severity: {severity_value!r}"
+                raise ValueError(msg)
             diagnostics.append(
                 Diagnostic(
                     rule,
                     _text(item, "message"),
-                    Severity.ERROR if item.get("severity") == _ESLINT_ERROR else Severity.WARNING,
+                    severity,
                     "eslint",
                     location,
                     rule_id=rule,
@@ -351,7 +413,27 @@ def _eslint_json_argv(argv: Sequence[str]) -> tuple[str, ...]:
 
 
 def _loads(payload: str) -> object:
-    return json.loads(payload or "[]")  # pyright: ignore[reportAny] -- narrowed immediately.
+    if not payload.strip():
+        msg = "analyzer returned empty structured output"
+        raise ValueError(msg)
+    return json.loads(payload)  # pyright: ignore[reportAny] -- narrowed immediately.
+
+
+def _prepare_inputs(files: Sequence[str], root: Path) -> tuple[Path, tuple[str, ...], GroupedPaths]:
+    repository = root.resolve()
+    contained = tuple(_contained_path(item, repository) for item in files)
+    return repository, contained, group_paths(contained)
+
+
+def _contained_path(value: str, root: Path) -> str:
+    path = Path(value)
+    resolved = (path if path.is_absolute() else root / path).resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError as exc:
+        msg = "analysis path is outside the repository root"
+        raise ValueError(msg) from exc
+    return str(resolved)
 
 
 def _table(value: object, label: str) -> dict[str, object]:
@@ -384,7 +466,7 @@ def _text(table: dict[str, object], key: str) -> str:
 
 def _integer(table: dict[str, object], key: str) -> int:
     value = table.get(key)
-    if not isinstance(value, int):
+    if type(value) is not int:
         msg = f"{key} must be an integer"
         raise TypeError(msg)
     return value
@@ -438,7 +520,7 @@ def _eslint_position(
 ) -> Position | None:
     line = value.get(line_key)
     column = value.get(column_key)
-    if not isinstance(line, int) or not isinstance(column, int):
+    if type(line) is not int or type(column) is not int:
         return None
     return _zero_based_position({"line": line - 1, "character": column - 1}, path, cache)
 
@@ -456,8 +538,9 @@ def _required_eslint_position(
 def _severity_text(value: str) -> Severity:
     try:
         severity = _ExternalSeverity(value)
-    except ValueError:
-        return Severity.INFO
+    except ValueError as exc:
+        msg = f"unsupported BasedPyright severity: {value!r}"
+        raise ValueError(msg) from exc
     match severity:
         case _ExternalSeverity.ERROR:
             return Severity.ERROR
@@ -473,3 +556,11 @@ def _relative(path: Path, root: Path) -> str:
     except ValueError as exc:
         msg = "analyzer reported a path outside the repository root"
         raise ValueError(msg) from exc
+
+
+def _redact_message(value: str, root: Path) -> str:
+    message = value.replace(str(root), ".")
+    message = re.sub(r"(?i)\b(token|secret|password|api[_-]?key)=\S+", r"\1=<redacted>", message)
+    message = re.sub(r"(?<![\w:./])/(?:[^\s:]+/?)+", "<path>", message)
+    message = re.sub(r"\b[A-Za-z]:\\[^\s]+", "<path>", message)
+    return message[:1024]

@@ -5,13 +5,13 @@ from __future__ import annotations
 import stat
 from typing import TYPE_CHECKING
 
-from sarj_lint_configs.libs.adoption.transaction import FileTransaction
+import pytest
+
+from sarj_lint_configs.libs.adoption.transaction import FileTransaction, validate_targets
 
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-    import pytest
 
 
 def test_rollback_restores_file_permission_bits(tmp_path: Path) -> None:
@@ -72,3 +72,15 @@ def test_rollback_reports_permission_failure_without_raising(tmp_path: Path, mon
 
     assert not report.ok
     assert "read-only filesystem" in (report.render() or "")
+
+
+def test_transaction_rejects_hard_linked_mutation_target(tmp_path: Path) -> None:
+    outside = tmp_path.parent / f"{tmp_path.name}-outside.json"
+    outside.write_text('{"private": true}\n', encoding="utf-8")
+    target = tmp_path / "package.json"
+    target.hardlink_to(outside)
+
+    with pytest.raises(OSError, match="hard-linked"):
+        validate_targets(tmp_path, (target,))
+
+    assert outside.read_text(encoding="utf-8") == '{"private": true}\n'

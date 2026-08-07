@@ -78,6 +78,10 @@ class UpgradePlan:
 
 def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- one plan resolves every owned site once
     """Build a non-mutating plan targeting the executing compatibility bundle."""
+    root = root.resolve()
+    if not root.is_dir():
+        msg = f"repository root {root} is not a directory"
+        raise ValueError(msg)
     adopted = manifest.load(root)
     if adopted is None:
         msg = "repository is not adopted; run `sarj-standards init` first"

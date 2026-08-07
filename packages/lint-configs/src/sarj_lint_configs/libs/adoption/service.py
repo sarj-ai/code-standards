@@ -176,6 +176,9 @@ def plan_init(
     hook_manager: manifest.HookManager | None = None,
 ) -> InitPlan:
     """Plan the complete init operation, including configs and installation."""
+    if profile not in manifest.PROFILES:
+        msg = f"profile must be one of: {', '.join(manifest.PROFILES)}"
+        raise ValueError(msg)
     resolved = root.resolve()
     scaffold_plan = scaffold.build_plan(
         resolved,
@@ -318,8 +321,19 @@ def init_destination(root: Path, name: str, *, python_dest: str, typescript_dest
 
 
 def _selected_configs(configs: Sequence[str] | None, adopted: manifest.Manifest | None) -> tuple[str, ...]:
-    if configs:
-        return tuple(dict.fromkeys(configs))
+    if configs is not None:
+        if isinstance(configs, str):
+            msg = "configs must be a sequence of config names, not a string"
+            raise TypeError(msg)
+        selected = tuple(dict.fromkeys(configs))
+        if not selected:
+            msg = "configs must contain at least one config name"
+            raise ValueError(msg)
+        unknown = sorted(set(selected) - set(CONFIG_NAMES))
+        if unknown:
+            msg = f"unknown configs: {', '.join(unknown)}"
+            raise ValueError(msg)
+        return selected
     if adopted is not None:
         known = tuple(name for name in adopted.configs if name in CONFIG_NAMES)
         if known:
@@ -328,10 +342,7 @@ def _selected_configs(configs: Sequence[str] | None, adopted: manifest.Manifest 
 
 
 def _load_optional_manifest(root: Path) -> manifest.Manifest | None:
-    try:
-        return manifest.load(root)
-    except TypeError, ValueError, SystemExit:
-        return None
+    return manifest.load(root)
 
 
 def _contained_destination(root: Path, requested: str, *, label: str) -> Path:

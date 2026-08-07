@@ -12,6 +12,8 @@ import textwrap
 import tomllib
 from typing import TYPE_CHECKING, Final
 
+import yaml
+
 from sarj_lint_configs.libs.filesystem import is_link_like
 
 from . import hooks, manifest, packagemanager
@@ -210,7 +212,7 @@ def build_plan(
 
     if not ecosystems.any:
         if configs is None:
-            plan.notes.append("no pyproject.toml and no package.json found -- pass --configs to scaffold anyway")
+            plan.notes.append("no pyproject.toml and no package.json found -- pass --config to scaffold anyway")
             return plan
         unsupported = tuple(name for name in selected if name in _ECOSYSTEM_CONFIGS)
         if unsupported:
@@ -624,8 +626,15 @@ def _plan_precommit(root: Path, plan: Plan, *, force: bool) -> None:
             version=manifest.adopted_version(),
             python_dest=dest_of(root, plan.ecosystems.python_root),
         )
-        custom_legacy = re.search(r"(?m)^\s*-\s+id:\s+sarj-standards\s*$", text) is not None
-        owned_hook = re.search(r"(?m)^\s*-\s+id:\s+sarj-standards-(?:check|drift)\s*$", text) is not None
+        migrated, migration_error = _migrate_official_remote_hook(text, runner_prefix)
+        if migration_error is not None:
+            plan.errors.append(f"cannot safely migrate {path}: {migration_error}")
+            return
+        if migrated is not None:
+            plan.writes.append((path, migrated))
+            return
+        custom_legacy = re.search(r"(?m)^\s*-\s+id:\s+['\"]?sarj-standards['\"]?\s*$", text) is not None
+        owned_hook = _has_owned_hooks(text)
         if custom_legacy:
             plan.skips.append((path, "preserving a custom legacy sarj-standards hook"))
         elif owned_hook:
@@ -642,7 +651,7 @@ def _plan_precommit(root: Path, plan: Plan, *, force: bool) -> None:
             addition = missing if text.endswith("\n") else "\n" + missing
             plan.writes.append((path, text + addition))
         elif re.search(r"(?m)^repos:\s*(?:#.*)?$", text):
-            missing = _precommit_check_block(runner_prefix)
+            missing = _precommit_check_block(runner_prefix, item_indent=_precommit_item_indent(text))
             addition = missing if text.endswith("\n") else "\n" + missing
             plan.edits.append((path, addition))
         else:
@@ -651,25 +660,85 @@ def _plan_precommit(root: Path, plan: Plan, *, force: bool) -> None:
     _record(plan, path, f"repos:\n{block}", force=force, reason="exists")
 
 
+def _migrate_official_remote_hook(text: str, runner_prefix: str) -> tuple[str | None, str | None]:
+    """Replace a plain official umbrella hook while retaining every unrelated byte."""
+    official = tuple(
+        block for block in hooks.precommit_repo_blocks(text) if hooks.is_official_standards_repo(block.repository)
+    )
+    if not official:
+        return None, None
+    for block in official:
+        try:
+            parsed: object = yaml.safe_load(f"repos:\n{block.text}")  # pyright: ignore[reportAny] -- narrowed below.
+        except yaml.YAMLError as exc:
+            return None, f"official Standards hook contains invalid YAML: {exc}"
+        repos = manifest.list_field(manifest.as_table(parsed), "repos")
+        if len(repos) != 1:
+            return None, "official Standards repository block is not a single YAML list item"
+        repository = manifest.as_table(repos[0])
+        hook_values = manifest.list_field(repository, "hooks")
+        if not hook_values:
+            return None, "official Standards repository block has no hooks"
+        for hook_value in hook_values:
+            hook = manifest.as_table(hook_value)
+            hook_id = hook.get("id")
+            custom_keys = sorted(set(hook) - {"id"})
+            if hook_id != "sarj-standards" or custom_keys:
+                detail = (
+                    f"hook {hook_id!r} has custom keys {custom_keys}"
+                    if custom_keys
+                    else f"hook {hook_id!r} is an individual rule"
+                )
+                return None, f"{detail}; preserve its scope manually before replacing the remote block"
+    first = official[0].start
+    removed = text
+    for block in reversed(official):
+        removed = removed[: block.start] + removed[block.end :]
+    item_indents = {block.indent for block in official}
+    if len(item_indents) != 1:
+        return None, "official Standards repository blocks use inconsistent indentation"
+    insertion = _precommit_check_block(runner_prefix, item_indent=item_indents.pop())
+    migrated = removed[:first] + insertion + removed[first:]
+    return _canonicalize_owned_hooks(migrated, runner_prefix), None
+
+
+def _precommit_item_indent(text: str) -> int:
+    blocks = hooks.precommit_repo_blocks(text)
+    return blocks[0].indent if blocks else 2
+
+
 def _canonicalize_owned_hooks(text: str, runner_prefix: str) -> str:
     """Replace recognized generated hooks with one current staged hook."""
+    local_blocks = tuple(block for block in hooks.precommit_repo_blocks(text) if block.repository == "local")
+    canonical = text
+    for block in reversed(local_blocks):
+        replacement = _canonicalize_local_hook_block(block.text, runner_prefix, item_indent=block.indent)
+        canonical = canonical[: block.start] + replacement + canonical[block.end :]
+    return canonical
+
+
+def _has_owned_hooks(text: str) -> bool:
+    return any(
+        re.search(r"(?m)^\s*-\s+id:\s+['\"]?sarj-standards-(?:check|drift)['\"]?\s*(?:#.*)?$", block.text) is not None
+        for block in hooks.precommit_repo_blocks(text)
+        if block.repository == "local"
+    )
+
+
+def _canonicalize_local_hook_block(text: str, runner_prefix: str, *, item_indent: int) -> str:
+    """Canonicalize only hooks inside an explicitly local pre-commit repository."""
     lines = text.splitlines(keepends=True)
     owned = {"sarj-standards-check", "sarj-standards-drift"}
     spans: list[tuple[int, int]] = []
     for index, line in enumerate(lines):
-        match = re.match(r"^(?P<indent>\s*)-\s+id:\s+(?P<id>\S+)\s*$", line.rstrip("\n"))
+        match = re.match(
+            r"^(?P<indent>\s*)-\s+id:\s+['\"]?(?P<id>[^\s'\"#]+)['\"]?\s*(?:#.*)?$",
+            line.rstrip("\r\n"),
+        )
         if match is None or match["id"] not in owned:
             continue
         indent = len(match["indent"])
-        end = index + 1
-        while end < len(lines):
-            stripped = lines[end].lstrip()
-            candidate_indent = len(lines[end]) - len(stripped)
-            if (candidate_indent == indent and stripped.startswith("- id:")) or (
-                candidate_indent < indent and stripped.startswith("- repo:")
-            ):
-                break
-            end += 1
+        end = hooks.yaml_list_item_end(lines, index, indent)
         spans.append((index, end))
     if not spans:
         return text
@@ -678,7 +747,7 @@ def _canonicalize_owned_hooks(text: str, runner_prefix: str) -> str:
     output: list[str] = []
     for index, line in enumerate(lines):
         if index == first:
-            output.append(_precommit_hook(runner_prefix))
+            output.append(_precommit_hook(runner_prefix, hook_indent=item_indent + 4))
         if index not in removed:
             output.append(line)
     return "".join(output)
@@ -690,18 +759,26 @@ def precommit_block(*, python: bool, version: str, python_dest: str = ".") -> st
     return _precommit_check_block(runner_prefix)
 
 
-def _precommit_check_block(runner_prefix: str) -> str:
-    return f"  - repo: local\n    hooks:\n{_precommit_hook(runner_prefix)}"
-
-
-def _precommit_hook(runner_prefix: str) -> str:
+def _precommit_check_block(runner_prefix: str, *, item_indent: int = 2) -> str:
+    repo_indent = " " * item_indent
     return (
-        "      - id: sarj-standards-check\n"
-        "        name: sarj standards -- staged checks\n"
-        f"        entry: {runner_prefix} check --staged --\n"
-        "        language: system\n"
-        "        verbose: true\n"
-        "        files: '(?i)(\\.py|\\.[cm]?[jt]s|\\.[jt]sx|\\.sql|\\.tf|\\.tfvars|\\.hcl|\\.ya?ml|\\.toml|\\.jsonc|\\.mdx?|\\.(?:bash|cfg|conf|env|ini|properties|sh|tftpl|zsh)|(?:^|/)\\.env(?:\\..*)?$|(?:^|/)requirements(?:/.*|[^/]*\\.(?:txt|in))$|(?:^|/)(?:Dockerfile(?:\\..*)?|Gnumakefile|Justfile|Makefile|package\\.json|pyrightconfig\\.json))$'\n"
+        f"{repo_indent}- repo: local\n"
+        f"{repo_indent}  hooks:\n"
+        f"{_precommit_hook(runner_prefix, hook_indent=item_indent + 4)}"
+    )
+
+
+def _precommit_hook(runner_prefix: str, *, hook_indent: int = 6) -> str:
+    item = " " * hook_indent
+    field = " " * (hook_indent + 2)
+    return (
+        f"{item}- id: sarj-standards-check\n"
+        f"{field}name: sarj standards -- staged checks\n"
+        f"{field}entry: {runner_prefix} check --staged --\n"
+        f"{field}language: system\n"
+        f"{field}verbose: true\n"
+        f"{field}pass_filenames: false\n"
+        f"{field}files: '(?i)(\\.py|\\.[cm]?[jt]s|\\.[jt]sx|\\.sql|\\.tf|\\.tfvars|\\.hcl|\\.ya?ml|\\.toml|\\.jsonc|\\.mdx?|\\.(?:bash|cfg|conf|env|ini|properties|sh|tftpl|zsh)|(?:^|/)\\.env(?:\\..*)?$|(?:^|/)requirements(?:/.*|[^/]*\\.(?:txt|in))$|(?:^|/)(?:Dockerfile(?:\\..*)?|Gnumakefile|Justfile|Makefile|package\\.json|pyrightconfig\\.json))$'\n"
     )
 
 
