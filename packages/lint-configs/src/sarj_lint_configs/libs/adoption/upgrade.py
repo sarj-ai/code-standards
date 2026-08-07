@@ -191,6 +191,7 @@ def _install_ecosystems(ecosystems: scaffold.Ecosystems, configs: Sequence[str])
         typescript_root=ecosystems.typescript_root if typescript else None,
         typescript_install_root=ecosystems.typescript_install_root if typescript else None,
         client=ecosystems.client,
+        yarn=ecosystems.yarn,
     )
 
 

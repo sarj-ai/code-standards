@@ -221,7 +221,10 @@ def diagnose_adoption_health(root: Path, selected: Sequence[Path] = ()) -> list[
 
 
 def _adoption_health_files(root: Path, selected: Sequence[Path]) -> tuple[Path, ...]:
-    candidates = [*selected, manifest.manifest_path(root)]
+    candidates = [
+        *(path if path.is_absolute() else root / path for path in selected),
+        manifest.manifest_path(root),
+    ]
     candidates.extend(
         root / name for name in (*hooks.PRECOMMIT_NAMES, "pyproject.toml", "package.json", "pyrightconfig.json")
     )
@@ -300,14 +303,18 @@ def _git_worktree(root: Path) -> bool:
     git = shutil.which("git")
     if git is None:
         return False
-    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed executable and argv.
-        (git, "rev-parse", "--is-inside-work-tree"),
-        cwd=root,
-        check=False,
-        capture_output=True,
-        env=_git_environment(),
-        text=True,
-    )
+    try:
+        completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed executable and argv.
+            (git, "rev-parse", "--is-inside-work-tree"),
+            cwd=root,
+            check=False,
+            capture_output=True,
+            env=_git_environment(),
+            text=True,
+            timeout=_GIT_DISCOVERY_TIMEOUT_SECONDS,
+        )
+    except OSError, subprocess.TimeoutExpired:
+        return False
     return completed.returncode == 0 and completed.stdout.strip() == "true"
 
 
@@ -315,14 +322,18 @@ def _installed_precommit_hook(root: Path) -> bool:
     git = shutil.which("git")
     if git is None:
         return False
-    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed executable and argv.
-        (git, "rev-parse", "--git-path", "hooks/pre-commit"),
-        cwd=root,
-        check=False,
-        capture_output=True,
-        env=_git_environment(),
-        text=True,
-    )
+    try:
+        completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed executable and argv.
+            (git, "rev-parse", "--git-path", "hooks/pre-commit"),
+            cwd=root,
+            check=False,
+            capture_output=True,
+            env=_git_environment(),
+            text=True,
+            timeout=_GIT_DISCOVERY_TIMEOUT_SECONDS,
+        )
+    except OSError, subprocess.TimeoutExpired:
+        return False
     if completed.returncode:
         return False
     hook = Path(completed.stdout.strip())

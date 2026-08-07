@@ -25,6 +25,13 @@ class PackageManager(StrEnum):
     BUN = "bun"
 
 
+class YarnVariant(StrEnum):
+    """The two mutually incompatible Yarn command dialects."""
+
+    CLASSIC = "classic"
+    BERRY = "berry"
+
+
 #: Lockfiles in deterministic package-manager precedence order.
 LOCKFILES: Final[tuple[tuple[str, PackageManager], ...]] = (
     ("pnpm-lock.yaml", PackageManager.PNPM),
@@ -35,6 +42,7 @@ LOCKFILES: Final[tuple[tuple[str, PackageManager], ...]] = (
 )
 
 _ESLINT: Final = "eslint"
+_YARN_BERRY_MINIMUM_MAJOR: Final = 2
 _YAML_ENTRY = re.compile(r'^\s*(?P<key>"[^"]+"|\'[^\']+\'|[^:#]+):\s*(?P<value>[^#\n]+?)\s*(?:#.*)?$')
 
 
@@ -75,7 +83,19 @@ def _has_lock(root: Path) -> bool:
     return any((root / name).is_file() for name, _client in LOCKFILES)
 
 
-def _declared_manager(package_json: Path) -> PackageManager | None:
+def yarn_variant(root: Path) -> YarnVariant:
+    """Tell Yarn 1 from Berry without running either."""
+    declared = _declared_manager_spec(root / "package.json")
+    if declared is not None and declared.split("@", 1)[0] == PackageManager.YARN:
+        major = declared.partition("@")[2].partition(".")[0]
+        if major.isdigit():
+            return YarnVariant.CLASSIC if int(major) < _YARN_BERRY_MINIMUM_MAJOR else YarnVariant.BERRY
+    if (root / ".yarnrc.yml").is_file():
+        return YarnVariant.BERRY
+    return YarnVariant.CLASSIC
+
+
+def _declared_manager_spec(package_json: Path) -> str | None:
     if not package_json.is_file():
         return None
     try:
@@ -84,7 +104,11 @@ def _declared_manager(package_json: Path) -> PackageManager | None:
         )
     except OSError, ValueError:
         return None
-    declared = manifest.text_field(manifest.as_table(parsed), "packageManager")
+    return manifest.text_field(manifest.as_table(parsed), "packageManager")
+
+
+def _declared_manager(package_json: Path) -> PackageManager | None:
+    declared = _declared_manager_spec(package_json)
     if declared is None:
         return None
     name = declared.split("@", 1)[0]
@@ -181,7 +205,12 @@ def _resolved_tree(value: object) -> object:
     return _resolved(value, manifest.eslint_peers())
 
 
-def install_command(client: PackageManager, *, workspace: bool = False) -> str:
+def install_command(
+    client: PackageManager,
+    *,
+    workspace: bool = False,
+    yarn: YarnVariant = YarnVariant.CLASSIC,
+) -> str:
     """Build the script-free command that locks package.json's exact peers."""
     match client:
         case PackageManager.NPM:
@@ -190,14 +219,21 @@ def install_command(client: PackageManager, *, workspace: bool = False) -> str:
             _ = workspace
             return "pnpm install --no-frozen-lockfile --ignore-scripts"
         case PackageManager.YARN:
-            return "yarn install --mode=skip-builds"
+            if yarn is YarnVariant.BERRY:
+                return "yarn install --mode=skip-builds"
+            return "yarn install --ignore-scripts"
         case PackageManager.BUN:
             return "bun install --ignore-scripts"
 
 
-def install_argv(client: PackageManager, *, workspace: bool = False) -> Sequence[str]:
+def install_argv(
+    client: PackageManager,
+    *,
+    workspace: bool = False,
+    yarn: YarnVariant = YarnVariant.CLASSIC,
+) -> Sequence[str]:
     _ = workspace
-    return tuple(install_command(client).split())
+    return tuple(install_command(client, yarn=yarn).split())
 
 
 def exec_argv(client: PackageManager, *command: str) -> Sequence[str]:
@@ -212,18 +248,22 @@ def exec_argv(client: PackageManager, *command: str) -> Sequence[str]:
             return ("bunx", "--bun", *command)
 
 
-def install_note(client: PackageManager) -> str | None:
+def install_note(client: PackageManager, *, yarn: YarnVariant = YarnVariant.CLASSIC) -> str | None:
     """Explain the one thing each client needs beyond the install command."""
     if client is PackageManager.YARN:
-        return (
+        note = (
             "Yarn resolves `resolutions` at install time, so re-run `yarn install`"
             f" after the block is written -- and note Yarn pins {_ESLINT} for"
             " eslint-plugin-react to an exact version rather than tracking your own."
-            " Yarn 4.15+ also refuses a package published within its minimum release"
-            " age (`All versions satisfying ... are quarantined`); if a fresh"
-            " @sarj/eslint-plugin trips that, set `npmMinimalAgeGate: 0` in"
-            " .yarnrc.yml or wait it out."
         )
+        if yarn is YarnVariant.BERRY:
+            note += (
+                " Yarn 4.15+ also refuses a package published within its minimum release"
+                " age (`All versions satisfying ... are quarantined`); if a fresh"
+                " @sarj/eslint-plugin trips that, set `npmMinimalAgeGate: 0` in"
+                " .yarnrc.yml or wait it out."
+            )
+        return note
     if client is PackageManager.PNPM:
         return (
             "Keep pnpm overrides at the detected workspace root; pnpm 11 workspaces"

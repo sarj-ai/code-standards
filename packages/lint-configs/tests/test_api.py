@@ -239,6 +239,47 @@ def test_standards_facade_update_targets_latest_by_default(tmp_path: Path, monke
     ]
 
 
+@pytest.mark.parametrize(
+    ("check_only", "expected_status", "expected_finding"),
+    [
+        (True, api.Status.DRIFT, "update.latest.available"),
+        (False, api.Status.FAILED, "update.latest.failed"),
+    ],
+)
+def test_latest_update_exit_one_is_truthful_and_has_no_parent_timeout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    check_only: bool,
+    expected_status: api.Status,
+    expected_finding: str,
+) -> None:
+    class EmptyPlan:
+        changes: tuple[()] = ()
+
+    calls: list[dict[str, object]] = []
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(kwargs)
+        return subprocess.CompletedProcess(command, 1, "", "postflight drift")
+
+    def plan(_root: Path) -> EmptyPlan:
+        return EmptyPlan()
+
+    def which(_name: str) -> str:
+        return "/usr/bin/uvx"
+
+    monkeypatch.setattr(api, "plan_upgrade", plan)
+    monkeypatch.setattr("sarj_lint_configs.api.shutil.which", which)
+    monkeypatch.setattr("sarj_lint_configs.api.subprocess.run", run)
+
+    result = api.Standards(tmp_path).update(install=False, check_only=check_only)
+
+    assert result.status is expected_status
+    assert result.findings[0].id == expected_finding
+    assert "timeout" not in calls[0]
+
+
 def test_standards_facade_installed_no_install_reports_dependency_setup_as_pending(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

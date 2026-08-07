@@ -61,7 +61,7 @@ def install_commands(
         commands.append(
             Command(
                 "ESLint peers",
-                packagemanager.install_argv(ecosystems.client, workspace=is_workspace),
+                packagemanager.install_argv(ecosystems.client, workspace=is_workspace, yarn=ecosystems.yarn),
                 install_root,
             )
         )

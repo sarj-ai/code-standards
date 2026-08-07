@@ -1,4 +1,6 @@
 import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import tseslint from "typescript-eslint";
 import react from "eslint-plugin-react";
@@ -13,7 +15,11 @@ import betterTailwindcss from "eslint-plugin-better-tailwindcss";
 import sarj from "@sarj/eslint-plugin";
 import zod from "eslint-plugin-zod";
 
-const HAS_TYPE_PROJECT = existsSync("tsconfig.json") || existsSync("jsconfig.json");
+const CONFIG_DIRECTORY = dirname(fileURLToPath(import.meta.url));
+const hasTypeProject = (directory) =>
+  existsSync(join(directory, "tsconfig.json")) || existsSync(join(directory, "jsconfig.json"));
+const TYPE_PROJECT_ROOT = [CONFIG_DIRECTORY, process.cwd()].find(hasTypeProject) ?? CONFIG_DIRECTORY;
+const HAS_TYPE_PROJECT = hasTypeProject(TYPE_PROJECT_ROOT);
 const UNTYPED_RULE_OVERRIDES = Object.fromEntries(
   Object.entries(tseslint.plugin.rules)
     .filter(([, rule]) => rule.meta?.docs?.requiresTypeChecking === true)
@@ -494,7 +500,7 @@ const config = [
       parser: tseslint.parser,
       parserOptions: {
         projectService: HAS_TYPE_PROJECT,
-        tsconfigRootDir: process.cwd(),
+        tsconfigRootDir: TYPE_PROJECT_ROOT,
         ecmaFeatures: { jsx: true },
       },
     },

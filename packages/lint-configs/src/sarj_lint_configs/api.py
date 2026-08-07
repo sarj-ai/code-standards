@@ -476,9 +476,8 @@ class Standards:
                 capture_output=True,
                 text=True,
                 env=environment,
-                timeout=120,
             )
-        except (OSError, subprocess.TimeoutExpired) as exc:
+        except OSError as exc:
             finding = Finding("update.latest.failed", "error", str(exc))
             return Result(Status.FAILED, findings=(finding,), exit_code=_INVALID_EXIT)
         output = (completed.stderr or completed.stdout).strip()
@@ -487,8 +486,15 @@ class Standards:
             changes = () if check_only else (Change("update", "applied the latest resolved compatibility bundle"),)
             return Result(status, changes=changes)
         if completed.returncode == 1:
-            finding = Finding("update.latest.available", "warning", output or "a standards update is available")
-            return Result(Status.DRIFT, findings=(finding,), exit_code=1)
+            if check_only:
+                finding = Finding("update.latest.available", "warning", output or "a standards update is available")
+                return Result(Status.DRIFT, findings=(finding,), exit_code=1)
+            finding = Finding(
+                "update.latest.failed",
+                "error",
+                output or "the latest standards update did not converge; tracked configuration files were restored",
+            )
+            return Result(Status.FAILED, findings=(finding,), exit_code=1)
         finding = Finding("update.latest.failed", "error", output or "latest standards update failed")
         return Result(Status.FAILED, findings=(finding,), exit_code=completed.returncode)
 

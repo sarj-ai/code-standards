@@ -19,7 +19,7 @@ import yaml
 from sarj_lint_configs.libs.filesystem import is_link_like
 
 from . import hooks, launcher, manifest, packagemanager
-from .packagemanager import LOCKFILES, Overrides, PackageManager
+from .packagemanager import LOCKFILES, Overrides, PackageManager, YarnVariant
 
 
 if TYPE_CHECKING:
@@ -36,6 +36,7 @@ class Ecosystems:
     typescript_root: Path | None = None
     typescript_install_root: Path | None = None
     client: PackageManager = PackageManager.NPM
+    yarn: YarnVariant = YarnVariant.CLASSIC
 
     @property
     def any(self) -> bool:
@@ -116,13 +117,19 @@ def detect(
     python_root = _override(root, python_dest) or _python_root(root)
     typescript_root = _override(root, typescript_dest) or _typescript_root(root)
     install_root = packagemanager.workspace_root(typescript_root, root) if typescript_root else None
+    client = packagemanager.detect(install_root) if install_root else PackageManager.NPM
     return Ecosystems(
         python=python_root is not None,
         typescript=typescript_root is not None,
         python_root=python_root,
         typescript_root=typescript_root,
         typescript_install_root=install_root,
-        client=packagemanager.detect(install_root) if install_root else PackageManager.NPM,
+        client=client,
+        yarn=(
+            packagemanager.yarn_variant(install_root)
+            if install_root is not None and client is PackageManager.YARN
+            else YarnVariant.CLASSIC
+        ),
     )
 
 
@@ -468,9 +475,9 @@ def _plan_typescript(root: Path, plan: Plan, *, force: bool) -> None:
     is_workspace = install_root != root or (install_root / "pnpm-workspace.yaml").is_file()
     plan.notes.append(
         f"detected {client} -- install the tested ESLint peer set:\n"
-        f"    {packagemanager.install_command(client, workspace=is_workspace)}"
+        f"    {packagemanager.install_command(client, workspace=is_workspace, yarn=plan.ecosystems.yarn)}"
     )
-    caveat = packagemanager.install_note(client)
+    caveat = packagemanager.install_note(client, yarn=plan.ecosystems.yarn)
     if caveat is not None:
         plan.notes.append(caveat)
 
@@ -706,7 +713,7 @@ def _plan_precommit(root: Path, plan: Plan, *, force: bool) -> None:
             comment = inline.group("comment")
             opened = "repos:" if comment is None else f"repos: {comment}"
             text = f"{text[: inline.start()]}{opened}{text[inline.end() :]}"
-            missing = _precommit_check_block(runner_prefix, repo_indent=_precommit_repo_indent(text))
+            missing = _precommit_check_block(runner_prefix, item_indent=_precommit_item_indent(text))
             addition = missing if text.endswith("\n") else "\n" + missing
             plan.writes.append((path, text + addition))
         elif re.search(r"(?m)^repos:\s*(?:#.*)?$", text):
@@ -859,8 +866,6 @@ def _canonicalize_local_hook_block(
     if not spans:
         return text
     first = spans[0][0]
-    indent_match = re.match(r"^(?P<indent>\s*)", lines[first])
-    hook_indent = "      " if indent_match is None else indent_match["indent"]
     removed = {index for start, end in spans for index in range(start, end)}
     output: list[str] = []
     for index, line in enumerate(lines):
@@ -901,16 +906,6 @@ def _precommit_hook(runner_prefix: str, *, hook_indent: int = 6) -> str:
         f"{field}files: '{hooks.PRECOMMIT_FILES_PATTERN}'\n"
         f"{field}stages: [pre-commit]\n"
     )
-
-
-def _block_indent(text: str) -> str:
-    match = re.match(r"^(?P<indent> *)-\s+repo:", text)
-    return "  " if match is None else match["indent"]
-
-
-def _precommit_repo_indent(text: str) -> str:
-    blocks = hooks.precommit_repo_blocks(text)
-    return "  " if not blocks else _block_indent(blocks[0].text)
 
 
 def _record(plan: Plan, path: Path, contents: str, *, force: bool, reason: str) -> None:
@@ -978,7 +973,7 @@ def github_ci_workflow(root: Path, *, version: str) -> str:
             (
                 "      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7",
                 "      - name: Install JavaScript dependencies",
-                f"        run: corepack enable && {_ci_javascript_install(ecosystems.client)}",
+                f"        run: corepack enable && {_ci_javascript_install(ecosystems.client, ecosystems.yarn)}",
             )
         )
     if ecosystems.python:
@@ -988,11 +983,12 @@ def github_ci_workflow(root: Path, *, version: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _ci_javascript_install(client: PackageManager) -> str:
+def _ci_javascript_install(client: PackageManager, yarn: YarnVariant) -> str:
+    if client is PackageManager.YARN:
+        return "yarn install --immutable" if yarn is YarnVariant.BERRY else "yarn install --frozen-lockfile"
     return {
         PackageManager.NPM: "npm ci --no-audit --no-fund",
         PackageManager.PNPM: "pnpm install --frozen-lockfile",
-        PackageManager.YARN: "yarn install --immutable",
         PackageManager.BUN: "bun install --frozen-lockfile",
     }[client]
 

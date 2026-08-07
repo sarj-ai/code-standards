@@ -106,11 +106,14 @@ def test_every_eslint_import_has_a_pinned_peer() -> None:
     assert imported - pinned == set(), "eslint.strict.mjs imports a package with no pin in eslint.peers.json"
 
 
-def test_eslint_config_degrades_cleanly_without_a_type_project() -> None:
-    text = ESLINT_STRICT.read_text(encoding="utf-8")
+@pytest.mark.parametrize("config_name", ["eslint.strict.mjs", "eslint.application.mjs"])
+def test_eslint_config_degrades_cleanly_without_a_type_project(config_name: str) -> None:
+    text = (cli.CONFIGS_DIR / config_name).read_text(encoding="utf-8")
 
-    assert 'existsSync("tsconfig.json") || existsSync("jsconfig.json")' in text
+    assert "dirname(fileURLToPath(import.meta.url))" in text
+    assert "[CONFIG_DIRECTORY, process.cwd()].find(hasTypeProject)" in text
     assert "projectService: HAS_TYPE_PROJECT" in text
+    assert "tsconfigRootDir: TYPE_PROJECT_ROOT" in text
     assert "UNTYPED_RULE_OVERRIDES" in text
     assert '"**/eslint.strict.mjs"' in text
     assert '"**/eslint.config.mjs"' in text

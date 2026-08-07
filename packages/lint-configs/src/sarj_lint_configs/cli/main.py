@@ -221,8 +221,10 @@ def cmd_peers(args: _Args) -> int:
     client = packagemanager.detect(install_root)
     overrides = packagemanager.overrides_for(client)
     workspace = install_root != (detected.typescript_root or root) or (install_root / "pnpm-workspace.yaml").is_file()
+    yarn = packagemanager.yarn_variant(install_root)
     print(
-        f"\ndetected {client} at {install_root}; install with:\n{packagemanager.install_command(client, workspace=workspace)}"
+        f"\ndetected {client} at {install_root}; install with:\n"
+        f"{packagemanager.install_command(client, workspace=workspace, yarn=yarn)}"
     )
     if client is packagemanager.PackageManager.PNPM and (install_root / "pnpm-workspace.yaml").is_file():
         rendered = "\n".join(f"  {json.dumps(key)}: {json.dumps(value)}" for key, value in overrides.entries.items())

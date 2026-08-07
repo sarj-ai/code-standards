@@ -27,7 +27,7 @@ def test_verification_uses_isolated_tool_binaries_in_each_python_project(tmp_pat
     commands = lifecycle.verification_commands(ecosystems)
 
     assert [command.cwd for command in commands] == [first, first, second, second]
-    assert {Path(command.argv[0]).name for command in commands} == {"ruff", "basedpyright"}
+    assert {Path(command.argv[0]).stem for command in commands} == {"ruff", "basedpyright"}
     assert {command.label for command in commands} == {"Ruff", "BasedPyright"}
 
 
