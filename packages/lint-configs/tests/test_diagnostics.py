@@ -46,6 +46,20 @@ def test_source_document_preserves_byte_offsets_and_utf16_columns(tmp_path: Path
     assert after_emoji == Position(line=0, character=7, byte_offset=9)
 
 
+def test_source_document_preserves_invalid_utf8_offsets_without_losing_the_report(tmp_path: Path) -> None:
+    source = tmp_path / "legacy.py"
+    raw = b"value = '\xff'\n"
+    source.write_bytes(raw)
+
+    document = SourceDocument.read(source)
+
+    assert document.text.encode("utf-8", errors="surrogateescape") == raw
+    point = document.point(line=1, column=12)
+    assert point is not None
+    assert point.byte_offset == len(raw.rstrip(b"\n"))
+    assert document.byte_point(line=1, column=12) == point
+
+
 def test_versioned_json_schema_is_bundled() -> None:
     raw: object = json.loads(ANALYSIS_SCHEMA.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
     schema = as_table(raw)

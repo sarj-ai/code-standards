@@ -651,7 +651,7 @@ def _plan_precommit(root: Path, plan: Plan, *, force: bool) -> None:
             addition = missing if text.endswith("\n") else "\n" + missing
             plan.writes.append((path, text + addition))
         elif re.search(r"(?m)^repos:\s*(?:#.*)?$", text):
-            missing = _precommit_check_block(runner_prefix)
+            missing = _precommit_check_block(runner_prefix, item_indent=_precommit_item_indent(text))
             addition = missing if text.endswith("\n") else "\n" + missing
             plan.edits.append((path, addition))
         else:
@@ -694,9 +694,17 @@ def _migrate_official_remote_hook(text: str, runner_prefix: str) -> tuple[str | 
     removed = text
     for block in reversed(official):
         removed = removed[: block.start] + removed[block.end :]
-    insertion = _precommit_check_block(runner_prefix)
+    item_indents = {block.indent for block in official}
+    if len(item_indents) != 1:
+        return None, "official Standards repository blocks use inconsistent indentation"
+    insertion = _precommit_check_block(runner_prefix, item_indent=item_indents.pop())
     migrated = removed[:first] + insertion + removed[first:]
     return _canonicalize_owned_hooks(migrated, runner_prefix), None
+
+
+def _precommit_item_indent(text: str) -> int:
+    blocks = hooks.precommit_repo_blocks(text)
+    return blocks[0].indent if blocks else 2
 
 
 def _canonicalize_owned_hooks(text: str, runner_prefix: str) -> str:
@@ -704,7 +712,7 @@ def _canonicalize_owned_hooks(text: str, runner_prefix: str) -> str:
     local_blocks = tuple(block for block in hooks.precommit_repo_blocks(text) if block.repository == "local")
     canonical = text
     for block in reversed(local_blocks):
-        replacement = _canonicalize_local_hook_block(block.text, runner_prefix)
+        replacement = _canonicalize_local_hook_block(block.text, runner_prefix, item_indent=block.indent)
         canonical = canonical[: block.start] + replacement + canonical[block.end :]
     return canonical
 
@@ -717,7 +725,7 @@ def _has_owned_hooks(text: str) -> bool:
     )
 
 
-def _canonicalize_local_hook_block(text: str, runner_prefix: str) -> str:
+def _canonicalize_local_hook_block(text: str, runner_prefix: str, *, item_indent: int) -> str:
     """Canonicalize only hooks inside an explicitly local pre-commit repository."""
     lines = text.splitlines(keepends=True)
     owned = {"sarj-standards-check", "sarj-standards-drift"}
@@ -739,7 +747,7 @@ def _canonicalize_local_hook_block(text: str, runner_prefix: str) -> str:
     output: list[str] = []
     for index, line in enumerate(lines):
         if index == first:
-            output.append(_precommit_hook(runner_prefix))
+            output.append(_precommit_hook(runner_prefix, hook_indent=item_indent + 4))
         if index not in removed:
             output.append(line)
     return "".join(output)
@@ -751,19 +759,26 @@ def precommit_block(*, python: bool, version: str, python_dest: str = ".") -> st
     return _precommit_check_block(runner_prefix)
 
 
-def _precommit_check_block(runner_prefix: str) -> str:
-    return f"  - repo: local\n    hooks:\n{_precommit_hook(runner_prefix)}"
-
-
-def _precommit_hook(runner_prefix: str) -> str:
+def _precommit_check_block(runner_prefix: str, *, item_indent: int = 2) -> str:
+    repo_indent = " " * item_indent
     return (
-        "      - id: sarj-standards-check\n"
-        "        name: sarj standards -- staged checks\n"
-        f"        entry: {runner_prefix} check --staged --\n"
-        "        language: system\n"
-        "        verbose: true\n"
-        "        pass_filenames: false\n"
-        "        files: '(?i)(\\.py|\\.[cm]?[jt]s|\\.[jt]sx|\\.sql|\\.tf|\\.tfvars|\\.hcl|\\.ya?ml|\\.toml|\\.jsonc|\\.mdx?|\\.(?:bash|cfg|conf|env|ini|properties|sh|tftpl|zsh)|(?:^|/)\\.env(?:\\..*)?$|(?:^|/)requirements(?:/.*|[^/]*\\.(?:txt|in))$|(?:^|/)(?:Dockerfile(?:\\..*)?|Gnumakefile|Justfile|Makefile|package\\.json|pyrightconfig\\.json))$'\n"
+        f"{repo_indent}- repo: local\n"
+        f"{repo_indent}  hooks:\n"
+        f"{_precommit_hook(runner_prefix, hook_indent=item_indent + 4)}"
+    )
+
+
+def _precommit_hook(runner_prefix: str, *, hook_indent: int = 6) -> str:
+    item = " " * hook_indent
+    field = " " * (hook_indent + 2)
+    return (
+        f"{item}- id: sarj-standards-check\n"
+        f"{field}name: sarj standards -- staged checks\n"
+        f"{field}entry: {runner_prefix} check --staged --\n"
+        f"{field}language: system\n"
+        f"{field}verbose: true\n"
+        f"{field}pass_filenames: false\n"
+        f"{field}files: '(?i)(\\.py|\\.[cm]?[jt]s|\\.[jt]sx|\\.sql|\\.tf|\\.tfvars|\\.hcl|\\.ya?ml|\\.toml|\\.jsonc|\\.mdx?|\\.(?:bash|cfg|conf|env|ini|properties|sh|tftpl|zsh)|(?:^|/)\\.env(?:\\..*)?$|(?:^|/)requirements(?:/.*|[^/]*\\.(?:txt|in))$|(?:^|/)(?:Dockerfile(?:\\..*)?|Gnumakefile|Justfile|Makefile|package\\.json|pyrightconfig\\.json))$'\n"
     )
 
 

@@ -187,7 +187,8 @@ def _selected_eslint_candidates(root: Path, paths: Iterable[str]) -> set[Path]:
         if candidate.is_dir() and candidate.name not in _PROJECT_SKIP_DIRS:
             sources = _eslint_sources(candidate)
             owners = {_owning_typescript_project(source, root) for source in sources}
-            if sources and None not in owners and len(owners) == 1:
+            candidate_owner = _owning_typescript_project(candidate, root)
+            if sources and owners == {candidate_owner} and candidate_owner is not None:
                 candidates.add(candidate)
             else:
                 candidates.update(sources)

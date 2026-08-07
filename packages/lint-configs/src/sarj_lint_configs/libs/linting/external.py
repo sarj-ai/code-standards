@@ -561,6 +561,6 @@ def _relative(path: Path, root: Path) -> str:
 def _redact_message(value: str, root: Path) -> str:
     message = value.replace(str(root), ".")
     message = re.sub(r"(?i)\b(token|secret|password|api[_-]?key)=\S+", r"\1=<redacted>", message)
-    message = re.sub(r"(?<![\w:])/(?:[^\s:]+/?)+", "<path>", message)
+    message = re.sub(r"(?<![\w:./])/(?:[^\s:]+/?)+", "<path>", message)
     message = re.sub(r"\b[A-Za-z]:\\[^\s]+", "<path>", message)
     return message[:1024]

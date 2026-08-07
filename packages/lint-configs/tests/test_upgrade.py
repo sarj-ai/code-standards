@@ -9,6 +9,7 @@ from dataclasses import replace
 from typing import TYPE_CHECKING
 
 import pytest
+import yaml
 
 from sarj_lint_configs import __main__ as cli
 from sarj_lint_configs import doctor, manifest, upgrade
@@ -462,6 +463,31 @@ def test_upgrade_migrates_plain_official_remote_umbrella_hook(tmp_path: Path) ->
     before = migrated
     assert upgrade.apply(upgrade.build_plan(tmp_path), install=False) == 0
     assert config.read_text(encoding="utf-8") == before
+
+
+@pytest.mark.parametrize("item_indent", [0, 4])
+def test_upgrade_preserves_existing_precommit_repo_indentation(tmp_path: Path, item_indent: int) -> None:
+    _outdated_python_repo(tmp_path)
+    config = tmp_path / ".pre-commit-config.yaml"
+    item = " " * item_indent
+    field = " " * (item_indent + 2)
+    hook = " " * (item_indent + 4)
+    config.write_text(
+        "repos:\n"
+        f"{item}- repo: https://github.com/sarj-ai/standards\n"
+        f"{field}rev: lint-configs-v0.1.0\n"
+        f"{field}hooks:\n"
+        f"{hook}- id: sarj-standards\n",
+        encoding="utf-8",
+    )
+
+    assert upgrade.apply(upgrade.build_plan(tmp_path), install=False) == 0
+
+    migrated = config.read_text(encoding="utf-8")
+    loaded: object = yaml.safe_load(migrated)  # pyright: ignore[reportAny] -- validate the emitted YAML boundary.
+    assert isinstance(loaded, dict)
+    assert f"{item}- repo: local\n" in migrated
+    assert migrated.count("id: sarj-standards-check") == 1
 
 
 def test_upgrade_refuses_to_expand_custom_remote_hook_scope(tmp_path: Path) -> None:

@@ -267,7 +267,11 @@ def test_external_failure_redacts_secrets_and_absolute_paths(tmp_path: Path) -> 
 
     def failed(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         _ = argv, cwd
-        return ProcessOutput(2, "", "token=SUPERSECRET /Users/alice/private/config")
+        return ProcessOutput(
+            2,
+            "",
+            f"token=SUPERSECRET {cwd}/src/config /Users/alice/private/config https://docs.example.com/remediation",
+        )
 
     reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=failed)
     messages = "\n".join(issue.message for report in reports for issue in report.issues)
@@ -275,6 +279,8 @@ def test_external_failure_redacts_secrets_and_absolute_paths(tmp_path: Path) -> 
     assert "SUPERSECRET" not in messages
     assert "/Users/alice" not in messages
     assert "<redacted>" in messages
+    assert "./src/config" in messages
+    assert "https://docs.example.com/remediation" in messages
 
 
 def test_eslint_rejects_boolean_coordinates(tmp_path: Path) -> None:

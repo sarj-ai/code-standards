@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
-import pytest  # ruff: ignore[typing-only-third-party-import] -- parametrization is evaluated at runtime.
+import pytest
 
 from sarj_lint_configs.libs.adoption import lifecycle, manifest, scaffold
 from sarj_lint_configs.libs.adoption.packagemanager import PackageManager
@@ -161,6 +161,27 @@ def test_selected_eslint_partitions_sibling_projects_without_dropping_files(tmp_
 
     assert [command.cwd for command in commands] == [tmp_path / "a", tmp_path / "b"]
     assert all(command.argv[-1] == "app.ts" for command in commands)
+
+
+@pytest.mark.parametrize("root_has_package", [False, True])
+def test_selected_eslint_keeps_a_directory_with_its_nested_project_owner(
+    tmp_path: Path, *, root_has_package: bool
+) -> None:
+    if root_has_package:
+        (tmp_path / "package.json").write_text("{}\n", encoding="utf-8")
+    project = tmp_path / "apps" / "web"
+    project.mkdir(parents=True)
+    (project / "package.json").write_text("{}\n", encoding="utf-8")
+    (project / "package-lock.json").write_text('{"lockfileVersion": 3}\n', encoding="utf-8")
+    (project / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
+    (project / "app.ts").write_text("export const value = 1;\n", encoding="utf-8")
+
+    commands = lifecycle.selected_eslint_commands(tmp_path, ["."], label="analysis")
+
+    assert len(commands) == 1
+    assert commands[0].cwd == project
+    assert commands[0].argv[:4] == ("npx", "--no-install", "eslint", "--")
+    assert set(commands[0].argv[4:]) == {"app.ts", "eslint.config.mjs"}
 
 
 def test_staged_eslint_supports_every_eslint_module_suffix(tmp_path: Path) -> None:

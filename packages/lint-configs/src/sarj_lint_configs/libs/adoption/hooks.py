@@ -42,6 +42,7 @@ class PrecommitRepoBlock(NamedTuple):
 
     start: int
     end: int
+    indent: int
     repository: str | None
     text: str
 
@@ -64,7 +65,7 @@ def precommit_repo_blocks(text: str) -> tuple[PrecommitRepoBlock, ...]:
         start = offsets[index]
         end = offsets[end_index] if end_index < len(offsets) else len(text)
         repository = _repository_scalar(match.group("value"))
-        blocks.append(PrecommitRepoBlock(start, end, repository, text[start:end]))
+        blocks.append(PrecommitRepoBlock(start, end, item_indent, repository, text[start:end]))
     return tuple(blocks)
 
 
@@ -94,7 +95,13 @@ def _precommit_repo_section(lines: list[str]) -> tuple[int, int, int] | None:
     section_end = len(lines)
     for index in range(header + 1, len(lines)):
         stripped = lines[index].strip()
-        if stripped and not stripped.startswith("#") and len(lines[index]) == len(lines[index].lstrip(" ")):
+        repo_item = _REPO_LINE.match(lines[index]) is not None
+        if (
+            stripped
+            and not stripped.startswith("#")
+            and not repo_item
+            and len(lines[index]) == len(lines[index].lstrip(" "))
+        ):
             section_end = index
             break
     item_indent = next(
