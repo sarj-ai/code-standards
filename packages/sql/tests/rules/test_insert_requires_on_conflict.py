@@ -12,8 +12,11 @@ if TYPE_CHECKING:
     from sarj_sql_lint.rule_base import Diagnostic
 
 
-def _check(source: str) -> list[Diagnostic]:
-    return InsertRequiresOnConflict().check(Path("migration.sql"), source)
+P = Path("supabase/migrations/001_seed.sql")
+
+
+def _check(source: str, path: Path = P) -> list[Diagnostic]:
+    return InsertRequiresOnConflict().check(path, source)
 
 
 def test_flags_bare_insert():
@@ -73,6 +76,34 @@ INSERT INTO plan (name) VALUES ('pro');
 def test_on_conflict_in_trailing_comment_does_not_count():
     src = "INSERT INTO plan (name) VALUES ('free'); -- TODO add ON CONFLICT"
     assert len(_check(src)) == 1
+
+
+def test_insert_select_guarded_against_its_target_is_idempotent() -> None:
+    source = """
+    INSERT INTO plan (name)
+    SELECT source.name FROM source
+    WHERE NOT EXISTS (SELECT 1 FROM plan WHERE plan.name = source.name);
+    """
+    assert _check(source) == []
+
+
+def test_insert_select_guarded_against_an_unrelated_table_still_fires() -> None:
+    source = """
+    INSERT INTO plan (name)
+    SELECT source.name FROM source
+    WHERE NOT EXISTS (SELECT 1 FROM audit WHERE audit.name = source.name);
+    """
+    assert len(_check(source)) == 1
+
+
+def test_commented_not_exists_guard_does_not_excuse_insert_select() -> None:
+    source = """
+    INSERT INTO plan (name)
+    SELECT source.name FROM source
+    -- WHERE NOT EXISTS (SELECT 1 FROM plan WHERE plan.name = source.name)
+    ;
+    """
+    assert len(_check(source)) == 1
 
 
 def test_semicolon_inside_string_does_not_mis_split():
@@ -195,3 +226,44 @@ def test_bare_insert_outside_any_dollar_body_still_fires():
     src = f"{_GUARDED_SEED}\nINSERT INTO plan (name) VALUES ('free');"
     diags = _check(src)
     assert len(diags) == 1
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        Path("queries/create_plan.sql"),
+        Path("testdata/insert_plan.sql"),
+        Path("fixtures/migrations/001_seed.sql"),
+        Path("mocks/migrations/001_seed.sql"),
+        Path("snapshots/migrations/001_seed.sql"),
+    ],
+    ids=["query", "testdata", "fixture", "mock", "snapshot"],
+)
+def test_non_migration_and_non_production_sql_are_out_of_scope(path: Path) -> None:
+    assert _check("INSERT INTO plan (name) VALUES ('free');", path) == []
+
+
+@pytest.mark.parametrize(
+    ("path", "source"),
+    [
+        (Path("clickhouse/migrations/001.sql"), "-- migrate:up\nINSERT INTO plan (name) VALUES ('free');"),
+        (Path("d1/migrations/001.sql"), "INSERT INTO plan (name) VALUES ('free');"),
+        (Path("migrations/001.sql"), "-- dialect: sqlite\nINSERT INTO plan (name) VALUES ('free');"),
+        (Path("migrations/001.sql"), "-- dialect: mysql\nINSERT INTO plan (name) VALUES ('free');"),
+        (Path("migrations/001.sql"), "INSERT INTO plan (name) VALUES ('free');"),
+    ],
+)
+def test_ambiguous_or_non_postgres_migrations_are_out_of_scope(path: Path, source: str) -> None:
+    assert _check(source, path) == []
+
+
+@pytest.mark.parametrize(
+    ("path", "source"),
+    [
+        (Path("stdin"), "-- migrate:up\nINSERT INTO plan (name) VALUES ('free');"),
+        (Path("db/migrations/001.sql"), "-- dialect: postgresql\nINSERT INTO plan (name) VALUES ('free');"),
+        (Path("db/migrations/001.sql"), "CREATE TABLE events (id UUID); INSERT INTO plan (name) VALUES ('free');"),
+    ],
+)
+def test_positive_migration_and_postgres_evidence_preserves_detection(path: Path, source: str) -> None:
+    assert len(_check(source, path)) == 1

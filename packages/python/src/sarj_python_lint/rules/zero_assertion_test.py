@@ -6,62 +6,20 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
-import re
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
-from sarj_python_lint.rules._ast_index import nodes, walk
+from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._paths import is_test_path
 from sarj_python_lint.rules._pytest import uses_benchmark_fixture
+from sarj_python_lint.rules._test_assertions import names_verification, reads_as_verification
 
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 
-# Match assertion tokens anywhere in a snake_case helper name.
-_ASSERTION_NAME_RE = re.compile(r"(^|_)(assert|expect|verify|validate)", re.IGNORECASE)
-
-# `raises`/`warns` as a token anywhere in the name: `pytest.deprecated_call`,
-# `pytest.RaisesGroup`, `pytest.RaisesExc`, and project wrappers such as
-# `pytest_raises_user_error_for_undefined_type` all verify by expecting a throw.
-_RAISES_TOKEN_RE = re.compile(r"(^|_)(raises|warns|deprecated_call)", re.IGNORECASE)
-
-_RAISES_NAMES = frozenset({"raises", "warns", "fail"})
-
-# These pytest and SQLAlchemy helpers verify without an assertion token in their names.
-_LIBRARY_ASSERTION_NAMES = frozenset(
-    {
-        # _pytest.pytester.LineMatcher
-        "fnmatch_lines",
-        "fnmatch_lines_random",
-        "no_fnmatch_line",
-        "no_re_match_line",
-        "re_match_lines",
-        "re_match_lines_random",
-        # sqlalchemy.testing.assertions
-        "eq_",
-        "eq_ignore_whitespace",
-        "eq_regex",
-        "in_",
-        "is_",
-        "is_false",
-        "is_instance_of",
-        "is_none",
-        "is_not",
-        "is_not_",
-        "is_not_none",
-        "is_true",
-        "ne_",
-        "not_in",
-        "not_in_",
-    }
-)
-
 _TEST_PREFIX = "test_"
-
-# Fluent verification DSLs reached through an attribute rather than a call name.
-_FLUENT_ATTRS = frozenset({"expect"})
 
 _SKIP_MARKERS = frozenset({"skip", "skipif", "xfail"})
 
@@ -77,6 +35,8 @@ _ASSERTION_ERROR = "AssertionError"
 _FIXTURE = "fixture"
 
 _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
+
+_SCOPE_BARRIERS = (*_FUNC_NODES, ast.ClassDef, ast.Lambda)
 
 # Manual CLI probes live here under test_*.py names but are never collected.
 _UNCOLLECTED_DIR_NAMES = frozenset({"scripts"})
@@ -126,14 +86,15 @@ def _is_collected_module(path: Path) -> bool:
 def _unverifying_tests(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
     defined_here = _function_defs(tree)
     module_callables = _module_level_callables(tree, defined_here)
-    verifying_helpers = _verifying_local_names(defined_here, module_callables)
+    verification_aliases = _verification_aliases(tree)
+    verifying_helpers = _verifying_local_names(defined_here, module_callables, verification_aliases)
     hits: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
     for node in _collectible_tests(tree):
         if _is_skipped(node) or _is_fixture(node) or _is_placeholder(node) or uses_benchmark_fixture(node):
             continue
         if _skips_at_runtime(node):
             continue
-        if _verifies_something(node, module_callables) or _delegates_verification(
+        if _verifies_something(node, module_callables, verification_aliases) or _delegates_verification(
             node, defined_here, verifying_helpers
         ):
             continue
@@ -151,6 +112,16 @@ def _module_level_callables(
         for alias in node.names
     }
     return frozenset(imported | set(defined_here))
+
+
+def _verification_aliases(tree: ast.Module) -> frozenset[str]:
+    """Resolve aliases of imports whose original symbol names an assertion API."""
+    return frozenset(
+        alias.asname
+        for node in nodes(tree, ast.ImportFrom)
+        for alias in node.names
+        if alias.asname is not None and reads_as_verification(alias.name)
+    )
 
 
 def _skips_at_runtime(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
@@ -177,9 +148,12 @@ def _function_defs(tree: ast.Module) -> dict[str, ast.FunctionDef | ast.AsyncFun
 def _verifying_local_names(
     defined_here: dict[str, ast.FunctionDef | ast.AsyncFunctionDef],
     module_callables: frozenset[str],
+    verification_aliases: frozenset[str],
 ) -> frozenset[str]:
     """Find same-module functions that verify directly or transitively."""
-    verifying = {name for name, node in defined_here.items() if _verifies_something(node, module_callables)}
+    verifying = {
+        name for name, node in defined_here.items() if _verifies_something(node, module_callables, verification_aliases)
+    }
     pending = {name: _called_names(node) for name, node in defined_here.items() if name not in verifying}
     while True:
         promoted = {name for name, called in pending.items() if called & verifying}
@@ -227,21 +201,26 @@ def _is_inert(stmt: ast.stmt) -> bool:
     return isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant)
 
 
-def _verifies_something(node: ast.FunctionDef | ast.AsyncFunctionDef, module_callables: frozenset[str]) -> bool:
-    # Search the whole subtree, nested functions included: the common
-    # `async def _run(): assert ...` + `asyncio.run(_run())` wrapper keeps its
-    # assertions one scope down from the test body.
-    return any(_is_verification(child, module_callables) for child in walk(node))
+def _verifies_something(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    module_callables: frozenset[str],
+    verification_aliases: frozenset[str],
+) -> bool:
+    # Assertions in an uncalled nested function verify nothing. Reachable
+    # nested helpers are accounted for by the local call graph below.
+    return any(_is_verification(child, module_callables, verification_aliases) for child in _direct_nodes(node))
 
 
-def _is_verification(child: ast.AST, module_callables: frozenset[str]) -> bool:
+def _is_verification(child: ast.AST, module_callables: frozenset[str], verification_aliases: frozenset[str]) -> bool:
     match child:
         case ast.Assert():
             return True
         case ast.Raise():
             return _raises_assertion_error(child)
         case ast.Call(func=func):
-            return _names_verification(func) or _hands_a_verifier_to_a_runner(child, module_callables)
+            return names_verification(func, verification_aliases) or _hands_a_verifier_to_a_runner(
+                child, module_callables, verification_aliases
+            )
         case _:
             return False
 
@@ -256,41 +235,19 @@ def _raises_assertion_error(node: ast.Raise) -> bool:
             return False
 
 
-def _hands_a_verifier_to_a_runner(call: ast.Call, module_callables: frozenset[str]) -> bool:
+def _hands_a_verifier_to_a_runner(
+    call: ast.Call, module_callables: frozenset[str], verification_aliases: frozenset[str]
+) -> bool:
     """Report whether a call's first argument is a known assertion helper."""
     if not call.args:
         return False
     match call.args[0]:
         case ast.Name(id=name):
-            return name in module_callables and _reads_as_verification(name)
+            return name in module_callables and (name in verification_aliases or reads_as_verification(name))
         case ast.Attribute(value=ast.Name(id=receiver), attr=attr):
-            return receiver in module_callables and _reads_as_verification(attr)
+            return receiver in module_callables and reads_as_verification(attr)
         case _:
             return False
-
-
-def _names_verification(func: ast.expr) -> bool:
-    if isinstance(func, ast.Name):
-        return _reads_as_verification(func.id)
-    if not isinstance(func, ast.Attribute):
-        return False
-    if func.attr in _RAISES_NAMES or _reads_as_verification(func.attr):
-        return True
-    # `result.expect.contains_function_call(...)` — the DSL marker sits partway
-    # along the chain rather than at its end.
-    return _chain_has_fluent_marker(func.value)
-
-
-def _reads_as_verification(name: str) -> bool:
-    return name in _LIBRARY_ASSERTION_NAMES or bool(_ASSERTION_NAME_RE.search(name) or _RAISES_TOKEN_RE.search(name))
-
-
-def _chain_has_fluent_marker(node: ast.expr) -> bool:
-    while isinstance(node, ast.Attribute):
-        if node.attr in _FLUENT_ATTRS:
-            return True
-        node = node.value
-    return False
 
 
 def _delegates_verification(
@@ -307,9 +264,9 @@ def _delegates_verification(
 
 
 def _called_names(node: ast.AST) -> set[str]:
-    """Collect names called in callee position throughout a subtree."""
+    """Collect names called in this scope, excluding unexecuted nested bodies."""
     names: set[str] = set()
-    for child in walk(node):
+    for child in _direct_nodes(node):
         if isinstance(child, ast.Call):
             func = child.func
             if isinstance(func, ast.Attribute):
@@ -317,3 +274,16 @@ def _called_names(node: ast.AST) -> set[str]:
             elif isinstance(func, ast.Name):
                 names.add(func.id)
     return names
+
+
+def _direct_nodes(node: ast.AST) -> list[ast.AST]:
+    """Return descendants executed in `node`'s own function scope."""
+    found: list[ast.AST] = []
+    stack = list(reversed(list(ast.iter_child_nodes(node))))
+    while stack:
+        child = stack.pop()
+        found.append(child)
+        if isinstance(child, _SCOPE_BARRIERS):
+            continue
+        stack.extend(reversed(list(ast.iter_child_nodes(child))))
+    return found

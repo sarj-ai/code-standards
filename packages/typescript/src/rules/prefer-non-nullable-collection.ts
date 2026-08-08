@@ -124,7 +124,7 @@ function isNullGuard(node: TSESTree.Node, access: Parameters<typeof sameAccess>[
   if (
     node.type === AST_NODE_TYPES.UnaryExpression &&
     node.operator === "!" &&
-    sameAccess(node.argument, access)
+    (sameAccess(node.argument, access) || optionalMemberLengthOf(node.argument, access))
   ) return true;
   if (node.type !== AST_NODE_TYPES.BinaryExpression || !["==", "==="].includes(node.operator)) {
     return false;
@@ -155,12 +155,25 @@ function memberLengthOf(
   node: TSESTree.Node,
   access: Parameters<typeof sameAccess>[1],
 ): boolean {
+  const target = node.type === AST_NODE_TYPES.ChainExpression ? node.expression : node;
   return (
-    node.type === AST_NODE_TYPES.MemberExpression &&
-    !node.computed &&
-    node.property.type === AST_NODE_TYPES.Identifier &&
-    node.property.name === "length" &&
-    sameAccess(node.object, access)
+    target.type === AST_NODE_TYPES.MemberExpression &&
+    !target.computed &&
+    target.property.type === AST_NODE_TYPES.Identifier &&
+    target.property.name === "length" &&
+    sameAccess(target.object, access)
+  );
+}
+
+function optionalMemberLengthOf(
+  node: TSESTree.Node,
+  access: Parameters<typeof sameAccess>[1],
+): boolean {
+  return (
+    node.type === AST_NODE_TYPES.ChainExpression &&
+    node.expression.type === AST_NODE_TYPES.MemberExpression &&
+    node.expression.optional &&
+    memberLengthOf(node, access)
   );
 }
 
@@ -180,6 +193,7 @@ function hasEquivalentLeadingGuard(
       (first.consequent.body[0]?.type === AST_NODE_TYPES.ReturnStatement ||
         first.consequent.body[0]?.type === AST_NODE_TYPES.ThrowStatement);
   if (!terminating) return false;
+  if (contains(first.consequent, visitorKeys, (node) => sameAccess(node, access))) return false;
   return (
     contains(first.test, visitorKeys, (node) => isNullGuard(node, access)) &&
     contains(first.test, visitorKeys, (node) => isEmptyGuard(node, access))

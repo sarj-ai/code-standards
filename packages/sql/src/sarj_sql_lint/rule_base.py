@@ -79,6 +79,44 @@ _DBMATE_DIRECTIVE_RE = re.compile(
 )
 _SQLITE_RE = re.compile(r"\bAUTOINCREMENT\b", re.IGNORECASE)
 
+_MIGRATION_ROOT_NAMES = frozenset({"changesets", "drizzle", "migrate", "migration", "migrations"})
+_NON_PRODUCTION_SQL_PARTS = frozenset(
+    {
+        "__fixtures__",
+        "__mocks__",
+        "__snapshots__",
+        "example",
+        "examples",
+        "fixture",
+        "fixtures",
+        "mock",
+        "mocks",
+        "queries",
+        "query",
+        "script",
+        "scripts",
+        "snapshot",
+        "snapshots",
+        "testdata",
+    }
+)
+_NON_POSTGRES_SQL_PARTS = frozenset({"clickhouse", "d1", "mariadb", "mysql", "sqlite"})
+_FLYWAY_MIGRATION_RE = re.compile(r"^(?:B|R|V)(?:\d+(?:[._]\d+)*)?__.+\.sql$", re.IGNORECASE)
+_MIGRATION_SOURCE_DIRECTIVE_RE = re.compile(
+    r"^\s*--\s*(?:migrate:up(?:\s|$)|\+goose\s+up\s*$|liquibase\s+formatted\s+sql\s*$)",
+    re.IGNORECASE | re.MULTILINE,
+)
+_POSTGRES_MIGRATION_EVIDENCE_RE = re.compile(
+    r"::[A-Za-z_]"
+    r"|\b(?:BIGSERIAL|BYTEA|CITEXT|JSONB|SERIAL|TIMESTAMPTZ|UUID)\b"
+    r"|\bCREATE\s+EXTENSION\b"
+    r"|\bCREATE\s+(?:UNIQUE\s+)?INDEX\s+CONCURRENTLY\b"
+    r"|\bDO\s+\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$"
+    r"|\bSET\s+(?:(?:LOCAL|SESSION)\s+)?(?:lock_timeout|statement_timeout)\b"
+    r"|\bUSING\s+(?:GIN|GIST|HASH|SPGIST)\b",
+    re.IGNORECASE,
+)
+
 
 def declared_dialect(source: str) -> str | None:
     """Return an explicit dialect declared in a leading SQL line comment."""
@@ -118,7 +156,7 @@ def is_postgres(source: str) -> bool:
     dialect = declared_dialect(source)
     if dialect is not None:
         return dialect == "postgresql"
-    return _NON_POSTGRES_RE.search(source) is None
+    return _NON_POSTGRES_RE.search(mask_sql(source)) is None
 
 
 def is_mysql(source: str) -> bool:
@@ -126,7 +164,7 @@ def is_mysql(source: str) -> bool:
     dialect = declared_dialect(source)
     if dialect is not None:
         return dialect == "mysql"
-    return _MYSQL_RE.search(source) is not None
+    return _MYSQL_RE.search(mask_sql(source)) is not None
 
 
 def is_sqlite(source: str) -> bool:
@@ -134,7 +172,32 @@ def is_sqlite(source: str) -> bool:
     dialect = declared_dialect(source)
     if dialect is not None:
         return dialect == "sqlite"
-    return _SQLITE_RE.search(source) is not None
+    return _SQLITE_RE.search(mask_sql(source)) is not None
+
+
+def is_postgres_migration(path: Path, source: str) -> bool:
+    """Identify a production PostgreSQL migration from path plus positive dialect evidence."""
+    parts = tuple(part.lower() for part in path.parts)
+    if any(part in _NON_PRODUCTION_SQL_PARTS or part in _NON_POSTGRES_SQL_PARTS for part in parts):
+        return False
+
+    source_directive = _MIGRATION_SOURCE_DIRECTIVE_RE.search(source) is not None
+    migration_path = (
+        any(part in _MIGRATION_ROOT_NAMES for part in parts) or _FLYWAY_MIGRATION_RE.fullmatch(path.name) is not None
+    )
+    if not source_directive and not migration_path:
+        return False
+
+    dialect = declared_dialect(source)
+    if dialect is not None:
+        return dialect == "postgresql"
+    if not is_postgres(source):
+        return False
+
+    # Dbmate/Goose/Liquibase directives establish migration intent even when a
+    # small PostgreSQL seed uses no dialect-exclusive syntax. Supabase is a
+    # PostgreSQL migration root by contract. Ambiguous plain SQL stays silent.
+    return source_directive or "supabase" in parts or _POSTGRES_MIGRATION_EVIDENCE_RE.search(source) is not None
 
 
 @lru_cache(maxsize=2048)

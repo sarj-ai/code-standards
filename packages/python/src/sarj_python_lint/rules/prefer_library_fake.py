@@ -297,9 +297,14 @@ def _hand_rolled_service(node: ast.ClassDef, imported: frozenset[str]) -> _Servi
     service = _match_service(node.name)
     if service is None:
         service = next((matched for base in _base_names(node) if (matched := _match_service(base))), None)
-    if service is None or imported & service.imports:
+    if service is None or imported & service.imports or _implements_clock_port(node, service):
         return None
     return service
+
+
+def _implements_clock_port(node: ast.ClassDef, service: _Service) -> bool:
+    """Keep injected `Clock` ports distinct from replacements for the global clock."""
+    return service.subject == "the system clock" and "Clock" in _base_names(node)
 
 
 def _is_double_name(name: str) -> bool:
@@ -379,7 +384,7 @@ def _is_delegating_spy(methods: list[_Method]) -> bool:
 
 
 def _forwards_to_inner(method: _Method) -> bool:
-    """Report whether `method` is a one-line pass-through to `self.<attr>.<same name>`."""
+    """Report whether `method` is a one-line pass-through to its receiver's real client."""
     body = [stmt for stmt in method.body if not _is_docstring(stmt)]
     if len(body) != 1:
         return False
@@ -392,12 +397,16 @@ def _forwards_to_inner(method: _Method) -> bool:
     if not isinstance(value, ast.Call):
         return False
     func = value.func
+    positional = method.args.posonlyargs + method.args.args
+    if not positional:
+        return False
+    receiver = positional[0].arg
     return (
         isinstance(func, ast.Attribute)
         and func.attr == method.name
         and isinstance(func.value, ast.Attribute)
         and isinstance(func.value.value, ast.Name)
-        and func.value.value.id == "self"
+        and func.value.value.id == receiver
     )
 
 

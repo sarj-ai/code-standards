@@ -62,6 +62,16 @@ ruleTester.run("prefer-non-nullable-collection", rule, {
       ].join("\n"),
     },
     {
+      name: "preserves a terminating guard that distinguishes null from empty",
+      code: [
+        "interface Props { items: Item[] | null; }",
+        "function Panel({ items }: Props) {",
+        "  if (items === null || items.length === 0) return items === null ? loading() : empty();",
+        "  return items.map(renderItem);",
+        "}",
+      ].join("\n"),
+    },
+    {
       name: "preserves explicit type-mismatch state",
       code: [
         "interface Form { allowedTools: string[] | null; }",
@@ -131,6 +141,17 @@ ruleTester.run("prefer-non-nullable-collection", rule, {
         "interface Props { variables: string[] | undefined; }",
         "function Variables({ variables }: Props) {",
         "  if (!variables || variables.length === 0) return null;",
+        "  return variables.map(renderVariable);",
+        "}",
+      ].join("\n"),
+      errors: [{ messageId: "preferNonNullableCollection" }],
+    },
+    {
+      name: "reports an optional-length guard that treats absent and empty identically",
+      code: [
+        "interface Props { variables: string[] | undefined; }",
+        "function Variables({ variables }: Props) {",
+        "  if (!variables?.length) return null;",
         "  return variables.map(renderVariable);",
         "}",
       ].join("\n"),

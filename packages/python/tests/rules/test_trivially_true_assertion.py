@@ -193,6 +193,39 @@ def test_flags_identity_spelling_of_a_boolean_field():
     assert len(_check(src)) == 1
 
 
+@pytest.mark.parametrize("assertion", ["self.assertEqual(user.name, 'bo')", "self.assertIs(user.active, True)"])
+def test_flags_unittest_keyword_echo(assertion: str):
+    src = f"""
+class TestUser:
+    def test_thing(self):
+        user = User(name='bo', active=True)
+        {assertion}
+"""
+    assert len(_check(src)) == 1
+
+
+def test_unittest_non_echo_assertions_are_exempt():
+    src = """
+class TestUser:
+    def test_thing(self):
+        user = User(name='bo')
+        self.assertNotEqual(user.name, 'alice')
+"""
+    assert _check(src) == []
+
+
+def test_other_unittest_assertion_keeps_the_ordinary_repair_advice():
+    src = """
+class TestUser:
+    def test_thing(self):
+        user = User(name='bo')
+        self.assertEqual(user.name, 'bo')
+        self.assertNotEqual(compute_name(), 'alice')
+"""
+    [diag] = _check(src)
+    assert "Every assertion this test makes" not in diag.message
+
+
 def test_flags_a_dotted_constructor():
     src = """
     def test_thing():
@@ -575,6 +608,27 @@ def test_flags_isinstance_of_the_class_just_constructed():
         assert isinstance(job, Request)
     """
     assert len(_check(src)) == 1
+
+
+def test_flags_unittest_isinstance_of_the_class_just_constructed():
+    src = """
+class TestUser:
+    def test_thing(self):
+        user = User(name='bo')
+        self.assertIsInstance(user, User)
+"""
+    assert len(_check(src)) == 1
+
+
+def test_unittest_isinstance_that_narrows_for_a_later_assertion_is_exempt():
+    src = """
+class TestUser:
+    def test_thing(self):
+        user = User(name='bo')
+        self.assertIsInstance(user, User)
+        self.assertEqual(user.computed_name, 'BO')
+"""
+    assert _check(src) == []
 
 
 def test_flags_isinstance_with_a_dotted_class():

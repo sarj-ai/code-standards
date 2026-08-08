@@ -18,6 +18,8 @@ type MessageIds = "tooLong";
 type Options = readonly [];
 
 const EXCESSIVE_SENTENCE_COUNT = 8;
+const EXCESSIVE_WORD_COUNT = 120;
+const PROSE_WORD_RE = /[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu;
 const VERSIONED_DEPENDENCY_TREE_RE =
   /(?:^|\/)lib\/[^/]*-?v?\d+\.\d+(?:\.\d+)?[^/]*\//iu;
 
@@ -40,6 +42,10 @@ function documentsTypeOrMember(
     node = node.parent;
   }
   return false;
+}
+
+function wordUnits(text: string): number {
+  return text.match(PROSE_WORD_RE)?.length ?? 0;
 }
 
 export default createRule<Options, MessageIds>({
@@ -67,7 +73,8 @@ export default createRule<Options, MessageIds>({
             hasTechnicalAnchor(group.text) ||
             documentsTypedFunction(context.sourceCode, group.comment) ||
             documentsTypeOrMember(context.sourceCode, group.comment) ||
-            sentenceUnits(group.text) < EXCESSIVE_SENTENCE_COUNT
+            sentenceUnits(group.text) < EXCESSIVE_SENTENCE_COUNT &&
+            wordUnits(group.text) < EXCESSIVE_WORD_COUNT
           ) continue;
           context.report({ node: group.comment, messageId: "tooLong" });
         }

@@ -17,6 +17,8 @@ ruleTester.run("no-comment-cruft", rule, {
       code: "const x = 1;\n// region, sector AND facility_type are HARD constraints when the investor names them\nconst y = 2;",
     },
     { code: "const x = 1;\n// region is derived from the caller's IP, which the CDN rewrites\nconst y = 2;" },
+    { code: "const x = 1;\n// region defaults to us-east-1\nconst y = 2;" },
+    { code: "const x = 1;\n// region comes from tenant\nconst y = 2;" },
     { code: "const x = 1;\n// regions are resolved lazily\nconst y = 2;" },
     {
       name: "preserves region titles longer than five words",
@@ -104,6 +106,15 @@ ruleTester.run("no-comment-cruft", rule, {
     // Code-shaped line under a prose lead-in is an illustration, not dead code.
     {
       code: "// For example:\n// var o = {…};\nconst x = 1;",
+    },
+    {
+      name: "preserves call-shape labels with multiplier pseudocode",
+      code: "// app.use(path, handler x5)\nnew Hono().use(path, a, b, c, d, e);",
+    },
+    {
+      name: "preserves the unnumbered first case in a test call matrix",
+      filename: "router.test.ts",
+      code: "// app.use(path, handler)\nnew Hono().use(path, a);\n// app.use(path, handler x2)\nnew Hono().use(path, a, b);",
     },
     {
       name: "preserves assertion examples with an illustration lead-in",

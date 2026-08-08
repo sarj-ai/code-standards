@@ -75,6 +75,10 @@ _IMPORT_FAILURES = frozenset({"ImportError", "ModuleNotFoundError"})
 # Keywords that canned-answer a *call*.
 _CANNED_RESULT_KEYWORDS = frozenset({"return_value", "side_effect"})
 
+_PYTEST_MOCK_FIXTURES = frozenset({"mocker", "class_mocker", "module_mocker", "package_mocker", "session_mocker"})
+
+type _ScopedName = tuple[int, str]
+
 
 class MockWithoutSpec(Rule):
     id: str = "mock-without-spec"
@@ -91,7 +95,8 @@ class MockWithoutSpec(Rule):
             return []
 
         names = _MockNames.from_tree(tree)
-        if not names.any_import:
+        pytest_mocker = _pytest_mocker_calls(tree)
+        if not names.any_import and not pytest_mocker:
             return []
 
         diags = [
@@ -106,7 +111,7 @@ class MockWithoutSpec(Rule):
                     "`spec=<RealType>` (or `autospec=True`), or hand-roll a fake implementing the ABC."
                 ),
             )
-            for node, label in _unspecced_calls(tree, names, _FileFacts.from_tree(tree))
+            for node, label in _unspecced_calls(tree, names, pytest_mocker, _FileFacts.from_tree(tree))
         ]
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
@@ -118,6 +123,7 @@ class _MockNames:
     def __init__(self) -> None:
         self.modules: set[str] = set()
         self.factories: dict[str, str] = {}
+        self.shadowed: set[str] = set()
 
     @property
     def any_import(self) -> bool:
@@ -133,6 +139,7 @@ class _MockNames:
                 found._add_plain_import(node)
             else:
                 found._add_from_import(node)
+        found.shadowed = _shadowed_mock_bindings(tree, found.modules | set(found.factories))
         return found
 
     def _add_plain_import(self, node: ast.Import) -> None:
@@ -156,6 +163,8 @@ class _MockNames:
     def resolve(self, func: ast.expr) -> str | None:
         """Map a call's callee onto the `unittest.mock` symbol it invokes."""
         if isinstance(func, ast.Name):
+            if func.id in self.shadowed:
+                return None
             return self.factories.get(func.id)
         if not isinstance(func, ast.Attribute):
             return None
@@ -169,10 +178,14 @@ class _MockNames:
 
     def _is_mock_module(self, node: ast.expr) -> bool:
         if isinstance(node, ast.Name):
-            return node.id in self.modules
+            return node.id in self.modules and node.id not in self.shadowed
         # `unittest.mock.Mock(...)` — the receiver is itself an attribute chain.
         if isinstance(node, ast.Attribute) and node.attr == "mock":
-            return isinstance(node.value, ast.Name) and node.value.id in self.modules
+            return (
+                isinstance(node.value, ast.Name)
+                and node.value.id in self.modules
+                and node.value.id not in self.shadowed
+            )
         return False
 
 
@@ -180,60 +193,62 @@ class _FileFacts:
     """Per-file context the false-positive guards need."""
 
     def __init__(self) -> None:
-        self.bound_name: dict[ast.Call, str] = {}
-        self.reads: dict[str, set[str]] = {}
-        self.called: set[str] = set()
-        self.escaped: set[str] = set()
+        self.bound_name: dict[ast.Call, _ScopedName] = {}
+        self.reads: dict[_ScopedName, set[str]] = {}
+        self.called: set[_ScopedName] = set()
+        self.escaped: set[_ScopedName] = set()
         self.import_fallbacks: set[ast.Call] = set()
-        self.attribute_target: dict[ast.Call, str] = {}
-        self.path_reads: dict[str, set[str]] = {}
-        self.path_calls: set[str] = set()
+        self.attribute_target: dict[ast.Call, _ScopedName] = {}
+        self.path_reads: dict[_ScopedName, set[str]] = {}
+        self.path_calls: set[_ScopedName] = set()
 
     @classmethod
     def from_tree(cls, tree: ast.Module) -> _FileFacts:
         """Collect the name bindings, attribute reads, and import-failure arms of one file."""
         found = cls()
+        scopes = _top_function_scopes(tree)
         for node in nodes(tree, ast.Assign, ast.AnnAssign, ast.Attribute, ast.Call, ast.ExceptHandler):
+            scope = scopes[id(node)]
             if isinstance(node, ast.Assign):
-                found._bind(node.targets[0] if len(node.targets) == 1 else None, node.value)
+                found._bind(scope, node.targets[0] if len(node.targets) == 1 else None, node.value)
             elif isinstance(node, ast.AnnAssign):
-                found._bind(node.target, node.value)
+                found._bind(scope, node.target, node.value)
             elif isinstance(node, ast.Attribute):
                 if isinstance(node.value, ast.Name):
-                    found.reads.setdefault(node.value.id, set()).add(node.attr)
-                found._record_path_read(node)
+                    found.reads.setdefault((scope, node.value.id), set()).add(node.attr)
+                found._record_path_read(scope, node)
             elif isinstance(node, ast.Call):
                 if isinstance(node.func, ast.Name):
-                    found.called.add(node.func.id)
+                    found.called.add((scope, node.func.id))
                 for argument in [*node.args, *(kw.value for kw in node.keywords)]:
-                    found.escaped.update(_escaped_names(argument))
-                found._record_path_call(node)
+                    found.escaped.update((scope, name) for name in _escaped_names(argument))
+                found._record_path_call(scope, node)
             elif _catches_import_failure(node):
                 found.import_fallbacks.update(child for child in walk(node) if isinstance(child, ast.Call))
         return found
 
-    def _bind(self, target: ast.expr | None, value: ast.expr | None) -> None:
+    def _bind(self, scope: int, target: ast.expr | None, value: ast.expr | None) -> None:
         if not isinstance(value, ast.Call):
             return
         if isinstance(target, ast.Name):
-            self.bound_name[value] = target.id
+            self.bound_name[value] = (scope, target.id)
         elif isinstance(target, ast.Attribute):
             path = _dotted_path(target)
             if path is not None:
-                self.attribute_target[value] = path
+                self.attribute_target[value] = (scope, path)
 
-    def _record_path_read(self, node: ast.Attribute) -> None:
+    def _record_path_read(self, scope: int, node: ast.Attribute) -> None:
         # Load context only.
         if not isinstance(node.ctx, ast.Load):
             return
         path = _dotted_path(node.value)
         if path is not None:
-            self.path_reads.setdefault(path, set()).add(node.attr)
+            self.path_reads.setdefault((scope, path), set()).add(node.attr)
 
-    def _record_path_call(self, node: ast.Call) -> None:
+    def _record_path_call(self, scope: int, node: ast.Call) -> None:
         path = _dotted_path(node.func)
         if path is not None:
-            self.path_calls.add(path)
+            self.path_calls.add((scope, path))
 
     def is_call_recorder(self, node: ast.Call) -> bool:
         """Report whether the double bound by `node` is only ever called and introspected."""
@@ -284,6 +299,82 @@ def _dotted_path(expr: ast.expr) -> str | None:
     return ".".join(reversed(parts))
 
 
+def _shadowed_mock_bindings(tree: ast.Module, imported: set[str]) -> set[str]:
+    """Conservatively reject imported mock names rebound anywhere in the file."""
+    rebound: set[str] = set()
+    for node in nodes(tree, ast.Name, ast.arg, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.ExceptHandler):
+        match node:
+            case ast.Name(id=name, ctx=ast.Store()) | ast.arg(arg=name):
+                rebound.add(name)
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
+                rebound.add(node.name)
+            case ast.ExceptHandler(name=str(name)):
+                rebound.add(name)
+            case _:
+                pass
+    return rebound & imported
+
+
+def _top_function_scopes(tree: ast.Module) -> dict[int, int]:
+    """Map nodes to their outermost function so same-named locals cannot bleed across tests."""
+    scopes: dict[int, int] = {}
+
+    def visit(node: ast.AST, scope: int, function_scope: int | None) -> None:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and function_scope is None:
+            scope = id(node)
+            function_scope = scope
+        scopes[id(node)] = scope
+        for child in ast.iter_child_nodes(node):
+            visit(child, scope, function_scope)
+
+    visit(tree, id(tree), None)
+    return scopes
+
+
+def _pytest_mocker_calls(tree: ast.Module) -> dict[ast.Call, str]:
+    """Resolve constructors reached through an actual pytest-mock fixture parameter."""
+    found: dict[ast.Call, str] = {}
+
+    class _Visitor(ast.NodeVisitor):
+        def __init__(self) -> None:
+            self.fixtures: list[frozenset[str]] = []
+
+        def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+            positional = node.args.posonlyargs + node.args.args + node.args.kwonlyargs
+            own = frozenset(arg.arg for arg in positional if arg.arg in _PYTEST_MOCK_FIXTURES)
+            inherited: frozenset[str] = self.fixtures[-1] if self.fixtures else frozenset()
+            self.fixtures.append(inherited | own)
+            self.generic_visit(node)
+            self.fixtures.pop()
+
+        def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+            self._visit_function(node)
+
+        def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+            self._visit_function(node)
+
+        def visit_Call(self, node: ast.Call) -> None:
+            fixtures: frozenset[str] = self.fixtures[-1] if self.fixtures else frozenset()
+            symbol = _resolve_pytest_mocker(node.func, fixtures)
+            if symbol is not None:
+                found[node] = symbol
+            self.generic_visit(node)
+
+    _Visitor().visit(tree)
+    return found
+
+
+def _resolve_pytest_mocker(func: ast.expr, fixtures: frozenset[str]) -> str | None:
+    if not isinstance(func, ast.Attribute):
+        return None
+    if func.attr == "object":
+        parent = _resolve_pytest_mocker(func.value, fixtures)
+        return parent if parent in _PATCHERS else None
+    if func.attr not in _UNSPECCED_FACTORIES and func.attr not in _PATCHERS:
+        return None
+    return func.attr if isinstance(func.value, ast.Name) and func.value.id in fixtures else None
+
+
 def _catches_import_failure(handler: ast.ExceptHandler) -> bool:
     caught = handler.type
     if caught is None:
@@ -292,10 +383,15 @@ def _catches_import_failure(handler: ast.ExceptHandler) -> bool:
     return any(isinstance(p, ast.Name) and p.id in _IMPORT_FAILURES for p in parts)
 
 
-def _unspecced_calls(tree: ast.Module, names: _MockNames, facts: _FileFacts) -> list[tuple[ast.Call, str]]:
+def _unspecced_calls(
+    tree: ast.Module,
+    names: _MockNames,
+    pytest_mocker: dict[ast.Call, str],
+    facts: _FileFacts,
+) -> list[tuple[ast.Call, str]]:
     hits: list[tuple[ast.Call, str]] = []
     for node in nodes(tree, ast.Call):
-        symbol = names.resolve(node.func)
+        symbol = names.resolve(node.func) or pytest_mocker.get(node)
         if symbol is None:
             continue
         label = _render_callee(node.func, symbol)

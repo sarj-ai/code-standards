@@ -56,7 +56,9 @@ class StoreInsertRequiresOnConflict(Rule):
                 continue
             consumed.update(id(sub) for sub in walk(node))
 
-            sql = strip_sql_noise(text)
+            # A Postgres ``DO $tag$ ... $tag$`` body is executable code, not a
+            # scalar SQL value, so embedded writes remain visible to SARJ018.
+            sql = strip_sql_noise(text, mask_dollar_quotes=False)
             if _INSERT_WRITE.search(sql) is None or _CONFLICT_HANDLED.search(sql):
                 continue
 

@@ -914,6 +914,8 @@ def test_region_marker_shapes_flag(body: str):
         # happens to be "region".
         "region, sector AND facility_type are HARD constraints when the investor names them",
         "region is derived from the caller's IP, which the CDN rewrites",
+        "region defaults to us-east-1",
+        "region comes from tenant",
         "regions are resolved lazily",
         "region names must stay lowercase; the API rejects mixed case.",
     ],

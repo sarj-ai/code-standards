@@ -31,7 +31,7 @@ def sql_string_value(node: ast.expr) -> str | None:
     return None
 
 
-def strip_sql_noise(text: str) -> str:
+def strip_sql_noise(text: str, *, mask_dollar_quotes: bool = True) -> str:
     """Mask SQL values and comments without changing text or line lengths."""
     out = list(text)
     n = len(text)
@@ -74,5 +74,27 @@ def strip_sql_noise(text: str) -> str:
                     out[i] = " "
                     i += 1
             continue
+        if mask_dollar_quotes and ch == "$" and (quote_end := _dollar_quote_end(text, i)) is not None:
+            while i < quote_end:
+                if text[i] != "\n":
+                    out[i] = " "
+                i += 1
+            continue
         i += 1
     return "".join(out)
+
+
+def _dollar_quote_end(text: str, start: int) -> int | None:
+    """Return the end of a complete Postgres dollar-quoted value."""
+    delimiter_end = text.find("$", start + 1)
+    if delimiter_end == -1:
+        return None
+    tag = text[start + 1 : delimiter_end]
+    valid_tag = not tag or (
+        (tag[0].isalpha() or tag[0] == "_") and all(char.isalnum() or char == "_" for char in tag[1:])
+    )
+    if not valid_tag:
+        return None
+    delimiter = text[start : delimiter_end + 1]
+    close = text.find(delimiter, delimiter_end + 1)
+    return None if close == -1 else close + len(delimiter)

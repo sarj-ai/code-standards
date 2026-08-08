@@ -268,6 +268,34 @@ class Widget: ...
     assert "widget.py" in diags[0].message
 
 
+def test_multi_name_all_blocks_sole_export_advice() -> None:
+    src = """
+__all__ = ["Widget", "build_widget"]
+
+
+class Widget: ...
+"""
+    assert _check(src, path="common.py") == []
+
+
+@pytest.mark.parametrize(
+    "alias",
+    [
+        "type WidgetId = str",
+        "WidgetId: TypeAlias = str",
+        "WidgetId: typing.TypeAlias = str",
+    ],
+)
+def test_public_type_alias_blocks_sole_export_advice(alias: str) -> None:
+    src = f"{alias}\n\nclass Widget: ...\n"
+    assert _check(src, path="types.py") == []
+
+
+def test_private_type_alias_does_not_block_sole_export_advice() -> None:
+    src = "type _WidgetId = str\n\nclass Widget: ...\n"
+    assert len(_check(src, path="types.py")) == 1
+
+
 def test_async_def_sole_export_flagged():
     src = """
 async def fetch_records() -> None: ...

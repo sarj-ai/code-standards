@@ -128,6 +128,75 @@ def test_thing():
     assert len(_check(src)) == 1
 
 
+@pytest.mark.parametrize("fixture", ["mocker", "class_mocker", "module_mocker", "package_mocker", "session_mocker"])
+@pytest.mark.parametrize(
+    "call", ["Mock()", "MagicMock()", "AsyncMock()", "patch('app.send')", "patch.object(App, 'send')"]
+)
+def test_flags_pytest_mock_fixture_constructors(fixture: str, call: str):
+    src = f"""
+def test_thing({fixture}):
+    double = {fixture}.{call}
+    assert double
+"""
+    assert len(_check(src)) == 1
+
+
+def test_unrelated_object_named_mocker_is_not_assumed_to_be_pytest_mock():
+    src = """
+def test_thing(tool):
+    tool.mocker.Mock()
+    assert tool
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        """
+from unittest.mock import Mock
+
+def test_thing(Mock):
+    double = Mock()
+    assert double
+""",
+        """
+from unittest import mock
+
+def test_thing(mock):
+    double = mock.Mock()
+    assert double
+""",
+        """
+import unittest.mock
+
+def test_thing(unittest):
+    double = unittest.mock.Mock()
+    assert double
+""",
+    ],
+)
+def test_shadowed_import_binding_is_not_resolved_as_unittest_mock(source: str):
+    assert _check(source) == []
+
+
+def test_same_named_locals_in_other_tests_do_not_pollute_call_recorder_facts():
+    src = """
+from unittest import mock
+
+def test_recorder():
+    callback = mock.Mock()
+    callback()
+    callback.assert_called_once()
+
+def test_collaborator():
+    callback = mock.Mock()
+    callback.domain_method()
+"""
+    [diag] = _check(src)
+    assert diag.line == 10
+
+
 # FP guard: a spec-bearing argument gives the double a real contract.          #
 
 

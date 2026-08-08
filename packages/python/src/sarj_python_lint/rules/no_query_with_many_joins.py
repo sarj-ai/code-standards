@@ -1,4 +1,4 @@
-"""SARJ019 — A SQL query with 3+ JOINs is too entangled — split or denormalize.
+"""SARJ019 — A SQL query with 3+ join operations is too entangled.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_query_with_many_joins.py
 """
@@ -24,6 +24,12 @@ _QUERY_SHAPE = re.compile(
     re.IGNORECASE,
 )
 _JOIN = re.compile(r"\bJOIN\b", re.IGNORECASE)
+_FROM = re.compile(r"\bFROM\b", re.IGNORECASE)
+_FROM_CLAUSE_BOUNDARY = re.compile(
+    r"\b(?:WHERE|GROUP\s+BY|HAVING|ORDER\s+BY|LIMIT|OFFSET|FETCH|FOR|"
+    r"UNION|INTERSECT|EXCEPT|RETURNING|WINDOW|QUALIFY|ON\s+CONFLICT|SET)\b",
+    re.IGNORECASE,
+)
 
 _MAX_JOINS = 2
 
@@ -32,7 +38,8 @@ class NoQueryWithManyJoins(Rule):
     id: str = "no-query-with-many-joins"
     code: str = "SARJ019"
     description: str = (
-        "SQL query with 3 or more JOINs — split the query or denormalize instead of fanning across many tables."
+        "SQL query with 3 or more explicit or implicit joins — split the query or denormalize "
+        "instead of fanning across many tables."
     )
 
     @override
@@ -56,7 +63,7 @@ class NoQueryWithManyJoins(Rule):
             sql = strip_sql_noise(text)
             if _QUERY_SHAPE.search(sql) is None:
                 continue
-            join_count = len(_JOIN.findall(sql))
+            join_count = len(_JOIN.findall(sql)) + _implicit_join_count(sql)
             if join_count <= _MAX_JOINS:
                 continue
 
@@ -75,3 +82,30 @@ class NoQueryWithManyJoins(Rule):
             )
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
+
+
+def _implicit_join_count(sql: str) -> int:
+    """Count top-level relation separators in every ``FROM`` clause."""
+    depths: list[int] = []
+    depth = 0
+    for char in sql:
+        depths.append(depth)
+        if char == "(":
+            depth += 1
+        elif char == ")" and depth:
+            depth -= 1
+
+    count = 0
+    for match in _FROM.finditer(sql):
+        clause_depth = depths[match.start()]
+        i = match.end()
+        while i < len(sql):
+            if depths[i] < clause_depth:
+                break
+            if depths[i] == clause_depth:
+                if _FROM_CLAUSE_BOUNDARY.match(sql, i):
+                    break
+                if sql[i] == ",":
+                    count += 1
+            i += 1
+    return count

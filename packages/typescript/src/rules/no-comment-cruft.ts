@@ -16,7 +16,7 @@ import {
   restatableStatementBelow,
   restatesStatementHead,
 } from "./_comments.js";
-import { isGeneratedFile } from "./_paths.js";
+import { isGeneratedFile, isTestFile } from "./_paths.js";
 
 type MessageIds =
   | "commentedOutCode"
@@ -90,6 +90,8 @@ const BANNER_RUN_RE = /={4,}|-{4,}|#{4,}|\*{4,}|~{4,}|[\u2500-\u257f]{4,}/;
 const REGION_MARKER_RE = /^#?(?:end)?region\b(.*)$/i;
 const REGION_TITLE_RE = /^[\s:\-\u2013\u2014]*\w[\w \-/&+]*$/;
 const REGION_TITLE_MAX_WORDS = 5;
+const REGION_PROSE_VERB_RE =
+  /^(?:is|are|was|were|comes?|defaults?|derives?|inherits?|depends?|uses?|maps?|resolves?)\b/i;
 
 // A triple-slash `///` directive keeps its third `/` after ESLint strips the
 // leading `//`, so strip 1–2 leading slashes (not exactly two) for `<reference`.
@@ -148,7 +150,10 @@ const PROSE_ASSIGNMENT_RE =
 
 // Placeholders that only appear in grammar productions / desugaring examples,
 // never in real code: `%sent%`, `[opt]`, a standalone `<FunctionBody>`, `…` / `...`.
-const PSEUDOCODE_RE = /%\w+%|\[opt\]|(?:^|\s)<[A-Za-z]\w*>|…|\.\.\./;
+const PSEUDOCODE_RE =
+  /%\w+%|\[opt\]|(?:^|\s)<[A-Za-z]\w*>|\b[A-Za-z_$][\w$]*\s+x\d+\b|…|\.\.\./;
+const CALL_LABEL_RE = /^([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\([^;{}]*\)$/;
+const MULTIPLIER_PSEUDOCODE_RE = /\b[A-Za-z_$][\w$]*\s+x\d+\b/;
 
 function isBanner(text: string): boolean {
   const t = text.trim();
@@ -162,6 +167,7 @@ function isRegionMarker(text: string): boolean {
   if (match === null) return false;
   const title = (match[1] ?? "").trim();
   if (title.length === 0) return true;
+  if (REGION_PROSE_VERB_RE.test(title)) return false;
   if (!REGION_TITLE_RE.test(title)) return false;
   return title.split(/\s+/).length <= REGION_TITLE_MAX_WORDS;
 }
@@ -178,6 +184,16 @@ function looksLikeCode(text: string, allowCall = true): boolean {
 
 function hasPseudocode(text: string): boolean {
   return PSEUDOCODE_RE.test(text);
+}
+
+function testCallMatrixStems(comments: readonly TSESTree.Comment[]): ReadonlySet<string> {
+  const stems = new Set<string>();
+  for (const comment of comments) {
+    const body = stripCommentMarker(comment.value);
+    const stem = CALL_LABEL_RE.exec(body)?.[1];
+    if (stem !== undefined && MULTIPLIER_PSEUDOCODE_RE.test(body)) stems.add(stem);
+  }
+  return stems;
 }
 
 /** An explanatory item of a numbered/bulleted walkthrough. */
@@ -629,6 +645,9 @@ export default createRule<Options, MessageIds>({
     return {
       Program(): void {
         const comments = sourceCode.getAllComments();
+        const callMatrixStems = isTestFile(context.filename)
+          ? testCallMatrixStems(comments)
+          : new Set<string>();
         const walls = findCommentWalls(comments);
         const wallByLeader = new Map(walls.map((wall) => [wall.leader, wall]));
         const wallMembers = new Set(walls.flatMap((wall) => [...wall.members]));
@@ -676,6 +695,14 @@ export default createRule<Options, MessageIds>({
           }
 
           const firstText = texts[0];
+          const firstTextStem = firstText === undefined
+            ? undefined
+            : CALL_LABEL_RE.exec(firstText)?.[1];
+          if (
+            firstTextStem !== undefined &&
+            texts.length === 1 &&
+            callMatrixStems.has(firstTextStem)
+          ) continue;
           if (firstText !== undefined && /^(?:todo|fixme)\b/i.test(firstText)) {
             if (!runCitesAReference(comments, i)) {
               context.report({
