@@ -26,6 +26,18 @@ ruleTester.run("prefer-schema-for-api-payload", rule, {
     {
       code: "const manifest = JSON.parse(readJsonSync(path)); return manifest.version;",
     },
+    {
+      name: "allows a local file read stored before JSON parsing",
+      code: "const text = readFileSync(path, 'utf8'); const manifest = JSON.parse(text); return manifest.version;",
+    },
+    {
+      name: "allows an awaited local file read stored before JSON parsing",
+      code: "async function f(path) { const text = await fs.readFile(path, 'utf8'); const manifest = JSON.parse(text); return manifest.version; }",
+    },
+    {
+      name: "allows a same-scope alias of local file text",
+      code: "const text = readFileSync(path, 'utf8'); const alias = text; const manifest = JSON.parse(alias); return manifest.version;",
+    },
     // Test files: a fixture parses what it just produced.
     {
       code: "async function t(res) { const body = await res.json(); use(body.id); }",
@@ -125,11 +137,39 @@ ruleTester.run("prefer-schema-for-api-payload", rule, {
     { code: "const r = Schema.safeParse(JSON.parse(text));" },
     // Parsed but never dereferenced.
     { code: "const raw = JSON.parse(text); send(raw);" },
+    {
+      name: "allows a simple alias that remains opaque",
+      code: "async function f(r) { const raw = await r.json(); const alias = raw; return alias; }",
+    },
+    {
+      name: "allows an alias reassigned to a parsed value",
+      code: "async function f(r) { const raw = await r.json(); let alias = raw; alias = Schema.parse(alias); return alias.id; }",
+    },
+    {
+      name: "validation through the source clears its local aliases",
+      code: "async function f(r) { const raw = await r.json(); const alias = raw; if (isPayload(raw)) return alias.id; }",
+    },
+    {
+      name: "validation through an alias clears the shared source payload",
+      code: "async function f(r) { const raw = await r.json(); const alias = raw; if (isPayload(alias)) return raw.id; }",
+    },
+    {
+      name: "does not taint an alias of an ordinary local value",
+      code: "const raw = { id: 'local' }; const alias = raw; return alias.id;",
+    },
     // A `.parse()` that is not `JSON.parse` is the validation we are asking for.
     { code: "const data = YAML.parse(text); use(data.foo);" },
     { code: "const data = Schema.parse(text); use(data.foo);" },
     // A hand-written guard narrows just as a schema does.
     { code: "const d = JSON.parse(text); if (isConfig(d)) { use(d.foo); }" },
+    {
+      name: "allows an extracted primitive used only in its validated conditional branch",
+      code: "const payload = JSON.parse(text); const exp = payload.exp; return typeof exp === 'number' ? exp : null;",
+    },
+    {
+      name: "allows an extracted array used only in its validated conditional branch",
+      code: "const payload = JSON.parse(text); const items = payload.items; return Array.isArray(items) ? items : [];",
+    },
   ],
   invalid: [
     // The trust boundary still fires: a network payload read outside an assertion.
@@ -198,6 +238,66 @@ ruleTester.run("prefer-schema-for-api-payload", rule, {
     // Reassignment to another raw source keeps the binding tracked.
     {
       code: "async function f(a, b) { let body = await a.json(); body = await b.json(); return body.id; }",
+      errors: [{ messageId: "unparsedJsonAccess" }],
+    },
+    {
+      name: "tracks a simple local alias of an unvalidated payload",
+      code: "async function f(r) { const raw = await r.json(); const alias = raw; return alias.id; }",
+      errors: [{ messageId: "unparsedJsonAccess" }],
+    },
+    {
+      name: "tracks a multi-hop local alias chain",
+      code: "async function f(r) { const raw = await r.json(); const first = raw; const second = first; return second.id; }",
+      errors: [{ messageId: "unparsedJsonAccess" }],
+    },
+    {
+      name: "tracks an alias introduced by assignment",
+      code: "async function f(r) { const raw = await r.json(); let alias = {}; alias = raw; return alias.id; }",
+      errors: [{ messageId: "unparsedJsonAccess" }],
+    },
+    {
+      name: "keeps an alias tainted when the source binding is parsed later",
+      code: "async function f(r) { let raw = await r.json(); const alias = raw; raw = Schema.parse(raw); return alias.id; }",
+      errors: [{ messageId: "unparsedJsonAccess" }],
+    },
+    {
+      name: "keeps the source tainted when only the alias binding is replaced",
+      code: "async function f(r) { const raw = await r.json(); let alias = raw; alias = Schema.parse(alias); return raw.id; }",
+      errors: [{ messageId: "unparsedJsonAccess" }],
+    },
+    {
+      name: "reassignment detaches local-file provenance",
+      code: "let text = readFileSync(path, 'utf8'); text = externalText; const data = JSON.parse(text); return data.id;",
+      errors: [{ messageId: "unparsedJsonAccess" }],
+    },
+    {
+      name: "an extracted property escaping before validation remains unsafe",
+      code: "const payload = JSON.parse(text); const exp = payload.exp; consume(exp);",
+      errors: [{ messageId: "unparsedJsonAccess" }],
+    },
+    {
+      name: "a mutable extracted property remains unsafe",
+      code: "const payload = JSON.parse(text); let exp = payload.exp; return typeof exp === 'number' ? exp : null;",
+      errors: [{ messageId: "unparsedJsonAccess" }],
+    },
+    {
+      name: "mixed guarded and unguarded uses remain unsafe",
+      code: "const payload = JSON.parse(text); const exp = payload.exp; log(exp); return typeof exp === 'number' ? exp : null;",
+      errors: [{ messageId: "unparsedJsonAccess" }],
+    },
+    {
+      name: "validating one extracted field does not clear a sibling field",
+      code: "const payload = JSON.parse(text); const exp = payload.exp; const safe = typeof exp === 'number' ? exp : null; return payload.email;",
+      errors: [{ messageId: "unparsedJsonAccess" }],
+    },
+    {
+      name: "a nested-scope extraction does not inherit same-scope validation",
+      code: "const payload = JSON.parse(text); function nested() { const exp = payload.exp; return typeof exp === 'number' ? exp : null; } return nested();",
+      errors: [{ messageId: "unparsedJsonAccess" }],
+    },
+    {
+      name: "reports once for multiple bindings of the same payload",
+      code: "async function f(r) { const raw = await r.json(); const alias = raw; consume(alias.id); return raw.email; }",
       errors: [{ messageId: "unparsedJsonAccess" }],
     },
 

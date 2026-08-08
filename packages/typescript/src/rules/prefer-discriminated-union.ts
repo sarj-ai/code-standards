@@ -37,6 +37,16 @@ const SUCCESS_PAYLOAD_MEMBER_NAMES: ReadonlySet<string> = new Set([
 
 const REQUIRED_STATUS_MEMBER_COUNT = 1;
 
+const FUNCTION_RETURN_OWNER_TYPES: ReadonlySet<AST_NODE_TYPES> = new Set([
+  AST_NODE_TYPES.ArrowFunctionExpression,
+  AST_NODE_TYPES.FunctionDeclaration,
+  AST_NODE_TYPES.FunctionExpression,
+  AST_NODE_TYPES.TSDeclareFunction,
+  AST_NODE_TYPES.TSEmptyBodyFunctionExpression,
+  AST_NODE_TYPES.TSFunctionType,
+  AST_NODE_TYPES.TSMethodSignature,
+]);
+
 /**
  * Returns true for the canonical flat result shape: one required positive
  * boolean status plus optional success and failure payloads.
@@ -109,6 +119,33 @@ function isBooleanTyped(member: TSESTree.TSPropertySignature): boolean {
   );
 }
 
+/** The whole inline object returned by a function, directly or through `Promise`. */
+function inlineReturnTypeLiteral(
+  node: TSESTree.TSTypeLiteral,
+): TSESTree.TSTypeAnnotation | null {
+  let annotation: TSESTree.TSTypeAnnotation | null = null;
+  if (node.parent.type === AST_NODE_TYPES.TSTypeAnnotation) {
+    annotation = node.parent;
+  } else if (
+    node.parent.type === AST_NODE_TYPES.TSTypeParameterInstantiation &&
+    node.parent.params.length === 1 &&
+    node.parent.params[0] === node &&
+    node.parent.parent.type === AST_NODE_TYPES.TSTypeReference &&
+    node.parent.parent.typeName.type === AST_NODE_TYPES.Identifier &&
+    node.parent.parent.typeName.name === "Promise" &&
+    node.parent.parent.parent.type === AST_NODE_TYPES.TSTypeAnnotation
+  ) {
+    annotation = node.parent.parent.parent;
+  }
+  if (annotation === null) return null;
+  const owner = annotation.parent;
+  return FUNCTION_RETURN_OWNER_TYPES.has(owner.type) &&
+    "returnType" in owner &&
+    owner.returnType === annotation
+    ? annotation
+    : null;
+}
+
 export default createRule<Options, MessageIds>({
   name: "prefer-discriminated-union",
   meta: {
@@ -164,6 +201,10 @@ export default createRule<Options, MessageIds>({
         node: TSESTree.TSTypeLiteral,
       ): void {
         checkTypeLiteral(node, node.parent);
+      },
+      TSTypeLiteral(node: TSESTree.TSTypeLiteral): void {
+        const annotation = inlineReturnTypeLiteral(node);
+        if (annotation !== null) checkTypeLiteral(node, annotation);
       },
     };
   },

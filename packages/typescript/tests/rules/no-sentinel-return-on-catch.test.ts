@@ -249,6 +249,19 @@ ruleTester.run("no-sentinel-return-on-catch", rule, {
         }
       `,
     },
+    {
+      name: "allows a deliberate Error throw used only to capture and inspect its stack",
+      code: `
+        function inferMarker() {
+          try { throw Error(); }
+          catch (error) {
+            const stack = error.stack;
+            inspect(stack);
+            return null;
+          }
+        }
+      `,
+    },
     // Real site: \`new RegExp\` safe-construct — \`null\` on invalid pattern.
     {
       code: `
@@ -331,6 +344,14 @@ ruleTester.run("no-sentinel-return-on-catch", rule, {
       `,
     },
     {
+      name: "allows a cast sentinel in a declared boolean predicate",
+      code: "function isReady(): boolean { try { return probe(); } catch { return false as boolean; } }",
+    },
+    {
+      name: "does not treat a non-null assertion as a sentinel",
+      code: "function load() { try { return read(); } catch { return cached!; } }",
+    },
+    {
       name: "allows a declared asynchronous boolean predicate",
       code: `
         async function canReach(host: string): Promise<boolean> {
@@ -341,6 +362,31 @@ ruleTester.run("no-sentinel-return-on-catch", rule, {
     },
   ],
   invalid: [
+    {
+      name: "does not exempt a deliberate Error throw when the caught value is ignored",
+      code: "function f() { try { throw Error(); } catch (error) { return null; } }",
+      errors: [{ messageId: "noSentinelReturn" }],
+    },
+    {
+      name: "does not exempt an operational throw merely because the caught value is read",
+      code: "function f() { try { throw run(); } catch (error) { inspect(error); return null; } }",
+      errors: [{ messageId: "noSentinelReturn" }],
+    },
+    {
+      name: "reports a nullable sentinel behind an as assertion",
+      code: "function load() { try { return read(); } catch { return null as User | null; } }",
+      errors: [{ messageId: "noSentinelReturn" }],
+    },
+    {
+      name: "reports an empty object behind an angle-bracket assertion",
+      code: "function load() { try { return read(); } catch { return <Config>{}; } }",
+      errors: [{ messageId: "noSentinelReturn" }],
+    },
+    {
+      name: "reports an empty array behind satisfies",
+      code: "function load() { try { return read(); } catch { return [] satisfies Row[]; } }",
+      errors: [{ messageId: "noSentinelReturn" }],
+    },
     {
       name: "reports a nullable return from a predicate-named function",
       code: "function isReady(p) { try { return load(p); } catch { return null; } }",

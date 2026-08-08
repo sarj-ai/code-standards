@@ -37,6 +37,17 @@ const PAYLOAD_PROPS: ReadonlySet<string> = new Set([
   "context",
 ]);
 
+const BUILTIN_ERROR_CONSTRUCTORS: ReadonlySet<string> = new Set([
+  "AggregateError",
+  "Error",
+  "EvalError",
+  "RangeError",
+  "ReferenceError",
+  "SyntaxError",
+  "TypeError",
+  "URIError",
+]);
+
 function isCatchBinding(scope: Scope.Scope, name: string): boolean {
   let current: Scope.Scope | null = scope;
   while (current) {
@@ -234,6 +245,80 @@ function isJsonStringify(callee: TSESTree.Expression): boolean {
   );
 }
 
+/** Direct values serialized by a one-level object or array literal. */
+function directLiteralValues(
+  argument: TSESTree.CallExpressionArgument,
+): readonly TSESTree.Expression[] {
+  if (argument.type === "ObjectExpression") {
+    return argument.properties.flatMap((property) => {
+      if (property.type !== "Property" || property.computed) return [];
+      const value = property.value;
+      if (
+        value.type === "AssignmentPattern" ||
+        value.type === "ArrayPattern" ||
+        value.type === "ObjectPattern" ||
+        value.type === "TSEmptyBodyFunctionExpression"
+      ) {
+        return [];
+      }
+      return [value];
+    });
+  }
+  if (argument.type === "ArrayExpression") {
+    return argument.elements.flatMap((element) =>
+      element !== null && element.type !== "SpreadElement" ? [element] : [],
+    );
+  }
+  return argument.type === "SpreadElement" ? [] : [argument];
+}
+
+function expressionSuggestsError(
+  expression: TSESTree.Expression,
+  scope: Scope.Scope,
+): boolean {
+  if (expression.type === "Identifier") {
+    return (
+      ERROR_NAME_PATTERN.test(expression.name) ||
+      isCatchBinding(scope, expression.name)
+    );
+  }
+  return (
+    expression.type === "MemberExpression" &&
+    memberSuggestsError(expression, scope)
+  );
+}
+
+/** Stronger provenance required when an identifier is nested in a payload literal. */
+function nestedExpressionSuggestsError(
+  expression: TSESTree.Expression,
+  scope: Scope.Scope,
+): boolean {
+  if (expression.type === "Identifier") {
+    if (isCatchBinding(scope, expression.name)) return true;
+    let current: Scope.Scope | null = scope;
+    while (current !== null && !current.set.has(expression.name)) {
+      current = current.upper;
+    }
+    const variable = current?.set.get(expression.name);
+    if (variable === undefined || variable.defs.length !== 1) return false;
+    const definition = variable.defs[0];
+    if (definition?.type !== "Variable") return false;
+    const initializer = definition.node.init;
+    return (
+      initializer?.type === "NewExpression" &&
+      initializer.callee.type === "Identifier" &&
+      BUILTIN_ERROR_CONSTRUCTORS.has(initializer.callee.name) &&
+      variable.references.every(
+        (reference) => !reference.isWrite() || reference.init === true,
+      )
+    );
+  }
+  return (
+    expression.type === "MemberExpression" &&
+    memberSuggestsError(expression, scope)
+  );
+}
+
 export default createRule<Options, MessageIds>({
   name: "no-json-stringify-error",
   meta: {
@@ -262,25 +347,18 @@ export default createRule<Options, MessageIds>({
         }
 
         const scope = context.sourceCode.getScope(firstArg);
-
-        let suggestsError: boolean;
-        if (firstArg.type === "Identifier") {
-          suggestsError =
-            ERROR_NAME_PATTERN.test(firstArg.name) || isCatchBinding(scope, firstArg.name);
-        } else if (firstArg.type === "MemberExpression") {
-          suggestsError = memberSuggestsError(firstArg, scope);
-        } else {
-          return;
-        }
-
-        if (!suggestsError) {
-          return;
-        }
-
-        if (
-          isGuardedByInstanceofError(node, firstArg, context.sourceCode) ||
-          isNarrowedByEarlyReturn(node, firstArg, context.sourceCode)
-        ) {
+        const isNestedLiteral =
+          firstArg.type === "ObjectExpression" ||
+          firstArg.type === "ArrayExpression";
+        const unsafeValue = directLiteralValues(firstArg).find(
+          (value) =>
+            (isNestedLiteral
+              ? nestedExpressionSuggestsError(value, scope)
+              : expressionSuggestsError(value, scope)) &&
+            !isGuardedByInstanceofError(node, value, context.sourceCode) &&
+            !isNarrowedByEarlyReturn(node, value, context.sourceCode),
+        );
+        if (unsafeValue === undefined) {
           return;
         }
 

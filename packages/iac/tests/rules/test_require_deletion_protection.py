@@ -27,6 +27,66 @@ resource "google_sql_database_instance" "main" {
     assert "no deletion_protection" in diags[0].message
 
 
+def test_google_sql_database_requires_a_deletion_guard():
+    src = """
+resource "google_sql_database" "app" {
+  name     = "app"
+  instance = google_sql_database_instance.main.name
+}
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "google_sql_database" in diags[0].message
+
+
+def test_google_sql_database_accepts_exact_prevent_policy():
+    src = """
+resource "google_sql_database" "app" {
+  name            = "app"
+  instance        = google_sql_database_instance.main.name
+  deletion_policy = "PREVENT"
+}
+"""
+    assert _check(src) == []
+
+
+def test_google_sql_database_accepts_lifecycle_prevent_destroy():
+    src = """
+resource "google_sql_database" "app" {
+  name     = "app"
+  instance = google_sql_database_instance.main.name
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize("value", ['"DELETE"', '"ABANDON"', '"prevent"', "PREVENT", "var.policy"])
+def test_google_sql_database_rejects_unproven_deletion_policy(value: str):
+    src = f"""resource "google_sql_database" "app" {{
+  name            = "app"
+  instance        = google_sql_database_instance.main.name
+  deletion_policy = {value}
+}}
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "deletion_policy" in diags[0].message
+
+
+def test_google_sql_database_does_not_accept_an_unsupported_boolean_guard():
+    src = """
+resource "google_sql_database" "app" {
+  name                = "app"
+  instance            = google_sql_database_instance.main.name
+  deletion_protection = true
+}
+"""
+    assert len(_check(src)) == 1
+
+
 def test_flags_variable_gated_protection_as_unverifiable():
     src = """
 resource "google_sql_database_instance" "logto" {
@@ -565,6 +625,7 @@ def test_the_curated_set_is_exactly_this():
         "google_bigquery_table",
         "google_bigquery_dataset",
         "google_spanner_database",
+        "google_sql_database",
         "google_alloydb_cluster",
         "google_bigtable_instance",
         "google_redis_instance",

@@ -72,6 +72,12 @@ function isConcatOntoTarget(
   rhs: TSESTree.Expression,
   target: string,
 ): boolean {
+  if (rhs.type === "TemplateLiteral") {
+    return rhs.expressions.some(
+      (expression) =>
+        expression.type === "Identifier" && expression.name === target,
+    );
+  }
   if (rhs.type !== "BinaryExpression" || rhs.operator !== "+") {
     return false;
   }

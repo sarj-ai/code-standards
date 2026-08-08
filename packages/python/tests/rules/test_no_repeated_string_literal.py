@@ -569,3 +569,101 @@ def only_one():
     return a, b
 '''
     assert _check(src) == []
+
+
+def test_reuses_unique_public_module_constant_from_one_function():
+    src = f'''QUERY = """{_LONG_SQL}"""
+
+def load():
+    return execute("""{_LONG_SQL}""")
+'''
+    [diagnostic] = _check(src)
+    assert diagnostic.line == 6
+    assert "`QUERY`" in diagnostic.message
+    assert "reuse the canonical constant" in diagnostic.message
+
+
+def test_annotated_public_module_constant_is_canonical():
+    src = f'''QUERY: Final[str] = """{_LONG_SQL}"""
+
+def load():
+    return execute("""{_LONG_SQL}""")
+'''
+    [diagnostic] = _check(src)
+    assert diagnostic.line == 6
+    assert "`QUERY`" in diagnostic.message
+
+
+def test_canonical_constant_may_be_declared_after_the_function():
+    src = f'''def load():
+    return execute("""{_LONG_SQL}""")
+
+QUERY = """{_LONG_SQL}"""
+'''
+    [diagnostic] = _check(src)
+    assert diagnostic.line == 2
+
+
+def test_every_function_copy_reuses_the_canonical_constant():
+    src = f'''QUERY = """{_LONG_SQL}"""
+
+def one():
+    return execute("""{_LONG_SQL}""")
+
+def two():
+    return execute("""{_LONG_SQL}""")
+'''
+    diagnostics = _check(src)
+    assert [diagnostic.line for diagnostic in diagnostics] == [6, 11]
+    assert all("`QUERY`" in diagnostic.message for diagnostic in diagnostics)
+
+
+@pytest.mark.parametrize("name", ["_QUERY", "query", "Query", "QUERY_"])
+def test_non_public_or_non_upper_snake_binding_is_not_canonical(name: str):
+    src = f'''{name} = """{_LONG_SQL}"""
+
+def load():
+    return execute("""{_LONG_SQL}""")
+'''
+    assert _check(src) == []
+
+
+def test_ambiguous_canonical_constant_names_are_not_guessed():
+    src = f'''QUERY = """{_LONG_SQL}"""
+FALLBACK_QUERY = """{_LONG_SQL}"""
+
+def load():
+    return execute("""{_LONG_SQL}""")
+'''
+    assert _check(src) == []
+
+
+def test_constant_inside_control_flow_is_not_a_module_canonical():
+    src = f'''if enabled:
+    QUERY = """{_LONG_SQL}"""
+
+def load():
+    return execute("""{_LONG_SQL}""")
+'''
+    assert _check(src) == []
+
+
+def test_class_constant_is_not_a_module_canonical():
+    src = f'''class Queries:
+    QUERY = """{_LONG_SQL}"""
+
+def load():
+    return execute("""{_LONG_SQL}""")
+'''
+    assert _check(src) == []
+
+
+def test_unstructured_public_constant_does_not_arm_reuse():
+    value = "a deliberately long but otherwise ordinary prose sentence here"
+    assert len(value) >= 40
+    src = f"""MESSAGE = "{value}"
+
+def load():
+    return emit("{value}")
+"""
+    assert _check(src) == []

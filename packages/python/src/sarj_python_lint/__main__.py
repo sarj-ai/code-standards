@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 from collections import Counter
 import json
 from pathlib import Path
@@ -87,7 +88,8 @@ def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
         diags.extend(
             diagnostic
             for diagnostic in deduplicate_diagnostics(
-                [diagnostic for diagnostic in raw if not is_suppressed(source_lines, diagnostic.line, diagnostic.code)]
+                [diagnostic for diagnostic in raw if not is_suppressed(source_lines, diagnostic.line, diagnostic.code)],
+                source=source,
             )
         )
     return diags
@@ -115,11 +117,15 @@ _DIAGNOSTIC_PRECEDENCE = MappingProxyType(
 )
 
 
-def deduplicate_diagnostics(diags: list[Diagnostic]) -> list[Diagnostic]:
+def deduplicate_diagnostics(diags: list[Diagnostic], *, source: str | None = None) -> list[Diagnostic]:
     """Keep the most specific remediation at a source location."""
+    codes = frozenset(diagnostic.code for diagnostic in diags)
+    needs_docstring_owners = "SARJ092" in codes and not codes.isdisjoint(_DIAGNOSTIC_PRECEDENCE["SARJ092"])
+    docstring_owners = _docstring_owner_locations(source) if source is not None and needs_docstring_owners else {}
     present: dict[tuple[Path, int, int], dict[str, set[Severity]]] = {}
     for diagnostic in diags:
-        by_code = present.setdefault((diagnostic.path, diagnostic.line, diagnostic.col), {})
+        line, col = docstring_owners.get(diagnostic.line, (diagnostic.line, diagnostic.col))
+        by_code = present.setdefault((diagnostic.path, line, col), {})
         by_code.setdefault(diagnostic.code, set()).add(diagnostic.severity)
     suppressed = {
         (location, generic, generic_severity)
@@ -133,8 +139,43 @@ def deduplicate_diagnostics(diags: list[Diagnostic]) -> list[Diagnostic]:
     return [
         diagnostic
         for diagnostic in diags
-        if ((diagnostic.path, diagnostic.line, diagnostic.col), diagnostic.code, diagnostic.severity) not in suppressed
+        if (
+            (
+                (
+                    diagnostic.path,
+                    *docstring_owners.get(diagnostic.line, (diagnostic.line, diagnostic.col)),
+                ),
+                diagnostic.code,
+                diagnostic.severity,
+            )
+            not in suppressed
+        )
     ]
+
+
+def _docstring_owner_locations(source: str) -> dict[int, tuple[int, int]]:
+    """Map every physical docstring line to the opening expression that owns it."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        tree = None
+    if tree is None:
+        return {}
+    owners: dict[int, tuple[int, int]] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) or not node.body:
+            continue
+        expression = node.body[0]
+        if not (
+            isinstance(expression, ast.Expr)
+            and isinstance(expression.value, ast.Constant)
+            and isinstance(expression.value.value, str)
+        ):
+            continue
+        location = (expression.lineno, expression.col_offset + 1)
+        lines = range(expression.lineno, (expression.end_lineno or expression.lineno) + 1)
+        owners.update(dict.fromkeys(lines, location))
+    return owners
 
 
 class _Args(argparse.Namespace):

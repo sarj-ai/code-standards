@@ -144,8 +144,7 @@ def masked_hcl_lines(source: str) -> list[str]:
             index += 1
         line = "".join(chars)
         output.append(line)
-        marker = _HEREDOC_RE.search(mask_line(line))
-        if marker is not None:
+        if (marker := _HEREDOC_RE.search(mask_line(line))) is not None:
             heredoc_term = marker.group(1)
     return output
 
@@ -161,8 +160,7 @@ def _cached_heredoc_body_mask(lines: tuple[str, ...]) -> tuple[bool, ...]:
             else:
                 mask[idx] = True
             continue
-        m = _HEREDOC_RE.search(mask_line(line))
-        if m is not None:
+        if (m := _HEREDOC_RE.search(mask_line(line))) is not None:
             term = m.group(1)
     return tuple(mask)
 

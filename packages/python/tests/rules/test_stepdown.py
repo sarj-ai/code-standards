@@ -725,6 +725,51 @@ class H:
     assert "_load" in diags[0].message
 
 
+def test_unknown_receiver_reference_pins_a_same_named_private_helper():
+    src = """
+class GraphNode:
+    def _calculate_depth(self) -> int:
+        return 1
+
+    def evaluate_self(self) -> int:
+        return self._calculate_depth()
+
+    def evaluate_peer(self, peer: "GraphNode") -> int:
+        return peer._calculate_depth()
+"""
+    assert _check(src) == []
+
+
+def test_deep_unknown_receiver_reference_also_pins_helper():
+    src = """
+class Graph:
+    def _load(self) -> int:
+        return 1
+
+    def load_self(self) -> int:
+        return self._load()
+
+    def load_child(self, node) -> int:
+        return node.child._load()
+"""
+    assert _check(src) == []
+
+
+def test_unknown_receiver_with_a_different_attribute_does_not_pin_helper():
+    src = """
+class Loader:
+    def _load(self) -> int:
+        return 1
+
+    def run(self) -> int:
+        return self._load()
+
+    def inspect_peer(self, peer) -> int:
+        return peer._save()
+"""
+    assert len(_check(src)) == 1
+
+
 def test_inherited_method_called_from_subclass_not_falsely_single_caller():
     src = """
 class Base:

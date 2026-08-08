@@ -64,11 +64,18 @@ function initProvablyLacksSignal(init: TSESTree.CallExpressionArgument): boolean
   return true;
 }
 
-/** True for a string or template literal — a URL spelled inline. */
-function isStringish(node: TSESTree.CallExpressionArgument): boolean {
+/** True for a URL spelled inline rather than a forwarded Request. */
+function isInlineUrl(
+  node: TSESTree.CallExpressionArgument,
+  resolvesToGlobal: (identifier: TSESTree.Identifier) => boolean,
+): boolean {
   return (
     (node.type === AST_NODE_TYPES.Literal && typeof node.value === "string") ||
-    node.type === AST_NODE_TYPES.TemplateLiteral
+    node.type === AST_NODE_TYPES.TemplateLiteral ||
+    (node.type === AST_NODE_TYPES.NewExpression &&
+      node.callee.type === AST_NODE_TYPES.Identifier &&
+      node.callee.name === "URL" &&
+      resolvesToGlobal(node.callee))
   );
 }
 
@@ -145,7 +152,11 @@ export default createRule<Options, MessageIds>({
         // equivalent) being forwarded — the inbound request owns the
         // lifetime, and a fresh signal cannot be attached without an init.
         const [first, init] = node.arguments;
-        if (node.arguments.length === 1 && first !== undefined && !isStringish(first)) {
+        if (
+          node.arguments.length === 1 &&
+          first !== undefined &&
+          !isInlineUrl(first, resolvesToGlobal)
+        ) {
           return;
         }
 

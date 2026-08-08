@@ -272,8 +272,7 @@ def _read(path: Path) -> str:
 
 def _count_line(line: str, counts: Counter[str]) -> None:
     """Add one line's suppressions to `counts`."""
-    file_noqa = _FILE_NOQA_RE.match(line)
-    if file_noqa:
+    if file_noqa := _FILE_NOQA_RE.match(line):
         listed = file_noqa.group(1)
         if listed:
             counts.update(f"file-noqa:{code.strip().upper()}" for code in listed.split(","))

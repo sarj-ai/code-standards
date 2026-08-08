@@ -48,6 +48,15 @@ LABELS = [
     "cleanup!",
     "prepare–",
     "exercise—",
+    "---- Arrange ----",
+    "=== given ===",
+    "****Assert****",
+    "~~~ Verification ~~~",
+    "Arrange / Act / Assert",
+    "Given / When / Then",
+    "Prepare, Execute, Verify, Cleanup",
+    "Arrange and Act and Assert",
+    "Act -> Assert",
 ]
 
 
@@ -135,6 +144,28 @@ def test_a_word_merely_starting_with_a_phase_word_is_left_alone() -> None:
             # actor
             assert works()
         """)
+    assert diags == []
+
+
+@pytest.mark.parametrize(
+    "comment",
+    [
+        "----",
+        "then?",
+        "Act II",
+        "Arrange / Act / Assert the result",
+        "Given / When / Therefore",
+        f"{'-' * 41} Arrange",
+        "-*- coding: utf-8 -*-",
+    ],
+)
+def test_decoration_and_joins_do_not_hide_non_phase_content(comment: str) -> None:
+    diags = _check(f"""
+        def test_it():
+            # {comment}
+            assert works()
+        """)
+
     assert diags == []
 
 

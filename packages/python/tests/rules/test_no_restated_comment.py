@@ -53,6 +53,82 @@ def test_plural_folds_to_singular():
 
 
 @pytest.mark.parametrize(
+    ("comment", "code"),
+    [
+        ("Get current user", "user: User = get_current_user()"),
+        ("Get current user", "user: User = await get_current_user()"),
+        ("Create user token", "user, token = create_user_token()"),
+        ("Create user token", "(user, token) = await create_user_token()"),
+        ("Create user token", "[user, token] = create_user_token()"),
+    ],
+)
+def test_flags_restatement_above_typed_or_destructuring_action_assignment(comment: str, code: str):
+    assert len(_pair(comment, code)) == 1
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "user: User",
+        "user: User = cached_user",
+        "user, token = cached_pair",
+        "[user, token] = cached_pair",
+    ],
+)
+def test_typed_or_destructuring_data_assignment_is_not_an_action(code: str):
+    assert _pair("current user token", code) == []
+
+
+def test_novel_context_keeps_typed_assignment_comment():
+    assert _pair("Get admin current user", "user: User = get_current_user()") == []
+
+
+def test_multiline_typed_action_uses_the_whole_ast_statement():
+    src = (
+        "def f():\n"
+        "    # Get current user\n"
+        "    user: User = await (\n"
+        "        get_current_user()\n"
+        "    )\n"
+        "    return user\n"
+    )
+    assert len(_check(src)) == 1
+
+
+def test_multiline_action_with_novel_context_keeps_comment():
+    src = (
+        "def f():\n"
+        "    # Get admin current user\n"
+        "    user: User = await (\n"
+        "        get_current_user()\n"
+        "    )\n"
+        "    return user\n"
+    )
+    assert _check(src) == []
+
+
+def test_destructuring_group_label_is_kept():
+    src = (
+        "def f():\n"
+        "    # Create user tokens\n"
+        "    user, token = create_user_token()\n"
+        "    admin, admin_token = create_admin_token()\n"
+    )
+    assert _check(src) == []
+
+
+def test_destructuring_region_label_is_kept():
+    src = (
+        "def f():\n"
+        "    # Create user token\n"
+        "    user, token = create_user_token()\n"
+        "    persist(user)\n"
+        "    persist(token)\n"
+    )
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
     "header",
     [
         "def build_instructions():",

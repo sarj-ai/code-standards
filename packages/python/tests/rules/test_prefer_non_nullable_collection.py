@@ -125,6 +125,66 @@ def test_flags_first_statement_self_normalization() -> None:
     assert len(_check(source, Path("app/resolver.py"))) == 1
 
 
+@pytest.mark.parametrize(
+    "normalization",
+    [
+        "candidates = [] if candidates is None else candidates",
+        "candidates = list() if candidates is None else candidates",
+        "candidates = candidates if candidates is not None else []",
+        "candidates = candidates if candidates is not None else list()",
+    ],
+)
+def test_flags_first_statement_conditional_expression_normalization(normalization: str) -> None:
+    source = f"def resolve(candidates: list[str] | None = None):\n    {normalization}\n    return sorted(candidates)\n"
+
+    assert len(_check(source, Path("app/resolver.py"))) == 1
+
+
+@pytest.mark.parametrize(
+    "normalization",
+    [
+        "candidates = [] if other is None else candidates",
+        "candidates = [] if candidates is not None else candidates",
+        "candidates = candidates if candidates is None else []",
+        "candidates = [default] if candidates is None else candidates",
+        "normalized = [] if candidates is None else candidates",
+        "candidates = [] if candidates is None else list(candidates)",
+    ],
+)
+def test_ignores_conditional_expressions_that_do_not_only_normalize_none(normalization: str) -> None:
+    source = (
+        "def resolve(candidates: list[str] | None = None, other: object = None):\n"
+        f"    {normalization}\n"
+        "    return candidates\n"
+    )
+
+    assert _check(source, Path("app/resolver.py")) == []
+
+
+def test_ignores_conditional_normalization_when_none_is_observed_again() -> None:
+    source = (
+        "def resolve(candidates: list[str] | None = None):\n"
+        "    candidates = [] if candidates is None else candidates\n"
+        "    if candidates is None:\n"
+        "        record_omission()\n"
+        "    return candidates\n"
+    )
+
+    assert _check(source, Path("app/resolver.py")) == []
+
+
+def test_ignores_conditional_normalization_captured_by_nested_scope() -> None:
+    source = (
+        "def resolve(candidates: list[str] | None = None):\n"
+        "    candidates = candidates if candidates is not None else []\n"
+        "    def current():\n"
+        "        return candidates\n"
+        "    return current\n"
+    )
+
+    assert _check(source, Path("app/resolver.py")) == []
+
+
 def test_skips_none_guard_that_performs_additional_behavior() -> None:
     source = (
         "def resolve(candidates: list[str] | None = None):\n"

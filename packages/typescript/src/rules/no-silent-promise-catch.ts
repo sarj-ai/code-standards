@@ -1,5 +1,5 @@
 /**
- * @fileoverview no-silent-promise-catch — `.catch(() => null)` deletes the rejection: no log, no metric, no rethrow, and a sentinel to the caller.
+ * @fileoverview no-silent-promise-catch — a silent `.catch` or second `.then` handler deletes the rejection and returns a sentinel.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-silent-promise-catch.test.ts
  */
@@ -114,12 +114,12 @@ export default createRule<Options, MessageIds>({
     type: "problem",
     docs: {
       description:
-        "Disallow `.catch()` handlers that silently swallow the rejection (e.g. `.catch(() => null)`); log, rethrow, or handle the error.",
+        "Disallow `.catch()` and second-argument `.then()` handlers that silently swallow a rejection; log, rethrow, or handle the error.",
     },
     schema: [],
     messages: {
       silentCatch:
-        "This `.catch()` swallows the rejection without logging, rethrowing, or handling it — failures become invisible and callers get an indistinguishable sentinel. Log the error (and only then map to a fallback), or let it propagate.",
+        "This rejection handler swallows the error without logging, rethrowing, or handling it — failures become invisible and callers get an indistinguishable sentinel. Log the error (and only then map to a fallback), or let it propagate.",
     },
   },
   defaultOptions: [],
@@ -163,11 +163,14 @@ export default createRule<Options, MessageIds>({
         if (
           node.callee.type !== AST_NODE_TYPES.MemberExpression ||
           node.callee.computed ||
-          node.callee.property.type !== AST_NODE_TYPES.Identifier ||
-          node.callee.property.name !== "catch"
+          node.callee.property.type !== AST_NODE_TYPES.Identifier
         ) {
           return;
         }
+
+        const method = node.callee.property.name;
+        const handlerIndex = method === "catch" ? 0 : method === "then" ? 1 : null;
+        if (handlerIndex === null) return;
 
         if (isBodyParseCall(node.callee.object)) {
           return;
@@ -186,10 +189,11 @@ export default createRule<Options, MessageIds>({
           return;
         }
 
-        if (node.arguments.length !== 1) {
+        const expectedArguments = method === "catch" ? 1 : 2;
+        if (node.arguments.length !== expectedArguments) {
           return;
         }
-        const handler = node.arguments[0];
+        const handler = node.arguments[handlerIndex];
         if (
           handler === undefined ||
           (handler.type !== AST_NODE_TYPES.ArrowFunctionExpression &&

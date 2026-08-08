@@ -225,9 +225,30 @@ def test_allows_secret_in_binop():
     assert _check(src) == []
 
 
-def test_allows_secret_subscript_operand():
-    """Subscripts are out of scope — only Name.id / Attribute.attr are matched."""
-    src = 'def f(headers, expected):\n    return headers["token"] == expected\n'
+@pytest.mark.parametrize("key", ["token", "access_token", "api_key", "clientSecret", "password_hash"])
+@pytest.mark.parametrize("op", _OPERATORS)
+def test_flags_literal_secret_key_subscript_operand(key: str, op: str) -> None:
+    src = f'def f(headers, expected):\n    return headers["{key}"] {op} expected\n'
+
+    assert _count(src) == 1
+
+
+@pytest.mark.parametrize("key", ["token_type", "secret_kind", "api_key_id", "TOKEN", "PASSWORD"])
+def test_allows_category_descriptor_and_allcaps_subscript_keys(key: str) -> None:
+    src = f'def f(headers, expected):\n    return headers["{key}"] == expected\n'
+
+    assert _check(src) == []
+
+
+def test_allows_dynamic_secret_subscript_key() -> None:
+    src = "def f(headers, secret_key, expected):\n    return headers[secret_key] == expected\n"
+
+    assert _check(src) == []
+
+
+def test_allows_secret_subscript_compared_to_literal_sentinel() -> None:
+    src = 'def f(headers):\n    return headers["token"] == "SENTINEL"\n'
+
     assert _check(src) == []
 
 

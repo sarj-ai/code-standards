@@ -459,13 +459,10 @@ def _check_direct_responses(
 def _status_code(node: ast.expr | None, index: FastapiIndex) -> int | None:
     if isinstance(node, ast.Constant) and isinstance(node.value, int):
         return node.value
-    if isinstance(node, ast.Name):
-        match = _STATUS_RE.fullmatch(index.canonical(node))
-        if match is not None:
-            return int(match.group(1))
+    if isinstance(node, ast.Name) and (match := _STATUS_RE.fullmatch(index.canonical(node))):
+        return int(match.group(1))
     if isinstance(node, ast.Attribute):
-        match = _STATUS_RE.fullmatch(node.attr)
-        if match is not None and index.canonical(node.value) == "status":
+        if (match := _STATUS_RE.fullmatch(node.attr)) and index.canonical(node.value) == "status":
             return int(match.group(1))
         if index.canonical(node.value) == "HTTPStatus":
             member = HTTPStatus.__members__.get(node.attr)

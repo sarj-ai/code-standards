@@ -198,6 +198,86 @@ def test_thing(value):
     assert len(_check(src)) == 1
 
 
+def test_flags_class_level_bug_pin() -> None:
+    src = """
+import pytest
+
+@pytest.mark.xfail(reason="BUG: wrong envelope")
+class TestEnvelope:
+    def test_get(self):
+        assert correct()
+"""
+
+    diagnostics = _check(src)
+
+    assert len(diagnostics) == 1
+    assert diagnostics[0].line == 4
+
+
+@pytest.mark.parametrize("marker", ["real_llm", "flaky", "network", "integration"])
+def test_class_level_nondeterministic_sibling_exempts_bug_pin(marker: str) -> None:
+    src = f"""
+import pytest
+
+@pytest.mark.{marker}
+@pytest.mark.xfail(reason="BUG: wrong envelope")
+class TestEnvelope:
+    def test_get(self):
+        assert correct()
+"""
+
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        'pytestmark = pytest.mark.xfail(reason="BUG: wrong envelope")',
+        'pytestmark = [pytest.mark.xfail(reason="BUG: wrong envelope")]',
+        'pytestmark: object = (pytest.mark.xfail(reason="BUG: wrong envelope"),)',
+    ],
+)
+def test_flags_module_pytestmark_bug_pin(declaration: str) -> None:
+    src = f"""import pytest
+
+{declaration}
+
+def test_get():
+    assert correct()
+"""
+
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize("marker", ["real_llm", "flaky", "network", "integration"])
+def test_module_pytestmark_nondeterministic_sibling_exempts_bug_pin(marker: str) -> None:
+    src = f"""import pytest
+
+pytestmark = [
+    pytest.mark.xfail(reason="BUG: wrong envelope"),
+    pytest.mark.{marker},
+]
+
+def test_get():
+    assert correct()
+"""
+
+    assert _check(src) == []
+
+
+def test_dynamic_or_rebound_module_pytestmark_is_exempt() -> None:
+    src = """import pytest
+
+pytestmark = markers()
+pytestmark = [pytest.mark.xfail(reason="BUG: wrong envelope")]
+
+def test_get():
+    assert correct()
+"""
+
+    assert _check(src) == []
+
+
 def test_xfail_without_a_reason_is_exempt():
     src = """
 import pytest

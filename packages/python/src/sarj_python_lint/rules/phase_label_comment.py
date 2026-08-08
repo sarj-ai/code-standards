@@ -18,12 +18,16 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# The phase vocabulary, as a whole-body match.
+# A bounded whole-body grammar: decoration and joins are ceremony only when
+# every substantive token is itself a phase label.
+_PHASE_WORD = (
+    r"arrange|act|assert(?:ion)?s?|given|when|then|exercise|execute|"
+    r"verif(?:y|ication)|cleanup|prepare|sanity(?:\s+check)?"
+)
 _PHASE_RE = re.compile(
-    r"^(?:arrange|act|assert(?:ion)?s?|given|when|then|exercise|execute|verif(?:y|ication)|"
-    r"cleanup|prepare|sanity(?:\s+check)?|arrange\s*[/&+]\s*act|act\s*[/&+]\s*assert|"
-    r"given\s*[/&+]\s*when|when\s*[/&+]\s*then)"
-    r"\s*[.:;!\-–—]*\s*$",
+    rf"^[-=~*_#.\s]{{0,40}}(?:{_PHASE_WORD})"
+    rf"(?:\s*(?:[/&+,|]|->|and)\s*(?:{_PHASE_WORD}))*"
+    rf"[-=~*_#.\s:;!–—]{{0,40}}$",
     re.IGNORECASE,
 )
 

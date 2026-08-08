@@ -128,7 +128,7 @@ def _is_data_callable(func: ast.expr) -> bool:
 def _is_mock_assertion(func: ast.expr) -> bool:
     """Return whether the call asserts on a mock instead of building an object."""
     name = _callee_name(func)
-    return name is not None and name.startswith(_MOCK_ASSERTION_PREFIX)
+    return name is not None and name.rsplit(".", maxsplit=1)[-1].startswith(_MOCK_ASSERTION_PREFIX)
 
 
 def _locally_defined_names(tree: ast.Module) -> frozenset[str]:
@@ -142,9 +142,10 @@ def _calls_a_local_helper(func: ast.expr, local_defs: frozenset[str]) -> bool:
 
 
 def _callee_name(func: ast.expr) -> str | None:
-    """Render the callee as a comparable name, so repeats can be counted."""
+    """Render a stable dotted callee, so unrelated terminal names never collide."""
     if isinstance(func, ast.Name):
         return func.id
     if isinstance(func, ast.Attribute):
-        return func.attr
+        parent = _callee_name(func.value)
+        return f"{parent}.{func.attr}" if parent is not None else None
     return None

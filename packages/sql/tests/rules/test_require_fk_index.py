@@ -158,6 +158,56 @@ def test_table_level_primary_key_covers_the_fk() -> None:
     assert _check(src) == []
 
 
+def test_inline_primary_key_column_covers_a_table_level_fk() -> None:
+    src = """
+    CREATE TABLE profiles (
+        user_id UUID PRIMARY KEY,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+    """
+    assert _check(src) == []
+
+
+def test_inline_unique_column_covers_a_table_level_fk() -> None:
+    src = """
+    CREATE TABLE profiles (
+        user_id UUID UNIQUE,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+    """
+    assert _check(src) == []
+
+
+def test_named_inline_constraint_reference_is_checked() -> None:
+    src = """
+    CREATE TABLE child (
+        parent_id INT CONSTRAINT child_parent_fk REFERENCES parent(id)
+    );
+    """
+    diags = _check(src)
+    assert len(diags) == 1
+    assert (diags[0].line, diags[0].message.split("`")[1]) == (3, "parent_id")
+
+
+def test_index_covers_a_named_inline_constraint_reference() -> None:
+    src = """
+    CREATE TABLE child (
+        parent_id INT CONSTRAINT child_parent_fk REFERENCES parent(id)
+    );
+    CREATE INDEX child_parent_id_idx ON child (parent_id);
+    """
+    assert _check(src) == []
+
+
+def test_inline_unique_named_constraint_covers_its_reference() -> None:
+    src = """
+    CREATE TABLE child (
+        parent_id INT CONSTRAINT parent_unique UNIQUE CONSTRAINT child_parent_fk REFERENCES parent(id)
+    );
+    """
+    assert _check(src) == []
+
+
 def test_alter_table_only_composite_fk_is_covered_by_a_concurrent_index() -> None:
     """The leading columns of the concurrent index match the composite FK, so it is covered."""
     src = """

@@ -121,6 +121,15 @@ ruleTester.run("no-string-concat-in-loop", rule, {
       `,
     },
     {
+      name: "allows a template reset that does not read the target",
+      code: `
+        let output = "";
+        for (const item of items) {
+          output = \`\${item}\`;
+        }
+      `,
+    },
+    {
       name: "allows a fresh per-iteration accumulator collected for a final join",
       code: `
         const textParts = [];
@@ -217,6 +226,16 @@ ruleTester.run("no-string-concat-in-loop", rule, {
     },
   ],
   invalid: [
+    {
+      name: "reports a template-literal rebuild in a loop",
+      code: "let output = ''; for (const item of items) { output = `${output}${item}`; }",
+      errors: [{ messageId: "noStringConcatInLoop" }],
+    },
+    {
+      name: "reports a prefixed template-literal rebuild in a loop",
+      code: "let output = ''; for (const item of items) { output = `${prefix}${output}${item}`; }",
+      errors: [{ messageId: "noStringConcatInLoop" }],
+    },
     {
       name: "reports an outer accumulator once when one loop appends in several branches",
       code: "function f(str) { let result = ''; for (const chr of str) { if (ok(chr)) { result += chr; } else { result += '%'; result += hex(chr); } } return result; }",

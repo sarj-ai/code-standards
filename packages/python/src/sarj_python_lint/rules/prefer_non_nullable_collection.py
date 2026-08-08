@@ -161,9 +161,44 @@ def _starts_with_empty_normalization(function: ast.FunctionDef | ast.AsyncFuncti
             value=ast.BoolOp(op=ast.Or(), values=[ast.Name(id=subject), value]),
         ) if target == name and subject == name and _is_empty_list(value):
             allowed_none_test = None
+        case ast.Assign(targets=[ast.Name(id=target)], value=ast.IfExp() as conditional) if target == name:
+            if (comparison := _empty_normalizing_conditional(conditional, name)) is None:
+                return False
+            allowed_none_test = comparison
         case _:
             return False
     return not _observes_none(function, name, allowed=allowed_none_test)
+
+
+def _empty_normalizing_conditional(conditional: ast.IfExp, name: str) -> ast.Compare | None:
+    """Return the identity test when a conditional only replaces ``None`` with an empty list."""
+    match conditional:
+        case ast.IfExp(
+            test=(
+                ast.Compare(
+                    left=ast.Name(id=subject),
+                    ops=[ast.Is()],
+                    comparators=[ast.Constant(value=None)],
+                ) as comparison
+            ),
+            body=empty,
+            orelse=ast.Name(id=fallback),
+        ) if subject == name and fallback == name and _is_empty_list(empty):
+            return comparison
+        case ast.IfExp(
+            test=(
+                ast.Compare(
+                    left=ast.Name(id=subject),
+                    ops=[ast.IsNot()],
+                    comparators=[ast.Constant(value=None)],
+                ) as comparison
+            ),
+            body=ast.Name(id=present),
+            orelse=empty,
+        ) if subject == name and present == name and _is_empty_list(empty):
+            return comparison
+        case _:
+            return None
 
 
 def _is_docstring(statement: ast.stmt) -> bool:

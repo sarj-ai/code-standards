@@ -10,7 +10,8 @@ import re
 import tokenize
 from typing import TYPE_CHECKING, override
 
-from sarj_python_lint.rule_base import ColumnEncoding, Diagnostic, Rule
+from sarj_python_lint.rule_base import ColumnEncoding, Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._comments import (
     code_tokens,
     comment_runs,
@@ -79,6 +80,7 @@ _BLOCK_OPENER_RE = re.compile(
 _IMPORT_SHAPE_RE = re.compile(r"^\s*(?:import\b|from\b)")
 _KV_SHAPE_RE = re.compile(r"""^\s*["'][^"']+["']\s*:""")
 _ASSIGN_SHAPE_RE = re.compile(r"^\s*[\w.\[\]]+\s*(?::[^=]+)?=[^=]|^\s*[\w.\[\]]+\s*:\s*\S+,?\s*$")
+_UNPACK_ASSIGN_SHAPE_RE = re.compile(r"^\s*(?:\([^)]*,[^)]*\)|\[[^\]]*,[^\]]*\]|[\w.]+(?:\s*,\s*[\w.]+)+)\s*=")
 _ELEMENT_SHAPE_RE = re.compile(r"""^\s*["'\[{(].*,?\s*$|^\s*[\w.'"]+,\s*$""")
 # Calls and assertions can form labelled sibling groups too.
 _CALL_SHAPE_RE = re.compile(r"^\s*(?:await\s+)?[\w.]+\s*\(")
@@ -123,7 +125,7 @@ def _statement_shape(line: str) -> str | None:
         return "import"
     if _KV_SHAPE_RE.match(line):
         return "kv"
-    if _ASSIGN_SHAPE_RE.match(line):
+    if _ASSIGN_SHAPE_RE.match(line) or _UNPACK_ASSIGN_SHAPE_RE.match(line):
         return "assign"
     if _ASSERT_SHAPE_RE.match(line):
         return "assert"
@@ -168,6 +170,15 @@ def _is_commented_out_code(body: str) -> bool:
     return True
 
 
+def _is_action_assignment(node: ast.stmt | None) -> bool:
+    """Recognize an assignment whose value is produced by an action."""
+    match node:
+        case ast.AnnAssign(value=ast.Call() | ast.Await()) | ast.Assign(value=ast.Call() | ast.Await()):
+            return True
+        case _:
+            return False
+
+
 class NoRestatedComment(Rule):
     id: str = "no-restated-comment"
     code: str = "SARJ049"
@@ -189,14 +200,29 @@ class NoRestatedComment(Rule):
         wall_members = frozenset(
             line for members in statement_comment_walls(path, source, standalone).values() for line in members
         )
+        candidates = [
+            run[0]
+            for run in comment_runs(standalone)
+            if len(run) == 1 and run[0][0] not in nested and run[0][0] not in wall_members
+        ]
+        if not candidates:
+            return []
+        tree = parse_or_none(path, source)
+        if tree is None:
+            return []
+        action_lines = {
+            line + 1
+            for line, _, _ in candidates
+            if line < len(lines) and not _SIMPLE_STMT_RE.match(lines[line]) and _ACTION_STMT_RE.search(lines[line])
+        }
+        action_assignments = {
+            node.lineno: node
+            for node in nodes(tree, ast.Assign, ast.AnnAssign)
+            if node.lineno in action_lines and _is_action_assignment(node)
+        }
         diags: list[Diagnostic] = []
-        for run in comment_runs(standalone):
-            if len(run) != 1:
-                continue
-            line, col, body = run[0]
-            if line in nested or line in wall_members:
-                continue
-            if self._restates_below(body, line, lines):
+        for line, col, body in candidates:
+            if self._restates_below(body, line, lines, action_assignments.get(line + 1)):
                 diags.append(
                     Diagnostic(
                         path=path,
@@ -210,7 +236,12 @@ class NoRestatedComment(Rule):
         return diags
 
     @staticmethod
-    def _restates_below(body: str, line: int, lines: list[str]) -> bool:
+    def _restates_below(
+        body: str,
+        line: int,
+        lines: list[str],
+        action_assignment: ast.stmt | None,
+    ) -> bool:
         if not body or body.endswith("?"):
             return False
         if _DIRECTIVE_RE.match(body) or _is_commented_out_code(body) or _BANNERISH_RE.search(body):
@@ -232,7 +263,9 @@ class NoRestatedComment(Rule):
         code = lines[index]
         if not code.strip() or code.lstrip().startswith("#"):
             return False
-        if not _SIMPLE_STMT_RE.match(code) or _BLOCK_OPENER_RE.match(code):
+        if (not _SIMPLE_STMT_RE.match(code) and not _is_action_assignment(action_assignment)) or _BLOCK_OPENER_RE.match(
+            code
+        ):
             return False
         if _CODE_NEGATION_RE.search(code):
             return False
@@ -242,4 +275,5 @@ class NoRestatedComment(Rule):
             return False
         if _region_size(lines, index) >= _SECTION_REGION_LINES:
             return False
-        return restates(tokens, code_tokens(code))
+        compared_code = ast.unparse(action_assignment) if action_assignment is not None else code
+        return restates(tokens, code_tokens(compared_code))

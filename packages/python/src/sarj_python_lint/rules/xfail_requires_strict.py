@@ -37,6 +37,7 @@ _PARAMETRIZE_ATTR = "parametrize"
 _PYTEST_MARK = "mark"
 
 _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
+_PYTESTMARK = "pytestmark"
 
 
 class XfailRequiresStrict(Rule):
@@ -72,12 +73,38 @@ class XfailRequiresStrict(Rule):
 
 
 def _rotting_bug_pins(tree: ast.Module) -> list[ast.Call]:
-    hits: list[ast.Call] = []
+    hits = _rotting_markers(_module_pytest_markers(tree))
+    for node in nodes(tree, ast.ClassDef):
+        if node.name.startswith("Test"):
+            hits.extend(_rotting_markers(node.decorator_list))
     for node in nodes(tree, *_FUNC_NODES):
-        if _has_nondeterministic_marker(node.decorator_list):
-            continue
-        hits.extend(dec for dec in node.decorator_list if isinstance(dec, ast.Call) and _is_rotting_xfail(dec))
+        hits.extend(_rotting_markers(node.decorator_list))
     return hits
+
+
+def _rotting_markers(markers: list[ast.expr]) -> list[ast.Call]:
+    """Return non-strict bug pins unless a sibling marks this owner as nondeterministic."""
+    if _has_nondeterministic_marker(markers):
+        return []
+    return [marker for marker in markers if isinstance(marker, ast.Call) and _is_rotting_xfail(marker)]
+
+
+def _module_pytest_markers(tree: ast.Module) -> list[ast.expr]:
+    """Resolve one static module-level ``pytestmark`` binding without walking parametrized cases."""
+    values: list[ast.expr] = []
+    for statement in tree.body:
+        match statement:
+            case ast.Assign(targets=[ast.Name(id=name)], value=value) if name == _PYTESTMARK:
+                values.append(value)
+            case ast.AnnAssign(target=ast.Name(id=name), value=ast.expr() as value) if name == _PYTESTMARK:
+                values.append(value)
+            case _:
+                continue
+    if len(values) != 1:
+        return []
+    value = values[0]
+    markers = list(value.elts) if isinstance(value, (ast.List, ast.Tuple)) else [value]
+    return markers if markers and all(_marker_name(marker) is not None for marker in markers) else []
 
 
 def _has_nondeterministic_marker(decorators: list[ast.expr]) -> bool:

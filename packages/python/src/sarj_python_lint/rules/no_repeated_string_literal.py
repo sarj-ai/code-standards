@@ -29,6 +29,8 @@ _SQL_KEYWORD_RE = re.compile(
     r"\b(SELECT|INSERT|UPDATE|DELETE|FROM|WHERE|JOIN|VALUES|ON CONFLICT|RETURNING|GROUP BY|ORDER BY)\b"
 )
 _IDENTIFIER_RE = re.compile(r"^[a-z_][a-z0-9_.]*$")
+_PUBLIC_CONSTANT_RE = re.compile(r"^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$")
+_MIN_CONSTANT_NAME_LENGTH = 3
 
 _MODULE_SCOPE = -1
 
@@ -47,6 +49,8 @@ class NoRepeatedStringLiteral(Rule):
         tree = parse_or_none(path, source)
         if tree is None:
             return []
+
+        canonical_constants = _canonical_constants(tree)
 
         occurrences: dict[str, list[ast.Constant]] = defaultdict(list)
         scope_of: dict[int, int] = {}
@@ -89,6 +93,24 @@ class NoRepeatedStringLiteral(Rule):
         diags: list[Diagnostic] = []
         for value, nodes in occurrences.items():
             function_scopes = {scope for n in nodes if (scope := scope_of.get(id(n), _MODULE_SCOPE)) != _MODULE_SCOPE}
+            canonical = canonical_constants.get(value, ())
+            if len(canonical) == 1 and function_scopes:
+                (constant_name,) = canonical
+                function_nodes = [node for node in nodes if scope_of.get(id(node), _MODULE_SCOPE) != _MODULE_SCOPE]
+                diags.extend(
+                    Diagnostic(
+                        path=path,
+                        line=node.lineno,
+                        col=node.col_offset + 1,
+                        code=self.code,
+                        message=(
+                            f"structured string literal {_preview(value)} duplicates module constant "
+                            f"`{constant_name}` — reuse the canonical constant so the copies cannot drift."
+                        ),
+                    )
+                    for node in function_nodes
+                )
+                continue
             if len(function_scopes) < _MIN_DISTINCT_SCOPES:
                 continue
             nodes.sort(key=lambda n: (n.lineno, n.col_offset))
@@ -109,6 +131,27 @@ class NoRepeatedStringLiteral(Rule):
             )
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
+
+
+def _canonical_constants(tree: ast.Module) -> dict[str, tuple[str, ...]]:
+    """Index exact strings deliberately exposed as module-level constants."""
+    names: dict[str, list[str]] = defaultdict(list)
+    for statement in tree.body:
+        match statement:
+            case ast.Assign(targets=[ast.Name(id=name)], value=ast.Constant(value=str() as value)):
+                pass
+            case ast.AnnAssign(target=ast.Name(id=name), value=ast.Constant(value=str() as value)):
+                pass
+            case _:
+                continue
+        if (
+            _PUBLIC_CONSTANT_RE.fullmatch(name) is not None
+            and len(name) >= _MIN_CONSTANT_NAME_LENGTH
+            and len(value) >= _MIN_LENGTH
+            and _is_structured(value)
+        ):
+            names[value].append(name)
+    return {value: tuple(bound_names) for value, bound_names in names.items()}
 
 
 def _annotation_exprs(node: ast.AST) -> list[ast.expr]:

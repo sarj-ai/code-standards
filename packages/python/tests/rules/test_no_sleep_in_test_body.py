@@ -75,7 +75,7 @@ def test_skips_non_test_paths(path: str):
     ],
 )
 def test_flags_nonzero_sleep_in_async_test_body(call: str):
-    src = f"async def test_x():\n    {call}\n"
+    src = f"import asyncio\nimport time\n\nasync def test_x():\n    {call}\n"
     assert len(_check(src)) == 1
 
 
@@ -87,12 +87,15 @@ def test_flags_nonzero_sleep_in_async_test_body(call: str):
     ],
 )
 def test_flags_nonzero_sleep_in_sync_test_body(call: str):
-    src = f"def test_x():\n    {call}\n"
+    src = f"import time\n\ndef test_x():\n    {call}\n"
     assert len(_check(src)) == 1
 
 
 def test_flags_float_and_int():
     src = """
+import asyncio
+import time
+
 async def test_x():
     await asyncio.sleep(0.01)
 
@@ -104,12 +107,61 @@ async def test_y():
 
 def test_flags_sleep_deeper_in_test_body_straight_line():
     src = """
+import asyncio
+
 async def test_x():
     setup()
     if True:
         await asyncio.sleep(0.5)
 """
     assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    "src",
+    [
+        "import time as clock\n\ndef test_x():\n    clock.sleep(1)\n",
+        "import asyncio as aio\n\nasync def test_x():\n    await aio.sleep(0.1)\n",
+        "from time import sleep\n\ndef test_x():\n    sleep(1)\n",
+        "from asyncio import sleep as pause\n\nasync def test_x():\n    await pause(0.1)\n",
+        "def test_x():\n    import time as clock\n    clock.sleep(1)\n",
+        "async def test_x():\n    from asyncio import sleep as pause\n    await pause(0.1)\n",
+    ],
+)
+def test_resolves_stdlib_module_and_direct_import_aliases(src: str):
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    "src",
+    [
+        "def test_x():\n    time.sleep(1)\n",
+        "async def test_x():\n    await asyncio.sleep(1)\n",
+        "def test_x():\n    sleep(1)\n",
+        "import fake_time as time\n\ndef test_x():\n    time.sleep(1)\n",
+        "import fake_asyncio as asyncio\n\nasync def test_x():\n    await asyncio.sleep(1)\n",
+        "from fake_time import sleep\n\ndef test_x():\n    sleep(1)\n",
+    ],
+)
+def test_unimported_or_unrelated_sleep_names_are_not_stdlib(src: str):
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "src",
+    [
+        "import time\n\ndef test_x(time):\n    time.sleep(1)\n",
+        "import asyncio\n\nasync def test_x(asyncio):\n    await asyncio.sleep(1)\n",
+        "from time import sleep\n\ndef test_x(sleep):\n    sleep(1)\n",
+        "import time\n\ndef test_x():\n    time = fake_time\n    time.sleep(1)\n",
+        "from time import sleep\n\ndef test_x():\n    def sleep(seconds):\n        pass\n    sleep(1)\n",
+        "import time\ntime = fake_time\n\ndef test_x():\n    time.sleep(1)\n",
+        "from time import sleep\nfrom fake_time import sleep\n\ndef test_x():\n    sleep(1)\n",
+        "def test_x():\n    if enabled:\n        import time\n    time.sleep(1)\n",
+    ],
+)
+def test_local_rebinding_or_ambiguous_import_suppresses_stdlib_provenance(src: str):
+    assert _check(src) == []
 
 
 def test_code_and_message():
@@ -223,6 +275,8 @@ async def test_x():
 
 def test_fires_for_test_body_but_not_its_nested_helper():
     src = """
+import asyncio
+
 async def test_x():
     async def _slow():
         await asyncio.sleep(60)
@@ -232,7 +286,7 @@ async def test_x():
 """
     diags = _check(src)
     assert len(diags) == 1
-    assert diags[0].line == 6
+    assert diags[0].line == 8
 
 
 # Negative: non-test functions, module scope, other receivers.                #
@@ -307,6 +361,9 @@ def test_syntax_error_returns_empty(source: str):
 
 def test_multiple_sleeps_in_one_test_all_fire():
     src = """
+import asyncio
+import time
+
 async def test_x():
     await asyncio.sleep(0.01)
     do_work()
@@ -317,23 +374,26 @@ async def test_x():
 
 
 def test_line_col_async_sleep():
-    src = "async def test_x():\n    await asyncio.sleep(0.01)\n"
+    src = "import asyncio\n\nasync def test_x():\n    await asyncio.sleep(0.01)\n"
     diags = _check(src)
     assert len(diags) == 1
-    assert diags[0].line == 2
+    assert diags[0].line == 4
     assert diags[0].col == 11
 
 
 def test_line_col_sync_sleep():
-    src = "def test_x():\n    time.sleep(1)\n"
+    src = "import time\n\ndef test_x():\n    time.sleep(1)\n"
     diags = _check(src)
     assert len(diags) == 1
-    assert diags[0].line == 2
+    assert diags[0].line == 4
     assert diags[0].col == 5
 
 
 def test_results_sorted_by_line_col():
     src = """
+import asyncio
+import time
+
 async def test_a():
     await asyncio.sleep(0.03)
 
@@ -348,6 +408,8 @@ async def test_b():
 
 def test_sibling_tests_flagged_independently():
     src = """
+import asyncio
+
 async def test_a():
     await asyncio.sleep(0.01)
 

@@ -62,6 +62,109 @@ def test_flags_supported_regex_match_calls(call: str) -> None:
     assert len(_check(source)) == 1
 
 
+@pytest.mark.parametrize(
+    ("import_line", "binding", "receiver"),
+    [
+        ("import re", 'EMAIL_RE = re.compile(r".+@.+")', "EMAIL_RE"),
+        ("import re as stdlib_re", 'email_pattern = stdlib_re.compile(r".+@.+")', "email_pattern"),
+        ("from re import compile as compile_regex", 'email_pattern = compile_regex(r".+@.+")', "email_pattern"),
+    ],
+)
+def test_flags_receiver_resolved_from_re_compile_binding(import_line: str, binding: str, receiver: str) -> None:
+    source = f"""
+    {import_line}
+    {binding}
+
+    def validate(text):
+        result = {receiver}.search(text)
+        if result:
+            consume(result)
+    """
+
+    assert len(_check(source)) == 1
+
+
+def test_flags_local_receiver_resolved_from_re_compile_binding() -> None:
+    source = """
+    import re
+
+    def validate(text):
+        email_expression = re.compile(r".+@.+")
+        result = email_expression.search(text)
+        if result:
+            consume(result)
+    """
+
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "binding",
+    [
+        'email_expression = factory.compile(r".+@.+")',
+        'email_expression = make_pattern(r".+@.+")',
+    ],
+)
+def test_does_not_guess_unresolved_compiled_receivers(binding: str) -> None:
+    source = f"""
+    import re
+
+    def validate(text):
+        {binding}
+        result = email_expression.search(text)
+        if result:
+            consume(result)
+    """
+
+    assert _check(source) == []
+
+
+def test_does_not_resolve_a_rebound_compiled_receiver() -> None:
+    source = """
+    import re
+
+    def validate(text):
+        email_expression = re.compile(r".+@.+")
+        email_expression = replacement
+        result = email_expression.search(text)
+        if result:
+            consume(result)
+    """
+
+    assert _check(source) == []
+
+
+def test_does_not_resolve_a_conditionally_rebound_compiled_receiver() -> None:
+    source = """
+    import re
+
+    def validate(text, replacement, enabled):
+        email_expression = re.compile(r".+@.+")
+        if enabled:
+            email_expression = replacement
+        result = email_expression.search(text)
+        if result:
+            consume(result)
+    """
+
+    assert _check(source) == []
+
+
+def test_module_compiled_receiver_shadowed_by_parameter_is_clean() -> None:
+    source = """
+    import re
+
+    EMAIL_EXPRESSION = re.compile(r".+@.+")
+
+    def validate(text, EMAIL_EXPRESSION):
+        result = EMAIL_EXPRESSION.search(text)
+        if result:
+            consume(result)
+    """
+
+    assert _check(source) == []
+
+
 def test_flags_explicit_not_none_check() -> None:
     source = """
     match = pattern.search(text)
