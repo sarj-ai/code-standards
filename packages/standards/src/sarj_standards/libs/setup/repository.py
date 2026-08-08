@@ -28,8 +28,13 @@ def plan_setup(root: Path) -> SetupPlan:
         ),
         Command(
             "TypeScript package",
-            ("npm", "ci", "--no-audit", "--no-fund"),
+            ("npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund"),
             resolved / "packages" / "typescript",
+        ),
+        Command(
+            "Documentation site",
+            ("npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund"),
+            resolved / "apps" / "docs",
         ),
     )
     return SetupPlan(resolved, install_hooks=True, commands=commands)

@@ -6,10 +6,22 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESTree, type TSESLint } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "preferNonNullableCollection";
+
+export const preferNonNullableCollectionDocumentation = {
+  summary: "Suggest non-null arrays only when local control flow proves the nullish state is equivalent to an empty collection.",
+  rationale: "A redundant nullish collection state spreads defaults and guards through consumers without carrying information.",
+  remediation: "Use a non-null collection type and normalize omitted input to an empty collection at the boundary.",
+  category: "maintainability",
+  limitations: ["The rule requires local evidence that nullish and empty values are treated identically and skips exported wire shapes."],
+  examples: [
+    { id: "non-null-array", title: "Model an always-present collection", outcome: "no-match", files: [{ path: "src/search.ts", source: "interface Input { items: string[] } function search({ items }: Input) { return items.length; }" }], focusPath: "src/search.ts", expectedCount: 0, public: true },
+    { id: "defaulted-nullish-array", title: "Do not retain a redundant nullish state", outcome: "match", files: [{ path: "src/search.ts", source: "interface Input { items: string[] | undefined } function search({ items = [] }: Input) { return items.length; }" }], focusPath: "src/search.ts", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
 type Options = readonly [];
 
 const ARRAY_TYPE_NAMES: ReadonlySet<string> = new Set(["Array", "ReadonlyArray"]);
@@ -282,6 +294,7 @@ function memberIsOnlyCoalesced(
 
 export default createRule<Options, MessageIds>({
   name: "prefer-non-nullable-collection",
+  documentation: preferNonNullableCollectionDocumentation,
   meta: {
     type: "suggestion",
     docs: {

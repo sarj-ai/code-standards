@@ -4,6 +4,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from sarj_python_lint.rules.conditional_assertion_in_test import ConditionalAssertionInTest
+from sarj_python_lint.rules.defect_xfail_requires_strict import DefectXfailRequiresStrict
 from sarj_python_lint.rules.docstring_args_restate_signature import (
     DocstringArgsRestateSignature,
 )
@@ -16,15 +17,11 @@ from sarj_python_lint.rules.duplicated_override_docstring import (
 )
 from sarj_python_lint.rules.fastapi_openapi_contract import FastapiOpenapiContract
 from sarj_python_lint.rules.fixture_returns_bare_tuple import FixtureReturnsBareTuple
-from sarj_python_lint.rules.inefficient_string_concat_in_loop import (
-    InefficientStringConcatInLoop,
-)
 from sarj_python_lint.rules.interaction_only_test import InteractionOnlyTest
 from sarj_python_lint.rules.invalid_pydantic_field_default import (
     InvalidPydanticFieldDefault,
 )
 from sarj_python_lint.rules.kwarg_heavy_construction_in_test import KwargHeavyConstructionInTest
-from sarj_python_lint.rules.kwonly_same_type_params import KwonlySameTypeParams
 from sarj_python_lint.rules.mock_without_spec import MockWithoutSpec
 from sarj_python_lint.rules.no_aggregation_in_store_query import (
     NoAggregationInStoreQuery,
@@ -44,6 +41,7 @@ from sarj_python_lint.rules.no_frozen_after_validator_field_write import (
     NoFrozenAfterValidatorFieldWrite,
 )
 from sarj_python_lint.rules.no_gen_random_uuid_in_sql import NoGenRandomUuidInSql
+from sarj_python_lint.rules.no_generic_single_export_module import NoGenericSingleExportModule
 from sarj_python_lint.rules.no_hidden_constructor_fallback import (
     NoHiddenConstructorFallback,
 )
@@ -62,10 +60,11 @@ from sarj_python_lint.rules.no_select_star import NoSelectStar
 from sarj_python_lint.rules.no_sentinel_return_on_except import NoSentinelReturnOnExcept
 from sarj_python_lint.rules.no_sleep_in_test_body import NoSleepInTestBody
 from sarj_python_lint.rules.no_stdlib_logging import NoStdlibLogging
+from sarj_python_lint.rules.no_string_concat_in_loop import NoStringConcatInLoop
 from sarj_python_lint.rules.no_tautological_expect import NoTautologicalExpect
 from sarj_python_lint.rules.no_typed_doc_sections import NoTypedDocSections
+from sarj_python_lint.rules.opaque_parametrize_case_needs_id import OpaqueParametrizeCaseNeedsId
 from sarj_python_lint.rules.over_mocked_test import OverMockedTest
-from sarj_python_lint.rules.parametrize_case_needs_id import ParametrizeCaseNeedsId
 from sarj_python_lint.rules.phase_label_comment import TestPhaseLabelComment
 from sarj_python_lint.rules.prefer_class_row import PreferClassRow
 from sarj_python_lint.rules.prefer_constant_time_secret_compare import (
@@ -110,9 +109,11 @@ from sarj_python_lint.rules.pydantic_at_boundaries import PydanticAtBoundaries
 from sarj_python_lint.rules.redundant_class_docstring import RedundantClassDocstring
 from sarj_python_lint.rules.redundant_docstring import RedundantDocstring
 from sarj_python_lint.rules.redundant_module_docstring import RedundantModuleDocstring
+from sarj_python_lint.rules.require_keyword_only_swap_prone_params import (
+    RequireKeywordOnlySwapProneParams,
+)
 from sarj_python_lint.rules.require_port_for_service import RequirePortForService
 from sarj_python_lint.rules.restated_test_docstring import RestatedTestDocstring
-from sarj_python_lint.rules.single_public_export import SinglePublicExport
 from sarj_python_lint.rules.sleep_with_computed_arg_in_test import SleepWithComputedArgInTest
 from sarj_python_lint.rules.stepdown import Stepdown
 from sarj_python_lint.rules.store_insert_requires_on_conflict import (
@@ -124,7 +125,6 @@ from sarj_python_lint.rules.test_loops_over_literal_cases import (
 from sarj_python_lint.rules.trailing_value_narration import TrailingValueNarration
 from sarj_python_lint.rules.trivially_true_assertion import TriviallyTrueAssertion
 from sarj_python_lint.rules.unused_mock_setup import UnusedMockSetup
-from sarj_python_lint.rules.xfail_requires_strict import XfailRequiresStrict
 from sarj_python_lint.rules.zero_assertion_test import ZeroAssertionTest
 
 
@@ -135,7 +135,7 @@ if TYPE_CHECKING:
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
-        InefficientStringConcatInLoop.id: InefficientStringConcatInLoop,
+        NoStringConcatInLoop.id: NoStringConcatInLoop,
         PreferClassRow.id: PreferClassRow,
         PreferStrEnum.id: PreferStrEnum,
         NoFatTryBlocks.id: NoFatTryBlocks,
@@ -156,21 +156,21 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoQueryWithManyJoins.id: NoQueryWithManyJoins,
         NoAggregationInStoreQuery.id: NoAggregationInStoreQuery,
         NoSelectStar.id: NoSelectStar,
-        SinglePublicExport.id: SinglePublicExport,
+        NoGenericSingleExportModule.id: NoGenericSingleExportModule,
         Stepdown.id: Stepdown,
         NoRepeatedStringLiteral.id: NoRepeatedStringLiteral,
         PreferMatchAssertNever.id: PreferMatchAssertNever,
-        KwonlySameTypeParams.id: KwonlySameTypeParams,
+        RequireKeywordOnlySwapProneParams.id: RequireKeywordOnlySwapProneParams,
         NoRawSqlInTests.id: NoRawSqlInTests,
         NoFileLevelSuppression.id: NoFileLevelSuppression,
         PreferModuleLevelConstant.id: PreferModuleLevelConstant,
         PreferImmutableModuleConstant.id: PreferImmutableModuleConstant,
         MockWithoutSpec.id: MockWithoutSpec,
         TestLoopsOverLiteralCases.id: TestLoopsOverLiteralCases,
-        ParametrizeCaseNeedsId.id: ParametrizeCaseNeedsId,
+        OpaqueParametrizeCaseNeedsId.id: OpaqueParametrizeCaseNeedsId,
         FixtureReturnsBareTuple.id: FixtureReturnsBareTuple,
         KwargHeavyConstructionInTest.id: KwargHeavyConstructionInTest,
-        XfailRequiresStrict.id: XfailRequiresStrict,
+        DefectXfailRequiresStrict.id: DefectXfailRequiresStrict,
         SleepWithComputedArgInTest.id: SleepWithComputedArgInTest,
         ZeroAssertionTest.id: ZeroAssertionTest,
         NoFirstPartyPrivateImport.id: NoFirstPartyPrivateImport,

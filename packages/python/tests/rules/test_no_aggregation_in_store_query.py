@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from sarj_python_lint.rule_base import Diagnostic, is_suppressed
+from sarj_python_lint.rule_base import Diagnostic, RuleExample, is_suppressed
 from sarj_python_lint.rules.no_aggregation_in_store_query import (
     NoAggregationInStoreQuery,
 )
@@ -12,6 +12,15 @@ from sarj_python_lint.rules.no_aggregation_in_store_query import (
 
 def _check(source: str, filename: str = "call_store.py") -> list[Diagnostic]:
     return NoAggregationInStoreQuery().check(Path(filename), source)
+
+
+_PUBLIC_EXAMPLES = NoAggregationInStoreQuery.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(_check(focus.source, str(focus.path))) == example.expected_count
 
 
 def _labels(diags: list[Diagnostic]) -> list[str]:

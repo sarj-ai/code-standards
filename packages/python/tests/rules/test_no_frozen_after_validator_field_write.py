@@ -1,13 +1,29 @@
+from __future__ import annotations
+
 from pathlib import Path
 from textwrap import dedent
+from typing import TYPE_CHECKING
 
 import pytest
 
 from sarj_python_lint.rules.no_frozen_after_validator_field_write import NoFrozenAfterValidatorFieldWrite
 
 
+if TYPE_CHECKING:
+    from sarj_python_lint.rule_base import RuleExample
+
+
 def _check(source: str, path: str = "models.py"):
     return NoFrozenAfterValidatorFieldWrite().check(Path(path), dedent(source))
+
+
+_PUBLIC_EXAMPLES = NoFrozenAfterValidatorFieldWrite.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(NoFrozenAfterValidatorFieldWrite().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 @pytest.mark.parametrize(

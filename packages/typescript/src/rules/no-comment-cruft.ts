@@ -6,7 +6,7 @@
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import {
   codeTokens,
   contentTokens,
@@ -27,6 +27,38 @@ type MessageIds =
   | "placeholderImplementation"
   | "untrackedTodo";
 type Options = readonly [];
+
+export const noCommentCruftDocumentation = {
+  summary: "Flag commented-out code, section-banner comments, and leading file-header comment preambles.",
+  rationale:
+    "Decorative, narrated, or dead-code comments obscure the constraints and rationale that comments should preserve.",
+  remediation:
+    "Delete dead code and narration; express boundaries with named code and retain only comments that explain constraints or intent.",
+  category: "maintainability",
+  limitations: [
+    "The rule skips generated files and conservatively preserves prose, issue references, licenses, examples, and tool directives.",
+  ],
+  examples: [
+    {
+      id: "rationale-comment",
+      title: "A comment explains why retry is required",
+      outcome: "no-match",
+      files: [{ path: "src/retry.ts", source: "// retry because the upstream API is flaky\nconst x = retry();" }],
+      focusPath: "src/retry.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "region-banner",
+      title: "A region comment decorates a code boundary",
+      outcome: "match",
+      files: [{ path: "src/helpers.ts", source: "const x = 1;\n// region helpers\nconst y = 2;" }],
+      focusPath: "src/helpers.ts",
+      expectedCount: 1,
+      public: true,
+    },
+  ],
+} as const satisfies RuleDocumentation;
 
 const LEADING_PREAMBLE_MIN = 4;
 const WALL_MIN_STATEMENTS = 4;
@@ -483,6 +515,7 @@ function hasCommentedOutCode(
 
 export default createRule<Options, MessageIds>({
   name: "no-comment-cruft",
+  documentation: noCommentCruftDocumentation,
   meta: {
     type: "suggestion",
     docs: {

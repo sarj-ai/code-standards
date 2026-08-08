@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import subprocess
 import sys
@@ -11,7 +11,7 @@ import warnings
 
 import pytest
 
-from sarj_python_lint.rule_base import REPO_BLOB, Rule
+from sarj_python_lint.rule_base import REPO_BLOB, ExampleFile, ExampleOutcome, Rule, RuleExample
 from sarj_python_lint.rules import REGISTRY
 
 
@@ -27,25 +27,52 @@ _CODE_RE = re.compile(r"^SARJ\d{3}$")
 # The same shape unanchored, for finding the first code mentioned in prose.
 _CODE_IN_TEXT_RE = re.compile(r"SARJ\d{3}")
 
-# Every SARJ code ever allocated or reserved, mapped to the rule that held it (`null` = reserved but never a rule module).
+# Every SARJ code ever allocated or reserved. A list records an identity's
+# ordered rename history; its final item is the live rule id.
 _LEDGER_PATH = Path(__file__).parent / "code_ledger.json"
 
 # The rules directory, relative to the repo root — the path git history is walked
 # over to recover deleted rule modules.
 _RULES_DIR = "packages/python/src/sarj_python_lint/rules"
 
+_RENAMED_RULES = {
+    "defect-xfail-requires-strict": ("SARJ046", "xfail-requires-strict"),
+    "no-generic-single-export-module": ("SARJ022", "single-public-export"),
+    "no-string-concat-in-loop": ("SARJ002", "inefficient-string-concat-in-loop"),
+    "opaque-parametrize-case-needs-id": ("SARJ042", "parametrize-case-needs-id"),
+    "require-keyword-only-swap-prone-params": ("SARJ034", "kwonly-same-type-params"),
+}
 
-def _ledger() -> dict[str, str | None]:
+
+def _ledger() -> dict[str, tuple[str, ...] | None]:
     raw: object = json.loads(  # pyright: ignore[reportAny] — json.loads is an untyped boundary; narrowed below
         _LEDGER_PATH.read_text(encoding="utf-8")
     )
-    assert isinstance(raw, dict), "code_ledger.json must be a {SARJ###: rule-id | null} object"
-    entries: dict[str, str | None] = {}
-    for code, rule_id in raw.items():  # pyright: ignore[reportUnknownVariableType] — json.loads yields Any leaves
+    assert isinstance(raw, dict), (
+        "code_ledger.json must map SARJ### to null, one rule id, or an ordered rule-id history"
+    )
+    entries: dict[str, tuple[str, ...] | None] = {}
+    raw_items: list[tuple[object, object]] = list(raw.items())  # pyright: ignore[reportUnknownArgumentType]
+    for code, value in raw_items:
         assert isinstance(code, str), f"ledger key {code!r} is not a string"
         assert _CODE_RE.match(code), f"ledger key {code!r} is not a SARJ### code"
-        assert rule_id is None or isinstance(rule_id, str), f"ledger[{code}] must be a rule id or null"
-        entries[code] = rule_id
+        if value is None:
+            entries[code] = None
+            continue
+        if isinstance(value, str):
+            entries[code] = (value,)
+            continue
+        assert isinstance(value, list), f"ledger[{code}] rename history must be an array"
+        assert value, f"ledger[{code}] rename history must not be empty"
+        history_items: list[str] = []
+        for index in range(len(value)):  # pyright: ignore[reportUnknownArgumentType]
+            rule_id: object = value[index]  # pyright: ignore[reportUnknownVariableType]
+            assert isinstance(rule_id, str), f"ledger[{code}] rename history must contain rule ids"
+            assert rule_id, f"ledger[{code}] rename history must not contain empty ids"
+            history_items.append(rule_id)
+        history = tuple(history_items)
+        assert len(history) == len(set(history)), f"ledger[{code}] rename history repeats an id"
+        entries[code] = history
     return entries
 
 
@@ -167,6 +194,58 @@ def test_registry_keys_match_class_ids() -> None:
         assert key == cls.id, f"REGISTRY[{key!r}].id = {cls.id!r} (mismatch)"
 
 
+def test_renamed_rules_keep_codes_but_do_not_resolve_old_ids() -> None:
+    ledger = _ledger()
+    for new_id, (code, old_id) in _RENAMED_RULES.items():
+        assert new_id in REGISTRY
+        assert old_id not in REGISTRY
+        assert REGISTRY[new_id].code == code
+        documentation = REGISTRY[new_id].documentation
+        assert documentation is not None
+        assert old_id in documentation.aliases
+        assert ledger[code] == (old_id, new_id)
+
+
+def test_every_rule_has_valid_source_owned_documentation() -> None:
+    """Keep the generated catalog complete by requiring metadata on every live rule."""
+    missing = sorted(rule_id for rule_id, cls in REGISTRY.items() if cls.documentation is None)
+    assert not missing, f"rules missing source-owned documentation: {', '.join(missing)}"
+
+    documented = {rule_id: cls.native_spec() for rule_id, cls in REGISTRY.items()}
+
+    for rule_id, spec in documented.items():
+        assert spec is not None
+        assert spec.key == f"python:{rule_id}"
+        assert spec.rule_id == rule_id
+        assert spec.code == REGISTRY[rule_id].code
+        assert spec.summary == REGISTRY[rule_id].description
+        assert {example.outcome for example in spec.public_examples} == {"match", "no-match"}
+
+
+def test_rule_examples_are_private_by_default_path_aware_and_multi_file() -> None:
+    example = RuleExample(
+        example_id="cross-module-case",
+        title="Cross-module fixture",
+        outcome=ExampleOutcome.NO_MATCH,
+        files=(
+            ExampleFile.python("app/service.py", "from .types import Item\n"),
+            ExampleFile.python("app/types.py", "class Item: ...\n"),
+        ),
+        focus_path=PurePosixPath("app/service.py"),
+        expected_count=0,
+    )
+
+    assert example.public is False
+    assert example.focus_file.path == PurePosixPath("app/service.py")
+    assert len(example.files) == 2
+
+
+@pytest.mark.parametrize("path", ["/private/source.py", "../outside.py", "app/../../outside.py"])
+def test_rule_example_files_reject_unsafe_paths(path: str) -> None:
+    with pytest.raises(ValueError, match="safe relative paths"):
+        ExampleFile.python(path, "value = 1\n")
+
+
 def test_no_two_rules_share_a_code() -> None:
     """Two rules on one `SARJ###` are indistinguishable in output and in suppressions."""
     seen: dict[str, str] = {}
@@ -207,11 +286,12 @@ def test_docstring_header_code_matches_class_code() -> None:
 def test_no_rule_reuses_a_retired_code() -> None:
     """A retired code stays burned: an old suppression must never bind to a new rule."""
     ledger = _ledger()
-    reused = sorted(
-        f"{cls.code} was {ledger[cls.code]!r}, now claimed by {rule_id!r}"
-        for rule_id, cls in REGISTRY.items()
-        if cls.code in ledger and ledger[cls.code] != rule_id
-    )
+    reused: list[str] = []
+    for rule_id, cls in REGISTRY.items():
+        history = ledger.get(cls.code)
+        if history is not None and history[-1] != rule_id:
+            reused.append(f"{cls.code} last belonged to {history!r}, now claimed by {rule_id!r}")
+    reused.sort()
     assert not reused, (
         "rule(s) claim a retired code:\n  "
         + "\n  ".join(reused)

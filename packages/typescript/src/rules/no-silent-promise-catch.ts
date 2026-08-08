@@ -6,11 +6,23 @@
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
 
 type MessageIds = "silentCatch";
 type Options = readonly [];
+
+export const noSilentPromiseCatchDocumentation = {
+  summary: "Disallow `.catch()` and second-argument `.then()` handlers that silently swallow a rejection; log, rethrow, or handle the error.",
+  rationale: "A swallowed rejection hides failures and gives callers an indistinguishable fallback value.",
+  remediation: "Log, rethrow, or explicitly recover from the rejection; explain intentional teardown suppression.",
+  category: "correctness",
+  limitations: ["Test files, teardown calls, explanatory comments, non-function handlers, and handlers that consume or report the error are excluded."],
+  examples: [
+    { id: "reported-rejection", title: "Report the rejection", outcome: "no-match", files: [{ path: "src/load.ts", source: "load().catch((error) => logger.error({ error }, 'load failed'));" }], focusPath: "src/load.ts", expectedCount: 0, public: true },
+    { id: "silent-rejection", title: "Do not swallow the rejection", outcome: "match", files: [{ path: "src/load.ts", source: "load().catch(() => null);" }], focusPath: "src/load.ts", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
 
 /** True for `x.json()` / `x.text()` — the receiver of a body-parse-fallback catch. */
 function isBodyParseCall(node: TSESTree.Expression): boolean {
@@ -110,6 +122,7 @@ function isSilentExpression(node: TSESTree.Expression): boolean {
 
 export default createRule<Options, MessageIds>({
   name: "no-silent-promise-catch",
+  documentation: noSilentPromiseCatchDocumentation,
   meta: {
     type: "problem",
     docs: {

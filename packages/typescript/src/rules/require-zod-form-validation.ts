@@ -7,12 +7,23 @@
 import { type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
 import type { RuleContext, Scope } from "@typescript-eslint/utils/ts-eslint";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
 import { ZOD_SCHEMA_NAME_RE } from "./_zod.js";
 
 type MessageIds = "missingZodValidation";
 type Options = readonly [];
+
+export const requireZodFormValidationDocumentation = {
+  summary: "Require Zod validation (`Schema.parse(...)` / `Schema.safeParse(...)`) when reading values out of a `FormData` object.",
+  rationale: "FormData values are untrusted strings or files and need runtime validation before use.",
+  remediation: "Read the value inside a Zod schema's `parse` or `safeParse` input.",
+  category: "security",
+  examples: [
+    { id: "validated-form-value", title: "Validate the form value", outcome: "no-match", files: [{ path: "src/action.ts", source: "const input = UserSchema.parse({ name: formData.get('name') });" }], focusPath: "src/action.ts", expectedCount: 0, public: true },
+    { id: "raw-form-value", title: "Do not use a raw form value", outcome: "match", files: [{ path: "src/action.ts", source: "const name = formData.get('name');" }], focusPath: "src/action.ts", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
 
 type Ctx = Readonly<RuleContext<MessageIds, Options>>;
 
@@ -72,6 +83,7 @@ const isFormDataMethodCall = (node: TSESTree.Node): boolean => {
 
 export default createRule<Options, MessageIds>({
   name: "require-zod-form-validation",
+  documentation: requireZodFormValidationDocumentation,
   meta: {
     type: "problem",
     docs: {

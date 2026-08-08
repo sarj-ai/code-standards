@@ -2,12 +2,21 @@ from pathlib import Path
 
 import pytest
 
-from sarj_python_lint.rule_base import Diagnostic, is_suppressed
+from sarj_python_lint.rule_base import Diagnostic, RuleExample, is_suppressed
 from sarj_python_lint.rules.no_offset_pagination import NoOffsetPagination
 
 
 def _check(source: str, path: str = "call_store.py") -> list[Diagnostic]:
     return NoOffsetPagination().check(Path(path), source)
+
+
+_PUBLIC_EXAMPLES = NoOffsetPagination.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(NoOffsetPagination().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 def _kept(source: str, path: str = "call_store.py") -> list[Diagnostic]:
@@ -177,7 +186,8 @@ def test_syntax_error_returns_empty(source: str):
     assert _check(source) == []
 
 
-# Cross-package parity with SARJ107 and the TS twin                            # (`packages/sql/.../no_limit_offset.py`,                                      # `packages/typescript/src/rules/no-offset-pagination.ts`).
+# Cross-package parity with SQL SARJ107 and the TypeScript twin:
+# `no_offset_pagination.py` and `no-offset-pagination.ts`.
 
 PARAM_MARKERS = {
     "pyformat": 'q = "SELECT id FROM t ORDER BY id LIMIT %s OFFSET %s"\n',

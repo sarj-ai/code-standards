@@ -6,9 +6,21 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
-from typing import TYPE_CHECKING, override
+from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, is_suppressed, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    is_suppressed,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import nodes
 
 
@@ -48,10 +60,52 @@ def _is_falsy_break_check(test_node: ast.AST, var_name: str) -> bool:
 class PreferWalrusStreamLoop(Rule):
     id: str = "prefer-walrus-stream-loop"
     code: str = "SARJ077"
-    description: str = (
-        "stream read loop using `while True:` with assignment and break — combine "
-        "into `while (chunk := stream.read(...)):`."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Bind each stream value in the `while` condition instead of using an explicit break.",
+        rationale="A named-expression loop states the read, sentinel check, and iteration condition in one place.",
+        remediation="Replace the leading assignment and immediate sentinel break with `while (value := read()):`.",
+        category=RuleCategory.MAINTAINABILITY,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Only `while True` loops beginning with a simple assignment and an immediate falsy or `None` break are analyzed.",
+            "Loops with an `else`, complex assignment targets, or additional work before the sentinel check are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="explicit-stream-break",
+                title="Stream loop assigns and then breaks",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/stream.py",
+                        "while True:\n"
+                        "    chunk = stream.read(8192)\n"
+                        "    if not chunk:\n"
+                        "        break\n"
+                        "    process(chunk)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/stream.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="conditional-stream-binding",
+                title="Stream loop binds in its condition",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/stream.py",
+                        "while chunk := stream.read(8192):\n    process(chunk)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/stream.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

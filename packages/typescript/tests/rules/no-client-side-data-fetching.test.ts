@@ -1,7 +1,9 @@
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-client-side-data-fetching.js";
+import rule, {
+  noClientSideDataFetchingDocumentation,
+} from "../../src/rules/no-client-side-data-fetching.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -16,7 +18,7 @@ ruleTester.run("no-client-side-data-fetching", rule, {
     { code: "async function load() { return await fetch('/x'); }" },
     // useEffect with no fetch is fine.
     {
-      code: "import { useEffect } from 'react'; useEffect(() => { console.log('x'); }, []);",
+      code: noClientSideDataFetchingDocumentation.examples[0].files[0].source,
     },
     // useState only.
     {
@@ -61,7 +63,7 @@ ruleTester.run("no-client-side-data-fetching", rule, {
   ],
   invalid: [
     {
-      code: "useEffect(() => { fetch('/api/users'); }, []);",
+      code: noClientSideDataFetchingDocumentation.examples[1].files[0].source,
       errors: [{ messageId: "noClientFetch" }],
     },
     {

@@ -6,11 +6,23 @@
 
 import { type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
 
 type MessageIds = "insecureRandomId";
 type Options = readonly [];
+
+export const noInsecureRandomIdDocumentation = {
+  summary: "Disallow using `Math.random()` to generate identifiers, tokens, or secrets; use `crypto.randomUUID()` or `crypto.getRandomValues(...)` instead.",
+  rationale: "Math.random is predictable and lacks the entropy required for security-sensitive values.",
+  remediation: "Generate the value with crypto.randomUUID or crypto.getRandomValues.",
+  category: "security",
+  limitations: ["Ambiguous identifiers and test files are excluded to avoid flagging sampling and fixture data."],
+  examples: [
+    { id: "cryptographic-id", title: "Use the Web Crypto API", outcome: "no-match", files: [{ path: "src/session.ts", source: "const sessionToken = crypto.randomUUID();" }], focusPath: "src/session.ts", expectedCount: 0, public: true },
+    { id: "predictable-token", title: "Do not derive a token from Math.random", outcome: "match", files: [{ path: "src/session.ts", source: "const sessionToken = Math.random();" }], focusPath: "src/session.ts", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
 
 const STRONG_SECURITY_PATTERN =
   /token|secret|csrf|password|passwd|apikey|api[-_]?key|nonce|salt|uuid|authid/i;
@@ -232,6 +244,7 @@ function collectStaticStringParts(
 
 export default createRule<Options, MessageIds>({
   name: "no-insecure-random-id",
+  documentation: noInsecureRandomIdDocumentation,
   meta: {
     type: "problem",
     docs: {

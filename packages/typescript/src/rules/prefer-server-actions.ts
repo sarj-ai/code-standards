@@ -6,10 +6,22 @@
 
 import { type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import type { RuleContext, Scope } from "@typescript-eslint/utils/ts-eslint";
 
 type MessageIds = "preferServerAction";
+
+export const preferServerActionsDocumentation = {
+  summary: "Prefer Next.js Server Actions over /api/* mutations.",
+  rationale: "Server Actions preserve typed application calls and avoid an internal JSON request-response boundary.",
+  remediation: "Move the mutation into a Server Action and invoke that action from the React client.",
+  category: "architecture",
+  limitations: ["Only statically recognizable /api/ mutations in applicable React modules are reported."],
+  examples: [
+    { id: "server-action-call", title: "Call a Server Action", outcome: "no-match", files: [{ path: "app/tasks/page.tsx", source: "import { createTask } from './actions'; await createTask(input);" }], focusPath: "app/tasks/page.tsx", expectedCount: 0, public: true },
+    { id: "api-mutation", title: "Do not mutate through an API route", outcome: "match", files: [{ path: "app/tasks/page.tsx", source: "await fetch('/api/tasks', { method: 'POST', body });" }], focusPath: "app/tasks/page.tsx", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
 type Options = readonly [];
 
 const MUTATION_METHODS: ReadonlySet<string> = new Set(["POST", "PUT", "DELETE", "PATCH"]);
@@ -173,6 +185,7 @@ function getPropertyNode(
 
 export default createRule<Options, MessageIds>({
   name: "prefer-server-actions",
+  documentation: preferServerActionsDocumentation,
   meta: {
     type: "suggestion",
     docs: {

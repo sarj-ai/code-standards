@@ -2,10 +2,24 @@
 
 from __future__ import annotations
 
+from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, final, override
 
-from sarj_sql_lint.rule_base import Diagnostic, Rule, has_dbmate_directive, is_dump_file, is_postgres, mask_sql
+from sarj_sql_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    has_dbmate_directive,
+    is_dump_file,
+    is_postgres,
+    mask_sql,
+)
 
 
 if TYPE_CHECKING:
@@ -41,7 +55,45 @@ class IndexConcurrently(Rule):
 
     id = "index-concurrently"
     code = "SARJ108"
-    description = "CREATE INDEX without CONCURRENTLY — locks the table against writes."
+    documentation = RuleDocumentation(
+        summary="CREATE INDEX without CONCURRENTLY — locks the table against writes.",
+        rationale="Building an index normally blocks writes to an existing PostgreSQL table for the duration of the build.",
+        remediation="Use CREATE INDEX CONCURRENTLY in a nontransactional migration.",
+        category=RuleCategory.PERFORMANCE,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Indexes on tables created earlier in the same file are exempt because no concurrent writers exist yet.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="blocking-index-build",
+                title="Blocking index build on an existing table",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "migrations/002_email_index.sql", "CREATE INDEX users_email_idx ON users(email);\n"
+                    ),
+                ),
+                focus_path=PurePosixPath("migrations/002_email_index.sql"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="concurrent-index-build",
+                title="Concurrent index build",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "migrations/002_email_index.sql", "CREATE INDEX CONCURRENTLY users_email_idx ON users(email);\n"
+                    ),
+                ),
+                focus_path=PurePosixPath("migrations/002_email_index.sql"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
+    )
+    description = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

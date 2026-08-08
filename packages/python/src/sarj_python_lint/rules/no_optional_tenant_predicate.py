@@ -6,10 +6,20 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import children, nodes, walk
 from sarj_python_lint.rules._paths import is_test_path
 
@@ -31,10 +41,51 @@ _TENANT_PREDICATE_RE = re.compile(
 class NoOptionalTenantPredicate(Rule):
     id: str = "no-optional-tenant-predicate"
     code: str = "SARJ056"
-    description: str = (
-        "A tenant predicate reachable only inside a conditional makes tenant scoping fail open — "
-        "the query still runs, unscoped, when the filter is absent."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Tenant predicate is added only conditionally, allowing an unscoped query.",
+        rationale="Fail-open tenant filtering can expose rows across organizations when a tenant value is absent.",
+        remediation="Require the tenant identifier or seed the query with its tenant predicate unconditionally.",
+        category=RuleCategory.SECURITY,
+        limitations=(
+            "Detection follows SQL fragments inside each function and recognizes configured tenant column names.",
+            "Test files and functions containing any unconditional tenant predicate are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="conditional-tenant-clause",
+                title="Tenant clause depends on an optional filter",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/store.py",
+                        "def build(args):\n"
+                        "    conditions = []\n"
+                        "    if args.organization_id:\n"
+                        '        conditions.append(SQL("organization_id = %s"))\n'
+                        "    return conditions\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/store.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="required-tenant-clause",
+                title="Tenant clause is unconditional",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/store.py",
+                        'def build(args):\n    conditions = [SQL("organization_id = %s")]\n    return conditions\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/store.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

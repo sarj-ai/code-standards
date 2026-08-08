@@ -9,6 +9,12 @@ const allSarjRules = Object.fromEntries(
     .map((name) => [`@sarj/${name}`, "error"]),
 );
 const dogfoodRules = { ...allSarjRules, ...strictRules };
+const sourceOwnedRejectedExamples = {
+  "src/rules/no-dynamic-sql.ts": "@sarj/no-select-star",
+  "src/rules/no-offset-pagination.ts": "@sarj/no-offset-pagination",
+  "src/rules/no-select-star.ts": "@sarj/no-select-star",
+  "src/rules/store-insert-requires-on-conflict.ts": "@sarj/store-insert-requires-on-conflict",
+};
 
 export default defineConfig(
   { ignores: ["dist/**", "tests/fixtures/**"] },
@@ -27,4 +33,9 @@ export default defineConfig(
     },
     rules: dogfoodRules,
   },
+  ...Object.entries(sourceOwnedRejectedExamples).map(([file, rule]) => ({
+    name: `sarj/source-owned-rejected-example/${rule}`,
+    files: [file],
+    rules: { [rule]: "off" },
+  })),
 );

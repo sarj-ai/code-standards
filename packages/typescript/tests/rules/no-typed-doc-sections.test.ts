@@ -1,7 +1,9 @@
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-typed-doc-sections.js";
+import rule, {
+  noTypedDocSectionsDocumentation,
+} from "../../src/rules/no-typed-doc-sections.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -12,7 +14,7 @@ new RuleTester().run("no-typed-doc-sections", rule, {
   valid: [
     {
       name: "preserves behavioral documentation",
-      code: "/** Retries when the vendor returns 429. */\nexport function fetchValue(id: string): number { return 1; }",
+      code: noTypedDocSectionsDocumentation.examples[0].files[0].source,
     },
     {
       name: "preserves documented side effects",
@@ -53,7 +55,7 @@ new RuleTester().run("no-typed-doc-sections", rule, {
   ],
   invalid: [
     {
-      code: "/** @param id external identifier\n * @returns the value\n */\nexport function fetchValue(id: string): number { return 1; }",
+      code: noTypedDocSectionsDocumentation.examples[1].files[0].source,
       errors: [{ messageId: "typedSection" }],
     },
     {

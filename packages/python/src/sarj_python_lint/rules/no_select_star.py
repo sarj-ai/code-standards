@@ -6,10 +6,21 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, final, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._sql import is_store_module, sql_string_value, strip_sql_noise
 
@@ -56,13 +67,42 @@ def _is_projection_star(sql: str, pos: int) -> bool:
     return not (before_char == "(" and after_char == ")")
 
 
+@final
 class NoSelectStar(Rule):
     id: str = "no-select-star"
     code: str = "SARJ021"
-    description: str = (
-        "SELECT * in a store query — name the columns; * over-fetches and breaks "
-        "class_row mapping when the schema changes."
+    documentation = RuleDocumentation(
+        summary="Store queries should select explicit columns instead of `*`.",
+        rationale="Wildcard projections over-fetch data and can silently change row shapes when the schema evolves.",
+        remediation="List every column consumed by the store result mapping.",
+        category=RuleCategory.MAINTAINABILITY,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Only SQL string literals in recognized store modules are analyzed.",
+            "The rule cannot infer the intended projection for an automatic fix.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="wildcard-store-projection",
+                title="Store query selects every column",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.python("app/call_store.py", 'QUERY = "SELECT * FROM call"\n'),),
+                focus_path=PurePosixPath("app/call_store.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="explicit-store-projection",
+                title="Store query selects named columns",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(ExampleFile.python("app/call_store.py", 'QUERY = "SELECT id, status FROM call"\n'),),
+                focus_path=PurePosixPath("app/call_store.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

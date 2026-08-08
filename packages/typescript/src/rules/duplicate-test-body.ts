@@ -6,7 +6,7 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
 
 type MessageIds = "duplicateTestBody";
@@ -29,6 +29,45 @@ const OMITTED_AST_KEYS: ReadonlySet<string> = new Set([
 const MIN_STATEMENTS = 3;
 const MAX_NORMALIZED_STRING_LENGTH = 64;
 const TEST_MODULES: ReadonlySet<string> = new Set(["@jest/globals", "@playwright/test", "bun:test", "node:test", "vitest"]);
+
+export const duplicateTestBodyDocumentation = {
+  summary:
+    "Disallow substantial sibling tests with the same body shape; express their differing inputs as a parameterized case table.",
+  rationale:
+    "Copy-pasted test bodies hide the cases that differ and allow equivalent assertions to drift independently.",
+  remediation:
+    "Move the varying inputs and expected values into a case table consumed by `test.each(...)` or `it.each(...)`.",
+  category: "testing",
+  limitations: [
+    "The rule compares substantial sibling tests within one suite and skips inline snapshots and materially different comments.",
+  ],
+  examples: [
+    {
+      id: "parameterized-cases",
+      title: "A case table shares one test body",
+      outcome: "no-match",
+      files: [{
+        path: "src/user.test.ts",
+        source: "test.each(['a', 'b'])('parses %s', (value) => { const x = parse(value); expect(x.ok).toBe(true); expect(x.value).toBe(value); });",
+      }],
+      focusPath: "src/user.test.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "copied-sibling-tests",
+      title: "Sibling tests repeat the same body",
+      outcome: "match",
+      files: [{
+        path: "src/user.test.ts",
+        source: "test('accepts a', () => { const result = parse('a'); expect(result.ok).toBe(true); expect(result.value).toBe('a'); });\ntest('accepts b', () => { const result = parse('b'); expect(result.ok).toBe(true); expect(result.value).toBe('b'); });",
+      }],
+      focusPath: "src/user.test.ts",
+      expectedCount: 1,
+      public: true,
+    },
+  ],
+} as const satisfies RuleDocumentation;
 
 function rootIdentifier(callee: TSESTree.Node): TSESTree.Identifier | null {
   if (callee.type === AST_NODE_TYPES.Identifier) return callee;
@@ -172,6 +211,7 @@ function normalizedLiteral(node: TSESTree.Literal): unknown {
 
 export default createRule<Options, MessageIds>({
   name: "duplicate-test-body",
+  documentation: duplicateTestBodyDocumentation,
   meta: {
     type: "suggestion",
     docs: {

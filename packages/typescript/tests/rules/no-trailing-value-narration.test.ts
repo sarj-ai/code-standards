@@ -1,7 +1,9 @@
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-trailing-value-narration.js";
+import rule, {
+  noTrailingValueNarrationDocumentation,
+} from "../../src/rules/no-trailing-value-narration.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -19,7 +21,7 @@ ruleTester.run("no-trailing-value-narration", rule, {
     { code: "const backoff = 2 * 60; // doubles per attempt, capped by the gateway" },
     {
       name: "allows a unit annotation that also explains a domain constraint",
-      code: "const timeout = 5 * 60; // 5 minutes for cold starts",
+      code: noTrailingValueNarrationDocumentation.examples[0].files[0].source,
     },
     {
       name: "allows a comment when any stated number is absent from the code",
@@ -55,7 +57,7 @@ ruleTester.run("no-trailing-value-narration", rule, {
       errors: [{ messageId: "narratesValue" }],
     },
     {
-      code: "const staleTime = 5 * 60 * 1000; // 5 minutes",
+      code: noTrailingValueNarrationDocumentation.examples[1].files[0].source,
       errors: [{ messageId: "narratesValue" }],
     },
     {

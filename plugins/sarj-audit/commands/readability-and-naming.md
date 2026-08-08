@@ -1,6 +1,6 @@
 # Readability and naming
 
-Audit clarity problems not already enforced by deterministic comment or file-ordering rules using the shared [audit protocol](../README.md#audit-protocol).
+Audit clarity problems not already enforced by deterministic comment or file-ordering rules using the shared [audit protocol](../skills/audit-protocol/SKILL.md#audit-protocol).
 
 ## Judgment checks
 

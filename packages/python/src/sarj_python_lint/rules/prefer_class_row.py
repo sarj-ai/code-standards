@@ -6,9 +6,20 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
-from typing import TYPE_CHECKING, override
+from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, final, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import nodes
 
 
@@ -22,10 +33,52 @@ _PSYCOPG = "psycopg"
 _ROWS = "rows"
 
 
+@final
 class PreferClassRow(Rule):
     id: str = "prefer-class-row"
     code: str = "SARJ013"
-    description: str = "psycopg row_factory=dict_row returns unvalidated dicts — prefer class_row(Model)."
+    documentation = RuleDocumentation(
+        summary="Use a validated model row instead of Psycopg `dict_row`.",
+        rationale="Dictionary rows cross the database boundary without validating field names or values against a model.",
+        remediation="Pass `class_row(Model)` as the row factory for queries that return a stable model shape.",
+        category=RuleCategory.CORRECTNESS,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "The rule matches any `row_factory` keyword whose value ends in `dict_row`.",
+            "Ad hoc or dynamically selected row shapes require a local suppression when a class row is unsuitable.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="dictionary-row-factory",
+                title="Cursor returns unvalidated dictionaries",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/task_store.py",
+                        "from psycopg.rows import dict_row\n\ncursor = connection.cursor(row_factory=dict_row)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/task_store.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="validated-class-row-factory",
+                title="Cursor validates rows into a model",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/task_store.py",
+                        "from psycopg.rows import class_row\n\ncursor = connection.cursor(row_factory=class_row(Task))\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/task_store.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
+    )
+    description = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

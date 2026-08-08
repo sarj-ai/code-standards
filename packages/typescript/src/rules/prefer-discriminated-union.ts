@@ -6,12 +6,24 @@
 
 import { type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 import { AST_NODE_TYPES } from "@typescript-eslint/utils";
 
 type MessageIds = "preferDiscriminatedUnion";
 type Options = readonly [];
+
+export const preferDiscriminatedUnionDocumentation = {
+  summary: "Flag flat result objects with a required positive boolean status and optional success/failure payloads.",
+  rationale: "A boolean status plus optional branch data permits contradictory and incomplete states.",
+  remediation: "Represent each result branch as a discriminated union member with its required payload.",
+  category: "correctness",
+  limitations: ["Only local object shapes with recognized positive status and payload names are inspected."],
+  examples: [
+    { id: "explicit-result-branches", title: "Use explicit result branches", outcome: "no-match", files: [{ path: "src/result.ts", source: "type Result = { ok: true; data: string } | { ok: false; error: string };" }], focusPath: "src/result.ts", expectedCount: 0, public: true },
+    { id: "optional-result-payloads", title: "Do not make both result payloads optional", outcome: "match", files: [{ path: "src/result.ts", source: "type Result = { ok: boolean; data?: string; error?: string };" }], focusPath: "src/result.ts", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
 
 /**
  * Boolean-typed member names that read as a success/error status discriminant.
@@ -148,6 +160,7 @@ function inlineReturnTypeLiteral(
 
 export default createRule<Options, MessageIds>({
   name: "prefer-discriminated-union",
+  documentation: preferDiscriminatedUnionDocumentation,
   meta: {
     type: "suggestion",
     docs: {

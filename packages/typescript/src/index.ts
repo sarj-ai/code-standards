@@ -61,7 +61,7 @@ import preferWholeObjectAssertion from "./rules/prefer-whole-object-assertion.js
 import preferZodInfer from "./rules/prefer-zod-infer.js";
 import requireAssertNever from "./rules/require-assert-never.js";
 import requireFetchTimeout from "./rules/require-fetch-timeout.js";
-import requireInterfaceForInjectedService from "./rules/require-interface-for-injected-service.js";
+import requirePortForService from "./rules/require-port-for-service.js";
 import requireStaticNextMatcher from "./rules/require-static-next-matcher.js";
 import requireZodFormValidation from "./rules/require-zod-form-validation.js";
 import storeInsertRequiresOnConflict from "./rules/store-insert-requires-on-conflict.js";
@@ -130,7 +130,7 @@ const rules = {
   "prefer-zod-infer": preferZodInfer,
   "require-assert-never": requireAssertNever,
   "require-fetch-timeout": requireFetchTimeout,
-  "require-interface-for-injected-service": requireInterfaceForInjectedService,
+  "require-port-for-service": requirePortForService,
   "require-static-next-matcher": requireStaticNextMatcher,
   "require-zod-form-validation": requireZodFormValidation,
   "store-insert-requires-on-conflict": storeInsertRequiresOnConflict,
@@ -140,7 +140,7 @@ const rules = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "12.0.0",
+  version: "13.0.0",
 } as const;
 
 /** Rules registered for application-profile configs but intentionally absent from general presets. */
@@ -203,7 +203,7 @@ const recommendedRules = {
   "@sarj/prefer-zod-infer": "error",
   "@sarj/require-assert-never": "error",
   "@sarj/require-fetch-timeout": "error",
-  "@sarj/require-interface-for-injected-service": "error",
+  "@sarj/require-port-for-service": "error",
   "@sarj/require-static-next-matcher": "error",
   "@sarj/require-zod-form-validation": "error",
   "@sarj/store-insert-requires-on-conflict": "error",
@@ -268,7 +268,7 @@ const strictRules = {
   "@sarj/prefer-zod-infer": "error",
   "@sarj/require-assert-never": "error",
   "@sarj/require-fetch-timeout": "error",
-  "@sarj/require-interface-for-injected-service": "error",
+  "@sarj/require-port-for-service": "error",
   "@sarj/require-static-next-matcher": "error",
   "@sarj/require-zod-form-validation": "error",
   "@sarj/store-insert-requires-on-conflict": "error",
@@ -303,5 +303,6 @@ const plugin = {
 } as const;
 
 export default plugin;
+export { publicDocumentation } from "./rules/_docs.js";
 export { type RetiredRule, retiredRules } from "./rules/_retired.js";
 export { applicationOnlyRules, recommendedRules, renamedRules, rules, strictRules };

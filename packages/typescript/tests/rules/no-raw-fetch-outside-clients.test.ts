@@ -2,7 +2,7 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-raw-fetch-outside-clients.js";
+import rule, { noRawFetchOutsideClientsDocumentation } from "../../src/rules/no-raw-fetch-outside-clients.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -19,6 +19,7 @@ const HANDLER = "/repo/src/routes/handler.ts";
 
 ruleTester.run("no-raw-fetch-outside-clients", rule, {
   valid: [
+    { name: "accepts the documented client call", code: noRawFetchOutsideClientsDocumentation.examples[0].files[0].source, filename: HANDLER },
     {
       name: "allows a bare api module",
       code: "export const getFilm = async (id) => fetch(`/films/${id}`);",
@@ -239,6 +240,7 @@ ruleTester.run("no-raw-fetch-outside-clients", rule, {
     },
   ],
   invalid: [
+    { name: "reports the documented raw fetch", code: noRawFetchOutsideClientsDocumentation.examples[1].files[0].source, filename: HANDLER, errors: [{ messageId: "rawFetch" }] },
     {
       name: "reports bare fetch in components",
       code: "async function load() { const r = await fetch('/api/todos'); return r.json(); }",

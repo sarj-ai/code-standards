@@ -1,0 +1,36 @@
+---
+import type { RuleExample } from '../lib/catalog';
+
+interface Props {
+  example: RuleExample;
+}
+
+const { example } = Astro.props;
+---
+
+<section class:list={['example', `example--${example.outcome}`]}>
+  <header>
+    <span class="example__mark" aria-hidden="true">{example.outcome === 'reject' ? '×' : '✓'}</span>
+    <div>
+      <p class="eyebrow">{example.outcome === 'reject' ? 'Reported' : 'Accepted'}</p>
+      <h3>{example.title}</h3>
+    </div>
+  </header>
+  {example.files.map((file) => (
+    <figure>
+      <figcaption>{file.path}{file.path === example.focusPath && <span>focus</span>}</figcaption>
+      <pre><code>{file.source}</code></pre>
+    </figure>
+  ))}
+  {example.fixedFiles.length > 0 && (
+    <details>
+      <summary>Safe fix</summary>
+      {example.fixedFiles.map((file) => (
+        <figure>
+          <figcaption>{file.path}</figcaption>
+          <pre><code>{file.source}</code></pre>
+        </figure>
+      ))}
+    </details>
+  )}
+</section>

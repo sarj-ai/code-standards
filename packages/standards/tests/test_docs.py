@@ -5,20 +5,65 @@ from pathlib import Path
 
 import pytest
 
+from sarj_standards.libs.adoption import transaction
 from sarj_standards.libs.repository import docs
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+GENERATED_READMES = (
+    Path("README.md"),
+    Path("packages/standards/README.md"),
+    Path("packages/python/README.md"),
+    Path("packages/sql/README.md"),
+    Path("packages/iac/README.md"),
+    Path("packages/typescript/README.md"),
+    Path("packages/tsconfig/README.md"),
+    Path("plugins/sarj-audit/README.md"),
+)
 
 
 def _repository(root: Path) -> None:
     packages = {
-        "standards": ("pyproject.toml", '[project]\nname = "sarj-standards"\n'),
-        "python": ("pyproject.toml", '[project]\nname = "sarj-python-lint"\n'),
-        "sql": ("pyproject.toml", '[project]\nname = "sarj-sql-lint"\n'),
-        "iac": ("pyproject.toml", '[project]\nname = "sarj-iac-lint"\n'),
-        "typescript": ("package.json", '{"name":"@sarj/eslint-plugin"}\n'),
-        "tsconfig": ("package.json", '{"name":"@sarj/tsconfig"}\n'),
+        "standards": (
+            "pyproject.toml",
+            (
+                '[project]\nname = "sarj-standards"\nversion = "1.0.0"\ndescription = "Repository standards."\n'
+                'license = "MIT"\nrequires-python = ">=3.14"\n[project.scripts]\n'
+                'sarj-standards = "sarj_standards.__main__:main"\n'
+            ),
+        ),
+        "python": (
+            "pyproject.toml",
+            (
+                '[project]\nname = "sarj-python-lint"\nversion = "1.0.0"\ndescription = "Python rules."\n'
+                'license = "MIT"\nrequires-python = ">=3.14"\n[project.scripts]\n'
+                'sarj-python-lint = "sarj_python_lint.__main__:main"\n'
+            ),
+        ),
+        "sql": (
+            "pyproject.toml",
+            (
+                '[project]\nname = "sarj-sql-lint"\nversion = "1.0.0"\ndescription = "SQL rules."\n'
+                'license = "MIT"\nrequires-python = ">=3.14"\n[project.scripts]\n'
+                'sarj-sql-lint = "sarj_sql_lint.__main__:main"\n'
+            ),
+        ),
+        "iac": (
+            "pyproject.toml",
+            (
+                '[project]\nname = "sarj-iac-lint"\nversion = "1.0.0"\ndescription = "IaC rules."\n'
+                'license = "MIT"\nrequires-python = ">=3.14"\n[project.scripts]\n'
+                'sarj-iac-lint = "sarj_iac_lint.__main__:main"\n'
+            ),
+        ),
+        "typescript": (
+            "package.json",
+            '{"name":"@sarj/eslint-plugin","version":"1.0.0","description":"TypeScript rules.","license":"MIT"}\n',
+        ),
+        "tsconfig": (
+            "package.json",
+            '{"name":"@sarj/tsconfig","version":"1.0.0","description":"TypeScript configs.","license":"MIT"}\n',
+        ),
     }
     for directory, (filename, content) in packages.items():
         path = root / "packages" / directory / filename
@@ -30,14 +75,28 @@ def _repository(root: Path) -> None:
         json.dumps({"rules": {"eslint": ["one", "two"], "python": ["one"], "sql": [], "iac": [], "text": []}}),
         encoding="utf-8",
     )
-    (root / "README.md").write_text(
-        "# Standards\n\n<!-- generated:packages:start -->\nstale\n<!-- generated:packages:end -->\n\n"
-        "<!-- generated:rules:start -->\nstale\n<!-- generated:rules:end -->\n",
+    plugin_manifest = root / "plugins/sarj-audit/.claude-plugin/plugin.json"
+    plugin_manifest.parent.mkdir(parents=True)
+    plugin_manifest.write_text(
+        json.dumps(
+            {
+                "name": "sarj-audit",
+                "version": "1.0.0",
+                "description": "Judgment-layer audits.",
+                "author": {"name": "sarj-ai"},
+            }
+        ),
         encoding="utf-8",
     )
+    command = root / "plugins/sarj-audit/commands/security.md"
+    command.parent.mkdir(parents=True)
+    command.write_text("# Security\n", encoding="utf-8")
+    skill = root / "plugins/sarj-audit/skills/audit-protocol/SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_text("# Audit protocol\n", encoding="utf-8")
+    (root / "README.md").write_text("# stale\n", encoding="utf-8")
     for relative in (
         "CLAUDE.md",
-        ".github/SECURITY.md",
         "packages/standards/README.md",
         "packages/python/README.md",
         "packages/sql/README.md",
@@ -58,7 +117,7 @@ def test_check_reports_drift_without_writing(tmp_path: Path) -> None:
     result = docs.check(tmp_path)
 
     assert result.status == 1
-    assert result.changed == (tmp_path / "README.md",)
+    assert result.changed == tuple(sorted(tmp_path / relative for relative in GENERATED_READMES))
     assert (tmp_path / "README.md").read_bytes() == before
 
 
@@ -74,13 +133,59 @@ def test_sync_is_deterministic_and_check_then_passes(tmp_path: Path) -> None:
     assert docs.check(tmp_path).status == 0
     assert "| [`sarj-standards`](packages/standards/)" in rendered
     assert "| TypeScript | 2 |" in rendered
+    for relative in GENERATED_READMES:
+        generated = (tmp_path / relative).read_text(encoding="utf-8")
+        assert generated.startswith("<!-- Generated by `sarj-standards maintain docs sync`; do not edit. -->")
+        assert "generated:packages" not in generated
 
 
-def test_missing_or_duplicated_markers_fail_loudly(tmp_path: Path) -> None:
+def test_rich_catalog_is_rendered_when_artifact_is_present(tmp_path: Path) -> None:
     _repository(tmp_path)
-    (tmp_path / "README.md").write_text("# no generated sections\n", encoding="utf-8")
+    catalog = tmp_path / "packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json"
+    catalog.parent.mkdir(parents=True)
+    catalog.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "rules": [
+                    {
+                        "key": "python:no-example",
+                        "engine": "python",
+                        "summary": "Require a useful example.",
+                        "defaultLevel": "error",
+                        "autofix": "none",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
 
-    with pytest.raises(ValueError, match="exactly one"):
+    docs.sync(tmp_path)
+
+    root_readme = (tmp_path / "README.md").read_text(encoding="utf-8")
+    python_readme = (tmp_path / "packages/python/README.md").read_text(encoding="utf-8")
+    assert "| `python:no-example` | Require a useful example. | `error` | `none` |" in root_readme
+    assert "| `python:no-example` | Require a useful example. | `error` | `none` |" in python_readme
+
+
+def test_authored_readme_is_reported_as_complete_generated_drift(tmp_path: Path) -> None:
+    _repository(tmp_path)
+    docs.sync(tmp_path)
+    readme = tmp_path / "packages/python/README.md"
+    readme.write_text("# authored replacement\n", encoding="utf-8")
+
+    result = docs.check(tmp_path)
+
+    assert result.changed == (readme,)
+
+
+@pytest.mark.parametrize("filename", ["notes.md", "notes.mdx", "notes.rst"])
+def test_arbitrary_authored_document_is_rejected(tmp_path: Path, filename: str) -> None:
+    _repository(tmp_path)
+    (tmp_path / filename).write_text("Authored prose.\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="not generated or executable-policy allowlisted"):
         docs.check(tmp_path)
 
 
@@ -102,10 +207,26 @@ def test_broken_local_heading_link_fails_loudly(tmp_path: Path) -> None:
 
 def test_stale_command_example_fails_loudly(tmp_path: Path) -> None:
     _repository(tmp_path)
-    (tmp_path / "packages/standards/README.md").write_text("```bash\nsarj-standards init\n```\n", encoding="utf-8")
+    (tmp_path / "CLAUDE.md").write_text("```bash\nsarj-standards init\n```\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match="invalid command example"):
         docs.check(tmp_path)
+
+
+def test_sync_uses_validated_atomic_writes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _repository(tmp_path)
+    written: list[Path] = []
+    real_write = transaction.atomic_write_text
+
+    def record_write(root: Path, path: Path, contents: str) -> None:
+        written.append(path)
+        real_write(root, path, contents)
+
+    monkeypatch.setattr(transaction, "atomic_write_text", record_write)
+
+    docs.sync(tmp_path)
+
+    assert written == sorted(tmp_path / relative for relative in GENERATED_READMES)
 
 
 def test_repository_generated_documentation_has_no_drift() -> None:

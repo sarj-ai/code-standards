@@ -8,7 +8,7 @@ from sarj_python_lint.rules.over_mocked_test import OverMockedTest
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import Diagnostic
+    from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
 TEST_PATH = "python/agent/tests/test_agent_tools.py"
@@ -18,6 +18,15 @@ _IMPORT = "from unittest import mock\nfrom unittest.mock import MagicMock, Mock,
 
 def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
     return OverMockedTest().check(Path(path), _IMPORT + textwrap.dedent(source))
+
+
+_PUBLIC_EXAMPLES = OverMockedTest.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(OverMockedTest().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 def _patches(count: int, prefix: str = "app.mod") -> str:

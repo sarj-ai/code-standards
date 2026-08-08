@@ -8,10 +8,21 @@ from __future__ import annotations
 import ast
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._paths import is_test_path
 
@@ -127,7 +138,48 @@ class _Facts:
 class ConditionalAssertionInTest(Rule):
     id: str = "conditional-assertion-in-test"
     code: str = "SARJ065"
-    description: str = "Every assertion in the test is inside a conditional or loop — it can pass asserting nothing."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Tests should guarantee that at least one assertion runs on every execution path.",
+        rationale="Assertions confined to optional branches or loops let tests pass when a branch is skipped or a collection is empty.",
+        remediation="Add an unconditional assertion, assert collection size before iterating, or make every branch assert or fail.",
+        category=RuleCategory.TESTING,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Only collected tests are analyzed.",
+            "Exhaustive branches and explicit failure paths count as guaranteed checks.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="loop-only-assertion",
+                title="Assertion may never run",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_rows.py",
+                        "def test_rows():\n    rows = fetch()\n    for row in rows:\n        assert row.id > 0\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_rows.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="collection-size-assertion",
+                title="Test first asserts the collection size",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_rows.py",
+                        "def test_rows():\n    rows = fetch()\n    assert len(rows) == 3\n    for row in rows:\n        assert row.id > 0\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_rows.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
+    )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

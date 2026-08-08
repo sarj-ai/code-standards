@@ -11,7 +11,7 @@ import {
   ASTUtils,
 } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
 
 type MessageIds = "unsafeMockCast";
@@ -29,8 +29,37 @@ const MOCK_MODULES: ReadonlySet<string> = new Set([
   "@jest/globals",
 ]);
 
+export const noUnsafeMockCastingDocumentation = {
+  summary: "Disallow casting to mock types like `jest.Mock` or `vi.Mock`. Use `vi.mocked()` or `jest.mocked()` instead.",
+  rationale: "A type assertion can claim an unmocked value is a mock and bypass checking between the original callable and the mock API.",
+  remediation: "Use the test framework's `mocked` helper to obtain the typed mock reference.",
+  category: "testing",
+  limitations: ["Only mock types imported from Vitest or Jest modules are inspected."],
+  examples: [
+    {
+      id: "typed-mock-helper",
+      title: "Use the framework helper",
+      outcome: "no-match",
+      files: [{ path: "src/client.test.ts", source: "const m = vi.mocked(myFn);" }],
+      focusPath: "src/client.test.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "mock-type-assertion",
+      title: "Do not assert that a value is a mock",
+      outcome: "match",
+      files: [{ path: "src/client.test.ts", source: "import type * as vi from \"vitest\"; const m = myFn as vi.Mock;" }],
+      focusPath: "src/client.test.ts",
+      expectedCount: 1,
+      public: true,
+    },
+  ],
+} as const satisfies RuleDocumentation;
+
 export default createRule<[], MessageIds>({
   name: "no-unsafe-mock-casting",
+  documentation: noUnsafeMockCastingDocumentation,
   meta: {
     type: "problem",
     docs: {

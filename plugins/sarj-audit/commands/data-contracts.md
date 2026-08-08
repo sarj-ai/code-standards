@@ -1,6 +1,6 @@
 # Data contracts
 
-Audit weak or duplicated data contracts using the shared [audit protocol](../README.md#audit-protocol). This command includes Pydantic, Zod, and explicit attribute-validation concerns.
+Audit weak or duplicated data contracts using the shared [audit protocol](../skills/audit-protocol/SKILL.md#audit-protocol). This command includes Pydantic, Zod, and explicit attribute-validation concerns.
 
 ## Judgment checks
 

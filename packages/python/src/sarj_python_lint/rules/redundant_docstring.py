@@ -6,10 +6,21 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import children
 from sarj_python_lint.rules._comments import is_protected
 from sarj_python_lint.rules._docstrings import (
@@ -59,10 +70,48 @@ def _signature_text(node: ast.FunctionDef | ast.AsyncFunctionDef, class_name: st
 class RedundantDocstring(Rule):
     id: str = "redundant-docstring"
     code: str = "SARJ050"
-    description: str = (
-        "Docstring only re-spells the signature — delete the whole docstring, "
-        "or replace it with what the caller cannot read off the name."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Docstring only restates the signature — delete the whole docstring or document behavior callers cannot infer.",
+        rationale="Restating a clear name and signature creates maintenance work without helping callers.",
+        remediation="Delete the docstring or document behavior, constraints, side effects, or failure modes not evident from the signature.",
+        category=RuleCategory.MAINTAINABILITY,
+        autofix=AutofixPolicy.SUGGESTION,
+        limitations=(
+            "Detection is limited to short docstrings whose words are already present in the function, class, annotations, or parameters.",
+            "Framework-facing docstrings, generated files, directives, examples, references, and additional behavioral detail are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="signature-restatement",
+                title="Docstring repeats the function name",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "service.py",
+                        'def update_message(message_id: str):\n    """Update the message."""\n    return None\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("service.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="behavioral-docstring",
+                title="Docstring documents behavior",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "service.py",
+                        'def update_message(message_id: str):\n    """Replace any existing draft atomically."""\n    return None\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("service.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

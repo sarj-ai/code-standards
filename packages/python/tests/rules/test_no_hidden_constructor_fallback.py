@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from sarj_python_lint.__main__ import main
-from sarj_python_lint.rule_base import Diagnostic, Severity
+from sarj_python_lint.rule_base import Diagnostic, RuleExample, Severity
 from sarj_python_lint.rules.no_hidden_constructor_fallback import (
     NoHiddenConstructorFallback,
 )
@@ -14,6 +14,27 @@ from sarj_python_lint.rules.no_hidden_constructor_fallback import (
 
 def _check(source: str, path: Path = Path("service.py")) -> list[Diagnostic]:
     return NoHiddenConstructorFallback().check(path, source)
+
+
+_PUBLIC_EXAMPLES = NoHiddenConstructorFallback.public_examples()
+
+
+@pytest.mark.parametrize(
+    "example",
+    _PUBLIC_EXAMPLES,
+    ids=tuple(example.example_id for example in _PUBLIC_EXAMPLES),
+)
+def test_public_documentation_examples_are_executable(tmp_path: Path, example: RuleExample) -> None:
+    root = tmp_path / example.example_id
+    for item in example.files:
+        target = root / item.path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(item.source, encoding="utf-8")
+    focus = root / example.focus_path
+
+    findings = NoHiddenConstructorFallback().check(focus, example.focus_file.source)
+
+    assert len(findings) == example.expected_count
 
 
 def _settings_project(tmp_path: Path, service_source: str) -> Path:

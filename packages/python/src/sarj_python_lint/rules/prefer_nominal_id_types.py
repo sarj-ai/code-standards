@@ -7,9 +7,21 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, override
+from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, is_suppressed, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    is_suppressed,
+    parse_or_none,
+)
 from sarj_python_lint.rules._paths import is_generated, is_test_path
 
 
@@ -67,9 +79,46 @@ class _IdRole:
 class PreferNominalIdTypes(Rule):
     id: str = "prefer-nominal-id-types"
     code: str = "SARJ093"
-    description: str = (
-        "A production boundary with multiple ID-shaped roles should use nominal ID types, not primitive carriers."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Production boundaries with multiple ID roles must distinguish them with nominal types.",
+        rationale="Primitive carriers such as str, int, and UUID allow distinct identifier roles to be swapped without a type-checking error.",
+        remediation="Define or reuse NewType identifier types and propagate them through the boundary.",
+        category=RuleCategory.CORRECTNESS,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "The rule checks public module functions, classes, direct methods, and constructors with at least two ID-shaped roles.",
+            "Tests, generated code, migrations, helpers, external adapters, operational IDs, raw schemas, ambiguous containers, and private callbacks are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="primitive-id-roles",
+                title="Distinct ID roles share a primitive type",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/services/files.py", "def move(file_id: str, parent_folder_id: str) -> None: ...\n"
+                    ),
+                ),
+                focus_path=PurePosixPath("app/services/files.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="nominal-id-roles",
+                title="Distinct ID roles use nominal types",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/services/files.py", "def move(file_id: FileId, parent_folder_id: FolderId) -> None: ...\n"
+                    ),
+                ),
+                focus_path=PurePosixPath("app/services/files.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

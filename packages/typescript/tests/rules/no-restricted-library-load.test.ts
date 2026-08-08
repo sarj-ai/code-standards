@@ -2,7 +2,7 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-restricted-library-load.js";
+import rule, { noRestrictedLibraryLoadDocumentation } from "../../src/rules/no-restricted-library-load.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -29,6 +29,7 @@ const options = [
 
 ruleTester.run("no-restricted-library-load", rule, {
   valid: [
+    { name: "accepts the documented static import", code: noRestrictedLibraryLoadDocumentation.examples[0].files[0].source, options },
     { code: 'import axios from "axios";', options },
     { code: 'export { default } from "axios";', options },
     { code: 'const client = require(name);', options },
@@ -46,6 +47,7 @@ ruleTester.run("no-restricted-library-load", rule, {
     },
   ],
   invalid: [
+    { name: "reports the documented runtime load", code: noRestrictedLibraryLoadDocumentation.examples[1].files[0].source, options, errors: [{ messageId: "restrictedLibraryLoad" }] },
     {
       code: 'const client = await import("axios");',
       options,

@@ -2,7 +2,9 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-conditional-in-test.js";
+import rule, {
+  noConditionalInTestDocumentation,
+} from "../../src/rules/no-conditional-in-test.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -73,7 +75,7 @@ ruleTester.run("no-conditional-in-test", rule, {
     },
     {
       filename: TEST_FILE,
-      code: "it('works without conditionals', () => { expect(1).toBe(1); });",
+      code: noConditionalInTestDocumentation.examples[0].files[0].source,
     },
     {
       filename: TEST_FILE,
@@ -249,7 +251,7 @@ ruleTester.run("no-conditional-in-test", rule, {
   invalid: [
     {
       filename: TEST_FILE,
-      code: "it('fails with if', () => { if (true) { expect(1).toBe(1); } });",
+      code: noConditionalInTestDocumentation.examples[1].files[0].source,
       errors: [{ messageId: "noConditionalInTest" }],
     },
     {

@@ -7,7 +7,7 @@ from sarj_python_lint.rules.no_sleep_in_test_body import NoSleepInTestBody
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import Diagnostic
+    from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
 TEST_PATH = "python/app/tests/stores/test_call_flag_store.py"
@@ -15,6 +15,15 @@ TEST_PATH = "python/app/tests/stores/test_call_flag_store.py"
 
 def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
     return NoSleepInTestBody().check(Path(path), source)
+
+
+_PUBLIC_EXAMPLES = NoSleepInTestBody.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(NoSleepInTestBody().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 _ASYNC_SLEEP = """

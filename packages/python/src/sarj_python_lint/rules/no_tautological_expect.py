@@ -6,10 +6,20 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from pathlib import PurePosixPath
 from types import MappingProxyType
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._pytest import has_benchmark_marker, uses_benchmark_fixture
 
 
@@ -54,7 +64,42 @@ _CONTAINER_KINDS = MappingProxyType(
 class NoTautologicalExpect(Rule):
     id: str = "no-tautological-expect"
     code: str = "SARJ057"
-    description: str = "Assertion whose operands are all literals — its outcome is fixed before the code runs."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Assertion outcome is fixed entirely by literal values.",
+        rationale="An always-passing assertion cannot verify runtime behavior and can hide a missing comparison.",
+        remediation="Assert against a value produced by the code under test.",
+        category=RuleCategory.TESTING,
+        limitations=(
+            "Detection covers truthy literal asserts and supported unittest methods with literal-only operands.",
+            "Always-failing markers, benchmark tests, deliberate match-arm markers, and runtime-value comparisons are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="literal-only-assertion",
+                title="Assertion always passes",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.python("tests/test_service.py", "def test_service():\n    assert True\n"),),
+                focus_path=PurePosixPath("tests/test_service.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="runtime-value-assertion",
+                title="Assertion checks runtime output",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_service.py",
+                        "def test_service(result):\n    assert result == 1\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_service.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
+    )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

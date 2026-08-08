@@ -2,7 +2,9 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-unsafe-mock-casting.js";
+import rule, {
+  noUnsafeMockCastingDocumentation,
+} from "../../src/rules/no-unsafe-mock-casting.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -19,7 +21,7 @@ ruleTester.run("no-unsafe-mock-casting", rule, {
   valid: [
     {
       name: "accepts the Vitest typed helper",
-      code: "const m = vi.mocked(myFn);",
+      code: noUnsafeMockCastingDocumentation.examples[0].files[0].source,
     },
     { name: "accepts the Jest typed helper", code: "const m = jest.mocked(myFn);" },
     {
@@ -58,7 +60,7 @@ ruleTester.run("no-unsafe-mock-casting", rule, {
     },
     {
       name: "reports vi.Mock assertions",
-      code: 'import type * as vi from "vitest"; const m = myFn as vi.Mock;',
+      code: noUnsafeMockCastingDocumentation.examples[1].files[0].source,
       errors: [{ messageId: "unsafeMockCast" }],
     },
     {

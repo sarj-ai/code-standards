@@ -6,10 +6,22 @@
 
 import { type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isStoryFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "hoistCollection" | "hoistRegex";
+
+export const preferModuleLevelConstantDocumentation = {
+  summary: "Hoist literal-only constant collections and regexes out of function bodies to module scope so they are allocated once.",
+  rationale: "Recreating immutable lookup data on every call wastes allocations and obscures its constant nature.",
+  remediation: "Declare immutable literal collections and non-stateful regular expressions once at module scope.",
+  category: "performance",
+  limitations: ["Collections that are small, mutated, escape the function, or depend on local values are not reported."],
+  examples: [
+    { id: "hoisted-collection", title: "Hoist a constant collection", outcome: "no-match", files: [{ path: "src/keys.ts", source: "const KEYS = ['a', 'b', 'c'] as const; function isAllowed(key: string) { return KEYS.includes(key); }" }], focusPath: "src/keys.ts", expectedCount: 0, public: true },
+    { id: "local-collection", title: "Do not recreate a constant collection", outcome: "match", files: [{ path: "src/keys.ts", source: "function isAllowed(key: string) { const KEYS = ['a', 'b', 'c']; return KEYS.includes(key); }" }], focusPath: "src/keys.ts", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
 
 type Options = readonly [
   {
@@ -363,6 +375,7 @@ function isNonRetainingBuiltinCall(
 
 export default createRule<Options, MessageIds>({
   name: "prefer-module-level-constant",
+  documentation: preferModuleLevelConstantDocumentation,
   meta: {
     type: "suggestion",
     docs: {

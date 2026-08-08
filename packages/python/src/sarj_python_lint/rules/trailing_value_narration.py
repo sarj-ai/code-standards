@@ -5,11 +5,22 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 
 from __future__ import annotations
 
+from pathlib import PurePosixPath
 import re
 import tokenize
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import ColumnEncoding, Diagnostic, Rule
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    ColumnEncoding,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+)
 from sarj_python_lint.rules._comments import (
     code_tokens,
     has_external_reference,
@@ -130,10 +141,38 @@ def _narrates_value(body: str, code: str) -> bool:
 class TrailingValueNarration(Rule):
     id: str = "trailing-value-narration"
     code: str = "SARJ051"
-    description: str = (
-        "Trailing comment restates the literal on this line — put the unit in "
-        "the name (STALE_TIME_MS, or a timedelta) so it cannot drift."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Trailing comment restates a literal value and its unit.",
+        rationale="A unit encoded only in a comment can drift from the value and is unavailable to type checking.",
+        remediation="Encode the unit in the name or value type, such as timeout_seconds or timedelta.",
+        category=RuleCategory.MAINTAINABILITY,
+        autofix=AutofixPolicy.SUGGESTION,
+        limitations=(
+            "Detection targets simple numeric assignments with a trailing comment that repeats the number and unit.",
+            "Approximate conversions, reasons, references, directives, bracketed values, and generated files are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="repeated-duration",
+                title="Comment repeats the duration",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.python("settings.py", "STALE_TIME = 5 * 60 * 1000  # 5 minutes\n"),),
+                focus_path=PurePosixPath("settings.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="comment-explains-policy",
+                title="Comment explains a policy",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(ExampleFile.python("settings.py", "BACKOFF = 2 * 60  # doubles per attempt\n"),),
+                focus_path=PurePosixPath("settings.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

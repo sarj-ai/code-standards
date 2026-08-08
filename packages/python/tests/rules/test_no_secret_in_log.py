@@ -1,5 +1,7 @@
 """Exhaustive suite for SARJ012 `no-secret-in-log`."""
 
+from __future__ import annotations
+
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -10,11 +12,27 @@ from sarj_python_lint.rules.no_secret_in_log import NoSecretInLog
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import Diagnostic
+    from sarj_python_lint.rule_base import Diagnostic, RuleExample
+
+
+_PUBLIC_EXAMPLES = NoSecretInLog.public_examples()
 
 
 def _check(source: str) -> list[Diagnostic]:
     return NoSecretInLog().check(Path("<test>.py"), source)
+
+
+@pytest.mark.parametrize(
+    "example",
+    _PUBLIC_EXAMPLES,
+    ids=tuple(example.example_id for example in _PUBLIC_EXAMPLES),
+)
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+
+    findings = NoSecretInLog().check(Path(focus.path), focus.source)
+
+    assert len(findings) == example.expected_count
 
 
 def _codes(source: str) -> list[str]:

@@ -2,7 +2,7 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-select-star.js";
+import rule, { noSelectStarDocumentation } from "../../src/rules/no-select-star.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -17,6 +17,7 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("no-select-star", rule, {
   valid: [
+    { name: "accepts the documented projection", code: noSelectStarDocumentation.examples[0].files[0].source },
     {
       name: "allows explicit projections",
       code: "db.prepare(`SELECT id, status, created_at FROM runs WHERE id = ?`).first();",
@@ -74,6 +75,7 @@ ruleTester.run("no-select-star", rule, {
     },
   ],
   invalid: [
+    { name: "reports the documented wildcard", code: noSelectStarDocumentation.examples[1].files[0].source, errors: [{ messageId: "noSelectStar" }] },
     {
       name: "rejects a bare projection star",
       code: "db.prepare(`SELECT * FROM runs WHERE id = ?`).first();",

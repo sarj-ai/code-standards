@@ -2,7 +2,7 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-hand-rolled-sleep.js";
+import rule, { noHandRolledSleepDocumentation } from "../../src/rules/no-hand-rolled-sleep.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -21,8 +21,7 @@ ruleTester.run("no-hand-rolled-sleep", rule, {
   valid: [
     {
       name: "accepts the cancellable Node timer",
-      code: `import { setTimeout as sleep } from "node:timers/promises";
-             await sleep(500, undefined, { signal });`,
+      code: noHandRolledSleepDocumentation.examples[0].files[0].source,
       filename: SERVER,
     },
     {
@@ -205,7 +204,7 @@ ruleTester.run("no-hand-rolled-sleep", rule, {
     },
     {
       name: "reports a concise sleep",
-      code: "await new Promise((resolve) => setTimeout(resolve, 500));",
+      code: noHandRolledSleepDocumentation.examples[1].files[0].source,
       filename: SERVER,
       errors: [{ messageId: "handRolledSleep" }],
     },

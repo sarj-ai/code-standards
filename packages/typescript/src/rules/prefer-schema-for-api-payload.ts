@@ -7,10 +7,22 @@
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import type { RuleContext, Scope } from "@typescript-eslint/utils/ts-eslint";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "unparsedJsonAccess";
+
+export const preferSchemaForApiPayloadDocumentation = {
+  summary: "Require Zod (or similar) schema validation on `response.json()` / `JSON.parse()` results before property access.",
+  rationale: "External JSON is untrusted at runtime even when its expected TypeScript shape is known statically.",
+  remediation: "Parse the payload through a schema or establish a recognized runtime validation guard before reading fields.",
+  category: "correctness",
+  limitations: ["Test fixtures, generated clients, local JSON files, and recognized validation guards are excluded."],
+  examples: [
+    { id: "validated-payload", title: "Validate before property access", outcome: "no-match", files: [{ path: "src/client.ts", source: "async function load(response) { const body = UserSchema.parse(await response.json()); return body.id; }" }], focusPath: "src/client.ts", expectedCount: 0, public: true },
+    { id: "unvalidated-payload", title: "Do not trust response JSON directly", outcome: "match", files: [{ path: "src/client.ts", source: "async function load(response) { const body = await response.json(); return body.id; }" }], focusPath: "src/client.ts", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
 type Options = readonly [];
 
 type Ctx = Readonly<RuleContext<MessageIds, Options>>;
@@ -449,6 +461,7 @@ const unvalidatedVariableRef = (
 
 export default createRule<Options, MessageIds>({
   name: "prefer-schema-for-api-payload",
+  documentation: preferSchemaForApiPayloadDocumentation,
   meta: {
     type: "problem",
     docs: {

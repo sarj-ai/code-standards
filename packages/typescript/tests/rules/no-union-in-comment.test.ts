@@ -1,7 +1,9 @@
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-union-in-comment.js";
+import rule, {
+  noUnionInCommentDocumentation,
+} from "../../src/rules/no-union-in-comment.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -25,7 +27,7 @@ ruleTester.run("no-union-in-comment", rule, {
       code: "interface R { confidence: number; // 0..1\n}",
     },
     // Already a union: the type holds the set, so there is nothing to move.
-    { code: "interface R { kind: 'aa' | 'bb'; }" },
+    { code: noUnionInCommentDocumentation.examples[0].files[0].source },
     // The comment restates a union the declaration already spells. That is a
     // restatement, which `no-restated-comment` owns — not a missing type.
     { code: "interface R { kind: 'aa' | 'bb'; // 'aa' | 'bb'\n}" },
@@ -75,7 +77,7 @@ ruleTester.run("no-union-in-comment", rule, {
   invalid: [
     // The shape as first-party schema code writes it.
     {
-      code: "interface R {\n  kind: string; // 'aa' | 'bb'\n}",
+      code: noUnionInCommentDocumentation.examples[1].files[0].source,
       errors: [{ messageId: "unionInComment" }],
     },
     // Above the member rather than beside it.

@@ -7,12 +7,15 @@ from typing import TYPE_CHECKING
 import pytest
 
 import sarj_python_lint.__main__ as cli
-from sarj_python_lint.rule_base import Severity
+from sarj_python_lint.rule_base import RuleExample, Severity
 from sarj_python_lint.rules.no_duplicate_dunder_all_entry import NoDuplicateDunderAllEntry
 
 
 if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Diagnostic
+
+
+_PUBLIC_EXAMPLES = NoDuplicateDunderAllEntry.public_examples()
 
 
 def _check(source: str, path: str = "diagnostics/__init__.py") -> list[Diagnostic]:
@@ -35,6 +38,19 @@ def test_reports_the_later_exact_duplicate_in_static_export_literals(declaration
     assert findings[0].severity is Severity.WARNING
     assert findings[0].col > 1
     assert "line 1" in findings[0].message
+
+
+@pytest.mark.parametrize(
+    "example",
+    _PUBLIC_EXAMPLES,
+    ids=tuple(example.example_id for example in _PUBLIC_EXAMPLES),
+)
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+
+    findings = NoDuplicateDunderAllEntry().check(Path(focus.path), focus.source)
+
+    assert len(findings) == example.expected_count
 
 
 def test_reports_every_later_duplicate_and_cites_the_first_line() -> None:

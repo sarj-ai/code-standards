@@ -2,7 +2,9 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/prefer-immutable-module-constant.js";
+import rule, {
+  preferImmutableModuleConstantDocumentation,
+} from "../../src/rules/prefer-immutable-module-constant.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -18,7 +20,7 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("prefer-immutable-module-constant", rule, {
   valid: [
-    "const VALUES = [1, 2, 3] as const;",
+    preferImmutableModuleConstantDocumentation.examples[0].files[0].source,
     "const VALUES = [1, 2, 3] as const satisfies readonly number[];",
     "const VALUES: readonly number[] = [1, 2, 3];",
     "const VALUES: ReadonlyArray<number> = [1, 2, 3];",
@@ -57,7 +59,7 @@ ruleTester.run("prefer-immutable-module-constant", rule, {
   ],
   invalid: [
     {
-      code: "const VALUES = [1, 2, 3];",
+      code: preferImmutableModuleConstantDocumentation.examples[1].files[0].source,
       errors: [{ messageId: "preferAsConst", data: { name: "VALUES" } }],
     },
     {

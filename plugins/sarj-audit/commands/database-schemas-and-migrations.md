@@ -1,6 +1,6 @@
 # Database schemas and migrations
 
-Audit schema and migration safety using the shared [audit protocol](../README.md#audit-protocol).
+Audit schema and migration safety using the shared [audit protocol](../skills/audit-protocol/SKILL.md#audit-protocol).
 
 ## Judgment checks
 

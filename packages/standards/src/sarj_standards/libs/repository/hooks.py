@@ -18,7 +18,7 @@ def install(root: Path) -> int:
         raise ValueError(msg)
     binary = _binary("lefthook")
     subprocess.run([str(binary), "install", "-f"], cwd=root, check=True)  # ruff: ignore[subprocess-without-shell-equals-true]
-    marker = f'export LEFTHOOK_BIN="{_binary("sarj-lefthook").as_posix()}"'
+    marker = f'export LEFTHOOK_BIN="{binary.as_posix()}"'
     for hook_name in ("pre-commit", "pre-push"):
         hook_path = Path(_git(root, "rev-parse", "--git-path", f"hooks/{hook_name}").strip())
         if not hook_path.is_absolute():

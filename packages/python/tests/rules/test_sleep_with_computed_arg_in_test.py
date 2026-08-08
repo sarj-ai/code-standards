@@ -8,7 +8,7 @@ from sarj_python_lint.rules.sleep_with_computed_arg_in_test import SleepWithComp
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import Diagnostic
+    from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
 TEST_PATH = "python/agent/tests/test_idle_monitor.py"
@@ -16,6 +16,15 @@ TEST_PATH = "python/agent/tests/test_idle_monitor.py"
 
 def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
     return SleepWithComputedArgInTest().check(Path(path), source)
+
+
+_PUBLIC_EXAMPLES = SleepWithComputedArgInTest.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(_check(focus.source, str(focus.path))) == example.expected_count
 
 
 _COMPUTED_SLEEP = """

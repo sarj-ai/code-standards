@@ -6,11 +6,39 @@
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import type { RuleContext, Scope } from "@typescript-eslint/utils/ts-eslint";
 
 type MessageIds = "unnecessaryUseClient";
 type Options = readonly [];
+
+export const noUnnecessaryUseClientDocumentation = {
+  summary: "Flag `'use client'` files with no hooks or event handlers — they could be RSC.",
+  rationale: "An unnecessary client boundary sends the component and its transitive dependencies to the browser without using client-only behavior.",
+  remediation: "Remove the directive, or keep it only when the module uses a supported client-side API or boundary dependency.",
+  category: "performance",
+  limitations: ["Client need is inferred from recognized hooks, handlers, browser globals, exports, classes, and known client-only imports."],
+  examples: [
+    {
+      id: "interactive-component",
+      title: "Keep the directive for interactive components",
+      outcome: "no-match",
+      files: [{ path: "src/counter.tsx", source: "'use client'; import { useState } from 'react'; export default function X() { const [n] = useState(0); return <div>{n}</div>; }" }],
+      focusPath: "src/counter.tsx",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "static-component",
+      title: "Remove the directive from static components",
+      outcome: "match",
+      files: [{ path: "src/banner.tsx", source: "'use client'; export default function X() { return <div>hello</div>; }" }],
+      focusPath: "src/banner.tsx",
+      expectedCount: 1,
+      public: true,
+    },
+  ],
+} as const satisfies RuleDocumentation;
 
 const HOOK_REGEX = /^use([A-Z]|$)/;
 const EVENT_PROP_REGEX = /^on[A-Z]/;
@@ -136,6 +164,7 @@ const isGlobalReference = (
 
 export default createRule<Options, MessageIds>({
   name: "no-unnecessary-use-client",
+  documentation: noUnnecessaryUseClientDocumentation,
   meta: {
     type: "suggestion",
     docs: {

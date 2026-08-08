@@ -1,0 +1,6 @@
+node_modules/
+.astro/
+dist/
+.wrangler/
+.dev.vars*
+!.dev.vars.example

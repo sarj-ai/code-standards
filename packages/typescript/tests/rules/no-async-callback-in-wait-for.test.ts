@@ -2,7 +2,9 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-async-callback-in-wait-for.js";
+import rule, {
+  noAsyncCallbackInWaitForDocumentation,
+} from "../../src/rules/no-async-callback-in-wait-for.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -22,7 +24,7 @@ ruleTester.run("no-async-callback-in-wait-for", rule, {
     {
       name: "allows a synchronous arrow callback",
       filename: TEST_FILE,
-      code: "it('works', async () => { await waitFor(() => expect(foo).toBe(true)); });",
+      code: noAsyncCallbackInWaitForDocumentation.examples[0].files[0].source,
     },
     {
       name: "allows a synchronous function-expression callback",
@@ -79,7 +81,7 @@ ruleTester.run("no-async-callback-in-wait-for", rule, {
     {
       name: "reports an async arrow callback even without await",
       filename: TEST_FILE,
-      code: "it('fails', async () => { await waitFor(async () => expect(foo).toBe(true)); });",
+      code: noAsyncCallbackInWaitForDocumentation.examples[1].files[0].source,
       errors: [{ messageId: "noAsyncCallbackInWaitFor" }],
     },
     {

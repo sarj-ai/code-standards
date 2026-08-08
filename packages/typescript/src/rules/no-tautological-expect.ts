@@ -6,11 +6,43 @@
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
 
 type MessageIds = "tautologicalComparison" | "tautologicalMatcher";
 type Options = readonly [];
+
+export const noTautologicalExpectDocumentation = {
+  summary:
+    "Disallow an assertion whose operands are all literals; its outcome is fixed before the code runs, so it can never fail.",
+  rationale:
+    "An assertion determined entirely by literals does not observe the code under test and can keep passing after that code is removed.",
+  remediation: "Assert on a value produced by the behavior under test, or remove the assertion.",
+  category: "testing",
+  limitations: [
+    "Only direct supported `expect` matcher calls in recognized test files are inspected.",
+  ],
+  examples: [
+    {
+      id: "produced-value",
+      title: "Assert on a produced value",
+      outcome: "no-match",
+      files: [{ path: "src/add.test.ts", source: "it('adds', () => { expect(add(1, 1)).toBe(2); });" }],
+      focusPath: "src/add.test.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "literal-only-assertion",
+      title: "Do not compare identical literals",
+      outcome: "match",
+      files: [{ path: "src/add.test.ts", source: "it('works', () => { expect(true).toBe(true); });" }],
+      focusPath: "src/add.test.ts",
+      expectedCount: 1,
+      public: true,
+    },
+  ],
+} as const satisfies RuleDocumentation;
 
 /** Matchers that take the expected value as their single argument. */
 const EQUALITY_MATCHERS: ReadonlySet<string> = new Set(["toBe", "toEqual", "toStrictEqual"]);
@@ -69,6 +101,7 @@ function expectOperand(callee: TSESTree.MemberExpression): TSESTree.Node | null 
 
 export default createRule<Options, MessageIds>({
   name: "no-tautological-expect",
+  documentation: noTautologicalExpectDocumentation,
   meta: {
     type: "problem",
     docs: {

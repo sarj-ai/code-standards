@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from pathlib import PurePosixPath
+import json
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 
 import pytest
@@ -11,23 +12,31 @@ import pytest
 from sarj_standards.libs.corpus import CorpusKind, CorpusSource, snapshot, verify
 from sarj_standards.libs.rules import (
     CatalogRule,
+    DefaultLevel,
+    DocumentedRule,
     EvaluationCase,
     EvaluationEvidence,
     EvaluationThresholds,
+    ExampleFile,
     ExpectedOutcome,
     Finding,
     Language,
     PromotionDecision,
     RuleCatalog,
+    RuleCatalogDocument,
+    RuleCategory,
+    RuleEngine,
+    RuleExample,
+    RuleId,
     RuleOrigin,
     RuleProblem,
+    RuleSpec,
     evaluate,
 )
 
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from pathlib import Path
 
 
 def _problem() -> RuleProblem:
@@ -74,6 +83,180 @@ def test_catalog_filters_existing_rules_without_fuzzy_matching() -> None:
     assert catalog.get("ruff:PIE790") is upstream
     assert catalog.get("pie790") is None
     assert catalog.filter(language=Language.PYTHON, origin=RuleOrigin.UPSTREAM) == (upstream,)
+
+
+def _documented_spec(
+    *,
+    aliases: tuple[str, ...] = (),
+    rule_id: str = "no-placeholder-pass",
+    code: str = "TEST001",
+    summary: str = "Reject placeholder pass statements.",
+    rationale: str = "A placeholder can silently ship an incomplete branch.",
+    remediation: str = "Implement the branch or make the abstract contract explicit.",
+    examples: tuple[RuleExample, ...] | None = None,
+) -> RuleSpec:
+    documented_examples = examples or (
+        RuleExample(
+            "placeholder",
+            ExpectedOutcome.MATCH,
+            (ExampleFile(PurePosixPath("service.py"), "def f():\n    pass\n"),),
+            PurePosixPath("service.py"),
+            1,
+            "A placeholder implementation is rejected",
+            public=True,
+        ),
+        RuleExample(
+            "implemented",
+            ExpectedOutcome.NO_MATCH,
+            (ExampleFile(PurePosixPath("service.py"), "def f():\n    return None\n"),),
+            PurePosixPath("service.py"),
+            0,
+            "An implemented branch is accepted",
+            public=True,
+        ),
+        RuleExample(
+            "private-regression",
+            ExpectedOutcome.NO_MATCH,
+            (ExampleFile(PurePosixPath("internal.py"), "private_token = 1\n"),),
+            PurePosixPath("internal.py"),
+            0,
+            "A private corpus regression",
+        ),
+    )
+    return RuleSpec(
+        engine=RuleEngine.PYTHON,
+        rule_id=RuleId(rule_id),
+        code=code,
+        summary=summary,
+        rationale=rationale,
+        remediation=remediation,
+        category=RuleCategory.CORRECTNESS,
+        languages=frozenset({Language.PYTHON}),
+        aliases=aliases,
+        examples=documented_examples,
+    )
+
+
+def _object_table(value: object) -> dict[str, object]:
+    assert isinstance(value, dict)
+    assert all(isinstance(key, str) for key in value)  # pyright: ignore[reportUnknownVariableType]
+    return value  # pyright: ignore[reportUnknownVariableType]
+
+
+def _object_list(value: object) -> list[object]:
+    assert isinstance(value, list)
+    return value  # pyright: ignore[reportUnknownVariableType]
+
+
+def test_documented_catalog_is_deterministic_and_excludes_private_examples() -> None:
+    rule = DocumentedRule(
+        _documented_spec(aliases=("placeholder-pass",)),
+        DefaultLevel.WARNING,
+        PurePosixPath("packages/python/src/rules/no_placeholder_pass.py"),
+        PurePosixPath("packages/python/tests/rules/test_no_placeholder_pass.py"),
+    )
+
+    exported = RuleCatalogDocument((rule,)).as_public_dict()
+    rendered = json.dumps(exported)
+
+    assert exported["schemaVersion"] == 1
+    assert '"key": "python:no-placeholder-pass"' in rendered
+    assert rendered.index('"id": "implemented"') < rendered.index('"id": "placeholder"')
+    assert "private_token" not in rendered
+
+
+def test_public_examples_must_include_accepted_and_rejected_source() -> None:
+    with pytest.raises(ValueError, match="both matching and non-matching"):
+        _documented_spec(
+            rule_id="incomplete-docs",
+            code="TEST002",
+            summary="Reject incomplete documentation fixtures.",
+            rationale="One-sided examples hide the rule boundary.",
+            remediation="Add an accepted example.",
+            examples=(
+                RuleExample(
+                    "rejected",
+                    ExpectedOutcome.MATCH,
+                    (ExampleFile(PurePosixPath("case.py"), "pass\n"),),
+                    PurePosixPath("case.py"),
+                    1,
+                    "Rejected source",
+                    public=True,
+                ),
+            ),
+        )
+
+
+def test_non_fixing_rule_cannot_publish_fixed_source() -> None:
+    rejected = RuleExample(
+        "rejected",
+        ExpectedOutcome.MATCH,
+        (ExampleFile(PurePosixPath("case.py"), "pass\n"),),
+        PurePosixPath("case.py"),
+        1,
+        "Rejected source",
+        fixed_files=(ExampleFile(PurePosixPath("case.py"), "return None\n"),),
+    )
+
+    with pytest.raises(ValueError, match="without autofix"):
+        _documented_spec(
+            rule_id="no-placeholder",
+            code="TEST004",
+            summary="Reject placeholders.",
+            rationale="Placeholders hide incomplete behavior.",
+            remediation="Implement the behavior.",
+            examples=(rejected,),
+        )
+
+
+@pytest.mark.parametrize("path", ["C:\\secret.py", "folder\\secret.py"])
+def test_example_files_reject_platform_ambiguous_paths(path: str) -> None:
+    with pytest.raises(ValueError, match="safe relative"):
+        ExampleFile(PurePosixPath(path), "value = 1\n")
+
+
+def test_catalog_alias_cannot_shadow_a_live_rule() -> None:
+    first = DocumentedRule(
+        _documented_spec(aliases=("replacement",)),
+        DefaultLevel.ERROR,
+        PurePosixPath("first.py"),
+        PurePosixPath("test_first.py"),
+    )
+    second_spec = _documented_spec(
+        rule_id="replacement",
+        code="TEST003",
+        summary="Reject replacement examples.",
+        rationale="This fixture exercises collision checks.",
+        remediation="Choose an unambiguous identifier.",
+    )
+    second = DocumentedRule(
+        second_spec,
+        DefaultLevel.ERROR,
+        PurePosixPath("second.py"),
+        PurePosixPath("test_second.py"),
+    )
+
+    with pytest.raises(ValueError, match="must not shadow"):
+        RuleCatalogDocument((first, second))
+
+
+def test_shipped_catalog_schema_covers_every_serialized_rule_field() -> None:
+    root = Path(__file__).parents[3]
+    schema_path = root / "packages/standards/src/sarj_standards/schemas/rule-catalog.v1.schema.json"
+    schema_value: object = json.loads(schema_path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    definitions = _object_table(_object_table(schema_value)["$defs"])
+    rule_schema = _object_table(definitions["rule"])
+    required = _object_list(rule_schema["required"])
+    documented = DocumentedRule(
+        _documented_spec(),
+        DefaultLevel.ERROR,
+        PurePosixPath("source.py"),
+        PurePosixPath("test_source.py"),
+    )
+    exported = RuleCatalogDocument((documented,)).as_public_dict()
+    first_rule = _object_table(_object_list(exported["rules"])[0])
+
+    assert set(required) == set(first_rule)
 
 
 def test_evaluation_reports_metrics_and_warning_first_decision() -> None:

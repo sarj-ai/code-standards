@@ -2,7 +2,7 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/prefer-input-group-search.js";
+import rule, { preferInputGroupSearchDocumentation } from "../../src/rules/prefer-input-group-search.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -23,6 +23,7 @@ const imports = `
 
 ruleTester.run("prefer-input-group-search", rule, {
   valid: [
+    { name: "public no-match example", filename: preferInputGroupSearchDocumentation.examples[0].focusPath, code: preferInputGroupSearchDocumentation.examples[0].files[0].source },
     {
       name: "accepts the shared input group",
       code: `
@@ -69,6 +70,7 @@ ruleTester.run("prefer-input-group-search", rule, {
     },
   ],
   invalid: [
+    { name: "public match example", filename: preferInputGroupSearchDocumentation.examples[1].focusPath, code: preferInputGroupSearchDocumentation.examples[1].files[0].source, errors: [{ messageId: "preferInputGroup" }] },
     {
       name: "rejects direct search and input siblings",
       code: `${imports}<div><Search /><Input /></div>`,

@@ -1,8 +1,22 @@
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from sarj_python_lint.rules.no_typed_doc_sections import NoTypedDocSections
+
+
+if TYPE_CHECKING:
+    from sarj_python_lint.rule_base import RuleExample
+
+
+_PUBLIC_EXAMPLES = NoTypedDocSections.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(NoTypedDocSections().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 @pytest.mark.parametrize("section", ["Args", "Arguments", "Parameters", "Params", "Keyword Args", "Keyword Arguments"])

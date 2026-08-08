@@ -6,9 +6,21 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
-from typing import TYPE_CHECKING, override
+from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, is_suppressed, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    is_suppressed,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import children, nodes, walk
 
 
@@ -104,9 +116,48 @@ def _has_callable_scope(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> bool:
 class PreferWalrusComprehensionFilter(Rule):
     id: str = "prefer-walrus-comprehension-filter"
     code: str = "SARJ076"
-    description: str = (
-        "repeated function call in comprehension filter and element — bind it once with a named expression."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Evaluate a repeated comprehension call once with a named expression.",
+        rationale="Calling the same function in both the filter and result duplicates work and can repeat side effects.",
+        remediation="Bind the result to a fresh meaningful name in the filter and use that name in the comprehension result.",
+        category=RuleCategory.PERFORMANCE,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Only single-generator comprehensions inside callable bodies are analyzed.",
+            "Attribute reads, type-narrowing builtins, differing calls, and filters already using a named expression are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="repeated-comprehension-call",
+                title="Comprehension evaluates one call twice",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/values.py",
+                        "def collect(values):\n    return [compute(value) for value in values if compute(value)]\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/values.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="bound-comprehension-result",
+                title="Comprehension evaluates the call once",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/values.py",
+                        "def collect(values):\n    return [result for value in values if (result := compute(value))]\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/values.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

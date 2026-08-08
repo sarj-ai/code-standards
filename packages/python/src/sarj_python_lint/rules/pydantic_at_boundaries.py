@@ -7,10 +7,20 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import children, nodes
 from sarj_python_lint.rules._fastapi import FastapiIndex
 from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
@@ -43,9 +53,47 @@ class _RouteInfo:
 class PydanticAtBoundaries(Rule):
     id: str = "pydantic-at-boundaries"
     code: str = "SARJ008"
-    description: str = (
-        "Public function/route returns an untyped dict — define a pydantic model, frozen dataclass, or TypedDict."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Public function or route returns a fixed-shape untyped dictionary.",
+        rationale="Named boundary models make field types and required keys explicit to callers and tooling.",
+        remediation="Return a pydantic model, frozen dataclass, or `TypedDict` for the fixed record shape.",
+        category=RuleCategory.ARCHITECTURE,
+        limitations=(
+            "Private functions, closures, tests, fixtures, validators, and dictionary conversion methods are excluded.",
+            "Only returned record literals and locally built fixed-shape dictionaries are recognized.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="untyped-dictionary-boundary",
+                title="Untyped dictionary returned from a public function",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "service.py",
+                        "from typing import Any\n\ndef build_payload(call) -> dict[str, Any]:\n    return {'id': call.id}\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("service.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="typed-boundary-model",
+                title="Named model returned from a public function",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "service.py",
+                        "def build_payload(call) -> CallPayload:\n    return CallPayload(id=call.id)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("service.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

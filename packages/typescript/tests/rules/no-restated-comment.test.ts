@@ -1,7 +1,7 @@
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-restated-comment.js";
+import rule, { noRestatedCommentDocumentation } from "../../src/rules/no-restated-comment.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -12,6 +12,7 @@ const ruleTester = new RuleTester();
 
 ruleTester.run("no-restated-comment", rule, {
   valid: [
+    { name: "accepts the documented reason comment", code: noRestatedCommentDocumentation.examples[0].files[0].source },
     // One unmatched word means the comment carries something the code does not.
     {
       name: "keeps a comment when one content word is absent from the code",
@@ -82,6 +83,7 @@ ruleTester.run("no-restated-comment", rule, {
     },
   ],
   invalid: [
+    { name: "reports the documented restatement", code: noRestatedCommentDocumentation.examples[1].files[0].source, errors: [{ messageId: "restatesLineBelow" }] },
     {
       code: "// Serialize key\nconst [key] = serialize(_k);\nreturn null;",
       errors: [{ messageId: "restatesLineBelow" }],

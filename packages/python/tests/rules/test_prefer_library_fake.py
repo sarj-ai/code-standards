@@ -8,7 +8,7 @@ from sarj_python_lint.rules.prefer_library_fake import PreferLibraryFake
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import Diagnostic
+    from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
 TEST_PATH = "python/dashboard/tests/analytics_data.py"
@@ -16,6 +16,15 @@ TEST_PATH = "python/dashboard/tests/analytics_data.py"
 
 def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
     return PreferLibraryFake().check(Path(path), textwrap.dedent(source))
+
+
+_PUBLIC_EXAMPLES = PreferLibraryFake.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(PreferLibraryFake().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 # A three-method dict-backed S3 client: the canonical shape this rule exists for.

@@ -9,11 +9,27 @@ from sarj_iac_lint.rules.require_deletion_protection import PROTECTED_TYPES, Req
 
 
 if TYPE_CHECKING:
-    from sarj_iac_lint.rule_base import Diagnostic
+    from sarj_iac_lint.rule_base import Diagnostic, RuleExample
+
+
+_PUBLIC_EXAMPLES = RequireDeletionProtection.public_examples()
 
 
 def _check(source: str, name: str = "main.tf") -> list[Diagnostic]:
     return RequireDeletionProtection().check(Path(name), source)
+
+
+@pytest.mark.parametrize(
+    "example",
+    _PUBLIC_EXAMPLES,
+    ids=tuple(example.example_id for example in _PUBLIC_EXAMPLES),
+)
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+
+    findings = RequireDeletionProtection().check(Path(focus.path), focus.source)
+
+    assert len(findings) == example.expected_count
 
 
 def test_flags_missing_deletion_protection():

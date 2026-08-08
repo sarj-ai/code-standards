@@ -6,7 +6,7 @@
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isScriptFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "handRolledSleep" | "handRolledTimeoutRace";
@@ -16,6 +16,41 @@ type Options = readonly [
     checkClientModules?: boolean;
   }?,
 ];
+
+export const noHandRolledSleepDocumentation = {
+  summary: "Disallow uncancellable promisified timers and timeout arms.",
+  rationale:
+    "A timer that outlives an aborted operation or a lost promise race retains work and can keep the process alive until it fires.",
+  remediation:
+    "Use `node:timers/promises` with an abort signal for delays, or pass `AbortSignal.timeout(...)` to the timed operation.",
+  category: "correctness",
+  limitations: [
+    "The rule skips tests, scripts, generated files, and client modules by default, and supports explicit path exemptions.",
+  ],
+  examples: [
+    {
+      id: "cancellable-node-timer",
+      title: "A standard-library timer accepts an abort signal",
+      outcome: "no-match",
+      files: [{
+        path: "src/lib/queue.ts",
+        source: "import { setTimeout as sleep } from \"node:timers/promises\";\nawait sleep(500, undefined, { signal });",
+      }],
+      focusPath: "src/lib/queue.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "uncancellable-sleep",
+      title: "A Promise wraps a timer without cancellation",
+      outcome: "match",
+      files: [{ path: "src/lib/queue.ts", source: "await new Promise((resolve) => setTimeout(resolve, 500));" }],
+      focusPath: "src/lib/queue.ts",
+      expectedCount: 1,
+      public: true,
+    },
+  ],
+} as const satisfies RuleDocumentation;
 
 const GLOBAL_OBJECTS: ReadonlySet<string> = new Set([
   "globalThis",
@@ -149,11 +184,11 @@ function isRaceArm(node: TSESTree.NewExpression): boolean {
 
 export default createRule<Options, MessageIds>({
   name: "no-hand-rolled-sleep",
+  documentation: noHandRolledSleepDocumentation,
   meta: {
     type: "problem",
     docs: {
-      description:
-        "Disallow hand-rolled promisified timers (`new Promise((r) => setTimeout(r, ms))`) and hand-rolled `Promise.race` timeout arms; the stdlib forms are cancellable, these are not.",
+      description: "Disallow uncancellable promisified timers and timeout arms.",
     },
     schema: [
       {

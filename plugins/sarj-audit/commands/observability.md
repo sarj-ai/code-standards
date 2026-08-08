@@ -1,6 +1,6 @@
 # Observability
 
-Audit production logs, metrics, and traces using the shared [audit protocol](../README.md#audit-protocol). Silent catches belong in `error-handling`.
+Audit production logs, metrics, and traces using the shared [audit protocol](../skills/audit-protocol/SKILL.md#audit-protocol). Silent catches belong in `error-handling`.
 
 ## Judgment checks
 

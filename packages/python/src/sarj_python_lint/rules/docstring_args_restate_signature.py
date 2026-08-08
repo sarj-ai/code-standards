@@ -6,9 +6,20 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
-from typing import TYPE_CHECKING, override
+from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import children
 from sarj_python_lint.rules._comments import is_protected
 from sarj_python_lint.rules._docstrings import (
@@ -31,9 +42,48 @@ if TYPE_CHECKING:
 class DocstringArgsRestateSignature(Rule):
     id: str = "docstring-args-restate-signature"
     code: str = "SARJ086"
-    description: str = (
-        "`Args:` block adds nothing the signature does not already say — delete the section and keep the summary."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Argument documentation must add facts beyond the function signature.",
+        rationale="Repeating parameter names and types obscures useful behavioral contracts and drifts when signatures change.",
+        remediation="Remove the redundant argument section, or retain it only to document constraints, units, defaults, or semantics absent from the signature.",
+        category=RuleCategory.MAINTAINABILITY,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "The rule reads Google-style argument sections and requires every documented entry to be a restatement before reporting.",
+            "Generated files, runtime-consumed prompt, CLI, and route docstrings, protected facts, and empty machine-generated stubs are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="argument-restates-signature",
+                title="Argument description repeats its name",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/widgets.py",
+                        'def count_widgets(tenant_id: str) -> int:\n    """Count active widgets.\n\n    Args:\n        tenant_id: Tenant ID\n    """\n    return 0\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/widgets.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="argument-documents-unit",
+                title="Argument description records a unit",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/widgets.py",
+                        'def set_timeout_ms(timeout_ms: int) -> None:\n    """Configure the request deadline.\n\n    Args:\n        timeout_ms: Timeout in ms\n    """\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/widgets.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

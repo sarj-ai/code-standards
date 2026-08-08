@@ -2,10 +2,20 @@
 
 from __future__ import annotations
 
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, final, override
 
 from sarj_iac_lint._hcl import blocks
-from sarj_iac_lint.rule_base import Diagnostic, Rule
+from sarj_iac_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+)
 
 
 if TYPE_CHECKING:
@@ -56,10 +66,59 @@ class RequirePreventDestroyOnIrreplaceable(Rule):
 
     id = "require-prevent-destroy-on-irreplaceable"
     code = "SARJ203"
-    description = (
-        "Bucket, secret, or artifact registry must use a supported literal provider-side "
-        "deletion guard or lifecycle { prevent_destroy = true }."
+    documentation = RuleDocumentation(
+        summary=(
+            "Bucket, secret, or artifact registry must use a supported literal provider-side "
+            "deletion guard or lifecycle { prevent_destroy = true }."
+        ),
+        rationale=(
+            "Buckets, secrets, and registries contain state that is difficult or impossible to reconstruct after an "
+            "accidental infrastructure destroy."
+        ),
+        remediation=("Use a supported literal provider deletion guard, or add lifecycle { prevent_destroy = true }."),
+        category=RuleCategory.SECURITY,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Only the curated resource types and documented Google provider guards are recognized.",
+            "A literal force_destroy = true is treated as an explicit declaration that the resource is disposable.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="unguarded-bucket",
+                title="Irreplaceable bucket without a deletion guard",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.iac(
+                        "storage.tf",
+                        'resource "google_storage_bucket" "records" {\n  name = "records"\n}\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("storage.tf"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="protected-bucket",
+                title="Irreplaceable bucket protected at plan time",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.iac(
+                        "storage.tf",
+                        'resource "google_storage_bucket" "records" {\n'
+                        '  name = "records"\n'
+                        "  lifecycle {\n"
+                        "    prevent_destroy = true\n"
+                        "  }\n"
+                        "}\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("storage.tf"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

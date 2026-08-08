@@ -6,11 +6,22 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "helperAboveOnlyCaller";
 type Options = [];
+
+export const stepdownDocumentation = {
+  summary: "Place a private helper below its sole direct same-scope caller.",
+  rationale: "Caller-first ordering lets a reader follow the main flow before descending into implementation details.",
+  remediation: "Move the private helper immediately below its sole caller.",
+  category: "maintainability",
+  examples: [
+    { id: "caller-before-helper", title: "Place the caller first", outcome: "no-match", files: [{ path: "src/run.ts", source: "function run() { return load(); }\nfunction load() { return 1; }" }], focusPath: "src/run.ts", expectedCount: 0, public: true },
+    { id: "helper-before-caller", title: "Do not lead with a sole-caller helper", outcome: "match", files: [{ path: "src/run.ts", source: "function load() { return 1; }\nfunction run() { return load(); }" }], focusPath: "src/run.ts", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
 
 type FunctionNode =
   | TSESTree.ArrowFunctionExpression
@@ -483,6 +494,7 @@ function classScope(
 
 export default createRule<Options, MessageIds>({
   name: "stepdown",
+  documentation: stepdownDocumentation,
   meta: {
     type: "suggestion",
     docs: { description: "Place a private helper below its sole direct same-scope caller." },

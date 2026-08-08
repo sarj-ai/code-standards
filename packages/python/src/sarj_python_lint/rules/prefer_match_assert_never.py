@@ -6,9 +6,20 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
-from typing import TYPE_CHECKING, override
+from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, final, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import nodes
 
 
@@ -25,13 +36,52 @@ _ENUM_BASES = frozenset({"Enum", "StrEnum", "IntEnum", "Flag", "IntFlag", "ReprE
 _DICT_GROWING_METHODS = frozenset({"update", "setdefault"})
 
 
+@final
 class PreferMatchAssertNever(Rule):
     id: str = "prefer-match-assert-never"
     code: str = "SARJ032"
-    description: str = (
-        "silent `case _:` / silent `else` on closed-set dispatch — a new variant "
-        "no-ops instead of failing; use assert_never (or raise) in the fallthrough."
+    documentation = RuleDocumentation(
+        summary="Closed-set dispatch should fail explicitly when a variant is unhandled.",
+        rationale="A silent wildcard, `else`, or incomplete dispatch map lets newly added variants pass unnoticed.",
+        remediation="Handle every variant and use `assert_never` or an explicit exception for the unreachable fallthrough.",
+        category=RuleCategory.CORRECTNESS,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "The rule recognizes closed sets from local classes, enums, imported member owners, and static handler maps.",
+            "Guarded matches, dynamically grown maps, and open-ended value domains are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="silent-closed-set-wildcard",
+                title="Closed-set match silently ignores a variant",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "dispatch.py",
+                        "from kinds import Kind\n\ndef handle(kind):\n    match kind:\n        case Kind.A:\n            handle_a()\n        case Kind.B:\n            handle_b()\n        case _:\n            pass\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("dispatch.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="explicit-closed-set-failure",
+                title="Closed-set match rejects an unhandled variant",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "dispatch.py",
+                        "from kinds import Kind\n\ndef handle(kind):\n    match kind:\n        case Kind.A:\n            handle_a()\n        case Kind.B:\n            handle_b()\n        case _:\n            raise AssertionError(kind)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("dispatch.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

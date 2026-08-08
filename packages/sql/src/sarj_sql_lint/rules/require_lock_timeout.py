@@ -4,12 +4,19 @@ from __future__ import annotations
 
 from decimal import Decimal
 import operator
+from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, final, override
 
 from sarj_sql_lint.rule_base import (
+    AutofixPolicy,
     Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
     Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
     has_dbmate_directive,
     is_dump_file,
     is_postgres_migration,
@@ -47,7 +54,42 @@ class RequireLockTimeout(Rule):
 
     id = "require-lock-timeout"
     code = "SARJ110"
-    description = "DDL migration missing positive SET [LOCAL] lock_timeout or statement_timeout prior to DDL."
+    documentation = RuleDocumentation(
+        summary="DDL migration missing positive SET [LOCAL] lock_timeout or statement_timeout prior to DDL.",
+        rationale="Unbounded lock waits can stall production traffic indefinitely when migration DDL contends with active transactions.",
+        remediation="Set a short positive lock_timeout or statement_timeout before the DDL statement.",
+        category=RuleCategory.CORRECTNESS,
+        autofix=AutofixPolicy.NONE,
+        limitations=("Only PostgreSQL migration paths and explicitly marked PostgreSQL migrations are checked.",),
+        examples=(
+            RuleExample(
+                example_id="unbounded-ddl-lock-wait",
+                title="DDL without a positive timeout",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.sql("supabase/migrations/001_users.sql", "ALTER TABLE users ADD COLUMN note TEXT;\n"),
+                ),
+                focus_path=PurePosixPath("supabase/migrations/001_users.sql"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="bounded-ddl-lock-wait",
+                title="DDL preceded by a positive lock timeout",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "supabase/migrations/001_users.sql",
+                        "SET lock_timeout = '3s';\nALTER TABLE users ADD COLUMN note TEXT;\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("supabase/migrations/001_users.sql"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
+    )
+    description = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

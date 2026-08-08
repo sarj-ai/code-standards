@@ -1942,10 +1942,8 @@ def test_peers_json_documents_why_each_ceiling_exists() -> None:
         assert len(reason) > 40, f"{name}'s ceiling needs a real explanation"
 
 
-def test_the_manifest_filename_is_the_one_adopted_repos_committed() -> None:
-    """Every other reference to it is symbolic, so a rename is invisible to the suite."""
+def test_the_manifest_filename_is_a_stable_public_contract() -> None:
     assert manifest.MANIFEST_NAME == ".sarj-standards.toml"
-    assert manifest.MANIFEST_NAME in (REPO_ROOT / "README.md").read_text(encoding="utf-8")
 
 
 def test_release_version_detection_does_not_short_circuit_git_diff() -> None:

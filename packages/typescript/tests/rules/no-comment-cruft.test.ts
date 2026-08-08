@@ -1,7 +1,7 @@
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-comment-cruft.js";
+import rule, { noCommentCruftDocumentation } from "../../src/rules/no-comment-cruft.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -55,7 +55,7 @@ ruleTester.run("no-comment-cruft", rule, {
       filename: "wizard.tsx",
     },
     // Prose "why" comment is the legitimate use.
-    { code: "// retry because the upstream API is flaky\nconst x = retry();" },
+    { code: noCommentCruftDocumentation.examples[0].files[0].source },
     // Trailing explanatory comment.
     { code: "const x = compute(); // cached when warm" },
     { code: "const placeholder = 'implementation omitted';" },
@@ -299,7 +299,7 @@ ruleTester.run("no-comment-cruft", rule, {
     },
     // --- region marker shapes still fire ---
     {
-      code: "const x = 1;\n// region helpers\nconst y = 2;",
+      code: noCommentCruftDocumentation.examples[1].files[0].source,
       errors: [{ messageId: "sectionBanner" }],
     },
     {

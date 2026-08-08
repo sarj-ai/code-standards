@@ -7,9 +7,20 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, override
+from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._paths import is_test_path
 
 
@@ -118,7 +129,48 @@ class _Index:
 class TriviallyTrueAssertion(Rule):
     id: str = "trivially-true-assertion"
     code: str = "SARJ064"
-    description: str = "Assertion cannot fail — its outcome is decided by the test's own literals, not by the code."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Assertions should depend on behavior rather than echoing values supplied by the test.",
+        rationale="Constructor keyword echoes and equivalent tautologies cannot reveal an application defect.",
+        remediation="Assert a transformation, validation result, or other value produced independently of the fixture literal.",
+        category=RuleCategory.TESTING,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Literal-only assertions owned by Ruff or SARJ057 are excluded.",
+            "Constructor echoes with evidence of field coercion are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="constructor-keyword-echo",
+                title="Assertion repeats a constructor keyword",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_user.py",
+                        'def test_user():\n    user = User(name="Ada")\n    assert user.name == "Ada"\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_user.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="derived-value",
+                title="Assertion checks a derived value",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_user.py",
+                        'def test_user():\n    user = User(name="Ada Lovelace")\n    assert user.initials == "AL"\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_user.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
+    )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

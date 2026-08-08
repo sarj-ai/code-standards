@@ -1,7 +1,7 @@
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-restated-jsdoc.js";
+import rule, { noRestatedJsdocDocumentation } from "../../src/rules/no-restated-jsdoc.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -12,6 +12,7 @@ const ruleTester = new RuleTester();
 
 ruleTester.run("no-restated-jsdoc", rule, {
   valid: [
+    { name: "accepts the documented behavioral JSDoc", code: noRestatedJsdocDocumentation.examples[0].files[0].source },
     // One word the signature does not carry and the block earns its place.
     { code: "/** Get the user, bypassing the read replica. */\nexport function getUser(id: string) { return id; }" },
     // A value tag is content the signature cannot hold.
@@ -46,7 +47,7 @@ ruleTester.run("no-restated-jsdoc", rule, {
     },
     {
       name: "ignores a generated file path without a header marker",
-      code: "/** Get the user by id. */\nexport function getUserById(id: string) { return id; }",
+      code: noRestatedJsdocDocumentation.examples[1].files[0].source,
       filename: "/repo/src/openapi-gen/api.ts",
     },
   ],

@@ -2,7 +2,7 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-offset-pagination.js";
+import rule, { noOffsetPaginationDocumentation } from "../../src/rules/no-offset-pagination.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -17,6 +17,7 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("no-offset-pagination", rule, {
   valid: [
+    { name: "accepts the documented keyset query", code: noOffsetPaginationDocumentation.examples[0].files[0].source },
     {
       name: "allows stable keyset pagination",
       code: "db.prepare(`SELECT id, status FROM runs WHERE id > ? ORDER BY id LIMIT ?`).all();",
@@ -75,6 +76,7 @@ ruleTester.run("no-offset-pagination", rule, {
     },
   ],
   invalid: [
+    { name: "reports the documented offset query", code: noOffsetPaginationDocumentation.examples[1].files[0].source, errors: [{ messageId: "noOffsetPagination" }] },
     {
       name: "rejects SQLite qmark offset pagination",
       code: "db.query(`SELECT id FROM runs ORDER BY id LIMIT ? OFFSET ?`);",

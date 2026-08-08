@@ -1,6 +1,6 @@
 # CI/CD and tooling
 
-Audit delivery and toolchain reliability using the shared [audit protocol](../README.md#audit-protocol). General lint-rule coverage belongs in `lint-rule-generator`; dead code belongs in `dead-and-duplicate-code`.
+Audit delivery and toolchain reliability using the shared [audit protocol](../skills/audit-protocol/SKILL.md#audit-protocol). General lint-rule coverage belongs in `lint-rule-generator`; dead code belongs in `dead-and-duplicate-code`.
 
 ## Judgment checks
 

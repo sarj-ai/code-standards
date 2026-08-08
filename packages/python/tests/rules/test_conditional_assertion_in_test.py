@@ -8,7 +8,7 @@ from sarj_python_lint.rules.conditional_assertion_in_test import ConditionalAsse
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import Diagnostic
+    from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
 TEST_PATH = "python/app/tests/unit/test_conditions.py"
@@ -16,6 +16,15 @@ TEST_PATH = "python/app/tests/unit/test_conditions.py"
 
 def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
     return ConditionalAssertionInTest().check(Path(path), textwrap.dedent(source))
+
+
+_PUBLIC_EXAMPLES = ConditionalAssertionInTest.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(ConditionalAssertionInTest().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 _LOOP_ONLY = """

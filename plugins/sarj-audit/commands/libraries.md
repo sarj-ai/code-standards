@@ -1,6 +1,6 @@
 # Libraries and platform capabilities
 
-Audit hand-rolled code and dependency choices using the shared [audit protocol](../README.md#audit-protocol).
+Audit hand-rolled code and dependency choices using the shared [audit protocol](../skills/audit-protocol/SKILL.md#audit-protocol).
 
 ## Discover by ecosystem
 

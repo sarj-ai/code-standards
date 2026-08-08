@@ -6,9 +6,21 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
-from typing import TYPE_CHECKING, override
+from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, Severity, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    Severity,
+    parse_or_none,
+)
 from sarj_python_lint.rules._paths import is_generated, is_test_path, is_test_support_path
 
 
@@ -24,9 +36,48 @@ _NORMALIZATION_VALUE_COUNT = 2
 class PreferNonNullableCollection(Rule):
     id: str = "prefer-non-nullable-collection"
     code: str = "SARJ082"
-    description: str = (
-        "A nullable list parameter should not expose two empty states when its only use immediately normalizes both."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Avoid nullable list parameters when local use proves `None` and an empty list are equivalent.",
+        rationale="Exposing two equivalent empty states expands the function contract without preserving meaningful information.",
+        remediation="Require the list, or accept an immutable empty default such as `Sequence[T] = ()` and materialize a list internally.",
+        category=RuleCategory.CORRECTNESS,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Only module functions and constructors with a nullable list defaulted to `None` are analyzed.",
+            "Overrides, tests, generated code, nested captures, multiple reads, and uses that preserve `None` as a distinct state are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="equivalent-empty-list-states",
+                title="Nullable list is immediately normalized",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/resolver.py",
+                        "def resolve(candidates: list[str] | None = None) -> list[str]:\n    return candidates or []\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/resolver.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="required-list-input",
+                title="Required list has one empty state",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/resolver.py",
+                        "def resolve(candidates: list[str]) -> list[str]:\n    return candidates\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/resolver.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

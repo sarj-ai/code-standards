@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from sarj_python_lint.rule_base import Severity
+from sarj_python_lint.rule_base import RuleExample, Severity
 from sarj_python_lint.rules.prefer_str_enum import PreferStrEnum
 
 
@@ -13,6 +13,15 @@ if TYPE_CHECKING:
 
 def _check(source: str, path: str = "<t>.py") -> list[Diagnostic]:
     return PreferStrEnum().check(Path(path), source)
+
+
+_PUBLIC_EXAMPLES = PreferStrEnum.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(PreferStrEnum().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 def test_flags_choice_attr_with_str_field():

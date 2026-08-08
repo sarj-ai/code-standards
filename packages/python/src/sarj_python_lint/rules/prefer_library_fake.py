@@ -6,10 +6,21 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, NamedTuple, override
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._paths import is_test_path
 
@@ -227,10 +238,48 @@ _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 class PreferLibraryFake(Rule):
     id: str = "prefer-library-fake"
     code: str = "SARJ059"
-    description: str = (
-        "Hand-rolled double of a third-party service (S3, Redis, an LLM provider, SMTP, …) where a "
-        "maintained fake library exists."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Tests should use maintained service fakes or emulators instead of hand-rolled third-party doubles.",
+        rationale="Hand-written doubles model only remembered protocol behavior and can let invalid requests pass.",
+        remediation="Use the recognized library fake, emulator, or test container while keeping the production client.",
+        category=RuleCategory.TESTING,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Only test and shared-double paths are analyzed.",
+            "Only recognized external services and substantial hand-rolled doubles are reported.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="hand-rolled-s3-client",
+                title="Test defines its own S3 client",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/fakes/s3.py",
+                        "class FakeS3Client:\n    def put_object(self, **kwargs):\n        return kwargs\n\n    def get_object(self, **kwargs):\n        return kwargs\n\n    def delete_object(self, **kwargs):\n        return kwargs\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/fakes/s3.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="maintained-s3-fake",
+                title="Test uses the maintained AWS fake",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_upload.py",
+                        "from moto import mock_aws\n\n@mock_aws\ndef test_upload():\n    assert upload_with_real_client()\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_upload.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

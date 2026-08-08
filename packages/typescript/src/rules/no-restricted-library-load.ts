@@ -6,7 +6,7 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 
 export interface RestrictedLibrary {
   readonly id: string;
@@ -22,6 +22,18 @@ type Options = readonly [
   },
 ];
 
+export const noRestrictedLibraryLoadDocumentation = {
+  summary: "Apply a configured library-replacement policy to literal dynamic imports, CommonJS loads, and TypeScript import-equals declarations.",
+  rationale: "Runtime module loads can bypass the replacement policy enforced for static imports.",
+  remediation: "Load the configured replacement library instead of the restricted module.",
+  category: "architecture",
+  limitations: ["Only literal dynamic imports, unshadowed CommonJS loads, and TypeScript import-equals declarations are checked."],
+  examples: [
+    { id: "static-import", title: "Static imports remain the static-import rule's responsibility", outcome: "no-match", files: [{ path: "src/client.ts", source: "import axios from 'axios';" }], focusPath: "src/client.ts", expectedCount: 0, public: true },
+    { id: "runtime-load", title: "Do not load a restricted library at runtime", outcome: "match", files: [{ path: "src/client.ts", source: "const client = require('axios');" }], focusPath: "src/client.ts", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
+
 function literalModule(node: TSESTree.Node | undefined): string | null {
   return node?.type === AST_NODE_TYPES.Literal && typeof node.value === "string"
     ? node.value
@@ -34,6 +46,7 @@ function matchesModule(source: string, module: string): boolean {
 
 export default createRule<Options, MessageIds>({
   name: "no-restricted-library-load",
+  documentation: noRestrictedLibraryLoadDocumentation,
   meta: {
     type: "problem",
     docs: {

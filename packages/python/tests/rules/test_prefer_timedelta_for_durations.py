@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -9,11 +11,27 @@ from sarj_python_lint.rules.prefer_timedelta_for_durations import (
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import Diagnostic
+    from sarj_python_lint.rule_base import Diagnostic, RuleExample
+
+
+_PUBLIC_EXAMPLES = PreferTimedeltaForDurations.public_examples()
 
 
 def _check(source: str) -> list[Diagnostic]:
     return PreferTimedeltaForDurations().check(Path("<t>.py"), source)
+
+
+@pytest.mark.parametrize(
+    "example",
+    _PUBLIC_EXAMPLES,
+    ids=tuple(example.example_id for example in _PUBLIC_EXAMPLES),
+)
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+
+    findings = PreferTimedeltaForDurations().check(Path(focus.path), focus.source)
+
+    assert len(findings) == example.expected_count
 
 
 def test_flags_int_param_named_seconds():

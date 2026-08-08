@@ -6,10 +6,22 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, final, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, Severity, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    Severity,
+    parse_or_none,
+)
 from sarj_python_lint.rules._comments import is_protected, split_identifier, stem
 from sarj_python_lint.rules._docstrings import STOPWORDS, VALUE_MARKER_RE, restates, sections
 from sarj_python_lint.rules._paths import is_generated, is_test_path
@@ -47,10 +59,42 @@ _MODULE_FILLER_STEMS = frozenset(
 class RedundantModuleDocstring(Rule):
     id: str = "redundant-module-docstring"
     code: str = "SARJ099"
-    description: str = (
-        "Module docstring only re-spells the file path — delete it, or say what "
-        "the path cannot: the invariant, boundary, consumer, or compatibility constraint."
+    documentation = RuleDocumentation(
+        summary="Module docstrings must add information beyond the file path.",
+        rationale="A one-line restatement of a module path duplicates information already visible to readers and search tools.",
+        remediation="Delete the redundant docstring or document an invariant, boundary, consumer, or compatibility constraint.",
+        category=RuleCategory.MAINTAINABILITY,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Only single-line summary docstrings in non-test implementation modules are checked.",
+            "Special modules, stubs, generated files, multiline documentation, and prose with protected technical facts are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="module-path-restatement",
+                title="Docstring repeats the module path",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.python("celery/utils/log.py", '"""Logging utilities."""\n\nVALUE = 1\n'),),
+                focus_path=PurePosixPath("celery/utils/log.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="module-contract",
+                title="Docstring records a module contract",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "celery/utils/log.py", '"""Logging utilities redact credentials."""\n\nVALUE = 1\n'
+                    ),
+                ),
+                focus_path=PurePosixPath("celery/utils/log.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

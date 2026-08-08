@@ -4,11 +4,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 from typing import final, override
 
-from sarj_sql_lint.rule_base import Diagnostic, Rule, is_dump_file
+from sarj_sql_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    is_dump_file,
+)
 
 
 RESERVED_KEYWORDS = frozenset({"foreign", "key", "constraint", "alter", "table", "create", "add", "column"})
@@ -172,7 +182,45 @@ class RequireFkIndex(Rule):
 
     id = "require-fk-index"
     code = "SARJ112"
-    description = "FOREIGN KEY column missing index — causes full-table scans and locks on parent row deletes."
+    documentation = RuleDocumentation(
+        summary="FOREIGN KEY column missing index — causes full-table scans and locks on parent row deletes.",
+        rationale="PostgreSQL does not automatically index referencing columns, so parent updates and deletes may scan the child table.",
+        remediation="Create an index whose leading columns cover the foreign-key columns on the child table.",
+        category=RuleCategory.PERFORMANCE,
+        autofix=AutofixPolicy.NONE,
+        limitations=("A bounded scan includes indexes from sibling files in the same migration tree.",),
+        examples=(
+            RuleExample(
+                example_id="unindexed-foreign-key",
+                title="Foreign key without a child-table index",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "migrations/001_orders.sql",
+                        "CREATE TABLE orders (customer_id BIGINT REFERENCES customer(id));\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("migrations/001_orders.sql"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="indexed-foreign-key",
+                title="Foreign key covered by an index",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "migrations/001_orders.sql",
+                        "CREATE TABLE orders (customer_id BIGINT REFERENCES customer(id));\nCREATE INDEX orders_customer_id_idx ON orders(customer_id);\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("migrations/001_orders.sql"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
+    )
+    description = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

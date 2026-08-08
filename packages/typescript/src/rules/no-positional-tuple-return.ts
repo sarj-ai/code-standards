@@ -6,11 +6,23 @@
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
 
 type MessageIds = "noPositionalTupleReturn";
 type Options = readonly [];
+
+export const noPositionalTupleReturnDocumentation = {
+  summary: "Disallow returning a multi-field tuple from an exported function; return a named object so call sites cannot mismatch slots.",
+  rationale: "Public tuple fields are identified only by position, so reordering can preserve types while changing meaning.",
+  remediation: "Return an object whose property names describe each value.",
+  category: "maintainability",
+  limitations: ["Only declared multi-field tuple returns on public TypeScript surfaces are inspected."],
+  examples: [
+    { id: "named-object-return", title: "Return named fields", outcome: "no-match", files: [{ path: "src/download.ts", source: "export function download(): { body: string; status: number } { return impl(); }" }], focusPath: "src/download.ts", expectedCount: 0, public: true },
+    { id: "tuple-return", title: "Do not expose positional fields", outcome: "match", files: [{ path: "src/download.ts", source: "export function download(): [string, number] { return impl(); }" }], focusPath: "src/download.ts", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
 
 const MIN_ELEMENTS = 2;
 
@@ -371,6 +383,7 @@ function isExported(node: TSESTree.Node, specifierExports: ReadonlySet<string>):
 
 export default createRule<Options, MessageIds>({
   name: "no-positional-tuple-return",
+  documentation: noPositionalTupleReturnDocumentation,
   meta: {
     type: "suggestion",
     docs: {

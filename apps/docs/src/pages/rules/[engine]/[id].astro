@@ -1,0 +1,101 @@
+---
+import ReferencePage from '../../../components/ReferencePage.astro';
+import RuleExample from '../../../components/RuleExample.astro';
+import { catalog, engineLabel, sourceUrl, titleFromId, type Rule } from '../../../lib/catalog';
+import { familySidebar } from '../../../lib/navigation';
+
+export function getStaticPaths() {
+  return catalog.rules.map((rule) => ({
+    params: { engine: rule.engine, id: rule.id },
+    props: { rule },
+  }));
+}
+
+interface Props { rule: Rule }
+const { rule } = Astro.props;
+---
+
+<ReferencePage title={`${rule.id} · ${engineLabel(rule.engine)}`} description={rule.summary} sidebar={familySidebar(rule.engine)}>
+  <article class="rule-detail" data-pagefind-meta={`rule:${rule.key}`}>
+    <header class="rule-detail__header">
+      <p class="eyebrow">{rule.engine.toUpperCase()} / {rule.category.toUpperCase()}</p>
+      <h1>{titleFromId(rule.id)}</h1>
+      <code class="rule-key">{rule.key}</code>
+      <p class="lede">{rule.summary}</p>
+      <dl class="rule-facts">
+        <div><dt>Code</dt><dd>{rule.code ?? '—'}</dd></div>
+        <div><dt>Default</dt><dd><span class:list={['level', `level--${rule.defaultLevel}`]}>{rule.defaultLevel}</span></dd></div>
+        <div><dt>Fix</dt><dd>{rule.autofix}</dd></div>
+        <div><dt>Languages</dt><dd>{rule.languages.join(', ')}</dd></div>
+        {rule.since && <div><dt>Since</dt><dd>{rule.since}</dd></div>}
+      </dl>
+    </header>
+
+    <section class="rule-prose">
+      <div>
+        <p class="eyebrow">WHY IT EXISTS</p>
+        <h2>Rationale</h2>
+        <p>{rule.rationale}</p>
+      </div>
+      <div>
+        <p class="eyebrow">WHAT TO DO</p>
+        <h2>Remediation</h2>
+        <p>{rule.remediation}</p>
+      </div>
+    </section>
+
+    {rule.examples.length > 0 && (
+      <section class="examples-section">
+        <header class="section-heading">
+          <p class="eyebrow">EXECUTABLE EXAMPLES</p>
+          <h2>Evidence, not anecdotes</h2>
+        </header>
+        <div class="examples-grid">{rule.examples.map((example) => <RuleExample example={example} />)}</div>
+      </section>
+    )}
+
+    {rule.limitations.length > 0 && (
+      <section class="limitations">
+        <p class="eyebrow">BOUNDARIES</p>
+        <h2>Known limitations</h2>
+        <ul>{rule.limitations.map((limitation) => <li>{limitation}</li>)}</ul>
+      </section>
+    )}
+
+    <section class="rule-contract">
+      <div>
+        <p class="eyebrow">MATCHES</p>
+        <h2>File patterns</h2>
+        <div class="token-list">{rule.filePatterns.map((pattern) => <code>{pattern}</code>)}</div>
+      </div>
+      <div>
+        <p class="eyebrow">DIAGNOSTICS</p>
+        <h2>Message IDs</h2>
+        <div class="token-list">{rule.messageIds.map((messageId) => <code>{messageId}</code>)}</div>
+      </div>
+    </section>
+
+    {rule.optionsSchema && (
+      <section class="options-schema">
+        <p class="eyebrow">CONFIGURATION</p>
+        <h2>Options schema</h2>
+        <pre><code>{JSON.stringify(rule.optionsSchema, null, 2)}</code></pre>
+      </section>
+    )}
+
+    {rule.references.length > 0 && (
+      <section class="references" data-pagefind-ignore>
+        <p class="eyebrow">REFERENCES</p>
+        <ul>{rule.references.map((reference) => <li><a href={reference}>{reference}</a></li>)}</ul>
+      </section>
+    )}
+
+    <footer class="source-links" data-pagefind-ignore>
+      <a href={sourceUrl(rule.source)}>Rule source <span aria-hidden="true">↗</span></a>
+      <a href={sourceUrl(rule.test)}>Tests <span aria-hidden="true">↗</span></a>
+      <a href="/api/v1/catalog.json">Catalog JSON <span aria-hidden="true">↗</span></a>
+    </footer>
+
+    {rule.aliases.length > 0 && <p class="aliases" data-pagefind-meta={`aliases:${rule.aliases.join(',')}`}>Formerly: {rule.aliases.join(', ')}</p>}
+  </article>
+</ReferencePage>

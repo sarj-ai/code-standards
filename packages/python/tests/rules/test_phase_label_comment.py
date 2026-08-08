@@ -8,7 +8,7 @@ from sarj_python_lint.rules.phase_label_comment import TestPhaseLabelComment
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import Diagnostic
+    from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
 def _check(source: str, path: str = "tests/test_thing.py") -> list[Diagnostic]:
@@ -58,6 +58,14 @@ LABELS = [
     "Arrange and Act and Assert",
     "Act -> Assert",
 ]
+
+_PUBLIC_EXAMPLES = TestPhaseLabelComment.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(TestPhaseLabelComment().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 @pytest.mark.parametrize("label", LABELS)

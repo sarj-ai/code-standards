@@ -9,11 +9,27 @@ from sarj_iac_lint.rules.no_comment_cruft import NoCommentCruft
 
 
 if TYPE_CHECKING:
-    from sarj_iac_lint.rule_base import Diagnostic
+    from sarj_iac_lint.rule_base import Diagnostic, RuleExample
+
+
+_PUBLIC_EXAMPLES = NoCommentCruft.public_examples()
 
 
 def _check(source: str, name: str = "main.tf") -> list[Diagnostic]:
     return NoCommentCruft().check(Path(name), source)
+
+
+@pytest.mark.parametrize(
+    "example",
+    _PUBLIC_EXAMPLES,
+    ids=tuple(example.example_id for example in _PUBLIC_EXAMPLES),
+)
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+
+    findings = NoCommentCruft().check(Path(focus.path), focus.source)
+
+    assert len(findings) == example.expected_count
 
 
 def test_flags_commented_out_resource():

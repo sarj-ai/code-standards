@@ -7,10 +7,20 @@ from __future__ import annotations
 
 import ast
 from itertools import pairwise
-from typing import TYPE_CHECKING, override
+from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, ClassVar, override
 
 from sarj_python_lint._secret_names import identifier_tokens, is_secret_name
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import children, nodes
 
 
@@ -55,7 +65,47 @@ _AUTH_WORDS = frozenset(
 class PreferConstantTimeSecretCompare(Rule):
     id: str = "prefer-constant-time-secret-compare"
     code: str = "SARJ011"
-    description: str = "Direct `==`/`!=` on a secret — prefer `hmac.compare_digest(a, b)`."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Secret-like values are compared with timing-sensitive equality operators.",
+        rationale="Direct equality can reveal authenticator contents through data-dependent comparison timing.",
+        remediation="Compare secret values with `hmac.compare_digest` or `secrets.compare_digest`.",
+        category=RuleCategory.SECURITY,
+        limitations=(
+            "Detection depends on authenticator-shaped identifier names and selected cryptographic imports.",
+            "Tests, equality methods, literals, container membership, and existing digest comparisons are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="direct-token-comparison",
+                title="Token compared with equality",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "auth.py",
+                        "def authenticated(token, expected):\n    return token == expected\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("auth.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="constant-time-token-comparison",
+                title="Token compared in constant time",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "auth.py",
+                        "import hmac\n\ndef authenticated(token, expected):\n    return hmac.compare_digest(token, expected)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("auth.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
+    )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

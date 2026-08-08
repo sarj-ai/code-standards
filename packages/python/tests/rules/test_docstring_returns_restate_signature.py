@@ -10,7 +10,7 @@ from sarj_python_lint.rules.docstring_returns_restate_signature import (
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import Diagnostic
+    from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
 def _check(source: str, path: str = "<t>.py") -> list[Diagnostic]:
@@ -25,6 +25,14 @@ RESTATING_BLOCKS = [
     ("expand_grouped_metadata(annotations: Iterable[Any]) -> Iterable[Any]", "An iterable of expanded annotations."),
     ("_get_document_format(mime_type: str) -> str", "The document format"),
 ]
+
+_PUBLIC_EXAMPLES = DocstringReturnsRestateSignature.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(DocstringReturnsRestateSignature().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 @pytest.mark.parametrize(("signature", "block"), RESTATING_BLOCKS)

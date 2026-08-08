@@ -7,7 +7,7 @@ from sarj_python_lint.rules.fixture_returns_bare_tuple import FixtureReturnsBare
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import Diagnostic
+    from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
 TEST_PATH = "python/app/tests/fixtures/stores.py"
@@ -15,6 +15,15 @@ TEST_PATH = "python/app/tests/fixtures/stores.py"
 
 def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
     return FixtureReturnsBareTuple().check(Path(path), source)
+
+
+_PUBLIC_EXAMPLES = FixtureReturnsBareTuple.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(_check(focus.source, str(focus.path))) == example.expected_count
 
 
 _BARE_TUPLE_FIXTURE = """

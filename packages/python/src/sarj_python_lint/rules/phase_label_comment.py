@@ -5,11 +5,22 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 
 from __future__ import annotations
 
+from pathlib import PurePosixPath
 import re
 import tokenize
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import ColumnEncoding, Diagnostic, Rule
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    ColumnEncoding,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+)
 from sarj_python_lint.rules._comments import nested_comment_lines, standalone_comments
 from sarj_python_lint.rules._paths import is_generated, is_test_path
 
@@ -35,10 +46,48 @@ _PHASE_RE = re.compile(
 class TestPhaseLabelComment(Rule):
     id: str = "test-phase-label-comment"
     code: str = "SARJ089"
-    description: str = (
-        "Bare test-phase label — delete it; a test whose phases need signposting "
-        "wants a named helper or a smaller test, not a comment."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Tests must not use bare Arrange, Act, Assert, Given, When, or Then phase comments.",
+        rationale="Phase labels narrate test structure without explaining behavior and often indicate that a test needs clearer names or smaller units.",
+        remediation="Delete the label; if the phases remain hard to follow, extract a named helper or split the test.",
+        category=RuleCategory.TESTING,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Only standalone comments in recognized test files are checked; nested literal comments and trailing comments are excluded.",
+            "Comments containing words beyond the bounded phase-label grammar are preserved.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="bare-phase-label",
+                title="Bare phase label",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_widget.py",
+                        "def test_widget():\n    # Arrange\n    widget = make_widget()\n    assert widget\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_widget.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="explanatory-comment",
+                title="Comment explains a consequence",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_widget.py",
+                        "def test_widget():\n    # Then the retry loop would spin forever.\n    assert works()\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_widget.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

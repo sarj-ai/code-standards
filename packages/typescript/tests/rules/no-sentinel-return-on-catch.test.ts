@@ -2,7 +2,7 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-sentinel-return-on-catch.js";
+import rule, { noSentinelReturnOnCatchDocumentation } from "../../src/rules/no-sentinel-return-on-catch.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -17,6 +17,7 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("no-sentinel-return-on-catch", rule, {
   valid: [
+    { name: "accepts the documented reported fallback", code: noSentinelReturnOnCatchDocumentation.examples[0].files[0].source },
     {
       name: "ignores generated request clients",
       code: "async function request() { try { return await run(); } catch { return undefined; } }",
@@ -362,6 +363,7 @@ ruleTester.run("no-sentinel-return-on-catch", rule, {
     },
   ],
   invalid: [
+    { name: "reports the documented silent fallback", code: noSentinelReturnOnCatchDocumentation.examples[1].files[0].source, errors: [{ messageId: "noSentinelReturn" }] },
     {
       name: "does not exempt a deliberate Error throw when the caught value is ignored",
       code: "function f() { try { throw Error(); } catch (error) { return null; } }",

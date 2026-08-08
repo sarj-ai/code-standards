@@ -10,11 +10,27 @@ from sarj_python_lint.rules.no_gen_random_uuid_in_sql import NoGenRandomUuidInSq
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import Diagnostic
+    from sarj_python_lint.rule_base import Diagnostic, RuleExample
+
+
+_PUBLIC_EXAMPLES = NoGenRandomUuidInSql.public_examples()
 
 
 def _check(source: str, path: Path = Path("svc/app/store.py")) -> list[Diagnostic]:
     return NoGenRandomUuidInSql().check(path, source)
+
+
+@pytest.mark.parametrize(
+    "example",
+    _PUBLIC_EXAMPLES,
+    ids=tuple(example.example_id for example in _PUBLIC_EXAMPLES),
+)
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+
+    findings = NoGenRandomUuidInSql().check(Path(focus.path), focus.source)
+
+    assert len(findings) == example.expected_count
 
 
 @pytest.mark.parametrize(

@@ -1,14 +1,77 @@
 """Cross-file comment and generated-artifact policy tests."""
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 
 from sarj_standards.libs.linting import textlint
+from sarj_standards.libs.rules.contracts import ExampleFile, ExpectedOutcome, RuleExample
 
 
 def _codes(path: Path, *, root: Path | None = None) -> list[str]:
     return [finding.code for finding in textlint.check_paths([str(path)], root=root)]
+
+
+def test_registry_exposes_complete_neutral_rule_metadata() -> None:
+    assert set(textlint.REGISTRY) == {
+        "commented-out-config",
+        "config-comment-wall",
+        "ephemeral-execution-artifact",
+        "unpinned-github-action",
+    }
+
+    for rule_id, meta in textlint.REGISTRY.items():
+        spec = meta.native_spec(rule_id)
+        assert spec.key == f"text:{rule_id}"
+        assert spec.code == meta.code
+        assert spec.summary == meta.description
+        assert spec.rationale
+        assert spec.remediation
+        assert spec.languages
+        assert spec.file_patterns
+        assert spec.autofix == "none"
+        assert spec.message_ids == ()
+        assert {example.outcome for example in meta.public_examples} == {"match", "no-match"}
+
+
+def test_historical_text_aliases_are_documentation_only() -> None:
+    aliases = {alias: rule_id for rule_id, meta in textlint.REGISTRY.items() for alias in meta.aliases}
+
+    assert aliases["ephemeral-ai-artifact"] == "ephemeral-execution-artifact"
+    assert set(aliases).isdisjoint(textlint.REGISTRY)
+
+
+def test_rule_examples_are_private_by_default_and_path_safe() -> None:
+    source = ExampleFile(path=PurePosixPath("config.toml"), source="enabled = true\n")
+    example = RuleExample(
+        example_id="private-config",
+        title="Private config fixture",
+        outcome=ExpectedOutcome.NO_MATCH,
+        files=(source,),
+        focus_path=source.path,
+        expected_count=0,
+    )
+
+    assert example.public is False
+    with pytest.raises(ValueError, match="safe relative paths"):
+        ExampleFile(path=PurePosixPath("../private.toml"), source="enabled = true\n")
+
+
+def test_public_rule_examples_execute_against_the_real_checker(tmp_path: Path) -> None:
+    for rule_id, meta in textlint.REGISTRY.items():
+        for example in meta.public_examples:
+            root = tmp_path / rule_id / example.example_id
+            paths: list[str] = []
+            for example_file in example.files:
+                path = root / example_file.path
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(example_file.source, encoding="utf-8")
+                paths.append(str(path))
+
+            findings = textlint.check_paths(paths, root=root)
+            codes = [finding.code for finding in findings]
+            expected = [meta.code] * example.expected_count
+            assert codes == expected, f"{rule_id}:{example.example_id}"
 
 
 def test_flags_commented_out_yaml(tmp_path: Path) -> None:

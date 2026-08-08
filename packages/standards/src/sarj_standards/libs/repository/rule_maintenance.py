@@ -32,6 +32,11 @@ _PLACEHOLDER: Final = "TODO: say why it went, in one line a consumer can act on"
 class Rule(Protocol):
     code: str
     __module__: str
+    documentation: RuleDocumentation | None
+
+
+class RuleDocumentation(Protocol):
+    aliases: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,7 +68,7 @@ def inventory(root: Path) -> list[dict[str, str]]:
                 "family": "text",
                 "id": rule_id,
                 "code": meta.code,
-                "source": "packages/standards/src/sarj_standards/textlint.py",
+                "source": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
                 "test": "packages/standards/tests/test_textlint.py",
             }
         )
@@ -83,15 +88,14 @@ def inventory(root: Path) -> list[dict[str, str]]:
 def sync_ledger(root: Path, *, check: bool) -> SyncResult:
     path = root / "packages/standards/src/sarj_standards/configs/rule-ledger.json"
     previous = _load_ledger(path)
-    rules: dict[str, list[str]] = {"eslint": repository.eslint_rule_names(root)}
-    codes: dict[str, list[str]] = {}
-    for family, module_name, _package in _FAMILIES:
-        registry = _registry(module_name)
-        rules[family] = sorted(registry)
-        codes[family] = sorted(str(rule.code) for rule in registry.values())
+    rules, codes, source_renames = _native_ledger_state()
+    rules["eslint"] = repository.eslint_rule_names(root)
     rules["text"] = sorted(textlint.REGISTRY)
     codes["text"] = sorted(meta.code for meta in textlint.REGISTRY.values())
-    retired = _retired(previous, root)
+    for rule_id, meta in textlint.REGISTRY.items():
+        for old_id in meta.aliases:
+            source_renames["text", old_id] = rule_id
+    retired = _retired(previous, root, source_renames)
     known = {str(entry.get("id")) for entry in retired}
     old_rules = repository_table(previous.get("rules"))
     old_codes = repository_table(previous.get("codes"))
@@ -124,6 +128,22 @@ def sync_ledger(root: Path, *, check: bool) -> SyncResult:
     return SyncResult(status, f"wrote: {path}")
 
 
+def _native_ledger_state() -> tuple[dict[str, list[str]], dict[str, list[str]], dict[tuple[str, str], str]]:
+    rules: dict[str, list[str]] = {}
+    codes: dict[str, list[str]] = {}
+    renames: dict[tuple[str, str], str] = {}
+    for family, module_name, _package in _FAMILIES:
+        registry = _registry(module_name)
+        rules[family] = sorted(registry)
+        codes[family] = sorted(str(rule.code) for rule in registry.values())
+        for rule_id, rule in registry.items():
+            if rule.documentation is None:
+                continue
+            for old_id in rule.documentation.aliases:
+                renames[family, old_id] = rule_id
+    return rules, codes, renames
+
+
 def repository_table(value: object) -> dict[str, object]:
     return as_table(value)
 
@@ -142,10 +162,28 @@ def _registry(module_name: str) -> Mapping[str, type[Rule]]:
     return value  # pyright: ignore[reportUnknownVariableType]
 
 
-def _retired(previous: Mapping[str, object], root: Path) -> list[dict[str, object]]:
+def _retired(
+    previous: Mapping[str, object],
+    root: Path,
+    source_renames: Mapping[tuple[str, str], str],
+) -> list[dict[str, object]]:
     entries = [repository_table(item) for item in _object_list(previous.get("retired"))]
-    kept = [entry for entry in entries if not (entry.get("kind") == "eslint" and entry.get("status") == "renamed")]
+    derived_kinds = {"eslint", *(kind for kind, _old_id in source_renames)}
+    kept = [entry for entry in entries if not (entry.get("kind") in derived_kinds and entry.get("status") == "renamed")]
     existing = {str(entry.get("id")): entry for entry in entries}
+    for (kind, old), new in sorted(source_renames.items()):
+        prior = existing.get(old)
+        kept.append(
+            prior
+            if prior is not None and prior.get("replacement") == new
+            else {
+                "id": old,
+                "kind": kind,
+                "status": "renamed",
+                "replacement": new,
+                "note": f"Replace sarj-{old} with sarj-{new} before upgrading.",
+            }
+        )
     renames_path = root / "packages/typescript/src/rules/_renames.ts"
     for match in _RENAME_ENTRY.finditer(renames_path.read_text(encoding="utf-8")):
         old = match.group("old")

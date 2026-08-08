@@ -7,9 +7,20 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, final, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._paths import is_generated, is_test_path
 
@@ -80,7 +91,62 @@ class _LiteralDomain:
 class InvalidPydanticFieldDefault(Rule):
     id = "invalid-pydantic-field-default"
     code = "SARJ400"
-    description = "Literal pydantic Field defaults must satisfy the field annotation and literal bounds."
+    documentation = RuleDocumentation(
+        summary="Require literal Pydantic `Field` defaults to satisfy their declared contract.",
+        rationale=(
+            "An invalid default lets a model begin with a value that contradicts its annotation or field bounds, "
+            "moving a deterministic configuration error into runtime validation."
+        ),
+        remediation=(
+            "Choose a default allowed by the annotation and every literal `Field` bound, or widen the contract "
+            "when the value is intentional."
+        ),
+        category=RuleCategory.CORRECTNESS,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "The rule checks direct public fields on classes that directly inherit Pydantic `BaseModel`.",
+            (
+                "It reports only statically provable literal conflicts with nullability, `Literal` domains, and "
+                "numeric or string-length bounds."
+            ),
+            "Test and generated files are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="default-violates-lower-bound",
+                title="Default is outside the declared field bounds",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/models.py",
+                        "from pydantic import BaseModel, Field\n\n"
+                        "class RetryPolicy(BaseModel):\n"
+                        "    attempts: int = Field(default=0, gt=0)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/models.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="default-satisfies-lower-bound",
+                title="Default satisfies the declared field bounds",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/models.py",
+                        "from pydantic import BaseModel, Field\n\n"
+                        "class RetryPolicy(BaseModel):\n"
+                        "    attempts: int = Field(default=1, gt=0)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/models.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
+    )
+    description = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

@@ -7,11 +7,22 @@ from __future__ import annotations
 
 import ast
 import copy
+from pathlib import PurePosixPath
 import re
 import tokenize
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import children
 from sarj_python_lint.rules._comments import standalone_comments, trailing_comments
 from sarj_python_lint.rules._paths import is_generated, is_test_path
@@ -68,10 +79,48 @@ _IDENTICAL_ADVICE = (
 class DuplicateTestBody(Rule):
     id: str = "duplicate-test-body"
     code: str = "SARJ066"
-    description: str = (
-        "Test function duplicates another test's body in the same module — collapse them into "
-        "one `@pytest.mark.parametrize` with `ids=`."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Similar test bodies should be represented as one named parameterized case table.",
+        rationale="Copy-pasted tests drift independently and obscure the input dimension that changes behavior.",
+        remediation="Collapse the copies into `pytest.mark.parametrize` cases with descriptive `ids`.",
+        category=RuleCategory.TESTING,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Only substantial sibling test bodies in one non-generated module are compared.",
+            "Meaningful docstring or comment differences keep tests distinct.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="copy-pasted-tests",
+                title="Two tests differ only in input literals",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_permissions.py",
+                        'def test_admin():\n    user = make_user("admin")\n    allowed = can_delete(user)\n    assert allowed\n\ndef test_editor():\n    user = make_user("editor")\n    allowed = can_delete(user)\n    assert allowed\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_permissions.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="parameterized-cases",
+                title="Inputs share one parameterized test",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_permissions.py",
+                        'import pytest\n\n@pytest.mark.parametrize("role", ["admin", "editor"], ids=["admin", "editor"])\ndef test_can_delete(role):\n    user = make_user(role)\n    allowed = can_delete(user)\n    assert allowed\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_permissions.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

@@ -6,11 +6,23 @@
 
 import { type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isScriptFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "noRawEnv";
 type Options = readonly [];
+
+export const noRawEnvDocumentation = {
+  summary: "Disallow direct `process.env` and `import.meta.env` reads outside validated boundaries.",
+  rationale: "Raw environment reads are untyped and defer invalid configuration failures until use.",
+  remediation: "Validate environment values at startup and import the typed configuration object.",
+  category: "correctness",
+  limitations: ["Host markers, assignment targets, tests, scripts, build config, and validated boundaries are excluded."],
+  examples: [
+    { id: "validated-environment", title: "Read validated configuration", outcome: "no-match", files: [{ path: "src/database.ts", source: "import { env } from './env.js'; const url = env.DATABASE_URL;" }], focusPath: "src/database.ts", expectedCount: 0, public: true },
+    { id: "raw-environment-read", title: "Do not read raw configuration", outcome: "match", files: [{ path: "src/database.ts", source: "const url = process.env.DATABASE_URL;" }], focusPath: "src/database.ts", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
 
 /** Build / test / tooling config: `vite.config.ts`, `vitest.config.mts`, `playwright.config.ts`. */
 const CONFIG_FILE_RE = /(^|[\\/])[\w.-]+\.config\.[cm]?[jt]sx?$/;
@@ -103,6 +115,7 @@ function isWholeEnvSpread(node: TSESTree.MemberExpression): boolean {
 
 export default createRule<Options, MessageIds>({
   name: "no-raw-env",
+  documentation: noRawEnvDocumentation,
   meta: {
     type: "problem",
     docs: {

@@ -9,10 +9,20 @@ import ast
 from dataclasses import dataclass
 from functools import lru_cache
 import os
-from pathlib import Path
-from typing import TYPE_CHECKING, final, override
+from pathlib import Path, PurePosixPath
+from typing import TYPE_CHECKING, ClassVar, final, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, Severity, parse_or_none
+from sarj_python_lint.rule_base import (
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    Severity,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._first_party import distribution_root
 from sarj_python_lint.rules._paths import is_generated, is_test_path
@@ -62,9 +72,72 @@ class _HiddenParameter:
 class NoHiddenConstructorFallback(Rule):
     id = "no-hidden-constructor-fallback"
     code = "SARJ095"
-    description = (
-        "A keyword-only constructor option defaults to `None` and silently resolves from application settings."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Constructor option silently falls back to application settings when omitted.",
+        rationale="Hidden configuration lookup obscures dependencies and makes construction vary with ambient application state.",
+        remediation="Require the constructor argument and resolve any default at the composition root or call site.",
+        category=RuleCategory.ARCHITECTURE,
+        limitations=(
+            "Detection requires a proven local settings provider, a keyword-only optional parameter, and a first-party composition call.",
+            "Tests, generated files, migrations, descriptors, library environment fallbacks, and unconstructed classes are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="ambient-settings-fallback",
+                title="Constructor reads an implicit default from settings",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python("pyproject.toml", "[project]\nname = 'example'\nversion = '0.1.0'\n"),
+                    ExampleFile.python("app/__init__.py", "\n"),
+                    ExampleFile.python(
+                        "app/config.py",
+                        "from pydantic_settings import BaseSettings\n"
+                        "class Settings(BaseSettings):\n"
+                        "    MODEL: str = 'model'\n"
+                        "settings = Settings()\n",
+                    ),
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from app.config import settings\n\n"
+                        "class Generator:\n"
+                        "    def __init__(self, *, model: str | None = None) -> None:\n"
+                        "        self.model = model or settings.MODEL\n\n"
+                        "generator = Generator(model='explicit')\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="explicit-constructor-dependency",
+                title="Constructor requires its dependency",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python("pyproject.toml", "[project]\nname = 'example'\nversion = '0.1.0'\n"),
+                    ExampleFile.python("app/__init__.py", "\n"),
+                    ExampleFile.python(
+                        "app/config.py",
+                        "from pydantic_settings import BaseSettings\n"
+                        "class Settings(BaseSettings):\n"
+                        "    MODEL: str = 'model'\n"
+                        "settings = Settings()\n",
+                    ),
+                    ExampleFile.python(
+                        "app/service.py",
+                        "class Generator:\n"
+                        "    def __init__(self, *, model: str) -> None:\n"
+                        "        self.model = model\n\n"
+                        "generator = Generator(model='explicit')\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

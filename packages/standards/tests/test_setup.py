@@ -25,8 +25,12 @@ def test_setup_plan_owns_every_development_environment(tmp_path: Path) -> None:
         ("uv", "sync"),
         ("uv", "sync"),
         ("npm", "ci"),
+        ("npm", "ci"),
     ]
-    assert commands[-1].cwd == tmp_path / "packages" / "typescript"
+    assert commands[-2].argv == ("npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund")
+    assert commands[-1].argv == ("npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund")
+    assert commands[-2].cwd == tmp_path / "packages" / "typescript"
+    assert commands[-1].cwd == tmp_path / "apps" / "docs"
 
 
 def test_setup_check_reports_hooks_and_commands(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -34,4 +38,4 @@ def test_setup_check_reports_hooks_and_commands(tmp_path: Path, capsys: pytest.C
 
     output = capsys.readouterr().out
     assert "would install: Lefthook repository hooks" in output
-    assert output.count("would run:") == 5
+    assert output.count("would run:") == 6

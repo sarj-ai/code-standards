@@ -6,10 +6,20 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, final, override
+from typing import TYPE_CHECKING, ClassVar, final, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._paths import is_generated, is_test_path
 
@@ -44,10 +54,39 @@ _MESSAGE = (
 class NoStdlibLogging(Rule):
     id: str = "no-stdlib-logging"
     code: str = "SARJ052"
-    description: str = (
-        "stdlib `logging` imported outside the loguru bridge — a second logger "
-        "hierarchy with its own handlers, levels and sinks; use loguru."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Application code imports standard-library logging instead of the configured house logger.",
+        rationale="Parallel logger hierarchies can bypass shared formatting, redaction, levels, sinks, and error reporting.",
+        remediation="Import the configured loguru logger; keep stdlib logging only in the explicit bridge module.",
+        category=RuleCategory.ARCHITECTURE,
+        limitations=(
+            "Tests, scripts, notebooks, generated files, type-only imports, and recognized loguru bridge configuration are excluded.",
+            "Detection reports imports of the standard-library logging root, not similarly named first-party modules.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="stdlib-logging-import",
+                title="Application imports stdlib logging",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python("app/service.py", "import logging\n\nlogger = logging.getLogger(__name__)\n"),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="house-logger-import",
+                title="Application imports loguru",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(ExampleFile.python("app/service.py", "from loguru import logger\n"),),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

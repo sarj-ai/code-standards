@@ -6,9 +6,21 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
-from typing import TYPE_CHECKING, override
+from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, is_suppressed, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    is_suppressed,
+    parse_or_none,
+)
 
 
 if TYPE_CHECKING:
@@ -54,10 +66,55 @@ def _is_classmethod(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
 class PreferSelfTypeAnnotation(Rule):
     id: str = "prefer-self-type-annotation"
     code: str = "SARJ078"
-    description: str = (
-        "use `Self` instead of the enclosing class name when an instance method returns `self` "
-        "or a classmethod returns `cls(...)`."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Annotate fluent methods and alternate constructors with `Self`.",
+        rationale="`Self` preserves the concrete subclass type, while naming the enclosing class narrows inherited return types incorrectly.",
+        remediation="Import `Self` from `typing` and use it as the return annotation.",
+        category=RuleCategory.CORRECTNESS,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Only methods that directly return `self` or classmethods that directly return `cls(...)` are analyzed.",
+            "Annotations naming other classes and methods without a return annotation are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="enclosing-class-return",
+                title="Fluent method names its enclosing class",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/builder.py",
+                        "class Builder:\n"
+                        '    def set_name(self, name: str) -> "Builder":\n'
+                        "        self.name = name\n"
+                        "        return self\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/builder.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="self-return-annotation",
+                title="Fluent method preserves subclass type",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/builder.py",
+                        "from typing import Self\n\n"
+                        "class Builder:\n"
+                        "    def set_name(self, name: str) -> Self:\n"
+                        "        self.name = name\n"
+                        "        return self\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/builder.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

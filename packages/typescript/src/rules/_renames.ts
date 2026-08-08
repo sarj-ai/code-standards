@@ -8,6 +8,7 @@
 export const renamedRules = {
   "jsdoc-restates-signature": "no-restated-jsdoc",
   "no-async-callback-in-waitfor": "no-async-callback-in-wait-for",
+  "require-interface-for-injected-service": "require-port-for-service",
   "strict-test-assertions": "prefer-whole-object-assertion",
   "trailing-value-narration": "no-trailing-value-narration",
 } as const;

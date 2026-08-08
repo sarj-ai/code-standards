@@ -323,25 +323,20 @@ describe("a rename ships a map, not a hole", () => {
     }
   });
 
-  it("leaves no old name in the shipped strict config or the README", () => {
+  it("leaves no old name in the shipped strict config", () => {
     const config = readFileSync(
       resolve(REPO_ROOT, "packages/standards/src/sarj_standards/configs/eslint.strict.mjs"),
       "utf8",
     );
-    const readme = readFileSync(resolve(HERE, "../README.md"), "utf8");
     for (const from of Object.keys(renamedRules)) {
       expect(config).not.toContain(`"@sarj/${from}"`);
-      // The README documents the rename, so the old name may appear only in the
-      // migration table — never as a live rule row.
-      expect(readme).not.toContain(`| \`${from}\` |`);
     }
   });
 
-  it("documents the migration where a consumer will look", () => {
-    const readme = readFileSync(resolve(HERE, "../README.md"), "utf8");
+  it("records each migration on the live rule that generates docs and redirects", () => {
     for (const [from, to] of Object.entries(renamedRules)) {
-      expect(readme).toContain(from);
-      expect(readme).toContain(to);
+      expect(rules[to as keyof typeof rules]).toBeDefined();
+      expect(rules[to as keyof typeof rules]?.documentation?.aliases).toContain(from);
     }
   });
 });

@@ -4,7 +4,9 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-zod-native-enum.js";
+import rule, {
+  noZodNativeEnumDocumentation,
+} from "../../src/rules/no-zod-native-enum.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -33,7 +35,7 @@ ruleTester.run("no-zod-native-enum", rule, {
     },
     {
       name: "allows z.enum with inline string literals",
-      code: withZod('const S = z.enum(["active", "inactive"]);'),
+      code: noZodNativeEnumDocumentation.examples[0].files[0].source,
     },
     {
       name: "allows z.enum with an as-const string array",
@@ -93,8 +95,8 @@ ruleTester.run("no-zod-native-enum", rule, {
     },
     {
       name: "fixes an inline string-valued object",
-      code: withZod('const S = z.nativeEnum({ Active: "active", Inactive: "inactive" });'),
-      output: withZod('const S = z.enum(["active", "inactive"]);'),
+      code: noZodNativeEnumDocumentation.examples[1].files[0].source,
+      output: noZodNativeEnumDocumentation.examples[1].fixedFiles[0].source,
       errors: [{ messageId: "nativeEnum" }],
     },
     {

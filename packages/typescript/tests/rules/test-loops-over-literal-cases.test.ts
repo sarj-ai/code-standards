@@ -2,7 +2,7 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/test-loops-over-literal-cases.js";
+import rule, { testLoopsOverLiteralCasesDocumentation } from "../../src/rules/test-loops-over-literal-cases.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -14,6 +14,7 @@ const TEST_FILE = "/repo/src/parser.test.ts";
 
 ruleTester.run("test-loops-over-literal-cases", rule, {
   valid: [
+    { name: "public no-match example", filename: testLoopsOverLiteralCasesDocumentation.examples[0].focusPath, code: testLoopsOverLiteralCasesDocumentation.examples[0].files[0].source },
     {
       name: "allows a single inline case",
       filename: TEST_FILE,
@@ -96,6 +97,7 @@ ruleTester.run("test-loops-over-literal-cases", rule, {
     },
   ],
   invalid: [
+    { name: "public match example", filename: testLoopsOverLiteralCasesDocumentation.examples[1].focusPath, code: testLoopsOverLiteralCasesDocumentation.examples[1].files[0].source, errors: [{ messageId: "literalCaseLoop" }] },
     {
       name: "reports scalar literal cases",
       filename: TEST_FILE,

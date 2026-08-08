@@ -6,10 +6,21 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, final, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._sql import is_store_module, sql_string_value, strip_sql_noise
 
@@ -26,13 +37,52 @@ _OFFSET_PAGINATION = re.compile(
 )
 
 
+@final
 class NoOffsetPagination(Rule):
     id: str = "no-offset-pagination"
     code: str = "SARJ025"
-    description: str = (
-        "OFFSET pagination is O(N) and unstable under concurrent writes — use a "
-        "keyset cursor (WHERE id > :cursor ORDER BY id LIMIT n)."
+    documentation = RuleDocumentation(
+        summary="Store queries should use keyset cursors instead of `OFFSET` pagination.",
+        rationale="Large offsets require scanning discarded rows and can skip or repeat results during concurrent writes.",
+        remediation="Filter on the ordered key after the last result, then apply `ORDER BY` and `LIMIT`.",
+        category=RuleCategory.PERFORMANCE,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Only SQL string literals in recognized store modules are analyzed.",
+            "Dynamic SQL, comments, prose, and BigQuery `WITH OFFSET AS` array indexing are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="offset-page-query",
+                title="Page selected with an offset",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/task_store.py",
+                        'QUERY = "SELECT id FROM task ORDER BY id LIMIT :limit OFFSET :offset"\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/task_store.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="keyset-page-query",
+                title="Page selected after the last ordered key",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/task_store.py",
+                        'QUERY = "SELECT id FROM task WHERE id > :cursor ORDER BY id LIMIT :limit"\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/task_store.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

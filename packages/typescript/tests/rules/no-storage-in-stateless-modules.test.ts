@@ -2,7 +2,7 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-storage-in-stateless-modules.js";
+import rule, { noStorageInStatelessModulesDocumentation } from "../../src/rules/no-storage-in-stateless-modules.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -22,6 +22,7 @@ const STATELESS_MODULE_OPTIONS = [
 
 ruleTester.run("no-storage-in-stateless-modules", rule, {
   valid: [
+    { name: "accepts the documented system-of-record read", filename: noStorageInStatelessModulesDocumentation.examples[0].focusPath, code: noStorageInStatelessModulesDocumentation.examples[0].files[0].source, options: STATELESS_MODULE_OPTIONS },
     {
       name: "allows prepare until a stateless module is configured",
       code: "db.prepare('select 1');",
@@ -89,6 +90,7 @@ ruleTester.run("no-storage-in-stateless-modules", rule, {
     },
   ],
   invalid: [
+    { name: "reports the documented private storage", filename: noStorageInStatelessModulesDocumentation.examples[1].focusPath, code: noStorageInStatelessModulesDocumentation.examples[1].files[0].source, options: STATELESS_MODULE_OPTIONS, errors: [{ messageId: "storageInStatelessModule" }] },
     {
       name: "reports SQL prepare inside a configured stateless module",
       code: "const row = db.prepare('select * from digest_state').first();",

@@ -6,12 +6,41 @@
 
 import { type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { codeTokens, hasExternalReference, stem } from "./_comments.js";
 import { isGeneratedFile } from "./_paths.js";
 
 type MessageIds = "narratesValue";
 type Options = readonly [];
+
+export const noTrailingValueNarrationDocumentation = {
+  summary: "Flag a trailing comment that repeats the line's numeric value only to name its unit.",
+  rationale: "A repeated value can disagree with the expression after either the code or comment changes.",
+  remediation: "Put the unit in the identifier and keep comments only when they explain a constraint or non-obvious conversion.",
+  category: "maintainability",
+  aliases: ["trailing-value-narration"],
+  limitations: ["Only trailing comments with numeric values and recognized unit words are inspected."],
+  examples: [
+    {
+      id: "explain-constraint",
+      title: "Explain a domain constraint",
+      outcome: "no-match",
+      files: [{ path: "src/timeouts.ts", source: "const timeout = 5 * 60; // 5 minutes for cold starts" }],
+      focusPath: "src/timeouts.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "repeat-duration",
+      title: "Do not narrate the numeric duration",
+      outcome: "match",
+      files: [{ path: "src/timeouts.ts", source: "const staleTime = 5 * 60 * 1000; // 5 minutes" }],
+      focusPath: "src/timeouts.ts",
+      expectedCount: 1,
+      public: true,
+    },
+  ],
+} as const satisfies RuleDocumentation;
 
 // A number that is not part of an identifier or a dotted member path.
 const NUMBER_RE = /(?<![\w.])(\d+(?:\.\d+)?)(?![\w.])/g;
@@ -65,6 +94,7 @@ function numbersIn(text: string): Set<string> {
 
 export default createRule<Options, MessageIds>({
   name: "no-trailing-value-narration",
+  documentation: noTrailingValueNarrationDocumentation,
   meta: {
     type: "suggestion",
     docs: {

@@ -8,11 +8,27 @@ from sarj_python_lint.rules.redundant_docstring import RedundantDocstring
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import Diagnostic
+    from sarj_python_lint.rule_base import Diagnostic, RuleExample
+
+
+_PUBLIC_EXAMPLES = RedundantDocstring.public_examples()
 
 
 def _check(source: str) -> list[Diagnostic]:
     return RedundantDocstring().check(Path("<t>.py"), source)
+
+
+@pytest.mark.parametrize(
+    "example",
+    _PUBLIC_EXAMPLES,
+    ids=tuple(example.example_id for example in _PUBLIC_EXAMPLES),
+)
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+
+    findings = RedundantDocstring().check(Path(focus.path), focus.source)
+
+    assert len(findings) == example.expected_count
 
 
 def _fn(signature: str, docstring: str) -> list[Diagnostic]:

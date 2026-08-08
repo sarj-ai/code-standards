@@ -6,11 +6,23 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from pathlib import PurePosixPath
 import re
 from types import MappingProxyType
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, final, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, Severity, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    Severity,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import children, walk
 from sarj_python_lint.rules._paths import is_generated, is_test_path
 
@@ -165,12 +177,52 @@ _MIN_COPIED_LITERAL_DOMAINS = 2
 _MIN_LITERAL_DOMAIN_VALUES = 3
 
 
+@final
 class PreferStrEnum(Rule):
     id: str = "prefer-str-enum"
     code: str = "SARJ006"
-    description: str = (
-        "Corroborated string choices should use StrEnum; transparent builders should reuse named Literal domains."
+    documentation = RuleDocumentation(
+        summary="Represent corroborated closed string domains with `StrEnum` or a named `Literal` alias.",
+        rationale="A named closed domain lets type checking and review catch invalid values and incomplete handling.",
+        remediation="Define a `StrEnum` for model fields, or reuse one named `Literal` alias across transparent builders.",
+        category=RuleCategory.CORRECTNESS,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "The rule requires corroborating choice collections, comparison clusters, or repeated literal domains.",
+            "Tests, generated code, external vocabularies, and open-ended name domains receive conservative exemptions.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="raw-string-choice-field",
+                title="String field backed by a closed choice collection",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/order.py",
+                        'class Order:\n    statuses = ("pending", "shipped")\n    status: str = "pending"\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/order.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="string-enum-field",
+                title="Closed domain represented by a string enum",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/order.py",
+                        'from enum import StrEnum\n\nclass Status(StrEnum):\n    PENDING = "pending"\n    SHIPPED = "shipped"\n\nclass Order:\n    status: Status = Status.PENDING\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/order.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:  # ruff: ignore[too-many-locals] -- traversal state.

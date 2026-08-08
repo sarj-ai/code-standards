@@ -6,7 +6,7 @@
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
 
 type MessageIds = "noRepeatedStringLiteral";
@@ -26,6 +26,18 @@ const FUNCTION_TYPES: ReadonlySet<AST_NODE_TYPES> = new Set([
   AST_NODE_TYPES.FunctionExpression,
   AST_NODE_TYPES.ArrowFunctionExpression,
 ]);
+
+export const noRepeatedStringLiteralDocumentation = {
+  summary: "Disallow a long structured string literal repeated across functions; the copies drift when one is edited. Extract a module-level constant.",
+  rationale: "Independent copies of a structured value can diverge and silently change behavior.",
+  remediation: "Extract the repeated value to one module-level constant and reference it from each function.",
+  category: "maintainability",
+  limitations: ["Test files, short strings, prose, substitutions, module sources, JSX attributes, and repetition within one function are excluded."],
+  examples: [
+    { id: "shared-constant", title: "Share one structured value", outcome: "no-match", files: [{ path: "src/queries.ts", source: "const QUERY = 'SELECT id, status, created_at FROM candidates';\nfunction one() { return QUERY; }\nfunction two() { return QUERY; }" }], focusPath: "src/queries.ts", expectedCount: 0, public: true },
+    { id: "repeated-query", title: "Do not copy a structured value across functions", outcome: "match", files: [{ path: "src/queries.ts", source: "function one() { return 'SELECT id, status, created_at FROM candidates'; }\nfunction two() { return 'SELECT id, status, created_at FROM candidates'; }" }], focusPath: "src/queries.ts", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
 
 /** True when the literal carries structure that rules out coincidental equality. */
 function isStructured(value: string): boolean {
@@ -75,6 +87,7 @@ function isScaffolding(node: TSESTree.Node): boolean {
 
 export default createRule<Options, MessageIds>({
   name: "no-repeated-string-literal",
+  documentation: noRepeatedStringLiteralDocumentation,
   meta: {
     type: "suggestion",
     docs: {

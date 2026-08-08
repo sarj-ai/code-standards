@@ -6,9 +6,21 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, final, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, Severity, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    Severity,
+    parse_or_none,
+)
 from sarj_python_lint.rules._paths import is_generated
 
 
@@ -22,7 +34,51 @@ class NoDuplicateDunderAllEntry(Rule):
 
     id = "no-duplicate-dunder-all-entry"
     code = "SARJ098"
-    description = "static package `__all__` declarations should list each exported name once"
+    documentation = RuleDocumentation(
+        summary="static package `__all__` declarations should list each exported name once",
+        rationale=(
+            "Duplicate exports add noise to a package's public contract and commonly reveal copy-paste mistakes in "
+            "generated or maintained facade lists."
+        ),
+        remediation="Remove each later duplicate while preserving the first declaration of the exported name.",
+        category=RuleCategory.CORRECTNESS,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Only one fully static list or tuple assigned to package-level `__all__` is analyzed.",
+            "Generated, dynamically extended, reassigned, and non-package declarations are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="duplicate-package-export",
+                title="Duplicate name in a package export list",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "diagnostics/__init__.py",
+                        '__all__ = ["Diagnostic", "AnalysisReport", "Diagnostic"]\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("diagnostics/__init__.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="unique-package-exports",
+                title="Unique names in a package export list",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "diagnostics/__init__.py",
+                        '__all__ = ["Diagnostic", "AnalysisReport"]\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("diagnostics/__init__.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
+    )
+    description = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

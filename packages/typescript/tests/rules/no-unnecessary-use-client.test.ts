@@ -1,7 +1,9 @@
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-unnecessary-use-client.js";
+import rule, {
+  noUnnecessaryUseClientDocumentation,
+} from "../../src/rules/no-unnecessary-use-client.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -51,7 +53,7 @@ ruleTester.run("no-unnecessary-use-client", rule, {
     },
     {
       name: "allows hook calls",
-      code: "'use client'; import { useState } from 'react'; export default function X() { const [n] = useState(0); return <div>{n}</div>; }",
+      code: noUnnecessaryUseClientDocumentation.examples[0].files[0].source,
     },
     {
       name: "allows JSX event handlers",
@@ -181,7 +183,7 @@ ruleTester.run("no-unnecessary-use-client", rule, {
     },
     {
       name: "reports static components",
-      code: "'use client'; export default function X() { return <div>hello</div>; }",
+      code: noUnnecessaryUseClientDocumentation.examples[1].files[0].source,
       errors: [{ messageId: "unnecessaryUseClient" }],
     },
     {

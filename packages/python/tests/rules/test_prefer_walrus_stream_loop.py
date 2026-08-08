@@ -2,15 +2,26 @@ from pathlib import Path
 import textwrap
 from typing import TYPE_CHECKING
 
+import pytest
+
 from sarj_python_lint.rules.prefer_walrus_stream_loop import PreferWalrusStreamLoop
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import Diagnostic
+    from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
 def _check(source: str) -> list[Diagnostic]:
     return PreferWalrusStreamLoop().check(Path("example.py"), textwrap.dedent(source))
+
+
+_PUBLIC_EXAMPLES = PreferWalrusStreamLoop.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(PreferWalrusStreamLoop().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 def test_flags_while_true_loop_with_assignment_and_break() -> None:

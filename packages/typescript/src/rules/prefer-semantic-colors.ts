@@ -8,10 +8,22 @@ import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import { existsSync, readdirSync, readFileSync } from "fs";
 import { dirname, join, parse } from "path";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { classTokens, tailwindBase } from "./_tailwind.js";
 
 type MessageIds = "rawPalette" | "arbitraryColor" | "inlineColor";
+
+export const preferSemanticColorsDocumentation = {
+  summary: "Enforce semantic color tokens over raw Tailwind palette classes, arbitrary color values, and inline color literals.",
+  rationale: "Semantic tokens keep themes and product meaning consistent while raw colors couple components to a palette value.",
+  remediation: "Replace raw palette and literal colors with the closest semantic design-system token or CSS variable.",
+  category: "style",
+  limitations: ["Email, PDF, icon artwork, masks, gradients, stories, and explicitly configured non-token projects have targeted exclusions."],
+  examples: [
+    { id: "semantic-text-color", title: "Use a semantic color token", outcome: "no-match", files: [{ path: "src/notice.tsx", source: "const notice = <div className=\"text-destructive\" />;" }], focusPath: "src/notice.tsx", expectedCount: 0, public: true },
+    { id: "raw-text-color", title: "Do not use a raw palette color", outcome: "match", files: [{ path: "src/notice.tsx", source: "const notice = <div className=\"text-red-500\" />;" }], focusPath: "src/notice.tsx", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
 type Options = readonly [
   {
     requireSemanticTokens?: boolean;
@@ -398,11 +410,12 @@ const staticallyImportsEmailOrPdfRenderer = (program: TSESTree.Program): boolean
 
 export default createRule<Options, MessageIds>({
   name: "prefer-semantic-colors",
+  documentation: preferSemanticColorsDocumentation,
   meta: {
     type: "suggestion",
     docs: {
       description:
-        "Enforce design-system semantic color tokens (bg-primary, text-destructive, …) over raw Tailwind palette classes (text-red-500), arbitrary color values (bg-[#fff]), and inline color literals.",
+        "Enforce semantic color tokens over raw Tailwind palette classes, arbitrary color values, and inline color literals.",
     },
     schema: [
       {

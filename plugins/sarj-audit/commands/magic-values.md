@@ -1,6 +1,6 @@
 # Magic values
 
-Audit unexplained literals that obscure policy or units using the shared [audit protocol](../README.md#audit-protocol).
+Audit unexplained literals that obscure policy or units using the shared [audit protocol](../skills/audit-protocol/SKILL.md#audit-protocol).
 
 ## Judgment checks
 

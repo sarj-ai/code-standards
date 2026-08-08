@@ -6,10 +6,21 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, final, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._sql import is_store_module, sql_string_value, strip_sql_noise
 
@@ -84,10 +95,47 @@ _AGG_GATE = re.compile(
 )
 
 
+@final
 class NoAggregationInStoreQuery(Rule):
     id: str = "no-aggregation-in-store-query"
     code: str = "SARJ020"
-    description: str = "Aggregation in a Postgres store query — push it to the columnar mirror (ClickHouse / BigQuery)."
+    documentation = RuleDocumentation(
+        summary="Postgres store queries should not perform analytical aggregation.",
+        rationale="Analytical aggregation competes with transactional reads and is better served by the columnar mirror.",
+        remediation="Run aggregation in ClickHouse or BigQuery and keep Postgres store queries focused on point or bounded reads.",
+        category=RuleCategory.ARCHITECTURE,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Only SQL string literals in recognized store modules are analyzed.",
+            "Files and queries identified as ClickHouse or BigQuery are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="postgres-aggregate-query",
+                title="Postgres store query performs aggregation",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.python("app/call_store.py", 'QUERY = "SELECT COUNT(*) FROM call"\n'),),
+                focus_path=PurePosixPath("app/call_store.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="bounded-postgres-query",
+                title="Postgres store query reads bounded rows",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/call_store.py",
+                        'QUERY = "SELECT id FROM call ORDER BY created_at LIMIT 50"\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/call_store.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
+    )
+    description = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

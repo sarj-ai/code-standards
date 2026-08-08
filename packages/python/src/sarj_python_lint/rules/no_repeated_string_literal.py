@@ -7,10 +7,21 @@ from __future__ import annotations
 
 import ast
 from collections import defaultdict
+from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, final, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import children, walk
 from sarj_python_lint.rules._paths import is_generated
 
@@ -35,10 +46,52 @@ _MIN_CONSTANT_NAME_LENGTH = 3
 _MODULE_SCOPE = -1
 
 
+@final
 class NoRepeatedStringLiteral(Rule):
     id: str = "no-repeated-string-literal"
     code: str = "SARJ024"
-    description: str = "Structured string literal repeated across functions — extract a module-level constant."
+    documentation = RuleDocumentation(
+        summary="Structured string literals repeated across functions should use a module constant.",
+        rationale="Independent copies of SQL and identifier-like strings can drift while appearing equivalent.",
+        remediation="Extract the shared value to one named module-level constant and reference it from each function.",
+        category=RuleCategory.MAINTAINABILITY,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Only structured literals of at least 40 characters repeated across distinct functions are reported.",
+            "Prose, documentation scaffolding, annotations, generated files, and repeated f-string fragments are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="repeated-sql-across-functions",
+                title="SQL literal is copied across functions",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "queries.py",
+                        'def load():\n    return "SELECT id, name, created_at FROM organization"\n\ndef refresh():\n    return "SELECT id, name, created_at FROM organization"\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("queries.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="shared-sql-module-constant",
+                title="Functions reuse one SQL constant",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "queries.py",
+                        'QUERY = "SELECT id, name, created_at FROM organization"\n\ndef load():\n    return QUERY\n\ndef refresh():\n    return QUERY\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("queries.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
+    )
+    description = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
