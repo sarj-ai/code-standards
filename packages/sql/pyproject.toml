@@ -16,7 +16,7 @@ classifiers = [
   "Topic :: Software Development :: Quality Assurance",
 ]
 dependencies = [
-  "sqlfluff>=4.2",
+  "sqlfluff>=4.2.2",
 ]
 
 [project.scripts]
@@ -29,10 +29,10 @@ Issues = "https://github.com/sarj-ai/standards/issues"
 
 [dependency-groups]
 dev = [
-  "pytest>=9.0",
-  "pytest-benchmark>=5.2",
-  "ruff>=0.15",
-  "basedpyright>=1.39",
+  "pytest>=9.1.1",
+  "pytest-benchmark>=5.2.3",
+  "ruff>=0.16.1",
+  "basedpyright>=1.39.9",
 ]
 
 [build-system]
