@@ -325,7 +325,7 @@ describe("a rename ships a map, not a hole", () => {
 
   it("leaves no old name in the shipped strict config or the README", () => {
     const config = readFileSync(
-      resolve(REPO_ROOT, "packages/lint-configs/src/sarj_lint_configs/configs/eslint.strict.mjs"),
+      resolve(REPO_ROOT, "packages/standards/src/sarj_standards/configs/eslint.strict.mjs"),
       "utf8",
     );
     const readme = readFileSync(resolve(HERE, "../README.md"), "utf8");

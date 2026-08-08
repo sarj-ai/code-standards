@@ -1,7 +1,7 @@
 /**
  * @fileoverview _renames — every rule this plugin has renamed, old name to new; the old names no longer resolve, so this map is what says what to write instead.
  *
- * `sarj-standards repo sync-ledger` turns each entry into the consumer-facing ledger row.
+ * `sarj-standards maintain sync-ledger` turns each entry into the consumer-facing ledger row.
  *
  */
 

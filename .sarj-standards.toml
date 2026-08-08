@@ -1,6 +1,7 @@
-schema = 2
-bundle = "0.59.0"
+schema = 3
+bundle = "1.0.0"
 rule_profile = "all"
+
 profile = "standard"
 
 [capabilities]
@@ -18,12 +19,10 @@ typescript = "packages/typescript"
 manager = "lefthook"
 
 [doctor]
-# Compatibility tests intentionally spell retired IDs to prove their migration
-# messages; those fixtures are not active consumer suppressions.
 exclude = [
-  "packages/lint-configs/tests/test_doctor.py",
-  "packages/lint-configs/tests/test_rule_ledger.py",
-  "packages/lint-configs/tests/test_upgrade.py",
+  "packages/standards/tests/test_doctor.py",
+  "packages/standards/tests/test_rule_ledger.py",
+  "packages/standards/tests/test_upgrade.py",
 ]
 
 [verify]
@@ -38,13 +37,13 @@ paths = [
   "packages/sql/tests",
   "packages/iac/src",
   "packages/iac/tests",
-  "packages/lint-configs/README.md",
-  "packages/lint-configs/src",
-  "packages/lint-configs/tests",
+  "packages/standards/README.md",
+  "packages/standards/src",
+  "packages/standards/tests",
 ]
 
 [repository]
-canonical_config_dir = "packages/lint-configs/src/sarj_lint_configs/configs"
+canonical_config_dir = "packages/standards/src/sarj_standards/configs"
 forbidden_paths = ["scripts/*"]
 
 [repository.private_refs]
@@ -118,7 +117,7 @@ pattern = '"extends": "([^"]+)"'
 python = ["pyproject.toml", "packages/python/pyproject.toml"]
 sql = ["packages/sql/pyproject.toml"]
 iac = ["packages/iac/pyproject.toml"]
-lint_configs = ["packages/lint-configs/pyproject.toml"]
+standards = ["packages/standards/pyproject.toml"]
 typescript = ["packages/typescript/package.json"]
 tsconfig = ["packages/tsconfig/package.json"]
 
@@ -147,43 +146,43 @@ version = "iac"
 selector = "sarj-iac-lint"
 
 [[repository.version_references]]
-path = "packages/lint-configs/uv.lock"
+path = "packages/standards/uv.lock"
 format = "uv-lock"
-version = "lint_configs"
-selector = "sarj-lint-configs"
+version = "standards"
+selector = "sarj-standards"
 
 [[repository.version_references]]
-path = "packages/lint-configs/pyproject.toml"
+path = "packages/standards/pyproject.toml"
 format = "exact-pin"
 version = "python"
 selector = "sarj-python-lint"
 
 [[repository.version_references]]
-path = "packages/lint-configs/pyproject.toml"
+path = "packages/standards/pyproject.toml"
 format = "exact-pin"
 version = "sql"
 selector = "sarj-sql-lint"
 
 [[repository.version_references]]
-path = "packages/lint-configs/pyproject.toml"
+path = "packages/standards/pyproject.toml"
 format = "exact-pin"
 version = "iac"
 selector = "sarj-iac-lint"
 
 [[repository.version_references]]
-path = "packages/lint-configs/uv.lock"
+path = "packages/standards/uv.lock"
 format = "uv-lock"
 version = "python"
 selector = "sarj-python-lint"
 
 [[repository.version_references]]
-path = "packages/lint-configs/uv.lock"
+path = "packages/standards/uv.lock"
 format = "uv-lock"
 version = "sql"
 selector = "sarj-sql-lint"
 
 [[repository.version_references]]
-path = "packages/lint-configs/uv.lock"
+path = "packages/standards/uv.lock"
 format = "uv-lock"
 version = "iac"
 selector = "sarj-iac-lint"
@@ -201,7 +200,7 @@ version = "typescript"
 selector = "/packages//version"
 
 [[repository.version_references]]
-path = "packages/lint-configs/src/sarj_lint_configs/configs/eslint.peers.json"
+path = "packages/standards/src/sarj_standards/configs/eslint.peers.json"
 format = "json-pointer"
 version = "typescript"
 selector = "/peers/@sarj~1eslint-plugin"
@@ -211,7 +210,7 @@ manifests = [
   "packages/python/pyproject.toml",
   "packages/sql/pyproject.toml",
   "packages/iac/pyproject.toml",
-  "packages/lint-configs/pyproject.toml",
+  "packages/standards/pyproject.toml",
   "packages/tsconfig/package.json",
   "packages/typescript/package.json",
 ]
@@ -220,6 +219,6 @@ locks = [
   "packages/python/uv.lock",
   "packages/sql/uv.lock",
   "packages/iac/uv.lock",
-  "packages/lint-configs/uv.lock",
+  "packages/standards/uv.lock",
   "packages/typescript/package-lock.json",
 ]

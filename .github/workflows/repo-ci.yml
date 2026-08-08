@@ -1,4 +1,4 @@
-name: repo CI
+name: release-ready
 
 on:
   push:
@@ -13,8 +13,9 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  gates:
+  release-ready:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - name: Harden the runner
         uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
@@ -26,20 +27,28 @@ jobs:
         with:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: '0.11.32'
+          enable-cache: true
+          cache-dependency-glob: 'packages/**/uv.lock'
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '24'
           cache: 'npm'
           cache-dependency-path: packages/typescript/package-lock.json
-      - run: npm --prefix packages/typescript ci --ignore-scripts --no-audit --no-fund
-      - name: Repository policy
-        run: make repo-check
-      - name: Dogfood every shipped custom rule
-        run: make dogfood
+      - name: Install locked toolchains
+        run: |
+          uv python install 3.14
+          for project in python sql iac standards; do
+            uv sync --project "packages/$project" --locked --dev
+          done
+          npm --prefix packages/typescript ci --ignore-scripts --no-audit --no-fund
+      - name: Complete source verification
+        run: make verify
+      - name: Build publishable packages
+        run: make build
       - name: Release causality
         env:
           BEFORE: ${{ github.event.pull_request.base.sha || github.event.before }}
           AFTER: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: uv run --project packages/lint-configs --frozen sarj-standards repo release causality --before "$BEFORE" --after "$AFTER"
-      - name: Python formatting
-        run: make format-check
+        run: uv run --project packages/standards --frozen sarj-standards --root . maintain release causality --before "$BEFORE" --after "$AFTER"

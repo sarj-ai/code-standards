@@ -1,7 +1,7 @@
 [project]
 name = "sarj-sql-lint"
-version = "0.6.5"
-description = "Custom SQL lint rules for Postgres migrations — sqlfluff + pygrep, pre-commit-friendly."
+version = "0.6.6"
+description = "Deterministic PostgreSQL migration rules for safe, repeatable schema changes."
 readme = "README.md"
 authors = [{ name = "sarj-ai" }]
 license = "MIT"

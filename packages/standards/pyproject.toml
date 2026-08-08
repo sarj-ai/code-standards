@@ -1,0 +1,68 @@
+[project]
+name = "sarj-standards"
+version = "1.0.0"
+description = "One deterministic quality gate for Sarj Python, TypeScript, SQL, IaC, and repository policy."
+readme = "README.md"
+requires-python = ">=3.14"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "sarj-ai" }]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = [
+  "pathspec==1.1.1",
+  "basedpyright==1.39.9",
+  "lefthook==2.1.10",
+  "packaging==26.2",
+  "pre-commit==4.6.1",
+  "PyYAML==6.0.3",
+  "ruff==0.16.0",
+  "sarj-iac-lint==0.6.2",
+  "sarj-python-lint==0.54.1",
+  "sarj-sql-lint==0.6.6",
+  "sqlfluff==4.2.2",
+]
+
+[project.scripts]
+sarj-standards = "sarj_standards.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/sarj-ai/standards"
+Repository = "https://github.com/sarj-ai/standards"
+Issues = "https://github.com/sarj-ai/standards/issues"
+
+[build-system]
+requires = ["hatchling==1.31.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sarj_standards"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "src/sarj_standards/**",
+  "README.md",
+  "LICENSE",
+  "pyproject.toml",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=9.0",
+]
+[tool.uv.sources]
+# Development uses the sibling packages while wheel smoke tests resolve the
+# same exact, already-published versions declared above.
+sarj-iac-lint = { path = "../iac", editable = true }
+sarj-python-lint = { path = "../python", editable = true }
+sarj-sql-lint = { path = "../sql", editable = true }
+
+# Dogfooding: linted/formatted by this repo's own published config (root-synced).
+[tool.ruff]
+extend = "../../.ruff-strict.toml"

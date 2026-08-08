@@ -2,8 +2,8 @@ SHELL := bash
 .SHELLFLAGS := -eu -o pipefail -c
 MAKEFLAGS += --warn-undefined-variables --no-builtin-rules
 
-CONFIG_SRC := packages/lint-configs/src/sarj_lint_configs/configs
-STANDARDS := uv run --project packages/lint-configs --frozen sarj-standards
+CONFIG_SRC := packages/standards/src/sarj_standards/configs
+STANDARDS := uv run --project packages/standards --frozen sarj-standards
 
 .PHONY: help setup build verify doctor test lint dogfood dogfood-python dogfood-typescript format-check typecheck repo-check check-no-private-refs check-file-conventions check-versions-synced release-check release-check-lock-age release-check-tags release-check-typescript sync-rule-ledger
 
@@ -13,47 +13,45 @@ help:
 	@echo "Releases are published only after a version-changing merge to main."
 
 setup:
-	$(STANDARDS) repo setup --dest .
+	$(STANDARDS) --root . maintain setup
 
-# The gate CONTRIBUTING/CLAUDE.md tells contributors to run before review. It did
-# not exist, so `make verify` failed with "No rule to make target" and the
-# documented workflow could not be followed as written.
+# Canonical local gate; CI runs the same checks.
 verify: doctor format-check lint dogfood typecheck test repo-check check-no-private-refs
 
 doctor:
 	@$(STANDARDS) doctor
 
 format-check:
-	uv run --project packages/lint-configs --frozen ruff format --check \
+	uv run --project packages/standards --frozen ruff format --check \
 	  packages/python/src packages/python/tests \
 	  packages/sql/src packages/sql/tests \
 	  packages/iac/src packages/iac/tests \
-	  packages/lint-configs/src packages/lint-configs/tests
+	  packages/standards/src packages/standards/tests
 
 build:
 	cd packages/typescript     && npm run build
 	cd packages/python         && uv build --wheel
 	cd packages/sql            && uv build --wheel
 	cd packages/iac            && uv build --wheel
-	cd packages/lint-configs   && uv build --wheel
+	cd packages/standards   && uv build --wheel
 
 test: check-versions-synced
 	cd packages/typescript     && npm test
 	cd packages/python         && uv run pytest -q
 	cd packages/sql            && uv run pytest -q
 	cd packages/iac            && uv run pytest -q
-	# Sibling wheels are built and installed alongside, mirroring lint-configs-ci.yml.
-	# `sarj-lint-configs` pins its siblings exactly, so resolving them from PyPI fails
+	# Sibling wheels are built and installed alongside, mirroring standards-ci.yml.
+	# `sarj-standards` pins its siblings exactly, so resolving them from PyPI fails
 	# for the whole window between bumping a pin and publishing that version -- which
 	# is exactly when this target most needs to run. Building them locally keeps
 	# `make test` usable on a version-bump branch.
-	cd packages/lint-configs   && rm -rf dist \
+	cd packages/standards   && rm -rf dist \
 	  && uv build --wheel >/dev/null \
 	  && uv build --wheel --project ../python --out-dir dist/deps >/dev/null \
 	  && uv build --wheel --project ../sql    --out-dir dist/deps >/dev/null \
 	  && uv build --wheel --project ../iac    --out-dir dist/deps >/dev/null \
 	  && uv venv --quiet --clear dist/test-venv \
-	  && uv pip install --quiet --python dist/test-venv/bin/python pytest ./dist/deps/*.whl ./dist/sarj_lint_configs-*.whl \
+	  && uv pip install --quiet --python dist/test-venv/bin/python pytest==9.1.1 ./dist/deps/*.whl ./dist/sarj_standards-*.whl \
 	  && dist/test-venv/bin/python -m pytest -q tests/
 	cd packages/tsconfig       && node -e "JSON.parse(require('fs').readFileSync('base.json','utf8'))" && node -e "JSON.parse(require('fs').readFileSync('strict.json','utf8'))"
 
@@ -63,11 +61,12 @@ lint:
 	cd packages/python         && uv run ruff check src/ tests/
 	cd packages/sql            && uv run ruff check src/ tests/
 	cd packages/iac            && uv run ruff check src/ tests/
-	cd packages/lint-configs   && uv run ruff check src/ tests/
-	# `lint-configs-ci.yml` runs the custom SARJ rules over this package and
+	cd packages/standards   && uv run ruff check src/ tests/
+	# `standards-ci.yml` runs the custom SARJ rules over this package and
 	# `make lint` did not, so a change could pass `make verify` locally and fail
 	# CI on rules this repo wrote. Dogfooding that stops at ruff is not dogfooding.
-	cd packages/lint-configs   && uv run sarj-standards check --noise-only src/ tests/
+	uv run --project packages/standards --frozen sarj-standards --root . check \
+	  packages/standards/src packages/standards/tests
 
 # Run every shipped custom rule over maintained implementation and test source.
 # Only dedicated fixture directories are excluded from the TypeScript scan.
@@ -99,32 +98,30 @@ typecheck:
 	cd packages/python         && uv run basedpyright
 	cd packages/sql            && uv run basedpyright
 	cd packages/iac            && uv run basedpyright
-	cd packages/lint-configs   && uv run basedpyright
+	cd packages/standards   && uv run basedpyright
 	cd packages/typescript     && npm run typecheck
 
 check-no-private-refs:
 	@if test -f .sarj-private-refs.toml; then \
-	  $(STANDARDS) repo check --only private-refs --only ci-history; \
+	  $(STANDARDS) --root . maintain check --only private-refs --only ci-history; \
 	else \
 	  echo "private-reference scan delegated to trusted CI"; \
 	fi
 
-# Filename casing, rule<->test pairing, markdown placement, and the ONE-copy rule
-# for the strict configs in $(CONFIG_SRC). The root `.ruff-strict.toml` /
-# `.pyright-strict.json` are SYMLINKS into that directory and must stay symlinks:
-# ruff anchors `per-file-ignores` globs at the directory of the config that
-# declares them, so pointing a package at the canonical path directly silently
-# drops the whole `"**/tests/**"` exemption -- 239 new findings in packages/python
-# alone. A `cp` in place of either link does the same job and then drifts.
+# Filename casing, rule<->test pairing, markdown placement, and strict-config
+# ownership. Setup synchronizes the root `.ruff-strict.toml` and
+# `.pyright-strict.json` from $(CONFIG_SRC); packages extend the root copies so
+# Ruff anchors `per-file-ignores` at the repository root. The gate rejects drift
+# and additional copies.
 # Regenerate the shipped record of every rule identifier and what became of it.
 # It never deletes: a rule that leaves a registry is moved to `retired`, because
 # a consumer config naming a removed rule makes ESLint exit 2 on the whole repo
 # and `doctor` needs the record to warn before the upgrade rather than after.
 sync-rule-ledger:
-	@$(STANDARDS) repo sync-ledger
+	@$(STANDARDS) --root . maintain sync-ledger
 
 check-file-conventions:
-	@$(STANDARDS) repo check --only file-conventions
+	@$(STANDARDS) --root . maintain check --only file-conventions
 
 # Every one of the 21 places a version is written, not just the two this target
 # used to compare. Pre-commit consumers install the ROOT package, so a root
@@ -133,10 +130,10 @@ check-file-conventions:
 # `packages/typescript/package.json` and leave `package-lock.json` two minor
 # versions behind, and why the root `uv.lock` sat two versions stale on main.
 check-versions-synced:
-	@$(STANDARDS) repo check --only versions
+	@$(STANDARDS) --root . maintain check --only versions
 
 repo-check:
-	@$(STANDARDS) repo check
+	@$(STANDARDS) --root . maintain check
 
 # Exercise the immutable artifact that a release would publish. This deliberately
 # installs from the lockfile and packs to a temporary directory: local release
@@ -145,11 +142,11 @@ repo-check:
 release-check: check-versions-synced release-check-lock-age release-check-tags release-check-typescript
 
 release-check-lock-age:
-	$(STANDARDS) repo release lock-age packages/typescript/package-lock.json --dest . --exclude-file .github/release-age-exclusions.txt
+	$(STANDARDS) --root . maintain release lock-age packages/typescript/package-lock.json --exclude-file .github/release-age-exclusions.txt
 
 release-check-tags:
-	$(STANDARDS) repo release check-tag typescript-v$$(node -p "require('./packages/typescript/package.json').version") --dest .
-	! $(STANDARDS) repo release check-tag typescript-v0.0.0 --dest .
+	$(STANDARDS) --root . maintain release check-tag typescript-v$$(node -p "require('./packages/typescript/package.json').version")
+	! $(STANDARDS) --root . maintain release check-tag typescript-v0.0.0
 
 release-check-typescript:
-	$(STANDARDS) repo release typescript check --dest .
+	$(STANDARDS) --root . maintain release typescript check

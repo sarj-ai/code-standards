@@ -16,6 +16,7 @@ concurrency:
 jobs:
   scan:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Harden the runner
         uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
@@ -36,7 +37,7 @@ jobs:
         with:
           version: '0.11.32'
       - name: Install trusted scanner
-        run: uv sync --project trusted/packages/lint-configs --frozen --no-dev
+        run: uv sync --project trusted/packages/standards --frozen --no-dev
       - name: Check out candidate as data
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -61,9 +62,8 @@ jobs:
           trap 'rm -f "$policy_file"' EXIT
           install -m 600 /dev/null "$policy_file"
           printf '%s' "$PRIVATE_REFS_TOML" > "$policy_file"
-          trusted/packages/lint-configs/.venv/bin/sarj-standards repo check \
-            --dest candidate \
-            --policy-dest trusted \
+          trusted/packages/standards/.venv/bin/sarj-standards --root candidate maintain check \
+            --policy-root trusted \
             --private-refs-file "$policy_file" \
             --only private-refs \
             --commits "$BASE_SHA..$HEAD_SHA"
