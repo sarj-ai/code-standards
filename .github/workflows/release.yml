@@ -1,11 +1,12 @@
 name: release
 
 # Publishing model:
-# - Push to main: the `detect` job finds which package's manifest `version`
-#   changed vs the previous commit, and the matching publish job runs. Because
+# - Push to main: the `detect` job finds manifest version changes and current
+#   versions missing from their authoritative registry. This automatically
+#   recovers a release skipped by an earlier Actions outage. Because
 #   this workflow runs DIRECTLY on the push (not via workflow_call), PyPI
 #   Trusted Publishing (OIDC) works — reusable workflows are unsupported by PyPI.
-# A push with no version bump publishes nothing (no duplicate-version errors).
+# A push whose current versions are all public publishes nothing.
 
 on:
   push:
@@ -19,7 +20,8 @@ permissions:
   contents: read
 
 jobs:
-  # Detects which package versions changed in the push to main.
+  # Detects changed versions and unpublished current versions. Existing `needs`
+  # edges publish siblings before the compatibility bundle that pins them.
   detect:
     runs-on: ubuntu-latest
     outputs:

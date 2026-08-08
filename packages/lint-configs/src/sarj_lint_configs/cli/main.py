@@ -1440,7 +1440,7 @@ def _run_repo(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one lazy 
                 print(f"created release tag: {tag_name}")
             return 0
         if args.release_cmd == "changes" and args.github_output is not None:
-            changed = release.changed_release_targets(root, before=args.before, after=args.after)
+            changed = release.pending_release_targets(root, before=args.before, after=args.after)
             with args.github_output.open("a", encoding="utf-8") as output:
                 for target, value in changed.items():
                     _ = output.write(f"{target}={'true' if value else 'false'}\n")

@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+from datetime import timedelta
 import json
 from pathlib import Path
 import re
 import sys
+import time
 import tomllib
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Literal, Protocol
@@ -20,7 +22,7 @@ from sarj_lint_configs.libs.release.tags import RELEASE_TARGETS, read_manifest_v
 
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
 
 RegistryKind = Literal["npm", "pypi"]
@@ -43,6 +45,8 @@ class PublicationChecker(Protocol):
 
 class _Args(argparse.Namespace):
     root: Path = Path()
+    attempts: int = 6
+    delay: timedelta = timedelta(seconds=10)
 
 
 _TARGET_PACKAGES: Final[Mapping[str, tuple[RegistryKind, str]]] = MappingProxyType(
@@ -161,18 +165,58 @@ def require_lint_config_dependencies(
     return requirements
 
 
+def wait_for_lint_config_dependencies(
+    root: Path,
+    *,
+    attempts: int = 6,
+    delay: timedelta = timedelta(seconds=10),
+    checker: PublicationChecker = publication_exists,
+    sleeper: Callable[[float], object] = time.sleep,
+) -> tuple[RegistryRequirement, ...]:
+    """Wait boundedly for newly published siblings to become registry-visible."""
+    if attempts < 1:
+        message = "publication attempts must be at least one"
+        raise ValueError(message)
+    requirements = lint_config_requirements(root)
+    missing: tuple[RegistryRequirement, ...] = ()
+    for attempt in range(attempts):
+        missing = tuple(requirement for requirement in requirements if not checker(requirement))
+        if not missing:
+            return requirements
+        if attempt + 1 < attempts:
+            _ = sleeper(delay.total_seconds())
+    rendered = ", ".join(f"{requirement.name}@{requirement.version}" for requirement in missing)
+    message = f"publications unavailable after {attempts} attempt(s): {rendered}"
+    raise ValueError(message)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Thin automation entry point for the lint-config publication preflight."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, required=True)
+    parser.add_argument("--attempts", type=int, default=6)
+    parser.add_argument(
+        "--delay-seconds",
+        dest="delay",
+        type=_duration_from_seconds,
+        default=timedelta(seconds=10),
+    )
     args = parser.parse_args(argv, namespace=_Args())
     try:
-        requirements = require_lint_config_dependencies(args.root)
+        requirements = wait_for_lint_config_dependencies(
+            args.root,
+            attempts=args.attempts,
+            delay=args.delay,
+        )
     except (OSError, TypeError, ValueError) as exc:
         sys.stderr.write(f"error: {exc}\n")
         return 2
     sys.stdout.write(f"verified {len(requirements)} exact compatibility-bundle publications\n")
     return 0
+
+
+def _duration_from_seconds(value: str) -> timedelta:
+    return timedelta(seconds=float(value))
 
 
 if __name__ == "__main__":

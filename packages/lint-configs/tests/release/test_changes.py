@@ -6,12 +6,23 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from sarj_lint_configs.libs.release.changes import changed_release_targets
+from sarj_lint_configs.libs.release.changes import changed_release_targets, pending_release_targets
 from sarj_lint_configs.libs.release.process import ProcessFailureError, ProcessResult
+from sarj_lint_configs.libs.release.tags import RELEASE_TARGETS
 
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from sarj_lint_configs.libs.release.registry import RegistryRequirement
+
+
+def _manifests(root: Path) -> None:
+    for target in RELEASE_TARGETS.values():
+        manifest = root / target.manifest
+        manifest.parent.mkdir(parents=True, exist_ok=True)
+        contents = '{"version":"1.0.0"}\n' if target.format == "json" else 'version = "1.0.0"\n'
+        manifest.write_text(contents, encoding="utf-8")
 
 
 def test_changed_release_targets_detects_only_manifest_version_lines(tmp_path: Path) -> None:
@@ -39,3 +50,52 @@ def test_changed_release_targets_fails_closed_when_git_diff_fails(tmp_path: Path
         _ = changed_release_targets(tmp_path, before="missing", after="after", runner=runner)
 
     assert raised.value.returncode == 128
+
+
+def test_pending_release_targets_recovers_an_unchanged_unpublished_sibling(tmp_path: Path) -> None:
+    _manifests(tmp_path)
+    checked: list[str] = []
+
+    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
+        _ = cwd, capture_output
+        output = '+version = "2.0.0"\n' if argv[-1] == "packages/lint-configs/pyproject.toml" else ""
+        return ProcessResult(0, output)
+
+    def published(requirement: RegistryRequirement) -> bool:
+        name = requirement.name
+        checked.append(name)
+        return name != "sarj-python-lint"
+
+    pending = pending_release_targets(
+        tmp_path,
+        before="before",
+        after="after",
+        runner=runner,
+        checker=published,
+    )
+
+    assert pending["lint-configs"] is True
+    assert pending["python"] is True
+    assert pending["sql"] is False
+    assert "sarj-lint-configs" not in checked
+
+
+def test_pending_release_targets_fails_closed_when_registry_lookup_fails(tmp_path: Path) -> None:
+    _manifests(tmp_path)
+
+    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
+        _ = argv, cwd, capture_output
+        return ProcessResult(0, "")
+
+    def unavailable(_requirement: RegistryRequirement) -> bool:
+        message = "registry unavailable"
+        raise OSError(message)
+
+    with pytest.raises(OSError, match="registry unavailable"):
+        _ = pending_release_targets(
+            tmp_path,
+            before="before",
+            after="after",
+            runner=runner,
+            checker=unavailable,
+        )
