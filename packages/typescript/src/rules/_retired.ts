@@ -38,6 +38,11 @@ export const retiredRules: Readonly<Record<string, RetiredRule>> = {
     reason:
       "Delete the retired entry; application-profile consumers can separately adopt `@sarj/prefer-shadcn-primitives`.",
   },
+  "prefer-single-sentence-comment": {
+    removedIn: "10.0.0",
+    reason:
+      "Delete the config entry and suppressions; use the narrower no-comment-cruft, no-restated-comment, and no-long-comment rules.",
+  },
   "primary-export-file-name": {
     removedIn: "4.0.0",
     reason: "Delete the config entry and suppressions; there is no replacement.",

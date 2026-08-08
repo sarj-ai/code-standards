@@ -26,7 +26,7 @@ import sarj from "@sarj/eslint-plugin";
 export default [sarj.configs.recommended];
 ```
 
-67 rules. Each source under `src/rules/` states one concise claim and links to
+66 rules. Each source under `src/rules/` states one concise claim and links to
 its paired tests. The definition and named test cases are the complete rule
 specification, and `meta.docs.url` points directly to those executable examples.
 

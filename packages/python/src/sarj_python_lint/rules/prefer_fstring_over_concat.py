@@ -66,6 +66,41 @@ _JOIN_RECOMMENDATION_OPERANDS = 5
 # A `<expr> + "<whitespace>"` pair is a terminator, not string building.
 _TERMINATOR_OPERANDS = 2
 
+# These trees contain executable examples and one-off skill utilities rather
+# than application code.  Requiring stylistic rewrites there makes vendored
+# skills harder to update and produced no reviewed true positives.
+_SKILL_ROOTS = frozenset({".agents", ".claude"})
+
+# Calls whose Python contract guarantees a concrete ``str`` result.  Keep the
+# list deliberately small: user functions named ``render``/``serialize`` may
+# return expression objects with an overloaded ``+``.
+_STRING_CALLS = frozenset({"ascii", "bin", "chr", "format", "hex", "oct", "repr", "str"})
+_STRING_METHODS = frozenset(
+    {
+        "capitalize",
+        "casefold",
+        "center",
+        "expandtabs",
+        "format",
+        "format_map",
+        "join",
+        "ljust",
+        "lower",
+        "lstrip",
+        "removeprefix",
+        "removesuffix",
+        "replace",
+        "rjust",
+        "rstrip",
+        "strip",
+        "swapcase",
+        "title",
+        "translate",
+        "upper",
+        "zfill",
+    }
+)
+
 
 class PreferFstringOverConcat(Rule):
     id: str = "prefer-fstring-over-concat"
@@ -78,7 +113,7 @@ class PreferFstringOverConcat(Rule):
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
         """Flag `+` string building that an f-string expresses better."""
-        if "+" not in source or is_generated(path, source):
+        if "+" not in source or is_generated(path, source) or _is_skill_utility(path):
             return []
         tree = parse_or_none(path, source)
         if tree is None:
@@ -90,7 +125,8 @@ class PreferFstringOverConcat(Rule):
         inner: set[int] = set()
         excluded: set[int] = set()
         adds: list[ast.BinOp] = []
-        for node in nodes(tree, ast.BinOp, ast.Call):
+        parents = {id(child): parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
+        for node in nodes(tree, ast.BinOp, ast.Call, ast.JoinedStr):
             if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
                 adds.append(node)
                 for side in (node.left, node.right):
@@ -102,13 +138,17 @@ class PreferFstringOverConcat(Rule):
             elif isinstance(node, ast.Call) and _is_logging_call(node):
                 arguments: list[ast.expr] = [*node.args, *(kw.value for kw in node.keywords)]
                 excluded.update(id(sub) for arg in arguments for sub in walk(arg))
+            elif isinstance(node, ast.JoinedStr):
+                # Rewriting a concat already nested in an f-string merely
+                # trades one interpolation expression for a nested f-string.
+                excluded.update(id(sub) for sub in walk(node) if isinstance(sub, ast.BinOp))
 
         diags: list[Diagnostic] = []
         comment_lines: frozenset[int] | None = None
         for node in adds:
             if id(node) in inner or id(node) in excluded:
                 continue
-            message = _verdict(node)
+            message = _verdict(node, _known_string_names(node, parents))
             if message is None:
                 continue
             if node.end_lineno is not None and node.end_lineno > node.lineno:
@@ -146,7 +186,7 @@ def _is_logging_call(node: ast.Call) -> bool:
     return is_logger_expr(func.value)
 
 
-def _verdict(node: ast.BinOp) -> str | None:
+def _verdict(node: ast.BinOp, known_strings: frozenset[str]) -> str | None:
     """Judge one outermost `+` chain and build its message."""
     literals: list[str] = []
     dynamic: list[ast.expr] = []
@@ -161,6 +201,11 @@ def _verdict(node: ast.BinOp) -> str | None:
         else:
             dynamic.append(operand)
     if not literals or not dynamic:
+        return None
+    # A literal is not sufficient type proof: libraries such as pandas and
+    # SQLAlchemy overload reflected ``+`` on their expression objects.  Only
+    # recommend an f-string when every runtime operand is provably a string.
+    if not all(_is_string_expr(expr, known_strings) for expr in dynamic):
         return None
     if any("{" in text or "}" in text for text in literals):
         return None
@@ -276,3 +321,113 @@ def _is_string_repetition(expr: ast.expr) -> bool:
     if not isinstance(expr, ast.BinOp) or not isinstance(expr.op, ast.Mult):
         return False
     return any(isinstance(side, ast.Constant) and isinstance(side.value, str) for side in (expr.left, expr.right))
+
+
+def _is_skill_utility(path: Path) -> bool:
+    """Report utility files beneath ``.agents/skills`` or ``.claude/skills``."""
+    parts = tuple(part.casefold() for part in path.parts)
+    return any(parts[index] in _SKILL_ROOTS and parts[index + 1] == "skills" for index in range(len(parts) - 1))
+
+
+def _known_string_names(node: ast.BinOp, parents: dict[int, ast.AST]) -> frozenset[str]:
+    """Collect conservative, same-scope string facts visible before ``node``."""
+    scope: ast.AST = node
+    while not isinstance(scope, ast.Module | ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
+        parent = parents.get(id(scope))
+        if parent is None:
+            return frozenset()
+        scope = parent
+
+    known: set[str] = set()
+    if isinstance(scope, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
+        args = scope.args
+        for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs):
+            if arg.annotation is not None and _annotation_is_string(arg.annotation):
+                known.add(arg.arg)
+        if (
+            args.vararg is not None
+            and args.vararg.annotation is not None
+            and _annotation_is_string(args.vararg.annotation)
+        ):
+            known.add(args.vararg.arg)
+        if (
+            args.kwarg is not None
+            and args.kwarg.annotation is not None
+            and _annotation_is_string(args.kwarg.annotation)
+        ):
+            known.add(args.kwarg.arg)
+
+    body: list[ast.stmt] = []
+    if isinstance(scope, ast.Module | ast.FunctionDef | ast.AsyncFunctionDef):
+        body = scope.body
+    for statement in body:
+        if statement.lineno >= node.lineno:
+            break
+        if isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name):
+            if _annotation_is_string(statement.annotation):
+                known.add(statement.target.id)
+            else:
+                known.discard(statement.target.id)
+        elif isinstance(statement, ast.Assign):
+            for target in statement.targets:
+                if not isinstance(target, ast.Name):
+                    continue
+                if _is_string_expr(statement.value, frozenset(known)):
+                    known.add(target.id)
+                else:
+                    known.discard(target.id)
+        elif isinstance(statement, ast.AugAssign) and isinstance(statement.target, ast.Name):
+            known.discard(statement.target.id)
+    return frozenset(known)
+
+
+def _annotation_is_string(annotation: ast.expr) -> bool:
+    """Recognize annotations that guarantee a concrete string value."""
+    if isinstance(annotation, ast.Name):
+        return annotation.id == "str"
+    if isinstance(annotation, ast.Attribute):
+        return annotation.attr == "str" and isinstance(annotation.value, ast.Name) and annotation.value.id == "builtins"
+    if not isinstance(annotation, ast.Subscript):
+        return False
+    wrapper = annotation.value
+    name = wrapper.id if isinstance(wrapper, ast.Name) else wrapper.attr if isinstance(wrapper, ast.Attribute) else ""
+    if name in {"Annotated", "Final"}:
+        first = annotation.slice.elts[0] if isinstance(annotation.slice, ast.Tuple) else annotation.slice
+        return _annotation_is_string(first)
+    if name == "Literal":
+        values = annotation.slice.elts if isinstance(annotation.slice, ast.Tuple) else (annotation.slice,)
+        return bool(values) and all(
+            isinstance(value, ast.Constant) and isinstance(value.value, str) for value in values
+        )
+    return False
+
+
+def _is_string_expr(expr: ast.expr, known_strings: frozenset[str]) -> bool:
+    """Return whether syntax and local annotations prove ``expr`` is a string."""
+    match expr:
+        case ast.Constant(value=str()) | ast.JoinedStr():
+            return True
+        case ast.Name(id=name):
+            return name in known_strings
+        case ast.NamedExpr(value=value):
+            return _is_string_expr(value, known_strings)
+        case ast.Subscript(value=value, slice=index):
+            pass
+        case ast.Call(func=ast.Name(id=name)):
+            return name in _STRING_CALLS
+        case ast.Call(func=ast.Attribute(value=ast.Name(id="json"), attr="dumps")):
+            return True
+        case ast.Call(func=ast.Attribute(value=ast.Name(id="re"), attr="escape"), args=[argument, *_]):
+            return _is_string_expr(argument, known_strings)
+        case ast.Call(func=ast.Attribute(value=value, attr=method)):
+            return method in _STRING_METHODS and _is_string_expr(value, known_strings)
+        case _:
+            return False
+
+    # Indexing/slicing a proven string preserves ``str`` only for integer
+    # positions and slices; a mapping subscript does not inherit its
+    # container's annotation.
+    integer_index = (
+        isinstance(index, ast.Constant) and isinstance(index.value, int) and not isinstance(index.value, bool)
+    )
+    return (isinstance(index, ast.Slice) or integer_index) and _is_string_expr(value, known_strings)

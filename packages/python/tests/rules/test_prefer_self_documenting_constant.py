@@ -11,7 +11,6 @@ from sarj_python_lint.rules.no_restated_comment import NoRestatedComment
 from sarj_python_lint.rules.prefer_self_documenting_constant import (
     PreferSelfDocumentingConstant,
 )
-from sarj_python_lint.rules.prefer_single_sentence_comment import PreferSingleSentenceComment
 from sarj_python_lint.rules.trailing_value_narration import TrailingValueNarration
 
 
@@ -322,7 +321,6 @@ def test_adjacent_comment_rules_do_not_duplicate_the_leading_unit_finding() -> N
         NoCommentCruft(),
         NoRestatedComment(),
         TrailingValueNarration(),
-        PreferSingleSentenceComment(),
         NoLongComment(),
     ]
 
@@ -342,19 +340,6 @@ def test_inline_unit_narration_remains_owned_by_sarj051() -> None:
     ]
 
     assert [finding.code for finding in findings] == ["SARJ051"]
-
-
-def test_comment_budget_warning_remains_visible_beside_specific_constant_warning() -> None:
-    source = "# Timeout in seconds. It matches the provider.\nTIMEOUT = 5\n"
-    path = Path("service.py")
-
-    findings = [
-        finding
-        for rule in (PreferSelfDocumentingConstant(), PreferSingleSentenceComment())
-        for finding in rule.check(path, source)
-    ]
-
-    assert [finding.code for finding in findings] == ["SARJ097", "SARJ090"]
 
 
 def test_cli_reports_the_new_rule_as_a_non_blocking_warning(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

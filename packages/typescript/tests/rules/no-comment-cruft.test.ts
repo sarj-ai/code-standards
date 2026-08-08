@@ -46,8 +46,8 @@ ruleTester.run("no-comment-cruft", rule, {
     },
     // `sarj-noqa` is a directive, not prose.
     { code: "const x = 1;\n// sarj-noqa: SARJ016 — deliberate\nconst y = 2;" },
-    // JSX-expression comments are categorically exempt: `{/* Step 1: Select
-    // Patient */}` mirrors the literal step labels a wizard renders.
+    // JSX-expression comments remain exempt unless they are decorative banners:
+    // `{/* Step 1: Select Patient */}` mirrors the literal label a wizard renders.
     {
       code: "const el = <div>\n  {/* Step 1: Select Patient */}\n  <Picker />\n</div>;",
       filename: "wizard.tsx",
@@ -85,6 +85,14 @@ ruleTester.run("no-comment-cruft", rule, {
     // Prose `word = phrase` with no code-tail is not commented-out code.
     { code: "// count = number of items in the cart\nconst total = 1;" },
     { code: "// delta = new value minus old value\nconst d = 1;" },
+    {
+      name: "preserves prose assignments with explanatory parentheticals",
+      code: "// baseline = the least valuable allowed use (what the land yields untouched)\nconst baseline = chooseBaseline();",
+    },
+    {
+      name: "preserves request-response contracts containing assignments and arrows",
+      code: "export const runtime = 'nodejs';\n// POST /api/concierge { message, reset? }\n//\n// reset=true -> POST {base}/session/reset/{id} -> {ok:true}\n// otherwise -> POST {base}/chat/{id} -> {text, cards}\nexport async function POST() {}",
+    },
     // License header preamble is exempt.
     {
       code: "// Copyright 2023 Acme, Inc.\n// Licensed under the Apache License 2.0.\n// You may not use this file except in compliance.\n// See the License for details.\nimport x from 'y';",
@@ -338,6 +346,12 @@ ruleTester.run("no-comment-cruft", rule, {
       code: "const x = 1;\n/* ================= */\nconst y = 2;",
       errors: [{ messageId: "sectionBanner" }],
     },
+    {
+      name: "flags decorative JSX comments while preserving ordinary JSX labels",
+      code: "const el = <div>\n  {/* ============= B. Money on the table ============= */}\n  <Panel />\n</div>;",
+      filename: "panel.tsx",
+      errors: [{ messageId: "sectionBanner" }],
+    },
     // A separator rule with no arrow head is still a banner (contrast the
     // `req---->res` diagram in `valid`).
     {
@@ -467,13 +481,20 @@ ruleTester.run("no-comment-cruft", rule, {
       code: "// helpers\n// utils\n// misc\n// stuff\nimport x from 'y';",
       errors: [{ messageId: "fileHeaderPreamble" }],
     },
-    // A genuine multi-line commented-out block still fires on every line.
+    // A genuine multi-line commented-out block is one logical finding.
     {
       code: "const x = 1;\n// const a = 1;\n// const b = 2;\nconst y = 2;",
-      errors: [
-        { messageId: "commentedOutCode" },
-        { messageId: "commentedOutCode" },
-      ],
+      errors: [{ messageId: "commentedOutCode" }],
+    },
+    {
+      name: "coalesces the borders of one line-comment banner",
+      code: "const x = 1;\n// ----------------\n// HANDLERS\n// ----------------\nconst y = 2;",
+      errors: [{ messageId: "sectionBanner" }],
+    },
+    {
+      name: "coalesces a contiguous disabled implementation",
+      code: "async function call() {\n  // const response = await fetch(url, {\n  //   method: 'POST',\n  // });\n  // if (!response.ok) {\n  //   throw new Error(await response.text());\n  // }\n}",
+      errors: [{ messageId: "commentedOutCode" }],
     },
     // A real section banner that is NOT a license header still fires.
     {

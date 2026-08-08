@@ -1,4 +1,4 @@
-"""Shared extraction and sentence counting for SARJ090-092."""
+"""Shared extraction and sentence counting for SARJ091-092."""
 
 from __future__ import annotations
 
@@ -64,6 +64,7 @@ class ProseGroup:
     owner_kind: str | None = None
     owner_name: str | None = None
     owner_fully_typed: bool = False
+    typed_restatements: tuple[int, ...] = ()
 
     @property
     def column_encoding(self) -> ColumnEncoding:
@@ -230,6 +231,11 @@ def _docstring_groups(tree: ast.Module) -> list[ProseGroup]:
                 owner_kind,
                 owner_name,
                 isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and _fully_typed(node),
+                (
+                    _typed_restatement_lines(doc, node, first.lineno)
+                    if found and isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    else ()
+                ),
             )
         )
     return out
@@ -253,3 +259,55 @@ def _fully_typed(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
         and (args.vararg is None or args.vararg.annotation is not None)
         and (args.kwarg is None or args.kwarg.annotation is not None)
     )
+
+
+_SECTION_HEADING_RE: Final = re.compile(
+    r"^\s*(Args|Arguments|Parameters|Params|Keyword Args|Keyword Arguments|Returns|Return|Yields|Yield):\s*$"
+)
+_ANY_SECTION_HEADING_RE: Final = re.compile(r"^\s*[A-Za-z][A-Za-z ]+:\s*$")
+_ARG_TYPE_ENTRY_RE: Final = re.compile(r"^\s*([*]{0,2}[A-Za-z_]\w*)\s*\(([^)]+)\)\s*:")
+_NUMPY_ARG_TYPE_ENTRY_RE: Final = re.compile(r"^\s*([*]{0,2}[A-Za-z_]\w*)\s*:\s*([^:]+?)\s*$")
+_RETURN_TYPE_ENTRY_RE: Final = re.compile(r"^\s*([^:]+?)\s*:")
+
+
+def _typed_restatement_lines(
+    doc: str,
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    docstring_line: int,
+) -> tuple[int, ...]:
+    """Locate entries that explicitly repeat types already present in the signature."""
+    annotations = {
+        arg.arg: _normalise_type(ast.unparse(arg.annotation))
+        for arg in (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs)
+        if arg.annotation is not None
+    }
+    if node.args.vararg is not None and node.args.vararg.annotation is not None:
+        annotations[f"*{node.args.vararg.arg}"] = _normalise_type(ast.unparse(node.args.vararg.annotation))
+    if node.args.kwarg is not None and node.args.kwarg.annotation is not None:
+        annotations[f"**{node.args.kwarg.arg}"] = _normalise_type(ast.unparse(node.args.kwarg.annotation))
+    return_type = _normalise_type(ast.unparse(node.returns)) if node.returns is not None else ""
+
+    active: str | None = None
+    result: list[int] = []
+    for index, raw in enumerate(doc.splitlines()):
+        if heading := _SECTION_HEADING_RE.match(raw):
+            active = heading.group(1)
+            continue
+        if _ANY_SECTION_HEADING_RE.match(raw):
+            active = None
+            continue
+        if not raw.strip() or active is None:
+            continue
+        if active in {"Args", "Arguments", "Parameters", "Params", "Keyword Args", "Keyword Arguments"}:
+            match = _ARG_TYPE_ENTRY_RE.match(raw) or _NUMPY_ARG_TYPE_ENTRY_RE.match(raw)
+            if match is not None and _normalise_type(match.group(2)) == annotations.get(match.group(1)):
+                result.append(docstring_line + index)
+        elif match := _RETURN_TYPE_ENTRY_RE.match(raw):
+            if _normalise_type(match.group(1)) == return_type:
+                result.append(docstring_line + index)
+    return tuple(result)
+
+
+def _normalise_type(value: str) -> str:
+    """Normalize insignificant spelling differences in a repeated annotation."""
+    return re.sub(r"\s+", "", value).removeprefix("typing.").removesuffix(",optional").casefold()

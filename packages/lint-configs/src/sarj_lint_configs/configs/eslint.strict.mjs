@@ -973,7 +973,6 @@ export function createConfig(options = {}) {
       "@sarj/prefer-schema-for-api-payload": "error",
       "@sarj/no-client-side-data-fetching": "error",
       "@sarj/prefer-server-actions": "error",
-      "@sarj/prefer-single-sentence-comment": "warn",
       "@sarj/no-unnecessary-use-client": "error",
       "@sarj/no-enum": "error",
       "@sarj/no-raw-env": "error",

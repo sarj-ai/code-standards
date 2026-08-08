@@ -87,12 +87,20 @@ def _bindings(statement: ast.stmt) -> tuple[tuple[str, ast.expr], ...]:
 
 def _mutable_literal_kind(value: ast.expr, *, shadowed_builtins: set[str]) -> str | None:
     match value:
+        case ast.List(elts=[]):
+            return None
         case ast.List():
             return "list"
         case ast.Set():
             return "set"
+        case ast.Dict(keys=[]):
+            return None
         case ast.Dict():
             return "dict"
+        case ast.Call(func=ast.Name(id=kind), args=[], keywords=[]) if (
+            kind in {"set", "dict", "list"} and kind not in shadowed_builtins
+        ):
+            return None
         case ast.Call(func=ast.Name(id=kind)) if kind in {"set", "dict", "list"} and kind not in shadowed_builtins:
             return kind
         case _:
@@ -120,6 +128,7 @@ class _MutationVisitor(ast.NodeVisitor):
     def __init__(self, mutated: set[str]) -> None:
         self.mutated: set[str] = mutated
         self._scopes: list[tuple[set[str], set[str]]] = []
+        self._local_container_roots: list[dict[str, set[str]]] = []
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         self._visit_function(node)
@@ -128,32 +137,48 @@ class _MutationVisitor(ast.NodeVisitor):
         self._visit_function(node)
 
     def visit_Lambda(self, node: ast.Lambda) -> None:
+        for default in (*node.args.defaults, *(item for item in node.args.kw_defaults if item is not None)):
+            self.visit(default)
         locals_ = _argument_names(node.args)
         self._scopes.append((locals_, set()))
+        self._local_container_roots.append({})
         self.visit(node.body)
+        self._local_container_roots.pop()
         self._scopes.pop()
 
     def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        for decorator in node.decorator_list:
+            self.visit(decorator)
+        for default in (*node.args.defaults, *(item for item in node.args.kw_defaults if item is not None)):
+            self.visit(default)
         globals_ = _scope_global_names(node.body)
         locals_ = (_scope_bound_names(node.body) | _argument_names(node.args)) - globals_
         self._scopes.append((locals_, globals_))
+        self._local_container_roots.append({})
         for statement in node.body:
             self.visit(statement)
+        self._local_container_roots.pop()
         self._scopes.pop()
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        for expression in (*node.decorator_list, *node.bases, *(keyword.value for keyword in node.keywords)):
+            self.visit(expression)
         self._scopes.append((_scope_bound_names(node.body), set()))
+        self._local_container_roots.append({})
         for statement in node.body:
             self.visit(statement)
+        self._local_container_roots.pop()
         self._scopes.pop()
 
     def visit_Assign(self, node: ast.Assign) -> None:
         self._record_targets(node.targets)
+        self._remember_local_container_roots(node.targets, node.value)
         self.visit(node.value)
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
         self._record_targets((node.target,))
         if node.value is not None:
+            self._remember_local_container_roots((node.target,), node.value)
             self.visit(node.value)
 
     def visit_AugAssign(self, node: ast.AugAssign) -> None:
@@ -175,8 +200,44 @@ class _MutationVisitor(ast.NodeVisitor):
             isinstance(node.func, ast.Name) and node.func.id in {"all", "any", "frozenset", "iter", "len", "tuple"}
         ):
             for argument in (*node.args, *(keyword.value for keyword in node.keywords)):
-                self._record_name(_root_name(argument))
+                for name in self._module_roots(argument, call_argument=True):
+                    self._record_name(name)
         self.generic_visit(node)
+
+    def _remember_local_container_roots(self, targets: tuple[ast.expr, ...] | list[ast.expr], value: ast.expr) -> None:
+        if not self._local_container_roots:
+            return
+        roots = self._module_roots(value)
+        if not roots:
+            return
+        locals_ = self._scopes[-1][0]
+        aliases = self._local_container_roots[-1]
+        for target in targets:
+            if isinstance(target, ast.Name) and target.id in locals_:
+                aliases.setdefault(target.id, set()).update(roots)
+
+    def _module_roots(self, value: ast.expr, *, call_argument: bool = False) -> set[str]:
+        roots: set[str] = set()
+        direct_root = _root_name(value) if call_argument else None
+        names = (direct_root,) if direct_root is not None else _literal_container_root_names(value)
+        for name in names:
+            alias = next(
+                (scope[name] for scope in reversed(self._local_container_roots) if name in scope),
+                None,
+            )
+            if alias is not None:
+                roots.update(alias)
+            elif self._is_module_reference(name):
+                roots.add(name)
+        return roots
+
+    def _is_module_reference(self, name: str) -> bool:
+        for locals_, globals_ in reversed(self._scopes):
+            if name in globals_:
+                return True
+            if name in locals_:
+                return False
+        return True
 
     def _record_targets(self, targets: tuple[ast.expr, ...] | list[ast.expr]) -> None:
         for target in targets:
@@ -247,6 +308,24 @@ def _root_name(value: ast.expr) -> str | None:
             return _root_name(parent)
         case _:
             return None
+
+
+def _literal_container_root_names(value: ast.expr) -> tuple[str, ...]:
+    match value:
+        case ast.Name(id=name):
+            return (name,)
+        case ast.Attribute(value=parent, attr=method) if method in _MUTATING_METHODS:
+            root = _root_name(parent)
+            return (root,) if root is not None else ()
+        case ast.Dict(keys=keys, values=values):
+            items = (*[key for key in keys if key is not None], *values)
+        case ast.List(elts=items) | ast.Tuple(elts=items) | ast.Set(elts=items):
+            pass
+        case ast.Starred(value=(ast.List() | ast.Tuple()) as item):
+            items = (item,)
+        case _:
+            return ()
+    return tuple(name for item in items for name in _literal_container_root_names(item))
 
 
 def _message(name: str, kind: str) -> str:

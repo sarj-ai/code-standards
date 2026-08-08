@@ -5,29 +5,42 @@ import pytest
 from sarj_python_lint.rules.no_typed_doc_sections import NoTypedDocSections
 
 
-@pytest.mark.parametrize(
-    "section",
-    [
-        "Args",
-        "Arguments",
-        "Parameters",
-        "Params",
-        "Keyword Args",
-        "Keyword Arguments",
-        "Returns",
-        "Return",
-        "Yields",
-        "Yield",
-    ],
-)
-def test_parameter_and_result_sections_are_errors_on_fully_typed_functions(section: str) -> None:
+@pytest.mark.parametrize("section", ["Args", "Arguments", "Parameters", "Params", "Keyword Args", "Keyword Arguments"])
+def test_explicit_parameter_type_restatement_is_rejected(section: str) -> None:
     source = f'''def decode(value: str) -> dict[str, object]:
     """Decode the value.
 
     {section}:
-        Restates the typed signature.
+        value (str): Text to decode.
     """
     return {{}}
+'''
+    findings = NoTypedDocSections().check(Path("app.py"), source)
+    assert len(findings) == 1
+    assert findings[0].line == 5
+
+
+@pytest.mark.parametrize("section", ["Returns", "Return", "Yields", "Yield"])
+def test_explicit_return_type_restatement_is_rejected(section: str) -> None:
+    source = f'''def decode(value: str) -> dict[str, object]:
+    """Decode the value.
+
+    {section}:
+        dict[str, object]: Decoded fields.
+    """
+    return {{}}
+'''
+    assert len(NoTypedDocSections().check(Path("app.py"), source)) == 1
+
+
+def test_numpy_parameter_type_restatement_is_rejected() -> None:
+    source = '''def decode(value: str) -> str:
+    """Decode the value.
+
+    Parameters:
+        value: str
+    """
+    return value
 '''
     assert len(NoTypedDocSections().check(Path("app.py"), source)) == 1
 
@@ -87,7 +100,7 @@ def test_self_does_not_need_an_annotation_for_a_method_to_be_fully_typed() -> No
         """Decode the value.
 
         Args:
-            value: The value.
+            value (str): The value.
         """
         return value
 '''
@@ -116,7 +129,7 @@ def test_partially_typed_signatures_are_out_of_scope(signature: str) -> None:
     assert NoTypedDocSections().check(Path("app.py"), source) == []
 
 
-def test_pr_4213_typed_returns_section_is_rejected() -> None:
+def test_behavioral_returns_contract_is_preserved() -> None:
     source = '''def build_notify_url(url: str, params: dict[str, str | None]) -> str:
     """Assemble the callback URL.
 
@@ -128,4 +141,28 @@ def test_pr_4213_typed_returns_section_is_rejected() -> None:
     """
     return url
 '''
-    assert len(NoTypedDocSections().check(Path("crm_service.py"), source)) == 1
+    assert NoTypedDocSections().check(Path("crm_service.py"), source) == []
+
+
+def test_behavioral_parameter_contract_is_preserved() -> None:
+    source = '''def publish(message: str, *, retry: bool) -> None:
+    """Publish one message.
+
+    Args:
+        message: Wire payload retained for the audit record.
+        retry: Whether a prior partial write may be attempted again.
+    """
+'''
+    assert NoTypedDocSections().check(Path("publisher.py"), source) == []
+
+
+def test_documented_type_must_match_the_signature() -> None:
+    source = '''def decode(value: str) -> str:
+    """Decode a legacy integer payload.
+
+    Args:
+        value (int): Legacy integer supplied by the upstream schema.
+    """
+    return value
+'''
+    assert NoTypedDocSections().check(Path("app.py"), source) == []

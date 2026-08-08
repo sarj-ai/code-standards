@@ -135,6 +135,17 @@ const ASSIGN_RE = /^[A-Za-z_$][\w.$[\]]*\s*(?:=(?![=>])|\+=|-=|\*=)\s*\S.*[;)}\]
 const CALL_RE = /^[A-Za-z_$][\w.$]*\([^)]*\)\s*;?\s*$/;
 const ASSERTION_CODE_RE = /^(?:await\s+)?(?:expect(?:TypeOf)?|assert(?:\.\w+)?)\s*\(/;
 
+// Route contracts are documentation even when their request/response examples
+// contain braces, assignments and arrows that individually resemble code.
+const HTTP_CONTRACT_RE =
+  /\b(?:GET|HEAD|OPTIONS|PATCH|POST|PUT|DELETE)\s+(?:https?:\/\/|\/|\{[A-Za-z_$])/;
+
+// `baseline = the least valuable use (what the land yields untouched)` is an
+// equation in prose, not a disabled assignment. The explanatory relative
+// clause is deliberately required so ordinary call assignments still match.
+const PROSE_ASSIGNMENT_RE =
+  /^[A-Za-z_$][\w.$[\]]*\s*=\s*[A-Za-z][A-Za-z '-]{2,}\s+\((?:how|what|when|where|which|who|why)\b[^)]*\)[.!]?$/i;
+
 // Placeholders that only appear in grammar productions / desugaring examples,
 // never in real code: `%sent%`, `[opt]`, a standalone `<FunctionBody>`, `…` / `...`.
 const PSEUDOCODE_RE = /%\w+%|\[opt\]|(?:^|\s)<[A-Za-z]\w*>|…|\.\.\./;
@@ -158,6 +169,7 @@ function isRegionMarker(text: string): boolean {
 function looksLikeCode(text: string, allowCall = true): boolean {
   const t = text.trim();
   if (!t) return false;
+  if (PROSE_ASSIGNMENT_RE.test(t)) return false;
   if (CODE_KEYWORD_RE.test(t) && CODE_TAIL_RE.test(t)) return true;
   if (ASSIGN_RE.test(t)) return true;
   if (ASSERTION_CODE_RE.test(t)) return true;
@@ -387,6 +399,28 @@ function areAdjacentLineComments(
   );
 }
 
+/** Index of the first comment in the current contiguous `//` run. */
+function lineRunStart(comments: readonly TSESTree.Comment[], index: number): number {
+  let start = index;
+  while (start > 0 && areAdjacentLineComments(comments[start - 1], comments[start])) {
+    start -= 1;
+  }
+  return start;
+}
+
+/** Preserve request/response examples as a unit, including their arrow lines. */
+function runDocumentsHttpContract(
+  comments: readonly TSESTree.Comment[],
+  index: number,
+): boolean {
+  const start = lineRunStart(comments, index);
+  for (let i = start; i < comments.length; i++) {
+    if (i > start && !areAdjacentLineComments(comments[i - 1], comments[i])) break;
+    if (HTTP_CONTRACT_RE.test(stripCommentMarker(comments[i]?.value ?? ""))) return true;
+  }
+  return false;
+}
+
 /**
  * True when the comment at `index` is one line of a contiguous `//` block rather
  * than a lone annotation.
@@ -444,7 +478,7 @@ export default createRule<Options, MessageIds>({
       commentedOutCode:
         "Commented-out code — delete it; git history remembers.",
       sectionBanner:
-        "Section-banner / region comment — structure code with functions, not ASCII rules.",
+        "Section-banner / region comment — remove the decoration or replace it with a named code boundary.",
       fileHeaderPreamble:
         "File-header comment preamble — use a brief doc comment for the why, not a block of `//` lines.",
       commentWall:
@@ -474,6 +508,23 @@ export default createRule<Options, MessageIds>({
 
     function isJsDoc(comment: TSESTree.Comment): boolean {
       return comment.type === "Block" && /^\*/.test(comment.value);
+    }
+
+    /** True for a block comment that is the sole JSX expression content. */
+    function isJsxOnlyComment(comment: TSESTree.Comment): boolean {
+      for (
+        let node: TSESTree.Node | null | undefined = sourceCode.getNodeByRangeIndex(
+          comment.range[0],
+        );
+        node != null;
+        node = node.parent
+      ) {
+        if (node.type === AST_NODE_TYPES.JSXExpressionContainer) {
+          return node.expression.type === AST_NODE_TYPES.JSXEmptyExpression;
+        }
+        if (node.type === AST_NODE_TYPES.Program) return false;
+      }
+      return false;
     }
 
     function findCommentWalls(comments: readonly TSESTree.Comment[]): CommentWall[] {
@@ -586,6 +637,8 @@ export default createRule<Options, MessageIds>({
         const enumerated = comments.filter(
           (c) => c.type === "Line" && ENUMERATION_RE.test(stripCommentMarker(c.value)),
         );
+        const reportedBannerRuns = new Set<number>();
+        const reportedCodeRuns = new Set<number>();
 
         for (let i = 0; i < comments.length; i++) {
           const comment = comments[i];
@@ -607,12 +660,20 @@ export default createRule<Options, MessageIds>({
             }
             continue;
           }
-          if (!isStandalone(comment)) continue;
           if (LICENSE_RE.test(comment.value)) continue;
           const texts = comment.value
             .split("\n")
             .map(stripCommentMarker)
             .filter((l) => l.length > 0 && !isDirective(l));
+
+          // JSX comments are normally UI labels and remain exempt. Decorative
+          // banner shapes are the one unambiguous exception.
+          if (!isStandalone(comment)) {
+            if (isJsxOnlyComment(comment) && texts.some(isBanner)) {
+              context.report({ node: comment, messageId: "sectionBanner" });
+            }
+            continue;
+          }
 
           const firstText = texts[0];
           if (firstText !== undefined && /^(?:todo|fixme)\b/i.test(firstText)) {
@@ -635,8 +696,12 @@ export default createRule<Options, MessageIds>({
             continue;
           }
 
+          const runStart = lineRunStart(comments, i);
           if (texts.some(isBanner)) {
-            context.report({ node: comment, messageId: "sectionBanner" });
+            if (!reportedBannerRuns.has(runStart)) {
+              context.report({ node: comment, messageId: "sectionBanner" });
+              reportedBannerRuns.add(runStart);
+            }
             continue;
           }
           const prev = comments[i - 1];
@@ -649,9 +714,13 @@ export default createRule<Options, MessageIds>({
           const inTypeMembers = container !== null && TYPE_MEMBER_CONTAINERS.has(container.type);
           if (
             hasCommentedOutCode(texts, precedingProse, !inTypeMembers) &&
-            !hasIllustrationLeadInAbove(comments, i)
+            !hasIllustrationLeadInAbove(comments, i) &&
+            !runDocumentsHttpContract(comments, i)
           ) {
-            context.report({ node: comment, messageId: "commentedOutCode" });
+            if (!reportedCodeRuns.has(runStart)) {
+              context.report({ node: comment, messageId: "commentedOutCode" });
+              reportedCodeRuns.add(runStart);
+            }
             continue;
           }
           // Narration only for single-line comments (a multi-line block is
