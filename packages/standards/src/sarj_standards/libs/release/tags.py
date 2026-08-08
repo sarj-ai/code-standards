@@ -201,7 +201,7 @@ def create_release_tags(
     for target in dict.fromkeys(targets):
         tag = _current_tag(target, resolved)
         if _remote_tag_exists(resolved, tag, runner=runner):
-            _require_remote_tag_commit(resolved, tag, resolved_commit, runner=runner)
+            _require_remote_tag_commit(resolved, tag, target, resolved_commit, runner=runner)
             existing.append(tag)
             continue
         requirement = target_requirement(resolved, target)
@@ -236,8 +236,15 @@ def create_release_tags(
     return TagSyncResult(tuple(created), tuple(existing))
 
 
-def _require_remote_tag_commit(root: Path, tag: str, commit: str, *, runner: ProcessRunner) -> None:
-    """Reject an idempotent retry when an existing tag names another commit."""
+def _require_remote_tag_commit(
+    root: Path,
+    tag: str,
+    target_name: str,
+    commit: str,
+    *,
+    runner: ProcessRunner,
+) -> None:
+    """Accept the publishing commit or an older tag whose package tree is unchanged."""
     result = runner(
         (
             "git",
@@ -254,6 +261,17 @@ def _require_remote_tag_commit(root: Path, tag: str, commit: str, *, runner: Pro
     references = dict(line.split("\t", 1)[::-1] for line in result.stdout.splitlines() if "\t" in line)
     actual = references.get(f"refs/tags/{tag}^{{}}", references.get(f"refs/tags/{tag}"))
     if actual == commit:
+        return
+    target_path = RELEASE_TARGETS[target_name].manifest.parent.as_posix()
+    try:
+        runner(
+            ("git", "diff", "--quiet", actual or tag, commit, "--", target_path),
+            cwd=root,
+            capture_output=True,
+        )
+    except ProcessFailureError:
+        pass
+    else:
         return
     msg = f"existing remote tag {tag} points to {actual or 'an unknown object'}, not publishing commit {commit}"
     raise ValueError(msg)

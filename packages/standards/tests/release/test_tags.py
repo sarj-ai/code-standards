@@ -171,6 +171,30 @@ def test_create_release_tags_handles_real_git_missing_tag_exit_code(
     assert result.created == ("python-v1.2.3",)
     assert _git(remote, "rev-list", "-n", "1", "refs/tags/python-v1.2.3") == commit
 
+    (repository / "README.md").write_text("unrelated change\n", encoding="utf-8")
+    _git(repository, "add", "README.md")
+    _git(
+        repository,
+        "-c",
+        "user.email=release-test@example.com",
+        "-c",
+        "user.name=Release Test",
+        "commit",
+        "-m",
+        "unrelated",
+    )
+    newer_commit = _git(repository, "rev-parse", "HEAD")
+
+    retry = create_release_tags(
+        repository,
+        ("python",),
+        commit=newer_commit,
+        publication_checker=lambda _requirement: True,
+    )
+
+    assert retry.created == ()
+    assert retry.existing == ("python-v1.2.3",)
+
 
 def test_create_release_tags_rejects_an_unpublished_manifest_version(tmp_path: Path) -> None:
     _write_release_manifests(tmp_path)
@@ -245,6 +269,8 @@ def test_create_release_tags_rejects_an_existing_tag_on_another_commit(tmp_path:
                 0,
                 "tag-object\trefs/tags/python-v1.2.3\ndifferent-commit\trefs/tags/python-v1.2.3^{}\n",
             )
+        if argv[:3] == ("git", "diff", "--quiet"):
+            raise ProcessFailureError(argv, 1)
         raise AssertionError(argv)
 
     with pytest.raises(ValueError, match="not publishing commit published-commit"):
@@ -255,6 +281,44 @@ def test_create_release_tags_rejects_an_existing_tag_on_another_commit(tmp_path:
             runner=runner,
             publication_checker=lambda _requirement: True,
         )
+
+
+def test_create_release_tags_accepts_unchanged_target_tagged_on_older_commit(tmp_path: Path) -> None:
+    _write_release_manifests(tmp_path)
+
+    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
+        _ = cwd, capture_output
+        if argv[:3] == ("git", "rev-parse", "--verify"):
+            return ProcessResult(0, "published-commit\n")
+        if argv[-1] == "refs/tags/python-v1.2.3":
+            return ProcessResult(0)
+        if argv[-1] == "refs/tags/python-v1.2.3^{}":
+            return ProcessResult(
+                0,
+                "tag-object\trefs/tags/python-v1.2.3\nolder-commit\trefs/tags/python-v1.2.3^{}\n",
+            )
+        if argv == (
+            "git",
+            "diff",
+            "--quiet",
+            "older-commit",
+            "published-commit",
+            "--",
+            "packages/python",
+        ):
+            return ProcessResult(0)
+        raise AssertionError(argv)
+
+    result = create_release_tags(
+        tmp_path,
+        ("python",),
+        commit="publish-sha",
+        runner=runner,
+        publication_checker=lambda _requirement: True,
+    )
+
+    assert result.created == ()
+    assert result.existing == ("python-v1.2.3",)
 
 
 def test_create_release_tags_rejects_a_local_tag_on_another_commit(tmp_path: Path) -> None:
