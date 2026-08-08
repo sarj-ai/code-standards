@@ -179,7 +179,7 @@ def _comment_lines(source: str) -> frozenset[int]:
 
 
 def _is_logging_call(node: ast.Call) -> bool:
-    """Report whether `node` is a logging call, using SARJ017's receiver resolver."""
+    """Report whether `node` is a logging call through the shared receiver resolver."""
     func = node.func
     if not isinstance(func, ast.Attribute) or func.attr not in LOG_METHODS:
         return False

@@ -121,6 +121,15 @@ ruleTester.run("no-conditional-in-test", rule, {
         }
       });`,
     },
+    {
+      filename: TEST_FILE,
+      code: `test('supports node assert as a pinned narrowing guard', () => {
+        assert.ok(result.success);
+        if (result.success) {
+          assert.equal(result.data.value, 1);
+        }
+      });`,
+    },
 
     // --- Guard 2: an assertion spelled as a throwing guard ---
     {
@@ -165,6 +174,27 @@ ruleTester.run("no-conditional-in-test", rule, {
     {
       filename: TEST_FILE,
       code: "test('uses a nullish value', () => { ready ?? expect(value).toBe(1); });",
+    },
+    {
+      filename: TEST_FILE,
+      code: "it('allows conditional expected-value setup', () => { const expected = flag ? 1 : 2; expect(actual).toBe(expected); });",
+    },
+    {
+      filename: TEST_FILE,
+      code: "it('allows conditional error collection before an unconditional assertion', () => { if (missingLabel) errors.push('label'); expect(errors).toEqual(expected); });",
+    },
+    {
+      filename: TEST_FILE,
+      code: `test('allows conditional UI setup before an unconditional assertion', async ({ page, toolbar }) => {
+        if (!(await page.getByTestId('tool').isVisible())) {
+          await toolbar.moreToolsButton.click();
+        }
+        await expect(page.getByTestId('tool')).toBeVisible();
+      });`,
+    },
+    {
+      filename: TEST_FILE,
+      code: "it('allows a switch that only computes setup state', () => { switch (kind) { case 'a': expected = 1; break; default: expected = 2; } expect(actual).toBe(expected); });",
     },
 
     // --- Guard 4: narrowing around assertions erased at run time ---
@@ -229,7 +259,7 @@ ruleTester.run("no-conditional-in-test", rule, {
     },
     {
       filename: TEST_FILE,
-      code: "it('fails with ternary', () => { const a = b ? 1 : 2; expect(a).toBe(1); });",
+      code: "it('fails with a ternary-gated assertion', () => { ready ? expect(a).toBe(1) : undefined; });",
       errors: [{ messageId: "noConditionalInTest" }],
     },
     {
@@ -360,23 +390,6 @@ ruleTester.run("no-conditional-in-test", rule, {
           test.skip();
         }
         expect(await call()).toBe('ok');
-      });`,
-      errors: [{ messageId: "noConditionalInTest" }],
-    },
-    // A branch full of ACTIONS is not "state normalization". Guard 5 asked only
-    // "no assertion, no escape", and a UI branch satisfies both while making one
-    // test take two different paths — `tldraw/apps/examples/e2e/tests/
-    // test-shapes.spec.ts:70,100,131`, silently lost in #183.
-    {
-      filename: TEST_FILE,
-      code: `test('creates shapes', async ({ page, toolbar }) => {
-        for (const tool of tools) {
-          if (!(await page.getByTestId(\`tools.\${tool}\`).isVisible())) {
-            await toolbar.moreToolsButton.click();
-            await page.getByTestId(\`tools.more.\${tool}\`).click();
-          }
-          await expect(page.getByTestId(\`tools.\${tool}\`)).toHaveAttribute('aria-pressed', 'true');
-        }
       });`,
       errors: [{ messageId: "noConditionalInTest" }],
     },

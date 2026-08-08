@@ -79,7 +79,10 @@ def _tables_with_unnameable_cases(tree: ast.Module) -> list[tuple[ast.Call, int]
         values = node.args[_VALUES_ARG_INDEX]
         if not isinstance(values, (ast.List, ast.Tuple)):
             continue
-        count = sum(1 for case in values.elts if _is_unnameable(case))
+        width = _parametrize_width(node.args[0])
+        if width is None:
+            continue
+        count = sum(1 for case in values.elts if _is_unnameable(case, width))
         if count:
             hits.append((node, count))
     return hits
@@ -101,13 +104,35 @@ def _has_keyword(node: ast.Call, name: str) -> bool:
     return any(kw.arg == name for kw in node.keywords)
 
 
-def _is_unnameable(case: ast.expr) -> bool:
+def _parametrize_width(argnames: ast.expr) -> int | None:
+    """Return the statically known number of parameters in a table."""
+    if isinstance(argnames, ast.Constant) and isinstance(argnames.value, str):
+        names = [stripped_name for name in argnames.value.split(",") if (stripped_name := name.strip())]
+        return len(names) or None
+    if isinstance(argnames, (ast.List, ast.Tuple)):
+        if not argnames.elts or not all(
+            isinstance(elt, ast.Constant) and isinstance(elt.value, str) for elt in argnames.elts
+        ):
+            return None
+        return len(argnames.elts)
+    return None
+
+
+def _is_unnameable(case: ast.expr, width: int) -> bool:
     if isinstance(case, ast.Call) and _is_param_wrapper(case.func):
         # An explicitly named case is fine however opaque its payload is.
         if _has_keyword(case, "id"):
             return False
-        return bool(case.args) and all(_is_opaque_value(arg) for arg in case.args)
-    return _is_opaque_value(case)
+        if not case.args:
+            return False
+        if width == 1:
+            return len(case.args) == 1 and _is_opaque_value(case.args[0], single_value=True)
+        return all(_is_opaque_value(arg, single_value=True) for arg in case.args)
+    if width == 1:
+        return _is_opaque_value(case, single_value=True)
+    if not isinstance(case, (ast.Tuple, ast.List)):
+        return False
+    return bool(case.elts) and all(_is_opaque_value(elt, single_value=True) for elt in case.elts)
 
 
 def _is_param_wrapper(func: ast.expr) -> bool:
@@ -116,12 +141,12 @@ def _is_param_wrapper(func: ast.expr) -> bool:
     return isinstance(func, ast.Name) and func.id == _PARAM
 
 
-def _is_opaque_value(value: ast.expr) -> bool:
+def _is_opaque_value(value: ast.expr, *, single_value: bool) -> bool:
     # A multi-column case is a tuple. pytest joins the per-column ids with `-`,
     # so one nameable column is enough to tell the case apart — only an
     # all-opaque case degenerates to `case0`.
-    if isinstance(value, ast.Tuple):
-        return bool(value.elts) and all(_is_opaque_value(elt) for elt in value.elts)
+    if single_value and isinstance(value, (ast.Tuple, ast.List)):
+        return True
     if isinstance(value, ast.Call) and _builds_a_nameable_value(value.func):
         return False
     return isinstance(value, _OPAQUE_NODES)

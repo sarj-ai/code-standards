@@ -5,19 +5,37 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING, final, override
 
-from sarj_sql_lint.rule_base import Diagnostic, Rule, is_dump_file, mask_sql
+from sarj_sql_lint.rule_base import (
+    Diagnostic,
+    Rule,
+    is_dump_file,
+    is_postgres_migration,
+    locate,
+    mask_sql,
+    split_statements,
+)
 
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 
-ADD_CONSTRAINT_KEYWORD = re.compile(r"\bADD\s+CONSTRAINT\b", re.IGNORECASE)
-STRICT_TARGET_KIND_PATTERN = re.compile(
-    r"\bADD\s+(?:CONSTRAINT\s+[a-zA-Z0-9_\"\.-]+\s+)?(CHECK|FOREIGN\s+KEY)\b",
+ALTER_ADD_VALIDATING_CONSTRAINT = re.compile(
+    r"\bALTER\s+TABLE\s+(?:ONLY\s+)?(?P<table>[a-zA-Z0-9_\"\.-]+)\s+"
+    r"ADD\s+(?:CONSTRAINT\s+[a-zA-Z0-9_\"\.-]+\s+)?(?:CHECK|FOREIGN\s+KEY)\b",
+    re.IGNORECASE,
+)
+CREATE_TABLE = re.compile(
+    r"\bCREATE\s+(?:TEMP(?:ORARY)?\s+|UNLOGGED\s+)?TABLE\s+"
+    r"(?:IF\s+NOT\s+EXISTS\s+)?(?P<table>[a-zA-Z0-9_\"\.-]+)",
     re.IGNORECASE,
 )
 NOT_VALID_PATTERN = re.compile(r"\bNOT\s+VALID\b", re.IGNORECASE)
+
+
+def _table_key(raw: str) -> str:
+    """Normalize an unambiguous qualified identifier for same-file comparison."""
+    return ".".join(part.strip('"').lower() for part in raw.split("."))
 
 
 @final
@@ -30,29 +48,24 @@ class AddConstraintNotValid(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_dump_file(source, path):
+        if is_dump_file(source, path) or not is_postgres_migration(path, source):
             return []
 
         diags: list[Diagnostic] = []
         masked = mask_sql(source)
-
-        matches = list(ADD_CONSTRAINT_KEYWORD.finditer(masked))
-        for i, match in enumerate(matches):
-            start = match.start()
-            end = matches[i + 1].start() if i + 1 < len(matches) else len(masked)
-            semi_idx = masked.find(";", start, end)
-            if semi_idx != -1:
-                end = semi_idx
-
-            clause = masked[start:end]
-            if STRICT_TARGET_KIND_PATTERN.search(clause) and not NOT_VALID_PATTERN.search(clause):
-                lineno = masked[:start].count("\n") + 1
-                col = start - masked.rfind("\n", 0, start)
+        created_tables: set[str] = set()
+        for statement in split_statements(masked):
+            text = "\n".join(fragment for _, fragment in statement)
+            created_tables.update(_table_key(created.group("table")) for created in CREATE_TABLE.finditer(text))
+            for match in ALTER_ADD_VALIDATING_CONSTRAINT.finditer(text):
+                if _table_key(match.group("table")) in created_tables or NOT_VALID_PATTERN.search(text) is not None:
+                    continue
+                location = locate(statement, match.start())
                 diags.append(
                     Diagnostic(
                         path=path,
-                        line=lineno,
-                        col=max(1, col),
+                        line=location.line,
+                        col=location.column,
                         code=self.code,
                         message=(
                             "Use `ADD CONSTRAINT ... NOT VALID;` followed by a separate "

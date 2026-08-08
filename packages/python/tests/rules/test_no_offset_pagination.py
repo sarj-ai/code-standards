@@ -200,6 +200,8 @@ NON_PAGINATION = {
     "bigquery_with_offset": 'q = "SELECT x, i FROM UNNEST(arr) AS x WITH OFFSET AS i"\n',
     "english_word": 'msg = "the offset is out of range for this window"\n',
     "column_named_offset": 'q = "ALTER TABLE t ADD COLUMN offset INTEGER NOT NULL DEFAULT 0"\n',
+    "literal_zero": 'q = "SELECT id FROM t ORDER BY id LIMIT 10 OFFSET 0"\n',
+    "zero_padded_zero": 'q = "SELECT id FROM t ORDER BY id LIMIT 10 OFFSET 000"\n',
 }
 
 

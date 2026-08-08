@@ -27,6 +27,10 @@ ruleTester.run("require-zod-form-validation", rule, {
       code: "const name = ZUser.safeParse({ name: formData.get('name') });",
     },
     {
+      name: "accepts inline async parse methods",
+      code: "const a = await ZUser.parseAsync(formData.get('a')); const b = await ZUser.safeParseAsync(formData.get('b'));",
+    },
+    {
       name: "accepts a Schema-suffixed receiver",
       code: "const name = userSchema.parse({ name: formData.get('name') });",
     },
@@ -61,6 +65,14 @@ ruleTester.run("require-zod-form-validation", rule, {
     {
       name: "accepts a binding validated several statements later",
       code: "const emailRaw = formData.get('email');\ntrace('submit', { present: emailRaw !== null });\nconst parsed = ZSignup.parse({ email: emailRaw });",
+    },
+    {
+      name: "tracks a type-asserted binding that is validated later",
+      code: "const emailRaw = formData.get('email') as string;\nconst parsed = ZSignup.parse({ email: emailRaw });",
+    },
+    {
+      name: "tracks a non-null asserted binding that is validated later",
+      code: "const emailRaw = formData.get('email')!;\nconst parsed = ZSignup.parse({ email: emailRaw });",
     },
     {
       name: "accepts a File binding narrowed with instanceof",

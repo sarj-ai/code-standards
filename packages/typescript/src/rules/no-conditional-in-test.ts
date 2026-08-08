@@ -1,5 +1,5 @@
 /**
- * @fileoverview no-conditional-in-test — a conditional in a test body can route around the assertion, so the test passes without asserting.
+ * @fileoverview no-conditional-in-test — a conditional that can route around an assertion lets a test pass without checking its claim.
  *
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-conditional-in-test.test.ts
  */
@@ -221,6 +221,12 @@ const isTypeAssertionCall = (node: TSESTree.Node): boolean =>
 const containsAssertion = (node: TSESTree.Node): boolean =>
   subtreeMatches(node, isAssertionCall);
 
+const containsRuntimeAssertion = (node: TSESTree.Node): boolean =>
+  subtreeMatches(
+    node,
+    (current) => isAssertionCall(current) && !isTypeAssertionCall(current),
+  );
+
 /** `test.skip(...)`, `this.skip()`, `ctx.skip()` — an explicit test escape. */
 const containsSkipCall = (node: TSESTree.Node): boolean =>
   subtreeMatches(
@@ -244,7 +250,8 @@ const containsEscape = (node: TSESTree.Node): boolean =>
     (current) =>
       current.type === AST_NODE_TYPES.ReturnStatement ||
       current.type === AST_NODE_TYPES.ContinueStatement ||
-      current.type === AST_NODE_TYPES.BreakStatement,
+      current.type === AST_NODE_TYPES.BreakStatement ||
+      current.type === AST_NODE_TYPES.ThrowStatement,
     false,
   );
 
@@ -293,8 +300,7 @@ function isPinnedNarrowingGuard(node: TSESTree.IfStatement): boolean {
   subtreeMatches(previous, (current) => {
     if (
       current.type !== AST_NODE_TYPES.CallExpression ||
-      current.callee.type !== AST_NODE_TYPES.Identifier ||
-      current.callee.name !== "expect"
+      !ASSERTION_ROOTS.has(calleeRootName(current) ?? "")
     ) {
       return false;
     }
@@ -393,9 +399,7 @@ function isInertNormalization(node: TSESTree.IfStatement): boolean {
 }
 
 /**
- * State normalization: a branch with no assertion to skip and no way out of the
- * test cannot hide anything. Deliberately narrow — a branch that returns,
- * breaks, continues or calls `.skip(` is the shape the rule exists for.
+ * Known-safe structural guards checked before the assertion-skipping predicate.
  */
 function isExemptIfStatement(node: TSESTree.IfStatement): boolean {
   return (
@@ -404,6 +408,40 @@ function isExemptIfStatement(node: TSESTree.IfStatement): boolean {
     isTypeLevelNarrowing(node) ||
     isInertNormalization(node)
   );
+}
+
+/** Report only when a branch can actually bypass a runtime assertion or the test. */
+function skipsAssertionOrTest(node: TSESTree.IfStatement): boolean {
+  const branches = [node.consequent, node.alternate].filter(
+    (branch): branch is TSESTree.Statement => branch !== null,
+  );
+  if (
+    branches.some(
+      (branch) => containsEscape(branch) || containsSkipCall(branch),
+    )
+  ) {
+    return true;
+  }
+  const asserted = branches.map(containsRuntimeAssertion);
+  return asserted.some(Boolean) &&
+    (node.alternate === null || !asserted.every(Boolean));
+}
+
+function switchSkipsAssertion(node: TSESTree.SwitchStatement): boolean {
+  const asserted = node.cases.map((caseNode) =>
+    caseNode.consequent.some(containsRuntimeAssertion),
+  );
+  if (!asserted.some(Boolean)) return false;
+  return node.cases.every((caseNode) => caseNode.test !== null) ||
+    !asserted.every(Boolean);
+}
+
+function conditionalSkipsAssertion(
+  node: TSESTree.ConditionalExpression,
+): boolean {
+  const consequent = containsRuntimeAssertion(node.consequent);
+  const alternate = containsRuntimeAssertion(node.alternate);
+  return consequent !== alternate;
 }
 
 /**
@@ -425,12 +463,12 @@ export default createRule<Options, MessageIds>({
     type: "problem",
     docs: {
       description:
-        "Disallow conditional logic (if, switch, ternary) in test bodies, which can hide missing assertions or test multiple code paths.",
+        "Disallow test conditionals that can skip a runtime assertion or exit the test before one runs.",
     },
     schema: [],
     messages: {
       noConditionalInTest:
-        "Avoid using conditional logic in tests. It can obscure intent and hide unexecuted assertions. Split the test instead.",
+        "This conditional can skip a runtime assertion or exit the test before it runs. Make the assertion unconditional or split the test.",
     },
   },
   defaultOptions: [],
@@ -447,16 +485,16 @@ export default createRule<Options, MessageIds>({
     };
     return {
       IfStatement(node: TSESTree.IfStatement): void {
-        if (isExemptIfStatement(node)) {
+        if (isExemptIfStatement(node) || !skipsAssertionOrTest(node)) {
           return;
         }
         report(node);
       },
       SwitchStatement(node: TSESTree.SwitchStatement): void {
-        report(node);
+        if (switchSkipsAssertion(node)) report(node);
       },
       ConditionalExpression(node: TSESTree.ConditionalExpression): void {
-        report(node);
+        if (conditionalSkipsAssertion(node)) report(node);
       },
       LogicalExpression(node: TSESTree.LogicalExpression): void {
         if (!isShortCircuitedAssertion(node)) {

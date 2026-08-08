@@ -74,7 +74,7 @@ class NoSelectStar(Rule):
 
         diags: list[Diagnostic] = []
         consumed: set[int] = set()
-        for node in nodes(tree, ast.Constant, ast.BinOp):
+        for node in nodes(tree, ast.Constant, ast.BinOp, ast.JoinedStr):
             if id(node) in consumed:
                 continue
             text = sql_string_value(node)

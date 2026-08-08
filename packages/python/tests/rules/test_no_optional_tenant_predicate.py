@@ -285,3 +285,29 @@ def test_ignores_syntax_error():
 
 def test_ignores_empty_source():
     assert _count("") == 0
+
+
+def test_ignores_conditional_tenant_clause_when_else_raises():
+    src = """
+def build(tenant_id):
+    conditions = []
+    if tenant_id:
+        conditions.append(SQL("tenant_id = %s"))
+    else:
+        raise ValueError("tenant required")
+    return SQL(" AND ").join(conditions)
+"""
+    assert _count(src) == 0
+
+
+def test_still_flags_when_else_only_conditionally_raises():
+    src = """
+def build(tenant_id, strict):
+    conditions = []
+    if tenant_id:
+        conditions.append(SQL("tenant_id = %s"))
+    elif strict:
+        raise ValueError("tenant required")
+    return SQL(" AND ").join(conditions)
+"""
+    assert _count(src) == 1

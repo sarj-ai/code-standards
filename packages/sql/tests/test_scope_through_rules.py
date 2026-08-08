@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS children (
     created_at TIMESTAMP
 );
 CREATE INDEX idx_orders_total ON orders (total);
-ALTER TABLE children ADD CONSTRAINT chk_name CHECK (name <> '');
+ALTER TABLE accounts ADD CONSTRAINT chk_name CHECK (name <> '');
 INSERT INTO children (id) VALUES ('a');
 SELECT * FROM children LIMIT 10 OFFSET 100;
 """

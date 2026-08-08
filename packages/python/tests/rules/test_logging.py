@@ -1,4 +1,4 @@
-"""Direct tests for the logger-receiver resolver shared by SARJ012/SARJ017 (and SARJ062)."""
+"""Direct tests for the logger-receiver resolver shared by logging-aware rules."""
 
 import ast
 

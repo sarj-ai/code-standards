@@ -175,7 +175,7 @@ def _conditionally_asserting_tests(tree: ast.Module) -> list[ast.FunctionDef | a
             # No assertion at all is SARJ043's finding, not this one.
             continue
         facts = _facts_for(node, module_bindings, module_nonempty, imported, helpers)
-        if _guaranteed(node.body, facts):
+        if _guaranteed(node.body, facts) or _terminating_guard_makes_assertions_total(node.body, facts):
             continue
         hits.append(node)
     return hits
@@ -237,6 +237,39 @@ def _marker_name(dec: ast.expr) -> str | None:
 
 def _guaranteed(body: Sequence[ast.stmt], facts: _Facts) -> bool:
     return any(_stmt_guarantees(stmt, facts) for stmt in body)
+
+
+def _terminating_guard_makes_assertions_total(body: Sequence[ast.stmt], facts: _Facts) -> bool:
+    """Prove `if not (a or b): skip(); if a: assert; if b: assert`."""
+    for index, stmt in enumerate(body):
+        if not isinstance(stmt, ast.If) or stmt.orelse or not _exits(stmt.body):
+            continue
+        required = _required_truthy_guards(stmt.test)
+        if not required:
+            continue
+        asserted: set[str] = set()
+        for later in body[index + 1 :]:
+            if isinstance(later, ast.If) and not later.orelse and _guaranteed(later.body, facts):
+                asserted.add(ast.dump(later.test))
+        if required <= asserted:
+            return True
+    return False
+
+
+def _required_truthy_guards(exit_test: ast.expr) -> set[str]:
+    """Find atoms where the exit condition proves at least one must be true."""
+    if isinstance(exit_test, ast.UnaryOp) and isinstance(exit_test.op, ast.Not):
+        operand = exit_test.operand
+        operands = operand.values if isinstance(operand, ast.BoolOp) and isinstance(operand.op, ast.Or) else [operand]
+        return {ast.dump(value) for value in operands}
+    if isinstance(exit_test, ast.BoolOp) and isinstance(exit_test.op, ast.And):
+        required: set[str] = set()
+        for value in exit_test.values:
+            if not (isinstance(value, ast.UnaryOp) and isinstance(value.op, ast.Not)):
+                return set()
+            required.add(ast.dump(value.operand))
+        return required
+    return set()
 
 
 def _branch_ok(body: Sequence[ast.stmt], facts: _Facts) -> bool:

@@ -27,8 +27,6 @@ _TENANT_PREDICATE_RE = re.compile(
     re.IGNORECASE,
 )
 
-_CONDITIONAL_NODES = (ast.If, ast.IfExp)
-
 
 class NoOptionalTenantPredicate(Rule):
     id: str = "no-optional-tenant-predicate"
@@ -94,7 +92,16 @@ def _tenant_fragments(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[tupl
             for fragment in _composition_fragments(node)
             if _mentions_tenant_predicate(fragment)
         )
-        nested = conditional or isinstance(node, _CONDITIONAL_NODES)
+        if isinstance(node, ast.If):
+            # When the complementary arm cannot reach the continuation, a
+            # tenant clause in this arm applies on every path that can execute
+            # the eventual query.
+            for child in node.body:
+                visit(child, conditional=conditional or not _block_terminates(node.orelse))
+            for child in node.orelse:
+                visit(child, conditional=conditional or not _block_terminates(node.body))
+            return
+        nested = conditional or isinstance(node, ast.IfExp)
         for child in children(node):
             visit(child, conditional=nested)
 
@@ -102,6 +109,23 @@ def _tenant_fragments(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[tupl
         visit(child, conditional=False)
     found.sort(key=lambda pair: (pair[0].lineno, pair[0].col_offset))
     return found
+
+
+def _block_terminates(body: list[ast.stmt]) -> bool:
+    """Report only simple blocks proven unable to reach their continuation."""
+    if not body:
+        return False
+    match body[-1]:
+        case ast.Raise() | ast.Return():
+            return True
+        case ast.Assert(test=ast.Constant(value=value)):
+            return not value
+        case ast.If(body=taken, orelse=other):
+            return bool(other) and _block_terminates(taken) and _block_terminates(other)
+        case ast.With() | ast.AsyncWith():
+            return _block_terminates(body[-1].body)
+        case _:
+            return False
 
 
 def _composition_fragments(node: ast.AST) -> list[ast.expr]:

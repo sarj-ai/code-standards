@@ -73,6 +73,12 @@ ruleTester.run("prefer-zod-infer", rule, {
      interface User { id: string; nickname: string }`,
     `${IMPORT}const UserSchema = z.object({ id: z.string(), age: z.number() });
      interface User { id: string; age: string }`,
+    `${IMPORT}const UserSchema = z.object({ id: z.string() });
+     interface User { readonly id: string }`,
+    `${IMPORT}const EventSchema = z.object({ createdAt: z.date() });
+     interface Event { createdAt: CustomDate }`,
+    `${IMPORT}const UserSchema = z.object({ tags: z.array(z.string()).readonly() });
+     interface User { tags: readonly string[] }`,
     `${IMPORT}const UserSchema = z.object({ id: z.string(), deletedAt: z.string().nullable() });
      interface User { id: string; deletedAt: string }`,
 
@@ -187,6 +193,12 @@ ruleTester.run("prefer-zod-infer", rule, {
       name: "reports a strictObject twin",
       code: `${IMPORT}const UserSchema = z.strictObject({ id: z.string(), active: z.boolean() });
              type User = { id: string; active: boolean };`,
+      errors: [{ messageId: "handWrittenTwin" }],
+    },
+    {
+      name: "recognizes the exact Date type inferred by z.date",
+      code: `${IMPORT}const EventSchema = z.object({ createdAt: z.date() });
+             interface Event { createdAt: Date }`,
       errors: [{ messageId: "handWrittenTwin" }],
     },
     // The loose tier reports on name correlation without requiring equal shapes.

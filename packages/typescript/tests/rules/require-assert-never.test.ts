@@ -1,3 +1,6 @@
+import { join } from "node:path";
+
+import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
@@ -8,7 +11,17 @@ RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester();
+const ruleTester = new RuleTester({
+  languageOptions: {
+    parser: tsParser,
+    parserOptions: {
+      projectService: {
+        allowDefaultProject: ["*.ts*", "*/*.ts*", "*/*/*.ts*"],
+      },
+      tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
+    },
+  },
+});
 
 ruleTester.run("require-assert-never", rule, {
   valid: [
@@ -18,6 +31,24 @@ ruleTester.run("require-assert-never", rule, {
         switch (kind) {
           case 'a': break;
           case 'b': break;
+        }
+      `,
+    },
+    {
+      name: "does not require assertNever for an open string discriminant",
+      code: `declare const kind: string;
+        switch (kind) {
+          case 'a': break;
+          default:
+        }
+      `,
+    },
+    {
+      name: "does not report a non-exhaustive finite union",
+      code: `declare const kind: 'a' | 'b';
+        switch (kind) {
+          case 'a': break;
+          default:
         }
       `,
     },
@@ -170,7 +201,7 @@ ruleTester.run("require-assert-never", rule, {
   invalid: [
     {
       name: "reports an undocumented empty default",
-      code: `
+      code: `declare const kind: 'a';
         switch (kind) {
           case 'a': break;
           default:
@@ -181,7 +212,7 @@ ruleTester.run("require-assert-never", rule, {
     },
     {
       name: "reports an undocumented empty block",
-      code: `
+      code: `declare const kind: 'a';
         switch (kind) {
           case 'a': break;
           default: {}
@@ -192,7 +223,7 @@ ruleTester.run("require-assert-never", rule, {
     },
     {
       name: "reports an empty statement in a default",
-      code: `
+      code: `declare const kind: 'a';
         switch (kind) {
           case 'a': break;
           default: ;
@@ -203,10 +234,21 @@ ruleTester.run("require-assert-never", rule, {
     },
     {
       name: "reports nested empty blocks in a default",
-      code: `
+      code: `declare const kind: 'a';
         switch (kind) {
           case 'a': break;
           default: { { } }
+        }
+      `,
+      errors: [{ messageId: "missingAssertNever" }],
+      output: null,
+    },
+    {
+      name: "reports a default containing only erased type declarations",
+      code: `declare const kind: 'a';
+        switch (kind) {
+          case 'a': break;
+          default: { type Remaining = typeof kind; interface Marker {} }
         }
       `,
       errors: [{ messageId: "missingAssertNever" }],

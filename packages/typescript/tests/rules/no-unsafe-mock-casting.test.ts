@@ -32,6 +32,14 @@ ruleTester.run("no-unsafe-mock-casting", rule, {
     },
     { name: "ignores unrelated type assertions", code: "const m = myFn as string;" },
     {
+      name: "ignores an unrelated domain type named Mock",
+      code: "interface Mock { id: string } const m = value as Mock;",
+    },
+    {
+      name: "ignores an unrelated namespace member named Mock",
+      code: 'import type * as domain from "./domain.js"; const m = value as domain.Mock;',
+    },
+    {
       name: "ignores generated file paths",
       code: "const m = myFn as jest.Mock;",
       filename: "test.generated.ts",
@@ -44,48 +52,48 @@ ruleTester.run("no-unsafe-mock-casting", rule, {
   invalid: [
     {
       name: "reports bare Mock assertions",
-      code: "const m = myFn as Mock;",
+      code: 'import type { Mock } from "vitest"; const m = myFn as Mock;',
       errors: [{ messageId: "unsafeMockCast" }],
       output: null,
     },
     {
       name: "reports vi.Mock assertions",
-      code: "const m = myFn as vi.Mock;",
+      code: 'import type * as vi from "vitest"; const m = myFn as vi.Mock;',
       errors: [{ messageId: "unsafeMockCast" }],
     },
     {
       name: "reports jest.Mock assertions",
-      code: "const m = myFn as jest.Mock;",
+      code: 'import type * as jest from "@jest/globals"; const m = myFn as jest.Mock;',
       errors: [{ messageId: "unsafeMockCast" }],
     },
     {
       name: "reports bare MockInstance assertions",
-      code: "const m = myFn as MockInstance;",
+      code: 'import type { MockInstance } from "vitest"; const m = myFn as MockInstance;',
       errors: [{ messageId: "unsafeMockCast" }],
     },
     {
       name: "reports bare SpyInstance assertions",
-      code: "const m = myFn as SpyInstance;",
+      code: 'import type { SpyInstance } from "jest-mock"; const m = myFn as SpyInstance;',
       errors: [{ messageId: "unsafeMockCast" }],
     },
     {
       name: "reports angle-bracket Mock assertions",
-      code: "const m = <Mock>myFn;",
+      code: 'import type { Mock } from "vitest"; const m = <Mock>myFn;',
       errors: [{ messageId: "unsafeMockCast" }],
     },
     {
       name: "reports qualified angle-bracket assertions",
-      code: "const m = <jest.Mock>myFn;",
+      code: 'import type * as jest from "@jest/globals"; const m = <jest.Mock>myFn;',
       errors: [{ messageId: "unsafeMockCast" }],
     },
     {
       name: "reports qualified MockInstance assertions",
-      code: "const m = myFn as vitest.MockInstance;",
+      code: 'import type * as vitest from "vitest"; const m = myFn as vitest.MockInstance;',
       errors: [{ messageId: "unsafeMockCast" }],
     },
     {
       name: "reports qualified SpyInstance assertions",
-      code: "const m = myFn as jest.SpyInstance;",
+      code: 'import type * as jest from "jest-mock"; const m = myFn as jest.SpyInstance;',
       errors: [{ messageId: "unsafeMockCast" }],
     },
   ],

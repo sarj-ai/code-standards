@@ -9,7 +9,7 @@ import pytest
 from sarj_python_lint.__main__ import main
 from sarj_python_lint.rule_base import REPO_BLOB, TESTS_DIR, Diagnostic, Rule
 from sarj_python_lint.rules import REGISTRY
-from sarj_python_lint.rules.no_fstring_in_log import NoFstringInLog
+from sarj_python_lint.rules.invalid_pydantic_field_default import InvalidPydanticFieldDefault
 
 
 if TYPE_CHECKING:
@@ -27,11 +27,11 @@ class _Fake(Rule):
 
 
 def test_examples_path_is_derived_from_the_module_name() -> None:
-    assert NoFstringInLog.examples_path() == f"{TESTS_DIR}/test_no_fstring_in_log.py"
+    assert InvalidPydanticFieldDefault.examples_path() == f"{TESTS_DIR}/test_invalid_pydantic_field_default.py"
 
 
 def test_examples_url_is_the_path_under_the_repo_blob() -> None:
-    assert NoFstringInLog.examples_url() == f"{REPO_BLOB}/{NoFstringInLog.examples_path()}"
+    assert InvalidPydanticFieldDefault.examples_url() == (f"{REPO_BLOB}/{InvalidPydanticFieldDefault.examples_path()}")
 
 
 def test_derivation_follows_a_class_defined_anywhere() -> None:
@@ -43,11 +43,12 @@ def test_every_rule_link_is_unique() -> None:
     assert len(paths) == len(set(paths))
 
 
-@pytest.mark.parametrize("spelling", ["SARJ017", "sarj017", "no-fstring-in-log"])
+@pytest.mark.parametrize("spelling", ["SARJ400", "sarj400", "invalid-pydantic-field-default"])
 def test_explain_accepts_a_code_or_an_id(spelling: str, capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["explain", spelling]) == 0
     assert capsys.readouterr().out == (
-        f"SARJ017  no-fstring-in-log\n{NoFstringInLog.description}\nexamples: {NoFstringInLog.examples_url()}\n"
+        f"SARJ400  invalid-pydantic-field-default\n{InvalidPydanticFieldDefault.description}\n"
+        f"examples: {InvalidPydanticFieldDefault.examples_url()}\n"
     )
 
 

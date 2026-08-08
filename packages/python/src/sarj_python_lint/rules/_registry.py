@@ -20,6 +20,9 @@ from sarj_python_lint.rules.inefficient_string_concat_in_loop import (
     InefficientStringConcatInLoop,
 )
 from sarj_python_lint.rules.interaction_only_test import InteractionOnlyTest
+from sarj_python_lint.rules.invalid_pydantic_field_default import (
+    InvalidPydanticFieldDefault,
+)
 from sarj_python_lint.rules.kwarg_heavy_construction_in_test import KwargHeavyConstructionInTest
 from sarj_python_lint.rules.kwonly_same_type_params import KwonlySameTypeParams
 from sarj_python_lint.rules.mock_without_spec import MockWithoutSpec
@@ -37,7 +40,9 @@ from sarj_python_lint.rules.no_file_level_suppression import NoFileLevelSuppress
 from sarj_python_lint.rules.no_first_party_private_import import (
     NoFirstPartyPrivateImport,
 )
-from sarj_python_lint.rules.no_fstring_in_log import NoFstringInLog
+from sarj_python_lint.rules.no_frozen_after_validator_field_write import (
+    NoFrozenAfterValidatorFieldWrite,
+)
 from sarj_python_lint.rules.no_gen_random_uuid_in_sql import NoGenRandomUuidInSql
 from sarj_python_lint.rules.no_hidden_constructor_fallback import (
     NoHiddenConstructorFallback,
@@ -55,14 +60,10 @@ from sarj_python_lint.rules.no_restated_comment import NoRestatedComment
 from sarj_python_lint.rules.no_secret_in_log import NoSecretInLog
 from sarj_python_lint.rules.no_select_star import NoSelectStar
 from sarj_python_lint.rules.no_sentinel_return_on_except import NoSentinelReturnOnExcept
-from sarj_python_lint.rules.no_sequential_await import NoSequentialAwait
 from sarj_python_lint.rules.no_sleep_in_test_body import NoSleepInTestBody
 from sarj_python_lint.rules.no_stdlib_logging import NoStdlibLogging
 from sarj_python_lint.rules.no_tautological_expect import NoTautologicalExpect
 from sarj_python_lint.rules.no_typed_doc_sections import NoTypedDocSections
-from sarj_python_lint.rules.no_unreachable_after_terminal import (
-    NoUnreachableAfterTerminal,
-)
 from sarj_python_lint.rules.over_mocked_test import OverMockedTest
 from sarj_python_lint.rules.parametrize_case_needs_id import ParametrizeCaseNeedsId
 from sarj_python_lint.rules.phase_label_comment import TestPhaseLabelComment
@@ -117,7 +118,6 @@ from sarj_python_lint.rules.stepdown import Stepdown
 from sarj_python_lint.rules.store_insert_requires_on_conflict import (
     StoreInsertRequiresOnConflict,
 )
-from sarj_python_lint.rules.tautological_mock_assertion import TautologicalMockAssertion
 from sarj_python_lint.rules.test_loops_over_literal_cases import (
     TestLoopsOverLiteralCases,
 )
@@ -135,7 +135,6 @@ if TYPE_CHECKING:
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
-        NoSequentialAwait.id: NoSequentialAwait,
         InefficientStringConcatInLoop.id: InefficientStringConcatInLoop,
         PreferClassRow.id: PreferClassRow,
         PreferStrEnum.id: PreferStrEnum,
@@ -148,13 +147,11 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         PydanticAtBoundaries.id: PydanticAtBoundaries,
         FastapiOpenapiContract.id: FastapiOpenapiContract,
         NoSentinelReturnOnExcept.id: NoSentinelReturnOnExcept,
-        NoUnreachableAfterTerminal.id: NoUnreachableAfterTerminal,
         PreferConstantTimeSecretCompare.id: PreferConstantTimeSecretCompare,
         NoSecretInLog.id: NoSecretInLog,
         PreferTimedeltaForDurations.id: PreferTimedeltaForDurations,
         PreferStructOverNamedtuple.id: PreferStructOverNamedtuple,
         NoCommentCruft.id: NoCommentCruft,
-        NoFstringInLog.id: NoFstringInLog,
         StoreInsertRequiresOnConflict.id: StoreInsertRequiresOnConflict,
         NoQueryWithManyJoins.id: NoQueryWithManyJoins,
         NoAggregationInStoreQuery.id: NoAggregationInStoreQuery,
@@ -188,9 +185,10 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoTautologicalExpect.id: NoTautologicalExpect,
         PreferRealStoreInTests.id: PreferRealStoreInTests,
         PreferLibraryFake.id: PreferLibraryFake,
-        TautologicalMockAssertion.id: TautologicalMockAssertion,
         OverMockedTest.id: OverMockedTest,
         InteractionOnlyTest.id: InteractionOnlyTest,
+        InvalidPydanticFieldDefault.id: InvalidPydanticFieldDefault,
+        NoFrozenAfterValidatorFieldWrite.id: NoFrozenAfterValidatorFieldWrite,
         TriviallyTrueAssertion.id: TriviallyTrueAssertion,
         ConditionalAssertionInTest.id: ConditionalAssertionInTest,
         DuplicateTestBody.id: DuplicateTestBody,

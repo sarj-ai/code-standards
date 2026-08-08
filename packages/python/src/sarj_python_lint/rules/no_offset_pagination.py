@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 # Require a shared dialect parameter after `OFFSET`, excluding prose and
 # BigQuery's `WITH OFFSET AS` array indexing.
 _OFFSET_PAGINATION = re.compile(
-    r"\bOFFSET\s+(?:%s|%\(\w+\)s|\?\d*|:\w+|@\w+|\$\d+|\d+)",
+    r"\bOFFSET\s+(?:%s|%\(\w+\)s|\?\d*|:\w+|@\w+|\$\d+|(?:0*[1-9]\d*))",
     re.IGNORECASE,
 )
 
@@ -44,7 +44,7 @@ class NoOffsetPagination(Rule):
 
         diags: list[Diagnostic] = []
         consumed: set[int] = set()
-        for node in nodes(tree, ast.Constant, ast.BinOp):
+        for node in nodes(tree, ast.Constant, ast.BinOp, ast.JoinedStr):
             if id(node) in consumed:
                 continue
             text = sql_string_value(node)

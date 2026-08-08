@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
 from sarj_python_lint.rules._ast_index import nodes
+from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._paths import is_generated, is_test_path
 
 
@@ -96,7 +97,7 @@ class PreferTimedeltaForDurations(Rule):
         tree = parse_or_none(path, source)
         if tree is None:
             return []
-        settings_fields = _settings_field_ids(tree)
+        exempt_fields = _settings_field_ids(tree) | _pydantic_model_field_ids(tree, ImportIndex.from_tree(tree))
         diags: list[Diagnostic] = []
         for node in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef, ast.AnnAssign):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -109,7 +110,7 @@ class PreferTimedeltaForDurations(Rule):
                         continue
                     self._consider(a.arg, a.annotation, a, diags, path)
             else:
-                if id(node) in settings_fields:
+                if id(node) in exempt_fields:
                     continue
                 name = _target_name(node.target)
                 if name is not None:
@@ -261,6 +262,45 @@ def _settings_field_ids(tree: ast.Module) -> frozenset[int]:
             if isinstance(stmt, ast.AnnAssign):
                 exempt.add(id(stmt))
     return frozenset(exempt)
+
+
+def _pydantic_model_field_ids(tree: ast.Module, imports: ImportIndex) -> frozenset[int]:
+    """Exclude import-proven Pydantic schema fields whose numeric unit is their wire contract."""
+    classes = nodes(tree, ast.ClassDef)
+    by_name: dict[str, list[ast.ClassDef]] = {}
+    for node in classes:
+        by_name.setdefault(node.name, []).append(node)
+    resolved: dict[int, bool] = {}
+
+    def is_model(node: ast.ClassDef, seen: frozenset[int]) -> bool:
+        cached = resolved.get(id(node))
+        if cached is not None:
+            return cached
+        if id(node) in seen:
+            return False
+        result = any(
+            imports.resolves(
+                base,
+                sources=frozenset({"pydantic", "pydantic.main", "pydantic.v1", "pydantic.v1.main"}),
+                symbol="BaseModel",
+            )
+            or (
+                (base_name := _trailing_name(base)) is not None
+                and len(parents := by_name.get(base_name, ())) == 1
+                and is_model(parents[0], seen | {id(node)})
+            )
+            for base in node.bases
+        )
+        resolved[id(node)] = result
+        return result
+
+    return frozenset(
+        id(statement)
+        for node in classes
+        if is_model(node, frozenset())
+        for statement in node.body
+        if isinstance(statement, ast.AnnAssign)
+    )
 
 
 def _resolve_settings_classes(

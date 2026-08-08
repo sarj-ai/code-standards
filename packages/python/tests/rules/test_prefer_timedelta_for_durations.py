@@ -502,6 +502,67 @@ class Config(BaseModel):
     assert len(_check(src)) == 1
 
 
+def test_import_proven_pydantic_wire_duration_field_not_flagged():
+    src = """
+from pydantic import BaseModel, NonNegativeFloat
+
+class TimingEvent(BaseModel):
+    duration_ms: int | None = None
+    ttft_ms: NonNegativeFloat
+"""
+    assert _check(src) == []
+
+
+def test_pydantic_model_subclass_wire_duration_field_not_flagged():
+    src = """
+import pydantic as pd
+
+class WireModel(pd.BaseModel):
+    pass
+
+class TimingEvent(WireModel):
+    duration_ms: float
+"""
+    assert _check(src) == []
+
+
+def test_pydantic_v1_wire_duration_field_not_flagged():
+    src = """
+from pydantic.v1 import BaseModel
+
+class TimingEvent(BaseModel):
+    duration_ms: float
+"""
+    assert _check(src) == []
+
+
+def test_pydantic_model_method_duration_values_are_still_checked():
+    src = """
+from pydantic import BaseModel
+
+class TimingEvent(BaseModel):
+    duration_ms: float
+
+    def normalized(self, timeout_seconds: int) -> None:
+        retry_delay_ms: float = 1.0
+"""
+    diagnostics = _check(src)
+    assert {diagnostic.line for diagnostic in diagnostics} == {7, 8}
+
+
+def test_shadowed_pydantic_basemodel_name_does_not_create_exemption():
+    src = """
+from pydantic import BaseModel
+
+class BaseModel:
+    pass
+
+class DomainConfig(BaseModel):
+    timeout_seconds: float
+"""
+    assert len(_check(src)) == 1
+
+
 def test_plain_function_param_still_flagged_alongside_settings():
     src = """
 class AppSettings(BaseSettings):

@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from sarj_sql_lint.rule_base import Diagnostic
 
 
-P = Path("migration.sql")
+P = Path("supabase/migrations/001.sql")
 
 
 def _check(source: str, path: Path = P) -> list[Diagnostic]:
@@ -27,6 +27,30 @@ def test_check_constraint_without_not_valid_is_reported() -> None:
 
 def test_not_valid_silences_the_check_constraint() -> None:
     assert _check("ALTER TABLE users ADD CONSTRAINT check_age CHECK (age >= 18) NOT VALID;") == []
+
+
+def test_sqlite_migration_is_not_given_postgres_advice() -> None:
+    source = "-- dialect: sqlite\nALTER TABLE users ADD CONSTRAINT check_age CHECK (age >= 18);"
+    assert _check(source, Path("db/migrations/001.sql")) == []
+
+
+def test_table_created_earlier_in_same_migration_needs_no_deferred_validation() -> None:
+    source = "CREATE TABLE users (age INTEGER);\nALTER TABLE users ADD CONSTRAINT check_age CHECK (age >= 18);"
+    assert _check(source) == []
+
+
+def test_reports_unnamed_check_and_foreign_key_constraints() -> None:
+    source = (
+        "ALTER TABLE users ADD CHECK (age >= 18);\nALTER TABLE users ADD FOREIGN KEY (team_id) REFERENCES teams(id);"
+    )
+    assert len(_check(source)) == 2
+
+
+def test_reports_multiline_add_constraint() -> None:
+    source = "ALTER TABLE users\nADD CONSTRAINT check_age\nCHECK (age >= 18);"
+    diags = _check(source)
+    assert len(diags) == 1
+    assert diags[0].line == 1
 
 
 def test_unique_constraint_is_not_a_validating_constraint() -> None:

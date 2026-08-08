@@ -10,6 +10,7 @@ RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
 const ruleTester = new RuleTester();
+const zod = (code: string): string => `import { z } from "zod"; ${code}`;
 
 ruleTester.run("zod-naming-convention", rule, {
   valid: [
@@ -85,6 +86,18 @@ ruleTester.run("zod-naming-convention", rule, {
     },
     // Non-Zod call expressions are ignored
     { code: "const user = createUser({ name: 'Alice' });" },
+    {
+      name: "does not confuse a resolved non-Zod z binding for Zod",
+      code: 'import z from "zero-lib"; const user = z.object({ name: z.string() });',
+    },
+    {
+      name: "does not confuse a local z binding for Zod",
+      code: "const z = localSchemaBuilder; const user = z.object({ name: z.string() });",
+    },
+    {
+      name: "does not guess that an unresolved ambient z is Zod",
+      code: "const user = z.object({ name: z.string() });",
+    },
     // Non-CallExpression initializers are ignored
     { code: "const greeting = 'hello';" },
     // No initializer at all
@@ -113,71 +126,76 @@ ruleTester.run("zod-naming-convention", rule, {
   invalid: [
     {
       name: "does not treat a benchmarking filename as a benchmark directory",
-      code: "const user = z.object({ a: z.string() });",
+      code: zod("const user = z.object({ a: z.string() });"),
       filename: "/repo/src/benchmarking-report.ts",
       errors: [{ messageId: "zodSchemaName" }],
     },
     {
       name: "does not treat workbench as a bench directory",
-      code: "const user = z.object({ a: z.string() });",
+      code: zod("const user = z.object({ a: z.string() });"),
       filename: "/repo/src/lib/workbench/schemas.ts",
       errors: [{ messageId: "zodSchemaName" }],
     },
     {
       name: "reports a name with no schema marker",
-      code: 'const user = z.object({ a: z.string() });',
+      code: zod('const user = z.object({ a: z.string() });'),
       errors: [{ messageId: "zodSchemaName" }],
     },
     {
       name: "reports a schema builder chain",
-      code: 'const user = z.object({ a: z.string() }).strict();',
+      code: 'import { z as schema } from "zod"; const user = schema.object({ a: schema.string() }).strict();',
+      errors: [{ messageId: "zodSchemaName" }],
+    },
+    {
+      name: "reports schemas rooted in the Zod coerce namespace",
+      code: 'import { z } from "zod"; const user = z.coerce.string();',
       errors: [{ messageId: "zodSchemaName" }],
     },
     {
       name: "requires the prefix even when a prefix-only name contains schema",
-      code: 'const userschema = z.object({ a: z.string() });',
+      code: zod('const userschema = z.object({ a: z.string() });'),
       options: [{ convention: "prefix" }],
       errors: [{ messageId: "zPrefix" }],
     },
     // Direct z.object() matching neither convention.
     {
-      code: "const User = z.object({ name: z.string() });",
+      code: zod("const User = z.object({ name: z.string() });"),
       errors: [{ messageId: "zodSchemaName" }],
     },
     // Chained z.object().extend() matching neither convention.
     {
-      code: "const User = z.object({ name: z.string() }).extend({ age: z.number() });",
+      code: zod("const User = z.object({ name: z.string() }).extend({ age: z.number() });"),
       errors: [{ messageId: "zodSchemaName" }],
     },
     // Lowercase `z` prefix is not the prefix convention (needs `Z<Capital>`).
     {
-      code: "const zUser = z.object({ name: z.string() });",
+      code: zod("const zUser = z.object({ name: z.string() });"),
       errors: [{ messageId: "zodSchemaName" }],
     },
     // Even deeper chains still get flagged
     {
-      code: "const User = z.object({}).extend({}).refine(() => true);",
+      code: zod("const User = z.object({}).extend({}).refine(() => true);"),
       errors: [{ messageId: "zodSchemaName" }],
     },
     // z.enum() — schema, but wrong name
     {
-      code: "const Role = z.enum(['admin', 'user']);",
+      code: zod("const Role = z.enum(['admin', 'user']);"),
       errors: [{ messageId: "zodSchemaName" }],
     },
     {
       name: "does not silently add role suffixes to the default convention",
-      code: "const UserInput = z.object({ name: z.string() });",
+      code: zod("const UserInput = z.object({ name: z.string() });"),
       errors: [{ messageId: "zodSchemaName" }],
     },
     // A team pinned to the prefix convention still rejects the suffix form.
     {
-      code: "const userSchema = z.object({ name: z.string() });",
+      code: zod("const userSchema = z.object({ name: z.string() });"),
       options: [{ convention: "prefix" }],
       errors: [{ messageId: "zPrefix" }],
     },
     // ...and vice versa.
     {
-      code: "const ZUser = z.object({ name: z.string() });",
+      code: zod("const ZUser = z.object({ name: z.string() });"),
       options: [{ convention: "suffix" }],
       errors: [{ messageId: "schemaSuffix" }],
     },

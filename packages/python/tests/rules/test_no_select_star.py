@@ -227,11 +227,9 @@ def test_star_in_non_first_projection_should_fire():
     assert len(_check('q = "SELECT id, * FROM call"\n')) == 1
 
 
-@pytest.mark.xfail(
-    reason="FN: f-string with interpolation between the star and FROM "
-    '(`f"SELECT * {cols} FROM call"`) splits SELECT and FROM across separate Constant '
-    "segments, so neither segment matches _QUERY_SHAPE.",
-    strict=True,
-)
 def test_fstring_interp_between_star_and_from_should_fire():
     assert len(_check('q = f"SELECT * {cols} FROM call"\n')) == 1
+
+
+def test_interpolation_cannot_manufacture_select_star_tokens():
+    assert _check('q = f"{select_clause} {projection} FROM call"\n') == []

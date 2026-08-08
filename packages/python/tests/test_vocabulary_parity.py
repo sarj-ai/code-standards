@@ -20,7 +20,7 @@ def _ts_string_set(source: str, name: str) -> set[str]:
 
 
 def test_log_methods_are_one_set_in_python() -> None:
-    """A second copy is how SARJ012 came to disagree with SARJ017."""
+    """Reject private copies that can drift from the security sink vocabulary."""
     rules = Path(__file__).resolve().parent.parent / "src" / "sarj_python_lint" / "rules"
     redefiners = [
         path.name

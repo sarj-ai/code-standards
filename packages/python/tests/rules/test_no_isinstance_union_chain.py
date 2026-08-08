@@ -1018,3 +1018,41 @@ def handle(subject):
 def test_nested_boolop_walrus_mixed_guard_not_flagged():
     src = _two_arm("isinstance(x, Foo) and (y := x.v)", "isinstance(x, Bar)")
     assert _check(src) == []
+
+
+def test_shadowed_isinstance_builtin_is_exempt():
+    src = """
+class A: pass
+class B: pass
+def isinstance(value, kind): return predicate(value, kind)
+def render(value):
+    if isinstance(value, A): return one(value)
+    elif isinstance(value, B): return two(value)
+    else: raise TypeError
+"""
+    assert _check(src) == []
+
+
+def test_truthy_assert_in_else_is_not_terminal():
+    src = """
+class A: pass
+class B: pass
+def render(value, ready):
+    if isinstance(value, A): return one(value)
+    elif isinstance(value, B): return two(value)
+    else: assert ready
+    finish(value)
+"""
+    assert _check(src) == []
+
+
+def test_literal_false_assert_in_else_is_terminal():
+    src = """
+class A: pass
+class B: pass
+def render(value):
+    if isinstance(value, A): return one(value)
+    elif isinstance(value, B): return two(value)
+    else: assert False, "unreachable"
+"""
+    assert len(_check(src)) == 1

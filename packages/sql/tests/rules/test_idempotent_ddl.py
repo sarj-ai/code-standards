@@ -10,8 +10,8 @@ if TYPE_CHECKING:
     from sarj_sql_lint.rule_base import Diagnostic
 
 
-def _check(source: str) -> list[Diagnostic]:
-    return IdempotentDdl().check(Path("migration.sql"), source)
+def _check(source: str, path: Path = Path("db/migrations/001.sql")) -> list[Diagnostic]:
+    return IdempotentDdl().check(path, source)
 
 
 def test_flags_create_table_without_if_not_exists():
@@ -27,6 +27,17 @@ def test_allows_create_table_if_not_exists():
 def test_flags_create_temp_table():
     src = "CREATE TEMP TABLE scratch (id INT);"
     assert len(_check(src)) == 1
+
+
+def test_ignores_runtime_query_temp_table() -> None:
+    src = "CREATE TEMP TABLE scratch (id INT);"
+    assert _check(src, Path("queries/scratch.sql")) == []
+
+
+def test_flags_multiline_create_table() -> None:
+    diags = _check("CREATE\nTABLE orders (id BIGSERIAL PRIMARY KEY);")
+    assert len(diags) == 1
+    assert diags[0].line == 1
 
 
 def test_flags_create_unlogged_table():

@@ -125,6 +125,11 @@ ruleTester.run("no-positional-tuple-return", rule, {
       errors: [{ messageId: "noPositionalTupleReturn" }],
     },
     {
+      name: "rejects a string-literal interface method returning a tuple",
+      code: 'export interface Loader { "load pair"(): [string, number]; }',
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
       name: "rejects an exported function-type alias returning a tuple",
       code: "export type Loader = () => [string, number];",
       errors: [{ messageId: "noPositionalTupleReturn" }],
@@ -160,6 +165,11 @@ ruleTester.run("no-positional-tuple-return", rule, {
     {
       name: "rejects an exported interface callable property returning a tuple",
       code: "export interface Loader { load: () => [string, number]; }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects a string-literal callable property returning a tuple",
+      code: 'export interface Loader { "load pair": () => [string, number]; }',
       errors: [{ messageId: "noPositionalTupleReturn" }],
     },
     {
