@@ -270,10 +270,10 @@ def _scope_bound_names(body: list[ast.stmt]) -> set[str]:
                 names.update(target.id for target in targets if isinstance(target, ast.Name))
             case ast.AnnAssign(target=ast.Name(id=name)) | ast.AugAssign(target=ast.Name(id=name)):
                 names.add(name)
-            case ast.Import(names=aliases) | ast.ImportFrom(names=aliases):
-                names.update(alias.asname or alias.name.split(".", maxsplit=1)[0] for alias in aliases)
-            case ast.FunctionDef(name=name) | ast.AsyncFunctionDef(name=name) | ast.ClassDef(name=name):
-                names.add(name)
+            case ast.Import() | ast.ImportFrom():
+                names.update(alias.asname or alias.name.split(".", maxsplit=1)[0] for alias in statement.names)
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
+                names.add(statement.name)
             case _:
                 pass
     return names
@@ -294,8 +294,8 @@ def _module_bound_names(tree: ast.Module) -> set[str]:
 
 def _mutated_target(target: ast.expr) -> str | None:
     match target:
-        case ast.Subscript(value=value) | ast.Attribute(value=value):
-            return _root_name(value)
+        case ast.Subscript() | ast.Attribute():
+            return _root_name(target.value)
         case _:
             return None
 
@@ -304,8 +304,8 @@ def _root_name(value: ast.expr) -> str | None:
     match value:
         case ast.Name(id=name):
             return name
-        case ast.Subscript(value=parent) | ast.Attribute(value=parent):
-            return _root_name(parent)
+        case ast.Subscript() | ast.Attribute():
+            return _root_name(value.value)
         case _:
             return None
 

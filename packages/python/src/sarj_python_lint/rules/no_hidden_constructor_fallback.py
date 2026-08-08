@@ -233,8 +233,8 @@ def _directly_bound_names(statement: ast.stmt) -> set[str]:
             return {name for target in targets for name in _target_names(target)}
         case ast.AnnAssign(target=target):
             return _target_names(target)
-        case ast.FunctionDef(name=name) | ast.AsyncFunctionDef(name=name) | ast.ClassDef(name=name):
-            return {name}
+        case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
+            return {statement.name}
         case _:
             return set()
 
@@ -593,20 +593,16 @@ def _calls_with_shadowing(
     nested_scope_base: frozenset[str] | None = None,
 ) -> Iterator[tuple[ast.Call, frozenset[str]]]:
     match node:
-        case (
-            ast.ListComp(generators=generators, elt=elt)
-            | ast.SetComp(generators=generators, elt=elt)
-            | ast.GeneratorExp(generators=generators, elt=elt)
-        ):
+        case ast.ListComp() | ast.SetComp() | ast.GeneratorExp():
             lexical_parent = nested_scope_base if nested_scope_base is not None else shadowed
             comprehension_shadowed = lexical_parent
-            for index, generator in enumerate(generators):
+            for index, generator in enumerate(node.generators):
                 iterable_shadowed = shadowed if index == 0 else comprehension_shadowed
                 yield from _calls_with_shadowing(generator.iter, iterable_shadowed)
                 comprehension_shadowed |= frozenset(_target_names(generator.target))
                 for condition in generator.ifs:
                     yield from _calls_with_shadowing(condition, comprehension_shadowed)
-            yield from _calls_with_shadowing(elt, comprehension_shadowed)
+            yield from _calls_with_shadowing(node.elt, comprehension_shadowed)
             return
         case ast.DictComp(generators=generators, key=key, value=value):
             lexical_parent = nested_scope_base if nested_scope_base is not None else shadowed
@@ -627,20 +623,17 @@ def _calls_with_shadowing(
             lexical_parent = nested_scope_base if nested_scope_base is not None else shadowed
             yield from _calls_with_shadowing(body, lexical_parent | _scope_bindings(node))
             return
-        case (
-            ast.FunctionDef(decorator_list=decorators, args=args, body=body)
-            | ast.AsyncFunctionDef(decorator_list=decorators, args=args, body=body)
-        ):
+        case ast.FunctionDef() | ast.AsyncFunctionDef():
             outer_nodes = [
-                *decorators,
-                *args.defaults,
-                *(default for default in args.kw_defaults if default is not None),
+                *node.decorator_list,
+                *node.args.defaults,
+                *(default for default in node.args.kw_defaults if default is not None),
             ]
             for outer in outer_nodes:
                 yield from _calls_with_shadowing(outer, shadowed, nested_scope_base)
             lexical_parent = nested_scope_base if nested_scope_base is not None else shadowed
             local_shadowed = lexical_parent | _scope_bindings(node)
-            for statement in body:
+            for statement in node.body:
                 yield from _calls_with_shadowing(statement, local_shadowed)
             return
         case ast.ClassDef(decorator_list=decorators, bases=bases, keywords=keywords, body=body):

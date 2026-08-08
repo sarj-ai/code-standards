@@ -67,8 +67,8 @@ def _child_context(node: ast.AST, field: str, *, in_function: bool, in_loop: boo
 def _is_generator_marker(stmt: ast.stmt) -> bool:
     # An unreachable yield still changes the function into a generator, so it is load-bearing.
     match stmt:
-        case ast.Expr(value=value) | ast.Assign(value=value) | ast.AugAssign(value=value) | ast.AnnAssign(value=value):
-            return isinstance(value, (ast.Yield, ast.YieldFrom))
+        case ast.Expr() | ast.Assign() | ast.AugAssign() | ast.AnnAssign():
+            return isinstance(stmt.value, (ast.Yield, ast.YieldFrom))
         case _:
             return False
 

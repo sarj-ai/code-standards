@@ -355,8 +355,8 @@ def _is_sentinel(value: ast.expr) -> bool:
             # None, False, or empty string.
             return literal is None or literal is False or (isinstance(literal, str) and not literal)
         # `set()` is a call, not a Set node; `{}` is a Dict.
-        case ast.List(elts=elements) | ast.Tuple(elts=elements) | ast.Set(elts=elements):
-            return not elements
+        case ast.List() | ast.Tuple() | ast.Set():
+            return not value.elts
         case ast.Dict(keys=keys):
             return not keys
         # `set()` call with no args.

@@ -10,7 +10,7 @@ uv tool install sarj-python-lint
 
 ```yaml
 - repo: https://github.com/sarj-ai/standards
-  rev: python-v0.53.0
+  rev: python-v0.54.0
   hooks:
     - id: sarj-no-sequential-await
     - id: sarj-inefficient-string-concat-in-loop
@@ -28,7 +28,22 @@ uv tool install sarj-python-lint
     - id: sarj-no-comment-cruft
     - id: sarj-no-fstring-in-log
     - id: sarj-prefer-non-nullable-collection      # SARJ082
+    - id: sarj-prefer-match-type-dispatch          # SARJ080
 ```
+
+### Concise match/case dispatch
+
+`SARJ080` owns explicit runtime type dispatch. In addition to converting safe
+`isinstance` ladders, it rejects a class OR-pattern that repeats the same
+keyword capture in every alternative when the match subject is a stable name.
+Prefer `case First() | Second(): use(value.body)` over repeating
+`body=body` in every class pattern.
+
+The shared-attribute arm skips guards, effectful match subjects, mixed pattern
+kinds, different source attributes, unused captures, and bodies that rebind the
+subject or captured name. It has no autofix because the matched types must
+guarantee the shared attribute; the diagnostic leaves that type-level check to
+the developer.
 
 ### FastAPI OpenAPI contracts (0.44.0)
 

@@ -300,8 +300,8 @@ def _stmt_always_fails(stmt: ast.stmt) -> bool:
             return _is_falsy_literal(test)
         case ast.If(body=body, orelse=orelse):
             return _always_fails(body) and bool(orelse) and _always_fails(orelse)
-        case ast.With(body=body) | ast.AsyncWith(body=body):
-            return _always_fails(body)
+        case ast.With() | ast.AsyncWith():
+            return _always_fails(stmt.body)
         case ast.Expr(value=value):
             return _is_failure_call(value)
         case _:

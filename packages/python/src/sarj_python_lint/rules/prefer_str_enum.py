@@ -1013,8 +1013,8 @@ def _is_wire_lookup(value: ast.expr, blocked_call_names: frozenset[str] = frozen
             return any(_is_wire_lookup(item, blocked_call_names) for item in values)
         case ast.IfExp(body=body, orelse=orelse):
             return _is_wire_lookup(body, blocked_call_names) or _is_wire_lookup(orelse, blocked_call_names)
-        case ast.Await(value=inner) | ast.FormattedValue(value=inner):
-            return _is_wire_lookup(inner, blocked_call_names)
+        case ast.Await() | ast.FormattedValue():
+            return _is_wire_lookup(value.value, blocked_call_names)
         case ast.JoinedStr(values=values):
             return any(_is_wire_lookup(item, blocked_call_names) for item in values)
         case ast.BinOp(left=left, right=right):

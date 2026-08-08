@@ -200,8 +200,8 @@ def _is_literal(node: ast.expr) -> bool:
             # `-1` is a negation of a constant, not a constant; without this,
             # `assertEqual(-1, -1)` would slip through.
             return _is_literal(operand)
-        case ast.List(elts=elements) | ast.Set(elts=elements) | ast.Tuple(elts=elements):
-            return all(_is_literal(element) for element in elements)
+        case ast.List() | ast.Set() | ast.Tuple():
+            return all(_is_literal(element) for element in node.elts)
         case ast.Dict(keys=keys, values=values):
             return all(key is not None and _is_literal(key) for key in keys) and all(
                 _is_literal(value) for value in values

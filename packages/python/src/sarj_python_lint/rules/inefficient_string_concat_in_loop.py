@@ -213,8 +213,8 @@ def _collect_reassignments(node: ast.AST, reassigns: dict[str, list[int]]) -> No
 def _iter_binding_targets(target: ast.expr) -> Iterator[ast.Name | ast.Attribute]:
     """Yield the Name / Attribute leaves a binding target rebinds."""
     match target:
-        case ast.Tuple(elts=elements) | ast.List(elts=elements):
-            for elt in elements:
+        case ast.Tuple() | ast.List():
+            for elt in target.elts:
                 yield from _iter_binding_targets(elt)
         case ast.Starred(value=value):
             yield from _iter_binding_targets(value)

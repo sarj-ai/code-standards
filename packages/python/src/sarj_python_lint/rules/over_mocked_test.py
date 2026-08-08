@@ -438,8 +438,8 @@ def _assigned_names(value: ast.expr) -> list[str]:
     match value:
         case ast.Name(id=name):
             return [name]
-        case ast.List(elts=elements) | ast.Tuple(elts=elements):
-            return [element.id for element in elements if isinstance(element, ast.Name)]
+        case ast.List() | ast.Tuple():
+            return [element.id for element in value.elts if isinstance(element, ast.Name)]
         case ast.Call(args=args, keywords=keywords):
             return [
                 *(arg.id for arg in args if isinstance(arg, ast.Name)),

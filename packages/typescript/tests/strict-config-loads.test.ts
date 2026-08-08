@@ -85,6 +85,10 @@ async function configFor(filePath: string): Promise<Linter.Config> {
   return (await eslint.calculateConfigForFile(filePath)) as Linter.Config;
 }
 
+function severityOf(setting: unknown): unknown {
+  return Array.isArray(setting) ? (setting as readonly unknown[])[0] : setting;
+}
+
 describe("the shipped eslint.strict.mjs actually loads", () => {
   it.each(CONFIG_FACTORIES)("%s discovers nested workspace type projects", (_name, createConfig) => {
     const config = createConfig({ tsconfigRootDir: NESTED_MONOREPO_ROOT });
@@ -214,7 +218,7 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
     const entries = applicationConfig as Linter.Config[];
     const globalEntry = entries.find(
       (entry) =>
-        entry.rules?.["@sarj/prefer-shadcn-primitives"] === "warn",
+        entry.rules?.["@sarj/prefer-shadcn-primitives"] === "error",
     );
     expect(globalEntry).toBeDefined();
 
@@ -232,6 +236,19 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
         "**/perf-regression/**",
       ]),
     );
+  });
+
+  it("keeps every enabled custom rule at error severity", () => {
+    const nonErrors = [strictConfig, applicationConfig]
+      .flatMap((config) => config as Linter.Config[])
+      .flatMap((entry) => Object.entries(entry.rules ?? {}))
+      .filter(
+        ([rule, setting]) =>
+          rule.startsWith("@sarj/") && setting !== "off" && setting !== 0,
+      )
+      .filter(([, setting]) => severityOf(setting) !== "error")
+      .map(([rule]) => rule);
+    expect(nonErrors).toEqual([]);
   });
 
   /**

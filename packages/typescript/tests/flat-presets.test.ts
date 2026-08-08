@@ -119,4 +119,17 @@ describe("configs.recommended / configs.strict are flat config", () => {
       .map(([rule]) => rule);
     expect(weaker).toEqual([]);
   });
+
+  it.each(PRESETS)("%s treats every active custom rule as an error", (name) => {
+    const entries = Object.entries(plugin.configs[name].rules);
+    const nonErrors = entries
+      .filter(([, setting]) => {
+        const severity = Array.isArray(setting)
+          ? (setting as readonly unknown[])[0]
+          : setting;
+        return severity !== "error";
+      })
+      .map(([rule]) => rule);
+    expect(nonErrors).toEqual([]);
+  });
 });

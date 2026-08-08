@@ -306,8 +306,8 @@ def _self_attr_access(func: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[set
             case ast.Assign(targets=targets):
                 for target in targets:
                     _mark_write(target, write_positions)
-            case ast.AugAssign(target=target) | ast.AnnAssign(target=target):
-                _mark_write(target, write_positions)
+            case ast.AugAssign() | ast.AnnAssign():
+                _mark_write(node.target, write_positions)
             case ast.Delete(targets=targets):
                 for target in targets:
                     _mark_write(target, write_positions)
@@ -331,8 +331,8 @@ def _mark_write(target: ast.expr, write_positions: set[int]) -> None:
         case ast.Attribute():
             if _self_attr(target) is not None:
                 write_positions.add(id(target))
-        case ast.Tuple(elts=elements) | ast.List(elts=elements):
-            for element in elements:
+        case ast.Tuple() | ast.List():
+            for element in target.elts:
                 _mark_write(element, write_positions)
         case _:
             pass

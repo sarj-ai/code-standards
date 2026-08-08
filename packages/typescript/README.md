@@ -30,7 +30,12 @@ export default [sarj.configs.recommended];
 its paired tests. The definition and named test cases are the complete rule
 specification, and `meta.docs.url` points directly to those executable examples.
 
-Presets: `recommended` (warn-first), `strict` (every general-profile rule at its declared strict severity), `style-guide` (formatting/naming subset). Application-only rules are exported through `applicationOnlyRules` and configured by the application profile. The two-sentence comment rule warns; its three-sentence companion errors.
+Presets: `recommended` is a curated subset and `strict` contains every
+general-profile rule. Every active custom rule in both presets is an error;
+rules that cannot meet that bar are narrowed or retired instead of being left
+as permanent warning noise. Application-only rules are exported through
+`applicationOnlyRules` and are also errors when the application profile enables
+them. `style-guide` remains the formatting/naming subset.
 
 ## New in 9.8.0 — application library policy adapters
 
@@ -130,15 +135,14 @@ platform too.
 |---|---|---|
 | `no-hand-rolled-spinner` | Intrinsic elements styled as Tailwind border-ring loading spinners outside the design system. | error / error |
 | `prefer-input-group-search` | Search icons and shared Input controls composed without the shared InputGroup primitive. | error / error |
-| `prefer-shadcn-primitives` | Deterministically visible raw JSX controls used instead of shared shadcn primitives. Unknown and hidden input types are excluded. | application profile: warn |
+| `prefer-shadcn-primitives` | Deterministically visible raw JSX controls used instead of shared shadcn primitives. Unknown and hidden input types are excluded. | application profile: error |
 | `require-static-next-matcher` | Dynamic values in exported Next.js middleware and proxy matcher configuration. | error / error |
-| `no-hand-rolled-sleep` | `new Promise((r) => setTimeout(r, ms))` in any spelling, and an uncleared `Promise.race`/`Promise.any` timeout arm. Options: `checkClientModules` (default `false`), `allowIn`. | warn / error |
+| `no-hand-rolled-sleep` | `new Promise((r) => setTimeout(r, ms))` in any spelling, and an uncleared `Promise.race`/`Promise.any` timeout arm. Options: `checkClientModules` (default `false`), `allowIn`. | error / error |
 
 `prefer-shadcn-primitives` is application-only because generic plugin consumers
-may use another design system or intentionally expose native controls. It starts
-at warning with 53 measured adoption findings across four application-profile
-consumers; two additional consumers are clean. Promote it only after those
-findings are removed, and keep it disabled inside `components/ui` and
+may use another design system or intentionally expose native controls. The
+application profile enforces its measured, deterministic cases as errors while
+keeping it disabled inside `components/ui` and
 `components/design-system`, where shared primitives must wrap native elements.
 
 ## New in 2.14.0 — `no-tautological-expect`

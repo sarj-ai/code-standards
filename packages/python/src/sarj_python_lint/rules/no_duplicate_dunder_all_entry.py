@@ -92,11 +92,8 @@ def _has_other_dunder_all_writes(tree: ast.Module, declaration: ast.stmt) -> boo
 def _literal_elements(statement: ast.stmt) -> list[tuple[str, int, int]] | None:
     value: ast.expr | None
     match statement:
-        case (
-            ast.Assign(targets=[ast.Name(id="__all__")], value=assigned)
-            | ast.AnnAssign(target=ast.Name(id="__all__"), value=assigned, simple=1)
-        ):
-            value = assigned
+        case ast.Assign(targets=[ast.Name(id="__all__")]) | ast.AnnAssign(target=ast.Name(id="__all__"), simple=1):
+            value = statement.value
         case _:
             return None
     if not isinstance(value, (ast.List, ast.Tuple)):
