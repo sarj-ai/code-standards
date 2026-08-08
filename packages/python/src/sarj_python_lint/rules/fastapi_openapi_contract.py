@@ -146,7 +146,7 @@ def _check_parameters(
     index: FastapiIndex,
 ) -> list[_Finding]:
     findings: list[_Finding] = []
-    contract_markers: dict[str, tuple[str, ast.arg]] = {}
+    contract_markers: dict[str, tuple[str | None, ast.arg]] = {}
     has_dynamic_alias = False
     for parameter, default in _function_parameters(function):
         if parameter.arg in {"self", "cls"} or parameter.annotation is None:
@@ -156,6 +156,7 @@ def _check_parameters(
         parts = index.annotated_parts(parameter.annotation)
         if parts is None:
             findings.append(_Finding(parameter, f"[parameter] `{parameter.arg}` requires explicit Annotated metadata."))
+            contract_markers[parameter.arg] = (None, parameter)
             continue
         value_type, metadata = parts
         markers = [resolved for item in metadata if (resolved := index.marker(item)) is not None]
@@ -163,6 +164,7 @@ def _check_parameters(
             findings.append(
                 _Finding(parameter, f"[parameter] `{parameter.arg}` requires exactly one FastAPI parameter marker.")
             )
+            contract_markers[parameter.arg] = (None, parameter)
             continue
         marker_name, marker_call = markers[0]
         alias = _keyword(marker_call, "alias")
@@ -220,6 +222,8 @@ def _check_parameters(
                 continue
             for path_name in sorted(_path_parameters(route.path)):
                 marker = contract_markers.get(path_name)
+                if marker is not None and marker[0] is None:
+                    continue
                 if marker is None or marker[0] != "Path":
                     node = marker[1] if marker is not None else function
                     findings.append(_Finding(node, f"[parameter] route path `{path_name}` requires a Path marker."))
@@ -303,7 +307,7 @@ def _check_return(
         response_model = keywords.get("response_model")
         response_model_none = response_model is not None and _literal_none(response_model)
         status = _status_code(keywords.get("status_code"), index)
-        if is_response and "response_class" not in keywords:
+        if is_response and status not in _NO_CONTENT_STATUSES and "response_class" not in keywords:
             problems.add("direct Response return requires response_class= for accurate OpenAPI")
         response_class = keywords.get("response_class")
         response_name = index.response_name(annotation)

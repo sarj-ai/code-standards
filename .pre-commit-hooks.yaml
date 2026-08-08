@@ -694,13 +694,6 @@
   language_version: *sarj_python_runtime
   types: [python]
 
-- id: sarj-prefer-single-sentence-comment
-  name: 'sarj-lint: two-sentence comment should become one'
-  entry: sarj-python-lint check --rule prefer-single-sentence-comment
-  language: python
-  language_version: *sarj_python_runtime
-  types: [python]
-
 - id: sarj-no-long-comment
   name: 'sarj-lint: comment exceeds two sentences'
   entry: sarj-python-lint check --rule no-long-comment

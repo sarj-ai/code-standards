@@ -13,7 +13,6 @@ from sarj_python_lint.rules.prefer_immutable_module_constant import PreferImmuta
         pytest.param("VALUES = [1, 2, 3]", "tuple", id="list"),
         pytest.param("KINDS = {'a', 'b'}", "frozenset", id="set"),
         pytest.param("LABELS = {'a': 'A'}", "immutable mapping", id="dict"),
-        pytest.param("CACHE = dict()", "immutable mapping", id="empty-dict"),
         pytest.param("VALUES = list(runtime_values)", "tuple", id="populated-list-constructor"),
         pytest.param("KINDS = set(runtime_values)", "frozenset", id="populated-set-constructor"),
         pytest.param("LABELS = dict(runtime_items)", "immutable mapping", id="populated-dict-constructor"),
@@ -22,8 +21,16 @@ from sarj_python_lint.rules.prefer_immutable_module_constant import PreferImmuta
         pytest.param("VALUES = [runtime_value]", "tuple", id="dynamic-list-element"),
         pytest.param("LABELS = {'value': runtime_value}", "immutable mapping", id="dynamic-dict-value"),
         pytest.param("VALUES = [*runtime_values]", "tuple", id="dynamic-list-spread"),
-        pytest.param("VALUES = []\ndef mutate(VALUES):\n    VALUES.append(1)", "tuple", id="parameter-shadow"),
-        pytest.param("VALUES = []\ndef mutate():\n    VALUES = []\n    VALUES.append(1)", "tuple", id="local-shadow"),
+        pytest.param("VALUES = [1]\ndef mutate(VALUES):\n    VALUES.append(1)", "tuple", id="parameter-shadow"),
+        pytest.param("VALUES = [1]\ndef mutate():\n    VALUES = []\n    VALUES.append(1)", "tuple", id="local-shadow"),
+        pytest.param("VALUES = [1]\ntuple({'values': VALUES})", "tuple", id="nested-inside-safe-call"),
+        pytest.param(
+            "VALUES = [1]\nconsume([value for value in VALUES])",
+            "tuple",
+            id="comprehension-copies-elements",
+        ),
+        pytest.param("VALUES = [1]\nconsume({'first': VALUES[0]})", "tuple", id="element-only-escapes"),
+        pytest.param("KINDS = {'a'}\nconsume(*KINDS)", "frozenset", id="star-expands-elements"),
     ],
 )
 def test_warns_for_literal_mutable_module_constants(source: str, replacement: str) -> None:
@@ -41,6 +48,11 @@ def test_warns_for_literal_mutable_module_constants(source: str, replacement: st
         "VALUES = (1, 2, 3)",
         "KINDS = frozenset({'a', 'b'})",
         "LABELS = MappingProxyType({'a': 'A'})",
+        "VALUES = []",
+        "LABELS: dict = {}",
+        "VALUES = list()",
+        "LABELS = dict()",
+        "KINDS = set()",
         "labels = {'a': 'A'}",
         "__all__ = ['public']",
         "VALUES = {'a'}\nVALUES.add('b')",
@@ -51,7 +63,7 @@ def test_warns_for_literal_mutable_module_constants(source: str, replacement: st
         "LABELS = {'a': []}\nLABELS['a'].append('A')",
         "LABELS = {'a': {'b': 'B'}}\nLABELS['a']['b'] = 'C'",
         "BG_TASKS = set()\nservice = Service(bg_tasks=BG_TASKS)",
-        "BG_TASKS = set()\ndef install(task):\n    task.add_done_callback(BG_TASKS.discard)",
+        "BG_TASKS = {'task'}\ndef install(task):\n    task.add_done_callback(BG_TASKS.discard)",
     ],
 )
 def test_ignores_immutable_dynamic_nonconstant_and_intentionally_mutated_values(source: str) -> None:
@@ -72,6 +84,38 @@ def test_ignores_test_and_generated_files() -> None:
 @pytest.mark.parametrize("source", ["A = B = []\nA.append(1)", "A = B = {}\nconsume(B)", "A = B = set()"])
 def test_chained_mutable_assignments_are_conservatively_exempt(source: str) -> None:
     assert PreferImmutableModuleConstant().check(Path("service.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "OPTIONS = {'enabled': True}\nService(config={'options': OPTIONS})",
+        "OPTIONS = {'enabled': True}\n@route(config={'options': OPTIONS})\ndef handler(): pass",
+        "OPTIONS = {'enabled': True}\n@register(config={'options': OPTIONS})\nclass Handler: pass",
+        "OPTIONS = {'enabled': True}\ndef handler(config=Factory({'options': OPTIONS})): pass",
+        "OPTIONS = {'enabled': True}\nhandler = lambda config=Factory({'options': OPTIONS}): config",
+        "VALUES = [1]\nconsume({'outer': [{'values': VALUES}]})",
+        "KINDS = {'a'}\nconsume(*(KINDS,))",
+        (
+            "OPTIONS = {'enabled': True}\n"
+            "def build():\n"
+            "    turn_handling = {'preemptive': OPTIONS}\n"
+            "    kwargs = {'turn_handling': turn_handling}\n"
+            "    return Service(**kwargs)"
+        ),
+    ],
+)
+def test_ignores_constants_nested_in_literal_containers_passed_to_unknown_calls(source: str) -> None:
+    assert PreferImmutableModuleConstant().check(Path("service.py"), source) == []
+
+
+def test_local_shadow_inside_escaping_container_does_not_hide_module_finding() -> None:
+    source = "OPTIONS = {'module': True}\ndef build():\n    OPTIONS = {'local': True}\n    consume({'x': OPTIONS})"
+
+    findings = PreferImmutableModuleConstant().check(Path("service.py"), source)
+
+    assert len(findings) == 1
+    assert findings[0].line == 1
 
 
 @pytest.mark.parametrize(

@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 _LEADING_PREAMBLE_MIN = 4
 _PROSE_MIN_WORDS = 3
 _DUMMY_TRANSLATION_MAX_WORDS = 4
+_DASHED_CONTINUATION_MIN_WORDS = 2
 
 _DIRECTIVE_PREFIXES = (
     "type:",
@@ -342,6 +343,15 @@ def _is_heading_underline(body: str, prev_body: str | None) -> bool:
     return any(_is_word_char(ch) for ch in prev_body) and not _is_banner(prev_body) and not _looks_like_code(prev_body)
 
 
+def _is_dashed_prose_continuation(body: str, prev_body: str | None) -> bool:
+    """Keep a wrapped prose line that happens to contain an ASCII dash run."""
+    if not _is_sentence_continuation(prev_body) or _BANNER_RUN_RE.search(body) is None:
+        return False
+    prose = _BANNER_RUN_RE.sub(" ", body)
+    words = [word for word in prose.split() if any(character.isalpha() for character in word)]
+    return len(words) >= _DASHED_CONTINUATION_MIN_WORDS
+
+
 def _is_banner(body: str) -> bool:
     if not body:
         return False
@@ -450,7 +460,7 @@ class NoCommentCruft(Rule):
         except tokenize.TokenError, IndentationError, SyntaxError:
             return []
         diags: dict[int, Diagnostic] = {}
-        by_line = {line: body for line, _, body in standalone}
+        by_line = {line: (col, body) for line, col, body in standalone}
         skip = _doctest_block_lines(standalone) | _illustration_block_lines(standalone)
         referenced = _externally_referenced_lines(standalone)
         nested = nested_comment_lines(source)
@@ -476,7 +486,8 @@ class NoCommentCruft(Rule):
                 continue
             if _is_directive(body) or _is_coding_cookie(body) or line in skip:
                 continue
-            prev_body = by_line.get(line - 1)
+            previous = by_line.get(line - 1)
+            prev_body = previous[1] if previous is not None and previous[0] == col else None
             msg = self._classify(
                 body,
                 prev_body,
@@ -520,7 +531,9 @@ class NoCommentCruft(Rule):
                 return "Untracked TODO/FIXME marker — add an issue ticket or context link."
             return None
         if _is_banner(body):
-            if _is_heading_underline(body, prev_body) or in_license_header:
+            if _is_heading_underline(body, prev_body) or _is_dashed_prose_continuation(body, prev_body):
+                return None
+            if in_license_header:
                 return None
             return "Section-banner / region comment — structure code with functions, not ASCII rules."
         if _looks_like_code(body):

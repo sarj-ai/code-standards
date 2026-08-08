@@ -77,7 +77,6 @@
       "prefer-semantic-colors",
       "prefer-server-actions",
       "prefer-shadcn-primitives",
-      "prefer-single-sentence-comment",
       "prefer-string-literal-union",
       "prefer-whole-object-assertion",
       "prefer-zod-enum",
@@ -150,7 +149,6 @@
       "prefer-real-store-in-tests",
       "prefer-self-documenting-constant",
       "prefer-self-type-annotation",
-      "prefer-single-sentence-comment",
       "prefer-str-enum",
       "prefer-struct-over-namedtuple",
       "prefer-timedelta-for-durations",
@@ -276,7 +274,6 @@
       "SARJ087",
       "SARJ088",
       "SARJ089",
-      "SARJ090",
       "SARJ091",
       "SARJ092",
       "SARJ093",
@@ -378,6 +375,13 @@
       "note": "Delete the retired entry. Application-profile consumers can separately adopt `@sarj/prefer-shadcn-primitives`."
     },
     {
+      "id": "@sarj/prefer-single-sentence-comment",
+      "kind": "eslint",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete the config entry and suppressions. A three-repository audit measured 5.9% precision: sentence count does not distinguish durable rationale from noise. Use the narrower no-comment-cruft, no-restated-comment, and no-long-comment rules."
+    },
+    {
       "id": "@sarj/primary-export-file-name",
       "kind": "eslint",
       "status": "removed",
@@ -448,6 +452,13 @@
       "note": "Removed in sarj-python-lint 0.37.0. Delete every `# sarj-noqa: SARJ083` comment and SARJ083 baseline key; there is no replacement."
     },
     {
+      "id": "SARJ090",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ090 suppressions and baseline keys. A three-repository audit measured 20% precision: sentence count does not distinguish durable rationale from noise."
+    },
+    {
       "id": "no-implicit-attribute-access",
       "kind": "python",
       "status": "removed",
@@ -467,6 +478,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Remove this hook from pre-commit; generic match destructuring changes failure, evaluation, and binding semantics."
+    },
+    {
+      "id": "prefer-single-sentence-comment",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Remove this pre-commit hook. A three-repository audit measured 20% precision; use the narrower no-comment-cruft, no-restated-comment, and no-long-comment hooks."
     }
   ]
 }

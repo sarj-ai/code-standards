@@ -93,7 +93,6 @@ from sarj_python_lint.rules.prefer_self_documenting_constant import (
     PreferSelfDocumentingConstant,
 )
 from sarj_python_lint.rules.prefer_self_type_annotation import PreferSelfTypeAnnotation
-from sarj_python_lint.rules.prefer_single_sentence_comment import PreferSingleSentenceComment
 from sarj_python_lint.rules.prefer_str_enum import PreferStrEnum
 from sarj_python_lint.rules.prefer_struct_over_namedtuple import (
     PreferStructOverNamedtuple,
@@ -214,7 +213,6 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         DocstringReturnsRestateSignature.id: DocstringReturnsRestateSignature,
         RestatedTestDocstring.id: RestatedTestDocstring,
         TestPhaseLabelComment.id: TestPhaseLabelComment,
-        PreferSingleSentenceComment.id: PreferSingleSentenceComment,
         NoLongComment.id: NoLongComment,
         NoTypedDocSections.id: NoTypedDocSections,
         PreferNominalIdTypes.id: PreferNominalIdTypes,

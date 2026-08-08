@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from sarj_python_lint.rules.no_comment_cruft import NoCommentCruft
+from sarj_python_lint.rules.no_long_comment import NoLongComment
 
 
 if TYPE_CHECKING:
@@ -828,6 +829,38 @@ def test_prose_lead_in_without_a_colon_does_not_arm_a_snippet_block():
 def test_narration_on_a_wrapped_sentence_tail_is_exempt(prev: str):
     # The why lives in the row above; this row is half a sentence.
     assert _check(f"x = 1\n# {prev}\n# both ways for now.\ny = 2\n") == []
+
+
+def test_dash_run_inside_same_indent_wrapped_prose_is_not_a_banner() -> None:
+    source = (
+        "x = 1\n"
+        "# The fallback accepts a response with an unfinished prefix and\n"
+        "# preserves ---- the provider-specific suffix for diagnostics.\n"
+        "y = 2\n"
+    )
+    assert _check(source) == []
+
+
+def test_dash_run_at_a_different_indent_is_not_treated_as_wrapped_prose() -> None:
+    source = (
+        "# The fallback accepts a response with an unfinished prefix and\n"
+        "def render():\n"
+        "    # preserves ---- the provider-specific suffix for diagnostics.\n"
+        "    return None\n"
+    )
+    diags = _check(source)
+    assert len(diags) == 1
+    assert "Section-banner" in diags[0].message
+
+
+def test_dashed_prose_continuation_has_no_comment_wall_duplicate() -> None:
+    source = (
+        "# The fallback accepts a response with an unfinished prefix and\n"
+        "# preserves ---- the provider-specific suffix for diagnostics.\n"
+        "value = 1\n"
+    )
+    diagnostics = [*_check(source), *NoLongComment().check(Path("<t>.py"), source)]
+    assert diagnostics == []
 
 
 @pytest.mark.parametrize("prev", ["we cache the parsed value here.", "see the note above:", "reuse it (cheaply)"])

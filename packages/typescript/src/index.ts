@@ -56,7 +56,6 @@ import preferNonNullableCollection from "./rules/prefer-non-nullable-collection.
 import preferSchemaForApiPayload from "./rules/prefer-schema-for-api-payload.js";
 import preferSemanticColors from "./rules/prefer-semantic-colors.js";
 import preferServerActions from "./rules/prefer-server-actions.js";
-import preferSingleSentenceComment from "./rules/prefer-single-sentence-comment.js";
 import preferStringLiteralUnion from "./rules/prefer-string-literal-union.js";
 import preferWholeObjectAssertion from "./rules/prefer-whole-object-assertion.js";
 import preferZodEnum from "./rules/prefer-zod-enum.js";
@@ -127,7 +126,6 @@ const rules = {
   "prefer-schema-for-api-payload": preferSchemaForApiPayload,
   "prefer-semantic-colors": preferSemanticColors,
   "prefer-server-actions": preferServerActions,
-  "prefer-single-sentence-comment": preferSingleSentenceComment,
   "prefer-string-literal-union": preferStringLiteralUnion,
   "prefer-whole-object-assertion": preferWholeObjectAssertion,
   "prefer-zod-enum": preferZodEnum,
@@ -144,7 +142,7 @@ const rules = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "9.17.1",
+  version: "10.0.0",
 } as const;
 
 /** Rules registered for application-profile configs but intentionally absent from general presets. */
@@ -202,7 +200,6 @@ const recommendedRules = {
   "@sarj/prefer-schema-for-api-payload": "warn",
   "@sarj/prefer-semantic-colors": ["warn", { requireSemanticTokens: true }],
   "@sarj/prefer-server-actions": "warn",
-  "@sarj/prefer-single-sentence-comment": "warn",
   "@sarj/prefer-string-literal-union": "warn",
   "@sarj/prefer-whole-object-assertion": "warn",
   "@sarj/prefer-zod-enum": "warn",
@@ -269,7 +266,6 @@ const strictRules = {
   "@sarj/prefer-schema-for-api-payload": "error",
   "@sarj/prefer-semantic-colors": ["error", { requireSemanticTokens: true }],
   "@sarj/prefer-server-actions": "error",
-  "@sarj/prefer-single-sentence-comment": "warn",
   "@sarj/prefer-string-literal-union": "error",
   "@sarj/prefer-whole-object-assertion": "error",
   "@sarj/prefer-zod-enum": "error",

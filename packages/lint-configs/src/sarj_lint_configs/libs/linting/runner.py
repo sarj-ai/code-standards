@@ -128,7 +128,6 @@ _PYTHON_NOISE_RULES = frozenset(
         "no-restated-comment",
         "no-typed-doc-sections",
         "prefer-self-documenting-constant",
-        "prefer-single-sentence-comment",
         "redundant-class-docstring",
         "redundant-docstring",
         "redundant-module-docstring",

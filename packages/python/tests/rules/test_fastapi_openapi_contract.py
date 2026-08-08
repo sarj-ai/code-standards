@@ -18,7 +18,7 @@ def _check(source: str, path: str = "api.py") -> list[Diagnostic]:
 _PRELUDE = """
 from typing import Annotated, Any, Optional
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, Path, Query, Request, status
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 
 router = APIRouter()
 """
@@ -185,6 +185,27 @@ async def delete_items() -> None:
     return None
 """)
     assert _check(source) == []
+
+
+@pytest.mark.parametrize("status_code", ["204", "304", "status.HTTP_204_NO_CONTENT", "status.HTTP_304_NOT_MODIFIED"])
+def test_no_content_response_does_not_require_response_class(status_code: str):
+    source = _source(f"""
+@router.delete("/items", summary="Delete items", description="Deletes items.", status_code={status_code})
+async def delete_items() -> Response:
+    return Response(status_code={status_code})
+""")
+    assert _check(source) == []
+
+
+def test_content_response_still_requires_response_class():
+    source = _source("""
+@router.get("/items", summary="Read items", description="Returns items.", status_code=200)
+async def read_items() -> Response:
+    return Response(content="items")
+""")
+    diagnostics = _check(source)
+    assert len(diagnostics) == 1
+    assert "response_class" in diagnostics[0].message
 
 
 def test_no_content_response_rejects_model():
@@ -489,7 +510,7 @@ async def report() -> FileResponse:
     assert "responses content schema" in diagnostics[0].message
 
 
-def test_return_contract_problems_are_aggregated_per_handler():
+def test_no_content_return_contract_problems_are_aggregated_per_handler():
     source = _source("""
 @router.get(
     "/stream",
@@ -503,7 +524,7 @@ async def stream() -> StreamingResponse:
 """)
     diagnostics = [diagnostic for diagnostic in _check(source) if "[return]" in diagnostic.message]
     assert len(diagnostics) == 1
-    assert "response_class" in diagnostics[0].message
+    assert "response_class" not in diagnostics[0].message
     assert "must not declare a response model" in diagnostics[0].message
 
 
@@ -572,6 +593,33 @@ async def item(identifier: Annotated[str, Path(alias=PATH_NAME, description="Ite
 """
     )
     assert _check(dynamic) == []
+
+
+@pytest.mark.parametrize(
+    ("parameter", "expected"),
+    [
+        ("item_id: str", "explicit Annotated metadata"),
+        ("item_id: Annotated[str, Metadata()]", "exactly one FastAPI parameter marker"),
+    ],
+)
+def test_invalid_path_parameter_metadata_has_one_actionable_diagnostic(parameter: str, expected: str):
+    source = _source(f"""
+@router.get("/items/{{item_id}}", summary="Read item", description="Returns an item.", status_code=200)
+async def item({parameter}) -> ItemResponse: ...
+""")
+    diagnostics = [diagnostic for diagnostic in _check(source) if "[parameter]" in diagnostic.message]
+    assert [diagnostic.message for diagnostic in diagnostics] == [f"[parameter] `item_id` requires {expected}."]
+
+
+def test_absent_path_parameter_still_requires_path_marker():
+    source = _source("""
+@router.get("/items/{item_id}", summary="Read item", description="Returns an item.", status_code=200)
+async def item() -> ItemResponse: ...
+""")
+    diagnostics = [diagnostic for diagnostic in _check(source) if "[parameter]" in diagnostic.message]
+    assert [diagnostic.message for diagnostic in diagnostics] == [
+        "[parameter] route path `item_id` requires a Path marker."
+    ]
 
 
 def test_typed_path_converter_does_not_shadow_incompatible_static_route():
