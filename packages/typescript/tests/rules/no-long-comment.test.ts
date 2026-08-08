@@ -11,6 +11,7 @@ RuleTester.itOnly = it.only;
 new RuleTester().run("no-long-comment", rule, {
   valid: [
     "// First fact. Second fact.\nconst value = 1;",
+    "/** One. Two. Three. Four. Five. Six. Seven. */\nconst value = 1;",
     "// First fact. Second fact. Third fact.\nconst value = 1;",
     "/** First fact. Second fact. Third fact. */\nexport const value = 1;",
     "// First fact.\n// Second fact.\n// Third fact.\nconst value = 1;",
@@ -42,6 +43,24 @@ new RuleTester().run("no-long-comment", rule, {
     "// Legacy clients send this shape. The wire contract requires snake case. Keep compatibility until v3.\nreturn entry;",
     "// The cache is process local. Parallel clients need separate keys. This avoids a cross-request race.\nconst key = path;",
     "// First fact.\n// - One supported mode.\n// - Another supported mode.\nconst modes = [];",
+    "/* One. Two. Three. Four. Five. Six. Seven. Eight. */\nrun();",
+    [
+      "/**",
+      " * Shared composer.",
+      " *",
+      " * It serves the room. It serves task comments. It stays visually calm. It accepts attachments.",
+      " *",
+      " * The `tone` prop supplies task styling. The `leadingTools` prop supplies controls.",
+      " * The parent owns uploads. The component owns focus.",
+      " */",
+      "",
+      "export const Composer = forwardRef(function Composer() { return null; });",
+    ].join("\n"),
+    "/** One. Two. Three. Four. Five. Six. Seven. The `traceparent` value is forwarded. */\nconst value = 1;",
+    [
+      "/** One. Two. Three. Four. Five. Six. Seven. Eight. */",
+      "export function decode(value: string): string { return value; }",
+    ].join("\n"),
     {
       code: "// First behavior. Second behavior. Third behavior.\nwidget();",
       filename: "src/gui/src/lib/jquery-ui-1.13.2/jquery-ui.js",
@@ -60,6 +79,13 @@ new RuleTester().run("no-long-comment", rule, {
  * The chart intentionally keeps labels horizontal on wide screens.
  */
 export function PortBars() { return null; }`,
+      errors: [{ messageId: "tooLong" }],
+    },
+    {
+      name: "detached one-paragraph JSDoc wall",
+      code: `/** One. Two. Three. Four. Five. Six. Seven. Eight. */
+
+const value = 1;`,
       errors: [{ messageId: "tooLong" }],
     },
   ],

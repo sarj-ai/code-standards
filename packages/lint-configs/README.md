@@ -57,6 +57,12 @@ replacements such as Flask to FastAPI, pandas to Polars, and Axios to Ky are
 deliberately errors, but are never broadly autofixed because their APIs and
 runtime semantics differ.
 
+The Standards CLI itself remains on `argparse` deliberately. It is a low-level
+`uvx`/pre-commit bootstrap tool using the `standard` library profile, where a
+dependency-free parser keeps installation and `--help` available before the
+consumer stack is installed. The Typer preference applies to application
+profiles; it is not a claim that maintained standard-library APIs are obsolete.
+
 ### Your TypeScript does not have to be at the repo root
 
 `init` writes each ecosystem's configs into the directory that owns it, not into
@@ -140,7 +146,7 @@ Makefile are intentionally thin adapters rather than a second implementation:
 
 ```bash
 sarj-standards maintain setup --check
-sarj-standards maintain release check-tag typescript-v9.17.0
+sarj-standards maintain release check-tag typescript-v9.17.1
 sarj-standards maintain release lock-age packages/typescript/package-lock.json --exclude-file .github/release-age-exclusions.txt
 sarj-standards maintain release typescript check
 sarj-standards maintain release publish typescript

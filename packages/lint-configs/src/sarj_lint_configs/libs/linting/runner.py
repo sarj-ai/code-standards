@@ -17,7 +17,6 @@ from . import textlint
 
 
 if TYPE_CHECKING:
-    import argparse
     from collections.abc import Callable, Iterable, Mapping, Sequence
 
     from .policy import Policy
@@ -403,17 +402,3 @@ def _run(
 
 def _rule_args(registry: Mapping[str, type[_Rule]]) -> list[str]:
     return [part for rule_id in sorted(registry) for part in ("--rule", rule_id)]
-
-
-def add_arguments(parser: argparse.ArgumentParser) -> None:
-    """Add the all-rule runner arguments to a CLI parser."""
-    parser.add_argument(
-        "--noise-only",
-        action="store_true",
-        help="run Python, config-prose, and AI-artifact noise rules (TypeScript uses the ESLint plugin)",
-    )
-    parser.add_argument(
-        "--python-baseline",
-        help="apply a sarj-python-lint shrink-only baseline to staged Python files",
-    )
-    parser.add_argument("files", nargs="+")

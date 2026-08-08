@@ -4,68 +4,111 @@ from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.no_long_comment import NoLongComment
 
 
-def test_plain_three_sentence_docstring_exceeds_the_prose_budget() -> None:
-    findings = NoLongComment().check(Path("app.py"), '"""One fact. Two facts. Three facts."""\n')
+EIGHT_SENTENCES = "One fact. Two facts. Three facts. Four facts. Five facts. Six facts. Seven facts. Eight facts."
+
+
+def test_plain_eight_sentence_module_docstring_is_a_prose_wall() -> None:
+    findings = NoLongComment().check(Path("app.py"), f'"""{EIGHT_SENTENCES}"""\n')
     assert len(findings) == 1
     assert findings[0].severity is Severity.WARNING
 
 
-def test_contiguous_line_comments_are_one_group() -> None:
-    source = "# First fact.\n# Second fact.\n# Third fact.\nvalue = 1\n"
-    findings = NoLongComment().check(Path("app.py"), source)
-    assert len(findings) == 1
-    assert findings[0].severity is Severity.WARNING
+def test_untyped_function_docstring_can_be_a_prose_wall() -> None:
+    source = f'''def explain(value):
+    """{EIGHT_SENTENCES}"""
+    return value
+'''
+    assert len(NoLongComment().check(Path("app.py"), source)) == 1
 
 
-def test_three_unpunctuated_list_items_are_sentence_equivalents() -> None:
-    source = '"""Supported modes:\n\n- fast path\n- safe path\n- legacy path\n"""\n'
+def test_seven_sentences_stay_below_the_high_precision_threshold() -> None:
+    source = '"""One. Two. Three. Four. Five. Six. Seven."""\n'
     assert NoLongComment().check(Path("app.py"), source) == []
 
 
-def test_abbreviations_urls_and_decimals_do_not_split() -> None:
-    source = "# Supports e.g. version 2.1 from https://example.com/a. One constraint.\nvalue = 1\n"
+def test_line_comment_rationale_is_owned_by_semantic_comment_rules() -> None:
+    source = "\n".join(f"# Trace invariant fact {index}." for index in range(10)) + "\nvalue = 1\n"
     assert NoLongComment().check(Path("app.py"), source) == []
+
+
+def test_multiple_paragraphs_are_deliberately_structured_documentation() -> None:
+    source = '''"""One fact. Two facts. Three facts. Four facts.
+
+Five facts. Six facts. Seven facts. Eight facts.
+"""
+'''
+    assert NoLongComment().check(Path("app.py"), source) == []
+
+
+def test_list_items_are_deliberately_structured_documentation() -> None:
+    source = f'''"""{EIGHT_SENTENCES}
+
+- fast path
+- safe path
+"""
+'''
+    assert NoLongComment().check(Path("app.py"), source) == []
+
+
+def test_inline_code_is_a_technical_anchor() -> None:
+    source = f'"""{EIGHT_SENTENCES} The `traceparent` value is forwarded."""\n'
+    assert NoLongComment().check(Path("app.py"), source) == []
+
+
+def test_phase_four_style_module_contract_is_preserved() -> None:
+    source = '''"""Feasibility revenue slice.
+
+Reads clean/funnel.parquet and writes revenue rollups.
+
+Ground truth: `contract_value` is total lease revenue. It scales with duration.
+Realized annual value divides by duration. Projection uses cohort baselines.
+The result stays deterministic. Missing cohorts remain out of scope.
+
+  realized rollups -> revenue.csv
+  projection       -> model.json
+"""
+'''
+    assert NoLongComment().check(Path("phase4.py"), source) == []
+
+
+def test_fully_typed_public_function_is_api_documentation() -> None:
+    source = f'''def decode(value: str) -> str:
+    """{EIGHT_SENTENCES}"""
+    return value
+'''
+    assert NoLongComment().check(Path("codec.py"), source) == []
+
+
+def test_public_class_docstring_is_api_documentation() -> None:
+    source = f'''class Decoder:
+    """{EIGHT_SENTENCES}"""
+'''
+    assert NoLongComment().check(Path("codec.py"), source) == []
 
 
 def test_runtime_consumed_tool_prompt_is_exempt() -> None:
-    source = '@function_tool\ndef lookup(value: str) -> str:\n    """One. Two. Three."""\n    return value\n'
+    source = f'''@function_tool
+def lookup(value: str) -> str:
+    """{EIGHT_SENTENCES}"""
+    return value
+'''
     assert NoLongComment().check(Path("app.py"), source) == []
 
 
 def test_generated_source_is_exempt() -> None:
-    source = '"""One. Two. Three."""\n'
-    assert NoLongComment().check(Path("generated/client.py"), source) == []
-
-
-def test_pr_4213_module_wall_is_an_error() -> None:
-    source = '''"""Codec for structured webhook configuration carried on the URL.
-
-The service stores configuration in query params. There is no local record of it.
-Structured configuration is compressed. The payloads are highly repetitive.
-Compression keeps the URL inside its length budget.
-"""
-'''
-    assert len(NoLongComment().check(Path("query_param_codec.py"), source)) == 1
-
-
-def test_function_docstring_prose_wall_is_an_error() -> None:
-    source = '''def decode(value: str) -> str:
-    """Decode the value. Cache the result. Return normalized text."""
-    return value
-'''
-    assert len(NoLongComment().check(Path("codec.py"), source)) == 1
+    assert NoLongComment().check(Path("generated/client.py"), f'"""{EIGHT_SENTENCES}"""\n') == []
 
 
 def test_schema_class_docstring_is_runtime_consumed() -> None:
-    source = '''class Payload(pydantic.BaseModel):
-    """One. Two. Three."""
+    source = f'''class Payload(pydantic.BaseModel):
+    """{EIGHT_SENTENCES}"""
 '''
     assert NoLongComment().check(Path("models.py"), source) == []
 
 
-def test_typed_sections_are_left_to_sarj092() -> None:
-    source = '''def decode(value: str) -> str:
-    """Decode a value.
+def test_typed_sections_are_preserved() -> None:
+    source = f'''def decode(value: str) -> str:
+    """{EIGHT_SENTENCES}
 
     Args:
         value: The encoded value.
@@ -78,6 +121,6 @@ def test_typed_sections_are_left_to_sarj092() -> None:
     assert NoLongComment().check(Path("codec.py"), source) == []
 
 
-def test_directives_and_licenses_are_not_prose_groups() -> None:
-    source = "# noqa: One. Two. Three.\n# SPDX-License-Identifier: One. Two. Three.\nvalue = 1\n"
+def test_abbreviations_urls_and_decimals_do_not_split() -> None:
+    source = '"""Supports e.g. version 2.1 from https://example.com/a. One constraint."""\n'
     assert NoLongComment().check(Path("app.py"), source) == []

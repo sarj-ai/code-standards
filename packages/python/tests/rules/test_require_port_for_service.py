@@ -24,7 +24,7 @@ def _check(source: str, path: str = "app/services/thing_service.py") -> list[Dia
 _SERVICE = textwrap.dedent(
     """
     class ThingService:
-        def __init__(self, store: ThingStore) -> None:
+        def __init__(self, store: ThingDAO) -> None:
             self.store = store
 
         def read(self, key: str) -> str:
@@ -49,7 +49,7 @@ def test_message_is_exactly_the_shipped_text() -> None:
     # Pins the whole message, not a substring: mutation testing showed the constants
     # could be replaced wholesale without a single test noticing.
     assert _check(_SERVICE)[0].message == (
-        "`ThingService` injects `ThingStore` and exposes 2 public methods without a declared port. "
+        "`ThingService` injects `ThingDAO` and exposes 2 public methods without a declared port. "
         "If consumers genuinely need substitution, define a small "
         "consumer-owned `Protocol`/ABC and type those consumers against it. Do not add a port solely "
         "for a composition root or a single concrete consumer."
@@ -77,12 +77,14 @@ def test_message_counts_only_the_public_methods() -> None:
     message = _check(
         """
         class ThingService:
-            def __init__(self, store: ThingStore) -> None:
+            def __init__(self, store: ThingDAO) -> None:
                 self.store = store
 
-            def read(self) -> str: ...
+            def read(self) -> str:
+                return self.store.get()
 
-            def write(self) -> None: ...
+            def write(self) -> None:
+                self.store.put()
 
             def wipe(self) -> None: ...
 
@@ -99,12 +101,14 @@ def test_diagnostic_points_at_the_class_not_the_constructor() -> None:
 
 
         class ThingService:
-            def __init__(self, store: ThingStore) -> None:
+            def __init__(self, store: ThingDAO) -> None:
                 self.store = store
 
-            def read(self) -> str: ...
+            def read(self) -> str:
+                return self.store.get()
 
-            def write(self) -> None: ...
+            def write(self) -> None:
+                self.store.put()
         """
     )
     assert [(d.line, d.col) for d in diags] == [(5, 1)]
@@ -181,12 +185,14 @@ def test_base_prefix_needs_a_capital_to_count() -> None:
 def _handler_service(parameter: str) -> str:
     return f"""
         class ThingService:
-            def __init__(self, store: ThingStore) -> None:
+            def __init__(self, store: ThingDAO) -> None:
                 self.store = store
 
-            def read(self, {parameter}) -> str: ...
+            def read(self, {parameter}) -> str:
+                return self.store.get()
 
-            def write(self) -> None: ...
+            def write(self) -> None:
+                self.store.put()
         """
 
 
@@ -254,12 +260,14 @@ def test_private_method_taking_a_request_does_not_suppress() -> None:
             _check(
                 """
                 class ThingService:
-                    def __init__(self, store: ThingStore) -> None:
+                    def __init__(self, store: ThingDAO) -> None:
                         self.store = store
 
-                    def read(self) -> str: ...
+                    def read(self) -> str:
+                        return self.store.get()
 
-                    def write(self) -> None: ...
+                    def write(self) -> None:
+                        self.store.put()
 
                     def _log(self, request: Request) -> None: ...
                 """
@@ -352,16 +360,17 @@ def test_overload_signatures_do_not_turn_a_concrete_service_into_a_port() -> Non
     diagnostics = _check(
         """
         class ThingService:
-            def __init__(self, store: ThingStore) -> None:
+            def __init__(self, store: ThingDAO) -> None:
                 self.store = store
 
             @overload
             def read(self) -> str: ...
 
             def read(self) -> str:
-                return "value"
+                return self.store.get()
 
-            def write(self) -> None: ...
+            def write(self) -> None:
+                self.store.put()
         """
     )
     assert len(diagnostics) == 1
@@ -416,17 +425,20 @@ def test_parameter_typed_by_a_same_module_service_class_is_a_collaborator() -> N
         len(
             _check(
                 """
-                class ThingStore:
+                class ThingDAO:
                     def get(self) -> str: ...
+                    def put(self) -> None: ...
 
 
                 class ThingService:
-                    def __init__(self, store: ThingStore) -> None:
+                    def __init__(self, store: ThingDAO) -> None:
                         self.store = store
 
-                    def read(self) -> str: ...
+                    def read(self) -> str:
+                        return self.store.get()
 
-                    def write(self) -> None: ...
+                    def write(self) -> None:
+                        self.store.put()
                 """
             )
         )
@@ -532,7 +544,7 @@ def test_same_module_record_is_a_value_not_a_collaborator(declaration: str) -> N
     ],
 )
 def test_value_parameters_are_not_collaborators(annotation: str) -> None:
-    assert _check(_SERVICE.replace("store: ThingStore", f"store: {annotation}")) == []
+    assert _check(_SERVICE.replace("store: ThingDAO", f"store: {annotation}")) == []
 
 
 @pytest.mark.parametrize(
@@ -551,7 +563,7 @@ def test_value_parameters_are_not_collaborators(annotation: str) -> None:
     ids=["Settings", "Config", "Configuration", "Options", "Logger", "dotted-Logger", "Clock", "Context", "Size"],
 )
 def test_configuration_and_ambient_runtime_are_not_collaborators(annotation: str) -> None:
-    assert _check(_SERVICE.replace("store: ThingStore", f"store: {annotation}")) == []
+    assert _check(_SERVICE.replace("store: ThingDAO", f"store: {annotation}")) == []
 
 
 def test_one_real_collaborator_beside_configuration_still_fires() -> None:
@@ -560,13 +572,15 @@ def test_one_real_collaborator_beside_configuration_still_fires() -> None:
             _check(
                 """
                 class ThingService:
-                    def __init__(self, settings: ServerSettings, store: ThingStore) -> None:
+                    def __init__(self, settings: ServerSettings, store: ThingDAO) -> None:
                         self.settings = settings
                         self.store = store
 
-                    def read(self) -> str: ...
+                    def read(self) -> str:
+                        return self.store.get()
 
-                    def write(self) -> None: ...
+                    def write(self) -> None:
+                        self.store.put()
                 """
             )
         )
@@ -577,27 +591,32 @@ def test_one_real_collaborator_beside_configuration_still_fires() -> None:
 @pytest.mark.parametrize(
     "annotation",
     [
-        "ThingStore",
-        "stores.ThingStore",
-        "'ThingStore'",
-        "ThingStore | None",
-        "Optional[ThingStore]",
-        "Annotated[ThingStore, Dep()]",
+        "ThingDAO",
+        "stores.ThingDAO",
+        "'ThingDAO'",
+        "Annotated[ThingDAO, Dep()]",
     ],
-    ids=["plain", "dotted", "forward-ref", "pep604-optional", "Optional", "Annotated"],
+    ids=["plain", "dotted", "forward-ref", "Annotated"],
 )
 def test_collaborator_annotation_forms(annotation: str) -> None:
-    assert len(_check(_SERVICE.replace("store: ThingStore", f"store: {annotation}"))) == 1
+    assert len(_check(_SERVICE.replace("store: ThingDAO", f"store: {annotation}"))) == 1
 
 
-def test_union_of_collaborator_and_value_is_unwrapped() -> None:
-    # `Union[...]` must be unwrapped like `X | None`; leaving it wrapped made the
-    # literal name `Union` read as a project type (prefect's `GitRepository`).
-    assert len(_check(_SERVICE.replace("store: ThingStore", "store: Union[ThingStore, None]"))) == 1
+@pytest.mark.parametrize(
+    "annotation",
+    ["ThingDAO | None", "Optional[ThingDAO]", "Union[ThingDAO, None]"],
+    ids=["pep604", "Optional", "Union"],
+)
+def test_optional_collaborator_does_not_imply_a_service_port(annotation: str) -> None:
+    assert _check(_SERVICE.replace("store: ThingDAO", f"store: {annotation}")) == []
+
+
+def test_union_with_none_is_an_optional_collaborator() -> None:
+    assert _check(_SERVICE.replace("store: ThingDAO", "store: Union[ThingDAO, None]")) == []
 
 
 def test_union_of_only_values_is_not_a_collaborator() -> None:
-    assert _check(_SERVICE.replace("store: ThingStore", "store: Union[str, int, None]")) == []
+    assert _check(_SERVICE.replace("store: ThingDAO", "store: Union[str, int, None]")) == []
 
 
 def test_unannotated_parameter_is_not_a_collaborator() -> None:
@@ -634,12 +653,76 @@ def test_collaborator_must_be_stored_on_self() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "methods",
+    [
+        """
+        def read(self) -> str:
+            return self.dao.name
+
+        def write(self) -> None:
+            consume(self.dao)
+        """,
+        """
+        def read(self) -> str:
+            return self.dao.get()
+
+        def write(self) -> None:
+            pass
+        """,
+        """
+        def read(self) -> str:
+            def later() -> str:
+                return self.dao.get()
+            return later.__name__
+
+        def write(self) -> None:
+            callback = lambda: self.dao.put()
+            consume(callback)
+        """,
+    ],
+    ids=["read-and-pass", "only-one-method", "nested-callables"],
+)
+def test_collaborator_needs_calls_from_two_public_methods(methods: str) -> None:
+    source = f"""
+        class ThingService:
+            def __init__(self, dao: ThingDAO) -> None:
+                self.dao = dao
+
+{textwrap.indent(textwrap.dedent(methods), "            ")}
+    """
+
+    assert _check(source) == []
+
+
+def test_nested_constructor_storage_does_not_retain_a_collaborator() -> None:
+    assert (
+        _check(
+            """
+            class ThingService:
+                def __init__(self, dao: ThingDAO) -> None:
+                    def install() -> None:
+                        self.dao = dao
+
+                def read(self) -> str:
+                    return self.dao.get()
+
+                def write(self) -> None:
+                    self.dao.put()
+            """
+        )
+        == []
+    )
+
+
 def test_collaborator_stored_under_a_private_attribute_counts() -> None:
-    assert len(_check(_SERVICE.replace("self.store = store", "self._store = store"))) == 1
+    source = _SERVICE.replace("self.store", "self._store")
+    assert len(_check(source)) == 1
 
 
 def test_collaborator_stored_under_a_differently_named_attribute_counts() -> None:
-    assert len(_check(_SERVICE.replace("self.store = store", "self.backend = store"))) == 1
+    source = _SERVICE.replace("self.store", "self.backend")
+    assert len(_check(source)) == 1
 
 
 def test_unrelated_value_stored_under_the_parameter_name_does_not_count() -> None:
@@ -647,15 +730,81 @@ def test_unrelated_value_stored_under_the_parameter_name_does_not_count() -> Non
 
 
 def test_collaborator_stored_by_annotated_assignment_counts() -> None:
-    assert len(_check(_SERVICE.replace("self.store = store", "self.store: ThingStore = store"))) == 1
+    assert len(_check(_SERVICE.replace("self.store = store", "self.store: ThingDAO = store"))) == 1
 
 
 def test_collaborator_stored_through_cast_counts() -> None:
-    assert len(_check(_SERVICE.replace("self.store = store", "self.store = cast(ThingStore, store)"))) == 1
+    assert len(_check(_SERVICE.replace("self.store = store", "self.store = cast(ThingDAO, store)"))) == 1
 
 
-def test_collaborator_stored_with_default_fallback_counts() -> None:
-    assert len(_check(_SERVICE.replace("self.store = store", "self.store = store or DefaultStore()"))) == 1
+def test_collaborator_stored_with_default_fallback_is_exempt() -> None:
+    source = _SERVICE.replace("self.store = store", "self.store = store or DefaultDAO()")
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "signature",
+    [
+        "dao: ThingDAO = DefaultDAO()",
+        "*, dao: ThingDAO = DefaultDAO()",
+    ],
+    ids=["positional", "keyword-only"],
+)
+def test_defaulted_collaborator_does_not_imply_a_service_port(signature: str) -> None:
+    source = _SERVICE.replace("store: ThingDAO", signature).replace("store", "dao")
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "signature",
+    [
+        "store: ThingStore, dao: ThingDAO",
+        "dao: ThingDAO, store: ThingStore",
+    ],
+    ids=["persistence-first", "persistence-last"],
+)
+def test_persistence_dependency_exempts_the_whole_application_service(signature: str) -> None:
+    assert (
+        _check(
+            f"""
+            class ProvisioningService:
+                def __init__(self, {signature}) -> None:
+                    self.store = store
+                    self.dao = dao
+
+                def add(self) -> None:
+                    self.store.add()
+                    self.dao.reload()
+
+                def remove(self) -> None:
+                    self.store.remove()
+                    self.dao.reload()
+            """
+        )
+        == []
+    )
+
+
+def test_optional_persistence_dependency_does_not_hide_a_required_collaborator() -> None:
+    assert (
+        len(
+            _check(
+                """
+                class ThingService:
+                    def __init__(self, dao: ThingDAO, store: ThingStore | None = None) -> None:
+                        self.dao = dao
+                        self.store = store
+
+                    def read(self) -> str:
+                        return self.dao.get()
+
+                    def write(self) -> None:
+                        self.dao.put()
+                """
+            )
+        )
+        == 1
+    )
 
 
 def test_unrelated_transformation_of_collaborator_does_not_count_as_storage() -> None:
@@ -760,12 +909,14 @@ def test_async_public_methods_count() -> None:
             _check(
                 """
                 class ThingService:
-                    def __init__(self, store: ThingStore) -> None:
+                    def __init__(self, store: ThingDAO) -> None:
                         self.store = store
 
-                    async def read(self) -> str: ...
+                    async def read(self) -> str:
+                        return await self.store.get()
 
-                    async def write(self) -> None: ...
+                    async def write(self) -> None:
+                        await self.store.put()
                 """
             )
         )
@@ -825,12 +976,14 @@ def test_class_whose_suffix_is_not_in_scope_still_fires() -> None:
 
 
                 class CachedTokenStore:
-                    def __init__(self, inner: ThingStore) -> None:
+                    def __init__(self, inner: ThingDAO) -> None:
                         self.inner = inner
 
-                    def fetch(self) -> str: ...
+                    def fetch(self) -> str:
+                        return self.inner.fetch()
 
-                    def invalidate(self) -> None: ...
+                    def invalidate(self) -> None:
+                        self.inner.invalidate()
                 """
             )
         )
@@ -873,12 +1026,14 @@ def test_port_suffix_must_start_at_a_camel_case_boundary() -> None:
 
 
                 class NotificationService:
-                    def __init__(self, store: ThingStore) -> None:
+                    def __init__(self, store: ThingDAO) -> None:
                         self.store = store
 
-                    def read(self) -> str: ...
+                    def read(self) -> str:
+                        return self.store.get()
 
-                    def write(self) -> None: ...
+                    def write(self) -> None:
+                        self.store.put()
                 """
             )
         )
@@ -897,12 +1052,14 @@ def test_uppercase_suffix_that_is_not_service_shaped_does_not_exempt() -> None:
 
 
                 class PaymentDAO:
-                    def __init__(self, store: ThingStore) -> None:
+                    def __init__(self, store: ThingDAO) -> None:
                         self.store = store
 
-                    def read(self) -> str: ...
+                    def read(self) -> str:
+                        return self.store.get()
 
-                    def write(self) -> None: ...
+                    def write(self) -> None:
+                        self.store.put()
                 """
             )
         )
@@ -942,9 +1099,11 @@ def test_the_whole_class_name_is_not_its_own_port() -> None:
                     def __init__(self, inner: ThingGateway) -> None:
                         self.inner = inner
 
-                    def fetch(self) -> str: ...
+                    def fetch(self) -> str:
+                        return self.inner.fetch()
 
-                    def invalidate(self) -> None: ...
+                    def invalidate(self) -> None:
+                        self.inner.invalidate()
                 """
             )
         )
@@ -1065,30 +1224,30 @@ def test_empty_source_yields_nothing() -> None:
 
 
 def test_unparseable_forward_reference_is_ignored() -> None:
-    assert _check(_SERVICE.replace("store: ThingStore", 'store: "Thing Store"')) == []
+    assert _check(_SERVICE.replace("store: ThingDAO", 'store: "Thing DAO"')) == []
 
 
 def test_non_string_constant_annotation_is_ignored() -> None:
-    assert _check(_SERVICE.replace("store: ThingStore", "store: None")) == []
+    assert _check(_SERVICE.replace("store: ThingDAO", "store: None")) == []
 
 
 @pytest.mark.parametrize(
     "annotation",
-    ["Awaitable[ThingStore]", "Final[ThingStore]", "ClassVar[ThingStore]"],
+    ["Awaitable[ThingDAO]", "Final[ThingDAO]", "ClassVar[ThingDAO]"],
     ids=["Awaitable", "Final", "ClassVar"],
 )
 def test_transparent_generics_are_unwrapped(annotation: str) -> None:
-    assert len(_check(_SERVICE.replace("store: ThingStore", f"store: {annotation}"))) == 1
+    assert len(_check(_SERVICE.replace("store: ThingDAO", f"store: {annotation}"))) == 1
 
 
 def test_only_the_first_argument_of_a_transparent_generic_is_read() -> None:
-    # Known limit, pinned so it is a decision rather than a surprise: unwrapping takes `elts[0]`, so `Coroutine[Any, Any, ThingStore]` reduces to `Any` and reads as a value.
-    assert _check(_SERVICE.replace("store: ThingStore", "store: Coroutine[Any, Any, ThingStore]")) == []
+    # Known limit, pinned so it is a decision rather than a surprise: unwrapping takes `elts[0]`, so `Coroutine[Any, Any, ThingDAO]` reduces to `Any` and reads as a value.
+    assert _check(_SERVICE.replace("store: ThingDAO", "store: Coroutine[Any, Any, ThingDAO]")) == []
 
 
 def test_subscripted_project_type_keeps_the_container_name() -> None:
     # `stores.Registry[Row]` is a project type, so the outer name is the collaborator.
-    assert len(_check(_SERVICE.replace("store: ThingStore", "store: stores.Registry[Row]"))) == 1
+    assert len(_check(_SERVICE.replace("store: ThingDAO", "store: stores.Registry[Row]"))) == 1
 
 
 @pytest.mark.parametrize(
@@ -1099,7 +1258,7 @@ def test_subscripted_project_type_keeps_the_container_name() -> None:
 def test_subscripted_builtin_container_is_still_a_value(annotation: str) -> None:
     # A collection of collaborators is a collection, not one injected port: only the
     # container's own name is read, so these must not unwrap to `ThingStore`.
-    assert _check(_SERVICE.replace("store: ThingStore", f"store: {annotation}")) == []
+    assert _check(_SERVICE.replace("store: ThingDAO", f"store: {annotation}")) == []
 
 
 def test_nested_class_is_reached() -> None:
@@ -1115,12 +1274,14 @@ def test_nested_finding_reports_its_real_line_and_column() -> None:
             class Middle:
 
                 class ThingService:
-                    def __init__(self, store: ThingStore) -> None:
+                    def __init__(self, store: ThingDAO) -> None:
                         self.store = store
 
-                    def read(self) -> str: ...
+                    def read(self) -> str:
+                        return self.store.get()
 
-                    def write(self) -> None: ...
+                    def write(self) -> None:
+                        self.store.put()
         """
     )
     assert [(d.line, d.col) for d in diags] == [(5, 9)]
@@ -1129,22 +1290,26 @@ def test_nested_finding_reports_its_real_line_and_column() -> None:
 def test_multiple_findings_are_sorted_by_position() -> None:
     diags = _check(
         """
-        class BService:
-            def __init__(self, store: BStore) -> None:
-                self.store = store
+            class BService:
+                def __init__(self, store: BDAO) -> None:
+                    self.store = store
 
-            def read(self) -> str: ...
+                def read(self) -> str:
+                    return self.store.get()
 
-            def write(self) -> None: ...
+                def write(self) -> None:
+                    self.store.put()
 
 
-        class AService:
-            def __init__(self, store: AStore) -> None:
-                self.store = store
+            class AService:
+                def __init__(self, store: ADAO) -> None:
+                    self.store = store
 
-            def read(self) -> str: ...
+                def read(self) -> str:
+                    return self.store.get()
 
-            def write(self) -> None: ...
+                def write(self) -> None:
+                    self.store.put()
         """
     )
     assert [d.line for d in diags] == sorted(d.line for d in diags)
@@ -1164,11 +1329,13 @@ class LocalBase:
     def helper(self) -> None: ...
 
 class BillingService(LocalBase):
-    def __init__(self, repo: BillingRepository) -> None:
-        self.repo = repo
+    def __init__(self, dao: BillingDAO) -> None:
+        self.dao = dao
 
-    def charge(self) -> None: ...
-    def refund(self) -> None: ...
+    def charge(self) -> None:
+        self.dao.charge()
+    def refund(self) -> None:
+        self.dao.refund()
 """
     assert len(_check(source)) == 1
 
@@ -1194,10 +1361,11 @@ class BillingService(SpecializedPort):
 
 @pytest.mark.parametrize("annotation", ["AsyncConnectionPool", "httpx.AsyncClient", "AsyncSession"])
 def test_runtime_driver_handle_is_not_treated_as_a_missing_port(annotation: str) -> None:
-    source = _SERVICE.replace("store: ThingStore", f"store: {annotation}")
+    source = _SERVICE.replace("store: ThingDAO", f"store: {annotation}")
 
     assert _check(source) == []
 
 
-def test_domain_store_remains_an_injected_collaborator() -> None:
-    assert len(_check(_SERVICE)) == 1
+@pytest.mark.parametrize("annotation", ["ThingStore", "ThingRepository", "ThingRepo"])
+def test_persistence_backed_service_does_not_imply_another_port(annotation: str) -> None:
+    assert _check(_SERVICE.replace("store: ThingDAO", f"store: {annotation}")) == []
