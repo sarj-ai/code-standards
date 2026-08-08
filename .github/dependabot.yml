@@ -37,11 +37,11 @@ updates:
       iac-tooling:
         patterns: ["*"]
   - package-ecosystem: pip
-    directory: /packages/lint-configs
+    directory: /packages/standards
     schedule:
       interval: weekly
     groups:
-      lint-config-tooling:
+      standards-tooling:
         patterns: ["*"]
   # Without this, every `uses:` pin in .github/workflows/ is updated by hand or
   # not at all — which is how a repo ends up on an action major that no longer

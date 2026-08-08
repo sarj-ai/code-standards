@@ -57,6 +57,16 @@ describe("configs.recommended / configs.strict are flat config", () => {
     expect(readme).not.toMatch(/\.\.\.sarj\.configs\.(?:recommended|strict)/u);
   });
 
+  it("documents exactly the presets exported by the plugin", () => {
+    const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+    const paragraph = /Available presets are ([^.]+)\./u.exec(readme)?.[1];
+    expect(paragraph).toBeDefined();
+    const documented = [...(paragraph ?? "").matchAll(/`([^`]+)`/gu)]
+      .map((match) => match[1])
+      .sort();
+    expect(documented).toEqual(Object.keys(plugin.configs).sort());
+  });
+
   it.each(PRESETS)("%s carries rules and nothing that fights a host config", (name) => {
     // No `files`, no parser, no languageOptions: the presets compose with
     // whatever a repo already has. A `files` key here would silently narrow

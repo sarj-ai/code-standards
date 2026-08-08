@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://standards.sarj.ai/schemas/analysis/v1",
+  "title": "Sarj Standards analysis report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "root", "completion", "conclusion", "exitCode", "rules", "diagnostics", "issues", "tools", "coverage"],
+  "properties": {
+    "$schema": { "const": "https://standards.sarj.ai/schemas/analysis/v1" },
+    "schemaVersion": { "const": 1 },
+    "root": { "const": "." },
+    "completion": { "enum": ["complete", "partial", "failed"] },
+    "conclusion": { "enum": ["passed", "findings", "inconclusive"] },
+    "exitCode": { "enum": [0, 1, 2] },
+    "rules": { "type": "array", "items": { "$ref": "#/$defs/rule" } },
+    "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" } },
+    "issues": { "type": "array", "items": { "$ref": "#/$defs/issue" } },
+    "tools": { "type": "array", "items": { "$ref": "#/$defs/tool" } },
+    "coverage": { "type": "array", "items": { "$ref": "#/$defs/coverage" } }
+  },
+  "$defs": {
+    "position": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["line", "character"],
+      "properties": {
+        "line": { "type": "integer", "minimum": 0 },
+        "character": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "$ref": "#/$defs/position" },
+        "end": { "$ref": "#/$defs/position" }
+      }
+    },
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "position": { "$ref": "#/$defs/position" },
+        "range": { "$ref": "#/$defs/range" }
+      },
+      "not": { "required": ["position", "range"] }
+    },
+    "relatedLocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "location"],
+      "properties": {
+        "label": { "type": "string", "minLength": 1 },
+        "location": { "$ref": "#/$defs/location" }
+      }
+    },
+    "edit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["location", "replacement"],
+      "properties": {
+        "location": { "$ref": "#/$defs/location" },
+        "replacement": { "type": "string" },
+        "expectedTextHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "fix": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "safety", "edits"],
+      "properties": {
+        "title": { "type": "string", "minLength": 1 },
+        "safety": { "enum": ["safe", "unsafe"] },
+        "edits": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/edit" } }
+      }
+    },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "name", "summary"],
+      "properties": {
+        "key": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "summary": { "type": "string", "minLength": 1 },
+        "helpUrl": { "type": "string", "pattern": "^https://" },
+        "tags": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
+      }
+    },
+    "fingerprint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "value"],
+      "properties": {
+        "algorithm": { "const": 1 },
+        "value": { "type": "string", "minLength": 1 }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "ruleKey", "message", "severity", "source", "location"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "ruleId": { "type": "string", "minLength": 1 },
+        "ruleKey": { "type": "string", "minLength": 1 },
+        "message": { "type": "string" },
+        "severity": { "enum": ["error", "warning", "info"] },
+        "source": { "type": "string", "minLength": 1 },
+        "location": { "$ref": "#/$defs/location" },
+        "help": { "type": "string" },
+        "helpUrl": { "type": "string", "pattern": "^https://" },
+        "relatedLocations": { "type": "array", "items": { "$ref": "#/$defs/relatedLocation" } },
+        "notes": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "fixes": { "type": "array", "items": { "$ref": "#/$defs/fix" } },
+        "tags": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "fingerprint": { "$ref": "#/$defs/fingerprint" }
+      }
+    },
+    "issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "kind", "message"],
+      "properties": {
+        "source": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "message": { "type": "string" },
+        "exitCode": { "type": "integer" }
+      }
+    },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "completion", "diagnosticCount", "issueCount", "analyzerId", "invocationId", "cache"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "completion": { "enum": ["complete", "partial", "failed"] },
+        "diagnosticCount": { "type": "integer", "minimum": 0 },
+        "issueCount": { "type": "integer", "minimum": 0 },
+        "analyzerId": { "type": "string", "minLength": 1 },
+        "invocationId": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "fileCount": { "type": "integer", "minimum": 0 },
+        "cache": { "enum": ["disabled", "hit", "miss"] }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "reason", "fileCount", "disposition"],
+      "properties": {
+        "source": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 },
+        "fileCount": { "type": "integer", "minimum": 1 },
+        "disposition": { "enum": ["failed", "unsupported", "excluded", "not-requested"] }
+      }
+    }
+  }
+}

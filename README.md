@@ -1,148 +1,69 @@
-# sarj-ai/standards
+# Sarj Standards
 
-The single home for Sarj code standards, in two layers:
+Sarj Standards is the single code-quality entry point for Sarj repositories. It
+combines strict native-tool configuration with deterministic Python,
+TypeScript, SQL, Terraform, and documentation rules.
 
-- **Machine-enforced floor** — lint rules + maximally-strict configs for TypeScript + Python + SQL + Terraform (`@sarj/eslint-plugin`, `sarj-python-lint`, `sarj-sql-lint`, `sarj-iac-lint`, `sarj-lint-configs`). Run in CI.
-- **Judgment layer** — the `sarj-audit` Claude Code plugin: on-demand audit commands for the things that can't be reliably linted. Each audit cites the deterministic rule that backs it where one exists. (Merged here from a retired first-party repo.)
+Standards orchestrates Ruff, BasedPyright, and ESLint; it does not pretend to
+reimplement them. Repository-specific formatters, generators, tests, and policy
+checks remain owned by their repositories.
 
-## Contributor setup
+## Adopt a repository
 
-Run `make setup` once after cloning. It installs Lefthook 2.1.10 before package
-dependencies, so commits receive the same lint, typecheck, and test
-feedback as CI. Coding agents must repair reported failures rather than bypassing
-hooks. Run `make verify` before requesting review.
-
-## Claude Code plugin (`sarj-audit`)
-
-This repo is a Claude Code plugin marketplace. To roll the audit commands out to a whole repo's team, commit this to the repo's `.claude/settings.json` — Claude Code then prompts each engineer once (on folder trust) to install the marketplace and enables the plugin:
-
-```json
-{
-  "extraKnownMarketplaces": {
-    "sarj": {
-      "source": { "source": "github", "repo": "sarj-ai/standards" }
-    }
-  },
-  "enabledPlugins": {
-    "sarj-audit@sarj": true
-  }
-}
-```
-
-For a one-off personal install instead:
-
-```
-/plugin marketplace add sarj-ai/standards
-/plugin install sarj-audit@sarj
-```
-
-Then run any audit, e.g. `/sarj-audit:data-contracts` or `/sarj-audit:concurrency-and-performance`. The plugin lives in [`plugins/sarj-audit/`](plugins/sarj-audit/); [`commands/stack-detection.md`](plugins/sarj-audit/commands/stack-detection.md) is the shared stack-aware Phase-0 the audits gate on, and [`skills/`](plugins/sarj-audit/skills/) ships the lint-rule authoring and ratcheting skills alongside it — they used to sit in a top-level `skills/` directory that nothing loaded them from.
-
-## Adopt
+Install [`uv`](https://docs.astral.sh/uv/), then run:
 
 ```bash
-uvx --from sarj-lint-configs sarj-standards init
+uv tool install sarj-standards
+sarj-standards setup
+sarj-standards doctor
+sarj-standards check --trust-repository-code
 ```
 
-`init` detects whether the repo is Python, TypeScript or both; installs hook
-plumbing and TypeScript peers; syncs only the
-configs that ecosystem uses; wires them into `pyproject.toml`,
-`pyrightconfig.json` and `eslint.config.mjs`; writes a pre-commit block; records
-the adopted version in `.sarj-standards.toml`; and prints the CI snippet plus, for
-TypeScript, the exact peer set whose versions resolve together. `--dry-run`
-shows the plan first, and `--no-install` only writes the wiring. Existing files
-change only when their structure can be patched safely; ambiguous ownership or
-an incompatible config stops the operation before any write.
+`setup` detects the repository, writes the minimum required integration, and is
+safe to run again. `doctor` reports configuration drift and exact repairs.
+`check` is the complete local and CI gate. The trust flag explicitly permits
+the repository's executable ESLint configuration; generated hooks and CI use
+the same flag. Run `sarj-standards --help` for the current command reference.
 
-Standards is the single policy and command facade, while Ruff, BasedPyright,
-ESLint, and repository-selected formatters remain the underlying engines. It
-does not delete native configs, formatter scripts, generated-code steps, or
-custom CI gates merely because an equivalent-looking Standards command exists.
-That boundary keeps adoption idempotent without silently losing behavior.
+All applicable rules are enabled by default. Put narrow, reasoned rule or path
+exclusions in `.sarj-standards.toml`; generated and vendored code should be
+excluded there rather than by weakening the shared policy.
 
-Deliberately no version literal above. Pinning a version in prose is how the
-previous instructions came to pin `sarj-lint-configs` at 0.10.0 five minor
-versions after 0.10.0, and to name a peer floor of `@sarj/eslint-plugin` 2.16.0
-for a config that needed 2.17.0 or newer — anyone who followed them got a stale
-toolchain or a broken config. The isolated launcher resolves the current version;
-`.sarj-standards.toml` records it;
-`doctor` proves everything else agrees. Both READMEs are now asserted against the
-shipping versions by a test, so this section cannot rot silently again.
+Standards executes repository-owned ESLint configuration only after the
+repository is explicitly trusted. Use reviewable, pinned dependencies in CI.
 
-## Daily use
+## Packages
 
-Every repository shape uses the same generated launcher prefix:
+<!-- generated:packages:start -->
+| Package | Registry | Purpose |
+| --- | --- | --- |
+| [`sarj-standards`](packages/standards/) | PyPI | Python orchestration and shared configuration |
+| [`sarj-python-lint`](packages/python/) | PyPI | Python AST rules |
+| [`sarj-sql-lint`](packages/sql/) | PyPI | PostgreSQL migration rules |
+| [`sarj-iac-lint`](packages/iac/) | PyPI | Terraform and IaC rules |
+| [`@sarj/eslint-plugin`](packages/typescript/) | npm | ESLint rules and presets |
+| [`@sarj/tsconfig`](packages/tsconfig/) | npm | Strict TypeScript configurations |
+<!-- generated:packages:end -->
 
-| Repository shape | Launcher prefix |
-|---|---|
-| Python project at the root | `uvx --isolated --python 3.14 --from sarj-lint-configs==<manifest version>` |
-| Python project in `backend/` | `uvx --isolated --python 3.14 --from sarj-lint-configs==<manifest version>` |
-| TypeScript-only repository | `uvx --isolated --python 3.14 --from sarj-lint-configs==<manifest version>` |
+## Rules
 
-The tool runtime is separate from the consumer's Python target and environment.
-Use the exact launcher written to pre-commit and emitted by `show ci`; use the
-following stable verbs after `sarj-standards`:
+<!-- generated:rules:start -->
+| Family | Active rules |
+| --- | ---: |
+| TypeScript | 66 |
+| Python | 81 |
+| SQL | 12 |
+| IaC | 3 |
+| Text | 4 |
 
-| Command | Answers |
-|---|---|
-| `check` | Run version, config, custom-rule, Ruff, BasedPyright, and ESLint gates. |
-| `analyze --format github` | Emit native Python, SQL, IaC, and text findings as CI annotations. |
-| `fix` | Format Python and apply safe Ruff and ESLint fixes. |
-| `doctor` | Diagnose drift and print exact remediation. |
-| `update --check` | Preview a coherent toolchain update. |
-| `show state` | Show the detected adoption as JSON. |
+Rule identifiers and lifecycle data are available through `sarj-standards show rules`.
+<!-- generated:rules:end -->
 
-For TypeScript, `sarj-standards show peers` (with the init-generated launcher) prints every npm package
-`eslint.strict.mjs` needs at versions that install together — there is no
-`@latest` combination that does.
+Rule source and its paired tests are the authoritative specification. New rules
+must prove precision against real repositories before they are enabled.
 
-Pre-commit runs the version already pinned by the consumer repository; it does
-not silently download new rules. Run `sarj-standards update --check` in scheduled
-automation and review the resulting `sarj-standards update` change to receive a
-new release coherently across the manifest, launchers, configs, and npm peers.
+Run `make setup` after cloning and `make verify` before requesting review.
+Security issues belong in the private process described in
+[`SECURITY.md`](.github/SECURITY.md), not a public issue.
 
-See [`packages/lint-configs/README.md`](packages/lint-configs/README.md) for how
-to extend the configs without forking them, polyglot destination routing, and the
-generated pre-commit block.
-
-## Where things live
-
-| Source | Published as |
-|---|---|
-| [`packages/typescript/`](packages/typescript/) | `@sarj/eslint-plugin` on [npm](https://www.npmjs.com/package/@sarj/eslint-plugin) |
-| [`packages/python/`](packages/python/) | `sarj-python-lint` on [PyPI](https://pypi.org/project/sarj-python-lint/) |
-| [`packages/sql/`](packages/sql/) | `sarj-sql-lint` on [PyPI](https://pypi.org/project/sarj-sql-lint/) |
-| [`packages/iac/`](packages/iac/) | `sarj-iac-lint` on [PyPI](https://pypi.org/project/sarj-iac-lint/) |
-| [`packages/lint-configs/`](packages/lint-configs/) | `sarj-lint-configs` on [PyPI](https://pypi.org/project/sarj-lint-configs/) |
-| [`packages/tsconfig/`](packages/tsconfig/) | `@sarj/tsconfig` on [npm](https://www.npmjs.com/package/@sarj/tsconfig) |
-| [`plugins/sarj-audit/`](plugins/sarj-audit/) | `sarj-audit` Claude Code plugin (install via `/plugin marketplace add sarj-ai/standards`) |
-
-## Release
-
-Normal releases are triggered by merging a manifest version bump to `main`;
-`release.yml` publishes via package-specific OIDC identities. Release tags are
-not created: all tag creation, mutation, and deletion is blocked, and current
-consumer hooks execute the reviewed package version installed in their own
-lockfile through `repo: local`.
-
-Every push also compares the current manifests with PyPI and npm. If an earlier
-Actions outage missed a release, the next push automatically publishes that
-missing version before any compatibility bundle that pins it. Already-public
-versions remain no-ops.
-
-For a rule release, keep the change atomic: update the implementation, registry,
-strict config and tests; bump the owning package manifest; update its generated
-lockfile; and, for Python/SQL/IaC rules, bump the exact dependency and version of
-`sarj-lint-configs`. Run `make verify`. The release workflow
-then publishes every changed package. Consumer repositories run
-`sarj-standards doctor` and `update --configs-only --check` in CI, so a new release cannot
-silently leave them stale.
-
-Adding an npm import to `eslint.strict.mjs` also means adding its pin to
-`eslint.peers.json` and to `packages/typescript`'s devDependencies — a test fails
-otherwise, and `packages/typescript` installing that exact set is what proves the
-set resolves and that ESLint can load the config.
-
-Local fallback: `NPM_TOKEN=... make publish`.
-
-Each rule is self-documenting via its source file. MIT.
+The project is Beta software, licensed under the [MIT License](LICENSE).

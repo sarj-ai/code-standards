@@ -36,10 +36,10 @@ import { describe, expect, it } from "vitest";
 
 import applicationConfig, {
   createConfig as createApplicationConfig,
-} from "../../lint-configs/src/sarj_lint_configs/configs/eslint.application.mjs";
+} from "../../standards/src/sarj_standards/configs/eslint.application.mjs";
 import strictConfig, {
   createConfig as createStrictConfig,
-} from "../../lint-configs/src/sarj_lint_configs/configs/eslint.strict.mjs";
+} from "../../standards/src/sarj_standards/configs/eslint.strict.mjs";
 
 /**
  * Paths chosen to exercise every `files:`-scoped block in the config, because a

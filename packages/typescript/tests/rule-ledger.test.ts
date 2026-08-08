@@ -8,7 +8,7 @@
  * `eslint-disable` is an error of its own. The repo becomes unlintable on the
  * upgrade, with nothing in the failure saying the rule went deliberately.
  *
- * `rule-ledger.json` is what `sarj-lint-configs doctor` reads to name those
+ * `rule-ledger.json` is what `sarj-standards doctor` reads to name those
  * references BEFORE the upgrade. It only helps if it is current, so removing a
  * rule fails here until `make sync-rule-ledger` has run — and that script
  * retires rather than deletes, which is how the removal ends up recorded.
@@ -25,7 +25,7 @@ import plugin, { renamedRules, retiredRules, rules } from "../src/index.js";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const LEDGER_PATH = resolve(
   HERE,
-  "../../lint-configs/src/sarj_lint_configs/configs/rule-ledger.json",
+  "../../standards/src/sarj_standards/configs/rule-ledger.json",
 );
 
 interface RetiredEntry {

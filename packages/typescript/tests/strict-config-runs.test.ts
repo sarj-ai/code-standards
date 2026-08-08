@@ -29,7 +29,7 @@ import { describe, expect, it } from "vitest";
 
 import strictConfig, {
   createConfig as createStrictConfig,
-} from "../../lint-configs/src/sarj_lint_configs/configs/eslint.strict.mjs";
+} from "../../standards/src/sarj_standards/configs/eslint.strict.mjs";
 import { rulesOf } from "./_config.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));

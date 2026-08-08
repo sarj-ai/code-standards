@@ -6,10 +6,10 @@ on:
     paths:
       - 'packages/iac/**'
       - '.github/workflows/iac-ci.yml'
-      # The strict configs these jobs lint against live in packages/lint-configs and
-      # are reached through the root symlinks, so a change there changes this job's
+      # The strict configs these jobs lint against are generated at the root from
+      # packages/standards, so a change there changes this job's
       # result without touching this package.
-      - 'packages/lint-configs/src/sarj_lint_configs/configs/**'
+      - 'packages/standards/src/sarj_standards/configs/**'
       - '.ruff-strict.toml'
       - '.pyright-strict.json'
       # test_hook_sync.py reads it: a deleted hook must fail this job, not ship.
@@ -18,10 +18,10 @@ on:
     paths:
       - 'packages/iac/**'
       - '.github/workflows/iac-ci.yml'
-      # The strict configs these jobs lint against live in packages/lint-configs and
-      # are reached through the root symlinks, so a change there changes this job's
+      # The strict configs these jobs lint against are generated at the root from
+      # packages/standards, so a change there changes this job's
       # result without touching this package.
-      - 'packages/lint-configs/src/sarj_lint_configs/configs/**'
+      - 'packages/standards/src/sarj_standards/configs/**'
       - '.ruff-strict.toml'
       - '.pyright-strict.json'
       # test_hook_sync.py reads it: a deleted hook must fail this job, not ship.
@@ -37,6 +37,7 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: packages/iac
@@ -56,6 +57,7 @@ jobs:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
+          version: '0.11.32'
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
       - run: uv python install 3.14

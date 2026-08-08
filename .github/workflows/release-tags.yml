@@ -1,0 +1,38 @@
+name: release-tags
+
+on:
+  workflow_run:
+    workflows: [release]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  tag:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: '0.11.32'
+      - name: Create immutable tags for registry-visible releases
+        env:
+          PUBLISHED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: >-
+          uv run --project packages/standards --frozen sarj-standards --root .
+          maintain release create-tags typescript python sql iac standards tsconfig
+          --commit "$PUBLISHED_SHA"

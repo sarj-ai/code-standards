@@ -1,5 +1,5 @@
 /**
- * Guards the seam between this plugin and the published lint-configs strict
+ * Guards the seam between this plugin and the published standards strict
  * flat config. A rule name referenced in eslint.strict.mjs but missing from
  * the plugin only surfaces at consumer lint time as "Definition for rule
  * '@sarj/...' was not found" — exactly the no-unsafe-cast wiring bug this
@@ -26,7 +26,7 @@ import plugin, {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const STRICT_CONFIG_PATH = resolve(
   HERE,
-  "../../lint-configs/src/sarj_lint_configs/configs/eslint.strict.mjs",
+  "../../standards/src/sarj_standards/configs/eslint.strict.mjs",
 );
 const REPO_ROOT = resolve(HERE, "../../..");
 
@@ -149,7 +149,7 @@ function baseSeverities(configText: string): Map<string, string> {
   return found;
 }
 
-describe("lint-configs eslint.strict.mjs stays wired to the plugin", () => {
+describe("standards eslint.strict.mjs stays wired to the plugin", () => {
   it("references only rule names that exist in the plugin's rules export", () => {
     const text = readFileSync(STRICT_CONFIG_PATH, "utf8");
     const referenced = referencedRuleNames(text);
@@ -165,7 +165,7 @@ describe("lint-configs eslint.strict.mjs stays wired to the plugin", () => {
    * above catches a config naming a rule that does not exist — loud at consumer
    * lint time. It cannot catch a rule that EXISTS but is never referenced, which
    * is silent: 2.8.0 and 2.9.0 shipped 12 rules that no consumer of
-   * `sarj-lint-configs` ever ran. Same "written but inert" failure the rules
+   * `sarj-standards` ever ran. Same "written but inert" failure the rules
    * themselves were added to prevent, one layer up.
    */
   it("every plugin rule is either wired into the strict config or explicitly opted out", () => {

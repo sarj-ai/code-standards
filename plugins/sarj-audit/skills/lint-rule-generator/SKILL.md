@@ -6,8 +6,8 @@ description: Designs, evaluates, and refines deterministic lint rules from concr
 # Lint rule generator
 
 Turn a concrete defect description into the narrowest deterministic rule that
-earns trust on real code. Use `sarj_lint_configs.libs.rules` for problem,
-catalog, evaluation, and report contracts. Use `sarj_lint_configs.libs.corpus`
+earns trust on real code. Use `sarj_standards.libs.rules` for problem,
+catalog, evaluation, and report contracts. Use `sarj_standards.libs.corpus`
 for manifests, snapshots, local pin verification, and redacted reporting. Keep
 all executable logic in the uv package; this skill contains no scripts.
 

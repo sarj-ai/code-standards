@@ -5,7 +5,7 @@
 Use an already-local public manifest and optional owner-readable private
 overlay. Every source declares non-empty include patterns and a SHA-256 content
 digest. Git sources also declare a full lowercase 40-character commit. Verify
-both with `sarj_lint_configs.libs.corpus.verify`; never silently refresh pins.
+both with `sarj_standards.libs.corpus.verify`; never silently refresh pins.
 
 The corpus should include this repository, representative consumer repositories,
 and mature public projects for the affected language. Diversity matters more
@@ -45,7 +45,7 @@ filesystem walks, and non-content-addressed caches. Cache only deterministic
 immutable results and bound in-process caches.
 
 Run repository corpora with
-`sarj_lint_configs.libs.rules.run_isolated_corpora`. Git corpora select only
+`sarj_standards.libs.rules.run_isolated_corpora`. Git corpora select only
 tracked, existing files. Each repository and each bounded batch must start a
 fresh linter process; never retain results from multiple repositories in one
 ESLint or language-server process. Keep the default 250-file batch unless
