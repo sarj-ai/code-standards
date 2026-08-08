@@ -12,6 +12,9 @@ const TYPED_TAG_RE = /@(arg|argument|param|return|returns|yield|yields)\b/i;
 const VALUE_TAG_RE = /@(example|deprecated|see|remarks|throws|internal|public|alpha|beta|since|template|fileoverview)\b/i;
 const BOUNDARY_RE = /(?<=[.!?])["'`)\]]*\s+(?=[A-Z0-9`])/;
 const BULLET_RE = /^\s*(?:[-*+] |\d+[.)] )/;
+const HEADING_RE = /^[A-Za-z][A-Za-z ]+:$/;
+const TECHNICAL_ANCHOR_RE =
+  /https?:\/\/|`[^`\n]+`|:[a-z][a-z0-9_-]*:|(["'])[^"'\n]+\1|\d|\b[a-z][a-z0-9]*[A-Z][A-Za-z0-9]*\b|\b[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+\b|(?:^|\s)(?:[\w.-]+\/)+[\w.-]+|\b[\w.-]+\.(?:py|pyi|js|jsx|ts|tsx|json|ya?ml|toml|csv|parquet|md)\b|->|=>|==|!=|<=|>=|\|/mu;
 
 export interface ProseGroup {
   readonly comment: TSESTree.Comment;
@@ -48,6 +51,20 @@ export function sentenceUnits(text: string): number {
   }
   if (prose.length > 0) units += prose.join(" ").split(BOUNDARY_RE).length;
   return units;
+}
+
+export function hasDocumentationStructure(text: string): boolean {
+  const paragraphs = text.split(/\n\s*\n/u).filter((part) => part.trim().length > 0);
+  if (paragraphs.length >= 2) return true;
+  return text.split("\n").some((raw) => {
+    const line = raw.trim().replace(/^\*\s?/u, "").trim();
+    return line.length > 0 &&
+      (BULLET_RE.test(line) || HEADING_RE.test(line) || /(?:->|=>|\|)/u.test(line));
+  });
+}
+
+export function hasTechnicalAnchor(text: string): boolean {
+  return TECHNICAL_ANCHOR_RE.test(text);
 }
 
 export function proseGroups(

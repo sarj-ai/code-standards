@@ -6,17 +6,20 @@
 import { AST_NODE_TYPES, type TSESTree, type TSESLint } from "@typescript-eslint/utils";
 
 import { createRule } from "./_docs.js";
-import { documentsTypedFunction, proseGroups, sentenceUnits } from "./_prose-budget.js";
+import {
+  documentsTypedFunction,
+  hasDocumentationStructure,
+  hasTechnicalAnchor,
+  proseGroups,
+  sentenceUnits,
+} from "./_prose-budget.js";
 
 type MessageIds = "tooLong";
 type Options = readonly [];
 
-const LIST_ITEM_RE = /^\s*(?:[-*+] |\d+[.)] )/m;
-const DURABLE_RATIONALE_RE =
-  /\b(?:adapter|algorithm|atomic|auth(?:entication|orization)?|backpressure|billing|cache|callback|cluster|commit|compatib|concurr|contract|credential|cross-node|csrf|definite-assignment|error|exception|external|failure|fallback|handshake|interop|invalid|invariant|legacy|migration|navigation|parse[rsd]?|payload|privacy|protocol|race|reject|reload|renderer|resume|retry|runtime|schema|security|selector|sentinel|serializ|socket|stage|third-party|token|transaction|upstream|wire|workaround)\b|\b(?:must|required|prevent|avoid)\b/iu;
-const VENDORED_BASENAME_RE =
-  /(?:^|\/)(?:jquery(?:-ui)?(?:[.-]\d[^/]*)?|lodash(?:\.min)?|bootstrap(?:\.min)?|react(?:\.min)?)\.js$/iu;
 const EXCESSIVE_SENTENCE_COUNT = 8;
+const VERSIONED_DEPENDENCY_TREE_RE =
+  /(?:^|\/)lib\/[^/]*-?v?\d+\.\d+(?:\.\d+)?[^/]*\//iu;
 
 function documentsTypeOrMember(
   sourceCode: Readonly<TSESLint.SourceCode>,
@@ -52,15 +55,16 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     const normalizedFilename = context.filename.replaceAll("\\", "/");
-    if (VENDORED_BASENAME_RE.test(normalizedFilename)) return {};
+    if (VERSIONED_DEPENDENCY_TREE_RE.test(normalizedFilename)) return {};
     return {
       Program(): void {
         for (const group of proseGroups(context.filename, context.sourceCode)) {
           if (
             group.comment.type !== "Block" ||
+            !group.comment.value.startsWith("*") ||
             group.hasTypedTags ||
-            LIST_ITEM_RE.test(group.text) ||
-            DURABLE_RATIONALE_RE.test(group.text) ||
+            hasDocumentationStructure(group.text) ||
+            hasTechnicalAnchor(group.text) ||
             documentsTypedFunction(context.sourceCode, group.comment) ||
             documentsTypeOrMember(context.sourceCode, group.comment) ||
             sentenceUnits(group.text) < EXCESSIVE_SENTENCE_COUNT

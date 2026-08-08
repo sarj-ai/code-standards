@@ -1167,7 +1167,7 @@ def _accumulate_compare(clusters: dict[str, _ClusterEntry], node: ast.Compare) -
 
 def _accumulate_match(clusters: dict[str, _ClusterEntry], node: ast.Match) -> None:
     key = _name_key(node.subject)
-    if key is None:
+    if key is None or _match_accepts_unlisted_values(node):
         return
     literals: list[str] = []
     for case in node.cases:
@@ -1175,6 +1175,29 @@ def _accumulate_match(clusters: dict[str, _ClusterEntry], node: ast.Match) -> No
     if not literals:
         return
     _merge_cluster(clusters, key, literals, (node.lineno, node.col_offset + 1), operator=_EQ)
+
+
+def _match_accepts_unlisted_values(node: ast.Match) -> bool:
+    """Report whether an irrefutable arm handles unknown values normally."""
+    return any(
+        case.guard is None
+        and isinstance(case.pattern, ast.MatchAs)
+        and case.pattern.pattern is None
+        and not _statements_reject_value(case.body)
+        for case in node.cases
+    )
+
+
+def _statements_reject_value(statements: list[ast.stmt]) -> bool:
+    """Recognize explicit exhaustive-match failures without guessing semantics."""
+    return len(statements) == 1 and (
+        isinstance(statements[0], ast.Raise)
+        or (
+            isinstance(statements[0], ast.Expr)
+            and isinstance(statements[0].value, ast.Call)
+            and _trailing_name(statements[0].value.func) == "assert_never"
+        )
+    )
 
 
 def _merge_cluster(

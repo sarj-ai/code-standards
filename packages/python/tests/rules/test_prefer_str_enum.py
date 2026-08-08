@@ -1359,6 +1359,64 @@ def handle(status: str) -> int:
     assert len(_check(src)) == 1
 
 
+def test_match_with_ordinary_wildcard_fallback_keeps_domain_open() -> None:
+    src = """
+def render(content_type: str, payload: dict[str, str]) -> str:
+    match content_type:
+        case "text":
+            return payload["text"]
+        case "image" | "video":
+            return f"[{content_type}]"
+        case _:
+            return payload.get("content", "")
+"""
+    assert _check(src) == []
+
+
+def test_match_with_capture_fallback_keeps_domain_open() -> None:
+    src = """
+def render(kind: str) -> str:
+    match kind:
+        case "text":
+            return "Text"
+        case "image":
+            return "Image"
+        case unknown:
+            return unknown.title()
+"""
+    assert _check(src) == []
+
+
+def test_match_with_raising_wildcard_remains_a_closed_domain() -> None:
+    src = """
+def render(kind: str) -> str:
+    match kind:
+        case "text":
+            return "Text"
+        case "image":
+            return "Image"
+        case _:
+            raise ValueError(kind)
+"""
+    assert len(_check(src)) == 1
+
+
+def test_match_with_assert_never_wildcard_remains_a_closed_domain() -> None:
+    src = """
+from typing import assert_never
+
+def render(kind: str) -> str:
+    match kind:
+        case "text":
+            return "Text"
+        case "image":
+            return "Image"
+        case _:
+            assert_never(kind)
+"""
+    assert len(_check(src)) == 1
+
+
 def test_match_case_single_string_pattern_does_not_cluster():
     src = """
 def handle(status: str) -> int:

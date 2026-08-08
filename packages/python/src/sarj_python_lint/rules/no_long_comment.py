@@ -1,4 +1,4 @@
-"""SARJ091 — Three or more sentences of in-code prose exceed the comment budget.
+"""SARJ091 — Flag unusually large, unstructured docstring prose walls.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_long_comment.py
 """
@@ -8,7 +8,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, final, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, Severity
-from sarj_python_lint.rules._prose_budget import groups, has_list_items, sentence_units
+from sarj_python_lint.rules._prose_budget import (
+    ProseGroup,
+    groups,
+    has_documentation_structure,
+    has_technical_anchor,
+    sentence_units,
+)
 
 
 if TYPE_CHECKING:
@@ -17,10 +23,10 @@ if TYPE_CHECKING:
 
 @final
 class NoLongComment(Rule):
-    _ERROR_SENTENCES = 3
+    _ERROR_SENTENCES = 8
     id = "no-long-comment"
     code = "SARJ091"
-    description = "Comment exceeds two sentences — keep one local fact and clarify the code itself."
+    description = "Docstring is an unusually large prose wall — structure durable documentation or clarify the code."
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
@@ -35,7 +41,22 @@ class NoLongComment(Rule):
                 column_encoding=group.column_encoding,
             )
             for group in groups(path, source)
-            if not group.typed_sections
-            and (group.kind == "comment" or not has_list_items(group.text))
+            if _eligible_owner(group)
+            and not group.typed_sections
+            and not has_documentation_structure(group.text)
+            and not has_technical_anchor(group.text)
             and sentence_units(group.text) >= self._ERROR_SENTENCES
         ]
+
+
+def _eligible_owner(group: ProseGroup) -> bool:
+    """Limit the heuristic to docstrings whose prose is not a typed public API contract."""
+    if group.kind != "docstring":
+        return False
+    if group.owner_kind == "module":
+        return True
+    if group.owner_kind == "class":
+        return bool(group.owner_name and group.owner_name.startswith("_"))
+    if group.owner_kind == "function":
+        return bool(group.owner_name and (group.owner_name.startswith("_") or not group.owner_fully_typed))
+    return False

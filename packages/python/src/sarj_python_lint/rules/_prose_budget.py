@@ -27,6 +27,15 @@ _DIRECTIVE_RE: Final = re.compile(
 _LICENSE_RE: Final = re.compile(r"\b(?:copyright|spdx-license-identifier|licensed under)\b", re.IGNORECASE)
 _BOUNDARY_RE: Final = re.compile(r"(?<=[.!?])[\"'`)\]]*\s+(?=[A-Z0-9`])")
 _BULLET_RE: Final = re.compile(r"^\s*(?:[-*+] |\d+[.)] )")
+_STRUCTURED_LINE_RE: Final = re.compile(r"(?:^\s*(?:[-*+] |\d+[.)] ))|(?:^[A-Za-z][A-Za-z ]+:$)|(?:->|=>|\|)")
+_MIN_STRUCTURED_PARAGRAPHS: Final = 2
+_TECHNICAL_ANCHOR_RE: Final = re.compile(
+    r"https?://|`[^`\n]+`|:[a-z][a-z0-9_-]*:`|(['\"])[^'\"\n]+\1|\d|"
+    r"\b[a-z][a-z0-9]*[A-Z][A-Za-z0-9]*\b|\b[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+\b|"
+    r"(?:^|\s)(?:[\w.-]+/)+[\w.-]+|\b[\w.-]+\.(?:py|pyi|js|jsx|ts|tsx|json|ya?ml|toml|csv|parquet|md)\b|"
+    r"->|=>|==|!=|<=|>=|\|",
+    re.MULTILINE,
+)
 _TYPED_SECTIONS: Final = frozenset(
     {
         "Args",
@@ -52,6 +61,9 @@ class ProseGroup:
     text: str
     kind: str
     typed_sections: frozenset[str] = frozenset()
+    owner_kind: str | None = None
+    owner_name: str | None = None
+    owner_fully_typed: bool = False
 
     @property
     def column_encoding(self) -> ColumnEncoding:
@@ -88,6 +100,23 @@ def sentence_units(text: str) -> int:
 def has_list_items(text: str) -> bool:
     """Report whether prose contains a Markdown-style list item."""
     return any(_BULLET_RE.match(line.strip().lstrip("*").strip()) for line in text.splitlines())
+
+
+def has_documentation_structure(text: str) -> bool:
+    """Return whether prose is deliberately structured rather than one narrative wall."""
+    paragraphs = [part for part in re.split(r"\n\s*\n", text) if part.strip()]
+    if len(paragraphs) >= _MIN_STRUCTURED_PARAGRAPHS:
+        return True
+    for raw in text.splitlines():
+        line = raw.strip().lstrip("*").strip()
+        if line and _STRUCTURED_LINE_RE.search(line):
+            return True
+    return False
+
+
+def has_technical_anchor(text: str) -> bool:
+    """Return whether prose carries a concrete code, path, literal, or numeric anchor."""
+    return _TECHNICAL_ANCHOR_RE.search(text) is not None
 
 
 def _without_examples_metadata(text: str) -> str:
@@ -187,7 +216,22 @@ def _docstring_groups(tree: ast.Module) -> list[ProseGroup]:
             and isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
             and _fully_typed(node)
         )
-        out.append(ProseGroup(first.lineno, first.col_offset + 1, doc, "docstring", found))
+        owner_kind = (
+            "module" if isinstance(node, ast.Module) else "class" if isinstance(node, ast.ClassDef) else "function"
+        )
+        owner_name = None if isinstance(node, ast.Module) else node.name
+        out.append(
+            ProseGroup(
+                first.lineno,
+                first.col_offset + 1,
+                doc,
+                "docstring",
+                found,
+                owner_kind,
+                owner_name,
+                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and _fully_typed(node),
+            )
+        )
     return out
 
 

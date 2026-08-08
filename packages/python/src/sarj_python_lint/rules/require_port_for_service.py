@@ -143,6 +143,14 @@ _SCRIPT_DIR_NAMES = frozenset({"scripts", "bin", "tools", "migrations", "alembic
 # One public method is a function in a trenchcoat; an ABC over it is ceremony.
 _MIN_PUBLIC_METHODS = 2
 
+# A store/repository-backed application service is ordinary layering, not
+# evidence that consumers also need a second abstraction over the service.
+_PERSISTENCE_DEPENDENCY_RE = re.compile(r"(?:Store|Repository|Repo)$")
+
+# A collaborator must drive more than one operation before a service-level
+# substitution boundary is worth suggesting.
+_MIN_COLLABORATOR_METHODS = 2
+
 _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 
 
@@ -151,8 +159,8 @@ class RequirePortForService(Rule):
     code: str = "SARJ071"
     description: str = (
         # Client is deliberately excluded because it produced excessive false positives in measured projects.
-        "Concrete `*Service`/`*Store`/`*DAO`/`*Gateway`/`*Provider` with injected collaborators "
-        "and no declared port — advisory because not every service needs another abstraction."
+        "Concrete `*Service`/`*Store`/`*DAO`/`*Gateway`/`*Provider` with a required, behaviorally used "
+        "non-persistence collaborator and no declared port — advisory because not every service needs another abstraction."
     )
 
     @override
@@ -354,13 +362,15 @@ def _public_method_count(node: ast.ClassDef) -> int:
 
 
 def _injected_collaborator(node: ast.ClassDef, data_names: frozenset[str] | set[str]) -> str | None:
-    """Find a constructor parameter that is a real collaborator stored on `self`."""
+    """Find a required collaborator that drives a meaningful public surface."""
     init = next((method for method in _methods(node) if method.name == "__init__"), None)
     if init is None:
         return None
-    stored = _self_stored_parameters(init)
-    args = init.args
-    for param in [*args.posonlyargs, *args.args[1:], *args.kwonlyargs]:
+    stored, fallback_stored = _self_stored_parameters(init)
+    candidates: list[tuple[str, frozenset[str]]] = []
+    for param, default in _params_with_defaults(init):
+        if param.arg == "self":
+            continue
         annotation = _annotation_tail(param.annotation)
         if (
             annotation is None
@@ -371,15 +381,31 @@ def _injected_collaborator(node: ast.ClassDef, data_names: frozenset[str] | set[
             continue
         if _WEAK_COLLABORATOR_RE.search(annotation):
             continue
-        if param.arg in stored:
+        fields = stored.get(param.arg)
+        if fields is None or default is not None or _annotation_allows_none(param.annotation):
+            continue
+        if param.arg in fallback_stored:
+            continue
+        if _PERSISTENCE_DEPENDENCY_RE.search(annotation):
+            return None
+        candidates.append((annotation, fields))
+    for annotation, fields in candidates:
+        if _behavioral_public_method_count(node, fields) >= _MIN_COLLABORATOR_METHODS:
             return annotation
     return None
 
 
-def _self_stored_parameters(init: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
-    """Collect constructor parameters assigned directly to `self`."""
-    names: set[str] = set()
-    for node in ast.walk(init):
+def _self_stored_parameters(
+    init: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> tuple[dict[str, frozenset[str]], frozenset[str]]:
+    """Map constructor parameters to fields, recording fallback storage."""
+    fields_by_parameter: dict[str, set[str]] = {}
+    fallback_stored: set[str] = set()
+    stack: list[ast.AST] = list(init.body)
+    while stack:
+        node = stack.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+            continue
         if isinstance(node, ast.Assign):
             targets: list[ast.expr] = list(node.targets)
             value = node.value
@@ -387,13 +413,24 @@ def _self_stored_parameters(init: ast.FunctionDef | ast.AsyncFunctionDef) -> set
             targets = [node.target]
             value = node.value
         else:
+            stack.extend(ast.iter_child_nodes(node))
             continue
-        if value is not None and any(
-            isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name) and target.value.id == "self"
+        if value is None:
+            continue
+        fields = {
+            target.attr
             for target in targets
-        ):
-            names.update(_stored_parameter_names(value))
-    return names
+            if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name) and target.value.id == "self"
+        }
+        if not fields:
+            continue
+        for parameter in _stored_parameter_names(value):
+            fields_by_parameter.setdefault(parameter, set()).update(fields)
+        fallback_stored.update(_fallback_parameter_names(value))
+    return (
+        {parameter: frozenset(fields) for parameter, fields in fields_by_parameter.items()},
+        frozenset(fallback_stored),
+    )
 
 
 def _stored_parameter_names(value: ast.expr) -> set[str]:
@@ -407,6 +444,84 @@ def _stored_parameter_names(value: ast.expr) -> set[str]:
         if cast_values:
             return _stored_parameter_names(cast_values[-1])
     return set()
+
+
+def _fallback_parameter_names(value: ast.expr) -> set[str]:
+    """Collect parameters retained through an implementation fallback."""
+    if isinstance(value, ast.BoolOp) and isinstance(value.op, ast.Or):
+        return _stored_parameter_names(value)
+    if isinstance(value, ast.Call) and _dotted_tail(value.func) == "cast":
+        cast_values = value.args[1:]
+        if cast_values:
+            return _fallback_parameter_names(cast_values[-1])
+    return set()
+
+
+def _annotation_allows_none(annotation: ast.expr | None) -> bool:
+    """Report whether an annotation explicitly permits absence."""
+    if annotation is None:
+        return False
+    if isinstance(annotation, ast.Constant):
+        if annotation.value is None:
+            return True
+        if isinstance(annotation.value, str):
+            try:
+                return _annotation_allows_none(ast.parse(annotation.value, mode="eval").body)
+            except SyntaxError, ValueError:
+                return False
+        return False
+    if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
+        return _annotation_allows_none(annotation.left) or _annotation_allows_none(annotation.right)
+    if isinstance(annotation, ast.Subscript):
+        outer = _dotted_tail(annotation.value)
+        if outer == "Optional":
+            return True
+        if outer == "Annotated":
+            inner = annotation.slice.elts[0] if isinstance(annotation.slice, ast.Tuple) else annotation.slice
+            return _annotation_allows_none(inner)
+        if outer == "Union":
+            members = annotation.slice.elts if isinstance(annotation.slice, ast.Tuple) else [annotation.slice]
+            return any(_annotation_allows_none(member) for member in members)
+    return False
+
+
+def _behavioral_public_method_count(node: ast.ClassDef, fields: frozenset[str]) -> int:
+    """Count public methods that invoke a retained collaborator field."""
+    return sum(
+        _method_invokes_field(method, fields)
+        for method in _methods(node)
+        if method.name != "__init__"
+        and not method.name.startswith("_")
+        and not any(_dotted_tail(dec) in _NON_METHOD_DECORATORS for dec in method.decorator_list)
+    )
+
+
+def _method_invokes_field(
+    method: ast.FunctionDef | ast.AsyncFunctionDef,
+    fields: frozenset[str],
+) -> bool:
+    """Report a direct `self.field(...)` or `self.field.method(...)` call."""
+    stack: list[ast.AST] = list(method.body)
+    while stack:
+        current = stack.pop()
+        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+            continue
+        if isinstance(current, ast.Call) and _called_self_field(current.func) in fields:
+            return True
+        stack.extend(ast.iter_child_nodes(current))
+    return False
+
+
+def _called_self_field(func: ast.expr) -> str | None:
+    """Resolve the retained field in one-level collaborator calls."""
+    if not isinstance(func, ast.Attribute):
+        return None
+    receiver = func.value
+    if isinstance(receiver, ast.Name) and receiver.id == "self":
+        return func.attr
+    if isinstance(receiver, ast.Attribute) and isinstance(receiver.value, ast.Name) and receiver.value.id == "self":
+        return receiver.attr
+    return None
 
 
 def _annotation_tail(annotation: ast.expr | None) -> str | None:
