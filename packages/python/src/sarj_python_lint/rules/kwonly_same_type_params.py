@@ -20,7 +20,8 @@ if TYPE_CHECKING:
 
 _MIN_SAME_TYPE = 2
 
-_PRIMITIVES = frozenset({"str", "int", "float", "bool"})
+# Ruff FBT001 already owns positional booleans in the same production domain.
+_PRIMITIVES = frozenset({"str", "int", "float"})
 
 _EXEMPT_DECORATORS = frozenset({"override", "overload", "abstractmethod"})
 
@@ -233,16 +234,14 @@ def _swap_prone_annotation(args: ast.arguments) -> str | None:
         if (
             len(arg_names) >= _MIN_SAME_TYPE
             and not (_is_symmetric_numbering(arg_names) or _is_conventional_order(arg_names))
-            and _is_high_value_group(name, arg_names)
+            and _is_high_value_group(arg_names)
         ):
             return name
     return None
 
 
-def _is_high_value_group(annotation: str, arg_names: list[str]) -> bool:
+def _is_high_value_group(arg_names: list[str]) -> bool:
     """Report whether a same-primitive group is worth enforcing globally."""
-    if annotation == "bool":
-        return True
     return sum(1 for name in arg_names if _RISKY_NAME_PART_RE.search(name)) >= _MIN_SAME_TYPE
 
 

@@ -277,6 +277,27 @@ def test_thing():
     assert _check(src) == []
 
 
+def test_assertion_in_an_uncalled_nested_function_does_not_rescue_the_test():
+    src = """
+def test_thing():
+    def _unused():
+        assert compute() == 3
+    compute()
+"""
+    assert len(_check(src)) == 1
+
+
+def test_imported_assertion_api_alias_is_resolved():
+    src = """
+from pytest import raises as must_throw
+
+def test_thing():
+    with must_throw(ValueError):
+        parse("bad")
+"""
+    assert _check(src) == []
+
+
 # FP guard: helpers defined in the same module.
 
 

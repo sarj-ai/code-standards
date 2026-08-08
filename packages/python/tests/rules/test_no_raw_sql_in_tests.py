@@ -39,6 +39,17 @@ def test_flags_raw_insert_calls(call: str):
     assert "store/service" in diags[0].message
 
 
+@pytest.mark.parametrize("method", ["fetch", "fetchrow", "fetchval"])
+def test_flags_asyncpg_insert_returning_methods(method: str) -> None:
+    src = (
+        "async def test_x(conn):\n"  # ruff:ignore[hardcoded-sql-expression] — synthetic lint-rule fixture
+        f'    await conn.{method}("INSERT INTO call (id) VALUES (1) RETURNING id")\n'
+    )
+    diags = _check(src)
+    assert len(diags) == 1
+    assert f".{method}(...)" in diags[0].message
+
+
 def test_flags_fstring_insert():
     src = 'async def test_x(conn):\n    await conn.execute(f"INSERT INTO {table} (id) VALUES ({cid})")\n'
     assert len(_check(src)) == 1

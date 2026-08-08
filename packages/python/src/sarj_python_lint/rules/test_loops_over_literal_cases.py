@@ -29,7 +29,7 @@ _SCOPE_NODES = (*_FUNC_NODES, ast.Lambda)
 # `self.subTest(...)` (unittest) and `subtests.test(...)` (pytest-subtests):
 # each iteration already reports independently and a failure does not abort the
 # loop, which is exactly what this rule asks parametrize to provide.
-_SUBTEST_ATTRS = frozenset({"subTest", "subtest"})
+_UNITTEST_SUBTEST = "subTest"
 
 _SUBTESTS_FIXTURE = "subtests"
 
@@ -75,13 +75,13 @@ class _LiteralCaseLoopVisitor(ast.NodeVisitor):
 
     def __init__(self) -> None:
         super().__init__()
-        self._func_names: list[str | None] = []
+        self._functions: list[ast.FunctionDef | ast.AsyncFunctionDef | None] = []
         self.hits: list[tuple[ast.For | ast.AsyncFor, int]] = []
 
     def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
-        self._func_names.append(node.name)
+        self._functions.append(node)
         self.generic_visit(node)
-        self._func_names.pop()
+        self._functions.pop()
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         self._visit_function(node)
@@ -90,9 +90,9 @@ class _LiteralCaseLoopVisitor(ast.NodeVisitor):
         self._visit_function(node)
 
     def visit_Lambda(self, node: ast.Lambda) -> None:
-        self._func_names.append(None)
+        self._functions.append(None)
         self.generic_visit(node)
-        self._func_names.pop()
+        self._functions.pop()
 
     def visit_For(self, node: ast.For) -> None:
         self._check_loop(node)
@@ -106,17 +106,41 @@ class _LiteralCaseLoopVisitor(ast.NodeVisitor):
         if not self._in_test_function():
             return
         count = _literal_case_count(node.iter)
-        if count < _MIN_CASES or not _body_asserts(node) or _body_opens_a_subtest(node):
+        if (
+            count < _MIN_CASES
+            or not _body_asserts(node)
+            or _body_opens_a_subtest(node)
+            or self._followed_by_assertion(node)
+        ):
             return
         self.hits.append((node, count))
 
     def _in_test_function(self) -> bool:
-        nearest = self._func_names[-1] if self._func_names else None
-        return nearest is not None and nearest.startswith("test_")
+        nearest = self._functions[-1] if self._functions else None
+        return nearest is not None and nearest.name.startswith("test_")
+
+    def _followed_by_assertion(self, node: ast.For | ast.AsyncFor) -> bool:
+        """Protect state-building loops whose aggregate contract follows the loop."""
+        owner = self._functions[-1] if self._functions else None
+        if owner is None:
+            return False
+        for index, stmt in enumerate(owner.body):
+            if stmt is node:
+                return any(_is_assertion_statement(later) for later in owner.body[index + 1 :])
+        return False
 
 
 def _literal_case_count(iterable: ast.expr) -> int:
     # Only display literals expose a case table that can move into parametrize.
+    match iterable:
+        case ast.Call(func=ast.Attribute(value=ast.Dict(keys=keys), attr=view), args=[], keywords=[]) if view in {
+            "items",
+            "keys",
+            "values",
+        }:
+            return 0 if any(key is None for key in keys) else len(keys)
+        case _:
+            pass
     if not isinstance(iterable, _LITERAL_ITERABLES):
         return 0
     if any(isinstance(elt, ast.Starred) for elt in iterable.elts):
@@ -141,8 +165,8 @@ def _is_subtest_call(expr: ast.expr) -> bool:
     if not isinstance(expr, ast.Call) or not isinstance(expr.func, ast.Attribute):
         return False
     attr = expr.func
-    if attr.attr in _SUBTEST_ATTRS:
-        return True
+    if attr.attr == _UNITTEST_SUBTEST:
+        return isinstance(attr.value, ast.Name) and attr.value.id == "self"
     return attr.attr == "test" and isinstance(attr.value, ast.Name) and attr.value.id == _SUBTESTS_FIXTURE
 
 
@@ -152,4 +176,22 @@ def _contains_assert(node: ast.AST) -> bool:
         return False
     if isinstance(node, ast.Assert):
         return True
+    if isinstance(node, ast.Call) and _is_verification_call(node):
+        return True
     return any(_contains_assert(child) for child in children(node))
+
+
+def _is_verification_call(node: ast.Call) -> bool:
+    """Recognise the two assertion APIs whose semantics are unambiguous."""
+    func = node.func
+    if not isinstance(func, ast.Attribute) or not isinstance(func.value, ast.Name):
+        return False
+    if func.value.id == "self" and func.attr.startswith("assert"):
+        return True
+    return func.value.id == "pytest" and func.attr in {"raises", "warns"}
+
+
+def _is_assertion_statement(node: ast.stmt) -> bool:
+    if isinstance(node, ast.Assert):
+        return True
+    return isinstance(node, ast.Expr) and isinstance(node.value, ast.Call) and _is_verification_call(node.value)

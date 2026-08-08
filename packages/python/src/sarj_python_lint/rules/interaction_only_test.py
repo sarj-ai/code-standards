@@ -14,25 +14,12 @@ from typing import TYPE_CHECKING, override
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
 from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._paths import is_test_path
+from sarj_python_lint.rules._test_assertions import names_verification
 
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-
-# --- what counts as an assertion at all (SARJ043's notion, re-stated privately) ---
-
-# Names that verify something, however the project spells them.
-_ASSERTION_NAME_RE = re.compile(r"^_?(assert|expect|verify|validate)", re.IGNORECASE)
-
-# `raises` / `warns` as a token anywhere in the name, covering
-# `pytest.deprecated_call`, `pytest.RaisesGroup` and project-local wrappers.
-_RAISES_TOKEN_RE = re.compile(r"(^|_)(raises|warns|deprecated_call)", re.IGNORECASE)
-
-_RAISES_NAMES = frozenset({"raises", "warns", "fail"})
-
-# Fluent verification DSLs reached through an attribute rather than a call name.
-_FLUENT_ATTRS = frozenset({"expect"})
 
 # --- what counts as an *interaction* assertion specifically ---
 
@@ -78,6 +65,8 @@ _SKIP_MARKERS = frozenset({"skip", "skipif", "xfail"})
 _FIXTURE = "fixture"
 
 _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
+
+_SCOPE_BARRIERS = (*_FUNC_NODES, ast.ClassDef, ast.Lambda)
 
 # --- the calibrated guards; see the module docstring for the measurements ---
 
@@ -319,7 +308,7 @@ def _direct_counts(node: ast.FunctionDef | ast.AsyncFunctionDef, local: frozense
     interaction = 0
     negative = 0
     targets: set[str] = set()
-    for child in walk(node):
+    for child in _direct_nodes(node):
         kind = _classify(child, local)
         if kind is None:
             continue
@@ -374,7 +363,7 @@ def _classify(child: ast.AST, local: frozenset[str]) -> _Kind | None:
         return None
     if name is not None and _is_mock_assert_name(name):
         return _Kind.NEGATIVE_INTERACTION if name in _MOCK_NEGATIVE_ASSERTS else _Kind.INTERACTION
-    if not _names_verification(child.func):
+    if not names_verification(child.func):
         return None
     # `self.assertEqual(sender.call_count, 2)` is an interaction assertion in a
     # unittest coat; anything else a helper checks is treated as an outcome.
@@ -423,33 +412,9 @@ def _is_zeroish(value: object) -> bool:
     return value is None or (isinstance(value, int) and not value)
 
 
-def _names_verification(func: ast.expr) -> bool:
-    if isinstance(func, ast.Name):
-        return _reads_as_verification(func.id)
-    if not isinstance(func, ast.Attribute):
-        return False
-    if func.attr in _RAISES_NAMES or _reads_as_verification(func.attr):
-        return True
-    # `result.expect.contains_function_call(...)` — the DSL marker sits partway
-    # along the chain rather than at its end.
-    return _chain_has_fluent_marker(func.value)
-
-
-def _reads_as_verification(name: str) -> bool:
-    return bool(_ASSERTION_NAME_RE.match(name) or _RAISES_TOKEN_RE.search(name))
-
-
-def _chain_has_fluent_marker(node: ast.expr) -> bool:
-    while isinstance(node, ast.Attribute):
-        if node.attr in _FLUENT_ATTRS:
-            return True
-        node = node.value
-    return False
-
-
 def _called_names(node: ast.AST) -> set[str]:
     names: set[str] = set()
-    for child in walk(node):
+    for child in _direct_nodes(node):
         if isinstance(child, ast.Call):
             func = child.func
             if isinstance(func, ast.Attribute):
@@ -457,3 +422,16 @@ def _called_names(node: ast.AST) -> set[str]:
             elif isinstance(func, ast.Name):
                 names.add(func.id)
     return names
+
+
+def _direct_nodes(node: ast.AST) -> list[ast.AST]:
+    """Return descendants executed in `node`'s own function scope."""
+    found: list[ast.AST] = []
+    stack = list(reversed(list(ast.iter_child_nodes(node))))
+    while stack:
+        child = stack.pop()
+        found.append(child)
+        if isinstance(child, _SCOPE_BARRIERS):
+            continue
+        stack.extend(reversed(list(ast.iter_child_nodes(child))))
+    return found

@@ -329,6 +329,21 @@ class {name}:
     assert _check(src) == []
 
 
+def test_injected_clock_port_fake_is_exempt():
+    src = """
+class FakeClock(Clock):
+    def now(self):
+        return 0
+
+    def monotonic(self):
+        return 0
+
+    def sleep(self, seconds):
+        return None
+"""
+    assert _check(src) == []
+
+
 # FP guard: framework extension points.
 
 
@@ -425,6 +440,39 @@ class RecordingS3Store:
         return self._inner.sign(path)
 """
     assert _check(src) == []
+
+
+def test_classmethod_delegating_spy_is_exempt():
+    src = """
+class RecordingRedisClient:
+    @classmethod
+    def get(cls, key):
+        return cls.inner.get(key)
+
+    @classmethod
+    def set(cls, key, value):
+        return cls.inner.set(key, value)
+
+    @classmethod
+    def delete(cls, key):
+        return cls.inner.delete(key)
+"""
+    assert _check(src) == []
+
+
+def test_non_receiver_forward_is_not_a_spy():
+    src = """
+class RecordingRedisClient:
+    def get(self, key):
+        return global_client.get(key)
+
+    def set(self, key, value):
+        return global_client.set(key, value)
+
+    def delete(self, key):
+        return global_client.delete(key)
+"""
+    assert len(_check(src)) == 1
 
 
 def test_a_docstring_does_not_break_forward_detection():

@@ -123,6 +123,21 @@ ruleTester.run("no-fat-try-blocks", rule, {
         }
       `,
     },
+    // Async callbacks return rejected promises; the enclosing synchronous map
+    // call does not throw those callback failures into this catch.
+    {
+      code: `
+        function f(rows) {
+          try {
+            const a = rows.map(async (row) => await one(row));
+            const b = rows.map(async (row) => await two(row));
+            const c = rows.map(async (row) => await three(row));
+            const d = rows.map(async (row) => await four(row));
+          } catch (e) { handle(e); }
+          finish();
+        }
+      `,
+    },
     // `finally` present — exempt regardless of body size.
     {
       code: `
@@ -481,6 +496,21 @@ ruleTester.run("no-fat-try-blocks", rule, {
     },
   ],
   invalid: [
+    {
+      name: "explicit throws in synchronous collection callbacks propagate",
+      code: `
+        function f(rows) {
+          try {
+            const a = rows.map((row) => { if (!row.a) throw new Error('a'); return row; });
+            const b = rows.map((row) => { if (!row.b) throw new Error('b'); return row; });
+            const c = rows.map((row) => { if (!row.c) throw new Error('c'); return row; });
+            const d = rows.map((row) => { if (!row.d) throw new Error('d'); return row; });
+          } catch (error) { handle(error); }
+          finish();
+        }
+      `,
+      errors: [{ messageId: "fatTryBlock" }],
+    },
     {
       name: "awaits nested in four branches still exceed the limit",
       code: `

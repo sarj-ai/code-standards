@@ -85,6 +85,44 @@ def test_thing():
     assert len(_check(src)) == 1
 
 
+@pytest.mark.parametrize(
+    "verification",
+    [
+        "self.assertEqual(handle(case), case)",
+        "self.assertTrue(handle(case))",
+        "with pytest.raises(ValueError):\n            handle(case)",
+        "with pytest.warns(UserWarning):\n            handle(case)",
+    ],
+)
+def test_flags_standard_library_verification_apis(verification: str):
+    src = f"""
+def test_thing(self):
+    for case in ["a", "b"]:
+        {verification}
+"""
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize("view", ["items", "keys", "values"])
+def test_flags_literal_dictionary_views(view: str):
+    src = f"""
+def test_thing():
+    for case in {{"a": 1, "b": 2}}.{view}():
+        assert handle(case)
+"""
+    [diag] = _check(src)
+    assert "2 inline cases" in diag.message
+
+
+def test_starred_literal_dictionary_is_exempt():
+    src = """
+def test_thing():
+    for case in {**extra, "b": 2}.items():
+        assert handle(case)
+"""
+    assert _check(src) == []
+
+
 def test_message_reports_the_case_count():
     src = """
 def test_thing():
@@ -154,6 +192,17 @@ class TestThing:
     assert _check(src) == []
 
 
+@pytest.mark.parametrize("receiver", ["runner", "case"])
+def test_only_self_subtest_is_the_unittest_api(receiver: str):
+    src = f"""
+def test_thing({receiver}):
+    for case in ["a", "b"]:
+        with {receiver}.subTest(case=case):
+            assert handle(case)
+"""
+    assert len(_check(src)) == 1
+
+
 def test_pytest_subtests_loop_is_exempt():
     src = """
 def test_thing(subtests):
@@ -193,6 +242,17 @@ def test_loop_without_assert_is_exempt():
 def test_thing():
     for name in ["a", "b"]:
         store.insert(name)
+    assert store.count() == 2
+"""
+    assert _check(src) == []
+
+
+def test_state_building_loop_with_post_loop_contract_is_exempt():
+    src = """
+def test_thing():
+    for name in ["a", "b"]:
+        created = store.insert(name)
+        assert created.name == name
     assert store.count() == 2
 """
     assert _check(src) == []

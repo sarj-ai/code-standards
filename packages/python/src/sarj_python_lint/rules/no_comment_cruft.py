@@ -69,6 +69,10 @@ _BANNER_RUN_RE = re.compile(r"={4,}|-{4,}|#{4,}|\*{4,}|~{4,}|[\u2500-\u257f]{4,}
 _REGION_MARKER_RE = re.compile(r"^#?(?:end)?region\b(?P<title>.*)$", re.IGNORECASE)
 _REGION_TITLE_RE = re.compile(r"^[\s:\-\u2013\u2014]*\w[\w \-/&+]*$")
 _REGION_TITLE_MAX_WORDS = 5
+_REGION_PROSE_VERB_RE = re.compile(
+    r"^(?:is|are|was|were|comes?|defaults?|derives?|inherits?|depends?|uses?|maps?|resolves?)\b",
+    re.IGNORECASE,
+)
 
 _CODE_STMT_RE = re.compile(
     r"^(?:import |from \S+ import |return\b|yield\b|await |"
@@ -370,6 +374,8 @@ def _is_region_marker(body: str) -> bool:
     title = match.group("title").strip()
     if not title:
         return True
+    if _REGION_PROSE_VERB_RE.match(title):
+        return False
     if not _REGION_TITLE_RE.match(title):
         return False
     return len(title.split()) <= _REGION_TITLE_MAX_WORDS

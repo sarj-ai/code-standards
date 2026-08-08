@@ -31,6 +31,12 @@ const PURE_METHODS: ReadonlySet<string> = new Set([
   "toLowerCase", "toFixed", "toPrecision", "startsWith", "endsWith",
 ]);
 
+/** Pure collection methods that synchronously execute function arguments. */
+const SYNC_CALLBACK_METHODS: ReadonlySet<string> = new Set([
+  "every", "filter", "findIndex", "findLast", "findLastIndex", "flatMap",
+  "forEach", "map", "reduce", "reduceRight", "some", "sort",
+]);
+
 /** Non-throwing global namespaces called as `X.method(...)`. */
 const PURE_NAMESPACES: ReadonlySet<string> = new Set([
   "Object", "Array", "Math", "JSON", "Number", "String", "Boolean", "console",
@@ -71,7 +77,32 @@ function isPureCall(node: TSESTree.CallExpression): boolean {
   ) {
     return !IMPURE_NAMESPACE_METHODS.has(`${callee.object.name}.${property.name}`);
   }
-  return PURE_METHODS.has(property.name);
+  return (
+    PURE_METHODS.has(property.name) &&
+    (!SYNC_CALLBACK_METHODS.has(property.name) || !synchronousCallbackCanThrow(node))
+  );
+}
+
+function synchronousCallbackCanThrow(node: TSESTree.CallExpression): boolean {
+  return node.arguments.some((argument) => {
+    if (
+      argument.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
+      argument.type !== AST_NODE_TYPES.FunctionExpression
+    ) return false;
+    if (argument.async) return false;
+    return subtreeMatches(
+      argument.body,
+      (current) =>
+        current.type === AST_NODE_TYPES.ThrowStatement ||
+        (current.type === AST_NODE_TYPES.CallExpression &&
+          current.callee.type === AST_NODE_TYPES.MemberExpression &&
+          !current.callee.computed &&
+          current.callee.object.type === AST_NODE_TYPES.Identifier &&
+          current.callee.object.name === "JSON" &&
+          current.callee.property.type === AST_NODE_TYPES.Identifier &&
+          current.callee.property.name === "parse"),
+    );
+  });
 }
 
 function isPureNew(node: TSESTree.NewExpression): boolean {

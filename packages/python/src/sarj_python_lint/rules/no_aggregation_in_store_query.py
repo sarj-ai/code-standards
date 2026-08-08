@@ -1,4 +1,4 @@
-"""SARJ020 — No DISTINCT / GROUP BY / COUNT in a store query — aggregate elsewhere.
+"""SARJ020 — Keep relational store queries free of aggregation.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_aggregation_in_store_query.py
 """
@@ -57,7 +57,15 @@ _POSTGRES_SQL = re.compile(r"%\(\w+\)s|%s")
 _NULL_SAFE_COMPARISON = re.compile(r"\bIS\s+(?:NOT\s+)?DISTINCT\s+FROM\b", re.IGNORECASE)
 
 _AGGREGATIONS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("COUNT(", re.compile(r"\bCOUNT\s*\(", re.IGNORECASE)),
+    ("COUNT(", re.compile(r"\bCOUNT[ \t]*\(", re.IGNORECASE)),
+    ("SUM(", re.compile(r"\bSUM[ \t]*\(", re.IGNORECASE)),
+    ("AVG(", re.compile(r"\bAVG[ \t]*\(", re.IGNORECASE)),
+    ("MIN(", re.compile(r"\bMIN[ \t]*\(", re.IGNORECASE)),
+    ("MAX(", re.compile(r"\bMAX[ \t]*\(", re.IGNORECASE)),
+    ("ARRAY_AGG(", re.compile(r"\bARRAY_AGG[ \t]*\(", re.IGNORECASE)),
+    ("STRING_AGG(", re.compile(r"\bSTRING_AGG[ \t]*\(", re.IGNORECASE)),
+    ("JSON_AGG(", re.compile(r"\bJSON_AGG[ \t]*\(", re.IGNORECASE)),
+    ("JSONB_AGG(", re.compile(r"\bJSONB_AGG[ \t]*\(", re.IGNORECASE)),
     ("GROUP BY", re.compile(r"\bGROUP\s+BY\b", re.IGNORECASE)),
     ("DISTINCT", re.compile(r"\bDISTINCT\b", re.IGNORECASE)),
 )
@@ -70,16 +78,16 @@ def _blank_null_safe_comparisons(sql: str) -> str:
 
 # Require both a query verb and aggregation syntax to avoid flagging unrelated prose.
 _VERB_GATE = re.compile(r"select|update|delete", re.IGNORECASE)
-_AGG_GATE = re.compile(r"count|group|distinct", re.IGNORECASE)
+_AGG_GATE = re.compile(
+    r"count|sum|avg|min|max|array_agg|string_agg|json_agg|jsonb_agg|group|distinct",
+    re.IGNORECASE,
+)
 
 
 class NoAggregationInStoreQuery(Rule):
     id: str = "no-aggregation-in-store-query"
     code: str = "SARJ020"
-    description: str = (
-        "DISTINCT / GROUP BY / COUNT in a Postgres store query — push heavy "
-        "aggregation to the columnar mirror (ClickHouse / BigQuery)."
-    )
+    description: str = "Aggregation in a Postgres store query — push it to the columnar mirror (ClickHouse / BigQuery)."
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

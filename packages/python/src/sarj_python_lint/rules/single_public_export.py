@@ -100,7 +100,7 @@ class SinglePublicExport(Rule):
             for node in tree.body
             if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and not node.name.startswith("_")
         ]
-        if len(public_defs) != 1 or _has_public_constant(tree):
+        if len(public_defs) != 1 or _has_additional_public_export(tree):
             return []
 
         primary = public_defs[0]
@@ -123,14 +123,24 @@ class SinglePublicExport(Rule):
         ]
 
 
-def _has_public_constant(tree: ast.Module) -> bool:
-    """Report whether the module exports a public `UPPER_SNAKE` constant."""
+def _has_additional_public_export(tree: ast.Module) -> bool:
+    """Report whether a definition is not the module's only public export."""
+    if _has_multiple_static_all_names(tree):
+        return True
     targets: list[ast.expr] = []
     for stmt in tree.body:
         match stmt:
+            case ast.TypeAlias(name=ast.Name(id=name)) if not name.startswith("_"):
+                return True
             case ast.Assign(targets=assigned):
                 targets.extend(assigned)
             case ast.AnnAssign(target=target):
+                if (
+                    isinstance(target, ast.Name)
+                    and not target.id.startswith("_")
+                    and _annotation_name(stmt.annotation) == "TypeAlias"
+                ):
+                    return True
                 targets.append(target)
             case _:
                 pass
@@ -139,6 +149,35 @@ def _has_public_constant(tree: ast.Module) -> bool:
         not name.id.startswith("_") and name.id == name.id.upper() and any(c.isalpha() for c in name.id)
         for name in assigned_names
     )
+
+
+def _has_multiple_static_all_names(tree: ast.Module) -> bool:
+    """Report a literal ``__all__`` that exposes more than one name."""
+    for stmt in tree.body:
+        value: ast.expr | None = None
+        match stmt:
+            case ast.Assign(targets=targets, value=assigned) if any(
+                isinstance(target, ast.Name) and target.id == "__all__" for target in targets
+            ):
+                value = assigned
+            case ast.AnnAssign(target=ast.Name(id="__all__"), value=assigned):
+                value = assigned
+            case _:
+                continue
+        if isinstance(value, (ast.List, ast.Tuple, ast.Set)):
+            names = [elt.value for elt in value.elts if isinstance(elt, ast.Constant) and isinstance(elt.value, str)]
+            if len(names) == len(value.elts) and len(names) > 1:
+                return True
+    return False
+
+
+def _annotation_name(node: ast.expr) -> str:
+    """Return the final component of an annotation name."""
+    match node:
+        case ast.Name(id=name) | ast.Attribute(attr=name):
+            return name
+        case _:
+            return ""
 
 
 def _snake_case(name: str) -> str:

@@ -8,6 +8,8 @@ RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
+const UNPUNCTUATED_COMMENT_WALL = `/** ${Array.from({ length: 120 }, () => "context").join(" ")} */\nconst value = 1;`;
+
 new RuleTester().run("no-long-comment", rule, {
   valid: [
     "// First fact. Second fact.\nconst value = 1;",
@@ -67,6 +69,11 @@ new RuleTester().run("no-long-comment", rule, {
     },
   ],
   invalid: [
+    {
+      name: "unstructured JSDoc cannot evade the budget by omitting punctuation",
+      code: UNPUNCTUATED_COMMENT_WALL,
+      errors: [{ messageId: "tooLong" }],
+    },
     {
       code: `/**
  * The ports chart shows arrivals and departures across the network.

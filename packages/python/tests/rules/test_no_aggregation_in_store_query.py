@@ -158,7 +158,7 @@ def test_allows_non_aggregating_or_non_query(source: str) -> None:
     assert _check(source) == []
 
 
-# Negative: OUT-OF-SCOPE aggregate surfaces.
+# Positive: standard Postgres aggregate surfaces.
 
 
 @pytest.mark.parametrize(
@@ -168,11 +168,18 @@ def test_allows_non_aggregating_or_non_query(source: str) -> None:
         pytest.param('q = "SELECT AVG(x) FROM call"\n', id="avg"),
         pytest.param('q = "SELECT MIN(x) FROM call"\n', id="min"),
         pytest.param('q = "SELECT MAX(x) FROM call"\n', id="max"),
-        pytest.param('q = "SELECT org FROM call HAVING x > 1"\n', id="having-only"),
+        pytest.param('q = "SELECT ARRAY_AGG(id) FROM call"\n', id="array-agg"),
+        pytest.param('q = "SELECT STRING_AGG(name, %s) FROM call"\n', id="string-agg"),
+        pytest.param('q = "SELECT JSON_AGG(payload) FROM call"\n', id="json-agg"),
+        pytest.param('q = "SELECT JSONB_AGG(payload) FROM call"\n', id="jsonb-agg"),
     ],
 )
-def test_out_of_scope_aggregates_not_flagged(source: str) -> None:
-    assert _check(source) == []
+def test_standard_aggregates_are_flagged(source: str) -> None:
+    assert len(_check(source)) == 1
+
+
+def test_having_without_an_aggregate_is_not_flagged() -> None:
+    assert _check('q = "SELECT org FROM call HAVING x > 1"\n') == []
 
 
 # Negative: false-positive guards — substrings, column names, and Python
@@ -200,6 +207,14 @@ def test_false_positive_guards(source: str) -> None:
 
 def test_docstring_mentioning_count_prose_is_not_a_query() -> None:
     src = '"""Returns the COUNT of active rows, grouped by org, for reporting."""\n'
+    assert _check(src) == []
+
+
+def test_aggregate_word_followed_by_later_prose_parenthesis_is_not_a_call() -> None:
+    src = '''"""The UPDATE uses SET against an inner SELECT with LIMIT 1.
+Wait 3 min
+(the retry interval) before trying again.
+"""'''
     assert _check(src) == []
 
 
@@ -601,6 +616,17 @@ def test_real_distinct_still_fires_alongside_a_null_safe_comparison() -> None:
 def test_count_still_fires_alongside_a_null_safe_comparison() -> None:
     src = 'q = "SELECT COUNT(*) FROM call WHERE org_id IS NOT DISTINCT FROM %s"\n'
     assert _labels(_check(src)) == ["Store query uses COUNT("]
+
+
+@pytest.mark.parametrize("delimiter", ["$$", "$message$"])
+def test_aggregate_words_in_postgres_dollar_quoted_value_are_ignored(delimiter: str) -> None:
+    src = f'q = "SELECT id FROM call WHERE note = {delimiter} COUNT(*) GROUP BY x {delimiter}"\n'  # ruff:ignore[hardcoded-sql-expression] — synthetic lint-rule fixture
+    assert _check(src) == []
+
+
+def test_real_aggregate_after_dollar_quoted_value_still_fires() -> None:
+    src = 'q = "SELECT COUNT(*) FROM call WHERE note = $$ GROUP BY noise $$"\n'
+    assert len(_check(src)) == 1
 
 
 @pytest.mark.parametrize(

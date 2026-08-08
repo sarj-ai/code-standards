@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-_EXECUTE_METHODS = frozenset({"execute", "executemany", "executescript"})
+_EXECUTE_METHODS = frozenset({"execute", "executemany", "executescript", "fetch", "fetchrow", "fetchval"})
 _TEXT_WRAPPER_NAMES = frozenset({"sa", "sqlalchemy"})
 
 _INSERT_RE = re.compile(r"\bINSERT\s+INTO\b", re.IGNORECASE)

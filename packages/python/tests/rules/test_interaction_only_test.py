@@ -193,6 +193,41 @@ def test_create_contact_uses_webhook_data_directly():
     assert _check(src) == []
 
 
+@pytest.mark.parametrize("helper", ["eq_", "is_true", "fnmatch_lines", "check_assert_result"])
+def test_sarj043_library_and_token_assertions_count_as_outcomes(helper: str):
+    src = f"""
+def test_thing(store, bus, result):
+    run(store, bus)
+    store.save.assert_called_once()
+    bus.emit.assert_called_once()
+    {helper}(result)
+"""
+    assert _check(src) == []
+
+
+def test_uncalled_nested_outcome_does_not_rescue_interaction_only_test():
+    src = """
+def test_thing(store, bus):
+    def _unused():
+        assert result == 3
+    run(store, bus)
+    store.save.assert_called_once()
+    bus.emit.assert_called_once()
+"""
+    assert len(_check(src)) == 1
+
+
+def test_uncalled_nested_interaction_does_not_inflate_the_target_count():
+    src = """
+def test_thing(store, bus):
+    def _unused():
+        bus.emit.assert_called_once()
+    run(store)
+    store.save.assert_called_once()
+"""
+    assert _check(src) == []
+
+
 def test_pytest_raises_counts_as_an_outcome_assertion():
     src = """
 import pytest

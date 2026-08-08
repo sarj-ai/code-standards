@@ -412,12 +412,44 @@ def test_qualified_join_split_across_newline_counts_once() -> None:
     assert "3 JOINs" in diags[0].message
 
 
-# Adversarial: implicit comma joins are intentionally NOT counted.            #
+# Positive: implicit comma joins count as relation joins.                     #
 
 
-def test_implicit_comma_join_not_counted() -> None:
+def test_implicit_comma_joins_fire() -> None:
     src = 'q = "SELECT * FROM a, b, c, d, e WHERE a.id = b.id AND c.id = d.id"'
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "4 JOINs" in diags[0].message
+
+
+def test_explicit_and_implicit_joins_are_combined() -> None:
+    src = 'q = "SELECT * FROM a, b, c JOIN d ON d.id = c.id"'
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "3 JOINs" in diags[0].message
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT * FROM generate_series(1, 4) AS n",
+        "SELECT * FROM json_to_recordset(payload) AS x(a int, b int, c int, d int)",
+        "SELECT (a, b, c, d) FROM only_one_table",
+        "SELECT * FROM a, b, c WHERE id IN (1, 2, 3, 4)",
+    ],
+)
+def test_non_relation_commas_do_not_count_as_joins(sql: str) -> None:
+    assert _check(f"q = {sql!r}") == []
+
+
+def test_upsert_set_commas_are_not_counted_as_joins() -> None:
+    src = 'q = "INSERT INTO target SELECT * FROM a, b ON CONFLICT (id) DO UPDATE SET x = 1, y = 2, z = 3"'
     assert _check(src) == []
+
+
+def test_nested_from_clauses_count_their_own_relation_commas() -> None:
+    src = 'q = "SELECT * FROM (SELECT * FROM a, b, c, d) nested"'
+    assert len(_check(src)) == 1
 
 
 # Adversarial: `.format()` template literal still carries shape + joins.       #
@@ -468,4 +500,15 @@ def test_plus_concat_variable_between_joins_false_negative() -> None:
 
 def test_double_dash_in_string_value_truncates_joins_false_negative() -> None:
     src = "q = \"SELECT * FROM a JOIN b ON x = '--' JOIN c ON 1 JOIN d ON 1\""
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize("delimiter", ["$$", "$message$"])
+def test_join_words_in_postgres_dollar_quoted_value_are_ignored(delimiter: str) -> None:
+    src = f'q = "SELECT id FROM call WHERE note = {delimiter} JOIN JOIN JOIN {delimiter}"'  # ruff:ignore[hardcoded-sql-expression] — synthetic lint-rule fixture
+    assert _check(src) == []
+
+
+def test_real_joins_after_dollar_quoted_value_still_fire() -> None:
+    src = 'q = "SELECT * FROM a WHERE note = $$ JOIN JOIN JOIN $$ JOIN b ON 1 JOIN c ON 1 JOIN d ON 1"'
     assert len(_check(src)) == 1

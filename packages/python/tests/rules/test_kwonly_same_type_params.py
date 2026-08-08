@@ -23,7 +23,6 @@ def _check(source: str, path: str = "python/app/app/calls/service.py") -> list[D
         ("source_id: str, target_id: str", "str"),
         ("parent_id: int, child_id: int", "int"),
         ("old_score: float, new_score: float", "float"),
-        ("dry_run: bool, force: bool", "bool"),
         ("user_id: str, org_id: str, label: int", "str"),
         ("src_key: str, dst_key: str, c: int", "str"),
     ],
@@ -35,6 +34,11 @@ def test_flags_same_primitive_positionals(params: str, primitive: str):
     assert diags[0].code == "SARJ034"
     assert f"`{primitive}`" in diags[0].message
     assert "`f`" in diags[0].message
+
+
+def test_positional_booleans_are_owned_by_ruff_fbt001() -> None:
+    src = "def run(dry_run: bool, force: bool) -> None: ...\n"
+    assert _check(src) == []
 
 
 def test_flags_async_def():

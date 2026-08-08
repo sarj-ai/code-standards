@@ -16,6 +16,7 @@ type Options = readonly [
   {
     factories?: readonly string[];
     ignoreTestFiles?: boolean;
+    memoCallees?: readonly string[];
     minProperties?: number;
   }?,
 ];
@@ -242,6 +243,12 @@ export default createRule<Options, MessageIds>({
             description:
               "Skip test files, where a fixture schema belongs next to its assertion.",
           },
+          memoCallees: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "Wrappers that construct their callback at most once. Defaults to lazy, memo, once, and useMemo.",
+          },
           minProperties: {
             type: "number",
             minimum: 0,
@@ -261,6 +268,7 @@ export default createRule<Options, MessageIds>({
   create(context, [options]) {
     const factories = new Set(options?.factories ?? DEFAULT_FACTORIES);
     const ignoreTestFiles = options?.ignoreTestFiles ?? true;
+    const memoCallees = new Set(options?.memoCallees ?? MEMO_CALLEES);
     const minProperties = options?.minProperties ?? DEFAULT_MIN_PROPERTIES;
 
     const sourceCode = context.sourceCode;
@@ -299,11 +307,11 @@ export default createRule<Options, MessageIds>({
         if (
           current.type === AST_NODE_TYPES.CallExpression &&
           ((current.callee.type === AST_NODE_TYPES.Identifier &&
-            MEMO_CALLEES.has(current.callee.name)) ||
+            memoCallees.has(current.callee.name)) ||
             (current.callee.type === AST_NODE_TYPES.MemberExpression &&
               !current.callee.computed &&
               current.callee.property.type === AST_NODE_TYPES.Identifier &&
-              MEMO_CALLEES.has(current.callee.property.name)))
+              memoCallees.has(current.callee.property.name)))
         ) {
           return true;
         }
@@ -378,6 +386,13 @@ export default createRule<Options, MessageIds>({
         for (const definition of resolved.defs) {
           if (definition.type === "ImportBinding") {
             continue;
+          }
+          if (
+            definition.node.type === AST_NODE_TYPES.VariableDeclarator &&
+            definition.node.parent.type === AST_NODE_TYPES.VariableDeclaration &&
+            definition.node.parent.kind !== "const"
+          ) {
+            return false;
           }
           const [defStart, defEnd] = definition.node.range;
           if (defStart >= schemaStart && defEnd <= schemaEnd) {

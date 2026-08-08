@@ -80,6 +80,10 @@ ruleTester.run("prefer-module-level-schema", rule, {
       name: "allows schemas that read arguments",
       code: `${IMPORT}export function build() { return z.object({ a: z.literal(arguments.length), b: z.string() }); }`,
     },
+    {
+      name: "allows schemas that read a mutable module binding",
+      code: `${IMPORT}let required = true;\nexport function setRequired(value: boolean) { required = value; }\nexport function build() { return z.object({ a: z.string(), b: z.string() }).refine(() => required); }`,
+    },
 
     // NOT FLAGGED — already memoized, so the construction cost is paid once.
     {
@@ -94,6 +98,11 @@ ruleTester.run("prefer-module-level-schema", rule, {
     {
       name: "allows schemas wrapped in once",
       code: `${IMPORT}import { once } from "./memo.js";\nexport function build() { return once(() => z.object({ a: z.string(), b: z.string() })); }`,
+    },
+    {
+      name: "allows configured project-specific memo wrappers",
+      code: `${IMPORT}import { useStableFactory } from "./memo.js";\nexport function useForm() { return useStableFactory(() => z.object({ a: z.string(), b: z.string() })); }`,
+      options: [{ memoCallees: ["useStableFactory"] }],
     },
 
     // NOT FLAGGED — `z.lazy` exists so the schema is NOT built eagerly. The

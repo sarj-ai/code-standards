@@ -2,28 +2,43 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 import operator
 import re
 from typing import TYPE_CHECKING, final, override
 
-from sarj_sql_lint.rule_base import Diagnostic, Rule, has_dbmate_directive, is_dump_file, is_postgres, mask_sql
+from sarj_sql_lint.rule_base import (
+    Diagnostic,
+    Rule,
+    has_dbmate_directive,
+    is_dump_file,
+    is_postgres_migration,
+    mask_sql,
+)
 
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 
-DDL_PATTERN = re.compile(r"\b(ALTER\s+TABLE|CREATE\s+(?:UNIQUE\s+)?INDEX|DROP\s+TABLE)\b", re.IGNORECASE)
+DDL_PATTERN = re.compile(
+    r"\b(ALTER\s+(?:TABLE|TYPE)|CREATE\s+(?:UNIQUE\s+)?INDEX|DROP\s+(?:INDEX|TABLE)|REINDEX(?:\s+(?:DATABASE|INDEX|SCHEMA|SYSTEM|TABLE))?|TRUNCATE(?:\s+TABLE)?)\b",
+    re.IGNORECASE,
+)
 TX_END_PATTERN = re.compile(r"\b(COMMIT|ROLLBACK)\b", re.IGNORECASE)
 
 # Match SET/RESET/set_config assignments for lock_timeout or statement_timeout.
 ASSIGNMENT_PATTERN = re.compile(
-    r"\b(?:SET\s+(?:(?:LOCAL|SESSION)\s+)?|RESET\s+)(lock_timeout|statement_timeout)\b(?:\s*(?:=|\bTO\b)\s*('[\s\S]*?'|\"[^\"]*\"|[^\s;]+))?|set_config\s*\(\s*'?(lock_timeout|statement_timeout)'?\s*,\s*('[\s\S]*?'|\"[^\"]*\"|[^\s,;]+)",
+    r"\b(?:SET\s+(?:(?:LOCAL|SESSION)\s+)?|RESET\s+)(lock_timeout|statement_timeout)\b(?:\s*(?:=|\bTO\b)\s*('[\s\S]*?'|\"[^\"]*\"|[^\s;]+))?|set_config\s*\(\s*'?(lock_timeout|statement_timeout)'?\s*,\s*('[\s\S]*?'|\"[^\"]*\"|[^\s,;]+)\s*,\s*(true|false)\s*\)",
     re.IGNORECASE,
 )
-POSITIVE_VAL_PATTERN = re.compile(
-    r"^['\"]?\s*(?:[0-9]*\.?[0-9]+\s*(?:[a-zA-Z]+\s*)?|[1-9]\d*)\s*['\"]?$", re.IGNORECASE
-)
+POSITIVE_VAL_PATTERN = re.compile(r"^['\"]?\s*(?P<number>[0-9]*\.?[0-9]+)\s*(?:[a-zA-Z]+\s*)?['\"]?$", re.IGNORECASE)
+
+
+def _positive_timeout(value: str) -> bool:
+    """Accept the deliberately small timeout grammar only when its number is positive."""
+    match = POSITIVE_VAL_PATTERN.fullmatch(value)
+    return match is not None and Decimal(match.group("number")) > 0
 
 
 @final
@@ -36,13 +51,11 @@ class RequireLockTimeout(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_dump_file(source, path):
+        if is_dump_file(source, path) or not is_postgres_migration(path, source):
             return []
 
         diags: list[Diagnostic] = []
         masked = mask_sql(source)
-        if not is_postgres(source):
-            return []
         nontransactional = has_dbmate_directive(source, "no-transaction")
 
         events: list[tuple[int, str, re.Match[str]]] = []
@@ -66,19 +79,11 @@ class RequireLockTimeout(Rule):
                 reported_for_current_state = False
             if event_type == "ASSIGNMENT":
                 cmd = match.group(0).upper()
-                is_local = "LOCAL" in cmd
+                is_local = "LOCAL" in cmd or (match.group(5) or "").lower() == "true"
                 target_var = (match.group(1) or match.group(3) or "").lower()
                 val = (match.group(2) or match.group(4) or "").strip().strip(";")
 
-                is_active = (
-                    False
-                    if "RESET" in cmd
-                    else (
-                        bool(val)
-                        and POSITIVE_VAL_PATTERN.match(val) is not None
-                        and val not in {"0", "'0'", "'0s'", "'0ms'"}
-                    )
-                )
+                is_active = False if "RESET" in cmd else (bool(val) and _positive_timeout(val))
 
                 if is_local:
                     active_local_timeouts[target_var] = is_active and not nontransactional

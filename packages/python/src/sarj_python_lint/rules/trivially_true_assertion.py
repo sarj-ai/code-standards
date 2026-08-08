@@ -59,6 +59,12 @@ _COLLABORATOR_SUFFIXES = (
 # Permit identity comparison only for boolean singleton assertions.
 _ECHO_OPS = (ast.Eq, ast.Is)
 
+_UNITTEST_ECHO_ASSERTS = frozenset({"assertEqual", "assertIs"})
+
+_UNITTEST_ISINSTANCE_ASSERT = "assertIsInstance"
+
+type _Assertion = ast.Assert | ast.Call
+
 _KWARG_DIAGNOSIS = (
     "this reads back the literal the test just handed the constructor, so it can only fail if attribute "
     "assignment stops working"
@@ -84,7 +90,7 @@ _ONLY_ASSERTION_ADVICE = (
 class _KwargEcho:
     """One `assert name.field == <literal>` paired with how the name was built."""
 
-    node: ast.Assert
+    node: _Assertion
     field: tuple[str, str]
     echoes: bool
 
@@ -93,7 +99,7 @@ class _KwargEcho:
 class _Scope:
     """Everything one function body does with its local names."""
 
-    asserts: list[ast.Assert]
+    asserts: list[_Assertion]
     loads: dict[str, list[ast.Name]]
     binds: dict[str, int]
     calls: dict[str, ast.Call]
@@ -124,7 +130,7 @@ class TriviallyTrueAssertion(Rule):
             return []
 
         index = _index_module(tree)
-        findings: dict[int, tuple[ast.Assert, str]] = {}
+        findings: dict[int, tuple[_Assertion, str]] = {}
         for node, diagnosis in _construction_findings(index):
             _ = findings.setdefault(id(node), (node, diagnosis))
 
@@ -142,9 +148,9 @@ class TriviallyTrueAssertion(Rule):
         return diags
 
 
-def _one_per_test(index: _Index, findings: dict[int, tuple[ast.Assert, str]]) -> list[tuple[ast.Assert, str]]:
+def _one_per_test(index: _Index, findings: dict[int, tuple[_Assertion, str]]) -> list[tuple[_Assertion, str]]:
     """Keep the earliest finding in each test function and discard the rest."""
-    anchors: dict[int, tuple[ast.Assert, str]] = {}
+    anchors: dict[int, tuple[_Assertion, str]] = {}
     for node, diagnosis in findings.values():
         scope = index.owners.get(id(node))
         key = id(node) if scope is None else id(scope)
@@ -154,7 +160,7 @@ def _one_per_test(index: _Index, findings: dict[int, tuple[ast.Assert, str]]) ->
     return list(anchors.values())
 
 
-def _advice(scope: _Scope | None, findings: dict[int, tuple[ast.Assert, str]]) -> str:
+def _advice(scope: _Scope | None, findings: dict[int, tuple[_Assertion, str]]) -> str:
     """Choose the repair to recommend, which SARJ043 constrains."""
     if scope is None or any(id(node) not in findings for node in scope.asserts):
         return _ADVICE
@@ -178,11 +184,12 @@ def _index_module(tree: ast.Module) -> _Index:
         if scope is None and isinstance(node, _FUNC_NODES):
             scope = _Scope(asserts=[], loads={}, binds={}, calls={}, shadowed=set())
             scopes.append(scope)
-        if isinstance(node, ast.Assert) and scope is not None:
-            scope.asserts.append(node)
-            owners[id(node)] = scope
-        elif scope is not None:
-            _record_local(node, scope)
+        if scope is not None:
+            if isinstance(node, ast.Assert) or (isinstance(node, ast.Call) and _is_unittest_assertion(node)):
+                scope.asserts.append(node)
+                owners[id(node)] = scope
+            else:
+                _record_local(node, scope)
         for child in ast.iter_child_nodes(node):
             parents[id(child)] = node
             stack.append((child, scope))
@@ -208,10 +215,10 @@ def _record_local(node: ast.AST, scope: _Scope) -> None:
 # Both shapes: what the test constructed a line earlier.                       #
 
 
-def _construction_findings(index: _Index) -> list[tuple[ast.Assert, str]]:
+def _construction_findings(index: _Index) -> list[tuple[_Assertion, str]]:
     """Find assertions that only read back what the test handed a constructor."""
     echoes: list[_KwargEcho] = []
-    hits: list[tuple[ast.Assert, str]] = []
+    hits: list[tuple[_Assertion, str]] = []
     for scope in index.scopes:
         if not scope.asserts or not scope.calls:
             continue
@@ -249,15 +256,22 @@ def _is_assertion_read(node: ast.Name, parents: dict[int, ast.AST]) -> bool:
         if isinstance(grandparent, ast.Call) and grandparent.func is parent:
             return False
         return _under_assert(parent, parents)
-    if isinstance(parent, ast.Call) and _is_isinstance_call(parent) and parent.args and parent.args[0] is node:
-        return _under_assert(parent, parents)
+    if isinstance(parent, ast.Call) and parent.args and parent.args[0] is node:
+        if _is_isinstance_call(parent):
+            return _under_assert(parent, parents)
+        if (
+            isinstance(parent.func, ast.Attribute)
+            and parent.func.attr == _UNITTEST_ISINSTANCE_ASSERT
+            and _is_unittest_assertion(parent)
+        ):
+            return True
     return False
 
 
 def _under_assert(node: ast.AST, parents: dict[int, ast.AST]) -> bool:
     current: ast.AST | None = node
     while current is not None:
-        if isinstance(current, ast.Assert):
+        if isinstance(current, ast.Assert) or _is_unittest_assertion(current):
             return True
         current = parents.get(id(current))
     return False
@@ -267,12 +281,22 @@ def _is_isinstance_call(node: ast.Call) -> bool:
     return isinstance(node.func, ast.Name) and node.func.id == _ISINSTANCE
 
 
-def _kwarg_echo(node: ast.Assert, constructed: dict[str, ast.Call]) -> _KwargEcho | None:
+def _is_unittest_assertion(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "self"
+        and node.func.attr.startswith("assert")
+    )
+
+
+def _kwarg_echo(node: _Assertion, constructed: dict[str, ast.Call]) -> _KwargEcho | None:
     """Pair `x = C(field=<literal>)` with a later `assert x.field == <literal>`."""
-    test = node.test
-    if not isinstance(test, ast.Compare) or len(test.ops) != 1 or not isinstance(test.ops[0], _ECHO_OPS):
+    operands = _echo_operands(node)
+    if operands is None:
         return None
-    left, right = test.left, test.comparators[0]
+    left, right = operands
     for attribute, literal in ((left, right), (right, left)):
         if not isinstance(attribute, ast.Attribute) or not isinstance(attribute.value, ast.Name):
             continue
@@ -288,6 +312,21 @@ def _kwarg_echo(node: ast.Assert, constructed: dict[str, ast.Call]) -> _KwargEch
             if keyword.arg == attribute.attr and _is_pure_literal(keyword.value):
                 echoes = ast.dump(keyword.value) == ast.dump(literal)
                 return _KwargEcho(node=node, field=(name, attribute.attr), echoes=echoes)
+    return None
+
+
+def _echo_operands(node: _Assertion) -> tuple[ast.expr, ast.expr] | None:
+    if isinstance(node, ast.Assert):
+        test = node.test
+        if not isinstance(test, ast.Compare) or len(test.ops) != 1 or not isinstance(test.ops[0], _ECHO_OPS):
+            return None
+        return test.left, test.comparators[0]
+    if (
+        isinstance(node.func, ast.Attribute)
+        and node.func.attr in _UNITTEST_ECHO_ASSERTS
+        and len(node.args) >= _ISINSTANCE_ARITY
+    ):
+        return node.args[0], node.args[1]
     return None
 
 
@@ -320,12 +359,21 @@ def _is_pure_literal(node: ast.expr) -> bool:
     return False
 
 
-def _is_isinstance_echo(node: ast.Assert, constructed: dict[str, ast.Call], asserts: list[ast.Assert]) -> bool:
+def _is_isinstance_echo(node: _Assertion, constructed: dict[str, ast.Call], asserts: list[_Assertion]) -> bool:
     """Detect `x = Foo(...)` followed by `assert isinstance(x, Foo)`."""
-    test = node.test
-    if not isinstance(test, ast.Call) or not _is_isinstance_call(test) or len(test.args) != _ISINSTANCE_ARITY:
+    if isinstance(node, ast.Assert):
+        test = node.test
+        if not isinstance(test, ast.Call) or not _is_isinstance_call(test) or len(test.args) != _ISINSTANCE_ARITY:
+            return False
+        target, cls = test.args
+    elif (
+        isinstance(node.func, ast.Attribute)
+        and node.func.attr == _UNITTEST_ISINSTANCE_ASSERT
+        and len(node.args) >= _ISINSTANCE_ARITY
+    ):
+        target, cls = node.args[:_ISINSTANCE_ARITY]
+    else:
         return False
-    target, cls = test.args
     if not isinstance(target, ast.Name):
         return False
     call = constructed.get(target.id)
@@ -334,7 +382,7 @@ def _is_isinstance_echo(node: ast.Assert, constructed: dict[str, ast.Call], asse
     return not _narrows_for_a_later_assertion(node, target.id, asserts)
 
 
-def _narrows_for_a_later_assertion(node: ast.Assert, name: str, asserts: list[ast.Assert]) -> bool:
+def _narrows_for_a_later_assertion(node: _Assertion, name: str, asserts: list[_Assertion]) -> bool:
     """Report whether a following assertion uses the name this one narrows."""
     for other in asserts:
         if other.lineno <= node.lineno:

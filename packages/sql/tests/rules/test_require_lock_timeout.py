@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from sarj_sql_lint.rule_base import Diagnostic
 
 
-P = Path("migration.sql")
+P = Path("supabase/migrations/001_schema.sql")
 
 
 def _check(source: str, path: Path = P) -> list[Diagnostic]:
@@ -41,6 +41,11 @@ def test_every_assignment_spelling_silences_the_rule(assignment: str) -> None:
 def test_zero_timeout_is_not_protection() -> None:
     """The boundary: the spelling parses, but `0` means "wait forever"."""
     assert len(_check("SET lock_timeout = 0;\nALTER TABLE users ADD COLUMN note TEXT;\n")) == 1
+
+
+@pytest.mark.parametrize("value", ["'0.0s'", "'00ms'", "'0 min'", '"0"'])
+def test_every_zero_spelling_is_not_protection(value: str) -> None:
+    assert len(_check(f"SET lock_timeout = {value};\nALTER TABLE users ADD COLUMN note TEXT;\n")) == 1
 
 
 @pytest.mark.parametrize(
@@ -145,6 +150,21 @@ def test_every_ddl_form_needs_a_timeout(ddl: str) -> None:
     assert _check(f"SET lock_timeout = '3s';\n{ddl}\n") == []
 
 
+@pytest.mark.parametrize(
+    "ddl",
+    [
+        "ALTER TYPE status ADD VALUE 'archived';",
+        "DROP INDEX idx_users_note;",
+        "REINDEX INDEX idx_users_note;",
+        "TRUNCATE TABLE audit_log;",
+    ],
+    ids=["alter-type", "drop-index", "reindex", "truncate"],
+)
+def test_locking_ddl_forms_need_a_timeout(ddl: str) -> None:
+    assert len(_check(f"{ddl}\n")) == 1
+    assert _check(f"SET lock_timeout = '3s';\n{ddl}\n") == []
+
+
 def test_mysql_migration_is_not_asked_for_a_postgres_guc() -> None:
     src = "ALTER TABLE `users` ADD COLUMN `note` TEXT;\n"
     assert _check(src) == []
@@ -165,6 +185,37 @@ def test_set_config_call_counts_as_an_assignment() -> None:
     """`set_config(...)` is the function spelling of `SET`, and protects just as well."""
     src = "SELECT set_config('lock_timeout', '5s', false); ALTER TABLE t ADD COLUMN c INT;"
     assert _check(src) == []
+
+
+def test_transaction_local_set_config_expires_at_commit() -> None:
+    source = """
+    SELECT set_config('lock_timeout', '5s', true);
+    ALTER TABLE a ADD COLUMN x INT;
+    COMMIT;
+    ALTER TABLE b ADD COLUMN y INT;
+    """
+    diags = _check(source)
+    assert len(diags) == 1
+    assert diags[0].line == 5
+
+
+def test_session_set_config_survives_commit() -> None:
+    source = """
+    SELECT set_config('lock_timeout', '5s', false);
+    ALTER TABLE a ADD COLUMN x INT;
+    COMMIT;
+    ALTER TABLE b ADD COLUMN y INT;
+    """
+    assert _check(source) == []
+
+
+def test_nontransactional_migration_rejects_transaction_local_set_config() -> None:
+    source = """
+    -- migrate:no-transaction
+    SELECT set_config('lock_timeout', '5s', true);
+    ALTER TABLE a ADD COLUMN x INT;
+    """
+    assert len(_check(source)) == 1
 
 
 def test_a_schema_dump_is_not_asked_for_a_lock_timeout() -> None:
@@ -204,3 +255,27 @@ def test_nontransactional_migration_rejects_ineffective_set_local_timeout() -> N
 )
 def test_nontransactional_mode_requires_an_exact_live_directive(source: str) -> None:
     assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        Path("queries/create_index.sql"),
+        Path("fixtures/migrations/001.sql"),
+        Path("mocks/migrations/001.sql"),
+        Path("snapshots/migrations/001.sql"),
+        Path("clickhouse/migrations/001.sql"),
+        Path("d1/migrations/001.sql"),
+    ],
+    ids=["query", "fixture", "mock", "snapshot", "clickhouse", "d1"],
+)
+def test_non_production_and_non_postgres_paths_are_out_of_scope(path: Path) -> None:
+    assert _check("-- migrate:up\nALTER TABLE users ADD COLUMN note TEXT;", path) == []
+
+
+def test_ambiguous_plain_migration_is_out_of_scope_without_postgres_evidence() -> None:
+    assert _check("ALTER TABLE users ADD COLUMN note TEXT;", Path("db/migrations/001.sql")) == []
+
+
+def test_extensionless_input_with_migration_directive_stays_in_scope() -> None:
+    assert len(_check("-- migrate:up\nALTER TABLE users ADD COLUMN note TEXT;", Path("stdin"))) == 1
