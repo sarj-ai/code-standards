@@ -199,6 +199,9 @@ def plan_init(  # ruff: ignore[too-many-locals] -- one adoption boundary resolve
     scaffold_plan = scaffold.build_plan(
         resolved,
         force=force,
+        update_manifest=any(
+            option is not None for option in (configs, python_dest, typescript_dest, profile, hook_manager)
+        ),
         configs=selected_configs,
         python_dest=selected_python_dest,
         typescript_dest=selected_typescript_dest,

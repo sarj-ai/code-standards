@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 
 ManifestFormat = Literal["json", "toml"]
 _GIT_NO_MATCH = 2
+_GIT_MISSING_REVISION_CODES = frozenset((1, 128))
 
 
 @dataclass(frozen=True, slots=True)
@@ -250,7 +251,7 @@ def _require_local_tag_commit(root: Path, tag: str, commit: str, *, runner: Proc
             capture_output=True,
         )
     except ProcessFailureError as exc:
-        if exc.returncode == 1:
+        if exc.returncode in _GIT_MISSING_REVISION_CODES:
             return False
         raise
     actual = result.stdout.strip()
