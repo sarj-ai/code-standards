@@ -199,6 +199,7 @@ def build_plan(
     root: Path,
     *,
     force: bool,
+    update_manifest: bool = False,
     configs: Sequence[str] | None = None,
     python_dest: str | None = None,
     typescript_dest: str | None = None,
@@ -242,7 +243,7 @@ def build_plan(
             return plan
         plan.notes.append("no Python or TypeScript project found; adopting repository-wide shared configs only")
 
-    _plan_manifest(root, plan, force=force)
+    _plan_manifest(root, plan, force=force, update_existing=update_manifest)
     if (
         ecosystems.python
         and ecosystems.python_root is not None
@@ -390,7 +391,7 @@ def _note_subproject_destinations(root: Path, plan: Plan) -> None:
             )
 
 
-def _plan_manifest(root: Path, plan: Plan, *, force: bool) -> None:
+def _plan_manifest(root: Path, plan: Plan, *, force: bool, update_existing: bool) -> None:
     path = manifest.manifest_path(root)
     current = manifest.load_for_setup(root) if path.is_file() else None
     detected_generated = _generated_python_exclusions(root, plan.ecosystems.python_root)
@@ -421,6 +422,9 @@ def _plan_manifest(root: Path, plan: Plan, *, force: bool) -> None:
             plan.notes.append("migrated the legacy manifest to the current schema")
             return
         if strict != desired:
+            if not force and not update_existing:
+                plan.skips.append((path, "exists; preserve repository-specific adoption settings"))
+                return
             plan.writes.append((path, contents))
             plan.notes.append("updated the manifest to match the requested capabilities and profile")
             return

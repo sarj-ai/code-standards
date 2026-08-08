@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 from pathlib import Path
+import subprocess
 
 import pytest
 
@@ -67,6 +68,16 @@ def _write_release_manifests(root: Path) -> None:
         manifest.write_text(contents, encoding="utf-8")
 
 
+def _git(root: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", *args],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
 def test_missing_remote_release_tags_derives_names_from_manifests(tmp_path: Path) -> None:
     _write_release_manifests(tmp_path)
 
@@ -107,6 +118,39 @@ def test_create_release_tags_is_idempotent_and_pushes_exact_ref(tmp_path: Path) 
     assert result.created == ("python-v1.2.3",)
     assert ("git", "tag", "-a", "python-v1.2.3", "publish-sha", "-m", "python 1.2.3") in calls
     assert calls[-1] == ("git", "push", "origin", "refs/tags/python-v1.2.3")
+
+
+def test_create_release_tags_handles_real_git_missing_tag_exit_code(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    local_environment = subprocess.run(
+        ["git", "rev-parse", "--local-env-vars"], check=True, capture_output=True, text=True
+    ).stdout.splitlines()
+    for key in local_environment:
+        if key.startswith("GIT_"):
+            monkeypatch.delenv(key, raising=False)
+    repository = tmp_path / "repository"
+    remote = tmp_path / "remote.git"
+    repository.mkdir()
+    _write_release_manifests(repository)
+    _git(repository, "init")
+    _git(repository, "config", "user.email", "release-test@example.com")
+    _git(repository, "config", "user.name", "Release Test")
+    _git(repository, "add", ".")
+    _git(repository, "commit", "-m", "release")
+    _git(tmp_path, "init", "--bare", str(remote))
+    _git(repository, "remote", "add", "origin", str(remote))
+    commit = _git(repository, "rev-parse", "HEAD")
+
+    result = create_release_tags(
+        repository,
+        ("python",),
+        commit=commit,
+        publication_checker=lambda _requirement: True,
+    )
+
+    assert result.created == ("python-v1.2.3",)
+    assert _git(remote, "rev-list", "-n", "1", "refs/tags/python-v1.2.3") == commit
 
 
 def test_create_release_tags_rejects_an_unpublished_manifest_version(tmp_path: Path) -> None:
