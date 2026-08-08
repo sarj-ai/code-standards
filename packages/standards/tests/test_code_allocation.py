@@ -35,12 +35,15 @@ class _Coded(Protocol):
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _HOOKS_PATH = _REPO_ROOT / ".pre-commit-hooks.yaml"
 
-#: Distribution name to (registry, the hundreds digit its codes must use).
-_BANDS: Final[Mapping[str, tuple[Mapping[str, _Coded | type[_Coded]], int]]] = {
-    "sarj-python-lint": (PYTHON_REGISTRY, 0),
-    "sarj-sql-lint": (SQL_REGISTRY, 1),
-    "sarj-iac-lint": (IAC_REGISTRY, 2),
-    "sarj-standards:text": (TEXT_REGISTRY, 3),
+#: Distribution name to (registry, the hundreds digits its codes may use).
+#: Python exhausted its original SARJ0xx allocation, so SARJ4xx is its
+#: explicit overflow band. Existing codes are never recycled because old
+#: suppressions must retain one stable meaning.
+_BANDS: Final[Mapping[str, tuple[Mapping[str, _Coded | type[_Coded]], frozenset[int]]]] = {
+    "sarj-python-lint": (PYTHON_REGISTRY, frozenset({0, 4})),
+    "sarj-sql-lint": (SQL_REGISTRY, frozenset({1})),
+    "sarj-iac-lint": (IAC_REGISTRY, frozenset({2})),
+    "sarj-standards:text": (TEXT_REGISTRY, frozenset({3})),
 }
 
 _CODE_RE = re.compile(r"^SARJ(\d)(\d{2})$")
@@ -52,14 +55,14 @@ _VERSIONED_SARJ_RE = re.compile(r"^sarj-[a-z-]+\s*(?:==|>=|~=|<=|>|<)")
 
 @pytest.mark.parametrize("distribution", sorted(_BANDS))
 def test_every_code_sits_in_its_packages_band(distribution: str) -> None:
-    registry, band = _BANDS[distribution]
+    registry, bands = _BANDS[distribution]
     wrong = sorted(
         f"{rule_id} = {cls.code}"
         for rule_id, cls in registry.items()
-        if (match := _CODE_RE.match(cls.code)) is None or int(match.group(1)) != band
+        if (match := _CODE_RE.match(cls.code)) is None or int(match.group(1)) not in bands
     )
     assert not wrong, (
-        f"{distribution} codes must be SARJ{band}xx, but these are not: {wrong}. "
+        f"{distribution} codes must use hundreds digits {sorted(bands)}, but these are not: {wrong}. "
         "The bands are what keep a bare `# sarj-noqa: SARJ###` unambiguous across linters."
     )
 

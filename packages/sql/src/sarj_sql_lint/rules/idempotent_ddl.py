@@ -11,10 +11,13 @@ from sarj_sql_lint.rule_base import (
     Rule,
     is_dump_file,
     is_generated_migration,
+    is_migration_source,
     is_mysql,
     is_sqlite,
+    locate,
     mask_sql,
     redirect_to_model,
+    split_statements,
 )
 
 
@@ -84,7 +87,7 @@ class IdempotentDdl(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_dump_file(source, path):
+        if is_dump_file(source, path) or not is_migration_source(path, source):
             return []
         model_owned = is_generated_migration(path, source)
 
@@ -98,19 +101,21 @@ class IdempotentDdl(Rule):
 
         diags: list[Diagnostic] = []
 
-        for lineno, line in enumerate(masked.splitlines(), start=1):
-            line_upper = line.upper()
-            if "CREATE" not in line_upper and "DROP" not in line_upper and "ADD" not in line_upper:
+        for statement in split_statements(masked):
+            text = "\n".join(fragment for _, fragment in statement)
+            text_upper = text.upper()
+            if "CREATE" not in text_upper and "DROP" not in text_upper and "ADD" not in text_upper:
                 continue
             for check in checks:
-                diags.extend(
-                    Diagnostic(
-                        path=path,
-                        line=lineno,
-                        col=match.start() + 1,
-                        code=self.code,
-                        message=check.message,
+                for match in check.pattern.finditer(text):
+                    location = locate(statement, match.start())
+                    diags.append(
+                        Diagnostic(
+                            path=path,
+                            line=location.line,
+                            col=location.column,
+                            code=self.code,
+                            message=check.message,
+                        )
                     )
-                    for match in check.pattern.finditer(line)
-                )
         return redirect_to_model(diags, model_owned=model_owned)

@@ -22,6 +22,7 @@ const ruleTester = new RuleTester({
     },
   },
 });
+const withZod = (code: string): string => `import { z } from "zod"; ${code}`;
 
 ruleTester.run("no-zod-native-enum", rule, {
   valid: [
@@ -32,7 +33,7 @@ ruleTester.run("no-zod-native-enum", rule, {
     },
     {
       name: "allows z.enum with inline string literals",
-      code: 'const S = z.enum(["active", "inactive"]);',
+      code: withZod('const S = z.enum(["active", "inactive"]);'),
     },
     {
       name: "allows z.enum with an as-const string array",
@@ -92,79 +93,79 @@ ruleTester.run("no-zod-native-enum", rule, {
     },
     {
       name: "fixes an inline string-valued object",
-      code: 'const S = z.nativeEnum({ Active: "active", Inactive: "inactive" });',
-      output: 'const S = z.enum(["active", "inactive"]);',
+      code: withZod('const S = z.nativeEnum({ Active: "active", Inactive: "inactive" });'),
+      output: withZod('const S = z.enum(["active", "inactive"]);'),
       errors: [{ messageId: "nativeEnum" }],
     },
     {
       name: "fixes an as-const object",
-      code: "const S = z.nativeEnum({ A: 'a', B: 'b' } as const);",
-      output: "const S = z.enum(['a', 'b']);",
+      code: withZod("const S = z.nativeEnum({ A: 'a', B: 'b' } as const);"),
+      output: withZod("const S = z.enum(['a', 'b']);"),
       errors: [{ messageId: "nativeEnum" }],
     },
     {
       name: "fixes an object wrapped by satisfies",
-      code: "const S = z.nativeEnum({ A: 'a', B: 'b' } satisfies Record<string, string>);",
-      output: "const S = z.enum(['a', 'b']);",
+      code: withZod("const S = z.nativeEnum({ A: 'a', B: 'b' } satisfies Record<string, string>);"),
+      output: withZod("const S = z.enum(['a', 'b']);"),
       errors: [{ messageId: "nativeEnum" }],
     },
     {
       name: "deduplicates values in the fix",
-      code: 'const S = z.nativeEnum({ A: "x", B: "x", C: "y" });',
-      output: 'const S = z.enum(["x", "y"]);',
+      code: withZod('const S = z.nativeEnum({ A: "x", B: "x", C: "y" });'),
+      output: withZod('const S = z.enum(["x", "y"]);'),
       errors: [{ messageId: "nativeEnum" }],
     },
     {
       name: "reports numeric members without fixing",
-      code: "const S = z.nativeEnum({ Low: 0, High: 1 });",
+      code: withZod("const S = z.nativeEnum({ Low: 0, High: 1 });"),
       output: null,
       errors: [{ messageId: "nativeEnum" }],
     },
     {
       name: "reports mixed string and numeric members without fixing",
-      code: 'const S = z.nativeEnum({ A: "a", B: 2 });',
+      code: withZod('const S = z.nativeEnum({ A: "a", B: 2 });'),
       output: null,
       errors: [{ messageId: "nativeEnum" }],
     },
     {
       name: "reports spread properties without fixing",
-      code: 'const S = z.nativeEnum({ ...BASE, A: "a" });',
+      code: withZod('const S = z.nativeEnum({ ...BASE, A: "a" });'),
       output: null,
       errors: [{ messageId: "nativeEnum" }],
     },
     {
       name: "reports computed properties without fixing",
-      code: 'const S = z.nativeEnum({ [k]: "a" });',
+      code: withZod('const S = z.nativeEnum({ [k]: "a" });'),
       output: null,
       errors: [{ messageId: "nativeEnum" }],
     },
     {
       name: "reports shorthand object properties without fixing",
-      code: "const A = 'a'; const S = z.nativeEnum({ A });",
+      code: withZod("const A = 'a'; const S = z.nativeEnum({ A });"),
       output: null,
       errors: [{ messageId: "nativeEnum" }],
     },
     {
       name: "reports object methods without fixing",
-      code: "const S = z.nativeEnum({ A() { return 'a'; } });",
+      code: withZod("const S = z.nativeEnum({ A() { return 'a'; } });"),
       output: null,
       errors: [{ messageId: "nativeEnum" }],
     },
     {
       name: "reports an empty object without producing z.enum([])",
-      code: "const S = z.nativeEnum({});",
+      code: withZod("const S = z.nativeEnum({});"),
       output: null,
       errors: [{ messageId: "nativeEnum" }],
     },
     {
       name: "reports identifier arguments without duplicating their values",
-      code: "const S = z.nativeEnum(Fruits);",
+      code: withZod("const S = z.nativeEnum(Fruits);"),
       output: null,
       errors: [{ messageId: "nativeEnum" }],
     },
     {
       name: "reports a local TypeScript enum passed to nativeEnum",
-      code: "enum Status { Active = 'active' }\nconst S = z.nativeEnum(Status);",
+      code: withZod("enum Status { Active = 'active' }\nconst S = z.nativeEnum(Status);"),
       output: null,
       errors: [{ messageId: "nativeEnum" }],
     },
@@ -194,25 +195,37 @@ ruleTester.run("no-zod-native-enum", rule, {
     },
     {
       name: "fixes nativeEnum inside a chained schema",
-      code: 'const S = z.object({ s: z.nativeEnum({ A: "a" }).optional() });',
-      output: 'const S = z.object({ s: z.enum(["a"]).optional() });',
+      code: withZod('const S = z.object({ s: z.nativeEnum({ A: "a" }).optional() });'),
+      output: withZod('const S = z.object({ s: z.enum(["a"]).optional() });'),
       errors: [{ messageId: "nativeEnum" }],
     },
     {
       name: "reports z.enum with a local TypeScript enum",
-      code: "enum Status { Active = 'active', Done = 'done' }\nconst S = z.enum(Status);",
+      code: withZod("enum Status { Active = 'active', Done = 'done' }\nconst S = z.enum(Status);"),
       output: null,
       errors: [{ messageId: "enumOfTsEnum", data: { name: "Status" } }],
     },
     {
       name: "reports z.enum with a local const enum",
-      code: "const enum Dir { Up = 'up' }\nconst S = z.enum(Dir);",
+      code: withZod("const enum Dir { Up = 'up' }\nconst S = z.enum(Dir);"),
+      output: null,
+      errors: [{ messageId: "enumOfTsEnum" }],
+    },
+    {
+      name: "reports z.enum with a type-asserted local enum",
+      code: withZod("enum Status { Active = 'active' }\nconst S = z.enum(Status as any);"),
+      output: null,
+      errors: [{ messageId: "enumOfTsEnum" }],
+    },
+    {
+      name: "reports z.enum with a satisfies-wrapped local enum",
+      code: withZod("enum Status { Active = 'active' }\nconst S = z.enum(Status satisfies object);"),
       output: null,
       errors: [{ messageId: "enumOfTsEnum" }],
     },
     {
       name: "reports z.enum with an imported TypeScript enum",
-      code: "import { ImportedStatus } from './zod-enum.js';\nconst S = z.enum(ImportedStatus);",
+      code: "import { z } from 'zod';\nimport { ImportedStatus } from './zod-enum.js';\nconst S = z.enum(ImportedStatus);",
       filename: "schema.ts",
       output: null,
       errors: [

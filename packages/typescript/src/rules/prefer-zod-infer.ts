@@ -47,6 +47,7 @@ const RESHAPING_MODIFIERS: ReadonlySet<string> = new Set([
   "preprocess",
   "brand",
   "overwrite",
+  "readonly",
 ]);
 
 /** Methods that reshape their receiver schema. */
@@ -123,6 +124,7 @@ interface SchemaInfo {
 interface TypeMember {
   readonly optional: boolean;
   readonly nullable: boolean;
+  readonly readonly: boolean;
   readonly annotation: TSESTree.TypeNode | null;
 }
 
@@ -190,6 +192,13 @@ function leafAgrees(
   const { core } = unwrapNullish(annotation);
   if (core === null) {
     return null;
+  }
+  if (leaf === "date") {
+    return (
+      core.type === AST_NODE_TYPES.TSTypeReference &&
+      core.typeName.type === AST_NODE_TYPES.Identifier &&
+      core.typeName.name === "Date"
+    );
   }
   return expected.includes(core.type);
 }
@@ -379,6 +388,7 @@ export default createRule<Options, MessageIds>({
         result.set(name, {
           optional: member.optional === true,
           nullable: annotation !== null && unwrapNullish(annotation).nullable,
+          readonly: member.readonly === true,
           annotation,
         });
       }
@@ -434,6 +444,9 @@ export default createRule<Options, MessageIds>({
           return false;
         }
         if (field.nullable !== member.nullable) {
+          return false;
+        }
+        if (member.readonly) {
           return false;
         }
         const agrees = leafAgrees(field.leaf, member.annotation);

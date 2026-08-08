@@ -1336,3 +1336,27 @@ def test_local_helper_that_asserts_counts_as_the_assertion():
             _compare(row.id, 1)
     """
     assert _check(src) == []
+
+
+def test_terminating_skip_guard_can_make_later_assertion_guards_total():
+    src = """
+    def test_aliases(alias_allowed, name_allowed):
+        if not (alias_allowed or name_allowed):
+            pytest.skip("no enabled spelling")
+        if alias_allowed:
+            assert validate(alias=True)
+        if name_allowed:
+            assert validate(name=True)
+    """
+    assert _check(src) == []
+
+
+def test_unrelated_skip_guard_does_not_exempt_conditional_assertions():
+    src = """
+    def test_aliases(alias_allowed, on_windows):
+        if on_windows:
+            pytest.skip("unsupported")
+        if alias_allowed:
+            assert validate(alias=True)
+    """
+    assert len(_check(src)) == 1

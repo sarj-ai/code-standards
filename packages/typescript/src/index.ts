@@ -16,6 +16,7 @@ import noHandRolledSleep from "./rules/no-hand-rolled-sleep.js";
 import noHandRolledSpinner from "./rules/no-hand-rolled-spinner.js";
 import noInsecureRandomId from "./rules/no-insecure-random-id.js";
 import noJsonStringifyError from "./rules/no-json-stringify-error.js";
+import noImpossibleZodLiteralBounds from "./rules/no-impossible-zod-literal-bounds.js";
 import noLogOnlyCatch from "./rules/no-log-only-catch.js";
 import noLongComment from "./rules/no-long-comment.js";
 import noGenericSingleExportModule from "./rules/no-generic-single-export-module.js";
@@ -56,9 +57,7 @@ import preferNonNullableCollection from "./rules/prefer-non-nullable-collection.
 import preferSchemaForApiPayload from "./rules/prefer-schema-for-api-payload.js";
 import preferSemanticColors from "./rules/prefer-semantic-colors.js";
 import preferServerActions from "./rules/prefer-server-actions.js";
-import preferStringLiteralUnion from "./rules/prefer-string-literal-union.js";
 import preferWholeObjectAssertion from "./rules/prefer-whole-object-assertion.js";
-import preferZodEnum from "./rules/prefer-zod-enum.js";
 import preferZodInfer from "./rules/prefer-zod-infer.js";
 import requireAssertNever from "./rules/require-assert-never.js";
 import requireFetchTimeout from "./rules/require-fetch-timeout.js";
@@ -86,6 +85,7 @@ const rules = {
   "no-hand-rolled-spinner": noHandRolledSpinner,
   "no-insecure-random-id": noInsecureRandomId,
   "no-json-stringify-error": noJsonStringifyError,
+  "no-impossible-zod-literal-bounds": noImpossibleZodLiteralBounds,
   "no-log-only-catch": noLogOnlyCatch,
   "no-long-comment": noLongComment,
   "no-generic-single-export-module": noGenericSingleExportModule,
@@ -126,9 +126,7 @@ const rules = {
   "prefer-schema-for-api-payload": preferSchemaForApiPayload,
   "prefer-semantic-colors": preferSemanticColors,
   "prefer-server-actions": preferServerActions,
-  "prefer-string-literal-union": preferStringLiteralUnion,
   "prefer-whole-object-assertion": preferWholeObjectAssertion,
-  "prefer-zod-enum": preferZodEnum,
   "prefer-zod-infer": preferZodInfer,
   "require-assert-never": requireAssertNever,
   "require-fetch-timeout": requireFetchTimeout,
@@ -142,7 +140,7 @@ const rules = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "11.2.0",
+  version: "12.0.0",
 } as const;
 
 /** Rules registered for application-profile configs but intentionally absent from general presets. */
@@ -166,6 +164,7 @@ const recommendedRules = {
   "@sarj/no-hand-rolled-spinner": "error",
   "@sarj/no-insecure-random-id": "error",
   "@sarj/no-json-stringify-error": "error",
+  "@sarj/no-impossible-zod-literal-bounds": "error",
   "@sarj/no-log-only-catch": "error",
   "@sarj/no-long-comment": "error",
   "@sarj/no-generic-single-export-module": "error",
@@ -200,9 +199,7 @@ const recommendedRules = {
   "@sarj/prefer-schema-for-api-payload": "error",
   "@sarj/prefer-semantic-colors": ["error", { requireSemanticTokens: true }],
   "@sarj/prefer-server-actions": "error",
-  "@sarj/prefer-string-literal-union": "error",
   "@sarj/prefer-whole-object-assertion": "error",
-  "@sarj/prefer-zod-enum": "error",
   "@sarj/prefer-zod-infer": "error",
   "@sarj/require-assert-never": "error",
   "@sarj/require-fetch-timeout": "error",
@@ -229,6 +226,7 @@ const strictRules = {
   "@sarj/no-hand-rolled-spinner": "error",
   "@sarj/no-insecure-random-id": "error",
   "@sarj/no-json-stringify-error": "error",
+  "@sarj/no-impossible-zod-literal-bounds": "error",
   "@sarj/no-log-only-catch": "error",
   "@sarj/no-long-comment": "error",
   "@sarj/no-generic-single-export-module": "error",
@@ -266,9 +264,7 @@ const strictRules = {
   "@sarj/prefer-schema-for-api-payload": "error",
   "@sarj/prefer-semantic-colors": ["error", { requireSemanticTokens: true }],
   "@sarj/prefer-server-actions": "error",
-  "@sarj/prefer-string-literal-union": "error",
   "@sarj/prefer-whole-object-assertion": "error",
-  "@sarj/prefer-zod-enum": "error",
   "@sarj/prefer-zod-infer": "error",
   "@sarj/require-assert-never": "error",
   "@sarj/require-fetch-timeout": "error",

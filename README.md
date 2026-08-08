@@ -50,8 +50,8 @@ repository is explicitly trusted. Use reviewable, pinned dependencies in CI.
 <!-- generated:rules:start -->
 | Family | Active rules |
 | --- | ---: |
-| TypeScript | 66 |
-| Python | 81 |
+| TypeScript | 65 |
+| Python | 79 |
 | SQL | 12 |
 | IaC | 3 |
 | Text | 4 |

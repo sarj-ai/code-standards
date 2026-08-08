@@ -91,17 +91,17 @@ def test_runner_exercises_committed_rule_in_isolated_repositories(tmp_path: Path
     unsafe.mkdir()
     clean.mkdir()
     (unsafe / "service.py").write_text(
-        "async def fetch(items):\n    for item in items:\n        await load(item)\n",
+        "import logging\n",
         encoding="utf-8",
     )
     (clean / "service.py").write_text(
-        "async def fetch(items):\n    return await asyncio.gather(*(load(item) for item in items))\n",
+        "from loguru import logger\n",
         encoding="utf-8",
     )
 
     report = run_isolated_corpora(
         (_source(unsafe, "unsafe"), _source(clean, "clean")),
-        (sys.executable, "-m", "sarj_python_lint", "check", "--rule", "no-sequential-await"),
+        (sys.executable, "-m", "sarj_python_lint", "check", "--rule", "no-stdlib-logging"),
         batch_size=1,
         timeout=timedelta(seconds=30),
     )

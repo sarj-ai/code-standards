@@ -75,6 +75,11 @@ class NoIsinstanceUnionChain(Rule):
         tree = parse_or_none(path, source)
         if tree is None:
             return []
+        if _shadows_isinstance(tree):
+            # A locally bound callable named `isinstance` need not have the
+            # builtin's type-test semantics. Prefer a whole-file false negative
+            # to recommending an invalid class-pattern rewrite.
+            return []
         local_classes = frozenset(node.name for node in nodes(tree, ast.ClassDef))
         elif_nodes: set[int] = set()
         diags: list[Diagnostic] = []
@@ -139,12 +144,37 @@ def _is_exhaustive_terminal(orelse: list[ast.stmt]) -> bool:
 
 def _stmt_terminates(stmt: ast.stmt) -> bool:
     match stmt:
-        case ast.Raise() | ast.Return() | ast.Assert():
+        case ast.Raise() | ast.Return():
             return True
+        case ast.Assert(test=test):
+            # `assert ready` falls through whenever `ready` is truthy. Only a
+            # statically falsy assertion is an unconditional terminal.
+            return isinstance(test, ast.Constant) and not test.value
         case ast.Expr(value=ast.Call(func=func)):
             return _is_assert_never(func)
         case _:
             return False
+
+
+def _shadows_isinstance(tree: ast.Module) -> bool:
+    """Report whether this module can no longer prove the builtin binding."""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store) and node.id == "isinstance":
+            return True
+        if isinstance(node, ast.arg) and node.arg == "isinstance":
+            return True
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name == "isinstance":
+            return True
+        if isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)) and node.name == "isinstance":
+            return True
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            for alias in node.names:
+                bound = alias.asname or (
+                    alias.name if isinstance(node, ast.ImportFrom) else alias.name.split(".", 1)[0]
+                )
+                if bound == "isinstance":
+                    return True
+    return False
 
 
 def _is_assert_never(func: ast.expr) -> bool:

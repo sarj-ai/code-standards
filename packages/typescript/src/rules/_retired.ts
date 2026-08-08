@@ -43,6 +43,16 @@ export const retiredRules: Readonly<Record<string, RetiredRule>> = {
     reason:
       "Delete the config entry and suppressions; use the narrower no-comment-cruft, no-restated-comment, and no-long-comment rules.",
   },
+  "prefer-string-literal-union": {
+    removedIn: "12.0.0",
+    reason:
+      "Delete the config entry and suppressions; syntax cannot prove that an open string domain is closed.",
+  },
+  "prefer-zod-enum": {
+    removedIn: "12.0.0",
+    reason:
+      "Delete the entry; use `zod/prefer-enum-over-literal-union`, which proves every arm is a string literal.",
+  },
   "primary-export-file-name": {
     removedIn: "4.0.0",
     reason: "Delete the config entry and suppressions; there is no replacement.",

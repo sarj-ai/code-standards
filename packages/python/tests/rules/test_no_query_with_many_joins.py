@@ -379,7 +379,7 @@ def test_bare_sarj_noqa_suppresses() -> None:
 
 
 def test_unrelated_noqa_code_does_not_suppress() -> None:
-    src = 'q = "SELECT * FROM a JOIN b ON 1 JOIN c ON 1 JOIN d ON 1"  # sarj-noqa: SARJ001 — different code'
+    src = 'q = "SELECT * FROM a JOIN b ON 1 JOIN c ON 1 JOIN d ON 1"  # sarj-noqa: SARJ052 — different code'
     (diag,) = _check(src)
     assert not is_suppressed(src.splitlines(), diag.line, diag.code)
 

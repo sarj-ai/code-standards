@@ -98,5 +98,7 @@
   "SARJ096": "prefer-immutable-module-constant",
   "SARJ097": "prefer-self-documenting-constant",
   "SARJ098": "no-duplicate-dunder-all-entry",
-  "SARJ099": "redundant-module-docstring"
+  "SARJ099": "redundant-module-docstring",
+  "SARJ400": "invalid-pydantic-field-default",
+  "SARJ401": "no-frozen-after-validator-field-write"
 }

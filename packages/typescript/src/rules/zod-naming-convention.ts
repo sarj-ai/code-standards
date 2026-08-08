@@ -4,11 +4,21 @@
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/zod-naming-convention.test.ts
  */
 
-import { type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
+import {
+  type TSESLint,
+  type TSESTree,
+  AST_NODE_TYPES,
+  ASTUtils,
+} from "@typescript-eslint/utils";
 
 import { createRule } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
-import { ZOD_PREFIX_RE, ZOD_SCHEMA_NAME_RE, ZOD_SUFFIX_RE } from "./_zod.js";
+import {
+  isZodModule,
+  ZOD_PREFIX_RE,
+  ZOD_SCHEMA_NAME_RE,
+  ZOD_SUFFIX_RE,
+} from "./_zod.js";
 
 type MessageIds = "zPrefix" | "schemaSuffix" | "zodSchemaName";
 type Convention = "prefix" | "suffix" | "either";
@@ -61,23 +71,24 @@ const terminalMethodName = (callee: TSESTree.MemberExpression): string | null =>
     ? callee.property.name
     : null;
 
-/** Return whether a call chain originates from the bare `z` identifier. */
-const calleeChainStartsWithZ = (node: TSESTree.Node): boolean => {
+/** Return the identifier at the root of a fluent call/member chain. */
+const calleeChainRoot = (node: TSESTree.Node): TSESTree.Identifier | null => {
   let current: TSESTree.Node = node;
 
-  while (current.type === AST_NODE_TYPES.MemberExpression) {
-    const receiver: TSESTree.Node = current.object;
-    if (receiver.type === AST_NODE_TYPES.Identifier && receiver.name === "z") {
-      return true;
+  for (;;) {
+    if (current.type === AST_NODE_TYPES.Identifier) {
+      return current;
     }
-    if (receiver.type === AST_NODE_TYPES.CallExpression) {
-      current = receiver.callee;
+    if (current.type === AST_NODE_TYPES.MemberExpression) {
+      current = current.object;
       continue;
     }
-    return false;
+    if (current.type === AST_NODE_TYPES.CallExpression) {
+      current = current.callee;
+      continue;
+    }
+    return null;
   }
-
-  return false;
 };
 
 export default createRule<Options, MessageIds>({
@@ -113,6 +124,26 @@ export default createRule<Options, MessageIds>({
     const { test, messageId } = CONVENTIONS[convention];
     // A schema-containing name does not satisfy an explicitly prefix-only policy.
     const acceptsSchemaWord = convention !== "prefix";
+    const zodBindings = new Set<TSESLint.Scope.Variable>();
+
+    function resolvedBinding(identifier: TSESTree.Identifier): TSESLint.Scope.Variable | null {
+      return ASTUtils.findVariable(
+        context.sourceCode.getScope(identifier),
+        identifier.name,
+      );
+    }
+
+    function recordZodBinding(identifier: TSESTree.Identifier): void {
+      const binding = resolvedBinding(identifier);
+      if (binding !== null) zodBindings.add(binding);
+    }
+
+    function isZodChain(node: TSESTree.Node): boolean {
+      const root = calleeChainRoot(node);
+      if (root === null) return false;
+      const binding = resolvedBinding(root);
+      return binding !== null && zodBindings.has(binding);
+    }
 
     // Test and benchmark schemas are local fixtures rather than APIs.
     if (
@@ -124,6 +155,21 @@ export default createRule<Options, MessageIds>({
     }
 
     return {
+      ImportDeclaration(node: TSESTree.ImportDeclaration): void {
+        if (!isZodModule(node.source.value)) return;
+        for (const specifier of node.specifiers) {
+          if (
+            specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier ||
+            specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier ||
+            (specifier.type === AST_NODE_TYPES.ImportSpecifier &&
+              (specifier.imported.type === AST_NODE_TYPES.Identifier
+                ? specifier.imported.name === "z"
+                : specifier.imported.value === "z"))
+          ) {
+            recordZodBinding(specifier.local);
+          }
+        }
+      },
       VariableDeclarator(node: TSESTree.VariableDeclarator): void {
         const init = node.init;
         if (init === null || init === undefined) return;
@@ -132,7 +178,7 @@ export default createRule<Options, MessageIds>({
         const callee = init.callee;
         if (callee.type !== AST_NODE_TYPES.MemberExpression) return;
 
-        if (!calleeChainStartsWithZ(callee)) return;
+        if (!isZodChain(callee)) return;
 
         // Do not apply schema naming to calls that return non-schema values.
         const terminal = terminalMethodName(callee);

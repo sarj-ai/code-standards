@@ -81,10 +81,10 @@ def test_flags_qualified_collections_namedtuple_call():
     assert diags[0].col == 7
 
 
-def test_flags_qualified_call_without_explicit_import():
-    """The call branch keys off the name `collections`, not a tracked import."""
+def test_allows_qualified_call_without_explicit_import():
+    """A spelling alone is not enough to prove stdlib provenance."""
     src = 'Row = collections.namedtuple("Row", ["id", "name"])\n'
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
 @pytest.mark.parametrize("alias", ["c", "col", "_c", "collections_mod", "cx"])
@@ -330,21 +330,19 @@ def test_is_suppressed_recognizes_code_on_reported_line():
 
 
 def test_is_suppressed_false_for_unrelated_code():
-    src = "from collections import namedtuple  # sarj-noqa: SARJ001 — other\n"
+    src = "from collections import namedtuple  # sarj-noqa: SARJ052 — other\n"
     diags = _check(src)
     assert not is_suppressed(src.splitlines(), diags[0].line, diags[0].code)
 
 
-def test_shadowed_collections_name_still_fires():
-    """Accepted limitation: name-based matching fires even on a rebound `collections`."""
+def test_shadowed_collections_name_is_exempt():
     src = 'collections = object()\nRow = collections.namedtuple("Row", ["x"])\n'
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
-def test_param_shadowed_collections_still_fires():
-    """Accepted limitation: a param named `collections` is not the module, but the seed name matches."""
+def test_param_shadowed_collections_is_exempt():
     src = "def f(collections):\n    return collections.namedtuple('R', ['x'])\n"
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
 # --- Adversarial: forward references the single-walk optimization must preserve

@@ -835,7 +835,7 @@ export function createConfig(options = {}) {
       ...UNICORN_CORRECTNESS_RULES,
       ...UNICORN_MODERNISATION_RULES,
 
-      "@sarj/prefer-zod-enum": "error",
+      "zod/prefer-enum-over-literal-union": "error",
       // A type hand-written beside the Zod schema it restates drifts the moment
       // the schema gains a field. Measured over 30,759 files in 17 repos: 5
       // reports, 5 true positives. `requireIdenticalShape: false` widens it to
@@ -999,7 +999,6 @@ export function createConfig(options = {}) {
         "error",
         { requireSemanticTokens: true },
       ],
-      "@sarj/prefer-string-literal-union": "error",
       "@sarj/prefer-constant-time-secret-compare": "error",
       "@sarj/no-dynamic-sql": "error",
       "@sarj/store-insert-requires-on-conflict": "error",
@@ -1007,6 +1006,7 @@ export function createConfig(options = {}) {
       "@sarj/no-offset-pagination": "error",
       "@sarj/no-select-star": "error",
       "@sarj/no-zod-native-enum": "error",
+      "@sarj/no-impossible-zod-literal-bounds": "error",
       "@sarj/prefer-module-level-constant": "error",
       "@sarj/prefer-module-level-schema": "error",
       "@sarj/prefer-non-nullable-collection": "error",

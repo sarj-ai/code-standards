@@ -200,6 +200,19 @@ def is_postgres_migration(path: Path, source: str) -> bool:
     return source_directive or "supabase" in parts or _POSTGRES_MIGRATION_EVIDENCE_RE.search(source) is not None
 
 
+def is_migration_source(path: Path, source: str) -> bool:
+    """Identify migration-intent SQL without guessing a database dialect."""
+    parts = tuple(part.lower() for part in path.parts)
+    if any(part in _NON_PRODUCTION_SQL_PARTS for part in parts):
+        return False
+    return (
+        _MIGRATION_SOURCE_DIRECTIVE_RE.search(source) is not None
+        or any(part in _MIGRATION_ROOT_NAMES for part in parts)
+        or _FLYWAY_MIGRATION_RE.fullmatch(path.name) is not None
+        or path.name.lower() == "migration.sql"
+    )
+
+
 @lru_cache(maxsize=2048)
 def _has_generated_marker(directory: Path) -> bool:
     """Report whether `directory` or an ancestor is a generator-owned migration root."""

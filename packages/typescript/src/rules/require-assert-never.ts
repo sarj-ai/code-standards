@@ -4,7 +4,14 @@
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/require-assert-never.test.ts
  */
 
-import { type TSESLint, type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
+import {
+  ESLintUtils,
+  type ParserServicesWithTypeInformation,
+  type TSESLint,
+  type TSESTree,
+  AST_NODE_TYPES,
+} from "@typescript-eslint/utils";
+import ts from "typescript";
 
 import { createRule } from "./_docs.js";
 
@@ -14,6 +21,12 @@ type Options = readonly [];
 /** Empty statements and empty blocks are not runtime handling. */
 const isRuntimeHandlingStatement = (statement: TSESTree.Statement): boolean => {
   if (statement.type === AST_NODE_TYPES.EmptyStatement) return false;
+  if (
+    statement.type === AST_NODE_TYPES.TSTypeAliasDeclaration ||
+    statement.type === AST_NODE_TYPES.TSInterfaceDeclaration
+  ) {
+    return false;
+  }
   if (statement.type === AST_NODE_TYPES.BlockStatement) {
     return statement.body.some(isRuntimeHandlingStatement);
   }
@@ -52,12 +65,62 @@ const isCommentOnlyNoopDefault = (
     only !== undefined &&
     defaultCase.consequent.length === 1 &&
     only.type === AST_NODE_TYPES.BlockStatement &&
-    only.body.length === 0
+    !only.body.some(isRuntimeHandlingStatement)
   ) {
     return sourceCode.getCommentsInside(only).length > 0;
   }
   return false;
 };
+
+/** Prove that explicit cases cover every finite constituent of the discriminant. */
+function isExhaustiveFiniteSwitch(
+  node: TSESTree.SwitchStatement,
+  services: ParserServicesWithTypeInformation,
+): boolean {
+  const checker = services.program.getTypeChecker();
+  const discriminant = services.esTreeNodeToTSNodeMap.get(node.discriminant);
+  const discriminantType = checker.getTypeAtLocation(discriminant);
+  const constituents = discriminantType.isUnion()
+    ? discriminantType.types
+    : [discriminantType];
+  if (constituents.length === 0) return false;
+
+  const expected = new Set<string>();
+  for (const constituent of constituents) {
+    const key = finiteTypeKey(constituent, checker);
+    if (key === null) return false;
+    expected.add(key);
+  }
+
+  const handled = new Set<string>();
+  for (const caseNode of node.cases) {
+    if (caseNode.test === null) continue;
+    const test = services.esTreeNodeToTSNodeMap.get(caseNode.test);
+    const testType = checker.getTypeAtLocation(test);
+    const alternatives = testType.isUnion() ? testType.types : [testType];
+    for (const alternative of alternatives) {
+      const key = finiteTypeKey(alternative, checker);
+      if (key !== null) handled.add(key);
+    }
+  }
+  return [...expected].every((key) => handled.has(key));
+}
+
+/** A stable key for a finite switch constituent; open primitive types return null. */
+function finiteTypeKey(
+  type: ts.Type,
+  checker: ts.TypeChecker,
+): string | null {
+  const finiteFlags =
+    ts.TypeFlags.StringLiteral |
+    ts.TypeFlags.NumberLiteral |
+    ts.TypeFlags.BooleanLiteral |
+    ts.TypeFlags.EnumLiteral |
+    ts.TypeFlags.UniqueESSymbol |
+    ts.TypeFlags.Null |
+    ts.TypeFlags.Undefined;
+  return (type.flags & finiteFlags) !== 0 ? checker.typeToString(type) : null;
+}
 
 export default createRule<Options, MessageIds>({
   name: "require-assert-never",
@@ -75,6 +138,15 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
+    let services: ParserServicesWithTypeInformation;
+    try {
+      services = ESLintUtils.getParserServices(context);
+    } catch {
+      // Exhaustiveness cannot be proven from syntax alone. The typed strict
+      // preset supplies services; standalone syntax-only use stays silent.
+      return {};
+    }
+
     return {
       SwitchStatement(node: TSESTree.SwitchStatement): void {
         const defaultIndex = node.cases.findIndex(
@@ -93,6 +165,7 @@ export default createRule<Options, MessageIds>({
 
         // Comments distinguish deliberate no-ops without requiring type info.
         if (isCommentOnlyNoopDefault(defaultCase, context.sourceCode)) return;
+        if (!isExhaustiveFiniteSwitch(node, services)) return;
 
         context.report({
           node: defaultCase,

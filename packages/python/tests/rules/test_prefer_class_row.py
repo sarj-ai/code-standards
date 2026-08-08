@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 from typing import TYPE_CHECKING
 
 import pytest
@@ -12,10 +13,20 @@ if TYPE_CHECKING:
 
 
 def _check(source: str, path: str = "<t>.py") -> list[Diagnostic]:
-    return PreferClassRow().check(Path(path), source)
+    # Most legacy examples focus on keyword shape rather than import spelling.
+    # Give those snippets an explicit, position-preserving psycopg provenance;
+    # dedicated adversarial tests below call the rule directly without it.
+    checked = source
+    if "psycopg.rows.dict_row" in source and "import psycopg" not in source:
+        checked += "\nimport psycopg\n"
+    elif re.search(r"(?<![\w.])rows\.dict_row", source) and "import psycopg.rows as rows" not in source:
+        checked += "\nimport psycopg.rows as rows\n"
+    elif re.search(r"(?<![\w.])dict_row\b", source) and "from psycopg.rows import dict_row" not in source:
+        checked += "\nfrom psycopg.rows import dict_row\n"
+    return PreferClassRow().check(Path(path), checked)
 
 
-# Positive family: bare-name and attribute `row_factory=dict_row` values fire.
+# Positive family: import-proven psycopg `dict_row` values fire.
 
 
 @pytest.mark.parametrize(
@@ -24,10 +35,6 @@ def _check(source: str, path: str = "<t>.py") -> list[Diagnostic]:
         "dict_row",
         "rows.dict_row",
         "psycopg.rows.dict_row",
-        "psycopg.extras.dict_row",
-        "self.dict_row",
-        "self._rows.dict_row",
-        "mod.sub.deep.dict_row",
     ],
 )
 def test_fires_for_name_and_attribute_values(factory: str):
@@ -158,12 +165,12 @@ def test_reports_line_and_col_of_name_value():
 
 
 def test_reports_line_and_col_of_attribute_value():
-    src = "x = c(\n    row_factory=m.dict_row,\n)\n"
+    src = "x = c(\n    row_factory=rows.dict_row,\n)\n"
     diags = _check(src)
     assert len(diags) == 1
     assert diags[0].line == 2
     line2 = src.splitlines()[1]
-    assert diags[0].col == line2.index("m.dict_row") + 1
+    assert diags[0].col == line2.index("rows.dict_row") + 1
 
 
 # Negative family: other psycopg row factories must NOT fire.
@@ -237,16 +244,14 @@ def test_case_variants_do_not_fire(factory: str):
 # Negative family: aliased import — rule is literal-name based (documented limit).
 
 
-def test_aliased_dict_row_import_does_not_fire():
-    # `from ... import dict_row as dr` rebinds the name; the value node is `dr`,
-    # so the literal-name matcher does not resolve it to `dict_row`.
+def test_aliased_dict_row_import_fires():
     src = """
 from psycopg.rows import dict_row as dr
 
 def get(conn):
     return conn.cursor(row_factory=dr)
 """
-    assert _check(src) == []
+    assert len(_check(src)) == 1
 
 
 # Negative family: non Name/Attribute value expressions (false-positive guards).
@@ -367,7 +372,7 @@ def test_bare_sarj_noqa_suppresses():
 
 
 def test_sarj_noqa_for_other_code_does_not_suppress():
-    src = "cur = conn.cursor(row_factory=dict_row)  # sarj-noqa: SARJ001 — other\n"
+    src = "cur = conn.cursor(row_factory=dict_row)  # sarj-noqa: SARJ052 — other\n"
     diags = _check(src)
     assert not is_suppressed(src.splitlines(), diags[0].line, diags[0].code)
 
@@ -387,7 +392,7 @@ def test_diagnostic_fields_populated():
 
 def test_message_is_stable_across_shapes():
     a = _check("cur = c(row_factory=dict_row)\n")[0]
-    b = _check("cur = c(row_factory=rows.dict_row)\n")[0]
+    b = _check("import psycopg.rows as rows\ncur = c(row_factory=rows.dict_row)\n")[0]
     assert a.message == b.message
 
 
@@ -420,8 +425,7 @@ def test_fires_with_leading_star_arg():
     assert len(_check("conn.cursor(*a, row_factory=dict_row)\n")) == 1
 
 
-# Adversarial additions: attribute matching keys ONLY off the terminal `.attr`,
-# so any receiver whose last segment is `dict_row` fires — even a call/subscript.
+# Adversarial provenance guards: an unrelated terminal `.dict_row` is clean.
 
 
 @pytest.mark.parametrize(
@@ -432,9 +436,19 @@ def test_fires_with_leading_star_arg():
         "(await g()).dict_row",
     ],
 )
-def test_fires_on_dict_row_attr_of_exotic_receiver(value: str):
+def test_allows_dict_row_attr_of_exotic_receiver(value: str):
     src = f"async def h(conn):\n    return conn.cursor(row_factory={value})\n"
-    assert len(_check(src)) == 1
+    assert _check(src) == []
+
+
+def test_allows_unimported_bare_dict_row():
+    src = "cur = conn.cursor(row_factory=dict_row)\n"
+    assert PreferClassRow().check(Path("store.py"), src) == []
+
+
+def test_allows_rebound_imported_dict_row():
+    src = "from psycopg.rows import dict_row\ndict_row = local_factory\ncur = f(row_factory=dict_row)\n"
+    assert PreferClassRow().check(Path("store.py"), src) == []
 
 
 def test_attribute_with_nonterminal_dict_row_does_not_fire():

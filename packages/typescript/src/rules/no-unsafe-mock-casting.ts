@@ -4,33 +4,30 @@
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-unsafe-mock-casting.test.ts
  */
 
-import { type TSESTree } from "@typescript-eslint/utils";
-import { AST_NODE_TYPES } from "@typescript-eslint/utils";
+import {
+  type TSESLint,
+  type TSESTree,
+  AST_NODE_TYPES,
+  ASTUtils,
+} from "@typescript-eslint/utils";
 
 import { createRule } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
 
 type MessageIds = "unsafeMockCast";
 
-function isMockTypeReference(node: TSESTree.TypeNode): boolean {
-  if (node.type !== AST_NODE_TYPES.TSTypeReference) {
-    return false;
-  }
-  
-  const typeName = node.typeName;
-  
-  if (typeName.type === AST_NODE_TYPES.Identifier) {
-    const name = typeName.name;
-    return name === "Mock" || name === "MockInstance" || name === "SpyInstance";
-  }
-  
-  if (typeName.type === AST_NODE_TYPES.TSQualifiedName) {
-    const rightName = typeName.right.name;
-    return rightName === "Mock" || rightName === "MockInstance" || rightName === "SpyInstance";
-  }
-  
-  return false;
-}
+const MOCK_TYPE_NAMES: ReadonlySet<string> = new Set([
+  "Mock",
+  "MockInstance",
+  "SpyInstance",
+]);
+const MOCK_MODULES: ReadonlySet<string> = new Set([
+  "vitest",
+  "@vitest/spy",
+  "jest",
+  "jest-mock",
+  "@jest/globals",
+]);
 
 export default createRule<[], MessageIds>({
   name: "no-unsafe-mock-casting",
@@ -52,6 +49,42 @@ export default createRule<[], MessageIds>({
       return {};
     }
 
+    const directBindings = new Set<TSESLint.Scope.Variable>();
+    const namespaceBindings = new Set<TSESLint.Scope.Variable>();
+
+    function resolve(identifier: TSESTree.Identifier): TSESLint.Scope.Variable | null {
+      return ASTUtils.findVariable(
+        context.sourceCode.getScope(identifier),
+        identifier.name,
+      );
+    }
+
+    function record(
+      identifier: TSESTree.Identifier,
+      destination: Set<TSESLint.Scope.Variable>,
+    ): void {
+      const binding = resolve(identifier);
+      if (binding !== null) destination.add(binding);
+    }
+
+    function isMockTypeReference(node: TSESTree.TypeNode): boolean {
+      if (node.type !== AST_NODE_TYPES.TSTypeReference) return false;
+      const typeName = node.typeName;
+      if (typeName.type === AST_NODE_TYPES.Identifier) {
+        const binding = resolve(typeName);
+        return binding !== null && directBindings.has(binding);
+      }
+      if (
+        typeName.type === AST_NODE_TYPES.TSQualifiedName &&
+        typeName.left.type === AST_NODE_TYPES.Identifier &&
+        MOCK_TYPE_NAMES.has(typeName.right.name)
+      ) {
+        const binding = resolve(typeName.left);
+        return binding !== null && namespaceBindings.has(binding);
+      }
+      return false;
+    }
+
     function checkAssertion(
       node: TSESTree.TSAsExpression | TSESTree.TSTypeAssertion,
     ): void {
@@ -61,6 +94,23 @@ export default createRule<[], MessageIds>({
     }
 
     return {
+      ImportDeclaration(node: TSESTree.ImportDeclaration): void {
+        if (!MOCK_MODULES.has(node.source.value)) return;
+        for (const specifier of node.specifiers) {
+          if (specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier) {
+            record(specifier.local, namespaceBindings);
+          } else if (
+            specifier.type === AST_NODE_TYPES.ImportSpecifier &&
+            MOCK_TYPE_NAMES.has(
+              specifier.imported.type === AST_NODE_TYPES.Identifier
+                ? specifier.imported.name
+                : specifier.imported.value,
+            )
+          ) {
+            record(specifier.local, directBindings);
+          }
+        }
+      },
       TSAsExpression: checkAssertion,
       TSTypeAssertion: checkAssertion,
     };

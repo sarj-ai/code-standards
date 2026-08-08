@@ -17,6 +17,14 @@ const MIN_ELEMENTS = 2;
 /** Type wrappers whose single type argument is the value actually returned. */
 const AWAITABLE_TYPES: ReadonlySet<string> = new Set(["Promise", "PromiseLike", "Awaited", "Readonly"]);
 
+function staticMemberName(key: TSESTree.PropertyName): string | null {
+  if (key.type === AST_NODE_TYPES.Identifier) return key.name;
+  if (key.type === AST_NODE_TYPES.Literal && typeof key.value === "string") {
+    return key.value;
+  }
+  return null;
+}
+
 /** The first boundary tuple in a return annotation, unwrapping transparent wrappers and unions. */
 function tupleReturnType(
   node: TSESTree.TypeNode,
@@ -436,13 +444,14 @@ export default createRule<Options, MessageIds>({
       TSMethodSignature(node): void {
         const owner = owningInterface(node);
         const alias = owningTypeAlias(node);
+        const memberName = staticMemberName(node.key);
         if (
           (owner === null || !isExportedInterface(owner, typeExports)) &&
           (alias === null || !typeExports.has(alias.id.name)) ||
           node.returnType === undefined ||
-          node.key.type !== AST_NODE_TYPES.Identifier
+          memberName === null
         ) return;
-        report(node.returnType.typeAnnotation, `${owner?.id.name ?? alias?.id.name ?? "type"}.${node.key.name}`);
+        report(node.returnType.typeAnnotation, `${owner?.id.name ?? alias?.id.name ?? "type"}.${memberName}`);
       },
       TSTypeAliasDeclaration(node): void {
         if (!typeExports.has(node.id.name)) return;
@@ -453,15 +462,16 @@ export default createRule<Options, MessageIds>({
         const owner = owningInterface(node);
         const alias = owningTypeAlias(node);
         const annotation = node.typeAnnotation?.typeAnnotation;
+        const memberName = staticMemberName(node.key);
         if (
           ((owner === null || !isExportedInterface(owner, typeExports)) &&
             (alias === null || !typeExports.has(alias.id.name))) ||
-          node.key.type !== AST_NODE_TYPES.Identifier ||
+          memberName === null ||
           annotation === undefined
         ) return;
         const returnType = callableReturnType(annotation, aliases);
         if (returnType !== null) {
-          report(returnType, `${owner?.id.name ?? alias?.id.name ?? "type"}.${node.key.name}`);
+          report(returnType, `${owner?.id.name ?? alias?.id.name ?? "type"}.${memberName}`);
         }
       },
       PropertyDefinition(node): void {

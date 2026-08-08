@@ -1,4 +1,4 @@
-"""Shared logging-receiver detection for SARJ012/SARJ017."""
+"""Shared logging-receiver detection for logging-aware rules."""
 
 from __future__ import annotations
 
@@ -7,11 +7,11 @@ import ast
 
 _LOGGER_NAMES = frozenset({"logger", "log", "logging", "loguru", "_logger", "_log"})
 
-# Keep both rules on one normalized factory set so security cannot miss a receiver style lint sees.
+# Keep every logging-aware rule on one normalized factory set.
 LOGGER_FACTORIES = frozenset({"getlogger", "get_logger"})
 _LOGGER_FACTORIES = LOGGER_FACTORIES
 
-# Shared by SARJ012 and SARJ017 so security and style sinks cannot drift apart.
+# Shared so security and style sinks cannot drift apart.
 LOG_METHODS = frozenset(
     {
         "critical",

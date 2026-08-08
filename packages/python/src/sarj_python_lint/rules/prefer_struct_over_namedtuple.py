@@ -37,7 +37,7 @@ class PreferStructOverNamedtuple(Rule):
         tree = parse_or_none(path, source)
         if tree is None:
             return []
-        collections_names = {"collections"}
+        collections_names: set[str] = set()
         candidates: list[tuple[ast.AST, str | None]] = []
         for node in nodes(tree, ast.ImportFrom, ast.Import, ast.Call):
             if isinstance(node, ast.ImportFrom):
@@ -45,7 +45,7 @@ class PreferStructOverNamedtuple(Rule):
                     candidates.extend((node, None) for alias in node.names if alias.name == "namedtuple")
             elif isinstance(node, ast.Import):
                 for alias in node.names:
-                    if alias.name == "collections":
+                    if alias.name == "collections" or (alias.name.startswith("collections.") and alias.asname is None):
                         collections_names.add(alias.asname or "collections")
             elif (
                 isinstance(node.func, ast.Attribute)
@@ -53,7 +53,12 @@ class PreferStructOverNamedtuple(Rule):
                 and isinstance(node.func.value, ast.Name)
             ):
                 candidates.append((node, node.func.value.id))
-        return [self._diag(path, node) for node, name in candidates if name is None or name in collections_names]
+        shadowed = _shadowed_names(tree, collections_names)
+        return [
+            self._diag(path, node)
+            for node, name in candidates
+            if name is None or (name in collections_names and name not in shadowed)
+        ]
 
     def _diag(self, path: Path, node: ast.AST) -> Diagnostic:
         return Diagnostic(
@@ -63,3 +68,22 @@ class PreferStructOverNamedtuple(Rule):
             code=self.code,
             message=_MSG,
         )
+
+
+def _shadowed_names(tree: ast.Module, imported: set[str]) -> set[str]:
+    """Take a conservative whole-file false negative for rebound module aliases."""
+    shadowed: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store) and node.id in imported:
+            shadowed.add(node.id)
+        elif isinstance(node, ast.arg) and node.arg in imported:
+            shadowed.add(node.arg)
+        elif (
+            isinstance(
+                node,
+                (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.ExceptHandler, ast.MatchAs, ast.MatchStar),
+            )
+            and node.name in imported
+        ):
+            shadowed.add(node.name)
+    return shadowed

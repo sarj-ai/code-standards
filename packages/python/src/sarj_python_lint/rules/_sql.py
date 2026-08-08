@@ -28,6 +28,18 @@ def sql_string_value(node: ast.expr) -> str | None:
         right = sql_string_value(node.right)
         if left is not None and right is not None:
             return left + right
+    if isinstance(node, ast.JoinedStr):
+        pieces: list[str] = []
+        for value in node.values:
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                pieces.append(value.value)
+            elif isinstance(value, ast.FormattedValue):
+                # Keep static SQL tokens on either side adjacent while ensuring
+                # an interpolation can never manufacture SELECT/FROM/* itself.
+                pieces.append(" ")
+            else:  # pragma: no cover - the parser emits only these two forms
+                return None
+        return "".join(pieces)
     return None
 
 

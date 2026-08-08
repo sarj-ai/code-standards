@@ -429,3 +429,30 @@ def test_thing(a, b):
     assert a and b
 """
     assert len(_check(src)) == 2
+
+
+def test_flags_list_values_for_one_parameter():
+    src = """
+import pytest
+@pytest.mark.parametrize("items", [[1, 2], [3, 4]])
+def test_thing(items): assert items
+"""
+    assert len(_check(src)) == 1
+
+
+def test_flags_tuple_values_for_one_parameter_even_with_scalar_members():
+    src = """
+import pytest
+@pytest.mark.parametrize("pair", [("left", 1), ("right", 2)])
+def test_thing(pair): assert pair
+"""
+    assert len(_check(src)) == 1
+
+
+def test_list_rows_use_per_column_ids_for_multiple_parameters():
+    src = """
+import pytest
+@pytest.mark.parametrize(["label", "cfg"], [["on", Config(1)], ["off", Config(2)]])
+def test_thing(label, cfg): assert label and cfg
+"""
+    assert _check(src) == []

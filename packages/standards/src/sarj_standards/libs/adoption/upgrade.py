@@ -250,7 +250,9 @@ def _install_ecosystems(ecosystems: scaffold.Ecosystems, configs: Sequence[str])
 
 def unsafe_retired_findings(plan: UpgradePlan) -> list[doctor.Finding]:
     """Return consumer-authored blockers, excluding configs this plan replaces."""
-    owned = {target.relative_to(plan.root).as_posix() for _source, target in plan.config_writes}
+    replaced = [target for _source, target in plan.config_writes]
+    replaced.extend(path for path, _contents in (*plan.scaffold_plan.writes, *plan.scaffold_plan.edits))
+    owned = {target.relative_to(plan.root).as_posix() for target in replaced}
     return [
         finding
         for finding in doctor.diagnose(plan.root)

@@ -24,7 +24,14 @@ const isZodParseCall = (node: TSESTree.Node): boolean => {
   if (callee.computed) return false;
   if (callee.property.type !== AST_NODE_TYPES.Identifier) return false;
   const method = callee.property.name;
-  if (method !== "parse" && method !== "safeParse") return false;
+  if (
+    method !== "parse" &&
+    method !== "safeParse" &&
+    method !== "parseAsync" &&
+    method !== "safeParseAsync"
+  ) {
+    return false;
+  }
   return looksLikeZodSchema(callee.object);
 };
 
@@ -146,10 +153,21 @@ export default createRule<Options, MessageIds>({
     const boundDeclarator = (
       node: TSESTree.CallExpression,
     ): TSESTree.VariableDeclarator | null => {
-      const parent = node.parent;
+      let current: TSESTree.Node = node;
+      let parent = current.parent;
+      while (
+        (parent.type === AST_NODE_TYPES.TSAsExpression ||
+          parent.type === AST_NODE_TYPES.TSSatisfiesExpression ||
+          parent.type === AST_NODE_TYPES.TSNonNullExpression ||
+          parent.type === AST_NODE_TYPES.ChainExpression) &&
+        parent.expression === current
+      ) {
+        current = parent;
+        parent = current.parent;
+      }
       if (
         parent.type === AST_NODE_TYPES.VariableDeclarator &&
-        parent.init === node &&
+        parent.init === current &&
         parent.id.type === AST_NODE_TYPES.Identifier
       ) {
         return parent;

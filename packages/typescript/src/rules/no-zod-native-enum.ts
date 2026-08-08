@@ -151,12 +151,15 @@ export default createRule<Options, MessageIds>({
 
     /** Local names imported from a zod module, e.g. `nativeEnum`, `enum_`. */
     const zodImportedNames = new Map<string, string>();
+    const zodNamespaces = new Set<string>();
 
     function isZodMemberCall(node: TSESTree.CallExpression, api: string): boolean {
       const callee = node.callee;
       if (
         callee.type === AST_NODE_TYPES.MemberExpression &&
         !callee.computed &&
+        callee.object.type === AST_NODE_TYPES.Identifier &&
+        zodNamespaces.has(callee.object.name) &&
         callee.property.type === AST_NODE_TYPES.Identifier
       ) {
         return callee.property.name === api;
@@ -208,6 +211,16 @@ export default createRule<Options, MessageIds>({
         }
         for (const spec of node.specifiers) {
           if (
+            spec.type === AST_NODE_TYPES.ImportNamespaceSpecifier ||
+            spec.type === AST_NODE_TYPES.ImportDefaultSpecifier ||
+            (spec.type === AST_NODE_TYPES.ImportSpecifier &&
+              (spec.imported.type === AST_NODE_TYPES.Identifier
+                ? spec.imported.name === "z"
+                : spec.imported.value === "z"))
+          ) {
+            zodNamespaces.add(spec.local.name);
+          }
+          if (
             spec.type === AST_NODE_TYPES.ImportSpecifier &&
             spec.imported.type === AST_NODE_TYPES.Identifier
           ) {
@@ -230,10 +243,12 @@ export default createRule<Options, MessageIds>({
         if (!isZodMemberCall(node, "enum")) {
           return;
         }
-        const arg = node.arguments[0];
-        if (arg === undefined || arg.type !== AST_NODE_TYPES.Identifier) {
+        const argument = node.arguments[0];
+        if (argument === undefined || argument.type === AST_NODE_TYPES.SpreadElement) {
           return;
         }
+        const arg = unwrap(argument);
+        if (arg.type !== AST_NODE_TYPES.Identifier) return;
         const isEnum =
           resolvesToLocalEnum(arg, sourceCode.getScope(arg)) ||
           (services !== null && resolvesToImportedEnum(arg, services));
