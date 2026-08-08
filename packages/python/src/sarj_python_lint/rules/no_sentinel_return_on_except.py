@@ -350,26 +350,20 @@ def _value_kind(value: ast.expr | None) -> str | None:
 
 def _is_sentinel(value: ast.expr) -> bool:
     """Report whether `value` is a sentinel: None, False, empty collection/str, set()."""
-    if isinstance(value, ast.Constant):
-        # None, False, or empty string.
-        if value.value is None or value.value is False:
-            return True
-        return isinstance(value.value, str) and not value.value
-    # Empty list / dict / set / tuple literals.
-    if isinstance(value, ast.List):
-        return len(value.elts) == 0
-    if isinstance(value, ast.Tuple):
-        return len(value.elts) == 0
-    if isinstance(value, ast.Set):
+    match value:
+        case ast.Constant(value=literal):
+            # None, False, or empty string.
+            return literal is None or literal is False or (isinstance(literal, str) and not literal)
         # `set()` is a call, not a Set node; `{}` is a Dict.
-        return len(value.elts) == 0
-    if isinstance(value, ast.Dict):
-        return len(value.keys) == 0
-    # `set()` call with no args.
-    if isinstance(value, ast.Call):
-        func = value.func
-        return isinstance(func, ast.Name) and func.id == "set" and not value.args and not value.keywords
-    return False
+        case ast.List(elts=elements) | ast.Tuple(elts=elements) | ast.Set(elts=elements):
+            return not elements
+        case ast.Dict(keys=keys):
+            return not keys
+        # `set()` call with no args.
+        case ast.Call(func=ast.Name(id="set"), args=[], keywords=[]):
+            return True
+        case _:
+            return False
 
 
 def _handler_logs_before_return(handler: ast.ExceptHandler) -> bool:
@@ -492,13 +486,15 @@ def _is_logging_call(node: ast.AST) -> bool:
 
 def _is_logger_receiver(receiver: ast.expr) -> bool:
     """Report whether `receiver` denotes a logger."""
-    if isinstance(receiver, ast.Name):
-        return _is_logger_name(receiver.id)
-    if isinstance(receiver, ast.Attribute):
-        return _is_logger_name(receiver.attr)
-    if isinstance(receiver, ast.Call):
-        return _is_getlogger_call(receiver)
-    return False
+    match receiver:
+        case ast.Name(id=name):
+            return _is_logger_name(name)
+        case ast.Attribute(attr=attr):
+            return _is_logger_name(attr)
+        case ast.Call():
+            return _is_getlogger_call(receiver)
+        case _:
+            return False
 
 
 def _is_logger_name(name: str) -> bool:

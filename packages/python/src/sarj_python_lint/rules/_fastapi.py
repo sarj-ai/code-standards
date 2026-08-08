@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 from collections import Counter
 from dataclasses import dataclass
+from typing import NamedTuple
 
 
 HTTP_METHODS = frozenset({"get", "post", "put", "patch", "delete", "options", "head", "trace", "api_route"})
@@ -48,6 +49,20 @@ class Route:
             return True
         value = self.keywords.get("include_in_schema")
         return isinstance(value, ast.Constant) and value.value is False
+
+
+class AnnotatedParts(NamedTuple):
+    """The value type and metadata inside one ``Annotated`` annotation."""
+
+    value: ast.expr
+    metadata: tuple[ast.expr, ...]
+
+
+class ParameterMarker(NamedTuple):
+    """A resolved FastAPI parameter marker and its call."""
+
+    name: str
+    call: ast.Call
 
 
 def flat_name(node: ast.expr) -> str:
@@ -235,17 +250,6 @@ class FastapiIndex:
             current = self._scope_parents[current]
         return None
 
-    def _decorator(self, scope: int, name: str) -> tuple[str, str] | None:
-        current: int | None = scope
-        while current is not None:
-            binding = (current, name)
-            if binding in self.decorators:
-                return self.decorators[binding]
-            if binding in self.bound_names:
-                return None
-            current = self._scope_parents[current]
-        return None
-
     def _constructor_is_hidden(self, node: ast.expr) -> bool:
         if not self._is_constructor_call(node) or not isinstance(node, ast.Call):
             return False
@@ -304,6 +308,17 @@ class FastapiIndex:
             )
         return tuple(routes)
 
+    def _decorator(self, scope: int, name: str) -> tuple[str, str] | None:
+        current: int | None = scope
+        while current is not None:
+            binding = (current, name)
+            if binding in self.decorators:
+                return self.decorators[binding]
+            if binding in self.bound_names:
+                return None
+            current = self._scope_parents[current]
+        return None
+
     @staticmethod
     def _route_methods(decorator: ast.Call) -> tuple[str, ...]:
         value = next((keyword.value for keyword in decorator.keywords if keyword.arg == "methods"), None)
@@ -312,11 +327,11 @@ class FastapiIndex:
         if not isinstance(value, (ast.List, ast.Tuple, ast.Set)):
             return ("*",)
         methods = {
-            item.value.lower()
+            method
             for item in value.elts
             if isinstance(item, ast.Constant)
             and isinstance(item.value, str)
-            and item.value.lower() in HTTP_METHODS - {"api_route"}
+            and (method := item.value.lower()) in HTTP_METHODS - {"api_route"}
         }
         return tuple(sorted(methods)) or ("*",)
 
@@ -350,14 +365,14 @@ class FastapiIndex:
             node = self.type_aliases[node.id]
         return node
 
-    def annotated_parts(self, node: ast.expr | None) -> tuple[ast.expr, tuple[ast.expr, ...]] | None:
+    def annotated_parts(self, node: ast.expr | None) -> AnnotatedParts | None:
         resolved = self.resolve_annotation(node)
         if not self._is_annotated(resolved) or not isinstance(resolved, ast.Subscript):
             return None
         elements = resolved.slice.elts if isinstance(resolved.slice, ast.Tuple) else [resolved.slice]
         if not elements:
             return None
-        return elements[0], tuple(elements[1:])
+        return AnnotatedParts(elements[0], tuple(elements[1:]))
 
     def _is_annotated(self, node: ast.expr | None) -> bool:
         if not isinstance(node, ast.Subscript):
@@ -371,13 +386,13 @@ class FastapiIndex:
             and self._root_name(value) in self.annotation_modules
         )
 
-    def marker(self, node: ast.expr) -> tuple[str, ast.Call] | None:
+    def marker(self, node: ast.expr) -> ParameterMarker | None:
         if not isinstance(node, ast.Call):
             return None
         canonical = self.canonical(node.func)
         if canonical not in PARAM_MARKERS:
             return None
-        return canonical, node
+        return ParameterMarker(canonical, node)
 
     def is_injection(self, node: ast.expr | None) -> bool:
         resolved = self.resolve_annotation(node)

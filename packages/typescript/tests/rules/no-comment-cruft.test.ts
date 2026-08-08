@@ -338,7 +338,6 @@ ruleTester.run("no-comment-cruft", rule, {
       code: "const x = 1;\n/* ================= */\nconst y = 2;",
       errors: [{ messageId: "sectionBanner" }],
     },
-    // --- The four guards must not become escape hatches ---------------------
     // A separator rule with no arrow head is still a banner (contrast the
     // `req---->res` diagram in `valid`).
     {

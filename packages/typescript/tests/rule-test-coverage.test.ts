@@ -135,10 +135,8 @@ describe("every shipped rule is exercised by its own tests", () => {
     ).toBe(true);
   });
 
-  it.each(names)("%s has at least one valid and one invalid case", (name) => {
+  it.each(names.filter((name) => existsSync(join(RULE_TESTS_DIR, `${name}.test.ts`))))("%s has at least one valid and one invalid case", (name) => {
     const path = join(RULE_TESTS_DIR, `${name}.test.ts`);
-    if (!existsSync(path)) return; // owned by the assertion above
-
     const { invalid, valid } = caseCounts(path);
     expect(
       valid,

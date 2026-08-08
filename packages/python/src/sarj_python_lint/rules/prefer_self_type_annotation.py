@@ -15,11 +15,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def _is_classmethod(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Check if function node is decorated with @classmethod."""
-    return any(isinstance(dec, ast.Name) and dec.id == "classmethod" for dec in node.decorator_list)
-
-
 def _is_return_self_or_cls(outer_func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     """Return True if node directly returns `self` or `cls(...)` (excluding inner functions/classes)."""
     target_name = "cls" if _is_classmethod(outer_func) else "self"
@@ -49,6 +44,11 @@ def _is_return_self_or_cls(outer_func: ast.FunctionDef | ast.AsyncFunctionDef) -
     visitor = ReturnVisitor()
     visitor.visit(outer_func)
     return visitor.found
+
+
+def _is_classmethod(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Check if function node is decorated with @classmethod."""
+    return any(isinstance(dec, ast.Name) and dec.id == "classmethod" for dec in node.decorator_list)
 
 
 class PreferSelfTypeAnnotation(Rule):

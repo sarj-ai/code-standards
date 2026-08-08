@@ -35,6 +35,9 @@ const WALL_MIN_COMMENTED_RATIO = 0.6;
 const WALL_MIN_WEAK_RATIO = 0.75;
 const WALL_MAX_WORDS = 18;
 const WALL_MAX_NOVEL_WORDS = 2;
+const RATIONALE_WORDS = [
+  "when", "because", "if", "so that", "due to", "for", "instead of", "to prevent", "to avoid", "only",
+] as const;
 const WALL_NARRATION_RE =
   /^(?:first(?:ly)?|second(?:ly)?|third(?:ly)?|then|next|now|finally|lastly|add|append|assign|await|build|calculate|call|check|clear|close|compute|convert|copy|count|create|declare|define|delete|extract|fetch|filter|find|format|generate|get|handle|initialize|insert|iterate|join|load|log|loop|map|merge|open|parse|print|process|push|read|remove|render|reset|return|save|send|set|setup|sort|split|start|stop|store|update|validate|wrap|write)(?:s|es|d|ed|ing)?\b/i;
 const WALL_STEP_PREFIX_RE = /^(?:\d+[.)]|(?:phase|step)\s+\d+\s*:)\s*/i;
@@ -64,14 +67,9 @@ const DEFERRAL_STOPWORDS: ReadonlySet<string> = new Set([
 /** Most content words a `for now` comment may carry and still be pure deferral. */
 const DEFERRAL_MAX_CONTENT_WORDS = 2;
 
-/** Match `for now` only when at most two content words identify the deferral. */
-function isBareDeferral(text: string): boolean {
-  if (!FOR_NOW_RE.test(text)) return false;
-  const rest = text.replace(FOR_NOW_RE, " ");
-  const content = (rest.match(/[A-Za-z][\w']*/g) ?? []).filter(
-    (word) => !DEFERRAL_STOPWORDS.has(word.toLowerCase()),
-  );
-  return content.length <= DEFERRAL_MAX_CONTENT_WORDS;
+function isSectionLabel(text: string): boolean {
+  const match = SECTION_LABEL_RE.exec(text);
+  return match !== null && SECTION_LABEL_WORDS.has((match[1] ?? "").toLowerCase());
 }
 
 // Suppression and tool directives are instructions, not prose.
@@ -93,13 +91,10 @@ const REGION_MARKER_RE = /^#?(?:end)?region\b(.*)$/i;
 const REGION_TITLE_RE = /^[\s:\-\u2013\u2014]*\w[\w \-/&+]*$/;
 const REGION_TITLE_MAX_WORDS = 5;
 
-function isRegionMarker(text: string): boolean {
-  const match = REGION_MARKER_RE.exec(text);
-  if (match === null) return false;
-  const title = (match[1] ?? "").trim();
-  if (title.length === 0) return true;
-  if (!REGION_TITLE_RE.test(title)) return false;
-  return title.split(/\s+/).length <= REGION_TITLE_MAX_WORDS;
+// A triple-slash `///` directive keeps its third `/` after ESLint strips the
+// leading `//`, so strip 1–2 leading slashes (not exactly two) for `<reference`.
+function stripCommentMarker(line: string): string {
+  return line.replace(/^\s*\/{1,2}/, "").replace(/^\s*\*+/, "").trim();
 }
 
 const SECTION_LABEL_WORDS: ReadonlySet<string> = new Set([
@@ -112,9 +107,8 @@ const SECTION_LABEL_WORDS: ReadonlySet<string> = new Set([
 ]);
 const SECTION_LABEL_RE = /^([A-Za-z]+)\s*:?\s*$/;
 
-function isSectionLabel(text: string): boolean {
-  const match = SECTION_LABEL_RE.exec(text);
-  return match !== null && SECTION_LABEL_WORDS.has((match[1] ?? "").toLowerCase());
+function isDirective(text: string): boolean {
+  return DIRECTIVE_RE.test(text.trim());
 }
 
 // Match two-to-four shouted words; preserve acronyms and numbered standards.
@@ -129,9 +123,6 @@ const LETS_RE =
 // Flag an isolated numbered step; preserve walkthrough runs and JSX labels.
 const ENUMERATION_RE = /^(?:\d+[.)]\s+\S|(?:phase|step)\s+\d+\b)/i;
 
-// Dummy translational comments: ultra-short comments that just restate the code.
-// Corroborated against the statement below by `restatesWholeStatement` — the
-// lexical match alone is NOT evidence. See that function.
 const DUMMY_TRANSLATION_RE = /^(?:increment|return|returns|get|gets|set\b(?! up\b)|sets\b(?! up\b)|function to|method to)\b/i;
 
 const DIAGRAM_ARROW_RE = /[-=~]{2,}>|<[-=~]{2,}/;
@@ -142,27 +133,11 @@ const CODE_TAIL_RE = /[;{}()]\s*$|=>\s*$|,\s*$/;
 // Require an identifier LHS and code tail so prose equations do not match.
 const ASSIGN_RE = /^[A-Za-z_$][\w.$[\]]*\s*(?:=(?![=>])|\+=|-=|\*=)\s*\S.*[;)}\]]\s*$/;
 const CALL_RE = /^[A-Za-z_$][\w.$]*\([^)]*\)\s*;?\s*$/;
-// Assertion chains often contain nested calls, so the generic CALL_RE cannot
-// recognize them. A disabled assertion is especially dangerous: the test still
-// passes, but verifies nothing. Keep this narrow to established assertion APIs.
-// Recognizing the assertion API opener is enough here: a comment beginning
-// with an actual call is code regardless of the shape of the chained matcher.
-// Avoid parsing nested TypeScript generics with a backtracking regexp.
 const ASSERTION_CODE_RE = /^(?:await\s+)?(?:expect(?:TypeOf)?|assert(?:\.\w+)?)\s*\(/;
 
 // Placeholders that only appear in grammar productions / desugaring examples,
 // never in real code: `%sent%`, `[opt]`, a standalone `<FunctionBody>`, `…` / `...`.
 const PSEUDOCODE_RE = /%\w+%|\[opt\]|(?:^|\s)<[A-Za-z]\w*>|…|\.\.\./;
-
-// A triple-slash `///` directive keeps its third `/` after ESLint strips the
-// leading `//`, so strip 1–2 leading slashes (not exactly two) for `<reference`.
-function stripCommentMarker(line: string): string {
-  return line.replace(/^\s*\/{1,2}/, "").replace(/^\s*\*+/, "").trim();
-}
-
-function isDirective(text: string): boolean {
-  return DIRECTIVE_RE.test(text.trim());
-}
 
 function isBanner(text: string): boolean {
   const t = text.trim();
@@ -171,10 +146,15 @@ function isBanner(text: string): boolean {
   return BANNER_RUN_RE.test(t) && !DIAGRAM_ARROW_RE.test(t);
 }
 
-/**
- * `allowCall` is false where a bare statement cannot legally appear — inside an
- * interface body or a type literal. See `TYPE_MEMBER_CONTAINERS`.
- */
+function isRegionMarker(text: string): boolean {
+  const match = REGION_MARKER_RE.exec(text);
+  if (match === null) return false;
+  const title = (match[1] ?? "").trim();
+  if (title.length === 0) return true;
+  if (!REGION_TITLE_RE.test(title)) return false;
+  return title.split(/\s+/).length <= REGION_TITLE_MAX_WORDS;
+}
+
 function looksLikeCode(text: string, allowCall = true): boolean {
   const t = text.trim();
   if (!t) return false;
@@ -213,20 +193,6 @@ function isProse(text: string): boolean {
   return false;
 }
 
-const JUSTIFICATION_RE =
-  /\b(?:because|since|until|due to|so that|so we|so it|so the|otherwise|which is why|in order to|to avoid|to work around|to prevent|backwards? compat(?:ibility)?|for compatibility)\b/i;
-
-/** Apply total corroboration to the whole statement, including call arguments. */
-function restatesWholeStatement(body: string, statement: string | null): boolean {
-  return statement !== null && restatesStatementHead(body, statement.replaceAll("(", " "));
-}
-
-/**
- * Whether a single-line comment merely narrates the code rather than explaining
- * the *why*. Three deterministic shapes: step narration ("First, …"), self-
- * admitted meta-commentary ("keeping it simple"), and a restatement of the very
- * next line (`// increment the counter` above `counter += 1`).
- */
 function isRedundantNarration(
   body: string,
   statementBelow: string | null,
@@ -246,8 +212,7 @@ function isRedundantNarration(
     const words = t.split(/\s+/);
     if (words.length > 1 && words.length <= 4 && DUMMY_TRANSLATION_RE.test(t) && !/[():=]/.test(t)) {
       const lowerT = t.toLowerCase();
-      const rationaleWords = ["when", "because", "if", "so that", "due to", "for", "instead of", "to prevent", "to avoid", "only"];
-      if (!rationaleWords.some((w) => lowerT.includes(w)) && restatesWholeStatement(t, statementBelow)) {
+      if (!RATIONALE_WORDS.some((word) => lowerT.includes(word)) && restatesWholeStatement(t, statementBelow)) {
         return true;
       }
     }
@@ -256,6 +221,24 @@ function isRedundantNarration(
     if (isolatedEnumeration && ENUMERATION_RE.test(t)) return true;
   }
   return restatesStatementHead(t, statementBelow);
+}
+
+const JUSTIFICATION_RE =
+  /\b(?:because|since|until|due to|so that|so we|so it|so the|otherwise|which is why|in order to|to avoid|to work around|to prevent|backwards? compat(?:ibility)?|for compatibility)\b/i;
+
+/** Match `for now` only when at most two content words identify the deferral. */
+function isBareDeferral(text: string): boolean {
+  if (!FOR_NOW_RE.test(text)) return false;
+  const rest = text.replace(FOR_NOW_RE, " ");
+  const content = (rest.match(/[A-Za-z][\w']*/g) ?? []).filter(
+    (word) => !DEFERRAL_STOPWORDS.has(word.toLowerCase()),
+  );
+  return content.length <= DEFERRAL_MAX_CONTENT_WORDS;
+}
+
+/** Apply total corroboration to the whole statement, including call arguments. */
+function restatesWholeStatement(body: string, statement: string | null): boolean {
+  return statement !== null && restatesStatementHead(body, statement.replaceAll("(", " "));
 }
 
 // Outside these containers, a short label groups expression elements.
@@ -279,38 +262,6 @@ interface WallAttachment {
   readonly index: number;
   readonly statement: string;
 }
-
-function directStatements(container: TSESTree.Node): readonly TSESTree.Node[] {
-  switch (container.type) {
-    case AST_NODE_TYPES.Program:
-    case AST_NODE_TYPES.BlockStatement:
-    case AST_NODE_TYPES.ClassBody:
-    case AST_NODE_TYPES.StaticBlock:
-    case AST_NODE_TYPES.TSModuleBlock:
-      return container.body;
-    case AST_NODE_TYPES.SwitchCase:
-      return container.consequent;
-    case AST_NODE_TYPES.TSInterfaceBody:
-      return container.body;
-    default:
-      return [];
-  }
-}
-
-const WALL_STATEMENTS: ReadonlySet<string> = new Set([
-  AST_NODE_TYPES.ExpressionStatement,
-  AST_NODE_TYPES.ReturnStatement,
-  AST_NODE_TYPES.ThrowStatement,
-  AST_NODE_TYPES.VariableDeclaration,
-  AST_NODE_TYPES.IfStatement,
-  AST_NODE_TYPES.ForStatement,
-  AST_NODE_TYPES.ForOfStatement,
-  AST_NODE_TYPES.ForInStatement,
-  AST_NODE_TYPES.WhileStatement,
-  AST_NODE_TYPES.DoWhileStatement,
-  AST_NODE_TYPES.SwitchStatement,
-  AST_NODE_TYPES.TryStatement,
-]);
 
 function statementAttachmentBelow(
   comment: TSESTree.Comment,
@@ -346,6 +297,38 @@ function statementAttachmentBelow(
       : { container: node.parent, index, statement: sourceCode.getText(node) };
   }
   return null;
+}
+
+const WALL_STATEMENTS: ReadonlySet<string> = new Set([
+  AST_NODE_TYPES.ExpressionStatement,
+  AST_NODE_TYPES.ReturnStatement,
+  AST_NODE_TYPES.ThrowStatement,
+  AST_NODE_TYPES.VariableDeclaration,
+  AST_NODE_TYPES.IfStatement,
+  AST_NODE_TYPES.ForStatement,
+  AST_NODE_TYPES.ForOfStatement,
+  AST_NODE_TYPES.ForInStatement,
+  AST_NODE_TYPES.WhileStatement,
+  AST_NODE_TYPES.DoWhileStatement,
+  AST_NODE_TYPES.SwitchStatement,
+  AST_NODE_TYPES.TryStatement,
+]);
+
+function directStatements(container: TSESTree.Node): readonly TSESTree.Node[] {
+  switch (container.type) {
+    case AST_NODE_TYPES.Program:
+    case AST_NODE_TYPES.BlockStatement:
+    case AST_NODE_TYPES.ClassBody:
+    case AST_NODE_TYPES.StaticBlock:
+    case AST_NODE_TYPES.TSModuleBlock:
+      return container.body;
+    case AST_NODE_TYPES.SwitchCase:
+      return container.consequent;
+    case AST_NODE_TYPES.TSInterfaceBody:
+      return container.body;
+    default:
+      return [];
+  }
 }
 
 function isWeakWalkthroughComment(body: string, statement: string): boolean {

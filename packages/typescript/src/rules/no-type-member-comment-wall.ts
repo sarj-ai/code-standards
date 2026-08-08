@@ -74,16 +74,6 @@ export default createRule<Options, MessageIds>({
       if (!startingOn.has(comment.loc.start.line)) startingOn.set(comment.loc.start.line, comment);
     }
 
-    /**
-     * The comment documenting `member`: the block or line comment on the row
-     * above it, or the one trailing its last row.
-     *
-     * A leading comment counts only when the MEMBER starts its own line, and
-     * only when the comment is alone on ITS line; a trailing comment counts
-     * only when it sits after the member it is read against. All three keep a
-     * one-line type literal under a doc block from reading as three members
-     * documented three times with the same words.
-     */
     function documentingComment(member: NamedMember): TSESTree.Comment | undefined {
       const beforeMember = sourceCode.getTokenBefore(member, { includeComments: false });
       const ownsItsLine =
@@ -97,17 +87,6 @@ export default createRule<Options, MessageIds>({
       return trail !== undefined && trail.range[0] > member.range[0] ? trail : undefined;
     }
 
-    /**
-     * True when a comment heads a REGION of the type instead of describing the
-     * member under it — the exemption this rule documents and, before this
-     * check, leaked on.
-     *
-     * Three conditions. The body is ONE bare identifier word; it names
-     * something OTHER than the member below it (the decisive one — `// links`
-     * over `LinkDescriptors` heads a group, `// links` over `links` restates a
-     * name); and it shows region evidence, heading a run of members of which
-     * only the first is commented, or set off by a blank line.
-     */
     function isGroupLabel(
       comment: TSESTree.Comment,
       member: NamedMember,

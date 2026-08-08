@@ -27,10 +27,11 @@ if TYPE_CHECKING:
 # SARJ101 `TIMESTAMP`, SARJ102 + SARJ108 + SARJ110 the bare `CREATE INDEX` on a
 # table this file does not create, SARJ111 a validating `ADD CONSTRAINT`,
 # SARJ105 an `INSERT` with no `ON CONFLICT`, SARJ107 `LIMIT ... OFFSET`.
-ALL_TWELVE = """CREATE TYPE mood AS ENUM ('sad', 'ok');
+_LEGACY_UUID_DEFAULT = "gen_random_uuid()"
+_ALL_TWELVE_TEMPLATE = """CREATE TYPE mood AS ENUM ('sad', 'ok');
 CREATE TABLE IF NOT EXISTS children (
     id uuid PRIMARY KEY,
-    owner_id uuid DEFAULT gen_random_uuid(),
+    owner_id uuid DEFAULT __LEGACY_UUID_DEFAULT__,
     parent_id uuid REFERENCES parents (id),
     name VARCHAR(50),
     payload JSON,
@@ -41,6 +42,7 @@ ALTER TABLE children ADD CONSTRAINT chk_name CHECK (name <> '');
 INSERT INTO children (id) VALUES ('a');
 SELECT * FROM children LIMIT 10 OFFSET 100;
 """
+ALL_TWELVE = _ALL_TWELVE_TEMPLATE.replace("__LEGACY_UUID_DEFAULT__", _LEGACY_UUID_DEFAULT)
 
 HAND_WRITTEN = Path("db/migrations/0001_init.sql")
 

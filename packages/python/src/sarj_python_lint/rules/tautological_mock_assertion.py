@@ -127,20 +127,22 @@ def _tautology_in(func: ast.FunctionDef | ast.AsyncFunctionDef) -> ast.Assert | 
     assigned: dict[str, ast.expr] = {}
     bindings: Counter[str] = Counter()
     for node in ast.walk(func):
-        if isinstance(node, ast.Assert):
-            asserts.append(node)
-        elif isinstance(node, ast.Assign):
-            _record_attribute_stub(node, provided, stubbed_on)
-            _record_alias(node, assigned)
-        elif isinstance(node, ast.Name):
-            if isinstance(node.ctx, ast.Store):
-                bindings[node.id] += 1
-        elif isinstance(node, ast.Attribute | ast.Subscript):
-            receivers.add(id(node.value))
-        elif isinstance(node, ast.Call):
-            if _is_verification_call(node):
-                return None
-            _record_call_stubs(node, provided, stubbed_on)
+        match node:
+            case ast.Assert():
+                asserts.append(node)
+            case ast.Assign():
+                _record_attribute_stub(node, provided, stubbed_on)
+                _record_alias(node, assigned)
+            case ast.Name(id=name, ctx=ast.Store()):
+                bindings[name] += 1
+            case ast.Attribute(value=value) | ast.Subscript(value=value):
+                receivers.add(id(value))
+            case ast.Call():
+                if _is_verification_call(node):
+                    return None
+                _record_call_stubs(node, provided, stubbed_on)
+            case _:
+                pass
     if not asserts:
         return None
 
@@ -283,18 +285,19 @@ def _record(
 
 def _is_trivial(value: ast.expr) -> bool:
     """Report whether a stubbed value is too weak to build a tautology on."""
-    if isinstance(value, ast.Constant):
-        literal = value.value
-        if literal is None or isinstance(literal, bool):
-            return True
-        if isinstance(literal, int | float) and literal in _TRIVIAL_NUMBERS:
-            return True
-        return isinstance(literal, str | bytes) and not literal
-    if isinstance(value, ast.List | ast.Tuple | ast.Set):
-        return not value.elts
-    if isinstance(value, ast.Dict):
-        return not value.keys
-    return False
+    match value:
+        case ast.Constant(value=literal):
+            if literal is None or isinstance(literal, bool):
+                return True
+            if isinstance(literal, int | float) and literal in _TRIVIAL_NUMBERS:
+                return True
+            return isinstance(literal, str | bytes) and not literal
+        case ast.List(elts=elements) | ast.Tuple(elts=elements) | ast.Set(elts=elements):
+            return not elements
+        case ast.Dict(keys=keys):
+            return not keys
+        case _:
+            return False
 
 
 def _echoed_operand(
@@ -368,26 +371,28 @@ def _is_read(node: ast.expr) -> bool:
 
 def _signature(node: ast.expr) -> str:
     """Summarize `node` cheaply so full `ast.dump` comparisons stay rare."""
-    if isinstance(node, ast.Name):
-        return f"N:{node.id}"
-    if isinstance(node, ast.Constant):
-        return f"C:{node.value!r}"
-    if isinstance(node, ast.Attribute):
-        return f"A:{node.attr}"
-    if isinstance(node, ast.Dict):
-        return f"D:{len(node.keys)}"
-    if isinstance(node, ast.List):
-        return f"L:{len(node.elts)}"
-    if isinstance(node, ast.Tuple):
-        return f"T:{len(node.elts)}"
-    if isinstance(node, ast.Set):
-        return f"S:{len(node.elts)}"
-    if isinstance(node, ast.Call):
-        return f"K:{len(node.args)}"
-    # `-1` parses as a unary minus over a constant, not as a negative literal.
-    if isinstance(node, ast.UnaryOp):
-        return f"U:{type(node.op).__name__}"
-    return ""
+    match node:
+        case ast.Name(id=name):
+            return f"N:{name}"
+        case ast.Constant(value=value):
+            return f"C:{value!r}"
+        case ast.Attribute(attr=attr):
+            return f"A:{attr}"
+        case ast.Dict(keys=keys):
+            return f"D:{len(keys)}"
+        case ast.List(elts=elements):
+            return f"L:{len(elements)}"
+        case ast.Tuple(elts=elements):
+            return f"T:{len(elements)}"
+        case ast.Set(elts=elements):
+            return f"S:{len(elements)}"
+        case ast.Call(args=args):
+            return f"K:{len(args)}"
+        # `-1` parses as a unary minus over a constant, not as a negative literal.
+        case ast.UnaryOp(op=op):
+            return f"U:{type(op).__name__}"
+        case _:
+            return ""
 
 
 def _is_verification_call(node: ast.Call) -> bool:

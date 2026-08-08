@@ -51,6 +51,12 @@ async function lint(file: string): Promise<Linter.LintMessage[]> {
   return results.flatMap((result) => result.messages);
 }
 
+function severity(setting: unknown): unknown {
+  return Array.isArray(setting) ? setting[0] : setting;
+}
+
+const ESLINT_MAJOR = Number.parseInt(ESLint.version.split(".")[0] ?? "0", 10);
+
 describe("the shipped eslint.strict.mjs can actually lint", () => {
   it("keeps typed diagnostics live in a nested monorepo package", async () => {
     const eslint = new ESLint({
@@ -89,7 +95,7 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
       resolve(FIXTURE_DIR, "widget.tsx"),
     );
     const setting = rulesOf(config)[rule];
-    expect(Array.isArray(setting) ? (setting as unknown[])[0] : setting).toBe(2);
+    expect(severity(setting)).toBe(2);
   });
 
   it("requires explicit button types inside design-system primitives", () => {
@@ -191,10 +197,7 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
    * for silence: every consumer got zero React coverage. `@eslint/compat`'s
    * `fixupPluginRules` restores the removed context APIs, so the rules run.
    */
-  it("keeps every react/* key live through the compat adapter", async () => {
-    const major = Number.parseInt(ESLint.version.split(".")[0] ?? "0", 10);
-    if (major < 10) return; // guard inactive on ESLint 9; nothing to assert
-
+  it.runIf(ESLINT_MAJOR >= 10)("keeps every react/* key live through the compat adapter", async () => {
     // A react/* key is only safe when the plugin is registered AND its removed
     // context APIs are restored -- otherwise it is "Definition for rule not
     // found", or a crash, at consumer lint time.
@@ -203,24 +206,19 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
       overrideConfigFile: true,
       overrideConfig: strictConfig as Linter.Config[],
     });
-    for (const probe of ["example.ts", "widget.tsx"]) {
-      const resolved: unknown = await eslint.calculateConfigForFile(
-        resolve(FIXTURE_DIR, probe),
-      );
-      const live = Object.keys(rulesOf(resolved)).filter((rule) =>
-        rule.startsWith("react/"),
-      );
-      expect(
-        live.length,
-        `${probe}: react rules were dropped again -- consumers lose React coverage silently`,
-      ).toBeGreaterThan(0);
-    }
+    const probes = await Promise.all(
+      ["example.ts", "widget.tsx"].map(async (probe) => ({
+        probe,
+        resolved: await eslint.calculateConfigForFile(resolve(FIXTURE_DIR, probe)) as unknown,
+      })),
+    );
+    expect(probes.map(({ probe }) => probe)).toEqual(["example.ts", "widget.tsx"]);
+    expect(probes.every(({ resolved }) =>
+      Object.keys(rulesOf(resolved)).some((rule) => rule.startsWith("react/"))
+    )).toBe(true);
   });
 
-  it("fails once eslint-plugin-react supports ESLint 10, so the adapter expires", async () => {
-    const major = Number.parseInt(ESLint.version.split(".")[0] ?? "0", 10);
-    if (major < 10) return;
-
+  it.runIf(ESLINT_MAJOR >= 10)("fails once eslint-plugin-react supports ESLint 10, so the adapter expires", async () => {
     // `lib/util/version.js` is what calls the removed `context.getFilename()`.
     // This probes the RAW plugin, not the fixed-up one, so it is an honest
     // upstream check: when a release fixes it this stops throwing, this test

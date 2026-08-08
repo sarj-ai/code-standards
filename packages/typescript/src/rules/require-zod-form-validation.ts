@@ -16,6 +16,18 @@ type Options = readonly [];
 
 type Ctx = Readonly<RuleContext<MessageIds, Options>>;
 
+/** Match `parse` and `safeParse` only on Zod-shaped receivers. */
+const isZodParseCall = (node: TSESTree.Node): boolean => {
+  if (node.type !== AST_NODE_TYPES.CallExpression) return false;
+  const callee = node.callee;
+  if (callee.type !== AST_NODE_TYPES.MemberExpression) return false;
+  if (callee.computed) return false;
+  if (callee.property.type !== AST_NODE_TYPES.Identifier) return false;
+  const method = callee.property.name;
+  if (method !== "parse" && method !== "safeParse") return false;
+  return looksLikeZodSchema(callee.object);
+};
+
 /** Recognize the supported Zod receiver naming conventions. */
 const looksLikeZodSchema = (node: TSESTree.Node): boolean => {
   let current: TSESTree.Node = node;
@@ -33,18 +45,6 @@ const looksLikeZodSchema = (node: TSESTree.Node): boolean => {
     }
     return false;
   }
-};
-
-/** Match `parse` and `safeParse` only on Zod-shaped receivers. */
-const isZodParseCall = (node: TSESTree.Node): boolean => {
-  if (node.type !== AST_NODE_TYPES.CallExpression) return false;
-  const callee = node.callee;
-  if (callee.type !== AST_NODE_TYPES.MemberExpression) return false;
-  if (callee.computed) return false;
-  if (callee.property.type !== AST_NODE_TYPES.Identifier) return false;
-  const method = callee.property.name;
-  if (method !== "parse" && method !== "safeParse") return false;
-  return looksLikeZodSchema(callee.object);
 };
 
 /** Match an optionally awaited `<x>.formData()` call. */

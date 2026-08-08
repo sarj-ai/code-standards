@@ -719,11 +719,11 @@ _SURVIVING_ASSERTION = "    assert clock.now() > 0\n"
     ("source", "diagnosis"),
     [
         (
-            'def test_thing(clock):\n    u = User(name="bo")\n    assert u.name == "bo"\n' + _SURVIVING_ASSERTION,
+            f'def test_thing(clock):\n    u = User(name="bo")\n    assert u.name == "bo"\n{_SURVIVING_ASSERTION}',
             _KWARG_DIAGNOSIS,
         ),
         (
-            "def test_thing(clock):\n    u = User()\n    assert isinstance(u, User)\n" + _SURVIVING_ASSERTION,
+            f"def test_thing(clock):\n    u = User()\n    assert isinstance(u, User)\n{_SURVIVING_ASSERTION}",
             _ISINSTANCE_DIAGNOSIS,
         ),
     ],

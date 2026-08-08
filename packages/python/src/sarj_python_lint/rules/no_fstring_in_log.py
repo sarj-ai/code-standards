@@ -123,14 +123,16 @@ class _StdlibLoggers:
 
 def _dotted_path(expr: ast.expr) -> list[str] | None:
     """Render `expr` as its dotted attribute path, descending through builder calls."""
-    if isinstance(expr, ast.Name):
-        return [expr.id]
-    if isinstance(expr, ast.Attribute):
-        base = _dotted_path(expr.value)
-        return None if base is None else [*base, expr.attr]
-    if isinstance(expr, ast.Call):
-        return _dotted_path(expr.func)
-    return None
+    match expr:
+        case ast.Name(id=name):
+            return [name]
+        case ast.Attribute(value=value, attr=attr):
+            base = _dotted_path(value)
+            return None if base is None else [*base, attr]
+        case ast.Call(func=func):
+            return _dotted_path(func)
+        case _:
+            return None
 
 
 def _is_stdlib_logging_call(node: ast.Call, stdlib: _StdlibLoggers) -> bool:

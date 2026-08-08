@@ -293,15 +293,19 @@ def _always_fails(body: Sequence[ast.stmt]) -> bool:
 
 
 def _stmt_always_fails(stmt: ast.stmt) -> bool:
-    if isinstance(stmt, ast.Raise):
-        return True
-    if isinstance(stmt, ast.Assert):
-        return _is_falsy_literal(stmt.test)
-    if isinstance(stmt, ast.If):
-        return _always_fails(stmt.body) and bool(stmt.orelse) and _always_fails(stmt.orelse)
-    if isinstance(stmt, _WITH_NODES):
-        return _always_fails(stmt.body)
-    return isinstance(stmt, ast.Expr) and _is_failure_call(stmt.value)
+    match stmt:
+        case ast.Raise():
+            return True
+        case ast.Assert(test=test):
+            return _is_falsy_literal(test)
+        case ast.If(body=body, orelse=orelse):
+            return _always_fails(body) and bool(orelse) and _always_fails(orelse)
+        case ast.With(body=body) | ast.AsyncWith(body=body):
+            return _always_fails(body)
+        case ast.Expr(value=value):
+            return _is_failure_call(value)
+        case _:
+            return False
 
 
 def _is_falsy_literal(test: ast.expr) -> bool:
@@ -495,13 +499,15 @@ def _exits(body: Sequence[ast.stmt]) -> bool:
 
 
 def _stmt_exits(stmt: ast.stmt) -> bool:
-    if isinstance(stmt, (ast.Return, ast.Raise, ast.Continue, ast.Break)):
-        return True
-    if isinstance(stmt, ast.If):
-        return bool(stmt.orelse) and _exits(stmt.body) and _exits(stmt.orelse)
-    if isinstance(stmt, ast.Expr):
-        return _is_exit_call(stmt.value)
-    return False
+    match stmt:
+        case ast.Return() | ast.Raise() | ast.Continue() | ast.Break():
+            return True
+        case ast.If(body=body, orelse=orelse):
+            return bool(orelse) and _exits(body) and _exits(orelse)
+        case ast.Expr(value=value):
+            return _is_exit_call(value)
+        case _:
+            return False
 
 
 def _is_exit_call(value: ast.expr) -> bool:
@@ -690,26 +696,30 @@ def _bounds_below(op: ast.cmpop, other: ast.expr, *, flipped: bool) -> bool:
     if not isinstance(value, int) or isinstance(value, bool):
         return False
     lower, upper = (op, value) if not flipped else (_mirror(op), value)
-    if isinstance(lower, (ast.Eq, ast.GtE)):
-        return upper >= 1
-    if isinstance(lower, ast.Gt):
-        return upper >= 0
-    if isinstance(lower, ast.NotEq):
-        return upper == 0
-    return False
+    match lower:
+        case ast.Eq() | ast.GtE():
+            return upper >= 1
+        case ast.Gt():
+            return upper >= 0
+        case ast.NotEq():
+            return upper == 0
+        case _:
+            return False
 
 
 def _mirror(op: ast.cmpop) -> ast.cmpop:
     """Flip a comparison so the `len(...)` side reads on the left."""
-    if isinstance(op, ast.Lt):
-        return ast.Gt()
-    if isinstance(op, ast.LtE):
-        return ast.GtE()
-    if isinstance(op, ast.Gt):
-        return ast.Lt()
-    if isinstance(op, ast.GtE):
-        return ast.LtE()
-    return op
+    match op:
+        case ast.Lt():
+            return ast.Gt()
+        case ast.LtE():
+            return ast.GtE()
+        case ast.Gt():
+            return ast.Lt()
+        case ast.GtE():
+            return ast.LtE()
+        case _:
+            return op
 
 
 def _len_argument(expr: ast.expr) -> ast.expr | None:
@@ -821,17 +831,18 @@ def _is_static_table(expr: ast.expr, facts: _Facts, seen: frozenset[str]) -> boo
     node = expr
     called = False
     while True:
-        if isinstance(node, ast.Attribute):
-            if node.attr[:1].isupper():
-                return True
-            node = node.value
-        elif isinstance(node, ast.Call):
-            called = True
-            node = node.func
-        elif isinstance(node, ast.Subscript):
-            node = node.value
-        else:
-            break
+        match node:
+            case ast.Attribute(attr=attribute, value=value):
+                if attribute[:1].isupper():
+                    return True
+                node = value
+            case ast.Call(func=func):
+                called = True
+                node = func
+            case ast.Subscript(value=value):
+                node = value
+            case _:
+                break
     if not isinstance(node, ast.Name):
         return False
     if node.id[:1].isupper() or (node is not expr and node.id in facts.roots):

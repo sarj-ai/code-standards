@@ -262,11 +262,7 @@ def _is_silent_body(body: list[ast.stmt]) -> bool:
     if len(body) != 1:
         return False
     match body[0]:
-        case ast.Pass():
-            return True
-        case ast.Return(value=None):
-            return True
-        case ast.Return(value=ast.Constant(value=None)):
+        case ast.Pass() | ast.Return(value=None) | ast.Return(value=ast.Constant(value=None)):
             return True
         case _:
             return False

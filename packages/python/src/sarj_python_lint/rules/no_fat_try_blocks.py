@@ -23,24 +23,6 @@ if TYPE_CHECKING:
 _MAX_TRY_BODY_STATEMENTS = 3
 
 
-def _walk_same_scope(node: ast.AST) -> Iterator[ast.AST]:
-    """Walk `node` without descending into nested `def` / `async def` / `lambda` bodies."""
-    stack: list[ast.AST] = [node]
-    while stack:
-        current = stack.pop()
-        yield current
-        skipped_body = _nested_scope_body_ids(current)
-        stack.extend(child for child in children(current) if id(child) not in skipped_body)
-
-
-def _nested_scope_body_ids(node: ast.AST) -> frozenset[int]:
-    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-        return frozenset(id(stmt) for stmt in node.body)
-    if isinstance(node, ast.Lambda):
-        return frozenset({id(node.body)})
-    return frozenset()
-
-
 #: Terminal method names of the metrics/tracing recorders.
 _OBSERVABILITY_METHODS = frozenset(
     {
@@ -97,12 +79,30 @@ _INERT_BUILTINS = frozenset(
 )
 
 
-def _attr_root(expr: ast.expr) -> str | None:
-    """Find the leftmost identifier of an attribute chain (`a.b.c` -> `a`)."""
-    current = expr
-    while isinstance(current, ast.Attribute):
-        current = current.value
-    return current.id if isinstance(current, ast.Name) else None
+def _can_raise(stmt: ast.stmt) -> bool:
+    """Report whether the statement can plausibly raise when the `try` runs."""
+    calls = [n for n in _walk_same_scope(stmt) if isinstance(n, (ast.Call, ast.Await))]
+    if not calls:
+        return False
+    return not all(isinstance(n, ast.Call) and _is_observability_call(n) for n in calls)
+
+
+def _walk_same_scope(node: ast.AST) -> Iterator[ast.AST]:
+    """Walk `node` without descending into nested `def` / `async def` / `lambda` bodies."""
+    stack: list[ast.AST] = [node]
+    while stack:
+        current = stack.pop()
+        yield current
+        skipped_body = _nested_scope_body_ids(current)
+        stack.extend(child for child in children(current) if id(child) not in skipped_body)
+
+
+def _nested_scope_body_ids(node: ast.AST) -> frozenset[int]:
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        return frozenset(id(stmt) for stmt in node.body)
+    if isinstance(node, ast.Lambda):
+        return frozenset({id(node.body)})
+    return frozenset()
 
 
 def _is_observability_call(call: ast.Call) -> bool:
@@ -124,12 +124,12 @@ def _is_observability_call(call: ast.Call) -> bool:
     return False
 
 
-def _can_raise(stmt: ast.stmt) -> bool:
-    """Report whether the statement can plausibly raise when the `try` runs."""
-    calls = [n for n in _walk_same_scope(stmt) if isinstance(n, (ast.Call, ast.Await))]
-    if not calls:
-        return False
-    return not all(isinstance(n, ast.Call) and _is_observability_call(n) for n in calls)
+def _attr_root(expr: ast.expr) -> str | None:
+    """Find the leftmost identifier of an attribute chain (`a.b.c` -> `a`)."""
+    current = expr
+    while isinstance(current, ast.Attribute):
+        current = current.value
+    return current.id if isinstance(current, ast.Name) else None
 
 
 class _Exit(enum.Enum):

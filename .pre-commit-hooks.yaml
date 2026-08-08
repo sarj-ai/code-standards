@@ -232,7 +232,7 @@
   types: [python]
 
 - id: sarj-prefer-non-nullable-collection
-  name: 'sarj-lint: nullable list field has two equivalent empty states'
+  name: 'sarj-lint: nullable list parameter is immediately normalized to empty'
   entry: sarj-python-lint check --rule prefer-non-nullable-collection
   language: python
   language_version: *sarj_python_runtime
@@ -653,14 +653,14 @@
   types: [python]
 
 - id: sarj-require-port-for-service
-  name: 'sarj-lint: Concrete `*Service`/`*Store`/`*Client` with injected collaborators and n'
+  name: 'sarj-lint: Concrete service/store/DAO/gateway/provider lacks a port'
   entry: sarj-python-lint check --rule require-port-for-service
   language: python
   language_version: *sarj_python_runtime
   types: [python]
 
 - id: sarj-prefer-match-type-dispatch
-  name: 'sarj-lint: Prefer match/case over control-flow try/raise and sequential type guards'
+  name: 'sarj-lint: Prefer match/case for explicit runtime type dispatch'
   entry: sarj-python-lint check --rule prefer-match-type-dispatch
   language: python
   language_version: *sarj_python_runtime

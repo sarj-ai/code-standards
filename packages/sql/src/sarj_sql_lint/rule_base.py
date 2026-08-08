@@ -7,10 +7,18 @@ from dataclasses import dataclass, replace
 from functools import lru_cache
 from pathlib import Path
 import re
+from typing import NamedTuple
 
 
 type Statement = list[tuple[int, str]]
 """A statement as `(lineno, text)` fragments — one per source line it spans."""
+
+
+class SourceLocation(NamedTuple):
+    """A one-based source position."""
+
+    line: int
+    column: int
 
 
 _SARJ_NOQA_RE = re.compile(
@@ -330,15 +338,15 @@ def split_statements(masked: str) -> list[Statement]:
     return statements
 
 
-def locate(statement: Statement, offset: int) -> tuple[int, int]:
+def locate(statement: Statement, offset: int) -> SourceLocation:
     r"""Map a char `offset` into `"\n".join(text)` back to a 1-based `(line, col)`."""
     pos = 0
     for lineno, text in statement:
         if offset <= pos + len(text):
-            return lineno, offset - pos + 1
+            return SourceLocation(lineno, offset - pos + 1)
         pos += len(text) + 1
     last_lineno, last_text = statement[-1]
-    return last_lineno, len(last_text) + 1
+    return SourceLocation(last_lineno, len(last_text) + 1)
 
 
 @dataclass(frozen=True, slots=True)

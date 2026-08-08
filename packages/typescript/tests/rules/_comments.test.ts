@@ -34,22 +34,18 @@ const STATEMENT = "const userProfileCache = buildUserProfileCacheFromSession(ses
 describe("restatesStatementHead: the narration length budget", () => {
   // Kills NARRATION_MAX_WORDS 6 -> anything smaller (6 -> 3 was a live
   // survivor): a six-word narration is still narration.
-  it("still recognises narration at exactly the six-word budget", () => {
-    const comment = "Build the user profile cache session";
-    expect(comment.split(" ")).toHaveLength(6);
-    expect(restatesStatementHead(comment, STATEMENT)).toBe(true);
+  it.each([
+    ["Build the user profile cache session", 6, true],
+    ["Build the user profile cache from session", 7, false],
+  ] as const)("classifies %s at the narration budget", (comment, words, expected) => {
+    expect(comment.split(" ")).toHaveLength(words);
+    expect(restatesStatementHead(comment, STATEMENT)).toBe(expected);
   });
 
   // Kills NARRATION_MAX_WORDS 6 -> anything larger (6 -> 60 was a live
   // survivor). Past the budget a comment is prose, and prose is not judged by
   // whether its words appear in the line below — that is the whole reason the
   // budget exists.
-  it("stops judging a comment one word past the budget", () => {
-    const comment = "Build the user profile cache from session";
-    expect(comment.split(" ")).toHaveLength(7);
-    expect(restatesStatementHead(comment, STATEMENT)).toBe(false);
-  });
-
   // Kills NARRATION_MIN_CONTENT 1 -> 0: a bare verb says nothing about WHICH
   // code it describes, so there is nothing to have restated.
   it("needs at least one content word after the opening verb", () => {

@@ -20,15 +20,6 @@ if TYPE_CHECKING:
 _SLEEP_RECEIVERS = frozenset({"asyncio", "time"})
 
 
-def _is_nonzero_numeric_literal(node: ast.expr) -> bool:
-    return (
-        isinstance(node, ast.Constant)
-        and isinstance(node.value, (int, float))
-        and not isinstance(node.value, bool)
-        and node.value != 0
-    )
-
-
 def _is_sleep_call(node: ast.Call) -> bool:
     func = node.func
     return (
@@ -41,16 +32,25 @@ def _is_sleep_call(node: ast.Call) -> bool:
     )
 
 
-def _is_conditional_exit(stmt: ast.stmt) -> bool:
-    """Report whether `stmt` is an `if` that can leave the loop early."""
-    return isinstance(stmt, ast.If) and any(
-        isinstance(inner, (ast.Break, ast.Return, ast.Raise)) for inner in walk(stmt)
+def _is_nonzero_numeric_literal(node: ast.expr) -> bool:
+    return (
+        isinstance(node, ast.Constant)
+        and isinstance(node.value, (int, float))
+        and not isinstance(node.value, bool)
+        and node.value != 0
     )
 
 
 def _is_poll_loop(node: ast.For | ast.AsyncFor) -> bool:
     """Report whether a bounded `for` loop polls a condition rather than just waiting."""
     return any(_is_conditional_exit(stmt) for stmt in node.body)
+
+
+def _is_conditional_exit(stmt: ast.stmt) -> bool:
+    """Report whether `stmt` is an `if` that can leave the loop early."""
+    return isinstance(stmt, ast.If) and any(
+        isinstance(inner, (ast.Break, ast.Return, ast.Raise)) for inner in walk(stmt)
+    )
 
 
 class NoSleepInTestBody(Rule):

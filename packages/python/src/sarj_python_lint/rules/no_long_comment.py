@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, final, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, Severity
-from sarj_python_lint.rules._prose_budget import groups, sentence_units
+from sarj_python_lint.rules._prose_budget import groups, has_list_items, sentence_units
 
 
 if TYPE_CHECKING:
@@ -35,7 +35,7 @@ class NoLongComment(Rule):
                 column_encoding=group.column_encoding,
             )
             for group in groups(path, source)
-            if group.kind == "comment"
-            and not group.typed_sections
+            if not group.typed_sections
+            and (group.kind == "comment" or not has_list_items(group.text))
             and sentence_units(group.text) >= self._ERROR_SENTENCES
         ]

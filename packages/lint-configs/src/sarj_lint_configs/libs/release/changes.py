@@ -47,11 +47,6 @@ def pending_release_targets(
     runner: ProcessRunner = run_process,
     checker: PublicationChecker = publication_exists,
 ) -> Mapping[str, bool]:
-    """Return current versions absent from their registry, including interrupted releases.
-
-    Registry versions are immutable.  A manifest diff explains why a release
-    workflow ran, but it must never make an already-public version publishable
-    again when that workflow is retried.
-    """
+    """Return current versions absent from their immutable registry, including interrupted releases."""
     _ = changed_release_targets(root, before=before, after=after, runner=runner)
     return {name: not checker(target_requirement(root, name)) for name in RELEASE_TARGETS}

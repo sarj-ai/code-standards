@@ -111,12 +111,6 @@ function isInlineExported(node: TSESTree.Node): boolean {
   return false;
 }
 
-/**
- * The module-scope binding the function lives under — `split` for a top-level
- * `function split`, `Repo` for a method of a top-level `class Repo`. That is the
- * name an `export { … }` specifier elsewhere in the file would refer to. Null
- * when the function is not anchored to a named top-level declaration.
- */
 function moduleScopeBindingName(node: TSESTree.Node): string | null {
   let current: TSESTree.Node = node;
   while (current.parent != null && current.parent.type !== AST_NODE_TYPES.Program) {
@@ -187,13 +181,6 @@ function moduleScopeBindingName(node: TSESTree.Node): string | null {
   return null;
 }
 
-/**
- * Local names this module puts on its public surface through a *detached* export
- * statement: `export { split }`, `export { split as s }`, `export default split`,
- * `export = split`. A re-export (`export { x } from "./other"`) names a binding
- * owned by another module, and a type-only export (`export type { x }`) does not
- * expose the value, so neither counts.
- */
 function specifierExportedNames(program: TSESTree.Program): ReadonlySet<string> {
   const names = new Set<string>();
   for (const statement of program.body) {
@@ -363,11 +350,6 @@ function isExportedInterface(
     (node.parent.type === AST_NODE_TYPES.Program && exports.has(node.id.name));
 }
 
-/**
- * True when the function is reachable from outside the module — the boundary the
- * rule is about. Either the declaration is exported inline, or its module-scope
- * binding is exported later through an export specifier.
- */
 function isExported(node: TSESTree.Node, specifierExports: ReadonlySet<string>): boolean {
   if (isInlineExported(node)) {
     return true;
@@ -406,9 +388,6 @@ export default createRule<Options, MessageIds>({
       const tuple = tupleReturnType(annotation, aliases);
       if (tuple === null || tuple.elementTypes.length < MIN_ELEMENTS) return;
       context.report({
-        // Report the public boundary's annotation, not a shared alias declaration.
-        // Otherwise every exported function returning the same alias produces a
-        // stack of diagnostics at the alias's single source location.
         node: annotation,
         messageId: "noPositionalTupleReturn",
         data: { name, count: String(tuple.elementTypes.length) },

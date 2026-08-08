@@ -20,10 +20,6 @@ type Options = readonly [
   }?,
 ];
 
-/**
- * The object-like composites. Each builds a container plus one schema instance
- * per member, so the per-call cost is real rather than notional.
- */
 const DEFAULT_FACTORIES: readonly string[] = [
   "discriminatedUnion",
   "intersection",
@@ -35,12 +31,6 @@ const DEFAULT_FACTORIES: readonly string[] = [
   "union",
 ];
 
-/**
- * Two, not one — the value the "deliberately not flagged" list has always
- * PROMISED and never delivered. The gate is `properties.length <
- * minProperties`, so a default of 1 excludes `z.object({})` and nothing else,
- * while the documented exemption is the one-key inline schema.
- */
 const DEFAULT_MIN_PROPERTIES = 2;
 
 /** Wrappers that already pay the construction cost exactly once. */
@@ -51,12 +41,6 @@ const MEMO_CALLEES: ReadonlySet<string> = new Set([
   "useMemo",
 ]);
 
-/**
- * Methods that CONSUME a value rather than extend the schema. The chain walk
- * stops before them: `z.object({...}).parse(raw)` closes over `raw`, but `raw`
- * is the input, not part of the schema, and the schema in front of it hoists
- * perfectly well.
- */
 const TERMINAL_METHODS: ReadonlySet<string> = new Set([
   "isNullable",
   "isOptional",
@@ -67,13 +51,6 @@ const TERMINAL_METHODS: ReadonlySet<string> = new Set([
   "spa",
 ]);
 
-/**
- * Zod combinator methods that take a schema and return a schema. An enclosing
- * one means the reported factory is a FRAGMENT of a larger schema expression
- * rather than a schema in its own right — `AstroConfigSchema.extend({ … })`
- * is not a `z.*` call, so `isZodCall` cannot see it, and the fragment inside it
- * was reported on its own.
- */
 const ZOD_COMBINATOR_METHODS: ReadonlySet<string> = new Set([
   "and",
   "array",
@@ -89,16 +66,6 @@ const ZOD_COMBINATOR_METHODS: ReadonlySet<string> = new Set([
   "transform",
 ]);
 
-/**
- * Callees that render text in the CURRENTLY ACTIVE locale.
- *
- * A zero-argument `() => z.object({ otp: z.string().length(6, t`…`) })` exists
- * PRECISELY so the Lingui macro runs after `i18n.activate(locale)`.
- * `closesOverNothing` skips `ImportBinding` defs, so `t` was invisible and the
- * rule advised a hoist that freezes every validation message in whatever locale
- * happened to be active at module-eval time — a correctness regression, not
- * noise. A tagged template is the macro spelling every i18n library uses.
- */
 const I18N_CALLEE_NAMES: ReadonlySet<string> = new Set([
   "$t",
   "defineMessage",
@@ -221,13 +188,6 @@ function readsReceiver(node: TSESTree.Node): boolean {
   );
 }
 
-/**
- * Does the schema build a string whose VALUE depends on when it is evaluated?
- *
- * See `I18N_CALLEE_NAMES`. Hoisting such a schema moves the render from
- * call time to module-eval time, which is a behaviour change, not a
- * refactor — so this is a hard bail rather than a heuristic penalty.
- */
 function buildsLocalizedText(node: TSESTree.Node): boolean {
   return subtreeSome(node, (inner) => {
     if (inner.type === AST_NODE_TYPES.TaggedTemplateExpression) {
@@ -352,24 +312,9 @@ export default createRule<Options, MessageIds>({
       return false;
     }
 
-    /**
-     * The OUTERMOST schema expression `expression` is a part of.
-     *
-     * `schemaExpression` climbs the builder chain hanging off the factory call;
-     * this climbs the other axis — out of the shape object, the array, and the
-     * argument list of whatever Zod construct encloses it. It exists because a
-     * reported factory can be a FRAGMENT of a schema that does not itself move,
-     * and prising one key's value out of an expression that is rebuilt per call
-     * anyway saves nothing.
-     */
     function outermostSchemaExpression(
       expression: TSESTree.Node,
     ): TSESTree.Node {
-      // `confirmed` only advances past a Zod construct. Walking OUT of a shape
-      // object is provisional until the call wrapping it turns out to be one:
-      // `tool({ inputSchema: z.object({…}), execute })` also puts a schema in an
-      // object literal, and treating that literal as the schema would inherit
-      // `execute`'s free variables.
       let confirmed = expression;
       let current = expression;
       for (;;) {
@@ -435,14 +380,6 @@ export default createRule<Options, MessageIds>({
             continue;
           }
           const [defStart, defEnd] = definition.node.range;
-          // A binding declared INSIDE the schema travels with it. The callback
-          // parameters of `.refine((value) => …)` / `.superRefine((data, ctx) =>
-          // …)` / `z.preprocess((value) => …, …)` are the whole class, and the
-          // enclosing-range test alone answered "this closes over the function"
-          // for every one of them — so any schema carrying a refinement was
-          // silently unreportable. What the documented `documenso` case actually
-          // needs is the callback reading an OUTER binding, and that still
-          // resolves outside this range and still bails.
           if (defStart >= schemaStart && defEnd <= schemaEnd) {
             continue;
           }
@@ -532,12 +469,6 @@ export default createRule<Options, MessageIds>({
         if (buildsLocalizedText(expression)) {
           return;
         }
-        // A fragment of a schema that cannot itself move is not reportable: the
-        // enclosing expression is rebuilt on every call whatever we do to this
-        // sub-schema. Only checked when an enclosing construct actually exists,
-        // so `z.array(z.object({…}))` — where the whole expression IS hoistable
-        // and `z.array` is not itself reportable — keeps reporting the inner
-        // `z.object`, as the paired regression test requires.
         const outermost = outermostSchemaExpression(expression);
         if (
           outermost !== expression &&

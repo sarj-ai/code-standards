@@ -77,23 +77,26 @@ def _has_callable_scope(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> bool:
     """Require the expression to execute inside a function or lambda body."""
     child = node
     while (parent := parents.get(child)) is not None:
-        if isinstance(parent, ast.TypeAlias | ast.TypeVar | ast.ParamSpec | ast.TypeVarTuple):
-            return False
-        if isinstance(parent, ast.arg | ast.AnnAssign) and child is parent.annotation:
-            return False
-        if isinstance(parent, ast.FunctionDef | ast.AsyncFunctionDef):
-            if child is parent.returns:
+        match parent:
+            case ast.TypeAlias() | ast.TypeVar() | ast.ParamSpec() | ast.TypeVarTuple():
                 return False
-            if child in parent.body:
-                return True
-        elif isinstance(parent, ast.Lambda):
-            if child is parent.body:
-                return True
-        elif isinstance(parent, ast.ClassDef):
-            if child in parent.body:
+            case ast.arg() | ast.AnnAssign() if child is parent.annotation:
                 return False
-        elif isinstance(parent, ast.Module):
-            return False
+            case ast.FunctionDef() | ast.AsyncFunctionDef():
+                if child is parent.returns:
+                    return False
+                if child in parent.body:
+                    return True
+            case ast.Lambda():
+                if child is parent.body:
+                    return True
+            case ast.ClassDef():
+                if child in parent.body:
+                    return False
+            case ast.Module():
+                return False
+            case _:
+                pass
         child = parent
     return False
 

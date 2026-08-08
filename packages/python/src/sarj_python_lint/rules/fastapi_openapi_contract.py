@@ -9,6 +9,7 @@ import ast
 from dataclasses import dataclass
 from http import HTTPStatus
 import re
+from types import MappingProxyType
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
@@ -33,6 +34,15 @@ _CONTAINERS = frozenset({"list", "List", "set", "Set", "tuple", "Tuple", "Sequen
 _BODY_MARKERS = frozenset({"Body", "Form", "File"})
 _NO_CONTENT_STATUSES = frozenset({204, 304})
 _STATUS_CODE_DIGITS = 3
+_CONVERTER_PATTERNS = MappingProxyType(
+    {
+        "str": r"[^/]+",
+        "path": r".+",
+        "int": r"[0-9]+",
+        "float": r"[0-9]+(?:\.[0-9]+)?",
+        "uuid": r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -220,10 +230,6 @@ def _keyword(call: ast.Call, name: str) -> ast.expr | None:
     return next((keyword.value for keyword in call.keywords if keyword.arg == name), None)
 
 
-def _ellipsis(node: ast.expr) -> bool:
-    return isinstance(node, ast.Constant) and node.value is Ellipsis
-
-
 def _has_embedded_default(marker_name: str, marker_call: ast.Call) -> bool:
     marker_default = _keyword(marker_call, "default")
     positional_default = marker_call.args[0] if marker_call.args else None
@@ -231,6 +237,10 @@ def _has_embedded_default(marker_name: str, marker_call: ast.Call) -> bool:
         (marker_default is not None and not _ellipsis(marker_default))
         or (positional_default is not None and not _ellipsis(positional_default))
     )
+
+
+def _ellipsis(node: ast.expr) -> bool:
+    return isinstance(node, ast.Constant) and node.value is Ellipsis
 
 
 def _contains_none(node: ast.expr, index: FastapiIndex) -> bool:
@@ -244,13 +254,6 @@ def _contains_none(node: ast.expr, index: FastapiIndex) -> bool:
     if isinstance(resolved, ast.Subscript) and flat_name(resolved.value) in {"Optional", "Union"}:
         return any(_contains_none(item, index) for item in _slice_items(resolved.slice))
     return False
-
-
-def _is_none_annotation(node: ast.expr, index: FastapiIndex) -> bool:
-    resolved = index.resolve_annotation(node)
-    return (isinstance(resolved, ast.Constant) and resolved.value is None) or (
-        isinstance(resolved, ast.Name) and resolved.id in {"None", "NoneType"}
-    )
 
 
 def _schema_erasing(node: ast.expr, index: FastapiIndex) -> bool:
@@ -326,6 +329,13 @@ def _check_return(
     if not problems:
         return []
     return [_Finding(function, f"[return] {'; '.join(sorted(problems))}.")]
+
+
+def _is_none_annotation(node: ast.expr, index: FastapiIndex) -> bool:
+    resolved = index.resolve_annotation(node)
+    return (isinstance(resolved, ast.Constant) and resolved.value is None) or (
+        isinstance(resolved, ast.Name) and resolved.id in {"None", "NoneType"}
+    )
 
 
 def _concrete_response_model(node: ast.expr | None, index: FastapiIndex) -> bool:
@@ -536,19 +546,12 @@ def _check_route_conflicts(routes: list[tuple[int, Route]]) -> list[_Finding]:
 
 
 def _path_pattern(path: str) -> re.Pattern[str] | None:
-    converter_patterns = {
-        "str": r"[^/]+",
-        "path": r".+",
-        "int": r"[0-9]+",
-        "float": r"[0-9]+(?:\.[0-9]+)?",
-        "uuid": r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
-    }
     parts: list[str] = []
     position = 0
     for match in re.finditer(r"\{[A-Za-z_][A-Za-z0-9_]*(?::([^}]+))?\}", path):
         parts.append(re.escape(path[position : match.start()]))
         converter = match.group(1) or "str"
-        pattern = converter_patterns.get(converter)
+        pattern = _CONVERTER_PATTERNS.get(converter)
         if pattern is None:
             return None
         parts.append(pattern)

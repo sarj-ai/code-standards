@@ -26,10 +26,10 @@ _DOUBLE_SUFFIX_RE = re.compile(r"(?:InMemory|Mock|Fake|Stub|Dummy)$")
 
 # Tokens that name a persistence port.
 _PORT_TAIL = r"(?:Store|Repository|Repo|DAO|Dao|Database|DB|Db)"
-_PORT_TAIL_RE = re.compile(_PORT_TAIL + "$")
+_PORT_TAIL_RE = re.compile(rf"{_PORT_TAIL}$")
 
 # Qualifiers exclude ports for non-relational stores from this relational-store rule.
-_NON_RELATIONAL_RE = re.compile(r"(?:Vector|Redis|Blob|Doc|Graph|Lock|Memory|State|Artifact|Trace)" + _PORT_TAIL + "$")
+_NON_RELATIONAL_RE = re.compile(rf"(?:Vector|Redis|Blob|Doc|Graph|Lock|Memory|State|Artifact|Trace){_PORT_TAIL}$")
 
 # `AbstractStore` -> `abstract_store`, for spotting `test_<port>.py`.
 _CAMEL_BOUNDARY_RE = re.compile(r"(?<!^)(?=[A-Z])")
@@ -203,13 +203,15 @@ def _snake(name: str) -> str:
 
 def _dotted_tail(node: ast.expr) -> str | None:
     """Reduce a base-class expression to its final identifier."""
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        return node.attr
-    if isinstance(node, ast.Subscript):
-        return _dotted_tail(node.value)
-    return None
+    match node:
+        case ast.Name(id=name):
+            return name
+        case ast.Attribute(attr=attr):
+            return attr
+        case ast.Subscript(value=value):
+            return _dotted_tail(value)
+        case _:
+            return None
 
 
 def _is_abstract(node: ast.ClassDef, bases: list[str]) -> bool:
@@ -300,35 +302,40 @@ def _self_attr_access(func: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[set
     written: set[str] = set()
     read: set[str] = set()
     for node in walk(func):
-        if isinstance(node, ast.Assign):
-            for target in node.targets:
+        match node:
+            case ast.Assign(targets=targets):
+                for target in targets:
+                    _mark_write(target, write_positions)
+            case ast.AugAssign(target=target) | ast.AnnAssign(target=target):
                 _mark_write(target, write_positions)
-        elif isinstance(node, ast.AugAssign | ast.AnnAssign):
-            _mark_write(node.target, write_positions)
-        elif isinstance(node, ast.Delete):
-            for target in node.targets:
-                _mark_write(target, write_positions)
-        elif isinstance(node, ast.Call):
-            callee = node.func
-            if isinstance(callee, ast.Attribute) and callee.attr in _MUTATORS and _self_attr(callee.value) is not None:
-                write_positions.add(id(callee.value))
-        elif isinstance(node, ast.Attribute):
-            name = _self_attr(node)
-            if name is not None:
-                (written if id(node) in write_positions else read).add(name)
+            case ast.Delete(targets=targets):
+                for target in targets:
+                    _mark_write(target, write_positions)
+            case ast.Call(func=ast.Attribute(attr=attribute, value=value)):
+                if attribute in _MUTATORS and _self_attr(value) is not None:
+                    write_positions.add(id(value))
+            case ast.Attribute():
+                name = _self_attr(node)
+                if name is not None:
+                    (written if id(node) in write_positions else read).add(name)
+            case _:
+                pass
     return written, read
 
 
 def _mark_write(target: ast.expr, write_positions: set[int]) -> None:
-    if isinstance(target, ast.Subscript):
-        if _self_attr(target.value) is not None:
-            write_positions.add(id(target.value))
-    elif isinstance(target, ast.Attribute):
-        if _self_attr(target) is not None:
-            write_positions.add(id(target))
-    elif isinstance(target, ast.Tuple | ast.List):
-        for element in target.elts:
-            _mark_write(element, write_positions)
+    match target:
+        case ast.Subscript(value=value):
+            if _self_attr(value) is not None:
+                write_positions.add(id(value))
+        case ast.Attribute():
+            if _self_attr(target) is not None:
+                write_positions.add(id(target))
+        case ast.Tuple(elts=elements) | ast.List(elts=elements):
+            for element in elements:
+                _mark_write(element, write_positions)
+        case _:
+            pass
 
 
 def _is_hollow_port(node: ast.ClassDef) -> bool:

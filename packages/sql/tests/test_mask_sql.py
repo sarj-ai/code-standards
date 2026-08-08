@@ -69,11 +69,11 @@ def test_unmatched_inner_tag_does_not_steal_the_outer_close() -> None:
     assert "$" not in masked
 
 
-def test_nested_tagged_quote_inside_a_different_tag() -> None:
+@pytest.mark.parametrize("kept", ["SELECT 1;", "SELECT 2;", "SELECT 3;", "SELECT 4;"])
+def test_nested_tagged_quote_inside_a_different_tag(kept: str) -> None:
     source = "$outer$ SELECT 1; $inner$ SELECT 2; $inner$ SELECT 3; $outer$ SELECT 4;"
     masked = _mask(source)
-    for kept in ("SELECT 1;", "SELECT 2;", "SELECT 3;", "SELECT 4;"):
-        assert kept in masked
+    assert kept in masked
     assert "$" not in masked
 
 

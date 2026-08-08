@@ -20,14 +20,16 @@ _INSTALL_LIFECYCLE_SCRIPTS = frozenset({"preinstall", "install", "postinstall", 
 
 
 def _json_value(value: object) -> JsonValue:
-    if value is None or isinstance(value, str | int | float | bool):
-        return value
-    if is_object_list(value):
-        return [_json_value(item) for item in value]
-    if is_object_dict(value):
-        return {key: _json_value(item) for key, item in string_object_dict(value, label="JSON").items()}
-    msg = "JSON contains an unsupported value"
-    raise TypeError(msg)
+    match value:
+        case None | str() | int() | float() | bool():
+            return value
+        case _ if is_object_list(value):
+            return [_json_value(item) for item in value]
+        case _ if is_object_dict(value):
+            return {key: _json_value(item) for key, item in string_object_dict(value, label="JSON").items()}
+        case _:
+            msg = "JSON contains an unsupported value"
+            raise TypeError(msg)
 
 
 def required_artifact_paths(package_json: Mapping[str, object]) -> tuple[str, ...]:
@@ -40,13 +42,15 @@ def required_artifact_paths(package_json: Mapping[str, object]) -> tuple[str, ..
 
 
 def _exported_paths(value: JsonValue) -> tuple[str, ...]:
-    if isinstance(value, str):
-        return (value,)
-    if isinstance(value, list):
-        return tuple(path for item in value for path in _exported_paths(item))
-    if isinstance(value, dict):
-        return tuple(path for item in value.values() for path in _exported_paths(item))
-    return ()
+    match value:
+        case str():
+            return (value,)
+        case list():
+            return tuple(path for item in value for path in _exported_paths(item))
+        case dict():
+            return tuple(path for item in value.values() for path in _exported_paths(item))
+        case _:
+            return ()
 
 
 def _safe_artifact_path(value: str) -> str:

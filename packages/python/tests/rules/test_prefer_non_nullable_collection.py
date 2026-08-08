@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from sarj_python_lint.rule_base import is_suppressed
+from sarj_python_lint.rule_base import Severity, is_suppressed
 from sarj_python_lint.rules.prefer_non_nullable_collection import (
     PreferNonNullableCollection,
 )
@@ -32,14 +32,9 @@ def _check(source: str, path: Path = PATH) -> list[Diagnostic]:
     ],
 )
 @pytest.mark.parametrize("default", [" = None", "", " = Field(default=None)"])
-def test_flags_nullable_list_fields_on_any_class(annotation: str, default: str) -> None:
+def test_allows_nullable_list_fields_without_behavioral_proof(annotation: str, default: str) -> None:
     source = f"class AnyModel:\n    organization_ids: {annotation}{default}\n"
-    diagnostics = _check(source)
-    assert len(diagnostics) == 1
-    assert diagnostics[0].code == "SARJ082"
-    assert diagnostics[0].line == 2
-
-    assert "default_factory=list" in diagnostics[0].message
+    assert _check(source) == []
 
 
 @pytest.mark.parametrize(
@@ -52,9 +47,9 @@ def test_flags_nullable_list_fields_on_any_class(annotation: str, default: str) 
         "class PlainTypedClass:",
     ],
 )
-def test_is_general_across_data_shape_names_and_frameworks(declaration: str) -> None:
+def test_nullable_fields_may_encode_framework_or_patch_semantics(declaration: str) -> None:
     source = f"{declaration}\n    items: list[str] | None = None\n"
-    assert len(_check(source)) == 1
+    assert _check(source) == []
 
 
 @pytest.mark.parametrize(
@@ -65,7 +60,6 @@ def test_is_general_across_data_shape_names_and_frameworks(declaration: str) -> 
         "class Model:\n    items: list[str]\n",
         "class Model:\n    item: str | None = None\n",
         "class Model:\n    value: str | list[str] | None = None\n",
-        "def build(items: list[str] | None = None):\n    return items or []\n",
         "items: list[str] | None = None\n",
     ],
 )
@@ -73,19 +67,153 @@ def test_ignores_non_target_shapes(source: str) -> None:
     assert _check(source) == []
 
 
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        "list[Beneficiary] | None",
+        "None | list[Beneficiary]",
+        "Optional[List[Beneficiary]]",
+        "typing.Optional[list[Beneficiary]]",
+        "Union[list[Beneficiary], None]",
+    ],
+)
+def test_flags_none_default_used_only_as_an_empty_list(annotation: str) -> None:
+    source = (
+        "class BeneficiaryNotFoundError(ValueError):\n"
+        f"    def __init__(self, available: {annotation} = None):\n"
+        "        self.available = available or []\n"
+    )
+
+    diagnostics = _check(source, Path("app/errors.py"))
+
+    assert len(diagnostics) == 1
+    assert diagnostics[0].line == 2
+    assert diagnostics[0].severity is Severity.WARNING
+    assert "Sequence" in diagnostics[0].message
+    assert "required" in diagnostics[0].message
+
+
+def test_flags_keyword_only_parameter_normalized_with_list_constructor() -> None:
+    source = (
+        "def resolve(*, candidates: list[str] | None = None):\n"
+        "    normalized = candidates or list()\n"
+        "    return normalized\n"
+    )
+
+    assert len(_check(source, Path("app/resolver.py"))) == 1
+
+
+@pytest.mark.parametrize("empty", ["[]", "list()"])
+def test_flags_first_statement_none_guard_that_only_normalizes_empty(empty: str) -> None:
+    source = (
+        "def resolve(candidates: list[str] | None = None):\n"
+        "    if candidates is None:\n"
+        f"        candidates = {empty}\n"
+        "    return sorted(candidates)\n"
+    )
+
+    assert len(_check(source, Path("app/resolver.py"))) == 1
+
+
+def test_flags_first_statement_self_normalization() -> None:
+    source = (
+        "def resolve(candidates: list[str] | None = None):\n"
+        "    candidates = candidates or []\n"
+        "    return sorted(candidates)\n"
+    )
+
+    assert len(_check(source, Path("app/resolver.py"))) == 1
+
+
+def test_skips_none_guard_that_performs_additional_behavior() -> None:
+    source = (
+        "def resolve(candidates: list[str] | None = None):\n"
+        "    if candidates is None:\n"
+        "        record_omission()\n"
+        "        candidates = []\n"
+        "    return sorted(candidates)\n"
+    )
+
+    assert _check(source, Path("app/resolver.py")) == []
+
+
+def test_skips_normalized_parameter_observed_as_none_again() -> None:
+    source = (
+        "def resolve(candidates: list[str] | None = None):\n"
+        "    candidates = candidates or []\n"
+        "    if candidates is None:\n"
+        "        record_omission()\n"
+        "    return candidates\n"
+    )
+
+    assert _check(source, Path("app/resolver.py")) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        # The parameter remains nullable when the function observes the distinction.
+        (
+            "def resolve(candidates: list[str] | None = None):\n"
+            "    if candidates is None:\n"
+            "        record_omission()\n"
+            "    return candidates or []\n"
+        ),
+        # Forwarding None can be part of an external contract.
+        ("def resolve(candidates: list[str] | None = None):\n    return downstream(candidates)\n"),
+        # A non-empty fallback is not an empty-state normalization.
+        ("def resolve(candidates: list[str] | None = None):\n    return candidates or [default_candidate]\n"),
+        # A required nullable parameter may use None as an explicit state.
+        ("def resolve(candidates: list[str] | None):\n    return candidates or []\n"),
+        # Other nullable collection kinds are outside this list-specific rule.
+        ("def resolve(candidates: set[str] | None = None):\n    return candidates or []\n"),
+        # Multiple reads prevent proving that None and [] are equivalent.
+        ("def resolve(candidates: list[str] | None = None):\n    audit(candidates)\n    return candidates or []\n"),
+        # An inherited API contract cannot be changed locally.
+        ("@override\ndef resolve(candidates: list[str] | None = None):\n    return candidates or []\n"),
+        # An undecorated method may still implement a third-party base contract.
+        (
+            "class Adapter(FrameworkAdapter):\n"
+            "    def resolve(self, candidates: list[str] | None = None):\n"
+            "        return candidates or []\n"
+        ),
+    ],
+)
+def test_ignores_parameter_cases_without_proven_equivalent_empty_states(source: str) -> None:
+    assert _check(source, Path("app/resolver.py")) == []
+
+
 def test_ignores_tests_and_generated_files() -> None:
-    source = "class Model:\n    items: list[str] | None = None\n"
+    source = "def resolve(items: list[str] | None = None):\n    return items or []\n"
     assert _check(source, Path("tests/test_models.py")) == []
     assert _check(source, Path("src/generated/models.py")) == []
     assert _check(source, Path("src/vendor/models.py")) == []
-    assert _check("# Generated by tool\n" + source) == []
+    assert _check(f"# Generated by tool\n{source}") == []
+
+
+def test_ignores_shared_test_support_modules() -> None:
+    source = "def resolve(items: list[str] | None = None):\n    return items or []\n"
+
+    assert _check(source, Path("python/common/testing/builders.py")) == []
+
+
+def test_parameter_captured_by_nested_closure_is_not_locally_proven_equivalent() -> None:
+    source = (
+        "def resolve(items: list[str] | None = None):\n"
+        "    normalized = items or []\n"
+        "    def omitted():\n"
+        "        return items is None\n"
+        "    return normalized, omitted\n"
+    )
+
+    assert _check(source, Path("app/resolver.py")) == []
 
 
 def test_meaningful_none_state_can_be_suppressed_inline() -> None:
     source = (
-        "class Constraints:\n"
-        "    allowed_schemes: list[str] | None = None  "
+        "def resolve(allowed_schemes: list[str] | None = None):  "
         "# sarj-noqa: SARJ082 — None means inherit defaults\n"
+        "    return allowed_schemes or []\n"
     )
     diagnostics = _check(source)
 

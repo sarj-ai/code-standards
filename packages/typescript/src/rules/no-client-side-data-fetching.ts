@@ -13,8 +13,6 @@ type Options = readonly [];
 
 const FETCH_LIBS: ReadonlySet<string> = new Set(["axios", "ky", "superagent"]);
 
-// Real HTTP verbs only. Explicitly excludes `create`, `defaults`,
-// `interceptors`, `isAxiosError`, etc.
 const HTTP_METHOD_NAMES: ReadonlySet<string> = new Set([
   "get",
   "post",
@@ -64,35 +62,6 @@ function isEffectHookCall(node: TSESTree.CallExpression): boolean {
   }
 
   return false;
-}
-
-/**
- * Reads the `method` property of an options object passed to `fetch` / `axios`.
- * Returns the uppercased method name, or `null` if not statically determinable.
- */
-function readMethodProperty(
-  optionsArg: TSESTree.Node | undefined,
-): string | null {
-  if (!optionsArg || optionsArg.type !== AST_NODE_TYPES.ObjectExpression) {
-    return null;
-  }
-  for (const prop of optionsArg.properties) {
-    if (prop.type !== AST_NODE_TYPES.Property) continue;
-    if (prop.computed) continue;
-    const key = prop.key;
-    const matchesMethodKey =
-      (key.type === AST_NODE_TYPES.Identifier && key.name === "method") ||
-      (key.type === AST_NODE_TYPES.Literal && key.value === "method");
-    if (!matchesMethodKey) continue;
-    if (
-      prop.value.type === AST_NODE_TYPES.Literal &&
-      typeof prop.value.value === "string"
-    ) {
-      return prop.value.value.toUpperCase();
-    }
-    return null;
-  }
-  return null;
 }
 
 function isFetchCall(node: TSESTree.CallExpression): boolean {
@@ -145,6 +114,41 @@ function isFetchCall(node: TSESTree.CallExpression): boolean {
   return false;
 }
 
+function readMethodProperty(
+  optionsArg: TSESTree.Node | undefined,
+): string | null {
+  if (!optionsArg || optionsArg.type !== AST_NODE_TYPES.ObjectExpression) {
+    return null;
+  }
+  for (const prop of optionsArg.properties) {
+    if (prop.type !== AST_NODE_TYPES.Property) continue;
+    if (prop.computed) continue;
+    const key = prop.key;
+    const matchesMethodKey =
+      (key.type === AST_NODE_TYPES.Identifier && key.name === "method") ||
+      (key.type === AST_NODE_TYPES.Literal && key.value === "method");
+    if (!matchesMethodKey) continue;
+    if (
+      prop.value.type === AST_NODE_TYPES.Literal &&
+      typeof prop.value.value === "string"
+    ) {
+      return prop.value.value.toUpperCase();
+    }
+    return null;
+  }
+  return null;
+}
+
+function isAnalyticsCall(node: TSESTree.CallExpression): boolean {
+  const url = extractUrlString(node).toLowerCase();
+  if (url === "") return false;
+  // Split into path segments and file-extension parts; exempt only when a
+  // WHOLE segment is a known analytics keyword.
+  return url
+    .split(/[/.]/)
+    .some((segment) => ANALYTICS_SEGMENTS.has(segment));
+}
+
 function extractUrlString(node: TSESTree.CallExpression): string {
   const firstArg = node.arguments[0];
   if (!firstArg) return "";
@@ -162,16 +166,6 @@ function extractUrlString(node: TSESTree.CallExpression): string {
     return firstArg.name;
   }
   return "";
-}
-
-function isAnalyticsCall(node: TSESTree.CallExpression): boolean {
-  const url = extractUrlString(node).toLowerCase();
-  if (url === "") return false;
-  // Split into path segments and file-extension parts; exempt only when a
-  // WHOLE segment is a known analytics keyword.
-  return url
-    .split(/[/.]/)
-    .some((segment) => ANALYTICS_SEGMENTS.has(segment));
 }
 
 export default createRule<Options, MessageIds>({

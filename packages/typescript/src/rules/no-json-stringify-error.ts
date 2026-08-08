@@ -20,12 +20,6 @@ const ERROR_PROP_PATTERN = /^(cause|lastError|error|err|exception|originalError|
 /** Property names whose value is a plain string — the recommended escape hatch. */
 const SAFE_STRING_PROPS: ReadonlySet<string> = new Set(["message", "stack", "name"]);
 
-/**
- * Accessors that hold an error's *data* payload rather than a nested error.
- * These are ordinary enumerable JSON, so `JSON.stringify` on them is correct —
- * react-router's `ErrorResponse.data`, zod's `ZodError.issues`, an HTTP client's
- * `.status` / `.response.body`.
- */
 const PAYLOAD_PROPS: ReadonlySet<string> = new Set([
   "data",
   "status",
@@ -43,11 +37,6 @@ const PAYLOAD_PROPS: ReadonlySet<string> = new Set([
   "context",
 ]);
 
-/**
- * Walk up the scope chain looking for a `catch` clause whose binding matches
- * `name`. We rely on the scope analysis provided by the parser rather than
- * type information, keeping the rule type-free.
- */
 function isCatchBinding(scope: Scope.Scope, name: string): boolean {
   let current: Scope.Scope | null = scope;
   while (current) {
@@ -95,6 +84,15 @@ function memberSuggestsError(
   return false;
 }
 
+function positiveErrorSubject(
+  test: TSESTree.Expression,
+): TSESTree.Expression | null {
+  return instanceofErrorSubject(test) ?? typeGuardSubject(test);
+}
+
+/** Names of a user-defined type-guard predicate: `isErrorLike`, `isError`, `hasErrorShape`. */
+const TYPE_GUARD_PATTERN = /^(is|has)[A-Z]/;
+
 function instanceofErrorSubject(
   test: TSESTree.Expression,
 ): TSESTree.Expression | null {
@@ -108,9 +106,6 @@ function instanceofErrorSubject(
   }
   return null;
 }
-
-/** Names of a user-defined type-guard predicate: `isErrorLike`, `isError`, `hasErrorShape`. */
-const TYPE_GUARD_PATTERN = /^(is|has)[A-Z]/;
 
 /** The narrowed subject `x` of a user-defined type-guard call `isFoo(x)`, or null. */
 function typeGuardSubject(
@@ -128,37 +123,6 @@ function typeGuardSubject(
     return arg;
   }
   return null;
-}
-
-/**
- * The subject `x` of a positive error-narrowing test — `x instanceof Error` or a
- * user-defined guard `isErrorLike(x)`. In both, the value IS the error in the
- * truthy branch, so `JSON.stringify(x)` belongs in the falsy (alternate) branch.
- */
-function positiveErrorSubject(
-  test: TSESTree.Expression,
-): TSESTree.Expression | null {
-  return instanceofErrorSubject(test) ?? typeGuardSubject(test);
-}
-
-/** The subject `x` of a negated error-narrowing test — `!(x instanceof Error)` / `!isErrorLike(x)`. */
-function negatedInstanceofErrorSubject(
-  test: TSESTree.Expression,
-): TSESTree.Expression | null {
-  if (test.type === "UnaryExpression" && test.operator === "!") {
-    return positiveErrorSubject(test.argument);
-  }
-  return null;
-}
-
-/** Whether a branch statement unconditionally exits (its last statement returns/throws). */
-function branchTerminates(branch: TSESTree.Statement): boolean {
-  const body = branch.type === "BlockStatement" ? branch.body : [branch];
-  const last = body[body.length - 1];
-  return (
-    last !== undefined &&
-    (last.type === "ReturnStatement" || last.type === "ThrowStatement")
-  );
 }
 
 /**
@@ -196,20 +160,16 @@ function isNarrowedByEarlyReturn(
   return false;
 }
 
-function nodeWithin(node: TSESTree.Node, container: TSESTree.Node | null): boolean {
+/** Whether a branch statement unconditionally exits (its last statement returns/throws). */
+function branchTerminates(branch: TSESTree.Statement): boolean {
+  const body = branch.type === "BlockStatement" ? branch.body : [branch];
+  const last = body[body.length - 1];
   return (
-    container !== null &&
-    node.range[0] >= container.range[0] &&
-    node.range[1] <= container.range[1]
+    last !== undefined &&
+    (last.type === "ReturnStatement" || last.type === "ThrowStatement")
   );
 }
 
-/**
- * True if `node` sits in the NON-error branch of an `argExpr instanceof Error`
- * guard — the branch where `argExpr` is provably not an Error, so stringifying it
- * is the correct fallback. Handles both the ternary and `if`/`else` shapes,
- * including the negated `!(x instanceof Error)` form.
- */
 function isGuardedByInstanceofError(
   node: TSESTree.Node,
   argExpr: TSESTree.Expression,
@@ -243,6 +203,24 @@ function isGuardedByInstanceofError(
     current = current.parent;
   }
   return false;
+}
+
+/** The subject `x` of a negated error-narrowing test — `!(x instanceof Error)` / `!isErrorLike(x)`. */
+function negatedInstanceofErrorSubject(
+  test: TSESTree.Expression,
+): TSESTree.Expression | null {
+  if (test.type === "UnaryExpression" && test.operator === "!") {
+    return positiveErrorSubject(test.argument);
+  }
+  return null;
+}
+
+function nodeWithin(node: TSESTree.Node, container: TSESTree.Node | null): boolean {
+  return (
+    container !== null &&
+    node.range[0] >= container.range[0] &&
+    node.range[1] <= container.range[1]
+  );
 }
 
 function isJsonStringify(callee: TSESTree.Expression): boolean {

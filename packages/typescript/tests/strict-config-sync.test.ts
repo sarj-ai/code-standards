@@ -38,6 +38,16 @@ function gitOutput(...args: readonly string[]): string {
   });
 }
 
+function warnIfHistoryIsMissing(log: string, recorded: number): void {
+  if (log.trim().length !== 0 || recorded === 0) return;
+  console.warn(
+    `[strict-config-sync] history corroborates 0 of ${recorded} entries in _retired.ts: ` +
+      `\`git log --diff-filter=D\` over src/rules is empty at ${gitOutput("rev-parse", "--short", "HEAD").trim()}. ` +
+      "The subset gate still catches a NEW deletion that forgets its entry; it cannot re-derive the existing ones. " +
+      "Expected after a history rewrite — investigate if the history was not rewritten.",
+  );
+}
+
 /**
  * Blank out line and block comments while leaving string and template contents
  * intact, so a `//` inside a URL literal is never mistaken for a comment.
@@ -55,7 +65,7 @@ function gitOutput(...args: readonly string[]): string {
  */
 function stripComments(source: string): string {
   const QUOTES = new Set(["'", '"', "`"]);
-  let out = "";
+  const parts: string[] = [];
   let index = 0;
 
   while (index < source.length) {
@@ -73,7 +83,7 @@ function stripComments(source: string): string {
         index < source.length &&
         !(source[index] === "*" && source[index + 1] === "/")
       ) {
-        if (source[index] === "\n") out += "\n";
+        if (source[index] === "\n") parts.push("\n");
         index += 1;
       }
       index += 2;
@@ -82,28 +92,28 @@ function stripComments(source: string): string {
 
     if (QUOTES.has(char)) {
       const quote = char;
-      out += char;
+      parts.push(char);
       index += 1;
       while (index < source.length && source[index] !== quote) {
         // A backslash escapes the next character, including the closing quote.
         if (source[index] === "\\") {
-          out += source.slice(index, index + 2);
+          parts.push(source.slice(index, index + 2));
           index += 2;
           continue;
         }
-        out += source[index];
+        parts.push(source[index] ?? "");
         index += 1;
       }
-      out += quote;
+      parts.push(quote);
       index += 1;
       continue;
     }
 
-    out += char;
+    parts.push(char);
     index += 1;
   }
 
-  return out;
+  return parts.join("");
 }
 
 /** Rule names the strict config configures as LIVE rule keys, comments excluded. */
@@ -180,10 +190,10 @@ describe("lint-configs eslint.strict.mjs stays wired to the plugin", () => {
     // The opt-outs must actually be documented, not silently listed here. Now
     // that referencedRuleNames() ignores comments this is a genuinely separate
     // claim from being wired: "mentioned in the file" vs "configured".
-    for (const name of PER_REPO_OPT_IN) {
-      if (!applicationOnlyRules.includes(name as (typeof applicationOnlyRules)[number])) {
-        expect(text).toContain(name);
-      }
+    for (const name of [...PER_REPO_OPT_IN].filter(
+      (candidate) => !applicationOnlyRules.includes(candidate as (typeof applicationOnlyRules)[number]),
+    )) {
+      expect(text).toContain(name);
     }
 
     // ...and the exemption must still be needed. If someone wires an opt-in for
@@ -217,27 +227,27 @@ describe("lint-configs eslint.strict.mjs stays wired to the plugin", () => {
     // declared by the plugin itself is not a deviation.
     const DECLARED_DEVIATIONS = new Map<string, readonly [string, string]>([]);
 
-    const drift: string[] = [];
-    for (const [name, pluginSeverity] of Object.entries(pluginStrict)) {
+    const comparisons = Object.entries(pluginStrict).flatMap(([name, pluginSeverity]) => {
       const rule = name.replace("@sarj/", "");
       const configSeverity = configured.get(rule);
-      if (configSeverity === undefined) {
-        continue; // not wired — the opt-in assertion above owns that case
-      }
-      const declared = DECLARED_DEVIATIONS.get(rule);
-      if (declared !== undefined) {
-        // The declaration itself must stay true, or it is just a mute button.
+      return configSeverity === undefined ? [] : [{ configSeverity, pluginSeverity, rule }];
+    });
+    for (const { configSeverity, pluginSeverity, rule } of comparisons.filter(
+      ({ rule }) => DECLARED_DEVIATIONS.has(rule),
+    )) {
+      const declared = DECLARED_DEVIATIONS.get(rule)!;
         expect([rule, pluginSeverity, configSeverity]).toEqual([
           rule,
           declared[0],
           declared[1],
         ]);
-        continue;
-      }
-      if (configSeverity !== pluginSeverity) {
-        drift.push(`${rule}: plugin=${pluginSeverity} config=${configSeverity}`);
-      }
     }
+    const drift = comparisons
+      .filter(({ rule }) => !DECLARED_DEVIATIONS.has(rule))
+      .filter(({ configSeverity, pluginSeverity }) => configSeverity !== pluginSeverity)
+      .map(({ configSeverity, pluginSeverity, rule }) =>
+        `${rule}: plugin=${pluginSeverity} config=${configSeverity}`
+      );
     expect(drift).toEqual([]);
   });
 
@@ -327,18 +337,14 @@ describe("lint-configs eslint.strict.mjs stays wired to the plugin", () => {
       "packages/typescript/src/rules",
     );
 
-    const deleted = new Set<string>();
-    for (const line of log.split("\n")) {
-      const path = line.trim();
-      if (!path.endsWith(".ts") || path.endsWith(".test.ts")) continue;
-      const name = path.slice(path.lastIndexOf("/") + 1, -".ts".length);
-      // `_tailwind.ts` and friends are shared helpers, never rule names.
-      if (name.startsWith("_")) continue;
-      // Still accounted for — re-added under the same name, or renamed, with
-      // `_renames.ts` saying where it went. Neither is a withdrawal.
-      if (name in plugin.rules || name in renamedRules) continue;
-      deleted.add(name);
-    }
+    const deleted = new Set(
+      log.split("\n")
+        .map((line) => line.trim())
+        .filter((path) => path.endsWith(".ts") && !path.endsWith(".test.ts"))
+        .map((path) => path.slice(path.lastIndexOf("/") + 1, -".ts".length))
+        .filter((name) => !name.startsWith("_"))
+        .filter((name) => !(name in plugin.rules) && !(name in renamedRules)),
+    );
 
     const unrecorded = [...deleted]
       .filter((name) => !(name in retiredRules))
@@ -373,14 +379,7 @@ describe("lint-configs eslint.strict.mjs stays wired to the plugin", () => {
     );
     const recorded = Object.keys(retiredRules).length;
 
-    if (log.trim().length === 0 && recorded > 0) {
-      console.warn(
-        `[strict-config-sync] history corroborates 0 of ${recorded} entries in _retired.ts: ` +
-          `\`git log --diff-filter=D\` over src/rules is empty at ${gitOutput("rev-parse", "--short", "HEAD").trim()}. ` +
-          "The subset gate still catches a NEW deletion that forgets its entry; it cannot re-derive the existing ones. " +
-          "Expected after a history rewrite — investigate if the history was not rewritten.",
-      );
-    }
+    warnIfHistoryIsMissing(log, recorded);
 
     // Asserts the ledger is populated, not that history agrees with it: an empty
     // `_retired.ts` alongside a truncated history would leave nothing checking

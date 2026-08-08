@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from sarj_python_lint.rules import _prose_budget
+from sarj_python_lint.rules import _prose_budget  # sarj-noqa: SARJ048 — white-box helper test
 from sarj_python_lint.rules._prose_budget import groups, sentence_units
 
 

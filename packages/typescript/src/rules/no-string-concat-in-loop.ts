@@ -13,27 +13,13 @@ import { isGeneratedFile } from "./_paths.js";
 type MessageIds = "noStringConcatInLoop";
 type Options = readonly [];
 
-const LOOP_NODE_TYPES = new Set<string>([
+const LOOP_NODE_TYPES: ReadonlySet<string> = new Set([
   "ForStatement",
   "ForOfStatement",
   "ForInStatement",
   "WhileStatement",
   "DoWhileStatement",
 ]);
-
-/** Checks whether an initializer is a string or template literal. */
-function isStringLiteralInit(node: TSESTree.Expression | null): boolean {
-  if (node === null) {
-    return false;
-  }
-  if (node.type === "TemplateLiteral") {
-    return true;
-  }
-  if (node.type === "Literal") {
-    return typeof node.value === "string";
-  }
-  return false;
-}
 
 /** Resolves an identifier through its enclosing scopes. */
 function findVariable(
@@ -67,6 +53,31 @@ function isStringInitializedVariable(variable: Scope.Variable): boolean {
   return isStringLiteralInit(declarator.init);
 }
 
+/** Checks whether an initializer is a string or template literal. */
+function isStringLiteralInit(node: TSESTree.Expression | null): boolean {
+  if (node === null) {
+    return false;
+  }
+  if (node.type === "TemplateLiteral") {
+    return true;
+  }
+  if (node.type === "Literal") {
+    return typeof node.value === "string";
+  }
+  return false;
+}
+
+/** Recognizes longhand accumulation such as `s = s + x`. */
+function isConcatOntoTarget(
+  rhs: TSESTree.Expression,
+  target: string,
+): boolean {
+  if (rhs.type !== "BinaryExpression" || rhs.operator !== "+") {
+    return false;
+  }
+  return isConcatOperand(rhs.left, target) || isConcatOperand(rhs.right, target);
+}
+
 /** Finds a target identifier in a chained `+` expression. */
 function isConcatOperand(
   node: TSESTree.Expression | TSESTree.PrivateIdentifier,
@@ -81,17 +92,6 @@ function isConcatOperand(
     );
   }
   return false;
-}
-
-/** Recognizes longhand accumulation such as `s = s + x`. */
-function isConcatOntoTarget(
-  rhs: TSESTree.Expression,
-  target: string,
-): boolean {
-  if (rhs.type !== "BinaryExpression" || rhs.operator !== "+") {
-    return false;
-  }
-  return isConcatOperand(rhs.left, target) || isConcatOperand(rhs.right, target);
 }
 
 /** Checks whether the loop creates a fresh accumulator on every iteration. */

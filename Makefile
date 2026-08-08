@@ -5,10 +5,10 @@ MAKEFLAGS += --warn-undefined-variables --no-builtin-rules
 CONFIG_SRC := packages/lint-configs/src/sarj_lint_configs/configs
 STANDARDS := uv run --project packages/lint-configs --frozen sarj-standards
 
-.PHONY: help setup build verify doctor test lint format-check typecheck repo-check check-no-private-refs check-file-conventions check-versions-synced release-check release-check-lock-age release-check-tags release-check-typescript sync-rule-ledger
+.PHONY: help setup build verify doctor test lint dogfood dogfood-python dogfood-typescript format-check typecheck repo-check check-no-private-refs check-file-conventions check-versions-synced release-check release-check-lock-age release-check-tags release-check-typescript sync-rule-ledger
 
 help:
-	@echo "Targets: setup | verify | doctor | build | test | lint | typecheck"
+	@echo "Targets: setup | verify | doctor | build | test | lint | dogfood | typecheck"
 	@echo "         check-{versions-synced,no-private-refs,file-conventions} | release-check"
 	@echo "Releases are published only after a version-changing merge to main."
 
@@ -18,7 +18,7 @@ setup:
 # The gate CONTRIBUTING/CLAUDE.md tells contributors to run before review. It did
 # not exist, so `make verify` failed with "No rule to make target" and the
 # documented workflow could not be followed as written.
-verify: doctor format-check lint typecheck test repo-check check-no-private-refs
+verify: doctor format-check lint dogfood typecheck test repo-check check-no-private-refs
 
 doctor:
 	@$(STANDARDS) doctor
@@ -68,6 +68,32 @@ lint:
 	# `make lint` did not, so a change could pass `make verify` locally and fail
 	# CI on rules this repo wrote. Dogfooding that stops at ruff is not dogfooding.
 	cd packages/lint-configs   && uv run sarj-standards check --noise-only src/ tests/
+
+# Run every shipped custom rule over maintained implementation and test source.
+# Only dedicated fixture directories are excluded from the TypeScript scan.
+# The registries are read at execution time, so adding a rule automatically adds
+# it to this gate without another hand-maintained list.
+dogfood: dogfood-python dogfood-typescript
+
+dogfood-python:
+	@python_files=(); \
+	while IFS= read -r -d '' file; do python_files+=("$$file"); done < <(git ls-files -z --cached --others --exclude-standard -- 'packages/*/src/*.py' 'packages/*/src/**/*.py' 'packages/*/tests/*.py' 'packages/*/tests/**/*.py'); \
+	python_rules=(); \
+	while IFS= read -r rule; do python_rules+=("$$rule"); done < <(uv run --quiet --project packages/python --frozen sarj-python-lint list-rules | awk '{print $$2}'); \
+	if (( $${#python_files[@]} == 0 || $${#python_rules[@]} == 0 )); then echo 'dogfood: Python source or registry is unexpectedly empty' >&2; exit 2; fi; \
+	rule_args=(); \
+	for rule in "$${python_rules[@]}"; do rule_args+=(--rule "$$rule"); done; \
+	set +e; \
+	output="$$(uv run --quiet --project packages/python --frozen sarj-python-lint check "$${rule_args[@]}" -- "$${python_files[@]}" 2>&1)"; \
+	status=$$?; \
+	set -e; \
+	if (( status > 1 )); then printf '%s\n' "$$output"; exit $$status; fi; \
+	if [[ -n "$$output" ]]; then printf '%s\n' "$$output"; exit 1; fi; \
+	if (( status != 0 )); then exit $$status; fi; \
+	printf 'dogfood: %d Python rules, %d source files, 0 diagnostics\n' "$${#python_rules[@]}" "$${#python_files[@]}"
+
+dogfood-typescript:
+	cd packages/typescript && npm run dogfood
 
 typecheck:
 	cd packages/python         && uv run basedpyright

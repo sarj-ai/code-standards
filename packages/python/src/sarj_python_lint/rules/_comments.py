@@ -271,7 +271,7 @@ def stem(word: str) -> str:
         if word.endswith(suffix) and len(word) - len(suffix) >= _MIN_STEM_LENGTH:
             base = word[: len(word) - len(suffix)]
             if suffix in {"ied", "ies"}:
-                return base + "y"
+                return f"{base}y"
             break
     if base.endswith("e") and len(base) - 1 >= _MIN_STEM_LENGTH:
         return base[:-1]
@@ -319,6 +319,21 @@ _Scan = tuple[list[tuple[int, int, str]], list[tuple[int, int, str]], set[int], 
 _last_scan: tuple[str, _Scan] | None = None
 
 
+def all_comments(source: str) -> _CommentScan[_Ordered]:
+    """Return every comment as `(line, col0, body, standalone)`, plus the first code line."""
+    _, _, _, first_code_line, ordered = _scan_memo(source)
+    return _CommentScan(ordered, first_code_line)
+
+
+def _scan_memo(source: str) -> _Scan:
+    global _last_scan  # ruff: ignore[global-statement] — single-slot memo; the CLI runs rules per file sequentially
+    if _last_scan is not None and _last_scan[0] is source:
+        return _last_scan[1]
+    result = _scan(source)
+    _last_scan = (source, result)
+    return result
+
+
 def _scan(source: str) -> _Scan:
     standalone: list[tuple[int, int, str]] = []
     trailing: list[tuple[int, int, str]] = []
@@ -347,21 +362,6 @@ def _scan(source: str) -> _Scan:
         if tok.type not in _NON_CODE_TOKENS:
             first_code_line = min(first_code_line, tok.start[0])
     return standalone, trailing, nested, first_code_line, ordered
-
-
-def all_comments(source: str) -> _CommentScan[_Ordered]:
-    """Return every comment as `(line, col0, body, standalone)`, plus the first code line."""
-    _, _, _, first_code_line, ordered = _scan_memo(source)
-    return _CommentScan(ordered, first_code_line)
-
-
-def _scan_memo(source: str) -> _Scan:
-    global _last_scan  # ruff: ignore[global-statement] — single-slot memo; the CLI runs rules per file sequentially
-    if _last_scan is not None and _last_scan[0] is source:
-        return _last_scan[1]
-    result = _scan(source)
-    _last_scan = (source, result)
-    return result
 
 
 def trailing_comments(source: str) -> list[tuple[int, int, str]]:
@@ -437,60 +437,6 @@ _WALL_STATEMENTS = (
 )
 
 
-def _is_wall_statement(node: ast.stmt) -> bool:
-    """Exclude docstrings while retaining executable expression statements."""
-    return isinstance(node, _WALL_STATEMENTS) and not (
-        isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str)
-    )
-
-
-def _weak_walkthrough_comment(body: str, statement: str) -> bool:
-    """Whether a comment is weak evidence inside a repeated walkthrough."""
-    if (
-        not body
-        or body.endswith("?")
-        or len(body.split()) > _WALL_MAX_WORDS
-        or _WALL_DIRECTIVE_RE.match(body)
-        or is_protected(body)
-    ):
-        return False
-    words = content_tokens(body)
-    if len(words) < _WALL_MIN_CONTENT_WORDS or not _WALL_NARRATION_RE.match(body):
-        return False
-    # The opener names the operation; the remaining words must mostly match the statement.
-    known = code_tokens(statement)
-    described = words[1:]
-    if not described:
-        return restates(words, known)
-    matched = sum(1 for word in described if restates([word], known))
-    novel = len(described) - matched
-    return matched / len(described) >= _WALL_MIN_MATCHED_RATIO and novel <= _WALL_MAX_NOVEL_WORDS
-
-
-def _owned_statement_lists(owner: ast.AST) -> tuple[list[ast.stmt], ...]:
-    """Return the distinct statement blocks directly owned by an AST node."""
-    if isinstance(
-        owner,
-        (
-            ast.Module,
-            ast.FunctionDef,
-            ast.AsyncFunctionDef,
-            ast.ClassDef,
-            ast.With,
-            ast.AsyncWith,
-            ast.ExceptHandler,
-        ),
-    ):
-        return (owner.body,)
-    if isinstance(owner, (ast.If, ast.For, ast.AsyncFor, ast.While)):
-        return owner.body, owner.orelse
-    if isinstance(owner, (ast.Try, ast.TryStar)):
-        return owner.body, owner.orelse, owner.finalbody
-    if isinstance(owner, ast.match_case):
-        return (owner.body,)
-    return ()
-
-
 def statement_comment_walls(
     path: Path,
     source: str,
@@ -534,3 +480,63 @@ def statement_comment_walls(
                 leader = min(weak)
                 walls[leader] = frozenset(weak)
     return walls
+
+
+def _owned_statement_lists(owner: ast.AST) -> tuple[list[ast.stmt], ...]:
+    """Return the distinct statement blocks directly owned by an AST node."""
+    match owner:
+        case (
+            ast.Module(body=body)
+            | ast.FunctionDef(body=body)
+            | ast.AsyncFunctionDef(body=body)
+            | ast.ClassDef(body=body)
+            | ast.With(body=body)
+            | ast.AsyncWith(body=body)
+            | ast.ExceptHandler(body=body)
+            | ast.match_case(body=body)
+        ):
+            return (body,)
+        case (
+            ast.If(body=body, orelse=orelse)
+            | ast.For(body=body, orelse=orelse)
+            | ast.AsyncFor(body=body, orelse=orelse)
+            | ast.While(body=body, orelse=orelse)
+        ):
+            return body, orelse
+        case (
+            ast.Try(body=body, orelse=orelse, finalbody=finalbody)
+            | ast.TryStar(body=body, orelse=orelse, finalbody=finalbody)
+        ):
+            return body, orelse, finalbody
+        case _:
+            return ()
+
+
+def _is_wall_statement(node: ast.stmt) -> bool:
+    """Exclude docstrings while retaining executable expression statements."""
+    return isinstance(node, _WALL_STATEMENTS) and not (
+        isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str)
+    )
+
+
+def _weak_walkthrough_comment(body: str, statement: str) -> bool:
+    """Whether a comment is weak evidence inside a repeated walkthrough."""
+    if (
+        not body
+        or body.endswith("?")
+        or len(body.split()) > _WALL_MAX_WORDS
+        or _WALL_DIRECTIVE_RE.match(body)
+        or is_protected(body)
+    ):
+        return False
+    words = content_tokens(body)
+    if len(words) < _WALL_MIN_CONTENT_WORDS or not _WALL_NARRATION_RE.match(body):
+        return False
+    # The opener names the operation; the remaining words must mostly match the statement.
+    known = code_tokens(statement)
+    described = words[1:]
+    if not described:
+        return restates(words, known)
+    matched = sum(1 for word in described if restates([word], known))
+    novel = len(described) - matched
+    return matched / len(described) >= _WALL_MIN_MATCHED_RATIO and novel <= _WALL_MAX_NOVEL_WORDS

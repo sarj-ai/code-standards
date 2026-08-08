@@ -11,9 +11,7 @@ import { createRule } from "./_docs.js";
 type MessageIds = "storageInStatelessModule";
 
 export interface RuleOptions {
-  /** Regex sources matched against the filename. Empty means the rule is off. */
   readonly modules?: readonly string[];
-  /** Storage method names to flag. Replaces the defaults. */
   readonly methods?: readonly string[];
 }
 
@@ -25,11 +23,6 @@ const DEFAULT_METHODS: readonly string[] = [
   "getWithMetadata",
 ];
 
-/**
- * Minimum argument count before a method call counts as storage access. `put`
- * needs a key AND a value; a single-argument `put` is usually something else.
- * Methods absent from this map need one argument.
- */
 const MIN_ARGUMENTS: ReadonlyMap<string, number> = new Map([["put", 2]]);
 
 /** Compile regex sources, skipping malformed entries rather than throwing. */

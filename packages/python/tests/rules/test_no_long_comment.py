@@ -4,8 +4,10 @@ from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.no_long_comment import NoLongComment
 
 
-def test_docstrings_are_owned_by_semantic_docstring_rules() -> None:
-    assert NoLongComment().check(Path("app.py"), '"""One fact. Two facts. Three facts."""\n') == []
+def test_plain_three_sentence_docstring_exceeds_the_prose_budget() -> None:
+    findings = NoLongComment().check(Path("app.py"), '"""One fact. Two facts. Three facts."""\n')
+    assert len(findings) == 1
+    assert findings[0].severity is Severity.WARNING
 
 
 def test_contiguous_line_comments_are_one_group() -> None:
@@ -43,7 +45,15 @@ Structured configuration is compressed. The payloads are highly repetitive.
 Compression keeps the URL inside its length budget.
 """
 '''
-    assert NoLongComment().check(Path("query_param_codec.py"), source) == []
+    assert len(NoLongComment().check(Path("query_param_codec.py"), source)) == 1
+
+
+def test_function_docstring_prose_wall_is_an_error() -> None:
+    source = '''def decode(value: str) -> str:
+    """Decode the value. Cache the result. Return normalized text."""
+    return value
+'''
+    assert len(NoLongComment().check(Path("codec.py"), source)) == 1
 
 
 def test_schema_class_docstring_is_runtime_consumed() -> None:

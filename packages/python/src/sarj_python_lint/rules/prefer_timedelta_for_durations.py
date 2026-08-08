@@ -332,13 +332,15 @@ def _bare_numeric(node: ast.expr) -> str | None:
 
 
 def _trailing_name(node: ast.expr) -> str | None:
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        return node.attr
-    if isinstance(node, ast.Subscript):
-        return _trailing_name(node.value)
-    return None
+    match node:
+        case ast.Name(id=name):
+            return name
+        case ast.Attribute(attr=attr):
+            return attr
+        case ast.Subscript(value=value):
+            return _trailing_name(value)
+        case _:
+            return None
 
 
 def _is_named(node: ast.expr, name: str) -> bool:

@@ -42,37 +42,6 @@ function isMathRandomCall(node: TSESTree.Node): node is TSESTree.CallExpression 
 }
 
 /**
- * Climbs the member/call chain in which `node` is the object/callee end, and
- * returns the outermost value node of that chain. For
- * `Math.random().toString(36).slice(2)` this returns the `.slice(2)` call —
- * i.e. the value that actually gets assigned/concatenated.
- */
-function climbValueChain(node: TSESTree.Node): TSESTree.Node {
-  let current: TSESTree.Node = node;
-  let parent = current.parent;
-
-  while (parent) {
-    if (
-      parent.type === "MemberExpression" &&
-      parent.object === current &&
-      !parent.computed
-    ) {
-      current = parent;
-      parent = current.parent;
-      continue;
-    }
-    if (parent.type === "CallExpression" && parent.callee === current) {
-      current = parent;
-      parent = current.parent;
-      continue;
-    }
-    break;
-  }
-
-  return current;
-}
-
-/**
  * Returns true if `node` (a `Math.random()` call) is the base of a member
  * chain that calls `.toString(36)` somewhere above it, e.g.
  * `Math.random().toString(36)` or `Math.random().toString(36).slice(2)`.
@@ -172,30 +141,6 @@ function findEnclosingName(node: TSESTree.Node): string | undefined {
 }
 
 /**
- * Collects the static string fragments of a `+` concatenation / template
- * literal subtree into `out`.
- */
-function collectStaticStringParts(
-  node: TSESTree.Node,
-  out: string[],
-): void {
-  if (node.type === "Literal" && typeof node.value === "string") {
-    out.push(node.value);
-    return;
-  }
-  if (node.type === "TemplateLiteral") {
-    for (const quasi of node.quasis) {
-      out.push(quasi.value.cooked ?? quasi.value.raw);
-    }
-    return;
-  }
-  if (node.type === "BinaryExpression" && node.operator === "+") {
-    collectStaticStringParts(node.left, out);
-    collectStaticStringParts(node.right, out);
-  }
-}
-
-/**
  * Returns true if the random value is concatenated into a string whose static
  * parts read as a filename/path/DOM id (contain a slash, backslash, `#`, or a
  * `.ext`-style fragment).
@@ -234,6 +179,55 @@ function isConcatenatedIntoPathOrDomId(node: TSESTree.Node): boolean {
   const parts: string[] = [];
   collectStaticStringParts(top, parts);
   return parts.some((part) => PATH_OR_DOM_MARKER.test(part));
+}
+
+function climbValueChain(node: TSESTree.Node): TSESTree.Node {
+  let current: TSESTree.Node = node;
+  let parent = current.parent;
+
+  while (parent) {
+    if (
+      parent.type === "MemberExpression" &&
+      parent.object === current &&
+      !parent.computed
+    ) {
+      current = parent;
+      parent = current.parent;
+      continue;
+    }
+    if (parent.type === "CallExpression" && parent.callee === current) {
+      current = parent;
+      parent = current.parent;
+      continue;
+    }
+    break;
+  }
+
+  return current;
+}
+
+/**
+ * Collects the static string fragments of a `+` concatenation / template
+ * literal subtree into `out`.
+ */
+function collectStaticStringParts(
+  node: TSESTree.Node,
+  out: string[],
+): void {
+  if (node.type === "Literal" && typeof node.value === "string") {
+    out.push(node.value);
+    return;
+  }
+  if (node.type === "TemplateLiteral") {
+    for (const quasi of node.quasis) {
+      out.push(quasi.value.cooked ?? quasi.value.raw);
+    }
+    return;
+  }
+  if (node.type === "BinaryExpression" && node.operator === "+") {
+    collectStaticStringParts(node.left, out);
+    collectStaticStringParts(node.right, out);
+  }
 }
 
 export default createRule<Options, MessageIds>({

@@ -92,10 +92,6 @@ const AUTH_WORDS: ReadonlySet<string> = new Set([
   "bearer",
 ]);
 
-/**
- * camelCase / PascalCase / ALLCAPS / digit-run splitter, applied to each
- * snake/kebab segment. `APIKey` -> ["API", "Key"], `authToken` -> ["auth", "Token"].
- */
 const CAMEL_RE = /[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|\d+/g;
 const SEGMENT_RE = /[^A-Za-z0-9]+/;
 

@@ -10,7 +10,7 @@ uv tool install sarj-python-lint
 
 ```yaml
 - repo: https://github.com/sarj-ai/standards
-  rev: python-v0.51.3
+  rev: python-v0.52.0
   hooks:
     - id: sarj-no-sequential-await
     - id: sarj-inefficient-string-concat-in-loop
@@ -27,7 +27,7 @@ uv tool install sarj-python-lint
     - id: sarj-prefer-struct-over-namedtuple
     - id: sarj-no-comment-cruft
     - id: sarj-no-fstring-in-log
-    - id: sarj-prefer-non-nullable-collection      # SARJ074
+    - id: sarj-prefer-non-nullable-collection      # SARJ082
 ```
 
 ### FastAPI OpenAPI contracts (0.44.0)
@@ -352,6 +352,26 @@ aliases and abstract/NotImplemented contracts, while SARJ044 applies the same
 named-result requirement to pytest fixtures. Variadic `tuple[T, ...]` remains a
 sequence rather than a positional record. Prefer `typing.NamedTuple`, a frozen
 dataclass, or a frozen validation model at schema boundaries.
+
+SARJ008 accepts `TypedDict` as the static-only option for a fixed-key mapping,
+alongside a frozen dataclass or a pydantic model when runtime validation is
+needed. It does not ask arbitrary `dict[str, T]` mappings to become records:
+the function must build and return a string-keyed record literal.
+
+SARJ082 also recognizes a nullable list parameter whose only body read is an
+immediate `value or []` normalization. That proof makes `None` and an empty
+list observationally equivalent inside the function. Constructors and module
+functions receive a warning to require the list or accept an immutable empty
+default such as `Sequence[T] = ()`; ordinary methods are excluded because an
+inherited framework signature may constrain them even without `@override`.
+
+SARJ006 also warns on transparent module-level `build_` / `make_` constructor
+factories that copy at least two three-value inline string `Literal` domains
+and forward them unchanged under the same keyword names. Named aliases put each
+domain in one model-owned location. Ordinary APIs, methods, decorated
+registrations, two-value switches, transformed arguments, generated code, and
+test files remain outside the arm. Ordinary inline `Literal` annotations remain
+accepted, so existing SARJ006 behavior does not become noisy.
 
 SARJ093 recognizes `str`, `int`, UUID and supported containers as non-nominal ID
 carriers, while preserving `NewType` aliases as nominal identities. SARJ006

@@ -14,7 +14,11 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-_TEST_DIR_NAMES = frozenset({"tests", "test"})
+_TEST_DIR_NAMES = frozenset({"integration_tests", "tests", "test"})
+_TEST_SUPPORT_DIR_NAMES = frozenset(
+    {"testing", "fakes", "mocks", "doubles", "test_fakes", "test_doubles", "test_utils"}
+)
+_TEST_SUPPORT_STEM_RE = re.compile(r"(?:^|_)(?:fakes?|mocks?|stubs?|doubles?|testing)(?:$|_)")
 
 # A marker must claim ownership of the file/code, not merely describe a value.
 _GENERATED_RE = re.compile(
@@ -37,7 +41,7 @@ _AI_ATTRIBUTION_RE = re.compile(
 
 _GENERATED_HEADER_LINES = 5
 
-_GENERATED_DIR_NAMES = frozenset({"generated", "vendor", "vendored"})
+_GENERATED_DIR_NAMES = frozenset({".venv", "generated", "site-packages", "vendor", "vendored", "venv"})
 
 # Marker files identify generator roots whose banner-less output cannot self-identify as generated.
 _CODEGEN_MARKER_NAMES = (
@@ -148,3 +152,10 @@ def is_test_path(path: Path) -> bool:
     if name == "conftest.py" or name.startswith("test_") or name.endswith("_test.py"):
         return True
     return any(part in _TEST_DIR_NAMES for part in path.parts)
+
+
+def is_test_support_path(path: Path) -> bool:
+    """Report shared test builders and doubles kept outside a test tree."""
+    parts = {part.lower() for part in path.parts}
+    stem = path.stem.lower()
+    return bool(parts & _TEST_SUPPORT_DIR_NAMES or (not stem.endswith("_prod") and _TEST_SUPPORT_STEM_RE.search(stem)))

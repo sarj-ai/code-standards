@@ -193,19 +193,21 @@ def _is_same_literal(left: ast.expr, right: ast.expr) -> bool:
 
 def _is_literal(node: ast.expr) -> bool:
     """Report whether `node` is a literal built entirely from constants."""
-    if isinstance(node, ast.Constant):
-        return True
-    if isinstance(node, ast.UnaryOp):
-        # `-1` is a negation of a constant, not a constant; without this,
-        # `assertEqual(-1, -1)` would slip through.
-        return isinstance(node.op, (ast.USub, ast.UAdd)) and _is_literal(node.operand)
-    if isinstance(node, (ast.List, ast.Set, ast.Tuple)):
-        return all(_is_literal(elt) for elt in node.elts)
-    if isinstance(node, ast.Dict):
-        return all(key is not None and _is_literal(key) for key in node.keys) and all(
-            _is_literal(value) for value in node.values
-        )
-    return False
+    match node:
+        case ast.Constant():
+            return True
+        case ast.UnaryOp(op=ast.USub() | ast.UAdd(), operand=operand):
+            # `-1` is a negation of a constant, not a constant; without this,
+            # `assertEqual(-1, -1)` would slip through.
+            return _is_literal(operand)
+        case ast.List(elts=elements) | ast.Set(elts=elements) | ast.Tuple(elts=elements):
+            return all(_is_literal(element) for element in elements)
+        case ast.Dict(keys=keys, values=values):
+            return all(key is not None and _is_literal(key) for key in keys) and all(
+                _is_literal(value) for value in values
+            )
+        case _:
+            return False
 
 
 def _is_always_falsy_literal(node: ast.expr) -> bool:

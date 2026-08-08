@@ -186,15 +186,15 @@ _MYSQL_MARKER = "CREATE TABLE IF NOT EXISTS `k` (`id` int UNSIGNED) ENGINE=InnoD
 
 
 def test_allows_mysql_add_column_without_if_not_exists():
-    assert _check(_MYSQL_MARKER + "ALTER TABLE `orders` ADD COLUMN `note` text;") == []
+    assert _check(f"{_MYSQL_MARKER}ALTER TABLE `orders` ADD COLUMN `note` text;") == []
 
 
 def test_allows_mysql_create_index_without_if_not_exists():
-    assert _check(_MYSQL_MARKER + "CREATE INDEX `idx` ON `orders` (`user_id`);") == []
+    assert _check(f"{_MYSQL_MARKER}CREATE INDEX `idx` ON `orders` (`user_id`);") == []
 
 
 def test_allows_mysql_drop_index_without_if_exists():
-    assert _check(_MYSQL_MARKER + "DROP INDEX `idx` ON `orders`;") == []
+    assert _check(f"{_MYSQL_MARKER}DROP INDEX `idx` ON `orders`;") == []
 
 
 def test_flags_mysql_create_table_without_if_not_exists():
@@ -205,7 +205,7 @@ def test_flags_mysql_create_table_without_if_not_exists():
 
 def test_flags_mysql_drop_table_without_if_exists():
     """The boundary: MySQL *does* support `DROP TABLE IF EXISTS`."""
-    assert len(_check(_MYSQL_MARKER + "DROP TABLE `orders`;")) == 1
+    assert len(_check(f"{_MYSQL_MARKER}DROP TABLE `orders`;")) == 1
 
 
 def test_flags_sqlite_create_index_without_if_not_exists():

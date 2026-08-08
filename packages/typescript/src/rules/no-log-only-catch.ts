@@ -21,9 +21,6 @@ type Options = readonly [LoggingOptions?];
 // test-file question but does not yet know this segment, so it is local.
 const BENCHMARK_DIR_RE = /(?:^|[\\/])benchmarks?[\\/]/;
 
-// Loop and branch bodies a lone try can be the whole content of. Reaching one
-// level up through these is what finds the rationale comment that real code
-// writes above the guard rather than inside the catch.
 const SINGLE_STATEMENT_HOSTS: ReadonlySet<string> = new Set([
   AST_NODE_TYPES.DoWhileStatement,
   AST_NODE_TYPES.ForInStatement,
@@ -62,6 +59,16 @@ function statementSlot(
   return index === -1 ? null : { list, index };
 }
 
+/**
+ * Class 1 — the try ends in a `return` and something follows the try, so the
+ * catch's only job is to let control fall through to that fallback.
+ */
+function fallbackFollowsTry(tryStatement: TSESTree.TryStatement): boolean {
+  const body = tryStatement.block.body;
+  const last = body.at(-1);
+  return last?.type === AST_NODE_TYPES.ReturnStatement && hasFollowingStatement(tryStatement);
+}
+
 function hasFollowingStatement(node: TSESTree.Node): boolean {
   for (
     let current: TSESTree.Node | undefined = node;
@@ -74,40 +81,6 @@ function hasFollowingStatement(node: TSESTree.Node): boolean {
   return false;
 }
 
-/**
- * Class 1 — the try ends in a `return` and something follows the try, so the
- * catch's only job is to let control fall through to that fallback.
- */
-function fallbackFollowsTry(tryStatement: TSESTree.TryStatement): boolean {
-  const body = tryStatement.block.body;
-  const last = body.at(-1);
-  return last?.type === AST_NODE_TYPES.ReturnStatement && hasFollowingStatement(tryStatement);
-}
-
-/** An explicit fallback seed: a literal, `undefined`, or an empty array/object. */
-function isSeedValue(node: TSESTree.Expression): boolean {
-  const inner = node.type === AST_NODE_TYPES.TSAsExpression ? node.expression : node;
-  switch (inner.type) {
-    case AST_NODE_TYPES.Literal:
-      return true;
-    case AST_NODE_TYPES.Identifier:
-      return inner.name === "undefined";
-    case AST_NODE_TYPES.UnaryExpression:
-      return inner.argument.type === AST_NODE_TYPES.Literal;
-    case AST_NODE_TYPES.ArrayExpression:
-      return inner.elements.length === 0;
-    case AST_NODE_TYPES.ObjectExpression:
-      return inner.properties.length === 0;
-    default:
-      return false;
-  }
-}
-
-/**
- * Class 2 — `let x = <seed>;` immediately above the try, written inside it, read
- * after it. The seed IS the recovery value, so an empty catch is the whole
- * handler and there is nothing left for a comment to add.
- */
 function seededFallbackHandled(
   tryStatement: TSESTree.TryStatement,
   scope: TSESLint.Scope.Scope,
@@ -134,6 +107,25 @@ function seededFallbackHandled(
     if (reference.isRead() && start >= tryStatement.range[1]) readAfter = true;
   }
   return writtenInTry && readAfter;
+}
+
+/** An explicit fallback seed: a literal, `undefined`, or an empty array/object. */
+function isSeedValue(node: TSESTree.Expression): boolean {
+  const inner = node.type === AST_NODE_TYPES.TSAsExpression ? node.expression : node;
+  switch (inner.type) {
+    case AST_NODE_TYPES.Literal:
+      return true;
+    case AST_NODE_TYPES.Identifier:
+      return inner.name === "undefined";
+    case AST_NODE_TYPES.UnaryExpression:
+      return inner.argument.type === AST_NODE_TYPES.Literal;
+    case AST_NODE_TYPES.ArrayExpression:
+      return inner.elements.length === 0;
+    case AST_NODE_TYPES.ObjectExpression:
+      return inner.properties.length === 0;
+    default:
+      return false;
+  }
 }
 
 export default createRule<Options, MessageIds>({

@@ -97,12 +97,6 @@ def _is_parametrize(func: ast.expr) -> bool:
     return isinstance(func, ast.Name) and func.id == _PARAMETRIZE
 
 
-def _is_param_wrapper(func: ast.expr) -> bool:
-    if isinstance(func, ast.Attribute):
-        return func.attr == _PARAM
-    return isinstance(func, ast.Name) and func.id == _PARAM
-
-
 def _has_keyword(node: ast.Call, name: str) -> bool:
     return any(kw.arg == name for kw in node.keywords)
 
@@ -114,6 +108,12 @@ def _is_unnameable(case: ast.expr) -> bool:
             return False
         return bool(case.args) and all(_is_opaque_value(arg) for arg in case.args)
     return _is_opaque_value(case)
+
+
+def _is_param_wrapper(func: ast.expr) -> bool:
+    if isinstance(func, ast.Attribute):
+        return func.attr == _PARAM
+    return isinstance(func, ast.Name) and func.id == _PARAM
 
 
 def _is_opaque_value(value: ast.expr) -> bool:

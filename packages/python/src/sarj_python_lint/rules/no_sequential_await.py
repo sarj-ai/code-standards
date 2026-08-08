@@ -190,15 +190,6 @@ class _SequentialAwaitVisitor(ast.NodeVisitor):
         self._flagged: set[int] = set()
         self.hits: list[ast.Await] = []
 
-    def _flag_if_in_loop(self, node: ast.Await) -> None:
-        if id(node) in self._exempt:
-            return
-        if self._loops:
-            loop = self._loops[-1]
-            if id(loop) not in self._flagged:
-                self._flagged.add(id(loop))
-                self.hits.append(node)
-
     def visit_For(self, node: ast.For) -> None:
         # `<iter>` runs once in the enclosing scope; visit it before entering.
         self.visit(node.iter)
@@ -260,3 +251,12 @@ class _SequentialAwaitVisitor(ast.NodeVisitor):
             super().generic_visit(node)
         else:
             super().generic_visit(node)
+
+    def _flag_if_in_loop(self, node: ast.Await) -> None:
+        if id(node) in self._exempt:
+            return
+        if self._loops:
+            loop = self._loops[-1]
+            if id(loop) not in self._flagged:
+                self._flagged.add(id(loop))
+                self.hits.append(node)

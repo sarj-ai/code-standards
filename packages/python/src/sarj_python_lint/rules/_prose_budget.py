@@ -85,6 +85,11 @@ def sentence_units(text: str) -> int:
     return units
 
 
+def has_list_items(text: str) -> bool:
+    """Report whether prose contains a Markdown-style list item."""
+    return any(_BULLET_RE.match(line.strip().lstrip("*").strip()) for line in text.splitlines())
+
+
 def _without_examples_metadata(text: str) -> str:
     """Remove standardized rule-example links from the prose budget."""
     kept: list[str] = []

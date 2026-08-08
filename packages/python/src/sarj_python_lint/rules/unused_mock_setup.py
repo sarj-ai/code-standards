@@ -171,17 +171,20 @@ def _blocks(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[list[ast.stm
 def _child_blocks(node: ast.AST) -> list[list[ast.stmt]]:
     """List the statement blocks a compound statement owns."""
     blocks: list[list[ast.stmt]] = []
-    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-        blocks.append(node.body)
-    elif isinstance(node, (ast.If, ast.For, ast.AsyncFor, ast.While)):
-        blocks.extend((node.body, node.orelse))
-    elif isinstance(node, (ast.With, ast.AsyncWith, ast.ExceptHandler)):
-        blocks.append(node.body)
-    elif isinstance(node, (ast.Try, ast.TryStar)):
-        blocks.extend((node.body, node.orelse, node.finalbody))
-        blocks.extend(handler.body for handler in node.handlers)
-    elif isinstance(node, ast.Match):
-        blocks.extend(case.body for case in node.cases)
+    match node:
+        case ast.FunctionDef() | ast.AsyncFunctionDef():
+            blocks.append(node.body)
+        case ast.If() | ast.For() | ast.AsyncFor() | ast.While():
+            blocks.extend((node.body, node.orelse))
+        case ast.With() | ast.AsyncWith() | ast.ExceptHandler():
+            blocks.append(node.body)
+        case ast.Try() | ast.TryStar():
+            blocks.extend((node.body, node.orelse, node.finalbody))
+            blocks.extend(handler.body for handler in node.handlers)
+        case ast.Match():
+            blocks.extend(case.body for case in node.cases)
+        case _:
+            pass
     return [block for block in blocks if block]
 
 
@@ -189,14 +192,6 @@ def _scope_statements(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[as
     """Walk every statement in the function's own scope."""
     for block in _blocks(fn):
         yield from block
-
-
-def _own_expressions(stmt: ast.stmt) -> Iterator[ast.AST]:
-    """Walk the expressions a statement owns, without descending into other statements."""
-    for child in children(stmt):
-        if isinstance(child, (ast.stmt, ast.excepthandler, ast.match_case)):
-            continue
-        yield from walk(child)
 
 
 def _config_target(stmt: ast.stmt) -> str | None:
@@ -249,6 +244,14 @@ def _not_called_assertions(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> dict[s
             if asserted is not None:
                 found[asserted] = max(found.get(asserted, 0), node.lineno)
     return found
+
+
+def _own_expressions(stmt: ast.stmt) -> Iterator[ast.AST]:
+    """Walk the expressions a statement owns, without descending into other statements."""
+    for child in children(stmt):
+        if isinstance(child, (ast.stmt, ast.excepthandler, ast.match_case)):
+            continue
+        yield from walk(child)
 
 
 def _introspected_paths(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:

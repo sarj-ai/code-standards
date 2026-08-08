@@ -7,6 +7,7 @@ from sarj_python_lint.rules._paths import (
     is_generated_path,
     is_generated_source,
     is_test_path,
+    is_test_support_path,
 )
 from sarj_python_lint.rules.prefer_match_type_dispatch import PreferMatchTypeDispatch
 
@@ -106,6 +107,9 @@ def test_late_malformed_token_does_not_erase_a_generated_header() -> None:
         "src/vendor/httpx_shim.py",
         "src/vendored/httpx_shim.py",
         "src/GENERATED/models.py",
+        ".venv/lib/python3.14/site-packages/httpx/client.py",
+        "venv/lib/python3.14/site-packages/pydantic/main.py",
+        "build/lib/python3.14/site-packages/vendorlib/client.py",
     ],
 )
 def test_is_generated_path_flags_generated_directory_names(path: str) -> None:
@@ -203,4 +207,18 @@ def test_is_test_path_covers_the_usual_shapes() -> None:
     assert is_test_path(Path("app/test_service.py"))
     assert is_test_path(Path("app/service_test.py"))
     assert is_test_path(Path("app/tests/helpers.py"))
+    assert is_test_path(Path("app/integration_tests/kafka/helpers.py"))
     assert not is_test_path(Path("app/service.py"))
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["python/common/testing/builders.py", "python/common/fakes.py", "service/mocks/api.py", "app/user_stub.py"],
+)
+def test_is_test_support_path_matches_helper_trees_and_stems(path: str) -> None:
+    assert is_test_support_path(Path(path))
+
+
+@pytest.mark.parametrize("path", ["python/common/logging.py", "python/testing_utils_prod.py", "app/service.py"])
+def test_is_test_support_path_leaves_production_modules_alone(path: str) -> None:
+    assert not is_test_support_path(Path(path))

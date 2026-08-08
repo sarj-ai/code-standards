@@ -12,8 +12,8 @@ import type { RuleContext, Scope } from "@typescript-eslint/utils/ts-eslint";
 type MessageIds = "preferServerAction";
 type Options = readonly [];
 
-const MUTATION_METHODS = new Set(["POST", "PUT", "DELETE", "PATCH"]);
-const AXIOS_MUTATION_METHODS = new Set(["post", "put", "delete", "patch"]);
+const MUTATION_METHODS: ReadonlySet<string> = new Set(["POST", "PUT", "DELETE", "PATCH"]);
+const AXIOS_MUTATION_METHODS: ReadonlySet<string> = new Set(["post", "put", "delete", "patch"]);
 
 const SKIP_FILE_REGEX =
   /(?:\.test\.[jt]sx?$|\.spec\.[jt]sx?$|-(?:test|spec)\.[jt]sx?$|\/tests?\/|\/__tests__\/|\/__testfixtures__\/|\/scripts?\/|\/app\/api\/.*\/route\.[jt]sx?$|\/pages\/api\/)/;
@@ -30,11 +30,6 @@ function getScope(
   return context.sourceCode.getScope(node);
 }
 
-/**
- * Walk up the scope chain looking for a variable declared with a single
- * initializer; if found, return the initializer expression so we can analyze
- * it. Falls back to the original node when resolution is not possible.
- */
 function resolveNode(
   node: TSESTree.Node | null | undefined,
   context: Ctx,

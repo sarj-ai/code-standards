@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.require_port_for_service import RequirePortForService
 
 
@@ -41,28 +42,24 @@ def test_flags_concrete_service_with_injected_collaborator() -> None:
     assert diags[0].code == "SARJ071"
     assert diags[0].line == 2
     assert diags[0].col == 1
+    assert diags[0].severity is Severity.WARNING
 
 
 def test_message_is_exactly_the_shipped_text() -> None:
     # Pins the whole message, not a substring: mutation testing showed the constants
     # could be replaced wholesale without a single test noticing.
     assert _check(_SERVICE)[0].message == (
-        "`ThingService` injects `ThingStore` and exposes 2 public methods, but has no abstract base, "
-        "so every consumer has to name the concrete class and the only way to test one is to patch or "
-        "mock it. Extract the public methods onto an `abc.ABC` (or a `Protocol`) and have "
-        "`ThingService` implement it, so consumers depend on the port and tests can pass a "
-        "purpose-built implementation instead of a mock — except for a `*Store`/`*DAO` persistence "
-        "port, where tests should drive the real backend implementation against the test database "
-        "rather than an in-memory double."
+        "`ThingService` injects `ThingStore` and exposes 2 public methods without a declared port. "
+        "If consumers genuinely need substitution, define a small "
+        "consumer-owned `Protocol`/ABC and type those consumers against it. Do not add a port solely "
+        "for a composition root or a single concrete consumer."
     )
 
 
-def test_message_carves_out_the_persistence_ports_sarj058_owns() -> None:
-    # Doing what this rule asks for a `*Store` — writing `InMemoryUserStore(UserStore)` — trips SARJ058 `prefer-real-store-in-tests`, which forbids an in-memory double of a persistence port.
+def test_message_does_not_overstate_that_mocking_is_the_only_test_seam() -> None:
     message = _check(_SERVICE)[0].message
-    assert "purpose-built implementation instead of a mock" in message
-    assert "except for a `*Store`/`*DAO` persistence port" in message
-    assert "the real backend implementation against the test database" in message
+    assert "only way" not in message
+    assert "consumer-owned" in message
 
 
 def test_message_does_not_cite_another_repos_class_names() -> None:
@@ -1193,3 +1190,14 @@ class BillingService(SpecializedPort):
     def refund(self) -> None: ...
 """
     assert _check(source) == []
+
+
+@pytest.mark.parametrize("annotation", ["AsyncConnectionPool", "httpx.AsyncClient", "AsyncSession"])
+def test_runtime_driver_handle_is_not_treated_as_a_missing_port(annotation: str) -> None:
+    source = _SERVICE.replace("store: ThingStore", f"store: {annotation}")
+
+    assert _check(source) == []
+
+
+def test_domain_store_remains_an_injected_collaborator() -> None:
+    assert len(_check(_SERVICE)) == 1

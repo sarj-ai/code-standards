@@ -34,10 +34,6 @@ const STOPWORDS: ReadonlySet<string> = new Set([
 const DIRECTIVE_RE =
   /^\s*(?:eslint\b|eslint-|sarj-noqa\b|@ts-|prettier|biome-|c8\b|v8\b|istanbul\b|todo\b|fixme\b|hack\b|xxx\b)/i;
 
-function numbersIn(text: string): Set<string> {
-  return new Set(text.match(NUMBER_RE) ?? []);
-}
-
 function narratesValue(body: string, code: string): boolean {
   if (body.length === 0 || DIRECTIVE_RE.test(body) || hasExternalReference(body)) return false;
   const codeNumbers = numbersIn(code);
@@ -61,6 +57,10 @@ function narratesValue(body: string, code: string): boolean {
       identifiers.has(word) ||
       stems.has(stem(word)),
   );
+}
+
+function numbersIn(text: string): Set<string> {
+  return new Set(text.match(NUMBER_RE) ?? []);
 }
 
 export default createRule<Options, MessageIds>({

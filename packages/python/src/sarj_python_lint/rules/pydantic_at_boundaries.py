@@ -7,11 +7,13 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
+import re
 from typing import TYPE_CHECKING, override
 
 from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
 from sarj_python_lint.rules._ast_index import children, nodes
 from sarj_python_lint.rules._fastapi import FastapiIndex
+from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
 
 
 if TYPE_CHECKING:
@@ -22,6 +24,8 @@ _HTTP_METHODS = frozenset({"get", "post", "put", "patch", "delete"})
 # Dict-conversion protocol methods: returning a raw dict is the declared
 # contract (and inherited, for pydantic's `model_dump`/`dict`).
 _DICT_CONVERSION_NAMES = frozenset({"asdict", "as_dict", "dict", "model_dump", "to_data", "to_dict"})
+_DICT_CONVERSION_RE = re.compile(r"^(?:to|as)_[a-z0-9_]*(?:dict|data)$")
+_RECORD_MUTATOR_METHODS = frozenset({"clear", "pop", "popitem", "setdefault", "update"})
 _DICT_NAMES = frozenset({"dict", "Dict"})
 _LIST_NAMES = frozenset({"list", "List"})
 _ANY_VALUE_NAMES = frozenset({"Any", "object"})
@@ -39,11 +43,13 @@ class _RouteInfo:
 class PydanticAtBoundaries(Rule):
     id: str = "pydantic-at-boundaries"
     code: str = "SARJ008"
-    description: str = "Public function/route returns an untyped dict — define a pydantic model (or frozen dataclass)."
+    description: str = (
+        "Public function/route returns an untyped dict — define a pydantic model, frozen dataclass, or TypedDict."
+    )
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if _is_test_path(path):
+        if is_test_path(path) or is_test_support_path(path):
             return []
         tree = parse_or_none(path, source)
         if tree is None:
@@ -63,7 +69,7 @@ class PydanticAtBoundaries(Rule):
                 continue
             # `model_dump`/`asdict`/`to_dict`-style converters declare "this
             # returns a dict" as their contract — that is not a missing model.
-            if node.name in _DICT_CONVERSION_NAMES:
+            if _is_dict_conversion_name(node.name):
                 continue
             # Pydantic validator hooks (`@model_validator`/`@field_validator`)
             # take and return raw dict/values by contract — that's the API, not
@@ -74,9 +80,7 @@ class PydanticAtBoundaries(Rule):
             # contract — its return shape is an implementation detail.
             if _is_fixture(node):
                 continue
-            # SARJ094 owns annotated, schema-visible FastAPI routes so the
-            # combined profile emits one contract diagnostic. SARJ008 retains
-            # hidden and unannotated routes that SARJ094 intentionally skips.
+            # SARJ094 owns annotated visible routes; SARJ008 retains hidden and unannotated routes.
             visible_routes = tuple(route for route in fastapi.routes(node) if not route.is_hidden)
             if visible_routes and node.returns is not None:
                 continue
@@ -112,15 +116,11 @@ class PydanticAtBoundaries(Rule):
                     code=self.code,
                     message=(
                         f"`{node.name}` returns `{ann_text}` — define a "
-                        "pydantic model (or frozen dataclass) for this shape."
+                        "pydantic model, frozen dataclass, or `TypedDict` for this fixed shape."
                     ),
                 )
             )
         return diags
-
-
-def _is_test_path(path: Path) -> bool:
-    return path.name.startswith("test_") or "tests" in path.parts
 
 
 def _local_function_ids(tree: ast.Module) -> set[int]:
@@ -137,6 +137,57 @@ def _local_function_ids(tree: ast.Module) -> set[int]:
     return out
 
 
+def _builds_record_literal(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Report whether the function returns a record it built in place."""
+    returned: list[ast.expr] = []
+    record_names: set[str] = set()
+    invalidated_names: set[str] = set()
+    stack: list[ast.AST] = list(node.body)
+    while stack:
+        current = stack.pop()
+        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+            continue
+        if isinstance(current, ast.Return) and current.value is not None:
+            returned.append(current.value)
+        elif isinstance(current, ast.Assign) and _is_record_literal(current.value):
+            record_names.update(t.id for t in current.targets if isinstance(t, ast.Name))
+            for target in current.targets:
+                if isinstance(target, ast.Subscript):
+                    invalidated_names.update(_mutated_record_roots(target))
+        elif isinstance(current, ast.Assign):
+            invalidated_names.update(t.id for t in current.targets if isinstance(t, ast.Name))
+            for target in current.targets:
+                invalidated_names.update(_mutated_record_roots(target))
+        elif (
+            isinstance(current, ast.AnnAssign)
+            and isinstance(current.target, ast.Name)
+            and current.value is not None
+            and _is_record_literal(current.value)
+        ):
+            record_names.add(current.target.id)
+        elif isinstance(current, (ast.AnnAssign, ast.AugAssign)):
+            invalidated_names.update(_mutated_record_roots(current.target))
+        elif isinstance(current, ast.Delete):
+            for target in current.targets:
+                invalidated_names.update(_mutated_record_roots(target))
+        elif (
+            isinstance(current, ast.Call)
+            and isinstance(current.func, ast.Attribute)
+            and current.func.attr in _RECORD_MUTATOR_METHODS
+            and isinstance(current.func.value, ast.Name)
+        ):
+            invalidated_names.add(current.func.value.id)
+        stack.extend(children(current))
+    intact_record_names = record_names - invalidated_names
+    # A returned, mutated record has an open shape even when another branch returns a fixed fallback.
+    if any(isinstance(value, ast.Name) and value.id in record_names & invalidated_names for value in returned):
+        return False
+    return any(
+        _is_record_literal(value) or (isinstance(value, ast.Name) and value.id in intact_record_names)
+        for value in returned
+    )
+
+
 def _is_record_literal(node: ast.expr) -> bool:
     """Report whether `node` is an unnamed record built in place."""
     if isinstance(node, ast.List):
@@ -148,30 +199,16 @@ def _is_record_literal(node: ast.expr) -> bool:
     return any(isinstance(key, ast.Constant) and isinstance(key.value, str) for key in node.keys)
 
 
-def _builds_record_literal(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Report whether the function returns a record it built in place."""
-    returned: list[ast.expr] = []
-    record_names: set[str] = set()
-    stack: list[ast.AST] = list(node.body)
-    while stack:
-        current = stack.pop()
-        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
-            continue
-        if isinstance(current, ast.Return) and current.value is not None:
-            returned.append(current.value)
-        elif isinstance(current, ast.Assign) and _is_record_literal(current.value):
-            record_names.update(t.id for t in current.targets if isinstance(t, ast.Name))
-        elif (
-            isinstance(current, ast.AnnAssign)
-            and isinstance(current.target, ast.Name)
-            and current.value is not None
-            and _is_record_literal(current.value)
-        ):
-            record_names.add(current.target.id)
-        stack.extend(children(current))
-    return any(
-        _is_record_literal(value) or (isinstance(value, ast.Name) and value.id in record_names) for value in returned
-    )
+def _mutated_record_roots(target: ast.AST) -> set[str]:
+    """Return local mapping names mutated through a subscript target."""
+    while isinstance(target, ast.Subscript):
+        target = target.value
+    return {target.id} if isinstance(target, ast.Name) else set()
+
+
+def _is_dict_conversion_name(name: str) -> bool:
+    """Report whether a method explicitly promises conversion to raw mapping data."""
+    return name in _DICT_CONVERSION_NAMES or _DICT_CONVERSION_RE.fullmatch(name) is not None
 
 
 def _is_overload(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:

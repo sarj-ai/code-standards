@@ -212,13 +212,16 @@ def _collect_reassignments(node: ast.AST, reassigns: dict[str, list[int]]) -> No
 
 def _iter_binding_targets(target: ast.expr) -> Iterator[ast.Name | ast.Attribute]:
     """Yield the Name / Attribute leaves a binding target rebinds."""
-    if isinstance(target, (ast.Tuple, ast.List)):
-        for elt in target.elts:
-            yield from _iter_binding_targets(elt)
-    elif isinstance(target, ast.Starred):
-        yield from _iter_binding_targets(target.value)
-    elif isinstance(target, (ast.Name, ast.Attribute)):
-        yield target
+    match target:
+        case ast.Tuple(elts=elements) | ast.List(elts=elements):
+            for elt in elements:
+                yield from _iter_binding_targets(elt)
+        case ast.Starred(value=value):
+            yield from _iter_binding_targets(value)
+        case ast.Name() | ast.Attribute():
+            yield target
+        case _:
+            pass
 
 
 def _is_accumulation_assign(target: ast.expr, value: ast.expr) -> bool:
@@ -267,17 +270,18 @@ def _collect_string_targets(node: ast.AST, names: set[str]) -> None:
 
 def _looks_like_string(node: ast.AST) -> bool:
     """Report whether this expression is obviously a string at runtime."""
-    if isinstance(node, ast.Constant) and isinstance(node.value, str):
-        return True
-    if isinstance(node, ast.JoinedStr):  # f-string
-        return True
-    if isinstance(node, ast.NamedExpr):  # walrus `(y := <str>)`
-        return _looks_like_string(node.value)
-    if isinstance(node, ast.IfExp):  # ternary — string only if both branches are
-        return _looks_like_string(node.body) and _looks_like_string(node.orelse)
-    if isinstance(node, ast.BinOp):
-        if isinstance(node.op, ast.Add):
-            return _looks_like_string(node.left) or _looks_like_string(node.right)
-        if isinstance(node.op, ast.Mod):  # `"row %s" % x` — left operand decides
-            return _looks_like_string(node.left)
-    return False
+    match node:
+        case ast.Constant(value=str()):
+            return True
+        case ast.JoinedStr():  # f-string
+            return True
+        case ast.NamedExpr(value=value):  # walrus `(y := <str>)`
+            return _looks_like_string(value)
+        case ast.IfExp(body=body, orelse=orelse):  # ternary — string only if both branches are
+            return _looks_like_string(body) and _looks_like_string(orelse)
+        case ast.BinOp(left=left, op=ast.Add(), right=right):
+            return _looks_like_string(left) or _looks_like_string(right)
+        case ast.BinOp(left=left, op=ast.Mod()):  # `"row %s" % x` — left operand decides
+            return _looks_like_string(left)
+        case _:
+            return False

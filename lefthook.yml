@@ -29,6 +29,11 @@ pre-commit:
       run: uv run --project packages/lint-configs --frozen sarj-standards check --staged --hook-files --trust-repository-code -- {staged_files}
       fail_text: >-
         Standards staged checks failed. Fix the reported findings and retry.
+    dogfood:
+      run: make dogfood
+      fail_text: >-
+        A shipped custom rule reports against the Standards repository itself.
+        Fix the finding before committing.
     typecheck:
       run: make typecheck
       fail_text: "Standards typecheck failed. Fix the reported error and retry."

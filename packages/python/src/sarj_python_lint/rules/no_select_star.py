@@ -27,6 +27,17 @@ _EXISTS_BEFORE = re.compile(r"\bEXISTS\s*\(\s*$", re.IGNORECASE)
 _QUALIFIED_PREFIX = re.compile(r"\w\.$")
 
 
+def _has_real_select_star(sql: str) -> bool:
+    selects = [m.start() for m in _SELECT_KW.finditer(sql)]
+    for pos, ch in enumerate(sql):
+        if ch != "*" or not _is_projection_star(sql, pos):
+            continue
+        owning = max((s for s in selects if s < pos), default=None)
+        if owning is not None and _EXISTS_BEFORE.search(sql[:owning]) is None:
+            return True
+    return False
+
+
 def _is_projection_star(sql: str, pos: int) -> bool:
     """Report whether the `*` at `pos` is a column-projection star."""
     if _QUALIFIED_PREFIX.search(sql[:pos]) is not None:
@@ -43,17 +54,6 @@ def _is_projection_star(sql: str, pos: int) -> bool:
     if not terminates:
         return False
     return not (before_char == "(" and after_char == ")")
-
-
-def _has_real_select_star(sql: str) -> bool:
-    selects = [m.start() for m in _SELECT_KW.finditer(sql)]
-    for pos, ch in enumerate(sql):
-        if ch != "*" or not _is_projection_star(sql, pos):
-            continue
-        owning = max((s for s in selects if s < pos), default=None)
-        if owning is not None and _EXISTS_BEFORE.search(sql[:owning]) is None:
-            return True
-    return False
 
 
 class NoSelectStar(Rule):

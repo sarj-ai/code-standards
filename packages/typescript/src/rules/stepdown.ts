@@ -32,6 +32,42 @@ function isFunction(node: TSESTree.Node): node is FunctionNode {
   );
 }
 
+function reportMisordered(
+  context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
+  candidates: readonly Definition[],
+  scopeDefinitions: readonly Definition[],
+  calls: ReadonlyMap<string, ReadonlySet<string>>,
+  pinned: ReadonlySet<string>,
+): void {
+  const byName = new Map(scopeDefinitions.map((definition) => [definition.name, definition]));
+  const cycles = cycleComponents(calls);
+  const callers = new Map<string, Set<string>>();
+  for (const [caller, callees] of calls) {
+    for (const callee of callees) {
+      if (caller === callee) continue;
+      const names = callers.get(callee) ?? new Set<string>();
+      names.add(caller);
+      callers.set(callee, names);
+    }
+  }
+  for (const helper of candidates) {
+    const helperCallers = [...(callers.get(helper.name) ?? [])];
+    if (pinned.has(helper.name) || helperCallers.length !== 1) continue;
+    const callerName = helperCallers[0];
+    if (
+      callerName === undefined ||
+      (cycles.has(helper.name) && cycles.get(helper.name) === cycles.get(callerName))
+    ) continue;
+    const caller = byName.get(callerName);
+    if (caller === undefined || helper.node.range[0] >= caller.node.range[0]) continue;
+    context.report({
+      node: helper.node,
+      messageId: "helperAboveOnlyCaller",
+      data: { helper: helper.name, caller: callerName },
+    });
+  }
+}
+
 /** Iterative Kosaraju SCC index; self recursion is not an ordering cycle. */
 function cycleComponents(graph: ReadonlyMap<string, ReadonlySet<string>>): ReadonlyMap<string, number> {
   const nodes = new Set<string>();
@@ -95,40 +131,51 @@ function cycleComponents(graph: ReadonlyMap<string, ReadonlySet<string>>): Reado
   return components;
 }
 
-function reportMisordered(
+function moduleScope(
   context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
-  candidates: readonly Definition[],
-  scopeDefinitions: readonly Definition[],
-  calls: ReadonlyMap<string, ReadonlySet<string>>,
-  pinned: ReadonlySet<string>,
+  program: TSESTree.Program,
 ): void {
-  const byName = new Map(scopeDefinitions.map((definition) => [definition.name, definition]));
-  const cycles = cycleComponents(calls);
-  const callers = new Map<string, Set<string>>();
-  for (const [caller, callees] of calls) {
-    for (const callee of callees) {
-      if (caller === callee) continue;
-      const names = callers.get(callee) ?? new Set<string>();
-      names.add(caller);
-      callers.set(callee, names);
+  const declarations = moduleDefinitions(program);
+  const counts = new Map<string, number>();
+  for (const node of declarations) counts.set(node.name, (counts.get(node.name) ?? 0) + 1);
+  const overloadNames = new Set(
+    program.body.flatMap((statement) => {
+      const node = statement.type === AST_NODE_TYPES.ExportNamedDeclaration ? statement.declaration : statement;
+      return node?.type === AST_NODE_TYPES.TSDeclareFunction && node.id !== null ? [node.id.name] : [];
+    }),
+  );
+  const exported = exportedNames(program);
+  const scopeDefinitions = declarations
+    .filter((node) => counts.get(node.name) === 1 && !overloadNames.has(node.name));
+  const definitions = scopeDefinitions.filter((definition) => !exported.has(definition.name));
+  const byFunction = new Map(scopeDefinitions.map((definition) => [definition.functionNode, definition]));
+  const calls = new Map<string, Set<string>>();
+  const pinned = new Set<string>();
+
+  for (const definition of scopeDefinitions) {
+    const variable = context.sourceCode.getDeclaredVariables(definition.bindingNode!)[0];
+    for (const reference of variable?.references ?? []) {
+      if (reference.isWrite() && reference.init !== true) {
+        pinned.add(definition.name);
+        continue;
+      }
+      if (!reference.isRead()) continue;
+      const identifier = reference.identifier;
+      const ancestors = context.sourceCode.getAncestors(identifier);
+      const nearestFunction = [...ancestors].reverse().find(isFunction);
+      const parent = identifier.parent;
+      const callerDefinition = nearestFunction === undefined ? undefined : byFunction.get(nearestFunction);
+      if (callerDefinition === undefined || parent.type !== AST_NODE_TYPES.CallExpression || parent.callee !== identifier) {
+        pinned.add(definition.name);
+        continue;
+      }
+      const caller = callerDefinition.name;
+      const callees = calls.get(caller) ?? new Set<string>();
+      callees.add(definition.name);
+      calls.set(caller, callees);
     }
   }
-  for (const helper of candidates) {
-    const helperCallers = [...(callers.get(helper.name) ?? [])];
-    if (pinned.has(helper.name) || helperCallers.length !== 1) continue;
-    const callerName = helperCallers[0];
-    if (
-      callerName === undefined ||
-      (cycles.has(helper.name) && cycles.get(helper.name) === cycles.get(callerName))
-    ) continue;
-    const caller = byName.get(callerName);
-    if (caller === undefined || helper.node.range[0] >= caller.node.range[0]) continue;
-    context.report({
-      node: helper.node,
-      messageId: "helperAboveOnlyCaller",
-      data: { helper: helper.name, caller: callerName },
-    });
-  }
+  reportMisordered(context, definitions, scopeDefinitions, calls, pinned);
 }
 
 function exportedNames(program: TSESTree.Program): Set<string> {
@@ -195,53 +242,6 @@ function moduleDefinitions(program: TSESTree.Program): Definition[] {
     }
   }
   return definitions;
-}
-
-function moduleScope(
-  context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
-  program: TSESTree.Program,
-): void {
-  const declarations = moduleDefinitions(program);
-  const counts = new Map<string, number>();
-  for (const node of declarations) counts.set(node.name, (counts.get(node.name) ?? 0) + 1);
-  const overloadNames = new Set(
-    program.body.flatMap((statement) => {
-      const node = statement.type === AST_NODE_TYPES.ExportNamedDeclaration ? statement.declaration : statement;
-      return node?.type === AST_NODE_TYPES.TSDeclareFunction && node.id !== null ? [node.id.name] : [];
-    }),
-  );
-  const exported = exportedNames(program);
-  const scopeDefinitions = declarations
-    .filter((node) => counts.get(node.name) === 1 && !overloadNames.has(node.name));
-  const definitions = scopeDefinitions.filter((definition) => !exported.has(definition.name));
-  const byFunction = new Map(scopeDefinitions.map((definition) => [definition.functionNode, definition]));
-  const calls = new Map<string, Set<string>>();
-  const pinned = new Set<string>();
-
-  for (const definition of scopeDefinitions) {
-    const variable = context.sourceCode.getDeclaredVariables(definition.bindingNode!)[0];
-    for (const reference of variable?.references ?? []) {
-      if (reference.isWrite() && reference.init !== true) {
-        pinned.add(definition.name);
-        continue;
-      }
-      if (!reference.isRead()) continue;
-      const identifier = reference.identifier;
-      const ancestors = context.sourceCode.getAncestors(identifier);
-      const nearestFunction = [...ancestors].reverse().find(isFunction);
-      const parent = identifier.parent;
-      const callerDefinition = nearestFunction === undefined ? undefined : byFunction.get(nearestFunction);
-      if (callerDefinition === undefined || parent.type !== AST_NODE_TYPES.CallExpression || parent.callee !== identifier) {
-        pinned.add(definition.name);
-        continue;
-      }
-      const caller = callerDefinition.name;
-      const callees = calls.get(caller) ?? new Set<string>();
-      callees.add(definition.name);
-      calls.set(caller, callees);
-    }
-  }
-  reportMisordered(context, definitions, scopeDefinitions, calls, pinned);
 }
 
 function methodName(node: TSESTree.MethodDefinition): string | null {

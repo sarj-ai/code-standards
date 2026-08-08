@@ -12,7 +12,6 @@ import { isTestFile } from "./_paths.js";
 type MessageIds = "noSleepInTestBody";
 type Options = readonly [];
 
-/** Free-function sleep helpers. A `sleep(50)` reads as a sleep whatever its module. */
 const SLEEP_HELPERS: ReadonlySet<string> = new Set(["sleep", "delay", "wait", "pause"]);
 
 /** Test-case and per-test-hook callers whose callback body is "the test body". */
@@ -95,6 +94,19 @@ function nearestEnclosingFunction(node: TSESTree.Node): TSESTree.Node | null {
   return null;
 }
 
+/** True when `fn` is the callback argument of an `it`/`test`/per-test-hook call. */
+function isTestBody(fn: TSESTree.Node): boolean {
+  const call = fn.parent;
+  if (
+    call?.type !== AST_NODE_TYPES.CallExpression ||
+    !call.arguments.some((argument) => argument === fn)
+  ) {
+    return false;
+  }
+  const name = testCallerName(call.callee);
+  return name !== null && TEST_CALLERS.has(name);
+}
+
 /** The base callee name of a call, unwrapping `.only` / `.skip` / `.each` chains. */
 function testCallerName(callee: TSESTree.Node): string | null {
   if (callee.type === AST_NODE_TYPES.Identifier) {
@@ -110,19 +122,6 @@ function testCallerName(callee: TSESTree.Node): string | null {
     return testCallerName(callee.tag);
   }
   return null;
-}
-
-/** True when `fn` is the callback argument of an `it`/`test`/per-test-hook call. */
-function isTestBody(fn: TSESTree.Node): boolean {
-  const call = fn.parent;
-  if (
-    call?.type !== AST_NODE_TYPES.CallExpression ||
-    !call.arguments.some((argument) => argument === fn)
-  ) {
-    return false;
-  }
-  const name = testCallerName(call.callee);
-  return name !== null && TEST_CALLERS.has(name);
 }
 
 export default createRule<Options, MessageIds>({

@@ -56,7 +56,7 @@ class EnforceTimestamptz(Rule):
                 Diagnostic(
                     path=path,
                     line=lineno,
-                    col=match.start() + 1,
+                    col=start + 1,
                     code=self.code,
                     message=(
                         "Use `TIMESTAMPTZ` (or `TIMESTAMP WITH TIME ZONE`) — "
@@ -64,6 +64,6 @@ class EnforceTimestamptz(Rule):
                     ),
                 )
                 for match in PATTERN.finditer(line)
-                if not _is_column_reference(line, match.start(), match.end())
+                if not _is_column_reference(line, start := match.start(), match.end())
             )
         return redirect_to_model(diags, model_owned=model_owned)

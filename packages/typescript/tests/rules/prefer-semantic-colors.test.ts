@@ -496,9 +496,9 @@ describe("the resolved-answer cache is order-independent", () => {
 
   it("keeps a negative answer stable across repeated lints", () => {
     const root = makeRepo({ "src/a.tsx": "", "src/b.tsx": "" });
-    for (const rel of ["src/a.tsx", "src/b.tsx", "src/a.tsx"]) {
-      expect(lintFile(root, join(root, rel), { requireSemanticTokens: true })).toEqual([]);
-    }
+    expect(lintFile(root, join(root, "src/a.tsx"), { requireSemanticTokens: true })).toEqual([]);
+    expect(lintFile(root, join(root, "src/b.tsx"), { requireSemanticTokens: true })).toEqual([]);
+    expect(lintFile(root, join(root, "src/a.tsx"), { requireSemanticTokens: true })).toEqual([]);
     // Positive control: the tree really was lintable, the rule really was inert.
     expect(lintFile(root, join(root, "src/a.tsx"), {})).toEqual(["rawPalette"]);
   });

@@ -244,17 +244,16 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
     const resolved = await configFor("src/components/thing.tsx");
     const plugins = (resolved as unknown as { plugins: Record<string, { rules?: Record<string, { meta?: { deprecated?: unknown } }> }> }).plugins;
 
-    const deprecated: string[] = [];
-    for (const ruleId of Object.keys(resolved.rules ?? {})) {
+    const deprecated = Object.keys(resolved.rules ?? {}).flatMap((ruleId) => {
       const lastSlash = ruleId.lastIndexOf("/");
-      if (lastSlash === -1) continue; // core rule, no plugin to ask
+      if (lastSlash === -1) return [];
       const pluginName = ruleId.slice(0, lastSlash);
       const ruleName = ruleId.slice(lastSlash + 1);
       const rule = plugins[pluginName]?.rules?.[ruleName];
-      if (rule?.meta?.deprecated !== undefined && rule.meta.deprecated !== false) {
-        deprecated.push(ruleId);
-      }
-    }
+      return rule?.meta?.deprecated !== undefined && rule.meta.deprecated !== false
+        ? [ruleId]
+        : [];
+    });
     expect(deprecated).toEqual([]);
   });
 });

@@ -16,23 +16,30 @@ def _check(source: str) -> list[Diagnostic]:
     return PreferUuidv7Default().check(Path("migration.sql"), source)
 
 
+_LEGACY_UUID_CALL = "gen_random_uuid()"
+
+
+def _legacy_uuid_sql(template: str) -> str:
+    return template.replace("__LEGACY_UUID_CALL__", _LEGACY_UUID_CALL)
+
+
 @pytest.mark.parametrize(
     "source",
     [
         pytest.param(
-            "CREATE TABLE IF NOT EXISTS call (id UUID PRIMARY KEY DEFAULT gen_random_uuid());",
+            f"CREATE TABLE IF NOT EXISTS call (id UUID PRIMARY KEY DEFAULT {_LEGACY_UUID_CALL});",
             id="create-table-default",
         ),
         pytest.param(
-            "ALTER TABLE call ALTER COLUMN id SET DEFAULT gen_random_uuid();",
+            f"ALTER TABLE call ALTER COLUMN id SET DEFAULT {_LEGACY_UUID_CALL};",
             id="alter-column-default",
         ),
         pytest.param(
-            "INSERT INTO call (id) VALUES (gen_random_uuid()) ON CONFLICT DO NOTHING;",
+            _legacy_uuid_sql("INSERT INTO call (id) VALUES (__LEGACY_UUID_CALL__) ON CONFLICT DO NOTHING;"),
             id="insert-values",
         ),
-        pytest.param("SELECT GEN_RANDOM_UUID();", id="uppercase"),
-        pytest.param("SELECT gen_random_uuid ();", id="space-before-paren"),
+        pytest.param(f"SELECT {_LEGACY_UUID_CALL.upper()};", id="uppercase"),
+        pytest.param(f"SELECT {_LEGACY_UUID_CALL.replace('(', ' (')};", id="space-before-paren"),
     ],
 )
 def test_flags_gen_random_uuid(source: str):
@@ -43,7 +50,7 @@ def test_flags_gen_random_uuid(source: str):
 
 
 def test_reports_each_occurrence():
-    src = "CREATE TABLE t (\n  a UUID DEFAULT gen_random_uuid(),\n  b UUID DEFAULT gen_random_uuid()\n);"
+    src = f"CREATE TABLE t (\n  a UUID DEFAULT {_LEGACY_UUID_CALL},\n  b UUID DEFAULT {_LEGACY_UUID_CALL}\n);"
     assert [d.line for d in _check(src)] == [2, 3]
 
 
@@ -68,4 +75,4 @@ def test_dollar_quoted_body_is_masked():
 
 
 def test_column_is_one_based():
-    assert _check("SELECT gen_random_uuid();")[0].col == 8
+    assert _check(f"SELECT {_LEGACY_UUID_CALL};")[0].col == 8

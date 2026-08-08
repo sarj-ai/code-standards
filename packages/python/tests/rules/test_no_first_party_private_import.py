@@ -104,9 +104,9 @@ def test_flags_every_private_name_in_one_statement(project: Path):
     assert [d.message.split("`")[1] for d in diags] == ["_one", "_two"]
 
 
-def test_flags_first_party_private_submodule(project: Path):
-    for source in ("from core._internals import Thing", "import core._internals"):
-        assert len(_check(project, _TEST_FILE, source)) == 1
+@pytest.mark.parametrize("source", ["from core._internals import Thing", "import core._internals"])
+def test_flags_first_party_private_submodule(project: Path, source: str):
+    assert len(_check(project, _TEST_FILE, source)) == 1
 
 
 def test_white_box_test_reaching_into_its_own_package_fires(project: Path):

@@ -13,12 +13,6 @@ import { isGeneratedFile } from "./_paths.js";
 type MessageIds = "restatesSignature" | "deleteBlock";
 type Options = readonly [];
 
-// Tags this rule models and can therefore judge. Anything else means the block
-// is doing something the rule does not understand, so it is left alone — which
-// includes every value-carrying tag (`@see`, `@example`, `@deprecated`,
-// `@throws`, …). A separate allowlist of those used to sit above this one; it
-// could be emptied with the whole suite green, because being outside this set
-// is already sufficient and the two sets were disjoint.
 const MODELLED_TAGS: ReadonlySet<string> = new Set([
   "arg", "argument", "async", "description", "param", "return", "returns",
 ]);
@@ -28,10 +22,6 @@ const RETURN_TAGS: ReadonlySet<string> = new Set(["return", "returns"]);
 
 const DIRECTIVE_RE = /^\s*(?:eslint\b|eslint-|@ts-|prettier|biome-|c8\b|v8\b|istanbul\b|@vite|webpack|@jsx|@jest-environment|@vitest-environment|#__)/i;
 
-// Prose filler that says nothing about *which* thing is being described. Wider
-// than the comment tokenizer's list because JSDoc conventionally repeats the
-// vocabulary of the type system itself ("the callback prop", "an optional
-// string") without that being a claim about this declaration.
 const STOPWORDS: ReadonlySet<string> = new Set(
   `the a an of to for in on with and or as at by is are was be been being
    this that it its if whether when where which what will would can could should
@@ -70,18 +60,18 @@ function parseJsDoc(value: string): { description: string; tags: JsDocTag[] } {
   return { description: description.join("\n").trim(), tags };
 }
 
-/** Every content word of `text`, lowercased, with filler dropped. */
-function proseTokens(text: string): string[] {
-  return (text.match(WORD_RE) ?? [])
-    .map((word) => word.toLowerCase())
-    .filter((word) => word.length > 1 && !STOPWORDS.has(word));
-}
-
 /** True when every content word of `text` already appears in `known`. */
 function covered(text: string, known: ReadonlySet<string>): boolean {
   const stems = new Set<string>();
   for (const token of known) stems.add(stem(token));
   return proseTokens(text).every((word) => known.has(word) || stems.has(stem(word)));
+}
+
+/** Every content word of `text`, lowercased, with filler dropped. */
+function proseTokens(text: string): string[] {
+  return (text.match(WORD_RE) ?? [])
+    .map((word) => word.toLowerCase())
+    .filter((word) => word.length > 1 && !STOPWORDS.has(word));
 }
 
 /** The declared name and parameter names of the node a JSDoc block sits above. */

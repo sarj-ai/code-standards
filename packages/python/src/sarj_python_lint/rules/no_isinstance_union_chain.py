@@ -149,9 +149,7 @@ def _stmt_terminates(stmt: ast.stmt) -> bool:
 
 def _is_assert_never(func: ast.expr) -> bool:
     match func:
-        case ast.Name(id="assert_never"):
-            return True
-        case ast.Attribute(attr="assert_never"):
+        case ast.Name(id="assert_never") | ast.Attribute(attr="assert_never"):
             return True
         case _:
             return False

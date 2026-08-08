@@ -28,7 +28,7 @@ def _settings_project(tmp_path: Path, service_source: str) -> Path:
         "settings = Settings()\n"
     )
     service = package / "service.py"
-    service.write_text(service_source + "\ngenerator = Generator(model='explicit')\n")
+    service.write_text(f"{service_source}\ngenerator = Generator(model='explicit')\n")
     return service
 
 
@@ -670,6 +670,7 @@ class Generator:
         Path("generated/service.py"),
         Path("vendor/service.py"),
     ],
+    ids=["tests-dir", "test-module", "migration", "alembic", "generated", "vendor"],
 )
 def test_non_production_paths_are_exempt(path: Path) -> None:
     source = """import os

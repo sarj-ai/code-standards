@@ -465,7 +465,7 @@ def outer():
 
 
 def test_two_sibling_fat_trys_report_both_in_order():
-    src = _try_with_n_calls(4) + "\n" + _try_with_n_calls(5)
+    src = f"{_try_with_n_calls(4)}\n{_try_with_n_calls(5)}"
     diags = _check(src)
     lines = [d.line for d in diags]
     assert len(diags) == 2
