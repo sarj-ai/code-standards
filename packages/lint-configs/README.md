@@ -140,7 +140,7 @@ Makefile are intentionally thin adapters rather than a second implementation:
 
 ```bash
 sarj-standards maintain setup --check
-sarj-standards maintain release check-tag typescript-v9.15.0
+sarj-standards maintain release check-tag typescript-v9.16.0
 sarj-standards maintain release lock-age packages/typescript/package-lock.json --exclude-file .github/release-age-exclusions.txt
 sarj-standards maintain release typescript check
 sarj-standards maintain release publish typescript
