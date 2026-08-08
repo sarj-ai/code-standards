@@ -357,8 +357,8 @@ def _is_status_codes_name(name: str) -> bool:
 def _bare_http_statuses(value: ast.expr) -> frozenset[int]:
     elements: Sequence[ast.expr]
     match value:
-        case ast.List(elts=items) | ast.Set(elts=items) | ast.Tuple(elts=items):
-            elements = items
+        case ast.List() | ast.Set() | ast.Tuple():
+            elements = value.elts
         case ast.Call(
             func=func, args=[ast.List(elts=items) | ast.Set(elts=items) | ast.Tuple(elts=items)], keywords=[]
         ):

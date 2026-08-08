@@ -135,8 +135,8 @@ def _tautology_in(func: ast.FunctionDef | ast.AsyncFunctionDef) -> ast.Assert | 
                 _record_alias(node, assigned)
             case ast.Name(id=name, ctx=ast.Store()):
                 bindings[name] += 1
-            case ast.Attribute(value=value) | ast.Subscript(value=value):
-                receivers.add(id(value))
+            case ast.Attribute() | ast.Subscript():
+                receivers.add(id(node.value))
             case ast.Call():
                 if _is_verification_call(node):
                     return None
@@ -292,8 +292,8 @@ def _is_trivial(value: ast.expr) -> bool:
             if isinstance(literal, int | float) and literal in _TRIVIAL_NUMBERS:
                 return True
             return isinstance(literal, str | bytes) and not literal
-        case ast.List(elts=elements) | ast.Tuple(elts=elements) | ast.Set(elts=elements):
-            return not elements
+        case ast.List() | ast.Tuple() | ast.Set():
+            return not value.elts
         case ast.Dict(keys=keys):
             return not keys
         case _:

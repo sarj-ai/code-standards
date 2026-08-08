@@ -148,8 +148,8 @@ def _stmt_exits(stmt: ast.stmt) -> set[_Exit]:
         case ast.If(body=body, orelse=orelse):
             else_exits = _body_exits(orelse) if orelse else {_Exit.FALL}
             return _body_exits(body) | else_exits
-        case ast.With(body=body) | ast.AsyncWith(body=body):
-            return _body_exits(body)
+        case ast.With() | ast.AsyncWith():
+            return _body_exits(stmt.body)
         case _:
             return {_Exit.FALL}
 

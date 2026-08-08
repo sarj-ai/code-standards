@@ -282,8 +282,8 @@ def _is_constant_only(node: ast.expr, depth: int) -> bool:
             | ast.UnaryOp(op=ast.USub() | ast.UAdd(), operand=ast.Constant(value=int() | float() | complex()))
         ):
             return True
-        case ast.List(elts=elts) | ast.Set(elts=elts) | ast.Tuple(elts=elts):
-            return all(_is_constant_only(element, depth + 1) for element in elts)
+        case ast.List() | ast.Set() | ast.Tuple():
+            return all(_is_constant_only(element, depth + 1) for element in node.elts)
         case ast.Dict(keys=keys, values=values):
             entries = [*keys, *values]
             return all(entry is not None and _is_constant_only(entry, depth + 1) for entry in entries)
@@ -356,8 +356,8 @@ def _mentions_name(node: ast.AST, name: str) -> bool:
     match node:
         case ast.Name(id=ident) | ast.arg(arg=ident):
             return ident == name
-        case ast.Global(names=names) | ast.Nonlocal(names=names):
-            return name in names
+        case ast.Global() | ast.Nonlocal():
+            return name in node.names
         case _:
             return False
 
@@ -365,19 +365,14 @@ def _mentions_name(node: ast.AST, name: str) -> bool:
 def _rebinds_name(node: ast.AST, name: str) -> bool:
     """Report whether this node binds the name through something other than a `Name` store."""
     match node:
-        case ast.Global(names=names) | ast.Nonlocal(names=names):
-            return name in names
-        case (
-            ast.ExceptHandler(name=bound)
-            | ast.FunctionDef(name=bound)
-            | ast.AsyncFunctionDef(name=bound)
-            | ast.ClassDef(name=bound)
-        ):
-            return bound == name
+        case ast.Global() | ast.Nonlocal():
+            return name in node.names
+        case ast.ExceptHandler() | ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
+            return node.name == name
         case ast.alias(asname=None, name=module):
             return module.split(".")[0] == name
-        case ast.alias(asname=str() as bound) | ast.MatchAs(name=bound) | ast.MatchStar(name=bound):
-            return bound == name
+        case ast.alias(asname=str()) | ast.MatchAs(name=str()) | ast.MatchStar(name=str()):
+            return node.name == name
         case ast.MatchMapping(rest=rest):
             return rest == name
         case _:
@@ -400,8 +395,8 @@ def _is_safe_read(node: ast.Name, parents: dict[int, ast.AST], safe_methods: fro
             return isinstance(grandparent, ast.Call) and _is_safe_callee(grandparent.func)
         case ast.Compare():
             return True
-        case ast.For(iter=iterable) | ast.AsyncFor(iter=iterable) | ast.comprehension(iter=iterable):
-            return iterable is node
+        case ast.For() | ast.AsyncFor() | ast.comprehension():
+            return parent.iter is node
         case ast.FormattedValue():
             return True
         case _:

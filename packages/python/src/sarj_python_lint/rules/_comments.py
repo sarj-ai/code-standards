@@ -486,28 +486,20 @@ def _owned_statement_lists(owner: ast.AST) -> tuple[list[ast.stmt], ...]:
     """Return the distinct statement blocks directly owned by an AST node."""
     match owner:
         case (
-            ast.Module(body=body)
-            | ast.FunctionDef(body=body)
-            | ast.AsyncFunctionDef(body=body)
-            | ast.ClassDef(body=body)
-            | ast.With(body=body)
-            | ast.AsyncWith(body=body)
-            | ast.ExceptHandler(body=body)
-            | ast.match_case(body=body)
+            ast.Module()
+            | ast.FunctionDef()
+            | ast.AsyncFunctionDef()
+            | ast.ClassDef()
+            | ast.With()
+            | ast.AsyncWith()
+            | ast.ExceptHandler()
+            | ast.match_case()
         ):
-            return (body,)
-        case (
-            ast.If(body=body, orelse=orelse)
-            | ast.For(body=body, orelse=orelse)
-            | ast.AsyncFor(body=body, orelse=orelse)
-            | ast.While(body=body, orelse=orelse)
-        ):
-            return body, orelse
-        case (
-            ast.Try(body=body, orelse=orelse, finalbody=finalbody)
-            | ast.TryStar(body=body, orelse=orelse, finalbody=finalbody)
-        ):
-            return body, orelse, finalbody
+            return (owner.body,)
+        case ast.If() | ast.For() | ast.AsyncFor() | ast.While():
+            return owner.body, owner.orelse
+        case ast.Try() | ast.TryStar():
+            return owner.body, owner.orelse, owner.finalbody
         case _:
             return ()
 

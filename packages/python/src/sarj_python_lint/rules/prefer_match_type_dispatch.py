@@ -20,6 +20,7 @@ _GENERIC_EXCEPTIONS = frozenset({"Exception", "BaseException"})
 _MIN_SENTINEL_COUNT = 2
 _MIN_TYPE_DISPATCH_BRANCHES = 3
 _ISINSTANCE_ARG_COUNT = 2
+_PAIR_COUNT = 2
 
 # Lowercase builtins are valid class-pattern heads; other lowercase names may be runtime tuples or aliases.
 _MATCHABLE_BUILTIN_TYPES = frozenset(
@@ -102,13 +103,12 @@ def _always_raises(body: list[ast.stmt]) -> bool:
             return True
         case ast.If(body=body, orelse=orelse):
             return bool(orelse) and _always_raises(body) and _always_raises(orelse)
-        case ast.With(body=body) | ast.AsyncWith(body=body):
-            return _always_raises(body)
-        case (
-            ast.Try(body=body, orelse=orelse, handlers=handlers)
-            | ast.TryStar(body=body, orelse=orelse, handlers=handlers)
-        ):
-            return _always_raises(orelse or body) and all(_always_raises(handler.body) for handler in handlers)
+        case ast.With() | ast.AsyncWith():
+            return _always_raises(last.body)
+        case ast.Try() | ast.TryStar():
+            return _always_raises(last.orelse or last.body) and all(
+                _always_raises(handler.body) for handler in last.handlers
+            )
         case _:
             return False
 
@@ -280,8 +280,8 @@ def _body_terminates(body: list[ast.stmt]) -> bool:
             return True
         case ast.If(body=body, orelse=orelse):
             return bool(orelse) and _body_terminates(body) and _body_terminates(orelse)
-        case ast.With(body=body) | ast.AsyncWith(body=body):
-            return _body_terminates(body)
+        case ast.With() | ast.AsyncWith():
+            return _body_terminates(last.body)
         case _:
             return False
 
@@ -289,29 +289,153 @@ def _body_terminates(body: list[ast.stmt]) -> bool:
 def _statement_blocks(node: ast.AST) -> tuple[list[ast.stmt], ...]:
     """Return each ordered statement block directly owned by an AST node."""
     match node:
-        case (
-            ast.Module(body=body)
-            | ast.FunctionDef(body=body)
-            | ast.AsyncFunctionDef(body=body)
-            | ast.ClassDef(body=body)
-        ):
-            return (body,)
-        case (
-            ast.If(body=body, orelse=orelse)
-            | ast.For(body=body, orelse=orelse)
-            | ast.AsyncFor(body=body, orelse=orelse)
-            | ast.While(body=body, orelse=orelse)
-        ):
-            return body, orelse
-        case ast.With(body=body) | ast.AsyncWith(body=body) | ast.ExceptHandler(body=body) | ast.match_case(body=body):
-            return (body,)
-        case (
-            ast.Try(body=body, orelse=orelse, finalbody=finalbody, handlers=handlers)
-            | ast.TryStar(body=body, orelse=orelse, finalbody=finalbody, handlers=handlers)
-        ):
-            return body, orelse, finalbody, *(handler.body for handler in handlers)
+        case ast.Module() | ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
+            return (node.body,)
+        case ast.If() | ast.For() | ast.AsyncFor() | ast.While():
+            return node.body, node.orelse
+        case ast.With() | ast.AsyncWith() | ast.ExceptHandler() | ast.match_case():
+            return (node.body,)
+        case ast.Try() | ast.TryStar():
+            return node.body, node.orelse, node.finalbody, *(handler.body for handler in node.handlers)
         case _:
             return ()
+
+
+def _repeated_match_attribute_captures(node: ast.Match, path: Path, code: str) -> list[Diagnostic]:
+    """Find OR-patterns that redundantly destructure one shared attribute."""
+    findings: list[Diagnostic] = []
+    if not isinstance(node.subject, ast.Name):
+        return findings
+    subject = node.subject.id
+    for case in node.cases:
+        if case.guard is not None or not isinstance(case.pattern, ast.MatchOr):
+            continue
+        alternatives = case.pattern.patterns
+        if len(alternatives) < _PAIR_COUNT:
+            continue
+        capture_maps = [_class_pattern_keyword_captures(pattern) for pattern in alternatives]
+        if any(captures is None for captures in capture_maps):
+            continue
+        class_captures = [captures for captures in capture_maps if captures is not None]
+        if subject in _bound_pattern_names(case.pattern):
+            continue
+        _, subject_rebound = _body_name_contexts(case.body, subject)
+        if subject_rebound:
+            continue
+
+        shared = set(class_captures[0].items())
+        for captures in class_captures[1:]:
+            shared.intersection_update(captures.items())
+
+        used_shared: list[tuple[str, str]] = []
+        for attribute, capture in sorted(shared):
+            loaded, rebound = _body_name_contexts(case.body, capture)
+            if loaded and not rebound and not _unsafe_direct_attribute_use(case.body, subject, capture):
+                used_shared.append((attribute, capture))
+        if not used_shared:
+            continue
+
+        repeated = _join_guidance([f"`{attribute}={capture}`" for attribute, capture in used_shared])
+        direct = _join_guidance([f"`{subject}.{attribute}`" for attribute, _ in used_shared])
+        findings.append(
+            Diagnostic(
+                path=path,
+                line=case.pattern.lineno,
+                col=case.pattern.col_offset + 1,
+                code=code,
+                message=(
+                    f"Class OR-pattern repeats {repeated} across {len(alternatives)} class alternatives — "
+                    f"match the types without the repeated capture and use {direct} in the case body."
+                ),
+            )
+        )
+    return findings
+
+
+def _class_pattern_keyword_captures(pattern: ast.pattern) -> dict[str, str] | None:
+    """Return direct ``attribute=name`` captures from one class pattern."""
+    if not isinstance(pattern, ast.MatchClass):
+        return None
+    captures: dict[str, str] = {}
+    for attribute, keyword_pattern in zip(pattern.kwd_attrs, pattern.kwd_patterns, strict=True):
+        capture = _simple_pattern_capture(keyword_pattern)
+        if capture is not None:
+            captures[attribute] = capture
+    return captures
+
+
+def _simple_pattern_capture(pattern: ast.pattern) -> str | None:
+    """Return the name bound by a plain keyword capture pattern."""
+    match pattern:
+        case ast.MatchAs(pattern=None, name=str() as name):
+            return name
+        case _:
+            return None
+
+
+def _bound_pattern_names(pattern: ast.pattern) -> set[str]:
+    """Collect every name a pattern binds in its case body."""
+    names: set[str] = set()
+    for node in ast.walk(pattern):
+        match node:
+            case (
+                ast.MatchAs(name=str() as name)
+                | ast.MatchStar(name=str() as name)
+                | ast.MatchMapping(rest=str() as name)
+            ):
+                names.add(name)
+            case _:
+                pass
+    return names
+
+
+def _body_name_contexts(body: list[ast.stmt], name: str) -> tuple[bool, bool]:
+    """Report whether a case body loads and rebinds one name."""
+    loaded = False
+    rebound = False
+    for statement in body:
+        for node in ast.walk(statement):
+            if not isinstance(node, ast.Name) or node.id != name:
+                continue
+            if isinstance(node.ctx, ast.Load):
+                loaded = True
+            else:
+                rebound = True
+    return loaded, rebound
+
+
+def _unsafe_direct_attribute_use(body: list[ast.stmt], subject: str, capture: str) -> bool:
+    """Reject bodies where a capture is a snapshot rather than a direct read."""
+    for statement in body:
+        for node in ast.walk(statement):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)) and any(
+                isinstance(nested, ast.Name) and nested.id == capture for nested in ast.walk(node)
+            ):
+                return True
+            if (
+                isinstance(node, (ast.Attribute, ast.Subscript))
+                and not isinstance(node.ctx, ast.Load)
+                and _rooted_in_name(node, subject)
+            ):
+                return True
+    return False
+
+
+def _rooted_in_name(node: ast.expr, name: str) -> bool:
+    """Report whether an attribute or subscript chain starts at one name."""
+    current = node
+    while isinstance(current, (ast.Attribute, ast.Subscript)):
+        current = current.value
+    return isinstance(current, ast.Name) and current.id == name
+
+
+def _join_guidance(items: list[str]) -> str:
+    """Join a short diagnostic list without losing code formatting."""
+    if len(items) == 1:
+        return items[0]
+    if len(items) == _PAIR_COUNT:
+        return f"{items[0]} and {items[1]}"
+    return f"{', '.join(items[:-1])}, and {items[-1]}"
 
 
 def _passthrough_guard_var(stmt: ast.stmt) -> str | None:
@@ -435,6 +559,10 @@ class _TypeDispatchVisitor(ast.NodeVisitor):
         self.generic_visit(node)
         self.if_stack.pop()
 
+    def visit_Match(self, node: ast.Match) -> None:
+        self.diags.extend(_repeated_match_attribute_captures(node, self.path, self.code))
+        self.generic_visit(node)
+
     def visit_Try(self, node: ast.Try | ast.TryStar) -> None:
         self.try_stack.append(node)
         for stmt in node.body:
@@ -527,8 +655,8 @@ class PreferMatchTypeDispatch(Rule):
     id: str = "prefer-match-type-dispatch"
     code: str = "SARJ080"
     description: str = (
-        "Control-flow raise, sequential type guards, or a repeated isinstance dispatch — prefer Python 3.10+ "
-        "match/case pattern matching."
+        "Control-flow raise, sequential type guards, repeated isinstance dispatch, or redundant class OR-pattern "
+        "capture — prefer concise Python 3.10+ match/case pattern matching."
     )
 
     @override

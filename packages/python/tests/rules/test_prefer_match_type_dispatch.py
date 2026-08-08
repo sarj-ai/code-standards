@@ -720,6 +720,191 @@ def test_sequential_passthrough_guards_report_once():
     assert "Sequential sentinel/type guards" in diags[0].message
 
 
+# Repeated class-pattern attribute captures.                                  #
+
+
+def test_flags_repeated_attribute_capture_across_class_or_pattern():
+    source = """
+    def statement_blocks(owner: ast.AST):
+        match owner:
+            case (
+                ast.Module(body=body)
+                | ast.FunctionDef(body=body)
+                | ast.AsyncFunctionDef(body=body)
+                | ast.ClassDef(body=body)
+            ):
+                return tuple(body)
+            case _:
+                return ()
+    """
+    diags = _check(source)
+    assert len(diags) == 1
+    assert diags[0].line == 5
+    assert "repeats `body=body` across 4 class alternatives" in diags[0].message
+    assert "use `owner.body`" in diags[0].message
+
+
+def test_flags_repeated_attribute_capture_with_a_clearer_local_alias():
+    source = """
+    def result_for(item):
+        match item:
+            case Ready(result=value) | Cached(result=value):
+                return normalize(value)
+            case _:
+                return None
+    """
+    diags = _check(source)
+    assert len(diags) == 1
+    assert "repeats `result=value` across 2 class alternatives" in diags[0].message
+    assert "use `item.result`" in diags[0].message
+
+
+def test_flags_each_shared_capture_once():
+    source = """
+    def coordinates(point):
+        match point:
+            case Cartesian(x=x, y=y) | ScreenPoint(x=x, y=y):
+                return x, y
+            case _:
+                return None
+    """
+    diags = _check(source)
+    assert len(diags) == 1
+    assert "repeats `x=x` and `y=y`" in diags[0].message
+    assert "use `point.x` and `point.y`" in diags[0].message
+
+
+def test_keeps_other_discriminating_class_patterns():
+    source = """
+    def payload_for(result):
+        match result:
+            case Success(payload=payload, status=200) | Cached(payload=payload, fresh=True):
+                return payload
+            case _:
+                return None
+    """
+    diags = _check(source)
+    assert len(diags) == 1
+    assert "`result.payload`" in diags[0].message
+
+
+def test_skips_different_attributes_bound_to_one_name():
+    source = """
+    def display_name(item):
+        match item:
+            case User(name=value) | Team(label=value):
+                return value
+            case _:
+                return None
+    """
+    assert _check(source) == []
+
+
+def test_skips_mixed_class_and_mapping_or_pattern():
+    source = """
+    def body_for(item):
+        match item:
+            case Response(body=body) | {"body": body}:
+                return body
+            case _:
+                return None
+    """
+    assert _check(source) == []
+
+
+def test_skips_non_name_match_subject():
+    source = """
+    def voice_for(models):
+        match models.tts:
+            case OpenAI(voice=voice) | Groq(voice=voice):
+                return voice
+            case _:
+                return None
+    """
+    assert _check(source) == []
+
+
+def test_skips_capture_used_by_guard():
+    source = """
+    def positive_value(item):
+        match item:
+            case Left(value=value) | Right(value=value) if value > 0:
+                return value
+            case _:
+                return None
+    """
+    assert _check(source) == []
+
+
+def test_skips_reassigned_subject_or_capture():
+    subject_source = """
+    def consume(item):
+        match item:
+            case Left(value=value) | Right(value=value):
+                item = normalize(item)
+                return value
+            case _:
+                return None
+    """
+    capture_source = """
+    def consume(item):
+        match item:
+            case Left(value=value) | Right(value=value):
+                value = normalize(value)
+                return value
+            case _:
+                return None
+    """
+    assert _check(subject_source) == []
+    assert _check(capture_source) == []
+
+
+def test_skips_subject_attribute_mutation_before_using_snapshot_capture():
+    source = """
+    def consume(item):
+        match item:
+            case Left(value=value) | Right(value=value):
+                item.value = normalize(item.value)
+                return value
+            case _:
+                return None
+    """
+    assert _check(source) == []
+
+
+def test_skips_capture_closed_over_by_a_nested_scope():
+    source = """
+    def deferred(item):
+        match item:
+            case Left(value=value) | Right(value=value):
+                return lambda: value
+            case _:
+                return None
+    """
+    assert _check(source) == []
+
+
+def test_skips_unused_capture_and_single_class_pattern():
+    unused_source = """
+    def classify(item):
+        match item:
+            case Left(value=value) | Right(value=value):
+                return "number"
+            case _:
+                return "other"
+    """
+    single_source = """
+    def unwrap(item):
+        match item:
+            case Box(value=value):
+                return value
+            case _:
+                return None
+    """
+    assert _check(unused_source) == []
+    assert _check(single_source) == []
+
+
 def test_flags_qualified_and_or_pattern_compatible_types():
     source = """
     def visit(node):
