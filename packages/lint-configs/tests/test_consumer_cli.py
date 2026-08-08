@@ -99,6 +99,7 @@ def test_analyze_cli_requires_explicit_trust_before_external_eslint(
         *,
         root: Path,
         trust: api.TrustMode,
+        **_kwargs: object,
     ) -> tuple[api.ToolReport, ...]:
         _ = root
         seen.append(trust)
@@ -123,6 +124,29 @@ def test_analyze_clean_input_supports_every_format(
     captured = capsys.readouterr()
     assert captured.out
     assert not captured.err
+
+
+def test_analyze_json_supports_explicit_schema_v2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    (tmp_path / "service.py").write_text("VALUE: int = 1\n", encoding="utf-8")
+
+    assert (
+        cli.main(
+            [
+                "analyze",
+                "--dest",
+                str(tmp_path),
+                "--format",
+                "json",
+                "--schema-version",
+                "2",
+                "service.py",
+            ]
+        )
+        == 0
+    )
+
+    payload: object = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny]
+    assert manifest.as_table(payload)["schemaVersion"] == 2
 
 
 def test_analyze_writes_machine_output_atomically(
@@ -277,14 +301,14 @@ def test_check_resolves_selected_paths_from_repository_root(
     source.write_text("VALUE = 1\n", encoding="utf-8")
     seen: list[list[str]] = []
 
-    def run_rules(files: Sequence[str], **_kwargs: object) -> int:
-        seen.append(list(files))
+    def run_rules(_root: Path, files: Sequence[str] | None, **_kwargs: object) -> int:
+        seen.append(list(files or ()))
         return 0
 
     def clean_policy(_args: object, **_kwargs: object) -> int:
         return 0
 
-    monkeypatch.setattr("sarj_lint_configs.runner.run", run_rules)
+    monkeypatch.setattr(cli, "_run_canonical_check", run_rules)
     monkeypatch.setattr(cli, "cmd_library_policy", clean_policy)
 
     assert cli.main(["check", "--dest", str(tmp_path), "src/example.py"]) == 0
@@ -297,8 +321,7 @@ def test_check_selected_typescript_runs_scoped_eslint(
 ) -> None:
     source = tmp_path / "component.ts"
     source.write_text("export const value = 1;\n", encoding="utf-8")
-    commands = [object()]
-    seen: list[tuple[Path, list[str], str]] = []
+    seen: list[tuple[Path, list[str]]] = []
 
     def run_rules(_files: Sequence[str], **_kwargs: object) -> int:
         return 0
@@ -306,20 +329,16 @@ def test_check_selected_typescript_runs_scoped_eslint(
     def clean_policy(_args: object, **_kwargs: object) -> int:
         return 0
 
-    def selected(root: Path, paths: Sequence[str], *, label: str) -> list[object]:
-        seen.append((root, list(paths), label))
-        return commands
-
-    def execute(values: Sequence[object]) -> int:
-        return 0 if list(values) == commands else 2
+    def selected(root: Path, paths: Sequence[str] | None, **_kwargs: object) -> int:
+        seen.append((root, list(paths or ())))
+        return 0
 
     monkeypatch.setattr("sarj_lint_configs.runner.run", run_rules)
     monkeypatch.setattr(cli, "cmd_library_policy", clean_policy)
-    monkeypatch.setattr("sarj_lint_configs.lifecycle.selected_eslint_commands", selected)
-    monkeypatch.setattr("sarj_lint_configs.lifecycle.execute", execute)
+    monkeypatch.setattr(cli, "_run_canonical_check", selected)
 
     assert cli.main(["check", "--dest", str(tmp_path), "component.ts"]) == 0
-    assert seen == [(tmp_path, [str(source)], "selected")]
+    assert seen == [(tmp_path, [str(source)])]
 
 
 def test_check_rejects_explicit_paths_outside_repository(
@@ -388,6 +407,7 @@ def test_full_and_selected_noise_only_share_the_manifest_baseline(
         *,
         noise_only: bool = False,
         python_baseline: str | None = None,
+        **_kwargs: object,
     ) -> int:
         assert noise_only
         seen.append(python_baseline)
@@ -486,24 +506,44 @@ def test_check_staged_routes_only_discovered_paths(monkeypatch: pytest.MonkeyPat
     def staged_files(_root: Path) -> list[str]:
         return [str(staged)]
 
-    def run_rules(
-        files: Sequence[str],
-        *,
-        noise_only: bool = False,
-        python_baseline: str | None = None,
-    ) -> int:
-        _ = noise_only, python_baseline
-        seen.append(list(files))
+    def run_rules(_root: Path, files: Sequence[str] | None, **_kwargs: object) -> int:
+        seen.append(list(files or ()))
         return 0
 
     def clean_policy(_args: object, **_kwargs: object) -> int:
         return 0
 
     monkeypatch.setattr(cli, "_staged_files", staged_files)
-    monkeypatch.setattr("sarj_lint_configs.runner.run", run_rules)
+    monkeypatch.setattr(cli, "_run_canonical_check", run_rules)
     monkeypatch.setattr(cli, "cmd_library_policy", clean_policy)
 
     assert cli.main(["check", "--staged", "--dest", str(tmp_path)]) == 0
+    assert seen == [[str(staged)]]
+
+
+def test_hook_files_are_authoritative_without_rediscovering_the_git_index(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    staged = tmp_path / "staged.py"
+    staged.write_text("value = 1\n", encoding="utf-8")
+    seen: list[list[str]] = []
+
+    def unexpected_discovery(_root: Path) -> list[str]:
+        pytest.fail("pre-commit already supplied the authoritative staged filenames")
+
+    def unexpected_unstaged_check(_root: Path, _paths: Sequence[str]) -> tuple[str, ...]:
+        pytest.fail("pre-commit stashes unstaged bytes before invoking the hook")
+
+    def run_rules(_root: Path, files: Sequence[str] | None, **_kwargs: object) -> int:
+        seen.append(list(files or ()))
+        return 0
+
+    monkeypatch.setattr(cli, "_staged_files", unexpected_discovery)
+    monkeypatch.setattr(cli, "_unstaged_versions", unexpected_unstaged_check)
+    monkeypatch.setattr(cli, "_run_canonical_check", run_rules)
+
+    assert cli.main(["check", "--staged", "--hook-files", "--dest", str(tmp_path), "--", "staged.py"]) == 0
     assert seen == [[str(staged)]]
 
 
@@ -549,8 +589,8 @@ def test_check_staged_filters_unsafe_hook_supplied_paths(
     def clean_health(_root: Path, _staged: Sequence[str], **_kwargs: object) -> int:
         return 0
 
-    def run_rules(files: Sequence[str], **_kwargs: object) -> int:
-        seen.append(list(files))
+    def run_rules(_root: Path, files: Sequence[str] | None, **_kwargs: object) -> int:
+        seen.append(list(files or ()))
         return 0
 
     def no_eslint(_root: Path, _paths: Sequence[str], *, label: str) -> list[object]:
@@ -565,7 +605,7 @@ def test_check_staged_filters_unsafe_hook_supplied_paths(
 
     monkeypatch.setattr(cli, "_staged_files", staged_files)
     monkeypatch.setattr(cli, "_check_staged_adoption_health", clean_health)
-    monkeypatch.setattr("sarj_lint_configs.runner.run", run_rules)
+    monkeypatch.setattr(cli, "_run_canonical_check", run_rules)
     monkeypatch.setattr("sarj_lint_configs.lifecycle.selected_eslint_commands", no_eslint)
     monkeypatch.setattr(cli, "cmd_library_policy", clean_policy)
 
@@ -594,20 +634,10 @@ def test_check_staged_runs_scoped_eslint_and_propagates_its_status(
     staged = tmp_path / "component.ts"
     staged.write_text("export const values = [1, 2];\n", encoding="utf-8")
     seen_paths: list[list[str]] = []
-    executed: list[object] = []
 
-    def run_rules(files: Sequence[str], **_kwargs: object) -> int:
-        seen_paths.append(list(files))
-        return 0
-
-    def staged_commands(root: Path, paths: Sequence[str], *, label: str) -> list[object]:
+    def staged_commands(root: Path, paths: Sequence[str] | None, **_kwargs: object) -> int:
         assert root == tmp_path
-        assert list(paths) == [str(staged)]
-        assert label == "staged"
-        return [object()]
-
-    def execute(commands: Sequence[object]) -> int:
-        executed.extend(commands)
+        seen_paths.append(list(paths or ()))
         return 1
 
     def staged_files(_root: Path) -> list[str]:
@@ -621,14 +651,31 @@ def test_check_staged_runs_scoped_eslint_and_propagates_its_status(
 
     monkeypatch.setattr(cli, "_staged_files", staged_files)
     monkeypatch.setattr(cli, "_check_staged_adoption_health", clean_health)
-    monkeypatch.setattr("sarj_lint_configs.runner.run", run_rules)
-    monkeypatch.setattr("sarj_lint_configs.lifecycle.selected_eslint_commands", staged_commands)
-    monkeypatch.setattr("sarj_lint_configs.lifecycle.execute", execute)
+    monkeypatch.setattr(cli, "_run_canonical_check", staged_commands)
     monkeypatch.setattr(cli, "cmd_library_policy", clean_policy)
 
     assert cli.main(["check", "--staged", "--dest", str(tmp_path)]) == 1
     assert seen_paths == [[str(staged)]]
-    assert len(executed) == 1
+
+
+def test_check_staged_stops_config_only_paths_after_adoption_health(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    config = tmp_path / "pyrightconfig.json"
+    config.write_text("{}\n", encoding="utf-8")
+
+    def clean_health(_root: Path, _paths: Sequence[str], *, output_format: str) -> int:
+        _ = output_format
+        return 0
+
+    def no_source_analysis(_root: Path, _paths: Sequence[str] | None, **_kwargs: object) -> int:
+        pytest.fail("config-only change reached source analysis")
+
+    monkeypatch.setattr(cli, "_check_staged_adoption_health", clean_health)
+    monkeypatch.setattr(cli, "_run_canonical_check", no_source_analysis)
+
+    assert cli.main(["check", "--staged", "--hook-files", "--dest", str(tmp_path), str(config)]) == 0
 
 
 def test_check_staged_fails_on_adoption_drift_before_source_rules(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from typing import TYPE_CHECKING
 
 import pytest
@@ -15,6 +16,8 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
 
+    from sarj_lint_configs.libs.linting.policy import Policy
+
 
 def test_every_declared_public_api_resolves() -> None:
     assert api.__all__
@@ -26,6 +29,59 @@ def test_package_root_exposes_the_small_consumer_facade() -> None:
     assert sarj_lint_configs.Standards is api.Standards
     assert sarj_lint_configs.Result is api.Result
     assert sarj_lint_configs.UpdateTarget is api.UpdateTarget
+
+
+def test_metadata_only_package_import_does_not_eagerly_load_rich_api() -> None:
+    script = (
+        "import sys; import sarj_lint_configs; "
+        "assert 'sarj_lint_configs.api' not in sys.modules; "
+        "assert 'sarj_lint_configs.libs.release' not in sys.modules"
+    )
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            script,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_canonical_analysis_routes_the_repository_only_once(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "service.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    routed: list[api.GroupedPaths] = []
+    original_group_paths = api.group_paths
+
+    def route_once(paths: Sequence[str], *, policy: Policy | None = None) -> api.GroupedPaths:
+        grouped = original_group_paths(paths, policy=policy)
+        routed.append(grouped)
+        return grouped
+
+    def native(_paths: Sequence[str], **kwargs: object) -> api.AnalysisReport:
+        assert kwargs["grouped"] is routed[0]
+        return api.AnalysisReport(tmp_path, api.Completion.COMPLETE, api.Conclusion.PASSED, ())
+
+    def external(_paths: Sequence[str], **kwargs: object) -> tuple[api.ToolReport, ...]:
+        assert kwargs["grouped"] is routed[0]
+        return ()
+
+    monkeypatch.setattr(api, "group_paths", route_once)
+    monkeypatch.setattr(api, "analyze_paths", native)
+    monkeypatch.setattr(api, "analyze_external", external)
+
+    report = api.Standards(tmp_path).analyze(["service.py"], external=True)
+
+    assert report.conclusion is api.Conclusion.PASSED
+    assert len(routed) == 1
 
 
 def test_public_api_keeps_pre_facade_compatibility_exports() -> None:
@@ -93,7 +149,7 @@ def test_standards_facade_enforces_selected_application_dependency_policy(
     package = tmp_path / "package.json"
     package.write_text('{"dependencies":{"moment":"1"}}\n', encoding="utf-8")
 
-    def clean_check(_paths: Sequence[str]) -> int:
+    def clean_check(_paths: Sequence[str], **_kwargs: object) -> int:
         return 0
 
     monkeypatch.setattr(api, "check", clean_check)
@@ -112,7 +168,7 @@ def test_standards_facade_runs_eslint_for_selected_typescript(
     source.write_text("export const value = 1;\n", encoding="utf-8")
     command = api.Command("ESLint", ("true",), tmp_path)
 
-    def clean_check(_paths: Sequence[str]) -> int:
+    def clean_check(_paths: Sequence[str], **_kwargs: object) -> int:
         return 0
 
     def selected(_root: Path, _paths: Sequence[str]) -> list[api.Command]:

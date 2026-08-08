@@ -13,6 +13,7 @@ import subprocess  # ruff: ignore[suspicious-subprocess-import] -- commands are 
 import sys
 from typing import (
     TYPE_CHECKING,
+    NamedTuple,
     cast,  # ruff: ignore[banned-api] -- json.loads is typed Any; establish an object boundary before narrowing.
 )
 
@@ -48,6 +49,13 @@ class Inspection:
     package_manager: str | None
 
 
+class EslintSelection(NamedTuple):
+    """Immutable ESLint routing result with named and tuple-compatible fields."""
+
+    commands: tuple[Command, ...]
+    unowned_count: int
+
+
 def install_commands(
     root: Path,
     ecosystems: scaffold.Ecosystems,
@@ -73,7 +81,7 @@ def install_commands(
                 ecosystems.python_root,
             )
         )
-    if (root / ".git").exists() and hook_manager == "pre-commit":
+    if (root / ".git").is_dir() and hook_manager == "pre-commit":
         hook_argv = ("uvx", "--from", "pre-commit", "pre-commit", "install", "--hook-type", "pre-commit")
         commands.append(Command("pre-commit hooks", hook_argv, root))
     return commands
@@ -114,10 +122,15 @@ def selected_eslint_commands(root: Path, paths: Iterable[str], *, label: str = "
     Deleted files, symlinks, paths outside the repository, and files belonging
     to another project are deliberately omitted.
     """
+    return list(select_eslint_commands(root, paths, label=label).commands)
+
+
+def select_eslint_commands(root: Path, paths: Iterable[str], *, label: str = "selected") -> EslintSelection:
+    """Return runnable project commands plus paths with no ESLint owner."""
     repository = root.resolve()
     candidates = _selected_eslint_candidates(repository, paths)
     if not candidates:
-        return []
+        return EslintSelection((), 0)
     grouped: dict[Path, set[str]] = {}
     unowned: list[Path] = []
     for candidate in candidates:
@@ -126,9 +139,6 @@ def selected_eslint_commands(root: Path, paths: Iterable[str], *, label: str = "
             unowned.append(candidate)
             continue
         grouped.setdefault(project, set()).add(candidate.relative_to(project).as_posix())
-    if unowned and label == "analysis":
-        msg = f"no TypeScript project accepts {len(unowned)} selected JavaScript/TypeScript path(s)"
-        raise ValueError(msg)
     commands: list[Command] = []
     for project, scoped in sorted(grouped.items(), key=lambda item: str(item[0])):
         install_root = packagemanager.workspace_root(project, repository)
@@ -140,7 +150,7 @@ def selected_eslint_commands(root: Path, paths: Iterable[str], *, label: str = "
                 project,
             )
         )
-    return commands
+    return EslintSelection(tuple(commands), len(unowned))
 
 
 def _owning_typescript_project(candidate: Path, repository: Path) -> Path | None:

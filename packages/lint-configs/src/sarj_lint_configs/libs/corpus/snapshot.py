@@ -10,7 +10,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- local, fixed-argument Git verification only.
-from typing import Final
+from typing import Final, NamedTuple
 
 from sarj_lint_configs.libs.filesystem import is_link_like
 
@@ -57,12 +57,23 @@ class CorpusSnapshot:
         )
 
 
+class VerifiedInventory(NamedTuple):
+    """Verified corpus evidence paired with the exact files that produced it."""
+
+    snapshot: CorpusSnapshot
+    files: tuple[Path, ...]
+
+
 def snapshot(source: CorpusSource) -> CorpusSnapshot:
     """Hash selected local bytes in stable path order without network access."""
+    return snapshot_inventory(source, selected_files(source))
+
+
+def snapshot_inventory(source: CorpusSource, files: tuple[Path, ...]) -> CorpusSnapshot:
+    """Hash one previously selected inventory and reject in-flight mutation."""
     initial_revision = _git_revision(source) if source.kind is CorpusKind.GIT else None
     digest = hashlib.sha256()
     total = 0
-    files = _files(source)
     if not files:
         msg = f"corpus {source.report_name} selected no files"
         raise ValueError(msg)
@@ -120,9 +131,6 @@ def selected_files(source: CorpusSource) -> tuple[Path, ...]:
     return tuple(sorted(files, key=lambda path: path.relative_to(source.root).as_posix()))
 
 
-_files = selected_files
-
-
 def _matches(path: str, patterns: tuple[str, ...]) -> bool:
     return any(
         fnmatch(path, pattern) or (pattern.startswith("**/") and fnmatch(path, pattern[3:])) for pattern in patterns
@@ -131,7 +139,14 @@ def _matches(path: str, patterns: tuple[str, ...]) -> bool:
 
 def verify(source: CorpusSource) -> CorpusSnapshot:
     """Require local content and Git revision to match every declared pin."""
-    actual = snapshot(source)
+    verified, _files = verify_inventory(source)
+    return verified
+
+
+def verify_inventory(source: CorpusSource) -> VerifiedInventory:
+    """Return verified evidence and the exact inventory that produced it."""
+    files = selected_files(source)
+    actual = snapshot_inventory(source, files)
     if actual.digest != source.digest:
         if actual.private:
             msg = f"corpus {source.report_name} digest drifted"
@@ -153,7 +168,7 @@ def verify(source: CorpusSource) -> CorpusSnapshot:
         private=actual.private,
     )
     object.__setattr__(verified, "verified", True)  # ruff: ignore[unnecessary-dunder-call] -- frozen evidence token.
-    return verified
+    return VerifiedInventory(verified, files)
 
 
 def _git_revision(source: CorpusSource) -> str:

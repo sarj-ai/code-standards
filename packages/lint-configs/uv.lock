@@ -395,12 +395,13 @@ dev = [
 
 [[package]]
 name = "sarj-lint-configs"
-version = "0.55.1"
+version = "0.56.0"
 source = { editable = "." }
 dependencies = [
     { name = "basedpyright" },
     { name = "lefthook" },
     { name = "packaging" },
+    { name = "pathspec" },
     { name = "pre-commit" },
     { name = "pyyaml" },
     { name = "ruff" },
@@ -419,6 +420,7 @@ requires-dist = [
     { name = "basedpyright", specifier = ">=1.39" },
     { name = "lefthook", specifier = "==2.1.10" },
     { name = "packaging", specifier = ">=26" },
+    { name = "pathspec", specifier = ">=0.12.1" },
     { name = "pre-commit", specifier = ">=4.5" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "ruff", specifier = ">=0.15" },

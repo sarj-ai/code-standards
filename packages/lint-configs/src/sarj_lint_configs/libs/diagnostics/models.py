@@ -4,14 +4,22 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from hashlib import sha256
 from pathlib import Path, PureWindowsPath
-from typing import Final
+from typing import Final, NewType, TypedDict
 from urllib.parse import urlparse
 
 
 SCHEMA_VERSION: Final = 1
 SCHEMA_URI: Final = "https://standards.sarj.ai/schemas/analysis/v1"
 ANALYSIS_SCHEMA: Final = Path(__file__).with_name("analysis-v1.schema.json")
+LATEST_SCHEMA_VERSION: Final = 2
+LATEST_SCHEMA_URI: Final = "https://standards.sarj.ai/schemas/analysis/v2"
+LATEST_ANALYSIS_SCHEMA: Final = Path(__file__).with_name("analysis-v2.schema.json")
+FINGERPRINT_VERSION: Final = 1
+_SHA256_HEX_LENGTH: Final = 64
+AnalyzerId = NewType("AnalyzerId", str)
+InvocationId = NewType("InvocationId", str)
 
 
 class Severity(StrEnum):
@@ -45,6 +53,57 @@ class TrustMode(StrEnum):
     TRUSTED = "trusted"
 
 
+class CoverageDisposition(StrEnum):
+    """Why selected input was not analyzed."""
+
+    FAILED = "failed"
+    UNSUPPORTED = "unsupported"
+    EXCLUDED = "excluded"
+    NOT_REQUESTED = "not-requested"
+
+
+class FixSafety(StrEnum):
+    """Whether a fix may be applied without human review."""
+
+    SAFE = "safe"
+    UNSAFE = "unsafe"
+
+
+class CacheStatus(StrEnum):
+    """Cache outcome for one analyzer invocation."""
+
+    DISABLED = "disabled"
+    HIT = "hit"
+    MISS = "miss"
+
+
+class _CoverageNoticeV2(TypedDict):
+    """Serialized v2 coverage notice returned to protocol consumers."""
+
+    source: str
+    reason: str
+    fileCount: int
+    disposition: str
+
+
+_AnalysisReportV2 = TypedDict(
+    "_AnalysisReportV2",
+    {
+        "$schema": str,
+        "schemaVersion": int,
+        "root": str,
+        "completion": str,
+        "conclusion": str,
+        "exitCode": int,
+        "rules": list[dict[str, object]],
+        "diagnostics": list[dict[str, object]],
+        "issues": list[dict[str, object]],
+        "tools": list[dict[str, object]],
+        "coverage": list[_CoverageNoticeV2],
+    },
+)
+
+
 @dataclass(frozen=True, slots=True)
 class CoverageNotice:
     """Requested source that an intentionally narrow analysis did not evaluate."""
@@ -52,6 +111,7 @@ class CoverageNotice:
     source: str
     reason: str
     file_count: int
+    disposition: CoverageDisposition = CoverageDisposition.FAILED
 
     def __post_init__(self) -> None:
         _require_text(self.source, "coverage source")
@@ -60,9 +120,23 @@ class CoverageNotice:
         if self.file_count < 1:
             msg = "coverage notice must describe at least one file"
             raise ValueError(msg)
+        _require_instance(self.disposition, CoverageDisposition, "coverage disposition")
+
+    @property
+    def blocking(self) -> bool:
+        """Return whether this notice means requested analysis failed."""
+        return self.disposition is CoverageDisposition.FAILED
 
     def as_dict(self) -> dict[str, object]:
         return {"source": self.source, "reason": self.reason, "fileCount": self.file_count}
+
+    def as_v2_dict(self) -> _CoverageNoticeV2:
+        return {
+            "source": self.source,
+            "reason": self.reason,
+            "fileCount": self.file_count,
+            "disposition": self.disposition.value,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,6 +214,113 @@ class Location:
 
 
 @dataclass(frozen=True, slots=True)
+class RelatedLocation:
+    """A secondary source location that explains a diagnostic."""
+
+    label: str
+    location: Location
+
+    def __post_init__(self) -> None:
+        _require_text(self.label, "related location label")
+        _require_instance(self.location, Location, "related location")
+
+    def as_dict(self) -> dict[str, object]:
+        return {"label": self.label, "location": self.location.as_dict()}
+
+
+@dataclass(frozen=True, slots=True)
+class TextEdit:
+    """One exact, repository-contained source replacement."""
+
+    location: Location
+    replacement: str
+    expected_text_hash: str | None = None
+
+    def __post_init__(self) -> None:
+        _require_instance(self.location, Location, "text edit location")
+        if self.location.region is None:
+            msg = "text edit location must contain an exact range"
+            raise ValueError(msg)
+        _require_text(self.replacement, "text edit replacement", allow_empty=True)
+        if self.expected_text_hash is not None:
+            _require_text(self.expected_text_hash, "expected text hash")
+            if len(self.expected_text_hash) != _SHA256_HEX_LENGTH or any(
+                char not in "0123456789abcdef" for char in self.expected_text_hash
+            ):
+                msg = "expected text hash must be a lowercase SHA-256 digest"
+                raise ValueError(msg)
+
+    def as_dict(self) -> dict[str, object]:
+        result: dict[str, object] = {"location": self.location.as_dict(), "replacement": self.replacement}
+        if self.expected_text_hash is not None:
+            result["expectedTextHash"] = self.expected_text_hash
+        return result
+
+
+@dataclass(frozen=True, slots=True)
+class Fix:
+    """A bounded set of non-overlapping edits for one remediation."""
+
+    title: str
+    safety: FixSafety
+    edits: tuple[TextEdit, ...]
+
+    def __post_init__(self) -> None:
+        _require_text(self.title, "fix title")
+        _require_instance(self.safety, FixSafety, "fix safety")
+        _require_tuple_items(self.edits, TextEdit, "fix edits")
+        if not self.edits:
+            msg = "fix must contain at least one edit"
+            raise ValueError(msg)
+        ordered = sorted(self.edits, key=_edit_key)
+        if tuple(ordered) != self.edits:
+            msg = "fix edits must be sorted by path and range"
+            raise ValueError(msg)
+        for previous, current in zip(self.edits, self.edits[1:], strict=False):
+            if previous.location.path != current.location.path:
+                continue
+            previous_region = previous.location.region
+            current_region = current.location.region
+            if (
+                previous_region is not None
+                and current_region is not None
+                and (previous_region.end.byte_offset > current_region.start.byte_offset)
+            ):
+                msg = "fix edits must not overlap"
+                raise ValueError(msg)
+
+    def as_dict(self) -> dict[str, object]:
+        return {"title": self.title, "safety": self.safety.value, "edits": [edit.as_dict() for edit in self.edits]}
+
+
+@dataclass(frozen=True, slots=True)
+class RuleDescriptor:
+    """Stable rule metadata shared by renderers and integrations."""
+
+    key: str
+    name: str
+    summary: str
+    help_url: str | None = None
+    tags: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        _require_text(self.key, "rule key")
+        _require_text(self.name, "rule name")
+        _require_text(self.summary, "rule summary")
+        _require_tuple_text(self.tags, "rule tags")
+        _require_unique_text(self.tags, "rule tags")
+        _validate_help_url(self.help_url)
+
+    def as_dict(self) -> dict[str, object]:
+        result: dict[str, object] = {"key": self.key, "name": self.name, "summary": self.summary}
+        if self.help_url is not None:
+            result["helpUrl"] = self.help_url
+        if self.tags:
+            result["tags"] = list(self.tags)
+        return result
+
+
+@dataclass(frozen=True, slots=True)
 class Diagnostic:
     """One normalized static-analysis finding."""
 
@@ -151,6 +332,11 @@ class Diagnostic:
     rule_id: str | None = None
     help: str | None = None
     help_url: str | None = None
+    related: tuple[RelatedLocation, ...] = ()
+    notes: tuple[str, ...] = ()
+    fixes: tuple[Fix, ...] = ()
+    tags: tuple[str, ...] = ()
+    fingerprint: str | None = None
 
     def __post_init__(self) -> None:
         _require_text(self.code, "diagnostic code")
@@ -162,12 +348,14 @@ class Diagnostic:
             _require_text(self.rule_id, "diagnostic rule id")
         if self.help is not None:
             _require_text(self.help, "diagnostic help", allow_empty=True)
-        if self.help_url is not None:
-            _require_text(self.help_url, "diagnostic help URL")
-            parsed = urlparse(self.help_url)
-            if not parsed.scheme or any(value.isspace() for value in self.help_url):
-                msg = "diagnostic help URL must be an absolute URI"
-                raise ValueError(msg)
+        _validate_help_url(self.help_url)
+        _require_tuple_items(self.related, RelatedLocation, "diagnostic related locations")
+        _require_tuple_text(self.notes, "diagnostic notes")
+        _require_tuple_items(self.fixes, Fix, "diagnostic fixes")
+        _require_tuple_text(self.tags, "diagnostic tags")
+        _require_unique_text(self.tags, "diagnostic tags")
+        if self.fingerprint is not None:
+            _require_text(self.fingerprint, "diagnostic fingerprint")
 
     def as_dict(self) -> dict[str, object]:
         result: dict[str, object] = {
@@ -183,6 +371,21 @@ class Diagnostic:
             result["help"] = self.help
         if self.help_url is not None:
             result["helpUrl"] = self.help_url
+        return result
+
+    def as_v2_dict(self) -> dict[str, object]:
+        result = self.as_dict()
+        result["ruleKey"] = f"{self.source}:{self.rule_id or self.code}"
+        if self.related:
+            result["relatedLocations"] = [item.as_dict() for item in self.related]
+        if self.notes:
+            result["notes"] = list(self.notes)
+        if self.fixes:
+            result["fixes"] = [item.as_dict() for item in self.fixes]
+        if self.tags:
+            result["tags"] = list(self.tags)
+        if self.fingerprint is not None:
+            result["fingerprint"] = {"algorithm": FINGERPRINT_VERSION, "value": self.fingerprint}
         return result
 
 
@@ -217,6 +420,12 @@ class ToolReport:
     completion: Completion
     diagnostics: tuple[Diagnostic, ...] = ()
     issues: tuple[ExecutionIssue, ...] = ()
+    analyzer_id: AnalyzerId | None = None
+    invocation_id: InvocationId | None = None
+    version: str | None = None
+    duration_ms: int | None = None  # sarj-noqa: SARJ014 — v2 schema exposes integer durationMs for compatibility.
+    file_count: int | None = None
+    cache_status: CacheStatus = CacheStatus.DISABLED
 
     def __post_init__(self) -> None:
         _require_text(self.name, "tool name")
@@ -229,6 +438,20 @@ class ToolReport:
         if self.completion is not Completion.COMPLETE and not self.issues:
             msg = "an incomplete tool report must explain its execution issue"
             raise ValueError(msg)
+        for value, label in (
+            (self.analyzer_id, "analyzer id"),
+            (self.invocation_id, "invocation id"),
+            (self.version, "tool version"),
+        ):
+            if value is not None:
+                _require_text(value, label)
+        for value, label in ((self.duration_ms, "duration"), (self.file_count, "file count")):
+            if value is not None:
+                _require_int(value, label)
+                if value < 0:
+                    msg = f"{label} cannot be negative"
+                    raise ValueError(msg)
+        _require_instance(self.cache_status, CacheStatus, "cache status")
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -237,6 +460,19 @@ class ToolReport:
             "diagnosticCount": len(self.diagnostics),
             "issueCount": len(self.issues),
         }
+
+    def as_v2_dict(self) -> dict[str, object]:
+        result = self.as_dict()
+        result["analyzerId"] = self.analyzer_id or self.name
+        result["invocationId"] = self.invocation_id or self.name
+        result["cache"] = self.cache_status.value
+        if self.version is not None:
+            result["version"] = self.version
+        if self.duration_ms is not None:
+            result["durationMs"] = self.duration_ms
+        if self.file_count is not None:
+            result["fileCount"] = self.file_count
+        return result
 
 
 @dataclass(frozen=True, slots=True)
@@ -257,7 +493,7 @@ class AnalysisReport:
         _require_tuple_items(self.coverage, CoverageNotice, "analysis coverage")
         has_issues = any(tool.issues for tool in self.tools)
         has_findings = any(tool.diagnostics for tool in self.tools)
-        is_incomplete = has_issues or bool(self.coverage)
+        is_incomplete = has_issues or any(item.blocking for item in self.coverage)
         expected_completion = (
             Completion.FAILED
             if self.tools and all(tool.completion is Completion.FAILED for tool in self.tools)
@@ -285,7 +521,7 @@ class AnalysisReport:
 
     @property
     def exit_code(self) -> int:
-        if self.issues or self.coverage:
+        if self.issues or any(item.blocking for item in self.coverage):
             return 2
         return 1 if any(item.severity is Severity.ERROR for item in self.diagnostics) else 0
 
@@ -306,6 +542,80 @@ class AnalysisReport:
             "tools": [item.as_dict() for item in self.tools],
             "coverage": [item.as_dict() for item in self.coverage],
         }
+
+    def as_v2_dict(self) -> _AnalysisReportV2:
+        """Serialize the additive, richer analysis protocol."""
+        rules: dict[str, RuleDescriptor] = {}
+        for item in self.diagnostics:
+            key = f"{item.source}:{item.rule_id or item.code}"
+            rules.setdefault(
+                key,
+                RuleDescriptor(
+                    key, item.rule_id or item.code, item.help or item.rule_id or item.code, item.help_url, item.tags
+                ),
+            )
+        return {
+            "$schema": LATEST_SCHEMA_URI,
+            "schemaVersion": LATEST_SCHEMA_VERSION,
+            "root": ".",
+            "completion": self.completion.value,
+            "conclusion": self.conclusion.value,
+            "exitCode": self.exit_code,
+            "rules": [rules[key].as_dict() for key in sorted(rules)],
+            "diagnostics": [item.as_v2_dict() for item in self.diagnostics],
+            "issues": [item.as_dict() for item in self.issues],
+            "tools": [item.as_v2_dict() for item in self.tools],
+            "coverage": [item.as_v2_dict() for item in self.coverage],
+        }
+
+
+def diagnostic_fingerprint(diagnostic: Diagnostic, *, anchor: str) -> str:
+    """Create a versioned stable fingerprint from non-message semantic facts."""
+    _require_text(anchor, "diagnostic fingerprint anchor")
+    identity = "\0".join(
+        (
+            str(FINGERPRINT_VERSION),
+            diagnostic.source,
+            diagnostic.rule_id or diagnostic.code,
+            diagnostic.location.path,
+            anchor,
+        )
+    )
+    return sha256(identity.encode("utf-8")).hexdigest()
+
+
+def _edit_key(edit: TextEdit) -> tuple[object, ...]:
+    region = edit.location.region
+    if region is None:
+        msg = "text edit location must contain an exact range"
+        raise ValueError(msg)
+    return (edit.location.path, region.start.byte_offset, region.end.byte_offset)
+
+
+def _validate_help_url(value: str | None) -> None:
+    if value is None:
+        return
+    _require_text(value, "diagnostic help URL")
+    parsed = urlparse(value)
+    if parsed.scheme != "https" or not parsed.netloc or any(char.isspace() for char in value):
+        msg = "diagnostic help URL must be an absolute HTTPS URI"
+        raise ValueError(msg)
+
+
+def _require_tuple_text(value: object, label: str) -> None:
+    if not isinstance(value, tuple):
+        msg = f"{label} must be a tuple of non-empty strings"
+        raise TypeError(msg)
+    for item in value:  # pyright: ignore[reportUnknownVariableType]
+        if not isinstance(item, str) or not item:
+            msg = f"{label} must be a tuple of non-empty strings"
+            raise TypeError(msg)
+
+
+def _require_unique_text(value: tuple[str, ...], label: str) -> None:
+    if len(value) != len(set(value)):
+        msg = f"{label} must not contain duplicates"
+        raise ValueError(msg)
 
 
 def _require_text(value: object, label: str, *, allow_empty: bool = False) -> None:

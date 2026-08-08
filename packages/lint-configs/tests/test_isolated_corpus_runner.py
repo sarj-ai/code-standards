@@ -43,7 +43,7 @@ def test_each_corpus_and_bounded_batch_gets_a_fresh_process(
         cwd = kwargs["cwd"]
         assert isinstance(cwd, type(tmp_path))
         calls.append((argv, cwd))
-        empty = SimpleNamespace(retained_bytes=0, lines=0, truncated=False)
+        empty = SimpleNamespace(retained_bytes=0, total_bytes=0, lines=0, truncated=False)
         return SimpleNamespace(returncode=0, stdout=empty, stderr=empty)
 
     monkeypatch.setattr(corpus_runner, "_run_process", run)
@@ -112,6 +112,47 @@ def test_runner_exercises_committed_rule_in_isolated_repositories(tmp_path: Path
     assert report.stdout_lines == 1
 
 
+def test_verified_inventory_mutation_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    source_path = corpus / "service.py"
+    source_path.write_text("VALUE = 1\n", encoding="utf-8")
+    source = _source(corpus, "sample")
+
+    def mutate(_argv: tuple[str, ...], **_kwargs: object) -> SimpleNamespace:
+        source_path.write_text("VALUE = 2\n", encoding="utf-8")
+        empty = SimpleNamespace(retained_bytes=0, total_bytes=0, lines=0, truncated=False)
+        return SimpleNamespace(returncode=0, stdout=empty, stderr=empty)
+
+    monkeypatch.setattr(corpus_runner, "_run_process", mutate)
+
+    with pytest.raises(CorpusLintError, match="changed during evaluation"):
+        run_isolated_corpora((source,), ("existing-linter", "check"))
+
+
+def test_matching_file_added_during_evaluation_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "service.py").write_text("VALUE = 1\n", encoding="utf-8")
+    source = _source(corpus, "sample")
+
+    def add_file(_argv: tuple[str, ...], **_kwargs: object) -> SimpleNamespace:
+        (corpus / "added.py").write_text("VALUE = 2\n", encoding="utf-8")
+        empty = SimpleNamespace(retained_bytes=0, total_bytes=0, lines=0, truncated=False)
+        return SimpleNamespace(returncode=0, stdout=empty, stderr=empty)
+
+    monkeypatch.setattr(corpus_runner, "_run_process", add_file)
+
+    with pytest.raises(CorpusLintError, match="changed during evaluation"):
+        run_isolated_corpora((source,), ("existing-linter", "check"))
+
+
 def test_unexpected_linter_exit_does_not_leak_output(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     corpus = tmp_path / "private"
     corpus.mkdir()
@@ -119,7 +160,7 @@ def test_unexpected_linter_exit_does_not_leak_output(monkeypatch: pytest.MonkeyP
 
     def fail(argv: tuple[str, ...], **_kwargs: object) -> SimpleNamespace:
         _ = argv
-        private = SimpleNamespace(retained_bytes=15, lines=1, truncated=False)
+        private = SimpleNamespace(retained_bytes=15, total_bytes=15, lines=1, truncated=False)
         return SimpleNamespace(returncode=2, stdout=private, stderr=private)
 
     monkeypatch.setattr(corpus_runner, "_run_process", fail)
@@ -130,11 +171,25 @@ def test_unexpected_linter_exit_does_not_leak_output(monkeypatch: pytest.MonkeyP
     assert "private path" not in str(error.value)
 
 
-def test_child_output_is_streamed_with_a_deterministic_byte_limit(tmp_path: Path) -> None:
+def test_child_output_over_the_deterministic_byte_limit_fails_closed(tmp_path: Path) -> None:
     corpus = tmp_path / "corpus"
     corpus.mkdir()
     (corpus / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
     script = "import os; os.write(1, b'x\\n' * 10000); os.write(2, b'y\\n' * 10000)"
+
+    with pytest.raises(CorpusLintError, match="exceeded the output limit"):
+        run_isolated_corpora(
+            (_source(corpus, "sample"),),
+            (sys.executable, "-c", script),
+            max_output_bytes=128,
+        )
+
+
+def test_child_output_accounts_for_total_bytes_and_trailing_line(tmp_path: Path) -> None:
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
+    script = "import os; os.write(1, b'first\\nsecond')"
 
     report = run_isolated_corpora(
         (_source(corpus, "sample"),),
@@ -143,10 +198,35 @@ def test_child_output_is_streamed_with_a_deterministic_byte_limit(tmp_path: Path
     )
 
     batch = report.batches[0]
-    assert (batch.stdout_bytes, batch.stderr_bytes) == (128, 128)
-    assert (batch.stdout_lines, batch.stderr_lines) == (64, 64)
-    assert batch.stdout_truncated
-    assert batch.stderr_truncated
+    assert batch.stdout_bytes == len(b"first\nsecond")
+    assert batch.stdout_lines == 2
+    assert not batch.stdout_truncated
+
+
+def test_five_repositories_use_five_real_fresh_processes(tmp_path: Path) -> None:
+    marker = tmp_path / "pids.txt"
+    sources: list[CorpusSource] = []
+    for index in range(5):
+        corpus = tmp_path / f"corpus-{index}"
+        corpus.mkdir()
+        (corpus / "service.py").write_text("VALUE = 1\n", encoding="utf-8")
+        sources.append(_source(corpus, f"corpus-{index}"))
+    script = (
+        "import os,sys; "
+        "fd=os.open(sys.argv[1], os.O_WRONLY|os.O_CREAT|os.O_APPEND, 0o600); "
+        "os.write(fd, f'{os.getpid()}\\n'.encode()); os.close(fd)"
+    )
+
+    report = run_isolated_corpora(
+        tuple(sources),
+        (sys.executable, "-c", script, str(marker)),
+        batch_size=1,
+    )
+
+    pids = marker.read_text(encoding="utf-8").splitlines()
+    assert len(report.batches) == 5
+    assert len(pids) == 5
+    assert len(set(pids)) == 5
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX process-group behavior")

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import os
 from pathlib import Path
 import stat
+import tempfile
 from typing import Final, Self
 
 from sarj_lint_configs.libs.filesystem import is_link_like
@@ -36,6 +37,18 @@ _OWNED_NAMES: Final = frozenset(
     }
 )
 _SKIP_DIRS: Final = frozenset({".git", ".venv", "node_modules", "dist", "build", ".next", ".cache"})
+_INSTALL_MUTATION_NAMES: Final = frozenset(
+    {
+        "package.json",
+        "package-lock.json",
+        "pnpm-lock.yaml",
+        "yarn.lock",
+        "bun.lock",
+        "bun.lockb",
+        "pyproject.toml",
+        "uv.lock",
+    }
+)
 
 
 def validate_targets(root: Path, paths: tuple[Path, ...]) -> None:
@@ -65,6 +78,44 @@ def validate_targets(root: Path, paths: tuple[Path, ...]) -> None:
         except (OSError, ValueError) as exc:
             msg = f"mutation target {path} escapes repository root {resolved_root}"
             raise OSError(msg) from exc
+
+
+def atomic_write_text(root: Path, path: Path, contents: str) -> None:
+    """Replace one validated file without following a swapped final symlink."""
+    atomic_write_bytes(root, path, contents.encode("utf-8"))
+
+
+def atomic_write_bytes(root: Path, path: Path, contents: bytes) -> None:
+    """Replace one validated binary file without following a swapped final symlink."""
+    validate_targets(root, (path,))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    validate_targets(root, (path,))
+    mode = stat.S_IMODE(path.stat(follow_symlinks=False).st_mode) if path.is_file() else 0o644
+    descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    temporary_path = Path(temporary)
+    try:
+        _write_temporary(descriptor, contents, mode)
+        temporary_path.replace(path)
+    except BaseException:
+        temporary_path.unlink(missing_ok=True)
+        raise
+
+
+def assert_expected(root: Path, path: Path, expected: bytes | None) -> None:
+    """Fail immediately when a planned target changed after its plan was built."""
+    validate_targets(root, (path,))
+    current = path.read_bytes() if path.is_file() else None
+    if current != expected:
+        msg = f"planned mutation target changed concurrently: {path}; rerun the command"
+        raise OSError(msg)
+
+
+def _write_temporary(descriptor: int, contents: bytes, mode: int) -> None:
+    with os.fdopen(descriptor, "wb") as handle:
+        os.fchmod(handle.fileno(), mode)
+        _ = handle.write(contents)
+        handle.flush()
+        os.fsync(handle.fileno())
 
 
 @dataclass
@@ -127,6 +178,9 @@ class FileTransaction:
         absent_parents: set[Path] = set()
         for path in candidates:
             if is_link_like(path):
+                if path.name in _INSTALL_MUTATION_NAMES:
+                    msg = f"refusing linked dependency transaction target {path}"
+                    raise OSError(msg)
                 continue
             try:
                 path.resolve().relative_to(resolved)
@@ -156,7 +210,7 @@ class FileTransaction:
         issues: list[RollbackIssue] = []
         for path, snapshot in self.before.items():
             expected = self.written.get(path, _UNTRACKED)
-            issue = _restore_path(path, snapshot, expected)
+            issue = _restore_path(self.root, path, snapshot, expected)
             if issue is not None:
                 issues.append(issue)
         for parent in sorted(self.absent_parents, key=lambda item: len(item.parts), reverse=True):
@@ -185,32 +239,31 @@ def _snapshot(path: Path) -> FileSnapshot:
 
 
 def _restore_path(
+    root: Path,
     path: Path,
     snapshot: FileSnapshot,
     expected: bytes | _Untracked | None,
 ) -> RollbackIssue | None:
     try:
+        validate_targets(root, (path,))
         current = path.read_bytes() if path.is_file() else None
     except OSError as exc:
         return RollbackIssue(path, str(exc))
     if not isinstance(expected, _Untracked) and current != expected:
         return RollbackIssue(path, "changed concurrently after the standards write")
     try:
-        _apply_snapshot(path, snapshot)
+        _apply_snapshot(root, path, snapshot)
     except OSError as exc:
         return RollbackIssue(path, str(exc))
     return None
 
 
-def _apply_snapshot(path: Path, snapshot: FileSnapshot) -> None:
+def _apply_snapshot(root: Path, path: Path, snapshot: FileSnapshot) -> None:
     if snapshot.contents is None:
         if path.is_file() or is_link_like(path):
             path.unlink()
         return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists():
-        path.chmod(stat.S_IWUSR | (snapshot.mode or 0))
-    path.write_bytes(snapshot.contents)
+    atomic_write_bytes(root, path, snapshot.contents)
     if snapshot.mode is not None:
         path.chmod(snapshot.mode)
 

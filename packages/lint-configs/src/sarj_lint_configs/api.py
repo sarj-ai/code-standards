@@ -66,19 +66,28 @@ from .libs.adoption.upgrade import apply as apply_upgrade
 from .libs.adoption.upgrade import build_plan as plan_upgrade
 from .libs.diagnostics import (
     ANALYSIS_SCHEMA,
+    LATEST_ANALYSIS_SCHEMA,
     AnalysisReport,
+    CacheStatus,
     Completion,
     Conclusion,
+    CoverageDisposition,
     CoverageNotice,
     Diagnostic,
     ExecutionIssue,
+    Fix,
+    FixSafety,
     Location,
     Position,
     Region,
+    RelatedLocation,
+    RuleDescriptor,
     Severity,
     SourceDocument,
+    TextEdit,
     ToolReport,
     TrustMode,
+    diagnostic_fingerprint,
     to_github,
     to_json,
     to_sarif,
@@ -90,8 +99,10 @@ from .libs.linting.analysis import report_from_tools
 from .libs.linting.external import analyze_external
 from .libs.linting.library_policy import Finding as LibraryPolicyFinding
 from .libs.linting.library_policy import ManifestPolicyError
+from .libs.linting.library_policy import accepts_path as library_policy_accepts_path
 from .libs.linting.library_policy import scan as check_library_policy
 from .libs.linting.library_policy import scan_paths as check_selected_library_policy
+from .libs.linting.policy import Policy
 from .libs.linting.runner import GroupedPaths, group_paths
 from .libs.linting.runner import run as check
 from .libs.linting.textlint import Finding as TextFinding
@@ -273,6 +284,15 @@ class Standards:
                 )
             try:
                 adopted = load_manifest(self.root)
+                policy = Policy.from_manifest(self.root, adopted)
+                selected = list(policy.filter_paths(selected))
+            except (OSError, TypeError, ValueError, ManifestPolicyError) as exc:
+                return Result(
+                    Status.INVALID,
+                    findings=(Finding("check.policy.invalid", "error", str(exc)),),
+                    exit_code=_INVALID_EXIT,
+                )
+            try:
                 policy_findings = (
                     check_selected_library_policy(self.root, selected)
                     if adopted is not None and adopted.profile == "application"
@@ -288,12 +308,13 @@ class Standards:
                 Finding(item.id, "error", item.message, str(item.path), f"use {item.replacement}")
                 for item in policy_findings
             )
-            source_status = check(selected)
+            baseline = None if adopted is None else adopted.python_baseline
+            source_status = check(selected, python_baseline=baseline, policy=policy)
             eslint_status = execute(selected_eslint_commands(self.root, selected))
             return _operation_result(max(source_status, eslint_status, 1 if findings else 0), findings=findings)
         return _operation_result(_verify(self.root))
 
-    def analyze(
+    def analyze(  # ruff: ignore[too-many-locals] -- one boundary coordinates routing, policy, and coverage.
         self,
         paths: Sequence[str] | None = None,
         *,
@@ -314,23 +335,41 @@ class Standards:
             return _failed_analysis(self.root, "invalid-input", str(exc))
         try:
             adopted = load_manifest(self.root) if normalized_mode is AnalysisMode.POLICY else None
+            selection_policy = Policy.from_manifest(self.root, adopted)
             selected = _analysis_inputs(self.root, paths, mode=normalized_mode)
         except (OSError, TypeError, ValueError) as exc:
             return _failed_analysis(self.root, "invalid-input", str(exc))
         try:
-            selected_groups = group_paths(selected)
+            active_selected = list(selection_policy.filter_paths(selected))
+            selected_groups = group_paths(active_selected, policy=selection_policy)
         except (OSError, TypeError, ValueError) as exc:
             return _failed_analysis(self.root, "invalid-input", str(exc))
         baseline = None if adopted is None or adopted.python_baseline is None else self.root / adopted.python_baseline
-        native = analyze_paths(selected, root=self.root, python_baseline=baseline)
+        native = analyze_paths(
+            active_selected,
+            root=self.root,
+            python_baseline=baseline,
+            policy=selection_policy,
+            grouped=selected_groups,
+        )
         if adopted is not None and adopted.profile == "application":
             try:
-                policy = _policy_report(self.root, selected)
+                policy = _filter_tool_report(_policy_report(self.root, active_selected), selection_policy)
             except (OSError, TypeError, ValueError, ManifestPolicyError) as exc:
                 issue = ExecutionIssue("sarj-library-policy", "policy-failure", f"{type(exc).__name__}: {exc}")
                 policy = ToolReport("sarj-library-policy", Completion.FAILED, issues=(issue,))
             native = report_from_tools(self.root, (*native.tools, policy))
         coverage: list[CoverageNotice] = []
+        excluded = sum(Path(item).is_file() and item not in active_selected for item in selected)
+        if excluded:
+            coverage.append(
+                CoverageNotice(
+                    "sarj-standards",
+                    "excluded by repository policy",
+                    excluded,
+                    CoverageDisposition.EXCLUDED,
+                )
+            )
         routed = {
             *selected_groups.python,
             *selected_groups.sql,
@@ -338,7 +377,13 @@ class Standards:
             *selected_groups.text,
             *selected_groups.typescript,
         }
-        unsupported = sum(Path(item).is_file() and item not in routed for item in selected)
+        if adopted is not None and adopted.profile == "application":
+            routed.update(
+                item
+                for item in active_selected
+                if Path(item).is_file() and library_policy_accepts_path(Path(item), self.root)
+            )
+        unsupported = sum(Path(item).is_file() and item not in routed for item in active_selected)
         if unsupported:
             coverage.append(
                 CoverageNotice(
@@ -349,22 +394,59 @@ class Standards:
             )
         if not external:
             if selected_groups.typescript:
+                eslint_enabled = adopted is None or "eslint" in adopted.configs
                 coverage.append(
                     CoverageNotice(
                         "eslint",
-                        "native analysis does not run TypeScript; use check or external trusted analysis",
+                        (
+                            "native analysis does not run TypeScript; use check or external trusted analysis"
+                            if eslint_enabled
+                            else "disabled by repository capabilities"
+                        ),
                         len(selected_groups.typescript),
+                        CoverageDisposition.FAILED if eslint_enabled else CoverageDisposition.NOT_REQUESTED,
                     )
                 )
             return _with_coverage(native, coverage)
-        external_reports = analyze_external(selected, root=self.root, trust=normalized_trust)
-        if selected_groups.typescript and not any(report.name == "eslint" for report in external_reports):
+        external_reports = (
+            analyze_external(
+                active_selected,
+                root=self.root,
+                trust=normalized_trust,
+                policy=selection_policy,
+                capabilities=frozenset(adopted.configs),
+                grouped=selected_groups,
+            )
+            if adopted is not None
+            else analyze_external(
+                active_selected,
+                root=self.root,
+                trust=normalized_trust,
+                grouped=selected_groups,
+            )
+        )
+        if (
+            selected_groups.typescript
+            and (adopted is None or "eslint" in adopted.configs)
+            and not any(report.name == "eslint" for report in external_reports)
+        ):
             issue = ExecutionIssue(
                 "eslint", "coverage-missing", "no ESLint project accepted the selected TypeScript files"
             )
             external_reports = (*external_reports, ToolReport("eslint", Completion.FAILED, issues=(issue,)))
         combined = report_from_tools(self.root, (*native.tools, *external_reports))
         return _with_coverage(combined, coverage)
+
+    def run(
+        self,
+        paths: Sequence[str] | None = None,
+        *,
+        external: bool = False,
+        trust: TrustMode | str = TrustMode.SAFE,
+        mode: AnalysisMode | str = AnalysisMode.POLICY,
+    ) -> AnalysisReport:
+        """Run the canonical structured engine with schema-v1 compatibility and opt-in schema-v2 output."""
+        return self.analyze(paths, external=external, trust=trust, mode=mode)
 
     def fix(self) -> Result:
         return _operation_result(fix(self.root))
@@ -528,7 +610,12 @@ def _verify(root: Path) -> int:
     except OSError, TypeError, ValueError:
         return _INVALID_EXIT
     verify_paths = adopted.verify_paths if adopted is not None else (".",)
-    if check([str(root / path) for path in verify_paths]):
+    policy = Policy.from_manifest(root, adopted)
+    if check(
+        [str(root / path) for path in verify_paths],
+        python_baseline=None if adopted is None else adopted.python_baseline,
+        policy=policy,
+    ):
         return 1
     if adopted is not None and adopted.profile == "application" and check_library_policy(root):
         return 1
@@ -582,8 +669,9 @@ def _with_coverage(report: AnalysisReport, coverage: Sequence[CoverageNotice]) -
     notices = tuple(coverage)
     if not notices:
         return report
-    completion = Completion.PARTIAL if report.completion is Completion.COMPLETE else report.completion
-    conclusion = report.conclusion if report.diagnostics else Conclusion.INCONCLUSIVE
+    blocking = any(item.blocking for item in notices)
+    completion = Completion.PARTIAL if blocking and report.completion is Completion.COMPLETE else report.completion
+    conclusion = report.conclusion if report.diagnostics or not blocking else Conclusion.INCONCLUSIVE
     return AnalysisReport(report.root, completion, conclusion, report.tools, notices)
 
 
@@ -619,6 +707,21 @@ def _policy_report(root: Path, selected: Sequence[str]) -> ToolReport:
             )
         )
     return ToolReport("sarj-library-policy", Completion.COMPLETE, diagnostics=tuple(diagnostics))
+
+
+def _filter_tool_report(report: ToolReport, policy: Policy) -> ToolReport:
+    return ToolReport(
+        report.name,
+        report.completion,
+        diagnostics=policy.filter_diagnostics(report.diagnostics),
+        issues=report.issues,
+        analyzer_id=report.analyzer_id,
+        invocation_id=report.invocation_id,
+        version=report.version,
+        duration_ms=report.duration_ms,
+        file_count=report.file_count,
+        cache_status=report.cache_status,
+    )
 
 
 def initialize(
@@ -732,6 +835,7 @@ __all__ = [
     "ESLINT_APPLICATION",
     "ESLINT_PEERS",
     "ESLINT_STRICT",
+    "LATEST_ANALYSIS_SCHEMA",
     "MARKDOWNLINT_STRICT",
     "PYRIGHT_STRICT",
     "RUFF_APPLICATION",
@@ -740,6 +844,7 @@ __all__ = [
     "YAMLLINT_STRICT",
     "AnalysisMode",
     "AnalysisReport",
+    "CacheStatus",
     "Change",
     "Command",
     "Completion",
@@ -747,12 +852,15 @@ __all__ = [
     "ConfigSyncOutcome",
     "ConfigSyncPlan",
     "ConfigSyncResult",
+    "CoverageDisposition",
     "CoverageNotice",
     "Diagnostic",
     "DoctorFinding",
     "DoctorLevel",
     "ExecutionIssue",
     "Finding",
+    "Fix",
+    "FixSafety",
     "GroupedPaths",
     "InitPlan",
     "InitResult",
@@ -764,12 +872,14 @@ __all__ = [
     "PackedArtifact",
     "Position",
     "Region",
+    "RelatedLocation",
     "ReleaseAgePolicy",
     "ReleaseAgeReport",
     "ReleaseTarget",
     "RepositoryFinding",
     "RepositoryPolicy",
     "Result",
+    "RuleDescriptor",
     "ScaffoldPlan",
     "SetupPlan",
     "Severity",
@@ -777,6 +887,7 @@ __all__ = [
     "Standards",
     "Status",
     "TagSyncResult",
+    "TextEdit",
     "TextFinding",
     "ToolReport",
     "TrustMode",
@@ -799,6 +910,7 @@ __all__ = [
     "check_text",
     "create_release_tags",
     "diagnose",
+    "diagnostic_fingerprint",
     "doctor",
     "fix",
     "group_paths",

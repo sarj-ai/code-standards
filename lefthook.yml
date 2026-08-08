@@ -26,7 +26,7 @@ pre-commit:
         instead of symlinked. Fix the reported path and retry.
 
     standards:
-      run: uv run --project packages/lint-configs --frozen sarj-standards check --staged
+      run: uv run --project packages/lint-configs --frozen sarj-standards check --staged --hook-files --trust-repository-code -- {staged_files}
       fail_text: >-
         Standards staged checks failed. Fix the reported findings and retry.
     typecheck:

@@ -15,6 +15,7 @@
  */
 
 import { ESLint, type Linter } from "eslint";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import plugin, {
@@ -47,6 +48,13 @@ describe("configs.recommended / configs.strict are flat config", () => {
     const preset = plugin.configs[name];
     expect(Array.isArray(preset.plugins)).toBe(false);
     expect(Object.keys(preset.plugins)).toEqual(["@sarj"]);
+  });
+
+  it("documents object presets without the invalid array spread form", () => {
+    const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+    expect(readme).toContain("[sarj.configs.recommended]");
+    expect(readme).toContain("sarj.configs.strict,");
+    expect(readme).not.toMatch(/\.\.\.sarj\.configs\.(?:recommended|strict)/u);
   });
 
   it.each(PRESETS)("%s carries rules and nothing that fights a host config", (name) => {

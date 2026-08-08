@@ -21,6 +21,13 @@ only when their structure is unambiguous; user-owned settings are preserved. If
 a file cannot be wired safely, `init` explains the exact manual change and makes
 no changes. A failed sync or dependency install restores every tracked file.
 
+The command consolidates orchestration, not analyzer implementation. Ruff,
+BasedPyright, ESLint, Prettier, Biome, and their native configurations remain
+authoritative for behavior Standards does not exactly model. Adoption never
+removes a direct formatter, generator, suppression workflow, or custom lint
+stage based on name alone; ambiguous migrations stop with a concrete manual
+step instead of guessing.
+
 Application repositories can opt into the preferred-library policy at adoption
 time:
 

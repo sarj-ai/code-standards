@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Final, NamedTuple
 
 import yaml
 
-from . import manifest
+from . import launcher, manifest
 
 
 if TYPE_CHECKING:
@@ -181,7 +181,10 @@ def precommit_runs_staged_check(root: Path) -> bool:
     return (
         candidate.get("id") == "sarj-standards-check"
         and _runs_staged_check(candidate.get("entry"))
+        and _has_hook_files(candidate.get("entry"))
         and candidate.get("language") == "system"
+        and candidate.get("verbose") is True
+        and candidate.get("always_run") is True
         and candidate.get("pass_filenames") is True
         and candidate.get("require_serial") is True
         and candidate.get("files") == PRECOMMIT_FILES_PATTERN
@@ -190,7 +193,7 @@ def precommit_runs_staged_check(root: Path) -> bool:
 
 
 def lefthook_runs_staged_check(root: Path) -> bool:
-    """Require the user-managed hook to invoke the canonical staged command."""
+    """Require exactly one pinned, filename-aware staged command."""
     path = lefthook_config(root)
     if path is None:
         return False
@@ -202,10 +205,8 @@ def lefthook_runs_staged_check(root: Path) -> bool:
         return False
     document = manifest.as_table(parsed)
     pre_commit = manifest.as_table(document.get("pre-commit"))
-    commands = manifest.as_table(pre_commit.get("commands"))
-    if any(_runs_staged_check(manifest.as_table(command).get("run")) for command in commands.values()):
-        return True
-    return _jobs_run_staged_check(pre_commit.get("jobs"))
+    values = tuple(_lefthook_run_values(pre_commit))
+    return values.count(_canonical_lefthook_command(root)) == 1
 
 
 def wire_lefthook_staged_check(root: Path) -> LefthookWrite:
@@ -215,6 +216,20 @@ def wire_lefthook_staged_check(root: Path) -> LefthookWrite:
         msg = "--hooks lefthook requires lefthook.yml or lefthook.yaml"
         raise ValueError(msg)
     text, layout, entries = _load_lefthook_entries(path)
+    staged_values = tuple(value for value in _lefthook_run_values_from_entries(entries) if _runs_staged_check(value))
+    if len(staged_values) > 1:
+        msg = f"cannot safely wire {path.name}: multiple staged Standards commands are active"
+        raise ValueError(msg)
+    if staged_values:
+        repaired = _replace_lefthook_run(
+            text,
+            old=staged_values[0],
+            new=_canonical_lefthook_command(root),
+        )
+        if repaired is None:
+            msg = f"cannot safely wire {path.name}: staged Standards command is not a scalar run value"
+            raise ValueError(msg)
+        return LefthookWrite(path, repaired)
     block_match, section_end = _locate_block(path, text, layout)
     name = "sarj-standards" if "sarj-standards" not in entries else "sarj-standards-staged"
     if layout == "commands":
@@ -269,7 +284,7 @@ def _insert_staged_job(
 ) -> str:
     block_indent = len(jobs_match.group("indent"))
     child_indent = " " * (block_indent + 2)
-    rendered = f"{child_indent}- name: {name}\n{child_indent}  run: sarj-standards check --staged\n"
+    rendered = f"{child_indent}- name: {name}\n{child_indent}  run: {_canonical_lefthook_command(path.parent)}\n"
     tail = jobs_match.group("tail")
     if tail.strip():
         msg = f"cannot safely wire {path.name}: expected block-style pre-commit jobs"
@@ -293,7 +308,7 @@ def _insert_staged_command(
 ) -> str:
     command_indent = len(commands_match.group("indent"))
     child_indent = " " * (command_indent + 2)
-    rendered = f"{child_indent}{name}:\n{child_indent}  run: sarj-standards check --staged\n"
+    rendered = f"{child_indent}{name}:\n{child_indent}  run: {_canonical_lefthook_command(path.parent)}\n"
     absolute_start = commands_match.start()
     absolute_end = commands_match.end()
     tail = commands_match.group("tail")
@@ -336,6 +351,77 @@ def _runs_staged_check(value: object) -> bool:
     if any(PurePath(token).name in {"echo", "printf"} for token in prefix):
         return False
     return tokens[executable + 1 : executable + 3] == ["check", "--staged"]
+
+
+def _has_hook_files(value: object) -> bool:
+    """Require the private mode that treats hook-provided paths as authoritative."""
+    if not isinstance(value, str):
+        return False
+    try:
+        tokens = shlex.split(value)
+    except ValueError:
+        return False
+    return "--hook-files" in tokens
+
+
+def _canonical_lefthook_command(root: Path | None = None) -> str:
+    if root is not None and (root / "packages" / "lint-configs" / "pyproject.toml").is_file():
+        return (
+            "uv run --project packages/lint-configs --frozen sarj-standards check --staged "
+            "--hook-files --trust-repository-code -- {staged_files}"
+        )
+    return (
+        f"{launcher.pinned(manifest.adopted_version())} check --staged --hook-files "
+        "--trust-repository-code -- {staged_files}"
+    )
+
+
+def _lefthook_run_values(value: object, *, depth: int = 0, seen: set[int] | None = None) -> list[str]:
+    """Collect scalar run commands from a bounded YAML object graph."""
+    if depth > _MAX_JOB_DEPTH:
+        return []
+    visited: set[int] = set() if seen is None else seen
+    if isinstance(value, (dict, list)):
+        identity = id(value)  # pyright: ignore[reportUnknownArgumentType] -- identity is the cycle guard.
+        if identity in visited:
+            return []
+        visited.add(identity)
+    table = manifest.as_table(value)  # pyright: ignore[reportUnknownArgumentType] -- narrowed parser value.
+    if table:
+        found: list[str] = [run for run in (table.get("run"),) if isinstance(run, str)]
+        for child in table.values():
+            found.extend(_lefthook_run_values(child, depth=depth + 1, seen=visited))
+        return found
+    if isinstance(value, list):
+        found = []
+        for child in manifest.list_field(
+            {"items": value},  # pyright: ignore[reportUnknownArgumentType] -- narrowed parser list.
+            "items",
+        ):
+            found.extend(_lefthook_run_values(child, depth=depth + 1, seen=visited))
+        return found
+    return []
+
+
+def _lefthook_run_values_from_entries(entries: Mapping[str, object]) -> list[str]:
+    return _lefthook_run_values(entries)
+
+
+def _replace_lefthook_run(text: str, *, old: str, new: str) -> str | None:
+    """Replace one plain scalar run command without reformatting the YAML document."""
+    matches: list[re.Match[str]] = []
+    for match in re.finditer(r"(?m)^(?P<prefix>\s*run:\s*)(?P<value>[^\r\n]+)$", text):
+        try:
+            parsed: object = yaml.safe_load(f"value: {match.group('value')}\n")  # pyright: ignore[reportAny]
+            value = manifest.as_table(parsed).get("value")
+        except yaml.YAMLError:
+            continue
+        if value == old:
+            matches.append(match)
+    if len(matches) != 1:
+        return None
+    match = matches[0]
+    return f"{text[: match.start()]}{match.group('prefix')}{new}{text[match.end() :]}"
 
 
 def _jobs_run_staged_check(value: object, seen: set[int] | None = None, *, depth: int = 0) -> bool:

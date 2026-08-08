@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from datetime import timedelta
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
 import pytest
 
+from sarj_lint_configs.libs.release import registry as registry_module
 from sarj_lint_configs.libs.release.registry import (
     RegistryRequirement,
     lint_config_requirements,
@@ -19,6 +20,7 @@ from sarj_lint_configs.libs.release.registry import (
 
 if TYPE_CHECKING:
     from pathlib import Path
+    from urllib.request import Request
 
 
 def _bundle(root: Path, *, python_pin: str = "sarj-python-lint==1.2.3") -> None:
@@ -98,3 +100,102 @@ def test_lint_config_preflight_fails_after_its_bounded_attempts(tmp_path: Path) 
         )
 
     assert delays == [0.5]
+
+
+def test_lint_config_preflight_retries_transient_errors_and_keeps_successes(tmp_path: Path) -> None:
+    _bundle(tmp_path)
+    calls: dict[str, int] = {}
+
+    def checker(requirement: RegistryRequirement) -> bool:
+        calls[requirement.name] = calls.get(requirement.name, 0) + 1
+        if requirement.registry == "npm":
+            return True
+        if calls[requirement.name] == 1:
+            message = "temporary registry outage"
+            raise OSError(message)
+        return True
+
+    requirements = wait_for_lint_config_dependencies(
+        tmp_path,
+        attempts=2,
+        delay=timedelta(),
+        checker=checker,
+        sleeper=lambda _seconds: None,
+    )
+
+    assert requirements == lint_config_requirements(tmp_path)
+    assert calls["@sarj/eslint-plugin"] == 1
+    assert calls["sarj-python-lint"] == 2
+
+
+def test_lint_config_preflight_rejects_negative_retry_delay(tmp_path: Path) -> None:
+    _bundle(tmp_path)
+
+    with pytest.raises(ValueError, match="finite and non-negative"):
+        wait_for_lint_config_dependencies(
+            tmp_path,
+            delay=timedelta(seconds=-1),
+            checker=lambda _requirement: True,
+        )
+
+
+def test_pypi_publication_requires_exact_version_in_simple_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = json.dumps(
+        {
+            "files": [
+                {"filename": "sarj_python_lint-1.2.30-py3-none-any.whl"},
+                {"filename": "sarj_python_lint-1.2.3-py3-none-any.whl"},
+            ]
+        }
+    ).encode()
+
+    class Response:
+        status: int = 200
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return payload
+
+    seen: list[Request] = []
+
+    def open_url(request: Request, *, timeout: int) -> Response:
+        _ = timeout
+        seen.append(request)
+        return Response()
+
+    monkeypatch.setattr(registry_module, "urlopen", open_url)
+
+    assert registry_module.publication_exists(RegistryRequirement("pypi", "sarj-python-lint", "1.2.3"))
+    assert seen
+    request = seen[0]
+    assert request.full_url == "https://pypi.org/simple/sarj-python-lint/"
+    assert "application/vnd.pypi.simple.v1+json" in request.headers["Accept"]
+
+
+def test_pypi_simple_metadata_without_exact_version_is_not_ready(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = json.dumps({"files": [{"filename": "sarj_python_lint-1.2.30-py3-none-any.whl"}]}).encode()
+
+    class Response:
+        status: int = 200
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return payload
+
+    def open_url(_request: object, *, timeout: int) -> Response:
+        _ = timeout
+        return Response()
+
+    monkeypatch.setattr(registry_module, "urlopen", open_url)
+
+    assert not registry_module.publication_exists(RegistryRequirement("pypi", "sarj-python-lint", "1.2.3"))

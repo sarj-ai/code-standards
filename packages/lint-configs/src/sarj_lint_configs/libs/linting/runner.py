@@ -20,6 +20,8 @@ if TYPE_CHECKING:
     import argparse
     from collections.abc import Callable, Iterable, Mapping, Sequence
 
+    from .policy import Policy
+
 
 class _Rule(Protocol):
     """Registry value shape shared by the three standards linters."""
@@ -69,6 +71,7 @@ _SUFFIX_TO_TOOL = MappingProxyType(
 _IGNORED_DIRS = frozenset(
     {
         ".build",
+        ".astro",
         ".cache",
         ".coverage",
         ".gradle",
@@ -96,14 +99,18 @@ _IGNORED_DIRS = frozenset(
         ".yarn",
         ".tox",
         "__pycache__",
+        "__generated__",
+        "_backups",
         "dist",
         "build",
         "cache",
         "caches",
         "coverage",
         "htmlcov",
+        "generated",
         "node_modules",
         "out",
+        "storybook-static",
         "target",
         "vendor",
         "venv",
@@ -150,9 +157,10 @@ def run(
     *,
     noise_only: bool = False,
     python_baseline: str | None = None,
+    policy: Policy | None = None,
 ) -> int:
     """Dispatch files and directories to every applicable installed registry."""
-    grouped = group_paths(files)
+    grouped = group_paths(files, policy=policy)
     statuses = [
         _run_tool(
             "sarj_python_lint",
@@ -176,9 +184,9 @@ def run(
     return max(statuses)
 
 
-def create_python_baseline(files: Sequence[str], output: str) -> int:
+def create_python_baseline(files: Sequence[str], output: str, *, policy: Policy | None = None) -> int:
     """Snapshot current Python findings; later checks enforce the shrink-only ceiling."""
-    grouped = group_paths(files)
+    grouped = group_paths(files, policy=policy)
     return _run_tool(
         "sarj_python_lint",
         grouped.python,
@@ -219,7 +227,7 @@ def _load_tool(
     return checker_module.main, registry_module.REGISTRY
 
 
-def group_paths(files: Sequence[str]) -> GroupedPaths:
+def group_paths(files: Sequence[str], *, policy: Policy | None = None) -> GroupedPaths:
     grouped = GroupedPaths()
     inputs: list[tuple[str, Path, bool]] = []
     for raw_path in files:
@@ -232,6 +240,8 @@ def group_paths(files: Sequence[str]) -> GroupedPaths:
             raise ValueError(msg)
         if path.is_file() and _owns_path(path):
             _validate_source_file(path, raw_path)
+            if policy is not None and not policy.allows_path(path):
+                continue
         inputs.append((raw_path, path, path.is_dir()))
 
     roots = _minimal_roots(path for _raw, path, is_directory in inputs if is_directory)
@@ -241,11 +251,16 @@ def group_paths(files: Sequence[str]) -> GroupedPaths:
         if is_directory:
             key = _path_key(path)
             if key in roots and key not in walked:
-                _route_directory(grouped, path, seen)
+                _route_directory(grouped, path, seen, policy=policy)
                 walked.add(key)
             continue
         _route_unique_path(grouped, path, raw_path, seen)
     return grouped
+
+
+def accepts_hook_path(path: Path) -> bool:
+    """Return whether staged source analysis should receive this path."""
+    return _owns_path(path) and not _is_conventionally_generated(path)
 
 
 def _minimal_roots(paths: Iterable[Path]) -> frozenset[Path]:
@@ -259,7 +274,7 @@ def _minimal_roots(paths: Iterable[Path]) -> frozenset[Path]:
     return frozenset(roots)
 
 
-def _route_directory(grouped: GroupedPaths, path: Path, seen: set[Path]) -> None:
+def _route_directory(grouped: GroupedPaths, path: Path, seen: set[Path], *, policy: Policy | None = None) -> None:
     """Walk one directory without entering dependency, cache, or build trees."""
     for root, dir_names, file_names in os.walk(path, topdown=True, followlinks=False):
         dir_names[:] = sorted(name for name in dir_names if name not in _IGNORED_DIRS)
@@ -269,14 +284,28 @@ def _route_directory(grouped: GroupedPaths, path: Path, seen: set[Path]) -> None
             child = Path(root, file_name)
             if not _owns_path(child):
                 continue
-            try:
-                metadata = child.stat(follow_symlinks=False)
-                if not stat.S_ISREG(metadata.st_mode):
-                    continue
-                _validate_source_size(child, metadata.st_size)
-            except OSError:
+            if _is_conventionally_generated(child):
+                continue
+            if policy is not None and not policy.allows_path(child):
+                continue
+            if not _is_routable_discovered_file(child):
                 continue
             _route_unique_path(grouped, child, str(child), seen)
+
+
+def _is_routable_discovered_file(path: Path) -> bool:
+    try:
+        metadata = path.stat(follow_symlinks=False)
+        if not stat.S_ISREG(metadata.st_mode):
+            return False
+        _validate_source_size(path, metadata.st_size)
+    except ValueError:
+        if _has_generated_header(path):
+            return False
+        raise
+    except OSError:
+        return False
+    return True
 
 
 def _validate_source_file(path: Path, display: str) -> None:
@@ -296,6 +325,25 @@ def _validate_source_size(path: Path, size: int) -> None:
     if size > limit:
         msg = f"source input exceeds the {limit // (1024 * 1024)} MiB analysis limit: {path}"
         raise ValueError(msg)
+
+
+def _is_conventionally_generated(path: Path) -> bool:
+    name = path.name.lower()
+    return name.endswith((".gen.ts", ".gen.tsx", ".generated.ts", ".generated.tsx")) or name in {
+        "next-env.d.ts",
+        "worker-configuration.d.ts",
+    }
+
+
+def _has_generated_header(path: Path) -> bool:
+    try:
+        with path.open("rb") as stream:
+            header = stream.read(4096).lower()
+    except OSError:
+        return False
+    generated = b"auto-generated" in header or b"autogenerated" in header or b"@generated" in header
+    hands_off = b"do not edit" in header or b"do not hand-edit" in header or b"do not hand edit" in header
+    return generated and hands_off
 
 
 def _owns_path(path: Path) -> bool:

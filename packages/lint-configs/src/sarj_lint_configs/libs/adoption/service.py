@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 import shutil
@@ -96,6 +96,7 @@ class InitPlan:
     scaffold: scaffold.Plan
     sync: SyncPlan | None
     install_commands: tuple[lifecycle.Command, ...]
+    preconditions: dict[Path, bytes | None] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,6 +181,7 @@ def plan_init(
         msg = f"profile must be one of: {', '.join(manifest.PROFILES)}"
         raise ValueError(msg)
     resolved = root.resolve()
+    already_adopted = manifest.manifest_path(resolved).is_file()
     scaffold_plan = scaffold.build_plan(
         resolved,
         force=force,
@@ -200,6 +202,19 @@ def plan_init(
         typescript_dest=typescript_target,
         profile=scaffold_plan.profile,
     )
+    if not force and not already_adopted:
+        conflicts = tuple(
+            target.destination
+            for target in sync_plan.targets
+            if target.destination.is_file() and target.destination.read_bytes() != target.source.read_bytes()
+        )
+        if conflicts:
+            names = ", ".join(str(path.relative_to(resolved)) for path in conflicts)
+            scaffold_plan.errors.append(
+                "refusing to overwrite pre-existing lint configuration in an unadopted repository: "
+                f"{names}; review the files and rerun with --force"
+            )
+            return InitPlan(scaffold_plan, None, ())
     mutations = tuple(path for path, _contents in (*scaffold_plan.writes, *scaffold_plan.edits)) + tuple(
         target.destination for target in sync_plan.targets
     )
@@ -211,13 +226,23 @@ def plan_init(
             hook_manager=scaffold_plan.hook_manager,
         )
     )
-    return InitPlan(scaffold_plan, sync_plan, commands)
+    preconditions = {path: path.read_bytes() if path.is_file() else None for path in mutations}
+    return InitPlan(scaffold_plan, sync_plan, commands, preconditions)
 
 
 def apply_init(plan: InitPlan, *, install: bool = True) -> InitResult:
     """Apply a complete init plan atomically, rolling files back on failure."""
     if plan.sync is None:
         return InitResult(2, failure=InitFailure.APPLY, error="init plan is not applicable")
+    try:
+        transaction.validate_targets(plan.sync.root, tuple(plan.preconditions))
+        stale = any(
+            (path.read_bytes() if path.is_file() else None) != expected for path, expected in plan.preconditions.items()
+        )
+    except OSError as exc:
+        return InitResult(2, failure=InitFailure.APPLY, error=str(exc))
+    if stale:
+        return InitResult(2, failure=InitFailure.APPLY, error="init plan is stale; rerun init")
     scaffold_targets = tuple(path for path, _contents in (*plan.scaffold.writes, *plan.scaffold.edits))
     python_environment = (
         None if plan.scaffold.ecosystems.python_root is None else plan.scaffold.ecosystems.python_root / ".venv"
@@ -288,10 +313,10 @@ def _apply_init_transaction(
     if plan.sync is None:
         return InitResult(2, failure=InitFailure.APPLY, error="init plan is not applicable")
     file_transaction.track(*(target.destination for target in plan.sync.targets))
-    sync_result = apply_sync(plan.sync, force=True)
+    sync_result = _apply_planned_sync(plan.sync, plan.preconditions)
     if sync_result.status:
         return InitResult(sync_result.status, sync_result, InitFailure.SYNC)
-    scaffold.apply(plan.scaffold)
+    scaffold.apply(plan.scaffold, preconditions=plan.preconditions)
     direct_targets = (
         *(target.destination for target in plan.sync.targets),
         *(path for path, _contents in (*plan.scaffold.writes, *plan.scaffold.edits)),
@@ -307,6 +332,14 @@ def _apply_init_transaction(
                 f"dependency or hook installer exited with status {install_status}",
             )
     return InitResult(0, sync_result)
+
+
+def _apply_planned_sync(plan: SyncPlan, preconditions: dict[Path, bytes | None]) -> SyncResult:
+    records: list[SyncRecord] = []
+    for target in plan.targets:
+        transaction.assert_expected(plan.root, target.destination, preconditions[target.destination])
+        records.append(SyncRecord(target, _sync_one(target, root=plan.root, force=True, check=False)))
+    return SyncResult(records=tuple(records), check=False)
 
 
 def init_destination(root: Path, name: str, *, python_dest: str, typescript_dest: str) -> Path:
@@ -380,5 +413,5 @@ def _sync_one(target: SyncTarget, *, root: Path, force: bool, check: bool) -> Sy
         return SyncOutcome.DRIFT
     if destination.exists() and not force:
         return SyncOutcome.SKIPPED
-    _ = shutil.copyfile(target.source, destination)
+    transaction.atomic_write_bytes(root, destination, target.source.read_bytes())
     return SyncOutcome.WRITTEN

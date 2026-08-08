@@ -50,8 +50,15 @@ configs that ecosystem uses; wires them into `pyproject.toml`,
 `pyrightconfig.json` and `eslint.config.mjs`; writes a pre-commit block; records
 the adopted version in `.sarj-standards.toml`; and prints the CI snippet plus, for
 TypeScript, the exact peer set whose versions resolve together. `--dry-run`
-shows the plan first, `--no-install` only writes the wiring, and nothing existing
-is overwritten without `--force`.
+shows the plan first, and `--no-install` only writes the wiring. Existing files
+change only when their structure can be patched safely; ambiguous ownership or
+an incompatible config stops the operation before any write.
+
+Standards is the single policy and command facade, while Ruff, BasedPyright,
+ESLint, and repository-selected formatters remain the underlying engines. It
+does not delete native configs, formatter scripts, generated-code steps, or
+custom CI gates merely because an equivalent-looking Standards command exists.
+That boundary keeps adoption idempotent without silently losing behavior.
 
 Deliberately no version literal above. Pinning a version in prose is how the
 previous instructions came to pin `sarj-lint-configs` at 0.10.0 five minor

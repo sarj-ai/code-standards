@@ -42,12 +42,15 @@ def _cli(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str
     command = list(args)
     if command and command[0] == "init" and "--no-install" not in command:
         command.append("--no-install")
+    environment = dict(os.environ)  # ruff: ignore[banned-api] -- make analyzer discovery match the test interpreter.
+    environment["PATH"] = f"{Path(sys.executable).parent}{os.pathsep}{environment.get('PATH', '')}"
     return subprocess.run(
         [sys.executable, "-m", "sarj_lint_configs", *command],
         capture_output=True,
         text=True,
         check=False,
         cwd=cwd,
+        env=environment,
     )
 
 
@@ -111,9 +114,12 @@ def test_eslint_config_degrades_cleanly_without_a_type_project(config_name: str)
     text = (cli.CONFIGS_DIR / config_name).read_text(encoding="utf-8")
 
     assert "dirname(fileURLToPath(import.meta.url))" in text
-    assert "[CONFIG_DIRECTORY, process.cwd()].find(hasTypeProject)" in text
-    assert "projectService: HAS_TYPE_PROJECT" in text
+    assert "export function createConfig(options = {})" in text
+    assert "[CONFIG_DIRECTORY, process.cwd()].map(normalizeRoot)" in text
+    assert "const detectedRoot = candidates.find(hasTypeProject)" in text
+    assert "projectService: PROJECT_SERVICE" in text
     assert "tsconfigRootDir: TYPE_PROJECT_ROOT" in text
+    assert "PROJECT_SERVICE !== false" in text
     assert "UNTYPED_RULE_OVERRIDES" in text
     assert '"**/eslint.strict.mjs"' in text
     assert '"**/eslint.config.mjs"' in text
@@ -220,8 +226,8 @@ def test_manifest_rejects_unknown_profile(tmp_path: Path) -> None:
 def test_manifest_renders_as_valid_toml() -> None:
     rendered = manifest.Manifest(version="1.2.3", configs=("ruff",), python_dest=".", typescript_dest=".").render()
     parsed = tomllib.loads(rendered)
-    assert parsed["version"] == "1.2.3"
-    assert parsed["configs"] == ["ruff"]
+    assert parsed["bundle"] == "1.2.3"
+    assert parsed["capabilities"]["disable"] == ["pyright", "eslint", "markdownlint", "taplo", "yamllint"]
 
 
 def test_manifest_records_gradual_baseline_without_losing_extensions(tmp_path: Path) -> None:
@@ -344,6 +350,34 @@ def test_init_wires_an_empty_pyright_config(tmp_path: Path) -> None:
         "extends": ".pyright-strict.json",
         "pythonVersion": "3.14",
     }
+
+
+def test_init_refuses_to_replace_an_existing_pyright_parent(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    config = tmp_path / "pyrightconfig.json"
+    original = '{"extends": "./company-pyright.json"}\n'
+    config.write_text(original, encoding="utf-8")
+
+    proc = _cli("init", "--dest", str(tmp_path), "--no-install")
+
+    assert proc.returncode == 2
+    assert "already extends" in proc.stderr
+    assert config.read_text(encoding="utf-8") == original
+    assert not (tmp_path / manifest.MANIFEST_NAME).exists()
+
+
+def test_init_refuses_to_create_a_competing_config_beside_pyright_jsonc(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    config = tmp_path / "pyrightconfig.jsonc"
+    original = '{ /* keep this comment */ "typeCheckingMode": "strict" }\n'
+    config.write_text(original, encoding="utf-8")
+
+    proc = _cli("init", "--dest", str(tmp_path), "--no-install")
+
+    assert proc.returncode == 2
+    assert "pyrightconfig.jsonc" in proc.stderr
+    assert config.read_text(encoding="utf-8") == original
+    assert not (tmp_path / "pyrightconfig.json").exists()
 
 
 def test_init_separates_the_tool_runtime_from_an_older_consumer_target(tmp_path: Path) -> None:
@@ -576,7 +610,8 @@ def test_generated_precommit_block_carries_no_rev(tmp_path: Path) -> None:
     generated = (tmp_path / ".pre-commit-config.yaml").read_text()
     assert "rev:" not in generated
     assert "repo: local" in generated
-    assert "sarj-standards check --staged --" in generated
+    assert "sarj-standards check --staged --hook-files --" in generated
+    assert "always_run: true" in generated
     assert "package\\.json|pyrightconfig\\.json" in generated
     assert generated.count("id: sarj-standards-check") == 1
 
@@ -643,7 +678,9 @@ def test_init_repairs_inert_or_compound_lefthook_commands(tmp_path: Path, run: s
     proc = _cli("init", "--dest", str(tmp_path), "--no-install")
 
     assert proc.returncode == 0, proc.stderr
-    assert "run: sarj-standards check --staged" in (tmp_path / "lefthook.yml").read_text(encoding="utf-8")
+    updated = (tmp_path / "lefthook.yml").read_text(encoding="utf-8")
+    assert "--from sarj-lint-configs==" in updated
+    assert "sarj-standards check --staged --hook-files --trust-repository-code -- {staged_files}" in updated
 
 
 def test_init_repairs_a_commented_out_lefthook_command(tmp_path: Path) -> None:
@@ -658,7 +695,7 @@ def test_init_repairs_a_commented_out_lefthook_command(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stderr
     updated = (tmp_path / "lefthook.yml").read_text(encoding="utf-8")
     assert "# sarj-standards check --staged" in updated
-    assert "run: sarj-standards check --staged" in updated
+    assert "sarj-standards check --staged --hook-files --trust-repository-code -- {staged_files}" in updated
 
 
 def test_init_rejects_malformed_lefthook_yaml(tmp_path: Path) -> None:
@@ -695,7 +732,9 @@ def test_init_repairs_unwired_but_rejects_missing_lefthook_management(tmp_path: 
     (tmp_path / "lefthook.yml").write_text("pre-commit:\n  commands: {}\n", encoding="utf-8")
     unwired = _cli("init", str(tmp_path), "--hooks", "lefthook", "--no-install")
     assert unwired.returncode == 0, unwired.stderr
-    assert "run: sarj-standards check --staged" in (tmp_path / "lefthook.yml").read_text(encoding="utf-8")
+    assert "sarj-standards check --staged --hook-files --trust-repository-code -- {staged_files}" in (
+        tmp_path / "lefthook.yml"
+    ).read_text(encoding="utf-8")
 
 
 def test_init_repairs_final_lefthook_commands_key_without_a_newline(tmp_path: Path) -> None:
@@ -720,7 +759,8 @@ def test_init_preserves_and_extends_lefthook_v2_jobs(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stderr
     updated = config.read_text(encoding="utf-8")
     assert original_job in updated
-    assert "- name: sarj-standards\n      run: sarj-standards check --staged" in updated
+    assert "- name: sarj-standards\n      run: uvx --isolated" in updated
+    assert "sarj-standards check --staged --hook-files --trust-repository-code -- {staged_files}" in updated
     assert "pre-push:\n  commands: {}" in updated
     assert adoption_hooks.lefthook_runs_staged_check(tmp_path)
 
@@ -737,7 +777,10 @@ def test_nested_lefthook_v2_job_can_already_run_staged_check(tmp_path: Path) -> 
     proc = _cli("init", str(tmp_path), "--hooks", "lefthook", "--no-install")
 
     assert proc.returncode == 0, proc.stderr
-    assert config.read_text(encoding="utf-8") == original
+    updated = config.read_text(encoding="utf-8")
+    assert updated != original
+    assert "--from sarj-lint-configs==" in updated
+    assert "sarj-standards check --staged --hook-files --trust-repository-code -- {staged_files}" in updated
 
 
 def test_lefthook_cycle_fails_closed_without_recursing(tmp_path: Path) -> None:
@@ -902,9 +945,7 @@ def test_doctor_detects_a_disabled_generated_precommit_hook(tmp_path: Path) -> N
     assert _cli("init", "--dest", str(tmp_path), "--no-install").returncode == 0
     config = tmp_path / ".pre-commit-config.yaml"
     config.write_text(
-        config.read_text(encoding="utf-8").replace(
-            "entry: uv run --frozen sarj-standards check --staged --", "entry: echo standards-disabled"
-        ),
+        config.read_text(encoding="utf-8").replace("check --staged --hook-files --", "echo standards-disabled"),
         encoding="utf-8",
     )
 
@@ -920,6 +961,9 @@ def test_doctor_detects_a_disabled_generated_precommit_hook(tmp_path: Path) -> N
         ("stages: [pre-commit]", "stages: [pre-push]"),
         ("pass_filenames: true", "pass_filenames: false"),
         ("require_serial: true", "require_serial: false"),
+        ("verbose: true", "verbose: false"),
+        ("always_run: true", "always_run: false"),
+        ("--hook-files", "--not-hook-files"),
     ],
 )
 def test_doctor_rejects_inert_or_semantically_changed_precommit_hook(tmp_path: Path, old: str, new: str) -> None:
@@ -1168,7 +1212,7 @@ def test_show_ci_renders_a_complete_pinned_workflow(tmp_path: Path, ecosystem: s
     assert "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9" in rendered.stdout
     assert "sarj-standards check" in rendered.stdout
     if ecosystem == "python":
-        assert "uv sync --locked" in rendered.stdout
+        assert "uv sync --locked" not in rendered.stdout
     else:
         assert "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020" in rendered.stdout
         assert "npm ci --no-audit --no-fund" in rendered.stdout
@@ -1795,14 +1839,20 @@ def test_sync_check_reports_drift_after_a_synced_config_is_deleted(tmp_path: Pat
     assert f"drift: {tmp_path / '.ruff-strict.toml'}" in proc.stdout
 
 
-def test_init_replaces_stale_manifest_owned_configs_without_force(tmp_path: Path) -> None:
+def test_init_refuses_to_replace_unadopted_configs_without_force(tmp_path: Path) -> None:
     _python_repo(tmp_path)
     strict = tmp_path / ".ruff-strict.toml"
     strict.write_text("stale\n", encoding="utf-8")
 
     proc = _cli("init", "--dest", str(tmp_path))
 
-    assert proc.returncode == 0, proc.stderr
+    assert proc.returncode == 2
+    assert "refusing to overwrite pre-existing lint configuration" in proc.stderr
+    assert strict.read_text(encoding="utf-8") == "stale\n"
+    assert not (tmp_path / manifest.MANIFEST_NAME).exists()
+
+    forced = _cli("init", "--dest", str(tmp_path), "--force", "--no-install")
+    assert forced.returncode == 0, forced.stderr
     assert strict.read_bytes() == RUFF_STRICT.read_bytes()
 
 
@@ -1984,6 +2034,21 @@ def test_a_repo_with_its_own_ruff_table_is_wired_without_losing_settings(tmp_pat
     assert text.count("[tool.ruff]") == 1
     assert tomllib.loads(text)["tool"]["ruff"]["line-length"] == 100
     assert tomllib.loads(text)["tool"]["ruff"]["extend"] == ".ruff-strict.toml"
+
+
+def test_init_fails_closed_when_ruff_already_extends_another_config(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    pyproject = tmp_path / "pyproject.toml"
+    original = (
+        '[project]\nname = "app"\nversion = "0.1.0"\nrequires-python = ">=3.14"\n\n[tool.ruff]\nextend = "team.toml"\n'
+    )
+    pyproject.write_text(original, encoding="utf-8")
+
+    proc = _cli("init", "--dest", str(tmp_path), "--no-install")
+
+    assert proc.returncode == 2
+    assert "already extends" in proc.stderr
+    assert pyproject.read_text(encoding="utf-8") == original
 
 
 def test_init_makes_existing_ruff_policy_additive_and_immediately_doctor_clean(tmp_path: Path) -> None:
