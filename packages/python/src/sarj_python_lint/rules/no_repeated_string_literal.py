@@ -137,7 +137,7 @@ def _is_structured(value: str) -> bool:
 def _preview(value: str) -> str:
     if len(value) <= _PREVIEW_LENGTH:
         return repr(value)
-    return repr(value[:_PREVIEW_LENGTH] + "…")
+    return repr(f"{value[:_PREVIEW_LENGTH]}…")
 
 
 def _is_skipped_path(path: Path) -> bool:

@@ -24,6 +24,10 @@ router = APIRouter()
 """
 
 
+def _source(suffix: str) -> str:
+    return f"{_PRELUDE}{suffix}"
+
+
 def test_complete_operation_is_clean():
     source = (
         _PRELUDE
@@ -49,14 +53,11 @@ async def read_user(
 
 
 def test_metadata_is_required_per_visible_operation():
-    source = (
-        _PRELUDE
-        + """
+    source = _source("""
 @router.get("/users")
 async def users() -> list[UserResponse]:
     return []
-"""
-    )
+""")
     diagnostics = _check(source)
     assert len(diagnostics) == 1
     assert "[metadata]" in diagnostics[0].message
@@ -66,15 +67,12 @@ async def users() -> list[UserResponse]:
 
 
 def test_docstring_satisfies_operation_description():
-    source = (
-        _PRELUDE
-        + '''
+    source = _source('''
 @router.get("/users", summary="Read users", status_code=200)
 async def users() -> list[UserResponse]:
     """Return the visible users."""
     return []
-'''
-    )
+''')
     assert _check(source) == []
 
 
@@ -101,26 +99,20 @@ async def create_item({parameter}) -> ItemResponse:
 
 
 def test_dependency_marker_does_not_require_description():
-    source = (
-        _PRELUDE
-        + """
+    source = _source("""
 @router.get("/me", summary="Read me", description="Returns the caller.", status_code=200)
 async def me(user: Annotated[User, Depends(current_user)]) -> UserResponse:
     return UserResponse.model_validate(user)
-"""
-    )
+""")
     assert _check(source) == []
 
 
 def test_ruff_owned_annotation_defects_do_not_duplicate():
-    source = (
-        _PRELUDE
-        + """
+    source = _source("""
 @router.get("/users", summary="Read users", description="Returns users.", status_code=200)
 async def users(limit = Query(10)):
     return []
-"""
-    )
+""")
     assert _check(source) == []
 
 
@@ -187,26 +179,20 @@ async def delete_item(item_id: Annotated[str, Path(description="Item identifier"
 
 
 def test_no_content_none_return_does_not_require_redundant_response_model_none():
-    source = (
-        _PRELUDE
-        + """
+    source = _source("""
 @router.delete("/items", summary="Delete items", description="Deletes items.", status_code=204)
 async def delete_items() -> None:
     return None
-"""
-    )
+""")
     assert _check(source) == []
 
 
 def test_no_content_response_rejects_model():
-    source = (
-        _PRELUDE
-        + """
+    source = _source("""
 @router.delete("/items", summary="Delete items", description="Deletes items.", status_code=204)
 async def delete_items() -> ItemResponse:
     return ItemResponse()
-"""
-    )
+""")
     assert any("[return]" in diagnostic.message for diagnostic in _check(source))
 
 
@@ -260,16 +246,13 @@ async def user(user_id: Annotated[str, Path(description="User identifier")]) -> 
 
 
 def test_http_status_enum_is_resolved():
-    source = (
-        _PRELUDE
-        + """
+    source = _source("""
 from http import HTTPStatus as HS
 
 @router.get("/users", summary="Read users", description="Returns users.", status_code=HS.OK)
 async def users() -> UserResponse:
     raise HTTPException(status_code=HS.NOT_FOUND)
-"""
-    )
+""")
     assert any("[responses]" in diagnostic.message and "404" in diagnostic.message for diagnostic in _check(source))
 
 
@@ -314,14 +297,11 @@ async def users() -> UserResponse:
 
 
 def test_direct_alternate_response_requires_documentation():
-    source = (
-        _PRELUDE
-        + """
+    source = _source("""
 @router.get("/exports", summary="Read export", description="Returns an export.", status_code=200)
 async def export() -> ExportResponse:
     return FileResponse("pending.txt", status_code=202)
-"""
-    )
+""")
     assert any("[responses]" in diagnostic.message and "202" in diagnostic.message for diagnostic in _check(source))
 
 
@@ -344,15 +324,12 @@ async def user(user_id: Annotated[str, Path(description="User identifier")]) -> 
 
 
 def test_raw_request_body_requires_openapi_extra():
-    source = (
-        _PRELUDE
-        + """
+    source = _source("""
 @router.post("/events", summary="Receive event", description="Receives an event.", status_code=202)
 async def event(request: Request) -> Ack:
     payload = await request.json()
     return Ack(payload=payload)
-"""
-    )
+""")
     assert any(
         "[parameter]" in diagnostic.message and "requestBody" in diagnostic.message for diagnostic in _check(source)
     )
@@ -378,9 +355,7 @@ async def me_again() -> UserResponse: ...
 
 
 def test_independent_router_factories_do_not_conflict():
-    source = (
-        _PRELUDE
-        + """
+    source = _source("""
 def first() -> APIRouter:
     router = APIRouter()
 
@@ -394,26 +369,22 @@ def second() -> APIRouter:
     @router.get("/items", summary="Read second", description="Returns second items.", status_code=200)
     async def items() -> SecondResponse: ...
     return router
-"""
-    )
+""")
     assert _check(source) == []
 
 
 def test_hidden_websocket_test_generated_and_unrelated_routes_are_ignored():
-    hidden = (
-        _PRELUDE
-        + """
+    hidden = _source("""
 @router.get("/internal", include_in_schema=False)
 async def internal(value):
     return value
 
 @router.websocket("/ws")
 async def ws(socket): ...
-"""
-    )
+""")
     assert _check(hidden) == []
-    assert _check(_PRELUDE + "@router.get('/x')\nasync def x(): ...\n", "tests/api.py") == []
-    assert _check("# Generated by openapi-generator\n" + _PRELUDE + "@router.get('/x')\nasync def x(): ...\n") == []
+    assert _check(_source("@router.get('/x')\nasync def x(): ...\n"), "tests/api.py") == []
+    assert _check(f"# Generated by openapi-generator\n{_source("@router.get('/x')\nasync def x(): ...\n")}") == []
     assert _check("@client.get('/x')\ndef x(): return {}\n") == []
 
 
@@ -485,14 +456,11 @@ class Client:
 
 
 def test_typed_legacy_parameter_marker_requires_annotated():
-    source = (
-        _PRELUDE
-        + """
+    source = _source("""
 @router.post("/items", summary="Create item", description="Creates an item.", status_code=201)
 async def create_item(payload: dict[str, str] = Body(description="Payload")) -> ItemResponse:
     return ItemResponse()
-"""
-    )
+""")
     diagnostics = _check(source)
     assert any("[parameter]" in diagnostic.message and "Annotated" in diagnostic.message for diagnostic in diagnostics)
 
@@ -522,9 +490,7 @@ async def report() -> FileResponse:
 
 
 def test_return_contract_problems_are_aggregated_per_handler():
-    source = (
-        _PRELUDE
-        + """
+    source = _source("""
 @router.get(
     "/stream",
     summary="Stream report",
@@ -534,8 +500,7 @@ def test_return_contract_problems_are_aggregated_per_handler():
 )
 async def stream() -> StreamingResponse:
     return StreamingResponse(iter(()))
-"""
-    )
+""")
     diagnostics = [diagnostic for diagnostic in _check(source) if "[return]" in diagnostic.message]
     assert len(diagnostics) == 1
     assert "response_class" in diagnostics[0].message
@@ -571,9 +536,7 @@ async def items(
 
 
 def test_api_route_literal_methods_drive_body_and_conflict_checks():
-    source = (
-        _PRELUDE
-        + """
+    source = _source("""
 @router.api_route(
     "/items",
     methods=["GET"],
@@ -585,8 +548,7 @@ async def items(payload: Annotated[ItemBody, Body(description="Filter")]) -> Ite
 
 @router.get("/items", summary="Read items again", description="Returns items.", status_code=200)
 async def items_again() -> ItemResponse: ...
-"""
-    )
+""")
     messages = [diagnostic.message for diagnostic in _check(source)]
     assert any("GET operations must not declare a request body" in message for message in messages)
     assert any("duplicate GET /items" in message for message in messages)

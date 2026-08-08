@@ -13,20 +13,8 @@ type Options = readonly [];
 
 const ACAO_HEADER = "access-control-allow-origin";
 const ACAC_HEADER = "access-control-allow-credentials";
-const HEADER_SET_METHODS = new Set(["setheader", "set", "append"]);
+const HEADER_SET_METHODS: ReadonlySet<string> = new Set(["setheader", "set", "append"]);
 
-/**
- * True only for the boolean literal `true` (not `1`, not a truthy expression).
- */
-function isTrueLiteral(node: TSESTree.Node): boolean {
-  return node.type === "Literal" && node.value === true;
-}
-
-/**
- * True if `node` is a string literal whose value equals `"true"`
- * (case-insensitive), or the boolean literal `true`. Header values are strings,
- * but some frameworks coerce a boolean, so both are accepted.
- */
 function isCredentialsTrueValue(node: TSESTree.Node): boolean {
   if (node.type === "Literal") {
     if (node.value === true) {
@@ -44,11 +32,58 @@ function isStarLiteral(node: TSESTree.Node): boolean {
 }
 
 /**
- * True if a `"*"` string literal appears anywhere in `node`'s subtree. Walking
- * the whole subtree catches `"*"`, `["*"]`, and the `flag ? origins : "*"`
- * conditional branch. A dynamic `origin: someVar` has no `"*"` literal, so it
- * does not fire.
+ * Returns the (non-computed) string name of a property key, or `undefined`.
  */
+function propertyKeyName(prop: TSESTree.Property): string | undefined {
+  if (prop.computed) {
+    return undefined;
+  }
+  const key = prop.key;
+  if (key.type === "Identifier") {
+    return key.name;
+  }
+  if (key.type === "Literal" && typeof key.value === "string") {
+    return key.value;
+  }
+  return undefined;
+}
+
+function isCorsWildcardCredentialsCall(
+  node: TSESTree.CallExpression | TSESTree.NewExpression,
+): boolean {
+  const name = calleeName(node);
+  if (name === undefined || name.toLowerCase() !== "cors") {
+    return false;
+  }
+  const options = node.arguments.find(
+    (arg): arg is TSESTree.ObjectExpression => arg.type === "ObjectExpression",
+  );
+  if (options === undefined) {
+    return false;
+  }
+  let hasCredentials = false;
+  let hasWildcardOrigin = false;
+  for (const prop of options.properties) {
+    if (prop.type !== "Property") {
+      continue;
+    }
+    const key = propertyKeyName(prop);
+    if (key === "credentials" && isTrueLiteral(prop.value)) {
+      hasCredentials = true;
+    } else if (key === "origin" && subtreeContainsStarLiteral(prop.value)) {
+      hasWildcardOrigin = true;
+    }
+  }
+  return hasCredentials && hasWildcardOrigin;
+}
+
+/**
+ * True only for the boolean literal `true` (not `1`, not a truthy expression).
+ */
+function isTrueLiteral(node: TSESTree.Node): boolean {
+  return node.type === "Literal" && node.value === true;
+}
+
 function subtreeContainsStarLiteral(node: TSESTree.Node): boolean {
   if (isStarLiteral(node)) {
     return true;
@@ -80,23 +115,6 @@ function isNode(value: unknown): value is TSESTree.Node {
 }
 
 /**
- * Returns the (non-computed) string name of a property key, or `undefined`.
- */
-function propertyKeyName(prop: TSESTree.Property): string | undefined {
-  if (prop.computed) {
-    return undefined;
-  }
-  const key = prop.key;
-  if (key.type === "Identifier") {
-    return key.name;
-  }
-  if (key.type === "Literal" && typeof key.value === "string") {
-    return key.value;
-  }
-  return undefined;
-}
-
-/**
  * Extracts the callee's terminal identifier name for a call/new expression
  * (`cors` for `cors(...)` and `app.cors(...)`, `Cors` for `new Cors(...)`).
  */
@@ -115,40 +133,6 @@ function calleeName(
     return callee.property.name;
   }
   return undefined;
-}
-
-/**
- * Detects the `cors({ origin: "*", credentials: true })` shape. Returns true
- * when the callee is `cors` / `Cors` and the first ObjectExpression argument
- * has `credentials: true` AND an `origin` whose subtree contains `"*"`.
- */
-function isCorsWildcardCredentialsCall(
-  node: TSESTree.CallExpression | TSESTree.NewExpression,
-): boolean {
-  const name = calleeName(node);
-  if (name === undefined || name.toLowerCase() !== "cors") {
-    return false;
-  }
-  const options = node.arguments.find(
-    (arg): arg is TSESTree.ObjectExpression => arg.type === "ObjectExpression",
-  );
-  if (options === undefined) {
-    return false;
-  }
-  let hasCredentials = false;
-  let hasWildcardOrigin = false;
-  for (const prop of options.properties) {
-    if (prop.type !== "Property") {
-      continue;
-    }
-    const key = propertyKeyName(prop);
-    if (key === "credentials" && isTrueLiteral(prop.value)) {
-      hasCredentials = true;
-    } else if (key === "origin" && subtreeContainsStarLiteral(prop.value)) {
-      hasWildcardOrigin = true;
-    }
-  }
-  return hasCredentials && hasWildcardOrigin;
 }
 
 /**
@@ -217,11 +201,6 @@ function classifyHeaderSetCall(
   return undefined;
 }
 
-/**
- * Nearest enclosing function node, or `undefined` for module scope. Used to
- * group split `setHeader`/`set` header assignments so a wildcard origin and a
- * credentials=true set only pair up when they live in the same scope.
- */
 function enclosingScope(node: TSESTree.Node): TSESTree.Node | undefined {
   let current: TSESTree.Node | undefined = node.parent;
   while (current) {

@@ -306,16 +306,18 @@ def _is_test_case_class(node: ast.ClassDef, classes: dict[str, ast.ClassDef], se
 
 
 def _base_name(base: ast.expr) -> str:
-    if isinstance(base, ast.Name):
-        return base.id
-    if isinstance(base, ast.Attribute):
-        return base.attr
-    # A generic base such as `Generic[T]` or a parametrized mixin factory.
-    if isinstance(base, ast.Subscript):
-        return _base_name(base.value)
-    if isinstance(base, ast.Call):
-        return _base_name(base.func)
-    return ""
+    match base:
+        case ast.Name(id=name):
+            return name
+        case ast.Attribute(attr=attr):
+            return attr
+        # A generic base such as `Generic[T]` or a parametrized mixin factory.
+        case ast.Subscript(value=value):
+            return _base_name(value)
+        case ast.Call(func=func):
+            return _base_name(func)
+        case _:
+            return ""
 
 
 def _uses_unittest_api(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:

@@ -48,51 +48,6 @@ class _Args(argparse.Namespace):
         self.allow_increase = False
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    """Assemble the argument parser."""
-    parser = argparse.ArgumentParser(
-        prog="sarj-ratchet",
-        description=(
-            "Ratchet on lint/type suppressions: per-code, per-package and per-file ceilings that may only shrink."
-        ),
-    )
-    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    parser.add_argument("root", nargs="?", type=Path, default=Path(), help="tree to scan (default: cwd)")
-    parser.add_argument(
-        "--baseline",
-        type=Path,
-        help=f"baseline JSON (default: <root>/{_DEFAULT_BASELINE_NAME})",
-    )
-    parser.add_argument(
-        "--package",
-        action="append",
-        default=[],
-        help="package directory relative to root (repeatable; default: the baseline's, else auto-discovered)",
-    )
-    parser.add_argument(
-        "--exclude-subtree",
-        action="append",
-        default=[],
-        help="root-relative path prefix to skip, e.g. generated client output (repeatable)",
-    )
-    parser.add_argument(
-        "--per-file-ceiling",
-        type=int,
-        help=f"max suppressions in any one file (default: the baseline's, else {DEFAULT_PER_FILE_CEILING})",
-    )
-    parser.add_argument(
-        "--update",
-        action="store_true",
-        help="rewrite the baseline from current counts (refuses to raise a ceiling)",
-    )
-    parser.add_argument(
-        "--allow-increase",
-        action="store_true",
-        help="with --update: permit ceilings to rise (requires explicit review)",
-    )
-    return parser
-
-
 def main(argv: list[str] | None = None) -> int:
     """Run the ratchet."""
     args = _build_parser().parse_args(argv, namespace=_Args())
@@ -142,6 +97,51 @@ def main(argv: list[str] | None = None) -> int:
         shrunk = ", ".join(f"{key} {ceiling}->{actual}" for key, (ceiling, actual) in sorted(won.items()))
         sys.stdout.write(f"Counts dropped below baseline ({shrunk}) — lock it in: sarj-ratchet --update\n")
     return 0
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    """Assemble the argument parser."""
+    parser = argparse.ArgumentParser(
+        prog="sarj-ratchet",
+        description=(
+            "Ratchet on lint/type suppressions: per-code, per-package and per-file ceilings that may only shrink."
+        ),
+    )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument("root", nargs="?", type=Path, default=Path(), help="tree to scan (default: cwd)")
+    parser.add_argument(
+        "--baseline",
+        type=Path,
+        help=f"baseline JSON (default: <root>/{_DEFAULT_BASELINE_NAME})",
+    )
+    parser.add_argument(
+        "--package",
+        action="append",
+        default=[],
+        help="package directory relative to root (repeatable; default: the baseline's, else auto-discovered)",
+    )
+    parser.add_argument(
+        "--exclude-subtree",
+        action="append",
+        default=[],
+        help="root-relative path prefix to skip, e.g. generated client output (repeatable)",
+    )
+    parser.add_argument(
+        "--per-file-ceiling",
+        type=int,
+        help=f"max suppressions in any one file (default: the baseline's, else {DEFAULT_PER_FILE_CEILING})",
+    )
+    parser.add_argument(
+        "--update",
+        action="store_true",
+        help="rewrite the baseline from current counts (refuses to raise a ceiling)",
+    )
+    parser.add_argument(
+        "--allow-increase",
+        action="store_true",
+        help="with --update: permit ceilings to rise (requires explicit review)",
+    )
+    return parser
 
 
 def _update(

@@ -3,7 +3,7 @@ import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
 
 export default defineConfig(
-  { ignores: ["dist/**", "tests/fixtures/**"] },
+  { ignores: ["dist/**", "eslint.dogfood.config.mjs", "tests/fixtures/**"] },
   {
     name: "sarj/typescript",
     files: ["**/*.{ts,tsx,mts,cts,mjs}"],

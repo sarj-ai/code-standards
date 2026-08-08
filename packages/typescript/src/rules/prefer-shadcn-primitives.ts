@@ -49,6 +49,36 @@ type StaticAttribute =
   | { readonly kind: "missing" }
   | { readonly kind: "unknown" };
 
+function effectiveAttribute(
+  node: TSESTree.JSXOpeningElement,
+  attributeName: string,
+): StaticAttribute {
+  for (const attribute of node.attributes.toReversed()) {
+    if (attribute.type === AST_NODE_TYPES.JSXSpreadAttribute) {
+      return { kind: "unknown" };
+    }
+    if (
+      attribute.name.type !== AST_NODE_TYPES.JSXIdentifier ||
+      attribute.name.name !== attributeName
+    ) {
+      continue;
+    }
+    const value = staticString(attribute.value);
+    return value === null
+      ? { kind: "unknown" }
+      : { kind: "known", value };
+  }
+  return { kind: "missing" };
+}
+
+function staticString(value: TSESTree.JSXAttribute["value"]): string | null {
+  if (value?.type === AST_NODE_TYPES.Literal) {
+    return typeof value.value === "string" ? value.value : null;
+  }
+  if (value?.type !== AST_NODE_TYPES.JSXExpressionContainer) return null;
+  return staticExpressionString(value.expression);
+}
+
 function staticExpressionString(
   expression: TSESTree.Expression | TSESTree.JSXEmptyExpression,
 ): string | null {
@@ -74,36 +104,6 @@ function staticExpressionString(
     return staticExpressionString(expression.expression);
   }
   return null;
-}
-
-function staticString(value: TSESTree.JSXAttribute["value"]): string | null {
-  if (value?.type === AST_NODE_TYPES.Literal) {
-    return typeof value.value === "string" ? value.value : null;
-  }
-  if (value?.type !== AST_NODE_TYPES.JSXExpressionContainer) return null;
-  return staticExpressionString(value.expression);
-}
-
-function effectiveAttribute(
-  node: TSESTree.JSXOpeningElement,
-  attributeName: string,
-): StaticAttribute {
-  for (const attribute of node.attributes.toReversed()) {
-    if (attribute.type === AST_NODE_TYPES.JSXSpreadAttribute) {
-      return { kind: "unknown" };
-    }
-    if (
-      attribute.name.type !== AST_NODE_TYPES.JSXIdentifier ||
-      attribute.name.name !== attributeName
-    ) {
-      continue;
-    }
-    const value = staticString(attribute.value);
-    return value === null
-      ? { kind: "unknown" }
-      : { kind: "known", value };
-  }
-  return { kind: "missing" };
 }
 
 function isLabelableElement(node: TSESTree.JSXElement): boolean {

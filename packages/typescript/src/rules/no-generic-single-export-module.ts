@@ -12,15 +12,15 @@ import { isGeneratedFile, isTestFile } from "./_paths.js";
 type MessageIds = "genericSingleExport";
 type Options = [];
 
-const GENERIC_STEMS = new Set([
+const GENERIC_STEMS: ReadonlySet<string> = new Set([
   "base", "common", "constant", "constants", "core", "enum", "enums", "helper", "helpers",
   "misc", "model", "models", "shared", "stuff", "type", "types", "util", "utils",
 ]);
 
 // Frameworks and common inheritance layouts own these filenames; a rename can
 // break discovery or erase the conventional "base implementation" signal.
-const CONVENTIONAL_STEMS = new Set(["base", "models"]);
-const CJS_OBJECT_EXPORT_METHODS = new Set(["assign", "defineProperties", "defineProperty"]);
+const CONVENTIONAL_STEMS: ReadonlySet<string> = new Set(["base", "models"]);
+const CJS_OBJECT_EXPORT_METHODS: ReadonlySet<string> = new Set(["assign", "defineProperties", "defineProperty"]);
 
 interface FileParts {
   readonly extension: string;

@@ -10,7 +10,7 @@ import re
 from types import MappingProxyType
 from typing import TYPE_CHECKING, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import Diagnostic, Rule, Severity, parse_or_none
 from sarj_python_lint.rules._ast_index import children, walk
 from sarj_python_lint.rules._paths import is_generated, is_test_path
 
@@ -87,24 +87,33 @@ OPEN_DOMAIN_CODE_NAMES = frozenset(
         "attr",
         "attribute",
         "action_name",
-        "language",
-        "lang",
-        "country",
-        "currency",
-        "event_name",
-        "extension",
-        "timezone",
-        "tz",
-        "locale",
-        "region",
         "code",
+        "country",
         "country_code",
+        "currency",
+        "date_str",
+        "default_search",
+        "encoding",
+        "event_name",
+        "ext",
+        "extension",
+        "format_key",
         "key",
+        "lang",
+        "language",
+        "locale",
         "name",
+        "protocol",
+        "region",
+        "timezone",
         "tool_name",
+        "tz",
         "user_input",
+        "username",
     }
 )
+
+_OPEN_DOMAIN_SUFFIXES = ("_encoding", "_ext", "_protocol", "_username")
 
 #: A "short lowercase token" — the shape enum member values take.
 _LOWER_TOKEN_RE = re.compile(r"^[a-z][a-z0-9_-]{0,30}$")
@@ -126,7 +135,19 @@ _MEMBERSHIP = "in"
 #: Call names that read a value out of a payload / stream / environment the
 #: module does not own, so the vocabulary of the result is not the module's.
 _WIRE_CALL_NAMES = frozenset(
-    {"get", "get_mapping_or_attr", "getenv", "items", "keys", "next", "pop", "popleft", "values"}
+    {
+        "get",
+        "get_mapping_or_attr",
+        "getenv",
+        "items",
+        "keys",
+        "next",
+        "pop",
+        "popleft",
+        "r1",
+        "traverse_obj",
+        "values",
+    }
 )
 
 #: Calls that wrap an iterable without changing where its elements came from.
@@ -139,12 +160,17 @@ _OWNED_ROOTS = frozenset({"self", "cls"})
 #: Depth at which an attribute chain has left the object the module owns:
 #: `self._config_wrapper.extra` reads a collaborator's field, not `self`'s.
 _FOREIGN_CHAIN_DEPTH = 2
+_BUILDER_PREFIXES = ("build_", "make_")
+_MIN_COPIED_LITERAL_DOMAINS = 2
+_MIN_LITERAL_DOMAIN_VALUES = 3
 
 
 class PreferStrEnum(Rule):
     id: str = "prefer-str-enum"
     code: str = "SARJ006"
-    description: str = "Corroborated choice-like str field or equality cluster — prefer StrEnum."
+    description: str = (
+        "Corroborated string choices should use StrEnum; transparent builders should reuse named Literal domains."
+    )
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:  # ruff: ignore[too-many-locals] -- traversal state.
@@ -155,72 +181,97 @@ class PreferStrEnum(Rule):
         tree = parse_or_none(path, source)
         if tree is None:
             return []
-        check_clusters = not is_test_path(path)
+        test_path = is_test_path(path)
+        check_clusters = not test_path
         alias_names, alias_valuesets = _module_literal_aliases(tree)
         raw_string_aliases = _module_raw_string_aliases(tree)
         literal_funcs = _literal_returning_functions(tree)
+        module_func_names = frozenset(
+            statement.name for statement in tree.body if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef))
+        )
+        method_owned_attributes = _class_method_owned_attributes(tree)
+        method_closed_attributes = _class_method_closed_attributes(tree, alias_names, raw_string_aliases)
         class_nodes: list[ast.ClassDef] = []
-        all_clusters: list[tuple[dict[str, _ClusterEntry], frozenset[str]]] = []
+        all_clusters: list[tuple[dict[str, _ClusterEntry], frozenset[str], frozenset[str] | None]] = []
         cluster_opacity: dict[int, frozenset[str]] = {}
+        cluster_owned_attributes: dict[int, frozenset[str] | None] = {}
         comprehension_opacity: dict[int, frozenset[str]] = {}
         stack: list[tuple[ast.AST, dict[str, _ClusterEntry] | None]] = [(tree, None)]
         while stack:
             node, active = stack.pop()
-            if isinstance(node, ast.ClassDef):
-                class_nodes.append(node)
-                child_active: dict[str, _ClusterEntry] | None = None
-            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                if check_clusters:
-                    comprehension_opacity.update(_closed_comprehension_targets(node, alias_names, raw_string_aliases))
-                    child_active = {}
-                    shadowed = {
-                        arg.arg
-                        for arg in (
-                            *node.args.posonlyargs,
-                            *node.args.args,
-                            *node.args.kwonlyargs,
+            child_active: dict[str, _ClusterEntry] | None
+            match node:
+                case ast.ClassDef():
+                    class_nodes.append(node)
+                    child_active = None
+                case ast.FunctionDef() | ast.AsyncFunctionDef():
+                    if check_clusters:
+                        comprehension_opacity.update(
+                            _closed_comprehension_targets(node, alias_names, raw_string_aliases)
                         )
-                    }
-                    shadowed.update(target for target, _value in _local_bindings(node))
-                    inherited = cluster_opacity.get(id(active), frozenset()) - shadowed
-                    opaque = inherited | _opaque_names(node, alias_names, literal_funcs, raw_string_aliases)
-                    all_clusters.append((child_active, opaque))
-                    cluster_opacity[id(child_active)] = opaque
-                else:
+                        child_active = {}
+                        shadowed = {
+                            arg.arg
+                            for arg in (
+                                *node.args.posonlyargs,
+                                *node.args.args,
+                                *node.args.kwonlyargs,
+                            )
+                        }
+                        shadowed.update(target for target, _value in _local_bindings(node))
+                        inherited = cluster_opacity.get(id(active), frozenset()) - shadowed
+                        opaque = (
+                            inherited
+                            | _opaque_names(
+                                node,
+                                alias_names,
+                                literal_funcs,
+                                raw_string_aliases,
+                                module_func_names,
+                            )
+                            | method_closed_attributes.get(id(node), frozenset())
+                        )
+                        owned_attributes = method_owned_attributes.get(id(node))
+                        all_clusters.append((child_active, opaque, owned_attributes))
+                        cluster_opacity[id(child_active)] = opaque
+                        cluster_owned_attributes[id(child_active)] = owned_attributes
+                    else:
+                        child_active = None
+                case ast.Lambda():
                     child_active = None
-            elif isinstance(node, ast.Lambda):
-                child_active = None
-            elif isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
-                # Comprehension targets have their own implicit scope and can
-                # shadow the enclosing function's variables, so collect their
-                # comparisons separately rather than merging same-named keys.
-                if active is None:
-                    child_active = None
-                else:
-                    child_active = {}
-                    bound_targets = {
-                        name for generator in node.generators for name in _bound_target_names(generator.target)
-                    }
-                    wire_targets = {
-                        name
-                        for generator in node.generators
-                        if _is_wire_lookup(generator.iter)
-                        for name in _bound_target_names(generator.target)
-                    }
-                    opaque = (
-                        (cluster_opacity.get(id(active), frozenset()) - bound_targets)
-                        | wire_targets
-                        | comprehension_opacity.get(id(node), frozenset())
-                    )
-                    all_clusters.append((child_active, frozenset(opaque)))
-                    cluster_opacity[id(child_active)] = frozenset(opaque)
-            else:
-                child_active = active
-                if active is not None:
-                    if isinstance(node, ast.Compare):
-                        _accumulate_compare(active, node)
-                    elif isinstance(node, ast.Match):
-                        _accumulate_match(active, node)
+                case ast.ListComp() | ast.SetComp() | ast.DictComp() | ast.GeneratorExp():
+                    # Comprehension targets have their own implicit scope and can
+                    # shadow the enclosing function's variables, so collect their
+                    # comparisons separately rather than merging same-named keys.
+                    if active is None:
+                        child_active = None
+                    else:
+                        child_active = {}
+                        bound_targets = {
+                            name for generator in node.generators for name in _bound_target_names(generator.target)
+                        }
+                        wire_targets = {
+                            name
+                            for generator in node.generators
+                            if _is_wire_lookup(generator.iter)
+                            for name in _bound_target_names(generator.target)
+                        }
+                        opaque = (
+                            (cluster_opacity.get(id(active), frozenset()) - bound_targets)
+                            | wire_targets
+                            | comprehension_opacity.get(id(node), frozenset())
+                        )
+                        owned_attributes = cluster_owned_attributes.get(id(active))
+                        all_clusters.append((child_active, frozenset(opaque), owned_attributes))
+                        cluster_opacity[id(child_active)] = frozenset(opaque)
+                        cluster_owned_attributes[id(child_active)] = owned_attributes
+                case _:
+                    child_active = active
+                    if active is not None:
+                        if isinstance(node, ast.Compare):
+                            _accumulate_compare(active, node)
+                        elif isinstance(node, ast.Match):
+                            _accumulate_match(active, node)
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 outer_expressions = {
                     id(expression)
@@ -244,9 +295,15 @@ class PreferStrEnum(Rule):
         }
         choice_member_keys = {f"{receiver}.{name}" for receiver in ("self", "cls") for name in choice_field_names}
         diags: list[Diagnostic] = []
-        for clusters, literal_typed in all_clusters:
+        for clusters, literal_typed, owned_attributes in all_clusters:
             for key, entry in clusters.items():
                 if _cluster_is_already_closed(key, entry, literal_typed, alias_valuesets):
+                    continue
+                if (
+                    owned_attributes is not None
+                    and key.startswith(("self.", "cls."))
+                    and key.rsplit(".", 1)[-1] not in owned_attributes
+                ):
                     continue
                 if not _cluster_fires(key, entry):
                     continue
@@ -263,6 +320,8 @@ class PreferStrEnum(Rule):
                 )
 
         diags.extend(class_diags)
+        if not test_path:
+            diags.extend(_named_literal_builder_diags(path, tree, self.code))
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
 
@@ -334,10 +393,84 @@ class PreferStrEnum(Rule):
 
 def _has_str_enum_signal(source: str) -> bool:
     """Cheap source gate for files that cannot contain this rule's triggers."""
+    if "Literal[" in source and any(f"def {prefix}" in source for prefix in _BUILDER_PREFIXES):
+        return True
     has_string_literal = '"' in source or "'" in source
     if "str" in source and any(name in source.lower() for name in CHOICES_ATTR_NAMES):
         return True
     return has_string_literal and ("==" in source or "!=" in source or "case " in source or "match " in source)
+
+
+def _named_literal_builder_diags(path: Path, tree: ast.Module, code: str) -> list[Diagnostic]:
+    findings: list[Diagnostic] = []
+    for statement in tree.body:
+        if not isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if statement.decorator_list or not statement.name.startswith(_BUILDER_PREFIXES):
+            continue
+        call = _transparent_constructor_call(statement)
+        if call is None:
+            continue
+        inline_domains = _inline_literal_parameters(statement.args)
+        copied = [name for name in inline_domains if _forwards_keyword_unchanged(call, name)]
+        if len(copied) < _MIN_COPIED_LITERAL_DOMAINS:
+            continue
+        findings.append(
+            Diagnostic(
+                path=path,
+                line=statement.lineno,
+                col=statement.col_offset + 1,
+                code=code,
+                message=(
+                    f"`{statement.name}` copies {len(copied)} inline Literal domains into "
+                    f"`{_trailing_name(call.func) or ast.unparse(call.func)}`; export named aliases from the model owner "
+                    "and reuse them here so the accepted values have one source of truth."
+                ),
+                severity=Severity.WARNING,
+            )
+        )
+    return findings
+
+
+def _transparent_constructor_call(function: ast.FunctionDef | ast.AsyncFunctionDef) -> ast.Call | None:
+    body = function.body
+    if (
+        body
+        and isinstance(body[0], ast.Expr)
+        and isinstance(body[0].value, ast.Constant)
+        and isinstance(body[0].value.value, str)
+    ):
+        body = body[1:]
+    if len(body) != 1 or not isinstance(body[0], ast.Return) or not isinstance(body[0].value, ast.Call):
+        return None
+    call = body[0].value
+    callee = _trailing_name(call.func)
+    return call if callee is not None and callee[:1].isupper() else None
+
+
+def _inline_literal_parameters(arguments: ast.arguments) -> frozenset[str]:
+    parameters = (*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs)
+    return frozenset(
+        argument.arg
+        for argument in parameters
+        if argument.annotation is not None and _is_inline_string_domain(argument.annotation)
+    )
+
+
+def _is_inline_string_domain(annotation: ast.expr) -> bool:
+    if not isinstance(annotation, ast.Subscript) or _trailing_name(annotation.value) != "Literal":
+        return False
+    values = annotation.slice.elts if isinstance(annotation.slice, ast.Tuple) else [annotation.slice]
+    return len(values) >= _MIN_LITERAL_DOMAIN_VALUES and all(
+        isinstance(value, ast.Constant) and isinstance(value.value, str) for value in values
+    )
+
+
+def _forwards_keyword_unchanged(call: ast.Call, name: str) -> bool:
+    return any(
+        keyword.arg == name and isinstance(keyword.value, ast.Name) and keyword.value.id == name
+        for keyword in call.keywords
+    )
 
 
 def _cluster_fires(key: str, entry: _ClusterEntry) -> bool:
@@ -365,7 +498,8 @@ def _cluster_is_already_closed(
     alias_valuesets: list[frozenset[str]],
 ) -> bool:
     """Report whether a cluster is on a variable whose domain is already closed."""
-    if key.lower() in OPEN_DOMAIN_CODE_NAMES:
+    segment = key.rsplit(".", 1)[-1].lower()
+    if segment in OPEN_DOMAIN_CODE_NAMES or segment.endswith(_OPEN_DOMAIN_SUFFIXES):
         return True
     if key in literal_typed:
         return True
@@ -378,19 +512,16 @@ def _module_literal_aliases(tree: ast.Module) -> tuple[frozenset[str], list[froz
     names: set[str] = set()
     valuesets: list[frozenset[str]] = []
     for stmt in tree.body:
-        if isinstance(stmt, ast.Assign):
-            target = stmt.targets[0] if len(stmt.targets) == 1 else None
-            name = target.id if isinstance(target, ast.Name) else None
-            value = stmt.value
-        elif isinstance(stmt, ast.AnnAssign):
-            name = stmt.target.id if isinstance(stmt.target, ast.Name) else None
-            value = stmt.value
-        elif isinstance(stmt, ast.TypeAlias):
-            name = stmt.name.id
-            value = stmt.value
-        else:
-            continue
-        if name is None or value is None:
+        match stmt:
+            case ast.Assign(targets=[ast.Name(id=name)], value=value):
+                pass
+            case ast.AnnAssign(target=ast.Name(id=name), value=value):
+                pass
+            case ast.TypeAlias(name=ast.Name(id=name), value=value):
+                pass
+            case _:
+                continue
+        if value is None:
             continue
         members = _literal_string_values(value)
         if members is None:
@@ -443,15 +574,141 @@ def _opaque_names(
     alias_names: frozenset[str],
     literal_funcs: frozenset[str],
     raw_string_aliases: frozenset[str],
+    module_func_names: frozenset[str],
 ) -> frozenset[str]:
     """Collect the names in `func` a StrEnum recommendation cannot apply to."""
     base = (
         _literal_typed_names(func, alias_names)
         | _explicitly_open_literal_union_names(func, raw_string_aliases)
+        | _dynamically_constrained_names(func)
         | _foreign_typed_names(func, raw_string_aliases)
-        | _wire_bound_names(func, literal_funcs)
+        | _wire_bound_names(func, literal_funcs, module_func_names)
+        | _fallback_consumed_names(func)
     )
     return _close_over_assignments(func, base)
+
+
+def _class_method_owned_attributes(tree: ast.Module) -> dict[int, frozenset[str]]:
+    """Map direct methods to attributes the class demonstrably owns."""
+    result: dict[int, frozenset[str]] = {}
+    for cls in (node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)):
+        attributes: set[str] = set()
+        methods = [stmt for stmt in cls.body if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef))]
+        for statement in cls.body:
+            class_targets: list[ast.expr] = []
+            if isinstance(statement, ast.Assign):
+                class_targets.extend(statement.targets)
+            elif isinstance(statement, ast.AnnAssign):
+                class_targets.append(statement.target)
+            attributes.update(target.id for target in class_targets if isinstance(target, ast.Name))
+        for method in methods:
+            stack: list[ast.AST] = list(method.body)
+            while stack:
+                node = stack.pop()
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+                    continue
+                method_targets: list[ast.expr] = []
+                if isinstance(node, ast.Assign):
+                    method_targets.extend(node.targets)
+                elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
+                    method_targets.append(node.target)
+                for target in method_targets:
+                    if (
+                        isinstance(target, ast.Attribute)
+                        and isinstance(target.value, ast.Name)
+                        and target.value.id in _OWNED_ROOTS
+                    ):
+                        attributes.add(target.attr)
+                stack.extend(children(node))
+        owned = frozenset(attributes)
+        result.update((id(method), owned) for method in methods)
+    return result
+
+
+def _class_method_closed_attributes(
+    tree: ast.Module,
+    alias_names: frozenset[str],
+    raw_string_aliases: frozenset[str],
+) -> dict[int, frozenset[str]]:
+    """Map methods to class attributes whose annotations already close their domain."""
+    result: dict[int, frozenset[str]] = {}
+    for cls in (node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)):
+        closed = {
+            statement.target.id
+            for statement in cls.body
+            if isinstance(statement, ast.AnnAssign)
+            and isinstance(statement.target, ast.Name)
+            and (
+                _is_literal_annotation(statement.annotation, alias_names)
+                or _is_foreign_annotation(statement.annotation, raw_string_aliases)
+            )
+        }
+        keys = frozenset(f"{receiver}.{name}" for receiver in _OWNED_ROOTS for name in closed)
+        result.update(
+            (id(method), keys) for method in cls.body if isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef))
+        )
+    return result
+
+
+def _dynamically_constrained_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> frozenset[str]:
+    """Find domains whose accepted values come from a runtime collection."""
+    result: set[str] = set()
+    stack: list[ast.AST] = list(func.body)
+    while stack:
+        node = stack.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+            continue
+        if isinstance(node, ast.Compare) and len(node.ops) == 1 and len(node.comparators) == 1:
+            collection = node.comparators[0]
+            if (
+                isinstance(node.ops[0], (ast.In, ast.NotIn))
+                and not isinstance(collection, (ast.List, ast.Set, ast.Tuple))
+                and not (isinstance(collection, ast.Name) and collection.id.isupper())
+            ):
+                key = _name_key(node.left)
+            else:
+                key = None
+            if key is not None:
+                result.add(key)
+        stack.extend(children(node))
+    return frozenset(result)
+
+
+def _fallback_consumed_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> frozenset[str]:
+    """Find open-domain dispatches whose truthy fallback consumes the raw value."""
+    open_names: set[str] = set()
+    stack: list[ast.AST] = list(func.body)
+    while stack:
+        node = stack.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+            continue
+        if isinstance(node, ast.If):
+            compared: set[str] = set()
+            current = node
+            while True:
+                bare_key = _name_key(current.test)
+                if bare_key is not None and bare_key in compared and _statements_read_key(current.body, bare_key):
+                    open_names.add(bare_key)
+                extracted = _extract_compare(current.test) if isinstance(current.test, ast.Compare) else None
+                if extracted is not None:
+                    compared.add(extracted[0])
+                if len(current.orelse) != 1 or not isinstance(current.orelse[0], ast.If):
+                    break
+                current = current.orelse[0]
+        stack.extend(children(node))
+    return frozenset(open_names)
+
+
+def _statements_read_key(statements: list[ast.stmt], key: str) -> bool:
+    for statement in statements:
+        for node in ast.walk(statement):
+            if (
+                isinstance(node, (ast.Name, ast.Attribute))
+                and _name_key(node) == key
+                and isinstance(node.ctx, ast.Load)
+            ):
+                return True
+    return False
 
 
 def _literal_typed_names(func: ast.FunctionDef | ast.AsyncFunctionDef, alias_names: frozenset[str]) -> frozenset[str]:
@@ -574,6 +831,8 @@ def _close_over_assignments(func: ast.FunctionDef | ast.AsyncFunctionDef, seed: 
     """Propagate opacity along `x = <expr mentioning an opaque name>`."""
     edges: list[tuple[str, frozenset[str]]] = []
     for target, value in _local_bindings(func):
+        if _is_valid_url_group(value):
+            continue
         sources = {node.id for node in walk(value) if isinstance(node, ast.Name)}
         if sources:
             edges.append((target, frozenset(sources)))
@@ -584,6 +843,17 @@ def _close_over_assignments(func: ast.FunctionDef | ast.AsyncFunctionDef, seed: 
             break
         names |= grown
     return frozenset(names)
+
+
+def _is_valid_url_group(value: ast.expr) -> bool:
+    """Report a regex-group extraction whose owning URL matcher closes the result."""
+    return (
+        isinstance(value, ast.Call)
+        and isinstance(value.func, ast.Attribute)
+        and value.func.attr in {"group", "groupdict", "groups"}
+        and isinstance(value.func.value, ast.Call)
+        and _trailing_name(value.func.value.func) == "_match_valid_url"
+    )
 
 
 def _local_bindings(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[tuple[str, ast.expr]]:
@@ -679,16 +949,21 @@ def _literal_returning_functions(tree: ast.Module) -> frozenset[str]:
     )
 
 
-def _wire_bound_names(func: ast.FunctionDef | ast.AsyncFunctionDef, literal_funcs: frozenset[str]) -> frozenset[str]:
+def _wire_bound_names(
+    func: ast.FunctionDef | ast.AsyncFunctionDef,
+    literal_funcs: frozenset[str],
+    module_func_names: frozenset[str],
+) -> frozenset[str]:
     """Collect names in `func` bound from a value the module does not own."""
     names: set[str] = set()
     local_shadows = {
         node.name for node in func.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
     }
     local_shadows.update(target for target, _value in _local_bindings(func))
+    blocked_wire_calls = module_func_names | local_shadows
     visible_literal_funcs = literal_funcs - local_shadows
     for target, value in _local_bindings(func):
-        if _is_wire_lookup(value) or (
+        if _is_wire_lookup(value, blocked_wire_calls) or (
             isinstance(value, ast.Call) and _trailing_name(value.func) in visible_literal_funcs
         ):
             names.add(target)
@@ -697,7 +972,9 @@ def _wire_bound_names(func: ast.FunctionDef | ast.AsyncFunctionDef, literal_func
         node = stack.pop()
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
             continue
-        if isinstance(node, (ast.For, ast.AsyncFor, ast.comprehension)) and _is_wire_lookup(node.iter):
+        if isinstance(node, (ast.For, ast.AsyncFor, ast.comprehension)) and _is_wire_lookup(
+            node.iter, blocked_wire_calls
+        ):
             names.update(_bound_target_names(node.target))
         stack.extend(children(node))
     return frozenset(names)
@@ -708,7 +985,7 @@ def _bound_target_names(target: ast.expr) -> set[str]:
     return {node.id for node in walk(target) if isinstance(node, ast.Name)}
 
 
-def _is_wire_lookup(value: ast.expr) -> bool:
+def _is_wire_lookup(value: ast.expr, blocked_call_names: frozenset[str] = frozenset()) -> bool:
     """Report whether `value` reads from something the module does not own."""
     match value:
         case ast.Subscript():
@@ -717,31 +994,31 @@ def _is_wire_lookup(value: ast.expr) -> bool:
             return _is_foreign_attribute(value)
         case ast.Call(func=callee, args=args):
             name = _trailing_name(callee)
-            if name in _WIRE_CALL_NAMES:
+            if name in _WIRE_CALL_NAMES and name not in blocked_call_names:
                 return True
             if name == _STR_CONSTRUCTOR:
-                return any(_is_wire_lookup(arg) for arg in args)
+                return any(_is_wire_lookup(arg, blocked_call_names) for arg in args)
             if name == _CAST_FUNCTION and len(args) >= _MIN_CAST_ARGS:
-                return _is_wire_lookup(args[1])
+                return _is_wire_lookup(args[1], blocked_call_names)
             if name in _ITERABLE_WRAPPERS:
-                return any(_is_wire_lookup(arg) for arg in args)
-            if isinstance(callee, ast.Attribute) and _is_wire_lookup(callee.value):
+                return any(_is_wire_lookup(arg, blocked_call_names) for arg in args)
+            if isinstance(callee, ast.Attribute) and _is_wire_lookup(callee.value, blocked_call_names):
                 return True
-            if any(_is_wire_lookup(arg) for arg in args):
+            if any(_is_wire_lookup(arg, blocked_call_names) for arg in args):
                 return True
-            if any(_is_wire_lookup(keyword.value) for keyword in value.keywords):
+            if any(_is_wire_lookup(keyword.value, blocked_call_names) for keyword in value.keywords):
                 return True
             return isinstance(callee, ast.Attribute) and _is_foreign_attribute(callee)
         case ast.BoolOp(values=values):
-            return any(_is_wire_lookup(item) for item in values)
+            return any(_is_wire_lookup(item, blocked_call_names) for item in values)
         case ast.IfExp(body=body, orelse=orelse):
-            return _is_wire_lookup(body) or _is_wire_lookup(orelse)
+            return _is_wire_lookup(body, blocked_call_names) or _is_wire_lookup(orelse, blocked_call_names)
         case ast.Await(value=inner) | ast.FormattedValue(value=inner):
-            return _is_wire_lookup(inner)
+            return _is_wire_lookup(inner, blocked_call_names)
         case ast.JoinedStr(values=values):
-            return any(_is_wire_lookup(item) for item in values)
+            return any(_is_wire_lookup(item, blocked_call_names) for item in values)
         case ast.BinOp(left=left, right=right):
-            return _is_wire_lookup(left) or _is_wire_lookup(right)
+            return _is_wire_lookup(left, blocked_call_names) or _is_wire_lookup(right, blocked_call_names)
         case _:
             return False
 

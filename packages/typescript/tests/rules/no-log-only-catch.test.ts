@@ -87,7 +87,6 @@ ruleTester.run("no-log-only-catch", rule, {
       code: "try { f(); } catch (e) { logEvent('f.failed', { error: String(e) }); }",
     },
 
-    // --- A documented log-and-continue is a decision, not a swallow ----------
     // Real corpus: react-router/packages/react-router-dev/vite/styles.ts:104 —
     // the comment explains why the failure is survivable.
     {
@@ -97,7 +96,6 @@ ruleTester.run("no-log-only-catch", rule, {
       code: "try { f(); } catch (e) { /* offline is expected here */ console.error(e); }",
     },
 
-    // --- 2026-07 corpus audit: the recovery can live outside the catch -------
     // Class 1 — the try returns and the fallback is the statement after it.
     // Real corpus: hono/src/middleware/timing/timing.ts:30.
     {
@@ -119,7 +117,6 @@ ruleTester.run("no-log-only-catch", rule, {
       code: "function a() { let x = undefined; try { x = f(); } catch {} return x; }\nfunction b() { let x = -1; try { x = f(); } catch {} return x; }\nfunction c() { let x = []; try { x = f(); } catch {} return x; }\nfunction d() { let x = {}; try { x = f(); } catch {} return x; }",
     },
 
-    // --- Class 3: the rationale is next to the braces, not inside them -------
     // Directly above the `try`.
     {
       code: "function h() {\n  // best-effort: the row is gone either way\n  try {\n    drop();\n  } catch (err) {\n    console.error(err);\n  }\n}",
@@ -229,7 +226,6 @@ ruleTester.run("no-log-only-catch", rule, {
       errors: [{ messageId: "noLogOnlyCatch" }],
     },
 
-    // --- upper bounds on the 2026-07 guards ---------------------------------
     // Class 1 needs BOTH halves. The try ends in a `return`, but nothing follows
     // it, so there is no fallback for control to fall through to.
     {

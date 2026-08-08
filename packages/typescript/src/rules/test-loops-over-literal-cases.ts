@@ -37,35 +37,12 @@ function rootIdentifier(callee: TSESTree.Node): TSESTree.Identifier | null {
   return null;
 }
 
-function callerName(callee: TSESTree.Node): string | null {
-  if (callee.type === AST_NODE_TYPES.Identifier) {
-    return callee.name;
-  }
-  if (callee.type === AST_NODE_TYPES.MemberExpression) {
-    return callerName(callee.object);
-  }
-  if (callee.type === AST_NODE_TYPES.CallExpression) {
-    return callerName(callee.callee);
-  }
-  if (callee.type === AST_NODE_TYPES.TaggedTemplateExpression) {
-    return callerName(callee.tag);
-  }
-  return null;
-}
-
 function staticMemberName(member: TSESTree.MemberExpression): string | null {
   if (!member.computed && member.property.type === AST_NODE_TYPES.Identifier) return member.property.name;
   if (member.computed && member.property.type === AST_NODE_TYPES.Literal && typeof member.property.value === "string") {
     return member.property.value;
   }
   return null;
-}
-
-function isTestCaller(callee: TSESTree.Node): boolean {
-  if (callee.type === AST_NODE_TYPES.Identifier) return TEST_CALLERS.has(callee.name);
-  if (callee.type !== AST_NODE_TYPES.MemberExpression) return false;
-  const member = staticMemberName(callee);
-  return member !== null && TEST_MODIFIERS.has(member) && isTestCaller(callee.object);
 }
 
 function isTestBody(node: TSESTree.Node, isFrameworkTest: (identifier: TSESTree.Identifier) => boolean): boolean {
@@ -78,6 +55,13 @@ function isTestBody(node: TSESTree.Node, isFrameworkTest: (identifier: TSESTree.
     root !== null &&
     isFrameworkTest(root)
   );
+}
+
+function isTestCaller(callee: TSESTree.Node): boolean {
+  if (callee.type === AST_NODE_TYPES.Identifier) return TEST_CALLERS.has(callee.name);
+  if (callee.type !== AST_NODE_TYPES.MemberExpression) return false;
+  const member = staticMemberName(callee);
+  return member !== null && TEST_MODIFIERS.has(member) && isTestCaller(callee.object);
 }
 
 function nearestEnclosingFunction(
@@ -158,6 +142,22 @@ function isAssertion(
   if (node.type !== AST_NODE_TYPES.CallExpression || !ASSERTION_ROOTS.has(callerName(node.callee) ?? "")) return false;
   const root = rootIdentifier(node.callee);
   return root !== null && isFrameworkAssertion(root);
+}
+
+function callerName(callee: TSESTree.Node): string | null {
+  if (callee.type === AST_NODE_TYPES.Identifier) {
+    return callee.name;
+  }
+  if (callee.type === AST_NODE_TYPES.MemberExpression) {
+    return callerName(callee.object);
+  }
+  if (callee.type === AST_NODE_TYPES.CallExpression) {
+    return callerName(callee.callee);
+  }
+  if (callee.type === AST_NODE_TYPES.TaggedTemplateExpression) {
+    return callerName(callee.tag);
+  }
+  return null;
 }
 
 function opensSubtest(node: TSESTree.Node, callbackParameters: ReadonlySet<string>): boolean {

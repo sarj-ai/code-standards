@@ -109,15 +109,14 @@ describe("configs.recommended / configs.strict are flat config", () => {
   });
 
   it("strict is at least as strict as recommended, rule for rule", () => {
-    const weaker: string[] = [];
-    for (const [rule, recommended] of Object.entries(recommendedRules)) {
-      const strict = (strictRules as Record<string, unknown>)[rule];
-      const severityOf = (value: unknown): unknown =>
-        Array.isArray(value) ? value[0] : value;
-      if (severityOf(recommended) === "error" && severityOf(strict) !== "error") {
-        weaker.push(rule);
-      }
-    }
+    const severityOf = (value: unknown): unknown =>
+      Array.isArray(value) ? value[0] : value;
+    const weaker = Object.entries(recommendedRules)
+      .filter(([rule, recommended]) => {
+        const strict = (strictRules as Record<string, unknown>)[rule];
+        return severityOf(recommended) === "error" && severityOf(strict) !== "error";
+      })
+      .map(([rule]) => rule);
     expect(weaker).toEqual([]);
   });
 });

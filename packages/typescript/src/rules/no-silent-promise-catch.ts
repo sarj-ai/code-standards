@@ -25,11 +25,6 @@ function isBodyParseCall(node: TSESTree.Expression): boolean {
   );
 }
 
-/**
- * Teardown methods that reject when the resource is already gone — which is the
- * state the caller was asking for. The rejection carries no signal, so silencing
- * it is correct, the same reasoning as the `res.json()` fallback above.
- */
 const TEARDOWN_METHODS: ReadonlySet<string> = new Set([
   "cancel",
   "close",
@@ -41,11 +36,6 @@ const TEARDOWN_METHODS: ReadonlySet<string> = new Set([
   "disconnect",
 ]);
 
-/**
- * Tooling directives are machinery, not an explanation of the swallow. An
- * `eslint-disable` already suppresses the report through the normal channel, so
- * counting it as documentation would turn every directive into an unused one.
- */
 const DIRECTIVE_COMMENT_RE =
   /^\s*(eslint-|@ts-|prettier-ignore|biome-ignore|c8 |v8 |istanbul )/;
 
@@ -61,6 +51,33 @@ function isTeardownCall(node: TSESTree.Expression): boolean {
     node.callee.property.type === AST_NODE_TYPES.Identifier &&
     TEARDOWN_METHODS.has(node.callee.property.name)
   );
+}
+
+/** True when the handler's whole body provably does nothing with the error. */
+function isSilentHandler(
+  handler: TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression,
+): boolean {
+  const body = handler.body;
+
+  if (body.type !== AST_NODE_TYPES.BlockStatement) {
+    // Arrow expression body: `.catch(() => null)`
+    return isSilentExpression(body);
+  }
+
+  if (body.body.length === 0) {
+    // `.catch(() => {})` / `.catch(function () {})`
+    return true;
+  }
+
+  if (body.body.length === 1) {
+    const only = body.body[0];
+    if (only !== undefined && only.type === AST_NODE_TYPES.ReturnStatement) {
+      // `.catch(() => { return null; })`
+      return only.argument === null || isSilentExpression(only.argument);
+    }
+  }
+
+  return false;
 }
 
 /** True for expressions that provably discard the error: bare literals,
@@ -91,33 +108,6 @@ function isSilentExpression(node: TSESTree.Expression): boolean {
   }
 }
 
-/** True when the handler's whole body provably does nothing with the error. */
-function isSilentHandler(
-  handler: TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression,
-): boolean {
-  const body = handler.body;
-
-  if (body.type !== AST_NODE_TYPES.BlockStatement) {
-    // Arrow expression body: `.catch(() => null)`
-    return isSilentExpression(body);
-  }
-
-  if (body.body.length === 0) {
-    // `.catch(() => {})` / `.catch(function () {})`
-    return true;
-  }
-
-  if (body.body.length === 1) {
-    const only = body.body[0];
-    if (only !== undefined && only.type === AST_NODE_TYPES.ReturnStatement) {
-      // `.catch(() => { return null; })`
-      return only.argument === null || isSilentExpression(only.argument);
-    }
-  }
-
-  return false;
-}
-
 export default createRule<Options, MessageIds>({
   name: "no-silent-promise-catch",
   meta: {
@@ -138,13 +128,6 @@ export default createRule<Options, MessageIds>({
       return {};
     }
 
-    /**
-     * True when the suppression is DOCUMENTED: a comment inside the handler
-     * body, trailing the call on the same line, or on the line(s) directly above
-     * the statement the call belongs to. The rule's complaint is that the
-     * decision to discard the error is invisible — a comment is precisely what
-     * makes it visible, so there is nothing left to report.
-     */
     const hasExplanatoryComment = (
       call: TSESTree.CallExpression,
       handler: TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression,

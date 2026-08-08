@@ -171,7 +171,6 @@ ruleTester.run("prefer-schema-for-api-payload", rule, {
       code: "async function f(r) { const d = await r.json(); console.log(d.a); console.log(d.b); }",
       errors: [{ messageId: "unparsedJsonAccess" }],
     },
-    // === `JSON.parse` source ==============================================
     // Field read off an unvalidated `JSON.parse` result.
     {
       code: "const data = JSON.parse(text); use(data.foo);",

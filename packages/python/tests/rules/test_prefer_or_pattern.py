@@ -888,7 +888,7 @@ def test_preview_is_valid_syntax_for_multiline_patterns_with_captures():
         """
     )
     preview = diag.message.split("(`case ", maxsplit=1)[1].split(":`)", maxsplit=1)[0]
-    compile(f"match v:\n    case {preview}:\n        pass\n", "<suggested pattern>", "exec")
+    assert compile(f"match v:\n    case {preview}:\n        pass\n", "<suggested pattern>", "exec") is not None
 
 
 def test_run_inside_a_loop_body_is_found():

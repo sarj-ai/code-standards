@@ -105,17 +105,18 @@ def analyze(
     return diagnostics if baseline is None else _apply_baseline(diagnostics, _read_baseline(baseline), root=root)
 
 
-_PROSE_PRECEDENCE = MappingProxyType(
+_DIAGNOSTIC_PRECEDENCE = MappingProxyType(
     {
-        "SARJ084": frozenset({"SARJ050"}),
-        "SARJ088": frozenset({"SARJ050", "SARJ085"}),
+        "SARJ003": frozenset({"SARJ080"}),
+        "SARJ084": frozenset({"SARJ050", "SARJ091"}),
+        "SARJ088": frozenset({"SARJ050", "SARJ085", "SARJ091"}),
         "SARJ092": frozenset({"SARJ086", "SARJ087"}),
     }
 )
 
 
 def deduplicate_diagnostics(diags: list[Diagnostic]) -> list[Diagnostic]:
-    """Keep the most specific prose remediation at a source location."""
+    """Keep the most specific remediation at a source location."""
     present: dict[tuple[Path, int, int], dict[str, set[Severity]]] = {}
     for diagnostic in diags:
         by_code = present.setdefault((diagnostic.path, diagnostic.line, diagnostic.col), {})
@@ -123,7 +124,7 @@ def deduplicate_diagnostics(diags: list[Diagnostic]) -> list[Diagnostic]:
     suppressed = {
         (location, generic, generic_severity)
         for location, codes in present.items()
-        for specific, generics in _PROSE_PRECEDENCE.items()
+        for specific, generics in _DIAGNOSTIC_PRECEDENCE.items()
         if specific in codes
         for generic in generics
         for generic_severity in codes.get(generic, set())

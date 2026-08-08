@@ -235,13 +235,15 @@ def _verifies_something(node: ast.FunctionDef | ast.AsyncFunctionDef, module_cal
 
 
 def _is_verification(child: ast.AST, module_callables: frozenset[str]) -> bool:
-    if isinstance(child, ast.Assert):
-        return True
-    if isinstance(child, ast.Raise):
-        return _raises_assertion_error(child)
-    if isinstance(child, ast.Call):
-        return _names_verification(child.func) or _hands_a_verifier_to_a_runner(child, module_callables)
-    return False
+    match child:
+        case ast.Assert():
+            return True
+        case ast.Raise():
+            return _raises_assertion_error(child)
+        case ast.Call(func=func):
+            return _names_verification(func) or _hands_a_verifier_to_a_runner(child, module_callables)
+        case _:
+            return False
 
 
 def _raises_assertion_error(node: ast.Raise) -> bool:

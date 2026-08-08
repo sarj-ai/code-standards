@@ -381,9 +381,9 @@ def test_flags_raise_in_a_try_body_at_the_span_limit():
     """Upper bound on the span guard: exactly 20 lines still reports."""
     body = "\n".join(f"            step_{i}()" for i in range(17))
     source = f"""
-    def endpoint(request):
+    def endpoint(user):
         try:
-            if not request.user:
+            if not isinstance(user, User):
                 raise ValueError("no user")
 {body}
             return ok()
@@ -456,8 +456,22 @@ def test_flags_django_was_modified_since_shape():
         return False
     """
     diags = _check(source)
-    assert len(diags) == 2
-    assert [d.line for d in diags] == [5, 8]
+    assert len(diags) == 1
+    assert [d.line for d in diags] == [5]
+
+
+def test_skips_validation_raise_sharing_a_converter_handler() -> None:
+    source = """
+    def parse_budget(raw):
+        try:
+            budget = float(raw)
+            if budget <= 0:
+                raise ValueError("positive budget required")
+        except ValueError:
+            raise SystemExit("invalid budget")
+        return budget
+    """
+    assert _check(source) == []
 
 
 def test_flags_django_normalize_together_shape():
@@ -584,5 +598,294 @@ def test_skips_passthrough_guards_on_different_variables():
         if right is None:
             return right
         return left + right
+    """
+    assert _check(source) == []
+
+
+# Isinstance ladder arm.                                                     #
+
+
+def test_flags_child_block_type_dispatch_ladder():
+    """The standards code that motivated the general isinstance-ladder arm."""
+    source = """
+    def _child_blocks(node: ast.AST) -> list[list[ast.stmt]]:
+        blocks: list[list[ast.stmt]] = []
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            blocks.append(node.body)
+        elif isinstance(node, (ast.If, ast.For, ast.AsyncFor, ast.While)):
+            blocks.extend((node.body, node.orelse))
+        elif isinstance(node, (ast.With, ast.AsyncWith, ast.ExceptHandler)):
+            blocks.append(node.body)
+        elif isinstance(node, (ast.Try, ast.TryStar)):
+            blocks.extend((node.body, node.orelse, node.finalbody))
+            blocks.extend(handler.body for handler in node.handlers)
+        elif isinstance(node, ast.Match):
+            blocks.extend(case.body for case in node.cases)
+        return [block for block in blocks if block]
+    """
+    diags = _check(source)
+    assert len(diags) == 1
+    assert diags[0].line == 4
+    assert "5-branch isinstance dispatch" in diags[0].message
+
+
+def test_flags_isinstance_ladder_with_default_else():
+    source = """
+    def render(value):
+        if isinstance(value, str):
+            return value
+        elif isinstance(value, bytes):
+            return value.decode()
+        elif isinstance(value, Path):
+            return value.read_text()
+        else:
+            raise TypeError(type(value))
+    """
+    diags = _check(source)
+    assert len(diags) == 1
+    assert "3-branch isinstance dispatch" in diags[0].message
+
+
+def test_flags_terminating_sibling_isinstance_dispatch():
+    source = """
+    def render(value):
+        if isinstance(value, str):
+            return value
+        if isinstance(value, bytes):
+            return value.decode()
+        if isinstance(value, Path):
+            return value.read_text()
+        raise TypeError(value)
+    """
+    diags = _check(source)
+    assert len(diags) == 1
+    assert "3-branch terminating isinstance dispatch" in diags[0].message
+
+
+def test_flags_terminating_sibling_dispatch_inside_loop():
+    source = """
+    def emit(values):
+        for value in values:
+            if isinstance(value, str):
+                continue
+            if isinstance(value, bytes):
+                continue
+            if isinstance(value, Path):
+                continue
+            emit_unknown(value)
+    """
+    assert len(_check(source)) == 1
+
+
+def test_skips_cumulative_sibling_isinstance_checks():
+    source = """
+    def observe(value):
+        if isinstance(value, str):
+            seen.add(value)
+        if isinstance(value, bytes):
+            seen.add(value)
+        if isinstance(value, Path):
+            seen.add(value)
+    """
+    assert _check(source) == []
+
+
+def test_skips_sibling_checks_separated_by_subject_mutation():
+    source = """
+    def render(value):
+        if isinstance(value, str):
+            return value
+        value = coerce(value)
+        if isinstance(value, bytes):
+            return value.decode()
+        if isinstance(value, Path):
+            return value.read_text()
+    """
+    assert _check(source) == []
+
+
+def test_sequential_passthrough_guards_report_once():
+    source = """
+    def normalize(value):
+        if isinstance(value, Text):
+            return value
+        if isinstance(value, Binary):
+            return value
+        if isinstance(value, PathValue):
+            return value
+        return coerce(value)
+    """
+    diags = _check(source)
+    assert len(diags) == 1
+    assert "Sequential sentinel/type guards" in diags[0].message
+
+
+def test_flags_qualified_and_or_pattern_compatible_types():
+    source = """
+    def visit(node):
+        if isinstance(node, (ast.For, ast.AsyncFor)):
+            visit_loop(node)
+        elif isinstance(node, ast.If):
+            visit_if(node)
+        elif isinstance(node, CustomNode):
+            visit_custom(node)
+    """
+    assert len(_check(source)) == 1
+
+
+def test_flags_full_ladder_with_pep604_isinstance_union():
+    source = """
+    def visit(node):
+        if isinstance(node, ast.Name):
+            visit_name(node)
+        elif isinstance(node, ast.AugAssign | ast.AnnAssign):
+            visit_assignment(node)
+        elif isinstance(node, ast.Call):
+            visit_call(node)
+        elif isinstance(node, CustomNode):
+            visit_custom(node)
+    """
+    diags = _check(source)
+    assert len(diags) == 1
+    assert diags[0].line == 3
+    assert "4-branch" in diags[0].message
+
+
+def test_unrecognized_ladder_head_never_reports_a_tail_fragment():
+    source = """
+    def visit(node):
+        if isinstance(node, runtime_types):
+            visit_runtime(node)
+        elif isinstance(node, ast.Name):
+            visit_name(node)
+        elif isinstance(node, ast.Call):
+            visit_call(node)
+        elif isinstance(node, CustomNode):
+            visit_custom(node)
+    """
+    assert _check(source) == []
+
+
+def test_skips_two_branch_isinstance_choice():
+    source = """
+    def render(value):
+        if isinstance(value, str):
+            return value
+        elif isinstance(value, bytes):
+            return value.decode()
+    """
+    assert _check(source) == []
+
+
+def test_skips_isinstance_ladder_on_different_subjects():
+    source = """
+    def combine(left, right):
+        if isinstance(left, str):
+            return left
+        elif isinstance(right, bytes):
+            return right.decode()
+        elif isinstance(left, Path):
+            return left.read_text()
+    """
+    assert _check(source) == []
+
+
+def test_skips_mixed_predicate_ladder():
+    source = """
+    def render(value):
+        if isinstance(value, str):
+            return value
+        elif value is None:
+            return ""
+        elif isinstance(value, bytes):
+            return value.decode()
+        elif isinstance(value, Path):
+            return value.read_text()
+    """
+    assert _check(source) == []
+
+
+def test_skips_dynamic_isinstance_type_tuple():
+    """A runtime tuple cannot be translated safely into class patterns."""
+    source = """
+    def render(value):
+        if isinstance(value, text_types):
+            return str(value)
+        elif isinstance(value, binary_types):
+            return bytes(value)
+        elif isinstance(value, path_types):
+            return Path(value)
+    """
+    assert _check(source) == []
+
+
+def test_skips_constant_style_dynamic_type_tuple():
+    source = """
+    NODE_TYPES = (Leaf, Branch)
+
+    def render(value):
+        if isinstance(value, NODE_TYPES):
+            return render_node(value)
+        elif isinstance(value, TOKEN_TYPES):
+            return render_token(value)
+        elif isinstance(value, VALUE_TYPES):
+            return render_value(value)
+    """
+    assert _check(source) == []
+
+
+def test_skips_non_dotted_class_expression():
+    source = """
+    def render(value):
+        if isinstance(value, registry().Text):
+            return render_text(value)
+        elif isinstance(value, registry().Binary):
+            return render_binary(value)
+        elif isinstance(value, registry().Path):
+            return render_path(value)
+    """
+    assert _check(source) == []
+
+
+def test_skips_file_that_shadows_isinstance():
+    source = """
+    def isinstance(value, expected):
+        return expected.accepts(value)
+
+    def render(value):
+        if isinstance(value, Text):
+            return render_text(value)
+        elif isinstance(value, Binary):
+            return render_binary(value)
+        elif isinstance(value, Path):
+            return render_path(value)
+    """
+    assert _check(source) == []
+
+
+def test_skips_issubclass_ladder():
+    """Class patterns test instances, so they are not equivalent to issubclass."""
+    source = """
+    def classify(model):
+        if issubclass(model, Admin):
+            return "admin"
+        elif issubclass(model, User):
+            return "user"
+        elif issubclass(model, Record):
+            return "record"
+    """
+    assert _check(source) == []
+
+
+def test_skips_repeated_effectful_subject_expression():
+    """match evaluates its subject once, which could change observable behavior."""
+    source = """
+    def read():
+        if isinstance(current_value(), str):
+            return "str"
+        elif isinstance(current_value(), bytes):
+            return "bytes"
+        elif isinstance(current_value(), Path):
+            return "path"
     """
     assert _check(source) == []

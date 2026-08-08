@@ -41,12 +41,6 @@ function matchesAnyPattern(
   return false;
 }
 
-/**
- * True when the init argument provably lacks an abort signal: it is an object
- * literal with no `signal` property and no spread element. Any other shape
- * (identifier, call, spread, conditional, ...) may carry a signal, so it is
- * treated as safe.
- */
 function initProvablyLacksSignal(init: TSESTree.CallExpressionArgument): boolean {
   if (init.type !== AST_NODE_TYPES.ObjectExpression) {
     return false;
@@ -121,8 +115,6 @@ export default createRule<Options, MessageIds>({
     function resolvesToGlobal(identifier: TSESTree.Identifier): boolean {
       const scope = context.sourceCode.getScope(identifier);
       const variable = ASTUtils.findVariable(scope, identifier.name);
-      // Unresolved → implicit global. Resolved with zero defs → declared
-      // global (languageOptions.globals). Any def is a local shadow.
       return variable === null || variable.defs.length === 0;
     }
 

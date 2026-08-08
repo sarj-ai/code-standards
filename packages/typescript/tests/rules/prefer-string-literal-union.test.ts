@@ -100,6 +100,14 @@ ruleTester.run("prefer-string-literal-union", rule, {
     {
       code: "function f(c: string) { return c === 'a' || c === 'b'; }",
     },
+    {
+      name: "does not infer a closed domain from local parser and traversal variables",
+      code: "function f(value: unknown) { const key = String(value); return key === 'parent' || key === 'body'; }",
+    },
+    {
+      name: "does not infer a closed domain from Object.keys iteration",
+      code: "function f(value: object) { for (const key of Object.keys(value)) { if (key === 'parent' || key === 'body') continue; } }",
+    },
     // Empty-string guard mixed with a token stays below the token bar.
     {
       code: "function f(s: string) { return s === '' || s === 'active'; }",

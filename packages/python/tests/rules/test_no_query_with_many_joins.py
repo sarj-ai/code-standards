@@ -15,7 +15,7 @@ def _check(source: str, path: str = "foo_store.py") -> list[Diagnostic]:
 def _sql_with_joins(n: int, join_kw: str = "JOIN") -> str:
     """Build an assignment whose query has exactly `n` join clauses."""
     clauses = " ".join(f"{join_kw} t{i} ON t{i}.id = base.id" for i in range(n))
-    return 'q = "SELECT * FROM base ' + clauses + '"'  # ruff:ignore[hardcoded-sql-expression] — synthetic lint-rule fixture, not a real query
+    return f'q = "SELECT * FROM base {clauses}"'  # ruff:ignore[hardcoded-sql-expression] — synthetic lint-rule fixture, not a real query
 
 
 # Boundary: the whole point of the rule.                                      #

@@ -114,14 +114,7 @@ def verification_commands(ecosystems: scaffold.Ecosystems) -> list[Command]:
 
 
 def selected_eslint_commands(root: Path, paths: Iterable[str], *, label: str = "selected") -> list[Command]:
-    """Build package-manager-aware ESLint commands for every selected JS/TS project.
-
-    Pre-commit passes paths relative to the repository, while callers may pass
-    absolute paths.  ESLint must run from the detected TypeScript project so it
-    resolves that project's flat config, TypeScript project, and package tree.
-    Deleted files, symlinks, paths outside the repository, and files belonging
-    to another project are deliberately omitted.
-    """
+    """Build project-scoped ESLint commands for selected repository paths."""
     return list(select_eslint_commands(root, paths, label=label).commands)
 
 

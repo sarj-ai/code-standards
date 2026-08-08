@@ -141,8 +141,7 @@ describe("every rule module is a claim plus its derived links", () => {
     expect(fileoverviewLines(moduleSource(name)).join("\n")).not.toContain("Examples:");
   });
 
-  it.each(moduleNames)("%s hand-writes no repo link", (name) => {
-    if (name === "_docs") return; // where the derivation itself is defined
+  it.each(moduleNames.filter((name) => name !== "_docs"))("%s hand-writes no repo link", (name) => {
     const stray = moduleSource(name)
       .split("\n")
       .filter(

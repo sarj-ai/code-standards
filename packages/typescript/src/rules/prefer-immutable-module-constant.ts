@@ -102,22 +102,17 @@ function collectionKind(node: TSESTree.Node, isUnshadowedGlobal: GlobalResolver)
   return null;
 }
 
-function isReadonlyType(node: TSESTree.Node, kind: "literal" | "Set" | "Map"): boolean {
-  if (node.type === AST_NODE_TYPES.TSTypeOperator && node.operator === "readonly") {
+function declaredReadonlyType(
+  node: TSESTree.VariableDeclarator,
+  kind: "literal" | "Set" | "Map",
+  aliases: ReadonlyMap<string, TSESTree.Node>,
+): boolean {
+  const annotation = node.id.type === AST_NODE_TYPES.Identifier ? node.id.typeAnnotation : undefined;
+  if (annotation !== undefined && isReadonlyTypeResolved(annotation.typeAnnotation, kind, aliases)) {
     return true;
   }
-  if (
-    node.type !== AST_NODE_TYPES.TSTypeReference ||
-    node.typeName.type !== AST_NODE_TYPES.Identifier
-  ) {
-    return false;
-  }
-  if (node.typeName.name === "Readonly") {
-    return kind === "literal";
-  }
-  return kind === "literal"
-    ? node.typeName.name === "ReadonlyArray"
-    : node.typeName.name === `Readonly${kind}`;
+  return node.init?.type === AST_NODE_TYPES.TSAsExpression &&
+    isReadonlyTypeResolved(node.init.typeAnnotation, kind, aliases);
 }
 
 function isReadonlyTypeResolved(
@@ -134,17 +129,22 @@ function isReadonlyTypeResolved(
   return isReadonlyTypeResolved(target, kind, aliases, new Set([...seen, name]));
 }
 
-function declaredReadonlyType(
-  node: TSESTree.VariableDeclarator,
-  kind: "literal" | "Set" | "Map",
-  aliases: ReadonlyMap<string, TSESTree.Node>,
-): boolean {
-  const annotation = node.id.type === AST_NODE_TYPES.Identifier ? node.id.typeAnnotation : undefined;
-  if (annotation !== undefined && isReadonlyTypeResolved(annotation.typeAnnotation, kind, aliases)) {
+function isReadonlyType(node: TSESTree.Node, kind: "literal" | "Set" | "Map"): boolean {
+  if (node.type === AST_NODE_TYPES.TSTypeOperator && node.operator === "readonly") {
     return true;
   }
-  return node.init?.type === AST_NODE_TYPES.TSAsExpression &&
-    isReadonlyTypeResolved(node.init.typeAnnotation, kind, aliases);
+  if (
+    node.type !== AST_NODE_TYPES.TSTypeReference ||
+    node.typeName.type !== AST_NODE_TYPES.Identifier
+  ) {
+    return false;
+  }
+  if (node.typeName.name === "Readonly") {
+    return kind === "literal";
+  }
+  return kind === "literal"
+    ? node.typeName.name === "ReadonlyArray"
+    : node.typeName.name === `Readonly${kind}`;
 }
 
 function hasUnknownExplicitType(

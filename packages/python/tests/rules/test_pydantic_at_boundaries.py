@@ -24,6 +24,7 @@ def build_payload(call) -> dict[str, Any]:
     diags = _check(src)
     assert len(diags) == 1
     assert "dict[str, Any]" in diags[0].message
+    assert "TypedDict" in diags[0].message
     assert diags[0].code == "SARJ008"
 
 
@@ -607,6 +608,8 @@ def test_syntax_errors_return_empty(src: str):
         "python/app/tests/helpers.py",
         "a/tests/b/c.py",
         "tests/conftest.py",
+        "service_test.py",
+        "conftest.py",
     ],
 )
 def test_test_paths_are_skipped(path: str):
@@ -618,10 +621,7 @@ def test_test_paths_are_skipped(path: str):
     "path",
     [
         "svc.py",
-        "service_test.py",  # trailing `_test`, not a `test_` prefix
-        "src/testing.py",  # `testing`, not a `tests` path part
         "src/my_tests_helper.py",  # `tests` is a substring, not a path part
-        "conftest.py",  # not under a tests dir, no test_ prefix
     ],
 )
 def test_non_test_paths_are_still_linted(path: str):
@@ -743,8 +743,6 @@ def test_opaque_mapping_returns_are_not_records(body: str):
 _RECORD_BODIES = [
     # `requests/src/requests/help.py:67` (info), `flask/examples/celery/.../views.py:22`.
     "return {'ready': ready, 'value': value}",
-    # A record assigned to a local, then mutated before return (`app.py:620`).
-    "rv = {'app': app}\n    rv.update(extra)\n    return rv",
     "rv: dict[str, Any] = {'app': app}\n    return rv",
     # `list[dict[str, Any]]` shapes.
     "return [{'id': 1}]",
@@ -759,6 +757,37 @@ _RECORD_BODIES = [
 @pytest.mark.parametrize("body", _RECORD_BODIES)
 def test_in_place_records_are_flagged(body: str):
     assert len(_check(f"def f() -> dict[str, Any]:\n    {body}\n")) == 1, body
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "entry = {'id': ident}\n    entry['service'] = service\n    return entry",
+        "entry = {'id': ident}\n    entry.update(extra)\n    return entry",
+        "entry = {'id': ident}\n    entry |= extra\n    return entry",
+        "entry = {'id': ident}\n    entry = enrich(entry)\n    return entry",
+    ],
+)
+def test_mutated_or_rebound_record_names_are_not_fixed_shapes(body: str) -> None:
+    assert _check(f"def f() -> dict[str, Any]:\n    {body}\n") == []
+
+
+def test_untouched_record_name_is_still_flagged() -> None:
+    src = "def f() -> dict[str, Any]:\n    entry = {'id': ident}\n    return entry\n"
+    assert len(_check(src)) == 1
+
+
+def test_dynamic_returned_accumulator_makes_literal_fallback_open_shaped() -> None:
+    src = """
+def run_hook() -> dict[str, Any]:
+    result = {"rc": 0}
+    if remote:
+        result[remote.key] = remote.value
+    if failed:
+        return {"rc": 1}
+    return result
+"""
+    assert _check(src) == []
 
 
 def test_stub_body_is_not_flagged_known_limitation():
@@ -829,6 +858,11 @@ def test_dict_conversion_methods_not_flagged(name: str):
     assert _check(src) == [], name
 
 
+def test_patterned_dict_conversion_method_not_flagged() -> None:
+    src = "def to_import_dict(self) -> dict[str, Any]:\n    return {'id': self.id}\n"
+    assert _check(src) == []
+
+
 @pytest.mark.parametrize("name", ["to_dictionary", "build_dict", "dict_for", "as_dict_of"])
 def test_names_merely_containing_dict_are_still_flagged(name: str):
     """Opposite case: the exemption is an exact-name allowlist, not a substring match."""
@@ -868,3 +902,10 @@ def test_route_without_annotation_returning_ad_hoc_dict_still_flagged():
 def test_route_without_annotation_returning_list_of_records_flagged():
     src = '@router.get("/items")\ndef read_items():\n    return [{"item_name": "Foo"}]\n'
     assert len(_check(src)) == 1
+
+
+def test_payload_builder_under_test_support_directory_is_exempt() -> None:
+    source = "def build_payload() -> dict[str, Any]:\n    return {'id': 1}\n"
+
+    assert _check(source, path="python/common/testing/payloads.py") == []
+    assert len(_check(source, path="python/common/payloads.py")) == 1

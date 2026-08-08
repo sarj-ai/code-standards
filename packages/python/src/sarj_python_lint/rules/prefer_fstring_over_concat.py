@@ -146,21 +146,6 @@ def _is_logging_call(node: ast.Call) -> bool:
     return is_logger_expr(func.value)
 
 
-def _flatten(node: ast.expr) -> list[ast.expr]:
-    """Flatten a nested `+` chain into its operands."""
-    operands: list[ast.expr] = []
-    stack = [node]
-    while stack:
-        current = stack.pop()
-        if isinstance(current, ast.BinOp) and isinstance(current.op, ast.Add):
-            # Push right first so the left spine is popped first and the
-            # operands come out in source order.
-            stack.extend((current.right, current.left))
-        else:
-            operands.append(current)
-    return operands
-
-
 def _verdict(node: ast.BinOp) -> str | None:
     """Judge one outermost `+` chain and build its message."""
     literals: list[str] = []
@@ -206,16 +191,24 @@ def _verdict(node: ast.BinOp) -> str | None:
     return message
 
 
+def _flatten(node: ast.expr) -> list[ast.expr]:
+    """Flatten a nested `+` chain into its operands."""
+    operands: list[ast.expr] = []
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        if isinstance(current, ast.BinOp) and isinstance(current.op, ast.Add):
+            # Push right first so the left spine is popped first and the
+            # operands come out in source order.
+            stack.extend((current.right, current.left))
+        else:
+            operands.append(current)
+    return operands
+
+
 def _is_join_call(expr: ast.expr) -> bool:
     """Report whether `expr` is a `<sep>.join(...)` call."""
     return isinstance(expr, ast.Call) and isinstance(expr.func, ast.Attribute) and expr.func.attr == "join"
-
-
-def _root_name(expr: ast.expr) -> str:
-    """Walk an attribute/subscript spine down to its leftmost `Name`."""
-    while isinstance(expr, ast.Attribute | ast.Subscript):
-        expr = expr.value
-    return expr.id if isinstance(expr, ast.Name) else ""
 
 
 def _is_orm_expression(expr: ast.expr) -> bool:
@@ -226,6 +219,21 @@ def _is_orm_expression(expr: ast.expr) -> bool:
     if isinstance(func, ast.Name) and func.id in _ORM_CALLS:
         return True
     return isinstance(func, ast.Attribute) and _root_name(func) in _ORM_ROOTS
+
+
+def _root_name(expr: ast.expr) -> str:
+    """Walk an attribute/subscript spine down to its leftmost `Name`."""
+    while isinstance(expr, ast.Attribute | ast.Subscript):
+        expr = expr.value
+    return expr.id if isinstance(expr, ast.Name) else ""
+
+
+def _is_blob_glue(operands: list[ast.expr], dynamic: list[ast.expr]) -> bool:
+    """Report whether the chain only glues opaque blobs together with whitespace."""
+    text = _template_text(operands)
+    if not text or any(fragment.strip() for fragment in text):
+        return False
+    return any(_has_string_literal_argument(expr) for expr in dynamic)
 
 
 def _template_text(operands: list[ast.expr]) -> list[str]:
@@ -247,14 +255,6 @@ def _has_string_literal_argument(expr: ast.expr) -> bool:
         return False
     arguments: list[ast.expr] = [*expr.args, *(kw.value for kw in expr.keywords)]
     return any(isinstance(arg, ast.Constant) and isinstance(arg.value, str) for arg in arguments)
-
-
-def _is_blob_glue(operands: list[ast.expr], dynamic: list[ast.expr]) -> bool:
-    """Report whether the chain only glues opaque blobs together with whitespace."""
-    text = _template_text(operands)
-    if not text or any(fragment.strip() for fragment in text):
-        return False
-    return any(_has_string_literal_argument(expr) for expr in dynamic)
 
 
 def _is_lazy_call(expr: ast.expr) -> bool:

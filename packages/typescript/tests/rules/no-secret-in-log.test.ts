@@ -122,7 +122,6 @@ ruleTester.run("no-secret-in-log", rule, {
     // not by the leading-flag guard.
     { code: 'logger.info("auth", { hash_secret });' },
 
-    // ---- raw-blob arm: the exemptions that keep it adoptable ----
     // A narrowed FIELD of a body is the fix, not the defect — the member
     // property decides, never the object it was picked from.
     { code: 'logger.info("resp", { id: body.id });' },
@@ -318,7 +317,6 @@ ruleTester.run("no-secret-in-log", rule, {
       errors: [{ messageId: "noSecretInLog" }],
     },
 
-    // ---- raw-blob arm: the coverage the GritQL plugin used to own ----
     // The shape the port was blocked on: a whole response body threaded into a
     // structured logger's meta object. No property here is secret-NAMED.
     {

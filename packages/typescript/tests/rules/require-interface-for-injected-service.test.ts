@@ -21,6 +21,26 @@ const SRC = "/repo/src/domain/record-normalizer/service.ts";
 ruleTester.run("require-interface-for-injected-service", rule, {
   valid: [
     {
+      name: "treats a retained metadata record read through fields as constructor data",
+      filename: SRC,
+      code: `
+        export class SessionPresenter {
+          constructor(private readonly metadata: SessionMetadata) {}
+          sessionId(): string { return this.metadata.sessionId; }
+        }
+      `,
+    },
+    {
+      name: "treats passing a retained metadata record as data flow rather than collaborator behavior",
+      filename: SRC,
+      code: `
+        export class SessionPublisher {
+          constructor(private readonly metadata: SessionMetadata) {}
+          publish(): void { publishSession(this.metadata, this.metadata.sessionId); }
+        }
+      `,
+    },
+    {
       name: "combines segregated implemented port surfaces",
       filename: SRC,
       code: `
@@ -518,6 +538,27 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         }
       `,
     },
+    {
+      name: "ignores a thin Http-prefixed wrapper over one third-party transport",
+      filename: "/repo/src/lib/http-service.ts",
+      code: `
+        export class HttpThingService {
+          constructor(private readonly client: AxiosInstance) {}
+          async call(body: unknown): Promise<unknown> { return this.client.post("/x", body); }
+        }
+      `,
+    },
+    {
+      name: "accepts a same-stem structural port that covers the public surface",
+      filename: "/repo/src/app/api/parser.ts",
+      code: `
+        export interface Parser { parse(args: ParseArgs): Promise<Parsed>; }
+        export class ParserImpl {
+          constructor(readonly axios: AxiosInstance) {}
+          async parse(args: ParseArgs): Promise<Parsed> { return null as never; }
+        }
+      `,
+    },
 
     // OPTIONS-OBJECT CONSTRUCTORS — the shapes the walk must NOT fire on.
     //
@@ -873,12 +914,58 @@ ruleTester.run("require-interface-for-injected-service", rule, {
 
   invalid: [
     {
+      name: "retains only behaviorally invoked dependencies when metadata is also stored",
+      filename: SRC,
+      code: `
+        export class SessionConfigService {
+          constructor(
+            private readonly metadata: SessionMetadata,
+            private readonly loader: ConfigLoader,
+          ) {}
+          load(): Config | undefined {
+            return this.loader.loadOptional(this.metadata.sessionId);
+          }
+        }
+      `,
+      errors: [
+        {
+          messageId: "requireInterface",
+          data: {
+            name: "SessionConfigService",
+            deps: "loader: ConfigLoader",
+            methods: "load",
+          },
+        },
+      ],
+    },
+    {
+      name: "maps an explicitly assigned collaborator parameter to the field that invokes it",
+      filename: SRC,
+      code: `
+        export class OptionalConfigService {
+          private readonly loader: ConfigLoader;
+          constructor(configLoader: ConfigLoader) { this.loader = configLoader; }
+          load(): Config | undefined { return this.loader.loadOptional("feature"); }
+        }
+      `,
+      errors: [
+        {
+          messageId: "requireInterface",
+          data: {
+            name: "OptionalConfigService",
+            deps: "configLoader: ConfigLoader",
+            methods: "load",
+          },
+        },
+      ],
+    },
+    {
       name: "a Builder suffix alone does not hide an injected service that returns a finished value",
       filename: SRC,
       code: `
         export class ReportBuilder {
           constructor(private readonly store: ReportStore) {}
-          build(): Report { return null as never; }
+          build(): Report { return this.store.build(); }
         }
       `,
       errors: [{ messageId: "requireInterface", data: { name: "ReportBuilder", deps: "store: ReportStore", methods: "build" } }],
@@ -890,7 +977,7 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         class Concrete { handle(): void {} }
         export class RequestHandler implements Concrete {
           constructor(private readonly store: TaskStore) {}
-          handle(): void {}
+          handle(): void { this.store.handle(); }
         }
       `,
       errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }],
@@ -902,7 +989,7 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         type Empty = {};
         export class RequestHandler implements Empty {
           constructor(private readonly store: TaskStore) {}
-          handle(): void {}
+          handle(): void { this.store.handle(); }
         }
       `,
       errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }],
@@ -914,7 +1001,7 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         export class RequestHandler {
           private store?: TaskStore;
           constructor(store: TaskStore) { this.store ??= store as TaskStore; }
-          handle(): void {}
+          handle(): void { this.store?.handle(); }
         }
       `,
       errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }],
@@ -926,7 +1013,7 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         interface Serializable { serialize(): string; }
         export class RequestHandler implements Serializable {
           constructor(private readonly store: TaskStore) {}
-          handle(): void {}
+          handle(): void { this.store.handle(); }
           serialize(): string { return ""; }
         }
       `,
@@ -939,7 +1026,7 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         class LocalBase { helper(): void {} }
         export class RequestHandler extends LocalBase {
           constructor(private readonly store: TaskStore) { super(); }
-          handle(): void {}
+          handle(): void { this.store.handle(); }
         }
       `,
       errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }],
@@ -954,7 +1041,7 @@ ruleTester.run("require-interface-for-injected-service", rule, {
             if (enabled) this.store = store!;
             else this.store = fallbackStore();
           }
-          handle(): void {}
+          handle(): void { this.store.handle(); }
         }
       `,
       errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }],
@@ -976,7 +1063,7 @@ ruleTester.run("require-interface-for-injected-service", rule, {
       code: `
         class RequestHandler {
           constructor(private readonly store: TaskStore) {}
-          handle(): void {}
+          handle(): void { this.store.handle(); }
         }
         export { RequestHandler };
       `,
@@ -996,6 +1083,7 @@ ruleTester.run("require-interface-for-injected-service", rule, {
           }
 
           async run(queue: Queue<TaskMessage>, nowMs: number, maxPerRun: number): Promise<RecordNormalizerRunResult> {
+            await this.svc.process(queue, nowMs, maxPerRun);
             return null as never;
           }
         }
@@ -1017,7 +1105,7 @@ ruleTester.run("require-interface-for-injected-service", rule, {
       code: `
         export class ProfileService {
           constructor(private profileStore: ProfileStore) {}
-          async getProfileById(id: string): Promise<Profile | null> { return null; }
+          async getProfileById(id: string): Promise<Profile | null> { return this.profileStore.get(id); }
           async listProfiles(): Promise<Profile[]> { return []; }
         }
       `,
@@ -1028,22 +1116,21 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         },
       ],
     },
-    // `readonly` parameter property with no accessibility keyword — one
-    // first-party site where `interface ReportParser` is declared three lines
-    // above and the `*Impl` class never says `implements`.
+    // A same-stem structural port does not cover an additional public method.
     {
       filename: SRC,
       code: `
         export interface ReportParser { parse(args: ParseArgs): Promise<Parsed>; }
         export class ReportParserImpl {
           constructor(readonly axios: AxiosInstance) {}
-          async parse(args: ParseArgs): Promise<Parsed> { return null as never; }
+          async parse(args: ParseArgs): Promise<Parsed> { return this.axios.post("/parse", args); }
+          async warmUp(): Promise<void> {}
         }
       `,
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "ReportParserImpl", deps: "axios: AxiosInstance", methods: "parse" },
+          data: { name: "ReportParserImpl", deps: "axios: AxiosInstance", methods: "parse, warmUp" },
         },
       ],
     },
@@ -1060,7 +1147,10 @@ ruleTester.run("require-interface-for-injected-service", rule, {
             this.lister = deps.lister;
             this.alerts = deps.alerts;
           }
-          async runDaily(today: string): Promise<Result> { return null as never; }
+          async runDaily(today: string): Promise<Result> {
+            const channels = await this.lister.list(today);
+            return this.alerts.publish(channels);
+          }
         }
       `,
       errors: [
@@ -1084,7 +1174,10 @@ ruleTester.run("require-interface-for-injected-service", rule, {
             this.owner = owner;
             this.tuning = tuning;
           }
-          async handle(task: SyncTask): Promise<void> {}
+          async handle(task: SyncTask): Promise<void> {
+            await this.svc.handle(task);
+            await this.bucket.put(task.id, task.payload);
+          }
         }
       `,
       errors: [
@@ -1118,7 +1211,7 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         export default class TaskProcessor {
           private readonly svc: ServiceRegistry;
           constructor(svc: ServiceRegistry) { this.svc = svc; }
-          async process(): Promise<void> {}
+          async process(): Promise<void> { await this.svc.process(); }
         }
       `,
       errors: [
@@ -1140,7 +1233,7 @@ ruleTester.run("require-interface-for-injected-service", rule, {
             const span = new Span("init");
             this.store = store;
           }
-          schedule(): void {}
+          schedule(): void { this.store.schedule(); }
         }
       `,
       errors: [
@@ -1164,7 +1257,7 @@ ruleTester.run("require-interface-for-injected-service", rule, {
             this.svc = svc;
             this.processor = new TaskProcessor(svc, enqueue);
           }
-          async handle(task: ProcessTaskMessage): Promise<void> {}
+          async handle(task: ProcessTaskMessage): Promise<void> { await this.svc.handle(task); }
         }
       `,
       errors: [
@@ -1182,7 +1275,7 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         export class PanelPresenter {
           private readonly store: PanelStore;
           constructor(store: PanelStore) { this.store = store; }
-          select(id: string): void {}
+          select(id: string): void { this.store.select(id); }
         }
       `,
       errors: [
@@ -1238,13 +1331,11 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         },
       ],
     },
-    // TRUE POSITIVES the transport guard must not swallow. One first-party
-    // site wraps an `AxiosInstance`
-    // in a DOMAIN operation, and its consumers do have something to substitute —
-    // the `*Client` arm of the guard is what keeps it firing.
+    // A first-party domain port keeps an Http-prefixed service actionable.
     {
       filename: "/repo/src/services/message-service.ts",
       code: `
+        export interface MessageService { send(body: MessageRequest): Promise<unknown>; }
         export class HttpMessageService {
           constructor(private readonly client: AxiosInstance) {}
           async send(body: MessageRequest) { return (await this.client.post("/v1/messages", body)).data; }
@@ -1257,9 +1348,7 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         },
       ],
     },
-    // Another first-party site — `interface ReportParser` sits three lines
-    // above and the class never says `implements`. That is the drift this rule
-    // exists for.
+    // The same-file port exists but does not cover the class's full public surface.
     {
       filename: "/repo/src/app/api/report-parser.ts",
       code: `
@@ -1268,13 +1357,14 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         }
         export class ReportParserImpl {
           constructor(readonly axios: AxiosInstance) {}
-          async parse(args: ParseArgs): Promise<ParsedReport> { return null as never; }
+          async parse(args: ParseArgs): Promise<ParsedReport> { return this.axios.post("/parse", args); }
+          async warmUp(): Promise<void> {}
         }
       `,
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "ReportParserImpl", deps: "axios: AxiosInstance", methods: "parse" },
+          data: { name: "ReportParserImpl", deps: "axios: AxiosInstance", methods: "parse, warmUp" },
         },
       ],
     },
@@ -1288,13 +1378,14 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         }
         export class ApiClient {
           constructor(private readonly http: AxiosInstance) {}
-          async listJobs(): Promise<Job[]> { return []; }
+          async listJobs(): Promise<Job[]> { return this.http.get("/jobs"); }
+          async warmUp(): Promise<void> {}
         }
       `,
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "ApiClient", deps: "http: AxiosInstance", methods: "listJobs" },
+          data: { name: "ApiClient", deps: "http: AxiosInstance", methods: "listJobs, warmUp" },
         },
       ],
     },
@@ -1307,7 +1398,10 @@ ruleTester.run("require-interface-for-injected-service", rule, {
             private readonly http: AxiosInstance,
             private readonly cache: JobCache,
           ) {}
-          async listJobs(): Promise<Job[]> { return []; }
+          async listJobs(): Promise<Job[]> {
+            const cached = this.cache.get("jobs");
+            return cached ?? this.http.get("/jobs");
+          }
         }
       `,
       errors: [
@@ -1323,7 +1417,7 @@ ruleTester.run("require-interface-for-injected-service", rule, {
       code: `
         export class ApiClient {
           constructor(private readonly jobStore: JobStore) {}
-          async listJobs(): Promise<Job[]> { return []; }
+          async listJobs(): Promise<Job[]> { return this.jobStore.list(); }
         }
       `,
       errors: [
@@ -1348,7 +1442,10 @@ ruleTester.run("require-interface-for-injected-service", rule, {
             this.userRepo = userRepo;
             this.syncClient = syncClient;
           }
-          async syncOrg(orgId: string): Promise<void> {}
+          async syncOrg(orgId: string): Promise<void> {
+            const user = await this.userRepo.find(orgId);
+            await this.syncClient.sync(user);
+          }
         }
       `,
       errors: [
@@ -1370,7 +1467,7 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         export class OrgSyncService {
           readonly #userRepo: UserRepo;
           constructor({ userRepo }: OrgSyncDeps) { this.#userRepo = userRepo; }
-          async syncOrg(orgId: string): Promise<void> {}
+          async syncOrg(orgId: string): Promise<void> { await this.#userRepo.find(orgId); }
         }
       `,
       errors: [
@@ -1393,7 +1490,7 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         export class OrgSyncService {
           private readonly userRepo: UserRepo;
           constructor({ userRepo = defaultUserRepo }: OrgSyncDeps) { this.userRepo = userRepo; }
-          async syncOrg(orgId: string): Promise<void> {}
+          async syncOrg(orgId: string): Promise<void> { await this.userRepo.find(orgId); }
         }
       `,
       errors: [
@@ -1419,7 +1516,7 @@ ruleTester.run("require-interface-for-injected-service", rule, {
             this.userRepo = userRepo;
             this.rest = rest;
           }
-          async syncOrg(orgId: string): Promise<void> {}
+          async syncOrg(orgId: string): Promise<void> { await this.userRepo.find(orgId); }
         }
       `,
       errors: [
@@ -1442,7 +1539,7 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         export class OrgSyncService {
           private readonly repository: UserRepo;
           constructor({ userRepo: repository }: OrgSyncDeps) { this.repository = repository; }
-          async syncOrg(orgId: string): Promise<void> {}
+          async syncOrg(orgId: string): Promise<void> { await this.repository.find(orgId); }
         }
       `,
       errors: [
@@ -1468,7 +1565,7 @@ ruleTester.run("require-interface-for-injected-service", rule, {
             this.userRepo = userRepo;
             this.limit = limit;
           }
-          async syncOrg(orgId: string): Promise<void> {}
+          async syncOrg(orgId: string): Promise<void> { await this.userRepo.find(orgId); }
         }
       `,
       errors: [
@@ -1506,7 +1603,7 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         export class IntersectionService {
           private readonly userRepo: UserRepo;
           constructor({ userRepo }: SyncDeps) { this.userRepo = userRepo; }
-          async run(): Promise<void> {}
+          async run(): Promise<void> { await this.userRepo.find("current"); }
         }
       `,
       errors: [
@@ -1524,7 +1621,7 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         export class ExportedBagService {
           private readonly userRepo: UserRepo;
           constructor({ userRepo }: ExportedDeps) { this.userRepo = userRepo; }
-          async run(): Promise<void> {}
+          async run(): Promise<void> { await this.userRepo.find("current"); }
         }
       `,
       errors: [
@@ -1549,7 +1646,10 @@ ruleTester.run("require-interface-for-injected-service", rule, {
             this.userRepo = userRepo;
             this.records = records;
           }
-          async run(): Promise<TResult> { return null as never; }
+          async run(): Promise<TResult> {
+            await this.userRepo.find("current");
+            return this.records.result();
+          }
         }
       `,
       errors: [
@@ -1576,7 +1676,10 @@ ruleTester.run("require-interface-for-injected-service", rule, {
             this.svc = svc;
             this.userRepo = userRepo;
           }
-          async run(): Promise<void> {}
+          async run(): Promise<void> {
+            await this.svc.run();
+            await this.userRepo.find("current");
+          }
         }
       `,
       errors: [

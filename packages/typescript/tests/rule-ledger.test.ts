@@ -30,7 +30,7 @@ const LEDGER_PATH = resolve(
 
 interface RetiredEntry {
   readonly id: string;
-  readonly kind: string;
+  readonly kind: "code" | "eslint" | "python";
   readonly status: "removed" | "renamed";
   readonly replacement: string | null;
   readonly note: string;
@@ -58,8 +58,9 @@ describe("rule ledger", () => {
 
   it("points every ESLint rename at a rule that exists", () => {
     const live = new Set(Object.keys(rules).map((name) => `@sarj/${name}`));
-    for (const entry of ledger.retired) {
-      if (entry.kind !== "eslint" || entry.status !== "renamed") continue;
+    for (const entry of ledger.retired.filter(
+      (candidate) => candidate.kind === "eslint" && candidate.status === "renamed",
+    )) {
       expect(live.has(entry.replacement ?? "")).toBe(true);
     }
   });

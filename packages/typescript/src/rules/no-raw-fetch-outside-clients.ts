@@ -66,20 +66,6 @@ function isGlobalFetchCall(node: TSESTree.CallExpression): boolean {
   return false;
 }
 
-function identifierLikeName(node: TSESTree.Node): string | null {
-  if (node.type === "Identifier") {
-    return node.name;
-  }
-  if (
-    node.type === "MemberExpression" &&
-    !node.computed &&
-    node.property.type === "Identifier"
-  ) {
-    return node.property.name;
-  }
-  return null;
-}
-
 /** True for a lone `fetch(new URL(...))` / `fetch(new Request(...))`. */
 function isConstructedArgumentHandoff(node: TSESTree.CallExpression): boolean {
   const [first] = node.arguments;
@@ -97,6 +83,20 @@ function isPresignedUrlTransfer(node: TSESTree.CallExpression): boolean {
   }
   const name = identifierLikeName(first);
   return name !== null && PRESIGNED_URL_NAME_RE.test(name);
+}
+
+function identifierLikeName(node: TSESTree.Node): string | null {
+  if (node.type === "Identifier") {
+    return node.name;
+  }
+  if (
+    node.type === "MemberExpression" &&
+    !node.computed &&
+    node.property.type === "Identifier"
+  ) {
+    return node.property.name;
+  }
+  return null;
 }
 
 /** Compile valid allow patterns; malformed entries fail closed. */

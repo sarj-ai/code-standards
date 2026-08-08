@@ -322,12 +322,7 @@ class Standards:
         trust: TrustMode | str = TrustMode.SAFE,
         mode: AnalysisMode | str = AnalysisMode.POLICY,
     ) -> AnalysisReport:
-        """Return native source findings through the versioned diagnostic protocol.
-
-        Unlike :meth:`check`, this method never renders analyzer output and keeps
-        execution failures separate from code findings. External tool adapters
-        can therefore be added without changing the report contract.
-        """
+        """Return source findings and execution failures through the versioned diagnostic protocol."""
         try:
             normalized_trust = TrustMode(trust)
             normalized_mode = AnalysisMode(mode)

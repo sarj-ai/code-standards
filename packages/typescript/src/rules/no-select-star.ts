@@ -23,13 +23,21 @@ const QUALIFIED_PREFIX = /\w\.$/;
 
 const SELECT_GATE = /select/i;
 
-/**
- * True when the `*` at `pos` is a column-projection star.
- *
- * A projection star expands columns: bare (`SELECT *`, `id, *`) or qualified
- * (`c.*`). It is NOT a `COUNT(*)` argument (parenthesised on both sides) nor an
- * `a * b` multiply (an operand follows rather than a terminator).
- */
+/** True when the query projects a star that is not inside an `EXISTS (...)` subquery. */
+function hasRealSelectStar(sql: string): boolean {
+  const selects = [...sql.matchAll(SELECT_KEYWORD)].map((m) => m.index);
+  for (let pos = 0; pos < sql.length; pos++) {
+    if (sql[pos] !== "*" || !isProjectionStar(sql, pos)) {
+      continue;
+    }
+    const owning = selects.filter((start) => start < pos).at(-1);
+    if (owning !== undefined && !EXISTS_BEFORE.test(sql.slice(0, owning))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function isProjectionStar(sql: string, pos: number): boolean {
   if (QUALIFIED_PREFIX.test(sql.slice(0, pos))) {
     return true;
@@ -50,21 +58,6 @@ function isProjectionStar(sql: string, pos: number): boolean {
     return false;
   }
   return !(beforeChar === "(" && afterChar === ")");
-}
-
-/** True when the query projects a star that is not inside an `EXISTS (...)` subquery. */
-function hasRealSelectStar(sql: string): boolean {
-  const selects = [...sql.matchAll(SELECT_KEYWORD)].map((m) => m.index);
-  for (let pos = 0; pos < sql.length; pos++) {
-    if (sql[pos] !== "*" || !isProjectionStar(sql, pos)) {
-      continue;
-    }
-    const owning = selects.filter((start) => start < pos).at(-1);
-    if (owning !== undefined && !EXISTS_BEFORE.test(sql.slice(0, owning))) {
-      return true;
-    }
-  }
-  return false;
 }
 
 export default createRule<Options, MessageIds>({

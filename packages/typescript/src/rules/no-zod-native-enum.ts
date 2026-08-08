@@ -98,11 +98,6 @@ function resolvesToLocalEnum(
 const ENUM_SYMBOL_FLAGS =
   ts.SymbolFlags.RegularEnum | ts.SymbolFlags.ConstEnum | ts.SymbolFlags.Enum;
 
-/**
- * Whether the identifier's resolved symbol is a TypeScript enum, following
- * import aliases. Catches `import { Status } from "./types"; z.enum(Status)`,
- * which lexical resolution alone cannot see.
- */
 function resolvesToImportedEnum(
   node: TSESTree.Identifier,
   services: ParserServicesWithTypeInformation,
@@ -175,10 +170,6 @@ export default createRule<Options, MessageIds>({
     function buildFix(
       node: TSESTree.CallExpression,
     ): TSESLint.ReportFixFunction | null {
-      // A bare `nativeEnum(...)` imported from zod cannot be renamed in place —
-      // `enum` is a reserved word, so there is no bare callee to rewrite to.
-      // Rewriting only the argument would leave a `nativeEnum` call taking an
-      // array, so this shape is report-only.
       const callee = node.callee;
       if (
         callee.type !== AST_NODE_TYPES.MemberExpression ||

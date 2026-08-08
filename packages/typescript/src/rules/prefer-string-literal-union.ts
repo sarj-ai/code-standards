@@ -45,12 +45,6 @@ const MIN_CLUSTER_SIZE = 2;
 
 const BOOLEANISH: ReadonlySet<string> = new Set(["true", "false"]);
 
-/**
- * An enum-shaped token worth a string-literal union: a short lowercase word of
- * 2+ chars that isn't a boolean-string. Single characters (`'a'`), file
- * paths/URLs/i18n keys (contain `/`, `:`, `.`), and `'true'`/`'false'` are NOT
- * closed-enum members — comparing against them is a flag/path/boolean guard.
- */
 
 function isEnumToken(lit: string): boolean {
   return LOWER_TOKEN_RE.test(lit) && lit.length >= 2 && !BOOLEANISH.has(lit);
@@ -70,10 +64,10 @@ function isIgnoredFile(filename: string, sourceText: string): boolean {
   return /@generated\b/.test(sourceText.slice(0, 1024));
 }
 
-/**
- * The trailing word of a camelCase / snake_case identifier, lowercased.
- * `callStatus` -> `status`, `user_role` -> `role`, `estate` -> `estate`.
- */
+function isChoiceLikeName(name: string): boolean {
+  return CHOICE_TOKENS.has(lastWord(name));
+}
+
 function lastWord(name: string): string {
   const words = name
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
@@ -81,10 +75,6 @@ function lastWord(name: string): string {
     .filter((w) => w.length > 0);
   const last = words[words.length - 1] ?? name;
   return last.toLowerCase();
-}
-
-function isChoiceLikeName(name: string): boolean {
-  return CHOICE_TOKENS.has(lastWord(name));
 }
 
 function keyName(
@@ -115,14 +105,6 @@ function isStringLiteralUnion(node: TSESTree.TypeNode | undefined): boolean {
   return node.types.filter(isStringLiteralMember).length >= MIN_CLUSTER_SIZE;
 }
 
-/**
- * Whether a resolved TS type includes the general `string` type — as opposed to
- * being (a union of) string-literal types. `CallStatus = "a" | "b"` has no
- * general-string member and is already the target state; a raw `string` (or
- * `string | undefined`) does, and a comparison cluster on it should become a
- * union. Requires type information; the comparison-cluster path is inert
- * without it.
- */
 function typeHasRawString(type: ts.Type): boolean {
   const parts = type.isUnion() ? type.types : [type];
   return parts.some((t) => (t.flags & ts.TypeFlags.String) !== 0);
@@ -261,14 +243,24 @@ export default createRule<Options, MessageIds>({
       return typeHasRawString(services.getTypeAtLocation(node));
     }
 
-    /**
-     * Whether the compared value provably originates from a type we don't own —
-     * a property of a `.d.ts` / node_modules type (DOM `getComputedStyle().overflowY`,
-     * `Task.status` from another package), the return of such a method
-     * (`URLSearchParams.get()`, `str.toLowerCase()`), or a destructuring of one
-     * (`Object.entries()` keys). A string-literal union is not an available fix
-     * for these, so the cluster shape must not flag them.
-     */
+    function parameterRoot(node: TSESTree.Node): boolean {
+      if (services === null) return false;
+      const checker = services.program.getTypeChecker();
+      let current: ts.Node = services.esTreeNodeToTSNodeMap.get(node);
+      while (ts.isPropertyAccessExpression(current)) current = current.expression;
+      if (!ts.isIdentifier(current)) return false;
+      let declaration: ts.Node | undefined = checker.getSymbolAtLocation(current)?.valueDeclaration;
+      while (
+        declaration !== undefined &&
+        (ts.isBindingElement(declaration) ||
+          ts.isObjectBindingPattern(declaration) ||
+          ts.isArrayBindingPattern(declaration))
+      ) {
+        declaration = declaration.parent;
+      }
+      return declaration !== undefined && ts.isParameter(declaration);
+    }
+
     function originIsExternal(node: ts.Node | undefined, depth: number): boolean {
       if (node === undefined || services === null || depth > 6) {
         return false;
@@ -305,17 +297,11 @@ export default createRule<Options, MessageIds>({
     function operandIsFlaggable(node: TSESTree.Node): boolean {
       return (
         operandIsRawString(node) &&
+        parameterRoot(node) &&
         !originIsExternal(services?.esTreeNodeToTSNodeMap.get(node), 0)
       );
     }
 
-    /**
-     * The string-literal members of a function's DECLARED return type, resolved
-     * through named aliases and `Promise<...>`. Null when the function has no
-     * annotation, type information is unavailable, or the type is not a
-     * string-literal union. Computed lazily — only for a function that actually
-     * accumulated a cluster — since it costs a type resolution.
-     */
     function declaredReturnLiterals(fn: FunctionNode): ReadonlySet<string> | null {
       const annotation = fn.returnType?.typeAnnotation;
       if (annotation === undefined || services === null) {

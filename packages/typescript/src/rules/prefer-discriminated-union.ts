@@ -7,6 +7,7 @@
 import { type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule } from "./_docs.js";
+import { isGeneratedFile, isTestFile } from "./_paths.js";
 import { AST_NODE_TYPES } from "@typescript-eslint/utils";
 
 type MessageIds = "preferDiscriminatedUnion";
@@ -18,12 +19,67 @@ type Options = readonly [];
 const STATUS_MEMBER_NAMES: ReadonlySet<string> = new Set([
   "success",
   "ok",
+]);
+const FAILURE_MEMBER_NAMES: ReadonlySet<string> = new Set([
   "error",
-  "failed",
-  "isError",
+  "errors",
+  "reason",
+  "cause",
+]);
+const SUCCESS_PAYLOAD_MEMBER_NAMES: ReadonlySet<string> = new Set([
+  "data",
+  "events",
+  "payload",
+  "response",
+  "result",
+  "value",
 ]);
 
-const MIN_OPTIONAL_MEMBERS = 2;
+const REQUIRED_STATUS_MEMBER_COUNT = 1;
+
+/**
+ * Returns true for the canonical flat result shape: one required positive
+ * boolean status plus optional success and failure payloads.
+ */
+function looksLikeMutuallyExclusiveState(
+  typeLiteral: TSESTree.TSTypeLiteral,
+): boolean {
+  let statusMemberCount = 0;
+  let hasFailurePayload = false;
+  let hasSuccessPayload = false;
+
+  for (const member of typeLiteral.members) {
+    if (member.type !== AST_NODE_TYPES.TSPropertySignature) {
+      continue;
+    }
+
+    const name = getMemberName(member);
+    if (
+      name !== null &&
+      STATUS_MEMBER_NAMES.has(name) &&
+      isBooleanTyped(member) &&
+      !member.optional
+    ) {
+      statusMemberCount += 1;
+      continue;
+    }
+
+    if (!member.optional || isBooleanTyped(member) || name === null) {
+      continue;
+    }
+    if (FAILURE_MEMBER_NAMES.has(name)) {
+      hasFailurePayload = true;
+    } else if (SUCCESS_PAYLOAD_MEMBER_NAMES.has(name)) {
+      hasSuccessPayload = true;
+    }
+  }
+
+  return (
+    statusMemberCount === REQUIRED_STATUS_MEMBER_COUNT &&
+    hasFailurePayload &&
+    hasSuccessPayload
+  );
+}
 
 /**
  * Returns the property key name for a member if it is a plain identifier or
@@ -53,55 +109,13 @@ function isBooleanTyped(member: TSESTree.TSPropertySignature): boolean {
   );
 }
 
-/**
- * Returns true when the object type literal has BOTH a boolean-typed status
- * member AND at least `MIN_OPTIONAL_MEMBERS` optional members.
- */
-function looksLikeMutuallyExclusiveState(
-  typeLiteral: TSESTree.TSTypeLiteral,
-): boolean {
-  let hasStatusBoolean = false;
-  let optionalCount = 0;
-  let optionalPayloadCount = 0;
-
-  for (const member of typeLiteral.members) {
-    if (member.type !== AST_NODE_TYPES.TSPropertySignature) {
-      continue;
-    }
-
-    if (member.optional) {
-      optionalCount += 1;
-      // A non-boolean optional can land in the wrong branch. All-boolean
-      // records are independent flag sets, not state machines.
-      if (!isBooleanTyped(member)) {
-        optionalPayloadCount += 1;
-      }
-    }
-
-    const name = getMemberName(member);
-    if (
-      name !== null &&
-      STATUS_MEMBER_NAMES.has(name) &&
-      isBooleanTyped(member)
-    ) {
-      hasStatusBoolean = true;
-    }
-  }
-
-  return (
-    hasStatusBoolean &&
-    optionalCount >= MIN_OPTIONAL_MEMBERS &&
-    optionalPayloadCount >= 1
-  );
-}
-
 export default createRule<Options, MessageIds>({
   name: "prefer-discriminated-union",
   meta: {
     type: "suggestion",
     docs: {
       description:
-        "Flag object types with a boolean status member and at least two optional members, including a non-boolean payload.",
+        "Flag flat result objects with a required positive boolean status and optional success/failure payloads.",
     },
     schema: [],
     messages: {
@@ -111,6 +125,13 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
+    if (
+      isTestFile(context.filename) ||
+      isGeneratedFile(context.filename, context.sourceCode.text)
+    ) {
+      return {};
+    }
+
     function checkTypeLiteral(
       typeLiteral: TSESTree.TSTypeLiteral,
       reportNode: TSESTree.Node,
@@ -127,6 +148,9 @@ export default createRule<Options, MessageIds>({
       TSInterfaceDeclaration(
         node: TSESTree.TSInterfaceDeclaration,
       ): void {
+        if (node.extends.length > 0) {
+          return;
+        }
         // An interface body is structurally an object type literal; reuse the
         // same membership analysis by treating its `body.body` as members.
         const synthetic: TSESTree.TSTypeLiteral = {

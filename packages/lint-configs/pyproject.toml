@@ -1,6 +1,6 @@
 [project]
 name = "sarj-lint-configs"
-version = "0.56.0"
+version = "0.57.0"
 description = "Maximally-strict ruff + pyright + ESLint configs for sarj-ai Python/TypeScript projects."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -24,8 +24,8 @@ dependencies = [
     "PyYAML>=6.0.3",
     "ruff>=0.15",
     "sarj-iac-lint==0.6.1",
-    "sarj-python-lint==0.51.3",
-    "sarj-sql-lint==0.6.4",
+    "sarj-python-lint==0.52.0",
+    "sarj-sql-lint==0.6.5",
 ]
 
 [project.scripts]

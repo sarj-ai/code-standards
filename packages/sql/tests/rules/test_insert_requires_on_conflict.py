@@ -175,7 +175,7 @@ def test_unguarded_dollar_quoted_insert_still_fires():
 
 def test_guard_in_one_block_does_not_excuse_another_block():
     """Contiguous-run grouping is per body, so one guarded block cannot cover a sibling."""
-    diags = _check(_GUARDED_SEED + "\n" + _UNGUARDED_SEED)
+    diags = _check(f"{_GUARDED_SEED}\n{_UNGUARDED_SEED}")
     assert len(diags) == 1
 
 
@@ -192,6 +192,6 @@ END $$;
 
 
 def test_bare_insert_outside_any_dollar_body_still_fires():
-    src = _GUARDED_SEED + "\nINSERT INTO plan (name) VALUES ('free');"
+    src = f"{_GUARDED_SEED}\nINSERT INTO plan (name) VALUES ('free');"
     diags = _check(src)
     assert len(diags) == 1

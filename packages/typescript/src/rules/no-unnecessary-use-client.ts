@@ -193,10 +193,6 @@ export default createRule<Options, MessageIds>({
         }
       },
       CallExpression(node): void {
-        // The `Program` visitor (entered first) has already determined whether
-        // this file has a `'use client'` directive. If it doesn't, the result
-        // can't change — skip all of the per-node indicator work, including the
-        // hot scope-resolution in the `Identifier` visitor below.
         if (directiveNode === null) return;
         markIfHookOrContext(node.callee);
       },

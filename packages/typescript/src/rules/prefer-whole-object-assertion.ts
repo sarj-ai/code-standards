@@ -12,43 +12,12 @@ import { isGeneratedFile, isTestFile } from "./_paths.js";
 type MessageIds = "combineAssertions" | "assertArrayOnce";
 type Options = readonly [];
 
-/**
- * Matchers whose per-key meaning `toMatchObject` reproduces exactly — but only
- * against a primitive literal, where `Object.is`, deep equality and strict deep
- * equality all coincide. See `literalText` for the other half of that pair.
- */
 const MERGEABLE_MATCHERS: ReadonlySet<string> = new Set(["toBe", "toEqual", "toStrictEqual"]);
 
-/**
- * Matchers whose whole-array form (`expect(a).toEqual([...])`) preserves the
- * per-element comparison. `toBe` is excluded: element-wise identity is not what
- * `toEqual` on the array would check.
- */
 const ARRAY_MATCHERS: ReadonlySet<string> = new Set(["toEqual", "toStrictEqual"]);
 
-/**
- * Properties whose receiver is a collection rather than a record. A run keyed on
- * `length` or `size` describes an array / Map / Set, and `toMatchObject` cannot
- * state a collection's size — this is the `.length`-mixed-with-elements class.
- */
 const COLLECTION_PROPERTIES: ReadonlySet<string> = new Set(["length", "size"]);
 
-/**
- * Property names whose meaning as an OBJECT-LITERAL KEY is not "a property of
- * this name". There is exactly one in JavaScript.
- *
- * `__proto__: v` in a literal is the prototype SETTER, so the key never exists
- * and `toMatchObject` never checks it — the fix would DELETE the assertion it
- * claims to be merging. Quoting does not help: `"__proto__": v` is the same
- * production. The whole run is dropped rather than the one key, because there
- * is no `toMatchObject` literal that says what the run says.
- *
- * Audited for siblings: `constructor`, `toString`, `valueOf` and every other
- * inherited name ARE plain own keys in a literal, and jest's `subsetEquality`
- * walks the prototype chain when reading them off the received value, so those
- * merge faithfully. `get x() {}` / `async x() {}` are different PRODUCTIONS,
- * not different key names, and this fixer only ever emits `key: value`.
- */
 const LITERAL_KEY_HAZARDS: ReadonlySet<string> = new Set(["__proto__"]);
 
 /** `-1` parses as a unary expression, not a literal, but it is still constant. */
@@ -74,11 +43,6 @@ interface Assertion {
   readonly expectedIsLiteral: boolean;
 }
 
-/**
- * Source text of `node` when it is a primitive literal, otherwise `null`.
- * Regular expressions are excluded: `toBe(/x/)` is an identity check that
- * `toEqual` and `toMatchObject` do not reproduce.
- */
 function literalText(node: TSESTree.Node, getText: (node: TSESTree.Node) => string): string | null {
   switch (node.type) {
     case AST_NODE_TYPES.Literal:
@@ -94,21 +58,6 @@ function literalText(node: TSESTree.Node, getText: (node: TSESTree.Node) => stri
   }
 }
 
-/**
- * True for a receiver that can be evaluated twice with the same effect: an
- * identifier, `this`, or a member chain over one. A call anywhere in the chain
- * makes the merged form invoke it fewer times than the run did.
- *
- * The `node.optional` guard below — and its twin on `actual` in
- * `parseAssertion` — cannot be reached by any input, and no test pins them:
- * every optional link wraps the whole expression in a `ChainExpression`, which
- * `parseAssertion` has already rejected, and a parenthesised `(a?.b).c` leaves a
- * `ChainExpression` in the object position where this function's `default` arm
- * catches it. They are kept as belt and braces against a parser that stops
- * emitting `ChainExpression`, not because anything currently depends on them —
- * recorded here so the next reader does not spend an afternoon writing the test
- * that would prove them live.
- */
 function isPureReceiver(node: TSESTree.Node): boolean {
   switch (node.type) {
     case AST_NODE_TYPES.Identifier:
@@ -232,18 +181,6 @@ export default createRule<Options, MessageIds>({
       };
     }
 
-    /**
-     * True when a comment sits inside the span the fix rewrites — between two
-     * statements of the run, or inside one of them.
-     *
-     * Such a comment cannot survive: the statements after the first are DELETED,
-     * so their leading comments are left dangling above the merged assertion,
-     * describing a statement that no longer exists. Worst case the dangling line
-     * is an `eslint-disable-next-line`, which then becomes a fresh unused-directive
-     * error the author did not write. Dropping a comment is also not "exactly
-     * equivalent to the code it replaces", so the report stands and the fix is
-     * withheld for a human.
-     */
     function hasInterveningComment(run: readonly Assertion[]): boolean {
       return run.some(
         (assertion, index) =>
@@ -295,12 +232,6 @@ export default createRule<Options, MessageIds>({
       });
     }
 
-    /**
-     * An indexed run is reportable when the indices cover `0..n-1` exactly and
-     * one `toEqual` / `toStrictEqual` runs throughout, so `expect(xs).toEqual([…])`
-     * makes the same per-element comparisons plus the length check the run is
-     * missing. No fix: that added length check can turn a passing test red.
-     */
     function reportIndexRun(run: readonly Assertion[]): void {
       const first = run[0];
       if (first === undefined || !ARRAY_MATCHERS.has(first.matcher)) {

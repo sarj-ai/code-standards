@@ -32,11 +32,11 @@ const ARBITRARY_COLOR_RE = new RegExp(
 );
 
 /** Call expressions whose string args are className fragments. */
-const CLASS_FNS = new Set<string>(["cn", "clsx", "cva", "tv", "cx", "twMerge", "classnames", "classNames"]);
+const CLASS_FNS: ReadonlySet<string> = new Set(["cn", "clsx", "cva", "tv", "cx", "twMerge", "classnames", "classNames"]);
 const CLASS_NAME_RE = /class/i;
 
 /** CSS color-bearing properties, in their JSX (camelCase) and SVG-attribute forms. */
-const STYLE_COLOR_PROPS = new Set<string>([
+const STYLE_COLOR_PROPS: ReadonlySet<string> = new Set([
   "color",
   "background",
   "backgroundColor",
@@ -80,7 +80,7 @@ const PRESENCE_MARKERS = [
   "tailwind.config.ts",
   "tailwind.config.mts",
   "tailwind.config.cts",
-];
+] as const;
 
 /** Stylesheets count only when their contents declare semantic tokens or an `@theme`. */
 const CSS_DETECTION_FILES = [
@@ -95,17 +95,17 @@ const CSS_DETECTION_FILES = [
   "src/styles/index.css",
   "styles/globals.css",
   "styles/index.css",
-];
+] as const;
 /** Workspace markers used when no `package.json#workspaces` declaration exists. */
 const WORKSPACE_ROOT_FILES = [
   "pnpm-workspace.yaml",
   "pnpm-workspace.yml",
   "turbo.json",
   "lerna.json",
-];
+] as const;
 
 /** Where workspace packages live when the root declares no globs, or none parse. */
-const DEFAULT_WORKSPACE_GLOBS = ["packages/*", "apps/*"];
+const DEFAULT_WORKSPACE_GLOBS = ["packages/*", "apps/*"] as const;
 
 /** Upper bound on the sideways scan, so a huge monorepo cannot stall a lint run. */
 const MAX_WORKSPACE_PACKAGES = 512;
@@ -120,7 +120,7 @@ const workspaceScanCache = new Map<string, boolean>();
 const workspaceRootCache = new Map<string, string | null>();
 
 /** SVG container elements whose children carry structural (not UI-token) colors. */
-const SVG_DEFS_CONTAINERS = new Set<string>([
+const SVG_DEFS_CONTAINERS: ReadonlySet<string> = new Set([
   "mask",
   "clipPath",
   "defs",
@@ -130,7 +130,7 @@ const SVG_DEFS_CONTAINERS = new Set<string>([
 ]);
 
 /** Neutral fill/stroke literals that are SVG drawing data, never a UI token. */
-const SVG_EXEMPT_COLOR_VALUES = new Set<string>([
+const SVG_EXEMPT_COLOR_VALUES: ReadonlySet<string> = new Set([
   "#fff",
   "#ffffff",
   "#000",
@@ -140,6 +140,18 @@ const SVG_EXEMPT_COLOR_VALUES = new Set<string>([
   "currentcolor",
   "inherit",
 ]);
+
+const isInsideSvg = (node: TSESTree.Node): boolean => {
+  let current: TSESTree.Node | null | undefined = node.parent;
+  while (current !== undefined && current !== null) {
+    if (current.type === AST_NODE_TYPES.JSXElement) {
+      const name = jsxElementName(current);
+      if (name !== null && isSvgLikeElementName(name)) return true;
+    }
+    current = current.parent;
+  }
+  return false;
+};
 
 // SVG subtree colors are artwork data rather than reusable UI tokens.
 function jsxElementName(node: TSESTree.JSXElement): string | null {
@@ -151,12 +163,8 @@ function jsxElementName(node: TSESTree.JSXElement): string | null {
   return null;
 }
 
-function isSvgLikeElementName(name: string): boolean {
-  return name === "svg" || SVG_DEFS_CONTAINERS.has(name) || /svg$/i.test(name);
-}
-
 /** Intrinsic SVG shapes carry artwork colors; `className` and `style` remain checked. */
-const SVG_SHAPE_PRIMITIVES = new Set<string>([
+const SVG_SHAPE_PRIMITIVES: ReadonlySet<string> = new Set([
   "circle",
   "ellipse",
   "g",
@@ -174,17 +182,9 @@ const SVG_SHAPE_PRIMITIVES = new Set<string>([
 /** Email and PDF renderers cannot resolve CSS-variable-backed semantic tokens. */
 const EMAIL_OR_PDF_MODULE_RE = /^@react-(?:email|pdf)\//;
 
-const isInsideSvg = (node: TSESTree.Node): boolean => {
-  let current: TSESTree.Node | null | undefined = node.parent;
-  while (current !== undefined && current !== null) {
-    if (current.type === AST_NODE_TYPES.JSXElement) {
-      const name = jsxElementName(current);
-      if (name !== null && isSvgLikeElementName(name)) return true;
-    }
-    current = current.parent;
-  }
-  return false;
-};
+function isSvgLikeElementName(name: string): boolean {
+  return name === "svg" || SVG_DEFS_CONTAINERS.has(name) || /svg$/i.test(name);
+}
 
 const isInsideIconFactoryPath = (node: TSESTree.Node): boolean => {
   let current: TSESTree.Node | null | undefined = node.parent;
@@ -218,36 +218,6 @@ const hasMarkerAt = (dir: string): boolean => {
     }
   }
   return false;
-};
-
-/** Walk to the filesystem root and cache the resolved ancestry answer. */
-const hasMarkerAtOrAbove = (startDir: string): boolean => {
-  let dir = startDir;
-  const root = parse(dir).root;
-  const visited: string[] = [];
-  let answer: boolean;
-
-  for (;;) {
-    const cached = ancestryCache.get(dir);
-    if (cached !== undefined) {
-      answer = cached;
-      break;
-    }
-    visited.push(dir);
-    if (hasMarkerAt(dir)) {
-      answer = true;
-      break;
-    }
-    const parent = dirname(dir);
-    if (dir === root || parent === dir) {
-      answer = false;
-      break;
-    }
-    dir = parent;
-  }
-
-  for (const seen of visited) ancestryCache.set(seen, answer);
-  return answer;
 };
 
 /** Read workspace globs without adding a YAML dependency to the rule. */
@@ -291,20 +261,42 @@ const readWorkspaceGlobs = (dir: string): string[] => {
   return globs;
 };
 
-/** Expand a workspace glob one level: `packages/*`, `packages/**`, or a literal path. */
-const expandWorkspaceGlob = (root: string, glob: string): string[] => {
-  const star = glob.indexOf("*");
-  if (star === -1) return [join(root, glob)];
+/** Does a design-token system exist anywhere this file's project can see? */
+const hasSemanticTokenSystem = (filename: string): boolean => {
+  const dir = dirname(filename);
+  if (hasMarkerAtOrAbove(dir)) return true;
+  const root = findWorkspaceRoot(dir);
+  return root !== null && workspaceHasMarker(root);
+};
 
-  const prefix = glob.slice(0, star).replace(/\/$/u, "");
-  const parent = prefix === "" ? root : join(root, prefix);
-  try {
-    return readdirSync(parent, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
-      .map((entry) => join(parent, entry.name));
-  } catch {
-    return [];
+/** Walk to the filesystem root and cache the resolved ancestry answer. */
+const hasMarkerAtOrAbove = (startDir: string): boolean => {
+  let dir = startDir;
+  const root = parse(dir).root;
+  const visited: string[] = [];
+  let answer: boolean;
+
+  for (;;) {
+    const cached = ancestryCache.get(dir);
+    if (cached !== undefined) {
+      answer = cached;
+      break;
+    }
+    visited.push(dir);
+    if (hasMarkerAt(dir)) {
+      answer = true;
+      break;
+    }
+    const parent = dirname(dir);
+    if (dir === root || parent === dir) {
+      answer = false;
+      break;
+    }
+    dir = parent;
   }
+
+  for (const seen of visited) ancestryCache.set(seen, answer);
+  return answer;
 };
 
 /** Nearest directory at or above `startDir` that declares a multi-package workspace. */
@@ -366,12 +358,20 @@ const workspaceHasMarker = (root: string): boolean => {
   return found;
 };
 
-/** Does a design-token system exist anywhere this file's project can see? */
-const hasSemanticTokenSystem = (filename: string): boolean => {
-  const dir = dirname(filename);
-  if (hasMarkerAtOrAbove(dir)) return true;
-  const root = findWorkspaceRoot(dir);
-  return root !== null && workspaceHasMarker(root);
+/** Expand a workspace glob one level: `packages/*`, `packages/**`, or a literal path. */
+const expandWorkspaceGlob = (root: string, glob: string): string[] => {
+  const star = glob.indexOf("*");
+  if (star === -1) return [join(root, glob)];
+
+  const prefix = glob.slice(0, star).replace(/\/$/u, "");
+  const parent = prefix === "" ? root : join(root, prefix);
+  try {
+    return readdirSync(parent, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+      .map((entry) => join(parent, entry.name));
+  } catch {
+    return [];
+  }
 };
 
 const propName = (key: TSESTree.Property["key"]): string | null => {

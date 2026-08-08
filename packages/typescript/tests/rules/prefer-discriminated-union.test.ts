@@ -50,6 +50,45 @@ ruleTester.run("prefer-discriminated-union", rule, {
       code: "interface Response { success: string; data?: string; error?: string; }",
     },
     {
+      name: "allows an optional status in partial wire data",
+      code: "interface PartialResponse { ok?: boolean; data?: string; error?: string; }",
+    },
+    {
+      name: "allows a negative boolean without a positive result discriminant",
+      code: "interface State { isError: boolean; value?: number; cause?: string; }",
+    },
+    {
+      name: "allows independent optional payloads without a failure branch",
+      code: "interface TeamResponse { ok: boolean; teamId?: string; url?: string; }",
+    },
+    {
+      name: "allows aggregate response metadata despite an optional error",
+      code: "interface Page { ok: boolean; items?: Item[]; page?: number; error?: string; }",
+    },
+    {
+      name: "takes a false negative for domain-specific branch names",
+      code: "interface BookingResult { success: boolean; bookingId?: string; reason?: string; }",
+    },
+    {
+      name: "allows inherited object shapes whose full state is not local",
+      code: "interface Result extends Metadata { ok: boolean; data?: string; error?: string; }",
+    },
+    {
+      name: "allows generated declarations",
+      filename: "/repo/generated/api.ts",
+      code: "interface Result { ok: boolean; data?: string; error?: string; }",
+    },
+    {
+      name: "allows declaration files",
+      filename: "/repo/api.d.ts",
+      code: "interface Result { ok: boolean; data?: string; error?: string; }",
+    },
+    {
+      name: "allows test fixtures",
+      filename: "/repo/result.test.ts",
+      code: "interface Result { ok: boolean; data?: string; error?: string; }",
+    },
+    {
       name: "allows an unrelated boolean member",
       code: "interface Thing { enabled: boolean; data?: string; meta?: number; }",
     },
@@ -83,21 +122,6 @@ ruleTester.run("prefer-discriminated-union", rule, {
       errors: [{ messageId: "preferDiscriminatedUnion" }],
     },
     {
-      name: "recognizes error as a status member",
-      code: "interface ApiResponse { error: boolean; payload?: unknown; message?: string; }",
-      errors: [{ messageId: "preferDiscriminatedUnion" }],
-    },
-    {
-      name: "recognizes failed as a status member",
-      code: "type Job = { failed: boolean; result?: string; reason?: string; code?: number };",
-      errors: [{ messageId: "preferDiscriminatedUnion" }],
-    },
-    {
-      name: "recognizes isError as a status member",
-      code: "interface State { isError: boolean; value?: number; cause?: string; }",
-      errors: [{ messageId: "preferDiscriminatedUnion" }],
-    },
-    {
       name: "rejects more than two optional members",
       code: "interface Outcome { ok: boolean; data?: string; error?: string; warning?: string; retryable?: boolean; }",
       errors: [{ messageId: "preferDiscriminatedUnion" }],
@@ -108,8 +132,8 @@ ruleTester.run("prefer-discriminated-union", rule, {
       errors: [{ messageId: "preferDiscriminatedUnion" }],
     },
     {
-      name: "rejects one payload mixed with optional boolean flags",
-      code: "interface Result { success: boolean; data?: string; stale?: boolean; }",
+      name: "rejects a success flag with booking and failure branches",
+      code: "interface BookingResult { success: boolean; result?: Booking; reason?: string; }",
       errors: [{ messageId: "preferDiscriminatedUnion" }],
     },
   ],

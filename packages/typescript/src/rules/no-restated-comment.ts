@@ -57,11 +57,6 @@ function areAdjacentLineComments(
   );
 }
 
-/**
- * True when the statement below the comment heads a run of siblings of the same
- * kind — `// register secrets` over eight `registerSecret(…)` calls. The label
- * provides the grouping, and deleting it loses that.
- */
 function headsSiblingRun(node: TSESTree.Node): boolean {
   const parent = node.parent;
   if (parent === undefined) return false;

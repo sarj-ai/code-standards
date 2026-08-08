@@ -31,18 +31,19 @@ LOG_METHODS = frozenset(
 
 def is_logger_expr(expr: ast.expr) -> bool:
     """Report whether `expr` evaluates to a logger."""
-    if isinstance(expr, ast.Name):
-        return expr.id.lower() in _LOGGER_NAMES
-    if isinstance(expr, ast.Attribute):
-        if expr.attr.lower() in _LOGGER_NAMES or expr.attr.lower() in _LOGGER_FACTORIES:
-            return True
-        return is_logger_expr(expr.value)
-    if isinstance(expr, ast.Call):
-        # A factory name denotes a logger only when called; otherwise it is merely a function.
-        callee = expr.func
-        if isinstance(callee, ast.Attribute) and callee.attr.lower() in _LOGGER_FACTORIES:
-            return True
-        if isinstance(callee, ast.Name) and callee.id.lower() in _LOGGER_FACTORIES:
-            return True
-        return is_logger_expr(callee)
-    return False
+    match expr:
+        case ast.Name(id=name):
+            return name.lower() in _LOGGER_NAMES
+        case ast.Attribute(value=value, attr=attr):
+            if attr.lower() in _LOGGER_NAMES or attr.lower() in _LOGGER_FACTORIES:
+                return True
+            return is_logger_expr(value)
+        case ast.Call(func=callee):
+            # A factory name denotes a logger only when called; otherwise it is merely a function.
+            if isinstance(callee, ast.Attribute) and callee.attr.lower() in _LOGGER_FACTORIES:
+                return True
+            if isinstance(callee, ast.Name) and callee.id.lower() in _LOGGER_FACTORIES:
+                return True
+            return is_logger_expr(callee)
+        case _:
+            return False

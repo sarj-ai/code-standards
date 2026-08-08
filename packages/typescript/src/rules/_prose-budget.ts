@@ -4,7 +4,7 @@
 
 import { AST_NODE_TYPES, type TSESTree, type TSESLint } from "@typescript-eslint/utils";
 
-import { isGeneratedFile, isStoryFile } from "./_paths.js";
+import { isGeneratedFile, isScriptFile, isStoryFile, isTestFile } from "./_paths.js";
 
 const DIRECTIVE_RE = /^(?:!|eslint\b|eslint-|@ts-|prettier|biome-|c8\b|v8\b|istanbul\b|@vite|webpack|@jsx|@jest-environment|@vitest-environment|#__|todo\b|fixme\b|hack\b)/i;
 const LICENSE_RE = /\b(?:copyright|spdx-license-identifier|licensed under)\b/i;
@@ -55,7 +55,12 @@ export function proseGroups(
   sourceCode: Readonly<TSESLint.SourceCode>,
   includeValueTags = false,
 ): ProseGroup[] {
-  if (isGeneratedFile(filename, sourceCode.text) || isStoryFile(filename)) return [];
+  if (
+    isGeneratedFile(filename, sourceCode.text) ||
+    isStoryFile(filename) ||
+    isScriptFile(filename) ||
+    isTestFile(filename)
+  ) return [];
   const groups: ProseGroup[] = [];
   let run: TSESTree.Comment[] = [];
   const flush = (): void => {
@@ -90,6 +95,20 @@ function annotatedParameter(parameter: TSESTree.Parameter): boolean {
   return "typeAnnotation" in target && target.typeAnnotation != null;
 }
 
+export function documentsTypedFunction(
+  sourceCode: Readonly<TSESLint.SourceCode>,
+  comment: TSESTree.Comment,
+): boolean {
+  const token = sourceCode.getTokenAfter(comment, { includeComments: false });
+  if (token === null || token.loc.start.line !== comment.loc.end.line + 1) return false;
+  let node: TSESTree.Node | null = sourceCode.getNodeByRangeIndex(token.range[0]);
+  while (node != null && node.type !== AST_NODE_TYPES.Program) {
+    if (typedFunction(node)) return true;
+    node = node.parent ?? null;
+  }
+  return false;
+}
+
 function typedFunction(node: TSESTree.Node): boolean {
   switch (node.type) {
     case AST_NODE_TYPES.ExportNamedDeclaration:
@@ -111,18 +130,4 @@ function typedFunction(node: TSESTree.Node): boolean {
     default:
       return false;
   }
-}
-
-export function documentsTypedFunction(
-  sourceCode: Readonly<TSESLint.SourceCode>,
-  comment: TSESTree.Comment,
-): boolean {
-  const token = sourceCode.getTokenAfter(comment, { includeComments: false });
-  if (token === null || token.loc.start.line !== comment.loc.end.line + 1) return false;
-  let node: TSESTree.Node | null = sourceCode.getNodeByRangeIndex(token.range[0]);
-  while (node != null && node.type !== AST_NODE_TYPES.Program) {
-    if (typedFunction(node)) return true;
-    node = node.parent ?? null;
-  }
-  return false;
 }

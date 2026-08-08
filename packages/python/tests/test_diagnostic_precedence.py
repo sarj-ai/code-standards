@@ -27,6 +27,18 @@ def test_typed_section_finding_suppresses_per_section_twins() -> None:
     assert [finding.code for finding in deduplicate_diagnostics(diagnostics)] == ["SARJ092"]
 
 
+def test_closed_local_union_finding_suppresses_generic_type_dispatch() -> None:
+    diagnostics = [_diagnostic("SARJ080"), _diagnostic("SARJ003")]
+
+    assert [finding.code for finding in deduplicate_diagnostics(diagnostics)] == ["SARJ003"]
+
+
+def test_specific_redundant_docstring_suppresses_generic_length_finding() -> None:
+    diagnostics = [_diagnostic("SARJ091"), _diagnostic("SARJ084")]
+
+    assert [finding.code for finding in deduplicate_diagnostics(diagnostics)] == ["SARJ084"]
+
+
 def test_precedence_never_crosses_source_locations() -> None:
     diagnostics = [_diagnostic("SARJ050", line=2), _diagnostic("SARJ088", line=3)]
 

@@ -1,7 +1,6 @@
 schema = 2
-bundle = "0.56.0"
+bundle = "0.57.0"
 rule_profile = "all"
-
 profile = "standard"
 
 [capabilities]
@@ -28,9 +27,21 @@ exclude = [
 ]
 
 [verify]
-# Rule implementations intentionally contain rejected examples in their fixtures.
-# Dogfood custom rules on the public package surface and maintained prose instead.
-paths = ["README.md", "CLAUDE.md", "packages/lint-configs/README.md", "packages/lint-configs/src", "packages/lint-configs/tests"]
+# Keep the ordinary Standards command aligned with the zero-diagnostic dogfood
+# gate: every maintained Python implementation and test package is in scope.
+paths = [
+  "README.md",
+  "CLAUDE.md",
+  "packages/python/src",
+  "packages/python/tests",
+  "packages/sql/src",
+  "packages/sql/tests",
+  "packages/iac/src",
+  "packages/iac/tests",
+  "packages/lint-configs/README.md",
+  "packages/lint-configs/src",
+  "packages/lint-configs/tests",
+]
 
 [repository]
 canonical_config_dir = "packages/lint-configs/src/sarj_lint_configs/configs"

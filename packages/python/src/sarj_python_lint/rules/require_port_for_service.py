@@ -1,4 +1,4 @@
-"""SARJ071 — A concrete service with injected collaborators and no ABC above it is not substitutable.
+"""SARJ071 — Advise when a concrete service may benefit from a consumer-owned port.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_require_port_for_service.py
 """
@@ -9,8 +9,8 @@ import ast
 import re
 from typing import TYPE_CHECKING, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rule_base import Diagnostic, Rule, Severity, parse_or_none
+from sarj_python_lint.rules._paths import is_generated, is_test_path, is_test_support_path
 
 
 if TYPE_CHECKING:
@@ -76,6 +76,26 @@ _PRIMITIVE_ANNOTATIONS = frozenset(
 # substitutable collaborator: nobody swaps `ServerSettings` or `ViewportSize` in a test.
 _WEAK_COLLABORATOR_RE = re.compile(r"(?:Settings|Config|Configuration|Options|Logger|Log|Clock|Context|Size)$")
 
+# Runtime driver handles are implementation details of an adapter, not a port
+# that consumers substitute through.
+_DRIVER_HANDLE_ANNOTATIONS = frozenset(
+    {
+        "AsyncClient",
+        "AsyncConnection",
+        "AsyncConnectionPool",
+        "AsyncEngine",
+        "AsyncRedis",
+        "AsyncSession",
+        "Client",
+        "Connection",
+        "ConnectionPool",
+        "Engine",
+        "Pool",
+        "Redis",
+        "Session",
+    }
+)
+
 # Annotation wrappers that are transparent — the collaborator is inside them.
 _TRANSPARENT_GENERICS = frozenset({"Optional", "Union", "Annotated", "Awaitable", "Coroutine", "Final", "ClassVar"})
 
@@ -120,10 +140,6 @@ _HTTP_PARAM_MARKERS = frozenset({"Header", "Query", "Depends", "Body", "Path", "
 # Directory segments that hold programs rather than importable library code.
 _SCRIPT_DIR_NAMES = frozenset({"scripts", "bin", "tools", "migrations", "alembic", "management", "commands"})
 
-# Directory segments and file stems that hold shared test doubles but are not `tests/`.
-_TEST_HELPER_DIRS = frozenset({"testing", "fakes", "mocks", "doubles", "test_fakes", "test_doubles", "test_utils"})
-_TEST_HELPER_STEM_RE = re.compile(r"(?:^|_)(?:fakes?|mocks?|stubs?|doubles?|testing)(?:$|_)")
-
 # One public method is a function in a trenchcoat; an ABC over it is ceremony.
 _MIN_PUBLIC_METHODS = 2
 
@@ -136,7 +152,7 @@ class RequirePortForService(Rule):
     description: str = (
         # Client is deliberately excluded because it produced excessive false positives in measured projects.
         "Concrete `*Service`/`*Store`/`*DAO`/`*Gateway`/`*Provider` with injected collaborators "
-        "and no ABC — consumers must depend on the concrete class, so their tests can only mock it."
+        "and no declared port — advisory because not every service needs another abstraction."
     )
 
     @override
@@ -187,13 +203,11 @@ class RequirePortForService(Rule):
                 code=self.code,
                 message=(
                     f"`{node.name}` injects `{collaborator}` and exposes {_public_method_count(node)} public "
-                    "methods, but has no abstract base, so every consumer has to name the concrete class and "
-                    "the only way to test one is to patch or mock it. Extract the public methods onto an "
-                    f"`abc.ABC` (or a `Protocol`) and have `{node.name}` implement it, so consumers depend on "
-                    "the port and tests can pass a purpose-built implementation instead of a mock — except "
-                    "for a `*Store`/`*DAO` persistence port, where tests should drive the real backend "
-                    "implementation against the test database rather than an in-memory double."
+                    "methods without a declared port. If consumers genuinely need substitution, define a "
+                    "small consumer-owned `Protocol`/ABC and type those consumers against it. Do not add a "
+                    "port solely for a composition root or a single concrete consumer."
                 ),
+                severity=Severity.WARNING,
             )
             for node in classes
             if (
@@ -213,12 +227,10 @@ class RequirePortForService(Rule):
 
 def _is_library_source(path: Path) -> bool:
     """Report whether `path` holds importable production code."""
-    if is_test_path(path):
+    if is_test_path(path) or is_test_support_path(path):
         return False
     parts = set(path.parts)
-    if parts & _TEST_HELPER_DIRS or parts & _SCRIPT_DIR_NAMES:
-        return False
-    return not _TEST_HELPER_STEM_RE.search(path.stem)
+    return not parts & _SCRIPT_DIR_NAMES
 
 
 def _has_main_guard(tree: ast.Module) -> bool:
@@ -350,7 +362,12 @@ def _injected_collaborator(node: ast.ClassDef, data_names: frozenset[str] | set[
     args = init.args
     for param in [*args.posonlyargs, *args.args[1:], *args.kwonlyargs]:
         annotation = _annotation_tail(param.annotation)
-        if annotation is None or annotation in _PRIMITIVE_ANNOTATIONS or annotation in data_names:
+        if (
+            annotation is None
+            or annotation in _PRIMITIVE_ANNOTATIONS
+            or annotation in _DRIVER_HANDLE_ANNOTATIONS
+            or annotation in data_names
+        ):
             continue
         if _WEAK_COLLABORATOR_RE.search(annotation):
             continue
@@ -423,14 +440,16 @@ def _annotation_tail(annotation: ast.expr | None) -> str | None:
 
 def _dotted_tail(node: ast.expr) -> str | None:
     """Reduce an expression to its final identifier."""
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        return node.attr
-    if isinstance(node, ast.Subscript):
-        return _dotted_tail(node.value)
-    if isinstance(node, ast.Call):
-        return _dotted_tail(node.func)
-    if isinstance(node, ast.Constant) and node.value is None:
-        return "None"
-    return None
+    match node:
+        case ast.Name(id=name):
+            return name
+        case ast.Attribute(attr=attr):
+            return attr
+        case ast.Subscript(value=value):
+            return _dotted_tail(value)
+        case ast.Call(func=func):
+            return _dotted_tail(func)
+        case ast.Constant(value=None):
+            return "None"
+        case _:
+            return None

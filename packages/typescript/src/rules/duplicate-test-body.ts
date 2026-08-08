@@ -46,6 +46,31 @@ function staticMemberName(member: TSESTree.MemberExpression): string | null {
   return null;
 }
 
+function testBody(call: TSESTree.CallExpression): {
+  readonly body: TSESTree.FunctionExpression | TSESTree.ArrowFunctionExpression;
+  readonly signature: string;
+} | null {
+  const signature = testCallerSignature(call.callee);
+  if (signature === null || hasEachMember(call.callee)) {
+    return null;
+  }
+  const title = call.arguments[0];
+  if (
+    title?.type !== AST_NODE_TYPES.Literal &&
+    title?.type !== AST_NODE_TYPES.TemplateLiteral
+  ) {
+    return null;
+  }
+  const callback = call.arguments.find(
+    (argument): argument is TSESTree.FunctionExpression | TSESTree.ArrowFunctionExpression =>
+      argument.type !== AST_NODE_TYPES.SpreadElement && FUNCTION_TYPES.has(argument.type),
+  );
+  if (callback === undefined || call.arguments.length !== 2 || containsInlineSnapshot(callback.body)) {
+    return null;
+  }
+  return { body: callback, signature };
+}
+
 function testCallerSignature(callee: TSESTree.Node): string | null {
   if (callee.type === AST_NODE_TYPES.Identifier) {
     return TEST_CALLERS.has(callee.name) ? callee.name : null;
@@ -80,31 +105,6 @@ function hasEachMember(callee: TSESTree.Node): boolean {
   return false;
 }
 
-function testBody(call: TSESTree.CallExpression): {
-  readonly body: TSESTree.FunctionExpression | TSESTree.ArrowFunctionExpression;
-  readonly signature: string;
-} | null {
-  const signature = testCallerSignature(call.callee);
-  if (signature === null || hasEachMember(call.callee)) {
-    return null;
-  }
-  const title = call.arguments[0];
-  if (
-    title?.type !== AST_NODE_TYPES.Literal &&
-    title?.type !== AST_NODE_TYPES.TemplateLiteral
-  ) {
-    return null;
-  }
-  const callback = call.arguments.find(
-    (argument): argument is TSESTree.FunctionExpression | TSESTree.ArrowFunctionExpression =>
-      argument.type !== AST_NODE_TYPES.SpreadElement && FUNCTION_TYPES.has(argument.type),
-  );
-  if (callback === undefined || call.arguments.length !== 2 || containsInlineSnapshot(callback.body)) {
-    return null;
-  }
-  return { body: callback, signature };
-}
-
 function containsInlineSnapshot(node: TSESTree.Node): boolean {
   if (
     node.type === AST_NODE_TYPES.MemberExpression &&
@@ -123,22 +123,6 @@ function containsInlineSnapshot(node: TSESTree.Node): boolean {
     }
   }
   return false;
-}
-
-function normalizedLiteral(node: TSESTree.Literal): unknown {
-  if ("regex" in node) {
-    return ["Literal", "regex", node.regex.pattern, node.regex.flags];
-  }
-  const value = node.value;
-  if (typeof value === "string") {
-    return value.includes("\n") || value.length > MAX_NORMALIZED_STRING_LENGTH
-      ? ["Literal", "string", value]
-      : ["Literal", "string"];
-  }
-  if (value === null) {
-    return ["Literal", "null"];
-  }
-  return ["Literal", typeof value];
 }
 
 function normalizedAst(value: unknown, preserveLiteral = false): unknown {
@@ -168,6 +152,22 @@ function normalizedAst(value: unknown, preserveLiteral = false): unknown {
     normalized[key] = normalizedAst(record[key], isPropertyName || isComputedMemberName);
   }
   return normalized;
+}
+
+function normalizedLiteral(node: TSESTree.Literal): unknown {
+  if ("regex" in node) {
+    return ["Literal", "regex", node.regex.pattern, node.regex.flags];
+  }
+  const value = node.value;
+  if (typeof value === "string") {
+    return value.includes("\n") || value.length > MAX_NORMALIZED_STRING_LENGTH
+      ? ["Literal", "string", value]
+      : ["Literal", "string"];
+  }
+  if (value === null) {
+    return ["Literal", "null"];
+  }
+  return ["Literal", typeof value];
 }
 
 export default createRule<Options, MessageIds>({

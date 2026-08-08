@@ -15,49 +15,13 @@ type Options = readonly [];
 
 const EQUALITY_OPERATORS: ReadonlySet<string> = new Set(["===", "!==", "==", "!="]);
 
-/**
- * Identifiers that are compile-time sentinels rather than runtime values.
- * `undefined`/`NaN` make the comparison a presence check; an ALL-CAPS name is a
- * named constant or enum member (`TOKEN_TYPE_SYSTEM`), and timing a compare
- * against a value the attacker already knows leaks nothing.
- */
 const SENTINEL_IDENTIFIERS: ReadonlySet<string> = new Set(["undefined", "NaN"]);
 
-/**
- * Words that mark a secret-SHAPED name as a placeholder rather than a live
- * credential: `TOKEN_SENTINEL`, `EMPTY_SECRET`, `PLACEHOLDER_API_KEY`. Comparing
- * against one of these is a presence check, not an authentication check, so it
- * stays excluded even though the secret-name heuristics match it.
- */
 const SENTINEL_WORDS = /(^|_)(SENTINEL|EMPTY|NONE|NULL|UNSET|MISSING|PLACEHOLDER|DUMMY|FAKE|EXAMPLE)(_|$)/;
 
-/**
- * The camelCase spelling of the same idea: a marker VALUE whose name happens to
- * end in a secret-shaped word. A library exports `skipToken` as a unique
- * `Symbol` and callers test identity against it — there are no bytes to compare
- * and nothing an attacker could learn from the timing.
- */
 const SENTINEL_PREFIX_RE =
   /^(skip|sentinel|empty|none|missing|unset|placeholder|dummy|fake|example|noop)[A-Z]/;
 const AST_NODE_TYPE_RE = /^(?:TS|JSX)?[A-Z][A-Za-z]*(?:Signature|Keyword|Expression|Declaration|Element|Literal|Identifier)$/;
-
-/**
- * True when every cased character is upper-case and at least one letter exists —
- * AND the name is not itself secret-shaped.
- *
- * The ALL-CAPS carve-out exists for public named constants (`TOKEN_TYPE_SYSTEM`).
- * But environment secrets are conventionally SCREAMING_SNAKE too
- * (`ADMIN_TOKEN`, `ASHBY_API_KEY`, `SLACK_SIGNING_SECRET`), so an unqualified
- * ALL-CAPS bail-out made this rule blind to essentially every real secret
- * compare: `env.ADMIN_TOKEN === supplied` was silent while the camelCase
- * `env.adminToken === supplied` fired. That is the exact comparison this rule
- * exists to catch. Defer to the shared secret-name heuristics first.
- */
-function isConstantReference(identifier: string): boolean {
-  if (AST_NODE_TYPE_RE.test(identifier)) return true;
-  if (isAuthSecretName(identifier) && !SENTINEL_WORDS.test(identifier)) return false;
-  return identifier === identifier.toUpperCase() && /[A-Za-z]/.test(identifier);
-}
 
 /**
  * True when this operand makes the comparison a non-timing-attack surface:
@@ -88,6 +52,12 @@ function isExcludedOperand(node: TSESTree.Node): boolean {
   }
 }
 
+function isConstantReference(identifier: string): boolean {
+  if (AST_NODE_TYPE_RE.test(identifier)) return true;
+  if (isAuthSecretName(identifier) && !SENTINEL_WORDS.test(identifier)) return false;
+  return identifier === identifier.toUpperCase() && /[A-Za-z]/.test(identifier);
+}
+
 /** The identifier a plain operand denotes, or null for anything else. */
 function operandName(node: TSESTree.Node): string | null {
   if (node.type === AST_NODE_TYPES.Identifier) {
@@ -103,14 +73,6 @@ function operandName(node: TSESTree.Node): string | null {
   return null;
 }
 
-/**
- * True when the operand names an authenticator worth a constant-time compare.
- *
- * A template literal counts when it interpolates one: `header === \`Bearer
- * ${adminToken}\`` is the canonical Workers auth check and is exactly as
- * timing-leaky as comparing the bare token, since the constant prefix only makes
- * the first bytes free.
- */
 function isSecretOperand(node: TSESTree.Node): boolean {
   if (node.type === AST_NODE_TYPES.TemplateLiteral) {
     return node.expressions.some((expression) => isSecretOperand(expression));

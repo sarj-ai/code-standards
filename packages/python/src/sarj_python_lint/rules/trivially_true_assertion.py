@@ -205,12 +205,6 @@ def _record_local(node: ast.AST, scope: _Scope) -> None:
             scope.calls[target.id] = node.value
 
 
-def _called_name(func: ast.expr) -> str | None:
-    if isinstance(func, ast.Name):
-        return func.id
-    return func.attr if isinstance(func, ast.Attribute) else None
-
-
 # Both shapes: what the test constructed a line earlier.                       #
 
 
@@ -273,15 +267,6 @@ def _is_isinstance_call(node: ast.Call) -> bool:
     return isinstance(node.func, ast.Name) and node.func.id == _ISINSTANCE
 
 
-def _constructor_name(call: ast.Call) -> str | None:
-    """Name the class this call instantiates, if it plausibly is one."""
-    name = _called_name(call.func)
-    if name is None or not name[:1].isupper():
-        return None
-    lowered = name.lower()
-    return None if lowered.endswith(_COLLABORATOR_SUFFIXES) else name
-
-
 def _kwarg_echo(node: ast.Assert, constructed: dict[str, ast.Call]) -> _KwargEcho | None:
     """Pair `x = C(field=<literal>)` with a later `assert x.field == <literal>`."""
     test = node.test
@@ -304,6 +289,21 @@ def _kwarg_echo(node: ast.Assert, constructed: dict[str, ast.Call]) -> _KwargEch
                 echoes = ast.dump(keyword.value) == ast.dump(literal)
                 return _KwargEcho(node=node, field=(name, attribute.attr), echoes=echoes)
     return None
+
+
+def _constructor_name(call: ast.Call) -> str | None:
+    """Name the class this call instantiates, if it plausibly is one."""
+    name = _called_name(call.func)
+    if name is None or not name[:1].isupper():
+        return None
+    lowered = name.lower()
+    return None if lowered.endswith(_COLLABORATOR_SUFFIXES) else name
+
+
+def _called_name(func: ast.expr) -> str | None:
+    if isinstance(func, ast.Name):
+        return func.id
+    return func.attr if isinstance(func, ast.Attribute) else None
 
 
 def _is_pure_literal(node: ast.expr) -> bool:

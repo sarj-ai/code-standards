@@ -232,10 +232,6 @@ def _is_seam_test(
     return bool(own & _SEAM_TOKENS)
 
 
-def _is_infra_target(key: str) -> bool:
-    return bool(_tokens(key) & _INFRA_TOKENS)
-
-
 class _MockNames:
     """The local names through which `unittest.mock` and the imports are reachable."""
 
@@ -354,6 +350,10 @@ def _substitutions(
     return frozenset(names.qualify(_resolve(owning, facets)) for target, owning in subs if not _is_infra_target(target))
 
 
+def _is_infra_target(key: str) -> bool:
+    return bool(_tokens(key) & _INFRA_TOKENS)
+
+
 def _resolve(name: str, facets: Mapping[str, str]) -> str:
     """Follow the wiring edges from `name` to the object it is a facet of."""
     seen = {name}
@@ -435,16 +435,18 @@ def _record_facets(targets: list[ast.expr], value: ast.expr, names: _MockNames, 
 
 def _assigned_names(value: ast.expr) -> list[str]:
     """List the names the assigned expression places inside the target's object graph."""
-    if isinstance(value, ast.Name):
-        return [value.id]
-    if isinstance(value, ast.List | ast.Tuple):
-        return [elt.id for elt in value.elts if isinstance(elt, ast.Name)]
-    if isinstance(value, ast.Call):
-        return [
-            *(arg.id for arg in value.args if isinstance(arg, ast.Name)),
-            *(val.id for kw in value.keywords if isinstance(val := kw.value, ast.Name)),
-        ]
-    return []
+    match value:
+        case ast.Name(id=name):
+            return [name]
+        case ast.List(elts=elements) | ast.Tuple(elts=elements):
+            return [element.id for element in elements if isinstance(element, ast.Name)]
+        case ast.Call(args=args, keywords=keywords):
+            return [
+                *(arg.id for arg in args if isinstance(arg, ast.Name)),
+                *(item.id for keyword in keywords if isinstance(item := keyword.value, ast.Name)),
+            ]
+        case _:
+            return []
 
 
 def _record_handle_facet(targets: list[ast.expr], value: ast.expr, names: _MockNames, facets: dict[str, str]) -> None:

@@ -14,14 +14,14 @@ type Options = readonly [];
 
 const MAX_TRY_BODY_STATEMENTS = 3;
 
-const NESTED_FUNCTION_TYPES = new Set<AST_NODE_TYPES>([
+const NESTED_FUNCTION_TYPES: ReadonlySet<AST_NODE_TYPES> = new Set([
   AST_NODE_TYPES.FunctionDeclaration,
   AST_NODE_TYPES.FunctionExpression,
   AST_NODE_TYPES.ArrowFunctionExpression,
 ]);
 
 /** Pure method names must not overlap common I/O-client methods such as `get`, `set`, or `find`. */
-const PURE_METHODS = new Set<string>([
+const PURE_METHODS: ReadonlySet<string> = new Set([
   "map", "filter", "forEach", "reduce", "reduceRight", "findIndex",
   "findLast", "findLastIndex", "some", "every", "push", "pop", "shift",
   "unshift", "slice", "splice", "concat", "flat", "flatMap", "join", "reverse",
@@ -32,15 +32,15 @@ const PURE_METHODS = new Set<string>([
 ]);
 
 /** Non-throwing global namespaces called as `X.method(...)`. */
-const PURE_NAMESPACES = new Set<string>([
+const PURE_NAMESPACES: ReadonlySet<string> = new Set([
   "Object", "Array", "Math", "JSON", "Number", "String", "Boolean", "console",
 ]);
 
 /** Namespace exceptions that commonly throw; `JSON.stringify` remains a deliberate recall tradeoff. */
-const IMPURE_NAMESPACE_METHODS = new Set<string>(["JSON.parse"]);
+const IMPURE_NAMESPACE_METHODS: ReadonlySet<string> = new Set(["JSON.parse"]);
 
 /** Constructors that do not throw on construction. */
-const PURE_CONSTRUCTORS = new Set<string>([
+const PURE_CONSTRUCTORS: ReadonlySet<string> = new Set([
   "Map", "Set", "WeakMap", "WeakSet", "Date", "Error", "TypeError",
   "RangeError", "Array", "Object", "Headers", "URLSearchParams", "FormData",
   "TextEncoder", "TextDecoder", "Blob", "ReadableStream", "WritableStream",
@@ -81,11 +81,6 @@ function isPureNew(node: TSESTree.NewExpression): boolean {
   );
 }
 
-/**
- * Walk `stmt`'s subtree until `predicate` matches a node. By default the walk
- * stays in the same scope (it does not descend into nested function/arrow
- * bodies); pass `descendIntoFunctions` to visit those too.
- */
 function subtreeMatches(
   stmt: TSESTree.Node,
   predicate: (node: TSESTree.Node) => boolean,
@@ -132,17 +127,6 @@ function subtreeMatches(
   return found;
 }
 
-const hasAwait = (node: TSESTree.Node): boolean =>
-  subtreeMatches(node, (n) => n.type === AST_NODE_TYPES.AwaitExpression);
-
-const hasThrowingCallOrNew = (node: TSESTree.Node): boolean =>
-  subtreeMatches(
-    node,
-    (n) =>
-      (n.type === AST_NODE_TYPES.CallExpression && !isPureCall(n)) ||
-      (n.type === AST_NODE_TYPES.NewExpression && !isPureNew(n)),
-  );
-
 /** Unwrap `await` / optional-chain / non-null wrappers to the core expression. */
 function unwrap(expr: TSESTree.Expression): TSESTree.Expression {
   let current = expr;
@@ -153,14 +137,6 @@ function unwrap(expr: TSESTree.Expression): TSESTree.Expression {
     current = current.expression;
   }
   return current;
-}
-
-/** A bare fire-and-forget call statement — `toast("done");`, `logEvent(...);`. */
-function isBareCallStatement(stmt: TSESTree.Statement): boolean {
-  return (
-    stmt.type === AST_NODE_TYPES.ExpressionStatement &&
-    unwrap(stmt.expression).type === AST_NODE_TYPES.CallExpression
-  );
 }
 
 /** `await` and used calls count; bare calls do not, including inside blocks and branches. */
@@ -184,10 +160,25 @@ function canThrow(stmt: TSESTree.Statement): boolean {
   return hasThrowingCallOrNew(stmt);
 }
 
-/**
- * Conservative: is the `catch` handler guaranteed to re-throw? True when a
- * handler is present and its body's last statement is a `throw`.
- */
+const hasAwait = (node: TSESTree.Node): boolean =>
+  subtreeMatches(node, (n) => n.type === AST_NODE_TYPES.AwaitExpression);
+
+const hasThrowingCallOrNew = (node: TSESTree.Node): boolean =>
+  subtreeMatches(
+    node,
+    (n) =>
+      (n.type === AST_NODE_TYPES.CallExpression && !isPureCall(n)) ||
+      (n.type === AST_NODE_TYPES.NewExpression && !isPureNew(n)),
+  );
+
+/** A bare fire-and-forget call statement — `toast("done");`, `logEvent(...);`. */
+function isBareCallStatement(stmt: TSESTree.Statement): boolean {
+  return (
+    stmt.type === AST_NODE_TYPES.ExpressionStatement &&
+    unwrap(stmt.expression).type === AST_NODE_TYPES.CallExpression
+  );
+}
+
 function handlerRethrows(handler: TSESTree.CatchClause | null): boolean {
   if (handler === null) {
     return false;
@@ -198,12 +189,63 @@ function handlerRethrows(handler: TSESTree.CatchClause | null): boolean {
 }
 
 /** Statements that hand control straight through to their own parent. */
-const PASS_THROUGH_PARENTS = new Set<AST_NODE_TYPES>([
+const PASS_THROUGH_PARENTS: ReadonlySet<AST_NODE_TYPES> = new Set([
   AST_NODE_TYPES.IfStatement,
   AST_NODE_TYPES.TryStatement,
   AST_NODE_TYPES.CatchClause,
   AST_NODE_TYPES.LabeledStatement,
 ]);
+
+/** A member property / object key spelled `x` is not a reference to `x`. */
+function isPropertyName(node: TSESTree.Identifier): boolean {
+  const parent = node.parent;
+  if (parent.type === AST_NODE_TYPES.MemberExpression) {
+    return parent.property === node && !parent.computed;
+  }
+  if (parent.type === AST_NODE_TYPES.Property) {
+    return parent.key === node && !parent.computed;
+  }
+  return false;
+}
+
+/** `null`, `undefined`, `false`, `void 0`, `[]`, `{}` — a success-shaped value. */
+function isSuccessShapedValue(expr: TSESTree.Expression): boolean {
+  let current: TSESTree.Expression = expr;
+  while (
+    current.type === AST_NODE_TYPES.TSAsExpression ||
+    current.type === AST_NODE_TYPES.TSNonNullExpression
+  ) {
+    current = current.expression;
+  }
+  if (current.type === AST_NODE_TYPES.Literal) {
+    return current.value === null || current.value === false;
+  }
+  if (current.type === AST_NODE_TYPES.Identifier) {
+    return current.name === "undefined";
+  }
+  if (current.type === AST_NODE_TYPES.UnaryExpression) {
+    return current.operator === "void";
+  }
+  if (current.type === AST_NODE_TYPES.ArrayExpression) {
+    return current.elements.length === 0;
+  }
+  if (current.type === AST_NODE_TYPES.ObjectExpression) {
+    return current.properties.length === 0;
+  }
+  return false;
+}
+
+/** Exempt terminal boundaries that propagate the caught error without fabricating success. */
+function isTerminalErrorBoundary(node: TSESTree.TryStatement): boolean {
+  const handler = node.handler;
+  return (
+    handler !== null &&
+    isTerminalInFunction(node) &&
+    handlerEndsByHandingOff(handler) &&
+    handlerMentionsCaughtBinding(handler) &&
+    !handlerReturnsSuccessShaped(handler)
+  );
+}
 
 /** A terminal node is last through every enclosing block up to its function, without a loop or switch. */
 function isTerminalInFunction(node: TSESTree.Node): boolean {
@@ -228,14 +270,6 @@ function isTerminalInFunction(node: TSESTree.Node): boolean {
   return false;
 }
 
-/** `await f()` unwrapped to `f()`; everything else unwrapped as usual. */
-function unwrapAwait(expr: TSESTree.Expression): TSESTree.Expression {
-  const inner = unwrap(expr);
-  return inner.type === AST_NODE_TYPES.AwaitExpression
-    ? unwrap(inner.argument)
-    : inner;
-}
-
 /** A propagating handler ends with `return`, `throw`, or a bare call. */
 function handlerEndsByHandingOff(handler: TSESTree.CatchClause): boolean {
   const body = handler.body.body;
@@ -253,6 +287,38 @@ function handlerEndsByHandingOff(handler: TSESTree.CatchClause): boolean {
     last.type === AST_NODE_TYPES.ExpressionStatement &&
     unwrapAwait(last.expression).type === AST_NODE_TYPES.CallExpression
   );
+}
+
+/** `await f()` unwrapped to `f()`; everything else unwrapped as usual. */
+function unwrapAwait(expr: TSESTree.Expression): TSESTree.Expression {
+  const inner = unwrap(expr);
+  return inner.type === AST_NODE_TYPES.AwaitExpression
+    ? unwrap(inner.argument)
+    : inner;
+}
+
+/** A boundary must reference its caught error, including through nested callbacks. */
+function handlerMentionsCaughtBinding(handler: TSESTree.CatchClause): boolean {
+  const names = caughtBindingNames(handler);
+  if (names.size === 0) {
+    return false;
+  }
+  return subtreeMatches(
+    handler.body,
+    (n) =>
+      n.type === AST_NODE_TYPES.Identifier &&
+      names.has(n.name) &&
+      !isPropertyName(n),
+    true,
+  );
+}
+
+function caughtBindingNames(handler: TSESTree.CatchClause): ReadonlySet<string> {
+  const names = new Set<string>();
+  if (handler.param !== null) {
+    collectBindingNames(handler.param, names);
+  }
+  return names;
 }
 
 /** Collect identifiers bound by a catch pattern, excluding type annotations. */
@@ -296,69 +362,6 @@ function collectBindingNames(
   }
 }
 
-function caughtBindingNames(handler: TSESTree.CatchClause): ReadonlySet<string> {
-  const names = new Set<string>();
-  if (handler.param !== null) {
-    collectBindingNames(handler.param, names);
-  }
-  return names;
-}
-
-/** A member property / object key spelled `x` is not a reference to `x`. */
-function isPropertyName(node: TSESTree.Identifier): boolean {
-  const parent = node.parent;
-  if (parent.type === AST_NODE_TYPES.MemberExpression) {
-    return parent.property === node && !parent.computed;
-  }
-  if (parent.type === AST_NODE_TYPES.Property) {
-    return parent.key === node && !parent.computed;
-  }
-  return false;
-}
-
-/** A boundary must reference its caught error, including through nested callbacks. */
-function handlerMentionsCaughtBinding(handler: TSESTree.CatchClause): boolean {
-  const names = caughtBindingNames(handler);
-  if (names.size === 0) {
-    return false;
-  }
-  return subtreeMatches(
-    handler.body,
-    (n) =>
-      n.type === AST_NODE_TYPES.Identifier &&
-      names.has(n.name) &&
-      !isPropertyName(n),
-    true,
-  );
-}
-
-/** `null`, `undefined`, `false`, `void 0`, `[]`, `{}` — a success-shaped value. */
-function isSuccessShapedValue(expr: TSESTree.Expression): boolean {
-  let current: TSESTree.Expression = expr;
-  while (
-    current.type === AST_NODE_TYPES.TSAsExpression ||
-    current.type === AST_NODE_TYPES.TSNonNullExpression
-  ) {
-    current = current.expression;
-  }
-  if (current.type === AST_NODE_TYPES.Literal) {
-    return current.value === null || current.value === false;
-  }
-  if (current.type === AST_NODE_TYPES.Identifier) {
-    return current.name === "undefined";
-  }
-  if (current.type === AST_NODE_TYPES.UnaryExpression) {
-    return current.operator === "void";
-  }
-  if (current.type === AST_NODE_TYPES.ArrayExpression) {
-    return current.elements.length === 0;
-  }
-  if (current.type === AST_NODE_TYPES.ObjectExpression) {
-    return current.properties.length === 0;
-  }
-  return false;
-}
-
 /** Empty or false results hide which operation failed and are not error propagation. */
 const handlerReturnsSuccessShaped = (handler: TSESTree.CatchClause): boolean =>
   subtreeMatches(
@@ -368,18 +371,6 @@ const handlerReturnsSuccessShaped = (handler: TSESTree.CatchClause): boolean =>
       n.argument !== null &&
       isSuccessShapedValue(n.argument),
   );
-
-/** Exempt terminal boundaries that propagate the caught error without fabricating success. */
-function isTerminalErrorBoundary(node: TSESTree.TryStatement): boolean {
-  const handler = node.handler;
-  return (
-    handler !== null &&
-    isTerminalInFunction(node) &&
-    handlerEndsByHandingOff(handler) &&
-    handlerMentionsCaughtBinding(handler) &&
-    !handlerReturnsSuccessShaped(handler)
-  );
-}
 
 export default createRule<Options, MessageIds>({
   name: "no-fat-try-blocks",

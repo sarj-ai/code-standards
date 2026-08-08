@@ -31,10 +31,6 @@ const IGNORE_PATTERNS: readonly RegExp[] = [
   /\.d\.ts$/,
 ];
 
-/**
- * Methods that mutate the receiver. A call to any of these on the binding is
- * proof the value is meant to be rebuilt per call.
- */
 const MUTATING_METHODS: ReadonlySet<string> = new Set([
   // Array
   "push",
@@ -70,11 +66,6 @@ function isIgnoredFile(filename: string, sourceText: string): boolean {
   return /@generated\b/.test(sourceText.slice(0, 1024));
 }
 
-/**
- * A test suite or a story: both keep their fixture tables next to the assertion
- * (or the story) that explains them. Delegated to `_paths` so this rule cannot
- * drift away from the other file-kind-scoped rules again.
- */
 function isLocalFixtureFile(filename: string): boolean {
   return isTestFile(filename) || isStoryFile(filename);
 }
@@ -102,12 +93,6 @@ function isRegexLiteral(node: TSESTree.Node): node is TSESTree.RegExpLiteral {
   );
 }
 
-/**
- * Whether the expression is built entirely out of literals — no identifier, no
- * call, no member access, no interpolation, no spread. This is the gate that
- * makes hoisting provably safe: a literal-only value cannot capture a
- * parameter, cannot observe call-time state, and cannot have side effects.
- */
 function isLiteralOnly(node: TSESTree.Node, depth: number): boolean {
   if (depth > MAX_LITERAL_DEPTH) {
     return false;
@@ -158,30 +143,6 @@ function isLiteralOnly(node: TSESTree.Node, depth: number): boolean {
     }
   }
 }
-
-/** `Object.freeze(x)` → `x`; anything else is returned untouched. */
-function unwrapObjectFreeze(node: TSESTree.Node): TSESTree.Node {
-  const inner = unwrap(node);
-  if (
-    inner.type === AST_NODE_TYPES.CallExpression &&
-    inner.callee.type === AST_NODE_TYPES.MemberExpression &&
-    !inner.callee.computed &&
-    inner.callee.object.type === AST_NODE_TYPES.Identifier &&
-    inner.callee.object.name === "Object" &&
-    inner.callee.property.type === AST_NODE_TYPES.Identifier &&
-    inner.callee.property.name === "freeze" &&
-    inner.arguments.length === 1 &&
-    inner.arguments[0] !== undefined &&
-    inner.arguments[0].type !== AST_NODE_TYPES.SpreadElement
-  ) {
-    return unwrap(inner.arguments[0]);
-  }
-  return inner;
-}
-
-type Candidate =
-  | { kind: "array" | "object" | "Set" | "Map"; size: number }
-  | { kind: "regex"; size: number };
 
 /**
  * Classifies the initializer, or returns null when it is not a hoistable
@@ -237,6 +198,30 @@ function classify(init: TSESTree.Node, checkRegex: boolean): Candidate | null {
   return null;
 }
 
+type Candidate =
+  | { kind: "array" | "object" | "Set" | "Map"; size: number }
+  | { kind: "regex"; size: number };
+
+/** `Object.freeze(x)` → `x`; anything else is returned untouched. */
+function unwrapObjectFreeze(node: TSESTree.Node): TSESTree.Node {
+  const inner = unwrap(node);
+  if (
+    inner.type === AST_NODE_TYPES.CallExpression &&
+    inner.callee.type === AST_NODE_TYPES.MemberExpression &&
+    !inner.callee.computed &&
+    inner.callee.object.type === AST_NODE_TYPES.Identifier &&
+    inner.callee.object.name === "Object" &&
+    inner.callee.property.type === AST_NODE_TYPES.Identifier &&
+    inner.callee.property.name === "freeze" &&
+    inner.arguments.length === 1 &&
+    inner.arguments[0] !== undefined &&
+    inner.arguments[0].type !== AST_NODE_TYPES.SpreadElement
+  ) {
+    return unwrap(inner.arguments[0]);
+  }
+  return inner;
+}
+
 /** The nearest enclosing function, or null when the node is at module scope. */
 function enclosingFunction(node: TSESTree.Node): TSESTree.Node | null {
   let current: TSESTree.Node | undefined | null = node.parent;
@@ -264,42 +249,6 @@ const NON_RETAINING_BUILTINS: ReadonlyMap<string, ReadonlySet<string>> = new Map
   ],
 );
 
-function isNonRetainingBuiltinCall(
-  node: TSESTree.CallExpression,
-  argument: TSESTree.Identifier,
-): boolean {
-  const callee = node.callee;
-  if (
-    callee.type === AST_NODE_TYPES.Identifier &&
-    callee.name === "structuredClone"
-  ) {
-    return true;
-  }
-  if (
-    callee.type !== AST_NODE_TYPES.MemberExpression ||
-    callee.computed ||
-    callee.object.type !== AST_NODE_TYPES.Identifier ||
-    callee.property.type !== AST_NODE_TYPES.Identifier
-  ) {
-    return false;
-  }
-  const members = NON_RETAINING_BUILTINS.get(callee.object.name);
-  if (members === undefined || !members.has(callee.property.name)) {
-    return false;
-  }
-  // `Object.assign(X, src)` mutates its FIRST argument; only later positions
-  // (sources) are reads.
-  if (callee.object.name === "Object" && callee.property.name === "assign") {
-    return node.arguments[0] !== argument;
-  }
-  return true;
-}
-
-/**
- * Whether this single reference to the binding is a provably non-mutating,
- * non-escaping read. Anything not on the whitelist is treated as unsafe, so an
- * unrecognised usage suppresses the report rather than risking a bad hoist.
- */
 function isSafeRead(identifier: TSESTree.Identifier): boolean {
   const parent = identifier.parent;
 
@@ -362,9 +311,6 @@ function isSafeRead(identifier: TSESTree.Identifier): boolean {
     return true;
   }
 
-  // A bare argument to a built-in that is known not to retain or mutate its
-  // input: `Object.entries(X)`, `Array.from(X)`, `JSON.stringify(X)`. Any other
-  // call receiving the binding bare is an escape.
   if (
     parent.type === AST_NODE_TYPES.CallExpression &&
     parent.arguments.includes(identifier) &&
@@ -382,6 +328,37 @@ function isSafeRead(identifier: TSESTree.Identifier): boolean {
   }
 
   return false;
+}
+
+function isNonRetainingBuiltinCall(
+  node: TSESTree.CallExpression,
+  argument: TSESTree.Identifier,
+): boolean {
+  const callee = node.callee;
+  if (
+    callee.type === AST_NODE_TYPES.Identifier &&
+    callee.name === "structuredClone"
+  ) {
+    return true;
+  }
+  if (
+    callee.type !== AST_NODE_TYPES.MemberExpression ||
+    callee.computed ||
+    callee.object.type !== AST_NODE_TYPES.Identifier ||
+    callee.property.type !== AST_NODE_TYPES.Identifier
+  ) {
+    return false;
+  }
+  const members = NON_RETAINING_BUILTINS.get(callee.object.name);
+  if (members === undefined || !members.has(callee.property.name)) {
+    return false;
+  }
+  // `Object.assign(X, src)` mutates its FIRST argument; only later positions
+  // (sources) are reads.
+  if (callee.object.name === "Object" && callee.property.name === "assign") {
+    return node.arguments[0] !== argument;
+  }
+  return true;
 }
 
 export default createRule<Options, MessageIds>({

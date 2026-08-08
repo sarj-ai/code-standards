@@ -12,7 +12,6 @@ import { stripSqlNoise } from "./_sql.js";
 type MessageIds = "dynamicSql";
 
 export interface RuleOptions {
-  /** Statement-taking method names to inspect. Replaces the defaults. */
   readonly methods?: readonly string[];
 }
 
@@ -54,23 +53,6 @@ function runtimeInterpolations(
   );
 }
 
-/**
- * Flatten a `+` chain into its operands. `"a" + b + "c"` yields three nodes so
- * each can be judged independently.
- */
-function concatOperands(node: TSESTree.Expression): TSESTree.Expression[] {
-  if (node.type === AST_NODE_TYPES.BinaryExpression && node.operator === "+") {
-    return [...concatOperands(node.left), ...concatOperands(node.right)];
-  }
-  return [node];
-}
-
-/**
- * The runtime operands of a string-concatenation chain, or an empty array when
- * the node is not a concatenation that mixes a literal with a runtime value.
- * Requiring at least one string literal is what distinguishes statement
- * building from ordinary arithmetic.
- */
 function runtimeConcatOperands(node: TSESTree.Node): TSESTree.Expression[] {
   if (node.type !== AST_NODE_TYPES.BinaryExpression || node.operator !== "+") {
     return [];
@@ -90,22 +72,24 @@ function runtimeConcatOperands(node: TSESTree.Node): TSESTree.Expression[] {
   );
 }
 
-/**
- * A SQL data/DDL statement keyword. `exec` and `query` are generic method names
- * — `child_process.exec` shares them — so the statement text itself has to prove
- * it is SQL before an interpolation into it can be an injection.
- */
+function concatOperands(node: TSESTree.Expression): TSESTree.Expression[] {
+  if (node.type === AST_NODE_TYPES.BinaryExpression && node.operator === "+") {
+    return [...concatOperands(node.left), ...concatOperands(node.right)];
+  }
+  return [node];
+}
+
 const SQL_STATEMENT_RE =
   /\b(?:select\s|insert\s+into\b|insert\s+or\b|update\s+\w|delete\s+from\b|replace\s+into\b|merge\s+into\b|upsert\s+into\b|create\s+(?:temp(?:orary)?\s+)?(?:table|index|view|trigger|schema|database)\b|alter\s+table\b|drop\s+(?:table|index|view|trigger)\b|truncate\s+table\b|pragma\s+\w|with\s+\w+\s+as\s*\(|from\s+\w+\s+where\b)/i;
 
 /** The marker a non-static operand contributes to the reconstructed statement text. */
 const RUNTIME_MARKER = " ? ";
 
-/**
- * The statically known text of a statement argument, with every runtime operand
- * replaced by a placeholder. Enough to answer "is this SQL?" for both the
- * template-literal and the `+`-concatenation shape.
- */
+/** True when the statement argument reads as SQL rather than as a shell command line. */
+function looksLikeSql(node: TSESTree.Node): boolean {
+  return SQL_STATEMENT_RE.test(stripSqlNoise(staticStatementText(node)));
+}
+
 function staticStatementText(node: TSESTree.Node): string {
   if (node.type === AST_NODE_TYPES.TemplateLiteral) {
     return node.quasis.map((quasi) => quasi.value.cooked ?? quasi.value.raw).join(RUNTIME_MARKER);
@@ -117,11 +101,6 @@ function staticStatementText(node: TSESTree.Node): string {
     return staticStatementText(node.left) + staticStatementText(node.right);
   }
   return RUNTIME_MARKER;
-}
-
-/** True when the statement argument reads as SQL rather than as a shell command line. */
-function looksLikeSql(node: TSESTree.Node): boolean {
-  return SQL_STATEMENT_RE.test(stripSqlNoise(staticStatementText(node)));
 }
 
 /** The inspected method name of `receiver.method(...)`, or null. */

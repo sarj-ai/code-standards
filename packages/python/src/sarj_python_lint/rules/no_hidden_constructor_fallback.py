@@ -228,13 +228,15 @@ def _none_comparison_parameter(test: ast.expr, candidates: set[str], *, expect_n
 
 
 def _directly_bound_names(statement: ast.stmt) -> set[str]:
-    if isinstance(statement, ast.Assign):
-        return {name for target in statement.targets for name in _target_names(target)}
-    if isinstance(statement, ast.AnnAssign):
-        return _target_names(statement.target)
-    if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-        return {statement.name}
-    return set()
+    match statement:
+        case ast.Assign(targets=targets):
+            return {name for target in targets for name in _target_names(target)}
+        case ast.AnnAssign(target=target):
+            return _target_names(target)
+        case ast.FunctionDef(name=name) | ast.AsyncFunctionDef(name=name) | ast.ClassDef(name=name):
+            return {name}
+        case _:
+            return set()
 
 
 def _argument_names(arguments: ast.arguments) -> set[str]:
@@ -290,6 +292,41 @@ class _RuntimeConfigResolver:
                 return True
         return False
 
+    def _is_settings_symbol(self, module: str, symbol: str, seen: frozenset[tuple[str, str]] = frozenset()) -> bool:
+        key = (module, symbol)
+        cached = self._settings_cache.get(key)
+        if cached is not None:
+            return cached
+        if key in seen:
+            return False
+        loaded = self._load_module(module)
+        if loaded is None:
+            self._settings_cache[key] = False
+            return False
+        tree, module_path = loaded
+        imports = _imports(tree, module, is_package=module_path.name == "__init__.py")
+        classes = _base_settings_classes(tree, imports)
+        factory = _assigned_factory(tree, symbol)
+        if factory is not None:
+            resolved_factory = _resolve_expression(factory, imports)
+            if isinstance(factory, ast.Name) and factory.id in classes:
+                self._settings_cache[key] = True
+                return True
+            if resolved_factory is not None and len(resolved_factory) >= _QUALIFIED_NAME_PARTS:
+                factory_module = ".".join(resolved_factory[:-1])
+                if self._is_settings_class(factory_module, resolved_factory[-1]):
+                    self._settings_cache[key] = True
+                    return True
+        binding = imports.get(symbol)
+        result = (
+            binding is not None
+            and binding.symbol is not None
+            and self._is_settings_symbol(binding.module, binding.symbol, seen | {key})
+        )
+        del module_path
+        self._settings_cache[key] = result
+        return result
+
     def _is_settings_class(
         self,
         module: str,
@@ -326,41 +363,6 @@ class _RuntimeConfigResolver:
                     result = True
                     break
         self._settings_class_cache[key] = result
-        return result
-
-    def _is_settings_symbol(self, module: str, symbol: str, seen: frozenset[tuple[str, str]] = frozenset()) -> bool:
-        key = (module, symbol)
-        cached = self._settings_cache.get(key)
-        if cached is not None:
-            return cached
-        if key in seen:
-            return False
-        loaded = self._load_module(module)
-        if loaded is None:
-            self._settings_cache[key] = False
-            return False
-        tree, module_path = loaded
-        imports = _imports(tree, module, is_package=module_path.name == "__init__.py")
-        classes = _base_settings_classes(tree, imports)
-        factory = _assigned_factory(tree, symbol)
-        if factory is not None:
-            resolved_factory = _resolve_expression(factory, imports)
-            if isinstance(factory, ast.Name) and factory.id in classes:
-                self._settings_cache[key] = True
-                return True
-            if resolved_factory is not None and len(resolved_factory) >= _QUALIFIED_NAME_PARTS:
-                factory_module = ".".join(resolved_factory[:-1])
-                if self._is_settings_class(factory_module, resolved_factory[-1]):
-                    self._settings_cache[key] = True
-                    return True
-        binding = imports.get(symbol)
-        result = (
-            binding is not None
-            and binding.symbol is not None
-            and self._is_settings_symbol(binding.module, binding.symbol, seen | {key})
-        )
-        del module_path
-        self._settings_cache[key] = result
         return result
 
     def _load_module(self, module: str) -> tuple[ast.Module, Path] | None:
@@ -590,49 +592,69 @@ def _calls_with_shadowing(
     shadowed: frozenset[str] = frozenset(),
     nested_scope_base: frozenset[str] | None = None,
 ) -> Iterator[tuple[ast.Call, frozenset[str]]]:
-    if isinstance(node, (ast.ListComp, ast.SetComp, ast.GeneratorExp, ast.DictComp)):
-        lexical_parent = nested_scope_base if nested_scope_base is not None else shadowed
-        comprehension_shadowed = lexical_parent
-        for index, generator in enumerate(node.generators):
-            iterable_shadowed = shadowed if index == 0 else comprehension_shadowed
-            yield from _calls_with_shadowing(generator.iter, iterable_shadowed)
-            comprehension_shadowed |= frozenset(_target_names(generator.target))
-            for condition in generator.ifs:
-                yield from _calls_with_shadowing(condition, comprehension_shadowed)
-        values = (node.key, node.value) if isinstance(node, ast.DictComp) else (node.elt,)
-        for value in values:
+    match node:
+        case (
+            ast.ListComp(generators=generators, elt=elt)
+            | ast.SetComp(generators=generators, elt=elt)
+            | ast.GeneratorExp(generators=generators, elt=elt)
+        ):
+            lexical_parent = nested_scope_base if nested_scope_base is not None else shadowed
+            comprehension_shadowed = lexical_parent
+            for index, generator in enumerate(generators):
+                iterable_shadowed = shadowed if index == 0 else comprehension_shadowed
+                yield from _calls_with_shadowing(generator.iter, iterable_shadowed)
+                comprehension_shadowed |= frozenset(_target_names(generator.target))
+                for condition in generator.ifs:
+                    yield from _calls_with_shadowing(condition, comprehension_shadowed)
+            yield from _calls_with_shadowing(elt, comprehension_shadowed)
+            return
+        case ast.DictComp(generators=generators, key=key, value=value):
+            lexical_parent = nested_scope_base if nested_scope_base is not None else shadowed
+            comprehension_shadowed = lexical_parent
+            for index, generator in enumerate(generators):
+                iterable_shadowed = shadowed if index == 0 else comprehension_shadowed
+                yield from _calls_with_shadowing(generator.iter, iterable_shadowed)
+                comprehension_shadowed |= frozenset(_target_names(generator.target))
+                for condition in generator.ifs:
+                    yield from _calls_with_shadowing(condition, comprehension_shadowed)
+            yield from _calls_with_shadowing(key, comprehension_shadowed)
             yield from _calls_with_shadowing(value, comprehension_shadowed)
-        return
-    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
-        outer_nodes: list[ast.AST]
-        if isinstance(node, ast.Lambda):
-            outer_nodes = [*node.args.defaults, *(default for default in node.args.kw_defaults if default is not None)]
-            body_nodes = [node.body]
-        else:
+            return
+        case ast.Lambda(args=args, body=body):
+            outer_nodes = [*args.defaults, *(default for default in args.kw_defaults if default is not None)]
+            for outer in outer_nodes:
+                yield from _calls_with_shadowing(outer, shadowed, nested_scope_base)
+            lexical_parent = nested_scope_base if nested_scope_base is not None else shadowed
+            yield from _calls_with_shadowing(body, lexical_parent | _scope_bindings(node))
+            return
+        case (
+            ast.FunctionDef(decorator_list=decorators, args=args, body=body)
+            | ast.AsyncFunctionDef(decorator_list=decorators, args=args, body=body)
+        ):
             outer_nodes = [
-                *node.decorator_list,
-                *node.args.defaults,
-                *(default for default in node.args.kw_defaults if default is not None),
+                *decorators,
+                *args.defaults,
+                *(default for default in args.kw_defaults if default is not None),
             ]
-            body_nodes = list(node.body)
-        for outer in outer_nodes:
-            yield from _calls_with_shadowing(outer, shadowed, nested_scope_base)
-        lexical_parent = nested_scope_base if nested_scope_base is not None else shadowed
-        local_shadowed = lexical_parent | _scope_bindings(node)
-        for body in body_nodes:
-            yield from _calls_with_shadowing(body, local_shadowed)
-        return
-    if isinstance(node, ast.ClassDef):
-        outer_nodes = [*node.decorator_list, *node.bases, *node.keywords]
-        for outer in outer_nodes:
-            yield from _calls_with_shadowing(outer, shadowed, nested_scope_base)
-        lexical_parent = nested_scope_base if nested_scope_base is not None else shadowed
-        class_shadowed = lexical_parent | _class_bindings(node)
-        for body in node.body:
-            yield from _calls_with_shadowing(body, class_shadowed, lexical_parent)
-        return
-    if isinstance(node, ast.Call):
-        yield node, shadowed
+            for outer in outer_nodes:
+                yield from _calls_with_shadowing(outer, shadowed, nested_scope_base)
+            lexical_parent = nested_scope_base if nested_scope_base is not None else shadowed
+            local_shadowed = lexical_parent | _scope_bindings(node)
+            for statement in body:
+                yield from _calls_with_shadowing(statement, local_shadowed)
+            return
+        case ast.ClassDef(decorator_list=decorators, bases=bases, keywords=keywords, body=body):
+            for outer in (*decorators, *bases, *keywords):
+                yield from _calls_with_shadowing(outer, shadowed, nested_scope_base)
+            lexical_parent = nested_scope_base if nested_scope_base is not None else shadowed
+            class_shadowed = lexical_parent | _class_bindings(node)
+            for statement in body:
+                yield from _calls_with_shadowing(statement, class_shadowed, lexical_parent)
+            return
+        case ast.Call():
+            yield node, shadowed
+        case _:
+            pass
     for child in ast.iter_child_nodes(node):
         yield from _calls_with_shadowing(child, shadowed, nested_scope_base)
 

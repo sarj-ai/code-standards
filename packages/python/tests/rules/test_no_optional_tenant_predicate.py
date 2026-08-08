@@ -1,6 +1,8 @@
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 from sarj_python_lint.rules.no_optional_tenant_predicate import (
     NoOptionalTenantPredicate,
 )
@@ -100,16 +102,16 @@ def test_flags_conditional_extend():
     assert _count(src) == 1
 
 
-def test_recognises_documented_predicate_operators():
-    for operator in ("IN (%s)", "IS NOT NULL", "<> %s", "!= %s"):
-        src = (
-            "def build(args):\n"
-            "    conditions = []\n"
-            "    if args.organization_id:\n"
-            f'        conditions.append(SQL("organization_id {operator}"))\n'
-            "    return conditions\n"
-        )
-        assert _count(src) == 1, operator
+@pytest.mark.parametrize("operator", ["IN (%s)", "IS NOT NULL", "<> %s", "!= %s"])
+def test_recognises_documented_predicate_operators(operator: str):
+    src = (
+        "def build(args):\n"
+        "    conditions = []\n"
+        "    if args.organization_id:\n"
+        f'        conditions.append(SQL("organization_id {operator}"))\n'
+        "    return conditions\n"
+    )
+    assert _count(src) == 1, operator
 
 
 def test_flags_each_offending_function_separately():
@@ -141,16 +143,16 @@ def test_flags_async_method():
     assert _count(src) == 1
 
 
-def test_recognises_alternate_tenant_column_names():
-    for column in ("org_id", "tenant_id", "account_id", "workspace_id"):
-        src = (
-            "def build(args):\n"
-            "    c = []\n"
-            "    if args.scope:\n"
-            f'        c.append(SQL("{column} = %s"))\n'
-            '    return SQL(" AND ").join(c)\n'
-        )
-        assert _count(src) == 1, column
+@pytest.mark.parametrize("column", ["org_id", "tenant_id", "account_id", "workspace_id"])
+def test_recognises_alternate_tenant_column_names(column: str):
+    src = (
+        "def build(args):\n"
+        "    c = []\n"
+        "    if args.scope:\n"
+        f'        c.append(SQL("{column} = %s"))\n'
+        '    return SQL(" AND ").join(c)\n'
+    )
+    assert _count(src) == 1, column
 
 
 # Negative: scoping that always applies, or code that is not scoping at all.

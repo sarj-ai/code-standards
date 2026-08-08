@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.prefer_str_enum import PreferStrEnum
 
 
@@ -671,6 +672,8 @@ def read(field) -> int:
 def test_owned_self_attribute_cluster_flags():
     src = """
 class Worker:
+    status: str
+
     def run(self) -> int:
         if self.status == "active":
             return 1
@@ -909,6 +912,85 @@ def handle(status: Literal["active", "inactive"]) -> int:
     assert _check(src) == []
 
 
+def test_constructor_builder_reuses_named_literal_domains() -> None:
+    src = '''
+def build_sarj_beneficiary(
+    *,
+    status: Literal["Active", "Inactive", "Activating"] = "Active",
+    type: Literal["DOMESTIC", "INTERNAL", "INTERNATIONAL"] = "INTERNAL",
+    account_schema: Literal[
+        "SA.VB.IBAN", "SA.VB.SortCodeAccountNumber", "SA.VB.Paym"
+    ] = "SA.VB.IBAN",
+) -> SarjBeneficiary:
+    """Build a beneficiary with test defaults."""
+    return SarjBeneficiary(status=status, type=type, account_schema=account_schema)
+'''
+
+    [diagnostic] = _check(src, "python/common/testing/builders.py")
+
+    assert diagnostic.code == "SARJ006"
+    assert diagnostic.severity is Severity.WARNING
+    assert "3 inline Literal domains" in diagnostic.message
+    assert "named aliases" in diagnostic.message
+
+
+@pytest.mark.parametrize(
+    "src",
+    [
+        # A one-off inline domain is already a clear closed type.
+        """
+def build_widget(mode: Literal["small", "medium", "large"]) -> Widget:
+    return Widget(mode=mode)
+""",
+        # Two-value switches do not prove a copied model schema.
+        """
+def build_widget(mode: Literal["on", "off"], tone: Literal["quiet", "loud"]) -> Widget:
+    return Widget(mode=mode, tone=tone)
+""",
+        # A transformation makes the function an adapter.
+        """
+def build_widget(
+    mode: Literal["small", "medium", "large"],
+    tone: Literal["quiet", "normal", "loud"],
+) -> Widget:
+    return Widget(mode=normalize_mode(mode), tone=tone)
+""",
+        # Extra behavior makes the function more than a constructor forwarder.
+        """
+def build_widget(
+    mode: Literal["small", "medium", "large"],
+    tone: Literal["quiet", "normal", "loud"],
+) -> Widget:
+    validate(mode)
+    return Widget(mode=mode, tone=tone)
+""",
+        # Decorators can make the wrapper a registration boundary.
+        """
+@register_builder
+def build_widget(
+    mode: Literal["small", "medium", "large"],
+    tone: Literal["quiet", "normal", "loud"],
+) -> Widget:
+    return Widget(mode=mode, tone=tone)
+""",
+    ],
+)
+def test_literal_builder_arm_requires_transparent_copied_domains(src: str) -> None:
+    assert _check(src) == []
+
+
+def test_literal_builder_arm_skips_test_files() -> None:
+    src = """
+def build_widget(
+    mode: Literal["small", "medium", "large"],
+    tone: Literal["quiet", "normal", "loud"],
+) -> Widget:
+    return Widget(mode=mode, tone=tone)
+"""
+
+    assert _check(src, "tests/test_builders.py") == []
+
+
 def test_typealias_statement_literal_not_flagged():
     src = """
 from typing import Literal
@@ -975,6 +1057,62 @@ def route(kind: str) -> int:
     diags = _check(src)
     assert len(diags) == 1
     assert "kind" in diags[0].message
+
+
+def test_truthy_fallback_that_consumes_subject_keeps_domain_open() -> None:
+    src = """
+def section(chip: str | None = None) -> str:
+    if chip == "national":
+        return "National"
+    elif chip == "no-year":
+        return "No year"
+    elif chip:
+        return render(chip)
+    return ""
+"""
+    assert _check(src) == []
+
+
+def test_truthy_fallback_that_ignores_subject_does_not_open_domain() -> None:
+    src = """
+def section(chip: str | None = None) -> str:
+    if chip == "national":
+        return "National"
+    elif chip == "no-year":
+        return "No year"
+    elif chip:
+        return "Custom"
+    return ""
+"""
+    assert len(_check(src)) == 1
+
+
+def test_inherited_self_attribute_is_not_treated_as_locally_owned() -> None:
+    src = """
+class View(ModelViewSet):
+    def select(self):
+        if self.action == "list":
+            return ListSerializer
+        if self.action == "retrieve":
+            return DetailSerializer
+        return DefaultSerializer
+"""
+    assert _check(src) == []
+
+
+def test_declared_self_attribute_remains_actionable() -> None:
+    src = """
+class Message(BaseModel):
+    content_type: str = "text"
+
+    def render(self):
+        if self.content_type == "text":
+            return render_text()
+        if self.content_type == "image":
+            return render_image()
+        return render_other()
+"""
+    assert len(_check(src)) == 1
 
 
 def test_call_comparand_excluded():
@@ -1886,5 +2024,173 @@ def add_event_handler(self, event_type: str, func) -> None:
     assert event_type in ("startup", "shutdown")
     if event_type == "startup":
         self.on_startup.append(func)
+"""
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "ext",
+        "media_ext",
+        "encoding",
+        "fs_encoding",
+        "protocol",
+        "username",
+        "date_str",
+        "default_search",
+        "format_key",
+    ],
+)
+def test_standard_open_vocabulary_names_are_not_inferred_as_enums(name: str):
+    src = f"""
+def inspect({name}: str) -> str:
+    if {name} == "first":
+        return "one"
+    if {name} == "second":
+        return "two"
+    return {name}
+"""
+    assert _check(src) == []
+
+
+def test_runtime_membership_proves_the_domain_is_dynamic():
+    src = """
+def select(client: str, allowed_clients: set[str]) -> str:
+    if client == "default":
+        return "web"
+    if client == "all":
+        return "every"
+    if client not in allowed_clients:
+        return "unsupported"
+    return client
+"""
+    assert _check(src) == []
+
+
+def test_named_constant_membership_still_allows_a_closed_domain():
+    src = """
+CHROMIUM_BROWSERS = {"chrome", "edge"}
+
+def select(browser: str) -> str:
+    if browser == "firefox":
+        return "gecko"
+    if browser == "safari":
+        return "webkit"
+    if browser in CHROMIUM_BROWSERS:
+        return "chromium"
+    return "unsupported"
+"""
+    assert len(_check(src)) == 1
+
+
+def test_literal_membership_does_not_make_a_closed_domain_dynamic():
+    src = """
+def select(status: str) -> str:
+    if status in ("active", "inactive"):
+        return status
+    if status == "pending":
+        return "wait"
+    return "unknown"
+"""
+    assert len(_check(src)) == 1
+
+
+def test_traverse_obj_result_remains_a_wire_domain():
+    src = """
+def parse(payload) -> str:
+    item_type = traverse_obj(payload, "type")
+    if item_type == "video":
+        return "movie"
+    if item_type == "youtube":
+        return "embed"
+    return "other"
+"""
+    assert _check(src) == []
+
+
+def test_traverse_obj_loop_targets_remain_wire_domains():
+    src = """
+def parse(payload) -> str:
+    for item_type, item in traverse_obj(payload, ("items", {dict.items}, ...)):
+        if item_type == "video":
+            return item
+        if item_type == "youtube":
+            return item
+    return ""
+"""
+    assert _check(src) == []
+
+
+def test_regex_extractor_result_remains_a_wire_domain():
+    src = r"""
+def parse(html: str) -> str:
+    provider = r1(r"type=(\w+)", html)
+    if provider == "youku":
+        return "one"
+    if provider == "tudou":
+        return "two"
+    return provider
+"""
+    assert _check(src) == []
+
+
+def test_local_wire_helper_name_does_not_hide_a_closed_domain():
+    src = """
+def r1(value: str) -> str:
+    return value
+
+def select(kind: str) -> str:
+    local_kind = r1(kind)
+    if local_kind == "ingest":
+        return "one"
+    if local_kind == "export":
+        return "two"
+    return "other"
+"""
+    assert len(_check(src)) == 1
+
+
+def test_valid_url_group_closes_a_wire_url_before_dispatch():
+    src = """
+class Extractor:
+    def select(self, payload) -> str:
+        source_url = traverse_obj(payload, "url")
+        kind = self._match_valid_url(source_url).group("type")
+        if kind == "video":
+            return "movie"
+        if kind == "channel":
+            return "playlist"
+        return "unsupported"
+"""
+    assert len(_check(src)) == 1
+
+
+def test_literal_typed_class_attribute_is_already_closed():
+    src = """
+from typing import Literal
+
+class McpConfig:
+    transport: Literal["streamable-http", "stdio"] = "streamable-http"
+
+    def validate(self) -> None:
+        if self.transport == "stdio":
+            return
+        if self.transport == "streamable-http":
+            return
+"""
+    assert _check(src) == []
+
+
+def test_bare_str_class_attribute_remains_actionable_after_closed_attribute_exemption():
+    src = """
+class McpConfig:
+    transport: str = "streamable-http"
+
+    def validate(self) -> None:
+        if self.transport == "stdio":
+            return
+        if self.transport == "streamable-http":
+            return
 """
     assert len(_check(src)) == 1

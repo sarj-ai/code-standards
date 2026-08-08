@@ -18,19 +18,11 @@ const MAX_LITERAL_LENGTH = 28;
 
 const LITERAL = String.raw`(?:'[^'\n]*'|"[^"\n]*"|\`[^\`\n]*\`)`;
 
-// Anchored at BOTH ends on purpose: a literal list inside a sentence is prose
-// that happens to quote values, and the sentence is what carries the meaning.
-// Only a body that is nothing but the list is a type someone wrote down.
 const LEAD_IN_RE =
   /^(?:one of|either|values?|allowed(?: values)?|options?|possible(?: values)?)\s*[:=-]?\s*/i;
 const UNION_BODY_RE = new RegExp(String.raw`^${LITERAL}(?:\s*[|,/]\s*${LITERAL})+\.?$`);
 const LITERAL_G = new RegExp(LITERAL, "g");
 
-/**
- * Column builders whose call spells the stored type where TypeScript has no
- * annotation to read. A schema row is where a closed set is most often left as
- * `text` with the set in a comment beside it.
- */
 const STRING_BUILDERS: ReadonlySet<string> = new Set([
   "char", "citext", "longtext", "mediumtext", "string", "text", "tinytext", "varchar",
 ]);
@@ -51,38 +43,6 @@ function isBareString(node: TSESTree.TypeNode | undefined): boolean {
     default:
       return false;
   }
-}
-
-/** The identifier a call chain hangs off: `text("k").notNull()` -> `text`. */
-function rootCallee(node: TSESTree.Node | null | undefined): string | null {
-  let current: TSESTree.Node | null | undefined = node;
-  for (let hops = 0; current != null && hops < 12; hops += 1) {
-    switch (current.type) {
-      case AST_NODE_TYPES.CallExpression:
-        current = current.callee;
-        break;
-      case AST_NODE_TYPES.MemberExpression:
-        current = current.object;
-        break;
-      case AST_NODE_TYPES.Identifier:
-        return current.name;
-      default:
-        return null;
-    }
-  }
-  return null;
-}
-
-/** A declaration this rule can judge: a named one that holds a bare string. */
-interface Target {
-  readonly node: TSESTree.Node;
-  readonly name: string;
-}
-
-function nameOf(key: TSESTree.Node): string | null {
-  if (key.type === AST_NODE_TYPES.Identifier) return key.name;
-  if (key.type === AST_NODE_TYPES.Literal && typeof key.value === "string") return key.value;
-  return null;
 }
 
 function targetOf(node: TSESTree.Node): Target | null {
@@ -107,6 +67,38 @@ function targetOf(node: TSESTree.Node): Target | null {
     default:
       return null;
   }
+}
+
+/** A declaration this rule can judge: a named one that holds a bare string. */
+interface Target {
+  readonly node: TSESTree.Node;
+  readonly name: string;
+}
+
+/** The identifier a call chain hangs off: `text("k").notNull()` -> `text`. */
+function rootCallee(node: TSESTree.Node | null | undefined): string | null {
+  let current: TSESTree.Node | null | undefined = node;
+  for (let hops = 0; current != null && hops < 12; hops += 1) {
+    switch (current.type) {
+      case AST_NODE_TYPES.CallExpression:
+        current = current.callee;
+        break;
+      case AST_NODE_TYPES.MemberExpression:
+        current = current.object;
+        break;
+      case AST_NODE_TYPES.Identifier:
+        return current.name;
+      default:
+        return null;
+    }
+  }
+  return null;
+}
+
+function nameOf(key: TSESTree.Node): string | null {
+  if (key.type === AST_NODE_TYPES.Identifier) return key.name;
+  if (key.type === AST_NODE_TYPES.Literal && typeof key.value === "string") return key.value;
+  return null;
 }
 
 /** The literals a comment lists, or null when its body is not a bare list. */
@@ -141,11 +133,6 @@ export default createRule<Options, MessageIds>({
       return {};
     }
 
-    /**
-     * The declaration a comment annotates: the one it trails on its own line, or
-     * the one starting on the line below when the comment has that line to
-     * itself. Anything else annotates nothing this rule can read.
-     */
     function annotated(comment: TSESTree.Comment): Target | null {
       const before = sourceCode.getTokenBefore(comment, { includeComments: false });
       let anchor: TSESTree.Node | null;

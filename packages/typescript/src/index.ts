@@ -140,11 +140,11 @@ const rules = {
   "store-insert-requires-on-conflict": storeInsertRequiresOnConflict,
   "stepdown": stepdown,
   "zod-naming-convention": zodNamingConvention,
-};
+} as const;
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "9.16.0",
+  version: "9.17.0",
 } as const;
 
 /** Rules registered for application-profile configs but intentionally absent from general presets. */
@@ -207,7 +207,7 @@ const recommendedRules = {
   "@sarj/prefer-whole-object-assertion": "warn",
   "@sarj/prefer-zod-enum": "warn",
   "@sarj/prefer-zod-infer": "warn",
-  "@sarj/require-assert-never": "error",
+  "@sarj/require-assert-never": "warn",
   "@sarj/require-fetch-timeout": "warn",
   "@sarj/require-interface-for-injected-service": "warn",
   "@sarj/require-static-next-matcher": "error",
@@ -260,12 +260,12 @@ const strictRules = {
   "@sarj/no-zod-native-enum": "error",
   "@sarj/test-loops-over-literal-cases": "warn",
   "@sarj/prefer-constant-time-secret-compare": "error",
-  "@sarj/prefer-discriminated-union": "error",
+  "@sarj/prefer-discriminated-union": "warn",
   "@sarj/prefer-input-group-search": "error",
   "@sarj/prefer-immutable-module-constant": "warn",
   "@sarj/prefer-module-level-constant": "error",
   "@sarj/prefer-module-level-schema": "error",
-  "@sarj/prefer-non-nullable-collection": "error",
+  "@sarj/prefer-non-nullable-collection": "warn",
   "@sarj/prefer-schema-for-api-payload": "error",
   "@sarj/prefer-semantic-colors": ["error", { requireSemanticTokens: true }],
   "@sarj/prefer-server-actions": "error",
@@ -274,9 +274,9 @@ const strictRules = {
   "@sarj/prefer-whole-object-assertion": "error",
   "@sarj/prefer-zod-enum": "error",
   "@sarj/prefer-zod-infer": "error",
-  "@sarj/require-assert-never": "error",
+  "@sarj/require-assert-never": "warn",
   "@sarj/require-fetch-timeout": "error",
-  "@sarj/require-interface-for-injected-service": "error",
+  "@sarj/require-interface-for-injected-service": "warn",
   "@sarj/require-static-next-matcher": "error",
   "@sarj/require-zod-form-validation": "error",
   "@sarj/store-insert-requires-on-conflict": "error",
@@ -290,34 +290,25 @@ type FlatPreset = {
   readonly rules: Record<string, unknown>;
 };
 
-/**
- * The presets, as FLAT config objects — `plugins` is the object form, so both go
- * straight into an `eslint.config.mjs` array with no spread. Neither sets
- * `files` or a parser, so they compose with whatever a repo already has.
- */
 const plugin = {
   meta,
   rules,
-  // Withdrawn names travel WITH the plugin so a consumer's migration script and
-  // this repo's gates read one map, not two. See src/rules/_retired.ts.
   retiredRules,
-  configs: {
-    recommended: {} as FlatPreset,
-    strict: {} as FlatPreset,
+  get configs(): { readonly recommended: FlatPreset; readonly strict: FlatPreset } {
+    return {
+      recommended: {
+        name: "@sarj/recommended",
+        plugins: { "@sarj": plugin },
+        rules: recommendedRules,
+      },
+      strict: {
+        name: "@sarj/strict",
+        plugins: { "@sarj": plugin },
+        rules: strictRules,
+      },
+    };
   },
-};
-
-plugin.configs.recommended = {
-  name: "@sarj/recommended",
-  plugins: { "@sarj": plugin },
-  rules: recommendedRules,
-};
-
-plugin.configs.strict = {
-  name: "@sarj/strict",
-  plugins: { "@sarj": plugin },
-  rules: strictRules,
-};
+} as const;
 
 export default plugin;
 export { type RetiredRule, retiredRules } from "./rules/_retired.js";

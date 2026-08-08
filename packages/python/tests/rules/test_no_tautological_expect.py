@@ -1,6 +1,8 @@
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 from sarj_python_lint.rules.no_tautological_expect import NoTautologicalExpect
 
 
@@ -26,9 +28,9 @@ def test_flags_bare_assert_true():
     assert diags[0].line == 2
 
 
-def test_flags_truthy_constants():
-    for literal in ("True", "1", "-1", "0.5", '"text"', "b'bytes'", "..."):
-        assert _count(f"def test_x():\n    assert {literal}\n") == 1, literal
+@pytest.mark.parametrize("literal", ["True", "1", "-1", "0.5", '"text"', "b'bytes'", "..."])
+def test_flags_truthy_constants(literal: str):
+    assert _count(f"def test_x():\n    assert {literal}\n") == 1, literal
 
 
 def test_flags_set_display_wrapping_a_real_condition():
@@ -53,11 +55,14 @@ def test_flags_list_display_that_lost_its_comparison():
     assert "list display" in diags[0].message
 
 
-def test_flags_every_non_empty_container_display():
-    for display, kind in (("[1]", "list"), ("{1}", "set"), ("{'a': 1}", "dict"), ("(1, 2)", "tuple")):
-        diags = _check(f"def test_x():\n    assert {display}\n")
-        assert len(diags) == 1, display
-        assert kind in diags[0].message, display
+@pytest.mark.parametrize(
+    ("display", "kind"),
+    [("[1]", "list"), ("{1}", "set"), ("{'a': 1}", "dict"), ("(1, 2)", "tuple")],
+)
+def test_flags_every_non_empty_container_display(display: str, kind: str):
+    diags = _check(f"def test_x():\n    assert {display}\n")
+    assert len(diags) == 1, display
+    assert kind in diags[0].message, display
 
 
 def test_flags_container_holding_a_runtime_value():
@@ -73,9 +78,9 @@ def test_flags_value_that_slid_into_the_message_slot():
     assert "assertion-message slot" in diags[0].message
 
 
-def test_flags_identical_literal_comparison():
-    for expr in ("1 == 1", '"a" == "a"', "None is None", "(1, 2) == (1, 2)", "-1 == -1"):
-        assert _count(f"def test_x():\n    assert {expr}\n") == 1, expr
+@pytest.mark.parametrize("expr", ["1 == 1", '"a" == "a"', "None is None", "(1, 2) == (1, 2)", "-1 == -1"])
+def test_flags_identical_literal_comparison(expr: str):
+    assert _count(f"def test_x():\n    assert {expr}\n") == 1, expr
 
 
 def test_flags_unittest_assertions():
@@ -116,10 +121,12 @@ def test_fires_outside_test_files_too():
 # SARJ057 owns literal-only tautologies; SARJ064 owns cross-statement construction.
 
 
-def test_flags_every_constant_condition_sarj064_ceded():
-    conditions = ("True", "1", "1.5", "...", "b'x'", "[1]", "[compute()]", "{1, 2}", "{'a': 1}", "(1, 2)")
-    for condition in conditions:
-        assert _count(f"def test_thing():\n    assert {condition}\n") == 1, condition
+@pytest.mark.parametrize(
+    "condition",
+    ["True", "1", "1.5", "...", "b'x'", "[1]", "[compute()]", "{1, 2}", "{'a': 1}", "(1, 2)"],
+)
+def test_flags_every_constant_condition_sarj064_ceded(condition: str):
+    assert _count(f"def test_thing():\n    assert {condition}\n") == 1, condition
 
 
 def test_flags_a_constant_condition_carrying_a_message():
@@ -129,30 +136,30 @@ def test_flags_a_constant_condition_carrying_a_message():
     assert "assertion-message slot" in diags[0].message
 
 
-def test_flags_not_applied_to_a_falsy_constant():
+@pytest.mark.parametrize("condition", ["not False", "not 0", "not ''", "not None", "not 0.0", "not b''"])
+def test_flags_not_applied_to_a_falsy_constant(condition: str):
     """The one shape SARJ064 had that this rule lacked, moved rather than dropped."""
-    for condition in ("not False", "not 0", "not ''", "not None", "not 0.0", "not b''"):
-        diags = _check(f"def test_thing():\n    assert {condition}\n")
-        assert len(diags) == 1, condition
-        assert "constant truthy value" in diags[0].message, condition
+    diags = _check(f"def test_thing():\n    assert {condition}\n")
+    assert len(diags) == 1, condition
+    assert "constant truthy value" in diags[0].message, condition
 
 
-def test_ignores_not_applied_to_a_runtime_value():
+@pytest.mark.parametrize("condition", ["not x", "not x.errors", "not f(x)", "not []", "not [*items]"])
+def test_ignores_not_applied_to_a_runtime_value(condition: str):
     """`assert not x` is an ordinary assertion — the syntax cannot decide it."""
-    for condition in ("not x", "not x.errors", "not f(x)", "not []", "not [*items]"):
-        assert _count(f"def test_thing(x, items):\n    assert {condition}\n") == 0, condition
+    assert _count(f"def test_thing(x, items):\n    assert {condition}\n") == 0, condition
 
 
-def test_ignores_not_applied_to_a_truthy_constant():
+@pytest.mark.parametrize("condition", ["not True", "not 1", "not 'x'"])
+def test_ignores_not_applied_to_a_truthy_constant(condition: str):
     """`assert not True` always fails, which is loud on the first run."""
-    for condition in ("not True", "not 1", "not 'x'"):
-        assert _count(f"def test_thing():\n    assert {condition}\n") == 0, condition
+    assert _count(f"def test_thing():\n    assert {condition}\n") == 0, condition
 
 
-def test_ignores_falsy_constant_conditions_sarj064_also_ignored():
+@pytest.mark.parametrize("condition", ["False", "None", "0", "''", "[]", "{}", "()"])
+def test_ignores_falsy_constant_conditions_sarj064_also_ignored(condition: str):
     """An always-failing assertion self-corrects; `assert False` is ruff's B011 besides."""
-    for condition in ("False", "None", "0", "''", "[]", "{}", "()"):
-        assert _count(f"def test_thing():\n    assert {condition}\n") == 0, condition
+    assert _count(f"def test_thing():\n    assert {condition}\n") == 0, condition
 
 
 def test_the_moved_not_shape_obeys_the_sole_except_carve_out():
@@ -199,15 +206,15 @@ def test_the_construction_shapes_stay_sarj064s():
 # Negative: self-comparison of a real value.
 
 
-def test_ignores_identifier_self_comparison():
-    for expr in ("i == i", "x is x", "obj == obj", "self.value == self.value"):
-        assert _count(f"def test_x(i, x, obj):\n    assert {expr}\n") == 0, expr
+@pytest.mark.parametrize("expr", ["i == i", "x is x", "obj == obj", "self.value == self.value"])
+def test_ignores_identifier_self_comparison(expr: str):
+    assert _count(f"def test_x(i, x, obj):\n    assert {expr}\n") == 0, expr
 
 
-def test_ignores_call_self_comparison():
+@pytest.mark.parametrize("expr", ["hash(o) == hash(o)", "f(1) == f(1)", "parse('a') is parse('a')"])
+def test_ignores_call_self_comparison(expr: str):
     """`hash(o) == hash(o)` is a determinism test on a custom `__hash__`."""
-    for expr in ("hash(o) == hash(o)", "f(1) == f(1)", "parse('a') is parse('a')"):
-        assert _count(f"def test_x(o):\n    assert {expr}\n") == 0, expr
+    assert _count(f"def test_x(o):\n    assert {expr}\n") == 0, expr
 
 
 def test_ignores_mixed_literal_and_identifier_comparison():
@@ -215,14 +222,14 @@ def test_ignores_mixed_literal_and_identifier_comparison():
     assert _count("def test_x(result):\n    assert 1 == result\n") == 0
 
 
-def test_ignores_chained_and_non_sameness_literal_comparisons():
-    for expr in ("1 == 1 == 1", "1 != 1", "1 is not 1", "1 <= 1", "1 >= 1"):
-        assert _count(f"def test_x():\n    assert {expr}\n") == 0, expr
+@pytest.mark.parametrize("expr", ["1 == 1 == 1", "1 != 1", "1 is not 1", "1 <= 1", "1 >= 1"])
+def test_ignores_chained_and_non_sameness_literal_comparisons(expr: str):
+    assert _count(f"def test_x():\n    assert {expr}\n") == 0, expr
 
 
-def test_ignores_identical_containers_that_contain_runtime_values():
-    for expr in ("[value] == [value]", "{'key': value} == {'key': value}"):
-        assert _count(f"def test_x(value):\n    assert {expr}\n") == 0, expr
+@pytest.mark.parametrize("expr", ["[value] == [value]", "{'key': value} == {'key': value}"])
+def test_ignores_identical_containers_that_contain_runtime_values(expr: str):
+    assert _count(f"def test_x(value):\n    assert {expr}\n") == 0, expr
 
 
 def test_ignores_unittest_self_comparison_of_a_value():
@@ -296,10 +303,10 @@ def test_ignores_assert_false():
     assert _count('def test_x():\n    assert False, "unreachable"\n') == 0
 
 
-def test_ignores_empty_container():
+@pytest.mark.parametrize("display", ["[]", "()", "{}"])
+def test_ignores_empty_container(display: str):
     """`assert []` always fails, which surfaces on the first run."""
-    for display in ("[]", "()", "{}"):
-        assert _count(f"def test_x():\n    assert {display}\n") == 0, display
+    assert _count(f"def test_x():\n    assert {display}\n") == 0, display
 
 
 def test_ignores_splatted_container():

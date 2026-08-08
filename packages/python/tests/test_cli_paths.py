@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sarj_python_lint.__main__ import _expand_paths  # pyright: ignore[reportPrivateUsage]
+from sarj_python_lint.__main__ import (
+    _expand_paths,  # pyright: ignore[reportPrivateUsage]  # sarj-noqa: SARJ048 — white-box CLI test
+)
 
 
 if TYPE_CHECKING:

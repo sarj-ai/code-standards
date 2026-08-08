@@ -24,12 +24,6 @@ import {
 type MessageIds = "noSecretInLog" | "noRawBodyInLog";
 type Options = readonly [LoggingOptions?];
 
-/**
- * The shared metadata set plus the log-specific extras. Logging a secret's
- * label, expiry, ARN, URL, scope, or the DI component that holds it is metadata
- * ABOUT the credential, never the credential bytes, so it must not fire here —
- * `prefer-constant-time-secret-compare` uses the narrower shared set.
- */
 const LOG_INNOCUOUS_WORDS: ReadonlySet<string> = new Set([
   ...INNOCUOUS_WORDS,
   "name",
@@ -90,13 +84,6 @@ function isSecretKeyword(name: string): boolean {
   return isSecretName(name, LOG_INNOCUOUS_WORDS);
 }
 
-/**
- * True if `prop`'s value is the raw secret rather than a redacted/derived form.
- * Shorthand (`{ token }`), a bare identifier (`{ apiKey: theKey }`), or a plain
- * member access (`{ apiKey: config.apiKey }`) all carry the secret verbatim. A
- * call (`token.slice(0, 6)`, `mask(token)`), template literal, ternary, concat,
- * or literal placeholder (`"***"`) is already redacted — logging it is safe.
- */
 function isRawSecretValue(prop: TSESTree.Property): boolean {
   if (prop.shorthand) {
     return true;
@@ -143,6 +130,20 @@ const BLOB_REDACTION_TOKENS: ReadonlySet<string> = new Set([
   "public",
 ]);
 
+function rawBlobValueName(value: TSESTree.Node): string | null {
+  if (value.type === "Identifier") {
+    return isRawBlobName(value.name) ? value.name : null;
+  }
+  if (
+    value.type === "MemberExpression" &&
+    !value.computed &&
+    value.property.type === "Identifier"
+  ) {
+    return isRawBlobName(value.property.name) ? value.property.name : null;
+  }
+  return null;
+}
+
 /** True if the name names a raw request/response blob and is not a derived form. */
 function isRawBlobName(name: string): boolean {
   if (REDACTION_RE.test(name) || BLOB_REDACTION_RE.test(name)) {
@@ -163,27 +164,6 @@ function isRawBlobName(name: string): boolean {
   }
   const last = tokens.at(-1);
   return last !== undefined && RAW_BLOB_WORDS.has(last);
-}
-
-/**
- * The blob name a logged value carries VERBATIM, or null when it does not carry
- * one. A bare identifier is the whole object; a non-computed member access is
- * judged by its PROPERTY, so `res.body` is the blob but `body.id` is a picked
- * field. Every other shape — call, template, literal, ternary, spread — has
- * already been through the author's hands and is left alone.
- */
-function rawBlobValueName(value: TSESTree.Node): string | null {
-  if (value.type === "Identifier") {
-    return isRawBlobName(value.name) ? value.name : null;
-  }
-  if (
-    value.type === "MemberExpression" &&
-    !value.computed &&
-    value.property.type === "Identifier"
-  ) {
-    return isRawBlobName(value.property.name) ? value.property.name : null;
-  }
-  return null;
 }
 
 /** The static string name of an object-property key, or null when not statically named. */
@@ -228,7 +208,6 @@ export default createRule<Options, MessageIds>({
     // Bodies in a test file are fixtures the author wrote, not production PII.
     const blobArmApplies = !isTestFile(context.filename);
 
-    /** Reports a bare positional argument that IS the secret. Did it fire? */
     function reportSecretArgument(arg: TSESTree.Node): boolean {
       const name =
         arg.type === "Identifier"
@@ -245,7 +224,6 @@ export default createRule<Options, MessageIds>({
       return true;
     }
 
-    /** Reports a meta-object property whose key names a secret it carries raw. Did it fire? */
     function reportSecretProperty(prop: TSESTree.Property): boolean {
       const keyName = propertyKeyName(prop);
       if (keyName === null || !isSecretKeyword(keyName) || !isRawSecretValue(prop)) {

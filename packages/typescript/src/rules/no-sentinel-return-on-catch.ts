@@ -233,18 +233,6 @@ function argsIncludeBinding(
   return args.some((arg) => subtreeReadsName(arg, caughtName));
 }
 
-/** The try block guarded by this catch. */
-function tryBlockOf(catchNode: TSESTree.CatchClause): TSESTree.BlockStatement {
-  return catchNode.parent.block;
-}
-
-/** Constructors that throw on malformed input. */
-const SAFE_PARSE_CONSTRUCTORS: ReadonlySet<string> = new Set([
-  "RegExp",
-  "URL",
-  "URLPattern",
-]);
-
 /** Whether a node is a parse-style call or constructor that throws on bad input. */
 function isParseShapedNode(node: TSESTree.Node): boolean {
   if (
@@ -264,11 +252,11 @@ function isParseShapedNode(node: TSESTree.Node): boolean {
   return false;
 }
 
-/** Body-decoding methods of a `Request` / `Response` — they throw on bad input. */
-const BODY_DECODE_METHODS: ReadonlySet<string> = new Set([
-  "json",
-  "text",
-  "arrayBuffer",
+/** Constructors that throw on malformed input. */
+const SAFE_PARSE_CONSTRUCTORS: ReadonlySet<string> = new Set([
+  "RegExp",
+  "URL",
+  "URLPattern",
 ]);
 
 function isBodyDecodeNode(node: TSESTree.Node): boolean {
@@ -280,6 +268,13 @@ function isBodyDecodeNode(node: TSESTree.Node): boolean {
     BODY_DECODE_METHODS.has(node.callee.property.name)
   );
 }
+
+/** Body-decoding methods of a `Request` / `Response` — they throw on bad input. */
+const BODY_DECODE_METHODS: ReadonlySet<string> = new Set([
+  "json",
+  "text",
+  "arrayBuffer",
+]);
 
 /** Whether a return value contains a match outside nested function scopes. */
 function returnsMatching(
@@ -293,23 +288,20 @@ function returnsMatching(
   );
 }
 
-/** The declared return type annotation of the nearest enclosing function, or null. */
-function enclosingReturnTypeNode(
-  node: TSESTree.Node,
-): TSESTree.TypeNode | null {
-  let current: TSESTree.Node | undefined | null = node.parent;
-  while (current !== undefined && current !== null) {
-    if (isFunctionNode(current) && "returnType" in current) {
-      return current.returnType?.typeAnnotation ?? null;
-    }
-    current = current.parent;
+/** Whether an enclosing predicate-named function returns `false` from its catch. */
+function isNamedBooleanPredicate(
+  catchNode: TSESTree.CatchClause,
+  kind: SentinelKind,
+): boolean {
+  if (kind !== "boolean") {
+    return false;
   }
-  return null;
+  const name = enclosingFunctionName(catchNode);
+  return (
+    name !== null &&
+    (PREDICATE_NAME_RE.test(name) || PREDICATE_SUFFIX_RE.test(name))
+  );
 }
-
-/** Names that conventionally declare a boolean-returning function. */
-const PREDICATE_NAME_RE = /^(is|has|can|should|must|does|did|was|were|are)[A-Z]/;
-const PREDICATE_SUFFIX_RE = /(Exists?|Available|Enabled|Disabled)$/;
 
 /** The name of the nearest enclosing function, or null for an anonymous one. */
 function enclosingFunctionName(node: TSESTree.Node): string | null {
@@ -337,22 +329,10 @@ function enclosingFunctionName(node: TSESTree.Node): string | null {
   return null;
 }
 
-/** Whether an enclosing predicate-named function returns `false` from its catch. */
-function isNamedBooleanPredicate(
-  catchNode: TSESTree.CatchClause,
-  kind: SentinelKind,
-): boolean {
-  if (kind !== "boolean") {
-    return false;
-  }
-  const name = enclosingFunctionName(catchNode);
-  return (
-    name !== null &&
-    (PREDICATE_NAME_RE.test(name) || PREDICATE_SUFFIX_RE.test(name))
-  );
-}
+/** Names that conventionally declare a boolean-returning function. */
+const PREDICATE_NAME_RE = /^(is|has|can|should|must|does|did|was|were|are)[A-Z]/;
+const PREDICATE_SUFFIX_RE = /(Exists?|Available|Enabled|Disabled)$/;
 
-/** Whether a boolean-returning function returns `false` from its catch. */
 function isDeclaredBooleanPredicate(
   catchNode: TSESTree.CatchClause,
   kind: SentinelKind,
@@ -371,6 +351,20 @@ function isDeclaredBooleanPredicate(
   return declared?.type === AST_NODE_TYPES.TSBooleanKeyword;
 }
 
+/** The declared return type annotation of the nearest enclosing function, or null. */
+function enclosingReturnTypeNode(
+  node: TSESTree.Node,
+): TSESTree.TypeNode | null {
+  let current: TSESTree.Node | undefined | null = node.parent;
+  while (current !== undefined && current !== null) {
+    if (isFunctionNode(current) && "returnType" in current) {
+      return current.returnType?.typeAnnotation ?? null;
+    }
+    current = current.parent;
+  }
+  return null;
+}
+
 /** Does the try body return a safe-parse-style expression? */
 function tryReturnsSafeParse(catchNode: TSESTree.CatchClause): boolean {
   const tryBlock = tryBlockOf(catchNode);
@@ -385,23 +379,9 @@ function tryReturnsSafeParse(catchNode: TSESTree.CatchClause): boolean {
   return only !== undefined && returnsMatching(only, isBodyDecodeNode);
 }
 
-/** The nearest enclosing function body, or null. */
-function enclosingFunctionBody(
-  node: TSESTree.Node,
-): TSESTree.BlockStatement | null {
-  let current: TSESTree.Node | undefined | null = node.parent;
-  while (current !== undefined && current !== null) {
-    if (
-      isFunctionNode(current) &&
-      "body" in current &&
-      isNode(current.body) &&
-      current.body.type === AST_NODE_TYPES.BlockStatement
-    ) {
-      return current.body;
-    }
-    current = current.parent;
-  }
-  return null;
+/** The try block guarded by this catch. */
+function tryBlockOf(catchNode: TSESTree.CatchClause): TSESTree.BlockStatement {
+  return catchNode.parent.block;
 }
 
 /** Whether a normal path returns the same sentinel kind as the catch. */
@@ -422,6 +402,25 @@ function functionReturnsSameSentinelKindElsewhere(
     }
     return returnedSentinelKinds(current.argument).has(kind);
   });
+}
+
+/** The nearest enclosing function body, or null. */
+function enclosingFunctionBody(
+  node: TSESTree.Node,
+): TSESTree.BlockStatement | null {
+  let current: TSESTree.Node | undefined | null = node.parent;
+  while (current !== undefined && current !== null) {
+    if (
+      isFunctionNode(current) &&
+      "body" in current &&
+      isNode(current.body) &&
+      current.body.type === AST_NODE_TYPES.BlockStatement
+    ) {
+      return current.body;
+    }
+    current = current.parent;
+  }
+  return null;
 }
 
 /** Sentinel kinds reachable through a direct, ternary, or fallback return. */
@@ -494,7 +493,6 @@ export default createRule<Options, MessageIds>({
 
     const matcher = createLogMatcher(loggingOptions);
 
-    /** Whether the catch logs or reports its caught error. */
     function logsOrReportsError(
       catchBody: TSESTree.BlockStatement,
       caughtName: string | null,

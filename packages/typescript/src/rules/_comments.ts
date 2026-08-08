@@ -5,9 +5,6 @@
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
-// S1 — external reference: URL, ticket key, RFC/PEP/CVE, bare issue number, or
-// an email/handle domain. Ticket keys allow letters after the first digit
-// (`PLATFORM-1YC`) and exclude the encoding acronyms sharing the shape.
 const REF_RE =
   /https?:\/\/|\bRFC[- ]?\d+|\bPEP[- ]?\d+|\bCVE-\d{4}|\b(?!UTF-|SHA-|ISO-|AES-|CRC-|MD-|PCM-|EOF-|API-|BASE-)[A-Z][A-Z0-9]{1,9}-\d[A-Z0-9]{0,5}\b|(?<![&\w])#\d{2,6}\b|@[a-z][\w.-]*\.(?:us|com|ai|io|net|org|dev)\b/;
 
@@ -54,29 +51,14 @@ const PROTECTED_SIGNALS: readonly RegExp[] = [
   VENDOR_RE,
 ];
 
-/**
- * True when a comment carries any of the nine protected-class signals.
- *
- * EXEMPTION FLOOR ONLY — a false result is not evidence the comment is worthless.
- */
 export function isProtected(body: string): boolean {
   return PROTECTED_SIGNALS.some((signal) => signal.test(body));
 }
 
-/**
- * True when a comment cites a ticket, URL, RFC/PEP/CVE or issue number (signal
- * S1 alone). Naming where a decision is recorded is the one thing code cannot
- * do, and it separates an owned scoping note from an unowned admission.
- */
 export function hasExternalReference(body: string): boolean {
   return REF_RE.test(body);
 }
 
-/**
- * Words that say nothing about *which* code a comment describes. Kept in step
- * with `_comments.py`: shrinking the list costs recall, growing it costs
- * precision by discounting a genuinely novel word.
- */
 export const STOPWORDS: ReadonlySet<string> = new Set(
   `a an the this that these those it its their his her our your my
    is are was were be been being am do does did done doing has have had having
@@ -106,15 +88,6 @@ export function splitIdentifier(token: string): string[] {
   return parts;
 }
 
-/**
- * Fold the common English inflections so `updates` / `updating` match `update`.
- *
- * The trailing-`e` strip is what makes the fold *symmetric*: without it
- * `creates` / `creating` reduce to `creat` while `create` stays `create`, and
- * the two never match — the shape that most often made a restatement look
- * novel. Deliberately crude otherwise; every extra conflation is a chance to
- * call a novel word a restatement.
- */
 export function stem(word: string): string {
   let base = word;
   for (const suffix of ["ing", "ied", "ies", "ers", "er", "ed", "es", "s"]) {
@@ -156,9 +129,6 @@ const NARRATION_MAX_WORDS = 6;
 const NARRATION_MIN_CONTENT = 1;
 const TOKEN_PLURAL_MIN = 4;
 
-// Statements that compute something a comment could be restating. A block, a
-// class/function/type declaration, an `if`, a `for` — anything whose body the
-// comment could be labelling instead — is deliberately absent.
 const RESTATABLE_STATEMENTS: ReadonlySet<string> = new Set([
   AST_NODE_TYPES.ExpressionStatement,
   AST_NODE_TYPES.ReturnStatement,
@@ -166,8 +136,6 @@ const RESTATABLE_STATEMENTS: ReadonlySet<string> = new Set([
   AST_NODE_TYPES.VariableDeclaration,
 ]);
 
-// Verbs that describe the mechanics of the next statement. A comment opening
-// with anything else (a noun, "because", "we", a ticket id) is not narration.
 const NARRATION_VERB_RE =
   /^(?:add|append|assign|build|calculate|call|check|clear|close|compute|convert|copy|count|create|declare|decrement|define|delete|extract|fetch|filter|find|format|generate|get|handle|increment|init|initialise|initialize|insert|iterate|join|load|log|loop|make|map|merge|open|parse|print|process|push|read|remove|render|reset|return|save|send|set|setup|sort|split|start|stop|store|update|validate|wrap|write)(?:s|es|d|ed|ing)?$/i;
 
@@ -186,40 +154,6 @@ export function normalizeToken(word: string): string {
   return lower.length > TOKEN_PLURAL_MIN && lower.endsWith("s") && !lower.endsWith("ss")
     ? lower.slice(0, -1)
     : lower;
-}
-
-/** Every identifier in a slice of source, plus its parts, with plurals folded. */
-function headTokens(source: string): ReadonlySet<string> {
-  const tokens = new Set<string>();
-  for (const identifier of source.match(/[A-Za-z_$][\w$]*/g) ?? []) {
-    tokens.add(normalizeToken(identifier));
-    for (const part of identifier.split(/[_$]+|(?<=[a-z0-9])(?=[A-Z])/)) {
-      if (part.length > 0) tokens.add(normalizeToken(part));
-    }
-  }
-  return tokens;
-}
-
-/** The slice of ESLint's `SourceCode` these shapes read. */
-export interface StatementReader {
-  getTokenAfter: (
-    node: TSESTree.Comment,
-    options: { includeComments: boolean },
-  ) => TSESTree.Token | null;
-  getNodeByRangeIndex: (index: number) => TSESTree.Node | null;
-  getText: (node: TSESTree.Node) => string;
-}
-
-/** A declaration with nothing but a zero/empty seed computes nothing to restate. */
-function isTrivialInitializer(node: TSESTree.VariableDeclaration): boolean {
-  return node.declarations.every((declarator) => {
-    const init = declarator.init;
-    if (init == null || init.type === AST_NODE_TYPES.Literal) return true;
-    return (
-      (init.type === AST_NODE_TYPES.ArrayExpression && init.elements.length === 0) ||
-      (init.type === AST_NODE_TYPES.ObjectExpression && init.properties.length === 0)
-    );
-  });
 }
 
 /**
@@ -247,16 +181,28 @@ export function restatableStatementBelow(comment: TSESTree.Comment, sourceCode: 
   return null;
 }
 
-/**
- * True when a short verb-led comment adds nothing to the statement beneath it:
- * every content word after the opening verb already appears in that statement's
- * head — its assignment target or its callee.
- *
- * Corroboration is TOTAL: one unmatched word means the comment carries
- * something the code does not, so it stays. Only the head counts — everything
- * up to the first `(` — so the comment must restate what the statement
- * *computes*, not something it merely passes as an argument.
- */
+/** The slice of ESLint's `SourceCode` these shapes read. */
+export interface StatementReader {
+  getTokenAfter: (
+    node: TSESTree.Comment,
+    options: { includeComments: boolean },
+  ) => TSESTree.Token | null;
+  getNodeByRangeIndex: (index: number) => TSESTree.Node | null;
+  getText: (node: TSESTree.Node) => string;
+}
+
+/** A declaration with nothing but a zero/empty seed computes nothing to restate. */
+function isTrivialInitializer(node: TSESTree.VariableDeclaration): boolean {
+  return node.declarations.every((declarator) => {
+    const init = declarator.init;
+    if (init == null || init.type === AST_NODE_TYPES.Literal) return true;
+    return (
+      (init.type === AST_NODE_TYPES.ArrayExpression && init.elements.length === 0) ||
+      (init.type === AST_NODE_TYPES.ObjectExpression && init.properties.length === 0)
+    );
+  });
+}
+
 export function restatesStatementHead(body: string, statement: string | null): boolean {
   if (statement === null) return false;
   const words = body.match(/[A-Za-z][\w$]*/g) ?? [];
@@ -271,4 +217,16 @@ export function restatesStatementHead(body: string, statement: string | null): b
   const head = statement.split("(")[0] ?? statement;
   const code = headTokens(head);
   return content.every((word) => code.has(word));
+}
+
+/** Every identifier in a slice of source, plus its parts, with plurals folded. */
+function headTokens(source: string): ReadonlySet<string> {
+  const tokens = new Set<string>();
+  for (const identifier of source.match(/[A-Za-z_$][\w$]*/g) ?? []) {
+    tokens.add(normalizeToken(identifier));
+    for (const part of identifier.split(/[_$]+|(?<=[a-z0-9])(?=[A-Z])/)) {
+      if (part.length > 0) tokens.add(normalizeToken(part));
+    }
+  }
+  return tokens;
 }
