@@ -134,15 +134,17 @@ def _check_class_scope(path: Path, cls: ast.ClassDef, code: str, external_caller
         name = m.name
         callees = graph.setdefault(name, set())
         for n in _runtime_nodes(m.body):
-            if (
-                isinstance(n, ast.Attribute)
-                and isinstance(n.ctx, ast.Load)
-                and _is_same_class_ref(n.value, cls.name)
-                and n.attr in all_methods
-                and n.attr != name
-            ):
-                callees.add(n.attr)
-                _record_ref_line(ref_lines, name, n.attr, n.lineno)
+            if not isinstance(n, ast.Attribute) or not isinstance(n.ctx, ast.Load) or n.attr not in all_methods:
+                continue
+            if _is_same_class_ref(n.value, cls.name):
+                if n.attr != name:
+                    callees.add(n.attr)
+                    _record_ref_line(ref_lines, name, n.attr, n.lineno)
+            else:
+                # `peer._helper()` may target another instance of this class.
+                # Without type information, claiming `self._helper()` is the
+                # sole caller would be noisier than conservatively pinning it.
+                pinned.add(n.attr)
 
     diags: list[Diagnostic] = []
     for name, m in unique.items():

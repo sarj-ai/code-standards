@@ -46,6 +46,10 @@ INLINE_COLUMN_PATTERN = re.compile(
     re.IGNORECASE,
 )
 PRIMARY_OR_UNIQUE_KEYWORD = re.compile(r"\b(PRIMARY\s+KEY|UNIQUE)\b", re.IGNORECASE)
+INLINE_PK_OR_UNIQUE_PATTERN = re.compile(
+    r"(?:\bADD\s+(?:COLUMN\s+)?(?:IF\s+NOT\s+EXISTS\s+)?)?\b([a-zA-Z0-9_\"]+)\b[\s\S]*?\b(?:PRIMARY\s+KEY|UNIQUE)\b",
+    re.IGNORECASE,
+)
 _FK_CLEAN_PATTERN = re.compile(
     r'\bFOREIGN\s+KEY\s*\([^)]*\)\s*REFERENCES\s+[a-zA-Z0-9_"\.]+(?:\([^)]*\))?', re.IGNORECASE
 )
@@ -81,6 +85,18 @@ def _collect_indexes(masked: str) -> dict[str, set[tuple[str, ...]]]:
             if pk_cols:
                 indexed_cols.setdefault(full_table, set()).add(pk_cols)
                 indexed_cols.setdefault(base_table, set()).add(pk_cols)
+        body = stmt[table_match.end() :]
+        for segment in body.split(","):
+            if TABLE_PK_OR_UNIQUE_PATTERN.search(segment):
+                continue
+            inline_match = INLINE_PK_OR_UNIQUE_PATTERN.search(segment)
+            if inline_match is None:
+                continue
+            column = _normalize_name(inline_match.group(1))
+            if column in RESERVED_KEYWORDS:
+                continue
+            indexed_cols.setdefault(full_table, set()).add((column,))
+            indexed_cols.setdefault(base_table, set()).add((column,))
     return indexed_cols
 
 
@@ -167,19 +183,17 @@ class RequireFkIndex(Rule):
 
         char_offset = 0
         for stmt in masked.split(";"):
-            if "REFERENCES" in stmt.upper():
-                table_match = TABLE_SCOPE_PATTERN.search(stmt)
-                if table_match:
-                    full_table = _normalize_name(table_match.group(1))
-                    base_table = full_table.split(".")[-1]
-                    table_indexes = indexed_cols_by_table.get(full_table, set()) | indexed_cols_by_table.get(
-                        base_table, set()
-                    )
-                    leading_indexed = {idx[0] for idx in table_indexes if idx}
-                    leading_indexed |= _sibling_indexed(path, (full_table, base_table))
+            if "REFERENCES" in stmt.upper() and (table_match := TABLE_SCOPE_PATTERN.search(stmt)):
+                full_table = _normalize_name(table_match.group(1))
+                base_table = full_table.split(".")[-1]
+                table_indexes = indexed_cols_by_table.get(full_table, set()) | indexed_cols_by_table.get(
+                    base_table, set()
+                )
+                leading_indexed = {idx[0] for idx in table_indexes if idx}
+                leading_indexed |= _sibling_indexed(path, (full_table, base_table))
 
-                    ctx = _StmtContext(path, masked, stmt, char_offset, full_table, table_match.end(), is_dump)
-                    diags.extend(self._check_fk_constraints(ctx, leading_indexed))
+                ctx = _StmtContext(path, masked, stmt, char_offset, full_table, table_match.end(), is_dump)
+                diags.extend(self._check_fk_constraints(ctx, leading_indexed))
 
             char_offset += len(stmt) + 1
         return diags
@@ -223,27 +237,24 @@ class RequireFkIndex(Rule):
                 "REFERENCES" in segment.upper()
                 and not TABLE_FK_PATTERN.search(segment)
                 and not PRIMARY_OR_UNIQUE_KEYWORD.search(segment)
-                and "CONSTRAINT" not in segment.upper()
                 and "FOREIGN KEY" not in segment.upper()
-            ):
-                col_match = INLINE_COLUMN_PATTERN.search(segment)
-                if col_match:
-                    col_name = _normalize_name(col_match.group(1))
-                    if col_name not in RESERVED_KEYWORDS and col_name not in leading_indexed:
-                        # Point at the column token itself, not the segment start,
-                        # so a multi-line column definition lands on its own line.
-                        col_offset = ctx.char_offset + segment_start + col_match.start(1)
-                        lineno = ctx.masked[:col_offset].count("\n") + 1
-                        col_pos = col_offset - ctx.masked.rfind("\n", 0, col_offset)
-                        diags.append(
-                            Diagnostic(
-                                path=ctx.path,
-                                line=lineno,
-                                col=max(1, col_pos),
-                                code=self.code,
-                                message=_message(col_name, ctx.full_table, is_dump=ctx.is_dump),
-                            )
+            ) and (col_match := INLINE_COLUMN_PATTERN.search(segment)):
+                col_name = _normalize_name(col_match.group(1))
+                if col_name not in RESERVED_KEYWORDS and col_name not in leading_indexed:
+                    # Point at the column token itself, not the segment start,
+                    # so a multi-line column definition lands on its own line.
+                    col_offset = ctx.char_offset + segment_start + col_match.start(1)
+                    lineno = ctx.masked[:col_offset].count("\n") + 1
+                    col_pos = col_offset - ctx.masked.rfind("\n", 0, col_offset)
+                    diags.append(
+                        Diagnostic(
+                            path=ctx.path,
+                            line=lineno,
+                            col=max(1, col_pos),
+                            code=self.code,
+                            message=_message(col_name, ctx.full_table, is_dump=ctx.is_dump),
                         )
+                    )
             segment_start += len(segment) + 1
         return diags
 

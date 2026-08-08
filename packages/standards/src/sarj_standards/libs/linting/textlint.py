@@ -205,7 +205,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
     }
 )
 
-_META_BY_CODE: Final = {meta.code: meta for meta in REGISTRY.values()}
+_META_BY_CODE: Final[Mapping[str, RuleMeta]] = MappingProxyType({meta.code: meta for meta in REGISTRY.values()})
 
 
 def is_text_path(path: Path) -> bool:

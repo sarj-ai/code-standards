@@ -202,8 +202,7 @@ def arg_entries(block: str) -> list[tuple[str, str, str]]:
     """Parse an `Args:` block into `(name, type, description)` triples."""
     entries: list[list[str]] = []
     for raw in block.splitlines():
-        match = _ARG_ENTRY_RE.match(raw)
-        if match is not None:
+        if match := _ARG_ENTRY_RE.match(raw):
             entries.append([match.group("name"), match.group("type") or "", match.group("desc").strip()])
         elif entries and raw.strip():
             entries[-1][2] += " " + raw.strip()

@@ -19,6 +19,7 @@ PROTECTED_TYPES = frozenset(
     {
         # GCP
         "google_sql_database_instance",
+        "google_sql_database",
         "google_container_cluster",
         "google_bigquery_table",
         "google_bigquery_dataset",
@@ -62,6 +63,8 @@ _VIEW_CHILDREN = ("view", "materialized_view")
 _PROTECTION_ATTRS = ("deletion_protection", "deletion_protection_enabled")
 _RESOURCE_PROTECTION_ATTRS: MappingProxyType[str, tuple[str, ...]] = MappingProxyType(
     {
+        # Cloud SQL databases expose deletion_policy, not a boolean protection flag.
+        "google_sql_database": (),
         "google_redis_instance": ("deletion_protection",),
         "google_filestore_instance": ("deletion_protection_enabled",),
     }
@@ -75,6 +78,7 @@ _DELETION_POLICY_TYPES = frozenset(
         "google_filestore_instance",
         "google_redis_instance",
         "google_spanner_database",
+        "google_sql_database",
         "google_sql_database_instance",
     }
 )

@@ -49,6 +49,18 @@ ruleTester.run("no-silent-promise-catch", rule, {
       name: "allows a catch fallback consumed by the next chain link",
       code: "evaluate.catch(() => null).then(() => { done(); });",
     },
+    {
+      name: "allows a two-argument then fallback consumed by the next chain link",
+      code: "evaluate.then(render, () => null).then(() => { done(); });",
+    },
+    {
+      name: "allows a one-argument then",
+      code: "evaluate.then(render);",
+    },
+    {
+      name: "allows an explained two-argument then rejection handler",
+      code: "// Missing data is expected here\nevaluate.then(render, () => null);",
+    },
     // Handler that logs is fine.
     {
       code: "p.catch((err) => logger.error({ err }, 'lookup failed'));",
@@ -129,6 +141,16 @@ ruleTester.run("no-silent-promise-catch", rule, {
     },
   ],
   invalid: [
+    {
+      name: "reports a silent rejection handler in the second then argument",
+      code: "fetchUser(id).then(render, () => null);",
+      errors: [{ messageId: "silentCatch" }],
+    },
+    {
+      name: "reports an empty second-argument then handler",
+      code: "fetchUser(id).then(render, () => {});",
+      errors: [{ messageId: "silentCatch" }],
+    },
     // The comment guard ignores tooling directives — they are not an explanation.
     {
       code: [

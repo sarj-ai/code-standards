@@ -21,30 +21,46 @@ type Options = readonly [LoggingOptions?];
 
 type SentinelKind = "nullish" | "boolean" | "array" | "object" | "string";
 
+/** Peel type-only wrappers while preserving runtime expressions such as `value!`. */
+function unwrapSentinelExpression(
+  arg: TSESTree.Expression | null,
+): TSESTree.Expression | null {
+  let current = arg;
+  while (
+    current?.type === AST_NODE_TYPES.TSAsExpression ||
+    current?.type === AST_NODE_TYPES.TSTypeAssertion ||
+    current?.type === AST_NODE_TYPES.TSSatisfiesExpression
+  ) {
+    current = current.expression;
+  }
+  return current;
+}
+
 /** The sentinel "kind" of a returned expression, or null if not a sentinel. */
 function sentinelKind(arg: TSESTree.Expression | null): SentinelKind | null {
-  if (arg === null) {
+  const value = unwrapSentinelExpression(arg);
+  if (value === null) {
     return null;
   }
-  if (arg.type === AST_NODE_TYPES.Literal) {
-    if (arg.value === null) {
+  if (value.type === AST_NODE_TYPES.Literal) {
+    if (value.value === null) {
       return "nullish";
     }
-    if (typeof arg.value === "boolean") {
+    if (typeof value.value === "boolean") {
       return "boolean";
     }
-    if (typeof arg.value === "string") {
+    if (typeof value.value === "string") {
       return "string";
     }
     return null;
   }
-  if (arg.type === AST_NODE_TYPES.Identifier && arg.name === "undefined") {
+  if (value.type === AST_NODE_TYPES.Identifier && value.name === "undefined") {
     return "nullish";
   }
-  if (arg.type === AST_NODE_TYPES.ArrayExpression) {
+  if (value.type === AST_NODE_TYPES.ArrayExpression) {
     return "array";
   }
-  if (arg.type === AST_NODE_TYPES.ObjectExpression) {
+  if (value.type === AST_NODE_TYPES.ObjectExpression) {
     return "object";
   }
   return null;
@@ -52,24 +68,25 @@ function sentinelKind(arg: TSESTree.Expression | null): SentinelKind | null {
 
 /** Whether a returned expression is one of the swallowing sentinels we flag. */
 function isSentinelArgument(arg: TSESTree.Expression | null): boolean {
-  if (arg === null) {
+  const value = unwrapSentinelExpression(arg);
+  if (value === null) {
     return false;
   }
-  if (arg.type === AST_NODE_TYPES.Literal && arg.value === null) {
+  if (value.type === AST_NODE_TYPES.Literal && value.value === null) {
     return true;
   }
-  if (arg.type === AST_NODE_TYPES.Literal && arg.value === false) {
+  if (value.type === AST_NODE_TYPES.Literal && value.value === false) {
     return true;
   }
-  if (arg.type === AST_NODE_TYPES.Identifier && arg.name === "undefined") {
+  if (value.type === AST_NODE_TYPES.Identifier && value.name === "undefined") {
     return true;
   }
-  if (arg.type === AST_NODE_TYPES.ArrayExpression && arg.elements.length === 0) {
+  if (value.type === AST_NODE_TYPES.ArrayExpression && value.elements.length === 0) {
     return true;
   }
   if (
-    arg.type === AST_NODE_TYPES.ObjectExpression &&
-    arg.properties.length === 0
+    value.type === AST_NODE_TYPES.ObjectExpression &&
+    value.properties.length === 0
   ) {
     return true;
   }
@@ -379,6 +396,32 @@ function tryReturnsSafeParse(catchNode: TSESTree.CatchClause): boolean {
   return only !== undefined && returnsMatching(only, isBodyDecodeNode);
 }
 
+/**
+ * `try { throw Error(); } catch (error) { inspect(error.stack); return null; }`
+ * deliberately creates an Error to capture the current stack; no operational
+ * failure is swallowed. Keep this exemption exact so ordinary caught errors
+ * remain visible.
+ */
+function isIntentionalStackCapture(
+  catchNode: TSESTree.CatchClause,
+  caughtName: string | null,
+): boolean {
+  if (caughtName === null) return false;
+  const tryBody = tryBlockOf(catchNode).body;
+  const only = tryBody.length === 1 ? tryBody[0] : undefined;
+  if (only?.type !== AST_NODE_TYPES.ThrowStatement) return false;
+  const thrown = unwrapSentinelExpression(only.argument);
+  const constructsError =
+    (thrown?.type === AST_NODE_TYPES.CallExpression ||
+      thrown?.type === AST_NODE_TYPES.NewExpression) &&
+    thrown.callee.type === AST_NODE_TYPES.Identifier &&
+    thrown.callee.name === "Error";
+  if (!constructsError) return false;
+  return catchNode.body.body
+    .slice(0, -1)
+    .some((statement) => subtreeReadsName(statement, caughtName));
+}
+
 /** The try block guarded by this catch. */
 function tryBlockOf(catchNode: TSESTree.CatchClause): TSESTree.BlockStatement {
   return catchNode.parent.block;
@@ -543,6 +586,10 @@ export default createRule<Options, MessageIds>({
         }
 
         if (tryReturnsSafeParse(node)) {
+          return;
+        }
+
+        if (isIntentionalStackCapture(node, caughtName)) {
           return;
         }
 

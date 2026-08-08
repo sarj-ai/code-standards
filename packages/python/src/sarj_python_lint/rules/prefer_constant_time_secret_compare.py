@@ -144,13 +144,16 @@ def _same_scope_compares(func: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterat
 
 def _is_secret_operand(node: ast.AST, *, crypto_module: bool) -> bool:
     """Report whether the operand's identifier names an auth secret worth constant-time compare."""
-    if isinstance(node, ast.NamedExpr):
-        node = node.target
-    if isinstance(node, ast.Name):
-        return _is_auth_secret_name(node.id, crypto_module=crypto_module)
-    if isinstance(node, ast.Attribute):
-        return _is_auth_secret_name(node.attr, crypto_module=crypto_module)
-    return False
+    match node:
+        case ast.NamedExpr(target=ast.Name(id=name)) | ast.Name(id=name) | ast.Attribute(attr=name):
+            return _is_auth_secret_name(name, crypto_module=crypto_module)
+        case ast.Subscript(slice=ast.Constant(value=str() as key)):
+            return not _is_constant_reference(key) and _is_auth_secret_name(
+                key,
+                crypto_module=crypto_module,
+            )
+        case _:
+            return False
 
 
 # Treat signature as an authenticator only when the surrounding module is cryptographic.

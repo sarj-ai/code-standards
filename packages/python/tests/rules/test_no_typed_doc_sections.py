@@ -33,6 +33,46 @@ def test_explicit_return_type_restatement_is_rejected(section: str) -> None:
     assert len(NoTypedDocSections().check(Path("app.py"), source)) == 1
 
 
+@pytest.mark.parametrize("section", ["Returns", "Return", "Yields", "Yield"])
+@pytest.mark.parametrize("annotation", ["str", "dict[str, object]", "list[Widget]", "None"])
+def test_bare_single_line_return_type_restatement_is_rejected(section: str, annotation: str) -> None:
+    source = f'''def decode(value: str) -> {annotation}:
+    """Decode the value.
+
+    {section}:
+        {annotation}
+    """
+    raise NotImplementedError
+'''
+    findings = NoTypedDocSections().check(Path("app.py"), source)
+
+    assert len(findings) == 1
+    assert findings[0].line == 5
+
+
+@pytest.mark.parametrize(
+    ("annotation", "body"),
+    [
+        ("str", "bytes"),
+        ("str", "The decoded value."),
+        ("str", "str\n        Preserves the original encoding."),
+        ("Iterator[int]", "int"),
+        ("str", "str | None"),
+    ],
+)
+def test_bare_return_type_requires_one_exact_type_only_line(annotation: str, body: str) -> None:
+    source = f'''def decode(value: str) -> {annotation}:
+    """Decode the value.
+
+    Returns:
+        {body}
+    """
+    raise NotImplementedError
+'''
+
+    assert NoTypedDocSections().check(Path("app.py"), source) == []
+
+
 def test_numpy_parameter_type_restatement_is_rejected() -> None:
     source = '''def decode(value: str) -> str:
     """Decode the value.

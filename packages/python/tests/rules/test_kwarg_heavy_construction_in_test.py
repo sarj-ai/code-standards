@@ -417,5 +417,60 @@ def test_two():
     assert len(_check(src)) == 2
 
 
+def test_unrelated_dotted_callees_with_same_terminal_name_do_not_form_a_repeat():
+    src = f"""
+def test_one():
+    assert sales.Order({_NINE_KWARGS})
+
+def test_two():
+    assert support.Order({_NINE_KWARGS})
+"""
+    assert _check(src) == []
+
+
+def test_same_dotted_callee_still_forms_a_repeat():
+    src = f"""
+def test_one():
+    assert sales.models.Order({_NINE_KWARGS})
+
+def test_two():
+    assert sales.models.Order({_NINE_KWARGS})
+"""
+    assert len(_check(src)) == 2
+
+
+def test_different_dotted_prefix_depths_do_not_collide():
+    src = f"""
+def test_one():
+    assert models.Order({_NINE_KWARGS})
+
+def test_two():
+    assert app.models.Order({_NINE_KWARGS})
+"""
+    assert _check(src) == []
+
+
+def test_dynamic_receiver_has_no_stable_repeat_identity():
+    src = f"""
+def test_one():
+    assert factory().Order({_NINE_KWARGS})
+
+def test_two():
+    assert factory().Order({_NINE_KWARGS})
+"""
+    assert _check(src) == []
+
+
+def test_dotted_mock_assertions_remain_exempt():
+    src = f"""
+def test_one(mock_hook):
+    mock_hook.assert_called_once_with({_NINE_KWARGS})
+
+def test_two(mock_hook):
+    mock_hook.assert_called_once_with({_NINE_KWARGS})
+"""
+    assert _check(src) == []
+
+
 def test_message_says_helper_not_builder():
     assert "extract a helper with defaults" in _check(_WIDE_IN_TEST)[0].message.lower()

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from sarj_python_lint.__main__ import deduplicate_diagnostics, main
+from sarj_python_lint.__main__ import analyze, deduplicate_diagnostics, main
 from sarj_python_lint.rule_base import Diagnostic, Severity
 
 
@@ -25,6 +25,65 @@ def test_typed_section_finding_suppresses_per_section_twins() -> None:
     diagnostics = [_diagnostic("SARJ086"), _diagnostic("SARJ087"), _diagnostic("SARJ092")]
 
     assert [finding.code for finding in deduplicate_diagnostics(diagnostics)] == ["SARJ092"]
+
+
+def test_typed_section_precedence_uses_the_owning_docstring_across_lines(tmp_path: Path) -> None:
+    source = tmp_path / "service.py"
+    source.write_text(
+        "def decode(value: str) -> str:\n"
+        '    """Decode a value.\n\n'
+        "    Args:\n"
+        "        value (str): Value to decode.\n"
+        '    """\n'
+        "    return value\n",
+        encoding="utf-8",
+    )
+
+    diagnostics = analyze(["docstring-args-restate-signature", "no-typed-doc-sections"], [source])
+
+    assert [finding.code for finding in diagnostics] == ["SARJ092"]
+    assert diagnostics[0].line == 5
+
+
+def test_typed_return_precedence_uses_the_owning_docstring_across_lines(tmp_path: Path) -> None:
+    source = tmp_path / "service.py"
+    source.write_text(
+        "def decode(value: str) -> str:\n"
+        '    """Produce the wire representation.\n\n'
+        "    Returns:\n"
+        "        str\n"
+        '    """\n'
+        "    return value\n",
+        encoding="utf-8",
+    )
+
+    diagnostics = analyze(["docstring-returns-restate-signature", "no-typed-doc-sections"], [source])
+
+    assert [finding.code for finding in diagnostics] == ["SARJ092"]
+    assert diagnostics[0].line == 5
+
+
+def test_owner_precedence_never_crosses_docstrings(tmp_path: Path) -> None:
+    source = tmp_path / "service.py"
+    source.write_text(
+        "def decode(value: str) -> str:\n"
+        '    """Decode a value.\n\n'
+        "    Args:\n"
+        "        value (str): Value to decode.\n"
+        '    """\n'
+        "    return value\n\n"
+        "def encode(value: str) -> str:\n"
+        '    """Encode a value.\n\n'
+        "    Args:\n"
+        "        value: Value to encode.\n"
+        '    """\n'
+        "    return value\n",
+        encoding="utf-8",
+    )
+
+    diagnostics = analyze(["docstring-args-restate-signature", "no-typed-doc-sections"], [source])
+
+    assert [finding.code for finding in diagnostics] == ["SARJ086", "SARJ092"]
 
 
 def test_closed_local_union_finding_suppresses_generic_type_dispatch() -> None:

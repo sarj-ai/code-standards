@@ -286,15 +286,19 @@ def _typed_restatement_lines(
     if node.args.kwarg is not None and node.args.kwarg.annotation is not None:
         annotations[f"**{node.args.kwarg.arg}"] = _normalise_type(ast.unparse(node.args.kwarg.annotation))
     return_type = _normalise_type(ast.unparse(node.returns)) if node.returns is not None else ""
+    body_line_counts = _section_body_line_counts(doc)
 
     active: str | None = None
+    active_header: int | None = None
     result: list[int] = []
     for index, raw in enumerate(doc.splitlines()):
         if heading := _SECTION_HEADING_RE.match(raw):
             active = heading.group(1)
+            active_header = index
             continue
         if _ANY_SECTION_HEADING_RE.match(raw):
             active = None
+            active_header = None
             continue
         if not raw.strip() or active is None:
             continue
@@ -305,7 +309,28 @@ def _typed_restatement_lines(
         elif match := _RETURN_TYPE_ENTRY_RE.match(raw):
             if _normalise_type(match.group(1)) == return_type:
                 result.append(docstring_line + index)
+        elif (
+            active_header is not None
+            and body_line_counts.get(active_header) == 1
+            and _normalise_type(raw.strip()) == return_type
+        ):
+            result.append(docstring_line + index)
     return tuple(result)
+
+
+def _section_body_line_counts(doc: str) -> dict[int, int]:
+    """Count non-blank body lines under each typed-section heading."""
+    counts: dict[int, int] = {}
+    active_header: int | None = None
+    for index, raw in enumerate(doc.splitlines()):
+        if _SECTION_HEADING_RE.match(raw):
+            active_header = index
+            counts[index] = 0
+        elif _ANY_SECTION_HEADING_RE.match(raw):
+            active_header = None
+        elif active_header is not None and raw.strip():
+            counts[active_header] += 1
+    return counts
 
 
 def _normalise_type(value: str) -> str:

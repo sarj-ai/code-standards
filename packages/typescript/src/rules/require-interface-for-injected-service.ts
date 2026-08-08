@@ -27,7 +27,7 @@ const BUILTIN_CONTAINER_TYPE_RE =
   /^(?:Record|Map|WeakMap|Set|WeakSet|Array|ReadonlyArray|ReadonlyMap|ReadonlySet|Promise|Partial|Required|Readonly|Pick|Omit|Exclude|Extract|NonNullable|Awaited|Parameters|ReturnType|InstanceType)$/;
 
 /** Nominal leaf values are constructor data, not collaborators with swappable behavior. */
-const VALUE_TYPE_RE = /^(?:ArrayBuffer|Blob|Buffer|Date|RegExp|URL|URLSearchParams)$/;
+const VALUE_TYPE_RE = /^(?:ArrayBuffer|Blob|Buffer|Date|NodePath|RegExp|URL|URLSearchParams)$/;
 
 const TRANSPORT_WRAPPER_NAME_RE = /(?:Client$|^Http[A-Z])/;
 /** Error values carry diagnostic data; their callable formatting surface is not a service port. */
@@ -794,7 +794,10 @@ export default createRule<Options, MessageIds>({
 
         const ctor = node.body.body.find(
           (member): member is TSESTree.MethodDefinition =>
-            member.type === AST_NODE_TYPES.MethodDefinition && member.kind === "constructor",
+            member.type === AST_NODE_TYPES.MethodDefinition &&
+            member.kind === "constructor" &&
+            member.value.body !== null &&
+            member.value.body !== undefined,
         );
         if (ctor === undefined) return;
 

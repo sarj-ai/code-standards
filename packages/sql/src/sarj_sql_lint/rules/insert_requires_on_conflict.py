@@ -81,8 +81,7 @@ class InsertRequiresOnConflict(Rule):
             # split across lines, fall back to the statement's first line.
             lineno, col = statement[0][0], 1
             for stmt_lineno, line in statement:
-                match = INSERT_KEYWORD_PATTERN.search(line)
-                if match:
+                if match := INSERT_KEYWORD_PATTERN.search(line):
                     lineno, col = stmt_lineno, match.start() + 1
                     break
             if lineno in exempt:

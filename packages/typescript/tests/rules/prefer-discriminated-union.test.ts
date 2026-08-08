@@ -104,8 +104,66 @@ ruleTester.run("prefer-discriminated-union", rule, {
       name: "allows a non-object type alias",
       code: 'type Status = "ok" | "error";',
     },
+    {
+      name: "allows a named result in a Promise return annotation",
+      code: "declare function load(): Promise<Result>;",
+    },
+    {
+      name: "allows an inline return union whose full state is not local",
+      code: "declare function load(): { ok: boolean; data?: string; error?: string } | undefined;",
+    },
+    {
+      name: "allows an inline return intersection whose full state is not local",
+      code: "declare function load(): Metadata & { ok: boolean; data?: string; error?: string };",
+    },
+    {
+      name: "allows a Promise whose object argument is a union constituent",
+      code: "declare function load(): Promise<{ ok: boolean; data?: string; error?: string } | undefined>;",
+    },
+    {
+      name: "allows an inline parameter shape because the function does not produce it",
+      code: "declare function consume(value: { ok: boolean; data?: string; error?: string }): void;",
+    },
+    {
+      name: "allows an inline variable annotation",
+      code: "declare const result: { ok: boolean; data?: string; error?: string };",
+    },
+    {
+      name: "allows PromiseLike return annotations outside the exact Promise boundary",
+      code: "declare function load(): PromiseLike<{ ok: boolean; data?: string; error?: string }>;",
+    },
+    {
+      name: "allows inline return shapes in test fixtures",
+      filename: "/repo/result.test.ts",
+      code: "declare function load(): Promise<{ ok: boolean; data?: string; error?: string }> ;",
+    },
   ],
   invalid: [
+    {
+      name: "rejects a direct inline function return shape",
+      code: "declare function load(): { ok: boolean; data?: string; error?: string };",
+      errors: [{ messageId: "preferDiscriminatedUnion" }],
+    },
+    {
+      name: "rejects an inline Promise return shape",
+      code: "declare function load(): Promise<{ ok: boolean; data?: string; error?: string }> ;",
+      errors: [{ messageId: "preferDiscriminatedUnion" }],
+    },
+    {
+      name: "rejects an arrow function inline Promise return shape",
+      code: "const load = async (): Promise<{ success: boolean; result?: string; reason?: Error }> => null as never;",
+      errors: [{ messageId: "preferDiscriminatedUnion" }],
+    },
+    {
+      name: "rejects an inline method return shape",
+      code: "class Loader { load(): { ok: boolean; value?: string; cause?: Error } { return null as never; } }",
+      errors: [{ messageId: "preferDiscriminatedUnion" }],
+    },
+    {
+      name: "rejects an inline function-type return shape",
+      code: "type Loader = () => { ok: boolean; payload?: string; errors?: Error[] };",
+      errors: [{ messageId: "preferDiscriminatedUnion" }],
+    },
     {
       name: "rejects a status flag with optional payloads",
       code: "interface Result { success: boolean; data?: string; error?: Error }",

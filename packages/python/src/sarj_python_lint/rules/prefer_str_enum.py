@@ -1221,10 +1221,12 @@ def _merge_cluster(
 
 
 def _match_pattern_literals(pattern: ast.pattern) -> list[str]:
-    """Collect string-constant literals from a `case` pattern (`MatchValue` / `MatchOr`)."""
+    """Collect string literals from value, OR, and non-wildcard capture patterns."""
     if isinstance(pattern, ast.MatchValue):
         value = _str_const(pattern.value)
         return [value] if value is not None else []
+    if isinstance(pattern, ast.MatchAs) and pattern.pattern is not None:
+        return _match_pattern_literals(pattern.pattern)
     if isinstance(pattern, ast.MatchOr):
         literals: list[str] = []
         for sub in pattern.patterns:

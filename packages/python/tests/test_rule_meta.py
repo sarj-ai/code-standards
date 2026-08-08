@@ -89,8 +89,7 @@ def _deleted_rule_modules() -> dict[str, str]:
         stem = line.rsplit("/", maxsplit=1)[-1]
         if not line.endswith(".py") or stem.startswith("_"):
             continue
-        found = _CODE_IN_TEXT_RE.search(_git("show", f"{commit}^:{line}"))
-        if found is not None:
+        if found := _CODE_IN_TEXT_RE.search(_git("show", f"{commit}^:{line}")):
             deleted[found.group(0)] = stem[: -len(".py")]
     return deleted
 

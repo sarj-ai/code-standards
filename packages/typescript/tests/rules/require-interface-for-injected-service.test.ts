@@ -139,6 +139,37 @@ ruleTester.run("require-interface-for-injected-service", rule, {
         }
       `,
     },
+    {
+      name: "ignores an abstract class with constructor overload signatures",
+      filename: SRC,
+      code: `
+        export abstract class TaskStore {
+          constructor(store: Database);
+          constructor(protected readonly store: Database) {}
+          abstract get(id: string): Promise<void>;
+        }
+      `,
+    },
+    {
+      name: "ignores a declared class whose constructor has no implementation",
+      filename: SRC,
+      code: `
+        export declare class ExternalTaskService {
+          constructor(store: TaskStore);
+          run(): void;
+        }
+      `,
+    },
+    {
+      name: "ignores an injected Babel NodePath navigation value",
+      filename: SRC,
+      code: `
+        export class ProgramContext {
+          constructor(private readonly program: NodePath<Program>) {}
+          hasReference(name: string): boolean { return this.program.scope.hasReference(name); }
+        }
+      `,
+    },
     // Extending anything is a form of port: framework base classes, error
     // classes, React components, Lexical nodes, Durable Objects, Workflows.
     {
@@ -913,6 +944,25 @@ ruleTester.run("require-interface-for-injected-service", rule, {
   ],
 
   invalid: [
+    {
+      name: "selects the concrete constructor after overload signatures",
+      filename: SRC,
+      code: `
+        export class RequestHandler {
+          private readonly store: TaskStore;
+          constructor(store: TaskStore);
+          constructor(store: TaskStore, eager?: boolean);
+          constructor(store: TaskStore) { this.store = store; }
+          handle(): void { this.store.handle(); }
+        }
+      `,
+      errors: [
+        {
+          messageId: "requireInterface",
+          data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" },
+        },
+      ],
+    },
     {
       name: "retains only behaviorally invoked dependencies when metadata is also stored",
       filename: SRC,

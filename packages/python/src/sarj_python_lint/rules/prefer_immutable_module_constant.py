@@ -89,13 +89,13 @@ def _mutable_literal_kind(value: ast.expr, *, shadowed_builtins: set[str]) -> st
     match value:
         case ast.List(elts=[]):
             return None
-        case ast.List():
+        case ast.ListComp() | ast.List():
             return "list"
-        case ast.Set():
+        case ast.SetComp() | ast.Set():
             return "set"
         case ast.Dict(keys=[]):
             return None
-        case ast.Dict():
+        case ast.DictComp() | ast.Dict():
             return "dict"
         case ast.Call(func=ast.Name(id=kind), args=[], keywords=[]) if (
             kind in {"set", "dict", "list"} and kind not in shadowed_builtins

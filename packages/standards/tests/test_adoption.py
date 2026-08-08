@@ -1999,7 +1999,8 @@ def test_init_refuses_to_replace_unadopted_configs_without_force(tmp_path: Path)
 #: Hand-edited fixtures for files owned by `init`.
 _SCAFFOLDED_FILES = {
     manifest.MANIFEST_NAME: (
-        '# hand-edited\nschema = 3\nbundle = "1.0.0"\nprofile = "standard"\nrule_profile = "all"\n\n'
+        f'# hand-edited\nschema = 3\nbundle = "{manifest.adopted_version()}"\nprofile = "standard"\n'
+        'rule_profile = "all"\n\n'
         '[capabilities]\ndisable = []\n\n[dest]\npython = "."\ntypescript = "."\n\n'
         '[hooks]\nmanager = "pre-commit"\n'
     ),

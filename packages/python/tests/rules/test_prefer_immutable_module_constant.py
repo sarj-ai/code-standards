@@ -20,6 +20,13 @@ from sarj_python_lint.rules.prefer_immutable_module_constant import PreferImmuta
         pytest.param("X = [1, 2, 3]", "tuple", id="single-letter-constant"),
         pytest.param("VALUES = [runtime_value]", "tuple", id="dynamic-list-element"),
         pytest.param("LABELS = {'value': runtime_value}", "immutable mapping", id="dynamic-dict-value"),
+        pytest.param("VALUES = [value for value in runtime_values]", "tuple", id="list-comprehension"),
+        pytest.param("KINDS = {value for value in runtime_values}", "frozenset", id="set-comprehension"),
+        pytest.param(
+            "LABELS = {value.code: value for value in runtime_values}",
+            "immutable mapping",
+            id="dict-comprehension",
+        ),
         pytest.param("VALUES = [*runtime_values]", "tuple", id="dynamic-list-spread"),
         pytest.param("VALUES = [1]\ndef mutate(VALUES):\n    VALUES.append(1)", "tuple", id="parameter-shadow"),
         pytest.param("VALUES = [1]\ndef mutate():\n    VALUES = []\n    VALUES.append(1)", "tuple", id="local-shadow"),
@@ -64,6 +71,10 @@ def test_warns_for_literal_mutable_module_constants(source: str, replacement: st
         "LABELS = {'a': {'b': 'B'}}\nLABELS['a']['b'] = 'C'",
         "BG_TASKS = set()\nservice = Service(bg_tasks=BG_TASKS)",
         "BG_TASKS = {'task'}\ndef install(task):\n    task.add_done_callback(BG_TASKS.discard)",
+        "VALUES = (value for value in runtime_values)",
+        "VALUES = [value for value in runtime_values]\nVALUES.append(extra)",
+        "KINDS = {value for value in runtime_values}\nKINDS.update(extra)",
+        "LABELS = {value.code: value for value in runtime_values}\nconsume(LABELS)",
     ],
 )
 def test_ignores_immutable_dynamic_nonconstant_and_intentionally_mutated_values(source: str) -> None:

@@ -20,6 +20,26 @@ ruleTester.run("no-json-stringify-error", rule, {
     { name: "allows non-error objects", code: "JSON.stringify(user);" },
     { name: "allows object literals", code: "JSON.stringify({ a: 1 });" },
     {
+      name: "allows an error message nested in an object literal",
+      code: "try { f(); } catch (err) { JSON.stringify({ error: err.message }); }",
+    },
+    {
+      name: "allows a string-valued shorthand error property",
+      code: "const error = 'provider unavailable'; JSON.stringify({ error });",
+    },
+    {
+      name: "allows an unproven error-named function parameter in a payload",
+      code: "function serialize(error: string) { return JSON.stringify({ error }); }",
+    },
+    {
+      name: "allows enumerable error data nested in an object literal",
+      code: "JSON.stringify({ error: error.data });",
+    },
+    {
+      name: "does not descend through nested object literals",
+      code: "try { f(); } catch (err) { JSON.stringify({ meta: { err } }); }",
+    },
+    {
       name: "allows identifiers that are neither error-named nor catch bindings",
       code: "const payload = {}; JSON.stringify(payload);",
     },
@@ -128,6 +148,26 @@ ruleTester.run("no-json-stringify-error", rule, {
     },
   ],
   invalid: [
+    {
+      name: "reports a catch binding nested in an object literal",
+      code: "try { f(); } catch (err) { JSON.stringify({ error: err }); }",
+      errors: [{ messageId: "noJsonStringifyError" }],
+    },
+    {
+      name: "reports a shorthand error property",
+      code: "try { f(); } catch (err) { JSON.stringify({ err }); }",
+      errors: [{ messageId: "noJsonStringifyError" }],
+    },
+    {
+      name: "reports an error nested in an array literal",
+      code: "try { f(); } catch (err) { JSON.stringify([err]); }",
+      errors: [{ messageId: "noJsonStringifyError" }],
+    },
+    {
+      name: "reports a stable builtin Error binding nested in a payload",
+      code: "const error = new TypeError('invalid'); JSON.stringify({ error });",
+      errors: [{ messageId: "noJsonStringifyError" }],
+    },
     // A `catch` binding passed directly, even with an unconventional name.
     {
       code: "try { f(); } catch (problem) { JSON.stringify(problem); }",

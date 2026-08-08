@@ -1359,6 +1359,52 @@ def handle(status: str) -> int:
     assert len(_check(src)) == 1
 
 
+def test_match_as_wrapped_string_patterns_cluster():
+    src = """
+def handle(status: str) -> int:
+    match status:
+        case "active" as selected:
+            return len(selected)
+        case "inactive" as selected:
+            return len(selected)
+"""
+    assert len(_check(src)) == 1
+
+
+def test_match_as_wrapped_or_pattern_clusters():
+    src = """
+def handle(status: str) -> int:
+    match status:
+        case ("active" | "inactive") as selected:
+            return len(selected)
+"""
+    assert len(_check(src)) == 1
+
+
+def test_wildcard_capture_still_keeps_the_match_domain_open():
+    src = """
+def handle(status: str) -> str:
+    match status:
+        case "active" as selected:
+            return selected
+        case unknown:
+            return unknown
+"""
+    assert _check(src) == []
+
+
+def test_match_as_class_pattern_is_not_a_string_domain():
+    src = """
+def handle(status: str) -> str:
+    match status:
+        case Status() as selected:
+            return str(selected)
+        case OtherStatus() as selected:
+            return str(selected)
+"""
+    assert _check(src) == []
+
+
 def test_match_with_ordinary_wildcard_fallback_keeps_domain_open() -> None:
     src = """
 def render(content_type: str, payload: dict[str, str]) -> str:

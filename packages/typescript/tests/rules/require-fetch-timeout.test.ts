@@ -67,6 +67,14 @@ ruleTester.run("require-fetch-timeout", rule, {
       code: "await fetch(new Request(url));",
     },
     {
+      name: "allows forwarding an object from a locally shadowed URL constructor",
+      code: "function proxy(URL) { return fetch(new URL('/x')); }",
+    },
+    {
+      name: "accepts an inline URL object with a signal",
+      code: "await fetch(new URL('/v1/items', base), { signal: AbortSignal.timeout(5000) });",
+    },
+    {
       name: "ignores a service binding fetch",
       code: "await env.MY_SERVICE.fetch(request);",
     },
@@ -137,6 +145,11 @@ ruleTester.run("require-fetch-timeout", rule, {
     {
       name: "rejects a template literal URL without an init",
       code: "await fetch(`/api/items/${id}`);",
+      errors: [{ messageId: "missingSignal" }],
+    },
+    {
+      name: "rejects an inline URL object without an init",
+      code: "await fetch(new URL('/v1/items', base));",
       errors: [{ messageId: "missingSignal" }],
     },
     {
