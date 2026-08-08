@@ -116,7 +116,19 @@ def test_create_release_tags_is_idempotent_and_pushes_exact_ref(tmp_path: Path) 
     )
 
     assert result.created == ("python-v1.2.3",)
-    assert ("git", "tag", "-a", "python-v1.2.3", "publish-sha", "-m", "python 1.2.3") in calls
+    assert (
+        "git",
+        "-c",
+        "user.name=sarj-ai release automation",
+        "-c",
+        "user.email=release-automation@sarj.ai",
+        "tag",
+        "-a",
+        "python-v1.2.3",
+        "publish-sha",
+        "-m",
+        "python 1.2.3",
+    ) in calls
     assert calls[-1] == ("git", "push", "origin", "refs/tags/python-v1.2.3")
 
 
@@ -134,10 +146,17 @@ def test_create_release_tags_handles_real_git_missing_tag_exit_code(
     repository.mkdir()
     _write_release_manifests(repository)
     _git(repository, "init")
-    _git(repository, "config", "user.email", "release-test@example.com")
-    _git(repository, "config", "user.name", "Release Test")
     _git(repository, "add", ".")
-    _git(repository, "commit", "-m", "release")
+    _git(
+        repository,
+        "-c",
+        "user.email=release-test@example.com",
+        "-c",
+        "user.name=Release Test",
+        "commit",
+        "-m",
+        "release",
+    )
     _git(tmp_path, "init", "--bare", str(remote))
     _git(repository, "remote", "add", "origin", str(remote))
     commit = _git(repository, "rev-parse", "HEAD")
