@@ -11,7 +11,7 @@ from sarj_lint_configs.libs.release.causality import (
     ReleaseCausalityReport,
     check_release_causality,
 )
-from sarj_lint_configs.libs.release.changes import changed_release_targets
+from sarj_lint_configs.libs.release.changes import changed_release_targets, pending_release_targets
 from sarj_lint_configs.libs.release.process import (
     ProcessFailureError,
     ProcessResult,
@@ -81,6 +81,7 @@ __all__ = (
     "locked_registry_packages",
     "missing_remote_release_tags",
     "pack_typescript",
+    "pending_release_targets",
     "publish_target",
     "read_manifest_version",
     "required_artifact_paths",

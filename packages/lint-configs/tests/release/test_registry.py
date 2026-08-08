@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 import json
 from typing import TYPE_CHECKING
 
@@ -12,6 +13,7 @@ from sarj_lint_configs.libs.release.registry import (
     lint_config_requirements,
     require_lint_config_dependencies,
     target_requirement,
+    wait_for_lint_config_dependencies,
 )
 
 
@@ -60,3 +62,39 @@ def test_target_requirement_uses_authoritative_manifest_version(tmp_path: Path) 
     manifest.write_text('[project]\nname = "sarj-python-lint"\nversion = "2.3.4"\n', encoding="utf-8")
 
     assert target_requirement(tmp_path, "python") == RegistryRequirement("pypi", "sarj-python-lint", "2.3.4")
+
+
+def test_lint_config_preflight_waits_for_registry_propagation(tmp_path: Path) -> None:
+    _bundle(tmp_path)
+    python_attempts = iter((False, False, True))
+    delays: list[float] = []
+
+    def checker(requirement: RegistryRequirement) -> bool:
+        return True if requirement.registry == "npm" else next(python_attempts)
+
+    requirements = wait_for_lint_config_dependencies(
+        tmp_path,
+        attempts=3,
+        delay=timedelta(milliseconds=250),
+        checker=checker,
+        sleeper=delays.append,
+    )
+
+    assert requirements == lint_config_requirements(tmp_path)
+    assert delays == [0.25, 0.25]
+
+
+def test_lint_config_preflight_fails_after_its_bounded_attempts(tmp_path: Path) -> None:
+    _bundle(tmp_path)
+    delays: list[float] = []
+
+    with pytest.raises(ValueError, match=r"after 2 attempt\(s\).*sarj-python-lint@1\.2\.3"):
+        _ = wait_for_lint_config_dependencies(
+            tmp_path,
+            attempts=2,
+            delay=timedelta(milliseconds=500),
+            checker=lambda requirement: requirement.registry == "npm",
+            sleeper=delays.append,
+        )
+
+    assert delays == [0.5]

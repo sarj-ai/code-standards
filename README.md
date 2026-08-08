@@ -118,6 +118,11 @@ not created: all tag creation, mutation, and deletion is blocked, and current
 consumer hooks execute the reviewed package version installed in their own
 lockfile through `repo: local`.
 
+Every push also compares the current manifests with PyPI and npm. If an earlier
+Actions outage missed a release, the next push automatically publishes that
+missing version before any compatibility bundle that pins it. Already-public
+versions remain no-ops.
+
 For a rule release, keep the change atomic: update the implementation, registry,
 strict config and tests; bump the owning package manifest; update its generated
 lockfile; and, for Python/SQL/IaC rules, bump the exact dependency and version of

@@ -6,6 +6,7 @@ import re
 from typing import TYPE_CHECKING
 
 from sarj_lint_configs.libs.release.process import ProcessRunner, run_process
+from sarj_lint_configs.libs.release.registry import PublicationChecker, publication_exists, target_requirement
 from sarj_lint_configs.libs.release.tags import RELEASE_TARGETS
 
 
@@ -36,3 +37,16 @@ def changed_release_targets(
         pattern = _ADDED_JSON_VERSION if target.format == "json" else _ADDED_TOML_VERSION
         changed[name] = pattern.search(result.stdout) is not None
     return changed
+
+
+def pending_release_targets(
+    root: Path,
+    *,
+    before: str,
+    after: str,
+    runner: ProcessRunner = run_process,
+    checker: PublicationChecker = publication_exists,
+) -> Mapping[str, bool]:
+    """Return changed targets plus current versions missed by an earlier release run."""
+    changed = changed_release_targets(root, before=before, after=after, runner=runner)
+    return {name: was_changed or not checker(target_requirement(root, name)) for name, was_changed in changed.items()}

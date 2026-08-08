@@ -23,7 +23,7 @@ def test_changes_cli_passes_keyword_revisions(
         calls.append((root, before, after))
         return {target: target == "python" for target in release.RELEASE_TARGETS}
 
-    monkeypatch.setattr(release, "changed_release_targets", changed)
+    monkeypatch.setattr(release, "pending_release_targets", changed)
     output = tmp_path / "github-output"
 
     status = cli.main(
