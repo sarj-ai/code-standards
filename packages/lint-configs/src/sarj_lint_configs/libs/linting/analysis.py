@@ -2,20 +2,25 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from importlib import import_module
 from pathlib import Path
+import time
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from sarj_lint_configs.libs.diagnostics import (
     AnalysisReport,
+    AnalyzerId,
     Completion,
     Conclusion,
     Diagnostic,
     ExecutionIssue,
+    InvocationId,
     Location,
     Severity,
     SourceDocument,
     ToolReport,
+    diagnostic_fingerprint,
 )
 
 from . import textlint
@@ -24,6 +29,8 @@ from .runner import GroupedPaths, group_paths
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
+
+    from .policy import Policy
 
 
 @runtime_checkable
@@ -69,12 +76,19 @@ class _RegistryModule(Protocol):
     REGISTRY: Mapping[str, type[_RuleMetadata]]
 
 
-def analyze(files: Sequence[str], *, root: Path, python_baseline: Path | None = None) -> AnalysisReport:
+def analyze(
+    files: Sequence[str],
+    *,
+    root: Path,
+    python_baseline: Path | None = None,
+    policy: Policy | None = None,
+    grouped: GroupedPaths | None = None,
+) -> AnalysisReport:
     """Run applicable bundled analyzers without parsing their console output."""
     root = root.resolve()
     try:
         contained = tuple(_contained_path(item, root) for item in files)
-        grouped = group_paths(contained)
+        routed = grouped if grouped is not None else group_paths(contained, policy=policy)
     except (OSError, ValueError) as exc:
         issue = ExecutionIssue("sarj-standards", "invalid-input", str(exc).replace(str(root), "."))
         tool = ToolReport("sarj-standards", Completion.FAILED, issues=(issue,))
@@ -86,17 +100,35 @@ def analyze(files: Sequence[str], *, root: Path, python_baseline: Path | None = 
             _native_report(
                 "sarj-python-lint",
                 "sarj_python_lint",
-                grouped.python,
+                routed.python,
                 root,
                 python_baseline=python_baseline,
             ),
-            _native_report("sarj-sql-lint", "sarj_sql_lint", grouped.sql, root),
-            _native_report("sarj-iac-lint", "sarj_iac_lint", grouped.iac, root),
-            _text_report(grouped, root),
+            _native_report("sarj-sql-lint", "sarj_sql_lint", routed.sql, root),
+            _native_report("sarj-iac-lint", "sarj_iac_lint", routed.iac, root),
+            _text_report(routed, root),
         )
         if report is not None
     )
-    return report_from_tools(root, reports)
+    report = report_from_tools(root, reports)
+    if policy is None:
+        return report
+    filtered = tuple(
+        ToolReport(
+            item.name,
+            item.completion,
+            diagnostics=policy.filter_diagnostics(item.diagnostics),
+            issues=item.issues,
+            analyzer_id=item.analyzer_id,
+            invocation_id=item.invocation_id,
+            version=item.version,
+            duration_ms=item.duration_ms,
+            file_count=item.file_count,
+            cache_status=item.cache_status,
+        )
+        for item in report.tools
+    )
+    return report_from_tools(root, filtered)
 
 
 def _contained_path(value: str, root: Path) -> str:
@@ -116,8 +148,24 @@ def report_from_tools(root: Path, reports: Sequence[ToolReport]) -> AnalysisRepo
         ToolReport(
             report.name,
             report.completion,
-            diagnostics=tuple(sorted(report.diagnostics, key=_diagnostic_key)),
+            diagnostics=tuple(
+                sorted(
+                    (
+                        item
+                        if item.fingerprint is not None
+                        else replace(item, fingerprint=diagnostic_fingerprint(item, anchor=item.message))
+                        for item in report.diagnostics
+                    ),
+                    key=_diagnostic_key,
+                )
+            ),
             issues=tuple(sorted(report.issues, key=lambda issue: (issue.source, issue.kind, issue.message))),
+            analyzer_id=report.analyzer_id,
+            invocation_id=report.invocation_id,
+            version=report.version,
+            duration_ms=report.duration_ms,
+            file_count=report.file_count,
+            cache_status=report.cache_status,
         )
         for report in sorted(reports, key=lambda report: report.name)
     )
@@ -178,6 +226,7 @@ def _run_native(
     *,
     python_baseline: Path | None,
 ) -> ToolReport:
+    started = time.monotonic()
     checker_module, registry_module = _load_native(package)
     metadata = _metadata(registry_module.REGISTRY)
     paths = [Path(item) for item in files]
@@ -197,7 +246,15 @@ def _run_native(
     diagnostics = tuple(
         _normalize_native(item, source=name, root=root, metadata=metadata, documents=cache) for item in native_result
     )
-    return ToolReport(name, Completion.COMPLETE, diagnostics=diagnostics)
+    return ToolReport(
+        name,
+        Completion.COMPLETE,
+        diagnostics=diagnostics,
+        analyzer_id=AnalyzerId(name),
+        invocation_id=InvocationId(name),
+        duration_ms=round((time.monotonic() - started) * 1_000),
+        file_count=len(files),
+    )
 
 
 def _load_native(package: str) -> tuple[_CheckerModule, _RegistryModule]:

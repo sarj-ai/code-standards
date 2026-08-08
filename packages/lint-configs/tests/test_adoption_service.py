@@ -66,6 +66,20 @@ def test_init_service_applies_configs_wiring_and_manifest(tmp_path: Path) -> Non
     assert 'extend = ".ruff-strict.toml"' in (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
 
 
+def test_init_service_rejects_absent_target_created_after_planning(tmp_path: Path) -> None:
+    _python_project(tmp_path)
+    plan = plan_init(tmp_path)
+    target = tmp_path / ".ruff-strict.toml"
+    target.write_text("late user file\n", encoding="utf-8")
+
+    result = apply_init(plan, install=False)
+
+    assert result.status == 2
+    assert result.error is not None
+    assert "stale" in result.error
+    assert target.read_text(encoding="utf-8") == "late user file\n"
+
+
 def test_init_service_rolls_back_every_file_when_install_fails(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

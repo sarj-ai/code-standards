@@ -27,11 +27,19 @@ import { fileURLToPath } from "node:url";
 import { ESLint, type Linter } from "eslint";
 import { describe, expect, it } from "vitest";
 
-import strictConfig from "../../lint-configs/src/sarj_lint_configs/configs/eslint.strict.mjs";
+import strictConfig, {
+  createConfig as createStrictConfig,
+} from "../../lint-configs/src/sarj_lint_configs/configs/eslint.strict.mjs";
 import { rulesOf } from "./_config.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURE_DIR = resolve(HERE, "fixtures/runs");
+const NESTED_MONOREPO_DIR = resolve(HERE, "fixtures/nested-monorepo");
+type ConfigFactory = (options?: {
+  tsconfigRootDir?: string | URL;
+  projectService?: boolean | object;
+}) => Linter.Config[];
+const STRICT_CONFIG_FACTORY = createStrictConfig as unknown as ConfigFactory;
 
 async function lint(file: string): Promise<Linter.LintMessage[]> {
   const eslint = new ESLint({
@@ -44,6 +52,24 @@ async function lint(file: string): Promise<Linter.LintMessage[]> {
 }
 
 describe("the shipped eslint.strict.mjs can actually lint", () => {
+  it("keeps typed diagnostics live in a nested monorepo package", async () => {
+    const eslint = new ESLint({
+      cwd: NESTED_MONOREPO_DIR,
+      overrideConfigFile: true,
+      overrideConfig: STRICT_CONFIG_FACTORY({
+        tsconfigRootDir: NESTED_MONOREPO_DIR,
+      }),
+    });
+    const [result] = await eslint.lintFiles([
+      resolve(NESTED_MONOREPO_DIR, "packages/example/src/index.ts"),
+    ]);
+    const fatal = result?.messages.filter((message) => message.fatal === true) ?? [];
+    expect(fatal).toEqual([]);
+    expect(result?.messages.map((message) => message.ruleId)).toContain(
+      "@typescript-eslint/await-thenable",
+    );
+  });
+
   it.each([
     "react-hooks/error-boundaries",
     "react-hooks/globals",

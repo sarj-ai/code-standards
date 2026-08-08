@@ -6,6 +6,7 @@ import argparse
 from dataclasses import dataclass
 from datetime import timedelta
 import json
+import math
 from pathlib import Path
 import re
 import sys
@@ -16,6 +17,9 @@ from typing import TYPE_CHECKING, Final, Literal, Protocol
 from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
+
+from packaging.utils import InvalidSdistFilename, InvalidWheelFilename, parse_sdist_filename, parse_wheel_filename
+from packaging.version import InvalidVersion, Version
 
 from sarj_lint_configs.libs.release._values import is_object_dict, is_object_list, string_object_dict
 from sarj_lint_configs.libs.release.tags import RELEASE_TARGETS, read_manifest_version
@@ -77,21 +81,62 @@ def target_requirement(root: Path, target_name: str) -> RegistryRequirement:
 
 
 def publication_exists(requirement: RegistryRequirement) -> bool:
-    """Query the authoritative public registry for one exact version."""
+    """Query the resolver-facing registry API for one exact version."""
     if requirement.registry == "pypi":
-        url = f"https://pypi.org/pypi/{quote(requirement.name, safe='')}/{quote(requirement.version, safe='')}/json"
+        # uv and pip resolve through the Simple API, so version JSON visibility alone does not make a wheel resolvable.
+        url = f"https://pypi.org/simple/{quote(requirement.name, safe='')}/"
+        accept = "application/vnd.pypi.simple.v1+json"
     else:
         url = f"https://registry.npmjs.org/{quote(requirement.name, safe='')}/{quote(requirement.version, safe='')}"
+        accept = "application/json"
     request = Request(  # ruff: ignore[suspicious-url-open-usage] -- URL is constructed only from fixed HTTPS registry origins.
-        url, headers={"Accept": "application/json"}
+        url, headers={"Accept": accept}
     )
     try:
-        with urlopen(request, timeout=15) as response:  # ruff: ignore[suspicious-url-open-usage]  # pyright: ignore[reportAny] -- fixed registry origins
-            return response.status == _HTTP_OK  # pyright: ignore[reportAny]
+        return _request_publication(request, requirement)
     except HTTPError as exc:
         if exc.code == _HTTP_NOT_FOUND:
             return False
         raise
+
+
+def _request_publication(request: Request, requirement: RegistryRequirement) -> bool:
+    with urlopen(request, timeout=15) as response:  # ruff: ignore[suspicious-url-open-usage]  # pyright: ignore[reportAny] -- fixed registry origins
+        if response.status != _HTTP_OK:  # pyright: ignore[reportAny]
+            return False
+        if requirement.registry == "npm":
+            return True
+        payload: object = json.loads(response.read())  # pyright: ignore[reportAny]
+    document = string_object_dict(payload, label="PyPI Simple response")
+    files = document.get("files")
+    if not is_object_list(files):
+        msg = "PyPI Simple response has no files list"
+        raise ValueError(msg)
+    return any(
+        _pypi_filename_has_version(filename, requirement.version)
+        for item in files
+        if (filename := _pypi_item_filename(item)) is not None
+    )
+
+
+def _pypi_item_filename(value: object) -> str | None:
+    if not is_object_dict(value):
+        return None
+    filename = string_object_dict(value, label="PyPI Simple file").get("filename")
+    return filename if isinstance(filename, str) else None
+
+
+def _pypi_filename_has_version(filename: str, version: str) -> bool:
+    """Parse a wheel/source filename and compare its normalized exact version."""
+    try:
+        expected = Version(version)
+        if filename.endswith(".whl"):
+            _name, actual, _build, _tags = parse_wheel_filename(filename)
+        else:
+            _name, actual = parse_sdist_filename(filename)
+    except InvalidSdistFilename, InvalidVersion, InvalidWheelFilename:
+        return False
+    return actual == expected
 
 
 def require_publication(
@@ -177,15 +222,32 @@ def wait_for_lint_config_dependencies(
     if attempts < 1:
         message = "publication attempts must be at least one"
         raise ValueError(message)
+    delay_seconds = delay.total_seconds()
+    if not math.isfinite(delay_seconds) or delay_seconds < 0:
+        message = "publication retry delay must be finite and non-negative"
+        raise ValueError(message)
     requirements = lint_config_requirements(root)
-    missing: tuple[RegistryRequirement, ...] = ()
+    missing = set(requirements)
+    last_errors: dict[RegistryRequirement, str] = {}
     for attempt in range(attempts):
-        missing = tuple(requirement for requirement in requirements if not checker(requirement))
+        for requirement in tuple(sorted(missing)):
+            try:
+                available = checker(requirement)
+            except OSError as exc:
+                last_errors[requirement] = f"{type(exc).__name__}: {exc}"
+                continue
+            if available:
+                missing.remove(requirement)
+                last_errors.pop(requirement, None)
         if not missing:
             return requirements
         if attempt + 1 < attempts:
-            _ = sleeper(delay.total_seconds())
-    rendered = ", ".join(f"{requirement.name}@{requirement.version}" for requirement in missing)
+            _ = sleeper(delay_seconds)
+    rendered = ", ".join(
+        f"{requirement.name}@{requirement.version}"
+        + (f" ({last_errors[requirement]})" if requirement in last_errors else "")
+        for requirement in sorted(missing)
+    )
     message = f"publications unavailable after {attempts} attempt(s): {rendered}"
     raise ValueError(message)
 

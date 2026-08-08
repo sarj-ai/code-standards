@@ -31,10 +31,15 @@
  */
 
 import { ESLint, type Linter } from "eslint";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import applicationConfig from "../../lint-configs/src/sarj_lint_configs/configs/eslint.application.mjs";
-import strictConfig from "../../lint-configs/src/sarj_lint_configs/configs/eslint.strict.mjs";
+import applicationConfig, {
+  createConfig as createApplicationConfig,
+} from "../../lint-configs/src/sarj_lint_configs/configs/eslint.application.mjs";
+import strictConfig, {
+  createConfig as createStrictConfig,
+} from "../../lint-configs/src/sarj_lint_configs/configs/eslint.strict.mjs";
 
 /**
  * Paths chosen to exercise every `files:`-scoped block in the config, because a
@@ -51,6 +56,25 @@ const PROBE_PATHS = [
   "src/env/server-env.ts",
   "vite.config.ts",
 ] as const;
+const NESTED_MONOREPO_ROOT = new URL("fixtures/nested-monorepo/", import.meta.url);
+const UNTYPED_ROOT = new URL("fixtures/no-type-project/", import.meta.url);
+type ConfigFactory = (options?: {
+  tsconfigRootDir?: string | URL;
+  projectService?: boolean | object;
+}) => Linter.Config[];
+const CONFIG_FACTORIES: ReadonlyArray<readonly [string, ConfigFactory]> = [
+  ["strict", createStrictConfig],
+  ["application", createApplicationConfig],
+];
+const STRICT_CONFIG_FACTORY = createStrictConfig as unknown as ConfigFactory;
+
+function parserOptionsOf(config: Linter.Config[]): Record<string, unknown> {
+  const options = config.find(
+    (entry) => entry.languageOptions?.parserOptions?.tsconfigRootDir !== undefined,
+  )?.languageOptions?.parserOptions;
+  if (options === undefined) throw new Error("typed parser options are missing");
+  return options as Record<string, unknown>;
+}
 
 async function configFor(filePath: string): Promise<Linter.Config> {
   const eslint = new ESLint({
@@ -62,6 +86,51 @@ async function configFor(filePath: string): Promise<Linter.Config> {
 }
 
 describe("the shipped eslint.strict.mjs actually loads", () => {
+  it.each(CONFIG_FACTORIES)("%s discovers nested workspace type projects", (_name, createConfig) => {
+    const config = createConfig({ tsconfigRootDir: NESTED_MONOREPO_ROOT });
+    const parserOptions = parserOptionsOf(config);
+
+    expect(parserOptions.projectService).toBe(true);
+    expect(parserOptions.tsconfigRootDir).toBe(fileURLToPath(NESTED_MONOREPO_ROOT));
+    // Detection must keep typed rules active; merely setting parserOptions while
+    // spreading UNTYPED_RULE_OVERRIDES would still produce a false clean result.
+    const configured = config.find(
+      (entry) => entry.rules?.["@typescript-eslint/await-thenable"] !== undefined,
+    );
+    expect(configured?.rules?.["@typescript-eslint/await-thenable"]).not.toBe("off");
+  });
+
+  it.each(CONFIG_FACTORIES)("%s degrades deliberately for an untyped root", (_name, createConfig) => {
+    const config = createConfig({ tsconfigRootDir: UNTYPED_ROOT });
+    expect(parserOptionsOf(config).projectService).toBe(false);
+    const configured = [...config].reverse().find(
+      (entry) => entry.rules?.["@typescript-eslint/await-thenable"] !== undefined,
+    );
+    expect(configured?.rules?.["@typescript-eslint/await-thenable"]).toBe("off");
+  });
+
+  it.each(CONFIG_FACTORIES)("%s normalizes its effective untyped config", async (_name, createConfig) => {
+    const config = createConfig({ tsconfigRootDir: UNTYPED_ROOT });
+    const eslint = new ESLint({
+      cwd: fileURLToPath(UNTYPED_ROOT),
+      overrideConfigFile: true,
+      overrideConfig: config,
+    });
+    const configured = (await eslint.calculateConfigForFile("src/index.ts")) as Linter.Config;
+    expect(configured?.rules?.["@typescript-eslint/await-thenable"]).toEqual([0]);
+  });
+
+  it("honors explicit project-service options without mutating the default export", () => {
+    const projectService = { allowDefaultProject: ["eslint.config.mjs"] };
+    const configured = STRICT_CONFIG_FACTORY({
+      tsconfigRootDir: NESTED_MONOREPO_ROOT,
+      projectService,
+    });
+
+    expect(parserOptionsOf(configured).projectService).toBe(projectService);
+    expect(parserOptionsOf(strictConfig as Linter.Config[]).projectService).not.toBe(projectService);
+  });
+
   it("globally ignores generated output", async () => {
     const eslint = new ESLint({
       overrideConfigFile: true,

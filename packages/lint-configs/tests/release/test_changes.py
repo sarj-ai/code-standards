@@ -52,7 +52,7 @@ def test_changed_release_targets_fails_closed_when_git_diff_fails(tmp_path: Path
     assert raised.value.returncode == 128
 
 
-def test_pending_release_targets_recovers_an_unchanged_unpublished_sibling(tmp_path: Path) -> None:
+def test_pending_release_targets_publish_only_current_versions_missing_from_registry(tmp_path: Path) -> None:
     _manifests(tmp_path)
     checked: list[str] = []
 
@@ -74,10 +74,29 @@ def test_pending_release_targets_recovers_an_unchanged_unpublished_sibling(tmp_p
         checker=published,
     )
 
-    assert pending["lint-configs"] is True
+    assert pending["lint-configs"] is False
     assert pending["python"] is True
     assert pending["sql"] is False
-    assert "sarj-lint-configs" not in checked
+    assert "sarj-lint-configs" in checked
+
+
+def test_pending_release_target_changed_but_already_public_is_a_noop(tmp_path: Path) -> None:
+    _manifests(tmp_path)
+
+    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
+        _ = cwd, capture_output
+        output = '+version = "2.0.0"\n' if argv[-1] == "packages/python/pyproject.toml" else ""
+        return ProcessResult(0, output)
+
+    pending = pending_release_targets(
+        tmp_path,
+        before="before",
+        after="after",
+        runner=runner,
+        checker=lambda _requirement: True,
+    )
+
+    assert not any(pending.values())
 
 
 def test_pending_release_targets_fails_closed_when_registry_lookup_fails(tmp_path: Path) -> None:

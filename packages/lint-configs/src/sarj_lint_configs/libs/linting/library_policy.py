@@ -461,7 +461,7 @@ def scan_paths(
             raise ManifestPolicyError(msg)
         if resolved.is_dir():
             selected.update(_manifest_paths(resolved))
-        elif resolved.is_file() and _is_manifest_path(resolved, root):
+        elif resolved.is_file() and accepts_path(resolved, root):
             selected.add(resolved)
     return _scan_manifests(root, tuple(sorted(selected)), allowed_ids=allowed_ids)
 
@@ -513,12 +513,13 @@ def _manifest_paths(root: Path) -> tuple[Path, ...]:
             continue
         if not path.is_file():
             continue
-        if _is_manifest_path(path, root):
+        if accepts_path(path, root):
             paths.append(path)
     return tuple(sorted(paths))
 
 
-def _is_manifest_path(path: Path, root: Path) -> bool:
+def accepts_path(path: Path, root: Path) -> bool:
+    """Return whether the application dependency analyzer owns this file."""
     relative_parts = path.relative_to(root).parts
     in_requirements_dir = "requirements" in relative_parts[:-1]
     ignored_requirements_fixture = any(part.lower() in _IGNORED_MANIFEST_DIRS for part in relative_parts[:-1])

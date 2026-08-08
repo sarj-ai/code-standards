@@ -316,14 +316,13 @@ def test_doctor_reports_excessively_nested_package_json_without_recursing(
 
 
 def test_doctor_keeps_independent_findings_when_one_destination_is_invalid(tmp_path: Path) -> None:
-    adopted = manifest.Manifest(
-        version=manifest.adopted_version(),
-        configs=("unknown-config", "ruff"),
-        python_dest="..",
-        typescript_dest=".",
-        hook_manager="none",
+    (tmp_path / manifest.MANIFEST_NAME).write_text(
+        f'version = "{manifest.adopted_version()}"\n'
+        'configs = ["unknown-config", "ruff"]\n'
+        '[dest]\npython = ".."\ntypescript = "."\n'
+        '[hooks]\nmanager = "none"\n',
+        encoding="utf-8",
     )
-    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
 
     findings = doctor.diagnose(tmp_path)
 

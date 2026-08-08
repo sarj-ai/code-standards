@@ -123,6 +123,26 @@ def test_install_argv_matches_the_printed_script_free_command(client: PackageMan
     assert all("@sarj" not in part for part in argv)
 
 
+def test_npm_and_bun_lint_execution_can_never_install_from_the_network() -> None:
+    assert packagemanager.exec_argv(PackageManager.NPM, "eslint", "--", "app.ts") == (
+        "npm",
+        "exec",
+        "--offline",
+        "--",
+        "eslint",
+        "--",
+        "app.ts",
+    )
+    assert packagemanager.exec_argv(PackageManager.BUN, "eslint", "--", "app.ts") == (
+        "bunx",
+        "--bun",
+        "--no-install",
+        "eslint",
+        "--",
+        "app.ts",
+    )
+
+
 @pytest.mark.parametrize(
     ("package_json", "expected"),
     [
@@ -180,6 +200,40 @@ def test_ci_workflow_speaks_the_detected_yarn_dialect(tmp_path: Path) -> None:
     assert "yarn install --frozen-lockfile" in classic
     assert "--immutable" not in classic
     assert "yarn install --immutable" in berry
+
+
+def test_ci_installs_nested_javascript_project_from_its_install_root(tmp_path: Path) -> None:
+    web = tmp_path / "services" / "web"
+    web.mkdir(parents=True)
+    _ = (web / "package.json").write_text('{"name":"web"}\n', encoding="utf-8")
+    _ = (web / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
+
+    workflow = scaffold.github_ci_workflow(tmp_path, version="0.0.0")
+
+    assert "run: npm ci --no-audit --no-fund" in workflow
+    assert "working-directory: services/web" in workflow
+
+
+def test_ci_bootstraps_bun_without_unneeded_node_or_corepack(tmp_path: Path) -> None:
+    _ = _project(tmp_path, "bun.lock")
+
+    workflow = scaffold.github_ci_workflow(tmp_path, version="0.0.0")
+
+    assert "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6" in workflow
+    assert "actions/setup-node" not in workflow
+    assert "corepack enable" not in workflow
+    assert "run: bun install --frozen-lockfile" in workflow
+
+
+def test_ci_only_runs_locked_uv_sync_for_a_uv_project(tmp_path: Path) -> None:
+    _ = (tmp_path / "pyproject.toml").write_text('[project]\nname="demo"\nversion="0.1.0"\n', encoding="utf-8")
+
+    unlocked = scaffold.github_ci_workflow(tmp_path, version="0.0.0")
+    _ = (tmp_path / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+    locked = scaffold.github_ci_workflow(tmp_path, version="0.0.0")
+
+    assert "uv sync" not in unlocked
+    assert "run: uv sync --locked" in locked
 
 
 def test_init_speaks_classic_yarn_when_only_the_lockfile_names_it(tmp_path: Path) -> None:

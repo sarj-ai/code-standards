@@ -23,7 +23,7 @@ pnpm add -D @sarj/eslint-plugin
 ```js
 // eslint.config.mjs
 import sarj from "@sarj/eslint-plugin";
-export default [...sarj.configs.recommended];
+export default [sarj.configs.recommended];
 ```
 
 67 rules. Each source under `src/rules/` states one concise claim and links to
@@ -308,7 +308,7 @@ declared stateless.
 import sarj from "@sarj/eslint-plugin";
 
 export default [
-  ...sarj.configs.strict,
+  sarj.configs.strict,
   {
     rules: {
       // This repo keeps its HTTP layer in `lib/api/`, not `clients/`.

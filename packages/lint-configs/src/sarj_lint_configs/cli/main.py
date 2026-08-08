@@ -23,7 +23,7 @@ from sarj_lint_configs.libs.filesystem import is_link_like
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Sequence
 
     from sarj_lint_configs.libs.adoption import service
 
@@ -90,6 +90,8 @@ class _Args(argparse.Namespace):
     output: Path | None = None
     external: bool = False
     trust: str = "safe"
+    trust_repository_code: bool = False
+    analysis_schema_version: int = 1
     before: str = ""
     after: str = ""
     github_output: Path | None = None
@@ -102,6 +104,7 @@ class _Args(argparse.Namespace):
     dependencies: bool = False
     show_cmd: str = ""
     staged: bool = False
+    hook_files: bool = False
     release_commit: str = ""
     max_annotations_per_level: int = 10
     analysis_mode: str = "policy"
@@ -254,8 +257,16 @@ def cmd_doctor(args: _Args) -> int:
         if adopted is None:
             print("error: repository is not adopted; run `sarj-standards init`", file=sys.stderr)
             return 2
-        repair_status = upgrade.apply(upgrade.build_plan(root), install=not no_install)
-        if repair_status:
+        plan = upgrade.build_plan(root)
+        blockers = upgrade.unsafe_retired_findings(plan) if upgrade.changes_bundle_version(plan) else []
+        if blockers:
+            repair_status = 2
+            print("error: automatic repair is blocked by retired rule references:", file=sys.stderr)
+            for finding in blockers:
+                print(f"error: {finding.where} -- {finding.detail}", file=sys.stderr)
+        else:
+            repair_status = upgrade.apply(plan, install=not no_install)
+        if repair_status and not blockers:
             print(
                 "error: automatic repair did not converge; tracked configuration changes were restored",
                 file=sys.stderr,
@@ -514,11 +525,6 @@ def cmd_init(args: _Args) -> int:
 
 
 def cmd_verify(args: _Args) -> int:
-    from sarj_lint_configs import (  # ruff: ignore[import-outside-top-level] — lazy command route
-        lifecycle,
-        scaffold,
-    )
-
     root = _resolve_dest(args.dest)
     if cmd_doctor(args):
         return 1
@@ -528,13 +534,12 @@ def cmd_verify(args: _Args) -> int:
     if cmd_sync(sync_args, next_steps=False):
         return 1
     adopted = _declared_manifest(args)
-    if lifecycle.verify_custom_rules(root, paths=(".",) if adopted is None else adopted.verify_paths):
-        return 1
-    policy_args = _Args()
-    policy_args.dest = str(root)
-    if adopted is not None and adopted.profile == "application" and cmd_library_policy(policy_args):
-        return 1
-    return lifecycle.execute(lifecycle.verification_commands(scaffold.detect(root)))
+    return _run_canonical_check(
+        root,
+        None if adopted is None else adopted.verify_paths,
+        raw=adopted is None,
+        trusted=args.trust_repository_code,
+    )
 
 
 def _declared_manifest(args: _Args) -> manifest.Manifest | None:
@@ -595,7 +600,7 @@ def cmd_library_policy(args: _Args, *, selected_paths: Iterable[str] | None = No
     return 1 if findings else 0
 
 
-def cmd_check(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one command coordinates compatible lint phases.
+def cmd_check(args: _Args) -> int:
     """Run source rules and the application dependency policy together."""
     from sarj_lint_configs import runner  # ruff: ignore[import-outside-top-level] — lazy route
 
@@ -609,7 +614,9 @@ def cmd_check(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comma
         return 2
     if args.dependencies:
         return cmd_library_policy(args)
-    if args.staged:
+    if args.staged and args.hook_files:
+        args.files = _safe_staged_paths(root, args.files)
+    elif args.staged:
         try:
             staged = _staged_files(root)
         except (OSError, subprocess.SubprocessError) as exc:
@@ -659,7 +666,9 @@ def cmd_check(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comma
         selected = args.files or list(adopted.verify_paths)
         inputs = [str(Path(path) if Path(path).is_absolute() else root / path) for path in selected]
         try:
-            status = runner.create_python_baseline(inputs, str(output))
+            from sarj_lint_configs.libs.linting.policy import Policy  # ruff: ignore[import-outside-top-level]
+
+            status = runner.create_python_baseline(inputs, str(output), policy=Policy.from_manifest(root, adopted))
         except ValueError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
@@ -673,6 +682,7 @@ def cmd_check(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comma
         health_status = _check_staged_adoption_health(root, args.files, output_format=args.output_format)
         if health_status:
             return health_status
+        args.files = [path for path in args.files if runner.accepts_hook_path(Path(path))]
         if not args.files:
             return 0
     configured_baseline = (
@@ -689,42 +699,47 @@ def cmd_check(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comma
                 )
                 return 2
             selected = list(adopted.verify_paths) if adopted is not None else ["."]
+            from sarj_lint_configs.libs.linting.policy import Policy  # ruff: ignore[import-outside-top-level]
+
             return runner.run(
                 [str(root / path) for path in selected],
                 noise_only=True,
                 python_baseline=args.python_baseline or configured_baseline,
+                policy=Policy.from_manifest(root, adopted),
             )
         return cmd_verify(args)
     selected_paths = list(args.files)
-    try:
-        source_status = runner.run(
-            selected_paths,
-            noise_only=args.noise_only,
-            python_baseline=args.python_baseline or configured_baseline,
-        )
-    except ValueError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
-    from sarj_lint_configs import lifecycle  # ruff: ignore[import-outside-top-level] — lazy selected route
+    if args.noise_only:
+        try:
+            from sarj_lint_configs.libs.linting.policy import Policy  # ruff: ignore[import-outside-top-level]
 
-    try:
-        eslint_commands = lifecycle.selected_eslint_commands(
-            root,
-            selected_paths,
-            label="staged" if args.staged else "selected",
-        )
-        if args.noise_only and eslint_commands:
-            print("error: --noise-only has no TypeScript rule subset; remove the option", file=sys.stderr)
+            return runner.run(
+                selected_paths,
+                noise_only=True,
+                python_baseline=args.python_baseline or configured_baseline,
+                policy=Policy.from_manifest(root, adopted),
+            )
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
             return 2
-        eslint_status = lifecycle.execute(eslint_commands)
-    except ValueError as exc:
-        print(f"error: cannot run selected ESLint: {exc}", file=sys.stderr)
-        return 2
-    policy_args = _Args()
-    policy_args.dest = str(root)
-    policy_args.quiet = True
-    policy_status = cmd_library_policy(policy_args, selected_paths=selected_paths)
-    return max(source_status, eslint_status, policy_status)
+    return _run_canonical_check(root, selected_paths, trusted=args.trust_repository_code)
+
+
+def _run_canonical_check(root: Path, paths: Sequence[str] | None, *, raw: bool = False, trusted: bool = False) -> int:
+    """Run every engine through one policy-aware diagnostic boundary."""
+    from sarj_lint_configs.api import AnalysisMode, Standards, TrustMode  # ruff: ignore[import-outside-top-level]
+    from sarj_lint_configs.libs.diagnostics import to_text  # ruff: ignore[import-outside-top-level]
+
+    report = Standards(root).analyze(
+        paths,
+        external=True,
+        trust=TrustMode.TRUSTED if trusted else TrustMode.SAFE,
+        mode=AnalysisMode.RAW if raw else AnalysisMode.POLICY,
+    )
+    rendered = to_text(report)
+    if rendered:
+        print(rendered, end="" if rendered.endswith("\n") else "\n")
+    return report.exit_code
 
 
 def cmd_analyze(args: _Args) -> int:
@@ -749,11 +764,12 @@ def cmd_analyze(args: _Args) -> int:
         trust=args.trust,
         mode=AnalysisMode(args.analysis_mode),
     )
-    payload = (
-        to_github(report, max_annotations_per_level=args.max_annotations_per_level)
-        if args.output_format == "github"
-        else {"json": to_json, "sarif": to_sarif, "text": to_text}[args.output_format](report)
-    )
+    if args.output_format == "github":
+        payload = to_github(report, max_annotations_per_level=args.max_annotations_per_level)
+    elif args.output_format == "json":
+        payload = to_json(report, schema_version=args.analysis_schema_version)
+    else:
+        payload = {"sarif": to_sarif, "text": to_text}[args.output_format](report)
     if args.output is None or str(args.output) == "-":
         print(payload, end="")
     else:
@@ -811,6 +827,8 @@ def _write_report(root: Path, output: Path, payload: str, *, output_format: str)
 
 def _validate_check_mode(args: _Args) -> None:
     """Reject option combinations whose values would otherwise be ignored."""
+    if args.hook_files and not args.staged:
+        _user_error("--hook-files requires --staged")
     if args.dependencies:
         incompatible = (
             (args.files, "selected paths"),
@@ -1023,7 +1041,16 @@ def cmd_show(args: _Args) -> int:
         case "ci":
             from sarj_lint_configs import scaffold  # ruff: ignore[import-outside-top-level] -- selected route
 
-            print(scaffold.github_ci_workflow(_resolve_dest(args.dest), version=__version__), end="")
+            root = _resolve_dest(args.dest)
+            rendered = scaffold.github_ci_workflow(root, version=__version__)
+            if args.output is None:
+                print(rendered, end="")
+            else:
+                from sarj_lint_configs.libs.adoption import transaction  # ruff: ignore[import-outside-top-level]
+
+                output = args.output if args.output.is_absolute() else root / args.output
+                transaction.atomic_write_text(root, output, rendered)
+                print(f"wrote: {output}")
             return 0
         case _:
             return 2
@@ -1235,6 +1262,11 @@ def _build_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-locals]
         help="run Python, config-prose, and AI-artifact noise rules (TypeScript uses the ESLint plugin)",
     )
     p_check.add_argument(
+        "--trust-repository-code",
+        action="store_true",
+        help="allow executable repository ESLint configuration (generated hooks and CI set this explicitly)",
+    )
+    p_check.add_argument(
         "--baseline",
         "--python-baseline",
         dest="python_baseline",
@@ -1258,6 +1290,7 @@ def _build_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-locals]
         action="store_true",
         help="run custom rules on hook-supplied paths, or discover staged files when none are supplied",
     )
+    p_check.add_argument("--hook-files", action="store_true", help=argparse.SUPPRESS)
     p_check.add_argument(
         "--profile",
         choices=manifest.PROFILES,
@@ -1293,6 +1326,14 @@ def _build_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-locals]
         choices=("policy", "raw"),
         default="policy",
         help="apply adopted native policy, or scan the requested native corpus raw (default: policy)",
+    )
+    analyze.add_argument(
+        "--schema-version",
+        dest="analysis_schema_version",
+        type=int,
+        choices=(1, 2),
+        default=1,
+        help="JSON diagnostic schema version (default: 1)",
     )
     analyze.add_argument(
         "--external",
@@ -1389,6 +1430,7 @@ def _build_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-locals]
     ci = show_commands.add_parser("ci", help="print a complete pinned GitHub Actions standards workflow")
     ci.add_argument("root", nargs="?", help="repository root (default: current directory)")
     ci.add_argument("--dest", default=".", help=argparse.SUPPRESS)
+    ci.add_argument("--output", type=Path, help="write a managed workflow inside the repository")
 
     _add_repo_parsers(sub.add_parser("maintain", help="repository policy, hooks, rule ledgers, and releases"))
     _add_repo_parsers(sub.add_parser("repo"))

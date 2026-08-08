@@ -23,6 +23,9 @@ if TYPE_CHECKING:
 
 
 _VERSION_LINE = re.compile(r'(?m)^version\s*=\s*"[^"]*"\s*$')
+_BUNDLE_LINE = re.compile(r'(?m)^bundle\s*=\s*"[^"]*"\s*$')
+_CONFIGS_LINE = re.compile(r"(?m)^configs\s*=\s*\[[^\n]*\]\s*$")
+_FIRST_TABLE = re.compile(r"(?m)^\s*\[")
 _INSTALL_REMEDIABLE_FINDING_IDS = frozenset(
     {
         "doctor.eslint.override",
@@ -39,6 +42,8 @@ _MANUAL_POSTFLIGHT_FINDING_IDS = frozenset(
         "doctor.rule.retired",
     }
 )
+
+
 _INSTALL_MUTATED_NAMES: Final = frozenset(
     {
         "bun.lock",
@@ -83,6 +88,8 @@ class UpgradePlan:
     config_writes: list[tuple[Path, Path]]
     pin_writes: list[tuple[Path, str]]
     manifest_text: str
+    preconditions: dict[Path, bytes | None]
+    preexisting_drift: frozenset[tuple[str, str]]
 
 
 def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- one plan resolves every owned site once
@@ -124,6 +131,7 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
         typescript_dest=adopted.typescript_dest if detected_ecosystems.typescript else None,
         profile=adopted.profile,
         hook_manager=adopted.hook_manager,
+        allow_existing_nested_eslint=True,
     )
     if scaffold_plan.errors:
         raise ValueError("; ".join(scaffold_plan.errors))
@@ -138,10 +146,16 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
     scaffold_write_paths = {path for path, _contents in scaffold_plan.writes}
     pin_writes = [(update.path, update.contents) for update in pin_updates if update.path not in scaffold_write_paths]
 
-    if not _VERSION_LINE.search(current_text):
-        msg = f"{path} has no replaceable top-level version field"
-        raise ValueError(msg)
-    manifest_text = _VERSION_LINE.sub(f'version = "{manifest.adopted_version()}"', current_text, count=1)
+    if adopted.schema == 1:
+        if not _VERSION_LINE.search(current_text):
+            msg = f"{path} has no replaceable top-level version field"
+            raise ValueError(msg)
+        manifest_text = _migrate_v1_manifest(current_text, adopted)
+    else:
+        if not _BUNDLE_LINE.search(current_text):
+            msg = f"{path} has no replaceable top-level bundle field"
+            raise ValueError(msg)
+        manifest_text = _BUNDLE_LINE.sub(f'bundle = "{manifest.adopted_version()}"', current_text, count=1)
     if "manager" not in hooks_table:
         separator = "" if manifest_text.endswith("\n\n") else "\n"
         manifest_text += f'{separator}[hooks]\nmanager = "{hook_manager}"\n'
@@ -177,7 +191,49 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
         if target != path:
             changes.append(Change(target, "repair adoption wiring"))
     changes.extend(Change(update.path, f"refresh {'/'.join(update.packages)} version pin") for update in pin_updates)
-    return UpgradePlan(root, adopted, ecosystems, scaffold_plan, changes, config_writes, pin_writes, manifest_text)
+    planned_paths = tuple(
+        dict.fromkeys(
+            [path]
+            + [target for _source, target in config_writes]
+            + [target for target, _contents in pin_writes]
+            + [target for target, _contents in (*scaffold_plan.writes, *scaffold_plan.edits)]
+        )
+    )
+    transaction.validate_targets(root, planned_paths)
+    preconditions = {target: target.read_bytes() if target.is_file() else None for target in planned_paths}
+    preexisting_drift = frozenset(
+        (finding.id, finding.where) for finding in doctor.diagnose(root) if finding.level is doctor.Level.DRIFT
+    )
+    return UpgradePlan(
+        root,
+        adopted,
+        ecosystems,
+        scaffold_plan,
+        changes,
+        config_writes,
+        pin_writes,
+        manifest_text,
+        preconditions,
+        preexisting_drift,
+    )
+
+
+def _migrate_v1_manifest(text: str, adopted: manifest.Manifest) -> str:
+    """Add schema-2 policy metadata without rewriting consumer-owned tables."""
+    version_line = _VERSION_LINE.search(text)
+    if version_line is None:  # guarded by the caller; retain a total helper.
+        return text
+    prefix = f'schema = {manifest.MANIFEST_SCHEMA}\nbundle = "{manifest.adopted_version()}"\nrule_profile = "all"\n'
+    migrated = f"{text[: version_line.start()]}{prefix}{text[version_line.start() :]}"
+    migrated = _VERSION_LINE.sub("", migrated, count=1)
+    migrated = _CONFIGS_LINE.sub("", migrated, count=1)
+    disabled = tuple(name for name in manifest.ALL_CONFIGS if name not in adopted.configs)
+    disabled_text = ", ".join(f'"{name}"' for name in disabled)
+    policy = f"\n[capabilities]\ndisable = [{disabled_text}]\n"
+    table = _FIRST_TABLE.search(migrated)
+    if table is None:
+        return f"{migrated.rstrip()}\n{policy}"
+    return f"{migrated[: table.start()].rstrip()}\n{policy}\n{migrated[table.start() :]}"
 
 
 def _install_ecosystems(ecosystems: scaffold.Ecosystems, configs: Sequence[str]) -> scaffold.Ecosystems:
@@ -213,6 +269,15 @@ def apply(plan: UpgradePlan, *, install: bool = True) -> int:
         return 2
     blockers = unsafe_retired_findings(plan) if changes_bundle_version(plan) else []
     if blockers:
+        return 2
+    try:
+        transaction.validate_targets(plan.root, tuple(plan.preconditions))
+        stale = any(
+            (path.read_bytes() if path.is_file() else None) != expected for path, expected in plan.preconditions.items()
+        )
+    except OSError:
+        return 2
+    if stale:
         return 2
 
     paths = tuple(
@@ -300,6 +365,7 @@ def _apply_and_validate(
     drifted = [finding for finding in findings if finding.level is doctor.Level.DRIFT]
     if not install:
         drifted = [finding for finding in drifted if not is_install_remediable(finding)]
+    drifted = [finding for finding in drifted if (finding.id, finding.where) not in plan.preexisting_drift]
     drifted = [finding for finding in drifted if finding.id not in _MANUAL_POSTFLIGHT_FINDING_IDS]
     return 1 if drifted else 0
 
@@ -334,15 +400,19 @@ def _write_plan(plan: UpgradePlan) -> None:
             + [path for path, _contents in (*plan.scaffold_plan.writes, *plan.scaffold_plan.edits)]
         ),
     )
-    manifest.manifest_path(plan.root).write_text(plan.manifest_text, encoding="utf-8")
+    manifest_target = manifest.manifest_path(plan.root)
+    transaction.assert_expected(plan.root, manifest_target, plan.preconditions[manifest_target])
+    transaction.atomic_write_text(plan.root, manifest_target, plan.manifest_text)
     for source, target in plan.config_writes:
         if is_link_like(target) or (target.exists() and not target.is_file()):
             msg = f"refusing unsafe generated-config target {target}"
             raise OSError(msg)
-        _ = shutil.copyfile(source, target)
+        transaction.assert_expected(plan.root, target, plan.preconditions[target])
+        transaction.atomic_write_bytes(plan.root, target, source.read_bytes())
     for target, contents in plan.pin_writes:
-        target.write_text(contents, encoding="utf-8")
-    scaffold.apply(plan.scaffold_plan)
+        transaction.assert_expected(plan.root, target, plan.preconditions[target])
+        transaction.atomic_write_text(plan.root, target, contents)
+    scaffold.apply(plan.scaffold_plan, preconditions=plan.preconditions)
 
 
 def render(changes: Sequence[Change]) -> str:

@@ -11,12 +11,14 @@ import threading
 import time
 from typing import TYPE_CHECKING, Final
 
-from sarj_lint_configs.libs.corpus import CorpusSource, selected_files, verify
+from sarj_lint_configs.libs.corpus.snapshot import selected_files, snapshot_inventory, verify_inventory
 
 
 if TYPE_CHECKING:
     from pathlib import Path
     from typing import BinaryIO
+
+    from sarj_lint_configs.libs.corpus import CorpusSource
 
 _SAFE_ENVIRONMENT: Final = frozenset(
     {"HOME", "LANG", "LC_ALL", "LC_CTYPE", "PATH", "SYSTEMDRIVE", "SYSTEMROOT", "TMPDIR", "VIRTUAL_ENV"}
@@ -73,6 +75,7 @@ class CorpusLintError(RuntimeError):
 @dataclass(frozen=True, slots=True)
 class _StreamSummary:
     retained_bytes: int
+    total_bytes: int
     lines: int
     truncated: bool
 
@@ -125,8 +128,7 @@ def run_isolated_corpora(
     results: list[CorpusBatchResult] = []
     deadline = time.monotonic() + total_timeout.total_seconds()
     for source in sources:
-        verify(source)
-        files = selected_files(source)
+        verified, files = verify_inventory(source)
         if len(files) > max_files_per_corpus:
             msg = f"corpus {source.report_name} exceeds the {max_files_per_corpus}-file evaluation limit"
             raise CorpusLintError(msg)
@@ -150,6 +152,17 @@ def run_isolated_corpora(
                     accepted_returncodes=accepted_returncodes,
                 )
             )
+        try:
+            if selected_files(source) != files:
+                msg = f"corpus {source.report_name} changed during evaluation"
+                raise CorpusLintError(msg)
+            after = snapshot_inventory(source, files)
+        except (OSError, ValueError) as error:
+            msg = f"corpus {source.report_name} changed during evaluation"
+            raise CorpusLintError(msg) from error
+        if after.digest != verified.digest or after.revision != verified.revision:
+            msg = f"corpus {source.report_name} changed during evaluation"
+            raise CorpusLintError(msg)
     return IsolatedCorpusReport(tuple(results))
 
 
@@ -218,6 +231,9 @@ def _run_batch(
         msg = f"corpus {source.report_name} batch {ordinal} failed to execute"
         raise CorpusLintError(msg) from error
     elapsed = timedelta(seconds=time.monotonic() - started)
+    if completed.stdout.truncated or completed.stderr.truncated:
+        msg = f"corpus {source.report_name} batch {ordinal} exceeded the output limit"
+        raise CorpusLintError(msg)
     if completed.returncode not in accepted_returncodes:
         msg = f"corpus {source.report_name} batch {ordinal} exited with {completed.returncode}"
         raise CorpusLintError(msg)
@@ -229,8 +245,8 @@ def _run_batch(
         stdout_lines=completed.stdout.lines,
         stderr_lines=completed.stderr.lines,
         elapsed=elapsed,
-        stdout_bytes=completed.stdout.retained_bytes,
-        stderr_bytes=completed.stderr.retained_bytes,
+        stdout_bytes=completed.stdout.total_bytes,
+        stderr_bytes=completed.stderr.total_bytes,
         stdout_truncated=completed.stdout.truncated,
         stderr_truncated=completed.stderr.truncated,
     )
@@ -245,8 +261,7 @@ def _run_process(
     max_output_bytes: int,
 ) -> _ProcessResult:
     """Drain both output streams while retaining only a deterministic prefix."""
-    timeout_seconds = timeout.total_seconds()
-    deadline = time.monotonic() + timeout_seconds
+    deadline = time.monotonic() + timeout.total_seconds()
     process = subprocess.Popen(  # ruff: ignore[subprocess-without-shell-equals-true] -- argv is never interpreted by a shell.
         argv,
         cwd=cwd,
@@ -264,14 +279,15 @@ def _run_process(
         raise OSError(msg)
 
     summaries: list[_StreamSummary | None] = [None, None]
+    exceeded = threading.Event()
     threads = (
-        threading.Thread(target=_drain_stream, args=(stdout, max_output_bytes, summaries, 0), daemon=True),
-        threading.Thread(target=_drain_stream, args=(stderr, max_output_bytes, summaries, 1), daemon=True),
+        threading.Thread(target=_drain_stream, args=(stdout, max_output_bytes, exceeded, summaries, 0), daemon=True),
+        threading.Thread(target=_drain_stream, args=(stderr, max_output_bytes, exceeded, summaries, 1), daemon=True),
     )
     for thread in threads:
         thread.start()
     try:
-        returncode = process.wait(timeout=timeout_seconds)
+        returncode = _wait_for_process(process, exceeded, deadline, argv, timeout)
     except subprocess.TimeoutExpired:
         _terminate_process_group(process)
         _ = process.wait()
@@ -285,7 +301,7 @@ def _run_process(
         _terminate_process_group(process)
         for thread in threads:
             thread.join()
-        raise subprocess.TimeoutExpired(argv, timeout_seconds)
+        raise subprocess.TimeoutExpired(argv, timeout.total_seconds())
 
     stdout_summary, stderr_summary = summaries
     if stdout_summary is None or stderr_summary is None:  # pragma: no cover - threads always assign on EOF.
@@ -294,24 +310,58 @@ def _run_process(
     return _ProcessResult(returncode, stdout_summary, stderr_summary)
 
 
+def _wait_for_process(
+    process: subprocess.Popen[bytes],
+    exceeded: threading.Event,
+    deadline: float,
+    argv: tuple[str, ...],
+    timeout: timedelta,
+) -> int:
+    while process.poll() is None and not exceeded.is_set():
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise subprocess.TimeoutExpired(argv, timeout.total_seconds())
+        try:
+            _ = process.wait(timeout=min(0.05, remaining))
+        except subprocess.TimeoutExpired:
+            continue
+    if exceeded.is_set() and process.poll() is None:
+        _terminate_process_group(process)
+    return process.wait()
+
+
 def _drain_stream(
     stream: BinaryIO,
     max_output_bytes: int,
+    exceeded: threading.Event,
     summaries: list[_StreamSummary | None],
     index: int,
 ) -> None:
-    retained = bytearray()
+    retained_bytes = 0
+    total_bytes = 0
+    newline_count = 0
+    has_trailing_content = False
     truncated = False
     try:
         while chunk := stream.read(_READ_SIZE):
-            remaining = max_output_bytes - len(retained)
+            total_bytes += len(chunk)
+            newline_count += chunk.count(b"\n")
+            has_trailing_content = not chunk.endswith(b"\n")
+            remaining = max_output_bytes - retained_bytes
             if remaining > 0:
-                retained.extend(chunk[:remaining])
+                retained_bytes += min(len(chunk), remaining)
             if len(chunk) > remaining:
                 truncated = True
+                exceeded.set()
+                break
     finally:
         stream.close()
-    summaries[index] = _StreamSummary(len(retained), len(retained.splitlines()), truncated)
+    summaries[index] = _StreamSummary(
+        retained_bytes,
+        total_bytes,
+        newline_count + int(has_trailing_content),
+        truncated,
+    )
 
 
 def _terminate_process_group(process: subprocess.Popen[bytes]) -> None:

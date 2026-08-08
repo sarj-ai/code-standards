@@ -19,7 +19,7 @@ _ESLINT_APPLICATION: Final = CONFIGS_DIR / "eslint.application.mjs"
 _RUFF_MARKER: Final = "[lint.per-file-ignores]"
 _ESLINT_MARKER: Final = "          paths: [\n"
 _ESLINT_PATTERNS_MARKER: Final = '          patterns: ["*/index", "*/index.ts"],\n'
-_ESLINT_CONFIG_END: Final = "\n];\n\nexport default config;\n"
+_ESLINT_CONFIG_END: Final = "\n  ];\n}\n\nconst config = createConfig();\nexport default config;\n"
 
 
 def render_ruff_application() -> str:
@@ -62,7 +62,7 @@ def render_eslint_application() -> str:
     ]
     pattern_lines = "".join(f"            {json.dumps(pattern, sort_keys=True)},\n" for pattern in patterns)
     pattern_block = (
-        f'          patterns: [\n            "*/index",\n            "*/index.ts",\n{pattern_lines}          ],\n'
+        f'          patterns: [\n            {{"group": ["*/index", "*/index.ts"]}},\n{pattern_lines}          ],\n'
     )
     if _ESLINT_PATTERNS_MARKER not in with_paths:
         msg = "eslint.strict.mjs is missing the no-restricted-imports patterns generation marker"

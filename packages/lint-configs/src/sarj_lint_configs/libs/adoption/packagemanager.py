@@ -239,13 +239,13 @@ def install_argv(
 def exec_argv(client: PackageManager, *command: str) -> Sequence[str]:
     match client:
         case PackageManager.NPM:
-            return ("npx", "--no-install", *command)
+            return ("npm", "exec", "--offline", "--", *command)
         case PackageManager.PNPM:
             return ("pnpm", "exec", *command)
         case PackageManager.YARN:
             return ("yarn", "exec", *command)
         case PackageManager.BUN:
-            return ("bunx", "--bun", *command)
+            return ("bunx", "--bun", "--no-install", *command)
 
 
 def install_note(client: PackageManager, *, yarn: YarnVariant = YarnVariant.CLASSIC) -> str | None:

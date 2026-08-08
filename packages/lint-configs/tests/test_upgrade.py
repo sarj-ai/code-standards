@@ -48,12 +48,32 @@ def _add_legacy_in_project_tool(root: Path) -> None:
 def test_upgrade_preview_is_read_only_and_names_every_change(tmp_path: Path) -> None:
     _outdated_python_repo(tmp_path)
     before = {path: path.read_bytes() for path in tmp_path.iterdir() if path.is_file()}
-
     plan = upgrade.build_plan(tmp_path)
 
     assert "sync ruff config" in upgrade.render(plan.changes)
     assert "adopt lint-configs" in upgrade.render(plan.changes)
     assert {path: path.read_bytes() for path in tmp_path.iterdir() if path.is_file()} == before
+
+
+def test_upgrade_preserves_preexisting_nested_eslint_projects(tmp_path: Path) -> None:
+    (tmp_path / "package.json").write_text('{"name":"workspace","private":true}\n', encoding="utf-8")
+    (tmp_path / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
+    (tmp_path / "eslint.config.mjs").write_text(
+        'import strict from "./eslint.strict.mjs";\nexport default strict;\n', encoding="utf-8"
+    )
+    (tmp_path / "eslint.strict.mjs").write_text("export default [];\n", encoding="utf-8")
+    nested = tmp_path / "packages" / "legacy"
+    nested.mkdir(parents=True)
+    (nested / "package.json").write_text('{"name":"legacy"}\n', encoding="utf-8")
+    consumer_config = nested / "eslint.config.mjs"
+    consumer_config.write_text("export default [];\n", encoding="utf-8")
+    adopted = manifest.Manifest("0.0.1", ("eslint",), ".", ".", hook_manager="none")
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+
+    plan = upgrade.build_plan(tmp_path)
+
+    assert consumer_config not in {path for path, _contents in (*plan.scaffold_plan.writes, *plan.scaffold_plan.edits)}
+    assert consumer_config.read_text(encoding="utf-8") == "export default [];\n"
 
 
 def test_upgrade_plan_normalizes_a_repository_alias(tmp_path: Path) -> None:
@@ -82,7 +102,7 @@ def test_pin_rewrite_does_not_accept_a_version_suffix_as_the_installed_release(s
 def test_upgrade_rejects_a_manifest_newer_than_the_executing_bundle_without_writes(tmp_path: Path) -> None:
     _outdated_python_repo(tmp_path)
     path = tmp_path / manifest.MANIFEST_NAME
-    path.write_text(path.read_text().replace('version = "0.0.1"', 'version = "9999.0"'))
+    path.write_text(path.read_text().replace('bundle = "0.0.1"', 'bundle = "9999.0"'))
     before = {candidate: candidate.read_bytes() for candidate in tmp_path.iterdir() if candidate.is_file()}
 
     with pytest.raises(ValueError, match=r"newer standards 9999\.0"):
@@ -130,7 +150,7 @@ def test_upgrade_repairs_configs_without_requiring_a_consumer_bundle(tmp_path: P
 
     assert status == 0
     manifest_text = (tmp_path / manifest.MANIFEST_NAME).read_text(encoding="utf-8")
-    assert f'version = "{manifest.adopted_version()}"' in manifest_text
+    assert f'bundle = "{manifest.adopted_version()}"' in manifest_text
     assert "[consumer]\nkeep = true" in manifest_text
     assert {finding.id for finding in doctor.diagnose(tmp_path) if finding.level is doctor.Level.DRIFT} == set()
 
@@ -170,6 +190,43 @@ def test_upgrade_repairs_preexisting_replacement_ruff_policy(tmp_path: Path) -> 
     assert 'extend-ignore = ["D"]' in updated
 
 
+def test_upgrade_migrates_v1_manifest_losslessly_and_idempotently(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    path = tmp_path / manifest.MANIFEST_NAME
+    path.write_text(
+        'version = "0.0.1"\n'
+        'configs = ["ruff", "pyright", "markdownlint", "taplo", "yamllint"]\n\n'
+        '[dest]\npython = "."\ntypescript = "."\n\n'
+        '[hooks]\nmanager = "pre-commit"\n\n'
+        "[consumer]\nkeep = true\n",
+        encoding="utf-8",
+    )
+
+    first = upgrade.build_plan(tmp_path)
+
+    assert "schema = 2" in first.manifest_text
+    assert "[consumer]\nkeep = true" in first.manifest_text
+    assert '[capabilities]\ndisable = ["eslint"]' in first.manifest_text
+    assert "configs =" not in first.manifest_text
+    assert upgrade.apply(first, install=False) == 0
+    migrated = manifest.load(tmp_path)
+    assert migrated is not None
+    assert migrated.schema == 2
+    second = upgrade.build_plan(tmp_path)
+    assert second.manifest_text == path.read_text(encoding="utf-8")
+
+
+def test_upgrade_rejects_a_stale_plan_without_clobbering_late_user_edits(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    plan = upgrade.build_plan(tmp_path)
+    path = tmp_path / manifest.MANIFEST_NAME
+    late = f"{path.read_text(encoding='utf-8')}\n[late_user_edit]\nkeep = true\n"
+    path.write_text(late, encoding="utf-8")
+
+    assert upgrade.apply(plan, install=False) == 2
+    assert path.read_text(encoding="utf-8") == late
+
+
 def test_upgrade_no_install_skips_dependency_install(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _outdated_python_repo(tmp_path)
     install_values: list[bool] = []
@@ -191,9 +248,7 @@ def test_upgrade_no_install_keeps_valid_config_with_pending_dependency_drift(tmp
     status = cli.main(["update", "--offline", "--no-install", str(tmp_path)])
 
     assert status == 0
-    assert f'version = "{manifest.adopted_version()}"' in (tmp_path / manifest.MANIFEST_NAME).read_text(
-        encoding="utf-8"
-    )
+    assert f'bundle = "{manifest.adopted_version()}"' in (tmp_path / manifest.MANIFEST_NAME).read_text(encoding="utf-8")
     pending = upgrade.pending_install_findings(tmp_path)
     assert {finding.id for finding in pending} == {"doctor.python.legacy-in-project-tool"}
 
@@ -235,6 +290,7 @@ def test_upgrade_with_install_still_rolls_back_dependency_drift(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _outdated_python_repo(tmp_path)
+    plan = upgrade.build_plan(tmp_path)
     before = {path: path.read_bytes() for path in tmp_path.iterdir() if path.is_file()}
     finding = doctor.Finding(
         doctor.Level.DRIFT,
@@ -252,7 +308,7 @@ def test_upgrade_with_install_still_rolls_back_dependency_drift(
     monkeypatch.setattr(upgrade.lifecycle, "execute", execute)
     monkeypatch.setattr(doctor, "diagnose", diagnose)
 
-    assert upgrade.apply(upgrade.build_plan(tmp_path), install=True) == 1
+    assert upgrade.apply(plan, install=True) == 1
     assert {path: path.read_bytes() for path in tmp_path.iterdir() if path.is_file()} == before
 
 
@@ -260,6 +316,7 @@ def test_upgrade_no_install_rolls_back_when_dependency_and_configuration_drift_r
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _outdated_python_repo(tmp_path)
+    plan = upgrade.build_plan(tmp_path)
     before = {path: path.read_bytes() for path in tmp_path.iterdir() if path.is_file()}
     findings = [
         doctor.Finding(
@@ -276,7 +333,7 @@ def test_upgrade_no_install_rolls_back_when_dependency_and_configuration_drift_r
 
     monkeypatch.setattr(doctor, "diagnose", diagnose)
 
-    assert upgrade.apply(upgrade.build_plan(tmp_path), install=False) == 1
+    assert upgrade.apply(plan, install=False) == 1
     assert {path: path.read_bytes() for path in tmp_path.iterdir() if path.is_file()} == before
 
 
@@ -342,12 +399,13 @@ def test_upgrade_rolls_back_every_touched_file_when_postflight_fails(
 ) -> None:
     _outdated_python_repo(tmp_path)
     before = {path: path.read_bytes() for path in tmp_path.iterdir() if path.is_file()}
+    plan = upgrade.build_plan(tmp_path)
 
     def drift(_root: Path) -> list[doctor.Finding]:
         return [doctor.Finding(doctor.Level.DRIFT, "test", "forced postflight failure")]
 
     monkeypatch.setattr(doctor, "diagnose", drift)
-    assert upgrade.apply(upgrade.build_plan(tmp_path), install=False) == 1
+    assert upgrade.apply(plan, install=False) == 1
     assert {path: path.read_bytes() for path in tmp_path.iterdir() if path.is_file()} == before
 
 
@@ -401,7 +459,8 @@ def test_upgrade_rejects_a_symlinked_manifest_without_touching_its_target(tmp_pa
     manifest_path.symlink_to(outside)
     before = outside.read_bytes()
 
-    assert upgrade.apply(upgrade.build_plan(tmp_path), install=False) == 2
+    with pytest.raises(OSError, match="symlink"):
+        upgrade.build_plan(tmp_path)
     assert outside.read_bytes() == before
 
 
@@ -501,7 +560,7 @@ def test_upgrade_migrates_plain_official_remote_umbrella_hook(tmp_path: Path) ->
     assert "pre-commit/pre-commit-hooks" in migrated
     assert "github.com/sarj-ai/standards" not in migrated
     assert migrated.count("id: sarj-standards-check") == 1
-    assert "check --staged --" in migrated
+    assert "check --staged --hook-files --" in migrated
     assert "# Keep this pre-commit setting comment." in migrated
     assert "default_stages: [pre-commit, pre-push]" in migrated
     assert "  autofix_prs: false" in migrated

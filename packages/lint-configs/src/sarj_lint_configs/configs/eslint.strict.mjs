@@ -1,5 +1,5 @@
-import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { readdirSync } from "node:fs";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import tseslint from "typescript-eslint";
@@ -16,10 +16,60 @@ import sarj from "@sarj/eslint-plugin";
 import zod from "eslint-plugin-zod";
 
 const CONFIG_DIRECTORY = dirname(fileURLToPath(import.meta.url));
-const hasTypeProject = (directory) =>
-  existsSync(join(directory, "tsconfig.json")) || existsSync(join(directory, "jsconfig.json"));
-const TYPE_PROJECT_ROOT = [CONFIG_DIRECTORY, process.cwd()].find(hasTypeProject) ?? CONFIG_DIRECTORY;
-const HAS_TYPE_PROJECT = hasTypeProject(TYPE_PROJECT_ROOT);
+const TYPE_PROJECT_FILES = new Set(["tsconfig.json", "jsconfig.json"]);
+const TYPE_PROJECT_SEARCH_DEPTH = 8;
+const TYPE_PROJECT_SEARCH_LIMIT = 2_000;
+const TYPE_PROJECT_SKIPPED_DIRECTORIES = new Set([
+  ".git",
+  ".next",
+  ".turbo",
+  "build",
+  "coverage",
+  "dist",
+  "lib",
+  "node_modules",
+  "vendor",
+]);
+
+/**
+ * Find a root or nested workspace type project without crawling dependencies.
+ *
+ * A direct `existsSync(root/tsconfig.json)` check silently disabled every typed
+ * rule in monorepos whose configs live under `apps/*` or `packages/*`. Keep the
+ * search bounded so config loading has deterministic cost even in huge repos.
+ */
+const hasTypeProject = (root) => {
+  const pending = [[root, 0]];
+  let inspected = 0;
+
+  while (pending.length > 0 && inspected < TYPE_PROJECT_SEARCH_LIMIT) {
+    const [directory, depth] = pending.shift();
+    inspected += 1;
+    let entries;
+    try {
+      entries = readdirSync(directory, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    if (entries.some((entry) => entry.isFile() && TYPE_PROJECT_FILES.has(entry.name))) return true;
+    if (depth >= TYPE_PROJECT_SEARCH_DEPTH) continue;
+    for (const entry of entries) {
+      if (
+        entry.isDirectory() &&
+        !entry.name.startsWith(".") &&
+        !TYPE_PROJECT_SKIPPED_DIRECTORIES.has(entry.name)
+      ) {
+        pending.push([join(directory, entry.name), depth + 1]);
+      }
+    }
+  }
+  return false;
+};
+
+const normalizeRoot = (root) => {
+  const value = root instanceof URL ? fileURLToPath(root) : root;
+  return isAbsolute(value) ? value : resolve(value);
+};
 const UNTYPED_RULE_OVERRIDES = Object.fromEntries(
   Object.entries(tseslint.plugin.rules)
     .filter(([, rule]) => rule.meta?.docs?.requiresTypeChecking === true)
@@ -468,8 +518,26 @@ const BUILD_OUTPUT_IGNORES = [
   "**/*.min.cjs",
 ];
 
-/** @type {import("eslint").Linter.Config[]} */
-const config = [
+/**
+ * Build the config at call time, so an import cached from another working
+ * directory cannot freeze type-aware linting off for the real project.
+ *
+ * @param {{ tsconfigRootDir?: string | URL, projectService?: boolean | object }} [options]
+ * @returns {import("eslint").Linter.Config[]}
+ */
+export function createConfig(options = {}) {
+  const explicitRoot = options.tsconfigRootDir === undefined
+    ? undefined
+    : normalizeRoot(options.tsconfigRootDir);
+  const candidates = explicitRoot === undefined
+    ? [CONFIG_DIRECTORY, process.cwd()].map(normalizeRoot)
+    : [explicitRoot];
+  const detectedRoot = candidates.find(hasTypeProject);
+  const TYPE_PROJECT_ROOT = detectedRoot ?? candidates[0];
+  const PROJECT_SERVICE = options.projectService ?? detectedRoot !== undefined;
+  const HAS_TYPE_PROJECT = PROJECT_SERVICE !== false;
+
+  return [
   // A config entry carrying ONLY `ignores` is a global ignore — it must stay
   // first and must not grow a `files` key, or it silently degrades into a
   // per-file entry that ignores nothing.
@@ -499,7 +567,7 @@ const config = [
     languageOptions: {
       parser: tseslint.parser,
       parserOptions: {
-        projectService: HAS_TYPE_PROJECT,
+        projectService: PROJECT_SERVICE,
         tsconfigRootDir: TYPE_PROJECT_ROOT,
         ecmaFeatures: { jsx: true },
       },
@@ -1084,6 +1152,8 @@ const config = [
     },
   },
 
-];
+  ];
+}
 
+const config = createConfig();
 export default config;

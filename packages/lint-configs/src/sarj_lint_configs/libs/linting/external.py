@@ -11,15 +11,18 @@ import re
 import shutil
 import signal
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed argv, no shell, bounded timeout.
+import sys
 import threading
 import time
 from typing import TYPE_CHECKING, Protocol
 
-from sarj_lint_configs.libs.adoption.lifecycle import selected_eslint_commands
+from sarj_lint_configs.libs.adoption.lifecycle import select_eslint_commands
 from sarj_lint_configs.libs.diagnostics import (
+    AnalyzerId,
     Completion,
     Diagnostic,
     ExecutionIssue,
+    InvocationId,
     Location,
     Position,
     Region,
@@ -36,12 +39,30 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from typing import BinaryIO
 
+    from .policy import Policy
+
 
 _TIMEOUT_SECONDS = 120
 _ESLINT_ERROR = 2
 _MAX_STDOUT_BYTES = 16 * 1024 * 1024
 _MAX_STDERR_BYTES = 64 * 1024
 _READ_BYTES = 64 * 1024
+_MAX_ESLINT_PROJECTS = 32
+_MAX_PYTHON_PROJECTS = 32
+_ANALYSIS_DEADLINE_SECONDS = 300
+_SAFE_ENVIRONMENT_KEYS = frozenset(
+    {
+        "HOME",
+        "LANG",
+        "PATH",
+        "SHELL",
+        "SYSTEMROOT",
+        "TEMP",
+        "TMP",
+        "TMPDIR",
+        "WINDIR",
+    }
+)
 
 
 class _ExternalSeverity(StrEnum):
@@ -73,45 +94,83 @@ def analyze_external(
     root: Path,
     trust: TrustMode | str,
     runner: ProcessRunner | None = None,
+    policy: Policy | None = None,
+    capabilities: frozenset[str] | None = None,
+    grouped: GroupedPaths | None = None,
 ) -> tuple[ToolReport, ...]:
     """Run installed analyzers; executable repository config requires explicit trust."""
     execute = run_process if runner is None else runner
     try:
         normalized_trust = TrustMode(trust)
-        root, contained, grouped = _prepare_inputs(files, root)
+        root, _contained, routed = _prepare_inputs(files, root, policy=policy, grouped=grouped)
     except (OSError, ValueError) as exc:
         issue = ExecutionIssue("external", "invalid-input", str(exc))
         return (ToolReport("external", Completion.FAILED, issues=(issue,)),)
     reports: list[ToolReport] = []
-    if grouped.python:
-        reports.extend(
-            (
+    if routed.python:
+        if capabilities is None or "ruff" in capabilities:
+            reports.append(
                 _invoke(
                     "ruff",
-                    _ruff_argv(grouped.python),
+                    _ruff_argv(routed.python),
                     cwd=root,
                     root=root,
                     runner=execute,
                     parser=parse_ruff,
-                ),
-                _invoke(
+                    file_count=len(routed.python),
+                )
+            )
+        if capabilities is None or "pyright" in capabilities:
+            reports.extend(
+                _invoke_python_projects(
                     "basedpyright",
-                    ("basedpyright", "--outputjson", *grouped.python),
-                    cwd=root,
+                    routed.python,
                     root=root,
                     runner=execute,
                     parser=parse_basedpyright,
-                ),
+                )
+            )
+    if capabilities is not None and "eslint" not in capabilities:
+        eslint_commands = ()
+        unowned_eslint = 0
+    else:
+        try:
+            eslint_commands, unowned_eslint = select_eslint_commands(root, routed.typescript, label="analysis")
+        except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            message = _redact_message(f"{type(exc).__name__}: {exc}", root)
+            issue = ExecutionIssue("eslint", "configuration-failure", message)
+            reports.append(ToolReport("eslint", Completion.FAILED, issues=(issue,)))
+            return tuple(reports)
+    if unowned_eslint:
+        issue = ExecutionIssue(
+            "eslint",
+            "coverage-missing",
+            f"no TypeScript project accepts {unowned_eslint} selected JavaScript/TypeScript path(s)",
+        )
+        reports.append(
+            ToolReport(
+                "eslint",
+                Completion.FAILED,
+                issues=(issue,),
+                analyzer_id=AnalyzerId("eslint"),
+                invocation_id=InvocationId("eslint:unowned"),
+                file_count=unowned_eslint,
             )
         )
-    try:
-        eslint_commands = selected_eslint_commands(root, contained, label="analysis")
-    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
-        message = _redact_message(f"{type(exc).__name__}: {exc}", root)
-        issue = ExecutionIssue("eslint", "configuration-failure", message)
+    if len(eslint_commands) > _MAX_ESLINT_PROJECTS:
+        issue = ExecutionIssue(
+            "eslint",
+            "project-limit",
+            f"selected {len(eslint_commands)} ESLint projects; maximum is {_MAX_ESLINT_PROJECTS}",
+        )
         reports.append(ToolReport("eslint", Completion.FAILED, issues=(issue,)))
-        return tuple(reports)
+        eslint_commands = ()
+    analysis_started = time.monotonic()
     for command in eslint_commands:
+        if time.monotonic() - analysis_started >= _ANALYSIS_DEADLINE_SECONDS:
+            issue = ExecutionIssue("eslint", "aggregate-timeout", "ESLint aggregate analysis exceeded 300 seconds")
+            reports.append(ToolReport("eslint", Completion.FAILED, issues=(issue,)))
+            break
         if normalized_trust is TrustMode.SAFE:
             issue = ExecutionIssue(
                 "eslint",
@@ -128,13 +187,90 @@ def analyze_external(
                 root=root,
                 runner=execute,
                 parser=parse_eslint,
+                invocation_id=command.cwd.relative_to(root).as_posix() or ".",
+                file_count=_argv_file_count(command.argv),
+            )
+        )
+    if policy is None:
+        return tuple(reports)
+    return tuple(
+        ToolReport(
+            report.name,
+            report.completion,
+            diagnostics=policy.filter_diagnostics(report.diagnostics),
+            issues=report.issues,
+            analyzer_id=report.analyzer_id,
+            invocation_id=report.invocation_id,
+            version=report.version,
+            duration_ms=report.duration_ms,
+            file_count=report.file_count,
+            cache_status=report.cache_status,
+        )
+        for report in reports
+    )
+
+
+def _invoke_python_projects(
+    name: str,
+    files: Sequence[str],
+    *,
+    root: Path,
+    runner: ProcessRunner,
+    parser: ProtocolParser,
+) -> tuple[ToolReport, ...]:
+    projects = _group_python_projects(files, root)
+    if len(projects) > _MAX_PYTHON_PROJECTS:
+        issue = ExecutionIssue(
+            name,
+            "project-limit",
+            f"selected {len(projects)} Python projects; maximum is {_MAX_PYTHON_PROJECTS}",
+        )
+        return (ToolReport(name, Completion.FAILED, issues=(issue,), analyzer_id=AnalyzerId(name)),)
+    reports: list[ToolReport] = []
+    for project, scoped_files in projects:
+        argv = ("basedpyright", "--outputjson", *scoped_files)
+        project_id = project.relative_to(root).as_posix() or "."
+        reports.append(
+            _invoke(
+                name,
+                argv,
+                cwd=project,
+                root=root,
+                runner=runner,
+                parser=parser,
+                invocation_id=project_id,
+                file_count=len(scoped_files),
             )
         )
     return tuple(reports)
 
 
+def _group_python_projects(files: Sequence[str], root: Path) -> tuple[tuple[Path, tuple[str, ...]], ...]:
+    markers = ("pyrightconfig.json", "pyproject.toml")
+    grouped: dict[Path, list[str]] = {}
+    for raw_file in files:
+        path = Path(raw_file).resolve()
+        project = _nearest_project(path.parent, root, markers)
+        grouped.setdefault(project, []).append(str(path))
+    return tuple(
+        (project, tuple(sorted(scoped_files)))
+        for project, scoped_files in sorted(grouped.items(), key=lambda item: str(item[0]))
+    )
+
+
+def _nearest_project(start: Path, root: Path, markers: Sequence[str]) -> Path:
+    current = start
+    while current.is_relative_to(root):
+        if any((current / marker).is_file() for marker in markers):
+            return current
+        if current == root:
+            break
+        current = current.parent
+    return root
+
+
 def run_process(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-    executable = shutil.which(argv[0])
+    executable = _analyzer_executable(argv[0])
     if executable is None:
         msg = f"required analyzer executable is missing: {argv[0]}"
         raise FileNotFoundError(msg)
@@ -145,6 +281,7 @@ def run_process(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         start_new_session=os.name == "posix",
+        env=_analysis_environment(),
     )
     stdout = process.stdout
     stderr = process.stderr
@@ -184,6 +321,21 @@ def run_process(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         stdout_bytes.decode("utf-8", errors="replace"),
         stderr_bytes.decode("utf-8", errors="replace"),
     )
+
+
+def _analyzer_executable(name: str) -> str | None:
+    """Prefer the analyzer bundled beside this isolated Python runtime."""
+    environment_bin = str(Path(sys.executable).parent)
+    return shutil.which(name, path=environment_bin) or shutil.which(name)
+
+
+def _analysis_environment() -> dict[str, str]:
+    """Keep analyzer discovery/locale while withholding caller credentials."""
+    return {
+        key: value
+        for key, value in os.environ.items()  # ruff: ignore[banned-api] -- deliberately reduce inherited environment.
+        if key in _SAFE_ENVIRONMENT_KEYS or key.startswith("LC_")
+    }
 
 
 def _start_capture_threads(threads: Sequence[threading.Thread]) -> None:
@@ -274,13 +426,34 @@ def _invoke(
     root: Path,
     runner: ProcessRunner,
     parser: ProtocolParser,
+    invocation_id: str | None = None,
+    file_count: int,
 ) -> ToolReport:
+    started = time.monotonic()
     try:
-        return _invoke_unchecked(name, argv, cwd=cwd, root=root, runner=runner, parser=parser)
+        report = _invoke_unchecked(name, argv, cwd=cwd, root=root, runner=runner, parser=parser)
+        return ToolReport(
+            report.name,
+            report.completion,
+            diagnostics=report.diagnostics,
+            issues=report.issues,
+            analyzer_id=AnalyzerId(name),
+            invocation_id=InvocationId(name if invocation_id is None else f"{name}:{invocation_id}"),
+            duration_ms=round((time.monotonic() - started) * 1_000),
+            file_count=file_count,
+        )
     except (OSError, TypeError, ValueError, RecursionError, json.JSONDecodeError, subprocess.SubprocessError) as exc:
         message = _redact_message(f"{type(exc).__name__}: {exc}", root)
         issue = ExecutionIssue(name, "tool-failure", message)
-        return ToolReport(name, Completion.FAILED, issues=(issue,))
+        return ToolReport(
+            name,
+            Completion.FAILED,
+            issues=(issue,),
+            analyzer_id=AnalyzerId(name),
+            invocation_id=InvocationId(name if invocation_id is None else f"{name}:{invocation_id}"),
+            duration_ms=round((time.monotonic() - started) * 1_000),
+            file_count=file_count,
+        )
 
 
 def _invoke_unchecked(
@@ -325,7 +498,7 @@ def parse_ruff(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
         diagnostics.append(
             Diagnostic(
                 code,
-                _text(item, "message"),
+                _redact_message(_text(item, "message"), root),
                 Severity.ERROR,
                 "ruff",
                 Location(_relative(path, root), region=Region(start, end)),
@@ -352,7 +525,7 @@ def parse_basedpyright(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
         diagnostics.append(
             Diagnostic(
                 rule,
-                _text(item, "message"),
+                _redact_message(_text(item, "message"), root),
                 _severity_text(_text(item, "severity")),
                 "basedpyright",
                 Location(_relative(path, root), region=Region(start, end)),
@@ -362,7 +535,9 @@ def parse_basedpyright(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
     return tuple(diagnostics)
 
 
-def parse_eslint(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
+def parse_eslint(  # ruff: ignore[too-many-locals] -- protocol normalization keeps each ESLint field explicit.
+    payload: str, *, root: Path
+) -> tuple[Diagnostic, ...]:
     values = _array(_loads(payload), "ESLint output")
     documents: dict[Path, SourceDocument | None] = {}
     diagnostics: list[Diagnostic] = []
@@ -371,15 +546,25 @@ def parse_eslint(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
         path = _path(result, "filePath", root)
         for raw_message in _array(result.get("messages"), "ESLint messages"):
             item = _table(raw_message, "ESLint diagnostic")
-            start = _required_eslint_position(item, path, documents)
-            end = _eslint_position(item, path, documents, line_key="endLine", column_key="endColumn")
-            rule_value = item.get("ruleId")
-            rule = rule_value if isinstance(rule_value, str) else "eslint/fatal"
-            location = (
-                Location(_relative(path, root), region=Region(start, end))
-                if end is not None
-                else Location(_relative(path, root), position=start)
+            if item.get("fatal") is True:
+                detail = _text(item, "message")
+                msg = f"ESLint fatal parser/configuration failure: {detail}"
+                raise ValueError(msg)
+            start = _eslint_start_position(item, path, documents)
+            end = (
+                None
+                if start is None
+                else _eslint_position(item, path, documents, line_key="endLine", column_key="endColumn")
             )
+            rule_value = item.get("ruleId")
+            rule = rule_value if isinstance(rule_value, str) else "eslint/file"
+            relative_path = _relative(path, root)
+            if start is None:
+                location = Location(relative_path)
+            elif end is not None:
+                location = Location(relative_path, region=Region(start, end))
+            else:
+                location = Location(relative_path, position=start)
             severity_value = item.get("severity")
             if type(severity_value) is int and severity_value == _ESLINT_ERROR:
                 severity = Severity.ERROR
@@ -391,7 +576,7 @@ def parse_eslint(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
             diagnostics.append(
                 Diagnostic(
                     rule,
-                    _text(item, "message"),
+                    _redact_message(_text(item, "message"), root),
                     severity,
                     "eslint",
                     location,
@@ -402,14 +587,21 @@ def parse_eslint(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
 
 
 def _ruff_argv(files: Sequence[str]) -> tuple[str, ...]:
-    return ("ruff", "check", "--output-format", "json", "--no-cache", "--", *files)
+    return ("ruff", "check", "--output-format", "json", "--", *files)
 
 
 def _eslint_json_argv(argv: Sequence[str]) -> tuple[str, ...]:
     values = list(argv)
     index = values.index("--") if "--" in values else len(values)
-    values[index:index] = ["--format", "json"]
+    values[index:index] = ["--format", "json", "--no-warn-ignored"]
     return tuple(values)
+
+
+def _argv_file_count(argv: Sequence[str]) -> int:
+    """Count selected file arguments without mistaking flags for files."""
+    if "--" not in argv:
+        return 0
+    return len(argv) - argv.index("--") - 1
 
 
 def _loads(payload: str) -> object:
@@ -419,10 +611,17 @@ def _loads(payload: str) -> object:
     return json.loads(payload)  # pyright: ignore[reportAny] -- narrowed immediately.
 
 
-def _prepare_inputs(files: Sequence[str], root: Path) -> tuple[Path, tuple[str, ...], GroupedPaths]:
+def _prepare_inputs(
+    files: Sequence[str],
+    root: Path,
+    *,
+    policy: Policy | None = None,
+    grouped: GroupedPaths | None = None,
+) -> tuple[Path, tuple[str, ...], GroupedPaths]:
     repository = root.resolve()
     contained = tuple(_contained_path(item, repository) for item in files)
-    return repository, contained, group_paths(contained)
+    selected = contained if policy is None else policy.filter_paths(contained)
+    return repository, selected, grouped if grouped is not None else group_paths(selected, policy=policy)
 
 
 def _contained_path(value: str, root: Path) -> str:
@@ -522,17 +721,21 @@ def _eslint_position(
     column = value.get(column_key)
     if type(line) is not int or type(column) is not int:
         return None
-    return _zero_based_position({"line": line - 1, "character": column - 1}, path, cache)
+    try:
+        return _zero_based_position({"line": line - 1, "character": column - 1}, path, cache)
+    except ValueError:
+        return None
 
 
-def _required_eslint_position(
+def _eslint_start_position(
     value: dict[str, object], path: Path, cache: dict[Path, SourceDocument | None]
-) -> Position:
-    position = _eslint_position(value, path, cache, line_key="line", column_key="column")
-    if position is None:
-        msg = "ESLint diagnostic is missing its start position"
+) -> Position | None:
+    if isinstance(value.get("line"), bool) or isinstance(value.get("column"), bool):
+        msg = "ESLint diagnostic has invalid boolean coordinates"
         raise TypeError(msg)
-    return position
+    if value.get("line") == 0:
+        return None
+    return _eslint_position(value, path, cache, line_key="line", column_key="column")
 
 
 def _severity_text(value: str) -> Severity:
@@ -561,6 +764,12 @@ def _relative(path: Path, root: Path) -> str:
 def _redact_message(value: str, root: Path) -> str:
     message = value.replace(str(root), ".")
     message = re.sub(r"(?i)\b(token|secret|password|api[_-]?key)=\S+", r"\1=<redacted>", message)
+    message = re.sub(r"(?i)\b(authorization\s*:\s*bearer)\s+\S+", r"\1 <redacted>", message)
+    message = re.sub(
+        r"(?i)\b((?:aws|azure|gcp|github)?[_-]?(?:access[_-]?key|secret[_-]?access[_-]?key))\s+\S+",
+        r"\1 <redacted>",
+        message,
+    )
     message = re.sub(r"(?<![\w:./])/(?:[^\s:]+/?)+", "<path>", message)
     message = re.sub(r"\b[A-Za-z]:\\[^\s]+", "<path>", message)
     return message[:1024]

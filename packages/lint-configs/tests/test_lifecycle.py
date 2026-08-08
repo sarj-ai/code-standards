@@ -74,6 +74,13 @@ def test_precommit_install_is_explicitly_scoped_to_commit_stage(tmp_path: Path, 
     assert command.argv[-4:] == ("pre-commit", "install", "--hook-type", "pre-commit")
 
 
+def test_precommit_install_skips_linked_worktree_gitfile(tmp_path: Path) -> None:
+    (tmp_path / ".git").write_text("gitdir: ../.git/worktrees/fixture\n", encoding="utf-8")
+    ecosystems = scaffold.Ecosystems(True, False, python_root=tmp_path)
+
+    assert lifecycle.install_commands(tmp_path, ecosystems) == []
+
+
 def test_staged_eslint_uses_detected_project_cwd_and_package_manager(tmp_path: Path) -> None:
     project = tmp_path / "web"
     project.mkdir()
@@ -120,7 +127,7 @@ def test_staged_eslint_omits_deletions_symlinks_and_unrelated_paths(tmp_path: Pa
     )
 
     assert len(commands) == 1
-    assert commands[0].argv == ("npx", "--no-install", "eslint", "--", "source.ts")
+    assert commands[0].argv == ("npm", "exec", "--offline", "--", "eslint", "--", "source.ts")
     assert lifecycle.staged_eslint_commands(tmp_path, [str(symlink)]) == []
 
 
@@ -146,7 +153,7 @@ def test_selected_eslint_accepts_source_directories_and_ignores_generated_trees(
     commands = lifecycle.selected_eslint_commands(tmp_path, ["src", "build"])
 
     assert len(commands) == 1
-    assert commands[0].argv == ("npx", "--no-install", "eslint", "--", "src")
+    assert commands[0].argv == ("npm", "exec", "--offline", "--", "eslint", "--", "src")
 
 
 def test_selected_eslint_partitions_sibling_projects_without_dropping_files(tmp_path: Path) -> None:
@@ -166,6 +173,27 @@ def test_selected_eslint_partitions_sibling_projects_without_dropping_files(tmp_
     assert all(command.argv[-1] == "app.ts" for command in commands)
 
 
+def test_eslint_selection_keeps_owned_projects_when_other_files_are_unowned(tmp_path: Path) -> None:
+    project = tmp_path / "apps" / "web"
+    project.mkdir(parents=True)
+    (project / "package.json").write_text("{}\n", encoding="utf-8")
+    (project / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
+    owned = project / "app.ts"
+    owned.write_text("export const value = 1;\n", encoding="utf-8")
+    unowned = tmp_path / "tool.ts"
+    unowned.write_text("export const tool = 1;\n", encoding="utf-8")
+
+    selection = lifecycle.select_eslint_commands(
+        tmp_path,
+        [str(owned), str(unowned)],
+        label="analysis",
+    )
+
+    assert len(selection.commands) == 1
+    assert selection.commands[0].cwd == project
+    assert selection.unowned_count == 1
+
+
 @pytest.mark.parametrize("root_has_package", [False, True])
 def test_selected_eslint_keeps_a_directory_with_its_nested_project_owner(
     tmp_path: Path, *, root_has_package: bool
@@ -183,8 +211,8 @@ def test_selected_eslint_keeps_a_directory_with_its_nested_project_owner(
 
     assert len(commands) == 1
     assert commands[0].cwd == project
-    assert commands[0].argv[:4] == ("npx", "--no-install", "eslint", "--")
-    assert set(commands[0].argv[4:]) == {"app.ts", "eslint.config.mjs"}
+    assert commands[0].argv[:6] == ("npm", "exec", "--offline", "--", "eslint", "--")
+    assert set(commands[0].argv[6:]) == {"app.ts", "eslint.config.mjs"}
 
 
 def test_staged_eslint_supports_every_eslint_module_suffix(tmp_path: Path) -> None:
@@ -195,7 +223,7 @@ def test_staged_eslint_supports_every_eslint_module_suffix(tmp_path: Path) -> No
 
     commands = lifecycle.staged_eslint_commands(tmp_path, names)
 
-    assert commands[0].argv == ("npx", "--no-install", "eslint", "--", *names)
+    assert commands[0].argv == ("npm", "exec", "--offline", "--", "eslint", "--", *names)
 
 
 def test_staged_eslint_uses_npm_by_default(tmp_path: Path) -> None:
@@ -206,4 +234,4 @@ def test_staged_eslint_uses_npm_by_default(tmp_path: Path) -> None:
     command = lifecycle.staged_eslint_commands(tmp_path, ["source.ts"])[0]
 
     assert scaffold.detect(tmp_path).client is PackageManager.NPM
-    assert command.argv[:3] == ("npx", "--no-install", "eslint")
+    assert command.argv[:5] == ("npm", "exec", "--offline", "--", "eslint")

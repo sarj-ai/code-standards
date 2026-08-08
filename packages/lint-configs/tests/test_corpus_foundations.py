@@ -21,6 +21,7 @@ from sarj_lint_configs.libs.corpus import (
     snapshot,
     verify,
 )
+from sarj_lint_configs.libs.corpus.snapshot import verify_inventory
 
 
 if TYPE_CHECKING:
@@ -84,6 +85,18 @@ def test_verify_requires_the_declared_content_digest(tmp_path: Path) -> None:
     assert actual.verified is False
     with pytest.raises(ValueError, match="digest drifted"):
         verify(_source(tmp_path))
+
+
+def test_verified_inventory_has_named_fields_and_preserves_tuple_unpacking(tmp_path: Path) -> None:
+    source_path = tmp_path / "app.py"
+    source_path.write_text("VALUE = 1\n", encoding="utf-8")
+    source = _source(tmp_path, digest=snapshot(_source(tmp_path)).digest)
+
+    inventory = verify_inventory(source)
+    verified, files = inventory
+
+    assert inventory.snapshot is verified
+    assert inventory.files == files == (source_path,)
 
 
 def test_public_manifest_resolves_local_paths_without_network_access(tmp_path: Path) -> None:

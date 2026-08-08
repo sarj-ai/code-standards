@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from sarj_lint_configs.libs.adoption.transaction import FileTransaction, validate_targets
+from sarj_lint_configs.libs.adoption import transaction as transaction_module
+from sarj_lint_configs.libs.adoption.transaction import FileTransaction, assert_expected, validate_targets
 
 
 if TYPE_CHECKING:
@@ -62,11 +63,11 @@ def test_rollback_reports_permission_failure_without_raising(tmp_path: Path, mon
     transaction = FileTransaction.capture(tmp_path, (owned,))
     owned.write_text("after\n", encoding="utf-8")
 
-    def denied(_path: Path, _contents: bytes) -> int:
+    def denied(_root: Path, _path: Path, _contents: bytes) -> None:
         message = "read-only filesystem"
         raise PermissionError(message)
 
-    monkeypatch.setattr(type(owned), "write_bytes", denied)
+    monkeypatch.setattr(transaction_module, "atomic_write_bytes", denied)
 
     report = transaction.rollback()
 
@@ -84,3 +85,15 @@ def test_transaction_rejects_hard_linked_mutation_target(tmp_path: Path) -> None
         validate_targets(tmp_path, (target,))
 
     assert outside.read_text(encoding="utf-8") == '{"private": true}\n'
+
+
+def test_planned_write_refuses_a_late_concurrent_edit(tmp_path: Path) -> None:
+    target = tmp_path / "package.json"
+    target.write_text('{"before": true}\n', encoding="utf-8")
+    expected = target.read_bytes()
+    target.write_text('{"concurrent": true}\n', encoding="utf-8")
+
+    with pytest.raises(OSError, match="changed concurrently"):
+        assert_expected(tmp_path, target, expected)
+
+    assert target.read_text(encoding="utf-8") == '{"concurrent": true}\n'

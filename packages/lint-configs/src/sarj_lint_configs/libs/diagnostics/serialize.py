@@ -6,15 +6,22 @@ from heapq import nsmallest
 import json
 from urllib.parse import quote
 
-from .models import AnalysisReport, Diagnostic, Severity
+from .models import LATEST_SCHEMA_VERSION, AnalysisReport, Diagnostic, Fix, FixSafety, Location, Severity, TextEdit
 
 
 _GITHUB_ANNOTATION_LIMIT = 10
 
 
-def to_json(report: AnalysisReport, *, indent: int | None = 2) -> str:
-    """Serialize the stable Standards schema deterministically."""
-    return json.dumps(report.as_dict(), indent=indent, sort_keys=True) + "\n"
+def to_json(report: AnalysisReport, *, indent: int | None = 2, schema_version: int = 1) -> str:
+    """Serialize a selected stable Standards schema deterministically."""
+    if schema_version == 1:
+        payload = report.as_dict()
+    elif schema_version == LATEST_SCHEMA_VERSION:
+        payload = report.as_v2_dict()
+    else:
+        msg = f"unsupported analysis schema version: {schema_version}"
+        raise ValueError(msg)
+    return json.dumps(payload, indent=indent, sort_keys=True) + "\n"
 
 
 def to_sarif(report: AnalysisReport) -> str:
@@ -45,7 +52,8 @@ def to_sarif(report: AnalysisReport) -> str:
                             {
                                 "descriptor": {"id": "coverage-notice"},
                                 "message": {"text": _coverage_line(item.source, item.reason, item.file_count)},
-                                "level": "warning",
+                                "level": "error" if item.blocking else "note",
+                                "properties": {"disposition": item.disposition.value},
                             }
                             for item in report.coverage
                         ],
@@ -214,13 +222,73 @@ def _sarif_result(diagnostic: Diagnostic) -> dict[str, object]:
             "startLine": location.position.line + 1,
             "startColumn": location.position.character + 1,
         }
-    return {
+    result: dict[str, object] = {
         "ruleId": _sarif_rule_id(diagnostic),
         "level": _sarif_level(diagnostic.severity),
         "message": {"text": diagnostic.message},
         "locations": [{"physicalLocation": physical}],
-        "properties": {"source": diagnostic.source, "code": diagnostic.code, "repositoryRoot": "."},
+        "properties": {
+            "source": diagnostic.source,
+            "code": diagnostic.code,
+            "repositoryRoot": ".",
+            **({"tags": list(diagnostic.tags)} if diagnostic.tags else {}),
+            **({"notes": list(diagnostic.notes)} if diagnostic.notes else {}),
+        },
     }
+    if diagnostic.fingerprint is not None:
+        result["partialFingerprints"] = {"sarj/v1": diagnostic.fingerprint}
+    safe_fixes = tuple(fix for fix in diagnostic.fixes if fix.safety is FixSafety.SAFE)
+    if safe_fixes:
+        result["fixes"] = [_sarif_fix(fix) for fix in safe_fixes]
+    if diagnostic.related:
+        result["relatedLocations"] = [
+            {"message": {"text": item.label}, "physicalLocation": _sarif_physical(item.location)}
+            for item in diagnostic.related
+        ]
+    return result
+
+
+def _sarif_fix(fix: Fix) -> dict[str, object]:
+    grouped: dict[str, list[TextEdit]] = {}
+    for edit in fix.edits:
+        grouped.setdefault(edit.location.path, []).append(edit)
+    return {
+        "description": {"text": fix.title},
+        "artifactChanges": [
+            {
+                "artifactLocation": {"uri": quote(path, safe="/")},
+                "replacements": [
+                    {
+                        "deletedRegion": _sarif_region(edit.location),
+                        "insertedContent": {"text": edit.replacement},
+                    }
+                    for edit in edits
+                ],
+            }
+            for path, edits in sorted(grouped.items())
+        ],
+    }
+
+
+def _sarif_physical(location: Location) -> dict[str, object]:
+    physical: dict[str, object] = {"artifactLocation": {"uri": quote(location.path, safe="/")}}
+    region = _sarif_region(location)
+    if region:
+        physical["region"] = region
+    return physical
+
+
+def _sarif_region(location: Location) -> dict[str, int]:
+    if location.region is not None:
+        return {
+            "startLine": location.region.start.line + 1,
+            "startColumn": location.region.start.character + 1,
+            "endLine": location.region.end.line + 1,
+            "endColumn": location.region.end.character + 1,
+        }
+    if location.position is not None:
+        return {"startLine": location.position.line + 1, "startColumn": location.position.character + 1}
+    return {}
 
 
 def _sarif_rule_id(diagnostic: Diagnostic) -> str:

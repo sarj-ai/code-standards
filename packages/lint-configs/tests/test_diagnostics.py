@@ -8,33 +8,46 @@ from typing import TYPE_CHECKING
 import pytest
 
 from sarj_lint_configs import api
-from sarj_lint_configs.libs.adoption.manifest import as_table, list_field, table_field
+from sarj_lint_configs.libs.adoption.manifest import ExclusionOverride, Manifest, as_table, list_field, table_field
 from sarj_lint_configs.libs.diagnostics import (
     ANALYSIS_SCHEMA,
+    LATEST_ANALYSIS_SCHEMA,
+    LATEST_SCHEMA_URI,
     SCHEMA_URI,
     AnalysisReport,
+    AnalyzerId,
+    CacheStatus,
     Completion,
     Conclusion,
+    CoverageDisposition,
     CoverageNotice,
     Diagnostic,
     ExecutionIssue,
+    Fix,
+    FixSafety,
+    InvocationId,
     Location,
     Position,
     Region,
+    RelatedLocation,
     Severity,
     SourceDocument,
+    TextEdit,
     ToolReport,
+    TrustMode,
     to_github,
     to_json,
     to_sarif,
     to_text,
 )
+from sarj_lint_configs.libs.linting import external as external_module
 from sarj_lint_configs.libs.linting.analysis import analyze as analyze_paths
 from sarj_lint_configs.libs.linting.analysis import report_from_tools
+from sarj_lint_configs.libs.linting.policy import Policy
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
     from pathlib import Path
 
 
@@ -66,6 +79,11 @@ def test_versioned_json_schema_is_bundled() -> None:
 
     assert schema["$id"] == SCHEMA_URI
     assert "diagnostic" in table_field(schema, "$defs")
+
+    latest_raw: object = json.loads(LATEST_ANALYSIS_SCHEMA.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    latest = as_table(latest_raw)
+    assert latest["$id"] == LATEST_SCHEMA_URI
+    assert "fix" in table_field(latest, "$defs")
 
 
 @pytest.mark.parametrize(
@@ -214,6 +232,193 @@ def test_json_uses_utf16_positions_without_leaking_internal_byte_offsets(tmp_pat
     assert payload["exitCode"] == 1
     assert payload["root"] == "."
     assert str(tmp_path) not in to_json(report)
+
+
+def test_schema_v2_enriches_diagnostics_without_changing_v1(tmp_path: Path) -> None:
+    start = Position(0, 0, 0)
+    end = Position(0, 5, 5)
+    edit = TextEdit(Location("example.py", region=Region(start, end)), "value")
+    diagnostic = Diagnostic(
+        "TEST007",
+        "replace the legacy name",
+        Severity.ERROR,
+        "fixture",
+        Location("example.py", region=Region(start, end)),
+        rule_id="prefer-name",
+        related=(RelatedLocation("declaration", Location("other.py", position=start)),),
+        fixes=(Fix("Use value", FixSafety.SAFE, (edit,)),),
+        tags=("maintainability",),
+        fingerprint="stable-fingerprint",
+    )
+    report = AnalysisReport(
+        tmp_path,
+        Completion.COMPLETE,
+        Conclusion.FINDINGS,
+        (
+            ToolReport(
+                "fixture",
+                Completion.COMPLETE,
+                diagnostics=(diagnostic,),
+                analyzer_id=AnalyzerId("fixture/analyzer"),
+                invocation_id=InvocationId("fixture/project"),
+                version="1.2.3",
+                duration_ms=7,
+                file_count=2,
+                cache_status=CacheStatus.MISS,
+            ),
+        ),
+    )
+
+    v1 = as_table(json.loads(to_json(report)))  # pyright: ignore[reportAny]
+    v2 = as_table(json.loads(to_json(report, schema_version=2)))  # pyright: ignore[reportAny]
+
+    assert v1["schemaVersion"] == 1
+    assert "rules" not in v1
+    assert "fixes" not in as_table(list_field(v1, "diagnostics")[0])
+    assert v2["schemaVersion"] == 2
+    assert as_table(list_field(v2, "tools")[0])["invocationId"] == "fixture/project"
+    assert as_table(list_field(v2, "tools")[0])["durationMs"] == 7
+    assert isinstance(report.as_v2_dict(), dict)
+    enriched = as_table(list_field(v2, "diagnostics")[0])
+    assert enriched["ruleKey"] == "fixture:prefer-name"
+    assert as_table(enriched["fingerprint"])["value"] == "stable-fingerprint"
+    assert list_field(enriched, "fixes")
+    sarif = as_table(json.loads(to_sarif(report)))  # pyright: ignore[reportAny]
+    run = as_table(list_field(sarif, "runs")[0])
+    result = as_table(list_field(run, "results")[0])
+    assert as_table(result["partialFingerprints"])["sarj/v1"] == "stable-fingerprint"
+    assert list_field(result, "fixes")
+    assert list_field(result, "relatedLocations")
+
+
+def test_expected_coverage_does_not_make_execution_incomplete(tmp_path: Path) -> None:
+    coverage = CoverageNotice(
+        "fixture",
+        "excluded by repository policy",
+        2,
+        CoverageDisposition.EXCLUDED,
+    )
+    report = AnalysisReport(tmp_path, Completion.COMPLETE, Conclusion.PASSED, (), (coverage,))
+
+    assert report.exit_code == 0
+    payload = as_table(json.loads(to_json(report, schema_version=2)))  # pyright: ignore[reportAny]
+    assert as_table(list_field(payload, "coverage")[0])["disposition"] == "excluded"
+
+
+def test_policy_is_default_all_with_path_rule_and_scoped_denylists(tmp_path: Path) -> None:
+    policy = Policy.from_manifest(
+        tmp_path,
+        Manifest(
+            version="1.2.3",
+            configs=(),
+            python_dest=".",
+            typescript_dest=".",
+            excluded_paths=("generated/**",),
+            excluded_rules=("python:no-global-mutable",),
+        ),
+    )
+    enabled = Diagnostic(
+        "PY999",
+        "enabled by default",
+        Severity.ERROR,
+        "sarj-python-lint",
+        Location("src/app.py"),
+        rule_id="future-rule",
+    )
+    disabled = Diagnostic(
+        "PY100",
+        "explicitly disabled",
+        Severity.ERROR,
+        "sarj-python-lint",
+        Location("src/app.py"),
+        rule_id="no-global-mutable",
+    )
+    generated = Diagnostic(
+        "PY999",
+        "generated code",
+        Severity.ERROR,
+        "sarj-python-lint",
+        Location("generated/client.py"),
+        rule_id="future-rule",
+    )
+
+    assert policy.filter_diagnostics((enabled, disabled, generated)) == (enabled,)
+    assert policy.allows_path(".sarj-standards.toml")
+
+
+def test_policy_scoped_rule_exclusion_does_not_leak_to_other_paths(tmp_path: Path) -> None:
+    policy = Policy.from_manifest(
+        tmp_path,
+        Manifest(
+            version="1.2.3",
+            configs=(),
+            python_dest=".",
+            typescript_dest=".",
+            exclusion_overrides=(ExclusionOverride(("tests/**",), ("ruff:S101",), "tests intentionally use assert"),),
+        ),
+    )
+    test_finding = Diagnostic("S101", "assert", Severity.ERROR, "ruff", Location("tests/test_app.py"))
+    source_finding = Diagnostic("S101", "assert", Severity.ERROR, "ruff", Location("src/app.py"))
+
+    assert policy.filter_diagnostics((test_finding, source_finding)) == (source_finding,)
+
+
+def test_explicitly_excluded_file_is_nonblocking_coverage(tmp_path: Path) -> None:
+    source = tmp_path / "generated" / "client.py"
+    source.parent.mkdir()
+    source.write_text("value = 1\n", encoding="utf-8")
+    adopted = Manifest(
+        version="1.2.3",
+        configs=("ruff", "pyright"),
+        python_dest=".",
+        typescript_dest=".",
+        excluded_paths=("generated/**",),
+    )
+    (tmp_path / ".sarj-standards.toml").write_text(adopted.render(), encoding="utf-8")
+
+    report = api.Standards(tmp_path).analyze(["generated/client.py"])
+
+    assert report.exit_code == 0
+    assert report.coverage[0].disposition is CoverageDisposition.EXCLUDED
+
+
+def test_disabled_external_capabilities_are_not_executed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    source = tmp_path / "app.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    adopted = Manifest(
+        version="1.2.3",
+        configs=("markdownlint",),
+        python_dest=".",
+        typescript_dest=".",
+    )
+    (tmp_path / ".sarj-standards.toml").write_text(adopted.render(), encoding="utf-8")
+    called: list[str] = []
+
+    def forbidden(_argv: Sequence[str], *, cwd: Path) -> external_module.ProcessOutput:
+        _ = cwd
+        called.append("external")
+        return external_module.ProcessOutput(0, "[]", "")
+
+    monkeypatch.setattr(external_module, "run_process", forbidden)
+    report = api.Standards(tmp_path).analyze(["app.py"], external=True, trust=TrustMode.TRUSTED)
+
+    assert report.exit_code == 0
+    assert not called
+
+
+def test_fix_rejects_overlapping_edits() -> None:
+    first = TextEdit(Location("example.py", region=Region(Position(0, 0, 0), Position(0, 3, 3))), "a")
+    second = TextEdit(Location("example.py", region=Region(Position(0, 2, 2), Position(0, 4, 4))), "b")
+
+    with pytest.raises(ValueError, match="must not overlap"):
+        Fix("overlap", FixSafety.SAFE, (first, second))
+
+
+def test_json_rejects_unknown_schema_version(tmp_path: Path) -> None:
+    report = AnalysisReport(tmp_path, Completion.COMPLETE, Conclusion.PASSED, ())
+
+    with pytest.raises(ValueError, match="unsupported analysis schema"):
+        to_json(report, schema_version=99)
 
 
 def test_warning_only_report_is_successful_but_retains_findings(tmp_path: Path) -> None:
@@ -630,5 +835,7 @@ def test_partial_execution_retains_findings_as_an_independent_conclusion(tmp_pat
 
     assert report.completion is Completion.PARTIAL
     assert report.conclusion is Conclusion.FINDINGS
-    assert report.diagnostics == (diagnostic,)
+    assert len(report.diagnostics) == 1
+    assert report.diagnostics[0].code == diagnostic.code
+    assert report.diagnostics[0].fingerprint is not None
     assert report.exit_code == 2
