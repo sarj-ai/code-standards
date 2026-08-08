@@ -26,6 +26,8 @@ if TYPE_CHECKING:
 ManifestFormat = Literal["json", "toml"]
 _GIT_NO_MATCH = 2
 _GIT_MISSING_REVISION_CODES = frozenset((1, 128))
+_TAGGER_EMAIL = "release-automation@sarj.ai"
+_TAGGER_NAME = "sarj-ai release automation"
 
 
 @dataclass(frozen=True, slots=True)
@@ -213,7 +215,22 @@ def create_release_tags(
                 _ = sleeper(delay_seconds)
         if not _require_local_tag_commit(resolved, tag, resolved_commit, runner=runner):
             version = tag.removeprefix(f"{target}-v")
-            runner(("git", "tag", "-a", tag, commit, "-m", f"{target} {version}"), cwd=resolved)
+            runner(
+                (
+                    "git",
+                    "-c",
+                    f"user.name={_TAGGER_NAME}",
+                    "-c",
+                    f"user.email={_TAGGER_EMAIL}",
+                    "tag",
+                    "-a",
+                    tag,
+                    commit,
+                    "-m",
+                    f"{target} {version}",
+                ),
+                cwd=resolved,
+            )
         runner(("git", "push", "origin", f"refs/tags/{tag}"), cwd=resolved)
         created.append(tag)
     return TagSyncResult(tuple(created), tuple(existing))
