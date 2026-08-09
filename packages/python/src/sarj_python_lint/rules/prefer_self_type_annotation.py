@@ -21,6 +21,7 @@ from sarj_python_lint.rule_base import (
     is_suppressed,
     parse_or_none,
 )
+from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
@@ -28,11 +29,14 @@ if TYPE_CHECKING:
 
 
 def _is_return_self_or_cls(outer_func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Return True if node directly returns `self` or `cls(...)` (excluding inner functions/classes)."""
+    """Return whether every return preserves the concrete receiver type."""
     target_name = "cls" if _is_classmethod(outer_func) else "self"
 
     class ReturnVisitor(ast.NodeVisitor):
-        found: bool = False
+        returns: list[ast.expr | None]
+
+        def __init__(self) -> None:
+            self.returns = []
 
         def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
             if node is outer_func:
@@ -46,16 +50,28 @@ def _is_return_self_or_cls(outer_func: ast.FunctionDef | ast.AsyncFunctionDef) -
             pass
 
         def visit_Return(self, node: ast.Return) -> None:
-            val = node.value
-            if (isinstance(val, ast.Name) and val.id == target_name) or (
-                isinstance(val, ast.Call) and isinstance(val.func, ast.Name) and val.func.id == target_name
-            ):
-                self.found = True
-            self.generic_visit(node)
+            self.returns.append(node.value)
 
     visitor = ReturnVisitor()
     visitor.visit(outer_func)
-    return visitor.found
+    if not visitor.returns:
+        return False
+
+    def preserves_type(value: ast.expr | None) -> bool:
+        if target_name == "self":
+            return isinstance(value, ast.Name) and value.id == "self"
+        if not isinstance(value, ast.Call):
+            return False
+        if isinstance(value.func, ast.Name):
+            return value.func.id == "cls"
+        return (
+            isinstance(value.func, ast.Attribute)
+            and isinstance(value.func.value, ast.Name)
+            and value.func.value.id == "cls"
+            and value.func.attr in {"model_construct", "model_validate"}
+        )
+
+    return all(preserves_type(value) for value in visitor.returns)
 
 
 def _is_classmethod(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
@@ -118,6 +134,8 @@ class PreferSelfTypeAnnotation(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        if is_generated(path, source):
+            return []
         tree = parse_or_none(path, source)
         if tree is None:
             return []
@@ -127,25 +145,26 @@ class PreferSelfTypeAnnotation(Rule):
 
         class ClassVisitor(ast.NodeVisitor):
             def __init__(self) -> None:
-                self.class_stack: list[str] = []
+                self.class_stack: list[ast.ClassDef] = []
 
             def visit_ClassDef(self, node: ast.ClassDef) -> None:
-                self.class_stack.append(node.name)
-                self.generic_visit(node)
+                self.class_stack.append(node)
+                for child in node.body:
+                    if isinstance(child, ast.ClassDef):
+                        self.visit(child)
+                    elif isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        self._check_func(child)
                 self.class_stack.pop()
-
-            def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-                self._check_func(node)
-                self.generic_visit(node)
-
-            def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
-                self._check_func(node)
-                self.generic_visit(node)
 
             def _check_func(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
                 if not self.class_stack:
                     return
+                if _ruff_owns_self_annotation(node.name):
+                    return
                 current_class = self.class_stack[-1]
+                accepted_names = {current_class.name} | {
+                    name for base in current_class.bases if (name := _trailing_annotation_name(base)) is not None
+                }
                 returns = node.returns
                 if returns is None:
                     return
@@ -154,11 +173,11 @@ class PreferSelfTypeAnnotation(Rule):
                 if (
                     isinstance(returns, ast.Constant)
                     and isinstance(returns.value, str)
-                    and returns.value == current_class
+                    and returns.value in accepted_names
                 ):
-                    matched_name = f'"{current_class}"'
-                elif isinstance(returns, ast.Name) and returns.id == current_class:
-                    matched_name = current_class
+                    matched_name = f'"{returns.value}"'
+                elif isinstance(returns, ast.Name) and returns.id in accepted_names:
+                    matched_name = returns.id
 
                 if (
                     matched_name
@@ -182,3 +201,38 @@ class PreferSelfTypeAnnotation(Rule):
         visitor.visit(tree)
 
         return sorted(diags, key=lambda d: (d.line, d.col))
+
+
+def _trailing_annotation_name(node: ast.expr) -> str | None:
+    match node:
+        case ast.Name(id=name) | ast.Attribute(attr=name):
+            return name
+        case ast.Subscript(value=value):
+            return _trailing_annotation_name(value)
+        case _:
+            return None
+
+
+_RUFF_SELF_DUNDERS = frozenset({"__aenter__", "__enter__", "__new__"})
+_INPLACE_DUNDERS = frozenset(
+    {
+        "__iadd__",
+        "__iand__",
+        "__ifloordiv__",
+        "__ilshift__",
+        "__imatmul__",
+        "__imod__",
+        "__imul__",
+        "__ior__",
+        "__ipow__",
+        "__irshift__",
+        "__isub__",
+        "__itruediv__",
+        "__ixor__",
+    }
+)
+
+
+def _ruff_owns_self_annotation(name: str) -> bool:
+    """Defer standard self-returning dunders to Ruff PYI034."""
+    return name in _RUFF_SELF_DUNDERS or name in _INPLACE_DUNDERS

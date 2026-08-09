@@ -13,6 +13,11 @@ const ruleTester = new RuleTester();
 ruleTester.run("prefer-schema-for-api-payload", rule, {
   valid: [
     { name: "public no-match example", filename: preferSchemaForApiPayloadDocumentation.examples[0].focusPath, code: preferSchemaForApiPayloadDocumentation.examples[0].files[0].source },
+    {
+      name: "allows integration scripts to inspect the real transport payload",
+      filename: "/repo/scripts/e2e-scenario.mjs",
+      code: "const payload = await response.json(); console.log(payload.id);",
+    },
     // Assertions validate the field they consume.
     {
       code: "async function t(page) { const loaderData = JSON.parse(await page.innerHTML()); expect(loaderData.method).toEqual('GET'); }",

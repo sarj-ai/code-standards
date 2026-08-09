@@ -42,7 +42,7 @@ _UNIT_RE = re.compile(
 _EXCLUDE_RE = re.compile(
     r"(?:^|_)(?:count|num|n|size|len|length|limit|offset|index|idx|id|"
     r"version|month|months|year|years|timestamp|epoch|"
-    r"percentage|percent|pct|ratio|rate|trend)(?:_|$)|_at$|_ts$",
+    r"percentage|percent|pct|ratio|rate|trend|factor|multiplier|confidence|probability)(?:_|$)|_at$|_ts$",
     re.IGNORECASE,
 )
 
@@ -100,7 +100,7 @@ class PreferTimedeltaForDurations(Rule):
         category=RuleCategory.CORRECTNESS,
         limitations=(
             "Detection relies on duration-shaped names and numeric type annotations.",
-            "Tests, generated files, CLI parameters, settings fields, counts, rates, calendar units, and timestamps are excluded.",
+            "Tests, generated files, CLI parameters, settings/model/wire fields, observability boundaries, counts, rates, calendar units, and timestamps are excluded.",
         ),
         examples=(
             RuleExample(
@@ -139,11 +139,14 @@ class PreferTimedeltaForDurations(Rule):
         tree = parse_or_none(path, source)
         if tree is None:
             return []
-        exempt_fields = _settings_field_ids(tree) | _pydantic_model_field_ids(tree, ImportIndex.from_tree(tree))
+        imports = ImportIndex.from_tree(tree)
+        exempt_fields = (
+            _settings_field_ids(tree) | _pydantic_model_field_ids(tree, imports) | _typed_dict_field_ids(tree, imports)
+        )
         diags: list[Diagnostic] = []
         for node in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef, ast.AnnAssign):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                if _is_overload(node) or _has_cli_decorator(node):
+                if _is_overload(node) or _has_cli_decorator(node) or _is_observability_boundary(path, node):
                     continue
                 args = node.args
                 forwarded = _same_name_forwarded_params(node, _duration_named_params(args))
@@ -157,6 +160,14 @@ class PreferTimedeltaForDurations(Rule):
                 name = _target_name(node.target)
                 if name is not None:
                     self._consider(name, node.annotation, node, diags, path)
+        for statement in tree.body:
+            match statement:
+                case ast.Assign(targets=[ast.Name(id=name)], value=value) if _is_numeric_expression(value):
+                    if _is_constant_reference(name):
+                        numeric = "float" if _contains_float(value) else "int"
+                        self._consider(name, ast.Name(id=numeric), statement, diags, path)
+                case _:
+                    pass
         return diags
 
     def _consider(
@@ -195,6 +206,31 @@ class PreferTimedeltaForDurations(Rule):
 def _is_overload(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     """Report whether the function is an `@overload` restatement of another signature."""
     return any(_trailing_name(dec) == "overload" for dec in node.decorator_list)
+
+
+def _is_observability_boundary(path: Path, node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Keep raw numeric units at logging/metrics serialization boundaries."""
+    return "logger" in path.stem.lower() or node.name.lstrip("_").startswith(("log_", "record_", "emit_"))
+
+
+def _is_constant_reference(identifier: str) -> bool:
+    return identifier.isupper() and any(character.isalpha() for character in identifier)
+
+
+def _is_numeric_expression(node: ast.expr) -> bool:
+    match node:
+        case ast.Constant(value=value):
+            return isinstance(value, (int, float)) and not isinstance(value, bool)
+        case ast.UnaryOp(op=ast.UAdd() | ast.USub(), operand=operand):
+            return _is_numeric_expression(operand)
+        case ast.BinOp(left=left, right=right):
+            return _is_numeric_expression(left) and _is_numeric_expression(right)
+        case _:
+            return False
+
+
+def _contains_float(node: ast.AST) -> bool:
+    return any(isinstance(child, ast.Constant) and isinstance(child.value, float) for child in ast.walk(node))
 
 
 def _has_cli_decorator(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
@@ -340,6 +376,43 @@ def _pydantic_model_field_ids(tree: ast.Module, imports: ImportIndex) -> frozens
         id(statement)
         for node in classes
         if is_model(node, frozenset())
+        for statement in node.body
+        if isinstance(statement, ast.AnnAssign)
+    )
+
+
+def _typed_dict_field_ids(tree: ast.Module, imports: ImportIndex) -> frozenset[int]:
+    """Exclude import-proven TypedDict fields whose numeric unit is a wire contract."""
+    classes = nodes(tree, ast.ClassDef)
+    by_name = {node.name: node for node in classes}
+    resolved: dict[int, bool] = {}
+
+    def is_typed_dict(node: ast.ClassDef, seen: frozenset[int]) -> bool:
+        cached = resolved.get(id(node))
+        if cached is not None:
+            return cached
+        if id(node) in seen:
+            return False
+        result = any(
+            imports.resolves(
+                base,
+                sources=frozenset({"typing", "typing_extensions"}),
+                symbol="TypedDict",
+            )
+            or (
+                (name := _trailing_name(base)) is not None
+                and (parent := by_name.get(name)) is not None
+                and is_typed_dict(parent, seen | {id(node)})
+            )
+            for base in node.bases
+        )
+        resolved[id(node)] = result
+        return result
+
+    return frozenset(
+        id(statement)
+        for node in classes
+        if is_typed_dict(node, frozenset())
         for statement in node.body
         if isinstance(statement, ast.AnnAssign)
     )

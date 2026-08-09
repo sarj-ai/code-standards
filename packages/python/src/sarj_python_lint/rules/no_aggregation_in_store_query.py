@@ -67,6 +67,11 @@ _POSTGRES_SQL = re.compile(r"%\(\w+\)s|%s")
 # This null-safe comparison is a row predicate, not set deduplication.
 _NULL_SAFE_COMPARISON = re.compile(r"\bIS\s+(?:NOT\s+)?DISTINCT\s+FROM\b", re.IGNORECASE)
 
+_ANALYTIC_COUNT_SIGNAL = re.compile(
+    r"\b(?:GROUP\s+BY|HAVING)\b|\bOVER\s*\(|\bCOUNT\s*\(\s*DISTINCT\b",
+    re.IGNORECASE,
+)
+
 _AGGREGATIONS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("COUNT(", re.compile(r"\bCOUNT[ \t]*\(", re.IGNORECASE)),
     ("SUM(", re.compile(r"\bSUM[ \t]*\(", re.IGNORECASE)),
@@ -114,7 +119,7 @@ class NoAggregationInStoreQuery(Rule):
                 example_id="postgres-aggregate-query",
                 title="Postgres store query performs aggregation",
                 outcome=ExampleOutcome.MATCH,
-                files=(ExampleFile.python("app/call_store.py", 'QUERY = "SELECT COUNT(*) FROM call"\n'),),
+                files=(ExampleFile.python("app/call_store.py", 'QUERY = "SELECT SUM(amount) FROM call"\n'),),
                 focus_path=PurePosixPath("app/call_store.py"),
                 expected_count=1,
                 public=True,
@@ -173,6 +178,11 @@ class NoAggregationInStoreQuery(Rule):
                 continue
             found = [label for label, pat in _AGGREGATIONS if pat.search(sql)]
             if not found:
+                continue
+            # A scalar COUNT is commonly a strongly consistent pagination total
+            # or transactional invariant. Only COUNT with an independently
+            # provable analytical shape belongs to this rule.
+            if found == ["COUNT("] and _ANALYTIC_COUNT_SIGNAL.search(sql) is None:
                 continue
 
             diags.append(

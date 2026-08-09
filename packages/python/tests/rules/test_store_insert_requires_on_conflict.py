@@ -104,6 +104,14 @@ def test_fires_once(src: str) -> None:
 
 CLEAN = [
     pytest.param(
+        'def create_user():\n    q = "INSERT INTO users (id) VALUES (%s)"',
+        id="ordinary-create-contract",
+    ),
+    pytest.param(
+        'def seed():\n    q = "INSERT INTO users (id) SELECT %s WHERE NOT EXISTS (SELECT 1 FROM users)"',
+        id="insert-select-where-not-exists",
+    ),
+    pytest.param(
         'q = "INSERT INTO t (id) VALUES (%s) ON CONFLICT DO NOTHING"',
         id="on_conflict_do_nothing",
     ),
@@ -163,12 +171,20 @@ def test_does_not_fire(src: str) -> None:
     assert _check(src) == []
 
 
+def test_replay_contract_method_without_conflict_handling_fires() -> None:
+    src = """
+async def enqueue_call(call_id: str) -> None:
+    await cursor.execute("INSERT INTO call_queue (call_id) VALUES (%s)", (call_id,))
+"""
+    assert _count(src) == 1
+
+
 # Multiline reporting                                                          #
 
 
 def test_multiline_triple_quoted_reports_string_start_line() -> None:
     src = '''
-async def create(self):
+async def enqueue_task(self):
     await cur.execute(
         SQL("""
         INSERT INTO task (organization_id, status)

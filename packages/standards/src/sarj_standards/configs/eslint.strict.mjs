@@ -964,8 +964,6 @@ export function createConfig(options = {}) {
       // plugin's own `configs.strict` does not. Each rule's measurements live in
       // the paired tests, which its `meta.docs.url` points at.
       //
-      // A `files:`-scoped block further down turns no-raw-env off for env
-      // source-of-truth files; that is an override, not a tier change.
       "@sarj/zod-naming-convention": "error",
       "@sarj/require-assert-never": "error",
       "@sarj/require-static-next-matcher": "error",
@@ -1069,26 +1067,6 @@ export function createConfig(options = {}) {
       "react/forbid-elements": "off",
       // Prevent design-system primitives from becoming implicit submit buttons.
       "react/button-has-type": "error",
-    },
-  },
-
-  {
-    // The env source-of-truth files parse process.env into a Zod-validated
-    // object the rest of the app imports; they're the one place raw env access
-    // is legitimate, so @sarj/no-raw-env (which replaced the native
-    // no-restricted-properties process.env ban) is disabled here.
-    files: [
-      "**/*.config.{ts,tsx,js,jsx,mjs,cjs,mts,cts}",
-      "**/scripts/**",
-      "**/env/**",
-      "**/env.{ts,tsx,js,mjs}",
-      "**/server-env.{ts,tsx,js,mjs}",
-      "**/client-env.{ts,tsx,js,mjs}",
-      "**/server-settings.{ts,tsx,js,mjs}",
-      "**/client-settings.{ts,tsx,js,mjs}",
-    ],
-    rules: {
-      "@sarj/no-raw-env": "off",
     },
   },
 

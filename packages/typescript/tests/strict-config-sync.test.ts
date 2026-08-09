@@ -128,11 +128,8 @@ function referencedRuleNames(configText: string): string[] {
 /**
  * Each rule's severity in the config's MAIN block, keyed by rule name.
  *
- * Deliberately takes the FIRST occurrence of a name. The main block comes first
- * in the file; the later `files:`-scoped blocks re-set some rules on purpose
- * (`"@sarj/no-raw-env": "off"` for env source-of-truth files). Those overrides
- * are the config doing its job, not tier drift, so only the base severity is
- * compared. Entries configured as `[severity, options]` arrays are skipped —
+ * Deliberately takes the FIRST occurrence of a name. Entries configured as
+ * `[severity, options]` arrays are skipped —
  * this config expresses every @sarj tier as a bare string today, and a static
  * parse should not pretend to read option tuples.
  */

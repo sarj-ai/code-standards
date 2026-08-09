@@ -14,8 +14,8 @@ type MessageIds = "storeInsertRequiresOnConflict";
 type Options = readonly [];
 
 export const storeInsertRequiresOnConflictDocumentation = {
-  summary: "Require an embedded SQL INSERT to carry ON CONFLICT; store writes replay under cron re-runs and queue redelivery and must be idempotent upserts.",
-  rationale: "A replayed bare insert can duplicate data or fail on a uniqueness constraint.",
+  summary: "Require embedded inserts in explicitly replayable callables to carry conflict handling.",
+  rationale: "A callable named as an enqueue, seed, migration, schedule, ensure, or upsert promises replay safety.",
   remediation: "Add an appropriate `ON CONFLICT` action or supported replay-safe insert form.",
   category: "correctness",
   examples: [
@@ -29,7 +29,41 @@ const INSERT_WRITE =
   /\bINSERT\s+(?:OR\s+\w+\s+)?INTO\s+[\w."'`?$:@-]+\s*(?:\([^)]*\)\s*)?(?:VALUES|SELECT|DEFAULT\s+VALUES)\b/i;
 
 /** Matches supported replay-safe insert forms. */
-const CONFLICT_HANDLED = /\bON\s+CONFLICT\b|\bON\s+DUPLICATE\s+KEY\b|\bINSERT\s+OR\s+(?:IGNORE|REPLACE)\b/i;
+const CONFLICT_HANDLED = /\bON\s+CONFLICT\b|\bON\s+DUPLICATE\s+KEY\b|\bINSERT\s+OR\s+(?:IGNORE|REPLACE)\b|\bINSERT\b[\s\S]*?\bSELECT\b[\s\S]*?\bWHERE\s+NOT\s+EXISTS\b/i;
+
+const REPLAY_CONTRACT_NAME = /(?:enqueue|ensure|migrate|recordOnce|schedule|seed|upsert|getOrCreate|createIfAbsent|insertIfAbsent)/i;
+
+function owningCallableName(node: TSESTree.Node): string | null {
+  for (
+    let current: TSESTree.Node | null | undefined = node.parent;
+    current !== null && current !== undefined;
+    current = current.parent
+  ) {
+    if (current.type === "FunctionDeclaration") {
+      return current.id?.name ?? null;
+    }
+    if (current.type === "MethodDefinition") {
+      return current.key.type === "Identifier" ? current.key.name : null;
+    }
+    if (
+      (current.type === "ArrowFunctionExpression" ||
+        current.type === "FunctionExpression") &&
+      current.parent.type === "VariableDeclarator" &&
+      current.parent.id.type === "Identifier"
+    ) {
+      return current.parent.id.name;
+    }
+    if (
+      (current.type === "ArrowFunctionExpression" ||
+        current.type === "FunctionExpression") &&
+      current.parent.type === "Property" &&
+      current.parent.key.type === "Identifier"
+    ) {
+      return current.parent.key.name;
+    }
+  }
+  return null;
+}
 
 const INSERT_GATE = /insert/i;
 
@@ -40,7 +74,7 @@ export default createRule<Options, MessageIds>({
     type: "problem",
     docs: {
       description:
-        "Require an embedded SQL INSERT to carry ON CONFLICT; store writes replay under cron re-runs and queue redelivery and must be idempotent upserts.",
+        "Require embedded inserts in explicitly replayable callables to carry conflict handling.",
     },
     schema: [],
     messages: {
@@ -55,6 +89,10 @@ export default createRule<Options, MessageIds>({
     }
     return createSqlListener((sql: string, node: TSESTree.Node): void => {
       if (!INSERT_WRITE.test(sql) || CONFLICT_HANDLED.test(sql)) {
+        return;
+      }
+      const owner = owningCallableName(node);
+      if (owner !== null && !REPLAY_CONTRACT_NAME.test(owner)) {
         return;
       }
       context.report({ node, messageId: "storeInsertRequiresOnConflict" });

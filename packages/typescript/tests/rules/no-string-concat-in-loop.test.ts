@@ -34,6 +34,10 @@ ruleTester.run("no-string-concat-in-loop", rule, {
       code: noStringConcatInLoopDocumentation.examples[0].files[0].source,
     },
     {
+      name: "allows a statically tiny loop",
+      code: "let token = ''; for (let i = 0; i < 6; i++) { token += alphabet[i]; }",
+    },
+    {
       name: "ignores numeric accumulators",
       code: `
         let total = 0;
@@ -222,6 +226,16 @@ ruleTester.run("no-string-concat-in-loop", rule, {
     },
   ],
   invalid: [
+    {
+      name: "reports a string initialized from TemplateStringsArray",
+      code: "function sql(strings: TemplateStringsArray, ...values: unknown[]) { let q = strings[0]; for (const value of values) { q += String(value); } return q; }",
+      errors: [{ messageId: "noStringConcatInLoop" }],
+    },
+    {
+      name: "reports an outer string accumulated by forEach",
+      code: "let csv = ''; rows.forEach((row) => { csv += `${row.id}\n`; });",
+      errors: [{ messageId: "noStringConcatInLoop" }],
+    },
     {
       name: "reports a template-literal rebuild in a loop",
       code: noStringConcatInLoopDocumentation.examples[1].files[0].source,

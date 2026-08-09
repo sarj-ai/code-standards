@@ -83,6 +83,40 @@ def test_flags_pydantic_constrained_optional_duration():
     assert len(_check(src)) == 1
 
 
+def test_allows_typed_dict_duration_wire_field() -> None:
+    source = """
+from typing import TypedDict
+
+class LoginResult(TypedDict):
+    expires_in_seconds: int
+"""
+    assert _check(source) == []
+
+
+def test_allows_observability_duration_boundary() -> None:
+    source = """
+def log_response(duration_ms: float) -> None:
+    emit("response", duration_ms=round(duration_ms, 2))
+"""
+    assert _check(source) == []
+
+
+def test_allows_private_observability_compatibility_hook() -> None:
+    assert _check("def _log_completed(duration_ms: float) -> None: ...\n") == []
+
+
+@pytest.mark.parametrize(
+    "assignment",
+    [
+        "REQUEST_TIMEOUT_SECONDS = 30",
+        "_POLL_INTERVAL_MS = 250.0",
+        "TOKEN_TTL_SECONDS = 5 * 60",
+    ],
+)
+def test_flags_unannotated_numeric_duration_constant(assignment: str) -> None:
+    assert len(_check(f"{assignment}\n")) == 1
+
+
 def test_allows_wall_clock_singular_components():
     src = """
 class TimeEdge:
@@ -249,6 +283,10 @@ _EXCLUDED_NAMES = [
     "duration_ratio",
     "timeout_rate",
     "interval_trend",
+    "backoff_factor",
+    "retry_delay_multiplier",
+    "timeout_confidence",
+    "interval_probability",
     "duration_epoch",
     "cooldown_timestamp",
 ]

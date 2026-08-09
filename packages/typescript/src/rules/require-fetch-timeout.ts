@@ -154,6 +154,43 @@ export default createRule<Options, MessageIds>({
       );
     }
 
+    /** Prove a same-scope const object cannot acquire a signal before use. */
+    function localConstInitProvablyLacksSignal(
+      identifier: TSESTree.Identifier,
+    ): boolean {
+      const variable = ASTUtils.findVariable(
+        context.sourceCode.getScope(identifier),
+        identifier.name,
+      );
+      if (variable?.defs.length !== 1) return false;
+      const definition = variable.defs[0];
+      if (
+        definition?.type !== "Variable" ||
+        definition.parent.kind !== "const" ||
+        definition.node.init?.type !== AST_NODE_TYPES.ObjectExpression ||
+        !initProvablyLacksSignal(definition.node.init)
+      ) {
+        return false;
+      }
+      for (const reference of variable.references) {
+        const ref = reference.identifier;
+        if (ref === identifier || ref === definition.name) continue;
+        const member = ref.parent;
+        if (
+          member.type !== AST_NODE_TYPES.MemberExpression ||
+          member.object !== ref ||
+          member.computed ||
+          member.property.type !== AST_NODE_TYPES.Identifier ||
+          member.property.name === "signal" ||
+          member.parent.type !== AST_NODE_TYPES.AssignmentExpression ||
+          member.parent.left !== member
+        ) {
+          return false;
+        }
+      }
+      return true;
+    }
+
     return {
       CallExpression(node: TSESTree.CallExpression): void {
         if (!isGlobalFetchCall(node.callee)) {
@@ -172,7 +209,12 @@ export default createRule<Options, MessageIds>({
           return;
         }
 
-        if (init === undefined || initProvablyLacksSignal(init)) {
+        if (
+          init === undefined ||
+          initProvablyLacksSignal(init) ||
+          (init.type === AST_NODE_TYPES.Identifier &&
+            localConstInitProvablyLacksSignal(init))
+        ) {
           context.report({ node, messageId: "missingSignal" });
         }
       },

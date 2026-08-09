@@ -143,6 +143,8 @@ const BLOB_REDACTION_TOKENS: ReadonlySet<string> = new Set([
 ]);
 
 function rawBlobValueName(value: TSESTree.Node): string | null {
+  if (value.type === "AwaitExpression") return rawBlobValueName(value.argument);
+  if (value.type === "ChainExpression") return rawBlobValueName(value.expression);
   if (value.type === "Identifier") {
     return isRawBlobName(value.name) ? value.name : null;
   }
@@ -152,6 +154,18 @@ function rawBlobValueName(value: TSESTree.Node): string | null {
     value.property.type === "Identifier"
   ) {
     return isRawBlobName(value.property.name) ? value.property.name : null;
+  }
+  if (
+    value.type === "CallExpression" &&
+    value.arguments.length === 0 &&
+    value.callee.type === "MemberExpression" &&
+    !value.callee.computed &&
+    value.callee.object.type === "Identifier" &&
+    /^(?:res|response|\w+Response)$/.test(value.callee.object.name) &&
+    value.callee.property.type === "Identifier" &&
+    (value.callee.property.name === "json" || value.callee.property.name === "text")
+  ) {
+    return `${value.callee.object.name}.${value.callee.property.name}()`;
   }
   return null;
 }

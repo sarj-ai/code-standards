@@ -19,6 +19,14 @@ ruleTester.run("store-insert-requires-on-conflict", rule, {
   valid: [
     { name: "accepts the documented conflict-safe insert", code: storeInsertRequiresOnConflictDocumentation.examples[0].files[0].source },
     {
+      name: "allows an ordinary create contract",
+      code: "function createUser() { db.prepare(`INSERT INTO users (id) VALUES (?)`).run(); }",
+    },
+    {
+      name: "allows insert-select guarded by where not exists",
+      code: "function seed() { db.prepare(`INSERT INTO users (id) SELECT ? WHERE NOT EXISTS (SELECT 1 FROM users)`).run(); }",
+    },
+    {
       name: "allows SQLite ON CONFLICT DO NOTHING",
       code: "db.prepare(`INSERT INTO runs (id, status) VALUES (?1, ?2) ON CONFLICT(id) DO NOTHING`).run();",
     },
@@ -109,6 +117,11 @@ ruleTester.run("store-insert-requires-on-conflict", rule, {
   ],
   invalid: [
     { name: "reports the documented bare insert", code: storeInsertRequiresOnConflictDocumentation.examples[1].files[0].source, errors: [{ messageId: "storeInsertRequiresOnConflict" }] },
+    {
+      name: "reports a replay contract without conflict handling",
+      code: "function enqueueCall() { db.prepare(`INSERT INTO call_queue (call_id) VALUES (?)`).run(); }",
+      errors: [{ messageId: "storeInsertRequiresOnConflict" }],
+    },
     {
       name: "reports SQLite INSERT OR ABORT",
       code: "db.prepare(`INSERT OR ABORT INTO t (a) VALUES (?)`).run();",

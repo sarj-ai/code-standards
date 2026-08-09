@@ -22,7 +22,8 @@ from sarj_python_lint.rule_base import (
     parse_or_none,
 )
 from sarj_python_lint.rules._ast_index import nodes, walk
-from sarj_python_lint.rules._sql import is_store_module, sql_string_value, strip_sql_noise
+from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._sql import sql_string_value, strip_sql_noise
 
 
 if TYPE_CHECKING:
@@ -72,13 +73,13 @@ class NoSelectStar(Rule):
     id: str = "no-select-star"
     code: str = "SARJ021"
     documentation = RuleDocumentation(
-        summary="Store queries should select explicit columns instead of `*`.",
+        summary="SQL queries should select explicit columns instead of `*`.",
         rationale="Wildcard projections over-fetch data and can silently change row shapes when the schema evolves.",
         remediation="List every column consumed by the store result mapping.",
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only SQL string literals in recognized store modules are analyzed.",
+            "Only SQL string literals in production source files are analyzed.",
             "The rule cannot infer the intended projection for an automatic fix.",
         ),
         examples=(
@@ -106,7 +107,7 @@ class NoSelectStar(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if not is_store_module(path):
+        if is_test_path(path) or is_generated(path, source):
             return []
         tree = parse_or_none(path, source)
         if tree is None:
@@ -133,7 +134,7 @@ class NoSelectStar(Rule):
                     col=node.col_offset + 1,
                     code=self.code,
                     message=(
-                        "Store query uses SELECT * — list the columns explicitly "
+                        "Query uses SELECT * — list the columns explicitly "
                         "(* over-fetches and breaks class_row mapping). Suppress "
                         "with `# sarj-noqa: SARJ021`."
                     ),

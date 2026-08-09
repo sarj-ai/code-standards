@@ -27,6 +27,19 @@ ruleTester.run("no-insecure-random-id", rule, {
     // A `.toString(36)` on something that is NOT Math.random() is fine.
     { code: "const hex = (255).toString(16);" },
     { code: "const label = value.toString(36);" },
+    // A radix conversion is not itself a security boundary. These commonly
+    // produce ephemeral UI or serialization keys.
+    { code: "const x = Math.random().toString(36).slice(2);" },
+    { code: "const value = Math.random().toString(36);" },
+    { code: "function spinning() { return Math.random(); }" },
+    { code: "const mapping = () => Math.random();" },
+    { code: "const pinned = Math.random();" },
+    {
+      code: "const tokenRes = fetch('/token', { body: JSON.stringify({ identity: `guest-${Math.random().toString(36)}` }) });",
+    },
+    {
+      code: "const simulateTokenRefreshResponse = () => ({ id: `sent-${Date.now()}-${Math.random()}` });",
+    },
     // `.toString` with a non-36 radix on Math.random() is not the flagged idiom
     // and the binding name is non-sensitive.
     { code: "const ratio = Math.random().toString();" },
@@ -75,25 +88,7 @@ ruleTester.run("no-insecure-random-id", rule, {
   ],
   invalid: [
     { code: noInsecureRandomIdDocumentation.examples[1].files[0].source, errors: [{ messageId: "insecureRandomId" }] },
-    // Trigger 1: classic `.toString(36)` insecure id idiom.
-    {
-      code: "const x = Math.random().toString(36).slice(2);",
-      errors: [{ messageId: "insecureRandomId" }],
-    },
-    {
-      code: "const x = Math.random().toString(36);",
-      errors: [{ messageId: "insecureRandomId" }],
-    },
-    {
-      code: "const x = Math.random().toString(36).substring(2, 15);",
-      errors: [{ messageId: "insecureRandomId" }],
-    },
-    // toString(36) idiom even when the binding name is innocuous.
-    {
-      code: "const value = Math.random().toString(36).slice(2);",
-      errors: [{ messageId: "insecureRandomId" }],
-    },
-    // Genuine security-token shapes with the toString(36) idiom stay flagged.
+    // Genuine security-token shapes with the toString(36) idiom are flagged.
     {
       code: "const token = Math.random().toString(36);",
       errors: [{ messageId: "insecureRandomId" }],
@@ -143,13 +138,6 @@ ruleTester.run("no-insecure-random-id", rule, {
       errors: [{ messageId: "insecureRandomId" }],
     },
 
-    // The very same idiom in production code still fires — the exemption is
-    // scoped to the path, not to the shape.
-    {
-      code: "const m = { [Math.random().toString(36).slice(2)]: 1 };",
-      filename: "src/serialize.ts",
-      errors: [{ messageId: "insecureRandomId" }],
-    },
   ],
 });
 
@@ -178,6 +166,18 @@ ruleTester.run("no-insecure-random-id security-name contract", rule, {
     },
     {
       code: "const authId = Math.random();",
+      errors: [{ messageId: "insecureRandomId" }],
+    },
+    {
+      code: "function armOtp() { return Math.floor(1000 + Math.random() * 9000); }",
+      errors: [{ messageId: "insecureRandomId" }],
+    },
+    {
+      code: "let otp; otp = Math.floor(Math.random() * 1000000);",
+      errors: [{ messageId: "insecureRandomId" }],
+    },
+    {
+      code: "session.pin = String(Math.floor(Math.random() * 10000));",
       errors: [{ messageId: "insecureRandomId" }],
     },
   ],

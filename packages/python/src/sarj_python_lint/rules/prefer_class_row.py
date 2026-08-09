@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import PurePosixPath
+import re
 from typing import TYPE_CHECKING, final, override
 
 from sarj_python_lint.rule_base import (
@@ -86,11 +87,15 @@ class PreferClassRow(Rule):
         if tree is None:
             return []
         bindings = _psycopg_bindings(tree)
+        parents = {id(child): parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
         diags: list[Diagnostic] = []
         for node in nodes(tree, ast.keyword):
             if node.arg != _ROW_FACTORY_KW:
                 continue
             if not _is_proven_dict_row(node.value, bindings):
+                continue
+            owner = _enclosing_function(node, parents)
+            if owner is not None and (_fetch_call_count(owner) > 1 or _has_single_column_select(owner)):
                 continue
             diags.append(
                 Diagnostic(
@@ -175,3 +180,63 @@ def _is_proven_dict_row(node: ast.expr, bindings: _PsycopgBindings) -> bool:
         and receiver.value.id in bindings.psycopg_modules
         and receiver.value.id not in bindings.rebound
     )
+
+
+def _enclosing_function(
+    node: ast.AST,
+    parents: dict[int, ast.AST],
+) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
+    """Return the nearest callable that owns a row-factory keyword."""
+    current: ast.AST | None = node
+    while current is not None:
+        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return current
+        current = parents.get(id(current))
+    return None
+
+
+def _fetch_call_count(owner: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
+    """Count result-shape changes inside one callable."""
+    return sum(
+        1
+        for node in ast.walk(owner)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr in {"fetchall", "fetchmany", "fetchone"}
+    )
+
+
+_SELECT_PROJECTION_RE = re.compile(r"\bselect\b(?P<projection>.*?)\bfrom\b", re.IGNORECASE | re.DOTALL)
+_RETURNING_PROJECTION_RE = re.compile(r"\breturning\b(?P<projection>.*?)(?:;|$)", re.IGNORECASE | re.DOTALL)
+
+
+def _has_single_column_select(owner: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Recognize a literal query whose result is one scalar/JSON column."""
+    for node in ast.walk(owner):
+        if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+            continue
+        for pattern in (_SELECT_PROJECTION_RE, _RETURNING_PROJECTION_RE):
+            match = pattern.search(node.value)
+            if match is not None and not _has_top_level_comma(match.group("projection")):
+                return True
+    return False
+
+
+def _has_top_level_comma(projection: str) -> bool:
+    """Report whether a SELECT projection contains more than one expression."""
+    depth = 0
+    quote: str | None = None
+    for char in projection:
+        if quote is not None:
+            if char == quote:
+                quote = None
+            continue
+        if char in {"'", '"'}:
+            quote = char
+        elif char == "(":
+            depth += 1
+        elif char == ")":
+            depth = max(0, depth - 1)
+        elif char == "," and depth == 0:
+            return True
+    return False

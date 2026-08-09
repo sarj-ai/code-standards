@@ -151,7 +151,12 @@ def test_store_file_flagged(path: str):
 
 
 @pytest.mark.parametrize("path", ["app/views.py", "blog.py", "django/db/models/sql/compiler.py"])
-def test_nonstore_file_not_flagged(path: str):
+def test_sql_literals_outside_store_modules_are_still_flagged(path: str):
+    assert len(_check('q = "SELECT * FROM call"\n', path=path)) == 1
+
+
+@pytest.mark.parametrize("path", ["tests/query_fixture.py", "test_query.py", "generated/client.py"])
+def test_non_production_files_are_excluded(path: str):
     assert _check('q = "SELECT * FROM call"\n', path=path) == []
 
 

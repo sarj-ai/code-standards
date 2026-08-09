@@ -81,3 +81,63 @@ def test_does_not_flag_method_returning_other_class() -> None:
     """
     diags = _check(source)
     assert len(diags) == 0
+
+
+def test_does_not_flag_mixed_return_shapes() -> None:
+    source = """
+class Builder:
+    def configure(self, clone: bool) -> "Builder":
+        if clone:
+            return Builder()
+        return self
+"""
+    assert _check(source) == []
+
+
+def test_flags_pydantic_classmethod_constructor() -> None:
+    source = """
+class Model:
+    @classmethod
+    def from_payload(cls, payload: object) -> "Model":
+        return cls.model_validate(payload)
+"""
+    assert len(_check(source)) == 1
+
+
+def test_defers_standard_self_returning_dunders_to_ruff() -> None:
+    source = """
+class Resource:
+    def __enter__(self) -> "Resource":
+        return self
+"""
+    assert _check(source) == []
+
+
+def test_does_not_treat_nested_local_function_as_method() -> None:
+    source = """
+class Builder:
+    def configure(self) -> None:
+        def helper() -> "Builder":
+            return self
+"""
+    assert _check(source) == []
+
+
+def test_flags_direct_base_annotation_when_method_returns_self() -> None:
+    source = """
+class ConcreteBuilder(AbstractBuilder):
+    def configure(self) -> "AbstractBuilder":
+        return self
+"""
+
+    assert len(_check(source)) == 1
+
+
+def test_ignores_generated_client() -> None:
+    source = """
+# @generated - do not edit
+class Client:
+    def configure(self) -> "Client":
+        return self
+"""
+    assert PreferSelfTypeAnnotation().check(Path("generated/client.py"), textwrap.dedent(source)) == []

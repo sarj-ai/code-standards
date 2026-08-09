@@ -18,13 +18,14 @@ export interface RuleOptions {
 type Options = readonly [RuleOptions?];
 
 export const noDynamicSqlDocumentation = {
-  summary: "Disallow runtime interpolation or concatenation in SQL passed to statement-execution methods.",
+  summary: "Disallow runtime values embedded inside quoted SQL values passed to statement-execution methods.",
   rationale:
     "Embedding runtime values in SQL bypasses driver parameterization and can introduce injection defects or unstable query plans.",
   remediation: "Use SQL placeholders and pass runtime values through the driver's binding API.",
   category: "security",
   limitations: [
-    "The rule recognizes SQL by syntax and configured method names; static fragments and parameterizing tagged templates are exempt.",
+    "The rule reports only visibly quoted runtime values; dynamic identifiers and unquoted fragments require provenance that syntax-only linting cannot prove.",
+    "Static fragments and parameterizing tagged templates are exempt.",
   ],
   examples: [
     {
@@ -72,16 +73,43 @@ function isStaticFragment(expression: TSESTree.Expression): boolean {
   if (expression.type === AST_NODE_TYPES.Literal) {
     return typeof expression.value === "string";
   }
+  if (expression.type === AST_NODE_TYPES.TemplateLiteral) {
+    return expression.expressions.length === 0;
+  }
   return false;
 }
 
-/** The interpolated runtime expressions in a template literal. */
+/** Runtime expressions visibly embedded inside a quoted SQL value. */
 function runtimeInterpolations(
   template: TSESTree.TemplateLiteral,
 ): TSESTree.Expression[] {
   return template.expressions.filter(
-    (expression) => !isStaticFragment(expression),
+    (expression, index) =>
+      !isStaticFragment(expression) &&
+      endsWithSqlQuote(template.quasis[index]?.value.raw ?? "") &&
+      startsWithSqlQuote(template.quasis[index + 1]?.value.raw ?? ""),
   );
+}
+
+function endsWithSqlQuote(text: string): boolean {
+  return /['"]\s*$/u.test(text);
+}
+
+function startsWithSqlQuote(text: string): boolean {
+  return /^\s*['"]/u.test(text);
+}
+
+function staticLiteralText(node: TSESTree.Expression): string | undefined {
+  if (node.type === AST_NODE_TYPES.Literal && typeof node.value === "string") {
+    return node.value;
+  }
+  if (
+    node.type === AST_NODE_TYPES.TemplateLiteral &&
+    node.expressions.length === 0
+  ) {
+    return node.quasis[0]?.value.raw;
+  }
+  return undefined;
 }
 
 function runtimeConcatOperands(node: TSESTree.Node): TSESTree.Expression[] {
@@ -91,16 +119,25 @@ function runtimeConcatOperands(node: TSESTree.Node): TSESTree.Expression[] {
   const operands = concatOperands(node);
   const hasStringLiteral = operands.some(
     (operand) =>
-      operand.type === AST_NODE_TYPES.Literal &&
-      typeof operand.value === "string",
+      (operand.type === AST_NODE_TYPES.Literal &&
+        typeof operand.value === "string") ||
+      (operand.type === AST_NODE_TYPES.TemplateLiteral &&
+        operand.expressions.length === 0),
   );
   if (!hasStringLiteral) {
     return [];
   }
-  return operands.filter(
-    (operand) =>
-      operand.type !== AST_NODE_TYPES.Literal && !isStaticFragment(operand),
-  );
+  return operands.filter((operand, index) => {
+    if (isStaticFragment(operand)) return false;
+    const before = operands[index - 1];
+    const after = operands[index + 1];
+    return (
+      before !== undefined &&
+      after !== undefined &&
+      endsWithSqlQuote(staticLiteralText(before) ?? "") &&
+      startsWithSqlQuote(staticLiteralText(after) ?? "")
+    );
+  });
 }
 
 function concatOperands(node: TSESTree.Expression): TSESTree.Expression[] {
@@ -157,8 +194,7 @@ export default createRule<Options, MessageIds>({
   meta: {
     type: "problem",
     docs: {
-      description:
-        "Disallow runtime interpolation or concatenation in SQL passed to statement-execution methods.",
+      description: noDynamicSqlDocumentation.summary,
     },
     schema: [
       {
@@ -176,7 +212,7 @@ export default createRule<Options, MessageIds>({
     ],
     messages: {
       dynamicSql:
-        "Runtime value built into a SQL statement passed to `{{method}}()`. Use a `?` placeholder and pass the value through `.bind(...)` so the driver parameterises it.",
+        "Runtime value embedded inside a quoted SQL value passed to `{{method}}()`. Replace the quoted interpolation with a placeholder and bind the value separately.",
     },
   },
   defaultOptions: [{}],

@@ -16,7 +16,7 @@ def is_store_module(path: Path) -> bool:
     """Return whether a non-test path belongs to the store layer."""
     if is_test_path(path):
         return False
-    return path.name.endswith("_store.py") or "stores" in path.parts
+    return path.name == "store.py" or path.name.endswith("_store.py") or "stores" in path.parts
 
 
 def sql_string_value(node: ast.expr) -> str | None:
