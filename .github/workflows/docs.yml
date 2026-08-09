@@ -11,8 +11,6 @@ on:
       - '.github/workflows/docs.yml'
   push:
     branches: [main]
-  schedule:
-    - cron: '17 8 * * *'
   workflow_dispatch:
 
 permissions:

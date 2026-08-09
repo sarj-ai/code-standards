@@ -31,6 +31,8 @@ jobs:
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '24'
@@ -40,7 +42,7 @@ jobs:
           node -e "JSON.parse(require('fs').readFileSync('strict.json','utf8'))"
       - name: Smoke test — extend strict.json against a sample
         run: |
-          npm install --no-audit --no-fund --save-dev typescript@latest
+          npm install --ignore-scripts --no-audit --no-fund --save-dev typescript@6.0.3
           mkdir -p smoke/src
           cat > smoke/tsconfig.json <<'EOF'
           {

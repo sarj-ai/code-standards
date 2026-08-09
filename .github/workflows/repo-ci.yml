@@ -26,6 +26,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           version: '0.11.32'
@@ -50,6 +51,23 @@ jobs:
         run: make verify
       - name: Build publishable packages
         run: make build
+      - name: Test the published tsconfig contract with TypeScript 6.0.3
+        run: |
+          consumer="$RUNNER_TEMP/tsconfig-consumer"
+          mkdir -p "$consumer/src"
+          printf '{"private":true,"type":"module"}\n' > "$consumer/package.json"
+          npm install --prefix "$consumer" --ignore-scripts --no-audit --no-fund --package-lock=false \
+            typescript@6.0.3 "$GITHUB_WORKSPACE/packages/tsconfig"
+          cat > "$consumer/tsconfig.json" <<'EOF'
+          {
+            "extends": "@sarj/tsconfig/strict.json",
+            "include": ["src/**/*"],
+            "compilerOptions": {"noEmit": true}
+          }
+          EOF
+          printf 'export const value: string = "verified";\n' > "$consumer/src/index.ts"
+          "$consumer/node_modules/.bin/tsc" --project "$consumer/tsconfig.json"
+          npm pack --dry-run ./packages/tsconfig
       - name: Release causality
         env:
           BEFORE: ${{ github.event.pull_request.base.sha || github.event.before }}
