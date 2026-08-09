@@ -3,70 +3,20 @@ import { engineLabel, ruleHref, type Rule } from '../lib/catalog';
 
 interface Props {
   rules: Rule[];
-  controls?: boolean;
 }
 
-const { rules, controls = true } = Astro.props;
+const { rules } = Astro.props;
 const engines = [...new Set(rules.map((rule) => rule.engine))];
 const categories = [...new Set(rules.map((rule) => rule.category))].sort();
 const levels = [...new Set(rules.map((rule) => rule.defaultLevel))].sort();
-const languages = [...new Set(rules.flatMap((rule) => rule.languages))].sort();
+const showEngine = engines.length > 1;
+const showCategory = categories.length > 1;
+const showLevel = levels.length > 1;
 ---
 
-<section class="rule-directory" data-rule-directory>
-  {controls && (
-    <form class="rule-controls" role="search" aria-label="Filter rules">
-      <label class="search-field" for="rule-query">
-        <span>Search</span>
-        <input
-          id="rule-query"
-          type="search"
-          name="query"
-          autocomplete="off"
-          placeholder="Rule, code, or behavior"
-          data-rule-query
-        />
-        <kbd>/</kbd>
-      </label>
-      <details class="rule-filter-details" open>
-        <summary>Filters</summary>
-        <div class="rule-filter-fields">
-          <label for="rule-engine">
-            <span>Engine</span>
-            <select id="rule-engine" name="engine" data-rule-filter="engine">
-              <option value="">All engines</option>
-              {engines.map((engine) => <option value={engine}>{engineLabel(engine)}</option>)}
-            </select>
-          </label>
-          <label for="rule-category">
-            <span>Category</span>
-            <select id="rule-category" name="category" data-rule-filter="category">
-              <option value="">All categories</option>
-              {categories.map((category) => <option value={category}>{category}</option>)}
-            </select>
-          </label>
-          <label for="rule-level">
-            <span>Level</span>
-            <select id="rule-level" name="level" data-rule-filter="level">
-              <option value="">All levels</option>
-              {levels.map((level) => <option value={level}>{level}</option>)}
-            </select>
-          </label>
-          <label for="rule-language">
-            <span>Language</span>
-            <select id="rule-language" name="language" data-rule-filter="language">
-              <option value="">All languages</option>
-              {languages.map((language) => <option value={language}>{language}</option>)}
-            </select>
-          </label>
-          <button type="reset" class="quiet-button">Reset</button>
-        </div>
-      </details>
-    </form>
-  )}
-
-  <p class="directory-status" aria-live="polite">
-    <strong data-rule-count>{rules.length}</strong> {rules.length === 1 ? 'rule' : 'rules'}
+<section class="rule-directory">
+  <p class="directory-status">
+    <strong>{rules.length}</strong> {rules.length === 1 ? 'rule' : 'rules'}
   </p>
 
   <div class="rule-table-wrap">
@@ -74,119 +24,25 @@ const languages = [...new Set(rules.flatMap((rule) => rule.languages))].sort();
       <thead>
         <tr>
           <th scope="col">Rule</th>
-          <th scope="col">Engine</th>
-          <th scope="col">Category</th>
-          <th scope="col">Default</th>
+          {showEngine && <th scope="col">Engine</th>}
+          {showCategory && <th scope="col">Category</th>}
+          {showLevel && <th scope="col">Default</th>}
         </tr>
       </thead>
       <tbody>
         {rules.map((rule) => (
           <tr
-            data-rule-row
-            data-engine={rule.engine}
-            data-category={rule.category}
-            data-level={rule.defaultLevel}
-            data-language={rule.languages.join(' ')}
-            data-search={[rule.key, rule.code, rule.summary, ...rule.aliases, ...rule.languages].filter(Boolean).join(' ').toLowerCase()}
           >
             <th scope="row">
               <a href={ruleHref(rule)}><code>{rule.id}</code></a>
               <span>{rule.summary}</span>
             </th>
-            <td data-label="Engine">{engineLabel(rule.engine)}</td>
-            <td data-label="Category"><span class="tag">{rule.category}</span></td>
-            <td data-label="Default"><span class:list={['level', `level--${rule.defaultLevel}`]}>{rule.defaultLevel}</span></td>
+            {showEngine && <td data-label="Engine">{engineLabel(rule.engine)}</td>}
+            {showCategory && <td data-label="Category"><span class="tag">{rule.category}</span></td>}
+            {showLevel && <td data-label="Default"><span class:list={['level', `level--${rule.defaultLevel}`]}>{rule.defaultLevel}</span></td>}
           </tr>
         ))}
       </tbody>
     </table>
   </div>
-  <div class="empty-state" data-rule-empty hidden>
-    <p>No matching rules.</p>
-    <button type="button" class="quiet-button" data-rule-clear>Reset filters</button>
-  </div>
 </section>
-
-{controls && (
-  <script>
-    const directory = document.querySelector('[data-rule-directory]');
-    if (directory instanceof HTMLElement) {
-      const form = directory.querySelector('form');
-      const query = directory.querySelector('[data-rule-query]');
-      const rows = [...directory.querySelectorAll('[data-rule-row]')];
-      const count = directory.querySelector('[data-rule-count]');
-      const empty = directory.querySelector('[data-rule-empty]');
-      const clear = directory.querySelector('[data-rule-clear]');
-      const filters = [...directory.querySelectorAll('[data-rule-filter]')];
-      const filterDetails = directory.querySelector('.rule-filter-details');
-      let urlTimer: number | undefined;
-      const mobile = matchMedia('(max-width: 50rem), (max-height: 28rem) and (max-width: 56rem)');
-      const syncFilterDisclosure = () => {
-        if (!(filterDetails instanceof HTMLDetailsElement)) return;
-        const hasActiveFilter = filters.some((filter) => filter instanceof HTMLSelectElement && filter.value);
-        filterDetails.open = !mobile.matches || hasActiveFilter;
-      };
-
-      const updateUrl = (params: URLSearchParams) => {
-        window.clearTimeout(urlTimer);
-        urlTimer = window.setTimeout(() => {
-          history.replaceState(null, '', `${location.pathname}${params.size ? `?${params}` : ''}`);
-        }, 120);
-      };
-
-      const apply = (syncUrl = true) => {
-        const term = query instanceof HTMLInputElement ? query.value.trim().toLowerCase() : '';
-        const terms = term.split(/\s+/).filter(Boolean);
-        let visible = 0;
-        for (const row of rows) {
-          if (!(row instanceof HTMLTableRowElement)) continue;
-          const searchable = row.dataset.search ?? '';
-          const matchesTerm = terms.every((token) => searchable.includes(token));
-          const matchesFilters = filters.every((filter) => {
-            if (!(filter instanceof HTMLSelectElement) || !filter.value) return true;
-            return (row.dataset[filter.dataset.ruleFilter ?? ''] ?? '').split(' ').includes(filter.value);
-          });
-          row.hidden = !(matchesTerm && matchesFilters);
-          if (!row.hidden) visible += 1;
-        }
-        if (count) count.textContent = String(visible);
-        if (empty instanceof HTMLElement) empty.hidden = visible !== 0;
-        const params = new URLSearchParams();
-        if (term) params.set('q', term);
-        for (const filter of filters) {
-          if (filter instanceof HTMLSelectElement && filter.value) params.set(filter.name, filter.value);
-        }
-        if (syncUrl) updateUrl(params);
-      };
-
-      const initial = new URLSearchParams(location.search);
-      if (query instanceof HTMLInputElement) query.value = initial.get('q') ?? '';
-      for (const filter of filters) {
-        if (filter instanceof HTMLSelectElement) filter.value = initial.get(filter.name) ?? '';
-      }
-      syncFilterDisclosure();
-      mobile.addEventListener('change', syncFilterDisclosure);
-      apply(false);
-      form?.addEventListener('submit', (event) => event.preventDefault());
-      form?.addEventListener('input', () => apply());
-      form?.addEventListener('reset', () => requestAnimationFrame(() => {
-        apply();
-        syncFilterDisclosure();
-      }));
-      clear?.addEventListener('click', () => form?.reset());
-      document.addEventListener('keydown', (event) => {
-        const target = event.target;
-        const isEditing = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
-        if (event.key === '/' && !isEditing && query instanceof HTMLInputElement) {
-          event.preventDefault();
-          query.focus();
-        }
-        if (event.key === 'Escape' && query instanceof HTMLInputElement && document.activeElement === query) {
-          query.value = '';
-          apply();
-          query.blur();
-        }
-      });
-    }
-  </script>
-)}

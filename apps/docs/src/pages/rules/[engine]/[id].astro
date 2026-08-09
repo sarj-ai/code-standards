@@ -2,7 +2,7 @@
 import ReferencePage from '../../../components/ReferencePage.astro';
 import RuleExample from '../../../components/RuleExample.astro';
 import { catalog, engineLabel, sourceUrl, type Rule } from '../../../lib/catalog';
-import { familySidebar } from '../../../lib/navigation';
+import { referenceSidebar } from '../../../lib/navigation';
 
 export function getStaticPaths() {
   return catalog.rules.map((rule) => ({
@@ -17,7 +17,7 @@ const beforeExamples = rule.examples.filter((example) => example.outcome === 're
 const afterExamples = rule.examples.filter((example) => example.outcome === 'accept');
 ---
 
-<ReferencePage title={`${rule.id} · ${engineLabel(rule.engine)}`} description={rule.summary} sidebar={familySidebar(rule.engine)}>
+<ReferencePage title={`${rule.id} · ${engineLabel(rule.engine)}`} description={rule.summary} sidebar={[...referenceSidebar]}>
   <article class="rule-detail" data-pagefind-meta={`rule:${rule.key}`}>
     <header class="rule-detail__header">
       <p class="rule-context">{engineLabel(rule.engine)} · {rule.category}</p>
@@ -27,7 +27,7 @@ const afterExamples = rule.examples.filter((example) => example.outcome === 'acc
       <dl class="rule-facts">
         {rule.code && <div><dt>Code</dt><dd>{rule.code}</dd></div>}
         <div><dt>Default</dt><dd><span class:list={['level', `level--${rule.defaultLevel}`]}>{rule.defaultLevel}</span></dd></div>
-        <div><dt>Fix</dt><dd>{rule.autofix}</dd></div>
+        <div><dt>Autofix</dt><dd>{rule.autofix}</dd></div>
         <div><dt>Languages</dt><dd>{rule.languages.join(', ')}</dd></div>
         {rule.since && <div><dt>Since</dt><dd>{rule.since}</dd></div>}
       </dl>
