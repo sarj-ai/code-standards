@@ -79,6 +79,26 @@ ruleTester.run("no-unsafe-mock-casting", rule, {
       errors: [{ messageId: "unsafeMockCast" }],
     },
     {
+      name: "reports bare Mocked assertions",
+      code: 'import type { Mocked } from "vitest"; const m = service as Mocked<typeof service>;',
+      errors: [{ messageId: "unsafeMockCast" }],
+    },
+    {
+      name: "reports bare MockedFunction assertions",
+      code: 'import type { MockedFunction } from "vitest"; const m = fn as MockedFunction<typeof fn>;',
+      errors: [{ messageId: "unsafeMockCast" }],
+    },
+    {
+      name: "reports bare MockedClass assertions",
+      code: 'import type { MockedClass } from "@jest/globals"; const m = Service as MockedClass<typeof Service>;',
+      errors: [{ messageId: "unsafeMockCast" }],
+    },
+    {
+      name: "reports qualified MockedObject assertions",
+      code: 'import type * as vitest from "vitest"; const m = service as vitest.MockedObject<typeof service>;',
+      errors: [{ messageId: "unsafeMockCast" }],
+    },
+    {
       name: "reports angle-bracket Mock assertions",
       code: 'import type { Mock } from "vitest"; const m = <Mock>myFn;',
       errors: [{ messageId: "unsafeMockCast" }],

@@ -16,7 +16,7 @@ _PUBLIC_EXAMPLES = NoPgEnum.public_examples()
 
 
 def _check(source: str) -> list[Diagnostic]:
-    return NoPgEnum().check(Path("migration.sql"), source)
+    return NoPgEnum().check(Path("supabase/migrations/001.sql"), source)
 
 
 @pytest.mark.parametrize(
@@ -84,3 +84,9 @@ def test_skips_comment_lines():
 def test_skips_enum_word_inside_string_literal():
     src = "INSERT INTO doc (body) VALUES ('CREATE TYPE x AS ENUM (a)');"
     assert _check(src) == []
+
+
+@pytest.mark.parametrize("dialect", ["mysql", "sqlite"])
+def test_non_postgres_enum_syntax_does_not_receive_postgres_advice(dialect: str) -> None:
+    source = f"-- dialect: {dialect}\nCREATE TYPE status AS ENUM ('open', 'closed');"
+    assert _check(source) == []

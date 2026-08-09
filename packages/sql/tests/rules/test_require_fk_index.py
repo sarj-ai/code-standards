@@ -30,6 +30,16 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
     assert len(RequireFkIndex().check(Path(focus.path), focus.source)) == example.expected_count
 
 
+def test_mysql_foreign_keys_do_not_require_a_separate_index() -> None:
+    source = """
+CREATE TABLE child (
+    parent_id BIGINT,
+    FOREIGN KEY (parent_id) REFERENCES parent(id)
+) ENGINE=InnoDB;
+"""
+    assert _check(source) == []
+
+
 def _tree(tmp_path: Path, files: dict[str, str]) -> Path:
     root = tmp_path / "prisma" / "migrations"
     for name, body in files.items():

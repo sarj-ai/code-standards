@@ -148,6 +148,11 @@ _SEAM_TOKENS = frozenset(
     }
 )
 
+# Documentation suites sometimes execute every published example under one
+# deliberately broad boundary harness.  Requiring both tokens distinguishes
+# that role from an ordinary docs renderer or an ordinary examples test.
+_DOCUMENTATION_HARNESS_TOKENS = frozenset({"docs", "examples"})
+
 # Words inside a name, however it is cased: `MAX_RETRIES`, `RequestTimeout`,
 # `test_main_wiring.py` and `TestAppStartup` all have to yield their words.
 _TOKEN_RE = re.compile(r"[A-Z]+(?![a-z])|[A-Z][a-z0-9]*|[a-z0-9]+")
@@ -162,7 +167,10 @@ class OverMockedTest(Rule):
         remediation="Use real dependencies or a higher-level test harness and mock only true external boundaries.",
         category=RuleCategory.TESTING,
         autofix=AutofixPolicy.NONE,
-        limitations=("Only collected tests are analyzed; configuration knobs do not count as collaborators.",),
+        limitations=(
+            "Only collected tests are analyzed; configuration knobs do not count as collaborators.",
+            "Tests explicitly identified as documentation-example harnesses are excluded.",
+        ),
         examples=(
             RuleExample(
                 example_id="six-patched-collaborators",
@@ -278,7 +286,7 @@ def _is_seam_test(
     own = _tokens(func.name) | path_tokens
     if owner is not None:
         own |= _tokens(owner.name)
-    return bool(own & _SEAM_TOKENS)
+    return bool(own & _SEAM_TOKENS) or own >= _DOCUMENTATION_HARNESS_TOKENS
 
 
 class _MockNames:

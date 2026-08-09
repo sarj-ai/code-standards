@@ -196,6 +196,10 @@ class _ConcatVisitor(ast.NodeVisitor):
 
     def _is_self_add_growth(self, target: ast.expr, value: ast.expr) -> bool:
         """Report whether `s = s + <str>` rebinds the target to itself-plus-more."""
+        if isinstance(value, ast.JoinedStr):
+            return any(
+                isinstance(part, ast.FormattedValue) and _src(part.value) == _src(target) for part in value.values
+            )
         if not isinstance(value, ast.BinOp) or not isinstance(value.op, ast.Add):
             return False
         other = _other_add_operand(target, value)
@@ -307,7 +311,135 @@ def _string_typed_locals(func: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lamb
     names: set[str] = set()
     for stmt in func.body:
         _collect_string_targets(stmt, names)
+    names.update(_stable_annotated_string_names(func))
     return frozenset(names)
+
+
+@final
+class _StringAnnotationCollector(ast.NodeVisitor):
+    """Find narrow string annotations that are not contradicted by a rebind."""
+
+    def __init__(self, parameter_names: set[str]) -> None:
+        self.parameter_names = parameter_names
+        self.local_annotations: dict[str, int] = {}
+        self.rebound: set[str] = set()
+
+    def _record_rebound_target(self, target: ast.expr) -> None:
+        for bound in _iter_binding_targets(target):
+            if isinstance(bound, ast.Name):
+                self.rebound.add(bound.id)
+
+    @override
+    def visit_Assign(self, node: ast.Assign) -> None:
+        for target in node.targets:
+            self._record_rebound_target(target)
+        self.visit(node.value)
+
+    @override
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        if isinstance(node.target, ast.Name) and _annotation_is_str(node.annotation):
+            name = node.target.id
+            self.local_annotations[name] = self.local_annotations.get(name, 0) + 1
+            if name in self.parameter_names:
+                self.rebound.add(name)
+        else:
+            self._record_rebound_target(node.target)
+        if node.value is not None:
+            self.visit(node.value)
+
+    @override
+    def visit_AugAssign(self, node: ast.AugAssign) -> None:
+        if not isinstance(node.op, ast.Add):
+            self._record_rebound_target(node.target)
+        self.visit(node.value)
+
+    @override
+    def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
+        self._record_rebound_target(node.target)
+        self.visit(node.value)
+
+    @override
+    def visit_For(self, node: ast.For) -> None:
+        self._visit_for(node)
+
+    @override
+    def visit_AsyncFor(self, node: ast.AsyncFor) -> None:
+        self._visit_for(node)
+
+    def _visit_for(self, node: ast.For | ast.AsyncFor) -> None:
+        self._record_rebound_target(node.target)
+        self.visit(node.iter)
+        for statement in (*node.body, *node.orelse):
+            self.visit(statement)
+
+    @override
+    def visit_With(self, node: ast.With) -> None:
+        self._visit_with(node)
+
+    @override
+    def visit_AsyncWith(self, node: ast.AsyncWith) -> None:
+        self._visit_with(node)
+
+    def _visit_with(self, node: ast.With | ast.AsyncWith) -> None:
+        for item in node.items:
+            self.visit(item.context_expr)
+            if item.optional_vars is not None:
+                self._record_rebound_target(item.optional_vars)
+        for statement in node.body:
+            self.visit(statement)
+
+    @override
+    def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
+        if node.name is not None:
+            self.rebound.add(node.name)
+        if node.type is not None:
+            self.visit(node.type)
+        for statement in node.body:
+            self.visit(statement)
+
+    @override
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self.rebound.add(node.name)
+
+    @override
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self.rebound.add(node.name)
+
+    @override
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self.rebound.add(node.name)
+
+    @override
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        pass
+
+
+def _stable_annotated_string_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> frozenset[str]:
+    arguments = (*func.args.posonlyargs, *func.args.args, *func.args.kwonlyargs)
+    parameters = {argument.arg for argument in arguments if _annotation_is_str(argument.annotation)}
+    collector = _StringAnnotationCollector(parameters)
+    for statement in func.body:
+        collector.visit(statement)
+    stable_parameters = parameters - collector.rebound
+    stable_locals = {
+        name for name, count in collector.local_annotations.items() if count == 1 and name not in collector.rebound
+    }
+    return frozenset(stable_parameters | stable_locals)
+
+
+def _annotation_is_str(annotation: ast.expr | None) -> bool:
+    if isinstance(annotation, ast.Name):
+        return annotation.id == "str"
+    if isinstance(annotation, ast.Attribute):
+        return isinstance(annotation.value, ast.Name) and annotation.value.id == "builtins" and annotation.attr == "str"
+    if not isinstance(annotation, ast.Subscript):
+        return False
+    wrapper = annotation.value
+    name = wrapper.id if isinstance(wrapper, ast.Name) else wrapper.attr if isinstance(wrapper, ast.Attribute) else ""
+    if name not in {"Annotated", "Final"}:
+        return False
+    first = annotation.slice.elts[0] if isinstance(annotation.slice, ast.Tuple) else annotation.slice
+    return _annotation_is_str(first)
 
 
 def _collect_string_targets(node: ast.AST, names: set[str]) -> None:

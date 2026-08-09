@@ -94,6 +94,38 @@ class Builder:
     assert _check(source) == []
 
 
+def test_ignores_method_with_implicit_none_fallthrough() -> None:
+    source = """
+class Builder:
+    def configure(self, enabled: bool) -> "Builder":
+        if enabled:
+            return self
+"""
+    assert _check(source) == []
+
+
+def test_flags_method_when_both_branches_return_self() -> None:
+    source = """
+class Builder:
+    def configure(self, enabled: bool) -> "Builder":
+        if enabled:
+            return self
+        else:
+            return self
+"""
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize("base", ["type", "ABCMeta", "abc.ABCMeta"])
+def test_ignores_metaclass_methods(base: str) -> None:
+    source = f"""\
+class ModelMeta({base}):
+    def configure(self) -> "ModelMeta":
+        return self
+"""
+    assert _check(source) == []
+
+
 def test_flags_pydantic_classmethod_constructor() -> None:
     source = """
 class Model:

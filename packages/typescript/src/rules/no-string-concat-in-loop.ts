@@ -10,7 +10,7 @@ import type { Scope } from "@typescript-eslint/utils/ts-eslint";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
 
-type MessageIds = "noStringConcatInLoop";
+type MessageIds = "noStringConcatInLoop" | "noStringReduce";
 type Options = readonly [];
 
 export const noStringConcatInLoopDocumentation = {
@@ -257,6 +257,46 @@ function isSmallStaticForLoop(node: TSESTree.Node): boolean {
   return iterations >= 0 && iterations <= 8;
 }
 
+/** Recognizes an exact Array.reduce-style string accumulator. */
+function isStringSeededReduce(node: TSESTree.CallExpression): boolean {
+  if (
+    node.callee.type !== "MemberExpression" ||
+    node.callee.computed ||
+    node.callee.property.type !== "Identifier" ||
+    node.callee.property.name !== "reduce" ||
+    node.arguments.length !== 2
+  ) {
+    return false;
+  }
+  const [callback, initial] = node.arguments;
+  if (
+    node.callee.object.type === "ArrayExpression" &&
+    node.callee.object.elements.length <= 8
+  ) {
+    return false;
+  }
+  if (
+    callback === undefined ||
+    initial === undefined ||
+    callback.type === "SpreadElement" ||
+    initial.type === "SpreadElement" ||
+    (callback.type !== "ArrowFunctionExpression" && callback.type !== "FunctionExpression") ||
+    callback.params[0]?.type !== "Identifier" ||
+    !isStringLiteralInit(initial)
+  ) {
+    return false;
+  }
+  const accumulator = callback.params[0].name;
+  if (callback.body.type !== "BlockStatement") {
+    return isConcatOntoTarget(callback.body, accumulator);
+  }
+  if (callback.body.body.length !== 1 || callback.body.body[0]?.type !== "ReturnStatement") {
+    return false;
+  }
+  const returned = callback.body.body[0].argument;
+  return returned !== null && isConcatOntoTarget(returned, accumulator);
+}
+
 export default createRule<Options, MessageIds>({
   name: "no-string-concat-in-loop",
   documentation: noStringConcatInLoopDocumentation,
@@ -270,6 +310,8 @@ export default createRule<Options, MessageIds>({
     messages: {
       noStringConcatInLoop:
         "Avoid building a string with `+=` inside a loop — this is O(n^2). Push the parts onto an array and use `arr.join(\"\")` after the loop.",
+      noStringReduce:
+        "Avoid concatenating a growing string in `reduce` — this is O(n^2). Map the fragments and join them once instead.",
     },
   },
   defaultOptions: [],
@@ -282,6 +324,11 @@ export default createRule<Options, MessageIds>({
     const reported = new WeakMap<TSESTree.Node, Set<string>>();
 
     return {
+      CallExpression(node: TSESTree.CallExpression): void {
+        if (isStringSeededReduce(node)) {
+          context.report({ node, messageId: "noStringReduce" });
+        }
+      },
       AssignmentExpression(node: TSESTree.AssignmentExpression): void {
         // The LHS must be a plain variable reference.
         if (node.left.type !== "Identifier") {

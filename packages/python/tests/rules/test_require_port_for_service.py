@@ -1397,3 +1397,19 @@ def test_runtime_driver_handle_is_not_treated_as_a_missing_port(annotation: str)
 @pytest.mark.parametrize("annotation", ["ThingStore", "ThingRepository", "ThingRepo"])
 def test_persistence_backed_service_does_not_imply_another_port(annotation: str) -> None:
     assert _check(_SERVICE.replace("store: ThingDAO", f"store: {annotation}")) == []
+
+
+def test_absolute_top_level_script_path_is_exempt(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    (repository / ".git").mkdir(parents=True)
+
+    assert RequirePortForService().check(repository / "scripts" / "sync.py", _SERVICE) == []
+
+
+def test_absolute_nested_tools_package_remains_library_code(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    (repository / ".git").mkdir(parents=True)
+
+    diagnostics = RequirePortForService().check(repository / "src" / "app" / "tools" / "service.py", _SERVICE)
+
+    assert len(diagnostics) == 1

@@ -107,6 +107,17 @@ function nearestEnclosingFunction(node: TSESTree.Node): TSESTree.Node | null {
   return null;
 }
 
+/** True when the sleep itself controls the test body rather than serving as injected test data. */
+function isImmediatelyConsumedSleep(node: TSESTree.Node): boolean {
+  const parent = node.parent;
+  if (parent?.type === AST_NODE_TYPES.AwaitExpression ||
+      parent?.type === AST_NODE_TYPES.ReturnStatement ||
+      parent?.type === AST_NODE_TYPES.ExpressionStatement) {
+    return true;
+  }
+  return parent?.type === AST_NODE_TYPES.ArrowFunctionExpression && parent.body === node;
+}
+
 /** True when `fn` is the callback argument of an `it`/`test`/per-test-hook call. */
 function isTestBody(fn: TSESTree.Node): boolean {
   const call = fn.parent;
@@ -158,6 +169,9 @@ export default createRule<Options, MessageIds>({
       return {};
     }
     const report = (node: TSESTree.Node): void => {
+      if (!isImmediatelyConsumedSleep(node)) {
+        return;
+      }
       const enclosing = nearestEnclosingFunction(node);
       if (enclosing === null || !isTestBody(enclosing)) {
         return;

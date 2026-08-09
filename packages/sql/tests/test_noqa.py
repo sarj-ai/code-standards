@@ -27,28 +27,28 @@ def _run(rule: str, f: Path, capsys: pytest.CaptureFixture[str]) -> tuple[int, l
 
 
 def test_bare_noqa_suppresses(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
-    f = _write(tmp_path, "created_at TIMESTAMP NOT NULL -- sarj-noqa\n")
+    f = _write(tmp_path, "-- dialect: postgresql\ncreated_at TIMESTAMP NOT NULL -- sarj-noqa\n")
     code, lines = _run("enforce-timestamptz", f, capsys)
     assert code == 0
     assert lines == []
 
 
 def test_noqa_with_matching_code_suppresses(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
-    f = _write(tmp_path, "created_at TIMESTAMP NOT NULL -- sarj-noqa: SARJ101\n")
+    f = _write(tmp_path, "-- dialect: postgresql\ncreated_at TIMESTAMP NOT NULL -- sarj-noqa: SARJ101\n")
     code, lines = _run("enforce-timestamptz", f, capsys)
     assert code == 0
     assert lines == []
 
 
 def test_noqa_with_other_code_does_not_suppress(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
-    f = _write(tmp_path, "created_at TIMESTAMP NOT NULL -- sarj-noqa: SARJ999\n")
+    f = _write(tmp_path, "-- dialect: postgresql\ncreated_at TIMESTAMP NOT NULL -- sarj-noqa: SARJ999\n")
     code, lines = _run("enforce-timestamptz", f, capsys)
     assert code == 1
     assert len(lines) == 1
 
 
 def test_no_noqa_reports(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
-    f = _write(tmp_path, "created_at TIMESTAMP NOT NULL\n")
+    f = _write(tmp_path, "-- dialect: postgresql\ncreated_at TIMESTAMP NOT NULL\n")
     code, lines = _run("enforce-timestamptz", f, capsys)
     assert code == 1
     assert len(lines) == 1

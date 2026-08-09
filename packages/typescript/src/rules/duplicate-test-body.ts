@@ -209,6 +209,11 @@ function isAssertionStatement(statement: TSESTree.Statement): boolean {
   return expression.type === AST_NODE_TYPES.CallExpression && isAssertionCall(expression);
 }
 
+function isTypeOnlyContractStatement(statement: TSESTree.Statement): boolean {
+  return statement.type === AST_NODE_TYPES.TSTypeAliasDeclaration ||
+    statement.type === AST_NODE_TYPES.TSInterfaceDeclaration;
+}
+
 function normalizedLiteral(node: TSESTree.Literal): unknown {
   if ("regex" in node) {
     return ["Literal", "regex", node.regex.pattern, node.regex.flags];
@@ -278,7 +283,8 @@ export default createRule<Options, MessageIds>({
         if (
           body.body.type !== AST_NODE_TYPES.BlockStatement ||
           body.body.body.length < MIN_STATEMENTS ||
-          body.body.body.every(isAssertionStatement)
+          body.body.body.every(isAssertionStatement) ||
+          body.body.body.some(isTypeOnlyContractStatement)
         ) {
           return;
         }

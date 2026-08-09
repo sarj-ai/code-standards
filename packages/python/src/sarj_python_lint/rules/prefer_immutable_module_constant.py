@@ -314,7 +314,10 @@ class _MutationVisitor(ast.NodeVisitor):
 
     def _record_targets(self, targets: tuple[ast.expr, ...] | list[ast.expr]) -> None:
         for target in targets:
-            self._record_name(_mutated_target(target))
+            name = _mutated_target(target)
+            if name is None and isinstance(target, ast.Name) and self._scopes:
+                name = target.id
+            self._record_name(name)
 
     def _record_name(self, name: str | None) -> None:
         if name is None:
@@ -335,21 +338,134 @@ def _scope_global_names(body: list[ast.stmt]) -> set[str]:
     return {name for statement in body if isinstance(statement, ast.Global) for name in statement.names}
 
 
-def _scope_bound_names(body: list[ast.stmt]) -> set[str]:
-    names: set[str] = set()
-    for statement in body:
-        match statement:
-            case ast.Assign(targets=targets):
-                names.update(target.id for target in targets if isinstance(target, ast.Name))
-            case ast.AnnAssign(target=ast.Name(id=name)) | ast.AugAssign(target=ast.Name(id=name)):
-                names.add(name)
-            case ast.Import() | ast.ImportFrom():
-                names.update(alias.asname or alias.name.split(".", maxsplit=1)[0] for alias in statement.names)
-            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
-                names.add(statement.name)
+class _BoundNameCollector(ast.NodeVisitor):
+    """Collect bindings owned by one lexical scope, including compound blocks."""
+
+    def __init__(self) -> None:
+        self.names: set[str] = set()
+
+    def _record_target(self, target: ast.expr) -> None:
+        match target:
+            case ast.Name(id=name):
+                self.names.add(name)
+            case ast.Tuple() | ast.List():
+                for element in target.elts:
+                    self._record_target(element)
+            case ast.Starred(value=value):
+                self._record_target(value)
             case _:
                 pass
-    return names
+
+    @override
+    def visit_Assign(self, node: ast.Assign) -> None:
+        for target in node.targets:
+            self._record_target(target)
+        self.visit(node.value)
+
+    @override
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        self._record_target(node.target)
+        self.visit(node.annotation)
+        if node.value is not None:
+            self.visit(node.value)
+
+    @override
+    def visit_AugAssign(self, node: ast.AugAssign) -> None:
+        self._record_target(node.target)
+        self.visit(node.value)
+
+    @override
+    def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
+        self._record_target(node.target)
+        self.visit(node.value)
+
+    @override
+    def visit_For(self, node: ast.For) -> None:
+        self._visit_for(node)
+
+    @override
+    def visit_AsyncFor(self, node: ast.AsyncFor) -> None:
+        self._visit_for(node)
+
+    def _visit_for(self, node: ast.For | ast.AsyncFor) -> None:
+        self._record_target(node.target)
+        self.visit(node.iter)
+        for statement in (*node.body, *node.orelse):
+            self.visit(statement)
+
+    @override
+    def visit_With(self, node: ast.With) -> None:
+        self._visit_with(node)
+
+    @override
+    def visit_AsyncWith(self, node: ast.AsyncWith) -> None:
+        self._visit_with(node)
+
+    def _visit_with(self, node: ast.With | ast.AsyncWith) -> None:
+        for item in node.items:
+            self.visit(item.context_expr)
+            if item.optional_vars is not None:
+                self._record_target(item.optional_vars)
+        for statement in node.body:
+            self.visit(statement)
+
+    @override
+    def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
+        if node.name is not None:
+            self.names.add(node.name)
+        if node.type is not None:
+            self.visit(node.type)
+        for statement in node.body:
+            self.visit(statement)
+
+    @override
+    def visit_Import(self, node: ast.Import) -> None:
+        self.names.update(alias.asname or alias.name.split(".", maxsplit=1)[0] for alias in node.names)
+
+    @override
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        self.names.update(alias.asname or alias.name for alias in node.names)
+
+    @override
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self.names.add(node.name)
+
+    @override
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self.names.add(node.name)
+
+    @override
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self.names.add(node.name)
+
+    @override
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        pass
+
+    @override
+    def visit_MatchAs(self, node: ast.MatchAs) -> None:
+        if node.name is not None:
+            self.names.add(node.name)
+        if node.pattern is not None:
+            self.visit(node.pattern)
+
+    @override
+    def visit_MatchStar(self, node: ast.MatchStar) -> None:
+        if node.name is not None:
+            self.names.add(node.name)
+
+    @override
+    def visit_MatchMapping(self, node: ast.MatchMapping) -> None:
+        if node.rest is not None:
+            self.names.add(node.rest)
+        self.generic_visit(node)
+
+
+def _scope_bound_names(body: list[ast.stmt]) -> set[str]:
+    collector = _BoundNameCollector()
+    for statement in body:
+        collector.visit(statement)
+    return collector.names
 
 
 def _argument_names(arguments: ast.arguments) -> set[str]:

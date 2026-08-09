@@ -34,6 +34,11 @@ _XFAIL = "xfail"
 # Reason text that identifies a pinned defect rather than an environment gate.
 _DEFECT_RE = re.compile(r"\b(bug|broken|defect|regression|incorrect|should|wrong|fixme)\b", re.IGNORECASE)
 
+# A linked tracker issue is itself an explicit defect pin.  Keep this narrow to
+# GitHub's canonical issue route: arbitrary URLs frequently document platform
+# requirements or upstream behavior rather than a defect this test pins.
+_GITHUB_ISSUE_RE = re.compile(r"https?://github\.com/[^/\s]+/[^/\s]+/issues/\d+\b", re.IGNORECASE)
+
 # Reason text conceding the outcome genuinely varies run to run.
 _NONDETERMINISM_RE = re.compile(r"intermittent|flak|sometimes|non-?deterministic|varies", re.IGNORECASE)
 
@@ -201,7 +206,7 @@ def _is_rotting_xfail(dec: ast.expr, imports: ImportIndex) -> bool:
     reason = _reason_text(dec)
     if reason is None or _NONDETERMINISM_RE.search(reason):
         return False
-    return bool(_DEFECT_RE.search(reason))
+    return bool(_DEFECT_RE.search(reason) or _GITHUB_ISSUE_RE.search(reason))
 
 
 # Modules whose reads describe the environment the suite happens to run in.

@@ -48,6 +48,10 @@ ruleTester.run("require-zod-form-validation", rule, {
       code: "const name = req.body.get('name');",
     },
     {
+      name: "does not infer FormData solely from a shadowed local name",
+      code: "const formData = new Map(); const name = formData.get('name');",
+    },
+    {
       name: "ignores other FormData methods",
       code: "for (const key of formData.keys()) {}",
     },
@@ -99,6 +103,16 @@ ruleTester.run("require-zod-form-validation", rule, {
     {
       name: "reports a bare FormData read",
       code: "const name = formData.get('name');",
+      errors: [{ messageId: "missingZodValidation" }],
+    },
+    {
+      name: "reports an unvalidated FormData getAll read",
+      code: "const tags = formData.getAll('tags'); save(tags);",
+      errors: [{ messageId: "missingZodValidation" }],
+    },
+    {
+      name: "does not let one positive File branch excuse a later raw use",
+      code: "const file = formData.get('file');\nif (file instanceof File) { await upload(file); }\nlog(file);",
       errors: [{ messageId: "missingZodValidation" }],
     },
     {

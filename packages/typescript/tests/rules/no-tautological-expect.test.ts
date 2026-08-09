@@ -97,6 +97,16 @@ ruleTester.run("no-tautological-expect", rule, {
       code: "it('spreads an object', () => { expect({ ...base }).toBeTruthy(); });",
     },
     {
+      name: "does not call distinct object references a passing tautology",
+      filename: TEST_FILE,
+      code: "it('compares references', () => { expect({ a: 1 }).toBe({ a: 1 }); });",
+    },
+    {
+      name: "does not call distinct array references a passing tautology",
+      filename: TEST_FILE,
+      code: "it('compares references', () => { expect([1]).toBe([1]); });",
+    },
+    {
       name: "allows nested array values produced at runtime",
       filename: TEST_FILE,
       code: "it('keeps a value', () => { expect([value]).toEqual([value]); });",

@@ -252,6 +252,27 @@ def test_ignores_parameter_cases_without_proven_equivalent_empty_states(source: 
     assert _check(source, Path("app/resolver.py")) == []
 
 
+def test_ignores_constructor_parameter_forwarded_to_external_base() -> None:
+    source = (
+        "class Adapter(FrameworkAdapter):\n"
+        "    def __init__(self, tools: list[Tool] | None = None):\n"
+        "        super().__init__(tools=tools or [])\n"
+    )
+
+    assert _check(source) == []
+
+
+def test_object_base_does_not_create_an_external_constructor_contract() -> None:
+    source = (
+        "class Adapter(object):\n"
+        "    def __init__(self, tools: list[Tool] | None = None):\n"
+        "        tools = tools or []\n"
+        "        self.tools = tools\n"
+    )
+
+    assert len(_check(source)) == 1
+
+
 def test_ignores_tests_and_generated_files() -> None:
     source = "def resolve(items: list[str] | None = None):\n    return items or []\n"
     assert _check(source, Path("tests/test_models.py")) == []

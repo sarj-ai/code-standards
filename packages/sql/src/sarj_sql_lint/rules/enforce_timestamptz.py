@@ -17,6 +17,7 @@ from sarj_sql_lint.rule_base import (
     RuleExample,
     is_dump_file,
     is_generated_migration,
+    is_postgres_source,
     mask_sql,
     redirect_to_model,
 )
@@ -62,10 +63,11 @@ class EnforceTimestamptz(Rule):
                 outcome=ExampleOutcome.MATCH,
                 files=(
                     ExampleFile.sql(
-                        "migrations/001_orders.sql", "CREATE TABLE orders (created_at TIMESTAMP NOT NULL);\n"
+                        "supabase/migrations/001_orders.sql",
+                        "CREATE TABLE orders (created_at TIMESTAMP NOT NULL);\n",
                     ),
                 ),
-                focus_path=PurePosixPath("migrations/001_orders.sql"),
+                focus_path=PurePosixPath("supabase/migrations/001_orders.sql"),
                 expected_count=1,
                 public=True,
             ),
@@ -75,10 +77,11 @@ class EnforceTimestamptz(Rule):
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
                     ExampleFile.sql(
-                        "migrations/001_orders.sql", "CREATE TABLE orders (created_at TIMESTAMPTZ NOT NULL);\n"
+                        "supabase/migrations/001_orders.sql",
+                        "CREATE TABLE orders (created_at TIMESTAMPTZ NOT NULL);\n",
                     ),
                 ),
-                focus_path=PurePosixPath("migrations/001_orders.sql"),
+                focus_path=PurePosixPath("supabase/migrations/001_orders.sql"),
                 expected_count=0,
                 public=True,
             ),
@@ -88,7 +91,7 @@ class EnforceTimestamptz(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_dump_file(source, path):
+        if is_dump_file(source, path) or not is_postgres_source(path, source):
             return []
         model_owned = is_generated_migration(path, source)
 

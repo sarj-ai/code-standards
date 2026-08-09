@@ -47,6 +47,8 @@ ruleTester.run("prefer-immutable-module-constant", rule, {
     "const LABELS = { a: 'A' }; LABELS.a = 'B';",
     "const LABELS = { nested: { value: 'A' } }; LABELS.nested.value = 'B';",
     "const LABELS = { nested: [] as string[] }; LABELS.nested.push('A');",
+    "const VALUES = [1, 2, 3]; const alias = VALUES; alias.push(4);",
+    "const LABELS = { nested: [] as string[] }; const alias = LABELS; alias.nested.push('A');",
     "const LABELS = { a: 'A' }; Object.assign(LABELS, { a: 'B' });",
     "const VALUES = [1, 2]; VALUES['push'](3);",
     { code: "const VALUES = [1, 2, 3];", filename: "src/value.test.ts" },

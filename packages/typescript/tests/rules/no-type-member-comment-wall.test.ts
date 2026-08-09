@@ -16,6 +16,22 @@ ruleTester.run("no-type-member-comment-wall", rule, {
   valid: [
     // No member comments at all — 79% of the OSS corpus.
     { code: noTypeMemberCommentWallDocumentation.examples[0].files[0].source },
+    {
+      name: "preserves rationale in consecutive line-comment blocks",
+      code: [
+        "interface Connection {",
+        "  // selected after a regional failover",
+        "  // Host name.",
+        "  hostName: string;",
+        "  // reserved by the network control plane",
+        "  // Port number.",
+        "  portNumber: number;",
+        "  // rotated whenever an operator leaves",
+        "  // User name.",
+        "  userName: string;",
+        "}",
+      ].join("\n"),
+    },
     // Every comment says something the name and the type cannot. Nothing here
     // is protected, quoted, numbered or tagged: the ONLY thing keeping this
     // valid is that each comment adds more than `maxNovelWords` content words,

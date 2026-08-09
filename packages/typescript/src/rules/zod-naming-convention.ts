@@ -74,6 +74,12 @@ const NON_SCHEMA_TERMINALS: ReadonlySet<string> = new Set([
   "toJSONSchema",
   "registry",
   "implement",
+  "flattenError",
+  "formatError",
+  "isNullable",
+  "isOptional",
+  "prettifyError",
+  "treeifyError",
 ]);
 
 /** Return the final method name in a call chain. */

@@ -5,6 +5,7 @@
  */
 
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import type { Scope } from "@typescript-eslint/utils/ts-eslint";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -267,6 +268,33 @@ export default createRule<Options, MessageIds>({
     }
     const exportedNames = new Set<string>();
     const typeAliases = new Map<string, TSESTree.Node>();
+    const mutatesThroughConstAlias = (root: Scope.Variable): boolean => {
+      const pending = [root];
+      const seen = new Set<Scope.Variable>();
+      while (pending.length > 0) {
+        const variable = pending.pop();
+        if (variable === undefined || seen.has(variable)) continue;
+        seen.add(variable);
+        for (const reference of variable.references) {
+          const identifier = reference.identifier;
+          if (identifier.type !== AST_NODE_TYPES.Identifier) continue;
+          if (referenceMutates(identifier, isUnshadowedGlobal)) return true;
+          const declarator = identifier.parent;
+          if (
+            declarator.type !== AST_NODE_TYPES.VariableDeclarator ||
+            declarator.init !== identifier ||
+            declarator.id.type !== AST_NODE_TYPES.Identifier ||
+            declarator.parent.type !== AST_NODE_TYPES.VariableDeclaration ||
+            declarator.parent.kind !== "const"
+          ) {
+            continue;
+          }
+          const alias = sourceCode.getDeclaredVariables(declarator)[0];
+          if (alias !== undefined) pending.push(alias);
+        }
+      }
+      return false;
+    };
     return {
       Program(node): void {
         for (const statement of node.body) {
@@ -325,11 +353,7 @@ export default createRule<Options, MessageIds>({
         }
         const variable = sourceCode.getDeclaredVariables(node)[0];
         if (!directlyExported && !exportedNames.has(node.id.name) &&
-          variable?.references.some(
-            (reference) =>
-              reference.identifier.type === AST_NODE_TYPES.Identifier &&
-              referenceMutates(reference.identifier, isUnshadowedGlobal),
-          ) === true
+          variable !== undefined && mutatesThroughConstAlias(variable)
         ) {
           return;
         }

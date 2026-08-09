@@ -17,6 +17,7 @@ from sarj_sql_lint.rule_base import (
     RuleExample,
     is_dump_file,
     is_generated_migration,
+    is_postgres_source,
     locate,
     mask_sql,
     redirect_to_model,
@@ -60,11 +61,11 @@ class NoPgEnum(Rule):
                 outcome=ExampleOutcome.MATCH,
                 files=(
                     ExampleFile.sql(
-                        "migrations/001_status.sql",
+                        "supabase/migrations/001_status.sql",
                         "CREATE TYPE call_status AS ENUM ('pending', 'active', 'completed');\n",
                     ),
                 ),
-                focus_path=PurePosixPath("migrations/001_status.sql"),
+                focus_path=PurePosixPath("supabase/migrations/001_status.sql"),
                 expected_count=1,
                 public=True,
             ),
@@ -74,13 +75,13 @@ class NoPgEnum(Rule):
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
                     ExampleFile.sql(
-                        "migrations/001_status.sql",
+                        "supabase/migrations/001_status.sql",
                         "CREATE TABLE call (\n"
                         "    status TEXT NOT NULL CHECK (status IN ('pending', 'active', 'completed'))\n"
                         ");\n",
                     ),
                 ),
-                focus_path=PurePosixPath("migrations/001_status.sql"),
+                focus_path=PurePosixPath("supabase/migrations/001_status.sql"),
                 expected_count=0,
                 public=True,
             ),
@@ -90,7 +91,7 @@ class NoPgEnum(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_dump_file(source, path):
+        if is_dump_file(source, path) or not is_postgres_source(path, source):
             return []
         model_owned = is_generated_migration(path, source)
 

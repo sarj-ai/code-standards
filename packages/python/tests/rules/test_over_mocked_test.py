@@ -153,6 +153,17 @@ def test_non_test_function_is_ignored():
     assert _check(_patches(8).replace("def test_thing", "def build_thing")) == []
 
 
+def test_documentation_example_harness_is_exempt():
+    source = _patches(6).replace("test_thing", "test_docs_examples")
+    assert _check(source, "tests/test_examples.py") == []
+
+
+@pytest.mark.parametrize("name", ["test_docs_renderer", "test_examples"])
+def test_one_documentation_harness_token_is_not_enough(name: str):
+    source = _patches(6).replace("test_thing", name)
+    assert len(_check(source, "tests/test_service.py")) == 1
+
+
 @pytest.mark.parametrize("source", ["", "  \n\n ", "# comment\n"])
 def test_empty_source_is_clean(source: str):
     assert _check(source) == []

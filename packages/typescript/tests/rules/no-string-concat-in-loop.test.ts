@@ -20,6 +20,22 @@ const ruleTester = new RuleTester({
 ruleTester.run("no-string-concat-in-loop", rule, {
   valid: [
     {
+      name: "ignores numeric reduce accumulation",
+      code: "const total = values.reduce((sum, value) => sum + value, 0);",
+    },
+    {
+      name: "ignores reduce without an explicit string seed",
+      code: "const text = values.reduce((text, value) => text + value);",
+    },
+    {
+      name: "ignores a string-seeded non-concatenating reduce",
+      code: "const text = values.reduce((_text, value) => String(value), '');",
+    },
+    {
+      name: "allows a statically tiny string reduce",
+      code: "const text = ['a', 'b'].reduce((text, value) => text + value, '');",
+    },
+    {
       name: "ignores generated files",
       code: `
         let text = "";
@@ -226,6 +242,16 @@ ruleTester.run("no-string-concat-in-loop", rule, {
     },
   ],
   invalid: [
+    {
+      name: "reports a string-seeded reduce accumulator",
+      code: "const text = values.reduce((text, value) => text + value.content, '');",
+      errors: [{ messageId: "noStringReduce" }],
+    },
+    {
+      name: "reports a block-bodied string-seeded reduce accumulator",
+      code: "const text = values.reduce(function (text, value) { return `${text}${value}`; }, ``);",
+      errors: [{ messageId: "noStringReduce" }],
+    },
     {
       name: "reports a string initialized from TemplateStringsArray",
       code: "function sql(strings: TemplateStringsArray, ...values: unknown[]) { let q = strings[0]; for (const value of values) { q += String(value); } return q; }",

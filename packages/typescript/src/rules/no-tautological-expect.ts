@@ -85,6 +85,10 @@ function isLiteral(node: TSESTree.Node): boolean {
   }
 }
 
+function isStructuralLiteral(node: TSESTree.Node): boolean {
+  return node.type === AST_NODE_TYPES.ArrayExpression || node.type === AST_NODE_TYPES.ObjectExpression;
+}
+
 /** The `expect(<single argument>)` call a matcher hangs directly off, if any. */
 function expectOperand(callee: TSESTree.MemberExpression): TSESTree.Node | null {
   const receiver = callee.object;
@@ -157,6 +161,9 @@ export default createRule<Options, MessageIds>({
           expected === undefined ||
           !isLiteral(expected)
         ) {
+          return;
+        }
+        if (matcher === "toBe" && (isStructuralLiteral(operand) || isStructuralLiteral(expected))) {
           return;
         }
         // Textual identity, not structural: `expect(1).toBe(1.0)` is a

@@ -7,9 +7,9 @@ from __future__ import annotations
 
 import ast
 from itertools import pairwise
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 import re
-from typing import TYPE_CHECKING, ClassVar, override
+from typing import ClassVar, override
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
@@ -23,10 +23,6 @@ from sarj_python_lint.rule_base import (
     parse_or_none,
 )
 from sarj_python_lint.rules._paths import is_generated, is_test_path, is_test_support_path
-
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 # Name tails that mark a class as a service in this codebase's own vocabulary.
@@ -298,12 +294,22 @@ def _is_library_source(path: Path) -> bool:
     """Report whether `path` holds importable production code."""
     if is_test_path(path) or is_test_support_path(path):
         return False
-    parts = path.parts
+    parts = _repository_relative_parts(path)
     if parts and parts[0] in _TOP_LEVEL_SCRIPT_DIR_NAMES:
         return False
     if any(part in _MIGRATION_DIR_NAMES for part in parts):
         return False
     return not any(left == "management" and right == "commands" for left, right in pairwise(parts))
+
+
+def _repository_relative_parts(path: Path) -> tuple[str, ...]:
+    """Use checkout-relative parts when an absolute corpus path is available."""
+    if not path.is_absolute():
+        return path.parts
+    for parent in path.parents:
+        if (parent / ".git").exists():
+            return path.relative_to(parent).parts
+    return path.parts
 
 
 def _has_main_guard(tree: ast.Module) -> bool:

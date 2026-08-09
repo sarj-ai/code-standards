@@ -93,6 +93,12 @@ test('boolean forms', () => { expect(parse('true')).toBe(true); expect(parse('TR
       code: "test('one', () => { const x = parse(`first\\nfixture document that must remain distinct because it carries semantics`); expect(x.ok).toBe(true); expect(x.value).toBe('a'); });\ntest('two', () => { const x = parse(`second\\nfixture document that must remain distinct because it carries semantics`); expect(x.ok).toBe(true); expect(x.value).toBe('b'); });",
     },
     {
+      name: "does not parameterize compile-time type contracts",
+      filename: TEST_FILE,
+      code: `it('infers status 400', () => { const req = client.posts.$post; type Actual = InferResponseType<typeof req, 400>; type Expected = { error: 'Bad request' }; type Verify = Expect<Equal<Expected, Actual>>; });
+it('infers status 401', () => { const req = client.posts.$post; type Actual = InferResponseType<typeof req, 401>; type Expected = { error: 'Unauthorized' }; type Verify = Expect<Equal<Expected, Actual>>; });`,
+    },
+    {
       name: "ignores production files",
       filename: "/repo/src/user.ts",
       code: `run('one', () => { const x = parse('a'); save(x); return x; });

@@ -72,6 +72,11 @@ ruleTester.run("prefer-zod-infer", rule, {
      interface User { id: string; name: string; displayName: string }`,
     `${IMPORT}const UserSchema = z.object({ id: z.string(), nickname: z.string().optional() });
      interface User { id: string; nickname: string }`,
+    {
+      name: "does not treat output defaults as optional properties",
+      code: `${IMPORT}const UserSchema = z.object({ name: z.string().default("anonymous") });
+             interface User { name?: string }`,
+    },
     `${IMPORT}const UserSchema = z.object({ id: z.string(), age: z.number() });
      interface User { id: string; age: string }`,
     `${IMPORT}const UserSchema = z.object({ id: z.string() });
@@ -195,6 +200,12 @@ ruleTester.run("prefer-zod-infer", rule, {
       name: "reports a strictObject twin",
       code: `${IMPORT}const UserSchema = z.strictObject({ id: z.string(), active: z.boolean() });
              type User = { id: string; active: boolean };`,
+      errors: [{ messageId: "handWrittenTwin" }],
+    },
+    {
+      name: "reports a required output property supplied by a schema default",
+      code: `${IMPORT}const UserSchema = z.object({ name: z.string().default("anonymous") });
+             interface User { name: string }`,
       errors: [{ messageId: "handWrittenTwin" }],
     },
     {

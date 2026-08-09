@@ -16,6 +16,22 @@ ruleTester.run("no-declaration-comment-wall", rule, {
   valid: [
     // No member comments at all — the overwhelming majority of declarations.
     { code: noDeclarationCommentWallDocumentation.examples[0].files[0].source },
+    {
+      name: "preserves rationale in consecutive line-comment blocks",
+      code: [
+        "class Connection {",
+        "  // selected after a regional failover",
+        "  // Host name.",
+        "  hostName = '';",
+        "  // reserved by the network control plane",
+        "  // Port number.",
+        "  portNumber = 443;",
+        "  // rotated whenever an operator leaves",
+        "  // User name.",
+        "  userName = '';",
+        "}",
+      ].join("\n"),
+    },
 
     // Every comment says something the member's own name cannot.
     {
