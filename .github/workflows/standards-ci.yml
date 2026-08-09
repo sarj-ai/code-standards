@@ -41,7 +41,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # Linux remains a PR gate. The substantially more expensive hosted
+        # macOS and Windows runners provide their compatibility backstop after
+        # merge, when this path-scoped workflow runs on main.
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["ubuntu-latest", "macos-latest", "windows-latest"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     defaults:
