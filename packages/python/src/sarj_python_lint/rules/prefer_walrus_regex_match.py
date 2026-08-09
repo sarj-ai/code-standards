@@ -6,9 +6,21 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
-from typing import TYPE_CHECKING, override
+from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, is_suppressed, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    is_suppressed,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import nodes, walk
 
 
@@ -74,9 +86,57 @@ def _is_name_used_after(stmts: list[ast.stmt], start_idx: int, name: str) -> boo
 class PreferWalrusRegexMatch(Rule):
     id: str = "prefer-walrus-regex-match"
     code: str = "SARJ081"
-    description: str = (
-        "regex match assignment immediately followed by an `if` check — combine into `if (match := re.search(...)):`."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Bind a regex result in the `if` condition that immediately tests it.",
+        rationale="A named expression keeps the match operation and its condition together while preserving access to the result.",
+        remediation="Move the regex call into the following condition as `if (match := pattern.search(text)):`.",
+        category=RuleCategory.STYLE,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Only a simple assignment immediately followed by a truthy or `is not None` check is analyzed.",
+            "The assignment is retained when the result is used after the conditional or the regex receiver cannot be resolved.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="assigned-regex-result",
+                title="Regex result is assigned before its condition",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/parser.py",
+                        "import re\n\n"
+                        "def first_number(text: str) -> str | None:\n"
+                        '    match = re.search(r"\\d+", text)\n'
+                        "    if match:\n"
+                        "        return match.group(0)\n"
+                        "    return None\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/parser.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="conditional-regex-binding",
+                title="Regex result is bound in its condition",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/parser.py",
+                        "import re\n\n"
+                        "def first_number(text: str) -> str | None:\n"
+                        '    if match := re.search(r"\\d+", text):\n'
+                        "        return match.group(0)\n"
+                        "    return None\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/parser.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

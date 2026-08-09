@@ -1,6 +1,6 @@
 # Configuration and secrets
 
-Audit deploy-time configuration and secret handling using the shared [audit protocol](../README.md#audit-protocol).
+Audit deploy-time configuration and secret handling using the shared [audit protocol](../skills/audit-protocol/SKILL.md#audit-protocol).
 
 ## Judgment checks
 

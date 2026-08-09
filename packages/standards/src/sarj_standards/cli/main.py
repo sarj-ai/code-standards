@@ -73,6 +73,7 @@ class _Args(argparse.Namespace):
     roots: list[Path]
     include_text: Path | None = None
     rules_cmd: str = ""
+    reference_cmd: str = ""
     docs_cmd: str = ""
     hooks_cmd: str = ""
     no_install: bool = False
@@ -99,6 +100,7 @@ class _Args(argparse.Namespace):
     wheels: list[Path]
     hooks: manifest.HookManager | None = None
     show_cmd: str = ""
+    catalog_cmd: str = ""
     exclude_cmd: str = ""
     exclude_kind: str = ""
     value: str = ""
@@ -1098,9 +1100,10 @@ def cmd_show(args: _Args) -> int:
         case "peers":
             return cmd_peers(args)
         case "rules":
-            args.repo_cmd = "rules"
-            args.rules_cmd = "manifest"
-            return _cmd_repo(args)
+            from sarj_standards.libs.repository import rule_catalog_artifact  # ruff: ignore[import-outside-top-level]
+
+            print(json.dumps(rule_catalog_artifact.load(), indent=2))
+            return 0
         case "ci":
             from sarj_standards.libs.adoption import scaffold  # ruff: ignore[import-outside-top-level]
 
@@ -1150,7 +1153,7 @@ def cmd_exclude(args: _Args) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     raw_argv = _root_option_first(sys.argv[1:] if argv is None else argv)
-    args = _build_parser().parse_args(raw_argv, namespace=_Args())
+    args = build_parser().parse_args(raw_argv, namespace=_Args())
     try:
         return _dispatch(args)
     except KeyboardInterrupt:
@@ -1195,7 +1198,8 @@ def _dispatch(args: _Args) -> int:
             return 2
 
 
-def _build_parser() -> argparse.ArgumentParser:
+def build_parser() -> argparse.ArgumentParser:
+    """Build the public parser graph used by the CLI and derived references."""
     parser = argparse.ArgumentParser(
         prog="sarj-standards",
         description=f"Adopt, check, fix, diagnose, and update sarj-ai standards (v{__version__}).",
@@ -1519,11 +1523,29 @@ def _run_repo(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one lazy 
         from sarj_standards.libs.repository import hooks  # ruff: ignore[import-outside-top-level]
 
         return hooks.install(_resolve_dest(args.dest))
-    if args.repo_cmd == "rules" and args.rules_cmd == "manifest":
-        from sarj_standards.libs.repository import rule_maintenance  # ruff: ignore[import-outside-top-level]
+    if args.repo_cmd == "rules":
+        from sarj_standards.libs.repository import rule_inventory_artifact  # ruff: ignore[import-outside-top-level]
 
-        print(json.dumps(rule_maintenance.inventory(_resolve_dest(args.dest)), indent=2))
-        return 0
+        if args.rules_cmd == "manifest":
+            print(json.dumps(rule_inventory_artifact.load(), indent=2))
+            return 0
+        result = rule_inventory_artifact.sync(_resolve_dest(args.dest), check=args.rules_cmd == "check")
+        print(result.message)
+        return result.status
+    if args.repo_cmd == "catalog":
+        from sarj_standards.libs.repository import rule_catalog_artifact  # ruff: ignore[import-outside-top-level]
+
+        result = rule_catalog_artifact.sync(_resolve_dest(args.dest), check=args.catalog_cmd == "check")
+        print(result.message)
+        return result.status
+    if args.repo_cmd == "cli-reference":
+        from sarj_standards.libs.repository import cli_reference_artifact  # ruff: ignore[import-outside-top-level]
+
+        result = cli_reference_artifact.sync(
+            _resolve_dest(args.dest), build_parser(), check=args.reference_cmd == "check"
+        )
+        print(result.message)
+        return result.status
     return 2
 
 
@@ -1629,7 +1651,19 @@ def _add_repo_parsers(repo: argparse.ArgumentParser) -> None:  # ruff: ignore[to
     rule_commands = commands.add_parser("rules", help="inspect live custom rules").add_subparsers(
         dest="rules_cmd", required=True
     )
-    rule_commands.add_parser("manifest", help="print a machine-readable rule inventory")
+    rule_commands.add_parser("manifest", help="print the shipped rule inventory")
+    rule_commands.add_parser("check", help="verify the shipped rule inventory matches live registries")
+    rule_commands.add_parser("sync", help="update the shipped rule inventory from live registries")
+    catalog_commands = commands.add_parser(
+        "catalog", help="maintain the source-derived public rule catalog"
+    ).add_subparsers(dest="catalog_cmd", required=True)
+    catalog_commands.add_parser("check", help="verify the public catalog matches every live rule")
+    catalog_commands.add_parser("sync", help="update the public catalog from source-owned rule metadata")
+    reference_commands = commands.add_parser(
+        "cli-reference", help="maintain the source-derived CLI reference"
+    ).add_subparsers(dest="reference_cmd", required=True)
+    reference_commands.add_parser("check", help="verify the shipped reference matches the parser graph")
+    reference_commands.add_parser("sync", help="update the shipped reference from the parser graph")
 
 
 if __name__ == "__main__":

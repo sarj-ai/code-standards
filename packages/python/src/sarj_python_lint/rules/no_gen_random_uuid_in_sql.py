@@ -6,10 +6,20 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, final, override
+from typing import TYPE_CHECKING, ClassVar, final, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._paths import is_generated
 from sarj_python_lint.rules._sql import strip_sql_noise
@@ -45,10 +55,47 @@ _MESSAGE = (
 class NoGenRandomUuidInSql(Rule):
     id: str = "no-gen-random-uuid-in-sql"
     code: str = "SARJ053"
-    description: str = (
-        "`gen_random_uuid()` in SQL embedded in Python emits a random UUIDv4 — "
-        "use `uuidv7()` so primary keys are time-ordered."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Embedded SQL calls gen_random_uuid() instead of uuidv7().",
+        rationale="Random UUIDv4 primary keys scatter inserts across B-tree pages; UUIDv7 keys preserve time ordering.",
+        remediation="Use uuidv7() where the supported PostgreSQL version provides it.",
+        category=RuleCategory.PERFORMANCE,
+        limitations=(
+            "Detection covers SQL-shaped Python string literals after masking SQL comments and quoted values.",
+            "Known UUIDv7 compatibility implementations that internally call gen_random_uuid() are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="random-uuid-default",
+                title="Table defaults to a random UUID",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/store.py",
+                        'SQL = "CREATE TABLE call (id UUID PRIMARY KEY DEFAULT gen_random_uuid())"\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/store.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="uuidv7-default",
+                title="Table defaults to UUIDv7",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/store.py",
+                        'SQL = "CREATE TABLE call (id UUID PRIMARY KEY DEFAULT uuidv7())"\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/store.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

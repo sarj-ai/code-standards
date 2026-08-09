@@ -6,10 +6,22 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, Severity, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    Severity,
+    parse_or_none,
+)
 from sarj_python_lint.rules._paths import is_generated, is_test_path
 
 
@@ -43,9 +55,45 @@ _MUTATING_METHODS = frozenset(
 class PreferImmutableModuleConstant(Rule):
     id: str = "prefer-immutable-module-constant"
     code: str = "SARJ096"
-    description: str = (
-        "module-level constant collections expose mutable shared state; use tuple, frozenset, or an immutable mapping"
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary=(
+            "module-level constant collections expose mutable shared state; use tuple, frozenset, or an immutable mapping"
+        ),
+        rationale=(
+            "A constant-looking mutable collection can be changed by any importer, so its value depends on process history "
+            "rather than the module's source."
+        ),
+        remediation=(
+            "Use a tuple for ordered values, a frozenset for membership, or an immutable mapping for keyed values."
+        ),
+        category=RuleCategory.MAINTAINABILITY,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Empty collections and collections intentionally mutated or passed to unknown calls are not reported.",
+            "Test and generated files are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="mutable-module-constant",
+                title="Mutable collection exposed as a module constant",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.python("settings.py", 'ROLE_NAMES = ["admin", "member"]\n'),),
+                focus_path=PurePosixPath("settings.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="immutable-module-constant",
+                title="Immutable tuple used for a module constant",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(ExampleFile.python("settings.py", 'ROLE_NAMES = ("admin", "member")\n'),),
+                focus_path=PurePosixPath("settings.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

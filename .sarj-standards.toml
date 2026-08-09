@@ -1,5 +1,5 @@
 schema = 3
-bundle = "2.0.1"
+bundle = "3.0.0"
 rule_profile = "all"
 
 profile = "standard"
@@ -215,6 +215,7 @@ manifests = [
   "packages/typescript/package.json",
 ]
 locks = [
+  "apps/docs/package-lock.json",
   "uv.lock",
   "packages/python/uv.lock",
   "packages/sql/uv.lock",

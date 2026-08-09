@@ -2,11 +2,21 @@
 
 from __future__ import annotations
 
+from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, final, override
 
 from sarj_iac_lint._hcl import heredoc_body_mask
-from sarj_iac_lint.rule_base import Diagnostic, Rule
+from sarj_iac_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+)
 
 
 if TYPE_CHECKING:
@@ -51,10 +61,55 @@ class NoCommentCruft(Rule):
 
     id = "no-comment-cruft"
     code = "SARJ202"
-    description = (
-        "Commented-out Terraform/IaC or a section-banner comment — delete it; "
-        "code carries the what, comments only the why."
+    documentation = RuleDocumentation(
+        summary=(
+            "Commented-out Terraform/IaC or a section-banner comment — delete it; "
+            "code carries the what, comments only the why."
+        ),
+        rationale=(
+            "Disabled declarations drift from executable infrastructure, while decorative banners duplicate structure "
+            "already expressed by modules and resource blocks."
+        ),
+        remediation="Delete disabled HCL and decorative dividers; retain only comments that explain a non-obvious reason.",
+        category=RuleCategory.MAINTAINABILITY,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Commented assignments in tfvars files are allowed because they commonly document optional inputs.",
+            "Directives and heredoc bodies are excluded, and disabled HCL runs must be code-dominant.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="commented-resource",
+                title="Disabled Terraform resource",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.iac(
+                        "main.tf",
+                        '# resource "google_storage_bucket" "old" {\nresource "google_storage_bucket" "current" {}\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("main.tf"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="reason-comment",
+                title="Comment explaining an infrastructure constraint",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.iac(
+                        "main.tf",
+                        "# Keep this bucket in us-central1 for data residency.\n"
+                        'resource "google_storage_bucket" "records" {}\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("main.tf"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

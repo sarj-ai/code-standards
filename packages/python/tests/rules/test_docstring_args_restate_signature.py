@@ -8,7 +8,7 @@ from sarj_python_lint.rules.docstring_args_restate_signature import DocstringArg
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import Diagnostic
+    from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
 def _check(source: str) -> list[Diagnostic]:
@@ -22,6 +22,14 @@ RESTATING_BLOCKS = [
     ("delete(*keys: str) -> int", "keys: Keys to delete"),
     ("repair_payload(payload: Payload) -> Payload", "payload: The payload to repair"),
 ]
+
+_PUBLIC_EXAMPLES = DocstringArgsRestateSignature.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(DocstringArgsRestateSignature().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 @pytest.mark.parametrize(("signature", "entry"), RESTATING_BLOCKS)

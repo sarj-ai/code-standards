@@ -1,7 +1,7 @@
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/prefer-server-actions.js";
+import rule, { preferServerActionsDocumentation } from "../../src/rules/prefer-server-actions.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -12,6 +12,7 @@ const ruleTester = new RuleTester();
 
 ruleTester.run("prefer-server-actions", rule, {
   valid: [
+    { name: "public no-match example", filename: preferServerActionsDocumentation.examples[0].focusPath, code: preferServerActionsDocumentation.examples[0].files[0].source },
     {
       name: "ignores Angular modules because they cannot use Server Actions",
       code: [
@@ -118,6 +119,7 @@ ruleTester.run("prefer-server-actions", rule, {
     },
   ],
   invalid: [
+    { name: "public match example", filename: preferServerActionsDocumentation.examples[1].focusPath, code: preferServerActionsDocumentation.examples[1].files[0].source, errors: [{ messageId: "preferServerAction" }] },
     // A React page still fires.
     {
       code: "const r = await fetch('/api/data', { method: 'POST', body });",

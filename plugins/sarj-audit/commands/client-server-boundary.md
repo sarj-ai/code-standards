@@ -1,6 +1,6 @@
 # Client/server boundary
 
-Audit misplaced work across client, server, and database layers using the shared [audit protocol](../README.md#audit-protocol).
+Audit misplaced work across client, server, and database layers using the shared [audit protocol](../skills/audit-protocol/SKILL.md#audit-protocol).
 
 ## Judgment checks
 

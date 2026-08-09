@@ -7,11 +7,22 @@ from __future__ import annotations
 
 import ast
 import io
+from pathlib import PurePosixPath
 import re
 import tokenize
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._logging import LOG_METHODS, is_logger_expr
 from sarj_python_lint.rules._paths import is_generated
@@ -105,10 +116,46 @@ _STRING_METHODS = frozenset(
 class PreferFstringOverConcat(Rule):
     id: str = "prefer-fstring-over-concat"
     code: str = "SARJ068"
-    description: str = (
-        "String built with `+` from a literal and a runtime expression — an f-string needs no "
-        "`str()` coercion and keeps the literal's spacing visible."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Build short strings with f-strings instead of concatenating literals and known strings.",
+        rationale="F-strings keep interpolation and spacing visible and avoid redundant string coercion.",
+        remediation="Replace the concatenation with one f-string; use `str.join` when many operands form a sequence.",
+        category=RuleCategory.STYLE,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Runtime operands must have concrete string evidence.",
+            "Logging, SQL, lazy strings, ORM expressions, templates, and generated or skill utility files are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="literal-string-concatenation",
+                title="Known string is joined to literals",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "src/render.py", 'def greeting(name: str) -> str:\n    return "Hello, " + name + "!"\n'
+                    ),
+                ),
+                focus_path=PurePosixPath("src/render.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="formatted-string",
+                title="Interpolation uses an f-string",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "src/render.py", 'def greeting(name: str) -> str:\n    return f"Hello, {name}!"\n'
+                    ),
+                ),
+                focus_path=PurePosixPath("src/render.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

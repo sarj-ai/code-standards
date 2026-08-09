@@ -7,9 +7,19 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, override
+from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import children, nodes
 from sarj_python_lint.rules._paths import is_generated, is_test_path
 
@@ -87,10 +97,45 @@ _INNER_SCOPE_NODES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.Cla
 class PreferModuleLevelConstant(Rule):
     id: str = "prefer-module-level-constant"
     code: str = "SARJ039"
-    description: str = (
-        "a runtime-built literal-only collection or compiled regex inside a function repeats "
-        "construction or a regex-cache lookup on every call — hoist it to module scope."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Literal-only collections and compiled regular expressions built inside a function should be module-level constants.",
+        rationale="Rebuilding immutable data or a constant regex on every call wastes work and obscures its static nature.",
+        remediation="Define the value once at module scope and reference that constant from the function.",
+        category=RuleCategory.PERFORMANCE,
+        limitations=(
+            "Test and generated files are excluded.",
+            "Only proven literal-only collections of at least three elements and constant `re.compile` calls are reported.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="list-built-per-call",
+                title="Static list rebuilt in a function",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "service.py", 'def handle(value):\n    allowed = ["a", "b", "c"]\n    return value in allowed\n'
+                    ),
+                ),
+                focus_path=PurePosixPath("service.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="module-level-list",
+                title="Static list defined once",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "service.py", 'ALLOWED = ["a", "b", "c"]\n\ndef handle(value):\n    return value in ALLOWED\n'
+                    ),
+                ),
+                focus_path=PurePosixPath("service.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

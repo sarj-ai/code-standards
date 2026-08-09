@@ -6,10 +6,22 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, Severity, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    Severity,
+    parse_or_none,
+)
 from sarj_python_lint.rules._paths import is_generated, is_test_path, is_test_support_path
 
 
@@ -157,11 +169,60 @@ _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 class RequirePortForService(Rule):
     id: str = "require-port-for-service"
     code: str = "SARJ071"
-    description: str = (
-        # Client is deliberately excluded because it produced excessive false positives in measured projects.
-        "Concrete `*Service`/`*Store`/`*DAO`/`*Gateway`/`*Provider` with a required, behaviorally used "
-        "non-persistence collaborator and no declared port — advisory because not every service needs another abstraction."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Consider a consumer-owned port for a service with a behaviorally used collaborator.",
+        rationale="A small port can decouple consumers when they genuinely need to substitute a concrete service boundary.",
+        remediation="Define a focused `Protocol` or ABC and type substituting consumers against it, or suppress the advisory when no substitution boundary exists.",
+        category=RuleCategory.ARCHITECTURE,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "This advisory uses service-family names, constructor annotations, collaborator calls, and public-method counts as heuristics.",
+            "Tests, generated code, scripts, known framework shapes, persistence-only dependencies, and classes with declared bases are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="concrete-service-boundary",
+                title="Concrete service directly exposes an injected collaborator",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/services/thing_service.py",
+                        "class ThingService:\n"
+                        "    def __init__(self, client: ThingClient) -> None:\n"
+                        "        self.client = client\n\n"
+                        "    def read(self, key: str) -> str:\n"
+                        "        return self.client.get(key)\n\n"
+                        "    def write(self, key: str, value: str) -> None:\n"
+                        "        self.client.put(key, value)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/services/thing_service.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="declared-service-port",
+                title="Service implements a declared port",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/services/thing_service.py",
+                        "class ThingService(ThingServicePort):\n"
+                        "    def __init__(self, client: ThingClient) -> None:\n"
+                        "        self.client = client\n\n"
+                        "    def read(self, key: str) -> str:\n"
+                        "        return self.client.get(key)\n\n"
+                        "    def write(self, key: str, value: str) -> None:\n"
+                        "        self.client.put(key, value)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/services/thing_service.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

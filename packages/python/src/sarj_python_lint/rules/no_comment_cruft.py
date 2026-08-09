@@ -6,11 +6,21 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from pathlib import PurePosixPath
 import re
 import tokenize
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import ColumnEncoding, Diagnostic, Rule
+from sarj_python_lint.rule_base import (
+    ColumnEncoding,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+)
 from sarj_python_lint.rules._comments import (
     comment_runs,
     has_external_reference,
@@ -448,10 +458,42 @@ def _license_header_lines(standalone: list[tuple[int, int, str]]) -> frozenset[i
 class NoCommentCruft(Rule):
     id: str = "no-comment-cruft"
     code: str = "SARJ016"
-    description: str = (
-        "Comment cruft (commented-out code, section banner, or file-header "
-        "preamble) — delete it; code carries the what, comments only the why."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Comment repeats code, preserves dead code, or adds a decorative section marker.",
+        rationale="Mechanical narration and dead code obscure the constraints and rationale that comments should preserve.",
+        remediation="Delete the cruft and keep only concise comments that explain a non-obvious reason or constraint.",
+        category=RuleCategory.MAINTAINABILITY,
+        limitations=(
+            "Only standalone comments are classified; trailing comments, docstrings, directives, and referenced notes are excluded.",
+            "Generated files, license headers, doctests, grammar illustrations, and Sphinx configuration banners are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="commented-out-code",
+                title="Dead code preserved as a comment",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.python("service.py", "value = load()\n# return value\nsave(value)\n"),),
+                focus_path=PurePosixPath("service.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="rationale-comment",
+                title="Comment records an external constraint",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "service.py",
+                        "value = load()\n# Keep this ordering because Clerk caches the first lookup.\nsave(value)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("service.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

@@ -21,12 +21,40 @@ import {
   labelStems,
   novelWords,
 } from "./_comment-wall.js";
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isStoryFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "commentWall";
 
 type Options = readonly [Partial<WallOptions>?];
+
+export const noDeclarationCommentWallDocumentation = {
+  summary: "Flag an enum body or class body whose member comments mostly re-spell the members' own names.",
+  rationale: "A dense block of repetitive member comments obscures the few comments that add information and drifts with renamed members.",
+  remediation: "Delete comments that restate member names and retain comments that explain constraints, lifecycle, or behavior.",
+  category: "maintainability",
+  limitations: ["Only enum and class bodies meeting the configured comment-count and restatement-ratio thresholds are reported."],
+  examples: [
+    {
+      id: "uncommented-members",
+      title: "Let clear member names stand alone",
+      outcome: "no-match",
+      files: [{ path: "src/status.ts", source: "enum Status { Pending = 'pending', Done = 'done', Failed = 'failed' }" }],
+      focusPath: "src/status.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "restated-enum-members",
+      title: "Do not restate every enum member",
+      outcome: "match",
+      files: [{ path: "src/status.ts", source: "enum Status {\n  /** The pending status. */\n  Pending = 'pending',\n  /** The finished status. */\n  Finished = 'finished',\n  /** The failed status. */\n  Failed = 'failed',\n}" }],
+      focusPath: "src/status.ts",
+      expectedCount: 1,
+      public: true,
+    },
+  ],
+} as const satisfies RuleDocumentation;
 
 /** A member this rule can judge: something with a name and a source range. */
 interface Judged {
@@ -50,6 +78,7 @@ function named(node: TSESTree.Node): Judged | undefined {
 
 export default createRule<Options, MessageIds>({
   name: "no-declaration-comment-wall",
+  documentation: noDeclarationCommentWallDocumentation,
   meta: {
     type: "suggestion",
     docs: {

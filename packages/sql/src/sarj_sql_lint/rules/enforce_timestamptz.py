@@ -2,12 +2,19 @@ r"""SARJ101: detect TIMESTAMP columns missing `WITH TIME ZONE`."""
 
 from __future__ import annotations
 
+from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, final, override
 
 from sarj_sql_lint.rule_base import (
+    AutofixPolicy,
     Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
     Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
     is_dump_file,
     is_generated_migration,
     mask_sql,
@@ -42,7 +49,42 @@ class EnforceTimestamptz(Rule):
 
     id = "enforce-timestamptz"
     code = "SARJ101"
-    description = "TIMESTAMP without TIME ZONE — use TIMESTAMPTZ."
+    documentation = RuleDocumentation(
+        summary="TIMESTAMP without TIME ZONE — use TIMESTAMPTZ.",
+        rationale="Naive timestamps discard offset context and make cross-time-zone comparisons ambiguous.",
+        remediation="Declare persisted instants as TIMESTAMPTZ or TIMESTAMP WITH TIME ZONE.",
+        category=RuleCategory.CORRECTNESS,
+        autofix=AutofixPolicy.NONE,
+        examples=(
+            RuleExample(
+                example_id="naive-created-at",
+                title="Naive timestamp column",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "migrations/001_orders.sql", "CREATE TABLE orders (created_at TIMESTAMP NOT NULL);\n"
+                    ),
+                ),
+                focus_path=PurePosixPath("migrations/001_orders.sql"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="zoned-created-at",
+                title="Timestamp with time-zone semantics",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "migrations/001_orders.sql", "CREATE TABLE orders (created_at TIMESTAMPTZ NOT NULL);\n"
+                    ),
+                ),
+                focus_path=PurePosixPath("migrations/001_orders.sql"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
+    )
+    description = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

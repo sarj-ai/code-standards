@@ -3,8 +3,11 @@ from textwrap import dedent
 
 import pytest
 
-from sarj_python_lint.rule_base import Severity
+from sarj_python_lint.rule_base import RuleExample, Severity
 from sarj_python_lint.rules.prefer_immutable_module_constant import PreferImmutableModuleConstant
+
+
+_PUBLIC_EXAMPLES = PreferImmutableModuleConstant.public_examples()
 
 
 @pytest.mark.parametrize(
@@ -47,6 +50,19 @@ def test_warns_for_literal_mutable_module_constants(source: str, replacement: st
     assert findings[0].code == "SARJ096"
     assert findings[0].severity is Severity.WARNING
     assert replacement in findings[0].message
+
+
+@pytest.mark.parametrize(
+    "example",
+    _PUBLIC_EXAMPLES,
+    ids=tuple(example.example_id for example in _PUBLIC_EXAMPLES),
+)
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+
+    findings = PreferImmutableModuleConstant().check(Path(focus.path), focus.source)
+
+    assert len(findings) == example.expected_count
 
 
 @pytest.mark.parametrize(

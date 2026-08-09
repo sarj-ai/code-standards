@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -7,11 +9,27 @@ from sarj_python_lint.rules.pydantic_at_boundaries import PydanticAtBoundaries
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import Diagnostic
+    from sarj_python_lint.rule_base import Diagnostic, RuleExample
+
+
+_PUBLIC_EXAMPLES = PydanticAtBoundaries.public_examples()
 
 
 def _check(source: str, path: str = "svc.py") -> list[Diagnostic]:
     return PydanticAtBoundaries().check(Path(path), source)
+
+
+@pytest.mark.parametrize(
+    "example",
+    _PUBLIC_EXAMPLES,
+    ids=tuple(example.example_id for example in _PUBLIC_EXAMPLES),
+)
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+
+    findings = PydanticAtBoundaries().check(Path(focus.path), focus.source)
+
+    assert len(findings) == example.expected_count
 
 
 def test_flags_dict_str_any_return():

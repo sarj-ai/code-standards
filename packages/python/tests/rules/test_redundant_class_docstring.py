@@ -7,7 +7,7 @@ from sarj_python_lint.rules.redundant_class_docstring import RedundantClassDocst
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import Diagnostic
+    from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
 def _check(source: str) -> list[Diagnostic]:
@@ -26,6 +26,14 @@ RESTATEMENTS = [
     ("RetryPolicy", "The retry policy."),
     ("InboundEventHandler", "Handles inbound events."),
 ]
+
+_PUBLIC_EXAMPLES = RedundantClassDocstring.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(RedundantClassDocstring().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 @pytest.mark.parametrize(("name", "docstring"), RESTATEMENTS)

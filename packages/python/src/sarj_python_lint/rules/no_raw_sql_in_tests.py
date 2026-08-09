@@ -6,10 +6,21 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, final, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._paths import is_test_path
 from sarj_python_lint.rules._sql import sql_string_value, strip_sql_noise
@@ -25,13 +36,52 @@ _TEXT_WRAPPER_NAMES = frozenset({"sa", "sqlalchemy"})
 _INSERT_RE = re.compile(r"\bINSERT\s+INTO\b", re.IGNORECASE)
 
 
+@final
 class NoRawSqlInTests(Rule):
     id: str = "no-raw-sql-in-tests"
     code: str = "SARJ036"
-    description: str = (
-        "raw SQL INSERT executed in a test bypasses the store's write "
-        "invariants — seed through the store/service methods instead."
+    documentation = RuleDocumentation(
+        summary="Tests should seed records through store or service methods instead of raw SQL inserts.",
+        rationale="Raw inserts bypass the validation, defaults, events, and invariants exercised by production writes.",
+        remediation="Create test records through the owning store or service API.",
+        category=RuleCategory.TESTING,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Only literal `INSERT INTO` statements passed to known execution methods in test files are reported.",
+            "Fixtures in `conftest.py`, migrations, dynamic SQL, reads, updates, and cleanup statements are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="raw-insert-test-seed",
+                title="Test seeds data with raw SQL",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_call_store.py",
+                        'async def test_create(conn):\n    await conn.execute("INSERT INTO call (id) VALUES (1)")\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_call_store.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="store-api-test-seed",
+                title="Test seeds data through the store API",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_call_store.py",
+                        "async def test_create(store):\n    await store.insert(make_call())\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_call_store.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

@@ -6,11 +6,43 @@
 
 import { type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "importsFirst" | "useServerDirective";
 type Options = readonly [];
+
+export const enforceFileStructureDocumentation = {
+  summary: "Require imports before body statements and require `use server` to be the first statement.",
+  rationale:
+    "Interleaved imports obscure module dependencies, while a displaced `use server` string is not an active directive.",
+  remediation:
+    "Move `use server` to the first statement when present, then place imports before declarations and executable statements.",
+  category: "correctness",
+  limitations: [
+    "The rule skips tests and generated files, treats re-exports as neutral, and does not order body declarations.",
+  ],
+  examples: [
+    {
+      id: "imports-first",
+      title: "Imports precede module declarations",
+      outcome: "no-match",
+      files: [{ path: "src/component.ts", source: "import { z } from 'zod';\nexport const schema = z.string();" }],
+      focusPath: "src/component.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "import-after-declaration",
+      title: "An import follows a module declaration",
+      outcome: "match",
+      files: [{ path: "src/component.ts", source: "export const x = 1;\nimport { z } from 'zod';" }],
+      focusPath: "src/component.ts",
+      expectedCount: 1,
+      public: true,
+    },
+  ],
+} as const satisfies RuleDocumentation;
 
 type StatementKind = "import" | "reexport" | "body";
 
@@ -48,11 +80,11 @@ const isUseServerDirective = (
 
 export default createRule<Options, MessageIds>({
   name: "enforce-file-structure",
+  documentation: enforceFileStructureDocumentation,
   meta: {
     type: "suggestion",
     docs: {
-      description:
-        "Require `import` statements to come first, then allow step-down ordering (public API first, private helpers below) for the rest of the file. Exported statements are classified by WHAT they export — an exported interface is a declaration, an exported function is a function — so a public exported function followed by a private helper, or an exported interface among declarations, is allowed. Re-exports (`export { … } from`, `export *`, `export { … }`) are a neutral group, so generated namespace barrels pass. When a module contains a `use server` directive, it must be the first statement in the file.",
+      description: "Require imports before body statements and require `use server` to be the first statement.",
     },
     schema: [],
     messages: {

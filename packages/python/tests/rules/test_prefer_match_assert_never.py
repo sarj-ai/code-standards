@@ -7,11 +7,20 @@ from sarj_python_lint.rules.prefer_match_assert_never import PreferMatchAssertNe
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import Diagnostic
+    from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
 def _check(source: str, path: str = "python/app/app/calls/dispatch.py") -> list[Diagnostic]:
     return PreferMatchAssertNever().check(Path(path), source)
+
+
+_PUBLIC_EXAMPLES = PreferMatchAssertNever.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(_check(focus.source, str(focus.path))) == example.expected_count
 
 
 _ENUM_PREAMBLE = """

@@ -6,12 +6,24 @@
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isAuthSecretName } from "./_secret-names.js";
 import { isTestFile } from "./_paths.js";
 
 type MessageIds = "preferConstantTimeSecretCompare";
 type Options = readonly [];
+
+export const preferConstantTimeSecretCompareDocumentation = {
+  summary: "Disallow `===`/`!==` on a secret-like value; short-circuiting comparison leaks the secret through timing. Use a constant-time compare.",
+  rationale: "Ordinary equality stops at the first differing byte, allowing repeated measurements to reveal secret material.",
+  remediation: "Compare equal-length cryptographic digests with a constant-time comparison primitive.",
+  category: "security",
+  limitations: ["Secret-like values are identified conservatively from their names; test files and public sentinel comparisons are excluded."],
+  examples: [
+    { id: "constant-time-compare", title: "Use a constant-time comparison", outcome: "no-match", files: [{ path: "src/auth.ts", source: "if (await constantTimeEqual(presentedToken, expectedToken)) { allow(); }" }], focusPath: "src/auth.ts", expectedCount: 0, public: true },
+    { id: "secret-equality", title: "Do not compare secrets with equality", outcome: "match", files: [{ path: "src/auth.ts", source: "if (presentedToken === expectedToken) { allow(); }" }], focusPath: "src/auth.ts", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
 
 const EQUALITY_OPERATORS: ReadonlySet<string> = new Set(["===", "!==", "==", "!="]);
 
@@ -97,6 +109,7 @@ function secretNameOf(node: TSESTree.Node): string | null {
 
 export default createRule<Options, MessageIds>({
   name: "prefer-constant-time-secret-compare",
+  documentation: preferConstantTimeSecretCompareDocumentation,
   meta: {
     type: "problem",
     docs: {

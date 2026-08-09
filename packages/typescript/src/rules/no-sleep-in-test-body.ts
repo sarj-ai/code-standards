@@ -6,11 +6,24 @@
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
 
 type MessageIds = "noSleepInTestBody";
 type Options = readonly [];
+
+export const noSleepInTestBodyDocumentation = {
+  summary: "Disallow a fixed timed sleep directly in a test body; it flakes under CI load. Synchronize on the signal or use fake timers.",
+  rationale: "Wall-clock delays make test correctness depend on scheduler and machine speed.",
+  remediation: "Await the observable signal or advance deterministic fake timers.",
+  category: "testing",
+  filePatterns: ["**/*.test.*", "**/*.spec.*", "**/tests/**", "**/__tests__/**"],
+  limitations: ["Only fixed nonzero sleeps directly inside test and per-test hook callbacks are checked; nested fakes and parameterized delays are excluded."],
+  examples: [
+    { id: "fake-timer", title: "Advance time deterministically", outcome: "no-match", files: [{ path: "src/retry.test.ts", source: "it('retries', async () => { vi.useFakeTimers(); const result = retry(); await vi.advanceTimersByTimeAsync(50); await result; });" }], focusPath: "src/retry.test.ts", expectedCount: 0, public: true },
+    { id: "fixed-sleep", title: "Do not wait for wall-clock time", outcome: "match", files: [{ path: "src/retry.test.ts", source: "it('retries', async () => { await sleep(50); expect(done()).toBe(true); });" }], focusPath: "src/retry.test.ts", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
 
 const SLEEP_HELPERS: ReadonlySet<string> = new Set(["sleep", "delay", "wait", "pause"]);
 
@@ -126,6 +139,7 @@ function testCallerName(callee: TSESTree.Node): string | null {
 
 export default createRule<Options, MessageIds>({
   name: "no-sleep-in-test-body",
+  documentation: noSleepInTestBodyDocumentation,
   meta: {
     type: "problem",
     docs: {

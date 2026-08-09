@@ -1,7 +1,7 @@
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-long-comment.js";
+import rule, { noLongCommentDocumentation } from "../../src/rules/no-long-comment.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -12,6 +12,7 @@ const UNPUNCTUATED_COMMENT_WALL = `/** ${Array.from({ length: 120 }, () => "cont
 
 new RuleTester().run("no-long-comment", rule, {
   valid: [
+    noLongCommentDocumentation.examples[0].files[0].source,
     "// First fact. Second fact.\nconst value = 1;",
     "/** One. Two. Three. Four. Five. Six. Seven. */\nconst value = 1;",
     "// First fact. Second fact. Third fact.\nconst value = 1;",
@@ -69,6 +70,7 @@ new RuleTester().run("no-long-comment", rule, {
     },
   ],
   invalid: [
+    { name: "reports the documented prose wall", code: noLongCommentDocumentation.examples[1].files[0].source, errors: [{ messageId: "tooLong" }] },
     {
       name: "unstructured JSDoc cannot evade the budget by omitting punctuation",
       code: UNPUNCTUATED_COMMENT_WALL,

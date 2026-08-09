@@ -8,7 +8,7 @@ from sarj_python_lint.rules.restated_test_docstring import RestatedTestDocstring
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import Diagnostic
+    from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
 def _check(source: str, path: str = "tests/test_thing.py") -> list[Diagnostic]:
@@ -24,6 +24,14 @@ RESTATING = [
     ("test_property_accessors_work_correctly", "Test that property accessors work."),
     ("test_import_chart_invalid", "Test import invalid chart"),
 ]
+
+_PUBLIC_EXAMPLES = RestatedTestDocstring.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(RestatedTestDocstring().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 @pytest.mark.parametrize(("name", "docstring"), RESTATING)

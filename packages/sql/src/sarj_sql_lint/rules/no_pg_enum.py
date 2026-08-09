@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, final, override
 
 from sarj_sql_lint.rule_base import (
+    AutofixPolicy,
     Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
     Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
     is_dump_file,
     is_generated_migration,
     locate,
@@ -33,7 +40,53 @@ class NoPgEnum(Rule):
 
     id = "no-pg-enum"
     code = "SARJ103"
-    description = "CREATE TYPE ... AS ENUM — use TEXT + CHECK constraint instead."
+    documentation = RuleDocumentation(
+        summary="CREATE TYPE ... AS ENUM — use TEXT + CHECK constraint instead.",
+        rationale=(
+            "PostgreSQL enums make ordinary value changes operationally awkward and couple application evolution to "
+            "database type migrations."
+        ),
+        remediation="Store the value as TEXT and constrain the allowed values with an explicit CHECK expression.",
+        category=RuleCategory.MAINTAINABILITY,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "PostgreSQL dump files are excluded.",
+            "Generated migrations still report, but diagnostics direct the edit to the owning schema model.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="postgres-enum-type",
+                title="PostgreSQL enum type",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "migrations/001_status.sql",
+                        "CREATE TYPE call_status AS ENUM ('pending', 'active', 'completed');\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("migrations/001_status.sql"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="text-check-constraint",
+                title="Text column with an explicit value constraint",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "migrations/001_status.sql",
+                        "CREATE TABLE call (\n"
+                        "    status TEXT NOT NULL CHECK (status IN ('pending', 'active', 'completed'))\n"
+                        ");\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("migrations/001_status.sql"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
+    )
+    description = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

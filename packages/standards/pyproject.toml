@@ -1,6 +1,6 @@
 [project]
 name = "sarj-standards"
-version = "2.0.1"
+version = "3.0.0"
 description = "One deterministic quality gate for Sarj Python, TypeScript, SQL, IaC, and repository policy."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -23,9 +23,9 @@ dependencies = [
   "pre-commit==4.6.1",
   "PyYAML==6.0.3",
   "ruff==0.16.0",
-  "sarj-iac-lint==0.7.0",
-  "sarj-python-lint==0.57.0",
-  "sarj-sql-lint==0.9.0",
+  "sarj-iac-lint==0.8.0",
+  "sarj-python-lint==0.58.0",
+  "sarj-sql-lint==0.10.0",
   "sqlfluff==4.2.2",
 ]
 
@@ -33,7 +33,7 @@ dependencies = [
 sarj-standards = "sarj_standards.__main__:main"
 
 [project.urls]
-Homepage = "https://github.com/sarj-ai/standards"
+Homepage = "https://code-standards.sarj.ai/"
 Repository = "https://github.com/sarj-ai/standards"
 Issues = "https://github.com/sarj-ai/standards/issues"
 

@@ -6,11 +6,39 @@
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
 
 type MessageIds = "unionInComment";
 type Options = readonly [];
+
+export const noUnionInCommentDocumentation = {
+  summary: "Flag a comment that lists a `string` field's allowed values instead of the type listing them.",
+  rationale: "A comment cannot prevent callers from supplying strings outside the listed set, and the list can drift from runtime behavior.",
+  remediation: "Move the allowed values into a string-literal union and remove the redundant comment.",
+  category: "correctness",
+  limitations: ["Only bare quoted-value lists attached to supported string declarations and schema-builder fields are inspected."],
+  examples: [
+    {
+      id: "literal-union",
+      title: "Encode allowed values in the type",
+      outcome: "no-match",
+      files: [{ path: "src/record.ts", source: "interface R { kind: 'aa' | 'bb'; }" }],
+      focusPath: "src/record.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "comment-only-union",
+      title: "Do not leave allowed values in a comment",
+      outcome: "match",
+      files: [{ path: "src/record.ts", source: "interface R {\n  kind: string; // 'aa' | 'bb'\n}" }],
+      focusPath: "src/record.ts",
+      expectedCount: 1,
+      public: true,
+    },
+  ],
+} as const satisfies RuleDocumentation;
 
 // A literal long enough to be a sentence is an example, a message or a format
 // string — not an enum member.
@@ -114,6 +142,7 @@ function unionLiterals(body: string): string[] | null {
 
 export default createRule<Options, MessageIds>({
   name: "no-union-in-comment",
+  documentation: noUnionInCommentDocumentation,
   meta: {
     type: "suggestion",
     docs: {

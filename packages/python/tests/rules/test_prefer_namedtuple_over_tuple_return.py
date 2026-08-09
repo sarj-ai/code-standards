@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from sarj_python_lint.rule_base import is_suppressed
+from sarj_python_lint.rule_base import RuleExample, is_suppressed
 from sarj_python_lint.rules.prefer_namedtuple_over_tuple_return import (
     PreferNamedtupleOverTupleReturn,
 )
@@ -15,6 +15,15 @@ if TYPE_CHECKING:
 
 def _check(source: str, path: str = "<t>.py") -> list[Diagnostic]:
     return PreferNamedtupleOverTupleReturn().check(Path(path), source)
+
+
+_PUBLIC_EXAMPLES = PreferNamedtupleOverTupleReturn.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(PreferNamedtupleOverTupleReturn().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 def test_rule_identity():

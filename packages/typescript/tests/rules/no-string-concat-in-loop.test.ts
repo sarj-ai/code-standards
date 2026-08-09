@@ -2,7 +2,9 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-string-concat-in-loop.js";
+import rule, {
+  noStringConcatInLoopDocumentation,
+} from "../../src/rules/no-string-concat-in-loop.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -29,13 +31,7 @@ ruleTester.run("no-string-concat-in-loop", rule, {
     },
     {
       name: "allows collecting parts and joining after the loop",
-      code: `
-        const parts = [];
-        for (let i = 0; i < n; i++) {
-          parts.push(items[i]);
-        }
-        const result = parts.join("");
-      `,
+      code: noStringConcatInLoopDocumentation.examples[0].files[0].source,
     },
     {
       name: "ignores numeric accumulators",
@@ -228,7 +224,7 @@ ruleTester.run("no-string-concat-in-loop", rule, {
   invalid: [
     {
       name: "reports a template-literal rebuild in a loop",
-      code: "let output = ''; for (const item of items) { output = `${output}${item}`; }",
+      code: noStringConcatInLoopDocumentation.examples[1].files[0].source,
       errors: [{ messageId: "noStringConcatInLoop" }],
     },
     {

@@ -6,10 +6,21 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._paths import is_test_path
 
@@ -114,9 +125,48 @@ _ADVICE = (
 class PreferRealStoreInTests(Rule):
     id: str = "prefer-real-store-in-tests"
     code: str = "SARJ058"
-    description: str = (
-        "Hand-rolled in-memory `Store`/`Repository` double — the test verifies a dict instead of the real store."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Tests should exercise the real persistence implementation instead of an in-memory reimplementation.",
+        rationale="Container-backed store doubles omit database constraints, transactions, ordering, and concurrency semantics.",
+        remediation="Run the real store against a test database and subclass it only when a test must inject a failure.",
+        category=RuleCategory.TESTING,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Only test and shared-double paths are analyzed.",
+            "The class must resemble a relational persistence double backed by a mutable container or hollow methods.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="container-backed-store-double",
+                title="Test reimplements a store with a dictionary",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/fakes/user_store.py",
+                        "class FakeUserStore(UserStore):\n    def __init__(self):\n        self.rows = {}\n\n    def add(self, user):\n        self.rows[user.id] = user\n\n    def get(self, user_id):\n        return self.rows.get(user_id)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/fakes/user_store.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="real-store-subclass",
+                title="Test subclasses the real store to inject a failure",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/fakes/user_store.py",
+                        'class FailingUserStore(PsqlUserStore):\n    def add(self, user):\n        raise OSError("database unavailable")\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/fakes/user_store.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

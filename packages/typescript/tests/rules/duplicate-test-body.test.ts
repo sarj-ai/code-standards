@@ -2,7 +2,7 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/duplicate-test-body.js";
+import rule, { duplicateTestBodyDocumentation } from "../../src/rules/duplicate-test-body.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -35,7 +35,7 @@ describe('two', () => { test('b', () => { const x = parse('b'); expect(x.ok).toB
     {
       name: "allows existing parameterization",
       filename: TEST_FILE,
-      code: `test.each(['a', 'b'])('parses %s', (value) => { const x = parse(value); expect(x.ok).toBe(true); expect(x.value).toBe(value); });`,
+      code: duplicateTestBodyDocumentation.examples[0].files[0].source,
     },
     {
       name: "does not treat suites or hooks as tests",
@@ -112,8 +112,7 @@ test('two', () => { const x = parse('b'); save(x); cleanup(x); });`,
     {
       name: "reports the later sibling whose body differs only by case literals",
       filename: TEST_FILE,
-      code: `test('accepts a', () => { const result = parse('a'); expect(result.ok).toBe(true); expect(result.value).toBe('a'); });
-test('accepts b', () => { const result = parse('b'); expect(result.ok).toBe(true); expect(result.value).toBe('b'); });`,
+      code: duplicateTestBodyDocumentation.examples[1].files[0].source,
       errors: [{ messageId: "duplicateTestBody", line: 2 }],
     },
     {

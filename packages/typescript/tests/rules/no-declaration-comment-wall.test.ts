@@ -1,7 +1,9 @@
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-declaration-comment-wall.js";
+import rule, {
+  noDeclarationCommentWallDocumentation,
+} from "../../src/rules/no-declaration-comment-wall.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -13,7 +15,7 @@ const ruleTester = new RuleTester();
 ruleTester.run("no-declaration-comment-wall", rule, {
   valid: [
     // No member comments at all — the overwhelming majority of declarations.
-    { code: "enum Status { Pending = 'pending', Done = 'done', Failed = 'failed' }" },
+    { code: noDeclarationCommentWallDocumentation.examples[0].files[0].source },
 
     // Every comment says something the member's own name cannot.
     {
@@ -251,18 +253,7 @@ ruleTester.run("no-declaration-comment-wall", rule, {
     // The enum arm. medusa/packages/core/utils/src/order/status.ts is this
     // exact shape, twice in one file.
     {
-      code: [
-        "export enum OrderStatus {",
-        "  /** The order is pending. */",
-        "  PENDING = 'pending',",
-        "  /** The order is completed */",
-        "  COMPLETED = 'completed',",
-        "  /** The order is a draft. */",
-        "  DRAFT = 'draft',",
-        "  /** The order is archived. */",
-        "  ARCHIVED = 'archived',",
-        "}",
-      ].join("\n"),
+      code: noDeclarationCommentWallDocumentation.examples[1].files[0].source,
       errors: [{ messageId: "commentWall" }],
     },
 

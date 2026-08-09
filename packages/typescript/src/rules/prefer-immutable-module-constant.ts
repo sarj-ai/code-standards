@@ -6,11 +6,43 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "preferAsConst" | "preferReadonlyCollection";
 type Options = readonly [];
+
+export const preferImmutableModuleConstantDocumentation = {
+  summary: "Require module-level constant collections to expose readonly state.",
+  rationale:
+    "A const binding prevents reassignment but does not stop callers from mutating its array, object, Set, or Map contents.",
+  remediation:
+    "Expose literals with `as const` or a readonly type, and expose Set or Map values through ReadonlySet or ReadonlyMap.",
+  category: "correctness",
+  limitations: [
+    "The rule skips generated files, test files, JavaScript files, and collections that are deliberately mutated in their declaring module.",
+  ],
+  examples: [
+    {
+      id: "readonly-array-literal",
+      title: "A module constant exposes a readonly literal",
+      outcome: "no-match",
+      files: [{ path: "src/constants.ts", source: "const VALUES = [1, 2, 3] as const;" }],
+      focusPath: "src/constants.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "mutable-array-literal",
+      title: "A module constant exposes a mutable array",
+      outcome: "match",
+      files: [{ path: "src/constants.ts", source: "const VALUES = [1, 2, 3];" }],
+      focusPath: "src/constants.ts",
+      expectedCount: 1,
+      public: true,
+    },
+  ],
+} as const satisfies RuleDocumentation;
 
 const CONSTANT_NAME = /^_?[A-Z][A-Z0-9_]*$/;
 const JAVASCRIPT_FILE_RE = /\.[cm]?jsx?$/i;
@@ -204,6 +236,7 @@ function referenceMutates(identifier: TSESTree.Identifier, isUnshadowedGlobal: G
 
 export default createRule<Options, MessageIds>({
   name: "prefer-immutable-module-constant",
+  documentation: preferImmutableModuleConstantDocumentation,
   meta: {
     type: "suggestion",
     docs: {

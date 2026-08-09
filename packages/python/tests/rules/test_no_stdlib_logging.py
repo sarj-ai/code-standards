@@ -9,14 +9,28 @@ from sarj_python_lint.rules.no_stdlib_logging import NoStdlibLogging
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import Diagnostic
+    from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
 _PROD = Path("svc/app/service.py")
+_PUBLIC_EXAMPLES = NoStdlibLogging.public_examples()
 
 
 def _check(source: str, path: Path = _PROD) -> list[Diagnostic]:
     return NoStdlibLogging().check(path, source)
+
+
+@pytest.mark.parametrize(
+    "example",
+    _PUBLIC_EXAMPLES,
+    ids=tuple(example.example_id for example in _PUBLIC_EXAMPLES),
+)
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+
+    findings = NoStdlibLogging().check(Path(focus.path), focus.source)
+
+    assert len(findings) == example.expected_count
 
 
 @pytest.mark.parametrize(

@@ -2,7 +2,7 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/require-fetch-timeout.js";
+import rule, { requireFetchTimeoutDocumentation } from "../../src/rules/require-fetch-timeout.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -17,6 +17,7 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("require-fetch-timeout", rule, {
   valid: [
+    { name: "accepts the documented bounded fetch", code: requireFetchTimeoutDocumentation.examples[0].files[0].source },
     {
       name: "ignores codemod fixtures",
       code: "async function f() { await fetch('https://api.example.com/x'); }",
@@ -126,6 +127,7 @@ ruleTester.run("require-fetch-timeout", rule, {
     },
   ],
   invalid: [
+    { name: "reports the documented unbounded fetch", code: requireFetchTimeoutDocumentation.examples[1].files[0].source, errors: [{ messageId: "missingSignal" }] },
     {
       name: "rejects a production fetch without a signal",
       code: "async function f() { await fetch('https://api.example.com/x'); }",

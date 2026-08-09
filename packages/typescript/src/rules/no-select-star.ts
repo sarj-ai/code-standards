@@ -6,12 +6,24 @@
 
 import { type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
 import { createSqlListener } from "./_sql.js";
 
 type MessageIds = "noSelectStar";
 type Options = readonly [];
+
+export const noSelectStarDocumentation = {
+  summary: "Disallow SELECT * in embedded SQL; it over-fetches and leaves the row contract implicit, so a schema change breaks row parsing silently.",
+  rationale: "Wildcard projections couple row shape and query cost to unrelated schema changes.",
+  remediation: "List every required column explicitly in the projection.",
+  category: "correctness",
+  limitations: ["Only statically visible embedded SQL is checked; function arguments such as COUNT(*) and stars inside EXISTS are excluded."],
+  examples: [
+    { id: "explicit-projection", title: "Select the required columns", outcome: "no-match", files: [{ path: "src/runs.ts", source: "db.prepare(`SELECT id, status FROM runs`).all();" }], focusPath: "src/runs.ts", expectedCount: 0, public: true },
+    { id: "wildcard-projection", title: "Do not select every column", outcome: "match", files: [{ path: "src/runs.ts", source: "db.prepare(`SELECT * FROM runs`).all();" }], focusPath: "src/runs.ts", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
 
 /** A real SQL query shape, so prose containing the bare word "from" isn't matched. */
 const QUERY_SHAPE = /\bSELECT\b[\s\S]*?\bFROM\b/i;
@@ -62,6 +74,7 @@ function isProjectionStar(sql: string, pos: number): boolean {
 
 export default createRule<Options, MessageIds>({
   name: "no-select-star",
+  documentation: noSelectStarDocumentation,
   meta: {
     type: "problem",
     docs: {

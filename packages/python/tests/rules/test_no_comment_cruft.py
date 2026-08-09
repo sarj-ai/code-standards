@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -8,11 +10,27 @@ from sarj_python_lint.rules.no_long_comment import NoLongComment
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import Diagnostic
+    from sarj_python_lint.rule_base import Diagnostic, RuleExample
+
+
+_PUBLIC_EXAMPLES = NoCommentCruft.public_examples()
 
 
 def _check(source: str) -> list[Diagnostic]:
     return NoCommentCruft().check(Path("<t>.py"), source)
+
+
+@pytest.mark.parametrize(
+    "example",
+    _PUBLIC_EXAMPLES,
+    ids=tuple(example.example_id for example in _PUBLIC_EXAMPLES),
+)
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+
+    findings = NoCommentCruft().check(Path(focus.path), focus.source)
+
+    assert len(findings) == example.expected_count
 
 
 def _standalone(body: str) -> list[Diagnostic]:

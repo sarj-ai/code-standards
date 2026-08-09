@@ -7,9 +7,20 @@ from __future__ import annotations
 
 import ast
 from collections import Counter
-from typing import TYPE_CHECKING, override
+from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, final, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import children
 from sarj_python_lint.rules._paths import is_generated
 
@@ -46,10 +57,52 @@ def _walk(node: ast.AST) -> Iterator[ast.AST]:
         stack.extend(_child_nodes(n))
 
 
+@final
 class Stepdown(Rule):
     id: str = "stepdown"
     code: str = "SARJ023"
-    description: str = "Private helper defined above its only caller — move it below the code that calls it."
+    documentation = RuleDocumentation(
+        summary="A private helper used by one caller should be defined below that caller.",
+        rationale="Caller-first ordering keeps the module's public flow visible before its implementation details.",
+        remediation="Move the private helper below its sole caller without changing either body.",
+        category=RuleCategory.MAINTAINABILITY,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Generated files, tests, `__main__.py`, recursive helpers, and helpers with multiple callers are excluded.",
+            "Dynamic references that cannot identify a sole caller are not reported.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="helper-before-sole-caller",
+                title="Private helper appears before its sole caller",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "service.py",
+                        "def _parse(payload: dict) -> dict:\n    return payload\n\ndef handle(payload: dict) -> dict:\n    return _parse(payload)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("service.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="helper-after-sole-caller",
+                title="Private helper appears after its sole caller",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "service.py",
+                        "def handle(payload: dict) -> dict:\n    return _parse(payload)\n\ndef _parse(payload: dict) -> dict:\n    return payload\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("service.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
+    )
+    description = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

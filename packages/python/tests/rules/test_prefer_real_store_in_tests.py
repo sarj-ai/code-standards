@@ -8,7 +8,7 @@ from sarj_python_lint.rules.prefer_real_store_in_tests import PreferRealStoreInT
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import Diagnostic
+    from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
 TEST_PATH = "python/app/tests/fakes/user_store.py"
@@ -16,6 +16,15 @@ TEST_PATH = "python/app/tests/fakes/user_store.py"
 
 def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
     return PreferRealStoreInTests().check(Path(path), textwrap.dedent(source))
+
+
+_PUBLIC_EXAMPLES = PreferRealStoreInTests.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(PreferRealStoreInTests().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 def _container_id(container: str) -> str:

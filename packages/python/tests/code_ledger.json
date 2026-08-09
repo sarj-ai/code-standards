@@ -1,7 +1,10 @@
 {
   "SARJ000": null,
   "SARJ001": "no-sequential-await",
-  "SARJ002": "inefficient-string-concat-in-loop",
+  "SARJ002": [
+    "inefficient-string-concat-in-loop",
+    "no-string-concat-in-loop"
+  ],
   "SARJ003": "no-isinstance-union-chain",
   "SARJ004": null,
   "SARJ005": null,
@@ -21,7 +24,10 @@
   "SARJ019": "no-query-with-many-joins",
   "SARJ020": "no-aggregation-in-store-query",
   "SARJ021": "no-select-star",
-  "SARJ022": "single-public-export",
+  "SARJ022": [
+    "single-public-export",
+    "no-generic-single-export-module"
+  ],
   "SARJ023": "stepdown",
   "SARJ024": "no-repeated-string-literal",
   "SARJ025": "no-offset-pagination",
@@ -33,7 +39,10 @@
   "SARJ031": "no-sleep-in-test-body",
   "SARJ032": "prefer-match-assert-never",
   "SARJ033": null,
-  "SARJ034": "kwonly-same-type-params",
+  "SARJ034": [
+    "kwonly-same-type-params",
+    "require-keyword-only-swap-prone-params"
+  ],
   "SARJ035": null,
   "SARJ036": "no-raw-sql-in-tests",
   "SARJ037": null,
@@ -41,11 +50,17 @@
   "SARJ039": "prefer-module-level-constant",
   "SARJ040": "mock-without-spec",
   "SARJ041": "test-loops-over-literal-cases",
-  "SARJ042": "parametrize-case-needs-id",
+  "SARJ042": [
+    "parametrize-case-needs-id",
+    "opaque-parametrize-case-needs-id"
+  ],
   "SARJ043": "zero-assertion-test",
   "SARJ044": "fixture-returns-bare-tuple",
   "SARJ045": "kwarg-heavy-construction-in-test",
-  "SARJ046": "xfail-requires-strict",
+  "SARJ046": [
+    "xfail-requires-strict",
+    "defect-xfail-requires-strict"
+  ],
   "SARJ047": "sleep-with-computed-arg-in-test",
   "SARJ048": "no-first-party-private-import",
   "SARJ049": "no-restated-comment",

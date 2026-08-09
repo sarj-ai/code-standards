@@ -6,11 +6,23 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "genericSingleExport";
 type Options = [];
+
+export const noGenericSingleExportModuleDocumentation = {
+  summary: "Disallow generic module stems when one runtime export already names the responsibility.",
+  rationale: "A generic filename hides the sole exported responsibility and makes navigation less descriptive.",
+  remediation: "Rename the module after its single runtime export.",
+  category: "maintainability",
+  limitations: ["Only configured generic stems with exactly one public runtime export are reported."],
+  examples: [
+    { id: "responsibility-named-module", title: "Name the module after its export", outcome: "no-match", files: [{ path: "src/order-parser.ts", source: "export function parseOrder() { return {}; }" }], focusPath: "src/order-parser.ts", expectedCount: 0, public: true },
+    { id: "generic-module-name", title: "Do not hide one export in a generic module", outcome: "match", files: [{ path: "src/utils.ts", source: "export function parseOrder() { return {}; }" }], focusPath: "src/utils.ts", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
 
 const GENERIC_STEMS: ReadonlySet<string> = new Set([
   "base", "common", "constant", "constants", "core", "enum", "enums", "helper", "helpers",
@@ -228,6 +240,7 @@ function memberPropertyName(node: TSESTree.MemberExpression): string | null {
 
 export default createRule<Options, MessageIds>({
   name: "no-generic-single-export-module",
+  documentation: noGenericSingleExportModuleDocumentation,
   meta: {
     type: "suggestion",
     docs: { description: "Disallow generic module stems when one runtime export already names the responsibility." },

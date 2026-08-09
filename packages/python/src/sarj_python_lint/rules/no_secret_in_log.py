@@ -6,11 +6,21 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, ClassVar, override
 
 from sarj_python_lint._secret_names import identifier_tokens, is_secret_name
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._logging import LOG_METHODS, is_logger_expr
 
@@ -46,7 +56,37 @@ def _is_secret_keyword(name: str) -> bool:
 class NoSecretInLog(Rule):
     id: str = "no-secret-in-log"
     code: str = "SARJ012"
-    description: str = "Secret passed by keyword to a logging call — redact or omit."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Secret-like value is passed to a logging call under a secret-like keyword.",
+        rationale="Raw credentials in logs can spread to durable sinks and readers outside the request boundary.",
+        remediation="Omit the secret or log a deliberately redacted derivative under a redaction-specific name.",
+        category=RuleCategory.SECURITY,
+        limitations=(
+            "Detection covers keyword arguments on logger-shaped receivers and known logging methods.",
+            "Positional values, message interpolation, and values under non-secret keyword names are not inspected.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="secret-logging-keyword",
+                title="Raw token passed to a logger",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.python("service.py", "logger.info('request', token=token)\n"),),
+                focus_path=PurePosixPath("service.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="redacted-logging-keyword",
+                title="Token prefix logged under a redacted name",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(ExampleFile.python("service.py", "logger.info('request', token_prefix=token[:6])\n"),),
+                focus_path=PurePosixPath("service.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
+    )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

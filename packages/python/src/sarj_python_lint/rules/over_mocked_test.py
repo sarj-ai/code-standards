@@ -6,10 +6,21 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, Final, Literal, NamedTuple, override
+from typing import TYPE_CHECKING, ClassVar, Final, Literal, NamedTuple, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._paths import is_test_path
 
@@ -145,7 +156,45 @@ _TOKEN_RE = re.compile(r"[A-Z]+(?![a-z])|[A-Z][a-z0-9]*|[a-z0-9]+")
 class OverMockedTest(Rule):
     id: str = "over-mocked-test"
     code: str = "SARJ062"
-    description: str = "Test substitutes too many collaborators — it exercises the mock wiring, not the code."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Tests should not replace more than five distinct collaborators.",
+        rationale="Broad mock wiring couples tests to implementation details while exercising little production behavior.",
+        remediation="Use real dependencies or a higher-level test harness and mock only true external boundaries.",
+        category=RuleCategory.TESTING,
+        autofix=AutofixPolicy.NONE,
+        limitations=("Only collected tests are analyzed; configuration knobs do not count as collaborators.",),
+        examples=(
+            RuleExample(
+                example_id="six-patched-collaborators",
+                title="Test patches six collaborators",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_service.py",
+                        'from unittest.mock import patch\n\n@patch("app.mod0.collaborator")\n@patch("app.mod1.collaborator")\n@patch("app.mod2.collaborator")\n@patch("app.mod3.collaborator")\n@patch("app.mod4.collaborator")\n@patch("app.mod5.collaborator")\ndef test_run(a, b, c, d, e, f):\n    assert run() == 1\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_service.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="external-boundary-only",
+                title="Test patches one external boundary",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_service.py",
+                        'from unittest.mock import patch\n\n@patch("app.payment_gateway")\ndef test_run(gateway):\n    assert run() == 1\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_service.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
+    )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

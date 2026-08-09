@@ -5,7 +5,7 @@ MAKEFLAGS += --warn-undefined-variables --no-builtin-rules
 CONFIG_SRC := packages/standards/src/sarj_standards/configs
 STANDARDS := uv run --project packages/standards --frozen sarj-standards
 
-.PHONY: help setup build verify doctor test lint dogfood dogfood-python dogfood-typescript format-check typecheck repo-check check-no-private-refs check-file-conventions check-versions-synced release-check release-check-lock-age release-check-tags release-check-typescript sync-rule-ledger
+.PHONY: help setup build verify doctor docs-artifacts-check docs-check test lint dogfood dogfood-python dogfood-typescript format-check typecheck repo-check check-no-private-refs check-file-conventions check-versions-synced release-check release-check-lock-age release-check-tags release-check-typescript sync-rule-ledger
 
 help:
 	@echo "Targets: setup | verify | doctor | build | test | lint | dogfood | typecheck"
@@ -16,10 +16,19 @@ setup:
 	$(STANDARDS) --root . maintain setup
 
 # Canonical local gate; CI runs the same checks.
-verify: doctor format-check lint dogfood typecheck test repo-check check-no-private-refs
+verify: doctor docs-check format-check lint dogfood typecheck test repo-check check-no-private-refs
 
 doctor:
 	@$(STANDARDS) doctor
+
+docs-artifacts-check:
+	@$(STANDARDS) --root . maintain rules check
+	@$(STANDARDS) --root . maintain catalog check
+	@$(STANDARDS) --root . maintain cli-reference check
+	@$(STANDARDS) --root . maintain docs check
+
+docs-check: docs-artifacts-check
+	cd apps/docs && npm run check && npm run build
 
 format-check:
 	uv run --project packages/standards --frozen ruff format --check \
@@ -30,6 +39,7 @@ format-check:
 
 build:
 	cd packages/typescript     && npm run build
+	cd apps/docs               && npm run build
 	cd packages/python         && uv build --wheel
 	cd packages/sql            && uv build --wheel
 	cd packages/iac            && uv build --wheel

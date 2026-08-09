@@ -8,11 +8,21 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass
 from http import HTTPStatus
+from pathlib import PurePosixPath
 import re
 from types import MappingProxyType
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import children, nodes
 from sarj_python_lint.rules._fastapi import (
     SCHEMA_MARKERS,
@@ -54,7 +64,47 @@ class _Finding:
 class FastapiOpenapiContract(Rule):
     id: str = "fastapi-openapi-contract"
     code: str = "SARJ094"
-    description: str = "FastAPI operations must publish explicit request, response, and OpenAPI contracts."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="FastAPI operations must publish explicit request, response, and OpenAPI contracts.",
+        rationale="Complete route metadata keeps generated OpenAPI accurate for clients, validation, and review.",
+        remediation="Declare route metadata, typed parameters, response schemas, and documented alternate responses.",
+        category=RuleCategory.CORRECTNESS,
+        limitations=(
+            "Hidden routes, WebSocket handlers, tests, generated files, and unrelated decorators are excluded.",
+            "Dynamic response mappings are accepted when their contents cannot be resolved statically.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="missing-operation-metadata",
+                title="Visible operation without required metadata",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "api.py",
+                        "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n@router.get('/users')\nasync def users() -> list[UserResponse]:\n    return []\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("api.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="documented-operation",
+                title="Operation with an explicit OpenAPI contract",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "api.py",
+                        "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n@router.get('/users', summary='Read users', description='Returns visible users.', status_code=200)\nasync def users() -> list[UserResponse]:\n    return []\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("api.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
+    )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

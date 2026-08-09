@@ -7,9 +7,20 @@ from __future__ import annotations
 
 import ast
 import enum
-from typing import TYPE_CHECKING, override
+from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, final, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import children, nodes
 from sarj_python_lint.rules._logging import is_logger_expr
 from sarj_python_lint.rules._paths import is_generated
@@ -170,10 +181,52 @@ def _all_handlers_reraise(handlers: list[ast.ExceptHandler]) -> bool:
     return bool(handlers) and all(_body_exits(h.body) == {_Exit.RAISE} for h in handlers)
 
 
+@final
 class NoFatTryBlocks(Rule):
     id: str = "no-fat-try-blocks"
     code: str = "SARJ007"
-    description: str = "Try block has too many throwing statements — keep try blocks skinny."
+    documentation = RuleDocumentation(
+        summary="Keep a `try` body narrow enough to identify which operation a handler covers.",
+        rationale="A broad `try` body can route unrelated failures into a handler that was written for one operation.",
+        remediation="Move unrelated operations outside the `try`, or split the body into smaller exception boundaries.",
+        category=RuleCategory.CORRECTNESS,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Only top-level statements containing plausibly raising operations count toward the limit of three.",
+            "Generated files, `try` statements with `else` or `finally`, and handlers that always re-raise are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="broad-exception-boundary",
+                title="One handler covers four raising operations",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "try:\n    a = load_a()\n    b = load_b()\n    c = load_c()\n    d = load_d()\nexcept ValueError:\n    recover()\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="narrow-exception-boundary",
+                title="Handler covers only the relevant operation",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "a = load_a()\nb = load_b()\nc = load_c()\ntry:\n    d = load_d()\nexcept ValueError:\n    recover()\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
+    )
+    description = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

@@ -3,12 +3,12 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
-from sarj_sql_lint.rules.add_constraint_not_valid import AddConstraintNotValid
+from sarj_sql_lint.rules.add_constraint_requires_not_valid import AddConstraintRequiresNotValid
 from sarj_sql_lint.rules.enforce_timestamptz import EnforceTimestamptz
 from sarj_sql_lint.rules.idempotent_ddl import IdempotentDdl
 from sarj_sql_lint.rules.index_concurrently import IndexConcurrently
 from sarj_sql_lint.rules.insert_requires_on_conflict import InsertRequiresOnConflict
-from sarj_sql_lint.rules.no_limit_offset import NoLimitOffset
+from sarj_sql_lint.rules.no_offset_pagination import NoOffsetPagination
 from sarj_sql_lint.rules.no_pg_enum import NoPgEnum
 from sarj_sql_lint.rules.prefer_jsonb import PreferJsonb
 from sarj_sql_lint.rules.prefer_text_over_varchar import PreferTextOverVarchar
@@ -31,11 +31,11 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         PreferTextOverVarchar.id: PreferTextOverVarchar,
         InsertRequiresOnConflict.id: InsertRequiresOnConflict,
         PreferJsonb.id: PreferJsonb,
-        NoLimitOffset.id: NoLimitOffset,
+        NoOffsetPagination.id: NoOffsetPagination,
         IndexConcurrently.id: IndexConcurrently,
         PreferUuidv7Default.id: PreferUuidv7Default,
         RequireLockTimeout.id: RequireLockTimeout,
-        AddConstraintNotValid.id: AddConstraintNotValid,
+        AddConstraintRequiresNotValid.id: AddConstraintRequiresNotValid,
         RequireFkIndex.id: RequireFkIndex,
     }
 )

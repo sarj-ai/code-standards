@@ -1021,7 +1021,7 @@ export function createConfig(options = {}) {
       "@sarj/no-repeated-string-literal": "error",
       "@sarj/no-tautological-expect": "error",
       "@sarj/no-typed-doc-sections": "error",
-      "@sarj/require-interface-for-injected-service": "error",
+      "@sarj/require-port-for-service": "error",
       "@sarj/no-conditional-in-test": "error",
       "@sarj/no-unsafe-mock-casting": "error",
       "@sarj/prefer-whole-object-assertion": "error",

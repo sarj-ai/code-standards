@@ -6,10 +6,21 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from pathlib import PurePosixPath
 from types import MappingProxyType
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import children
 from sarj_python_lint.rules._comments import is_protected, split_identifier, stem
 from sarj_python_lint.rules._docstrings import (
@@ -120,10 +131,48 @@ def _is_test(node: ast.FunctionDef | ast.AsyncFunctionDef, class_name: str | Non
 class RestatedTestDocstring(Rule):
     id: str = "restated-test-docstring"
     code: str = "SARJ088"
-    description: str = (
-        "Test docstring only re-spells the test's own name and body — delete it; "
-        "rename the test if the name does not already say it."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Test docstrings must add information beyond the test name and body.",
+        rationale="A docstring that narrates visible test code creates duplicate prose that can drift without explaining the regression or contract.",
+        remediation="Delete the redundant docstring, improve the test name, or document a reason or constraint not visible in the test.",
+        category=RuleCategory.TESTING,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Only test functions and unbased Test-prefixed classes in recognized test files are checked.",
+            "Structured, protected, value-bearing, generated, and genuinely novel docstrings are preserved.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="test-name-restatement",
+                title="Docstring repeats the test name",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_widget.py",
+                        'def test_widget_renders():\n    """Verify that the widget renders correctly."""\n    assert render(widget)\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_widget.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="test-regression-context",
+                title="Docstring explains the regression",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_scheduler.py",
+                        'def test_keeps_the_lock():\n    """The scheduler would spin forever without this."""\n    assert acquire()\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_scheduler.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

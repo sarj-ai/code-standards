@@ -2,7 +2,7 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-dynamic-sql.js";
+import rule, { noDynamicSqlDocumentation } from "../../src/rules/no-dynamic-sql.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -19,7 +19,7 @@ ruleTester.run("no-dynamic-sql", rule, {
   valid: [
     {
       name: "accepts a question-mark placeholder bound separately",
-      code: "db.prepare('select * from users where id = ?').bind(userId);",
+      code: noDynamicSqlDocumentation.examples[0].files[0].source,
     },
     {
       name: "accepts a positional placeholder bound separately",
@@ -103,7 +103,7 @@ ruleTester.run("no-dynamic-sql", rule, {
   invalid: [
     {
       name: "reports runtime template interpolation",
-      code: "db.prepare(`select * from users where id = '${userId}'`);",
+      code: noDynamicSqlDocumentation.examples[1].files[0].source,
       errors: [{ messageId: "dynamicSql" }],
     },
     {

@@ -6,9 +6,20 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
-from typing import TYPE_CHECKING, override
+from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, final, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import nodes
 
 
@@ -62,13 +73,52 @@ _EXCLUDED_TYPE_NAMES = frozenset(
 )
 
 
+@final
 class NoIsinstanceUnionChain(Rule):
     id: str = "no-isinstance-union-chain"
     code: str = "SARJ003"
-    description: str = (
-        "if/elif isinstance chain over locally-defined classes with an exhaustive "
-        "terminal — prefer match/case with assert_never for compile-time exhaustiveness."
+    documentation = RuleDocumentation(
+        summary="Use exhaustive pattern matching for dispatch over a local closed class union.",
+        rationale="An `isinstance` chain does not let a type checker prove that every member of a closed union is handled.",
+        remediation="Replace the chain with `match` cases and pass the unreachable remainder to `assert_never`.",
+        category=RuleCategory.CORRECTNESS,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "The rule requires at least two locally defined class arms over the same expression and a terminal fallback.",
+            "Builtin, imported, abstract collection, and open-ended dispatch types are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="local-union-isinstance-chain",
+                title="Closed local union dispatched with isinstance",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/events.py",
+                        "class Created: ...\nclass Deleted: ...\n\ndef name(event):\n    if isinstance(event, Created):\n        return 'created'\n    elif isinstance(event, Deleted):\n        return 'deleted'\n    else:\n        raise AssertionError\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/events.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="local-union-match",
+                title="Closed local union dispatched with match",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/events.py",
+                        "from typing import assert_never\n\nclass Created: ...\nclass Deleted: ...\n\ndef name(event):\n    match event:\n        case Created():\n            return 'created'\n        case Deleted():\n            return 'deleted'\n        case unreachable:\n            assert_never(unreachable)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/events.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

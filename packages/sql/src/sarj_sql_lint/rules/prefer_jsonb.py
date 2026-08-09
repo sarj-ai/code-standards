@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, final, override
 
 from sarj_sql_lint.rule_base import (
+    AutofixPolicy,
     Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
     Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
     is_dump_file,
     is_generated_migration,
     mask_sql,
@@ -31,7 +38,50 @@ class PreferJsonb(Rule):
 
     id = "prefer-jsonb"
     code = "SARJ106"
-    description = "JSON column type or ::json cast — use JSONB."
+    documentation = RuleDocumentation(
+        summary="JSON column type or ::json cast — use JSONB.",
+        rationale=(
+            "JSONB supports indexing and containment operators and avoids reparsing the stored document on every read."
+        ),
+        remediation="Declare JSONB columns and use jsonb casts for JSON document values.",
+        category=RuleCategory.PERFORMANCE,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "PostgreSQL dump files are excluded.",
+            "JSON tokens inside comments, string literals, and longer identifiers are ignored.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="json-column",
+                title="Plain JSON column",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "migrations/001_documents.sql",
+                        "CREATE TABLE document (metadata JSON NOT NULL);\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("migrations/001_documents.sql"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="jsonb-column",
+                title="Indexable JSONB column",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "migrations/001_documents.sql",
+                        "CREATE TABLE document (metadata JSONB NOT NULL DEFAULT '{}'::jsonb);\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("migrations/001_documents.sql"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
+    )
+    description = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

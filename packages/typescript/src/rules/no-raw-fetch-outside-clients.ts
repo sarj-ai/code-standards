@@ -6,7 +6,7 @@
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
 
 type MessageIds = "rawFetch";
@@ -17,6 +17,18 @@ export interface RuleOptions {
 }
 
 type Options = readonly [RuleOptions?];
+
+export const noRawFetchOutsideClientsDocumentation = {
+  summary: "Disallow calling the global `fetch` outside the client layer; route outbound HTTP through a client module that owns retry, timeout and status handling.",
+  rationale: "Scattered fetch calls bypass shared transport policy and are harder to stub and observe consistently.",
+  remediation: "Move the request into a client module and call that abstraction from application code.",
+  category: "architecture",
+  limitations: ["Tests, client-layer paths, constructed handoffs, and pre-signed URL transfers are excluded."],
+  examples: [
+    { id: "client-call", title: "Use a client abstraction", outcome: "no-match", files: [{ path: "src/routes/handler.ts", source: "const response = await billingClient.getInvoice(id);" }], focusPath: "src/routes/handler.ts", expectedCount: 0, public: true },
+    { id: "raw-fetch", title: "Do not call global fetch here", outcome: "match", files: [{ path: "src/routes/handler.ts", source: "const response = await fetch('/api/invoices');" }], focusPath: "src/routes/handler.ts", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
 
 /** Client-layer paths that may own outbound HTTP; test files are exempt separately. */
 const DEFAULT_ALLOW: readonly string[] = [
@@ -114,6 +126,7 @@ function compile(patterns: readonly string[]): RegExp[] {
 
 export default createRule<Options, MessageIds>({
   name: "no-raw-fetch-outside-clients",
+  documentation: noRawFetchOutsideClientsDocumentation,
   meta: {
     type: "problem",
     docs: {

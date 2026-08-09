@@ -6,7 +6,7 @@
 
 import { type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
 
 type MessageIds = "noEnum";
@@ -15,6 +15,35 @@ type Options = readonly [
     ignoreFiles?: readonly string[];
   }?,
 ];
+
+export const noEnumDocumentation = {
+  summary: "Disallow TypeScript `enum`; use string-literal unions or `as const` objects instead.",
+  rationale:
+    "TypeScript enums emit runtime objects and numeric enums accept values outside their declared members, adding behavior where a type-only model is sufficient.",
+  remediation:
+    "Replace the enum with a string-literal union or an `as const` object and derive its value type from that object.",
+  category: "maintainability",
+  examples: [
+    {
+      id: "string-literal-union",
+      title: "A string-literal union has no emitted runtime enum",
+      outcome: "no-match",
+      files: [{ path: "src/status.ts", source: 'type Status = "active" | "inactive";' }],
+      focusPath: "src/status.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "numeric-enum",
+      title: "A numeric enum emits a mutable runtime object",
+      outcome: "match",
+      files: [{ path: "src/status.ts", source: "enum Status { Active, Inactive }" }],
+      focusPath: "src/status.ts",
+      expectedCount: 1,
+      public: true,
+    },
+  ],
+} as const satisfies RuleDocumentation;
 
 function matchesAnyPattern(
   filename: string,
@@ -36,6 +65,7 @@ function matchesAnyPattern(
 
 export default createRule<Options, MessageIds>({
   name: "no-enum",
+  documentation: noEnumDocumentation,
   meta: {
     type: "suggestion",
     docs: {

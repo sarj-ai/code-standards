@@ -6,11 +6,24 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
 
 type MessageIds = "literalCaseLoop";
 type Options = readonly [];
+
+export const testLoopsOverLiteralCasesDocumentation = {
+  summary: "Disallow assertions over an inline literal case loop in a test; parameterization reports and names every case independently.",
+  rationale: "A loop is reported as one test, so failures hide the individual case name and may stop later cases from running.",
+  remediation: "Create one named parameterized test or runner-aware subtest for each literal case.",
+  category: "testing",
+  filePatterns: ["**/*.test.*", "**/*.spec.*", "**/tests/**"],
+  limitations: ["Only inline literal for-of cases containing framework assertions are reported."],
+  examples: [
+    { id: "parameterized-cases", title: "Use a parameterized test", outcome: "no-match", files: [{ path: "src/parser.test.ts", source: "test.each(['a', 'b'])('parses %s', (value) => { expect(parse(value)).toBe(value); });" }], focusPath: "src/parser.test.ts", expectedCount: 0, public: true },
+    { id: "looped-cases", title: "Do not hide cases in a loop", outcome: "match", files: [{ path: "src/parser.test.ts", source: "test('parses', () => { for (const value of ['a', 'b']) { expect(parse(value)).toBe(value); } });" }], focusPath: "src/parser.test.ts", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
 
 const TEST_CALLERS: ReadonlySet<string> = new Set(["it", "test"]);
 const TEST_MODIFIERS: ReadonlySet<string> = new Set(["concurrent", "fails", "only", "sequential", "skip"]);
@@ -185,6 +198,7 @@ const LOOP_CARRIED_CONTROL: ReadonlySet<string> = new Set([
 
 export default createRule<Options, MessageIds>({
   name: "test-loops-over-literal-cases",
+  documentation: testLoopsOverLiteralCasesDocumentation,
   meta: {
     type: "suggestion",
     docs: {

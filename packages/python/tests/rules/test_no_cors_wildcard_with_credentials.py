@@ -1,13 +1,15 @@
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 from sarj_python_lint.rules.no_cors_wildcard_with_credentials import (
     NoCorsWildcardWithCredentials,
 )
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import Diagnostic
+    from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
 def _check(source: str) -> list[Diagnostic]:
@@ -16,6 +18,15 @@ def _check(source: str) -> list[Diagnostic]:
 
 def _count(source: str) -> int:
     return len(_check(source))
+
+
+_PUBLIC_EXAMPLES = NoCorsWildcardWithCredentials.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(NoCorsWildcardWithCredentials().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 # Positive: `"*"` in allow_origins + allow_credentials=True.

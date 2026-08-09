@@ -6,10 +6,20 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from pathlib import PurePosixPath
 from types import MappingProxyType
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._paths import is_test_path
 
@@ -83,7 +93,47 @@ type _ScopedName = tuple[int, str]
 class MockWithoutSpec(Rule):
     id: str = "mock-without-spec"
     code: str = "SARJ040"
-    description: str = "Mock built without `spec=`/`autospec=` — it accepts any attribute and cannot rot loudly."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Mock built without `spec=`/`autospec=` — it accepts any attribute and cannot rot loudly.",
+        rationale="An unrestricted mock keeps accepting calls after the real collaborator's interface changes.",
+        remediation="Pass `spec=`, `spec_set=`, or `autospec=True`, or use a small fake implementing the real contract.",
+        category=RuleCategory.TESTING,
+        limitations=(
+            "Only test files and statically resolved `unittest.mock` or pytest-mock constructors are analyzed.",
+            "Mocks used only for their built-in assertion API are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="mock-without-contract",
+                title="Mock accepts any attribute",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_service.py",
+                        "from unittest.mock import Mock\n\ndef test_service():\n    client = Mock()\n    assert client\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_service.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="mock-with-spec",
+                title="Mock follows the collaborator contract",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_service.py",
+                        "from unittest.mock import Mock\n\ndef test_service():\n    client = Mock(spec=Client)\n    assert client\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_service.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
+    )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

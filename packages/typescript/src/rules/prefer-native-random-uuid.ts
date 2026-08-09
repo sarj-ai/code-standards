@@ -6,10 +6,23 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 
 type MessageIds = "preferNative" | "replaceWithNative";
 type Options = readonly [];
+
+export const preferNativeRandomUuidDocumentation = {
+  summary: "Prefer `globalThis.crypto.randomUUID()` over resolved zero-argument UUID v4 bindings from the `uuid` package.",
+  rationale: "The platform implementation avoids an unnecessary dependency for standard random UUID generation.",
+  remediation: "Call `globalThis.crypto.randomUUID()` and remove the unused `uuid` v4 import when possible.",
+  category: "maintainability",
+  autofix: "suggestion",
+  limitations: ["Only resolved zero-argument UUID v4 calls are reported; customized and other UUID versions are excluded."],
+  examples: [
+    { id: "native-random-uuid", title: "Use the platform UUID generator", outcome: "no-match", files: [{ path: "src/id.ts", source: "const id = globalThis.crypto.randomUUID();" }], focusPath: "src/id.ts", expectedCount: 0, public: true },
+    { id: "uuid-v4-package", title: "Do not call uuid v4 without options", outcome: "match", files: [{ path: "src/id.ts", source: "import { v4 } from 'uuid'; const id = v4();" }], focusPath: "src/id.ts", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
 
 type ScopeVariable = TSESLint.Scope.Variable;
 
@@ -26,6 +39,7 @@ function requireUuid(node: TSESTree.Node | null): boolean {
 
 export default createRule<Options, MessageIds>({
   name: "prefer-native-random-uuid",
+  documentation: preferNativeRandomUuidDocumentation,
   meta: {
     type: "suggestion",
     docs: {

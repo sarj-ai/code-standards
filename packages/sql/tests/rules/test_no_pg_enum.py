@@ -3,15 +3,33 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 from sarj_sql_lint.rules.no_pg_enum import NoPgEnum
 
 
 if TYPE_CHECKING:
-    from sarj_sql_lint.rule_base import Diagnostic
+    from sarj_sql_lint.rule_base import Diagnostic, RuleExample
+
+
+_PUBLIC_EXAMPLES = NoPgEnum.public_examples()
 
 
 def _check(source: str) -> list[Diagnostic]:
     return NoPgEnum().check(Path("migration.sql"), source)
+
+
+@pytest.mark.parametrize(
+    "example",
+    _PUBLIC_EXAMPLES,
+    ids=tuple(example.example_id for example in _PUBLIC_EXAMPLES),
+)
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+
+    findings = NoPgEnum().check(Path(focus.path), focus.source)
+
+    assert len(findings) == example.expected_count
 
 
 def test_flags_create_type_as_enum():

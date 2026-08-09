@@ -6,9 +6,19 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
-from typing import TYPE_CHECKING, override
+from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import children, nodes
 from sarj_python_lint.rules._paths import is_generated, is_test_path
 
@@ -27,9 +37,47 @@ _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 class FixtureReturnsBareTuple(Rule):
     id: str = "fixture-returns-bare-tuple"
     code: str = "SARJ044"
-    description: str = (
-        "Fixture returns a bare multi-field tuple — return a NamedTuple so consumers destructure by name."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Fixture returns a bare multi-field tuple — return a NamedTuple so consumers destructure by name.",
+        rationale="Positional fixture results make call sites opaque and allow reordered fields to bind incorrectly.",
+        remediation="Return a `NamedTuple`, frozen dataclass, or another value whose fields have stable names.",
+        category=RuleCategory.TESTING,
+        limitations=(
+            "Only pytest and pytest-asyncio fixtures in test paths are analyzed.",
+            "Factory closures and single-field tuples are allowed.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="fixture-returns-tuple",
+                title="Fixture fields are positional",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/conftest.py",
+                        "import pytest\n\n@pytest.fixture\ndef stores():\n    return org_store, user_store\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/conftest.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="fixture-returns-named-value",
+                title="Fixture fields are named",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/conftest.py",
+                        "import pytest\n\n@pytest.fixture\ndef stores():\n    return Stores(org=org_store, user=user_store)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/conftest.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

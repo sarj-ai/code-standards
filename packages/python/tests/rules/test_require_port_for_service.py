@@ -13,11 +13,20 @@ from sarj_python_lint.rules.require_port_for_service import RequirePortForServic
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import Diagnostic
+    from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
 def _check(source: str, path: str = "app/services/thing_service.py") -> list[Diagnostic]:
     return RequirePortForService().check(Path(path), textwrap.dedent(source))
+
+
+_PUBLIC_EXAMPLES = RequirePortForService.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(RequirePortForService().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 # The canonical offender: a concrete service, an injected first-party port, two public methods, no abstract base.

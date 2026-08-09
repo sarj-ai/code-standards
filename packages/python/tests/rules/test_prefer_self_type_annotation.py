@@ -2,15 +2,26 @@ from pathlib import Path
 import textwrap
 from typing import TYPE_CHECKING
 
+import pytest
+
 from sarj_python_lint.rules.prefer_self_type_annotation import PreferSelfTypeAnnotation
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import Diagnostic
+    from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
 def _check(source: str) -> list[Diagnostic]:
     return PreferSelfTypeAnnotation().check(Path("example.py"), textwrap.dedent(source))
+
+
+_PUBLIC_EXAMPLES = PreferSelfTypeAnnotation.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(PreferSelfTypeAnnotation().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 def test_flags_string_literal_class_return_type() -> None:

@@ -6,7 +6,7 @@
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { stripSqlNoise } from "./_sql.js";
 
 type MessageIds = "dynamicSql";
@@ -16,6 +16,37 @@ export interface RuleOptions {
 }
 
 type Options = readonly [RuleOptions?];
+
+export const noDynamicSqlDocumentation = {
+  summary: "Disallow runtime interpolation or concatenation in SQL passed to statement-execution methods.",
+  rationale:
+    "Embedding runtime values in SQL bypasses driver parameterization and can introduce injection defects or unstable query plans.",
+  remediation: "Use SQL placeholders and pass runtime values through the driver's binding API.",
+  category: "security",
+  limitations: [
+    "The rule recognizes SQL by syntax and configured method names; static fragments and parameterizing tagged templates are exempt.",
+  ],
+  examples: [
+    {
+      id: "bound-sql-parameter",
+      title: "A runtime value is bound separately",
+      outcome: "no-match",
+      files: [{ path: "src/users.ts", source: "db.prepare('select * from users where id = ?').bind(userId);" }],
+      focusPath: "src/users.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "interpolated-sql-value",
+      title: "A runtime value is interpolated into SQL",
+      outcome: "match",
+      files: [{ path: "src/users.ts", source: "db.prepare(`select * from users where id = '${userId}'`);" }],
+      focusPath: "src/users.ts",
+      expectedCount: 1,
+      public: true,
+    },
+  ],
+} as const satisfies RuleDocumentation;
 
 const DEFAULT_METHODS: readonly string[] = ["prepare", "exec", "query"];
 
@@ -122,11 +153,12 @@ function statementMethodName(
 
 export default createRule<Options, MessageIds>({
   name: "no-dynamic-sql",
+  documentation: noDynamicSqlDocumentation,
   meta: {
     type: "problem",
     docs: {
       description:
-        "Disallow interpolating or concatenating a runtime value into a SQL statement passed to `prepare`/`exec`/`query`; use a placeholder and bind the value.",
+        "Disallow runtime interpolation or concatenation in SQL passed to statement-execution methods.",
     },
     schema: [
       {

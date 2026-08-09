@@ -6,7 +6,7 @@
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isStoryFile, isTestFile } from "./_paths.js";
 import { isZodModule } from "./_zod.js";
 
@@ -17,6 +17,17 @@ type Options = readonly [
     requireIdenticalShape?: boolean;
   }?,
 ];
+
+export const preferZodInferDocumentation = {
+  summary: "Derive a type from its Zod schema with `z.infer` instead of hand-writing a twin declaration beside it.",
+  rationale: "A derived type stays synchronized when the runtime schema changes.",
+  remediation: "Replace the hand-written twin with `z.infer<typeof Schema>`.",
+  category: "correctness",
+  examples: [
+    { id: "inferred-type", title: "Infer the schema type", outcome: "no-match", files: [{ path: "src/user.ts", source: 'import { z } from "zod"; const UserSchema = z.object({ id: z.string() }); type User = z.infer<typeof UserSchema>;' }], focusPath: "src/user.ts", expectedCount: 0, public: true },
+    { id: "handwritten-twin", title: "Do not duplicate the schema shape", outcome: "match", files: [{ path: "src/user.ts", source: 'import { z } from "zod"; const UserSchema = z.object({ id: z.string() }); interface User { id: string }' }], focusPath: "src/user.ts", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
 
 /** Chained methods that preserve a schema's inferred shape. */
 const SHAPE_PRESERVING_METHODS: ReadonlySet<string> = new Set([
@@ -205,6 +216,7 @@ function leafAgrees(
 
 export default createRule<Options, MessageIds>({
   name: "prefer-zod-infer",
+  documentation: preferZodInferDocumentation,
   meta: {
     type: "problem",
     docs: {

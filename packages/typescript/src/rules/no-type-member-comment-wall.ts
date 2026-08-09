@@ -6,7 +6,7 @@
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 
 import {
   BARE_LABEL_RE,
@@ -26,6 +26,34 @@ type MessageIds = "commentWall";
 
 type Options = readonly [Partial<WallOptions>?];
 
+export const noTypeMemberCommentWallDocumentation = {
+  summary: "Flag an object type whose member comments mostly re-spell the members' own names and types.",
+  rationale: "Repetitive member comments add scanning cost while hiding the comments that describe facts absent from the type.",
+  remediation: "Delete comments that restate member names or types and keep comments that add constraints or behavior.",
+  category: "maintainability",
+  limitations: ["Only interface and type-literal bodies meeting the configured comment-count and restatement-ratio thresholds are reported."],
+  examples: [
+    {
+      id: "uncommented-members",
+      title: "Let clear member names and types stand alone",
+      outcome: "no-match",
+      files: [{ path: "src/credentials.ts", source: "interface Credentials { host: string; port: number; username: string; }" }],
+      focusPath: "src/credentials.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "restated-type-members",
+      title: "Do not restate member names and types",
+      outcome: "match",
+      files: [{ path: "src/credentials.ts", source: "interface Credentials {\n  // Database host.\n  host?: string;\n  // Database host port.\n  port?: number;\n  // Database username.\n  username?: string;\n  // Database password.\n  password?: string;\n}" }],
+      focusPath: "src/credentials.ts",
+      expectedCount: 1,
+      public: true,
+    },
+  ],
+} as const satisfies RuleDocumentation;
+
 /** A member the rule can judge: a named property or method signature. */
 type NamedMember = TSESTree.TSPropertySignature | TSESTree.TSMethodSignature;
 
@@ -39,6 +67,7 @@ function isNamedMember(node: TSESTree.TypeElement): node is NamedMember {
 
 export default createRule<Options, MessageIds>({
   name: "no-type-member-comment-wall",
+  documentation: noTypeMemberCommentWallDocumentation,
   meta: {
     type: "suggestion",
     docs: {

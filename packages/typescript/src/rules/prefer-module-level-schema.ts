@@ -6,11 +6,23 @@
 
 import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 import { isZodModule } from "./_zod.js";
 
 type MessageIds = "hoistSchema";
+
+export const preferModuleLevelSchemaDocumentation = {
+  summary: "Declare a Zod schema at module scope when it closes over nothing in the enclosing function",
+  rationale: "A closed schema created inside a function is rebuilt on every call and cannot be reused or exported for inference.",
+  remediation: "Move the closed schema declaration to module scope and reference it from the function.",
+  category: "performance",
+  limitations: ["Schemas that depend on local state or are wrapped in a recognized memoization helper are excluded."],
+  examples: [
+    { id: "module-schema", title: "Declare the schema once", outcome: "no-match", files: [{ path: "src/handler.ts", source: "import { z } from 'zod'; const ZBody = z.object({ id: z.string(), name: z.string() }); export function handle(raw: unknown) { return ZBody.parse(raw); }" }], focusPath: "src/handler.ts", expectedCount: 0, public: true },
+    { id: "local-schema", title: "Do not rebuild a closed schema", outcome: "match", files: [{ path: "src/handler.ts", source: "import { z } from 'zod'; export function handle(raw: unknown) { const ZBody = z.object({ id: z.string(), name: z.string() }); return ZBody.parse(raw); }" }], focusPath: "src/handler.ts", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
 
 type Options = readonly [
   {
@@ -222,6 +234,7 @@ function collectReferences(
 
 export default createRule<Options, MessageIds>({
   name: "prefer-module-level-schema",
+  documentation: preferModuleLevelSchemaDocumentation,
   meta: {
     type: "problem",
     docs: {

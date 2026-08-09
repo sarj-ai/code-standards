@@ -11,7 +11,7 @@ from sarj_sql_lint.rules.require_lock_timeout import RequireLockTimeout
 
 
 if TYPE_CHECKING:
-    from sarj_sql_lint.rule_base import Diagnostic
+    from sarj_sql_lint.rule_base import Diagnostic, RuleExample
 
 
 P = Path("supabase/migrations/001_schema.sql")
@@ -19,6 +19,15 @@ P = Path("supabase/migrations/001_schema.sql")
 
 def _check(source: str, path: Path = P) -> list[Diagnostic]:
     return RequireLockTimeout().check(path, source)
+
+
+_PUBLIC_EXAMPLES = RequireLockTimeout.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(example.example_id for example in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(RequireLockTimeout().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 @pytest.mark.parametrize(

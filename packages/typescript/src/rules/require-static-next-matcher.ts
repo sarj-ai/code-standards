@@ -6,10 +6,21 @@
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 
 type MessageIds = "dynamicMatcher";
 type Options = readonly [];
+
+export const requireStaticNextMatcherDocumentation = {
+  summary: "Require Next.js middleware and proxy matcher configuration to contain only build-time literals.",
+  rationale: "Next.js must statically analyze matcher values at build time; computed values are ignored.",
+  remediation: "Write matcher strings, arrays, and object fields as literals in the exported config.",
+  category: "correctness",
+  examples: [
+    { id: "literal-matcher", title: "Use a literal matcher", outcome: "no-match", files: [{ path: "src/middleware.ts", source: 'export const config = { matcher: "/api/:path*" };' }], focusPath: "src/middleware.ts", expectedCount: 0, public: true },
+    { id: "computed-matcher", title: "Do not compute the matcher", outcome: "match", files: [{ path: "src/middleware.ts", source: 'const matcher = "/api/:path*"; export const config = { matcher };' }], focusPath: "src/middleware.ts", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
 
 const NEXT_ENTRY_FILE = /(?:^|[/\\])(?:middleware|proxy)\.[cm]?[jt]sx?$/u;
 
@@ -62,6 +73,7 @@ function propertyName(property: TSESTree.Property): string | null {
 
 export default createRule<Options, MessageIds>({
   name: "require-static-next-matcher",
+  documentation: requireStaticNextMatcherDocumentation,
   meta: {
     type: "problem",
     docs: {

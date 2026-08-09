@@ -6,10 +6,22 @@
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 
 type MessageIds = "preferShadcnPrimitive";
 type Options = readonly [];
+
+export const preferShadcnPrimitivesDocumentation = {
+  summary: "Require visible raw JSX controls to use the corresponding shared shadcn primitive.",
+  rationale: "Shared primitives centralize interaction, accessibility, and visual behavior across the product.",
+  remediation: "Replace the raw visible control with the corresponding shared shadcn component.",
+  category: "style",
+  limitations: ["Hidden and file inputs, unassociated labels, and non-control semantic elements are excluded."],
+  examples: [
+    { id: "shared-button", title: "Use a shared button", outcome: "no-match", files: [{ path: "src/form.tsx", source: "import { Button } from '@/components/ui/button'; const action = <Button>Save</Button>;" }], focusPath: "src/form.tsx", expectedCount: 0, public: true },
+    { id: "raw-button", title: "Do not use a raw button", outcome: "match", files: [{ path: "src/form.tsx", source: "const action = <button>Save</button>;" }], focusPath: "src/form.tsx", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
 
 const SHADCN_PRIMITIVES = {
   button: "Button",
@@ -161,6 +173,7 @@ function replacementFor(
 
 export default createRule<Options, MessageIds>({
   name: "prefer-shadcn-primitives",
+  documentation: preferShadcnPrimitivesDocumentation,
   meta: {
     type: "suggestion",
     docs: {

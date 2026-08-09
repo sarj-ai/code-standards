@@ -6,11 +6,49 @@
 
 import { type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
 
 type MessageIds = "fatTryBlock";
 type Options = readonly [];
+
+export const noFatTryBlocksDocumentation = {
+  summary: "Disallow `try` blocks containing more than three top-level operations that can throw.",
+  rationale:
+    "A broad `try` block obscures which operation failed and encourages one catch clause to recover from unrelated errors.",
+  remediation:
+    "Keep only the operations that share one recovery policy inside the `try` block and move other work outside it.",
+  category: "correctness",
+  limitations: [
+    "The rule uses syntax to identify throwing operations and exempts generated files, finally blocks, rethrows, and terminal error boundaries.",
+  ],
+  examples: [
+    {
+      id: "focused-try-block",
+      title: "A try block contains three throwing operations",
+      outcome: "no-match",
+      files: [{
+        path: "src/load.ts",
+        source: "function f() { try { const a = one(); const b = two(); const c = three(); } catch (error) { handle(error); } finish(); }",
+      }],
+      focusPath: "src/load.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "broad-try-block",
+      title: "A try block contains four throwing operations",
+      outcome: "match",
+      files: [{
+        path: "src/load.ts",
+        source: "function f() { try { const a = one(); const b = two(); const c = three(); const d = four(); } catch (error) { handle(error); } finish(); }",
+      }],
+      focusPath: "src/load.ts",
+      expectedCount: 1,
+      public: true,
+    },
+  ],
+} as const satisfies RuleDocumentation;
 
 const MAX_TRY_BODY_STATEMENTS = 3;
 
@@ -405,11 +443,11 @@ const handlerReturnsSuccessShaped = (handler: TSESTree.CatchClause): boolean =>
 
 export default createRule<Options, MessageIds>({
   name: "no-fat-try-blocks",
+  documentation: noFatTryBlocksDocumentation,
   meta: {
     type: "problem",
     docs: {
-      description:
-        "Disallow `try` blocks with more than three top-level statements that can throw — isolate the throwing statement and move non-throwing work outside.",
+      description: "Disallow `try` blocks containing more than three top-level operations that can throw.",
     },
     schema: [],
     messages: {

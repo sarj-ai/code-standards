@@ -6,10 +6,21 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import children
 from sarj_python_lint.rules._comments import is_protected
 from sarj_python_lint.rules._docstrings import (
@@ -51,10 +62,48 @@ def _return_block(docstring: str) -> str | None:
 class DocstringReturnsRestateSignature(Rule):
     id: str = "docstring-returns-restate-signature"
     code: str = "SARJ087"
-    description: str = (
-        "`Returns:` block adds nothing the name and the return annotation do not "
-        "already say — delete the section and keep the summary."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Return documentation must add facts beyond the function name and annotation.",
+        rationale="Repeating the return type or function name adds noise and can become stale without explaining the result's semantics.",
+        remediation="Remove the redundant return section, or document identity, units, constraints, or other behavior absent from the signature.",
+        category=RuleCategory.MAINTAINABILITY,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "The rule reads Google-style return and yield sections and uses conservative signature-word matching.",
+            "Generated files, runtime-consumed docstrings, protected facts, identity semantics, and whole-docstring restatements owned by SARJ050 are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="return-restates-signature",
+                title="Return description repeats the signature",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/lines.py",
+                        'def get_line_length(line: list[str]) -> int:\n    """Measure a rendered line.\n\n    Returns:\n        int: The length of the line.\n    """\n    return len(line)\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/lines.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="return-documents-semantics",
+                title="Return description records semantics",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/lines.py",
+                        'def get_line_length(line: list[str]) -> int:\n    """Measure a rendered line.\n\n    Returns:\n        The width in terminal cells, which is not the character count.\n    """\n    return len(line)\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/lines.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

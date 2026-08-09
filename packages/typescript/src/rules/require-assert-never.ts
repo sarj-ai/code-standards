@@ -13,10 +13,21 @@ import {
 } from "@typescript-eslint/utils";
 import ts from "typescript";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 
 type MessageIds = "missingAssertNever";
 type Options = readonly [];
+
+export const requireAssertNeverDocumentation = {
+  summary: "Require an empty switch default to call `assertNever` so discriminated unions remain exhaustive at compile time.",
+  rationale: "An empty default silently accepts new union members instead of making the compiler identify the missing case.",
+  remediation: "Call `assertNever` with the discriminant in the exhaustive switch default.",
+  category: "correctness",
+  examples: [
+    { id: "assert-never-default", title: "Make the default exhaustive", outcome: "no-match", files: [{ path: "src/render.ts", source: "declare const kind: 'a' | 'b';\nswitch (kind) { case 'a': break; case 'b': break; default: assertNever(kind); }" }], focusPath: "src/render.ts", expectedCount: 0, public: true },
+    { id: "empty-default", title: "Do not leave an exhaustive default empty", outcome: "match", files: [{ path: "src/render.ts", source: "declare const kind: 'a' | 'b';\nswitch (kind) { case 'a': break; case 'b': break; default: }" }], focusPath: "src/render.ts", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
 
 /** Empty statements and empty blocks are not runtime handling. */
 const isRuntimeHandlingStatement = (statement: TSESTree.Statement): boolean => {
@@ -124,11 +135,12 @@ function finiteTypeKey(
 
 export default createRule<Options, MessageIds>({
   name: "require-assert-never",
+  documentation: requireAssertNeverDocumentation,
   meta: {
     type: "problem",
     docs: {
       description:
-        "Require an exhaustive-style switch whose `default` case does no runtime work to call `assertNever(_)` so that discriminated unions are exhaustively checked at compile time. Switches with a legitimate runtime default (a reducer's `return state`, an HTTP-status `return fallback()`, a `break`, a `throw`, etc.) are left alone.",
+        "Require an empty switch default to call `assertNever` so discriminated unions remain exhaustive at compile time.",
     },
     schema: [],
     messages: {

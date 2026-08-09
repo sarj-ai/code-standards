@@ -8,11 +8,23 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
+from pathlib import PurePosixPath
 import re
 from types import MappingProxyType
 from typing import TYPE_CHECKING, final, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, Severity, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    Severity,
+    parse_or_none,
+)
 from sarj_python_lint.rules._comments import split_identifier, standalone_comments
 from sarj_python_lint.rules._paths import is_generated
 
@@ -202,10 +214,48 @@ _CONFLICT_UNIT_NAME_TOKENS = _ALL_UNIT_NAME_TOKENS - {"record", "records", "retr
 class PreferSelfDocumentingConstant(Rule):
     id = "prefer-self-documenting-constant"
     code = "SARJ097"
-    description = (
-        "constant comments should not be the sole source of units or HTTP status meaning; "
-        "encode those facts in the name or value"
+    documentation = RuleDocumentation(
+        summary="Encode a constant's units or HTTP status meaning in its name, type, or value.",
+        rationale="A comment-only fact is lost at use sites and can drift independently from the constant it describes.",
+        remediation="Add the unit to the name or type, use a unit-bearing value such as `timedelta`, or replace status integers with `HTTPStatus` members.",
+        category=RuleCategory.MAINTAINABILITY,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Only direct module and class constants with attached comments and proven numeric or HTTP-status shapes are analyzed.",
+            "Generated code, directives, ambiguous comments, policy sentinels, and values already carrying the fact are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="comment-only-constant-unit",
+                title="Comment is the only source of the unit",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/settings.py",
+                        "# Request deadline in seconds.\nREQUEST_DEADLINE = 10\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/settings.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="unit-bearing-constant-name",
+                title="Constant name carries its unit",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/settings.py",
+                        "# Request deadline in seconds.\nREQUEST_DEADLINE_SECONDS = 10\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/settings.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

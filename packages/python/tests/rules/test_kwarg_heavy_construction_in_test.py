@@ -7,7 +7,7 @@ from sarj_python_lint.rules.kwarg_heavy_construction_in_test import KwargHeavyCo
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import Diagnostic
+    from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
 TEST_PATH = "python/app/tests/store/test_call_store.py"
@@ -18,6 +18,15 @@ _EIGHT_KWARGS = ", ".join(f"f{i}={i}" for i in range(8))
 
 def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
     return KwargHeavyConstructionInTest().check(Path(path), source)
+
+
+_PUBLIC_EXAMPLES = KwargHeavyConstructionInTest.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(_check(focus.source, str(focus.path))) == example.expected_count
 
 
 _WIDE_IN_TEST = f"""

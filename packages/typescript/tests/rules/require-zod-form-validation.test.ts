@@ -1,7 +1,7 @@
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/require-zod-form-validation.js";
+import rule, { requireZodFormValidationDocumentation } from "../../src/rules/require-zod-form-validation.js";
 
 // Bind vitest to RuleTester for proper test reporting
 RuleTester.afterAll = afterAll;
@@ -13,6 +13,7 @@ const ruleTester = new RuleTester();
 
 ruleTester.run("require-zod-form-validation", rule, {
   valid: [
+    { name: "accepts the documented validated value", code: requireZodFormValidationDocumentation.examples[0].files[0].source },
     {
       name: "ignores FormData reads in test files",
       code: "async function t(request) { const formData = await request.formData(); expect(formData.get('a')).toBe('1'); }",
@@ -88,6 +89,7 @@ ruleTester.run("require-zod-form-validation", rule, {
     },
   ],
   invalid: [
+    { name: "reports the documented raw value", code: requireZodFormValidationDocumentation.examples[1].files[0].source, errors: [{ messageId: "missingZodValidation" }] },
     {
       name: "reports a production action read",
       code: "export async function action(request) { const formData = await request.formData(); return save(formData.get('name')); }",

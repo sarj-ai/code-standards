@@ -9,11 +9,20 @@ from sarj_sql_lint.rules.prefer_uuidv7_default import PreferUuidv7Default
 
 
 if TYPE_CHECKING:
-    from sarj_sql_lint.rule_base import Diagnostic
+    from sarj_sql_lint.rule_base import Diagnostic, RuleExample
 
 
 def _check(source: str) -> list[Diagnostic]:
     return PreferUuidv7Default().check(Path("migration.sql"), source)
+
+
+_PUBLIC_EXAMPLES = PreferUuidv7Default.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(example.example_id for example in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(PreferUuidv7Default().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 _LEGACY_UUID_CALL = "gen_random_uuid()"

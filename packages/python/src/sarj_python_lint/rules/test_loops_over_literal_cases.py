@@ -6,9 +6,19 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
-from typing import TYPE_CHECKING, override
+from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import children, walk
 from sarj_python_lint.rules._paths import is_test_path
 
@@ -37,9 +47,47 @@ _SUBTESTS_FIXTURE = "subtests"
 class TestLoopsOverLiteralCases(Rule):
     id: str = "test-loops-over-literal-cases"
     code: str = "SARJ041"
-    description: str = (
-        "Test loops over a literal case table — use `@pytest.mark.parametrize` so cases report separately."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Test loops over a literal case table — use `@pytest.mark.parametrize` so cases report separately.",
+        rationale="A loop collapses all cases into one test and stops at the first failing iteration.",
+        remediation="Move the literal table into `@pytest.mark.parametrize` so every case has its own result.",
+        category=RuleCategory.TESTING,
+        limitations=(
+            "Only literal iterables with at least two cases inside test functions are analyzed.",
+            "Loops using unittest or pytest subtest contexts are allowed.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="literal-cases-in-loop",
+                title="Cases hidden inside one test",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_normalize.py",
+                        'def test_normalize():\n    for value in ["a", "b"]:\n        assert normalize(value) == value\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_normalize.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="parametrized-literal-cases",
+                title="Each case is a separate test",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_normalize.py",
+                        'import pytest\n\n@pytest.mark.parametrize("value", ["a", "b"])\ndef test_normalize(value):\n    assert normalize(value) == value\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_normalize.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

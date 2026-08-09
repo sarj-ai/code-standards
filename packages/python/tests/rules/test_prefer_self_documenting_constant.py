@@ -4,7 +4,7 @@ from textwrap import dedent
 import pytest
 
 from sarj_python_lint.__main__ import main
-from sarj_python_lint.rule_base import Severity
+from sarj_python_lint.rule_base import RuleExample, Severity
 from sarj_python_lint.rules.no_comment_cruft import NoCommentCruft
 from sarj_python_lint.rules.no_long_comment import NoLongComment
 from sarj_python_lint.rules.no_restated_comment import NoRestatedComment
@@ -16,6 +16,15 @@ from sarj_python_lint.rules.trailing_value_narration import TrailingValueNarrati
 
 def _check(source: str, path: str = "service.py"):
     return PreferSelfDocumentingConstant().check(Path(path), dedent(source))
+
+
+_PUBLIC_EXAMPLES = PreferSelfDocumentingConstant.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(PreferSelfDocumentingConstant().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 @pytest.mark.parametrize(

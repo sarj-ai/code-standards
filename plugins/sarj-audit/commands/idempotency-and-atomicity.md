@@ -1,6 +1,6 @@
 # Idempotency and atomicity
 
-Audit runtime race conditions and retry safety using the shared [audit protocol](../README.md#audit-protocol). Migration DDL belongs in `database-schemas-and-migrations`.
+Audit runtime race conditions and retry safety using the shared [audit protocol](../skills/audit-protocol/SKILL.md#audit-protocol). Migration DDL belongs in `database-schemas-and-migrations`.
 
 ## Judgment checks
 

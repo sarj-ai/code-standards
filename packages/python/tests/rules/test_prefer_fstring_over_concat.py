@@ -9,7 +9,7 @@ from sarj_python_lint.rules.prefer_fstring_over_concat import PreferFstringOverC
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import Diagnostic
+    from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
 SRC_PATH = "python/app/services/render.py"
@@ -17,6 +17,15 @@ SRC_PATH = "python/app/services/render.py"
 
 def _check(source: str, path: str = SRC_PATH) -> list[Diagnostic]:
     return PreferFstringOverConcat().check(Path(path), textwrap.dedent(source))
+
+
+_PUBLIC_EXAMPLES = PreferFstringOverConcat.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(PreferFstringOverConcat().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 def _typed(source: str) -> str:

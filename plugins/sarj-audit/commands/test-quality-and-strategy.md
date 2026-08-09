@@ -1,6 +1,6 @@
 # Test quality and strategy
 
-Audit brittle, misleading, and missing tests using the shared [audit protocol](../README.md#audit-protocol).
+Audit brittle, misleading, and missing tests using the shared [audit protocol](../skills/audit-protocol/SKILL.md#audit-protocol).
 
 ## Judgment checks
 

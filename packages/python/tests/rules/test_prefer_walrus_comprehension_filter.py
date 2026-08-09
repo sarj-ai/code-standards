@@ -8,11 +8,20 @@ from sarj_python_lint.rules.prefer_walrus_comprehension_filter import PreferWalr
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import Diagnostic
+    from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
 def _check(source: str) -> list[Diagnostic]:
     return PreferWalrusComprehensionFilter().check(Path("example.py"), textwrap.dedent(source))
+
+
+_PUBLIC_EXAMPLES = PreferWalrusComprehensionFilter.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(PreferWalrusComprehensionFilter().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 def test_flags_repeated_function_call_in_comprehension() -> None:

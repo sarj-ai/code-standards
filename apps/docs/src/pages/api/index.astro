@@ -1,0 +1,54 @@
+---
+import ReferencePage from '../../components/ReferencePage.astro';
+import { catalog, catalogSchema } from '../../lib/catalog';
+
+function requiredRuleFields(schema: unknown): string[] {
+  if (typeof schema !== 'object' || schema === null || !('$defs' in schema)) return [];
+  const definitions = schema.$defs;
+  if (typeof definitions !== 'object' || definitions === null || !('rule' in definitions)) return [];
+  const rule = definitions.rule;
+  if (typeof rule !== 'object' || rule === null || !('required' in rule)) return [];
+  return Array.isArray(rule.required) && rule.required.every((field) => typeof field === 'string')
+    ? rule.required
+    : [];
+}
+
+const fields = requiredRuleFields(catalogSchema);
+---
+
+<ReferencePage title="Catalog API" description="The versioned, machine-readable contract behind the rule directory.">
+  <header class="reference-hero">
+    <p class="eyebrow">API / VERSION 1</p>
+    <h1>The catalog is<br />the contract.</h1>
+    <p class="lede">The website and machine endpoint are projections of the same {catalog.rules.length}-rule snapshot.</p>
+  </header>
+
+  <section class="endpoint-block">
+    <div class="endpoint-block__method">GET</div>
+    <div>
+      <h2><code>/api/v1/catalog.json</code></h2>
+      <p>Every active rule with stable identity, remediation, provenance, and executable examples.</p>
+      <a href="/api/v1/catalog.json">Open JSON <span aria-hidden="true">↗</span></a>
+    </div>
+  </section>
+
+  <section class="endpoint-block">
+    <div class="endpoint-block__method">GET</div>
+    <div>
+      <h2><code>/api/v1/rule-catalog.schema.json</code></h2>
+      <p>JSON Schema 2020-12 for validating catalog consumers.</p>
+      <a href="/api/v1/rule-catalog.schema.json">Open schema <span aria-hidden="true">↗</span></a>
+    </div>
+  </section>
+
+  <section class="schema-fields">
+    <p class="eyebrow">REQUIRED RULE FIELDS / {fields.length}</p>
+    <h2>Stable shape</h2>
+    <div>{fields.map((field) => <code>{field}</code>)}</div>
+  </section>
+
+  <section class="curl-example">
+    <p class="eyebrow">REQUEST</p>
+    <pre><code>curl --fail https://code-standards.sarj.ai/api/v1/catalog.json</code></pre>
+  </section>
+</ReferencePage>

@@ -5,11 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 from sarj_sql_lint.rules.require_fk_index import RequireFkIndex
 
 
 if TYPE_CHECKING:
-    from sarj_sql_lint.rule_base import Diagnostic
+    from sarj_sql_lint.rule_base import Diagnostic, RuleExample
 
 
 P = Path("migration.sql")
@@ -17,6 +19,15 @@ P = Path("migration.sql")
 
 def _check(source: str, path: Path = P) -> list[Diagnostic]:
     return RequireFkIndex().check(path, source)
+
+
+_PUBLIC_EXAMPLES = RequireFkIndex.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(example.example_id for example in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(RequireFkIndex().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 def _tree(tmp_path: Path, files: dict[str, str]) -> Path:

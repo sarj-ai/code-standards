@@ -11,7 +11,7 @@ import {
   LOGGING_OPTION_PROPERTIES,
   type LoggingOptions,
 } from "./_logging.js";
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
 import {
   FLAG_PREFIXES,
@@ -23,6 +23,18 @@ import {
 
 type MessageIds = "noSecretInLog" | "noRawBodyInLog";
 type Options = readonly [LoggingOptions?];
+
+export const noSecretInLogDocumentation = {
+  summary: "Disallow passing a secret-named value or a raw request/response blob to a logging call; both leak to log sinks. Redact or omit.",
+  rationale: "Logs are widely retained and distributed, so credentials and raw bodies can become durable data leaks.",
+  remediation: "Omit the value or log an explicitly redacted, truncated, or derived non-sensitive field.",
+  category: "security",
+  limitations: ["Detection uses configurable logger names and statically recognizable secret names, raw-body names, and redaction markers."],
+  examples: [
+    { id: "redacted-secret", title: "Log an explicitly redacted value", outcome: "no-match", files: [{ path: "src/auth.ts", source: "logger.info('auth', { tokenPrefix });" }], focusPath: "src/auth.ts", expectedCount: 0, public: true },
+    { id: "logged-secret", title: "Do not send a secret to logs", outcome: "match", files: [{ path: "src/auth.ts", source: "logger.error('auth failed', { token });" }], focusPath: "src/auth.ts", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
 
 const LOG_INNOCUOUS_WORDS: ReadonlySet<string> = new Set([
   ...INNOCUOUS_WORDS,
@@ -182,6 +194,7 @@ function propertyKeyName(prop: TSESTree.Property): string | null {
 
 export default createRule<Options, MessageIds>({
   name: "no-secret-in-log",
+  documentation: noSecretInLogDocumentation,
   meta: {
     type: "problem",
     docs: {

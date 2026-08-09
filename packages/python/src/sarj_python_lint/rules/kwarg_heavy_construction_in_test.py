@@ -7,9 +7,19 @@ from __future__ import annotations
 
 import ast
 from collections import Counter
-from typing import TYPE_CHECKING, override
+from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._paths import is_test_path
 
@@ -38,7 +48,47 @@ _MOCK_ASSERTION_PREFIX = "assert_"
 class KwargHeavyConstructionInTest(Rule):
     id: str = "kwarg-heavy-construction-in-test"
     code: str = "SARJ045"
-    description: str = "Object built with many keywords inline in a test — extract a helper with defaults."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Object built with many keywords inline in a test — extract a helper with defaults.",
+        rationale="Repeated construction boilerplate hides the field each test changes and makes schema changes noisy.",
+        remediation="Extract a test builder with sensible defaults and override only values relevant to each case.",
+        category=RuleCategory.TESTING,
+        limitations=(
+            "Only repeated calls with more than eight named arguments directly inside test functions are reported.",
+            "Mapping construction, mock assertions, fixtures, and local helper calls are allowed.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="repeated-wide-construction",
+                title="Tests repeat every constructor argument",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_call.py",
+                        "def test_first():\n    assert Call(a=1, b=2, c=3, d=4, e=5, f=6, g=7, h=8, i=9)\n\ndef test_second():\n    assert Call(a=1, b=2, c=3, d=4, e=5, f=6, g=7, h=8, i=9)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_call.py"),
+                expected_count=2,
+                public=True,
+            ),
+            RuleExample(
+                example_id="construction-through-builder",
+                title="Tests override builder defaults",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_call.py",
+                        "def build_call(**overrides):\n    return Call(**overrides)\n\ndef test_first():\n    assert build_call(a=1)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_call.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
+    )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

@@ -7,9 +7,19 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, override
+from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._first_party import (
     has_first_party_source,
@@ -26,10 +36,53 @@ if TYPE_CHECKING:
 class NoFirstPartyPrivateImport(Rule):
     id: str = "no-first-party-private-import"
     code: str = "SARJ048"
-    description: str = (
-        "Importing a private (`_`-prefixed) name or module from a FIRST-PARTY module reaches past a "
-        "surface we control and can widen. Third-party privates are never flagged — that API is not ours to change."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Code imports a private name or module from another first-party package.",
+        rationale="Cross-package private imports couple callers to internals instead of a public surface the owning package can maintain.",
+        remediation="Export the capability under a public name or move the caller behind an existing public function.",
+        category=RuleCategory.ARCHITECTURE,
+        limitations=(
+            "First-party ownership is resolved from repository package manifests and source trees.",
+            "Relative imports, public and dunder names, third-party and standard-library imports, and supported compiled extensions are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="cross-package-private-import",
+                title="Service imports another package's private helper",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(".git/keep", "fixture\n"),
+                    ExampleFile.python("python/service/pyproject.toml", '[project]\nname = "service"\n'),
+                    ExampleFile.python("python/service/service/__init__.py", "\n"),
+                    ExampleFile.python("python/service/tests/test_api.py", "from core.helpers import _decode\n"),
+                    ExampleFile.python("python/core/pyproject.toml", '[project]\nname = "core"\n'),
+                    ExampleFile.python("python/core/core/__init__.py", "\n"),
+                    ExampleFile.python("python/core/core/helpers.py", "def _decode(value):\n    return value\n"),
+                ),
+                focus_path=PurePosixPath("python/service/tests/test_api.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="cross-package-public-import",
+                title="Service imports a public helper",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(".git/keep", "fixture\n"),
+                    ExampleFile.python("python/service/pyproject.toml", '[project]\nname = "service"\n'),
+                    ExampleFile.python("python/service/service/__init__.py", "\n"),
+                    ExampleFile.python("python/service/tests/test_api.py", "from core.helpers import decode\n"),
+                    ExampleFile.python("python/core/pyproject.toml", '[project]\nname = "core"\n'),
+                    ExampleFile.python("python/core/core/__init__.py", "\n"),
+                    ExampleFile.python("python/core/core/helpers.py", "def decode(value):\n    return value\n"),
+                ),
+                focus_path=PurePosixPath("python/service/tests/test_api.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

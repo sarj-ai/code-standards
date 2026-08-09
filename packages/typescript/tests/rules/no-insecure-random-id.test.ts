@@ -2,7 +2,7 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-insecure-random-id.js";
+import rule, { noInsecureRandomIdDocumentation } from "../../src/rules/no-insecure-random-id.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -17,6 +17,7 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("no-insecure-random-id", rule, {
   valid: [
+    { code: noInsecureRandomIdDocumentation.examples[0].files[0].source },
     // Bare `Math.random()` for jitter — not an identifier.
     { code: "const jitter = Math.random() * 100;" },
     // Sampling / probability roll.
@@ -32,7 +33,6 @@ ruleTester.run("no-insecure-random-id", rule, {
     { code: "const ratio = Math.random().toString(10);" },
     // The prescribed secure replacements.
     { code: "const id = crypto.randomUUID();" },
-    { code: "const sessionToken = crypto.randomUUID();" },
     {
       code: "const key = crypto.getRandomValues(new Uint8Array(16));",
     },
@@ -74,6 +74,7 @@ ruleTester.run("no-insecure-random-id", rule, {
     },
   ],
   invalid: [
+    { code: noInsecureRandomIdDocumentation.examples[1].files[0].source, errors: [{ messageId: "insecureRandomId" }] },
     // Trigger 1: classic `.toString(36)` insecure id idiom.
     {
       code: "const x = Math.random().toString(36).slice(2);",
@@ -102,10 +103,6 @@ ruleTester.run("no-insecure-random-id", rule, {
       errors: [{ messageId: "insecureRandomId" }],
     },
     // Trigger 1 (name-based): strong security name — variable declarators.
-    {
-      code: "const sessionToken = Math.random();",
-      errors: [{ messageId: "insecureRandomId" }],
-    },
     {
       code: "const apiKey = Math.random();",
       errors: [{ messageId: "insecureRandomId" }],

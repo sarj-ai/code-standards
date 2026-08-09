@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from sarj_python_lint.rule_base import is_suppressed
+from sarj_python_lint.rule_base import RuleExample, is_suppressed
 from sarj_python_lint.rules.no_raw_sql_in_tests import NoRawSqlInTests
 
 
@@ -16,6 +16,15 @@ TEST_PATH = "python/app/tests/stores/test_call_store.py"
 
 def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
     return NoRawSqlInTests().check(Path(path), source)
+
+
+_PUBLIC_EXAMPLES = NoRawSqlInTests.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(_check(focus.source, str(focus.path))) == example.expected_count
 
 
 @pytest.mark.parametrize(

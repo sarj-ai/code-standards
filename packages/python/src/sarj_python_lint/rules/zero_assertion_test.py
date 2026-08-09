@@ -6,9 +6,19 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
-from typing import TYPE_CHECKING, override
+from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._paths import is_test_path
 from sarj_python_lint.rules._pytest import uses_benchmark_fixture
@@ -48,7 +58,47 @@ _COLLECTED_SUFFIX = "_test.py"
 class ZeroAssertionTest(Rule):
     id: str = "zero-assertion-test"
     code: str = "SARJ043"
-    description: str = "Test contains no assertion of any kind — it passes as long as nothing raises."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Test contains no assertion of any kind — it passes as long as nothing raises.",
+        rationale="Calling production code without verifying an outcome gives the test no observable behavioral contract.",
+        remediation="Assert the result or use an explicit pytest expectation such as `pytest.raises` or `pytest.warns`.",
+        category=RuleCategory.TESTING,
+        limitations=(
+            "Only pytest-collected test functions in test paths are analyzed.",
+            "Skipped, xfailed, benchmark, placeholder, helper-delegating, and explicit expectation tests are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="discarded-test-result",
+                title="Test verifies no outcome",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_conditions.py",
+                        "def test_conditions():\n    evaluate_conditions(record, conditions)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_conditions.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="asserted-test-result",
+                title="Test verifies the result",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_conditions.py",
+                        "def test_conditions():\n    assert evaluate_conditions(record, conditions)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_conditions.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
+    )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

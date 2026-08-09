@@ -6,9 +6,19 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
-from typing import TYPE_CHECKING, override
+from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._paths import is_test_path
 
@@ -26,9 +36,47 @@ _MSG = (
 class PreferStructOverNamedtuple(Rule):
     id: str = "prefer-struct-over-namedtuple"
     code: str = "SARJ015"
-    description: str = (
-        "collections.namedtuple is untyped/positional — prefer typing.NamedTuple or a frozen pydantic model."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="`collections.namedtuple` creates an untyped, positionally constructed record.",
+        rationale="Typed record declarations expose field types and make construction and review less error-prone.",
+        remediation="Declare a `typing.NamedTuple` class or use a frozen pydantic model for boundary values.",
+        category=RuleCategory.MAINTAINABILITY,
+        limitations=(
+            "Only imports from `collections` and qualified calls through `collections` bindings are reported.",
+            "Tests, `typing.NamedTuple`, unrelated attributes, and unbound bare calls are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="collections-namedtuple",
+                title="Functional untyped namedtuple",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "models.py",
+                        "import collections\n\nRow = collections.namedtuple('Row', ['id', 'name'])\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("models.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="typed-named-tuple",
+                title="Typed NamedTuple declaration",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "models.py",
+                        "from typing import NamedTuple\n\nclass Row(NamedTuple):\n    id: int\n    name: str\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("models.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

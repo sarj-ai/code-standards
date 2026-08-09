@@ -6,7 +6,7 @@
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 
 type MessageIds = "storageInStatelessModule";
 
@@ -24,6 +24,18 @@ const DEFAULT_METHODS: readonly string[] = [
 ];
 
 const MIN_ARGUMENTS: ReadonlyMap<string, number> = new Map([["put", 2]]);
+
+export const noStorageInStatelessModulesDocumentation = {
+  summary: "Disallow SQL or key/value access inside configured stateless modules; derive state from a system of record instead.",
+  rationale: "Private storage in a stateless workflow creates another source of truth that can silently diverge.",
+  remediation: "Read from the system of record or derive state from an artifact the workflow already produces.",
+  category: "architecture",
+  limitations: ["The rule is disabled until module path patterns are configured and recognizes only configured storage method names."],
+  examples: [
+    { id: "system-of-record", title: "Read from the system of record", outcome: "no-match", files: [{ path: "src/engineer-digest/post.ts", source: "const issues = await linear.listIssues();" }], focusPath: "src/engineer-digest/post.ts", expectedCount: 0, public: true },
+    { id: "private-storage", title: "Do not write private state in a stateless module", outcome: "match", files: [{ path: "src/engineer-digest/post.ts", source: "await kv.put('digest:last', timestamp);" }], focusPath: "src/engineer-digest/post.ts", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
 
 /** Compile regex sources, skipping malformed entries rather than throwing. */
 function compile(patterns: readonly string[]): RegExp[] {
@@ -63,11 +75,12 @@ function storageMethodName(
 
 export default createRule<Options, MessageIds>({
   name: "no-storage-in-stateless-modules",
+  documentation: noStorageInStatelessModulesDocumentation,
   meta: {
     type: "problem",
     docs: {
       description:
-        "Disallow SQL or key/value access inside modules a team has declared stateless; derive state from the systems of record instead. No-op until `modules` is configured.",
+        "Disallow SQL or key/value access inside configured stateless modules; derive state from a system of record instead.",
     },
     schema: [
       {

@@ -10,13 +10,58 @@ import {
   type TSESTree,
 } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 import { isZodModule } from "./_zod.js";
 
 type MessageIds = "impossibleBounds";
 type Options = readonly [];
 type SchemaKind = "array" | "number" | "string";
+
+export const noImpossibleZodLiteralBoundsDocumentation = {
+  summary:
+    "Disallow same-chain literal Zod bounds whose accepted set is mathematically empty.",
+  rationale:
+    "A schema with contradictory literal bounds rejects every input, turning validation into an unreachable contract that usually reflects a typo.",
+  remediation:
+    "Choose compatible lower and upper bounds, or remove the constraint that does not express the intended domain.",
+  category: "correctness",
+  limitations: [
+    "Only finite numeric literals in a single number, string, or array schema chain are compared.",
+    "Chains with dynamic bounds, non-bound validators, transforms, pipes, or preprocessors are skipped.",
+    "Test and generated files are excluded.",
+  ],
+  examples: [
+    {
+      id: "compatible-number-bounds",
+      title: "Allow a number admitted by both bounds",
+      outcome: "no-match",
+      files: [
+        {
+          path: "src/schema.ts",
+          source: 'import { z } from "zod"; const S = z.number().gte(3).lte(3);',
+        },
+      ],
+      focusPath: "src/schema.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "contradictory-number-bounds",
+      title: "Reject an empty numeric interval",
+      outcome: "match",
+      files: [
+        {
+          path: "src/schema.ts",
+          source: 'import { z } from "zod"; const S = z.number().min(5).max(4);',
+        },
+      ],
+      focusPath: "src/schema.ts",
+      expectedCount: 1,
+      public: true,
+    },
+  ],
+} as const satisfies RuleDocumentation;
 
 type Bound = {
   readonly exclusive: boolean;
@@ -125,6 +170,7 @@ function isOutermostCall(node: TSESTree.CallExpression): boolean {
 
 export default createRule<Options, MessageIds>({
   name: "no-impossible-zod-literal-bounds",
+  documentation: noImpossibleZodLiteralBoundsDocumentation,
   meta: {
     type: "problem",
     docs: {

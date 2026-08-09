@@ -6,10 +6,20 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import children, nodes, walk
 from sarj_python_lint.rules._logging import LOG_METHODS
 
@@ -24,7 +34,47 @@ type ParentMap = dict[ast.AST, ast.AST]
 class NoSentinelReturnOnExcept(Rule):
     id: str = "no-sentinel-return-on-except"
     code: str = "SARJ009"
-    description: str = "`except` handler returns a sentinel and never re-raises — the exception is silently swallowed."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Exception handler silently converts a failure into a sentinel return value.",
+        rationale="Unobservable sentinel returns erase failure context and make error handling ambiguous for callers.",
+        remediation="Re-raise the exception, log it before returning, or expose failure through a typed result.",
+        category=RuleCategory.CORRECTNESS,
+        limitations=(
+            "Only final empty or false sentinel returns and bare `except: pass` handlers are reported.",
+            "Handlers that re-raise, log, print the exception, or implement a recognized result contract are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="silent-sentinel-return",
+                title="Exception silently converted to None",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "service.py",
+                        "def load():\n    try:\n        return risky()\n    except Exception:\n        return None\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("service.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="observable-sentinel-return",
+                title="Exception logged before returning None",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "service.py",
+                        "def load():\n    try:\n        return risky()\n    except Exception:\n        logger.warning('load failed')\n        return None\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("service.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
+    )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

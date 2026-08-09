@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, final, override
 
 from sarj_sql_lint.rule_base import (
+    AutofixPolicy,
     Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
     Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
     dollar_quoted_lines,
     is_dump_file,
     is_postgres_migration,
@@ -88,7 +95,42 @@ class InsertRequiresOnConflict(Rule):
 
     id = "insert-requires-on-conflict"
     code = "SARJ105"
-    description = "INSERT without ON CONFLICT — migration data writes must be idempotent upserts."
+    documentation = RuleDocumentation(
+        summary="INSERT without ON CONFLICT — migration data writes must be idempotent upserts.",
+        rationale="A retried seed migration can duplicate rows or fail on a uniqueness constraint when an insert has no replay behavior.",
+        remediation="Add ON CONFLICT with an explicit DO NOTHING or DO UPDATE action.",
+        category=RuleCategory.CORRECTNESS,
+        autofix=AutofixPolicy.NONE,
+        limitations=("Only PostgreSQL migration paths and explicitly marked PostgreSQL migrations are checked.",),
+        examples=(
+            RuleExample(
+                example_id="non-idempotent-seed-insert",
+                title="Seed insert without conflict handling",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.sql("supabase/migrations/001_seed.sql", "INSERT INTO plan (name) VALUES ('free');\n"),
+                ),
+                focus_path=PurePosixPath("supabase/migrations/001_seed.sql"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="idempotent-seed-insert",
+                title="Seed insert with conflict handling",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "supabase/migrations/001_seed.sql",
+                        "INSERT INTO plan (name) VALUES ('free') ON CONFLICT (name) DO NOTHING;\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("supabase/migrations/001_seed.sql"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
+    )
+    description = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

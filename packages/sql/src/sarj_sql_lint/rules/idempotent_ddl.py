@@ -3,12 +3,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, final, override
 
 from sarj_sql_lint.rule_base import (
+    AutofixPolicy,
     Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
     Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
     is_dump_file,
     is_generated_migration,
     is_migration_source,
@@ -83,7 +90,39 @@ class IdempotentDdl(Rule):
 
     id = "idempotent-ddl"
     code = "SARJ102"
-    description = "DDL without IF [NOT] EXISTS — migrations must be safe to re-run."
+    documentation = RuleDocumentation(
+        summary="DDL without IF [NOT] EXISTS — migrations must be safe to re-run.",
+        rationale="A partially applied migration may be retried, so unconditional object creation or removal can fail before recovery completes.",
+        remediation="Use the supported IF NOT EXISTS or IF EXISTS form for the DDL statement.",
+        category=RuleCategory.CORRECTNESS,
+        autofix=AutofixPolicy.NONE,
+        limitations=("Dialect-specific DDL forms are checked only where the guard syntax is supported.",),
+        examples=(
+            RuleExample(
+                example_id="unguarded-table-creation",
+                title="Table creation that fails on replay",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.sql("migrations/001_orders.sql", "CREATE TABLE orders (id BIGINT PRIMARY KEY);\n"),),
+                focus_path=PurePosixPath("migrations/001_orders.sql"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="guarded-table-creation",
+                title="Replay-safe table creation",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "migrations/001_orders.sql", "CREATE TABLE IF NOT EXISTS orders (id BIGINT PRIMARY KEY);\n"
+                    ),
+                ),
+                focus_path=PurePosixPath("migrations/001_orders.sql"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
+    )
+    description = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

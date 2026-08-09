@@ -6,9 +6,20 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
-from typing import TYPE_CHECKING, NamedTuple, override
+from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import children, nodes, walk
 from sarj_python_lint.rules._paths import is_test_path
 
@@ -71,7 +82,48 @@ class _Finding(NamedTuple):
 class UnusedMockSetup(Rule):
     id: str = "unused-mock-setup"
     code: str = "SARJ067"
-    description: str = "Mock setup the test can never exercise — overwritten before use, or asserted never called."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Tests should remove mock configuration that cannot affect execution.",
+        rationale="Overwritten or contradicted mock setup adds misleading, unreachable test behavior.",
+        remediation="Delete the unused setup or exercise the mock before replacing or contradicting it.",
+        category=RuleCategory.TESTING,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Only test paths are analyzed.",
+            "Potentially effectful statements between assignments prevent a finding.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="overwritten-mock-setup",
+                title="Mock return value is overwritten before use",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_billing.py",
+                        "def test_charge():\n    gateway.charge.return_value = 1\n    gateway.charge.return_value = 2\n    assert billing.charge(gateway) == 2\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_billing.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="mock-used-before-reset",
+                title="Test uses each configured value",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_billing.py",
+                        "def test_charge():\n    gateway.charge.return_value = 1\n    assert billing.charge(gateway) == 1\n    gateway.charge.return_value = 2\n    assert billing.charge(gateway) == 2\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_billing.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
+    )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

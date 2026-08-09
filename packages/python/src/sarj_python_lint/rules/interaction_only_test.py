@@ -8,10 +8,21 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass
 from enum import Enum, auto
+from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._paths import is_test_path
 from sarj_python_lint.rules._test_assertions import names_verification
@@ -145,7 +156,45 @@ class _Profile:
 class InteractionOnlyTest(Rule):
     id: str = "interaction-only-test"
     code: str = "SARJ063"
-    description: str = "Test asserts only on mock call bookkeeping — it pins the call sequence, not the behaviour."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Tests should verify outcomes, not only mock interaction bookkeeping.",
+        rationale="Interaction-only assertions pin implementation call sequences without proving useful behavior.",
+        remediation="Assert returned data, persisted state, emitted output, or another observable outcome.",
+        category=RuleCategory.TESTING,
+        autofix=AutofixPolicy.NONE,
+        limitations=("Only collected tests with multiple mock targets and no outcome assertion are reported.",),
+        examples=(
+            RuleExample(
+                example_id="interaction-only",
+                title="Test checks only collaborator calls",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_notify.py",
+                        'def test_notify():\n    notify(mailer, audit, user)\n    mailer.send.assert_called_once_with(user.email)\n    audit.record.assert_called_once_with("notified")\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_notify.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="observable-outcome",
+                title="Test checks the returned notification",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_notify.py",
+                        'def test_notify():\n    result = notify(mailer, audit, user)\n    mailer.send.assert_called_once_with(user.email)\n    audit.record.assert_called_once_with("notified")\n    assert result.status == "sent"\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_notify.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
+    )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

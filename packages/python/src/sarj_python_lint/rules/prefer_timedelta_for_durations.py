@@ -6,11 +6,21 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from pathlib import PurePosixPath
 import re
 from types import MappingProxyType
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._paths import is_generated, is_test_path
@@ -83,10 +93,42 @@ _CONSTRAINED_NUMERIC = MappingProxyType(
 class PreferTimedeltaForDurations(Rule):
     id: str = "prefer-timedelta-for-durations"
     code: str = "SARJ014"
-    description: str = (
-        "Duration named in time units (timeout_seconds, ttl, ...) typed as raw "
-        "int/float — use datetime.timedelta so the unit is explicit and checked."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Duration-bearing name is typed as a raw integer or float.",
+        rationale="A `timedelta` makes the unit explicit and prevents incompatible duration values from mixing silently.",
+        remediation="Use `datetime.timedelta` at the typed boundary and convert only at external interfaces.",
+        category=RuleCategory.CORRECTNESS,
+        limitations=(
+            "Detection relies on duration-shaped names and numeric type annotations.",
+            "Tests, generated files, CLI parameters, settings fields, counts, rates, calendar units, and timestamps are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="numeric-duration-parameter",
+                title="Seconds represented as an integer",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.python("scheduler.py", "def schedule(timeout_seconds: int) -> None: ...\n"),),
+                focus_path=PurePosixPath("scheduler.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="timedelta-duration-parameter",
+                title="Duration represented as timedelta",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "scheduler.py",
+                        "from datetime import timedelta\n\ndef schedule(timeout: timedelta) -> None: ...\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("scheduler.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

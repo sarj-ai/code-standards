@@ -14,7 +14,7 @@ import {
   restates,
   restatesStatementHead,
 } from "./_comments.js";
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
 
 type MessageIds = "restatesLineBelow";
@@ -42,6 +42,18 @@ const WALL_NARRATION_RE =
   /^(?:(?:\d+[.)]|(?:phase|step)\s+\d+\s*:?)\s*)?(?:add|build|call|check|compute|copy|count|create|fetch|filter|find|get|handle|load|map|merge|parse|process|read|remove|return|save|send|set|sort|store|update|validate|write)(?:s|es|d|ed|ing)?\b/i;
 const WALL_CLUSTER_MAX_LINE_GAP = 8;
 const WALL_CLUSTER_MIN_COMMENTS = 3;
+
+export const noRestatedCommentDocumentation = {
+  summary: "Flag a single-line comment whose every word already appears on the statement below it.",
+  rationale: "A comment that only repeats code adds no context and can become stale independently.",
+  remediation: "Delete the comment or replace it with the reason, constraint, or consequence absent from the code.",
+  category: "maintainability",
+  limitations: ["Directives, protected references, questions, multi-line prose, comments with novel content, and generated files are excluded."],
+  examples: [
+    { id: "reason-comment", title: "Keep the reason the code cannot express", outcome: "no-match", files: [{ path: "src/cache.ts", source: "// Serialize because the cache key is stable across deploys.\nconst key = serialize(input);" }], focusPath: "src/cache.ts", expectedCount: 0, public: true },
+    { id: "restated-comment", title: "Remove a comment that repeats the statement", outcome: "match", files: [{ path: "src/cache.ts", source: "// Serialize key\nconst key = serialize(input);" }], focusPath: "src/cache.ts", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
 
 /** True when `a` and `b` are `//` comments on consecutive lines. */
 function areAdjacentLineComments(
@@ -72,6 +84,7 @@ function headsSiblingRun(node: TSESTree.Node): boolean {
 
 export default createRule<Options, MessageIds>({
   name: "no-restated-comment",
+  documentation: noRestatedCommentDocumentation,
   meta: {
     type: "suggestion",
     docs: {

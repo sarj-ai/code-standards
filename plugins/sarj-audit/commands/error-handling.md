@@ -1,6 +1,6 @@
 # Error handling
 
-Audit exception and failure handling using the shared [audit protocol](../README.md#audit-protocol).
+Audit exception and failure handling using the shared [audit protocol](../skills/audit-protocol/SKILL.md#audit-protocol).
 
 ## Judgment checks
 

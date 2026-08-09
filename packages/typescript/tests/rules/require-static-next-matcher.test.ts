@@ -2,7 +2,7 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/require-static-next-matcher.js";
+import rule, { requireStaticNextMatcherDocumentation } from "../../src/rules/require-static-next-matcher.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -20,6 +20,7 @@ const PROXY = "/repo/src/proxy.ts";
 
 ruleTester.run("require-static-next-matcher", rule, {
   valid: [
+    { name: "accepts the documented literal matcher", code: requireStaticNextMatcherDocumentation.examples[0].files[0].source, filename: requireStaticNextMatcherDocumentation.examples[0].focusPath },
     {
       name: "accepts a literal string matcher",
       code: `export const config = { matcher: "/api/:path*" };`,
@@ -66,6 +67,7 @@ ruleTester.run("require-static-next-matcher", rule, {
     },
   ],
   invalid: [
+    { name: "reports the documented computed matcher", code: requireStaticNextMatcherDocumentation.examples[1].files[0].source, filename: requireStaticNextMatcherDocumentation.examples[1].focusPath, errors: [{ messageId: "dynamicMatcher" }] },
     {
       name: "rejects String.raw tagged templates",
       code: `export const config = { matcher: String.raw\`/api\\.json\` };`,

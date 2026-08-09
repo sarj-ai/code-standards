@@ -2,7 +2,7 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-positional-tuple-return.js";
+import rule, { noPositionalTupleReturnDocumentation } from "../../src/rules/no-positional-tuple-return.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -17,6 +17,7 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("no-positional-tuple-return", rule, {
   valid: [
+    { name: "accepts the documented named object", code: noPositionalTupleReturnDocumentation.examples[0].files[0].source },
     {
       name: "allows private tuple-returning implementation details inside an exported class",
       code: "export class Loader { private load(): [string, number] { return impl(); } public run(): void {} }",
@@ -72,6 +73,7 @@ ruleTester.run("no-positional-tuple-return", rule, {
     { code: "export function inferred() { return ['a', 1]; }" },
   ],
   invalid: [
+    { name: "reports the documented tuple return", code: noPositionalTupleReturnDocumentation.examples[1].files[0].source, errors: [{ messageId: "noPositionalTupleReturn" }] },
     {
       name: "rejects an anonymous default function",
       code: "export default function (): [string, number] { return impl(); }",

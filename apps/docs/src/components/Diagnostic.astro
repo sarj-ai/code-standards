@@ -1,0 +1,23 @@
+---
+interface Props {
+  code: string;
+  path: string;
+  message: string;
+  source?: string;
+  line?: number;
+}
+
+const { code, path, message, source, line = 1 } = Astro.props;
+---
+
+<div class="diagnostic" role="figure" aria-label={`Example diagnostic ${code}`}>
+  <div class="diagnostic__gutter" aria-hidden="true">{line}</div>
+  <div class="diagnostic__body">
+    <div class="diagnostic__location">
+      <span>{path}:{line}:1</span>
+      <strong>{code}</strong>
+    </div>
+    <p>{message}</p>
+    {source && <pre><code>{source}</code></pre>}
+  </div>
+</div>

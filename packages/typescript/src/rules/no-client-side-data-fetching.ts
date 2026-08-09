@@ -6,10 +6,42 @@
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 
 type MessageIds = "noClientFetch";
 type Options = readonly [];
+
+export const noClientSideDataFetchingDocumentation = {
+  summary: "Disallow direct data fetching inside `useEffect` or `useLayoutEffect`.",
+  rationale:
+    "Effect-driven reads begin after rendering and can create request waterfalls, duplicate fetches, and loading-state layout shifts.",
+  remediation:
+    "Fetch in a React Server Component or Server Action, or use a client cache such as SWR or React Query.",
+  category: "performance",
+  limitations: [
+    "The rule recognizes common fetch clients syntactically and exempts analytics endpoints and non-GET `fetch` calls.",
+  ],
+  examples: [
+    {
+      id: "effect-without-fetch",
+      title: "An effect performs no data request",
+      outcome: "no-match",
+      files: [{ path: "src/users.tsx", source: "import { useEffect } from 'react'; useEffect(() => { console.log('mounted'); }, []);" }],
+      focusPath: "src/users.tsx",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "fetch-inside-effect",
+      title: "An effect starts a data request",
+      outcome: "match",
+      files: [{ path: "src/users.tsx", source: "useEffect(() => { fetch('/api/users'); }, []);" }],
+      focusPath: "src/users.tsx",
+      expectedCount: 1,
+      public: true,
+    },
+  ],
+} as const satisfies RuleDocumentation;
 
 const FETCH_LIBS: ReadonlySet<string> = new Set(["axios", "ky", "superagent"]);
 
@@ -170,11 +202,11 @@ function extractUrlString(node: TSESTree.CallExpression): string {
 
 export default createRule<Options, MessageIds>({
   name: "no-client-side-data-fetching",
+  documentation: noClientSideDataFetchingDocumentation,
   meta: {
     type: "problem",
     docs: {
-      description:
-        "Disallow data fetching inside `useEffect` / `useLayoutEffect`; prefer React Server Components, Server Actions, or a client-side cache (SWR / React Query).",
+      description: "Disallow direct data fetching inside `useEffect` or `useLayoutEffect`.",
     },
     schema: [],
     messages: {

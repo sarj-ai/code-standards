@@ -2,7 +2,7 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/store-insert-requires-on-conflict.js";
+import rule, { storeInsertRequiresOnConflictDocumentation } from "../../src/rules/store-insert-requires-on-conflict.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -17,6 +17,7 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("store-insert-requires-on-conflict", rule, {
   valid: [
+    { name: "accepts the documented conflict-safe insert", code: storeInsertRequiresOnConflictDocumentation.examples[0].files[0].source },
     {
       name: "allows SQLite ON CONFLICT DO NOTHING",
       code: "db.prepare(`INSERT INTO runs (id, status) VALUES (?1, ?2) ON CONFLICT(id) DO NOTHING`).run();",
@@ -107,6 +108,7 @@ ruleTester.run("store-insert-requires-on-conflict", rule, {
     },
   ],
   invalid: [
+    { name: "reports the documented bare insert", code: storeInsertRequiresOnConflictDocumentation.examples[1].files[0].source, errors: [{ messageId: "storeInsertRequiresOnConflict" }] },
     {
       name: "reports SQLite INSERT OR ABORT",
       code: "db.prepare(`INSERT OR ABORT INTO t (a) VALUES (?)`).run();",

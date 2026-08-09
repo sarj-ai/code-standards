@@ -7,7 +7,7 @@ from sarj_python_lint.rules.no_fat_try_blocks import NoFatTryBlocks
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import Diagnostic
+    from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
 THRESHOLD = 3
@@ -15,6 +15,15 @@ THRESHOLD = 3
 
 def _check(source: str, path: str = "<t>.py") -> list[Diagnostic]:
     return NoFatTryBlocks().check(Path(path), source)
+
+
+_PUBLIC_EXAMPLES = NoFatTryBlocks.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(NoFatTryBlocks().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 def _try_with_n_calls(n: int, *, indent: str = "") -> str:

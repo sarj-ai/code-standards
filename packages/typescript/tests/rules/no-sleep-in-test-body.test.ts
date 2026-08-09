@@ -2,7 +2,7 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-sleep-in-test-body.js";
+import rule, { noSleepInTestBodyDocumentation } from "../../src/rules/no-sleep-in-test-body.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -19,6 +19,7 @@ const TEST_FILE = "/repo/src/worker.test.ts";
 
 ruleTester.run("no-sleep-in-test-body", rule, {
   valid: [
+    { name: "accepts the documented fake timer", filename: noSleepInTestBodyDocumentation.examples[0].focusPath, code: noSleepInTestBodyDocumentation.examples[0].files[0].source },
     {
       name: "allows a Promise sleep inside a nested latency fake",
       filename: TEST_FILE,
@@ -96,6 +97,7 @@ ruleTester.run("no-sleep-in-test-body", rule, {
     },
   ],
   invalid: [
+    { name: "reports the documented fixed sleep", filename: noSleepInTestBodyDocumentation.examples[1].focusPath, code: noSleepInTestBodyDocumentation.examples[1].files[0].source, errors: [{ messageId: "noSleepInTestBody" }] },
     {
       name: "reports an expression-bodied Promise sleep in an it callback",
       filename: TEST_FILE,

@@ -6,11 +6,44 @@
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
 
 type MessageIds = "noConditionalInTest";
 type Options = readonly [];
+
+export const noConditionalInTestDocumentation = {
+  summary:
+    "Disallow test conditionals that can skip a runtime assertion or exit the test before one runs.",
+  rationale:
+    "A branch can skip the assertion that gives a test its meaning, allowing unexpected inputs to pass silently.",
+  remediation:
+    "Split each path into a separate test or use a parameterized case table with unconditional assertions.",
+  category: "testing",
+  limitations: [
+    "The rule exempts lifecycle hooks, nested helpers, and narrow guards whose outcome is pinned by a preceding assertion.",
+  ],
+  examples: [
+    {
+      id: "unconditional-assertion",
+      title: "A test always executes its assertion",
+      outcome: "no-match",
+      files: [{ path: "src/component.test.ts", source: "it('works', () => { expect(1).toBe(1); });" }],
+      focusPath: "src/component.test.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "conditional-assertion",
+      title: "A branch can skip the assertion",
+      outcome: "match",
+      files: [{ path: "src/component.test.ts", source: "it('fails with if', () => { if (ready) { expect(value).toBe(1); } });" }],
+      focusPath: "src/component.test.ts",
+      expectedCount: 1,
+      public: true,
+    },
+  ],
+} as const satisfies RuleDocumentation;
 
 const TEST_CALLERS: ReadonlySet<string> = new Set(["it", "test"]);
 
@@ -459,6 +492,7 @@ function isShortCircuitedAssertion(node: TSESTree.LogicalExpression): boolean {
 
 export default createRule<Options, MessageIds>({
   name: "no-conditional-in-test",
+  documentation: noConditionalInTestDocumentation,
   meta: {
     type: "problem",
     docs: {

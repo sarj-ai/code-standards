@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from sarj_python_lint.rule_base import is_suppressed
+from sarj_python_lint.rule_base import RuleExample, is_suppressed
 from sarj_python_lint.rules.prefer_class_row import PreferClassRow
 
 
@@ -24,6 +24,15 @@ def _check(source: str, path: str = "<t>.py") -> list[Diagnostic]:
     elif re.search(r"(?<![\w.])dict_row\b", source) and "from psycopg.rows import dict_row" not in source:
         checked += "\nfrom psycopg.rows import dict_row\n"
     return PreferClassRow().check(Path(path), checked)
+
+
+_PUBLIC_EXAMPLES = PreferClassRow.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(PreferClassRow().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 # Positive family: import-proven psycopg `dict_row` values fire.

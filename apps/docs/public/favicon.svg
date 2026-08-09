@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Sarj Standards">
+  <rect width="64" height="64" rx="12" fill="#172033"/>
+  <path d="M17 18h30v7H24v7h19v7H24v7h23v7H17z" fill="#f7f8fb"/>
+  <path d="M10 18h4v35h-4z" fill="#5870d8"/>
+</svg>

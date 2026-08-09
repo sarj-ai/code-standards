@@ -86,6 +86,30 @@ def test_every_rename_points_somewhere_live(shipped: ledger.Ledger) -> None:
     )
 
 
+def test_python_source_aliases_are_shipped_as_rename_guidance(shipped: ledger.Ledger) -> None:
+    recorded = {
+        entry.id: entry.replacement
+        for entry in shipped.retired
+        if entry.kind == "python" and entry.status is ledger.Status.RENAMED
+    }
+    expected: dict[str, str] = {}
+    for rule_id, rule in PYTHON_REGISTRY.items():
+        spec = rule.native_spec()
+        assert spec is not None
+        expected.update(dict.fromkeys(spec.aliases, rule_id))
+
+    assert recorded == expected
+
+
+def test_cross_engine_renames_are_shipped_as_migration_guidance(shipped: ledger.Ledger) -> None:
+    recorded = {entry.id: entry.replacement for entry in shipped.retired if entry.status is ledger.Status.RENAMED}
+
+    assert recorded["@sarj/require-interface-for-injected-service"] == "@sarj/require-port-for-service"
+    assert recorded["add-constraint-not-valid"] == "add-constraint-requires-not-valid"
+    assert recorded["no-limit-offset"] == "no-offset-pagination"
+    assert recorded["ephemeral-ai-artifact"] == "ephemeral-execution-artifact"
+
+
 def test_every_deleted_alias_is_recorded(shipped: ledger.Ledger) -> None:
     recorded = {entry.id: entry.replacement for entry in shipped.retired if entry.status is ledger.Status.RENAMED}
     missing = {old: new for old, new in _ALIASES_DELETED_IN_9_0_0.items() if recorded.get(old) != new}

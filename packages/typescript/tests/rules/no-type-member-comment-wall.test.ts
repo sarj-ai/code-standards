@@ -1,7 +1,9 @@
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-type-member-comment-wall.js";
+import rule, {
+  noTypeMemberCommentWallDocumentation,
+} from "../../src/rules/no-type-member-comment-wall.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -13,7 +15,7 @@ const ruleTester = new RuleTester();
 ruleTester.run("no-type-member-comment-wall", rule, {
   valid: [
     // No member comments at all — 79% of the OSS corpus.
-    { code: "interface Credentials { host: string; port: number; username: string; }" },
+    { code: noTypeMemberCommentWallDocumentation.examples[0].files[0].source },
     // Every comment says something the name and the type cannot. Nothing here
     // is protected, quoted, numbered or tagged: the ONLY thing keeping this
     // valid is that each comment adds more than `maxNovelWords` content words,
@@ -463,18 +465,7 @@ ruleTester.run("no-type-member-comment-wall", rule, {
     // typeorm/src/driver/sap/SapConnectionCredentialsOptions.ts:4 — ten members,
     // ten comments, every one "Database <the member's name>."
     {
-      code: [
-        "interface SapCredentials {",
-        "  // Database host.",
-        "  host?: string;",
-        "  // Database host port.",
-        "  port?: number;",
-        "  // Database username.",
-        "  username?: string;",
-        "  // Database password.",
-        "  password?: string;",
-        "}",
-      ].join("\n"),
+      code: noTypeMemberCommentWallDocumentation.examples[1].files[0].source,
       errors: [{ messageId: "commentWall" }],
     },
     // A comment that IS its member's name, blank-line separated exactly like

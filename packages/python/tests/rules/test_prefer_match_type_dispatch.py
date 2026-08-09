@@ -2,11 +2,13 @@ from pathlib import Path
 import textwrap
 from typing import TYPE_CHECKING
 
+import pytest
+
 from sarj_python_lint.rules.prefer_match_type_dispatch import PreferMatchTypeDispatch
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import Diagnostic
+    from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
 SRC_PATH = "python/app/models/call_detail.py"
@@ -14,6 +16,15 @@ SRC_PATH = "python/app/models/call_detail.py"
 
 def _check(source: str, path: str = SRC_PATH) -> list[Diagnostic]:
     return PreferMatchTypeDispatch().check(Path(path), textwrap.dedent(source))
+
+
+_PUBLIC_EXAMPLES = PreferMatchTypeDispatch.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(PreferMatchTypeDispatch().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 # Core detection: Hideous parser helper / raise-in-try idiom                 #

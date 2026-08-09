@@ -2,7 +2,7 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-json-stringify-error.js";
+import rule, { noJsonStringifyErrorDocumentation } from "../../src/rules/no-json-stringify-error.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -17,6 +17,7 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("no-json-stringify-error", rule, {
   valid: [
+    { name: "allows the documented explicit error field", code: noJsonStringifyErrorDocumentation.examples[0].files[0].source },
     { name: "allows non-error objects", code: "JSON.stringify(user);" },
     { name: "allows object literals", code: "JSON.stringify({ a: 1 });" },
     {
@@ -148,6 +149,7 @@ ruleTester.run("no-json-stringify-error", rule, {
     },
   ],
   invalid: [
+    { name: "reports the documented Error payload", code: noJsonStringifyErrorDocumentation.examples[1].files[0].source, errors: [{ messageId: "noJsonStringifyError" }] },
     {
       name: "reports a catch binding nested in an object literal",
       code: "try { f(); } catch (err) { JSON.stringify({ error: err }); }",

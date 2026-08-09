@@ -6,12 +6,23 @@
 
 import { type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
 import { createSqlListener } from "./_sql.js";
 
 type MessageIds = "storeInsertRequiresOnConflict";
 type Options = readonly [];
+
+export const storeInsertRequiresOnConflictDocumentation = {
+  summary: "Require an embedded SQL INSERT to carry ON CONFLICT; store writes replay under cron re-runs and queue redelivery and must be idempotent upserts.",
+  rationale: "A replayed bare insert can duplicate data or fail on a uniqueness constraint.",
+  remediation: "Add an appropriate `ON CONFLICT` action or supported replay-safe insert form.",
+  category: "correctness",
+  examples: [
+    { id: "conflict-safe-insert", title: "Handle a replayed insert", outcome: "no-match", files: [{ path: "src/store.ts", source: "db.prepare(`INSERT INTO runs (id) VALUES (?) ON CONFLICT(id) DO NOTHING`).run();" }], focusPath: "src/store.ts", expectedCount: 0, public: true },
+    { id: "bare-insert", title: "Do not issue a replay-unsafe insert", outcome: "match", files: [{ path: "src/store.ts", source: "db.prepare(`INSERT INTO runs (id) VALUES (?)`).run();" }], focusPath: "src/store.ts", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
 
 /** Matches INSERT writes only when their SQL keywords are adjacent. */
 const INSERT_WRITE =
@@ -24,6 +35,7 @@ const INSERT_GATE = /insert/i;
 
 export default createRule<Options, MessageIds>({
   name: "store-insert-requires-on-conflict",
+  documentation: storeInsertRequiresOnConflictDocumentation,
   meta: {
     type: "problem",
     docs: {

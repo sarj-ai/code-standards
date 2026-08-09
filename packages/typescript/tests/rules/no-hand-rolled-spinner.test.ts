@@ -2,7 +2,7 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-hand-rolled-spinner.js";
+import rule, { noHandRolledSpinnerDocumentation } from "../../src/rules/no-hand-rolled-spinner.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -20,6 +20,7 @@ const COMPONENT = "/repo/src/components/loading-state.tsx";
 
 ruleTester.run("no-hand-rolled-spinner", rule, {
   valid: [
+    { name: "accepts the documented shared spinner", code: noHandRolledSpinnerDocumentation.examples[0].files[0].source, filename: COMPONENT },
     {
       name: "accepts the design-system spinner",
       code: `<Spinner className="size-4" />`,
@@ -52,6 +53,7 @@ ruleTester.run("no-hand-rolled-spinner", rule, {
     },
   ],
   invalid: [
+    { name: "reports the documented border-ring spinner", code: noHandRolledSpinnerDocumentation.examples[1].files[0].source, filename: COMPONENT, errors: [{ messageId: "handRolledSpinner" }] },
     {
       name: "rejects a div border-ring spinner",
       code: `<div className="border-border h-4 w-4 animate-spin rounded-full border-2 border-t-transparent" />`,

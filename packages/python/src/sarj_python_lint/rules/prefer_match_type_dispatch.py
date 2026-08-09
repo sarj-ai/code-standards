@@ -6,9 +6,20 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
-from typing import TYPE_CHECKING, final, override
+from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, ClassVar, final, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._paths import is_generated, is_test_path
 
 
@@ -654,10 +665,62 @@ class _TypeDispatchVisitor(ast.NodeVisitor):
 class PreferMatchTypeDispatch(Rule):
     id: str = "prefer-match-type-dispatch"
     code: str = "SARJ080"
-    description: str = (
-        "Control-flow raise, sequential type guards, repeated isinstance dispatch, or redundant class OR-pattern "
-        "capture — prefer concise Python 3.10+ match/case pattern matching."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Use `match` for explicit runtime type dispatch instead of branching parser machinery.",
+        rationale="Pattern matching makes type cases and sentinel cases explicit without control-flow exceptions or repeated dispatch checks.",
+        remediation="Replace the detected guard or exception-driven dispatch with `match` arms for each supported value shape.",
+        category=RuleCategory.MAINTAINABILITY,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "The rule targets several measured shapes, including control-flow raises, sequential guards, and repeated `isinstance` dispatch.",
+            "Generated files and code that shadows `isinstance` are excluded; test files omit the control-flow-raise check.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="sequential-type-guards",
+                title="Parser dispatches through sequential guards",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/parser.py",
+                        "def parse(value: object):\n"
+                        "    if value is None:\n"
+                        "        return value\n"
+                        "    if isinstance(value, Unset):\n"
+                        "        return value\n"
+                        "    if isinstance(value, int):\n"
+                        "        return str(value)\n"
+                        "    return None\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/parser.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="match-type-cases",
+                title="Parser names value shapes with match arms",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/parser.py",
+                        "def parse(value: object):\n"
+                        "    match value:\n"
+                        "        case None | Unset():\n"
+                        "            return value\n"
+                        "        case int():\n"
+                        "            return str(value)\n"
+                        "        case _:\n"
+                        "            return None\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/parser.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

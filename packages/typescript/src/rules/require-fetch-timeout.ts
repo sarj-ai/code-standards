@@ -6,7 +6,7 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isScriptFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "missingSignal";
@@ -15,6 +15,17 @@ type Options = readonly [
     allowIn?: readonly string[];
   }?,
 ];
+
+export const requireFetchTimeoutDocumentation = {
+  summary: "Require an abort `signal` (e.g. `AbortSignal.timeout(ms)`) on global `fetch()` calls so stalled upstreams cannot hang the caller forever.",
+  rationale: "An unbounded request can occupy work indefinitely when an upstream stalls.",
+  remediation: "Pass an abort signal, such as `AbortSignal.timeout(ms)`, in the fetch init.",
+  category: "correctness",
+  examples: [
+    { id: "bounded-fetch", title: "Bound the request", outcome: "no-match", files: [{ path: "src/client.ts", source: "await fetch(url, { signal: AbortSignal.timeout(5000) });" }], focusPath: "src/client.ts", expectedCount: 0, public: true },
+    { id: "unbounded-fetch", title: "Do not leave fetch unbounded", outcome: "match", files: [{ path: "src/client.ts", source: "await fetch('https://api.example.com/items');" }], focusPath: "src/client.ts", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
 
 /** The explicit-global receivers of `<obj>.fetch(...)`. */
 const GLOBAL_OBJECTS: ReadonlySet<string> = new Set([
@@ -81,6 +92,7 @@ function isInlineUrl(
 
 export default createRule<Options, MessageIds>({
   name: "require-fetch-timeout",
+  documentation: requireFetchTimeoutDocumentation,
   meta: {
     type: "problem",
     docs: {

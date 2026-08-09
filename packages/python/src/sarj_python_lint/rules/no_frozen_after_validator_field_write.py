@@ -6,9 +6,20 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, final, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._paths import is_generated, is_test_path
 
@@ -27,7 +38,77 @@ _TYPING_SOURCES = frozenset({"typing", "typing_extensions"})
 class NoFrozenAfterValidatorFieldWrite(Rule):
     id = "no-frozen-after-validator-field-write"
     code = "SARJ401"
-    description = "Frozen Pydantic after-validators cannot directly assign declared model fields."
+    documentation = RuleDocumentation(
+        summary="Do not assign declared fields in after-validators on frozen Pydantic models.",
+        rationale=(
+            "Direct field assignment contradicts the model's frozen contract and can fail only when the validator "
+            "runs, making construction behavior surprising and brittle."
+        ),
+        remediation=(
+            "Validate without mutation, compute the value before constructing the model, or return an explicitly "
+            "updated model when replacement is part of the design."
+        ),
+        category=RuleCategory.CORRECTNESS,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            (
+                "The rule checks direct public fields on direct Pydantic `BaseModel` subclasses configured with "
+                "literal `ConfigDict(frozen=True)`."
+            ),
+            (
+                "It detects direct assignment, annotated assignment, augmented assignment, and tuple or list "
+                "destructuring through the validator's receiver."
+            ),
+            "Indirect mutation through method calls, `setattr`, or `object.__setattr__` is outside its scope.",
+            "Test and generated files are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="after-validator-mutates-frozen-field",
+                title="After-validator assigns a frozen model field",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/models.py",
+                        "from pydantic import BaseModel, ConfigDict, model_validator\n\n"
+                        "class Counter(BaseModel):\n"
+                        "    model_config = ConfigDict(frozen=True)\n"
+                        "    value: int\n\n"
+                        '    @model_validator(mode="after")\n'
+                        "    def normalize(self):\n"
+                        "        self.value = abs(self.value)\n"
+                        "        return self\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/models.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="after-validator-only-validates-frozen-field",
+                title="After-validator checks without mutating the model",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/models.py",
+                        "from pydantic import BaseModel, ConfigDict, model_validator\n\n"
+                        "class Counter(BaseModel):\n"
+                        "    model_config = ConfigDict(frozen=True)\n"
+                        "    value: int\n\n"
+                        '    @model_validator(mode="after")\n'
+                        "    def require_non_negative(self):\n"
+                        "        if self.value < 0:\n"
+                        '            raise ValueError("value must be non-negative")\n'
+                        "        return self\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/models.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
+    )
+    description = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

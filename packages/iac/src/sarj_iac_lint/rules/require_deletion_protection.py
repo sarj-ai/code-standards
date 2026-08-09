@@ -2,11 +2,21 @@
 
 from __future__ import annotations
 
+from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import TYPE_CHECKING, final, override
 
 from sarj_iac_lint._hcl import blocks
-from sarj_iac_lint.rule_base import Diagnostic, Rule
+from sarj_iac_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+)
 
 
 if TYPE_CHECKING:
@@ -94,10 +104,57 @@ class RequireDeletionProtection(Rule):
 
     id = "require-deletion-protection"
     code = "SARJ201"
-    description = (
-        "Stateful resource (Cloud SQL, GKE, BigQuery, RDS, ...) must set "
-        "deletion_protection = true so a stray apply cannot destroy prod data."
+    documentation = RuleDocumentation(
+        summary=(
+            "Stateful resource (Cloud SQL, GKE, BigQuery, RDS, ...) must set "
+            "deletion_protection = true so a stray apply cannot destroy prod data."
+        ),
+        rationale=(
+            "Stateful services can lose durable production data when an accidental Terraform change or destroy is "
+            "allowed to delete the backing resource."
+        ),
+        remediation=("Set the supported literal provider deletion guard or add lifecycle { prevent_destroy = true }."),
+        category=RuleCategory.SECURITY,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Only the curated resource types and provider guard spellings supported by the rule are analyzed.",
+            "Dynamic guard expressions are rejected because their protection cannot be proven statically.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="unguarded-database",
+                title="Stateful database without a deletion guard",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.iac(
+                        "database.tf",
+                        'resource "google_sql_database_instance" "main" {\n  name = "prod"\n}\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("database.tf"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="protected-database",
+                title="Stateful database with provider deletion protection",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.iac(
+                        "database.tf",
+                        'resource "google_sql_database_instance" "main" {\n'
+                        '  name                = "prod"\n'
+                        "  deletion_protection = true\n"
+                        "}\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("database.tf"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

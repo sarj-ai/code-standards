@@ -6,11 +6,23 @@
 
 import { type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import type { Scope, SourceCode } from "@typescript-eslint/utils/ts-eslint";
 
 type MessageIds = "noJsonStringifyError";
 type Options = readonly [];
+
+export const noJsonStringifyErrorDocumentation = {
+  summary: "Disallow `JSON.stringify` on an Error value; it yields `{}` because `message`/`stack` are non-enumerable.",
+  rationale: "Native Error details are non-enumerable, so generic JSON serialization discards diagnostic information.",
+  remediation: "Serialize explicit error fields or use an error-aware serializer.",
+  category: "correctness",
+  limitations: ["The rule uses local syntax and naming evidence rather than type information."],
+  examples: [
+    { id: "explicit-error-message", title: "Serialize an enumerable error field", outcome: "no-match", files: [{ path: "src/report.ts", source: "try { f(); } catch (err) { JSON.stringify({ error: err.message }); }" }], focusPath: "src/report.ts", expectedCount: 0, public: true },
+    { id: "stringified-error", title: "Do not stringify an Error object", outcome: "match", files: [{ path: "src/report.ts", source: "try { f(); } catch (err) { JSON.stringify({ error: err }); }" }], focusPath: "src/report.ts", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
 
 const ERROR_NAME_PATTERN = /^(e|err|error|ex|exc)$/i;
 
@@ -321,6 +333,7 @@ function nestedExpressionSuggestsError(
 
 export default createRule<Options, MessageIds>({
   name: "no-json-stringify-error",
+  documentation: noJsonStringifyErrorDocumentation,
   meta: {
     type: "problem",
     docs: {

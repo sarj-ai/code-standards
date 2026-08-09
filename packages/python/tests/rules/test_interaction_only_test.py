@@ -7,7 +7,7 @@ from sarj_python_lint.rules.interaction_only_test import InteractionOnlyTest
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import Diagnostic
+    from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
 TEST_PATH = "python/app/tests/integrations/test_crm_notifications_handler.py"
@@ -15,6 +15,15 @@ TEST_PATH = "python/app/tests/integrations/test_crm_notifications_handler.py"
 
 def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
     return InteractionOnlyTest().check(Path(path), source)
+
+
+_PUBLIC_EXAMPLES = InteractionOnlyTest.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(InteractionOnlyTest().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 # The motivating shape, widened to two collaborators so it clears the

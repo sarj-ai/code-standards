@@ -12,7 +12,28 @@ from sarj_python_lint.rules.no_first_party_private_import import NoFirstPartyPri
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from sarj_python_lint.rule_base import Diagnostic
+    from sarj_python_lint.rule_base import Diagnostic, RuleExample
+
+
+_PUBLIC_EXAMPLES = NoFirstPartyPrivateImport.public_examples()
+
+
+@pytest.mark.parametrize(
+    "example",
+    _PUBLIC_EXAMPLES,
+    ids=tuple(example.example_id for example in _PUBLIC_EXAMPLES),
+)
+def test_public_documentation_examples_are_executable(tmp_path: Path, example: RuleExample) -> None:
+    root = tmp_path / example.example_id
+    for item in example.files:
+        target = root / item.path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(item.source, encoding="utf-8")
+    focus = root / example.focus_path
+
+    findings = NoFirstPartyPrivateImport().check(focus, example.focus_file.source)
+
+    assert len(findings) == example.expected_count
 
 
 @pytest.fixture

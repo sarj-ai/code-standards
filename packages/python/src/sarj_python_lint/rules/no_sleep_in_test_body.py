@@ -7,9 +7,20 @@ from __future__ import annotations
 
 import ast
 from collections import Counter
-from typing import TYPE_CHECKING, override
+from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, final, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import walk
 from sarj_python_lint.rules._paths import is_test_path
 
@@ -126,10 +137,52 @@ def _is_conditional_exit(stmt: ast.stmt) -> bool:
     )
 
 
+@final
 class NoSleepInTestBody(Rule):
     id: str = "no-sleep-in-test-body"
     code: str = "SARJ031"
-    description: str = "Nonzero `sleep()` in a test body — synchronize on the signal, don't sleep."
+    documentation = RuleDocumentation(
+        summary="Tests should synchronize on observable state instead of waiting a fixed duration.",
+        rationale="A fixed nonzero sleep makes test reliability and runtime depend on machine and CI timing.",
+        remediation="Await the operation, wait on an event, or poll the expected condition with a bounded timeout.",
+        category=RuleCategory.TESTING,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Only test paths and calls resolved to imported `time.sleep` or `asyncio.sleep` are analyzed.",
+            "Zero, computed, helper-owned, and bounded polling-loop sleeps are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="fixed-test-sleep",
+                title="Test waits a fixed duration",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_worker.py",
+                        "import asyncio\n\nasync def test_worker_finishes():\n    start_worker()\n    await asyncio.sleep(0.1)\n    assert worker_finished()\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_worker.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="event-synchronized-test",
+                title="Test waits for the completion signal",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_worker.py",
+                        "async def test_worker_finishes():\n    finished = start_worker()\n    await finished.wait()\n    assert worker_finished()\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_worker.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
+    )
+    description = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

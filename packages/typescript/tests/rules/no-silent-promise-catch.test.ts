@@ -2,7 +2,7 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-silent-promise-catch.js";
+import rule, { noSilentPromiseCatchDocumentation } from "../../src/rules/no-silent-promise-catch.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -17,6 +17,7 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("no-silent-promise-catch", rule, {
   valid: [
+    { name: "accepts the documented reported rejection", code: noSilentPromiseCatchDocumentation.examples[0].files[0].source },
     {
       name: "allows a suppression explained inside the handler",
       code: "thenable.catch(() => {\n  // prevent unhandled rejection errors\n});",
@@ -141,6 +142,7 @@ ruleTester.run("no-silent-promise-catch", rule, {
     },
   ],
   invalid: [
+    { name: "reports the documented silent rejection", code: noSilentPromiseCatchDocumentation.examples[1].files[0].source, errors: [{ messageId: "silentCatch" }] },
     {
       name: "reports a silent rejection handler in the second then argument",
       code: "fetchUser(id).then(render, () => null);",

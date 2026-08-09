@@ -897,7 +897,7 @@ def test_hook_install_resolves_environment_binaries(monkeypatch: pytest.MonkeyPa
     hooks.install(tmp_path)
 
     assert calls[0] == ["/bin/lefthook", "install", "-f"]
-    assert 'LEFTHOOK_BIN="/bin/sarj-lefthook"' in hook.read_text(encoding="utf-8")
+    assert 'LEFTHOOK_BIN="/bin/lefthook"' in hook.read_text(encoding="utf-8")
 
 
 def test_live_rule_inventory_is_machine_readable() -> None:

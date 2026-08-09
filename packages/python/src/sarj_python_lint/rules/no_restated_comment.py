@@ -6,11 +6,23 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from pathlib import PurePosixPath
 import re
 import tokenize
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import ColumnEncoding, Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    ColumnEncoding,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._comments import (
     code_tokens,
@@ -182,10 +194,52 @@ def _is_action_assignment(node: ast.stmt | None) -> bool:
 class NoRestatedComment(Rule):
     id: str = "no-restated-comment"
     code: str = "SARJ049"
-    description: str = (
-        "Comment restates the statement below it — delete it, or replace it "
-        "with the why; the code already carries the what."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Comment restates the statement immediately below it.",
+        rationale="Comments that repeat code add reading cost and can become stale without explaining intent.",
+        remediation="Delete the comment or replace it with context the statement cannot express.",
+        category=RuleCategory.MAINTAINABILITY,
+        autofix=AutofixPolicy.SUGGESTION,
+        limitations=(
+            "Detection uses conservative lexical heuristics for short standalone comments above simple actions.",
+            "Generated files, directives, protected comments, section labels, and comments adding novel context are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="restated-action",
+                title="Comment repeats the action",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "service.py",
+                        "def load_profile(profile_id):\n"
+                        "    # Get profile by ID\n"
+                        "    return get_profile_by_id(profile_id)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("service.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="comment-explains-constraint",
+                title="Comment adds operational context",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "service.py",
+                        "def load_profile(profile_id):\n"
+                        "    # The replica may lag after signup, so read from primary.\n"
+                        "    return get_profile_by_id(profile_id)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("service.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

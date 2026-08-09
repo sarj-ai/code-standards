@@ -13,11 +13,42 @@ import {
 } from "@typescript-eslint/utils";
 import * as ts from "typescript";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
 
 type MessageIds = "nativeEnum" | "enumOfTsEnum";
 type Options = readonly [];
+
+export const noZodNativeEnumDocumentation = {
+  summary:
+    "Disallow `z.nativeEnum()` (and `z.enum()` over a TypeScript enum); use `z.enum([\"a\", \"b\"])` with a string-literal union instead.",
+  rationale: "Wrapping a TypeScript enum preserves its emitted runtime object and duplicates the schema's value definition across two constructs.",
+  remediation: "Pass string literals directly to `z.enum` and derive the TypeScript type with `z.infer`.",
+  category: "maintainability",
+  autofix: "safe",
+  limitations: ["Automatic fixes are limited to inline object literals whose unique values are all string literals."],
+  examples: [
+    {
+      id: "zod-literal-enum",
+      title: "Declare string values directly in Zod",
+      outcome: "no-match",
+      files: [{ path: "src/status.ts", source: "import { z } from \"zod\"; const S = z.enum([\"active\", \"inactive\"]);" }],
+      focusPath: "src/status.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "zod-native-enum",
+      title: "Do not wrap a TypeScript enum",
+      outcome: "match",
+      files: [{ path: "src/status.ts", source: "import { z } from \"zod\"; const S = z.nativeEnum({ Active: \"active\", Inactive: \"inactive\" });" }],
+      focusPath: "src/status.ts",
+      expectedCount: 1,
+      public: true,
+      fixedFiles: [{ path: "src/status.ts", source: "import { z } from \"zod\"; const S = z.enum([\"active\", \"inactive\"]);" }],
+    },
+  ],
+} as const satisfies RuleDocumentation;
 
 const IGNORE_PATTERNS: readonly RegExp[] = [
   /[\\/]generated[\\/]/,
@@ -116,6 +147,7 @@ function resolvesToImportedEnum(
 
 export default createRule<Options, MessageIds>({
   name: "no-zod-native-enum",
+  documentation: noZodNativeEnumDocumentation,
   meta: {
     type: "suggestion",
     fixable: "code",

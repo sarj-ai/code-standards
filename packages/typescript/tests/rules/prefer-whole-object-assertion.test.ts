@@ -3,7 +3,7 @@ import { RuleTester } from "@typescript-eslint/rule-tester";
 import { Linter } from "eslint";
 import { afterAll, describe, expect, it } from "vitest";
 
-import rule from "../../src/rules/prefer-whole-object-assertion.js";
+import rule, { preferWholeObjectAssertionDocumentation } from "../../src/rules/prefer-whole-object-assertion.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -21,6 +21,7 @@ const filename = "src/user.test.ts";
 
 ruleTester.run("prefer-whole-object-assertion", rule, {
   valid: [
+    { name: "accepts the documented whole-object assertion", filename, code: preferWholeObjectAssertionDocumentation.examples[0].files[0].source },
     // Already the combined form.
     { filename, code: `expect(obj).toMatchObject({ a: 1, b: 2 });` },
     // A single assertion has nothing to combine with.
@@ -335,6 +336,7 @@ ruleTester.run("prefer-whole-object-assertion", rule, {
     },
   ],
   invalid: [
+    { name: "fixes the documented member assertion run", filename, code: preferWholeObjectAssertionDocumentation.examples[1].files[0].source, output: preferWholeObjectAssertionDocumentation.examples[1].fixedFiles[0].source, errors: [{ messageId: "combineAssertions" }] },
     // The surviving true positive: the exact shape the fixer can rewrite
     // without changing what the test asserts.
     {

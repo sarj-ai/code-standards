@@ -1,10 +1,25 @@
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+import pytest
 
 from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.no_long_comment import NoLongComment
 
 
+if TYPE_CHECKING:
+    from sarj_python_lint.rule_base import RuleExample
+
+
 EIGHT_SENTENCES = "One fact. Two facts. Three facts. Four facts. Five facts. Six facts. Seven facts. Eight facts."
+
+_PUBLIC_EXAMPLES = NoLongComment.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(NoLongComment().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 def test_plain_eight_sentence_module_docstring_is_a_prose_wall() -> None:

@@ -6,10 +6,41 @@
 
 import { type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 
 type MessageIds = "corsWildcardWithCredentials";
 type Options = readonly [];
+
+export const noCorsWildcardWithCredentialsDocumentation = {
+  summary: "Disallow wildcard CORS origins when credentials are enabled.",
+  rationale:
+    "Reflecting every origin while allowing credentials can let an untrusted site read authenticated cross-origin responses.",
+  remediation: "Enumerate the trusted origins that may receive credentialed responses.",
+  category: "security",
+  limitations: [
+    "The rule detects literal CORS option and header combinations within the same syntactic scope; it does not resolve runtime configuration.",
+  ],
+  examples: [
+    {
+      id: "trusted-origin-with-credentials",
+      title: "Credentials are limited to a trusted origin",
+      outcome: "no-match",
+      files: [{ path: "src/server.ts", source: "app.use(cors({ origin: 'https://app.example.com', credentials: true }));" }],
+      focusPath: "src/server.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "wildcard-origin-with-credentials",
+      title: "Credentials are enabled for every origin",
+      outcome: "match",
+      files: [{ path: "src/server.ts", source: "app.use(cors({ origin: '*', credentials: true }));" }],
+      focusPath: "src/server.ts",
+      expectedCount: 1,
+      public: true,
+    },
+  ],
+} as const satisfies RuleDocumentation;
 
 const ACAO_HEADER = "access-control-allow-origin";
 const ACAC_HEADER = "access-control-allow-credentials";
@@ -223,11 +254,11 @@ interface ScopeHeaderSets {
 
 export default createRule<Options, MessageIds>({
   name: "no-cors-wildcard-with-credentials",
+  documentation: noCorsWildcardWithCredentialsDocumentation,
   meta: {
     type: "problem",
     docs: {
-      description:
-        'Disallow CORS that reflects any Origin (`"*"`) while allowing credentials; any site could then read authenticated responses. Enumerate explicit trusted origins instead.',
+      description: "Disallow wildcard CORS origins when credentials are enabled.",
     },
     schema: [],
     messages: {

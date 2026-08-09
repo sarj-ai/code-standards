@@ -11,7 +11,7 @@ import {
   ASTUtils,
 } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 import {
   isZodModule,
@@ -27,6 +27,17 @@ type Options = readonly [
     convention?: Convention;
   }?,
 ];
+
+export const zodNamingConventionDocumentation = {
+  summary: "Enforce a consistent Zod schema naming convention — a `Z` prefix (`ZUser`) or a `Schema` suffix (`userSchema`); both are accepted by default.",
+  rationale: "A recognizable schema name distinguishes runtime validators from ordinary values at each use site.",
+  remediation: "Rename the schema with a `Z` prefix or `Schema` suffix, according to the configured convention.",
+  category: "style",
+  examples: [
+    { id: "recognizable-schema-name", title: "Mark the value as a schema", outcome: "no-match", files: [{ path: "src/user.ts", source: "import { z } from 'zod';\nconst userSchema = z.object({ id: z.string() });" }], focusPath: "src/user.ts", expectedCount: 0, public: true },
+    { id: "unmarked-schema-name", title: "Do not hide the schema behind a value name", outcome: "match", files: [{ path: "src/user.ts", source: "import { z } from 'zod';\nconst user = z.object({ id: z.string() });" }], focusPath: "src/user.ts", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
 
 const CONVENTIONS: Record<
   Convention,
@@ -93,6 +104,7 @@ const calleeChainRoot = (node: TSESTree.Node): TSESTree.Identifier | null => {
 
 export default createRule<Options, MessageIds>({
   name: "zod-naming-convention",
+  documentation: zodNamingConventionDocumentation,
   meta: {
     type: "suggestion",
     docs: {

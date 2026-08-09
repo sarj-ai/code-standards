@@ -6,12 +6,26 @@
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isProtected, splitIdentifier, stem } from "./_comments.js";
 import { isGeneratedFile } from "./_paths.js";
 
 type MessageIds = "restatesSignature" | "deleteBlock";
 type Options = readonly [];
+
+export const noRestatedJsdocDocumentation = {
+  summary: "Flag a JSDoc block whose description and tags only re-spell the signature they document.",
+  rationale: "Signature-only JSDoc duplicates type information and drifts without helping callers.",
+  remediation: "Delete the block or document behavior, constraints, failures, or context the signature cannot express.",
+  category: "maintainability",
+  aliases: ["jsdoc-restates-signature"],
+  autofix: "suggestion",
+  limitations: ["Generated files, detached blocks, unknown tags, empty blocks, and JSDoc with information absent from the signature are excluded."],
+  examples: [
+    { id: "behavioral-jsdoc", title: "Document behavior absent from the signature", outcome: "no-match", files: [{ path: "src/users.ts", source: "/** Get the user while bypassing the read replica. */\nexport function getUser(id: string) { return id; }" }], focusPath: "src/users.ts", expectedCount: 0, public: true },
+    { id: "signature-jsdoc", title: "Remove JSDoc that only repeats the signature", outcome: "match", files: [{ path: "src/users.ts", source: "/** Get the user by id. */\nexport function getUserById(id: string) { return id; }" }], focusPath: "src/users.ts", expectedCount: 1, public: true },
+  ],
+} as const satisfies RuleDocumentation;
 
 const MODELLED_TAGS: ReadonlySet<string> = new Set([
   "arg", "argument", "async", "description", "param", "return", "returns",
@@ -138,6 +152,7 @@ function tokensOf(names: readonly string[]): Set<string> {
 
 export default createRule<Options, MessageIds>({
   name: "no-restated-jsdoc",
+  documentation: noRestatedJsdocDocumentation,
   meta: {
     type: "suggestion",
     hasSuggestions: true,

@@ -6,9 +6,20 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
-from typing import TYPE_CHECKING, override
+from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._paths import is_generated
 
@@ -39,10 +50,62 @@ def _is_overload(node: _Func) -> bool:
 class DuplicatedOverrideDocstring(Rule):
     id: str = "duplicated-override-docstring"
     code: str = "SARJ084"
-    description: str = (
-        "Docstring is a verbatim copy of the base class's — delete it; "
-        "`help()`, `inspect.getdoc` and every editor already read the base's."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Remove an override docstring copied verbatim from its local base method.",
+        rationale="Inherited documentation is already discoverable, while a duplicate adds a second copy that can drift.",
+        remediation="Delete the copied docstring, or rewrite it only when the override has behavior-specific information to add.",
+        category=RuleCategory.MAINTAINABILITY,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Only methods whose base class is defined under an undotted name in the same file are compared.",
+            "Overloads, generated files, undocumented bases, and methods whose docstring is their entire body are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="copied-override-docstring",
+                title="Override repeats its base method documentation",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/store.py",
+                        "class Store:\n"
+                        "    def get(self, key: str) -> str:\n"
+                        '        """Get a value by key."""\n'
+                        "        return key\n\n"
+                        "class MemoryStore(Store):\n"
+                        "    def get(self, key: str) -> str:\n"
+                        '        """Get a value by key."""\n'
+                        "        return key\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/store.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="override-specific-docstring",
+                title="Override documents its distinct behavior",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/store.py",
+                        "class Store:\n"
+                        "    def get(self, key: str) -> str:\n"
+                        '        """Get a value by key."""\n'
+                        "        return key\n\n"
+                        "class ReplicaStore(Store):\n"
+                        "    def get(self, key: str) -> str:\n"
+                        '        """Get a value from the read replica."""\n'
+                        "        return key\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/store.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

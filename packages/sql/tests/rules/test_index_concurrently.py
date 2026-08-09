@@ -9,11 +9,20 @@ from sarj_sql_lint.rules.index_concurrently import IndexConcurrently
 
 
 if TYPE_CHECKING:
-    from sarj_sql_lint.rule_base import Diagnostic
+    from sarj_sql_lint.rule_base import Diagnostic, RuleExample
 
 
 def _check(source: str) -> list[Diagnostic]:
     return IndexConcurrently().check(Path("migration.sql"), source)
+
+
+_PUBLIC_EXAMPLES = IndexConcurrently.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(example.example_id for example in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(IndexConcurrently().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 def test_flags_create_index_without_concurrently():

@@ -6,7 +6,7 @@
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "combineAssertions" | "assertArrayOnce";
@@ -25,6 +25,19 @@ const NUMERIC_SIGNS: ReadonlySet<string> = new Set(["-", "+"]);
 
 /** A run shorter than this is a single assertion; there is nothing to combine. */
 const MIN_RUN_LENGTH = 2;
+
+export const preferWholeObjectAssertionDocumentation = {
+  summary: "Collapse consecutive assertions on one object into a whole-object assertion so related mismatches are reported together.",
+  rationale: "One whole-object assertion presents related expectations together and produces a complete structural diff.",
+  remediation: "Replace consecutive member assertions with one `toMatchObject` assertion.",
+  category: "testing",
+  aliases: ["strict-test-assertions"],
+  autofix: "safe",
+  examples: [
+    { id: "whole-object", title: "Assert the object once", outcome: "no-match", files: [{ path: "src/user.test.ts", source: "expect(user).toMatchObject({ id: 1, name: 'Ada' });" }], focusPath: "src/user.test.ts", expectedCount: 0, public: true },
+    { id: "member-run", title: "Do not split one object across assertions", outcome: "match", files: [{ path: "src/user.test.ts", source: "expect(user.id).toBe(1);\nexpect(user.name).toBe('Ada');" }], focusPath: "src/user.test.ts", expectedCount: 1, public: true, fixedFiles: [{ path: "src/user.test.ts", source: "expect(user).toMatchObject({ id: 1, name: 'Ada' });\n" }] },
+  ],
+} as const satisfies RuleDocumentation;
 
 /** How a run reaches into its receiver: `o.name`, or `xs[0]`. */
 type AssertionKey =
@@ -86,11 +99,12 @@ function literalIndex(node: TSESTree.Node): number | null {
 
 export default createRule<Options, MessageIds>({
   name: "prefer-whole-object-assertion",
+  documentation: preferWholeObjectAssertionDocumentation,
   meta: {
     type: "suggestion",
     docs: {
       description:
-        "Collapse a run of consecutive assertions on the same object into one assertion about the whole object, so every mismatch is reported and nothing outside the asserted keys goes unchecked.",
+        "Collapse consecutive assertions on one object into a whole-object assertion so related mismatches are reported together.",
     },
     fixable: "code",
     messages: {

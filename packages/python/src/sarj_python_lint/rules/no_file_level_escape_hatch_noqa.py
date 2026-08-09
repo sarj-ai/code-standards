@@ -5,10 +5,20 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 
 from __future__ import annotations
 
+from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, final, override
+from typing import TYPE_CHECKING, ClassVar, final, override
 
-from sarj_python_lint.rule_base import ColumnEncoding, Diagnostic, Rule
+from sarj_python_lint.rule_base import (
+    ColumnEncoding,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+)
 from sarj_python_lint.rules._suppression_comments import scan_comments_or_none
 
 
@@ -32,11 +42,42 @@ _RUFF_SCOPED_NOQA_RE = re.compile(
 class NoFileLevelEscapeHatchNoqa(Rule):
     id: str = "no-file-level-escape-hatch-noqa"
     code: str = "SARJ054"
-    description: str = (
-        "A file-level `# ruff: noqa` naming an escape-hatch code (TID251) "
-        "pre-authorizes every future use in the file — suppress it inline, "
-        "one reviewed `# noqa: TID251 — <reason>` per site."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="File-level Ruff noqa suppresses an escape-hatch rule across the entire file.",
+        rationale="A file-wide suppression silently authorizes future uses that were never reviewed.",
+        remediation="Suppress each intentional use inline with the exact code and a reason.",
+        category=RuleCategory.MAINTAINABILITY,
+        limitations=(
+            "Detection covers file-level Ruff noqa directives naming configured escape-hatch codes.",
+            "Inline noqa comments and file-level suppressions for mechanical rules are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="file-wide-escape-hatch",
+                title="File suppresses every banned API use",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.python("app/service.py", "# ruff: noqa: TID251\nimport os\n"),),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="reasoned-inline-suppression",
+                title="One use is suppressed with a reason",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from unittest import mock  # noqa: TID251 — vendor SDK boundary\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

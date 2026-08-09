@@ -2,7 +2,7 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/stepdown.js";
+import rule, { stepdownDocumentation } from "../../src/rules/stepdown.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -19,6 +19,7 @@ const DEEP_CYCLE = Array.from(
 
 ruleTester.run("stepdown", rule, {
   valid: [
+    { name: "accepts the documented caller-first order", code: stepdownDocumentation.examples[0].files[0].source },
     { name: "handles a deep cyclic graph without recursive stack overflow", code: DEEP_CYCLE },
     {
       name: "allows a module helper below its sole caller",
@@ -132,6 +133,7 @@ ruleTester.run("stepdown", rule, {
     },
   ],
   invalid: [
+    { name: "reports the documented helper-first order", code: stepdownDocumentation.examples[1].files[0].source, errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "run" } }] },
     {
       name: "includes a named default-export function as a caller",
       code: "function load() { return 1; }\nexport default function run() { return load(); }",

@@ -2,7 +2,7 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-fat-try-blocks.js";
+import rule, { noFatTryBlocksDocumentation } from "../../src/rules/no-fat-try-blocks.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -39,16 +39,7 @@ ruleTester.run("no-fat-try-blocks", rule, {
     },
     // Exactly three throwing (result-using) statements — at the limit.
     {
-      code: `
-        function f() {
-          try {
-            const a = one();
-            const b = two();
-            const c = three();
-          } catch (e) { handle(e); }
-          finish();
-        }
-      `,
+      code: noFatTryBlocksDocumentation.examples[0].files[0].source,
     },
     // Exactly three awaits — at the limit.
     {
@@ -695,17 +686,7 @@ ruleTester.run("no-fat-try-blocks", rule, {
     },
     // Four result-using calls — boundary just over the limit.
     {
-      code: `
-        function f() {
-          try {
-            const a = one();
-            const b = two();
-            const c = three();
-            const d = four();
-          } catch (e) { handle(e); }
-          finish();
-        }
-      `,
+      code: noFatTryBlocksDocumentation.examples[1].files[0].source,
       errors: [{ messageId: "fatTryBlock" }],
     },
     // Four awaits — multiple independent I/O ops under one swallowing catch.

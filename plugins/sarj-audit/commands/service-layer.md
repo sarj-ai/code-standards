@@ -1,6 +1,6 @@
 # Service boundaries and dependency injection
 
-Audit separation of concerns and dependency direction using the shared [audit protocol](../README.md#audit-protocol). This command incorporates the former dependency-injection audit.
+Audit separation of concerns and dependency direction using the shared [audit protocol](../skills/audit-protocol/SKILL.md#audit-protocol). This command incorporates the former dependency-injection audit.
 
 ## Judgment checks
 

@@ -2,7 +2,9 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-tautological-expect.js";
+import rule, {
+  noTautologicalExpectDocumentation,
+} from "../../src/rules/no-tautological-expect.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -42,7 +44,7 @@ ruleTester.run("no-tautological-expect", rule, {
     {
       name: "allows a produced value compared with a literal",
       filename: TEST_FILE,
-      code: "it('returns two', () => { expect(add(1, 1)).toBe(2); });",
+      code: noTautologicalExpectDocumentation.examples[0].files[0].source,
     },
     {
       name: "allows a literal compared with a produced value",
@@ -134,7 +136,7 @@ ruleTester.run("no-tautological-expect", rule, {
     {
       name: "reports an identical boolean comparison",
       filename: TEST_FILE,
-      code: "it('works', () => { expect(true).toBe(true); });",
+      code: noTautologicalExpectDocumentation.examples[1].files[0].source,
       errors: [{ messageId: "tautologicalComparison" }],
     },
     {

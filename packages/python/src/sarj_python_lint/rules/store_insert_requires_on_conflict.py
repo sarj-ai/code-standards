@@ -6,10 +6,21 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, final, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._sql import is_store_module, sql_string_value, strip_sql_noise
 
@@ -31,12 +42,47 @@ _CONFLICT_HANDLED = re.compile(
 )
 
 
+@final
 class StoreInsertRequiresOnConflict(Rule):
     id: str = "store-insert-requires-on-conflict"
     code: str = "SARJ018"
-    description: str = (
-        "Embedded SQL INSERTs in store code must use ON CONFLICT, ON DUPLICATE KEY, or SQLite OR IGNORE/REPLACE."
+    documentation = RuleDocumentation(
+        summary="Embedded SQL inserts in store code must handle conflicts explicitly.",
+        rationale="A replayed write without conflict handling can fail or create duplicate state.",
+        remediation="Use `ON CONFLICT`, `ON DUPLICATE KEY`, or SQLite `OR IGNORE`/`OR REPLACE` as appropriate.",
+        category=RuleCategory.CORRECTNESS,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Only SQL string literals in recognized store modules are analyzed.",
+            "A deliberate non-idempotent insert requires a local SARJ018 suppression.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="insert-without-conflict-handler",
+                title="Store insert without conflict handling",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.python("app/task_store.py", 'QUERY = "INSERT INTO task (id) VALUES (%s)"\n'),),
+                focus_path=PurePosixPath("app/task_store.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="insert-with-conflict-handler",
+                title="Store insert with conflict handling",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/task_store.py",
+                        'QUERY = "INSERT INTO task (id) VALUES (%s) ON CONFLICT DO NOTHING"\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/task_store.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

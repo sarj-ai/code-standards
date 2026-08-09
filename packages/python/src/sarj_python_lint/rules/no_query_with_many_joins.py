@@ -6,10 +6,21 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, final, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._sql import is_store_module, sql_string_value, strip_sql_noise
 
@@ -34,13 +45,52 @@ _FROM_CLAUSE_BOUNDARY = re.compile(
 _MAX_JOINS = 2
 
 
+@final
 class NoQueryWithManyJoins(Rule):
     id: str = "no-query-with-many-joins"
     code: str = "SARJ019"
-    description: str = (
-        "SQL query with 3 or more explicit or implicit joins — split the query or denormalize "
-        "instead of fanning across many tables."
+    documentation = RuleDocumentation(
+        summary="Store queries should use at most two explicit or implicit joins.",
+        rationale="Wide join graphs couple store reads to many tables and make query cost and schema changes harder to control.",
+        remediation="Split the read into focused store operations or denormalize data needed together.",
+        category=RuleCategory.ARCHITECTURE,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Only SQL string literals in recognized store modules are analyzed.",
+            "The rule counts join syntax; it does not estimate a database query plan.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="three-table-joins",
+                title="Query with three joins",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/task_store.py",
+                        'QUERY = "SELECT a.id FROM a JOIN b ON TRUE JOIN c ON TRUE JOIN d ON TRUE"\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/task_store.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="two-table-joins",
+                title="Query with two joins",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/task_store.py",
+                        'QUERY = "SELECT a.id FROM a JOIN b ON TRUE JOIN c ON TRUE"\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/task_store.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

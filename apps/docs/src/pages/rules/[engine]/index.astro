@@ -1,0 +1,30 @@
+---
+import ReferencePage from '../../../components/ReferencePage.astro';
+import RuleTable from '../../../components/RuleTable.astro';
+import { ENGINES, catalog, engineLabel, rulesForEngine, type Engine } from '../../../lib/catalog';
+import { familySidebar } from '../../../lib/navigation';
+
+export function getStaticPaths() {
+  return ENGINES.filter((engine) => catalog.rules.some((rule) => rule.engine === engine)).map((engine) => ({
+    params: { engine },
+    props: { engine },
+  }));
+}
+
+interface Props { engine: Engine }
+const { engine } = Astro.props;
+const rules = rulesForEngine(engine);
+---
+
+<ReferencePage
+  title={`${engineLabel(engine)} rules`}
+  description={`${rules.length} active ${engineLabel(engine)} rules in Sarj Standards.`}
+  sidebar={familySidebar(engine)}
+>
+  <header class="reference-hero reference-hero--compact">
+    <p class="eyebrow">ENGINE / {engine.toUpperCase()}</p>
+    <h1>{engineLabel(engine)} rules</h1>
+    <p class="lede">{rules.length} deterministic checks, ordered by canonical rule ID.</p>
+  </header>
+  <RuleTable rules={rules} controls={rules.length > 12} />
+</ReferencePage>

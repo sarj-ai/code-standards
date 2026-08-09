@@ -6,9 +6,20 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
-from typing import TYPE_CHECKING, override
+from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._comments import is_protected, split_identifier
 from sarj_python_lint.rules._docstrings import (
@@ -62,10 +73,47 @@ def _base_names(node: ast.ClassDef) -> list[str]:
 class RedundantClassDocstring(Rule):
     id: str = "redundant-class-docstring"
     code: str = "SARJ085"
-    description: str = (
-        "Class docstring only re-spells the class name — delete it, or say what "
-        "the name cannot: the invariant, the lifetime, the thing it is not."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Class docstrings must add information beyond the class name and bases.",
+        rationale="Restating a class declaration adds maintenance cost without helping a reader understand its contract.",
+        remediation="Delete the redundant docstring or document an invariant, lifetime, exclusion, or other fact absent from the declaration.",
+        category=RuleCategory.MAINTAINABILITY,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Schema-carrying bases and decorators, runtime-consumed prompt decorators, generated files, and docstring-only class bodies are excluded.",
+            "The rule compares conservative word stems; a novel term keeps the docstring.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="class-name-restatement",
+                title="Docstring repeats the class name",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/policy.py", 'class RetryPolicy:\n    """The retry policy."""\n\n    attempts: int = 3\n'
+                    ),
+                ),
+                focus_path=PurePosixPath("app/policy.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="class-invariant",
+                title="Docstring records an invariant",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/policy.py",
+                        'class RetryPolicy:\n    """Retry policy required because the upstream caps concurrency."""\n\n    attempts: int = 3\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/policy.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

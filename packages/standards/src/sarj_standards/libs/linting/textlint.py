@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from fnmatch import fnmatch
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import sys
 import tomllib
@@ -12,6 +12,18 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
 from sarj_standards.libs.adoption.manifest import as_table, list_field, table_field
+from sarj_standards.libs.rules.contracts import (
+    AutofixPolicy,
+    ExampleFile,
+    ExpectedOutcome,
+    Language,
+    MessageId,
+    RuleCategory,
+    RuleEngine,
+    RuleExample,
+    RuleId,
+    RuleSpec,
+)
 
 
 if TYPE_CHECKING:
@@ -179,27 +191,214 @@ class Finding:
 
 @dataclass(frozen=True)
 class RuleMeta:
-    """Stable ownership metadata for the shared SARJ code namespace."""
+    """Source-owned behavior, documentation, and compatibility metadata."""
 
     code: str
-    description: str
+    summary: str
+    rationale: str
+    remediation: str
+    category: RuleCategory
+    languages: frozenset[Language]
+    file_patterns: tuple[str, ...]
+    examples: tuple[RuleExample, ...]
+    autofix: AutofixPolicy = AutofixPolicy.NONE
+    aliases: tuple[str, ...] = ()
+    limitations: tuple[str, ...] = ()
+    message_ids: tuple[str, ...] = ()
+    references: tuple[str, ...] = ()
+    since: str | None = None
     blocking: bool = True
+
+    @property
+    def description(self) -> str:
+        """Preserve the existing analysis adapter while ``summary`` becomes canonical."""
+        return self.summary
+
+    @property
+    def public_examples(self) -> tuple[RuleExample, ...]:
+        """Return only examples explicitly reviewed for public documentation."""
+        return tuple(example for example in self.examples if example.public)
+
+    def native_spec(self, rule_id: str) -> RuleSpec:
+        """Adapt this text-native record to the engine-neutral catalog contract."""
+        return RuleSpec(
+            engine=RuleEngine.TEXT,
+            rule_id=RuleId(rule_id),
+            code=self.code,
+            summary=self.summary,
+            rationale=self.rationale,
+            remediation=self.remediation,
+            category=self.category,
+            languages=self.languages,
+            autofix=self.autofix,
+            aliases=self.aliases,
+            examples=self.examples,
+            limitations=self.limitations,
+            file_patterns=self.file_patterns,
+            message_ids=tuple(MessageId(message_id) for message_id in self.message_ids),
+            references=self.references,
+            since=self.since,
+        )
+
+
+def _public_example(
+    *,
+    example_id: str,
+    title: str,
+    outcome: ExpectedOutcome,
+    path: str,
+    source: str,
+    expected_count: int,
+) -> RuleExample:
+    """Opt one reviewed single-file example into generated public documentation."""
+    focus_path = PurePosixPath(path)
+    return RuleExample(
+        example_id=example_id,
+        title=title,
+        outcome=outcome,
+        files=(ExampleFile(path=focus_path, source=source),),
+        focus_path=focus_path,
+        expected_count=expected_count,
+        public=True,
+    )
 
 
 REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
     {
-        "config-comment-wall": RuleMeta("SARJ300", "four-entry config narration wall with 75% weak restatements"),
-        "commented-out-config": RuleMeta("SARJ301", "commented-out config syntax"),
+        "config-comment-wall": RuleMeta(
+            code="SARJ300",
+            summary="four-entry config narration wall with 75% weak restatements",
+            rationale=(
+                "Repeated comments that merely narrate adjacent configuration hide constraints and make the file harder "
+                "to scan."
+            ),
+            remediation="Name configuration entries clearly and keep comments only for constraints or rationale.",
+            category=RuleCategory.MAINTAINABILITY,
+            languages=frozenset({Language.CONFIG}),
+            file_patterns=("**/*.{yaml,yml,toml,jsonc,ini,cfg,conf,properties,sh,zsh,bash}",),
+            examples=(
+                _public_example(
+                    example_id="narrated-config-wall",
+                    title="Repeated comments restate adjacent entries",
+                    outcome=ExpectedOutcome.MATCH,
+                    path="workflow.yml",
+                    source="# Set build name\nname: build\n"
+                    "# Run build command\nrun: make build\n"
+                    "# Set deploy image\nimage: app\n"
+                    "# Run deploy command\ncommand: deploy\n",
+                    expected_count=1,
+                ),
+                _public_example(
+                    example_id="self-explanatory-config",
+                    title="Clear entries need no narration",
+                    outcome=ExpectedOutcome.NO_MATCH,
+                    path="workflow.yml",
+                    source="name: build\nrun: make build\nimage: app\ncommand: deploy\n",
+                    expected_count=0,
+                ),
+            ),
+            limitations=("Only groups of attached standalone comments at the same indentation level are compared.",),
+        ),
+        "commented-out-config": RuleMeta(
+            code="SARJ301",
+            summary="commented-out config syntax",
+            rationale="Disabled configuration becomes stale while version control already preserves its history.",
+            remediation="Delete disabled configuration; document a default or constraint when that information remains useful.",
+            category=RuleCategory.MAINTAINABILITY,
+            languages=frozenset({Language.CONFIG}),
+            file_patterns=("**/*.{yaml,yml,toml,jsonc,ini,cfg,conf,properties,sh,zsh,bash}",),
+            examples=(
+                _public_example(
+                    example_id="disabled-config-entry",
+                    title="A commented-out assignment is stale configuration",
+                    outcome=ExpectedOutcome.MATCH,
+                    path="config.toml",
+                    source="# timeout = 30\ntimeout = 10\n",
+                    expected_count=1,
+                ),
+                _public_example(
+                    example_id="documented-default",
+                    title="An explicitly labeled default is documentation",
+                    outcome=ExpectedOutcome.NO_MATCH,
+                    path="config.toml",
+                    source="# Default:\n# timeout = 30\ntimeout = 10\n",
+                    expected_count=0,
+                ),
+            ),
+            limitations=(
+                "Directive, rationale, documented-example, and YAML block-scalar comments are intentionally excluded.",
+            ),
+        ),
         # New rules spend one release as visible, non-blocking findings.
-        "ephemeral-ai-artifact": RuleMeta(
-            "SARJ302",
-            "AI execution brief, audit report, or change diary",
+        "ephemeral-execution-artifact": RuleMeta(
+            code="SARJ302",
+            summary="ephemeral execution brief, audit report, or change diary",
+            rationale=(
+                "Point-in-time execution narratives quickly become misleading and obscure the durable usage or design "
+                "facts a repository needs."
+            ),
+            remediation="Move durable facts into maintained documentation or issues, then delete the execution artifact.",
+            category=RuleCategory.MAINTAINABILITY,
+            languages=frozenset({Language.MARKDOWN}),
+            file_patterns=("**/*.md", "**/*.mdx"),
+            aliases=("ephemeral-ai-artifact",),
+            examples=(
+                _public_example(
+                    example_id="temporary-fix-brief",
+                    title="A named fix brief is an execution artifact",
+                    outcome=ExpectedOutcome.MATCH,
+                    path="FIX-BRIEF.md",
+                    source="# Temporary execution record\n",
+                    expected_count=1,
+                ),
+                _public_example(
+                    example_id="maintained-operations-guide",
+                    title="A durable operations guide records current usage",
+                    outcome=ExpectedOutcome.NO_MATCH,
+                    path="docs/operations.md",
+                    source="# Operations\n\nRun `sarj-standards check` before merging.\n",
+                    expected_count=0,
+                ),
+            ),
+            limitations=(
+                "Short artifacts with neutral names and no execution-log headings are intentionally not inferred from prose alone.",
+            ),
             blocking=False,
         ),
         # Supply-chain rules start as warnings so existing consumers can ratchet deliberately.
         "unpinned-github-action": RuleMeta(
-            "SARJ303",
-            "remote GitHub Action or container action without an immutable digest",
+            code="SARJ303",
+            summary="remote GitHub Action or container action without an immutable digest",
+            rationale="Mutable action tags can resolve to different code without a reviewed repository change.",
+            remediation="Pin repository actions to a full commit SHA and container actions to a sha256 digest.",
+            category=RuleCategory.SECURITY,
+            languages=frozenset({Language.CONFIG}),
+            file_patterns=(".github/workflows/**/*.yaml", ".github/workflows/**/*.yml"),
+            examples=(
+                _public_example(
+                    example_id="mutable-action-tag",
+                    title="A version tag is mutable",
+                    outcome=ExpectedOutcome.MATCH,
+                    path=".github/workflows/ci.yml",
+                    source="jobs:\n  test:\n    steps:\n      - uses: actions/checkout@v4\n",
+                    expected_count=1,
+                ),
+                _public_example(
+                    example_id="immutable-action-commit",
+                    title="A full action commit SHA is immutable",
+                    outcome=ExpectedOutcome.NO_MATCH,
+                    path=".github/workflows/ci.yml",
+                    source="jobs:\n  test:\n    steps:\n"
+                    "      - uses: actions/checkout@0123456789abcdef0123456789abcdef01234567\n",
+                    expected_count=0,
+                ),
+            ),
+            limitations=(
+                "Only remote uses entries in .github/workflows YAML files are checked; local actions are excluded.",
+            ),
+            references=(
+                "https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions",
+            ),
             blocking=False,
         ),
     }

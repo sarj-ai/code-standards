@@ -7,9 +7,20 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, override
+from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, final, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import children, nodes, walk
 from sarj_python_lint.rules._paths import is_generated, is_test_path
 
@@ -59,13 +70,52 @@ _MSG = (
 )
 
 
+@final
 class PreferNamedtupleOverTupleReturn(Rule):
     id: str = "prefer-namedtuple-over-tuple-return"
     code: str = "SARJ026"
-    description: str = (
-        "public function returning a bare positional tuple[A, B, ...] — prefer a "
-        "NamedTuple or frozen pydantic model so callers don't unpack by position."
+    documentation = RuleDocumentation(
+        summary="Public functions should return named records instead of fixed positional tuples.",
+        rationale="A positional tuple hides field meaning and lets callers silently swap or misread values.",
+        remediation="Return a `NamedTuple`, frozen dataclass, or frozen validation model with named fields.",
+        category=RuleCategory.MAINTAINABILITY,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Generated files, tests, private functions, nested functions, and declared overrides are excluded.",
+            "Only fixed multi-item tuple annotations or inferred tuple-literal returns are reported.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="positional-public-return",
+                title="Public function returns a positional pair",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/profile.py",
+                        "def load_profile() -> tuple[str, int]:\n    return 'Ada', 42\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/profile.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="named-public-return",
+                title="Public function returns a named record",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/profile.py",
+                        "from typing import NamedTuple\n\nclass Profile(NamedTuple):\n    name: str\n    age: int\n\ndef load_profile() -> Profile:\n    return Profile('Ada', 42)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/profile.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

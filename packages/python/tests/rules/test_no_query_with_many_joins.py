@@ -4,12 +4,21 @@ from pathlib import Path
 
 import pytest
 
-from sarj_python_lint.rule_base import Diagnostic, is_suppressed
+from sarj_python_lint.rule_base import Diagnostic, RuleExample, is_suppressed
 from sarj_python_lint.rules.no_query_with_many_joins import NoQueryWithManyJoins
 
 
 def _check(source: str, path: str = "foo_store.py") -> list[Diagnostic]:
     return NoQueryWithManyJoins().check(Path(path), source)
+
+
+_PUBLIC_EXAMPLES = NoQueryWithManyJoins.public_examples()
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
+    focus = example.focus_file
+    assert len(_check(focus.source, str(focus.path))) == example.expected_count
 
 
 def _sql_with_joins(n: int, join_kw: str = "JOIN") -> str:

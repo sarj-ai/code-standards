@@ -6,9 +6,19 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
-from typing import TYPE_CHECKING, override
+from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._paths import is_test_path
 
 
@@ -22,7 +32,47 @@ _SLEEP_RECEIVERS = frozenset({"asyncio", "time"})
 class SleepWithComputedArgInTest(Rule):
     id: str = "sleep-with-computed-arg-in-test"
     code: str = "SARJ047"
-    description: str = "Computed `sleep()` in a test body — synchronize on the signal, don't guess a delay."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Computed `sleep()` in a test body — synchronize on the signal, don't guess a delay.",
+        rationale="A calculated delay still races the system under load and makes test duration depend on guessed timing.",
+        remediation="Await completion, wait on an event, or poll the expected condition with a bounded deadline.",
+        category=RuleCategory.TESTING,
+        limitations=(
+            "Only `time.sleep` and `asyncio.sleep` calls directly inside test functions are analyzed.",
+            "Numeric literal delays belong to SARJ031; helper-owned and nested-function sleeps are excluded.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="computed-test-sleep",
+                title="Test guesses a computed delay",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_worker.py",
+                        "import asyncio\n\nasync def test_worker():\n    await asyncio.sleep(POLL_INTERVAL * 4)\n    assert finished()\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_worker.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="event-synchronized-test",
+                title="Test waits for completion",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_worker.py",
+                        "async def test_worker():\n    finished = start_worker()\n    await finished.wait()\n    assert finished.is_set()\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_worker.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
+    )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

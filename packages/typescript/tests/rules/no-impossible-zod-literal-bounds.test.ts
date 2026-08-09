@@ -2,7 +2,9 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule from "../../src/rules/no-impossible-zod-literal-bounds.js";
+import rule, {
+  noImpossibleZodLiteralBoundsDocumentation,
+} from "../../src/rules/no-impossible-zod-literal-bounds.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -17,7 +19,10 @@ const withZod = (code: string): string => `import { z } from "zod"; ${code}`;
 
 ruleTester.run("no-impossible-zod-literal-bounds", rule, {
   valid: [
-    { code: withZod("const S = z.number().gte(3).lte(3);"), filename: production },
+    {
+      code: noImpossibleZodLiteralBoundsDocumentation.examples[0].files[0].source,
+      filename: production,
+    },
     { code: withZod("const S = z.number().min(3).max(3);"), filename: production },
     { code: withZod("const S = z.number().gt(3).lt(4);"), filename: production },
     { code: withZod("const S = z.number().gte(-2).lt(+2);"), filename: production },
@@ -81,7 +86,7 @@ ruleTester.run("no-impossible-zod-literal-bounds", rule, {
     },
     {
       name: "ignores test files",
-      code: withZod("const S = z.number().min(5).max(4);"),
+      code: noImpossibleZodLiteralBoundsDocumentation.examples[1].files[0].source,
       filename: "src/schema.test.ts",
     },
     {

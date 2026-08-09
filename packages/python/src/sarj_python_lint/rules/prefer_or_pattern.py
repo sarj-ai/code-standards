@@ -6,9 +6,20 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
-from typing import TYPE_CHECKING, override
+from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, ClassVar, override
 
-from sarj_python_lint.rule_base import Diagnostic, Rule, parse_or_none
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    parse_or_none,
+)
 from sarj_python_lint.rules._ast_index import nodes, walk
 
 
@@ -29,10 +40,56 @@ _EMPTY_BODY_NODES = (ast.Pass,)
 class PreferOrPattern(Rule):
     id: str = "prefer-or-pattern"
     code: str = "SARJ070"
-    description: str = (
-        "consecutive `case` arms repeating an identical body — merge them into a "
-        "single `|` or-pattern so the shared handler is written once."
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Merge adjacent `case` arms with identical bodies into one or-pattern.",
+        rationale="An or-pattern expresses shared handling once and prevents identical arms from drifting apart.",
+        remediation="Join the equivalent patterns with `|` and keep their shared body under the merged arm.",
+        category=RuleCategory.MAINTAINABILITY,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Only adjacent, unguarded, refutable arms with structurally identical non-empty bodies are compared.",
+            "Arms with different bound names or comments are excluded because merging can change meaning or intent.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="duplicate-match-arms",
+                title="Adjacent match arms repeat one body",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/settings.py",
+                        "def configure(value):\n"
+                        "    match value:\n"
+                        "        case LocalSettings():\n"
+                        "            return build(value)\n"
+                        "        case RemoteSettings():\n"
+                        "            return build(value)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/settings.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="shared-or-pattern-arm",
+                title="One or-pattern owns the shared body",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/settings.py",
+                        "def configure(value):\n"
+                        "    match value:\n"
+                        "        case LocalSettings() | RemoteSettings():\n"
+                        "            return build(value)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/settings.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
     )
+    description: str = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:

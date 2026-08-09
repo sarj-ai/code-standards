@@ -7,11 +7,43 @@
 import { type TSESTree } from "@typescript-eslint/utils";
 import type { Scope } from "@typescript-eslint/utils/ts-eslint";
 
-import { createRule } from "./_docs.js";
+import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
 
 type MessageIds = "noStringConcatInLoop";
 type Options = readonly [];
+
+export const noStringConcatInLoopDocumentation = {
+  summary:
+    "Disallow O(n^2) string building via `+=` on a string variable inside a loop; push parts to an array and `join` instead.",
+  rationale:
+    "Repeatedly rebuilding a growing string can copy all prior content on each iteration, making total work grow quadratically.",
+  remediation: "Collect each fragment in an array, then join the fragments after the loop.",
+  category: "performance",
+  limitations: [
+    "Only local identifiers initialized with a string or template literal and accumulated in a loop body are inspected.",
+  ],
+  examples: [
+    {
+      id: "join-fragments",
+      title: "Join collected fragments after the loop",
+      outcome: "no-match",
+      files: [{ path: "src/render.ts", source: "const parts = []; for (const item of items) { parts.push(item); } const output = parts.join(\"\");" }],
+      focusPath: "src/render.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "rebuild-string",
+      title: "Do not rebuild a growing string in a loop",
+      outcome: "match",
+      files: [{ path: "src/render.ts", source: "let output = ''; for (const item of items) { output = `${output}${item}`; }" }],
+      focusPath: "src/render.ts",
+      expectedCount: 1,
+      public: true,
+    },
+  ],
+} as const satisfies RuleDocumentation;
 
 const LOOP_NODE_TYPES: ReadonlySet<string> = new Set([
   "ForStatement",
@@ -146,6 +178,7 @@ function enclosingLoop(node: TSESTree.Node): TSESTree.Node | null {
 
 export default createRule<Options, MessageIds>({
   name: "no-string-concat-in-loop",
+  documentation: noStringConcatInLoopDocumentation,
   meta: {
     type: "suggestion",
     docs: {
