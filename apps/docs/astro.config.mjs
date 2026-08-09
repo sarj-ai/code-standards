@@ -22,7 +22,11 @@ export default defineConfig({
         "object-src 'none'",
       ],
       scriptDirective: {
-        resources: [{ resource: "'self'", kind: 'element' }],
+        resources: [
+          { resource: "'self'", kind: 'element' },
+          { resource: "'self'", kind: 'default' },
+          { resource: "'wasm-unsafe-eval'", kind: 'default' },
+        ],
       },
       styleDirective: {
         resources: [{ resource: "'unsafe-inline'", kind: 'attribute' }],
