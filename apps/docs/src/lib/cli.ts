@@ -22,11 +22,16 @@ export interface CliCommand {
 
 export interface CliReference {
   schemaVersion: 1;
+  version: string;
   program: string;
   summary: string;
   epilog: string | null;
   globalOptions: CliOption[];
   commands: CliCommand[];
+  launcher: {
+    install: string;
+    runLatest: string;
+  };
 }
 
 const referencePath = resolve(
@@ -94,6 +99,7 @@ function loadReference(): CliReference {
     throw new Error(`Generated CLI reference is not valid JSON at ${referencePath}.`, { cause: error });
   }
   if (!isRecord(value) || value.schemaVersion !== 1) throw new TypeError('CLI reference must use schemaVersion 1.');
+  requireText(value.version, 'CLI reference version');
   requireText(value.program, 'CLI reference program');
   requireText(value.summary, 'CLI reference summary');
   if (value.epilog !== null && typeof value.epilog !== 'string') throw new TypeError('CLI reference epilog is invalid.');
@@ -102,6 +108,9 @@ function loadReference(): CliReference {
   }
   value.globalOptions.forEach((option, index) => validateOption(option, `globalOptions[${index}]`));
   value.commands.forEach((command, index) => validateCommand(command, `commands[${index}]`));
+  if (!isRecord(value.launcher)) throw new TypeError('CLI reference launcher must be an object.');
+  requireText(value.launcher.install, 'CLI reference launcher install');
+  requireText(value.launcher.runLatest, 'CLI reference launcher runLatest');
   return value as unknown as CliReference;
 }
 

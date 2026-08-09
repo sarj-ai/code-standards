@@ -31,3 +31,13 @@ const {
     <slot />
   </div>
 </StarlightPage>
+
+<script>
+  const menu = document.querySelector('starlight-menu-button');
+  const menuButton = menu?.querySelector('button');
+  if (menu instanceof HTMLElement && menuButton instanceof HTMLButtonElement) {
+    const syncExpanded = () => menuButton.setAttribute('aria-expanded', menu.getAttribute('aria-expanded') ?? 'false');
+    syncExpanded();
+    new MutationObserver(syncExpanded).observe(menu, { attributes: true, attributeFilter: ['aria-expanded'] });
+  }
+</script>

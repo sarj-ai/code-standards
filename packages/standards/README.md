@@ -8,7 +8,7 @@ One deterministic quality gate for Sarj Python, TypeScript, SQL, IaC, and reposi
 
 | Field | Value |
 | --- | --- |
-| Version | `3.0.0` |
+| Version | `3.0.1` |
 | Registry | PyPI |
 | License | MIT |
 | Runtime | `Python >=3.14` |

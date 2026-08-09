@@ -1,8 +1,15 @@
 ---
 import ReferencePage from '../../components/ReferencePage.astro';
-import { cliReference, commandAnchor, flattenCommands, invocation, optionLabel } from '../../lib/cli';
+import { cliReference, commandAnchor, invocation, optionLabel } from '../../lib/cli';
 
-const commands = flattenCommands();
+const commands = cliReference.commands;
+const quickStart = [
+  cliReference.launcher.install,
+  `${cliReference.program} setup`,
+  `${cliReference.program} doctor`,
+  `${cliReference.program} check`,
+].join('\n');
+const runOnce = `${cliReference.launcher.runLatest} setup`;
 ---
 
 <ReferencePage
@@ -11,9 +18,24 @@ const commands = flattenCommands();
 >
   <header class="reference-hero">
     <p class="eyebrow">COMMAND LINE</p>
-    <h1>One entry point.<br />{cliReference.commands.length} useful verbs.</h1>
+    <h1>Use Standards</h1>
     <p class="lede">{cliReference.summary}</p>
   </header>
+
+  <section class="command-block" id="quick-start">
+    <div class="command-block__gutter" aria-hidden="true">01</div>
+    <div>
+      <p class="eyebrow">QUICK START</p>
+      <h2>Set up a repository</h2>
+      <p>Install the tool, configure the repository, then verify it:</p>
+      <pre><code>{quickStart}</code></pre>
+      <button type="button" class="copy-button" data-copy={quickStart}>Copy command</button>
+      <details>
+        <summary>Run setup without installing the CLI</summary>
+        <pre><code>{runOnce}</code></pre>
+      </details>
+    </div>
+  </section>
 
   <div class="install-strip">
     <div>

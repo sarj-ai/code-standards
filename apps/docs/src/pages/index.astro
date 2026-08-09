@@ -9,13 +9,17 @@ const firstReported = catalog.rules
   .at(0);
 const activeEngines = ENGINES.filter((engine) => catalog.rules.some((rule) => rule.engine === engine));
 const errorCount = catalog.rules.filter((rule) => rule.defaultLevel === 'error').length;
-const setupSequence = ['setup', 'doctor', 'check']
+const setupCommands = ['setup', 'doctor', 'check']
   .map((name) => cliReference.commands.find((command) => command.name === name))
   .filter((command) => command !== undefined);
+const setupSequence = [
+  { invocation: cliReference.launcher.install, summary: 'Install the CLI in an isolated Python 3.14 tool environment.' },
+  ...setupCommands.map((command) => ({ invocation: invocation(command), summary: command.summary })),
+];
 ---
 
 <ReferencePage
-  title="Code standards that explain themselves"
+  title="Standards for Python, TypeScript, SQL, IaC, and text"
   description="Deterministic diagnostics and fixes for Python, TypeScript, Markdown, SQL, and infrastructure code."
   hasSidebar={false}
   template="splash"
@@ -23,13 +27,13 @@ const setupSequence = ['setup', 'doctor', 'check']
   <div class="home-hero">
     <div class="home-hero__copy">
       <p class="eyebrow">SARJ / CODE STANDARDS</p>
-      <h1>Clean code.<br />Precise evidence.</h1>
+      <h1>Sarj Standards</h1>
       <p class="lede">
-        One quality gate, <strong>{catalog.rules.length} active rules</strong>, and a direct path from every diagnostic to a correction.
+        Run <strong>{catalog.rules.length} deterministic rules</strong> for Python, TypeScript, SQL, IaC, and text from one CLI.
       </p>
       <div class="hero-actions">
         <a class="primary-action" href="/rules/">Inspect every rule</a>
-        <a class="secondary-action" href="/cli/">Set up a repository</a>
+        <a class="secondary-action" href="/cli/#quick-start">Set up a repository</a>
       </div>
     </div>
     <div class="home-hero__evidence">
@@ -55,14 +59,14 @@ const setupSequence = ['setup', 'doctor', 'check']
 
   <section class="sequence-section">
     <header class="section-heading">
-      <p class="eyebrow">ADOPT → VERIFY → ENFORCE</p>
-      <h2>A short path to a healthy repository</h2>
+      <p class="eyebrow">SETUP</p>
+      <h2>Set up Standards</h2>
     </header>
     <ol class="command-sequence">
       {setupSequence.map((command, index) => (
         <li>
-          <span class="sequence-number">0{index + 1}</span>
-          <code>{invocation(command)}</code>
+          <span class="sequence-number">{String(index + 1).padStart(2, '0')}</span>
+          <code>{command.invocation}</code>
           <p>{command.summary}</p>
         </li>
       ))}
@@ -92,7 +96,7 @@ const setupSequence = ['setup', 'doctor', 'check']
 
   {firstReported && (
     <p class="source-note">
-      Everything shown here is rendered from the same catalog that powers
+      This site is generated from rule metadata and executable test cases, including
       <a href={ruleHref(firstReported.rule)}> {firstReported.rule.key}</a>.
     </p>
   )}
