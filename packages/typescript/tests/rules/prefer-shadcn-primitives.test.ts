@@ -15,6 +15,7 @@ const ruleTester = new RuleTester({
     parserOptions: { ecmaFeatures: { jsx: true } },
   },
 });
+const ASSUME_AVAILABLE = [{ assumeAvailable: true }] as const;
 
 ruleTester.run("prefer-shadcn-primitives", rule, {
   valid: [
@@ -79,12 +80,37 @@ ruleTester.run("prefer-shadcn-primitives", rule, {
       name: "accepts a primitive name outside JSX",
       code: `const elementName = "button";`,
     },
+    {
+      name: "accepts raw elements inside the shared primitive implementation tree",
+      filename: "/repo/src/components/ui/table.tsx",
+      code: `<><table /><textarea /><button type="button" /></>`,
+    },
+    {
+      name: "accepts raw controls in colocated test files",
+      filename: "/repo/src/components/voice-interface.test.tsx",
+      code: `<button type="button">Mock action</button>`,
+    },
+    {
+      name: "accepts raw controls in test directories",
+      filename: String.raw`C:\repo\src\__tests__\theme-provider.tsx`,
+      code: `<button type="button">Mock theme</button>`,
+    },
+    {
+      name: "does not prescribe shadcn in a repository without local adoption evidence",
+      filename: "/repo/src/plain-form.tsx",
+      code: `<button type="button">Save</button>`,
+    },
+    {
+      name: "does not prescribe the wrong primitive for specialized input types",
+      code: `<><input type="submit" /><input type="reset" /><input type="range" /><input type="color" /></>`,
+    },
   ],
   invalid: [
-    { name: "public match example", filename: preferShadcnPrimitivesDocumentation.examples[1].focusPath, code: preferShadcnPrimitivesDocumentation.examples[1].files[0].source, errors: [{ messageId: "preferShadcnPrimitive" }] },
+    { name: "public match example", filename: preferShadcnPrimitivesDocumentation.examples[1].focusPath, code: preferShadcnPrimitivesDocumentation.examples[1].files[0].source, options: ASSUME_AVAILABLE, errors: [{ messageId: "preferShadcnPrimitive" }] },
     {
       name: "rejects a raw button",
       code: `<button>Save</button>`,
+      options: ASSUME_AVAILABLE,
       output: null,
       errors: [
         {
@@ -94,8 +120,16 @@ ruleTester.run("prefer-shadcn-primitives", rule, {
       ],
     },
     {
+      name: "uses a shared primitive import as repository adoption evidence",
+      filename: "/repo/src/form.tsx",
+      code: `import { Card } from "@/components/ui/card"; <button>Save</button>`,
+      options: ASSUME_AVAILABLE,
+      errors: [{ messageId: "preferShadcnPrimitive" }],
+    },
+    {
       name: "rejects a raw dialog",
       code: `<dialog>Confirmation</dialog>`,
+      options: ASSUME_AVAILABLE,
       errors: [
         {
           messageId: "preferShadcnPrimitive",
@@ -109,6 +143,7 @@ ruleTester.run("prefer-shadcn-primitives", rule, {
     {
       name: "rejects a raw text input",
       code: `<input type="text" />`,
+      options: ASSUME_AVAILABLE,
       errors: [
         {
           messageId: "preferShadcnPrimitive",
@@ -119,6 +154,7 @@ ruleTester.run("prefer-shadcn-primitives", rule, {
     {
       name: "rejects a raw checkbox",
       code: `<input type="checkbox" />`,
+      options: ASSUME_AVAILABLE,
       errors: [
         {
           messageId: "preferShadcnPrimitive",
@@ -129,6 +165,7 @@ ruleTester.run("prefer-shadcn-primitives", rule, {
     {
       name: "rejects statically wrapped visible input types",
       code: `<><input type={"text" as const} /><input type={"checkbox" satisfies string} /><input type={\`${"text"}\`} /></>`,
+      options: ASSUME_AVAILABLE,
       errors: [
         {
           messageId: "preferShadcnPrimitive",
@@ -147,6 +184,7 @@ ruleTester.run("prefer-shadcn-primitives", rule, {
     {
       name: "rejects a raw radio input",
       code: `<input type="radio" />`,
+      options: ASSUME_AVAILABLE,
       errors: [
         {
           messageId: "preferShadcnPrimitive",
@@ -157,6 +195,7 @@ ruleTester.run("prefer-shadcn-primitives", rule, {
     {
       name: "rejects a lowercase import alias because JSX treats it as intrinsic",
       code: `import { Input as input } from "@/components/ui/input"; <input />`,
+      options: ASSUME_AVAILABLE,
       errors: [
         {
           messageId: "preferShadcnPrimitive",
@@ -167,6 +206,7 @@ ruleTester.run("prefer-shadcn-primitives", rule, {
     {
       name: "rejects a raw label",
       code: `<label htmlFor="name">Name</label>`,
+      options: ASSUME_AVAILABLE,
       errors: [
         {
           messageId: "preferShadcnPrimitive",
@@ -177,6 +217,7 @@ ruleTester.run("prefer-shadcn-primitives", rule, {
     {
       name: "rejects a label wrapping a labelable control",
       code: `<label>Name <><span><input type="text" /></span></></label>`,
+      options: ASSUME_AVAILABLE,
       errors: [
         {
           messageId: "preferShadcnPrimitive",
@@ -191,6 +232,7 @@ ruleTester.run("prefer-shadcn-primitives", rule, {
     {
       name: "rejects a raw progress element",
       code: `<progress max={100} value={50} />`,
+      options: ASSUME_AVAILABLE,
       errors: [
         {
           messageId: "preferShadcnPrimitive",
@@ -201,6 +243,7 @@ ruleTester.run("prefer-shadcn-primitives", rule, {
     {
       name: "rejects a raw select",
       code: `<select><option>One</option></select>`,
+      options: ASSUME_AVAILABLE,
       errors: [
         {
           messageId: "preferShadcnPrimitive",
@@ -211,6 +254,7 @@ ruleTester.run("prefer-shadcn-primitives", rule, {
     {
       name: "rejects a raw table once",
       code: `<table><tbody><tr><td>Value</td></tr></tbody></table>`,
+      options: ASSUME_AVAILABLE,
       errors: [
         {
           messageId: "preferShadcnPrimitive",
@@ -221,6 +265,7 @@ ruleTester.run("prefer-shadcn-primitives", rule, {
     {
       name: "rejects a raw textarea",
       code: `<textarea defaultValue="Notes" />`,
+      options: ASSUME_AVAILABLE,
       errors: [
         {
           messageId: "preferShadcnPrimitive",

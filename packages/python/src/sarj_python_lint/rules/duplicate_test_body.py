@@ -199,6 +199,7 @@ class _Canonicalizer(ast.NodeVisitor):
         super().__init__()
         self._bound: frozenset[str] = bound
         self._aliases: dict[str, str] = {}
+        self._preserve_literals: int = 0
         self.literals: list[object] = []
 
     def render(self, stmt: ast.stmt) -> str:
@@ -208,10 +209,36 @@ class _Canonicalizer(ast.NodeVisitor):
         return ast.dump(clone)
 
     def visit_Constant(self, node: ast.Constant) -> None:
+        if self._preserve_literals:
+            return
         value: object = node.value
         self.literals.append(value)
         node.value = _LITERAL_PLACEHOLDER
         node.kind = None
+
+    def visit_Subscript(self, node: ast.Subscript) -> None:
+        """Keep lookup keys because they identify different response contracts."""
+        self.visit(node.value)
+        self._visit_with_literal_values(node.slice)
+
+    def visit_Dict(self, node: ast.Dict) -> None:
+        """Keep mapping keys while still normalizing case values."""
+        for key, value in zip(node.keys, node.values, strict=True):
+            if key is not None:
+                self._visit_with_literal_values(key)
+            self.visit(value)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        """Keep ``pytest.raises(match=...)`` because it is the asserted contract."""
+        self.visit(node.func)
+        for argument in node.args:
+            self.visit(argument)
+        preserves_match = _is_pytest_raises(node.func)
+        for keyword in node.keywords:
+            if preserves_match and keyword.arg == "match":
+                self._visit_with_literal_values(keyword.value)
+            else:
+                self.visit(keyword.value)
 
     def visit_Name(self, node: ast.Name) -> None:
         if node.id in self._bound:
@@ -243,6 +270,22 @@ class _Canonicalizer(ast.NodeVisitor):
 
     def _alias(self, name: str) -> str:
         return self._aliases.setdefault(name, f"v{len(self._aliases)}")
+
+    def _visit_with_literal_values(self, node: ast.AST) -> None:
+        self._preserve_literals += 1
+        try:
+            self.visit(node)
+        finally:
+            self._preserve_literals -= 1
+
+
+def _is_pytest_raises(node: ast.expr) -> bool:
+    return (
+        isinstance(node, ast.Attribute)
+        and node.attr == "raises"
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "pytest"
+    )
 
 
 def _duplicate_groups(tree: ast.Module, source: str) -> list[list[_Shape]]:

@@ -7,19 +7,26 @@
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { isTestFile } from "./_paths.js";
 
 type MessageIds = "preferShadcnPrimitive";
-type Options = readonly [];
+export interface RuleOptions {
+  readonly assumeAvailable?: boolean;
+}
+type Options = readonly [RuleOptions?];
 
 export const preferShadcnPrimitivesDocumentation = {
   summary: "Require visible raw JSX controls to use the corresponding shared shadcn primitive.",
   rationale: "Shared primitives centralize interaction, accessibility, and visual behavior across the product.",
   remediation: "Replace the raw visible control with the corresponding shared shadcn component.",
   category: "style",
-  limitations: ["Hidden and file inputs, unassociated labels, and non-control semantic elements are excluded."],
+  limitations: [
+    "Hidden and file inputs, unassociated labels, and non-control semantic elements are excluded.",
+    "Tests and the shared components/ui primitive implementation tree are excluded.",
+  ],
   examples: [
     { id: "shared-button", title: "Use a shared button", outcome: "no-match", files: [{ path: "src/form.tsx", source: "import { Button } from '@/components/ui/button'; const action = <Button>Save</Button>;" }], focusPath: "src/form.tsx", expectedCount: 0, public: true },
-    { id: "raw-button", title: "Do not use a raw button", outcome: "match", files: [{ path: "src/form.tsx", source: "const action = <button>Save</button>;" }], focusPath: "src/form.tsx", expectedCount: 1, public: true },
+    { id: "raw-button", title: "Do not use a raw button", outcome: "match", files: [{ path: "src/form.tsx", source: "import { Card } from '@/components/ui/card'; const action = <button>Save</button>;" }], focusPath: "src/form.tsx", expectedCount: 1, public: true },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -44,6 +51,19 @@ const LABELABLE_ELEMENTS: ReadonlySet<string> = new Set([
   "progress",
   "select",
   "textarea",
+]);
+
+const SHARED_PRIMITIVE_IMPLEMENTATION_RE =
+  /(?:^|\/)components\/ui(?:\/|$)/i;
+const SHARED_PRIMITIVE_IMPORT_RE =
+  /(?:^|\/)components\/ui\/[^/]+$/i;
+const AMBIGUOUS_INPUT_TYPES: ReadonlySet<string> = new Set([
+  "button",
+  "color",
+  "image",
+  "range",
+  "reset",
+  "submit",
 ]);
 
 function rawElementName(
@@ -168,6 +188,7 @@ function replacementFor(
   if (inputType === "hidden" || inputType === "file") return null;
   if (inputType === "checkbox") return "Checkbox";
   if (inputType === "radio") return "RadioGroup family";
+  if (AMBIGUOUS_INPUT_TYPES.has(inputType)) return null;
   return "Input";
 }
 
@@ -180,26 +201,64 @@ export default createRule<Options, MessageIds>({
       description:
         "Require visible raw JSX controls to use the corresponding shared shadcn primitive.",
     },
-    schema: [],
+    schema: [
+      {
+        type: "object",
+        properties: {
+          assumeAvailable: { type: "boolean" },
+        },
+        additionalProperties: false,
+      },
+    ],
     messages: {
       preferShadcnPrimitive:
         "Use the shared {{ replacement }} shadcn primitive instead of raw <{{ element }}> markup.",
     },
   },
-  defaultOptions: [],
-  create(context) {
+  defaultOptions: [{}],
+  create(context, [options]) {
+    const filename = context.filename.replaceAll("\\", "/");
+    if (
+      isTestFile(filename) ||
+      SHARED_PRIMITIVE_IMPLEMENTATION_RE.test(filename)
+    ) {
+      return {};
+    }
+    // ESLint rules see one file at a time. Require local proof that the
+    // repository actually owns a shadcn primitive tree before prescribing it;
+    // otherwise every raw control in a non-shadcn project becomes noise.
+    let hasSharedPrimitiveImport = options?.assumeAvailable ?? false;
+    const candidates: Array<{
+      readonly element: RawPrimitive;
+      readonly node: TSESTree.JSXOpeningElement;
+      readonly replacement: string;
+    }> = [];
     return {
+      ImportDeclaration(node): void {
+        if (
+          typeof node.source.value === "string" &&
+          SHARED_PRIMITIVE_IMPORT_RE.test(node.source.value)
+        ) {
+          hasSharedPrimitiveImport = true;
+        }
+      },
       JSXOpeningElement(node): void {
         const element = rawElementName(node);
         if (element === null) return;
         if (element === "label" && !isStaticallyAssociatedLabel(node)) return;
         const replacement = replacementFor(node, element);
         if (replacement === null) return;
-        context.report({
-          node,
-          messageId: "preferShadcnPrimitive",
-          data: { element, replacement },
-        });
+        candidates.push({ element, node, replacement });
+      },
+      "Program:exit"(): void {
+        if (!hasSharedPrimitiveImport) return;
+        for (const { element, node, replacement } of candidates) {
+          context.report({
+            node,
+            messageId: "preferShadcnPrimitive",
+            data: { element, replacement },
+          });
+        }
       },
     };
   },

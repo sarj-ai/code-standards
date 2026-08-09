@@ -33,7 +33,9 @@ _TENANT_COLUMNS = ("organization_id", "org_id", "tenant_id", "account_id", "work
 
 # Require a comparison after the tenant column so SELECT-list names do not masquerade as predicates.
 _TENANT_PREDICATE_RE = re.compile(
-    r"\b(?:\w+\.)?(?:" + "|".join(_TENANT_COLUMNS) + r")\b\s*(?:=|<>|!=|\bIN\b|\bIS\b)",
+    r"\b(?:\w+\.)?(?:"
+    + "|".join(_TENANT_COLUMNS)
+    + r")\b\s*(?:(?:=|<>|!=)\s*(?:%s|%\([^)]+\)s|:\w+|\?|\$\d+|\{\}|ANY\s*\()|IN\s*\(|IS\s+(?:NOT\s+)?NULL\b)",
     re.IGNORECASE,
 )
 
@@ -44,7 +46,11 @@ class NoOptionalTenantPredicate(Rule):
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
         summary="Tenant predicate is added only conditionally, allowing an unscoped query.",
         rationale="Fail-open tenant filtering can expose rows across organizations when a tenant value is absent.",
-        remediation="Require the tenant identifier or seed the query with its tenant predicate unconditionally.",
+        remediation=(
+            "Require the tenant identifier or seed the query with its tenant predicate unconditionally. "
+            "For an audited cross-tenant admin/background query, suppress only the conditional fragment "
+            "with `# sarj-noqa: SARJ056` and state why unscoped access is required."
+        ),
         category=RuleCategory.SECURITY,
         limitations=(
             "Detection follows SQL fragments inside each function and recognizes configured tenant column names.",
@@ -92,7 +98,8 @@ class NoOptionalTenantPredicate(Rule):
         if is_test_path(path):
             return []
         # Avoid parsing files that cannot contain a tenant predicate.
-        if not any(column in source for column in _TENANT_COLUMNS):
+        lowered = source.lower()
+        if not any(column in lowered for column in _TENANT_COLUMNS):
             return []
         tree = parse_or_none(path, source)
         if tree is None:
@@ -116,7 +123,8 @@ class NoOptionalTenantPredicate(Rule):
                     message=(
                         f"tenant predicate in `{func.name}` is only added inside a conditional, so the "
                         "query runs unscoped when the filter is empty or missing. Seed the condition "
-                        "list with the tenant predicate unconditionally, or require the tenant id."
+                        "list with the tenant predicate unconditionally, require the tenant id, or mark an "
+                        "audited cross-tenant fragment with `# sarj-noqa: SARJ056` and a reason."
                     ),
                 )
             )

@@ -753,15 +753,14 @@ def test_diagnostics_are_sorted_by_position():
     assert [(d.line, d.col) for d in _check(src)] == [(4, 5), (8, 5), (12, 5)]
 
 
-# The message, and the conflict with SARJ043 it has to avoid.                  #
+# The message when every assertion in a test is trivial.                      #
 
 
 _ORDINARY_ADVICE = ". Assert on something the code under test derived, or drop the assertion"
 
-_SARJ043_ADVICE = (
+_ONLY_ASSERTION_ADVICE = (
     ". Every assertion this test makes is like it, so dropping them would leave a test that verifies "
-    "nothing, which SARJ043 (`zero-assertion-test`) rejects in turn. Assert the behaviour the test name "
-    "claims to cover, or delete the test"
+    "nothing. Assert the behaviour the test name claims to cover, or delete the test"
 )
 
 
@@ -798,15 +797,14 @@ def test_each_shape_states_its_diagnosis_and_the_ordinary_advice(source: str, di
 
 
 def test_a_test_whose_every_assertion_is_trivial_is_not_told_to_drop_it():
-    # SARJ043 (`zero-assertion-test`) flags a test with no assertions, so "drop
-    # the assertion" would be an instruction straight into another diagnostic.
+    # Dropping the only assertion would preserve a test that proves nothing.
     src = """
     def test_thing():
         u = User(name="bo")
         assert u.name == "bo"
     """
     [diag] = _check(src)
-    assert diag.message.endswith(_SARJ043_ADVICE)
+    assert diag.message.endswith(_ONLY_ASSERTION_ADVICE)
     assert "drop the assertion" not in diag.message
 
 
@@ -819,7 +817,7 @@ def test_a_test_that_keeps_a_falsifiable_assertion_is_told_to_drop_the_line():
     """
     [diag] = _check(src)
     assert diag.message.endswith(_ORDINARY_ADVICE)
-    assert "SARJ043" not in diag.message
+    assert "zero-assertion-test" not in diag.message
 
 
 def test_fires_inside_a_test_class():

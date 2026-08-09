@@ -27,6 +27,11 @@ export const retiredRules: Readonly<Record<string, RetiredRule>> = {
     reason:
       "Delete the stale alias; the replacement was also retired because Testing Library supports async waitFor callbacks.",
   },
+  "no-conditional-in-test": {
+    removedIn: "15.0.0",
+    reason:
+      "Delete the entry and use a framework plugin only if its broader conditional-test policy is intentional; syntax cannot distinguish weak expectations from valid filtering, discriminant invariants, or implication checks.",
+  },
   "no-sequential-await": {
     removedIn: "3.0.0",
     reason: "Delete the entry; core `no-await-in-loop` covers it.",

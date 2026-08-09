@@ -37,6 +37,20 @@ def test_public_documentation_examples_are_executable(tmp_path: Path, example: R
     assert len(findings) == example.expected_count
 
 
+def test_ignores_branch_local_settings_binding() -> None:
+    source = """
+from app.config import settings
+
+class Service:
+    def __init__(self, *, model: str | None = None):
+        if use_override():
+            settings = override_settings()
+        self.model = model or settings.MODEL
+"""
+
+    assert _check(source) == []
+
+
 def _settings_project(tmp_path: Path, service_source: str) -> Path:
     (tmp_path / "pyproject.toml").write_text("[project]\nname = 'example'\nversion = '0.1.0'\n")
     package = tmp_path / "app"

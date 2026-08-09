@@ -138,6 +138,26 @@ ruleTester.run("no-unnecessary-use-client", rule, {
       ].join("\n"),
       filename: "/repo/components/wrapper.tsx",
     },
+    {
+      name: "keeps styled-jsx client boundaries",
+      code: `'use client'; export function X() { return <style jsx>{\`div { color: red; }\`}</style>; }`,
+    },
+    {
+      name: "keeps ref-bearing components",
+      code: `'use client'; export function X({ inputRef }) { return <input ref={inputRef} />; }`,
+    },
+    {
+      name: "keeps explicit client-only modules",
+      code: `'use client'; import 'client-only'; export const value = 1;`,
+    },
+    {
+      name: "keeps default exports of imported client boundaries",
+      code: `'use client'; import Provider from './provider'; export default Provider;`,
+    },
+    {
+      name: "keeps imported context consumers",
+      code: `'use client'; import { ThemeContext } from './theme'; export const X = () => <ThemeContext.Consumer>{x => x}</ThemeContext.Consumer>;`,
+    },
   ],
   invalid: [
     {

@@ -13,6 +13,10 @@ type MessageIds = "combineAssertions" | "assertArrayOnce";
 type Options = readonly [];
 
 const MERGEABLE_MATCHERS: ReadonlySet<string> = new Set(["toBe", "toEqual", "toStrictEqual"]);
+const SYNTHETIC_LITERAL_MATCHERS: ReadonlyMap<string, string> = new Map([
+  ["toBeNull", "null"],
+  ["toBeUndefined", "undefined"],
+]);
 
 const ARRAY_MATCHERS: ReadonlySet<string> = new Set(["toEqual", "toStrictEqual"]);
 
@@ -50,7 +54,7 @@ interface Assertion {
   readonly receiver: TSESTree.Expression;
   readonly key: AssertionKey;
   readonly matcher: string;
-  /** Source text of the expected value; `"null"` synthesised for `toBeNull()`. */
+  /** Source text of the expected value, including nullary matcher literals. */
   readonly expectedText: string;
   /** False when the expected value is not a primitive literal, so cannot be merged. */
   readonly expectedIsLiteral: boolean;
@@ -174,8 +178,9 @@ export default createRule<Options, MessageIds>({
         key = { kind: "property", name: actual.property.name };
       }
 
-      if (matcher === "toBeNull" && call.arguments.length === 0) {
-        return { statement, receiver: actual.object, key, matcher, expectedText: "null", expectedIsLiteral: true };
+      const synthetic = SYNTHETIC_LITERAL_MATCHERS.get(matcher);
+      if (synthetic !== undefined && call.arguments.length === 0) {
+        return { statement, receiver: actual.object, key, matcher, expectedText: synthetic, expectedIsLiteral: true };
       }
       if (!MERGEABLE_MATCHERS.has(matcher)) {
         return null;
@@ -215,7 +220,7 @@ export default createRule<Options, MessageIds>({
         if (assertion.key.kind !== "property" || !assertion.expectedIsLiteral) {
           return;
         }
-        if (!MERGEABLE_MATCHERS.has(assertion.matcher) && assertion.matcher !== "toBeNull") {
+        if (!MERGEABLE_MATCHERS.has(assertion.matcher) && !SYNTHETIC_LITERAL_MATCHERS.has(assertion.matcher)) {
           return;
         }
         if (names.has(assertion.key.name)) {

@@ -22,6 +22,11 @@ const ruleTester = new RuleTester({
 // list and say so.
 ruleTester.run("no-fat-try-blocks", rule, {
   valid: [
+    {
+      name: "allows a higher calibrated threshold",
+      options: [{ max: 5 }],
+      code: `try { const a = one(); const b = two(); const c = three(); const d = four(); } catch (error) { handle(error); }`,
+    },
     // Generated request clients are template output, not hand-authored error
     // handling worth reshaping.
     {

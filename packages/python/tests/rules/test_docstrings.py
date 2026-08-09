@@ -1,4 +1,4 @@
-"""Direct tests for the docstring parser shared by SARJ049/SARJ065/SARJ084."""
+"""Direct tests for the docstring parser shared by SARJ049/SARJ084."""
 
 import ast
 

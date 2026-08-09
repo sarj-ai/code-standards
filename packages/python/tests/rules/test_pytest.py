@@ -1,4 +1,4 @@
-"""Direct tests for the pytest-benchmark carve-out shared by SARJ043 and SARJ057."""
+"""Direct tests for the pytest-benchmark carve-out used by SARJ057."""
 
 import ast
 

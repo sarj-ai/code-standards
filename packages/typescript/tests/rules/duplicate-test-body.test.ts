@@ -76,6 +76,18 @@ test('two', () => { const x = parse('b'); expect(x.ok).toBe(true); expect(x).toM
 test('two', () => { const x = parse('b'); /* new wire format */ expect(x.ok).toBe(true); expect(x.value).toBe('b'); });`,
     },
     {
+      name: "preserves different assertion contracts",
+      filename: TEST_FILE,
+      code: `test('heading', () => { const view = renderPage(); expect(view.getByRole('heading')).toBeVisible(); expect(view.queryByText('done')).toBeNull(); });
+test('completion', () => { const view = renderPage(); expect(view.getByRole('progressbar')).toBeVisible(); expect(view.queryByText('pending')).toBeNull(); });`,
+    },
+    {
+      name: "allows straight-line assertion partitions",
+      filename: TEST_FILE,
+      code: `test('numeric forms', () => { expect(parse('1')).toBe(1); expect(parse('1.0')).toBe(1); expect(parse('1e0')).toBe(1); });
+test('boolean forms', () => { expect(parse('true')).toBe(true); expect(parse('TRUE')).toBe(true); expect(parse('yes')).toBe(true); });`,
+    },
+    {
       name: "preserves multiline fixture documents",
       filename: TEST_FILE,
       code: "test('one', () => { const x = parse(`first\\nfixture document that must remain distinct because it carries semantics`); expect(x.ok).toBe(true); expect(x.value).toBe('a'); });\ntest('two', () => { const x = parse(`second\\nfixture document that must remain distinct because it carries semantics`); expect(x.ok).toBe(true); expect(x.value).toBe('b'); });",
@@ -118,9 +130,9 @@ test('two', () => { const x = parse('b'); save(x); cleanup(x); });`,
     {
       name: "reports every additional copy after the first",
       filename: TEST_FILE,
-      code: `it('one', async () => { const x = await load(1); expect(x.ok).toBe(true); expect(x.id).toBe(1); });
-it('two', async () => { const x = await load(2); expect(x.ok).toBe(true); expect(x.id).toBe(2); });
-it('three', async () => { const x = await load(3); expect(x.ok).toBe(true); expect(x.id).toBe(3); });`,
+      code: `it('one', async () => { const x = await load(1); expect(x.ok).toBe(true); expect(x.id).toBeDefined(); });
+it('two', async () => { const x = await load(2); expect(x.ok).toBe(true); expect(x.id).toBeDefined(); });
+it('three', async () => { const x = await load(3); expect(x.ok).toBe(true); expect(x.id).toBeDefined(); });`,
       errors: [
         { messageId: "duplicateTestBody", line: 2 },
         { messageId: "duplicateTestBody", line: 3 },

@@ -42,7 +42,7 @@ export const noUnnecessaryUseClientDocumentation = {
 
 const HOOK_REGEX = /^use([A-Z]|$)/;
 const EVENT_PROP_REGEX = /^on[A-Z]/;
-const ERROR_FILE_REGEX = /\b(?:global-)?error\.[jt]sx?$/;
+const ERROR_FILE_REGEX = /(?:^|[\\/])(?:global-)?error\.[jt]sx?$/;
 
 const BROWSER_GLOBALS: ReadonlySet<string> = new Set([
   "window",
@@ -60,10 +60,22 @@ const BROWSER_GLOBALS: ReadonlySet<string> = new Set([
   "MouseEvent",
   "KeyboardEvent",
   "TouchEvent",
+  "IntersectionObserver",
+  "ResizeObserver",
+  "WebSocket",
+  "matchMedia",
+  "alert",
+  "confirm",
+  "prompt",
+  "addEventListener",
+  "removeEventListener",
 ]);
 
 /** Modules whose import requires a client boundary. */
-const CLIENT_REQUIRED_MODULES: ReadonlySet<string> = new Set(["next/dynamic"]);
+const CLIENT_REQUIRED_MODULES: ReadonlySet<string> = new Set([
+  "client-only",
+  "next/dynamic",
+]);
 
 const CLIENT_ONLY_PACKAGES_REGEX =
   /^(?:@radix-ui\/|framer-motion|react-dom|react-day-picker|@floating-ui\/|react-select|react-toastify|react-hook-form|recharts|react-dropzone|react-slick|react-swipeable|react-resizable|react-draggable|react-beautiful-dnd|@hello-pangea\/dnd|react-virtualized|react-window|@tanstack\/react-table|@tanstack\/react-query|react-redux|recoil|jotai|zustand|@tippyjs\/react|react-color|react-datepicker|next-themes|react-helmet|react-helmet-async|styled-components|@emotion\/)/;
@@ -229,7 +241,11 @@ export default createRule<Options, MessageIds>({
         if (directiveNode === null) return;
         if (
           node.name.type === AST_NODE_TYPES.JSXIdentifier &&
-          EVENT_PROP_REGEX.test(node.name.name)
+          (EVENT_PROP_REGEX.test(node.name.name) ||
+            node.name.name === "ref" ||
+            (node.name.name === "jsx" &&
+              node.parent.name.type === AST_NODE_TYPES.JSXIdentifier &&
+              node.parent.name.name === "style"))
         ) {
           hasClientIndicator = true;
         }
@@ -258,6 +274,15 @@ export default createRule<Options, MessageIds>({
         if (externalLocals.has(jsxRootName(node.name))) {
           hasClientIndicator = true;
         }
+        if (
+          node.name.type === AST_NODE_TYPES.JSXMemberExpression &&
+          importedLocals.has(jsxRootName(node.name)) &&
+          node.name.property.type === AST_NODE_TYPES.JSXIdentifier &&
+          (node.name.property.name === "Provider" ||
+            node.name.property.name === "Consumer")
+        ) {
+          hasClientIndicator = true;
+        }
       },
       ExportNamedDeclaration(node): void {
         if (directiveNode === null) return;
@@ -277,6 +302,14 @@ export default createRule<Options, MessageIds>({
       ExportAllDeclaration(node): void {
         if (directiveNode === null) return;
         if (node.source !== null) {
+          hasClientIndicator = true;
+        }
+      },
+      ExportDefaultDeclaration(node): void {
+        if (
+          directiveNode !== null &&
+          subtreeReadsImportedBinding(node.declaration, importedLocals)
+        ) {
           hasClientIndicator = true;
         }
       },

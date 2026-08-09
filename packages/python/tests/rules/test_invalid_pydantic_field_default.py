@@ -26,6 +26,21 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
     assert len(InvalidPydanticFieldDefault().check(Path(focus.path), focus.source)) == example.expected_count
 
 
+def test_ignores_float_default_coercible_to_integer_literal() -> None:
+    source = "from typing import Literal\nfrom pydantic import BaseModel, Field\nclass Model(BaseModel):\n    value: Literal[1] = Field(default=1.0)\n"
+
+    assert _check(source) == []
+
+
+def test_checks_bytes_length_bounds() -> None:
+    source = "from pydantic import BaseModel, Field\nclass Model(BaseModel):\n    token: bytes = Field(default=b'x', min_length=2)\n"
+
+    findings = _check(source)
+
+    assert len(findings) == 1
+    assert "min_length" in findings[0].message
+
+
 @pytest.mark.parametrize(
     ("source", "message"),
     [

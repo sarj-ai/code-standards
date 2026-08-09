@@ -6,7 +6,6 @@ import enforceFileStructure from "./rules/enforce-file-structure.js";
 import duplicateTestBody from "./rules/duplicate-test-body.js";
 import noClientSideDataFetching from "./rules/no-client-side-data-fetching.js";
 import noCommentCruft from "./rules/no-comment-cruft.js";
-import noConditionalInTest from "./rules/no-conditional-in-test.js";
 import noCorsWildcardWithCredentials from "./rules/no-cors-wildcard-with-credentials.js";
 import noDynamicSql from "./rules/no-dynamic-sql.js";
 import noEnum from "./rules/no-enum.js";
@@ -74,7 +73,6 @@ const rules = {
   "enforce-file-structure": enforceFileStructure,
   "no-client-side-data-fetching": noClientSideDataFetching,
   "no-comment-cruft": noCommentCruft,
-  "no-conditional-in-test": noConditionalInTest,
   "no-cors-wildcard-with-credentials": noCorsWildcardWithCredentials,
   "no-dynamic-sql": noDynamicSql,
   "no-enum": noEnum,
@@ -138,7 +136,7 @@ const rules = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "14.0.0",
+  version: "15.0.0",
 } as const;
 
 /** Rules registered for application-profile configs but intentionally absent from general presets. */
@@ -153,10 +151,9 @@ const recommendedRules = {
   "@sarj/enforce-file-structure": "error",
   "@sarj/no-client-side-data-fetching": "error",
   "@sarj/no-comment-cruft": "error",
-  "@sarj/no-conditional-in-test": "error",
   "@sarj/no-cors-wildcard-with-credentials": "error",
   "@sarj/no-dynamic-sql": "error",
-  "@sarj/no-fat-try-blocks": "error",
+  "@sarj/no-fat-try-blocks": ["error", { max: 5 }],
   "@sarj/no-hand-rolled-sleep": "error",
   "@sarj/no-hand-rolled-spinner": "error",
   "@sarj/no-insecure-random-id": "error",
@@ -213,11 +210,10 @@ const strictRules = {
   "@sarj/enforce-file-structure": "error",
   "@sarj/no-client-side-data-fetching": "error",
   "@sarj/no-comment-cruft": "error",
-  "@sarj/no-conditional-in-test": "error",
   "@sarj/no-cors-wildcard-with-credentials": "error",
   "@sarj/no-dynamic-sql": "error",
   "@sarj/no-enum": "error",
-  "@sarj/no-fat-try-blocks": "error",
+  "@sarj/no-fat-try-blocks": ["error", { max: 5 }],
   "@sarj/no-hand-rolled-sleep": "error",
   "@sarj/no-hand-rolled-spinner": "error",
   "@sarj/no-insecure-random-id": "error",

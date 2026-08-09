@@ -198,7 +198,6 @@ describe("a rename ships a map, not a hole", () => {
     "no-async-callback-in-waitfor",
     "no-client-side-data-fetching",
     "no-comment-cruft",
-    "no-conditional-in-test",
     "no-cors-wildcard-with-credentials",
     "no-dynamic-sql",
     "no-enum",
@@ -250,7 +249,7 @@ describe("a rename ships a map, not a hole", () => {
     // Editing an entry OUT of this list would let the rule it names vanish with
     // nothing failing — the guard would delete its own evidence. The length is
     // the cheapest thing that notices.
-    expect(SHIPPED_IN_6_1_0).toHaveLength(51);
+    expect(SHIPPED_IN_6_1_0).toHaveLength(50);
     expect(new Set(SHIPPED_IN_6_1_0).size).toBe(SHIPPED_IN_6_1_0.length);
   });
 

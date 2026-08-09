@@ -19,10 +19,19 @@ const ruleTester = new RuleTester({
 const imports = `
   import { Search } from "lucide-react";
   import { Input } from "@/components/ui/input";
+  import { InputGroup } from "@/components/ui/input-group";
 `;
 
 ruleTester.run("prefer-input-group-search", rule, {
   valid: [
+    {
+      name: "does not prescribe an optional primitive without local adoption evidence",
+      code: `import { Search } from "lucide-react"; import { Input } from "@/components/ui/input"; <div><Search /><Input /></div>`,
+    },
+    {
+      name: "does not confuse a search action with input decoration",
+      code: `import { Search } from "lucide-react"; import { Input } from "@/components/ui/input"; <div><button><Search /></button><Input placeholder="Rename file" /></div>`,
+    },
     { name: "public no-match example", filename: preferInputGroupSearchDocumentation.examples[0].focusPath, code: preferInputGroupSearchDocumentation.examples[0].files[0].source },
     {
       name: "accepts the shared input group",
@@ -70,6 +79,11 @@ ruleTester.run("prefer-input-group-search", rule, {
     },
   ],
   invalid: [
+    {
+      name: "recognizes official lucide search aliases",
+      code: `import { SearchIcon } from "lucide-react"; import { Input } from "@/components/ui/input"; import { InputGroup } from "@/components/ui/input-group"; <div><SearchIcon /><Input /></div>`,
+      errors: [{ messageId: "preferInputGroup" }],
+    },
     { name: "public match example", filename: preferInputGroupSearchDocumentation.examples[1].focusPath, code: preferInputGroupSearchDocumentation.examples[1].files[0].source, errors: [{ messageId: "preferInputGroup" }] },
     {
       name: "rejects direct search and input siblings",
@@ -86,6 +100,7 @@ ruleTester.run("prefer-input-group-search", rule, {
       code: `
         import { Search as SearchIcon } from "lucide-react";
         import { Input as TextInput } from "@/components/ui/input";
+        import { InputGroup } from "@/components/ui/input-group";
         <div><SearchIcon /><TextInput /></div>
       `,
       errors: [{ messageId: "preferInputGroup" }],

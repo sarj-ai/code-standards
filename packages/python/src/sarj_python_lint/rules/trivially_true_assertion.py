@@ -92,8 +92,7 @@ _ADVICE = ". Assert on something the code under test derived, or drop the assert
 # The advice when it does not.
 _ONLY_ASSERTION_ADVICE = (
     ". Every assertion this test makes is like it, so dropping them would leave a test that verifies "
-    "nothing, which SARJ043 (`zero-assertion-test`) rejects in turn. Assert the behaviour the test name "
-    "claims to cover, or delete the test"
+    "nothing. Assert the behaviour the test name claims to cover, or delete the test"
 )
 
 
@@ -213,7 +212,7 @@ def _one_per_test(index: _Index, findings: dict[int, tuple[_Assertion, str]]) ->
 
 
 def _advice(scope: _Scope | None, findings: dict[int, tuple[_Assertion, str]]) -> str:
-    """Choose the repair to recommend, which SARJ043 constrains."""
+    """Choose the repair based on whether any meaningful assertion remains."""
     if scope is None or any(id(node) not in findings for node in scope.asserts):
         return _ADVICE
     return _ONLY_ASSERTION_ADVICE

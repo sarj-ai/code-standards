@@ -54,7 +54,7 @@
     "parametrize-case-needs-id",
     "opaque-parametrize-case-needs-id"
   ],
-  "SARJ043": "zero-assertion-test",
+  "SARJ043": null,
   "SARJ044": "fixture-returns-bare-tuple",
   "SARJ045": "kwarg-heavy-construction-in-test",
   "SARJ046": [
@@ -77,9 +77,9 @@
   "SARJ060": "tautological-mock-assertion",
   "SARJ061": "no-patching-system-under-test",
   "SARJ062": "over-mocked-test",
-  "SARJ063": "interaction-only-test",
+  "SARJ063": null,
   "SARJ064": "trivially-true-assertion",
-  "SARJ065": "conditional-assertion-in-test",
+  "SARJ065": null,
   "SARJ066": "duplicate-test-body",
   "SARJ067": "unused-mock-setup",
   "SARJ068": "prefer-fstring-over-concat",
