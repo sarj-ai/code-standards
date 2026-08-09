@@ -432,12 +432,20 @@ def _is_safe_read(node: ast.Name, parents: dict[int, ast.AST], safe_methods: fro
             return _is_safe_method_call(parent, parents, safe_methods)
         case ast.Subscript(value=value, ctx=ctx):
             # `x[k]` reads; `x[k] = v` / `del x[k]` mutate.
-            return isinstance(ctx, ast.Load) if value is node else True
+            # A binding used as `frame[x]` is not representation-neutral:
+            # pandas and other selector APIs distinguish a list from a tuple.
+            return value is node and isinstance(ctx, ast.Load)
         case ast.Call(args=args, func=callee):
             return any(arg is node for arg in args) and _is_safe_callee(callee)
         case ast.keyword(arg=str(), value=value) if value is node:
             grandparent = parents.get(id(parent))
-            return isinstance(grandparent, ast.Call) and _is_safe_callee(grandparent.func)
+            # `dict(label=x)` retains `x` as a nested value; unlike
+            # `dict(x)`, it does not copy the candidate collection itself.
+            return (
+                isinstance(grandparent, ast.Call)
+                and _is_safe_callee(grandparent.func)
+                and _dotted_name(grandparent.func) != "dict"
+            )
         case ast.Compare():
             return True
         case ast.For() | ast.AsyncFor() | ast.comprehension():

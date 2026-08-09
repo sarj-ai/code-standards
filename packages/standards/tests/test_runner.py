@@ -70,6 +70,23 @@ def test_directory_walk_prunes_ignored_directories(
     assert not any("node_modules" in root for root in visited)
 
 
+@pytest.mark.parametrize("agent_root", [".agents", ".claude"])
+def test_skill_payloads_are_excluded_but_agent_tools_remain_owned(tmp_path: Path, agent_root: str) -> None:
+    skill = tmp_path / agent_root / "skills" / "sarj-build" / "shared" / "helper.py"
+    skill.parent.mkdir(parents=True)
+    skill.write_text("raise RuntimeError\n", encoding="utf-8")
+    tool = tmp_path / agent_root / "tools" / "render.py"
+    tool.parent.mkdir(parents=True)
+    tool.write_text("VALUE = 1\n", encoding="utf-8")
+
+    assert runner.group_paths([str(tmp_path)]).python == [str(tool)]
+    assert runner.group_paths([str(tmp_path / agent_root)]).python == [str(tool)]
+    assert runner.group_paths([str(skill)]).python == []
+    assert runner.group_paths([str(skill.parents[1])]).python == []
+    assert not runner.accepts_hook_path(skill)
+    assert runner.accepts_hook_path(tool)
+
+
 def test_directory_walk_rejects_oversized_discovered_files_truthfully(tmp_path: Path) -> None:
     large = tmp_path / "large.py"
     large.write_bytes(b"x" * (2 * 1024 * 1024 + 1))

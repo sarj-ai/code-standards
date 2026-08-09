@@ -27,6 +27,9 @@ import { fileURLToPath } from "node:url";
 import { ESLint, type Linter } from "eslint";
 import { describe, expect, it } from "vitest";
 
+import {
+  createConfig as createApplicationConfig,
+} from "../../standards/src/sarj_standards/configs/eslint.application.mjs";
 import strictConfig, {
   createConfig as createStrictConfig,
 } from "../../standards/src/sarj_standards/configs/eslint.strict.mjs";
@@ -38,8 +41,13 @@ const NESTED_MONOREPO_DIR = resolve(HERE, "fixtures/nested-monorepo");
 type ConfigFactory = (options?: {
   tsconfigRootDir?: string | URL;
   projectService?: boolean | object;
+  syntaxOnlyConfigFiles?: string[];
 }) => Linter.Config[];
 const STRICT_CONFIG_FACTORY = createStrictConfig as unknown as ConfigFactory;
+const CONFIG_FACTORIES: ReadonlyArray<readonly [string, ConfigFactory]> = [
+  ["strict", createStrictConfig],
+  ["application", createApplicationConfig],
+];
 
 async function lint(file: string): Promise<Linter.LintMessage[]> {
   const eslint = new ESLint({
@@ -75,6 +83,91 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
       "@typescript-eslint/await-thenable",
     );
   });
+
+  it.each(CONFIG_FACTORIES)(
+    "%s lints an excluded Vite config with syntax-aware rules",
+    async (_name, createConfig) => {
+      const eslint = new ESLint({
+        cwd: NESTED_MONOREPO_DIR,
+        overrideConfigFile: true,
+        overrideConfig: createConfig({ tsconfigRootDir: NESTED_MONOREPO_DIR }),
+      });
+
+      const [result] = await eslint.lintFiles([
+        resolve(NESTED_MONOREPO_DIR, "packages/example/vite.config.ts"),
+      ]);
+
+      expect(result?.messages.filter((message) => message.fatal === true)).toEqual([]);
+      expect(result?.messages.map((message) => message.ruleId)).toContain("@sarj/no-enum");
+      expect(result?.messages.map((message) => message.ruleId)).not.toContain(
+        "@typescript-eslint/await-thenable",
+      );
+    },
+  );
+
+  it.each(CONFIG_FACTORIES)(
+    "%s keeps an owned generic config type-aware by default",
+    async (_name, createConfig) => {
+      const eslint = new ESLint({
+        cwd: NESTED_MONOREPO_DIR,
+        overrideConfigFile: true,
+        overrideConfig: createConfig({ tsconfigRootDir: NESTED_MONOREPO_DIR }),
+      });
+
+      const [result] = await eslint.lintFiles([
+        resolve(NESTED_MONOREPO_DIR, "packages/example/src/domain.config.ts"),
+      ]);
+
+      expect(result?.messages.filter((message) => message.fatal === true)).toEqual([]);
+      expect(result?.messages.map((message) => message.ruleId)).toContain(
+        "@typescript-eslint/await-thenable",
+      );
+    },
+  );
+
+  it.each(CONFIG_FACTORIES)(
+    "%s limits member ordering to class accessibility bands",
+    async (_name, createConfig) => {
+      const eslint = new ESLint({
+        cwd: NESTED_MONOREPO_DIR,
+        overrideConfigFile: true,
+        overrideConfig: createConfig({ tsconfigRootDir: NESTED_MONOREPO_DIR }),
+      });
+
+      const [result] = await eslint.lintFiles([
+        resolve(NESTED_MONOREPO_DIR, "packages/example/src/member-ordering.ts"),
+      ]);
+
+      expect(result?.messages.map((message) => message.ruleId)).not.toContain(
+        "@typescript-eslint/member-ordering",
+      );
+    },
+  );
+
+  it.each(CONFIG_FACTORIES)(
+    "%s lets consumers keep an owned Vite config type-aware",
+    async (_name, createConfig) => {
+      const config = createConfig({
+        syntaxOnlyConfigFiles: [],
+        tsconfigRootDir: NESTED_MONOREPO_DIR,
+      });
+      expect(config.some((entry) => entry.files?.length === 0)).toBe(false);
+      const eslint = new ESLint({
+        cwd: NESTED_MONOREPO_DIR,
+        overrideConfigFile: true,
+        overrideConfig: config,
+      });
+
+      const [result] = await eslint.lintFiles([
+        resolve(NESTED_MONOREPO_DIR, "packages/example/src/vite.config.ts"),
+      ]);
+
+      expect(result?.messages.filter((message) => message.fatal === true)).toEqual([]);
+      expect(result?.messages.map((message) => message.ruleId)).toContain(
+        "@typescript-eslint/await-thenable",
+      );
+    },
+  );
 
   it.each([
     "react-hooks/error-boundaries",
@@ -148,9 +241,10 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
     ]);
   });
 
-  it("enforces await instead of then inside async code", async () => {
+  it("enforces explicit await for a direct typed async return", async () => {
     const ruleIds = (await lint("promise-probe.ts")).map((message) => message.ruleId);
-    expect(ruleIds).toContain("promise/prefer-await-to-then");
+    expect(ruleIds).toContain("@sarj/prefer-await-in-async-return");
+    expect(ruleIds).not.toContain("promise/prefer-await-to-then");
   });
 
   /**

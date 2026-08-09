@@ -251,6 +251,41 @@ function isBareCallStatement(stmt: TSESTree.Statement): boolean {
   );
 }
 
+/** UI-style failure/final-state signaling applies one uniform policy to the whole operation. */
+function isSimpleCatchFinallyOrchestration(node: TSESTree.TryStatement): boolean {
+  const handler = node.handler;
+  const finalizer = node.finalizer;
+  return (
+    handler !== null &&
+    handler.param === null &&
+    isSingleSimpleCall(handler.body.body) &&
+    finalizer !== null &&
+    isSingleSimpleCall(finalizer.body)
+  );
+}
+
+function isSingleSimpleCall(body: readonly TSESTree.Statement[]): boolean {
+  const statement = body[0];
+  return body.length === 1 && statement !== undefined && isSimpleBareCallStatement(statement);
+}
+
+/** A single call with no hidden control flow or mutation inside its arguments. */
+function isSimpleBareCallStatement(stmt: TSESTree.Statement): boolean {
+  if (!isBareCallStatement(stmt)) {
+    return false;
+  }
+  return !subtreeMatches(
+    stmt,
+    (node) =>
+      node.type === AST_NODE_TYPES.ArrowFunctionExpression ||
+      node.type === AST_NODE_TYPES.FunctionExpression ||
+      node.type === AST_NODE_TYPES.AssignmentExpression ||
+      node.type === AST_NODE_TYPES.UpdateExpression ||
+      node.type === AST_NODE_TYPES.AwaitExpression,
+    true,
+  );
+}
+
 function handlerRethrows(handler: TSESTree.CatchClause | null): boolean {
   if (handler === null) {
     return false;
@@ -482,6 +517,9 @@ export default createRule<Options, MessageIds>({
           return;
         }
         if (handlerRethrows(node.handler)) {
+          return;
+        }
+        if (isSimpleCatchFinallyOrchestration(node)) {
           return;
         }
         if (isTerminalErrorBoundary(node)) {

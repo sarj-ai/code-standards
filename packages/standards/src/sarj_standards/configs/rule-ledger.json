@@ -155,6 +155,7 @@
       "no-unnecessary-use-client",
       "no-unsafe-mock-casting",
       "no-zod-native-enum",
+      "prefer-await-in-async-return",
       "prefer-constant-time-secret-compare",
       "prefer-discriminated-union",
       "prefer-immutable-module-constant",

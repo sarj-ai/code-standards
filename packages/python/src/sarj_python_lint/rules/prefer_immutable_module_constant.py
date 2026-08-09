@@ -202,6 +202,7 @@ class _MutationVisitor(ast.NodeVisitor):
         self.mutated: set[str] = mutated
         self._scopes: list[tuple[set[str], set[str]]] = []
         self._local_container_roots: list[dict[str, set[str]]] = []
+        self._module_container_roots: dict[str, set[str]] = {}
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         self._visit_function(node)
@@ -278,10 +279,13 @@ class _MutationVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def _remember_local_container_roots(self, targets: tuple[ast.expr, ...] | list[ast.expr], value: ast.expr) -> None:
-        if not self._local_container_roots:
-            return
         roots = self._module_roots(value)
         if not roots:
+            return
+        if not self._local_container_roots:
+            for target in targets:
+                if isinstance(target, ast.Name):
+                    self._module_container_roots.setdefault(target.id, set()).update(roots)
             return
         locals_ = self._scopes[-1][0]
         aliases = self._local_container_roots[-1]
@@ -298,9 +302,11 @@ class _MutationVisitor(ast.NodeVisitor):
                 (scope[name] for scope in reversed(self._local_container_roots) if name in scope),
                 None,
             )
+            if alias is None:
+                alias = self._module_container_roots.get(name)
             if alias is not None:
                 roots.update(alias)
-            elif self._is_module_reference(name):
+            if self._is_module_reference(name):
                 roots.add(name)
         return roots
 

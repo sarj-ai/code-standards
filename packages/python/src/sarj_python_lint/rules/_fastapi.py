@@ -570,7 +570,7 @@ def _resolve_module_path(current: Path, reference: _ImportedReference) -> Path |
     current = current.resolve()
     checkout = _checkout_root(current)
     if checkout is None:
-        return None
+        return _resolve_module_path_without_checkout(current, reference)
     module_parts = tuple(part for part in reference.module.split(".") if part)
     candidates: set[Path] = set()
     if 0 < reference.level <= _MAX_PATH_ANCESTORS:
@@ -590,6 +590,41 @@ def _resolve_module_path(current: Path, reference: _ImportedReference) -> Path |
                 continue
             anchor = checkout.joinpath(*parent_parts[:index])
             candidates.update(_existing_module_files(anchor.joinpath(*module_parts), checkout))
+    return next(iter(candidates)) if len(candidates) == 1 else None
+
+
+def _resolve_module_path_without_checkout(current: Path, reference: _ImportedReference) -> Path | None:
+    """Resolve an explicitly local import when a detached source tree has no VCS root.
+
+    Relative imports must stay inside a real package chain. Absolute imports are
+    considered only at an ancestor matching their first component, or as a
+    direct sibling module. These exact, bounded anchors avoid treating an
+    arbitrary filesystem ancestor as an import search path.
+    """
+    module_parts = tuple(part for part in reference.module.split(".") if part)
+    candidates: set[Path] = set()
+    if 0 < reference.level <= _MAX_PATH_ANCESTORS:
+        package = current.parent
+        if not (package / "__init__.py").is_file():
+            return None
+        for _ in range(reference.level - 1):
+            parent = package.parent
+            if not (parent / "__init__.py").is_file():
+                return None
+            package = parent
+        candidates.update(_existing_module_files(package.joinpath(*module_parts), package))
+    elif module_parts:
+        first = module_parts[0]
+        for depth, ancestor in enumerate(current.parent.parents):
+            if depth >= _MAX_PATH_ANCESTORS:
+                break
+            package = ancestor / first
+            if package != current.parent and not current.is_relative_to(package):
+                continue
+            candidates.update(_existing_module_files(ancestor.joinpath(*module_parts), ancestor))
+        # A detached directory of modules is also a valid, deliberately narrow
+        # import root. Do not search any of its parents for an unrelated module.
+        candidates.update(_existing_module_files(current.parent.joinpath(*module_parts), current.parent))
     return next(iter(candidates)) if len(candidates) == 1 else None
 
 

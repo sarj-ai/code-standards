@@ -60,6 +60,7 @@ const UNTYPED_ROOT = new URL("fixtures/no-type-project/", import.meta.url);
 type ConfigFactory = (options?: {
   tsconfigRootDir?: string | URL;
   projectService?: boolean | object;
+  syntaxOnlyConfigFiles?: string[];
 }) => Linter.Config[];
 const CONFIG_FACTORIES: ReadonlyArray<readonly [string, ConfigFactory]> = [
   ["strict", createStrictConfig],
@@ -186,13 +187,18 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
     expect(testConfig.rules?.["no-await-in-loop"]?.[0]).toBe(0);
     expect(plainConfig.rules?.["@typescript-eslint/require-await"]?.[0]).toBe(2);
     expect(plainConfig.rules?.["no-await-in-loop"]?.[0]).toBe(2);
-    expect(plainConfig.rules?.["promise/prefer-await-to-then"]?.[0]).toBe(1);
-    expect(plainConfig.rules?.["@typescript-eslint/member-ordering"]?.[0]).toBe(1);
+    expect(plainConfig.rules?.["promise/prefer-await-to-then"]?.[0]).toBe(0);
+    expect(plainConfig.rules?.["@sarj/prefer-await-in-async-return"]?.[0]).toBe(2);
+    expect(plainConfig.rules?.["@typescript-eslint/member-ordering"]?.[0]).toBe(2);
     expect(plainConfig.rules?.["perfectionist/sort-classes"]?.[0]).toBe(0);
     expect(plainConfig.rules?.["@typescript-eslint/no-explicit-any"]?.[0]).toBe(2);
     expect(plainConfig.rules?.["@typescript-eslint/consistent-type-assertions"]?.[0]).toBe(2);
     expect(plainConfig.rules?.["simple-import-sort/imports"]?.[0]).toBe(2);
     expect(plainConfig.rules?.["simple-import-sort/exports"]?.[0]).toBe(2);
+    const warnings = Object.entries(plainConfig.rules ?? {})
+      .filter(([, setting]) => severityOf(setting) === 1)
+      .map(([rule]) => rule);
+    expect(warnings).toEqual([]);
 
     // Component identifiers are PascalCase, while component filenames remain
     // kebab-case under the shared filename policy.

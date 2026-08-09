@@ -128,6 +128,84 @@ def test_flags_unannotated_numeric_duration_constant(assignment: str) -> None:
     assert len(_check(f"{assignment}\n")) == 1
 
 
+def test_allows_duration_constant_used_only_in_typed_wire_result() -> None:
+    source = """
+from typing import TypedDict
+
+SESSION_LIFETIME_SECONDS = 180
+
+class SessionResult(TypedDict):
+    expires_after: int
+
+def create_session() -> SessionResult:
+    return {"expires_after": SESSION_LIFETIME_SECONDS}
+"""
+    assert _check(source) == []
+
+
+def test_allows_duration_constant_used_only_to_construct_pydantic_wire_model() -> None:
+    source = """
+from pydantic import BaseModel
+
+SESSION_LIFETIME_SECONDS = 180
+
+class SessionResult(BaseModel):
+    expires_after: int
+
+def create_session() -> SessionResult:
+    return SessionResult(expires_after=SESSION_LIFETIME_SECONDS)
+"""
+    assert _check(source) == []
+
+
+def test_flags_wire_duration_constant_that_also_drives_datetime_arithmetic() -> None:
+    source = """
+from datetime import datetime, timedelta
+from typing import TypedDict
+
+SESSION_LIFETIME_SECONDS = 180
+
+class SessionResult(TypedDict):
+    expires_after: int
+
+def create_session() -> SessionResult:
+    expires_at = datetime.now() + timedelta(seconds=SESSION_LIFETIME_SECONDS)
+    persist_expiry(expires_at)
+    return {"expires_after": SESSION_LIFETIME_SECONDS}
+"""
+    diagnostics = _check(source)
+
+    assert len(diagnostics) == 1
+    assert "SESSION_LIFETIME_SECONDS" in diagnostics[0].message
+
+
+def test_plain_dict_return_does_not_prove_wire_serialization() -> None:
+    source = """
+SESSION_LIFETIME_SECONDS = 180
+
+def create_session() -> dict[str, int]:
+    return {"expires_after": SESSION_LIFETIME_SECONDS}
+"""
+    assert len(_check(source)) == 1
+
+
+def test_shadowed_wire_value_does_not_exempt_module_constant() -> None:
+    source = """
+from typing import TypedDict
+
+SESSION_LIFETIME_SECONDS = 180
+
+class SessionResult(TypedDict):
+    expires_after: int
+
+def create_session(SESSION_LIFETIME_SECONDS: int) -> SessionResult:
+    return {"expires_after": SESSION_LIFETIME_SECONDS}
+"""
+    diagnostics = _check(source)
+
+    assert any(diagnostic.line == 4 for diagnostic in diagnostics)
+
+
 def test_allows_wall_clock_singular_components():
     src = """
 class TimeEdge:

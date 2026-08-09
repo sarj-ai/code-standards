@@ -185,6 +185,43 @@ def test_selected_eslint_accepts_source_directories_and_ignores_generated_trees(
     assert commands[0].argv == ("npm", "exec", "--offline", "--", "eslint", "--", "src")
 
 
+@pytest.mark.parametrize("agent_root", [".agents", ".claude"])
+def test_selected_eslint_excludes_skill_payloads_but_keeps_agent_tools(tmp_path: Path, agent_root: str) -> None:
+    (tmp_path / "package.json").write_text("{}\n", encoding="utf-8")
+    skill = tmp_path / agent_root / "skills" / "sarj-build" / "shared" / "helper.ts"
+    skill.parent.mkdir(parents=True)
+    skill.write_text("export const template = true;\n", encoding="utf-8")
+    tool = tmp_path / agent_root / "tools" / "render.ts"
+    tool.parent.mkdir(parents=True)
+    tool.write_text("export const render = true;\n", encoding="utf-8")
+
+    directory_selection = lifecycle.select_eslint_commands(tmp_path, ["."], label="analysis")
+    explicit_selection = lifecycle.select_eslint_commands(tmp_path, [str(skill), str(tool)], label="analysis")
+
+    assert len(directory_selection.commands) == 1
+    assert directory_selection.commands[0].argv[-1] == f"{agent_root}/tools/render.ts"
+    assert directory_selection.unowned_count == 0
+    assert len(explicit_selection.commands) == 1
+    assert explicit_selection.commands[0].argv[-1] == f"{agent_root}/tools/render.ts"
+    assert explicit_selection.unowned_count == 0
+
+
+def test_selected_eslint_excludes_nested_skill_payloads(tmp_path: Path) -> None:
+    (tmp_path / "package.json").write_text("{}\n", encoding="utf-8")
+    skill = tmp_path / "workspace" / "sample" / ".agents" / "skills" / "shared" / "template.ts"
+    skill.parent.mkdir(parents=True)
+    skill.write_text("export const template = true;\n", encoding="utf-8")
+    source = tmp_path / "workspace" / "sample" / "app.ts"
+    source.write_text("export const app = true;\n", encoding="utf-8")
+
+    directory_selection = lifecycle.select_eslint_commands(tmp_path, ["."], label="analysis")
+    explicit_selection = lifecycle.select_eslint_commands(tmp_path, [str(skill)], label="analysis")
+
+    assert len(directory_selection.commands) == 1
+    assert directory_selection.commands[0].argv[-1] == "workspace/sample/app.ts"
+    assert explicit_selection == lifecycle.EslintSelection((), 0)
+
+
 def test_selected_eslint_partitions_sibling_projects_without_dropping_files(tmp_path: Path) -> None:
     selected: list[str] = []
     for name in ("a", "b"):

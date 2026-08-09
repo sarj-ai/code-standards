@@ -229,6 +229,18 @@ def test_doctor_names_a_stale_disable_directive(tmp_path: Path) -> None:
     )
 
 
+def test_doctor_names_a_stale_python_directive_in_a_stub(tmp_path: Path) -> None:
+    _ = (tmp_path / "service.pyi").write_text(
+        "value: int  # sarj-noqa: SARJ061 -- legacy stub\n",
+        encoding="utf-8",
+    )
+
+    findings = list(check_retired_rules(tmp_path))
+
+    assert len(findings) == 1
+    assert "service.pyi: SARJ061 x1" in findings[0].where
+
+
 def test_doctor_names_every_sarj061_consumer_reference(tmp_path: Path) -> None:
     _ = (tmp_path / ".pre-commit-config.yaml").write_text(
         "repos:\n  - repo: local\n    hooks:\n      - id: sarj-no-patching-system-under-test\n",

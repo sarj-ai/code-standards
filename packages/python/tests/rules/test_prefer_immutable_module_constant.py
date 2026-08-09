@@ -129,6 +129,12 @@ def test_ignores_constants_nested_in_literal_containers_passed_to_unknown_calls(
     assert PreferImmutableModuleConstant().check(Path("service.py"), source) == []
 
 
+def test_ignores_mapping_embedded_in_a_module_document_passed_to_an_unknown_call() -> None:
+    source = "TOOL_SCHEMA = {'type': 'object'}\nSCENARIO = {'tools': [TOOL_SCHEMA]}\njson.dump(SCENARIO, stream)\n"
+
+    assert PreferImmutableModuleConstant().check(Path("service.py"), source) == []
+
+
 def test_local_shadow_inside_escaping_container_does_not_hide_module_finding() -> None:
     source = "OPTIONS = {'module': True}\ndef build():\n    OPTIONS = {'local': True}\n    consume({'x': OPTIONS})"
 

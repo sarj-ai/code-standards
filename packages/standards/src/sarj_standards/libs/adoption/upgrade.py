@@ -15,7 +15,7 @@ from packaging.version import Version
 from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.filesystem import is_link_like
 
-from . import doctor, hooks, lifecycle, manifest, scaffold, transaction
+from . import doctor, hooks, lifecycle, manifest, retired_suppressions, scaffold, transaction
 
 
 if TYPE_CHECKING:
@@ -40,7 +40,6 @@ _MANUAL_POSTFLIGHT_FINDING_IDS = frozenset(
         "doctor.precommit.rev",
         "doctor.pyright.deprecated",
         "doctor.ruff.authority",
-        "doctor.rule.retired",
     }
 )
 
@@ -88,6 +87,7 @@ class UpgradePlan:
     changes: list[Change]
     config_writes: list[tuple[Path, Path]]
     pin_writes: list[tuple[Path, str]]
+    suppression_writes: list[tuple[Path, str]]
     manifest_text: str
     preconditions: dict[Path, bytes | None]
     preexisting_drift: frozenset[tuple[str, str]]
@@ -184,15 +184,29 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
             changes.append(Change(target, f"sync {name} config"))
             config_writes.append((source, target))
 
+    reserved_paths = {
+        path,
+        *(target for _source, target in config_writes),
+        *(target for target, _contents in pin_writes),
+        *(target for target, _contents in (*scaffold_plan.writes, *scaffold_plan.edits)),
+    }
+    suppression_writes = [
+        (rewrite.path, rewrite.contents)
+        for rewrite in retired_suppressions.plan(doctor.authored_files(root))
+        if rewrite.path not in reserved_paths
+    ]
+
     for target, _contents in (*scaffold_plan.writes, *scaffold_plan.edits):
         if target != path:
             changes.append(Change(target, "repair adoption wiring"))
     changes.extend(Change(update.path, f"refresh {'/'.join(update.packages)} version pin") for update in pin_updates)
+    changes.extend(Change(path, "migrate retired source suppression") for path, _contents in suppression_writes)
     planned_paths = tuple(
         dict.fromkeys(
             [path]
             + [target for _source, target in config_writes]
             + [target for target, _contents in pin_writes]
+            + [target for target, _contents in suppression_writes]
             + [target for target, _contents in (*scaffold_plan.writes, *scaffold_plan.edits)]
         )
     )
@@ -209,6 +223,7 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
         changes,
         config_writes,
         pin_writes,
+        suppression_writes,
         manifest_text,
         preconditions,
         preexisting_drift,
@@ -251,23 +266,40 @@ def _install_ecosystems(ecosystems: scaffold.Ecosystems, configs: Sequence[str])
 def unsafe_retired_findings(plan: UpgradePlan) -> list[doctor.Finding]:
     """Return consumer-authored blockers, excluding configs this plan replaces."""
     replaced = [target for _source, target in plan.config_writes]
-    replaced.extend(path for path, _contents in (*plan.scaffold_plan.writes, *plan.scaffold_plan.edits))
     owned = {target.relative_to(plan.root).as_posix() for target in replaced}
-    return [
-        finding
-        for finding in doctor.diagnose(plan.root)
-        if finding.id == "doctor.rule.retired"
-        and finding.level is doctor.Level.DRIFT
-        and finding.where.split(": ", 1)[0] not in owned
-    ]
+    planned = {path.relative_to(plan.root).as_posix(): (path, contents) for path, contents in plan.suppression_writes}
+    projected = {
+        path.relative_to(plan.root).as_posix(): (path, contents) for path, contents in plan.scaffold_plan.writes
+    }
+    blockers: list[doctor.Finding] = []
+    for finding in doctor.diagnose(plan.root):
+        if finding.id != "doctor.rule.retired" or finding.level is not doctor.Level.DRIFT:
+            continue
+        relative, _, reference = finding.where.partition(": ")
+        if relative in owned:
+            continue
+        rewrite = planned.get(relative)
+        retired_id = reference.rsplit(" x", maxsplit=1)[0]
+        if rewrite is not None and retired_id not in doctor.retired_rule_references(*rewrite):
+            continue
+        scaffold_write = projected.get(relative)
+        if scaffold_write is not None and retired_id not in doctor.retired_rule_references(*scaffold_write):
+            continue
+        blockers.append(finding)
+    return blockers
 
 
-def apply(plan: UpgradePlan, *, install: bool = True) -> int:
+def apply(
+    plan: UpgradePlan,
+    *,
+    install: bool = True,
+    allow_retired_debt: bool = False,
+) -> int:
     """Apply one validated plan and restore touched files if any step fails."""
     if Version(plan.adopted.version) > Version(manifest.adopted_version()):
         return 2
-    blockers = unsafe_retired_findings(plan) if changes_bundle_version(plan) else []
-    if blockers:
+    blockers = unsafe_retired_findings(plan)
+    if blockers and not allow_retired_debt:
         return 2
     try:
         transaction.validate_targets(plan.root, tuple(plan.preconditions))
@@ -283,13 +315,19 @@ def apply(plan: UpgradePlan, *, install: bool = True) -> int:
         [manifest.manifest_path(plan.root)]
         + [target for _source, target in plan.config_writes]
         + [path for path, _contents in plan.pin_writes]
+        + [path for path, _contents in plan.suppression_writes]
         + [path for path, _contents in (*plan.scaffold_plan.writes, *plan.scaffold_plan.edits)]
     )
     file_transaction = transaction.FileTransaction.capture(plan.root, paths)
     environment = None if plan.ecosystems.python_root is None else plan.ecosystems.python_root / ".venv"
     environment_existed = environment is not None and environment.exists()
     try:
-        status = _apply_and_validate(plan, file_transaction, install=install)
+        status = _apply_and_validate(
+            plan,
+            file_transaction,
+            install=install,
+            allow_retired_debt=allow_retired_debt,
+        )
     except KeyboardInterrupt:
         _recover_or_raise(file_transaction, environment, environment_existed=environment_existed)
         return 130
@@ -336,20 +374,10 @@ def _apply_and_validate(
     file_transaction: transaction.FileTransaction,
     *,
     install: bool,
+    allow_retired_debt: bool,
 ) -> int:
     """Apply the plan and return its install/postflight status."""
-    _write_plan(plan)
-    file_transaction.mark_written(
-        *(
-            path
-            for path in (
-                manifest.manifest_path(plan.root),
-                *(target for _source, target in plan.config_writes),
-                *(path for path, _contents in (*plan.scaffold_plan.writes, *plan.scaffold_plan.edits)),
-            )
-            if path.name not in _INSTALL_MUTATED_NAMES
-        )
-    )
+    _write_plan(plan, file_transaction)
     if install:
         status = lifecycle.execute(
             lifecycle.install_commands(
@@ -358,12 +386,17 @@ def _apply_and_validate(
                 hook_manager=plan.adopted.hook_manager,
             )
         )
+        _mark_installer_writes(file_transaction)
         if status:
             return status
     findings = doctor.diagnose(plan.root)
     drifted = [finding for finding in findings if finding.level is doctor.Level.DRIFT]
     if not install:
         drifted = [finding for finding in drifted if not is_install_remediable(finding)]
+    if not allow_retired_debt and any(finding.id == "doctor.rule.retired" for finding in drifted):
+        return 1
+    if allow_retired_debt:
+        drifted = [finding for finding in drifted if finding.id != "doctor.rule.retired"]
     drifted = [finding for finding in drifted if (finding.id, finding.where) not in plan.preexisting_drift]
     drifted = [finding for finding in drifted if finding.id not in _MANUAL_POSTFLIGHT_FINDING_IDS]
     return 1 if drifted else 0
@@ -388,7 +421,7 @@ def pending_install_findings(root: Path) -> list[doctor.Finding]:
     ]
 
 
-def _write_plan(plan: UpgradePlan) -> None:
+def _write_plan(plan: UpgradePlan, file_transaction: transaction.FileTransaction) -> None:
     """Write validated upgrade files; the caller owns rollback."""
     transaction.validate_targets(
         plan.root,
@@ -396,22 +429,42 @@ def _write_plan(plan: UpgradePlan) -> None:
             [manifest.manifest_path(plan.root)]
             + [target for _source, target in plan.config_writes]
             + [path for path, _contents in plan.pin_writes]
+            + [path for path, _contents in plan.suppression_writes]
             + [path for path, _contents in (*plan.scaffold_plan.writes, *plan.scaffold_plan.edits)]
         ),
     )
     manifest_target = manifest.manifest_path(plan.root)
     transaction.assert_expected(plan.root, manifest_target, plan.preconditions[manifest_target])
     transaction.atomic_write_text(plan.root, manifest_target, plan.manifest_text)
+    _mark_direct_write(file_transaction, manifest_target)
     for source, target in plan.config_writes:
         if is_link_like(target) or (target.exists() and not target.is_file()):
             msg = f"refusing unsafe generated-config target {target}"
             raise OSError(msg)
         transaction.assert_expected(plan.root, target, plan.preconditions[target])
         transaction.atomic_write_bytes(plan.root, target, source.read_bytes())
+        _mark_direct_write(file_transaction, target)
     for target, contents in plan.pin_writes:
         transaction.assert_expected(plan.root, target, plan.preconditions[target])
         transaction.atomic_write_text(plan.root, target, contents)
+        _mark_direct_write(file_transaction, target)
+    for target, contents in plan.suppression_writes:
+        transaction.assert_expected(plan.root, target, plan.preconditions[target])
+        transaction.atomic_write_text(plan.root, target, contents)
+        _mark_direct_write(file_transaction, target)
     scaffold.apply(plan.scaffold_plan, preconditions=plan.preconditions)
+    for target, _contents in (*plan.scaffold_plan.writes, *plan.scaffold_plan.edits):
+        _mark_direct_write(file_transaction, target)
+
+
+def _mark_direct_write(file_transaction: transaction.FileTransaction, path: Path) -> None:
+    """Record each direct write before another planned mutation can fail."""
+    file_transaction.mark_written(path)
+
+
+def _mark_installer_writes(file_transaction: transaction.FileTransaction) -> None:
+    """Accept controlled installer mutations as the transaction's latest writes."""
+    file_transaction.mark_written(*(path for path in file_transaction.before if path.name in _INSTALL_MUTATED_NAMES))
 
 
 def render(changes: Sequence[Change]) -> str:

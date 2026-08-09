@@ -96,6 +96,48 @@ def test_staged_relative_paths_are_resolved_from_the_repository_root(
     assert "doctor.ruff.replaces-policy" in {finding.id for finding in findings}
 
 
+@pytest.mark.parametrize("agent_root", [".agents", ".claude"])
+def test_authored_files_exclude_skill_payloads_but_keep_agent_tools(tmp_path: Path, agent_root: str) -> None:
+    skill = tmp_path / agent_root / "skills" / "sarj-build" / "shared" / "helper.py"
+    skill.parent.mkdir(parents=True)
+    skill.write_text("raise RuntimeError\n", encoding="utf-8")
+    tool = tmp_path / agent_root / "tools" / "render.py"
+    tool.parent.mkdir(parents=True)
+    tool.write_text("VALUE = 1\n", encoding="utf-8")
+
+    assert doctor.authored_files(tmp_path) == (tool,)
+
+
+def test_authored_files_git_walk_excludes_skills_but_keeps_agent_tools(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    skill = tmp_path / ".agents" / "skills" / "sarj-build" / "helper.py"
+    skill.parent.mkdir(parents=True)
+    skill.write_text("raise RuntimeError\n", encoding="utf-8")
+    tool = tmp_path / ".agents" / "tools" / "render.py"
+    tool.parent.mkdir(parents=True)
+    tool.write_text("VALUE = 1\n", encoding="utf-8")
+
+    def which(_name: str) -> str:
+        return "/usr/bin/git"
+
+    def run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.CompletedProcess(
+            args=(),
+            returncode=0,
+            stdout=b".agents/skills/sarj-build/helper.py\0.agents/tools/render.py\0",
+            stderr=b"",
+        )
+
+    monkeypatch.setattr("sarj_standards.libs.adoption.doctor.shutil.which", which)
+    monkeypatch.setattr(
+        "sarj_standards.libs.adoption.doctor.subprocess.run",
+        run,
+    )
+
+    assert doctor.authored_files(tmp_path) == (tool,)
+
+
 @pytest.mark.parametrize("timed_out_argument", ["--is-inside-work-tree", "--git-path"])
 def test_git_discovery_timeouts_are_nonfatal(
     tmp_path: Path,

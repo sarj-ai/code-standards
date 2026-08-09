@@ -2084,6 +2084,18 @@ def test_init_refuses_to_replace_unadopted_configs_without_force(tmp_path: Path)
     assert not (tmp_path / manifest.MANIFEST_NAME).exists()
 
 
+def test_init_force_replaces_reviewed_unadopted_config(tmp_path: Path) -> None:
+    _python_repo(tmp_path)
+    strict = tmp_path / ".ruff-strict.toml"
+    strict.write_text("stale\n", encoding="utf-8")
+
+    proc = _cli("--root", str(tmp_path), "setup", "--force", "--no-install")
+
+    assert proc.returncode == 0, proc.stderr
+    assert strict.read_text(encoding="utf-8") != "stale\n"
+    assert (tmp_path / manifest.MANIFEST_NAME).is_file()
+
+
 #: Hand-edited fixtures for files owned by `init`.
 _SCAFFOLDED_FILES = {
     manifest.MANIFEST_NAME: (

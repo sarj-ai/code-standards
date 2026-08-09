@@ -15,6 +15,10 @@ import sarj_standards.cli.main as cli
 from sarj_standards.libs.adoption import doctor, lifecycle, manifest, transaction, upgrade
 
 
+class _LaterWriteError(OSError):
+    """A planned later write failed during a transaction regression."""
+
+
 def _main(arguments: list[str]) -> int:
     command = list(arguments)
     if command and command[0] == "init":
@@ -248,6 +252,11 @@ def test_update_migrates_a_legacy_manifest_before_applying(tmp_path: Path, capsy
         'version = "0.42.0"\nconfigs = ["ruff"]\n\n[dest]\npython = "."\ntypescript = "."\n',
         encoding="utf-8",
     )
+    source = tmp_path / "service.ts"
+    source.write_text(
+        "// eslint-disable-next-line @sarj/prefer-string-literal-union\nexport const value = 1;\n",
+        encoding="utf-8",
+    )
 
     status = _main(["update", "--offline", "--no-install", str(tmp_path)])
 
@@ -255,6 +264,7 @@ def test_update_migrates_a_legacy_manifest_before_applying(tmp_path: Path, capsy
     assert status == 0
     assert "migrated: legacy adoption manifest" in output
     assert manifest.load(tmp_path) is not None
+    assert source.read_text(encoding="utf-8") == "export const value = 1;\n"
 
 
 def test_update_check_explains_the_safe_legacy_migration(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -418,7 +428,6 @@ def test_upgrade_no_install_rolls_back_when_dependency_and_configuration_drift_r
         "doctor.precommit.rev",
         "doctor.pyright.deprecated",
         "doctor.ruff.authority",
-        "doctor.rule.retired",
     ],
 )
 def test_current_bundle_repairs_do_not_roll_back_for_manual_debt(
@@ -435,6 +444,75 @@ def test_current_bundle_repairs_do_not_roll_back_for_manual_debt(
     monkeypatch.setattr(doctor, "diagnose", diagnosed)
 
     assert upgrade.apply(plan, install=False) == 0
+
+
+def test_current_bundle_blocks_unresolved_retired_rule_debt(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    assert upgrade.apply(upgrade.build_plan(tmp_path), install=False) == 0
+    plan = upgrade.build_plan(tmp_path)
+    finding = doctor.Finding(
+        doctor.Level.DRIFT,
+        "consumer.file: @sarj/prefer-string-literal-union x1",
+        "manual migration remains",
+        "doctor.rule.retired",
+    )
+
+    def diagnosed(_root: Path) -> list[doctor.Finding]:
+        return [finding]
+
+    monkeypatch.setattr(doctor, "diagnose", diagnosed)
+
+    assert upgrade.apply(plan, install=False) == 2
+
+
+def test_upgrade_transactionally_migrates_retired_source_suppressions(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    source = tmp_path / "service.ts"
+    source.write_text(
+        "// eslint-disable-next-line unicorn/no-null, @sarj/prefer-string-literal-union -- legacy\n"
+        "export const value = null;\n",
+        encoding="utf-8",
+    )
+
+    plan = upgrade.build_plan(tmp_path)
+
+    assert plan.suppression_writes == [
+        (
+            source,
+            "// eslint-disable-next-line unicorn/no-null -- legacy\nexport const value = null;\n",
+        )
+    ]
+    assert upgrade.unsafe_retired_findings(plan) == []
+    assert upgrade.apply(plan, install=False) == 0
+    assert source.read_text(encoding="utf-8") == (
+        "// eslint-disable-next-line unicorn/no-null -- legacy\nexport const value = null;\n"
+    )
+    assert not [finding for finding in doctor.diagnose(tmp_path) if finding.id == "doctor.rule.retired"]
+
+
+def test_upgrade_does_not_overwrite_a_concurrent_edit_after_writing_a_pin(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _outdated_python_repo(tmp_path)
+    _add_legacy_in_project_tool(tmp_path)
+    pin = tmp_path / "pyproject.toml"
+    suppression = tmp_path / "service.py"
+    suppression.write_text("value = 1  # sarj-noqa: SARJ061\n", encoding="utf-8")
+    plan = upgrade.build_plan(tmp_path)
+    assert any(path == pin for path, _contents in plan.pin_writes)
+    original_write = upgrade.transaction.atomic_write_text
+
+    def fail_after_concurrent_pin_edit(root: Path, path: Path, contents: str) -> None:
+        if path == suppression:
+            pin.write_text("consumer concurrent edit\n", encoding="utf-8")
+            raise _LaterWriteError
+        original_write(root, path, contents)
+
+    monkeypatch.setattr(upgrade.transaction, "atomic_write_text", fail_after_concurrent_pin_edit)
+
+    with pytest.raises(OSError, match="changed concurrently after the standards write"):
+        upgrade.apply(plan, install=False)
+    assert pin.read_text(encoding="utf-8") == "consumer concurrent edit\n"
 
 
 def test_upgrade_check_explains_doctor_drift_when_bundle_is_current(
