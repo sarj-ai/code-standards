@@ -86,8 +86,10 @@ def test_release_waits_for_exact_revision_safety_checks() -> None:
     assert "\n  release-safety:\n" in release
     assert "release-safety:\n    needs: detect\n" in release
     release_safety = release.partition("\n  release-safety:\n")[2].partition("\n  detect:\n")[0]
-    for package in ("typescript", "python", "sql", "iac", "standards", "tsconfig"):
+    for package in ("typescript", "python", "sql", "iac", "standards", "tsconfig", "tag_recovery"):
         assert f"needs.detect.outputs.{package} == 'true'" in release_safety
+    assert "tag_recovery: ${{ steps.tags.outputs.tag_recovery }}" in release
+    assert "missing_remote_release_tags(Path.cwd())" in release
     assert "actions: read" in release
     assert "repo-ci.yml|release-ready" in release
     assert "private-refs.yml|private references" in release
