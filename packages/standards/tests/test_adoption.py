@@ -1720,6 +1720,32 @@ def test_doctor_warns_that_a_local_eslint_plugin_checkout_is_unverified(tmp_path
     assert "doctor.eslint.plugin-unverified" in proc.stdout
 
 
+def test_doctor_verifies_an_in_repository_file_plugin_at_the_tested_version(tmp_path: Path) -> None:
+    floor = manifest.eslint_peers()["@sarj/eslint-plugin"]
+    plugin = tmp_path / "packages" / "typescript"
+    plugin.mkdir(parents=True)
+    _ = (plugin / "package.json").write_text(
+        json.dumps({"name": "@sarj/eslint-plugin", "version": floor}),
+        encoding="utf-8",
+    )
+    app = tmp_path / "apps" / "docs"
+    app.mkdir(parents=True)
+    _ = (app / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "docs",
+                "devDependencies": {"@sarj/eslint-plugin": "file:../../packages/typescript"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    findings = doctor.diagnose(tmp_path)
+
+    plugin_findings = [finding for finding in findings if finding.where.startswith("apps/docs/package.json")]
+    assert [(finding.level, finding.id) for finding in plugin_findings] == [(doctor.Level.OK, "doctor.eslint.plugin")]
+
+
 def test_adopted_workspace_checks_the_install_root_not_nested_plugin_ranges(tmp_path: Path) -> None:
     web = tmp_path / "web"
     package = web / "packages" / "legacy"

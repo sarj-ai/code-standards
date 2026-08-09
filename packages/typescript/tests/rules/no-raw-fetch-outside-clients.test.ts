@@ -146,6 +146,26 @@ ruleTester.run("no-raw-fetch-outside-clients", rule, {
       filename: "/repo/app/routes/ingest.tsx",
     },
     {
+      name: "ignores a locally shadowed fetch binding",
+      code: "export const load = (fetch) => fetch('/api/items');",
+      filename: "/repo/src/page.tsx",
+    },
+    {
+      name: "defers an internal API mutation to prefer-server-actions",
+      code: "export const M = (id) => { fetch(`/api/links/sync?workspaceId=${id}`, { method: 'POST' }); };",
+      filename: "/repo/apps/web/ui/modals/modal-provider.tsx",
+    },
+    {
+      name: "defers resolved internal API mutation arguments to prefer-server-actions",
+      code: "const url = '/api/items'; const init = { method: 'POST' }; fetch(url, init);",
+      filename: "/repo/apps/web/ui/items.tsx",
+    },
+    {
+      name: "defers a GET inside an effect to no-client-side-data-fetching",
+      code: "useEffect(() => { fetch('/api/items'); }, []);",
+      filename: "/repo/src/page.tsx",
+    },
+    {
       name: "allows client directories",
       code: "export const get = () => fetch(url);",
       filename: "/repo/src/clients/slack-client.ts",
@@ -248,20 +268,44 @@ ruleTester.run("no-raw-fetch-outside-clients", rule, {
       errors: [{ messageId: "rawFetch" }],
     },
     {
-      name: "reports provider-suffixed UI modules outside provider directories",
-      code: "export const M = (id) => { fetch(`/api/links/sync?workspaceId=${id}`, { method: 'POST' }); };",
-      filename: "/repo/apps/web/ui/modals/modal-provider.tsx",
-      errors: [{ messageId: "rawFetch" }],
-    },
-    {
       name: "reports modules whose basename merely contains service",
       code: "export const Page = () => { fetch('/api/me'); };",
       filename: "/repo/apps/web/app/settings/service-page.tsx",
       errors: [{ messageId: "rawFetch" }],
     },
     {
+      name: "keeps analytics fetches that the client-fetch owner exempts",
+      code: "useEffect(() => { fetch('/api/analytics'); }, []);",
+      filename: "/repo/src/page.tsx",
+      errors: [{ messageId: "rawFetch" }],
+    },
+    {
+      name: "keeps internal mutations in scripts that prefer-server-actions exempts",
+      code: "fetch('/api/items', { method: 'POST' });",
+      filename: "/repo/scripts/push.ts",
+      errors: [{ messageId: "rawFetch" }],
+    },
+    {
+      name: "keeps internal mutations in non-React framework modules",
+      code: "import { ref } from 'vue'; fetch('/api/items', { method: 'POST' });",
+      filename: "/repo/src/items.ts",
+      errors: [{ messageId: "rawFetch" }],
+    },
+    {
       name: "reports constructed URLs when fetch also has init options",
       code: "const r = await fetch(new URL('/api/x', base), { method: 'POST' });",
+      filename: HANDLER,
+      errors: [{ messageId: "rawFetch" }],
+    },
+    {
+      name: "does not exempt arbitrary constructed fetch inputs",
+      code: "const r = await fetch(new ApiInput('/api/x'));",
+      filename: HANDLER,
+      errors: [{ messageId: "rawFetch" }],
+    },
+    {
+      name: "does not treat a shadowed URL constructor as a global URL handoff",
+      code: "class URL { constructor(value) {} } const r = await fetch(new URL('/api/x'));",
       filename: HANDLER,
       errors: [{ messageId: "rawFetch" }],
     },

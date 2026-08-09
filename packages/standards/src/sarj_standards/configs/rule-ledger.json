@@ -40,7 +40,6 @@
       "no-comment-cruft",
       "no-cors-wildcard-with-credentials",
       "no-duplicate-dunder-all-entry",
-      "no-fat-try-blocks",
       "no-file-level-escape-hatch-noqa",
       "no-file-level-suppression",
       "no-first-party-private-import",
@@ -53,13 +52,11 @@
       "no-offset-pagination",
       "no-optional-tenant-predicate",
       "no-query-with-many-joins",
-      "no-raw-sql-in-tests",
       "no-repeated-string-literal",
       "no-restated-comment",
       "no-secret-in-log",
       "no-select-star",
       "no-sentinel-return-on-except",
-      "no-sleep-in-test-body",
       "no-stdlib-logging",
       "no-string-concat-in-loop",
       "no-tautological-expect",
@@ -78,7 +75,6 @@
       "prefer-nominal-id-types",
       "prefer-non-nullable-collection",
       "prefer-or-pattern",
-      "prefer-real-store-in-tests",
       "prefer-self-documenting-constant",
       "prefer-self-type-annotation",
       "prefer-str-enum",
@@ -94,10 +90,8 @@
       "require-keyword-only-swap-prone-params",
       "require-port-for-service",
       "restated-test-docstring",
-      "sleep-with-computed-arg-in-test",
       "stepdown",
       "store-insert-requires-on-conflict",
-      "test-loops-over-literal-cases",
       "test-phase-label-comment",
       "trailing-value-narration",
       "trivially-true-assertion",
@@ -126,7 +120,6 @@
     "eslint": [
       "duplicate-test-body",
       "enforce-file-structure",
-      "no-async-callback-in-wait-for",
       "no-client-side-data-fetching",
       "no-comment-cruft",
       "no-conditional-in-test",
@@ -202,7 +195,6 @@
       "SARJ002",
       "SARJ003",
       "SARJ006",
-      "SARJ007",
       "SARJ008",
       "SARJ009",
       "SARJ011",
@@ -221,20 +213,16 @@
       "SARJ025",
       "SARJ026",
       "SARJ028",
-      "SARJ031",
       "SARJ032",
       "SARJ034",
-      "SARJ036",
       "SARJ038",
       "SARJ039",
       "SARJ040",
-      "SARJ041",
       "SARJ042",
       "SARJ043",
       "SARJ044",
       "SARJ045",
       "SARJ046",
-      "SARJ047",
       "SARJ048",
       "SARJ049",
       "SARJ050",
@@ -244,7 +232,6 @@
       "SARJ054",
       "SARJ056",
       "SARJ057",
-      "SARJ058",
       "SARJ059",
       "SARJ062",
       "SARJ063",
@@ -321,11 +308,18 @@
       "note": "the old name no longer resolves: @sarj/eslint-plugin 9.0.0 deleted the deprecated aliases 7.0.0 shipped, so a config, an eslint-disable comment or a suppression entry naming it now makes ESLint exit 2 on the whole repo. Rewrite every reference to @sarj/no-restated-jsdoc."
     },
     {
+      "id": "@sarj/no-async-callback-in-wait-for",
+      "kind": "eslint",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete the entry and suppressions; Testing Library supports async waitFor callbacks and retries when their promises reject."
+    },
+    {
       "id": "@sarj/no-async-callback-in-waitfor",
       "kind": "eslint",
-      "status": "renamed",
-      "replacement": "@sarj/no-async-callback-in-wait-for",
-      "note": "the old name no longer resolves: @sarj/eslint-plugin 9.0.0 deleted the deprecated aliases 7.0.0 shipped, so a config, an eslint-disable comment or a suppression entry naming it now makes ESLint exit 2 on the whole repo. Rewrite every reference to @sarj/no-async-callback-in-wait-for."
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete the stale alias; its former replacement was also retired because Testing Library supports async waitFor callbacks."
     },
     {
       "id": "@sarj/no-implicit-attribute-access",
@@ -447,6 +441,13 @@
       "note": "Delete SARJ001 suppressions and baseline keys; syntax cannot prove that concurrent iterations preserve ordering, rate limits, resource safety, or transaction semantics."
     },
     {
+      "id": "SARJ007",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ007 suppressions and baseline keys; syntax cannot distinguish an accidental broad handler from a deliberate whole-operation fallback or terminal fault boundary."
+    },
+    {
       "id": "SARJ010",
       "kind": "code",
       "status": "removed",
@@ -461,11 +462,46 @@
       "note": "Delete SARJ017 suppressions and baseline keys; Ruff G004 owns f-string logging detection."
     },
     {
+      "id": "SARJ031",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ031 suppressions and baseline keys; fixed real-clock sleeps can deliberately exercise TTL and monotonic-clock behavior."
+    },
+    {
+      "id": "SARJ036",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ036 suppressions and baseline keys; syntax cannot prove whether a production write API can represent the fixture state."
+    },
+    {
+      "id": "SARJ041",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ041 suppressions and baseline keys; a literal test loop may encode one shared scenario, completeness contract, or state evolution that parametrization would change."
+    },
+    {
+      "id": "SARJ047",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ047 suppressions and baseline keys; a computed real-clock delay can deliberately exercise timeout, TTL, or monotonic-clock behavior."
+    },
+    {
       "id": "SARJ055",
       "kind": "code",
       "status": "removed",
       "replacement": null,
       "note": "renumbered to SARJ083 in sarj-python-lint 0.26.0, and SARJ083 was itself removed in 0.37.0 -- so there is nothing to renumber to. Delete the `sarj-noqa` comment and any suppression-baseline key."
+    },
+    {
+      "id": "SARJ058",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ058 suppressions and baseline keys; class syntax cannot prove whether an in-memory store is the persistence subject or a legitimate injected unit-test seam."
     },
     {
       "id": "SARJ060",
@@ -531,6 +567,13 @@
       "note": "Replace sarj-kwonly-same-type-params with sarj-require-keyword-only-swap-prone-params before upgrading."
     },
     {
+      "id": "no-fat-try-blocks",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Remove this hook; syntax cannot distinguish an accidental broad handler from a deliberate whole-operation fallback or terminal fault boundary."
+    },
+    {
       "id": "no-fstring-in-log",
       "kind": "python",
       "status": "removed",
@@ -559,11 +602,25 @@
       "note": "removed in sarj-python-lint 0.34.0: 25 corpus findings read, 3 true positives. Delete the `sarj-no-patching-system-under-test` pre-commit hook."
     },
     {
+      "id": "no-raw-sql-in-tests",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Remove this hook; syntax cannot prove whether a production write API can represent the fixture state."
+    },
+    {
       "id": "no-sequential-await",
       "kind": "python",
       "status": "removed",
       "replacement": null,
       "note": "Remove this hook from pre-commit; it flagged already-concurrent `asyncio.as_completed` loops and operations that must remain sequential."
+    },
+    {
+      "id": "no-sleep-in-test-body",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Remove this hook; fixed real-clock sleeps can deliberately exercise TTL and monotonic-clock behavior."
     },
     {
       "id": "no-unreachable-after-terminal",
@@ -587,6 +644,13 @@
       "note": "Remove this hook from pre-commit; generic match destructuring changes failure, evaluation, and binding semantics."
     },
     {
+      "id": "prefer-real-store-in-tests",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Remove this hook; class syntax cannot prove whether an in-memory store is the persistence subject or a legitimate injected unit-test seam."
+    },
+    {
       "id": "prefer-single-sentence-comment",
       "kind": "python",
       "status": "removed",
@@ -601,11 +665,25 @@
       "note": "Replace sarj-single-public-export with sarj-no-generic-single-export-module before upgrading."
     },
     {
+      "id": "sleep-with-computed-arg-in-test",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Remove this hook; a computed real-clock delay can deliberately exercise timeout, TTL, or monotonic-clock behavior."
+    },
+    {
       "id": "tautological-mock-assertion",
       "kind": "python",
       "status": "removed",
       "replacement": null,
       "note": "Remove this hook from pre-commit; the reported setup/output shape can be a legitimate delegation test."
+    },
+    {
+      "id": "test-loops-over-literal-cases",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Remove this hook; a literal test loop may encode one shared scenario, completeness contract, or state evolution that parametrization would change."
     },
     {
       "id": "xfail-requires-strict",

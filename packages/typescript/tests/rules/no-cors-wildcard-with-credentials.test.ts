@@ -51,6 +51,10 @@ ruleTester.run("no-cors-wildcard-with-credentials", rule, {
     {
       code: "function a() { res.setHeader('Access-Control-Allow-Origin', '*'); } function b() { res.setHeader('Access-Control-Allow-Credentials', 'true'); }",
     },
+    // Separate response receivers in one function must not pair either.
+    {
+      code: "function h(originResponse, credentialsResponse) { originResponse.setHeader('Access-Control-Allow-Origin', '*'); credentialsResponse.setHeader('Access-Control-Allow-Credentials', 'true'); }",
+    },
     // credentials=true header alone.
     { code: "res.setHeader('Access-Control-Allow-Credentials', 'true');" },
     // Non-cors call named something else with a wildcard+credentials-shaped
@@ -140,6 +144,11 @@ ruleTester.run("no-cors-wildcard-with-credentials", rule, {
     // headers.set pair in the same function scope.
     {
       code: "function h() { headers.set('Access-Control-Allow-Origin', '*'); headers.set('Access-Control-Allow-Credentials', 'true'); }",
+      errors: [{ messageId: "corsWildcardWithCredentials" }],
+    },
+    {
+      name: "pairs the same resolved static member receiver",
+      code: "function h(response) { response.headers.set('Access-Control-Allow-Origin', '*'); response.headers.set('Access-Control-Allow-Credentials', 'true'); }",
       errors: [{ messageId: "corsWildcardWithCredentials" }],
     },
     {

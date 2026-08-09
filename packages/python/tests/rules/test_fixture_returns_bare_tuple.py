@@ -389,6 +389,38 @@ def pair() -> "tuple[OrgStore, UserStore]":
     assert len(_check(src)) == 1
 
 
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        "tuple[int, str] | None",
+        "None | tuple[int, str]",
+        "Optional[tuple[int, str]]",
+        "Union[tuple[int, str], None]",
+    ],
+)
+def test_optional_tuple_annotation_is_still_positional(annotation: str) -> None:
+    src = f"""\
+import pytest
+from typing import Optional, Union
+
+@pytest.fixture
+def pair() -> {annotation}:
+    return make_pair()
+"""
+    assert len(_check(src)) == 1
+
+
+def test_non_optional_union_annotation_is_ambiguous() -> None:
+    src = """\
+import pytest
+
+@pytest.fixture
+def pair() -> tuple[int, str] | list[str]:
+    return make_pair()
+"""
+    assert _check(src) == []
+
+
 def test_local_tuple_type_alias_catches_returned_alias():
     src = """
 import pytest

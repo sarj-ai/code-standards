@@ -31,7 +31,6 @@ from sarj_python_lint.rules.no_cors_wildcard_with_credentials import (
     NoCorsWildcardWithCredentials,
 )
 from sarj_python_lint.rules.no_duplicate_dunder_all_entry import NoDuplicateDunderAllEntry
-from sarj_python_lint.rules.no_fat_try_blocks import NoFatTryBlocks
 from sarj_python_lint.rules.no_file_level_escape_hatch_noqa import NoFileLevelEscapeHatchNoqa
 from sarj_python_lint.rules.no_file_level_suppression import NoFileLevelSuppression
 from sarj_python_lint.rules.no_first_party_private_import import (
@@ -52,13 +51,11 @@ from sarj_python_lint.rules.no_optional_tenant_predicate import (
     NoOptionalTenantPredicate,
 )
 from sarj_python_lint.rules.no_query_with_many_joins import NoQueryWithManyJoins
-from sarj_python_lint.rules.no_raw_sql_in_tests import NoRawSqlInTests
 from sarj_python_lint.rules.no_repeated_string_literal import NoRepeatedStringLiteral
 from sarj_python_lint.rules.no_restated_comment import NoRestatedComment
 from sarj_python_lint.rules.no_secret_in_log import NoSecretInLog
 from sarj_python_lint.rules.no_select_star import NoSelectStar
 from sarj_python_lint.rules.no_sentinel_return_on_except import NoSentinelReturnOnExcept
-from sarj_python_lint.rules.no_sleep_in_test_body import NoSleepInTestBody
 from sarj_python_lint.rules.no_stdlib_logging import NoStdlibLogging
 from sarj_python_lint.rules.no_string_concat_in_loop import NoStringConcatInLoop
 from sarj_python_lint.rules.no_tautological_expect import NoTautologicalExpect
@@ -88,7 +85,6 @@ from sarj_python_lint.rules.prefer_non_nullable_collection import (
     PreferNonNullableCollection,
 )
 from sarj_python_lint.rules.prefer_or_pattern import PreferOrPattern
-from sarj_python_lint.rules.prefer_real_store_in_tests import PreferRealStoreInTests
 from sarj_python_lint.rules.prefer_self_documenting_constant import (
     PreferSelfDocumentingConstant,
 )
@@ -114,13 +110,9 @@ from sarj_python_lint.rules.require_keyword_only_swap_prone_params import (
 )
 from sarj_python_lint.rules.require_port_for_service import RequirePortForService
 from sarj_python_lint.rules.restated_test_docstring import RestatedTestDocstring
-from sarj_python_lint.rules.sleep_with_computed_arg_in_test import SleepWithComputedArgInTest
 from sarj_python_lint.rules.stepdown import Stepdown
 from sarj_python_lint.rules.store_insert_requires_on_conflict import (
     StoreInsertRequiresOnConflict,
-)
-from sarj_python_lint.rules.test_loops_over_literal_cases import (
-    TestLoopsOverLiteralCases,
 )
 from sarj_python_lint.rules.trailing_value_narration import TrailingValueNarration
 from sarj_python_lint.rules.trivially_true_assertion import TriviallyTrueAssertion
@@ -138,12 +130,10 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoStringConcatInLoop.id: NoStringConcatInLoop,
         PreferClassRow.id: PreferClassRow,
         PreferStrEnum.id: PreferStrEnum,
-        NoFatTryBlocks.id: NoFatTryBlocks,
         NoIsinstanceUnionChain.id: NoIsinstanceUnionChain,
         NoOffsetPagination.id: NoOffsetPagination,
         PreferNamedtupleOverTupleReturn.id: PreferNamedtupleOverTupleReturn,
         NoCorsWildcardWithCredentials.id: NoCorsWildcardWithCredentials,
-        NoSleepInTestBody.id: NoSleepInTestBody,
         PydanticAtBoundaries.id: PydanticAtBoundaries,
         FastapiOpenapiContract.id: FastapiOpenapiContract,
         NoSentinelReturnOnExcept.id: NoSentinelReturnOnExcept,
@@ -161,17 +151,14 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoRepeatedStringLiteral.id: NoRepeatedStringLiteral,
         PreferMatchAssertNever.id: PreferMatchAssertNever,
         RequireKeywordOnlySwapProneParams.id: RequireKeywordOnlySwapProneParams,
-        NoRawSqlInTests.id: NoRawSqlInTests,
         NoFileLevelSuppression.id: NoFileLevelSuppression,
         PreferModuleLevelConstant.id: PreferModuleLevelConstant,
         PreferImmutableModuleConstant.id: PreferImmutableModuleConstant,
         MockWithoutSpec.id: MockWithoutSpec,
-        TestLoopsOverLiteralCases.id: TestLoopsOverLiteralCases,
         OpaqueParametrizeCaseNeedsId.id: OpaqueParametrizeCaseNeedsId,
         FixtureReturnsBareTuple.id: FixtureReturnsBareTuple,
         KwargHeavyConstructionInTest.id: KwargHeavyConstructionInTest,
         DefectXfailRequiresStrict.id: DefectXfailRequiresStrict,
-        SleepWithComputedArgInTest.id: SleepWithComputedArgInTest,
         ZeroAssertionTest.id: ZeroAssertionTest,
         NoFirstPartyPrivateImport.id: NoFirstPartyPrivateImport,
         NoRestatedComment.id: NoRestatedComment,
@@ -183,7 +170,6 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoFileLevelEscapeHatchNoqa.id: NoFileLevelEscapeHatchNoqa,
         NoOptionalTenantPredicate.id: NoOptionalTenantPredicate,
         NoTautologicalExpect.id: NoTautologicalExpect,
-        PreferRealStoreInTests.id: PreferRealStoreInTests,
         PreferLibraryFake.id: PreferLibraryFake,
         OverMockedTest.id: OverMockedTest,
         InteractionOnlyTest.id: InteractionOnlyTest,

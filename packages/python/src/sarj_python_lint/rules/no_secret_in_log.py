@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import ast
 from pathlib import PurePosixPath
-import re
 from typing import TYPE_CHECKING, ClassVar, override
 
 from sarj_python_lint._secret_names import identifier_tokens, is_secret_name
@@ -29,41 +28,41 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# A redaction marker (`token_prefix`, `password_hash`, `secret_masked`,
-# `api_key_tag`) means the keyword carries a masked/derived value, not the raw
-# secret — the intended safe form.
-_REDACTION_RE = re.compile(
-    r"prefix|suffix|redact|mask|hash|hint|_len|length",
-    re.IGNORECASE,
+# A whole redaction token (`token_prefix`, `password_hash`, `secret_masked`,
+# `api_key_tag`) means the identifier names a masked/derived value. Whole-token
+# matching avoids treating unrelated substrings as redaction evidence.
+_REDACTION_TOKENS = frozenset(
+    {"prefix", "suffix", "redact", "redacted", "mask", "masked", "hash", "hint", "len", "length", "tag"}
 )
-
-# `tag` marks a redaction tag derived purely for logging
-# (`api_key_tag=_api_key_log_tag(api_key)`), but only as a WHOLE token — matched
-# as a substring it wrongly exempts raw env secrets like `staging_secret`
-# (`s·tag·ing`), which is a leak.
-_WHOLE_TOKEN_REDACTION_MARKERS = frozenset({"tag"})
 
 
 def _is_secret_keyword(name: str) -> bool:
     """Report whether the keyword name names a raw secret (not a redacted derivative)."""
-    if _REDACTION_RE.search(name):
-        return False
-    if any(tok in _WHOLE_TOKEN_REDACTION_MARKERS for tok in identifier_tokens(name)):
+    if any(token in _REDACTION_TOKENS for token in identifier_tokens(name)):
         return False
     return is_secret_name(name)
+
+
+def _is_raw_secret_reference(value: ast.expr) -> bool:
+    """Report a direct, secret-named reference without guessing through aliases or calls."""
+    match value:
+        case ast.Name(id=name) | ast.Attribute(attr=name):
+            return _is_secret_keyword(name)
+        case _:
+            return False
 
 
 class NoSecretInLog(Rule):
     id: str = "no-secret-in-log"
     code: str = "SARJ012"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Secret-like value is passed to a logging call under a secret-like keyword.",
+        summary="A secret-named direct reference is passed to a logging call under a secret-like keyword.",
         rationale="Raw credentials in logs can spread to durable sinks and readers outside the request boundary.",
         remediation="Omit the secret or log a deliberately redacted derivative under a redaction-specific name.",
         category=RuleCategory.SECURITY,
         limitations=(
-            "Detection covers keyword arguments on logger-shaped receivers and known logging methods.",
-            "Positional values, message interpolation, and values under non-secret keyword names are not inspected.",
+            "Detection covers secret-named direct references passed by secret-named keyword to known logger calls.",
+            "Aliases, calls, subscripts, positional values, message interpolation, and values under non-secret keywords are not inspected.",
         ),
         examples=(
             RuleExample(
@@ -101,7 +100,7 @@ class NoSecretInLog(Rule):
                 # `**kwargs` has arg=None — nothing to inspect.
                 if kw.arg is None:
                     continue
-                if _is_secret_keyword(kw.arg):
+                if _is_secret_keyword(kw.arg) and _is_raw_secret_reference(kw.value):
                     diags.append(
                         Diagnostic(
                             path=path,
@@ -109,7 +108,7 @@ class NoSecretInLog(Rule):
                             col=getattr(kw.value, "col_offset", node.col_offset) + 1,
                             code=self.code,
                             message=(
-                                f"Secret keyword `{kw.arg}` passed to a logging "
+                                f"Secret reference passed as `{kw.arg}` to a logging "
                                 "call leaks it to log sinks — redact "
                                 "(e.g. `token_prefix=token[:6]`) or omit it."
                             ),

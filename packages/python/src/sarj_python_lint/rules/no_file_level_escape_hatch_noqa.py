@@ -19,7 +19,7 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
 )
-from sarj_python_lint.rules._suppression_comments import scan_comments_or_none
+from sarj_python_lint.rules._suppression_comments import Comment, scan_comments_or_none
 
 
 if TYPE_CHECKING:
@@ -31,7 +31,7 @@ ESCAPE_HATCH_CODES = frozenset({"TID251"})
 
 # Matched as ruff accepts a file-level scoped suppression: case-insensitive on
 # the directive head, requiring a colon and at least one code (the code-less
-# form is SARJ038's).
+# form is Ruff PGH004's).
 _RUFF_SCOPED_NOQA_RE = re.compile(
     r"^ruff:\s*noqa\s*:\s*(?P<codes>[A-Za-z][A-Za-z0-9]*(?:\s*,\s*[A-Za-z][A-Za-z0-9]*)*)",
     re.IGNORECASE,
@@ -95,15 +95,17 @@ class NoFileLevelEscapeHatchNoqa(Rule):
                 column_encoding=ColumnEncoding.CODEPOINTS,
             )
             for comment in comments
-            if (hatched := _hatch_codes(comment.body))
+            if (hatched := _hatch_codes(comment))
         ]
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
 
 
-def _hatch_codes(body: str) -> tuple[str, ...]:
+def _hatch_codes(comment: Comment) -> tuple[str, ...]:
     """Extract the escape-hatch codes named by a file-level ruff exemption."""
-    match = _RUFF_SCOPED_NOQA_RE.match(body)
+    if not comment.standalone:
+        return ()
+    match = _RUFF_SCOPED_NOQA_RE.match(comment.body)
     if match is None:
         return ()
     codes = [code.strip().upper() for code in match["codes"].split(",")]

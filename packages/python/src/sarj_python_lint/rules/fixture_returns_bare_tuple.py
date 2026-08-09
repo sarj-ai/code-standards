@@ -214,6 +214,14 @@ def _fixed_tuple_return_arity(
                 resolving=resolving | {annotation.id},
             )
         )
+    optional_member = _optional_member(annotation)
+    if optional_member is not None:
+        return _fixed_tuple_return_arity(
+            optional_member,
+            aliases=aliases,
+            unwrap_yield_wrapper=unwrap_yield_wrapper,
+            resolving=resolving,
+        )
     if not isinstance(annotation, ast.Subscript):
         return 0
     name = (
@@ -237,6 +245,40 @@ def _fixed_tuple_return_arity(
     if any(isinstance(element, ast.Constant) and element.value is Ellipsis for element in elements):
         return 0
     return len(elements)
+
+
+def _optional_member(annotation: ast.expr) -> ast.expr | None:
+    """Return ``T`` from a statically proven ``T | None``/``Optional[T]``."""
+    if isinstance(annotation, ast.Subscript):
+        name = _dotted_tail(annotation.value)
+        if name == "Optional":
+            return annotation.slice
+        if name == "Union" and isinstance(annotation.slice, ast.Tuple):
+            return _only_non_none(annotation.slice.elts)
+        return None
+    if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
+        members = _union_members(annotation)
+        return _only_non_none(members)
+    return None
+
+
+def _union_members(annotation: ast.expr) -> list[ast.expr]:
+    if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
+        return [*_union_members(annotation.left), *_union_members(annotation.right)]
+    return [annotation]
+
+
+def _only_non_none(members: list[ast.expr]) -> ast.expr | None:
+    concrete = [member for member in members if not (isinstance(member, ast.Constant) and member.value is None)]
+    return concrete[0] if len(concrete) == 1 and len(concrete) < len(members) else None
+
+
+def _dotted_tail(node: ast.expr) -> str | None:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return None
 
 
 def _has_own_yield(fixture: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:

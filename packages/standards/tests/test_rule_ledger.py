@@ -166,7 +166,6 @@ def test_doctor_removes_loose_type_guard_references_without_replacement(tmp_path
 #: Aliases removed in 9.0.0 whose replacements remain ledger-backed.
 _ALIASES_DELETED_IN_9_0_0 = {
     "@sarj/jsdoc-restates-signature": "@sarj/no-restated-jsdoc",
-    "@sarj/no-async-callback-in-waitfor": "@sarj/no-async-callback-in-wait-for",
     "@sarj/strict-test-assertions": "@sarj/prefer-whole-object-assertion",
     "@sarj/trailing-value-narration": "@sarj/no-trailing-value-narration",
 }

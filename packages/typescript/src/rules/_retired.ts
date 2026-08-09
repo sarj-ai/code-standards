@@ -17,6 +17,16 @@ export const retiredRules: Readonly<Record<string, RetiredRule>> = {
     removedIn: "5.0.0",
     reason: "Delete the config entry and suppressions; there is no replacement.",
   },
+  "no-async-callback-in-wait-for": {
+    removedIn: "14.0.0",
+    reason:
+      "Delete the entry; Testing Library supports async waitFor callbacks and retries when their promises reject.",
+  },
+  "no-async-callback-in-waitfor": {
+    removedIn: "14.0.0",
+    reason:
+      "Delete the stale alias; the replacement was also retired because Testing Library supports async waitFor callbacks.",
+  },
   "no-sequential-await": {
     removedIn: "3.0.0",
     reason: "Delete the entry; core `no-await-in-loop` covers it.",

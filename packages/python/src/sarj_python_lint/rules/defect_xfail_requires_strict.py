@@ -201,8 +201,15 @@ _ENV_PROBE_RE = re.compile(
 
 def _is_environment_gated(dec: ast.Call) -> bool:
     """Report whether the marker's condition gates on the interpreter or OS."""
-    for condition in dec.args:
-        for node in walk(condition):
+    conditions = [*dec.args, *(kw.value for kw in dec.keywords if kw.arg == "condition")]
+    for condition in conditions:
+        parsed_condition = condition
+        if isinstance(condition, ast.Constant) and isinstance(condition.value, str):
+            try:
+                parsed_condition = ast.parse(condition.value, mode="eval").body
+            except SyntaxError:
+                continue
+        for node in walk(parsed_condition):
             if isinstance(node, ast.Name) and (node.id in _ENV_PROBE_MODULES or _ENV_PROBE_RE.search(node.id)):
                 return True
             if isinstance(node, ast.Attribute) and _ENV_PROBE_RE.search(node.attr):

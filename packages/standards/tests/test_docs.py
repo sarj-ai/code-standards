@@ -6,7 +6,7 @@ from typing import TypeGuard
 
 import pytest
 
-from sarj_standards.libs.adoption import transaction
+from sarj_standards.libs.adoption import manifest, transaction
 from sarj_standards.libs.repository import docs
 
 
@@ -29,6 +29,10 @@ def _is_object_table(value: object) -> TypeGuard[dict[str, object]]:
 
 def _is_string_table(value: object) -> TypeGuard[dict[str, str]]:
     return _is_object_table(value) and all(isinstance(item, str) for item in value.values())
+
+
+def _load_json(path: Path) -> object:
+    return json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
 
 
 def _repository(root: Path) -> None:
@@ -251,8 +255,14 @@ def test_docs_lint_dependencies_are_reproducible_and_compatible() -> None:
     assert _is_object_table(raw)
     dependencies = raw.get("devDependencies")
     assert _is_string_table(dependencies)
-    for name in ("@eslint/js", "@sarj/eslint-plugin", "eslint", "eslint-plugin-astro", "typescript-eslint"):
+    for name in ("@eslint/js", "eslint", "eslint-plugin-astro", "typescript-eslint"):
         assert dependencies[name][0].isdigit(), f"{name} must use an exact version"
+    plugin_specifier = dependencies["@sarj/eslint-plugin"]
+    assert plugin_specifier.startswith("file:")
+    plugin_raw = _load_json(REPO_ROOT / "apps/docs" / plugin_specifier.removeprefix("file:") / "package.json")
+    assert _is_object_table(plugin_raw)
+    assert plugin_raw.get("name") == "@sarj/eslint-plugin"
+    assert plugin_raw.get("version") == manifest.eslint_peers()["@sarj/eslint-plugin"]
     # TypeScript 7 is outside Astro Check and typescript-eslint's peer ranges and
     # currently crashes @sarj/eslint-plugin while loading its enum utilities.
     assert dependencies["typescript"] == "6.0.3"

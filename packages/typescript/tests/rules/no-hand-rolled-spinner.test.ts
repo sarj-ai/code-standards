@@ -42,6 +42,11 @@ ruleTester.run("no-hand-rolled-spinner", rule, {
       filename: COMPONENT,
     },
     {
+      name: "accepts directional border width without a contrasting color",
+      code: `<span className="size-4 animate-spin rounded-full border-2 border-t-2" />`,
+      filename: COMPONENT,
+    },
+    {
       name: "leaves dynamic classes alone",
       code: `<div className={cn("rounded-full border-2", loading && "animate-spin border-t-transparent")} />`,
       filename: COMPONENT,
@@ -69,6 +74,18 @@ ruleTester.run("no-hand-rolled-spinner", rule, {
     {
       name: "rejects a string expression className",
       code: `<div className={"size-4 animate-spin rounded-full border border-l-transparent"} />`,
+      filename: COMPONENT,
+      errors: [{ messageId: "handRolledSpinner" }],
+    },
+    {
+      name: "rejects a colored directional edge",
+      code: `<div className="size-4 animate-spin rounded-full border-2 border-t-primary" />`,
+      filename: COMPONENT,
+      errors: [{ messageId: "handRolledSpinner" }],
+    },
+    {
+      name: "rejects a static template-literal className",
+      code: "<div className={`size-4 animate-spin rounded-full border-2 border-r-[#fff]`} />",
       filename: COMPONENT,
       errors: [{ messageId: "handRolledSpinner" }],
     },

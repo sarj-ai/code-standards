@@ -24,6 +24,7 @@ from . import hooks, manifest, packagemanager, scaffold
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence
+    from typing import TypeGuard
 
 
 class Level(StrEnum):
@@ -683,6 +684,15 @@ def _check_eslint_plugin(root: Path, files: Sequence[Path]) -> Iterator[Finding]
             continue
         if pinned is None:
             continue
+        where = f"{path.relative_to(root)}: {_ESLINT_PLUGIN}@{pinned}"
+        if pinned.startswith("file:") and _local_eslint_plugin_matches(root, path, pinned, floor):
+            yield Finding(
+                Level.OK,
+                where,
+                "local plugin package matches the tested peer version",
+                "doctor.eslint.plugin",
+            )
+            continue
         if pinned.startswith(_LOCAL_SPECIFIERS):
             yield Finding(
                 Level.WARN,
@@ -692,7 +702,6 @@ def _check_eslint_plugin(root: Path, files: Sequence[Path]) -> Iterator[Finding]
                 "use the exact published peer outside local plugin development",
             )
             continue
-        where = f"{path.relative_to(root)}: {_ESLINT_PLUGIN}@{pinned}"
         if _is_exact_pin(pinned, floor):
             yield Finding(Level.OK, where, "matches the tested peer set", "doctor.eslint.plugin")
         else:
@@ -704,6 +713,23 @@ def _check_eslint_plugin(root: Path, files: Sequence[Path]) -> Iterator[Finding]
                 "doctor.eslint.plugin",
                 "run `sarj-standards update`",
             )
+
+
+def _local_eslint_plugin_matches(root: Path, manifest_path: Path, pinned: str, floor: str) -> bool:
+    """Verify a repository-local file dependency by package identity and exact version."""
+    candidate = (manifest_path.parent / pinned.removeprefix("file:")).resolve()
+    repository = root.resolve()
+    if not candidate.is_relative_to(repository):
+        return False
+    try:
+        raw: object = json.loads((candidate / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    except OSError, json.JSONDecodeError:
+        return False
+    return _is_object_table(raw) and raw.get("name") == _ESLINT_PLUGIN and raw.get("version") == floor
+
+
+def _is_object_table(value: object) -> TypeGuard[dict[str, object]]:
+    return isinstance(value, dict)
 
 
 def _check_adoption_wiring(root: Path) -> Iterator[Finding]:  # ruff: ignore[too-many-locals] -- validates each declared adoption site once

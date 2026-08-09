@@ -26,22 +26,17 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# Match directive heads using each tool's accepted spelling.
-_RUFF_NOQA_RE = re.compile(r"^ruff:\s*noqa(?P<rest>.*)", re.IGNORECASE)
+# Match directive heads using each type checker's accepted spelling. Ruff's
+# file-level blanket is already owned by PGH004.
 _TYPE_IGNORE_RE = re.compile(r"^type:\s*ignore(?P<rest>.*)")
 _PYRIGHT_IGNORE_RE = re.compile(r"^pyright:\s*ignore(?P<rest>.*)")
 
 # Require a scoped rule list after directive heads that support one.
-_RUFF_CODES_RE = re.compile(r"^\s*:\s*\w")
 _BRACKET_CODES_RE = re.compile(r"^\s*\[\s*\w")
 
-# `type: ignored` / `ruff: noqas` are different words, not the directive.
+# `type: ignored` is a different word, not the directive.
 _WORD_CONTINUATION_RE = re.compile(r"^\w")
 
-_RUFF_MESSAGE = (
-    "bare `# ruff: noqa` exempts this entire file from every ruff rule, "
-    "including ones added later — scope it (`# ruff: noqa: E501`) or fix the findings."
-)
 _TYPE_IGNORE_MESSAGE = (
     "file-level `# type: ignore` silences every mypy error in this file, "
     "including ones added later — scope it (`# type: ignore[attr-defined]`) "
@@ -58,29 +53,30 @@ class NoFileLevelSuppression(Rule):
     id: str = "no-file-level-suppression"
     code: str = "SARJ038"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Unscoped file-level suppressions disable a checker for the entire file, including diagnostics added later.",
-        rationale="Blanket suppressions also hide diagnostics introduced by future tool upgrades.",
+        summary="Unscoped file-level type-checker suppressions hide every current and future diagnostic.",
+        rationale="Mypy and Pyright blankets also hide diagnostics introduced by future tool upgrades.",
         remediation="Fix the findings or limit the directive to the specific diagnostic codes being suppressed.",
         category=RuleCategory.MAINTAINABILITY,
         limitations=(
-            "Only Ruff, mypy-compatible `type: ignore`, and Pyright file-level directives are analyzed.",
+            "Only mypy-compatible `type: ignore` and Pyright file-level directives are analyzed.",
+            "Ruff's `# ruff: noqa` blanket is owned by Ruff PGH004.",
             "Trailing per-line suppressions and directives with an explicit code list are allowed.",
         ),
         examples=(
             RuleExample(
-                example_id="unscoped-ruff-suppression",
-                title="Ruff disabled for the file",
+                example_id="unscoped-type-checker-suppression",
+                title="Mypy disabled for the file",
                 outcome=ExampleOutcome.MATCH,
-                files=(ExampleFile.python("service.py", "# ruff: noqa\nimport os\n"),),
+                files=(ExampleFile.python("service.py", "# type: ignore\nimport os\n"),),
                 focus_path=PurePosixPath("service.py"),
                 expected_count=1,
                 public=True,
             ),
             RuleExample(
-                example_id="scoped-ruff-suppression",
-                title="Ruff suppression names its code",
+                example_id="scoped-type-checker-suppression",
+                title="Mypy suppression names its code",
                 outcome=ExampleOutcome.NO_MATCH,
-                files=(ExampleFile.python("service.py", "# ruff: noqa: E501\nimport os\n"),),
+                files=(ExampleFile.python("service.py", "# type: ignore[attr-defined]\nimport os\n"),),
                 focus_path=PurePosixPath("service.py"),
                 expected_count=0,
                 public=True,
@@ -112,9 +108,7 @@ class NoFileLevelSuppression(Rule):
 
 
 def _blanket_message(comment: Comment) -> str | None:
-    """Classify a comment as one of the three unscoped blankets."""
-    if _is_unscoped(comment.body, _RUFF_NOQA_RE, _RUFF_CODES_RE):
-        return _RUFF_MESSAGE
+    """Classify a comment as one of the two unscoped type-checker blankets."""
     if not (comment.standalone and comment.before_first_statement):
         return None
     if _is_unscoped(comment.body, _TYPE_IGNORE_RE, _BRACKET_CODES_RE):

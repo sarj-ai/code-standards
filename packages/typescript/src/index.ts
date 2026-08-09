@@ -4,7 +4,6 @@
 
 import enforceFileStructure from "./rules/enforce-file-structure.js";
 import duplicateTestBody from "./rules/duplicate-test-body.js";
-import noAsyncCallbackInWaitFor from "./rules/no-async-callback-in-wait-for.js";
 import noClientSideDataFetching from "./rules/no-client-side-data-fetching.js";
 import noCommentCruft from "./rules/no-comment-cruft.js";
 import noConditionalInTest from "./rules/no-conditional-in-test.js";
@@ -73,7 +72,6 @@ import { retiredRules } from "./rules/_retired.js";
 const rules = {
   "duplicate-test-body": duplicateTestBody,
   "enforce-file-structure": enforceFileStructure,
-  "no-async-callback-in-wait-for": noAsyncCallbackInWaitFor,
   "no-client-side-data-fetching": noClientSideDataFetching,
   "no-comment-cruft": noCommentCruft,
   "no-conditional-in-test": noConditionalInTest,
@@ -140,7 +138,7 @@ const rules = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "13.1.0",
+  version: "14.0.0",
 } as const;
 
 /** Rules registered for application-profile configs but intentionally absent from general presets. */
@@ -153,7 +151,6 @@ const applicationOnlyRules = [
 const recommendedRules = {
   "@sarj/duplicate-test-body": "error",
   "@sarj/enforce-file-structure": "error",
-  "@sarj/no-async-callback-in-wait-for": "error",
   "@sarj/no-client-side-data-fetching": "error",
   "@sarj/no-comment-cruft": "error",
   "@sarj/no-conditional-in-test": "error",
@@ -214,7 +211,6 @@ const recommendedRules = {
 const strictRules = {
   "@sarj/duplicate-test-body": "error",
   "@sarj/enforce-file-structure": "error",
-  "@sarj/no-async-callback-in-wait-for": "error",
   "@sarj/no-client-side-data-fetching": "error",
   "@sarj/no-comment-cruft": "error",
   "@sarj/no-conditional-in-test": "error",

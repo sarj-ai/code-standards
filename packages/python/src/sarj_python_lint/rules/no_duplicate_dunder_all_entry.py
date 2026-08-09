@@ -44,8 +44,8 @@ class NoDuplicateDunderAllEntry(Rule):
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only one fully static list or tuple assigned to package-level `__all__` is analyzed.",
-            "Generated, dynamically extended, reassigned, and non-package declarations are excluded.",
+            "Only one fully static list or tuple assigned to module-level `__all__` is analyzed.",
+            "Generated, dynamically reassigned, and non-Python declarations are excluded.",
         ),
         examples=(
             RuleExample(
@@ -82,7 +82,7 @@ class NoDuplicateDunderAllEntry(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if path.name != "__init__.py" or is_generated(path, source):
+        if path.suffix != ".py" or is_generated(path, source):
             return []
         tree = parse_or_none(path, source)
         if tree is None:
@@ -92,7 +92,7 @@ class NoDuplicateDunderAllEntry(Rule):
         if len(declarations) != 1:
             return []
         declaration = declarations[0]
-        if _has_other_dunder_all_writes(tree, declaration):
+        if _has_other_dunder_all_rebindings(tree, declaration):
             return []
         elements = _literal_elements(declaration)
         if elements is None:
@@ -130,18 +130,14 @@ def _assigns_dunder_all(statement: ast.AST) -> bool:
             return False
 
 
-def _has_other_dunder_all_writes(tree: ast.Module, declaration: ast.stmt) -> bool:
-    """Conservatively skip when code outside `declaration` can change `__all__`."""
+def _has_other_dunder_all_rebindings(tree: ast.Module, declaration: ast.stmt) -> bool:
+    """Skip when code outside ``declaration`` can replace ``__all__``."""
     for statement in tree.body:
         if statement is declaration:
             continue
         for node in ast.walk(statement):
             if _assigns_dunder_all(node):
                 return True
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-                owner = node.func.value
-                if isinstance(owner, ast.Name) and owner.id == "__all__":
-                    return True
     return False
 
 

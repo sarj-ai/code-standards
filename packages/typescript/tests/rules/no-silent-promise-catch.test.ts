@@ -111,6 +111,15 @@ ruleTester.run("no-silent-promise-catch", rule, {
       name: "allows text body parse fallbacks",
       code: "const text = await res.text().catch(() => '');",
     },
+    {
+      name: "allows other standard body parse fallbacks",
+      code: [
+        "await res.blob().catch(() => null);",
+        "await res.arrayBuffer().catch(() => null);",
+        "await res.formData().catch(() => null);",
+        "await res.bytes().catch(() => null);",
+      ].join("\n"),
+    },
     // Test files are exempt (unhandled-rejection suppression is routine there).
     {
       code: "p.catch(() => undefined);",
