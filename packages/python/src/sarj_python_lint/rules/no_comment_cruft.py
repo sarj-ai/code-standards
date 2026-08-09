@@ -121,6 +121,11 @@ _STEP_NARRATION_RE = re.compile(
 # A rationale marker turns step narration into a legitimate *why* comment
 # ("First, we take the outer send lock, because of Trio's standard semantics").
 _RATIONALE_RE = re.compile(r"\b(?:because|since|so that|otherwise)\b", re.IGNORECASE)
+_RATIONALE_RUN_RE = re.compile(r"\b(?:because|since|so that|otherwise|if|unless|when|until)\b", re.IGNORECASE)
+
+# Markdown headings and embedded heading examples are content when they sit
+# inside an expression; the surrounding syntax already supplies structure.
+_MARKDOWN_HEADING_RE = re.compile(r"(?:^|\s)#{1,6}\s+\S")
 
 # Self-admitted meta-commentary — the "why later", not the why.
 _META_COMMENTARY_RE = re.compile(
@@ -511,6 +516,12 @@ class NoCommentCruft(Rule):
         by_line = {line: (col, body) for line, col, body in standalone}
         skip = _doctest_block_lines(standalone) | _illustration_block_lines(standalone)
         referenced = _externally_referenced_lines(standalone)
+        rationale_runs = frozenset(
+            line
+            for run in comment_runs(standalone)
+            if len(run) > 1 and any(_RATIONALE_RUN_RE.search(body) for _, _, body in run)
+            for line, _, _ in run
+        )
         nested = nested_comment_lines(source)
         enumerated = [line for line, _, body in standalone if _ENUMERATION_RE.match(body)]
         license_header = _license_header_lines(standalone)
@@ -543,6 +554,7 @@ class NoCommentCruft(Rule):
                 isolated_enumeration=enumerated == [line],
                 nested=line in nested,
                 in_license_header=line in license_header,
+                in_rationale_run=line in rationale_runs,
             )
             if msg is not None:
                 diags[line] = Diagnostic(
@@ -565,6 +577,7 @@ class NoCommentCruft(Rule):
         isolated_enumeration: bool,
         nested: bool,
         in_license_header: bool,
+        in_rationale_run: bool,
     ) -> str | None:
         if _CODE_REGEN_CALL_RE.match(body):
             return None
@@ -579,6 +592,8 @@ class NoCommentCruft(Rule):
                 return "Untracked TODO/FIXME marker — add an issue ticket or context link."
             return None
         if _is_banner(body):
+            if nested and _MARKDOWN_HEADING_RE.search(body):
+                return None
             if _is_heading_underline(body, prev_body) or _is_dashed_prose_continuation(body, prev_body):
                 return None
             if in_license_header:
@@ -587,8 +602,18 @@ class NoCommentCruft(Rule):
         if _looks_like_code(body):
             if prev_body is not None and _is_prose_line(prev_body):
                 return None
+            if (
+                prev_body is not None
+                and _is_sentence_continuation(prev_body)
+                and not _looks_like_code(prev_body)
+                and not _is_banner(prev_body)
+                and _is_assign_or_call(body)
+            ):
+                return None
             return "Commented-out code — delete it; git history remembers."
         if narration_protected:
+            return None
+        if in_rationale_run:
             return None
         if _is_redundant_narration(body, prev_body, isolated_enumeration=isolated_enumeration, nested=nested):
             return "Comment narrates the code — delete it or say why, not what. Code is self-documenting."

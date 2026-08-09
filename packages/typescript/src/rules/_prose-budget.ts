@@ -14,7 +14,7 @@ const BOUNDARY_RE = /(?<=[.!?])["'`)\]]*\s+(?=[A-Z0-9`])/;
 const BULLET_RE = /^\s*(?:[-*+] |\d+[.)] )/;
 const HEADING_RE = /^[A-Za-z][A-Za-z ]+:$/;
 const TECHNICAL_ANCHOR_RE =
-  /https?:\/\/|`[^`\n]+`|:[a-z][a-z0-9_-]*:|(["'])[^"'\n]+\1|\d|\b[a-z][a-z0-9]*[A-Z][A-Za-z0-9]*\b|\b[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+\b|(?:^|\s)(?:[\w.-]+\/)+[\w.-]+|\b[\w.-]+\.(?:py|pyi|js|jsx|ts|tsx|json|ya?ml|toml|csv|parquet|md)\b|->|=>|==|!=|<=|>=|\|/mu;
+  /https?:\/\/|`[^`\n]+`|:[a-z][a-z0-9_-]*:|(["'])[^"'\n]+\1|\bv?\d+\.\d+(?:\.\d+)?\b|\b\d+(?:\.\d+)?\s?(?:ns|us|ms|s|sec|secs|seconds?|mins?|minutes?|hours?|days?|bytes?|kib|mib|gib|kb|mb|gb|hz|khz|mhz|px|%)\b|\b[a-z][a-z0-9]*[A-Z][A-Za-z0-9]*\b|\b[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+\b|(?:^|\s)(?:[\w.-]+\/)+[\w.-]+|\b[\w.-]+\.(?:py|pyi|js|jsx|ts|tsx|json|ya?ml|toml|csv|parquet|md)\b|->|=>|==|!=|<=|>=|\|/mu;
 
 export interface ProseGroup {
   readonly comment: TSESTree.Comment;

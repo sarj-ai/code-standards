@@ -51,7 +51,7 @@ def test_flags_concrete_service_with_injected_collaborator() -> None:
     assert diags[0].code == "SARJ071"
     assert diags[0].line == 2
     assert diags[0].col == 1
-    assert diags[0].severity is Severity.WARNING
+    assert diags[0].severity is Severity.ERROR
 
 
 def test_message_is_exactly_the_shipped_text() -> None:
@@ -1174,9 +1174,9 @@ def test_test_and_double_paths_are_exempt(path: str) -> None:
 @pytest.mark.parametrize(
     "path",
     [
-        "webserver/scripts/provision.py",
-        "app/bin/run.py",
-        "app/tools/backfill.py",
+        "scripts/provision.py",
+        "bin/run.py",
+        "tools/backfill.py",
         "db/migrations/0001_init.py",
         "app/management/commands/sync.py",
     ],
@@ -1188,6 +1188,10 @@ def test_program_directories_are_exempt(path: str) -> None:
 
 def test_library_path_fires() -> None:
     assert len(_check(_SERVICE, path="app/services/thing_service.py")) == 1
+
+
+def test_nested_tools_package_is_library_code() -> None:
+    assert len(_check(_SERVICE, path="app/services/tools/thing_service.py")) == 1
 
 
 def test_module_with_a_main_guard_is_a_program() -> None:
@@ -1214,6 +1218,21 @@ def test_a_top_level_if_that_is_not_a_main_guard_does_not_exempt() -> None:
     # The `if` has to test `__name__`; any other module-level branch is ordinary code.
     guarded = f"{_SERVICE}\n\nif TYPE_CHECKING:\n    from app.stores import ThingStore\n"
     assert len(_check(guarded)) == 1
+
+
+@pytest.mark.parametrize(
+    "test",
+    [
+        "__name__ != '__main__'",
+        "'__main__' == __name__",
+        "__name__ == '__worker__'",
+        "__name__ == '__main__' and ENABLED",
+        "__name__",
+    ],
+)
+def test_only_the_exact_main_guard_exempts_a_module(test: str) -> None:
+    source = f"{_SERVICE}\n\nif {test}:\n    main()\n"
+    assert len(_check(source)) == 1
 
 
 def test_generated_source_is_exempt() -> None:

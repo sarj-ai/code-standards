@@ -134,7 +134,7 @@ ruleTester.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-    // `finally` present — exempt regardless of body size.
+    // Catchless try/finally is resource cleanup, not an error boundary.
     {
       code: `
         async function f() {
@@ -492,6 +492,25 @@ ruleTester.run("no-fat-try-blocks", rule, {
     },
   ],
   invalid: [
+    {
+      name: "does not let a finalizer exempt a catch boundary",
+      code: `
+        async function f() {
+          try {
+            const a = await one();
+            const b = await two();
+            const c = await three();
+            const d = await four();
+          } catch (e) {
+            handle(e);
+          } finally {
+            cleanup();
+          }
+          finish();
+        }
+      `,
+      errors: [{ messageId: "fatTryBlock" }],
+    },
     {
       name: "explicit throws in synchronous collection callbacks propagate",
       code: `

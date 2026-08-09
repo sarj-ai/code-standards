@@ -47,6 +47,16 @@ ruleTester.run("no-hand-rolled-spinner", rule, {
       filename: COMPONENT,
     },
     {
+      name: "accepts logical and axis border widths",
+      code: `<span className="size-4 animate-spin rounded-full border-[3px] border-s-[2px] border-x-2" />`,
+      filename: COMPONENT,
+    },
+    {
+      name: "accepts an arbitrary length variable as a directional width",
+      code: `<span className="size-4 animate-spin rounded-full border-(length:--ring-width) border-e-(length:--edge-width)" />`,
+      filename: COMPONENT,
+    },
+    {
       name: "leaves dynamic classes alone",
       code: `<div className={cn("rounded-full border-2", loading && "animate-spin border-t-transparent")} />`,
       filename: COMPONENT,
@@ -55,6 +65,21 @@ ruleTester.run("no-hand-rolled-spinner", rule, {
       name: "allows the design-system implementation",
       code: `<span className="size-4 animate-spin rounded-full border-2 border-t-transparent" />`,
       filename: "/repo/src/components/ui/spinner.tsx",
+    },
+    {
+      name: "allows spinner examples in tests",
+      code: `<span className="size-4 animate-spin rounded-full border-2 border-s-transparent" />`,
+      filename: "/repo/src/components/loading-state.test.tsx",
+    },
+    {
+      name: "allows spinner variants in stories",
+      code: `<span className="size-4 animate-spin rounded-full border-2 border-e-primary" />`,
+      filename: "/repo/src/components/loading-state.stories.tsx",
+    },
+    {
+      name: "allows generated spinner markup",
+      code: `<span className="size-4 animate-spin rounded-full border-2 border-x-transparent" />`,
+      filename: "/repo/src/generated/loading-state.tsx",
     },
   ],
   invalid: [
@@ -86,6 +111,30 @@ ruleTester.run("no-hand-rolled-spinner", rule, {
     {
       name: "rejects a static template-literal className",
       code: "<div className={`size-4 animate-spin rounded-full border-2 border-r-[#fff]`} />",
+      filename: COMPONENT,
+      errors: [{ messageId: "handRolledSpinner" }],
+    },
+    {
+      name: "rejects an arbitrary-width spinner with logical start contrast",
+      code: `<div className="size-4 animate-spin rounded-full border-[3px] border-s-transparent" />`,
+      filename: COMPONENT,
+      errors: [{ messageId: "handRolledSpinner" }],
+    },
+    {
+      name: "rejects a logical end contrast",
+      code: `<div className="size-4 animate-spin rounded-full border-2 border-e-primary" />`,
+      filename: COMPONENT,
+      errors: [{ messageId: "handRolledSpinner" }],
+    },
+    {
+      name: "rejects an axis contrast",
+      code: `<div className="size-4 animate-spin rounded-full border-2 border-x-transparent" />`,
+      filename: COMPONENT,
+      errors: [{ messageId: "handRolledSpinner" }],
+    },
+    {
+      name: "rejects an arbitrary axis color contrast",
+      code: `<div className="size-4 animate-spin rounded-full border-2 border-y-[#fff]" />`,
       filename: COMPONENT,
       errors: [{ messageId: "handRolledSpinner" }],
     },

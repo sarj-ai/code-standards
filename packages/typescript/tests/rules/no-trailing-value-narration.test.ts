@@ -53,6 +53,16 @@ ruleTester.run("no-trailing-value-narration", rule, {
   ],
   invalid: [
     {
+      name: "unit-bearing constant advice only asks to delete the narration",
+      code: "const DEFAULT_TTL_MS = 5 * 60 * 1000; // 5 minutes",
+      errors: [{ messageId: "deleteNarration" }],
+    },
+    {
+      name: "short unit-bearing constant advice only asks to delete the narration",
+      code: "const POLL_MS = 3 * 60 * 1000; // 3 min",
+      errors: [{ messageId: "deleteNarration" }],
+    },
+    {
       code: "const payload = {\n  value: 60, // 60 seconds\n};",
       errors: [{ messageId: "narratesValue" }],
     },
@@ -62,7 +72,7 @@ ruleTester.run("no-trailing-value-narration", rule, {
     },
     {
       code: "export const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 90; // 90 days",
-      errors: [{ messageId: "narratesValue" }],
+      errors: [{ messageId: "deleteNarration" }],
     },
     {
       code: "const options = { gcTime: 1000 * 60 * 60 * 24 }; // 24 hours",
@@ -74,7 +84,7 @@ ruleTester.run("no-trailing-value-narration", rule, {
     },
     {
       code: "const announcementTimeoutSec = 5 * 60; // 5 minutes",
-      errors: [{ messageId: "narratesValue" }],
+      errors: [{ messageId: "deleteNarration" }],
     },
     {
       code: "function configure() {\n  const timeout = 5 * 60; // 5 minutes\n}",

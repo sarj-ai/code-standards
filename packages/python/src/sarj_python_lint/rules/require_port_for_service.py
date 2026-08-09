@@ -6,6 +6,7 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from itertools import pairwise
 from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, ClassVar, override
@@ -19,7 +20,6 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
-    Severity,
     parse_or_none,
 )
 from sarj_python_lint.rules._paths import is_generated, is_test_path, is_test_support_path
@@ -150,7 +150,8 @@ _HTTP_PARAM_TYPES = frozenset({"Request", "Response", "BackgroundTasks", "WebSoc
 _HTTP_PARAM_MARKERS = frozenset({"Header", "Query", "Depends", "Body", "Path", "Form", "File", "Cookie", "Security"})
 
 # Directory segments that hold programs rather than importable library code.
-_SCRIPT_DIR_NAMES = frozenset({"scripts", "bin", "tools", "migrations", "alembic", "management", "commands"})
+_TOP_LEVEL_SCRIPT_DIR_NAMES = frozenset({"scripts", "bin", "tools"})
+_MIGRATION_DIR_NAMES = frozenset({"migrations", "alembic"})
 
 # One public method is a function in a trenchcoat; an ABC over it is ceremony.
 _MIN_PUBLIC_METHODS = 2
@@ -276,7 +277,6 @@ class RequirePortForService(Rule):
                     "small consumer-owned `Protocol`/ABC and type those consumers against it. Do not add a "
                     "port solely for a composition root or a single concrete consumer."
                 ),
-                severity=Severity.WARNING,
             )
             for node in classes
             if (
@@ -298,17 +298,29 @@ def _is_library_source(path: Path) -> bool:
     """Report whether `path` holds importable production code."""
     if is_test_path(path) or is_test_support_path(path):
         return False
-    parts = set(path.parts)
-    return not parts & _SCRIPT_DIR_NAMES
+    parts = path.parts
+    if parts and parts[0] in _TOP_LEVEL_SCRIPT_DIR_NAMES:
+        return False
+    if any(part in _MIGRATION_DIR_NAMES for part in parts):
+        return False
+    return not any(left == "management" and right == "commands" for left, right in pairwise(parts))
 
 
 def _has_main_guard(tree: ast.Module) -> bool:
     """Report whether the module is its own entry point."""
-    return any(
-        isinstance(stmt, ast.If)
-        and any(isinstance(name, ast.Name) and name.id == "__name__" for name in ast.walk(stmt.test))
-        for stmt in tree.body
-    )
+    for stmt in tree.body:
+        if not isinstance(stmt, ast.If):
+            continue
+        match stmt.test:
+            case ast.Compare(
+                left=ast.Name(id="__name__"),
+                ops=[ast.Eq()],
+                comparators=[ast.Constant(value="__main__")],
+            ):
+                return True
+            case _:
+                continue
+    return False
 
 
 def _unsubstitutable_service(

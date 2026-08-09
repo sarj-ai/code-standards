@@ -10,6 +10,7 @@ import {
   type TSESTree,
   type ParserServicesWithTypeInformation,
   AST_NODE_TYPES,
+  ASTUtils,
 } from "@typescript-eslint/utils";
 import * as ts from "typescript";
 
@@ -181,9 +182,18 @@ export default createRule<Options, MessageIds>({
       services = null;
     }
 
-    /** Local names imported from a zod module, e.g. `nativeEnum`, `enum_`. */
-    const zodImportedNames = new Map<string, string>();
-    const zodNamespaces = new Set<string>();
+    /** Import bindings, not spellings: shadowed locals must not inherit Zod provenance. */
+    const zodImportedBindings = new Map<TSESLint.Scope.Variable, string>();
+    const zodNamespaceBindings = new Set<TSESLint.Scope.Variable>();
+
+    function resolvedBinding(
+      identifier: TSESTree.Identifier,
+    ): TSESLint.Scope.Variable | null {
+      return ASTUtils.findVariable(
+        sourceCode.getScope(identifier),
+        identifier.name,
+      );
+    }
 
     function isZodMemberCall(node: TSESTree.CallExpression, api: string): boolean {
       const callee = node.callee;
@@ -191,13 +201,20 @@ export default createRule<Options, MessageIds>({
         callee.type === AST_NODE_TYPES.MemberExpression &&
         !callee.computed &&
         callee.object.type === AST_NODE_TYPES.Identifier &&
-        zodNamespaces.has(callee.object.name) &&
         callee.property.type === AST_NODE_TYPES.Identifier
       ) {
-        return callee.property.name === api;
+        const binding = resolvedBinding(callee.object);
+        return (
+          binding !== null &&
+          zodNamespaceBindings.has(binding) &&
+          callee.property.name === api
+        );
       }
       if (callee.type === AST_NODE_TYPES.Identifier) {
-        return zodImportedNames.get(callee.name) === api;
+        const binding = resolvedBinding(callee);
+        return (
+          binding !== null && zodImportedBindings.get(binding) === api
+        );
       }
       return false;
     }
@@ -250,13 +267,17 @@ export default createRule<Options, MessageIds>({
                 ? spec.imported.name === "z"
                 : spec.imported.value === "z"))
           ) {
-            zodNamespaces.add(spec.local.name);
+            const binding = resolvedBinding(spec.local);
+            if (binding !== null) zodNamespaceBindings.add(binding);
           }
           if (
             spec.type === AST_NODE_TYPES.ImportSpecifier &&
             spec.imported.type === AST_NODE_TYPES.Identifier
           ) {
-            zodImportedNames.set(spec.local.name, spec.imported.name);
+            const binding = resolvedBinding(spec.local);
+            if (binding !== null) {
+              zodImportedBindings.set(binding, spec.imported.name);
+            }
           }
         }
       },

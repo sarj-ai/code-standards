@@ -56,6 +56,7 @@ def test_skips_non_test_paths(path: str):
     [
         "BUG: wrong status code",
         "broken since the v2 migration",
+        "known defect in the response envelope",
         "regression introduced by PLT-1234",
         "returns an incorrect envelope",
         "should return 422 but returns 500",
@@ -98,6 +99,43 @@ def test_thing():
     assert correct()
 """
     assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    "import_and_marker",
+    [
+        ("import pytest as pt", "pt.mark.xfail"),
+        ("from pytest import mark", "mark.xfail"),
+        ("from pytest import mark as pm", "pm.xfail"),
+    ],
+    ids=["pytest-alias", "mark-import", "mark-alias"],
+)
+def test_resolves_pytest_marker_aliases(import_and_marker: tuple[str, str]) -> None:
+    import_statement, marker = import_and_marker
+    src = f"""{import_statement}
+
+@{marker}(reason="known defect in the response envelope")
+def test_thing():
+    assert correct()
+"""
+
+    assert len(_check(src)) == 1
+
+
+def test_custom_xfail_attribute_is_not_a_pytest_marker() -> None:
+    src = """
+class Policy:
+    def xfail(self, **kwargs):
+        return decorate
+
+policy = Policy()
+
+@policy.xfail(reason="BUG: business rule broken")
+def test_policy():
+    assert correct()
+"""
+
+    assert _check(src) == []
 
 
 # FP guard: strict pins, nondeterministic markers, and environment gates.      #
@@ -499,6 +537,8 @@ def test_feature():
 
 def test_flags_unconditional_bug_pin_in_same_file_as_gated_one():
     src = """
+import pytest
+
 @pytest.mark.xfail(sys.platform == "win32", reason="broken on Windows only")
 def test_paths():
     assert resolve() == "/tmp"
@@ -509,11 +549,13 @@ def test_envelope():
 """
     diags = _check(src)
     assert len(diags) == 1
-    assert diags[0].line == 6
+    assert diags[0].line == 8
 
 
 def test_flags_conditional_xfail_gated_on_a_non_environment_flag():
     src = """
+import pytest
+
 @pytest.mark.xfail(FEATURE_ROLLED_OUT, reason="Bug: the new path drops the envelope")
 def test_envelope():
     assert envelope() == {}

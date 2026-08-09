@@ -476,7 +476,9 @@ export default createRule<Options, MessageIds>({
 
     return {
       TryStatement(node: TSESTree.TryStatement): void {
-        if (node.finalizer !== null) {
+        // A catchless try/finally is normally resource cleanup. A catch plus a
+        // finally is still an error boundary and must not evade this rule.
+        if (node.finalizer !== null && node.handler === null) {
           return;
         }
         if (handlerRethrows(node.handler)) {

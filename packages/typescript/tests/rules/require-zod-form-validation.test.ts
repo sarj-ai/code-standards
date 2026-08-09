@@ -144,5 +144,35 @@ ruleTester.run("require-zod-form-validation", rule, {
       code: "const value = formData.get('value');\nif (value instanceof URL) { use(value); }",
       errors: [{ messageId: "missingZodValidation" }],
     },
+    {
+      name: "does not trust a conditional later parse",
+      code: "const value = formData.get('value');\nif (flag) UserSchema.parse(value);\nreturn sink(value);",
+      errors: [{ messageId: "missingZodValidation" }],
+    },
+    {
+      name: "does not trust an ordinary object named Schema",
+      code: "const FakeSchema = { parse: (value: unknown) => value };\nreturn FakeSchema.parse(formData.get('value'));",
+      errors: [{ messageId: "missingZodValidation" }],
+    },
+    {
+      name: "does not allow raw use before a later parse",
+      code: "const value = formData.get('value');\nsink(value);\nUserSchema.parse(value);",
+      errors: [{ messageId: "missingZodValidation" }],
+    },
+    {
+      name: "does not trust a short-circuited parse",
+      code: "const value = formData.get('value');\nflag && UserSchema.parse(value);\nsink(value);",
+      errors: [{ messageId: "missingZodValidation" }],
+    },
+    {
+      name: "does not treat unchecked safeParse as successful validation",
+      code: "const value = formData.get('value');\nUserSchema.safeParse(value);\nsink(value);",
+      errors: [{ messageId: "missingZodValidation" }],
+    },
+    {
+      name: "does not treat an unawaited async parse as successful validation",
+      code: "const value = formData.get('value');\nUserSchema.parseAsync(value);\nsink(value);",
+      errors: [{ messageId: "missingZodValidation" }],
+    },
   ],
 });

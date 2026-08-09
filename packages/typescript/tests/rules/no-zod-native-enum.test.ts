@@ -85,6 +85,25 @@ ruleTester.run("no-zod-native-enum", rule, {
       name: "allows the enum accessor on a schema",
       code: "const values = MySchema.enum;",
     },
+    {
+      name: "allows a block-scoped namespace shadow",
+      code: `
+        import { z } from "zod";
+        function f() {
+          const z = { nativeEnum: (value: unknown) => value };
+          return z.nativeEnum({ A: "a" });
+        }
+      `,
+    },
+    {
+      name: "allows a parameter shadow of a named import",
+      code: `
+        import { nativeEnum } from "zod";
+        function f(nativeEnum: (value: unknown) => unknown) {
+          return nativeEnum({ A: "a" });
+        }
+      `,
+    },
   ],
   invalid: [
     {

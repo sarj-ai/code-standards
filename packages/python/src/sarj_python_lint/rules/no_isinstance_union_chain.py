@@ -84,7 +84,7 @@ class NoIsinstanceUnionChain(Rule):
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "The rule requires at least two locally defined class arms over the same expression and a terminal fallback.",
+            "The rule requires at least two locally defined class arms over the same stable name and an unreachable terminal fallback.",
             "Builtin, imported, abstract collection, and open-ended dispatch types are excluded.",
         ),
         examples=(
@@ -165,6 +165,10 @@ def _qualifying_chain_length(head: ast.If, local_classes: frozenset[str]) -> int
         if parsed is None:
             return 0
         target, type_node = parsed
+        if not isinstance(target, ast.Name):
+            # Match evaluates its subject once, while an isinstance ladder
+            # repeats attributes, subscriptions, and calls for every arm.
+            return 0
         if not isinstance(type_node, ast.Name):
             return 0
         type_name = type_node.id
@@ -194,7 +198,7 @@ def _is_exhaustive_terminal(orelse: list[ast.stmt]) -> bool:
 
 def _stmt_terminates(stmt: ast.stmt) -> bool:
     match stmt:
-        case ast.Raise() | ast.Return():
+        case ast.Raise():
             return True
         case ast.Assert(test=test):
             # `assert ready` falls through whenever `ready` is truthy. Only a

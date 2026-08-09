@@ -102,6 +102,34 @@ async def users() -> list[UserResponse]:
 
 
 @pytest.mark.parametrize(
+    "path",
+    [
+        "docs_src/tutorial/body/tutorial001.py",
+        "/repo/docs_src/dependencies/tutorial008.py",
+        "/repo/DOCS_SRC/response_model/example.py",
+    ],
+)
+def test_documentation_source_examples_are_excluded(path: str):
+    source = _source("""
+@router.get("/users")
+async def users() -> list[UserResponse]:
+    return []
+""")
+
+    assert _check(source, path) == []
+
+
+def test_similarly_named_application_directory_is_still_checked():
+    source = _source("""
+@router.get("/users")
+async def users() -> list[UserResponse]:
+    return []
+""")
+
+    assert _check(source, "/repo/docs_source/api.py")
+
+
+@pytest.mark.parametrize(
     ("parameter", "fragment"),
     [
         ("term: str", "explicit Annotated"),

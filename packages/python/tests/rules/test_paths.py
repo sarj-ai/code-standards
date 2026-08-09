@@ -187,19 +187,33 @@ def test_is_generated_unions_both_halves() -> None:
 
 
 def test_generated_sdk_output_is_exempt_from_match_dispatch(tmp_path: Path) -> None:
-    # End-to-end: the raise-in-try arm of SARJ080 fires on this source at any
-    # ordinary path, and 314 of its 334 findings over two first-party corpora
-    # came from exactly this openapi-python-client shape.
+    # End-to-end: a real type-dispatch ladder fires at an ordinary path while
+    # the banner-less SDK tree remains exempt. The generated sentinel prologue
+    # itself is intentionally no longer diagnostic.
+    dispatch_source = (
+        _UNMARKED_GENERATED_SDK_SOURCE
+        + """
+
+def parse_scalar(data: object) -> object:
+    if isinstance(data, str):
+        return parse_text(data)
+    if isinstance(data, int):
+        return parse_integer(data)
+    if isinstance(data, float):
+        return parse_decimal(data)
+    raise TypeError
+"""
+    )
     root = tmp_path / "api-client"
     emitted = root / "api_client" / "models"
     emitted.mkdir(parents=True)
     (root / "codegen.config.yml").write_text("")
     target = emitted / "widget_row.py"
-    target.write_text(_UNMARKED_GENERATED_SDK_SOURCE)
+    target.write_text(dispatch_source)
 
     rule = PreferMatchTypeDispatch()
-    assert rule.check(Path("app/parsers.py"), _UNMARKED_GENERATED_SDK_SOURCE)
-    assert rule.check(target, _UNMARKED_GENERATED_SDK_SOURCE) == []
+    assert rule.check(Path("app/parsers.py"), dispatch_source)
+    assert rule.check(target, dispatch_source) == []
 
 
 def test_is_test_path_covers_the_usual_shapes() -> None:

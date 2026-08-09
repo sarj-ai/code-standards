@@ -361,3 +361,52 @@ def test_nearby_comment_with_shared_vocabulary_does_not_hide_restatement():
         "    audit_user_profile(user)\n"
     )
     assert [diagnostic.line for diagnostic in _check(source)] == [2, 4]
+
+
+def test_consistently_numbered_walkthrough_run_is_preserved():
+    source = """\
+def write_report(table):
+    # 1. Source reconciliation
+    add("Source reconciliation")
+    if table.source:
+        reconcile(table)
+    # 2. Key integrity
+    add("Key integrity")
+    for key in table.keys:
+        validate(key)
+    # 3. Dead columns
+    add("Dead columns")
+    if table.dead_columns:
+        report(table.dead_columns)
+"""
+    assert _check(source) == []
+
+
+def test_isolated_numbered_restatement_still_fires():
+    source = """\
+def write_report(table):
+    # 6. Dead columns
+    add("## 6. Dead columns")
+    if table.dead_columns:
+        report(table.dead_columns)
+"""
+    assert len(_check(source)) == 1
+
+
+def test_non_monotonic_numbered_comments_are_not_a_walkthrough_run():
+    source = """\
+def write_report(table):
+    # 1. Source reconciliation
+    add("## 1. Source reconciliation")
+    if table.source:
+        reconcile(table)
+    # 3. Key integrity
+    add("## 3. Key integrity")
+    for key in table.keys:
+        validate(key)
+    # 4. Dead columns
+    add("## 4. Dead columns")
+    if table.dead_columns:
+        report(table.dead_columns)
+"""
+    assert len(_check(source)) == 3

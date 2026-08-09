@@ -170,6 +170,22 @@ def test_voice_health():
     assert _check(src) == []
 
 
+def test_preserves_api_paths_as_distinct_contracts():
+    src = """
+def test_delete_environment():
+    response = client.delete("/api/environments/3/")
+    result = response.json()
+    assert result["ok"]
+
+
+def test_delete_schedule():
+    response = client.delete("/api/schedules/3/")
+    result = response.json()
+    assert result["ok"]
+"""
+    assert _check(src) == []
+
+
 def test_preserves_pytest_raises_match_as_a_distinct_contract():
     src = """
 def test_invalid_port():
@@ -189,12 +205,12 @@ def test_unknown_environment():
 def test_flags_methods_of_a_pytest_style_class():
     src = """
 class TestDeletion:
-    def test_admin(self):
+    def test_admin_can_delete(self):
         u = make_user(role="admin")
         allowed = can_delete(u)
         assert allowed is True
 
-    def test_editor(self):
+    def test_editor_can_delete(self):
         u = make_user(role="editor")
         allowed = can_delete(u)
         assert allowed is True
@@ -392,12 +408,12 @@ class DeletionTests({base}):
 def test_the_same_class_without_a_test_case_base_still_fires():
     src = """
 class TestDeletion(DeletionFixtures):
-    def test_admin(self):
+    def test_admin_can_delete(self):
         u = make_user(role="admin")
         allowed = can_delete(u)
         assert allowed is True
 
-    def test_editor(self):
+    def test_editor_can_delete(self):
         u = make_user(role="editor")
         allowed = can_delete(u)
         assert allowed is True
@@ -649,7 +665,7 @@ async def test_get_async():
     assert _check(src) == []
 
 
-def test_two_async_tests_still_fire():
+def test_two_async_tests_for_terminal_route_cases_still_fire():
     src = """
 async def test_get_a():
     client = make_client()
@@ -681,7 +697,7 @@ def test_two(async_client):
     assert _check(src) == []
 
 
-def test_a_fixture_renamed_only_in_the_body_still_differs():
+def test_a_fixture_reading_terminal_route_cases_still_fires():
     # The parameter names are identity, so declaring the same fixture and using
     # it identically is what re-groups the two.
     src = """
@@ -953,6 +969,54 @@ editor permissions and navigation belong here
     assert _check(src) == []
 
 
+def test_long_single_line_scenarios_are_fixture_documents():
+    src = """
+def test_greeting_scenario():
+    prompt = load("A friendly customer says hello and asks what the banking assistant can do for them during a first conversation")
+    result = evaluate(prompt)
+    assert result.on_topic
+
+
+def test_accounts_scenario():
+    prompt = load("A banking customer asks to inspect every account and its available balance before deciding what to do next")
+    result = evaluate(prompt)
+    assert result.on_topic
+"""
+    assert _check(src) == []
+
+
+def test_two_semantically_distinct_contracts_need_more_than_body_coincidence():
+    src = """
+def test_prod_key_rejected_in_dev():
+    value = load("prod")
+    result = validate(value)
+    assert result == "not supported"
+
+
+def test_unknown_key_raises_400_listing_envs():
+    value = load("bogus")
+    result = validate(value)
+    assert result == "No such env"
+"""
+    assert _check(src) == []
+
+
+def test_two_tests_with_a_strong_shared_behavior_name_still_fire():
+    src = """
+def test_small_update_limit_is_rejected():
+    value = load(-1)
+    result = update_limit(value)
+    assert result.status == 400
+
+
+def test_large_update_limit_is_rejected():
+    value = load(-2)
+    result = update_limit(value)
+    assert result.status == 400
+"""
+    assert len(_check(src)) == 1
+
+
 def test_short_multiline_literals_remain_parametrize_cases():
     src = '''
 def test_one():
@@ -1129,13 +1193,13 @@ class TestB:
         assert result
 
 
-def test_alpha():
+def test_alpha_parse():
     row = fetch(1)
     parsed = parse(row)
     assert parsed
 
 
-def test_beta():
+def test_beta_parse():
     row = fetch(2)
     parsed = parse(row)
     assert parsed

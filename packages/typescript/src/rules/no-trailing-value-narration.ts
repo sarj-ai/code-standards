@@ -10,7 +10,7 @@ import { createRule, type RuleDocumentation } from "./_docs.js";
 import { codeTokens, hasExternalReference, stem } from "./_comments.js";
 import { isGeneratedFile } from "./_paths.js";
 
-type MessageIds = "narratesValue";
+type MessageIds = "deleteNarration" | "narratesValue";
 type Options = readonly [];
 
 export const noTrailingValueNarrationDocumentation = {
@@ -63,6 +63,9 @@ const STOPWORDS: ReadonlySet<string> = new Set([
 const DIRECTIVE_RE =
   /^\s*(?:eslint\b|eslint-|sarj-noqa\b|@ts-|prettier|biome-|c8\b|v8\b|istanbul\b|todo\b|fixme\b|hack\b|xxx\b)/i;
 
+const UNIT_NAME_SUFFIX_RE =
+  /(?:_(?:NS|US|MS|S|SEC|SECS|SECOND|SECONDS|MIN|MINS|MINUTE|MINUTES|HOUR|HOURS|DAY|DAYS|BYTE|BYTES|KB|MB|GB|HZ|KHZ|MHZ|PX)|(?:Ns|Us|Ms|Sec|Secs|Second|Seconds|Min|Mins|Minute|Minutes|Hour|Hours|Day|Days|Byte|Bytes|Kb|Mb|Gb|Hz|Khz|Mhz|Px))$/u;
+
 function narratesValue(body: string, code: string): boolean {
   if (body.length === 0 || DIRECTIVE_RE.test(body) || hasExternalReference(body)) return false;
   const codeNumbers = numbersIn(code);
@@ -92,6 +95,10 @@ function numbersIn(text: string): Set<string> {
   return new Set(text.match(NUMBER_RE) ?? []);
 }
 
+function nameAlreadyCarriesUnit(code: string): boolean {
+  return (code.match(/[A-Za-z_$][\w$]*/gu) ?? []).some((identifier) => UNIT_NAME_SUFFIX_RE.test(identifier));
+}
+
 export default createRule<Options, MessageIds>({
   name: "no-trailing-value-narration",
   documentation: noTrailingValueNarrationDocumentation,
@@ -103,6 +110,8 @@ export default createRule<Options, MessageIds>({
     },
     schema: [],
     messages: {
+      deleteNarration:
+        "Trailing comment restates the literal and the identifier already names its unit — delete the comment so it cannot drift.",
       narratesValue:
         "Trailing comment restates the literal on this line — put the unit in the name (STALE_TIME_MS) so it cannot drift.",
     },
@@ -143,7 +152,10 @@ export default createRule<Options, MessageIds>({
           const code = line.slice(0, comment.loc.start.column);
           const body = comment.value.replace(/^\*+/, "").replace(/\*+$/, "").trim();
           if (narratesValue(body, code)) {
-            context.report({ node: comment, messageId: "narratesValue" });
+            context.report({
+              node: comment,
+              messageId: nameAlreadyCarriesUnit(code) ? "deleteNarration" : "narratesValue",
+            });
           }
         }
       },

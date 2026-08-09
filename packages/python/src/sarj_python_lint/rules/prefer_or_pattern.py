@@ -48,7 +48,7 @@ class PreferOrPattern(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Only adjacent, unguarded, refutable arms with structurally identical non-empty bodies are compared.",
-            "Arms with different bound names or comments are excluded because merging can change meaning or intent.",
+            "Arms with different bound names, comments, or a combined pattern rejected by Python are excluded.",
         ),
         examples=(
             RuleExample(
@@ -118,7 +118,13 @@ def _mergeable_runs(node: ast.Match, lines: list[str]) -> list[list[ast.match_ca
     runs: list[list[ast.match_case]] = []
     current: list[ast.match_case] = []
     for case in node.cases:
-        if current and _is_mergeable_arm(case) and _arms_merge(current[-1], case, lines):
+        candidate_patterns = [*(arm.pattern for arm in current), case.pattern]
+        if (
+            current
+            and _is_mergeable_arm(case)
+            and _arms_merge(current[-1], case, lines)
+            and _render_valid_or_pattern(candidate_patterns) is not None
+        ):
             current.append(case)
             continue
         if len(current) >= _MIN_RUN:
@@ -214,8 +220,15 @@ def _message(run: list[ast.match_case]) -> str:
 
 def _preview(first: ast.pattern, second: ast.pattern) -> str | None:
     """Render a complete parseable two-pattern suggestion, if it fits."""
+    preview = _render_valid_or_pattern([first, second])
+    return preview if preview is not None and len(preview) <= _MAX_RENDERED_PREVIEW else None
+
+
+def _render_valid_or_pattern(patterns: list[ast.pattern]) -> str | None:
+    """Render an or-pattern only when Python accepts its capture layout."""
     try:
-        preview = f"{ast.unparse(first)} | {ast.unparse(second)}"
-    except ValueError, AttributeError, TypeError, RecursionError:
+        preview = ast.unparse(ast.MatchOr(patterns=patterns))
+        compile(f"match subject:\n    case {preview}:\n        pass\n", "<sarj-or-pattern>", "exec")
+    except SyntaxError, ValueError, AttributeError, TypeError, RecursionError:
         return None
-    return preview if len(preview) <= _MAX_RENDERED_PREVIEW else None
+    return preview

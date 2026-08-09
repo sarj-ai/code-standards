@@ -60,6 +60,7 @@ new RuleTester().run("no-long-comment", rule, {
       "export const Composer = forwardRef(function Composer() { return null; });",
     ].join("\n"),
     "/** One. Two. Three. Four. Five. Six. Seven. The `traceparent` value is forwarded. */\nconst value = 1;",
+    "/** One. Two. Three. Four. Five. Six. Seven. The deadline is 10 ms. */\nconst value = 1;",
     [
       "/** One. Two. Three. Four. Five. Six. Seven. Eight. */",
       "export function decode(value: string): string { return value; }",
@@ -95,6 +96,11 @@ export function PortBars() { return null; }`,
       code: `/** One. Two. Three. Four. Five. Six. Seven. Eight. */
 
 const value = 1;`,
+      errors: [{ messageId: "tooLong" }],
+    },
+    {
+      name: "an arbitrary count is not a technical anchor",
+      code: "/** One. Two. Three. Four. Five. Six. Seven. It covers 3 record types. */\nconst value = 1;",
       errors: [{ messageId: "tooLong" }],
     },
   ],

@@ -31,25 +31,28 @@ export const noStorageInStatelessModulesDocumentation = {
   rationale: "Private storage in a stateless workflow creates another source of truth that can silently diverge.",
   remediation: "Read from the system of record or derive state from an artifact the workflow already produces.",
   category: "architecture",
-  limitations: ["The rule is disabled until module path patterns are configured and recognizes only configured storage method names."],
+  limitations: ["The rule is disabled until module path patterns are configured, recognizes only configured storage method names, and requires storage-like receiver evidence for the overloaded `put` method."],
   examples: [
     { id: "system-of-record", title: "Read from the system of record", outcome: "no-match", files: [{ path: "src/engineer-digest/post.ts", source: "const issues = await linear.listIssues();" }], focusPath: "src/engineer-digest/post.ts", expectedCount: 0, public: true },
     { id: "private-storage", title: "Do not write private state in a stateless module", outcome: "match", files: [{ path: "src/engineer-digest/post.ts", source: "await kv.put('digest:last', timestamp);" }], focusPath: "src/engineer-digest/post.ts", expectedCount: 1, public: true },
   ],
 } as const satisfies RuleDocumentation;
 
-/** Compile regex sources, skipping malformed entries rather than throwing. */
+/** Compile regex sources. Invalid configuration must fail loudly. */
 function compile(patterns: readonly string[]): RegExp[] {
-  const compiled: RegExp[] = [];
-  for (const pattern of patterns) {
-    try {
-      compiled.push(new RegExp(pattern));
-    } catch {
-      // Skip the malformed entry; the remaining patterns still apply.
-    }
-  }
-  return compiled;
+  return patterns.map((pattern) => new RegExp(pattern));
 }
+
+const STORAGE_RECEIVER_WORDS: ReadonlySet<string> = new Set([
+  "bucket",
+  "cache",
+  "kv",
+  "namespace",
+  "r2",
+  "redis",
+  "storage",
+  "store",
+]);
 
 /** The flagged storage method name of `receiver.method(...)`, or null. */
 function storageMethodName(
@@ -71,7 +74,43 @@ function storageMethodName(
   if (node.arguments.length < (MIN_ARGUMENTS.get(name) ?? 1)) {
     return null;
   }
+  // `put` is shared by HTTP clients, queues, builders, and KV stores. Require
+  // receiver evidence before treating this ambiguous name as storage access.
+  if (name === "put" && !isStorageLikeReceiver(callee.object)) {
+    return null;
+  }
   return name;
+}
+
+/** Whether the receiver itself gives syntactic evidence of storage access. */
+function isStorageLikeReceiver(
+  node: TSESTree.Expression | TSESTree.Super,
+): boolean {
+  if (node.type === AST_NODE_TYPES.Identifier) {
+    return isStorageIdentifier(node.name);
+  }
+  if (node.type !== AST_NODE_TYPES.MemberExpression) {
+    return false;
+  }
+  if (
+    !node.computed &&
+    node.property.type === AST_NODE_TYPES.Identifier &&
+    isStorageIdentifier(node.property.name)
+  ) {
+    return true;
+  }
+  return isStorageLikeReceiver(node.object);
+}
+
+function isStorageIdentifier(name: string): boolean {
+  return identifierWords(name).some((word) =>
+    STORAGE_RECEIVER_WORDS.has(word.toLowerCase()),
+  );
+}
+
+/** Split snake/camel/Pascal identifiers without treating `httpClient` as storage. */
+function identifierWords(name: string): string[] {
+  return name.match(/[A-Z]?[a-z]+|[A-Z]+(?=[A-Z]|$)|\d+/gu) ?? [name];
 }
 
 export default createRule<Options, MessageIds>({

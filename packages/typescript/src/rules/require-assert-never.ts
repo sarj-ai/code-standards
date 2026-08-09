@@ -32,6 +32,9 @@ export const requireAssertNeverDocumentation = {
 /** Empty statements and empty blocks are not runtime handling. */
 const isRuntimeHandlingStatement = (statement: TSESTree.Statement): boolean => {
   if (statement.type === AST_NODE_TYPES.EmptyStatement) return false;
+  if (statement.type === AST_NODE_TYPES.BreakStatement) {
+    return statement.label !== null;
+  }
   if (
     statement.type === AST_NODE_TYPES.TSTypeAliasDeclaration ||
     statement.type === AST_NODE_TYPES.TSInterfaceDeclaration
@@ -94,7 +97,18 @@ function isExhaustiveFiniteSwitch(
   const constituents = discriminantType.isUnion()
     ? discriminantType.types
     : [discriminantType];
-  if (constituents.length === 0) return false;
+  if (!discriminantType.isUnion() || constituents.length < 2) return false;
+
+  // A fully covered boolean switch has no evolving domain for assertNever to
+  // guard, so requiring a default assertion would only add ceremony.
+  if (
+    constituents.every(
+      (constituent) =>
+        (constituent.flags & ts.TypeFlags.BooleanLiteral) !== 0,
+    )
+  ) {
+    return false;
+  }
 
   const expected = new Set<string>();
   for (const constituent of constituents) {

@@ -161,7 +161,7 @@ def handle(x):
     assert len(_check(src)) == 1
 
 
-def test_flags_chain_terminated_by_return():
+def test_plain_return_fallback_does_not_prove_a_closed_union():
     src = """
 class Foo: ...
 class Bar: ...
@@ -174,7 +174,7 @@ def handle(x):
     else:
         return None
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
 def test_flags_chain_terminated_by_assert():
@@ -201,7 +201,7 @@ def test_flags_chains_of_every_length_and_reports_count(branches: int):
     assert f"{branches} local classes" in diags[0].message
 
 
-def test_flags_chain_on_attribute_target():
+def test_skips_chain_on_possibly_effectful_attribute_target():
     src = """
 class TextBody: ...
 class BinaryBody: ...
@@ -214,10 +214,10 @@ def handle(msg):
     else:
         raise ValueError()
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
-def test_flags_chain_on_subscript_target():
+def test_skips_chain_on_possibly_effectful_subscript_target():
     src = """
 class Foo: ...
 class Bar: ...
@@ -230,10 +230,10 @@ def handle(items):
     else:
         raise ValueError()
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
-def test_flags_chain_on_call_target_with_identical_dump():
+def test_skips_chain_on_effectful_call_target():
     src = """
 class Foo: ...
 class Bar: ...
@@ -246,7 +246,7 @@ def handle():
     else:
         raise ValueError()
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
 def test_flags_chain_with_parenthesized_tests():
@@ -881,44 +881,44 @@ def handle(x):
 # (structurally identical -> same target -> chain IS flagged)                  #
 
 
-def test_deep_attribute_target_equal_flagged():
+def test_deep_attribute_target_is_not_recommended_for_single_evaluation():
     src = _two_arm("isinstance(o.a.b.c, Foo)", "isinstance(o.a.b.c, Bar)")
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
-def test_subscript_hex_and_decimal_index_are_equal_value_flagged():
+def test_subscript_hex_and_decimal_index_are_still_effectful():
     src = _two_arm("isinstance(o[0x1], Foo)", "isinstance(o[1], Bar)")
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
-def test_subscript_string_quote_styles_equal_flagged():
+def test_subscript_string_quote_styles_are_still_effectful():
     src = _two_arm('isinstance(o["k"], Foo)', "isinstance(o['k'], Bar)")
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
-def test_negative_index_target_equal_flagged():
+def test_negative_index_target_is_still_effectful():
     src = _two_arm("isinstance(o[-1], Foo)", "isinstance(o[-1], Bar)")
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
-def test_call_target_with_identical_args_and_kwargs_flagged():
+def test_call_target_with_identical_args_and_kwargs_is_not_flagged():
     src = _two_arm("isinstance(get(1, k=2), Foo)", "isinstance(get(1, k=2), Bar)")
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
-def test_walrus_target_equal_flagged():
+def test_walrus_target_is_not_repeated_by_a_rewrite():
     src = _two_arm("isinstance((y := f()), Foo)", "isinstance((y := f()), Bar)")
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
-def test_boolop_target_equal_flagged():
+def test_boolop_target_is_not_repeated_by_a_rewrite():
     src = _two_arm("isinstance(a and b, Foo)", "isinstance(a and b, Bar)")
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
-def test_fstring_target_equal_flagged():
+def test_fstring_target_is_not_repeated_by_a_rewrite():
     src = _two_arm("isinstance(f'{a}', Foo)", "isinstance(f'{a}', Bar)")
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
 # Adversarial: `_ast_equal` must match `ast.dump` EXACTLY — distinct targets   #

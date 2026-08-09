@@ -44,6 +44,7 @@ _CONTAINERS = frozenset({"list", "List", "set", "Set", "tuple", "Tuple", "Sequen
 _BODY_MARKERS = frozenset({"Body", "Form", "File"})
 _NO_CONTENT_STATUSES = frozenset({204, 304})
 _STATUS_CODE_DIGITS = 3
+_DOCUMENTATION_EXAMPLE_DIR_NAMES = frozenset({"docs_src"})
 _CONVERTER_PATTERNS = MappingProxyType(
     {
         "str": r"[^/]+",
@@ -70,7 +71,7 @@ class FastapiOpenapiContract(Rule):
         remediation="Declare route metadata, typed parameters, response schemas, and documented alternate responses.",
         category=RuleCategory.CORRECTNESS,
         limitations=(
-            "Hidden routes, WebSocket handlers, tests, generated files, and unrelated decorators are excluded.",
+            "Hidden routes, WebSocket handlers, tests, generated files, documentation-source examples, and unrelated decorators are excluded.",
             "Dynamic response mappings are accepted when their contents cannot be resolved statically.",
             "Imported dependency aliases are followed only through unique, nonsymlinked relative or same-package modules inside the detected checkout; traversal is bounded and ambiguity remains diagnostic.",
         ),
@@ -109,7 +110,11 @@ class FastapiOpenapiContract(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_test_path(path) or is_generated(path, source):
+        if (
+            is_test_path(path)
+            or is_generated(path, source)
+            or any(part.lower() in _DOCUMENTATION_EXAMPLE_DIR_NAMES for part in path.parts)
+        ):
             return []
         tree = parse_or_none(path, source)
         if tree is None:

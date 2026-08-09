@@ -1,6 +1,7 @@
 import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { Linter } from "eslint";
+import { afterAll, describe, expect, it } from "vitest";
 
 import rule, { noStorageInStatelessModulesDocumentation } from "../../src/rules/no-storage-in-stateless-modules.js";
 
@@ -19,6 +20,29 @@ const STATELESS_MODULE_FILENAME = "/repo/src/engineer-digest/post.ts";
 const STATELESS_MODULE_OPTIONS = [
   { modules: ["[\\\\/]engineer-digest[\\\\/]"] },
 ];
+
+it("rejects malformed module patterns instead of silently disabling itself", () => {
+  const linter = new Linter();
+  expect(() =>
+    linter.verify(
+      "kv.put(k, v);",
+      [
+        {
+          files: ["**/*.ts"],
+          languageOptions: { parser: tsParser },
+          plugins: { sarj: { rules: { stateless: rule } } },
+          rules: {
+            "sarj/stateless": [
+              "error",
+              { modules: ["([unterminated"] },
+            ],
+          },
+        },
+      ],
+      { filename: "src/engineer-digest/post.ts" },
+    ),
+  ).toThrow(/Invalid regular expression/u);
+});
 
 ruleTester.run("no-storage-in-stateless-modules", rule, {
   valid: [
@@ -69,6 +93,18 @@ ruleTester.run("no-storage-in-stateless-modules", rule, {
       options: STATELESS_MODULE_OPTIONS,
     },
     {
+      name: "allows axios HTTP put calls",
+      code: "axios.put(url, payload);",
+      filename: STATELESS_MODULE_FILENAME,
+      options: STATELESS_MODULE_OPTIONS,
+    },
+    {
+      name: "allows named HTTP client put calls",
+      code: "httpClient.put(url, payload);",
+      filename: STATELESS_MODULE_FILENAME,
+      options: STATELESS_MODULE_OPTIONS,
+    },
+    {
       name: "allows computed method names that cannot be resolved statically",
       code: "store['put'](k, v);",
       filename: STATELESS_MODULE_FILENAME,
@@ -88,12 +124,6 @@ ruleTester.run("no-storage-in-stateless-modules", rule, {
         { modules: ["[\\\\/]engineer-digest[\\\\/]"], methods: ["prepare"] },
       ],
     },
-    {
-      name: "skips malformed module patterns",
-      code: "kv.put(k, v);",
-      filename: STATELESS_MODULE_FILENAME,
-      options: [{ modules: ["([unterminated"] }],
-    },
   ],
   invalid: [
     { name: "reports the documented private storage", filename: noStorageInStatelessModulesDocumentation.examples[1].focusPath, code: noStorageInStatelessModulesDocumentation.examples[1].files[0].source, options: STATELESS_MODULE_OPTIONS, errors: [{ messageId: "storageInStatelessModule" }] },
@@ -107,6 +137,20 @@ ruleTester.run("no-storage-in-stateless-modules", rule, {
     {
       name: "reports KV put inside a configured stateless module",
       code: "await kv.put('digest:last', ts);",
+      filename: STATELESS_MODULE_FILENAME,
+      options: STATELESS_MODULE_OPTIONS,
+      errors: [{ messageId: "storageInStatelessModule" }],
+    },
+    {
+      name: "reports qualified KV receivers",
+      code: "await env.DIGEST_KV.put('digest:last', ts);",
+      filename: STATELESS_MODULE_FILENAME,
+      options: STATELESS_MODULE_OPTIONS,
+      errors: [{ messageId: "storageInStatelessModule" }],
+    },
+    {
+      name: "reports camel-cased storage receivers",
+      code: "await this.digestStore.put('digest:last', ts);",
       filename: STATELESS_MODULE_FILENAME,
       options: STATELESS_MODULE_OPTIONS,
       errors: [{ messageId: "storageInStatelessModule" }],
