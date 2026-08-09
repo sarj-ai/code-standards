@@ -21,6 +21,14 @@ permissions:
 
 jobs:
   release-safety:
+    needs: detect
+    if: >-
+      needs.detect.outputs.typescript == 'true' ||
+      needs.detect.outputs.python == 'true' ||
+      needs.detect.outputs.sql == 'true' ||
+      needs.detect.outputs.iac == 'true' ||
+      needs.detect.outputs.standards == 'true' ||
+      needs.detect.outputs.tsconfig == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 50
     permissions:

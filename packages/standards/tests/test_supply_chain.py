@@ -84,6 +84,10 @@ def test_release_waits_for_exact_revision_safety_checks() -> None:
     release = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
 
     assert "\n  release-safety:\n" in release
+    assert "release-safety:\n    needs: detect\n" in release
+    release_safety = release.partition("\n  release-safety:\n")[2].partition("\n  detect:\n")[0]
+    for package in ("typescript", "python", "sql", "iac", "standards", "tsconfig"):
+        assert f"needs.detect.outputs.{package} == 'true'" in release_safety
     assert "actions: read" in release
     assert "repo-ci.yml|release-ready" in release
     assert "private-refs.yml|private references" in release
