@@ -4,42 +4,8 @@
 
 Deterministic PostgreSQL migration rules for safe, repeatable schema changes.
 
-## Package metadata
+```bash
+uv tool install sarj-sql-lint
+```
 
-| Field | Value |
-| --- | --- |
-| Version | `0.10.0` |
-| Registry | PyPI |
-| License | MIT |
-| Runtime | `Python >=3.14` |
-
-## Command-line reference
-
-| Command | Entrypoint | Help |
-| --- | --- | --- |
-| `sarj-sql-lint` | `sarj_sql_lint.__main__:main` | `sarj-sql-lint --help` |
-
-## Rule catalog
-
-| Rule | Summary | Default | Autofix |
-| --- | --- | --- | --- |
-| `sql:add-constraint-requires-not-valid` | ADD CONSTRAINT (CHECK/FK) without NOT VALID blocks writes during full-table validation. | `error` | `none` |
-| `sql:enforce-timestamptz` | TIMESTAMP without TIME ZONE — use TIMESTAMPTZ. | `error` | `none` |
-| `sql:idempotent-ddl` | DDL without IF [NOT] EXISTS — migrations must be safe to re-run. | `error` | `none` |
-| `sql:index-concurrently` | CREATE INDEX without CONCURRENTLY — locks the table against writes. | `error` | `none` |
-| `sql:insert-requires-on-conflict` | INSERT without ON CONFLICT — migration data writes must be idempotent upserts. | `error` | `none` |
-| `sql:no-offset-pagination` | OFFSET pagination — use cursor pagination (WHERE id > :cursor). | `error` | `none` |
-| `sql:no-pg-enum` | CREATE TYPE ... AS ENUM — use TEXT + CHECK constraint instead. | `error` | `none` |
-| `sql:prefer-jsonb` | JSON column type or ::json cast — use JSONB. | `error` | `none` |
-| `sql:prefer-text-over-varchar` | VARCHAR(n) — use TEXT (+ CHECK length if needed). | `error` | `none` |
-| `sql:prefer-uuidv7-default` | `gen_random_uuid()` emits a random UUIDv4 — use `uuidv7()` so keys are time-ordered. | `error` | `none` |
-| `sql:require-fk-index` | FOREIGN KEY column missing index — causes full-table scans and locks on parent row deletes. | `error` | `none` |
-| `sql:require-lock-timeout` | DDL migration missing positive SET [LOCAL] lock_timeout or statement_timeout prior to DDL. | `error` | `none` |
-
-## Project links
-
-- [Homepage](https://code-standards.sarj.ai/rules/sql/)
-- [Issues](https://github.com/sarj-ai/standards/issues)
-- [Repository](https://github.com/sarj-ai/standards)
-
-Package metadata is generated from [`pyproject.toml`](pyproject.toml).
+[Documentation](https://code-standards.sarj.ai/rules/sql/) · [Source](https://github.com/sarj-ai/standards)

@@ -44,13 +44,13 @@ def test_matching_manifest_bump_satisfies_source_change(tmp_path: Path) -> None:
     assert report.bumped_targets == ("python",)
 
 
-def test_tests_and_lockfiles_do_not_force_noop_releases(tmp_path: Path) -> None:
+def test_tests_locks_and_generated_readmes_do_not_force_noop_releases(tmp_path: Path) -> None:
     def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
         _ = cwd, capture_output
         if "--name-only" in argv:
             return ProcessResult(
                 0,
-                "packages/python/tests/test_api.py\0packages/python/uv.lock\0",
+                "packages/python/tests/test_api.py\0packages/python/uv.lock\0packages/python/README.md\0",
             )
         return ProcessResult(0, "")
 

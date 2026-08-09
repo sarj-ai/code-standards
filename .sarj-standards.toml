@@ -1,5 +1,5 @@
 schema = 3
-bundle = "3.1.0"
+bundle = "3.1.1"
 rule_profile = "all"
 
 profile = "standard"
@@ -198,6 +198,24 @@ path = "packages/typescript/package-lock.json"
 format = "json-pointer"
 version = "typescript"
 selector = "/packages//version"
+
+[[repository.version_references]]
+path = "apps/docs/package.json"
+format = "json-pointer"
+version = "typescript"
+selector = "/devDependencies/@sarj~1eslint-plugin"
+
+[[repository.version_references]]
+path = "apps/docs/package-lock.json"
+format = "json-pointer"
+version = "typescript"
+selector = "/packages//devDependencies/@sarj~1eslint-plugin"
+
+[[repository.version_references]]
+path = "apps/docs/package-lock.json"
+format = "json-pointer"
+version = "typescript"
+selector = "/packages/node_modules~1@sarj~1eslint-plugin/version"
 
 [[repository.version_references]]
 path = "packages/standards/src/sarj_standards/configs/eslint.peers.json"

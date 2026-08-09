@@ -4,16 +4,8 @@
 
 Ultra-strict TypeScript configs for sarj-ai projects — strict.json + base.json
 
-## Package metadata
+```bash
+npm install --save-dev @sarj/tsconfig
+```
 
-| Field | Value |
-| --- | --- |
-| Version | `0.1.5` |
-| Registry | npm |
-| License | MIT |
-
-## Project links
-
-- [Homepage](https://code-standards.sarj.ai/cli/)
-
-Package metadata is generated from [`package.json`](package.json).
+[Documentation](https://code-standards.sarj.ai/cli/) · [Source](https://github.com/sarj-ai/standards)

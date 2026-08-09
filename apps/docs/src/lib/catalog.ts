@@ -100,40 +100,33 @@ function requireString(record: Record<string, unknown>, key: string, context: st
   return value;
 }
 
-function requireStringArray(record: Record<string, unknown>, key: string, context: string): string[] {
-  const value = record[key];
-  if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) {
-    throw new TypeError(`${context}.${key} must be a string array.`);
+function validateCatalog(value: unknown): asserts value is Catalog {
+  if (!isRecord(value) || value.schemaVersion !== 1 || !Array.isArray(value.rules)) {
+    throw new TypeError('rule catalog must contain schemaVersion 1 and a rules array.');
   }
-  return value;
-}
-
-function validateExampleFile(value: unknown, context: string): asserts value is ExampleFile {
-  if (!isRecord(value)) throw new TypeError(`${context} must be an object.`);
-  requireString(value, 'path', context);
-  requireString(value, 'source', context);
-}
-
-function validateExample(value: unknown, context: string): asserts value is RuleExample {
-  if (!isRecord(value)) throw new TypeError(`${context} must be an object.`);
-  for (const field of ['id', 'title', 'focusPath']) requireString(value, field, context);
-  if (value.outcome !== 'accept' && value.outcome !== 'reject') {
-    throw new TypeError(`${context}.outcome must be accept or reject.`);
+  const keys = new Set<string>();
+  const rules: Rule[] = [];
+  for (const [index, rule] of value.rules.entries()) {
+    validateRule(rule, index);
+    if (keys.has(rule.key)) throw new TypeError(`rule catalog contains duplicate key ${rule.key}.`);
+    keys.add(rule.key);
+    rules.push(rule);
   }
-  if (typeof value.expectedCount !== 'number' || !Number.isInteger(value.expectedCount) || value.expectedCount < 0) {
-    throw new TypeError(`${context}.expectedCount must be a non-negative integer.`);
+  const activeIds = new Set(rules.map((rule) => rule.key));
+  const aliases = new Set<string>();
+  for (const rule of rules) {
+    for (const alias of rule.aliases) {
+      const aliasKey = `${rule.engine}:${alias}`;
+      if (activeIds.has(aliasKey)) throw new TypeError(`rule alias ${aliasKey} shadows an active rule.`);
+      if (aliases.has(aliasKey)) throw new TypeError(`rule alias ${aliasKey} has multiple targets.`);
+      aliases.add(aliasKey);
+    }
   }
-  for (const field of ['files', 'fixedFiles']) {
-    const files = value[field];
-    if (!Array.isArray(files)) throw new TypeError(`${context}.${field} must be an array.`);
-    files.forEach((file, index) => validateExampleFile(file, `${context}.${field}[${index}]`));
-  }
-  if ((value.files as unknown[]).length === 0) throw new TypeError(`${context}.files must not be empty.`);
 }
 
 function validateRule(value: unknown, index: number): asserts value is Rule {
-  if (!isRecord(value)) throw new TypeError(`rule catalog rules[${index}] must be an object.`);
-  const context = `rule catalog rules[${index}]`;
+  if (!isRecord(value)) throw new TypeError(`rule catalog rules[${String(index)}] must be an object.`);
+  const context = `rule catalog rules[${String(index)}]`;
   const key = requireString(value, 'key', context);
   const engine = requireString(value, 'engine', context);
   const id = requireString(value, 'id', context);
@@ -154,7 +147,13 @@ function validateRule(value: unknown, index: number): asserts value is Rule {
     throw new TypeError(`${context}.references must contain only HTTPS URLs.`);
   }
   if (!Array.isArray(value.examples)) throw new TypeError(`${context}.examples must be an array.`);
-  value.examples.forEach((example, exampleIndex) => validateExample(example, `${context}.examples[${exampleIndex}]`));
+  for (const [exampleIndex, example] of value.examples.entries()) {
+    validateExample(example, `${context}.examples[${String(exampleIndex)}]`);
+  }
+  const exampleOutcomes = new Set(value.examples.map((example) => (example as RuleExample).outcome));
+  if (!exampleOutcomes.has('reject') || !exampleOutcomes.has('accept')) {
+    throw new TypeError(`${context}.examples must include tested before and after source.`);
+  }
   if (value.code !== null && typeof value.code !== 'string') throw new TypeError(`${context}.code must be a string or null.`);
   if (value.optionsSchema !== null && !isRecord(value.optionsSchema)) {
     throw new TypeError(`${context}.optionsSchema must be an object or null.`);
@@ -174,26 +173,37 @@ function validateRule(value: unknown, index: number): asserts value is Rule {
   if (value.status !== 'active') throw new TypeError(`${context}.status must be active.`);
 }
 
-function validateCatalog(value: unknown): asserts value is Catalog {
-  if (!isRecord(value) || value.schemaVersion !== 1 || !Array.isArray(value.rules)) {
-    throw new TypeError('rule catalog must contain schemaVersion 1 and a rules array.');
+function validateExample(value: unknown, context: string): asserts value is RuleExample {
+  if (!isRecord(value)) throw new TypeError(`${context} must be an object.`);
+  for (const field of ['id', 'title', 'focusPath']) requireString(value, field, context);
+  if (value.outcome !== 'accept' && value.outcome !== 'reject') {
+    throw new TypeError(`${context}.outcome must be accept or reject.`);
   }
-  const keys = new Set<string>();
-  value.rules.forEach((rule, index) => {
-    validateRule(rule, index);
-    if (keys.has(rule.key)) throw new TypeError(`rule catalog contains duplicate key ${rule.key}.`);
-    keys.add(rule.key);
-  });
-  const activeIds = new Set(value.rules.map((rule) => rule.key));
-  const aliases = new Set<string>();
-  for (const rule of value.rules) {
-    for (const alias of rule.aliases) {
-      const aliasKey = `${rule.engine}:${alias}`;
-      if (activeIds.has(aliasKey)) throw new TypeError(`rule alias ${aliasKey} shadows an active rule.`);
-      if (aliases.has(aliasKey)) throw new TypeError(`rule alias ${aliasKey} has multiple targets.`);
-      aliases.add(aliasKey);
+  if (typeof value.expectedCount !== 'number' || !Number.isInteger(value.expectedCount) || value.expectedCount < 0) {
+    throw new TypeError(`${context}.expectedCount must be a non-negative integer.`);
+  }
+  for (const field of ['files', 'fixedFiles']) {
+    const files = value[field];
+    if (!Array.isArray(files)) throw new TypeError(`${context}.${field} must be an array.`);
+    for (const [index, file] of files.entries()) {
+      validateExampleFile(file, `${context}.${field}[${String(index)}]`);
     }
   }
+  if ((value.files as unknown[]).length === 0) throw new TypeError(`${context}.files must not be empty.`);
+}
+
+function validateExampleFile(value: unknown, context: string): asserts value is ExampleFile {
+  if (!isRecord(value)) throw new TypeError(`${context} must be an object.`);
+  requireString(value, 'path', context);
+  requireString(value, 'source', context);
+}
+
+function requireStringArray(record: Record<string, unknown>, key: string, context: string): string[] {
+  const value = record[key];
+  if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) {
+    throw new TypeError(`${context}.${key} must be a string array.`);
+  }
+  return value;
 }
 
 const rawCatalog = readGeneratedJson(catalogPath, 'Generated rule catalog');
