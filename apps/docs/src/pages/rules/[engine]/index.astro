@@ -2,7 +2,7 @@
 import ReferencePage from '../../../components/ReferencePage.astro';
 import RuleTable from '../../../components/RuleTable.astro';
 import { ENGINES, catalog, engineLabel, rulesForEngine, type Engine } from '../../../lib/catalog';
-import { familySidebar } from '../../../lib/navigation';
+import { referenceSidebar } from '../../../lib/navigation';
 
 export function getStaticPaths() {
   return ENGINES.filter((engine) => catalog.rules.some((rule) => rule.engine === engine)).map((engine) => ({
@@ -19,7 +19,7 @@ const rules = rulesForEngine(engine);
 <ReferencePage
   title={`${engineLabel(engine)} rules`}
   description={`${rules.length} active ${engineLabel(engine)} rules in Sarj Standards.`}
-  sidebar={familySidebar(engine)}
+  sidebar={[...referenceSidebar]}
 >
-  <RuleTable rules={rules} controls={rules.length > 12} />
+  <RuleTable rules={rules} />
 </ReferencePage>
