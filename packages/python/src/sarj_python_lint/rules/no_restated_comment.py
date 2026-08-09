@@ -97,6 +97,8 @@ _ELEMENT_SHAPE_RE = re.compile(r"""^\s*["'\[{(].*,?\s*$|^\s*[\w.'"]+,\s*$""")
 # Calls and assertions can form labelled sibling groups too.
 _CALL_SHAPE_RE = re.compile(r"^\s*(?:await\s+)?[\w.]+\s*\(")
 _ASSERT_SHAPE_RE = re.compile(r"^\s*assert\b")
+_NUMBERED_WALKTHROUGH_RE = re.compile(r"^(\d+)[.)]\s+\S")
+_NUMBERED_WALKTHROUGH_MIN = 3
 
 
 def _indent_of(line: str) -> int:
@@ -191,6 +193,36 @@ def _is_action_assignment(node: ast.stmt | None) -> bool:
             return False
 
 
+def _numbered_walkthrough_lines(
+    tree: ast.Module,
+    standalone: list[tuple[int, int, str]],
+) -> frozenset[int]:
+    """Collect monotonic numbered comment runs within one syntax owner."""
+    owners = [*nodes(tree, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)]
+
+    def owner_of(line: int) -> int:
+        containing = [node for node in owners if node.lineno <= line <= (node.end_lineno or node.lineno)]
+        return id(max(containing, key=lambda node: node.lineno)) if containing else id(tree)
+
+    grouped: dict[tuple[int, int], list[tuple[int, int]]] = {}
+    for line, col, body in standalone:
+        if match := _NUMBERED_WALKTHROUGH_RE.match(body):
+            grouped.setdefault((owner_of(line), col), []).append((line, int(match.group(1))))
+
+    protected: set[int] = set()
+    for entries in grouped.values():
+        run: list[tuple[int, int]] = []
+        for entry in entries:
+            if run and entry[1] != run[-1][1] + 1:
+                if len(run) >= _NUMBERED_WALKTHROUGH_MIN:
+                    protected.update(line for line, _ in run)
+                run = []
+            run.append(entry)
+        if len(run) >= _NUMBERED_WALKTHROUGH_MIN:
+            protected.update(line for line, _ in run)
+    return frozenset(protected)
+
+
 class NoRestatedComment(Rule):
     id: str = "no-restated-comment"
     code: str = "SARJ049"
@@ -264,6 +296,7 @@ class NoRestatedComment(Rule):
         tree = parse_or_none(path, source)
         if tree is None:
             return []
+        numbered_walkthrough = _numbered_walkthrough_lines(tree, standalone)
         action_lines = {
             line + 1
             for line, _, _ in candidates
@@ -276,6 +309,8 @@ class NoRestatedComment(Rule):
         }
         diags: list[Diagnostic] = []
         for line, col, body in candidates:
+            if line in numbered_walkthrough:
+                continue
             if self._restates_below(body, line, lines, action_assignments.get(line + 1)):
                 diags.append(
                     Diagnostic(

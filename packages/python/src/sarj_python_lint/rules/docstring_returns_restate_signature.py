@@ -39,6 +39,8 @@ if TYPE_CHECKING:
 
 
 _RETURN_SECTIONS = ("Returns", "Return", "Yields", "Yield")
+_MIN_FIXED_TUPLE_ARITY = 2
+_POSITION_NAMES_RE = re.compile(r"\(\s*(?P<names>[A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)+)\s*,?\s*\)")
 
 # Identity semantics: whether the value handed back is a FRESH object or the
 # receiver itself is the one fact `-> Self` and `-> Foo` cannot carry, and the
@@ -59,6 +61,44 @@ def _return_block(docstring: str) -> str | None:
     return None
 
 
+def _names_fixed_tuple_positions(block: str, annotation: ast.expr | None) -> bool:
+    """Report whether prose supplies names absent from a tuple's positional type."""
+    elements = _fixed_tuple_elements(annotation)
+    if not elements:
+        return False
+    rendered_elements = tuple(re.sub(r"\W", "", ast.unparse(element)).casefold() for element in elements)
+    for match in _POSITION_NAMES_RE.finditer(block):
+        names = tuple(part.strip() for part in match.group("names").split(","))
+        if len(names) != len(elements):
+            continue
+        # `(int, str)` merely repeats `tuple[int, str]`; at least one name must
+        # add a positional role that the corresponding element type cannot say.
+        if any(
+            re.sub(r"\W", "", name).casefold() != rendered
+            for name, rendered in zip(names, rendered_elements, strict=True)
+        ):
+            return True
+    return False
+
+
+def _fixed_tuple_elements(annotation: ast.expr | None) -> tuple[ast.expr, ...]:
+    """Return the statically named slots of a fixed tuple annotation."""
+    if not isinstance(annotation, ast.Subscript):
+        return ()
+    container = annotation.value
+    if not (
+        (isinstance(container, ast.Name) and container.id in {"tuple", "Tuple"})
+        or (isinstance(container, ast.Attribute) and container.attr == "Tuple")
+    ):
+        return ()
+    if not isinstance(annotation.slice, ast.Tuple) or len(annotation.slice.elts) < _MIN_FIXED_TUPLE_ARITY:
+        return ()
+    elements = tuple(annotation.slice.elts)
+    if any(isinstance(element, ast.Starred) or ast.unparse(element) == "..." for element in elements):
+        return ()
+    return elements
+
+
 class DocstringReturnsRestateSignature(Rule):
     id: str = "docstring-returns-restate-signature"
     code: str = "SARJ087"
@@ -70,6 +110,7 @@ class DocstringReturnsRestateSignature(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "The rule reads Google-style return and yield sections and uses conservative signature-word matching.",
+            "Names that document the positions of a fixed tuple return are treated as semantic information.",
             "Generated files, runtime-consumed docstrings, protected facts, identity semantics, and whole-docstring restatements owned by SARJ050 are excluded.",
         ),
         examples=(
@@ -142,6 +183,8 @@ class DocstringReturnsRestateSignature(Rule):
         if VALUE_MARKER_RE.search(block) or is_protected(block) or _IDENTITY_RE.search(block):
             return
         if decorator_markers(node) & PROMPT_DECORATOR_MARKERS:
+            return
+        if _names_fixed_tuple_positions(block, node.returns):
             return
         stems = signature_stems(node, class_name)
         # The whole-docstring case is SARJ050's; reporting it here too would

@@ -71,7 +71,7 @@ def test_flags_control_flow_raise_inside_try():
     assert diags[0].line == 5
 
 
-def test_flags_sequential_sentinel_guards():
+def test_skips_idiomatic_none_unset_passthrough_prologue():
     source = """
     def _parse_field(val: object):
         if val is None:
@@ -82,10 +82,7 @@ def test_flags_sequential_sentinel_guards():
             return str(val)
         return None
     """
-    diags = _check(source)
-    assert len(diags) == 1
-    assert diags[0].code == "SARJ080"
-    assert "Sequential sentinel/type guards" in diags[0].message
+    assert _check(source) == []
 
 
 def test_flags_qualified_attribute_exceptions():
@@ -1027,6 +1024,24 @@ def test_skips_constant_style_dynamic_type_tuple():
         elif isinstance(value, VALUE_TYPES):
             return render_value(value)
     """
+    assert _check(source) == []
+
+
+def test_skips_class_cased_runtime_tuple_aliases():
+    source = """
+    TextTypes = (str, bytes)
+    BinaryTypes: tuple[type, ...] = (bytearray, memoryview)
+    PathTypes = (Path, PurePath)
+
+    def render(value):
+        if isinstance(value, TextTypes):
+            return str(value)
+        elif isinstance(value, BinaryTypes):
+            return bytes(value)
+        elif isinstance(value, PathTypes):
+            return Path(value)
+    """
+
     assert _check(source) == []
 
 

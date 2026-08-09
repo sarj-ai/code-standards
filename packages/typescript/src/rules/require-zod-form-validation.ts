@@ -4,12 +4,16 @@
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/require-zod-form-validation.test.ts
  */
 
-import { type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
+import {
+  type TSESTree,
+  AST_NODE_TYPES,
+  ASTUtils,
+} from "@typescript-eslint/utils";
 import type { RuleContext, Scope } from "@typescript-eslint/utils/ts-eslint";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
-import { ZOD_SCHEMA_NAME_RE } from "./_zod.js";
+import { isZodModule, ZOD_SCHEMA_NAME_RE } from "./_zod.js";
 
 type MessageIds = "missingZodValidation";
 type Options = readonly [];
@@ -19,6 +23,10 @@ export const requireZodFormValidationDocumentation = {
   rationale: "FormData values are untrusted strings or files and need runtime validation before use.",
   remediation: "Read the value inside a Zod schema's `parse` or `safeParse` input.",
   category: "security",
+  limitations: [
+    "Tests are excluded; imported schema-shaped names are trusted when their implementation is outside the linted file.",
+    "Delayed raw-value use is accepted only after an unconditional successful parse in the same block; safeParse remains valid when the raw binding has no unvalidated consumer.",
+  ],
   examples: [
     { id: "validated-form-value", title: "Validate the form value", outcome: "no-match", files: [{ path: "src/action.ts", source: "const input = UserSchema.parse({ name: formData.get('name') });" }], focusPath: "src/action.ts", expectedCount: 0, public: true },
     { id: "raw-form-value", title: "Do not use a raw form value", outcome: "match", files: [{ path: "src/action.ts", source: "const name = formData.get('name');" }], focusPath: "src/action.ts", expectedCount: 1, public: true },
@@ -26,32 +34,19 @@ export const requireZodFormValidationDocumentation = {
 } as const satisfies RuleDocumentation;
 
 type Ctx = Readonly<RuleContext<MessageIds, Options>>;
-
-/** Match `parse` and `safeParse` only on Zod-shaped receivers. */
-const isZodParseCall = (node: TSESTree.Node): boolean => {
-  if (node.type !== AST_NODE_TYPES.CallExpression) return false;
-  const callee = node.callee;
-  if (callee.type !== AST_NODE_TYPES.MemberExpression) return false;
-  if (callee.computed) return false;
-  if (callee.property.type !== AST_NODE_TYPES.Identifier) return false;
-  const method = callee.property.name;
-  if (
-    method !== "parse" &&
-    method !== "safeParse" &&
-    method !== "parseAsync" &&
-    method !== "safeParseAsync"
-  ) {
-    return false;
-  }
-  return looksLikeZodSchema(callee.object);
-};
+const ZOD_PARSE_METHODS: ReadonlySet<string> = new Set([
+  "parse",
+  "safeParse",
+  "parseAsync",
+  "safeParseAsync",
+]);
 
 /** Recognize the supported Zod receiver naming conventions. */
-const looksLikeZodSchema = (node: TSESTree.Node): boolean => {
+const zodReceiverRoot = (node: TSESTree.Node): TSESTree.Identifier | null => {
   let current: TSESTree.Node = node;
   while (true) {
     if (current.type === AST_NODE_TYPES.Identifier) {
-      return current.name === "z" || ZOD_SCHEMA_NAME_RE.test(current.name);
+      return current;
     }
     if (current.type === AST_NODE_TYPES.CallExpression) {
       current = current.callee;
@@ -61,7 +56,7 @@ const looksLikeZodSchema = (node: TSESTree.Node): boolean => {
       current = current.object;
       continue;
     }
-    return false;
+    return null;
   }
 };
 
@@ -102,6 +97,60 @@ export default createRule<Options, MessageIds>({
       return {};
     }
 
+    const zodBindings = new Set<Scope.Variable>();
+
+    const resolvedBinding = (
+      identifier: TSESTree.Identifier,
+    ): Scope.Variable | null =>
+      ASTUtils.findVariable(
+        context.sourceCode.getScope(identifier),
+        identifier.name,
+      );
+
+    /** Reject only bindings that are provably ordinary values; imported schemas remain supported. */
+    const isProvablyNonZodLocal = (identifier: TSESTree.Identifier): boolean => {
+      const binding = resolvedBinding(identifier);
+      if (binding === null || zodBindings.has(binding) || binding.defs.length !== 1) {
+        return false;
+      }
+      const definition = binding.defs[0];
+      if (
+        definition?.type !== "Variable" ||
+        definition.node.type !== AST_NODE_TYPES.VariableDeclarator
+      ) {
+        return false;
+      }
+      const init = definition.node.init;
+      return (
+        init?.type === AST_NODE_TYPES.ObjectExpression ||
+        init?.type === AST_NODE_TYPES.ArrayExpression ||
+        init?.type === AST_NODE_TYPES.Literal ||
+        init?.type === AST_NODE_TYPES.ArrowFunctionExpression ||
+        init?.type === AST_NODE_TYPES.FunctionExpression
+      );
+    };
+
+    const isZodParseCall = (node: TSESTree.Node): boolean => {
+      if (node.type !== AST_NODE_TYPES.CallExpression) return false;
+      const callee = node.callee;
+      if (
+        callee.type !== AST_NODE_TYPES.MemberExpression ||
+        callee.computed ||
+        callee.property.type !== AST_NODE_TYPES.Identifier ||
+        !ZOD_PARSE_METHODS.has(callee.property.name)
+      ) {
+        return false;
+      }
+      const root = zodReceiverRoot(callee.object);
+      if (root === null) return false;
+      const binding = resolvedBinding(root);
+      return (
+        (binding !== null && zodBindings.has(binding)) ||
+        ((root.name === "z" || ZOD_SCHEMA_NAME_RE.test(root.name)) &&
+          !isProvablyNonZodLocal(root))
+      );
+    };
+
     // Recognize conventional names and bindings initialized by `.formData()`.
     const isFormSourceIdentifier = (node: TSESTree.Node): boolean => {
       if (node.type !== AST_NODE_TYPES.Identifier) return false;
@@ -139,14 +188,19 @@ export default createRule<Options, MessageIds>({
       return isFormSourceIdentifier(callee.object);
     };
 
-    const hasZodParseAncestor = (node: TSESTree.Node): boolean => {
+    const zodParseAncestor = (
+      node: TSESTree.Node,
+    ): TSESTree.CallExpression | null => {
       let parent: TSESTree.Node | null | undefined = node.parent;
       while (parent !== null && parent !== undefined) {
-        if (isZodParseCall(parent)) return true;
+        if (isZodParseCall(parent)) return parent as TSESTree.CallExpression;
         parent = parent.parent;
       }
-      return false;
+      return null;
     };
+
+    const hasZodParseAncestor = (node: TSESTree.Node): boolean =>
+      zodParseAncestor(node) !== null;
 
     const isInstanceofNarrowing = (node: TSESTree.Node): boolean => {
       const parent: TSESTree.Node | null | undefined = node.parent;
@@ -187,20 +241,198 @@ export default createRule<Options, MessageIds>({
       return null;
     };
 
-    /** Is any read of this binding validated (Zod parse, or `instanceof File`)? */
+    const containingStatement = (
+      node: TSESTree.Node,
+    ): TSESTree.Statement | null => {
+      let current = node;
+      while (current.parent !== undefined) {
+        const parent = current.parent;
+        if (
+          parent.type === AST_NODE_TYPES.BlockStatement ||
+          parent.type === AST_NODE_TYPES.Program
+        ) {
+          return current as TSESTree.Statement;
+        }
+        current = parent;
+      }
+      return null;
+    };
+
+    const zodParseMethod = (
+      call: TSESTree.CallExpression,
+    ): string | null => {
+      const callee = call.callee;
+      return callee.type === AST_NODE_TYPES.MemberExpression &&
+        !callee.computed &&
+        callee.property.type === AST_NODE_TYPES.Identifier
+        ? callee.property.name
+        : null;
+    };
+
+    const hasConditionalAncestorBeforeStatement = (
+      node: TSESTree.Node,
+      statement: TSESTree.Statement,
+    ): boolean => {
+      let current = node.parent;
+      while (current !== undefined && current !== statement) {
+        if (
+          current.type === AST_NODE_TYPES.LogicalExpression ||
+          current.type === AST_NODE_TYPES.ConditionalExpression
+        ) {
+          return true;
+        }
+        current = current.parent;
+      }
+      return false;
+    };
+
+    const isAwaitedBeforeStatement = (
+      node: TSESTree.Node,
+      statement: TSESTree.Statement,
+    ): boolean => {
+      let current = node.parent;
+      while (current !== undefined && current !== statement) {
+        if (current.type === AST_NODE_TYPES.AwaitExpression) return true;
+        current = current.parent;
+      }
+      return false;
+    };
+
+    /** Return an unconditional, success-guaranteeing validation statement. */
+    const guaranteedValidationStatement = (
+      declarator: TSESTree.VariableDeclarator,
+      reference: TSESTree.Identifier,
+    ): TSESTree.Statement | null => {
+      const parse = zodParseAncestor(reference);
+      if (parse === null) return null;
+      const declarationStatement = containingStatement(declarator);
+      const validationStatement = containingStatement(parse);
+      if (
+        declarationStatement === null ||
+        validationStatement === null ||
+        declarationStatement.parent !== validationStatement.parent ||
+        validationStatement.range[0] <= declarationStatement.range[1] ||
+        hasConditionalAncestorBeforeStatement(parse, validationStatement)
+      ) {
+        return null;
+      }
+      if (
+        validationStatement.type !== AST_NODE_TYPES.VariableDeclaration &&
+        validationStatement.type !== AST_NODE_TYPES.ExpressionStatement
+      ) {
+        return null;
+      }
+      const method = zodParseMethod(parse);
+      if (method === "parse") return validationStatement;
+      if (
+        method === "parseAsync" &&
+        isAwaitedBeforeStatement(parse, validationStatement)
+      ) {
+        return validationStatement;
+      }
+      return null;
+    };
+
+    const isSafePrevalidationInspection = (
+      identifier: TSESTree.Identifier,
+    ): boolean => {
+      const parent = identifier.parent;
+      if (
+        parent.type === AST_NODE_TYPES.UnaryExpression &&
+        parent.operator === "typeof"
+      ) {
+        return true;
+      }
+      if (
+        parent.type !== AST_NODE_TYPES.BinaryExpression ||
+        parent.left !== identifier
+      ) {
+        return false;
+      }
+      if (parent.operator === "instanceof") {
+        return (
+          parent.right.type === AST_NODE_TYPES.Identifier &&
+          (parent.right.name === "File" || parent.right.name === "Blob")
+        );
+      }
+      return (
+        ["===", "!==", "==", "!="].includes(parent.operator) &&
+        ((parent.right.type === AST_NODE_TYPES.Literal &&
+          parent.right.value === null) ||
+          (parent.right.type === AST_NODE_TYPES.Identifier &&
+            parent.right.name === "undefined"))
+      );
+    };
+
+    /** Find the statement directly owned by `block` that contains `node`. */
+    const statementWithinBlock = (
+      node: TSESTree.Node,
+      block: TSESTree.Node,
+    ): TSESTree.Statement | null => {
+      let current = node;
+      while (current.parent !== undefined && current.parent !== block) {
+        current = current.parent;
+      }
+      return current.parent === block ? (current as TSESTree.Statement) : null;
+    };
+
+    /** Is every consuming use either validated itself or dominated by a successful parse? */
     const bindingIsValidated = (
       declarator: TSESTree.VariableDeclarator,
     ): boolean => {
       const variable = context.sourceCode.getDeclaredVariables(declarator)[0];
       if (variable === undefined) return false;
-      return variable.references.some(
-        (ref) =>
-          hasZodParseAncestor(ref.identifier) ||
-          isInstanceofNarrowing(ref.identifier),
-      );
+      const references = variable.references
+        .filter((reference) => !reference.isWriteOnly())
+        .map((reference) => reference.identifier)
+        .filter(
+          (identifier): identifier is TSESTree.Identifier =>
+            identifier.type === AST_NODE_TYPES.Identifier,
+        );
+      if (references.length === 0) return false;
+      if (references.some(isInstanceofNarrowing)) return true;
+      const validationStatements = references
+        .map((reference) => guaranteedValidationStatement(declarator, reference))
+        .filter(
+          (statement): statement is TSESTree.Statement => statement !== null,
+        );
+      const declarationStatement = containingStatement(declarator);
+      const declarationBlock = declarationStatement?.parent;
+      return references.every((reference) => {
+        if (
+          zodParseAncestor(reference) !== null ||
+          isSafePrevalidationInspection(reference)
+        ) {
+          return true;
+        }
+        if (declarationBlock === undefined) return false;
+        const useStatement = statementWithinBlock(reference, declarationBlock);
+        return (
+          useStatement !== null &&
+          validationStatements.some(
+            (statement) => statement.range[1] < useStatement.range[0],
+          )
+        );
+      });
     };
 
     return {
+      ImportDeclaration(node: TSESTree.ImportDeclaration): void {
+        if (!isZodModule(node.source.value)) return;
+        for (const specifier of node.specifiers) {
+          if (
+            specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier ||
+            specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier ||
+            (specifier.type === AST_NODE_TYPES.ImportSpecifier &&
+              (specifier.imported.type === AST_NODE_TYPES.Identifier
+                ? specifier.imported.name === "z"
+                : specifier.imported.value === "z"))
+          ) {
+            const binding = resolvedBinding(specifier.local);
+            if (binding !== null) zodBindings.add(binding);
+          }
+        }
+      },
       CallExpression(node: TSESTree.CallExpression): void {
         if (!isFormDataGetCall(node)) return;
 

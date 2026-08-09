@@ -445,6 +445,112 @@ def test_thing():
     assert len(_check(src)) == 1
 
 
+# FP guard: `sys.modules[...]` values are import-loader stubs. There is no    #
+# importable collaborator to use as their spec.                               #
+
+
+def test_sys_modules_import_stub_is_exempt():
+    src = """
+import sys
+from unittest.mock import MagicMock
+
+sys.modules["optional_sdk"] = MagicMock()
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        'registry.modules["optional_sdk"]',
+        "sys.modules",
+        'system.modules["optional_sdk"]',
+    ],
+)
+def test_only_exact_imported_sys_modules_subscript_is_exempt(target: str):
+    src = f"""
+import sys
+import sys as system
+from unittest.mock import MagicMock
+
+{target} = MagicMock()
+"""
+    assert len(_check(src)) == 1
+
+
+def test_shadowed_sys_modules_target_is_still_flagged():
+    src = """
+import sys
+from unittest.mock import MagicMock
+
+def test_thing(sys):
+    sys.modules["optional_sdk"] = MagicMock()
+"""
+    assert len(_check(src)) == 1
+
+
+# FP guard: an untouched dependency placeholder used once to construct the   #
+# subject under test cannot silently accept a production attribute access.    #
+
+
+def test_inert_imported_constructor_placeholder_is_exempt():
+    src = """
+from unittest.mock import AsyncMock
+from app.client import GenericAuthClient
+
+def test_header_helper():
+    auth_store = AsyncMock()
+    client = GenericAuthClient(auth_store=auth_store, base_url="https://example.test")
+    assert client.header_value() == "value"
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "extra_use",
+    [
+        "    auth_store.fetch.return_value = 1",
+        "    auth_store()",
+        "    auth_store.assert_not_called()",
+        "    assert auth_store is not None",
+        "    consume(auth_store)",
+    ],
+)
+def test_constructor_placeholder_with_any_other_use_is_still_flagged(extra_use: str):
+    src = f"""
+from unittest.mock import AsyncMock
+from app.client import GenericAuthClient
+
+def test_client():
+    auth_store = AsyncMock()
+    client = GenericAuthClient(auth_store=auth_store)
+{extra_use}
+    assert client
+"""
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    "construction",
+    [
+        "client = make_client(auth_store)",
+        "client = GenericAuthClient([auth_store])",
+        "GenericAuthClient(auth_store)",
+        "client = GenericAuthClient(auth_store, auth_store)",
+    ],
+)
+def test_only_one_direct_argument_of_an_assigned_imported_constructor_is_exempt(construction: str):
+    src = f"""
+from unittest.mock import AsyncMock
+from app.client import GenericAuthClient, make_client
+
+def test_client():
+    auth_store = AsyncMock()
+    {construction}
+"""
+    assert len(_check(src)) == 1
+
+
 # FP guard: the name is only trusted when a unittest.mock import backs it.     #
 # This is what keeps hand-rolled MockFoo/Mock doubles out of the results.      #
 

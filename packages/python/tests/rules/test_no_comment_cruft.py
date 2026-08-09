@@ -1128,6 +1128,36 @@ def build_result():
     assert _check(src) == []
 
 
+def test_wrapped_prose_tail_that_parses_as_an_assignment_is_not_dead_code():
+    source = '# Passes them\n# them = "Invalid scenario format: missing field" in the\nvalue = build()\n'
+    assert _check(source) == []
+
+
+def test_nested_markdown_heading_with_hash_run_is_not_a_banner():
+    source = """\
+def parse_report():
+    baselines = [
+        # Next baseline, e.g. #### GWS.GMAIL.1.2v1
+        current_baseline,
+    ]
+    return baselines
+"""
+    assert _check(source) == []
+
+
+def test_multiline_rationale_paragraph_does_not_flag_its_step_opener():
+    source = """\
+def purge(entries):
+    # First, there is nothing to do if the cache is empty or
+    # already below the retention limit. Any remaining entries
+    # are old enough for consideration.
+    if not entries:
+        return
+    delete(entries)
+"""
+    assert _check(source) == []
+
+
 def test_comment_wall_requires_alignment_with_its_statement():
     src = """\
 def build_result():

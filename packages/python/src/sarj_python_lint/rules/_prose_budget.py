@@ -30,7 +30,10 @@ _BULLET_RE: Final = re.compile(r"^\s*(?:[-*+] |\d+[.)] )")
 _STRUCTURED_LINE_RE: Final = re.compile(r"(?:^\s*(?:[-*+] |\d+[.)] ))|(?:^[A-Za-z][A-Za-z ]+:$)|(?:->|=>|\|)")
 _MIN_STRUCTURED_PARAGRAPHS: Final = 2
 _TECHNICAL_ANCHOR_RE: Final = re.compile(
-    r"https?://|`[^`\n]+`|:[a-z][a-z0-9_-]*:`|(['\"])[^'\"\n]+\1|\d|"
+    r"https?://|`[^`\n]+`|:[a-z][a-z0-9_-]*:`|(['\"])[^'\"\n]+\1|"
+    r"\bv?\d+\.\d+(?:\.\d+)?\b|"
+    r"\b\d+(?:\.\d+)?\s?(?:ns|us|ms|s|sec|secs|seconds?|mins?|minutes?|hours?|days?|"
+    r"bytes?|kib|mib|gib|kb|mb|gb|hz|khz|mhz|px|%)\b|"
     r"\b[a-z][a-z0-9]*[A-Z][A-Za-z0-9]*\b|\b[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+\b|"
     r"(?:^|\s)(?:[\w.-]+/)+[\w.-]+|\b[\w.-]+\.(?:py|pyi|js|jsx|ts|tsx|json|ya?ml|toml|csv|parquet|md)\b|"
     r"->|=>|==|!=|<=|>=|\|",

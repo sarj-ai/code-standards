@@ -139,3 +139,13 @@ def test_typed_sections_are_preserved() -> None:
 def test_abbreviations_urls_and_decimals_do_not_split() -> None:
     source = '"""Supports e.g. version 2.1 from https://example.com/a. One constraint."""\n'
     assert NoLongComment().check(Path("app.py"), source) == []
+
+
+def test_arbitrary_count_does_not_exempt_a_prose_wall() -> None:
+    source = '"""One fact. Two facts. Three facts. Four facts. Five facts. Six facts. Seven facts. It covers 3 record types."""\n'
+    assert len(NoLongComment().check(Path("app.py"), source)) == 1
+
+
+def test_numeric_unit_remains_a_technical_anchor() -> None:
+    source = '"""One fact. Two facts. Three facts. Four facts. Five facts. Six facts. Seven facts. The deadline is 10 ms."""\n'
+    assert NoLongComment().check(Path("app.py"), source) == []

@@ -125,6 +125,32 @@ def handle(kind):
     assert len(_check(src)) == 1
 
 
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "from app import settings as cfg",
+        "from app import settings as Settings",
+        "from app.config import RuntimeSettings",
+    ],
+)
+def test_settings_like_imports_are_not_closed_set_owners(declaration: str) -> None:
+    owner = declaration.rsplit(maxsplit=1)[-1]
+    src = f"""
+{declaration}
+
+def handle(value):
+    match value:
+        case {owner}.A:
+            a()
+        case {owner}.B:
+            b()
+        case _:
+            pass
+"""
+
+    assert _check(src) == []
+
+
 def test_flags_member_arms_of_module_level_class_owner():
     src = """
 class Kind:
@@ -894,6 +920,9 @@ def test_flags_handler_dict_missing_a_member():
         _ENUM_PREAMBLE
         + """
 HANDLERS = {Status.OPEN: on_open, Status.CLOSED: on_closed}
+
+def dispatch(status):
+    return HANDLERS[status]()
 """
     )
     diags = _check(src)
@@ -912,7 +941,10 @@ HANDLERS = {Status.OPEN: on_open, Status.CLOSED: on_closed}
     ],
 )
 def test_flags_each_handler_shape(values: str):
-    src = _ENUM_PREAMBLE + f"\nHANDLERS = {{Status.OPEN: {values}}}\n"
+    src = (
+        _ENUM_PREAMBLE
+        + f"\nHANDLERS = {{Status.OPEN: {values}}}\n\ndef dispatch(status):\n    return HANDLERS[status]()\n"
+    )
     assert len(_check(src)) == 1
 
 
@@ -922,7 +954,7 @@ def test_flags_dispatch_map_inside_a_function():
         + """
 def build():
     handlers = {Status.OPEN: on_open, Status.CLOSED: on_closed}
-    return handlers[Status.OPEN]
+    return handlers[Status.OPEN]()
 """
     )
     assert len(_check(src)) == 1
@@ -933,6 +965,9 @@ def test_flags_annotated_dispatch_map():
         _ENUM_PREAMBLE
         + """
 HANDLERS: dict[Status, object] = {Status.OPEN: on_open, Status.CLOSED: on_closed}
+
+def dispatch(status):
+    return HANDLERS[status]()
 """
     )
     assert len(_check(src)) == 1
@@ -955,6 +990,20 @@ def test_literal_values_are_a_data_table_not_a_dispatch():
 COLOURS = {Status.OPEN: "green", Status.CLOSED: "grey"}
 """
     )
+    assert _check(src) == []
+
+
+def test_named_values_are_still_a_data_table_when_selection_is_not_called() -> None:
+    src = (
+        _ENUM_PREAMBLE
+        + """
+COLOURS = {Status.OPEN: OPEN_COLOUR, Status.CLOSED: CLOSED_COLOUR}
+
+def colour(status):
+    return COLOURS[status]
+"""
+    )
+
     assert _check(src) == []
 
 
@@ -1110,6 +1159,9 @@ def test_all_three_detectors_report_together_sorted():
         _ENUM_PREAMBLE
         + """
 HANDLERS = {Status.OPEN: on_open, Status.CLOSED: on_closed}
+
+def dispatch(status):
+    return HANDLERS[status]()
 
 def by_chain(status):
     if status == Status.OPEN:

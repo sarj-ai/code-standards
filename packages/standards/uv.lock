@@ -395,7 +395,7 @@ dev = [
 
 [[package]]
 name = "sarj-python-lint"
-version = "0.62.0"
+version = "0.63.0"
 source = { editable = "../python" }
 
 [package.metadata]
@@ -428,7 +428,7 @@ dev = [
 
 [[package]]
 name = "sarj-standards"
-version = "5.1.0"
+version = "5.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "basedpyright" },

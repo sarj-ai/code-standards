@@ -64,6 +64,13 @@ _MAX_LITERALS_SHOWN = 3
 
 # Long multiline literals are fixture documents, not case values to normalize away.
 _MAX_CASE_LITERAL = 32
+_LONG_SINGLE_LINE_FIXTURE_MIN_CHARS = 80
+_LONG_SINGLE_LINE_FIXTURE_MIN_WORDS = 10
+
+# Two-test coincidences need corroborating names; these words are too generic
+# to establish that both tests exercise one behavior.
+_WEAK_TEST_NAME_TOKENS = frozenset({"case", "key", "test", "value"})
+_GENERIC_ORDINAL_TEST_RE = re.compile(r"test_(?:[a-z]|first|one|second|three|third|two)$")
 
 _PARAMETRIZE_ADVICE = (
     "Collapse them into one `@pytest.mark.parametrize(...)`, passing `ids=` so each scenario "
@@ -88,6 +95,7 @@ class DuplicateTestBody(Rule):
         limitations=(
             "Only substantial sibling test bodies in one non-generated module are compared.",
             "Meaningful docstring or comment differences keep tests distinct.",
+            "Two-test groups with varying literals require corroborating behavior names; long scenario prose and distinct API resources remain separate contracts.",
         ),
         examples=(
             RuleExample(
@@ -97,7 +105,7 @@ class DuplicateTestBody(Rule):
                 files=(
                     ExampleFile.python(
                         "tests/test_permissions.py",
-                        'def test_admin():\n    user = make_user("admin")\n    allowed = can_delete(user)\n    assert allowed\n\ndef test_editor():\n    user = make_user("editor")\n    allowed = can_delete(user)\n    assert allowed\n',
+                        'def test_admin_can_delete():\n    user = make_user("admin")\n    allowed = can_delete(user)\n    assert allowed\n\ndef test_editor_can_delete():\n    user = make_user("editor")\n    allowed = can_delete(user)\n    assert allowed\n',
                     ),
                 ),
                 focus_path=PurePosixPath("tests/test_permissions.py"),
@@ -314,7 +322,10 @@ def _duplicate_groups(tree: ast.Module, source: str) -> list[list[_Shape]]:
         found.extend(
             members
             for members in groups.values()
-            if len(members) >= _MIN_GROUP and not _erases_a_fixture_document(members)
+            if len(members) >= _MIN_GROUP
+            and not _erases_a_fixture_document(members)
+            and not _erases_contract_identity(members)
+            and _has_enough_duplicate_evidence(members)
         )
     return found
 
@@ -345,7 +356,56 @@ def _erases_a_fixture_document(members: list[_Shape]) -> bool:
 
 
 def _is_fixture_document(value: object) -> bool:
-    return isinstance(value, str) and "\n" in value and len(value) > _MAX_CASE_LITERAL
+    return (
+        isinstance(value, str)
+        and len(value) > _MAX_CASE_LITERAL
+        and (
+            "\n" in value
+            or (
+                len(value) >= _LONG_SINGLE_LINE_FIXTURE_MIN_CHARS
+                and len(value.split()) >= _LONG_SINGLE_LINE_FIXTURE_MIN_WORDS
+                and not value.lstrip()
+                .upper()
+                .startswith(("ALTER ", "CREATE ", "DELETE ", "INSERT ", "SELECT ", "UPDATE ", "WITH "))
+            )
+        )
+    )
+
+
+def _erases_contract_identity(members: list[_Shape]) -> bool:
+    """Keep distinct API resources while allowing terminal action cases."""
+    columns: list[tuple[object, ...]] = list(zip(*(member.literals for member in members), strict=True))
+    return any(
+        len(set(column)) > 1
+        and all(isinstance(value, str) and value.startswith("/") for value in column)
+        and not _paths_differ_only_by_terminal_action(column)
+        for column in columns
+    )
+
+
+def _paths_differ_only_by_terminal_action(paths: tuple[object, ...]) -> bool:
+    segments = [str(path).strip("/").split("/") for path in paths]
+    if not segments or len({len(parts) for parts in segments}) != 1:
+        return False
+    width = len(segments[0])
+    differing = [index for index in range(width) if len({parts[index] for parts in segments}) > 1]
+    return differing == [width - 1]
+
+
+def _has_enough_duplicate_evidence(members: list[_Shape]) -> bool:
+    """Require corroborating names for a two-test group with varying inputs."""
+    if len(members) > _MIN_GROUP or not _differing_literals(members[0].literals, members[1].literals):
+        return True
+    names = [member.node.name for member in members]
+    if all(_GENERIC_ORDINAL_TEST_RE.fullmatch(name) for name in names):
+        return True
+    token_sets = [_test_name_tokens(name) for name in names]
+    shared: set[str] = token_sets[0].intersection(*token_sets[1:])
+    return bool(shared - _WEAK_TEST_NAME_TOKENS)
+
+
+def _test_name_tokens(name: str) -> set[str]:
+    return {token for token in name.removeprefix(_TEST_PREFIX).split("_") if token}
 
 
 def _test_functions(tree: ast.Module) -> list[tuple[str, bool, ast.FunctionDef | ast.AsyncFunctionDef]]:

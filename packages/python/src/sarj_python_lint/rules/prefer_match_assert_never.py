@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import PurePosixPath
+import re
 from typing import TYPE_CHECKING, final, override
 
 from sarj_python_lint.rule_base import (
@@ -35,6 +36,10 @@ _ENUM_BASES = frozenset({"Enum", "StrEnum", "IntEnum", "Flag", "IntFlag", "ReprE
 # Methods that grow a dict in place — a map built in pieces is not incomplete.
 _DICT_GROWING_METHODS = frozenset({"update", "setdefault"})
 
+# Imported settings/configuration objects expose attributes, but do not define
+# a closed value domain merely because those attributes appear in patterns.
+_OPEN_MEMBER_OWNER_RE = re.compile(r"(?:Settings|Config|Configuration|Options)$", re.IGNORECASE)
+
 
 @final
 class PreferMatchAssertNever(Rule):
@@ -48,7 +53,7 @@ class PreferMatchAssertNever(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "The rule recognizes closed sets from local classes, enums, imported member owners, and static handler maps.",
-            "Guarded matches, dynamically grown maps, and open-ended value domains are excluded.",
+            "Guarded matches, dynamically grown or non-invoked maps, and open-ended value domains are excluded.",
         ),
         examples=(
             RuleExample(
@@ -101,7 +106,7 @@ class PreferMatchAssertNever(Rule):
         )
         member_owners = local_classes | _importfrom_bound_names(tree)
         enum_members = _enum_member_names(module_classdefs, local_enums)
-        grown_maps = _grown_dict_names(tree)
+        map_usage = _grown_dict_names(tree), _called_mapping_names(tree)
         diags: list[Diagnostic] = []
         consumed_elifs: set[int] = set()
         for node in nodes(tree, ast.Match, ast.If, ast.Assign, ast.AnnAssign):
@@ -139,7 +144,7 @@ class PreferMatchAssertNever(Rule):
                         )
                     )
             else:
-                shortfall = _incomplete_dispatch_map(node, enum_members, grown_maps)
+                shortfall = _incomplete_dispatch_map(node, enum_members, map_usage)
                 if shortfall is not None:
                     enum_name, covered, total, missing = shortfall
                     diags.append(
@@ -218,11 +223,12 @@ def _grown_dict_names(tree: ast.Module) -> frozenset[str]:
 def _incomplete_dispatch_map(
     node: ast.Assign | ast.AnnAssign,
     enum_members: dict[str, frozenset[str]],
-    grown_maps: frozenset[str],
+    map_usage: tuple[frozenset[str], frozenset[str]],
 ) -> tuple[str, int, int, str] | None:
     """Return the shortfall when `node` binds a handler dict that misses enum members."""
     target = _single_name_target(node)
-    if target is None or target in grown_maps or not isinstance(node.value, ast.Dict):
+    grown_maps, called_maps = map_usage
+    if target is None or target in grown_maps or target not in called_maps or not isinstance(node.value, ast.Dict):
         return None
     mapping = node.value
     if any(key is None for key in mapping.keys):
@@ -260,6 +266,17 @@ def _is_handler_value(value: ast.expr | None) -> bool:
     return isinstance(value, (ast.Name, ast.Attribute, ast.Lambda))
 
 
+def _called_mapping_names(tree: ast.Module) -> frozenset[str]:
+    """Collect mappings whose selected values are invoked as handlers."""
+    return frozenset(
+        name
+        for node in nodes(tree, ast.Call)
+        if isinstance(node.func, ast.Subscript)
+        and isinstance(mapping := node.func.value, ast.Name)
+        and (name := mapping.id)
+    )
+
+
 def _member_owner(key: ast.expr | None) -> str | None:
     """Return the class name in a `Owner.MEMBER` dict key."""
     match key:
@@ -270,10 +287,20 @@ def _member_owner(key: ast.expr | None) -> str | None:
 
 
 def _importfrom_bound_names(tree: ast.Module) -> frozenset[str]:
-    """Collect names bound by `from x import Name [as Alias]` statements."""
+    """Collect imported names whose source and local spellings both look like classes."""
     return frozenset(
-        alias.asname or alias.name for node in nodes(tree, ast.ImportFrom) for alias in node.names if alias.name != "*"
+        bound
+        for node in nodes(tree, ast.ImportFrom)
+        for alias in node.names
+        if alias.name != "*"
+        and _looks_like_class_name(alias.name)
+        and _looks_like_class_name(bound := alias.asname or alias.name)
+        and not _OPEN_MEMBER_OWNER_RE.search(bound)
     )
+
+
+def _looks_like_class_name(name: str) -> bool:
+    return bool(name[:1].isupper() and not name.isupper())
 
 
 def _silent_closed_set_wildcard(

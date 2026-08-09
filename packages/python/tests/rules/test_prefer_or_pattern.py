@@ -900,6 +900,23 @@ def test_preview_is_valid_syntax_for_multiline_patterns_with_captures():
     assert compile(f"match v:\n    case {preview}:\n        pass\n", "<suggested pattern>", "exec") is not None
 
 
+def test_preview_parenthesizes_as_patterns_around_an_existing_or_pattern() -> None:
+    (diag,) = _check(
+        """
+        def f(value):
+            match value:
+                case (A() | B()) as item:
+                    return item
+                case C() as item:
+                    return item
+        """
+    )
+
+    preview = diag.message.split("(`case ", maxsplit=1)[1].split(":`)", maxsplit=1)[0]
+    assert compile(f"match value:\n    case {preview}:\n        pass\n", "<suggested pattern>", "exec") is not None
+    assert preview == "(A() | B() as item) | (C() as item)"
+
+
 def test_run_inside_a_loop_body_is_found():
     diags = _check(
         """

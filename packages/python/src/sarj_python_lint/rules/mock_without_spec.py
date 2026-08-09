@@ -8,7 +8,7 @@ from __future__ import annotations
 import ast
 from pathlib import PurePosixPath
 from types import MappingProxyType
-from typing import TYPE_CHECKING, ClassVar, override
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, Self, override
 
 from sarj_python_lint.rule_base import (
     Diagnostic,
@@ -110,7 +110,7 @@ class MockWithoutSpec(Rule):
         category=RuleCategory.TESTING,
         limitations=(
             "Only test files and statically resolved `unittest.mock` or pytest-mock constructors are analyzed.",
-            "Mocks used only for their built-in assertion API are excluded.",
+            "Mocks used only for their built-in assertion API, import-loader `sys.modules` stubs, and untouched constructor placeholders are excluded.",
         ),
         examples=(
             RuleExample(
@@ -258,21 +258,29 @@ class _FileFacts:
         self.called: set[_ScopedName] = set()
         self.escaped: set[_ScopedName] = set()
         self.import_fallbacks: set[ast.Call] = set()
+        self.sys_module_stubs: set[ast.Call] = set()
         self.attribute_target: dict[ast.Call, _ScopedName] = {}
         self.path_reads: dict[_ScopedName, set[str]] = {}
         self.path_calls: set[_ScopedName] = set()
+        self.name_loads: dict[_ScopedName, list[ast.Name]] = {}
+        self.constructor_argument_uses: dict[_ScopedName, list[ast.Name]] = {}
 
     @classmethod
     def from_tree(cls, tree: ast.Module) -> _FileFacts:
         """Collect the name bindings, attribute reads, and import-failure arms of one file."""
         found = cls()
         scopes = _top_function_scopes(tree)
+        constructors = _ImportedConstructors.from_tree(tree)
+        sys_is_imported = _has_unshadowed_sys_import(tree)
         for node in nodes(tree, ast.Assign, ast.AnnAssign, ast.Attribute, ast.Call, ast.ExceptHandler):
             scope = scopes[id(node)]
             if isinstance(node, ast.Assign):
-                found._bind(scope, node.targets[0] if len(node.targets) == 1 else None, node.value)
+                target = node.targets[0] if len(node.targets) == 1 else None
+                found._bind(scope, target, node.value, sys_is_imported=sys_is_imported)
+                found._record_constructor_arguments(scope, target, node.value, constructors)
             elif isinstance(node, ast.AnnAssign):
-                found._bind(scope, node.target, node.value)
+                found._bind(scope, node.target, node.value, sys_is_imported=sys_is_imported)
+                found._record_constructor_arguments(scope, node.target, node.value, constructors)
             elif isinstance(node, ast.Attribute):
                 if isinstance(node.value, ast.Name):
                     found.reads.setdefault((scope, node.value.id), set()).add(node.attr)
@@ -285,9 +293,19 @@ class _FileFacts:
                 found._record_path_call(scope, node)
             elif _catches_import_failure(node):
                 found.import_fallbacks.update(child for child in walk(node) if isinstance(child, ast.Call))
+        for node in nodes(tree, ast.Name):
+            if isinstance(node.ctx, ast.Load):
+                found.name_loads.setdefault((scopes[id(node)], node.id), []).append(node)
         return found
 
-    def _bind(self, scope: int, target: ast.expr | None, value: ast.expr | None) -> None:
+    def _bind(
+        self,
+        scope: int,
+        target: ast.expr | None,
+        value: ast.expr | None,
+        *,
+        sys_is_imported: bool,
+    ) -> None:
         if not isinstance(value, ast.Call):
             return
         if isinstance(target, ast.Name):
@@ -296,6 +314,27 @@ class _FileFacts:
             path = _dotted_path(target)
             if path is not None:
                 self.attribute_target[value] = (scope, path)
+        elif sys_is_imported and _is_sys_modules_subscript(target):
+            self.sys_module_stubs.add(value)
+
+    def _record_constructor_arguments(
+        self,
+        scope: int,
+        target: ast.expr | None,
+        value: ast.expr | None,
+        constructors: _ImportedConstructors,
+    ) -> None:
+        """Record direct arguments of an imported constructor assigned to a local."""
+        if not isinstance(target, ast.Name) or not isinstance(value, ast.Call) or not constructors.resolves(value.func):
+            return
+        direct_arguments = [argument for argument in value.args if isinstance(argument, ast.Name)]
+        direct_arguments.extend(
+            keyword.value
+            for keyword in value.keywords
+            if keyword.arg is not None and isinstance(keyword.value, ast.Name)
+        )
+        for argument in direct_arguments:
+            self.constructor_argument_uses.setdefault((scope, argument.id), []).append(argument)
 
     def _record_path_read(self, scope: int, node: ast.Attribute) -> None:
         # Load context only.
@@ -327,6 +366,56 @@ class _FileFacts:
             return False
         canned = any(kw.arg in _CANNED_RESULT_KEYWORDS for kw in node.keywords)
         return canned or bool(seen) or path in self.path_calls
+
+    def is_inert_constructor_placeholder(self, node: ast.Call) -> bool:
+        """Report a local mock whose sole read is one direct constructor argument."""
+        name = self.bound_name.get(node)
+        if name is None:
+            return False
+        loads = self.name_loads.get(name, [])
+        constructor_uses = self.constructor_argument_uses.get(name, [])
+        return len(loads) == 1 and len(constructor_uses) == 1 and loads[0] is constructor_uses[0]
+
+
+class _ImportedConstructors(NamedTuple):
+    """Conservative bindings that are statically known to name imported classes."""
+
+    direct: set[str]
+    shadowed: set[str]
+
+    @classmethod
+    def from_tree(cls, tree: ast.Module) -> Self:
+        direct: set[str] = set()
+        for node in nodes(tree, ast.ImportFrom):
+            for alias in node.names:
+                if alias.name != "*" and _looks_like_class_name(alias.name):
+                    direct.add(alias.asname or alias.name)
+        return cls(direct, _shadowed_mock_bindings(tree, direct))
+
+    def resolves(self, func: ast.expr) -> bool:
+        return isinstance(func, ast.Name) and func.id in self.direct and func.id not in self.shadowed
+
+
+def _looks_like_class_name(name: str) -> bool:
+    """Use Python's class naming convention only after proving an import binding."""
+    return bool(name) and name[0].isupper()
+
+
+def _has_unshadowed_sys_import(tree: ast.Module) -> bool:
+    imported = any(
+        alias.name == "sys" and alias.asname is None for node in nodes(tree, ast.Import) for alias in node.names
+    )
+    return imported and "sys" not in _shadowed_mock_bindings(tree, {"sys"})
+
+
+def _is_sys_modules_subscript(target: ast.expr | None) -> bool:
+    return (
+        isinstance(target, ast.Subscript)
+        and isinstance(target.value, ast.Attribute)
+        and target.value.attr == "modules"
+        and isinstance(target.value.value, ast.Name)
+        and target.value.value.id == "sys"
+    )
 
 
 def _escaped_names(argument: ast.expr) -> set[str]:
@@ -457,7 +546,13 @@ def _unspecced_calls(
         label = _render_callee(node.func, symbol)
         if _has_spec_argument(node) or _has_positional_replacement(node, label):
             continue
-        if node in facts.import_fallbacks or facts.is_call_recorder(node) or facts.is_method_stub(node):
+        if (
+            node in facts.import_fallbacks
+            or node in facts.sys_module_stubs
+            or facts.is_call_recorder(node)
+            or facts.is_method_stub(node)
+            or facts.is_inert_constructor_placeholder(node)
+        ):
             continue
         hits.append((node, label))
     return hits

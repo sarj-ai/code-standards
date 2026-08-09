@@ -156,7 +156,7 @@ def _shadows_isinstance(tree: ast.Module) -> bool:
     return False
 
 
-def _matchable_isinstance_test(test: ast.expr) -> str | None:
+def _matchable_isinstance_test(test: ast.expr, runtime_tuple_aliases: frozenset[str]) -> str | None:
     """Extract the simple subject of an isinstance test convertible to patterns."""
     if not isinstance(test, ast.Call) or not isinstance(test.func, ast.Name) or test.func.id != "isinstance":
         return None
@@ -165,18 +165,24 @@ def _matchable_isinstance_test(test: ast.expr) -> str | None:
 
     checked_types = test.args[1]
     if isinstance(checked_types, ast.Tuple):
-        if not checked_types.elts or not all(_matchable_class_reference(item) for item in checked_types.elts):
+        if not checked_types.elts or not all(
+            _matchable_class_reference(item, runtime_tuple_aliases) for item in checked_types.elts
+        ):
             return None
-    elif not _matchable_class_reference(checked_types):
+    elif not _matchable_class_reference(checked_types, runtime_tuple_aliases):
         return None
     return test.args[0].id
 
 
-def _matchable_class_reference(node: ast.expr) -> bool:
+def _matchable_class_reference(node: ast.expr, runtime_tuple_aliases: frozenset[str]) -> bool:
     """Report whether `node` can safely head a class pattern."""
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
-        return _matchable_class_reference(node.left) and _matchable_class_reference(node.right)
+        return _matchable_class_reference(node.left, runtime_tuple_aliases) and _matchable_class_reference(
+            node.right, runtime_tuple_aliases
+        )
     if isinstance(node, ast.Name):
+        if node.id in runtime_tuple_aliases:
+            return False
         return node.id in _MATCHABLE_BUILTIN_TYPES or (node.id[:1].isupper() and not node.id.isupper())
     if isinstance(node, ast.Attribute):
         matchable_leaf = node.attr in _MATCHABLE_BUILTIN_TYPES or (node.attr[:1].isupper() and not node.attr.isupper())
@@ -191,11 +197,11 @@ def _is_dotted_name(node: ast.expr) -> bool:
     return isinstance(node, ast.Attribute) and _is_dotted_name(node.value)
 
 
-def _is_matchable_raise_guard(test: ast.expr) -> bool:
+def _is_matchable_raise_guard(test: ast.expr, runtime_tuple_aliases: frozenset[str]) -> bool:
     """Report whether a raise is directly guarded by type or None dispatch."""
     if isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not):
-        return _is_matchable_raise_guard(test.operand)
-    if _matchable_isinstance_test(test) is not None:
+        return _is_matchable_raise_guard(test.operand, runtime_tuple_aliases)
+    if _matchable_isinstance_test(test, runtime_tuple_aliases) is not None:
         return True
     return (
         isinstance(test, ast.Compare)
@@ -208,13 +214,13 @@ def _is_matchable_raise_guard(test: ast.expr) -> bool:
     )
 
 
-def _isinstance_ladder(node: ast.If) -> tuple[str, int] | None:
+def _isinstance_ladder(node: ast.If, runtime_tuple_aliases: frozenset[str]) -> tuple[str, int] | None:
     """Recognize a complete if/elif chain dispatching one name by runtime type."""
     subject: str | None = None
     branch_count = 0
     current = node
     while True:
-        branch_subject = _matchable_isinstance_test(current.test)
+        branch_subject = _matchable_isinstance_test(current.test, runtime_tuple_aliases)
         if branch_subject is None or (subject is not None and branch_subject != subject):
             return None
         subject = branch_subject
@@ -232,7 +238,9 @@ def _isinstance_ladder(node: ast.If) -> tuple[str, int] | None:
     return subject, branch_count
 
 
-def _sequential_isinstance_dispatches(tree: ast.Module, path: Path, code: str) -> list[Diagnostic]:
+def _sequential_isinstance_dispatches(
+    tree: ast.Module, path: Path, code: str, runtime_tuple_aliases: frozenset[str]
+) -> list[Diagnostic]:
     """Find exclusive type dispatch spelled as terminating sibling if statements."""
     findings: list[Diagnostic] = []
     for owner in ast.walk(tree):
@@ -245,7 +253,7 @@ def _sequential_isinstance_dispatches(tree: ast.Module, path: Path, code: str) -
                 if not isinstance(first, ast.If) or first.orelse or not _body_terminates(first.body):
                     index += 1
                     continue
-                subject = _matchable_isinstance_test(first.test)
+                subject = _matchable_isinstance_test(first.test, runtime_tuple_aliases)
                 if subject is None:
                     index += 1
                     continue
@@ -255,7 +263,7 @@ def _sequential_isinstance_dispatches(tree: ast.Module, path: Path, code: str) -
                     if (
                         not isinstance(candidate, ast.If)
                         or candidate.orelse
-                        or _matchable_isinstance_test(candidate.test) != subject
+                        or _matchable_isinstance_test(candidate.test, runtime_tuple_aliases) != subject
                         or not _body_terminates(candidate.body)
                     ):
                         break
@@ -500,14 +508,22 @@ def _check_sequential_type_guards(
 
     target_var: str | None = None
     sentinel_count = 0
+    guard_kinds: list[str] = []
     for stmt in stmts:
+        if not isinstance(stmt, ast.If):
+            break
         var = _passthrough_guard_var(stmt)
         if var is None or (target_var is not None and var != target_var):
             break
         target_var = var
         sentinel_count += 1
+        guard_kinds.append(_passthrough_guard_kind(stmt, var))
 
     if sentinel_count < _MIN_SENTINEL_COUNT:
+        return []
+    if set(guard_kinds) == {"none", "unset"}:
+        # This generated-client/data-normalization prologue is shorter and
+        # clearer as two direct early returns than as a match statement.
         return []
 
     first_if = stmts[0]
@@ -520,10 +536,23 @@ def _check_sequential_type_guards(
             message=(
                 f"Sequential sentinel/type guards ({sentinel_count} checks on '{target_var}') "
                 f"in function '{func_node.name}' — refactor into Python 3.10+ match/case pattern matching "
-                f"(e.g., 'case None | Unset():')."
+                f"(e.g., 'case Text() | Binary():')."
             ),
         )
     ]
+
+
+def _passthrough_guard_kind(stmt: ast.If, var: str) -> str:
+    """Classify a proven passthrough guard for the narrow None/Unset exemption."""
+    if _is_none_identity_test(stmt.test, var):
+        return "none"
+    if isinstance(stmt.test, ast.Call) and len(stmt.test.args) >= _ISINSTANCE_ARG_COUNT:
+        checked_type = stmt.test.args[1]
+        if (isinstance(checked_type, ast.Name) and checked_type.id == "Unset") or (
+            isinstance(checked_type, ast.Attribute) and checked_type.attr == "Unset"
+        ):
+            return "unset"
+    return "type"
 
 
 @final
@@ -535,11 +564,13 @@ class _TypeDispatchVisitor(ast.NodeVisitor):
         *,
         report_control_flow_raise: bool,
         report_isinstance_ladder: bool,
+        runtime_tuple_aliases: frozenset[str],
     ) -> None:
         self.path: Path = path
         self.code: str = code
         self.report_control_flow_raise: bool = report_control_flow_raise
         self.report_isinstance_ladder: bool = report_isinstance_ladder
+        self.runtime_tuple_aliases: frozenset[str] = runtime_tuple_aliases
         self.diags: list[Diagnostic] = []
         self.try_stack: list[ast.Try | ast.TryStar] = []
         self.if_stack: list[ast.If] = []
@@ -551,7 +582,7 @@ class _TypeDispatchVisitor(ast.NodeVisitor):
             while len(continuation.orelse) == 1 and isinstance(continuation.orelse[0], ast.If):
                 continuation = continuation.orelse[0]
                 self.ladder_continuations.add(id(continuation))
-            ladder = _isinstance_ladder(node)
+            ladder = _isinstance_ladder(node, self.runtime_tuple_aliases)
             if ladder is not None:
                 subject, branch_count = ladder
                 self.diags.append(
@@ -596,7 +627,7 @@ class _TypeDispatchVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def _check_control_flow_raise(self, node: ast.Raise) -> None:
-        if not self.if_stack or not _is_matchable_raise_guard(self.if_stack[-1].test):
+        if not self.if_stack or not _is_matchable_raise_guard(self.if_stack[-1].test, self.runtime_tuple_aliases):
             return
         exc_name = _raised_exception_name(node)
         if exc_name is None:
@@ -673,7 +704,7 @@ class PreferMatchTypeDispatch(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "The rule targets several measured shapes, including control-flow raises, sequential guards, and repeated `isinstance` dispatch.",
-            "Generated files and code that shadows `isinstance` are excluded; test files omit the control-flow-raise check.",
+            "Generated files, runtime tuple aliases, idiomatic None/Unset prologues, and code that shadows `isinstance` are excluded; test files omit the control-flow-raise check.",
         ),
         examples=(
             RuleExample(
@@ -684,13 +715,13 @@ class PreferMatchTypeDispatch(Rule):
                     ExampleFile.python(
                         "app/parser.py",
                         "def parse(value: object):\n"
-                        "    if value is None:\n"
+                        "    if isinstance(value, Text):\n"
                         "        return value\n"
-                        "    if isinstance(value, Unset):\n"
+                        "    if isinstance(value, Binary):\n"
                         "        return value\n"
-                        "    if isinstance(value, int):\n"
-                        "        return str(value)\n"
-                        "    return None\n",
+                        "    if isinstance(value, PathValue):\n"
+                        "        return value\n"
+                        "    return coerce(value)\n",
                     ),
                 ),
                 focus_path=PurePosixPath("app/parser.py"),
@@ -729,15 +760,31 @@ class PreferMatchTypeDispatch(Rule):
         tree = parse_or_none(path, source)
         if tree is None:
             return []
+        runtime_tuple_aliases = _runtime_tuple_aliases(tree)
 
         visitor = _TypeDispatchVisitor(
             path,
             self.code,
             report_control_flow_raise=not is_test_path(path),
             report_isinstance_ladder=not _shadows_isinstance(tree),
+            runtime_tuple_aliases=runtime_tuple_aliases,
         )
         visitor.visit(tree)
         if not _shadows_isinstance(tree):
-            visitor.diags.extend(_sequential_isinstance_dispatches(tree, path, self.code))
+            visitor.diags.extend(_sequential_isinstance_dispatches(tree, path, self.code, runtime_tuple_aliases))
         visitor.diags.sort(key=lambda d: (d.line, d.col))
         return visitor.diags
+
+
+def _runtime_tuple_aliases(tree: ast.Module) -> frozenset[str]:
+    """Collect names statically bound to runtime tuples accepted by isinstance."""
+    aliases: set[str] = set()
+    for node in ast.walk(tree):
+        match node:
+            case ast.Assign(targets=targets, value=ast.Tuple()):
+                aliases.update(target.id for target in targets if isinstance(target, ast.Name))
+            case ast.AnnAssign(target=ast.Name(id=name), value=ast.Tuple()):
+                aliases.add(name)
+            case _:
+                pass
+    return frozenset(aliases)

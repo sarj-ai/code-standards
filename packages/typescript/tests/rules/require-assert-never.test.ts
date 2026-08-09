@@ -140,13 +140,25 @@ ruleTester.run("require-assert-never", rule, {
       `,
     },
     {
-      name: "allows a default that breaks",
-      code: `
+      name: "leaves a non-exhaustive break default to the upstream rule",
+      code: `declare const kind: 'a' | 'b' | 'c';
         switch (kind) {
           case 'a': break;
+          case 'b': break;
           default: break;
         }
       `,
+    },
+    {
+      name: "allows a fully covered boolean default",
+      code: `declare const enabled: boolean;
+        switch (enabled) {
+          case true: break;
+          case false: break;
+          default: break;
+        }
+      `,
+      filename: "covered-boolean.ts",
     },
     {
       name: "allows conditional runtime handling",
@@ -203,9 +215,10 @@ ruleTester.run("require-assert-never", rule, {
     { name: "reports the documented empty default", code: requireAssertNeverDocumentation.examples[1].files[0].source, errors: [{ messageId: "missingAssertNever" }], output: null },
     {
       name: "reports an undocumented empty default",
-      code: `declare const kind: 'a';
+      code: `declare const kind: 'a' | 'b';
         switch (kind) {
           case 'a': break;
+          case 'b': break;
           default:
         }
       `,
@@ -214,20 +227,38 @@ ruleTester.run("require-assert-never", rule, {
     },
     {
       name: "reports an undocumented empty block",
-      code: `declare const kind: 'a';
-        switch (kind) {
-          case 'a': break;
+      code: `type DomainEvent = { kind: 'created' } | { kind: 'deleted' };
+        declare const domainEvent: DomainEvent;
+        switch (domainEvent.kind) {
+          case 'created': break;
+          case 'deleted': break;
           default: {}
         }
       `,
+      filename: "empty-block-discriminated-default.ts",
+      errors: [{ messageId: "missingAssertNever" }],
+      output: null,
+    },
+    {
+      name: "reports a break-only discriminated default",
+      code: `type DomainEvent = { kind: 'created' } | { kind: 'deleted' };
+        declare const domainEvent: DomainEvent;
+        switch (domainEvent.kind) {
+          case 'created': break;
+          case 'deleted': break;
+          default: break;
+        }
+      `,
+      filename: "break-only-discriminated-default.ts",
       errors: [{ messageId: "missingAssertNever" }],
       output: null,
     },
     {
       name: "reports an empty statement in a default",
-      code: `declare const kind: 'a';
+      code: `declare const kind: 'a' | 'b';
         switch (kind) {
           case 'a': break;
+          case 'b': break;
           default: ;
         }
       `,
@@ -236,9 +267,10 @@ ruleTester.run("require-assert-never", rule, {
     },
     {
       name: "reports nested empty blocks in a default",
-      code: `declare const kind: 'a';
+      code: `declare const kind: 'a' | 'b';
         switch (kind) {
           case 'a': break;
+          case 'b': break;
           default: { { } }
         }
       `,
@@ -247,9 +279,10 @@ ruleTester.run("require-assert-never", rule, {
     },
     {
       name: "reports a default containing only erased type declarations",
-      code: `declare const kind: 'a';
+      code: `declare const kind: 'a' | 'b';
         switch (kind) {
           case 'a': break;
+          case 'b': break;
           default: { type Remaining = typeof kind; interface Marker {} }
         }
       `,

@@ -93,6 +93,34 @@ def test_a_block_naming_something_the_signature_does_not_is_left_alone():
     assert not diags
 
 
+def test_fixed_tuple_position_names_add_information() -> None:
+    diags = _check('''
+        def _seed_full_world(batch: Batch, batch_calls: list[BatchCall], scenario_id: str) -> tuple[Batch, list[BatchCall], str]:
+            """Seed a complete integration-test world.
+
+            Returns:
+                (batch, batch_calls, scenario_id) for the seeded world.
+            """
+            return batch, batch_calls, scenario_id
+        ''')
+
+    assert not diags
+
+
+def test_fixed_tuple_type_names_are_still_a_restatement() -> None:
+    diags = _check('''
+        def get_pair(left: int, right: str) -> tuple[int, str]:
+            """Build a stable transport record.
+
+            Returns:
+                (int, str)
+            """
+            return left, right
+        ''')
+
+    assert len(diags) == 1
+
+
 @pytest.mark.parametrize(
     ("signature", "block"),
     [
