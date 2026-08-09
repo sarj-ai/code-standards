@@ -1,4 +1,4 @@
-"""SARJ098 — Reject duplicate names in a static package ``__all__``.
+"""SARJ098 — Reject duplicate names in a static module ``__all__``.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_duplicate_dunder_all_entry.py
 """
@@ -18,7 +18,6 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
-    Severity,
     parse_or_none,
 )
 from sarj_python_lint.rules._paths import is_generated
@@ -35,9 +34,9 @@ class NoDuplicateDunderAllEntry(Rule):
     id = "no-duplicate-dunder-all-entry"
     code = "SARJ098"
     documentation = RuleDocumentation(
-        summary="static package `__all__` declarations should list each exported name once",
+        summary="static module `__all__` declarations should list each exported name once",
         rationale=(
-            "Duplicate exports add noise to a package's public contract and commonly reveal copy-paste mistakes in "
+            "Duplicate exports add noise to a module's public contract and commonly reveal copy-paste mistakes in "
             "generated or maintained facade lists."
         ),
         remediation="Remove each later duplicate while preserving the first declaration of the exported name.",
@@ -114,7 +113,6 @@ class NoDuplicateDunderAllEntry(Rule):
                     message=(
                         f"`{name}` duplicates an earlier `__all__` entry on line {first_line}; remove the later entry."
                     ),
-                    severity=Severity.WARNING,
                 )
             )
         return findings
@@ -131,13 +129,47 @@ def _assigns_dunder_all(statement: ast.AST) -> bool:
 
 
 def _has_other_dunder_all_rebindings(tree: ast.Module, declaration: ast.stmt) -> bool:
-    """Skip when code outside ``declaration`` can replace ``__all__``."""
+    """Skip when code outside ``declaration`` may change or obscure its final surface."""
     for statement in tree.body:
         if statement is declaration:
             continue
-        for node in ast.walk(statement):
-            if _assigns_dunder_all(node):
-                return True
+        if _is_cardinality_preserving_dunder_all_mutation(statement):
+            continue
+        if _mentions_dunder_all(statement):
+            return True
+    return False
+
+
+def _is_cardinality_preserving_dunder_all_mutation(statement: ast.stmt) -> bool:
+    """Accept mutations that cannot erase a duplicate already in the literal."""
+    match statement:
+        case ast.Expr(
+            value=ast.Call(func=ast.Attribute(value=ast.Name(id="__all__"), attr="append" | "extend" | "insert"))
+        ):
+            return True
+        case _:
+            return False
+
+
+def _mentions_dunder_all(node: ast.AST) -> bool:
+    """Detect references and string-stored bindings of the module export name."""
+    for child in ast.walk(node):
+        if isinstance(child, ast.Name) and child.id == "__all__":
+            return True
+        if isinstance(child, ast.alias) and (child.asname or child.name).split(".")[0] == "__all__":
+            return True
+        if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and child.name == "__all__":
+            return True
+        if isinstance(child, ast.arg) and child.arg == "__all__":
+            return True
+        if isinstance(child, ast.ExceptHandler) and child.name == "__all__":
+            return True
+        if isinstance(child, (ast.MatchAs, ast.MatchStar)) and child.name == "__all__":
+            return True
+        if isinstance(child, ast.MatchMapping) and child.rest == "__all__":
+            return True
+        if isinstance(child, (ast.Global, ast.Nonlocal)) and "__all__" in child.names:
+            return True
     return False
 
 

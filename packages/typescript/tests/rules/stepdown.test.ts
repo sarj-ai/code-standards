@@ -62,6 +62,18 @@ ruleTester.run("stepdown", rule, {
       code: "function load(value: string): string;\nfunction load(value: number): number;\nfunction load(value: string | number) { return value; }\nfunction run() { return load(1); }",
     },
     {
+      name: "does not move a helper across an initialized class field",
+      code: "class Service { private load() { return 1; } state = register(this); private run() { return this.load(); } }",
+    },
+    {
+      name: "does not move a helper across a static initialization block",
+      code: "class Service { private load() { return 1; } static { register(Service); } private run() { return this.load(); } }",
+    },
+    {
+      name: "does not move a helper below a decorated caller",
+      code: "class Service { private load() { return 1; } @register private run() { return this.load(); } }",
+    },
+    {
       name: "allows public and protected methods",
       code: "class Service { public load() { return 1; } protected parse() { return 2; } run() { return this.load() + this.parse(); } }",
     },
@@ -134,6 +146,11 @@ ruleTester.run("stepdown", rule, {
   ],
   invalid: [
     { name: "reports the documented helper-first order", code: stepdownDocumentation.examples[1].files[0].source, errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "run" } }] },
+    {
+      name: "counts an overloaded implementation as the helper's sole caller",
+      code: "function load() { return 1; }\nfunction get(x: string): string;\nfunction get(x: number): number;\nfunction get(x: unknown) { return String(load()) + String(x); }",
+      errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "get" } }],
+    },
     {
       name: "includes a named default-export function as a caller",
       code: "function load() { return 1; }\nexport default function run() { return load(); }",

@@ -37,7 +37,8 @@ ruleTester.run("no-generic-single-export-module", rule, {
     { filename: "/repo/src/lib/utils.ts", code: "export function cn(...inputs: unknown[]) { return inputs.join(' '); }" },
     { filename: "/repo/src/base.ts", code: "export class OrderBase {}" },
     { filename: "/repo/src/models.ts", code: "export class OrderModel {}" },
-    { filename: "/repo/src/utils.ts", code: "export const utils = {};" },
+    { filename: "/repo/src/constants.ts", code: "export const orderStatuses = ['open', 'closed'] as const;" },
+    { filename: "/repo/src/Utils.ts", code: "export function parseOrder() { return {}; }" },
     { filename: "/repo/src/utils.module.ts", code: "export class UtilsModule {}" },
     { filename: "/repo/src/types.ts", code: "export declare class Order {}" },
     { filename: "/repo/src/utils.ts", code: "interface Order { id: string } export { Order };" },
@@ -65,6 +66,12 @@ ruleTester.run("no-generic-single-export-module", rule, {
   ],
   invalid: [
     { name: "reports the documented generic module", filename: "/repo/src/utils.ts", code: noGenericSingleExportModuleDocumentation.examples[1].files[0].source, errors: [{ messageId: "genericSingleExport", data: { stem: "utils", exported: "parseOrder", expected: "parse-order.ts" } }] },
+    {
+      name: "a generic export does not make a generic filename informative",
+      filename: "/repo/src/utils.ts",
+      code: "export const utils = {};",
+      errors: [{ messageId: "genericSingleExport", data: { stem: "utils", exported: "utils" } }],
+    },
     {
       name: "runtime declaration merging wins over an interface of the same name",
       filename: "/repo/src/utils.ts",
@@ -106,12 +113,6 @@ ruleTester.run("no-generic-single-export-module", rule, {
       filename: "/repo/src/common.ts",
       code: "const orderSchema = {}; export { orderSchema };",
       errors: [{ messageId: "genericSingleExport", data: { stem: "common", exported: "orderSchema", expected: "order-schema.ts" } }],
-    },
-    {
-      name: "reports a sole runtime constant",
-      filename: "/repo/src/constants.ts",
-      code: "export const orderStatuses = ['open', 'closed'] as const;",
-      errors: [{ messageId: "genericSingleExport", data: { stem: "constants", exported: "orderStatuses", expected: "order-statuses.ts" } }],
     },
     {
       name: "reports a named default export and preserves acronym words",

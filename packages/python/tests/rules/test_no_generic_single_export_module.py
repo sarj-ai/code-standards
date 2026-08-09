@@ -23,14 +23,11 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
     assert len(_check(focus.source, str(focus.path))) == example.expected_count
 
 
-def test_junk_drawer_single_class_flagged():
+def test_role_category_single_class_is_not_a_junk_drawer():
     src = """
 class IntegrationProvider: ...
 """
-    diags = _check(src, path="enums.py")
-    assert len(diags) == 1
-    assert "integration_provider.py" in diags[0].message
-    assert "junk-drawer" in diags[0].message
+    assert _check(src, path="enums.py") == []
 
 
 def test_junk_drawer_single_function_flagged():
@@ -39,7 +36,8 @@ def snake_case_text(value: str) -> str: ...
 """
     diags = _check(src, path="utils.py")
     assert len(diags) == 1
-    assert "snake_case_text.py" in diags[0].message
+    assert "snake_case_text" in diags[0].message
+    assert "responsibility-bearing" in diags[0].message
 
 
 def test_informative_stem_not_flagged():
@@ -65,11 +63,11 @@ def gc_once() -> None: ...
     assert _check(src, path="utils.py") == []
 
 
-def test_junk_drawer_export_already_matches_stem_not_flagged():
+def test_generic_definition_name_does_not_make_a_junk_drawer_informative():
     src = """
 class Utils: ...
 """
-    assert _check(src, path="utils.py") == []
+    assert len(_check(src, path="utils.py")) == 1
 
 
 def test_junk_drawer_private_helpers_and_constants_ignored():
@@ -80,9 +78,9 @@ def _normalize(x: str) -> str: ...
 
 _CACHE: dict[int, bool] = {}
 """
-    diags = _check(src, path="types.py")
+    diags = _check(src, path="utils.py")
     assert len(diags) == 1
-    assert "language.py" in diags[0].message
+    assert "Language" in diags[0].message
 
 
 # FP-hardening (famous-repo sweep): a public constant is a public export too.  #
@@ -123,7 +121,7 @@ def run_command(*args: str) -> str: ...
 """
     diags = _check(src, path="shared.py")
     assert len(diags) == 1
-    assert "run_command.py" in diags[0].message
+    assert "run_command" in diags[0].message
 
 
 def test_imported_names_do_not_count_as_public_exports():
@@ -134,7 +132,7 @@ def run_command(*args: str) -> str: ...
 """
     diags = _check(src, path="shared.py")
     assert len(diags) == 1
-    assert "run_command.py" in diags[0].message
+    assert "run_command" in diags[0].message
 
 
 @pytest.mark.parametrize(
@@ -167,27 +165,28 @@ class OnlyExport: ...
 
 
 @pytest.mark.parametrize(
-    ("name", "expected"),
+    "name",
     [
-        ("HTTPServer", "http_server"),
-        ("JWTHandler", "jwt_handler"),
-        ("IVRNavigationTool", "ivr_navigation_tool"),
-        ("OAuthService", "oauth_service"),
-        ("SalesforceOAuthService", "salesforce_oauth_service"),
-        ("MultiprocJanitor", "multiproc_janitor"),
-        ("SalesforceTokenResponse", "salesforce_token_response"),
-        ("MessagingProviderClient", "messaging_provider_client"),
-        ("HTTPServerProbe", "http_server_probe"),
-        ("APIKey", "api_key"),
+        "HTTPServer",
+        "JWTHandler",
+        "IVRNavigationTool",
+        "OAuthService",
+        "SalesforceOAuthService",
+        "MultiprocJanitor",
+        "SalesforceTokenResponse",
+        "MessagingProviderClient",
+        "HTTPServerProbe",
+        "APIKey",
     ],
 )
-def test_snake_case_acronym_shapes_in_rename_suggestion(name: str, expected: str):
+def test_diagnostic_names_the_definition_without_prescribing_a_filename(name: str):
     src = f"""
 class {name}: ...
 """
     diags = _check(src, path="utils.py")
     assert len(diags) == 1
-    assert f"`{expected}.py`" in diags[0].message
+    assert f"`{name}`" in diags[0].message
+    assert "rename the file to" not in diags[0].message
 
 
 def test_oauth_stem_matching_accepted_form_not_flagged():
@@ -201,19 +200,11 @@ class SalesforceOAuthService: ...
     "stem",
     [
         "common",
-        "constant",
-        "constants",
-        "core",
-        "enum",
-        "enums",
         "helper",
         "helpers",
         "misc",
-        "model",
         "shared",
         "stuff",
-        "type",
-        "types",
         "util",
         "utils",
     ],
@@ -224,7 +215,15 @@ class DataPipelineRunner: ...
 """
     diags = _check(src, path=f"{stem}.py")
     assert len(diags) == 1
-    assert "data_pipeline_runner.py" in diags[0].message
+    assert "DataPipelineRunner" in diags[0].message
+
+
+@pytest.mark.parametrize(
+    "stem",
+    ["base", "constant", "constants", "core", "enum", "enums", "model", "models", "type", "types"],
+)
+def test_role_and_category_stems_are_not_junk_drawers(stem: str):
+    assert _check("class DataPipelineRunner: ...\n", path=f"{stem}.py") == []
 
 
 @pytest.mark.parametrize(
@@ -274,7 +273,7 @@ class Widget: ...
 """
     diags = _check(src, path="common.py")
     assert len(diags) == 1
-    assert "widget.py" in diags[0].message
+    assert "Widget" in diags[0].message
 
 
 def test_multi_name_all_blocks_sole_export_advice() -> None:
@@ -288,6 +287,27 @@ class Widget: ...
 
 
 @pytest.mark.parametrize(
+    "declaration",
+    [
+        "__all__ = exports()",
+        "__all__ = EXPORTED_NAMES",
+        "__all__ = ['PublicAlias']",
+        "__all__ = []",
+        "__all__ = ['Widget']\n__all__.append('Alias')",
+        "__all__ = ['Widget']\n__all__ += ['Alias']",
+        "if enabled:\n    __all__ = ['Widget']",
+        "from exports import names as __all__",
+        "def configure(__all__):\n    return __all__",
+        "__all__ = ['Widget']\nconsume(__all__)",
+        "__all__ = {'Widget'}",
+    ],
+)
+def test_ambiguous_or_mismatched_dunder_all_blocks_surface_advice(declaration: str) -> None:
+    source = f"{declaration}\n\nclass Widget: ...\n"
+    assert _check(source, path="common.py") == []
+
+
+@pytest.mark.parametrize(
     "alias",
     [
         "type WidgetId = str",
@@ -297,12 +317,12 @@ class Widget: ...
 )
 def test_public_type_alias_blocks_sole_export_advice(alias: str) -> None:
     src = f"{alias}\n\nclass Widget: ...\n"
-    assert _check(src, path="types.py") == []
+    assert _check(src, path="helpers.py") == []
 
 
 def test_private_type_alias_does_not_block_sole_export_advice() -> None:
     src = "type _WidgetId = str\n\nclass Widget: ...\n"
-    assert len(_check(src, path="types.py")) == 1
+    assert len(_check(src, path="helpers.py")) == 1
 
 
 def test_async_def_sole_export_flagged():
@@ -311,7 +331,7 @@ async def fetch_records() -> None: ...
 """
     diags = _check(src, path="helpers.py")
     assert len(diags) == 1
-    assert "fetch_records.py" in diags[0].message
+    assert "fetch_records" in diags[0].message
 
 
 def test_decorated_class_flagged():
@@ -324,7 +344,7 @@ class OrderedWidget: ...
 """
     diags = _check(src, path="utils.py")
     assert len(diags) == 1
-    assert "ordered_widget.py" in diags[0].message
+    assert "OrderedWidget" in diags[0].message
 
 
 def test_type_checking_only_export_not_counted():
@@ -334,7 +354,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     class OnlyUnderTypeChecking: ...
 """
-    assert _check(src, path="types.py") == []
+    assert _check(src, path="helpers.py") == []
 
 
 def test_type_checking_plus_one_toplevel_still_single():
@@ -347,29 +367,19 @@ if TYPE_CHECKING:
 
 class RealExport: ...
 """
-    diags = _check(src, path="types.py")
+    diags = _check(src, path="helpers.py")
     assert len(diags) == 1
-    assert "real_export.py" in diags[0].message
+    assert "RealExport" in diags[0].message
 
 
-@pytest.mark.parametrize(
-    ("name", "expected"),
-    [
-        ("APIClient", "api_client"),
-        ("IOError", "io_error"),
-        ("OAuth2Provider", "oauth2_provider"),
-        ("MyABC", "my_abc"),
-        ("XMLParser", "xml_parser"),
-        ("SHA256Hash", "sha256_hash"),
-    ],
-)
-def test_additional_acronym_shapes(name: str, expected: str):
+@pytest.mark.parametrize("name", ["APIClient", "IOError", "OAuth2Provider", "MyABC", "XMLParser", "SHA256Hash"])
+def test_additional_definition_name_shapes(name: str):
     src = f"""
 class {name}: ...
 """
     diags = _check(src, path="utils.py")
     assert len(diags) == 1
-    assert f"`{expected}.py`" in diags[0].message
+    assert f"`{name}`" in diags[0].message
 
 
 def test_graphql_acronym_should_be_single_token():
@@ -378,7 +388,7 @@ class GraphQLSchema: ...
 """
     diags = _check(src, path="utils.py")
     assert len(diags) == 1
-    assert "`graphql_schema.py`" in diags[0].message
+    assert "`GraphQLSchema`" in diags[0].message
 
 
 def test_grpc_acronym_should_be_single_token():
@@ -387,14 +397,19 @@ class gRPCServer: ...
 """
     diags = _check(src, path="utils.py")
     assert len(diags) == 1
-    assert "`grpc_server.py`" in diags[0].message
+    assert "`gRPCServer`" in diags[0].message
 
 
-def test_capitalized_junk_drawer_stem_should_fire():
+def test_capitalized_junk_drawer_stem_is_owned_by_filename_case_lint():
     src = """
 class DataPipelineRunner: ...
 """
-    assert len(_check(src, path="Utils.py")) == 1
+    assert _check(src, path="Utils.py") == []
+
+
+@pytest.mark.parametrize("path", ["utils.pyi", "utils.txt"])
+def test_non_runtime_python_files_are_not_checked(path: str) -> None:
+    assert _check("class DataPipelineRunner: ...\n", path=path) == []
 
 
 @pytest.mark.parametrize(

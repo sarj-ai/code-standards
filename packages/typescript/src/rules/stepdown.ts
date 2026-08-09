@@ -15,8 +15,13 @@ type Options = [];
 export const stepdownDocumentation = {
   summary: "Place a private helper below its sole direct same-scope caller.",
   rationale: "Caller-first ordering lets a reader follow the main flow before descending into implementation details.",
-  remediation: "Move the private helper immediately below its sole caller.",
+  remediation: "Move the private helper below its sole caller.",
   category: "maintainability",
+  limitations: [
+    "Generated and test files, cycles, dynamic references, overload targets, and helpers with multiple callers are excluded.",
+    "Class methods are reported only when both helper and caller are private so accessibility ordering remains authoritative.",
+    "Runtime class-field, static-block, computed-member, and decorator barriers are never crossed.",
+  ],
   examples: [
     { id: "caller-before-helper", title: "Place the caller first", outcome: "no-match", files: [{ path: "src/run.ts", source: "function run() { return load(); }\nfunction load() { return 1; }" }], focusPath: "src/run.ts", expectedCount: 0, public: true },
     { id: "helper-before-caller", title: "Do not lead with a sole-caller helper", outcome: "match", files: [{ path: "src/run.ts", source: "function load() { return 1; }\nfunction run() { return load(); }" }], focusPath: "src/run.ts", expectedCount: 1, public: true },
@@ -49,6 +54,7 @@ function reportMisordered(
   scopeDefinitions: readonly Definition[],
   calls: ReadonlyMap<string, ReadonlySet<string>>,
   pinned: ReadonlySet<string>,
+  canMove: (helper: Definition, caller: Definition) => boolean = () => true,
 ): void {
   const byName = new Map(scopeDefinitions.map((definition) => [definition.name, definition]));
   const cycles = cycleComponents(calls);
@@ -70,7 +76,7 @@ function reportMisordered(
       (cycles.has(helper.name) && cycles.get(helper.name) === cycles.get(callerName))
     ) continue;
     const caller = byName.get(callerName);
-    if (caller === undefined || helper.node.range[0] >= caller.node.range[0]) continue;
+    if (caller === undefined || helper.node.range[0] >= caller.node.range[0] || !canMove(helper, caller)) continue;
     context.report({
       node: helper.node,
       messageId: "helperAboveOnlyCaller",
@@ -156,9 +162,10 @@ function moduleScope(
     }),
   );
   const exported = exportedNames(program);
-  const scopeDefinitions = declarations
-    .filter((node) => counts.get(node.name) === 1 && !overloadNames.has(node.name));
-  const definitions = scopeDefinitions.filter((definition) => !exported.has(definition.name));
+  const scopeDefinitions = declarations.filter((node) => counts.get(node.name) === 1);
+  const definitions = scopeDefinitions.filter(
+    (definition) => !exported.has(definition.name) && !overloadNames.has(definition.name),
+  );
   const byFunction = new Map(scopeDefinitions.map((definition) => [definition.functionNode, definition]));
   const calls = new Map<string, Set<string>>();
   const pinned = new Set<string>();
@@ -485,11 +492,41 @@ function classScope(
       return [definition.name, accessibility] as const;
     }),
   );
+  const methodByName = new Map(scopeDefinitions.map((definition) => [definition.name, definition.node]));
   for (const [caller, callees] of calls) {
-    if (accessibility.get(caller) === "private") continue;
+    const callerMethod = methodByName.get(caller);
+    if (
+      accessibility.get(caller) === "private" &&
+      callerMethod?.type === AST_NODE_TYPES.MethodDefinition &&
+      callerMethod.decorators.length === 0
+    ) continue;
     for (const callee of callees) pinned.add(callee);
   }
-  reportMisordered(context, definitions, scopeDefinitions, calls, pinned);
+  const memberIndexes = new Map(node.body.body.map((member, index) => [member, index]));
+  const runtimeBarrierPrefix = [0];
+  for (const member of node.body.body) {
+    runtimeBarrierPrefix.push((runtimeBarrierPrefix.at(-1) ?? 0) + (isClassRuntimeBarrier(member) ? 1 : 0));
+  }
+  reportMisordered(context, definitions, scopeDefinitions, calls, pinned, (helper, caller) => {
+    const helperIndex = memberIndexes.get(helper.node as TSESTree.ClassElement);
+    const callerIndex = memberIndexes.get(caller.node as TSESTree.ClassElement);
+    if (helperIndex === undefined || callerIndex === undefined) return false;
+    return runtimeBarrierPrefix[callerIndex + 1] === runtimeBarrierPrefix[helperIndex + 1];
+  });
+}
+
+function isClassRuntimeBarrier(member: TSESTree.ClassElement): boolean {
+  switch (member.type) {
+    case AST_NODE_TYPES.StaticBlock:
+      return true;
+    case AST_NODE_TYPES.PropertyDefinition:
+    case AST_NODE_TYPES.AccessorProperty:
+      return member.static || member.computed || member.decorators.length > 0 || member.value !== null;
+    case AST_NODE_TYPES.MethodDefinition:
+      return member.computed || member.decorators.length > 0;
+    default:
+      return false;
+  }
 }
 
 export default createRule<Options, MessageIds>({
