@@ -9,6 +9,7 @@ import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isProtected, splitIdentifier, stem } from "./_comments.js";
 import { isGeneratedFile } from "./_paths.js";
+import { documentsTypedFunction } from "./_prose-budget.js";
 
 type MessageIds = "restatesSignature" | "deleteBlock";
 type Options = readonly [];
@@ -179,10 +180,14 @@ export default createRule<Options, MessageIds>({
         for (const comment of sourceCode.getAllComments()) {
           if (comment.type !== "Block" || !comment.value.startsWith("*")) continue;
           const { description, tags } = parseJsDoc(comment.value);
-          if (DIRECTIVE_RE.test(description)) continue;
+          const describedText = [
+            description,
+            ...tags.filter((tag) => tag.name === "description").map((tag) => tag.text),
+          ].filter((text) => text.length > 0).join("\n");
+          if (DIRECTIVE_RE.test(describedText)) continue;
           const tagNames = new Set(tags.map((tag) => tag.name));
           if ([...tagNames].some((name) => !MODELLED_TAGS.has(name))) continue;
-          if (isProtected(description)) continue;
+          if (isProtected(describedText)) continue;
 
           const token = sourceCode.getTokenAfter(comment, { includeComments: false });
           if (token === null || token.loc.start.line !== comment.loc.end.line + 1) continue;
@@ -197,15 +202,21 @@ export default createRule<Options, MessageIds>({
 
           const paramTags = tags.filter((tag) => PARAM_TAGS.has(tag.name));
           const returnTags = tags.filter((tag) => RETURN_TAGS.has(tag.name));
-          if (description.length === 0 && paramTags.length === 0 && returnTags.length === 0) {
+          if (describedText.length === 0 && paramTags.length === 0 && returnTags.length === 0) {
             continue;
           }
+          // `no-typed-doc-sections` owns @param/@returns repetition on fully
+          // typed signatures. Keeping one owner prevents duplicate diagnostics.
+          if (
+            (paramTags.length > 0 || returnTags.length > 0) &&
+            documentsTypedFunction(sourceCode, comment)
+          ) continue;
 
           const nameTokens = tokensOf([declaration.name]);
           const paramTokens = tokensOf(declaration.params);
           const known = new Set([...nameTokens, ...paramTokens]);
 
-          let addsNothing = covered(description, known);
+          let addsNothing = covered(describedText, known);
           for (const tag of paramTags) {
             const text = tag.text.replace(/^\{[^}]*\}\s*/, "");
             const match = /^\[?([A-Za-z_$][\w.$]*)\]?\s*-?\s*([\s\S]*)$/.exec(text);
@@ -213,7 +224,13 @@ export default createRule<Options, MessageIds>({
               addsNothing = false;
               break;
             }
-            const own = new Set([...splitIdentifier(match[1]?.split(".").pop() ?? ""), ...nameTokens]);
+            const path = match[1] ?? "";
+            const root = path.split(".")[0] ?? "";
+            if (!declaration.params.includes(root)) {
+              addsNothing = false;
+              break;
+            }
+            const own = new Set([...splitIdentifier(path.split(".").pop() ?? ""), ...nameTokens]);
             if (!covered(match[2] ?? "", own)) {
               addsNothing = false;
               break;

@@ -7,7 +7,7 @@
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isTestFile } from "./_paths.js";
+import { isGeneratedFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "noRepeatedStringLiteral";
 type Options = readonly [];
@@ -20,6 +20,7 @@ const PREVIEW_LENGTH = 40;
 const SQL_KEYWORD_RE =
   /\b(SELECT|INSERT|UPDATE|DELETE|FROM|WHERE|JOIN|VALUES|ON CONFLICT|RETURNING|GROUP BY|ORDER BY)\b/;
 const IDENTIFIER_RE = /^[a-z_][a-z0-9_.]*$/;
+const URL_PATH_RE = /^\/(?=[^\s]*[A-Za-z0-9])[A-Za-z0-9._~!$&'()*+,;=:@%/?#{}\u005B\u005D-]+$/;
 
 const FUNCTION_TYPES: ReadonlySet<AST_NODE_TYPES> = new Set([
   AST_NODE_TYPES.FunctionDeclaration,
@@ -29,7 +30,7 @@ const FUNCTION_TYPES: ReadonlySet<AST_NODE_TYPES> = new Set([
 
 export const noRepeatedStringLiteralDocumentation = {
   summary: "Disallow a long structured string literal repeated across functions; the copies drift when one is edited. Extract a module-level constant.",
-  rationale: "Independent copies of a structured value can diverge and silently change behavior.",
+  rationale: "Independent copies of a query, route template, or identifier can diverge and silently change behavior.",
   remediation: "Extract the repeated value to one module-level constant and reference it from each function.",
   category: "maintainability",
   limitations: ["Test files, short strings, prose, substitutions, module sources, JSX attributes, and repetition within one function are excluded."],
@@ -41,7 +42,7 @@ export const noRepeatedStringLiteralDocumentation = {
 
 /** True when the literal carries structure that rules out coincidental equality. */
 function isStructured(value: string): boolean {
-  return value.includes("\n") || SQL_KEYWORD_RE.test(value) || IDENTIFIER_RE.test(value);
+  return value.includes("\n") || SQL_KEYWORD_RE.test(value) || IDENTIFIER_RE.test(value) || URL_PATH_RE.test(value);
 }
 
 function preview(value: string): string {
@@ -69,6 +70,13 @@ function isScaffolding(node: TSESTree.Node): boolean {
   if (parent === undefined) {
     return true;
   }
+  const isNonComputedPropertyKey =
+    (parent.type === AST_NODE_TYPES.Property ||
+      parent.type === AST_NODE_TYPES.PropertyDefinition ||
+      parent.type === AST_NODE_TYPES.MethodDefinition ||
+      parent.type === AST_NODE_TYPES.AccessorProperty) &&
+    parent.key === node &&
+    !parent.computed;
   const isRequireSource =
     parent.type === AST_NODE_TYPES.CallExpression &&
     parent.callee.type === AST_NODE_TYPES.Identifier &&
@@ -81,6 +89,7 @@ function isScaffolding(node: TSESTree.Node): boolean {
     parent.type === AST_NODE_TYPES.TSImportType ||
     parent.type === AST_NODE_TYPES.JSXAttribute ||
     parent.type === AST_NODE_TYPES.TSLiteralType ||
+    isNonComputedPropertyKey ||
     isRequireSource
   );
 }
@@ -102,7 +111,10 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isTestFile(context.filename)) {
+    if (
+      isTestFile(context.filename) ||
+      isGeneratedFile(context.filename, context.sourceCode.text)
+    ) {
       return {};
     }
     const occurrences = new Map<string, TSESTree.Node[]>();

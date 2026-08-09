@@ -86,6 +86,7 @@ const EDITORIAL_PLACEHOLDER_RE =
   /^(?:(?:implementation omitted|existing code here|your code here|rest of (?:the )?code (?:is )?unchanged|same as above|placeholder implementation)\s*[.!]?|in a real (?:app(?:lication)?|implementation),?\s+(?:this|we|you|it)\s+would\s+(?:call|fetch|generate|download|persist|save|send|store|write)\b[^,;]*[.!]?)$/i;
 
 const FOR_NOW_RE = /\bfor now\b/i;
+const JSDOC_DEBT_RE = /^@?(?:todo|fixme)\b/i;
 
 // Stopwords do not identify what is deferred.
 const DEFERRAL_STOPWORDS: ReadonlySet<string> = new Set([
@@ -166,6 +167,7 @@ const CODE_KEYWORD_RE =
 const CODE_TAIL_RE = /[;{}()]\s*$|=>\s*$|,\s*$/;
 // Require an identifier LHS and code tail so prose equations do not match.
 const ASSIGN_RE = /^[A-Za-z_$][\w.$[\]]*\s*(?:=(?![=>])|\+=|-=|\*=)\s*\S.*[;)}\]]\s*$/;
+const DECLARATION_RE = /^(?:export\s+)?(?:declare\s+)?(?:const|let|var)\s+[A-Za-z_$][\w$]*(?:\s*:\s*[^=]+)?\s*=\s*(?:[A-Za-z_$][\w.$]*(?:\s*\(|\s*$)|["'`]|\[|\{|\d|true\b|false\b|null\b|undefined\b|new\b|await\b|async\b|function\b|class\b)/;
 const CALL_RE = /^[A-Za-z_$][\w.$]*\([^)]*\)\s*;?\s*$/;
 const ASSERTION_CODE_RE = /^(?:await\s+)?(?:expect(?:TypeOf)?|assert(?:\.\w+)?)\s*\(/;
 
@@ -209,6 +211,7 @@ function looksLikeCode(text: string, allowCall = true): boolean {
   if (!t) return false;
   if (PROSE_ASSIGNMENT_RE.test(t)) return false;
   if (CODE_KEYWORD_RE.test(t) && CODE_TAIL_RE.test(t)) return true;
+  if (DECLARATION_RE.test(t)) return true;
   if (ASSIGN_RE.test(t)) return true;
   if (ASSERTION_CODE_RE.test(t)) return true;
   return allowCall && CALL_RE.test(t);
@@ -706,6 +709,14 @@ export default createRule<Options, MessageIds>({
           }
           if (wallMembers.has(comment)) continue;
           if (isJsDoc(comment)) {
+            const debt = comment.value
+              .split("\n")
+              .map(stripCommentMarker)
+              .find((line) => JSDOC_DEBT_RE.test(line));
+            if (debt !== undefined && !runCitesAReference(comments, i)) {
+              context.report({ node: comment, messageId: "untrackedTodo" });
+              continue;
+            }
             // JSDoc is preserved unless its entire body is a section signpost.
             if (isStandalone(comment) && isSectionJsDoc(comment)) {
               context.report({ node: comment, messageId: "sectionBanner" });

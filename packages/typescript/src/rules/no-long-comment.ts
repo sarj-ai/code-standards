@@ -1,5 +1,5 @@
 /**
- * @fileoverview no-long-comment — catch only unusually large, unstructured in-code prose blocks.
+ * @fileoverview no-long-comment — catch only unusually large, unstructured JSDoc blocks.
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-long-comment.test.ts
  */
 
@@ -18,11 +18,11 @@ type MessageIds = "tooLong";
 type Options = readonly [];
 
 export const noLongCommentDocumentation = {
-  summary: "Flag unusually large unstructured prose blocks in implementation code.",
+  summary: "Flag unusually large unstructured JSDoc blocks in implementation code.",
   rationale: "Large narrative comments become stale and obscure the local facts that belong beside the code.",
   remediation: "Keep only durable local constraints and express the remaining behavior in code.",
   category: "maintainability",
-  limitations: ["Structured API docs, tests, scripts, generated files, and versioned dependencies are excluded."],
+  limitations: ["Only JSDoc blocks are inspected; structured API docs, tests, scripts, generated files, and versioned dependencies are excluded."],
   examples: [
     { id: "local-fact", title: "Keep a concise local fact", outcome: "no-match", files: [{ path: "src/cache.ts", source: "// The cache is process local.\nconst cache = new Map();" }], focusPath: "src/cache.ts", expectedCount: 0, public: true },
     { id: "prose-wall", title: "Avoid an unstructured prose wall", outcome: "match", files: [{ path: "src/chart.ts", source: "/** One. Two. Three. Four. Five. Six. Seven. Eight. */\nconst chart = createChart();" }], focusPath: "src/chart.ts", expectedCount: 1, public: true },
@@ -65,7 +65,7 @@ export default createRule<Options, MessageIds>({
   documentation: noLongCommentDocumentation,
   meta: {
     type: "suggestion",
-    docs: { description: "Flag unusually large unstructured prose blocks in implementation code." },
+    docs: { description: "Flag unusually large unstructured JSDoc blocks in implementation code." },
     schema: [],
     messages: {
       tooLong: "Comment is an unusually large prose block — keep the local facts and clarify the code itself.",

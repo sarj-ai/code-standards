@@ -8,7 +8,7 @@ Custom Python lint rules — AST-based, pre-commit-friendly, hypermodern default
 
 | Field | Value |
 | --- | --- |
-| Version | `0.58.0` |
+| Version | `0.59.0` |
 | Registry | PyPI |
 | License | MIT |
 | Runtime | `Python >=3.14` |

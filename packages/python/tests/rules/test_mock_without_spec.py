@@ -75,6 +75,8 @@ def test_skips_non_test_paths(path: str):
         "mock.Mock()",
         "mock.MagicMock()",
         "mock.AsyncMock()",
+        "mock.NonCallableMock()",
+        "mock.NonCallableMagicMock()",
         "mock.Mock(return_value=3)",
         "mock.AsyncMock(side_effect=ValueError)",
         "mock.patch('agent.main.thing')",
@@ -94,7 +96,7 @@ def test_thing():
 
 @pytest.mark.parametrize(
     "imported",
-    ["Mock", "MagicMock", "AsyncMock", "patch"],
+    ["Mock", "MagicMock", "AsyncMock", "NonCallableMock", "NonCallableMagicMock", "patch"],
 )
 def test_flags_direct_symbol_imports(imported: str):
     src = f"""
@@ -117,24 +119,37 @@ def test_thing():
     assert len(_check(src)) == 1
 
 
-def test_flags_fully_qualified_call():
-    src = """
+@pytest.mark.parametrize("factory", ["Mock", "NonCallableMock", "NonCallableMagicMock"])
+def test_flags_fully_qualified_mock(factory: str):
+    src = f"""
 import unittest.mock
 
 def test_thing():
-    assert unittest.mock.Mock()
+    assert unittest.mock.{factory}()
 """
     assert len(_check(src)) == 1
 
 
-def test_flags_aliased_symbol_import():
-    src = """
-from unittest.mock import AsyncMock as Fake
+@pytest.mark.parametrize("factory", ["AsyncMock", "NonCallableMock", "NonCallableMagicMock"])
+def test_flags_aliased_symbol_import(factory: str):
+    src = f"""
+from unittest.mock import {factory} as Fake
 
 def test_thing():
     assert Fake()
 """
     assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize("factory", ["NonCallableMock", "NonCallableMagicMock"])
+def test_shadowed_non_callable_symbol_is_not_assumed_to_be_unittest_mock(factory: str):
+    src = f"""
+from unittest.mock import {factory}
+
+def test_thing({factory}):
+    assert {factory}()
+"""
+    assert _check(src) == []
 
 
 @pytest.mark.parametrize("fixture", ["mocker", "class_mocker", "module_mocker", "package_mocker", "session_mocker"])
@@ -262,6 +277,8 @@ def test_thing():
         ("mock.Mock(Room)", "mock.Mock()"),
         ("mock.MagicMock(Room)", "mock.MagicMock()"),
         ("mock.AsyncMock(Room)", "mock.AsyncMock()"),
+        ("mock.NonCallableMock(Room)", "mock.NonCallableMock()"),
+        ("mock.NonCallableMagicMock(Room)", "mock.NonCallableMagicMock()"),
         # `patch(target, new=DEFAULT, ...)` — arg 2 is `new`.
         ("mock.patch('agent.main.run', fake_run)", "mock.patch('agent.main.run')"),
         # `patch.object(target, attribute, new=DEFAULT, ...)` — arg 3 is `new`.
@@ -292,6 +309,18 @@ def test_thing(args):
     assert mock.patch(*args)
 """
     assert _check(src) == []
+
+
+@pytest.mark.parametrize("kwarg", ["spec=None", "spec_set=None", "autospec=False", "autospec=None"])
+def test_disabled_or_empty_contract_keywords_remain_unspecced(kwarg: str):
+    src = f"""
+from unittest.mock import NonCallableMock
+
+def test_thing():
+    double = NonCallableMock({kwarg})
+    assert double.some_attribute
+"""
+    assert len(_check(src)) == 1
 
 
 def test_decorator_form_with_a_positional_replacement_is_exempt():

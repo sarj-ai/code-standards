@@ -8,7 +8,7 @@ Custom ESLint rules for hypermodern TypeScript / React / Next.js projects
 
 | Field | Value |
 | --- | --- |
-| Version | `13.0.0` |
+| Version | `13.1.0` |
 | Registry | npm |
 | License | MIT |
 | Runtime | `node >=22.13.0` |
@@ -47,7 +47,7 @@ Custom ESLint rules for hypermodern TypeScript / React / Next.js projects
 | `eslint:no-insecure-random-id` | Disallow using `Math.random()` to generate identifiers, tokens, or secrets; use `crypto.randomUUID()` or `crypto.getRandomValues(...)` instead. | `error` | `none` |
 | `eslint:no-json-stringify-error` | Disallow `JSON.stringify` on an Error value; it yields `{}` because `message`/`stack` are non-enumerable. | `error` | `none` |
 | `eslint:no-log-only-catch` | Disallow `catch` clauses that only log (or silently do nothing) and then swallow the error; rethrow or handle it instead. | `error` | `none` |
-| `eslint:no-long-comment` | Flag unusually large unstructured prose blocks in implementation code. | `error` | `none` |
+| `eslint:no-long-comment` | Flag unusually large unstructured JSDoc blocks in implementation code. | `error` | `none` |
 | `eslint:no-offset-pagination` | Disallow OFFSET pagination in embedded SQL; it is O(N) per page and drops or repeats rows under concurrent writes. Use a keyset cursor. | `error` | `none` |
 | `eslint:no-positional-tuple-return` | Disallow returning a multi-field tuple from an exported function; return a named object so call sites cannot mismatch slots. | `error` | `none` |
 | `eslint:no-raw-env` | Disallow direct `process.env` and `import.meta.env` reads outside validated boundaries. | `error` | `none` |

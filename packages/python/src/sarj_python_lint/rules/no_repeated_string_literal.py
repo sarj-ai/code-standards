@@ -40,6 +40,7 @@ _SQL_KEYWORD_RE = re.compile(
     r"\b(SELECT|INSERT|UPDATE|DELETE|FROM|WHERE|JOIN|VALUES|ON CONFLICT|RETURNING|GROUP BY|ORDER BY)\b"
 )
 _IDENTIFIER_RE = re.compile(r"^[a-z_][a-z0-9_.]*$")
+_URL_PATH_RE = re.compile(r"^/(?=[^\s]*[A-Za-z0-9])[A-Za-z0-9._~!$&'()*+,;=:@%/?#{}\[\]-]+$")
 _PUBLIC_CONSTANT_RE = re.compile(r"^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$")
 _MIN_CONSTANT_NAME_LENGTH = 3
 
@@ -52,7 +53,7 @@ class NoRepeatedStringLiteral(Rule):
     code: str = "SARJ024"
     documentation = RuleDocumentation(
         summary="Structured string literals repeated across functions should use a module constant.",
-        rationale="Independent copies of SQL and identifier-like strings can drift while appearing equivalent.",
+        rationale="Independent copies of SQL, route templates, and identifier-like strings can drift while appearing equivalent.",
         remediation="Extract the shared value to one named module-level constant and reference it from each function.",
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
@@ -227,7 +228,12 @@ def _is_annotated(expr: ast.expr) -> bool:
 
 
 def _is_structured(value: str) -> bool:
-    return "\n" in value or _SQL_KEYWORD_RE.search(value) is not None or _IDENTIFIER_RE.match(value) is not None
+    return (
+        "\n" in value
+        or _SQL_KEYWORD_RE.search(value) is not None
+        or _IDENTIFIER_RE.fullmatch(value) is not None
+        or _URL_PATH_RE.fullmatch(value) is not None
+    )
 
 
 def _preview(value: str) -> str:

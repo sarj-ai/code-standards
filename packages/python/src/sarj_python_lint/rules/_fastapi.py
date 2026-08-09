@@ -5,7 +5,11 @@ from __future__ import annotations
 import ast
 from collections import Counter
 from dataclasses import dataclass
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
+
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 HTTP_METHODS = frozenset({"get", "post", "put", "patch", "delete", "options", "head", "trace", "api_route"})
@@ -25,6 +29,10 @@ RESPONSE_TYPES = frozenset(
         "UJSONResponse",
     }
 )
+_DEPENDENCY_MARKERS = frozenset({"Depends", "Security"})
+_MAX_IMPORTED_MODULE_BYTES = 500_000
+_MAX_IMPORT_HOPS = 8
+_MAX_PATH_ANCESTORS = 32
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +73,13 @@ class ParameterMarker(NamedTuple):
     call: ast.Call
 
 
+@dataclass(frozen=True, slots=True)
+class _ImportedReference:
+    module: str
+    level: int
+    symbol: str
+
+
 def flat_name(node: ast.expr) -> str:
     if isinstance(node, ast.Name):
         return node.id
@@ -84,7 +99,11 @@ def _binding_name(node: ast.expr) -> str:
 class FastapiIndex:
     """Resolve only FastAPI bindings whose provenance is visible in one module."""
 
-    def __init__(self, tree: ast.Module) -> None:
+    def __init__(self, tree: ast.Module, *, path: Path | None = None) -> None:
+        self.tree: ast.Module = tree
+        self.path: Path | None = path
+        self._imported_dependency_cache: dict[_ImportedReference, bool] = {}
+        self._imported_module_cache: dict[Path, ast.Module | None] = {}
         self.modules: set[str] = set()
         self.module_symbols: dict[str, str] = {}
         self.http_modules: set[str] = set()
@@ -195,7 +214,7 @@ class FastapiIndex:
                 if name:
                     assignments.append((self._assignment_scope(node, name), name, node.value))
             elif isinstance(node, ast.TypeAlias):
-                self.type_aliases[node.name.id] = node.value
+                assignments.append((self._node_scopes[id(node)], node.name.id, node.value))
 
         changed = True
         counts = Counter((scope, name) for scope, name, _value in assignments)
@@ -222,7 +241,7 @@ class FastapiIndex:
                         self.decorators[key] = (receiver, value.attr)
                         changed = True
                         continue
-                if self._is_annotated(value):
+                if self._is_annotated(value) or (isinstance(value, ast.Name) and value.id in self.type_aliases):
                     self.type_aliases[name] = value
 
     def _target_names(self, node: ast.expr) -> tuple[str, ...]:
@@ -398,6 +417,42 @@ class FastapiIndex:
         resolved = self.resolve_annotation(node)
         return isinstance(resolved, (ast.Name, ast.Attribute)) and self.canonical(resolved) in INJECTION_TYPES
 
+    def is_imported_dependency_alias(self, node: ast.expr | None) -> bool:
+        """Resolve an imported dependency alias only from bounded, explicit source facts."""
+        if self.path is None or node is None or isinstance(node, ast.Constant):
+            return False
+        reference = _imported_reference(self.tree, node)
+        if reference is None or self._is_shadowed_in_enclosing_scope(node):
+            return False
+        if reference in self._imported_dependency_cache:
+            return self._imported_dependency_cache[reference]
+        target = _resolve_module_path(self.path, reference)
+        if target is None:
+            return False
+        resolved = _module_symbol_is_dependency_alias(
+            target,
+            reference.symbol,
+            set(),
+            self._imported_module_cache,
+            0,
+        )
+        self._imported_dependency_cache[reference] = resolved
+        return resolved
+
+    def _is_shadowed_in_enclosing_scope(self, node: ast.expr) -> bool:
+        root = flat_name(node)
+        if isinstance(node, ast.Attribute):
+            root = self._root_name(node)
+        node_scope = self._node_scopes.get(id(node), 0)
+        # An annotation is evaluated outside the function whose signature owns
+        # it, so begin with that function's parent scope.
+        scope: int | None = self._scope_parents.get(node_scope)
+        while scope is not None and scope != 0:
+            if (scope, root) in self.bound_names:
+                return True
+            scope = self._scope_parents.get(scope)
+        return False
+
     def is_response(self, node: ast.expr | None) -> bool:
         resolved = self.resolve_annotation(node)
         return isinstance(resolved, (ast.Name, ast.Attribute)) and self.canonical(resolved) in RESPONSE_TYPES
@@ -411,3 +466,244 @@ class FastapiIndex:
 
     def is_http_exception(self, node: ast.expr) -> bool:
         return self.canonical(node) == "HTTPException"
+
+
+def _imported_reference(tree: ast.Module, node: ast.expr) -> _ImportedReference | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        try:
+            node = ast.parse(node.value.strip(), mode="eval").body
+        except SyntaxError:
+            return None
+    if isinstance(node, ast.Name):
+        binding = _unique_module_binding(tree, node.id)
+        if not isinstance(binding, ast.ImportFrom):
+            return None
+        imported = next(
+            (alias for alias in binding.names if alias.name != "*" and (alias.asname or alias.name) == node.id),
+            None,
+        )
+        if imported is None:
+            return None
+        return _ImportedReference(binding.module or "", binding.level, imported.name)
+    if not (isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)):
+        return None
+    binding = _unique_module_binding(tree, node.value.id)
+    if isinstance(binding, ast.Import):
+        imported = next(
+            (alias for alias in binding.names if alias.asname == node.value.id),
+            None,
+        )
+        if imported is not None:
+            return _ImportedReference(imported.name, 0, node.attr)
+    if isinstance(binding, ast.ImportFrom):
+        imported = next(
+            (alias for alias in binding.names if alias.name != "*" and (alias.asname or alias.name) == node.value.id),
+            None,
+        )
+        if imported is not None:
+            module = ".".join(part for part in (binding.module or "", imported.name) if part)
+            return _ImportedReference(module, binding.level, node.attr)
+    return None
+
+
+def _unique_module_binding(tree: ast.Module, name: str) -> ast.stmt | None:
+    bindings = [statement for statement in tree.body if _statement_binds(statement, name)]
+    return bindings[0] if len(bindings) == 1 else None
+
+
+def _statement_binds(statement: ast.stmt, name: str) -> bool:
+    match statement:
+        case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
+            return statement.name == name
+        case ast.Import() | ast.ImportFrom():
+            return any((alias.asname or alias.name.split(".")[0]) == name for alias in statement.names)
+        case ast.Assign():
+            return any(name in _stored_names(target) for target in statement.targets)
+        case ast.AnnAssign() | ast.AugAssign():
+            return name in _stored_names(statement.target)
+        case ast.TypeAlias():
+            return statement.name.id == name
+        case (
+            ast.If()
+            | ast.For()
+            | ast.AsyncFor()
+            | ast.While()
+            | ast.With()
+            | ast.AsyncWith()
+            | ast.Try()
+            | ast.TryStar()
+            | ast.Match()
+        ):
+            return any(_statement_binds(child, name) for block in _owned_statement_blocks(statement) for child in block)
+        case _:
+            return False
+
+
+def _stored_names(node: ast.expr) -> frozenset[str]:
+    return frozenset(
+        child.id for child in ast.walk(node) if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store)
+    )
+
+
+def _owned_statement_blocks(statement: ast.stmt) -> tuple[list[ast.stmt], ...]:
+    match statement:
+        case ast.If() | ast.For() | ast.AsyncFor() | ast.While():
+            return statement.body, statement.orelse
+        case ast.With() | ast.AsyncWith():
+            return (statement.body,)
+        case ast.Try() | ast.TryStar():
+            return (
+                statement.body,
+                statement.orelse,
+                statement.finalbody,
+                *(handler.body for handler in statement.handlers),
+            )
+        case ast.Match(cases=cases):
+            return tuple(case.body for case in cases)
+        case _:
+            return ()
+
+
+def _resolve_module_path(current: Path, reference: _ImportedReference) -> Path | None:
+    current = current.resolve()
+    checkout = _checkout_root(current)
+    if checkout is None:
+        return None
+    module_parts = tuple(part for part in reference.module.split(".") if part)
+    candidates: set[Path] = set()
+    if 0 < reference.level <= _MAX_PATH_ANCESTORS:
+        base = current.parent
+        for _ in range(reference.level - 1):
+            base = base.parent
+        module_base = base.joinpath(*module_parts)
+        candidates.update(_existing_module_files(module_base, checkout))
+    elif module_parts:
+        first = module_parts[0]
+        try:
+            parent_parts = current.parent.relative_to(checkout).parts
+        except ValueError:
+            return None
+        for index, part in enumerate(parent_parts[:_MAX_PATH_ANCESTORS]):
+            if part != first:
+                continue
+            anchor = checkout.joinpath(*parent_parts[:index])
+            candidates.update(_existing_module_files(anchor.joinpath(*module_parts), checkout))
+    return next(iter(candidates)) if len(candidates) == 1 else None
+
+
+def _checkout_root(current: Path) -> Path | None:
+    for depth, ancestor in enumerate(current.parents):
+        if depth >= _MAX_PATH_ANCESTORS:
+            break
+        if (ancestor / ".git").exists():
+            return ancestor.resolve()
+    return None
+
+
+def _existing_module_files(base: Path, checkout: Path) -> frozenset[Path]:
+    candidates = (base.with_suffix(".py"), base / "__init__.py")
+    resolved: set[Path] = set()
+    for candidate in candidates:
+        if not candidate.is_file() or _has_symlink_component(candidate, checkout):
+            continue
+        target = candidate.resolve()
+        if target.is_relative_to(checkout):
+            resolved.add(target)
+    return frozenset(resolved)
+
+
+def _has_symlink_component(path: Path, checkout: Path) -> bool:
+    try:
+        relative = path.relative_to(checkout)
+    except ValueError:
+        return True
+    current = checkout
+    for part in relative.parts:
+        current /= part
+        if current.is_symlink():
+            return True
+    return False
+
+
+def _module_symbol_is_dependency_alias(
+    path: Path,
+    symbol: str,
+    seen: set[tuple[Path, str]],
+    module_cache: dict[Path, ast.Module | None],
+    depth: int,
+) -> bool:
+    if depth >= _MAX_IMPORT_HOPS:
+        return False
+    key = (path, symbol)
+    if key in seen:
+        return False
+    seen.add(key)
+    tree = _read_module(path, module_cache)
+    if tree is None:
+        return False
+    binding = _unique_module_binding(tree, symbol)
+    expression = _binding_expression(binding, symbol)
+    if expression is not None:
+        if isinstance(expression, ast.Name):
+            return _module_symbol_is_dependency_alias(
+                path,
+                expression.id,
+                seen,
+                module_cache,
+                depth + 1,
+            )
+        imported = _imported_reference(tree, expression)
+        if imported is not None:
+            target = _resolve_module_path(path, imported)
+            return target is not None and _module_symbol_is_dependency_alias(
+                target,
+                imported.symbol,
+                seen,
+                module_cache,
+                depth + 1,
+            )
+        index = FastapiIndex(tree)
+        parts = index.annotated_parts(expression)
+        if parts is None:
+            return False
+        markers = [marker for item in parts.metadata if (marker := index.marker(item)) is not None]
+        return len(markers) == 1 and markers[0].name in _DEPENDENCY_MARKERS
+    if isinstance(binding, ast.ImportFrom):
+        imported = _imported_reference(tree, ast.Name(id=symbol))
+        if imported is None:
+            return False
+        target = _resolve_module_path(path, imported)
+        return target is not None and _module_symbol_is_dependency_alias(
+            target,
+            imported.symbol,
+            seen,
+            module_cache,
+            depth + 1,
+        )
+    return False
+
+
+def _binding_expression(binding: ast.stmt | None, symbol: str) -> ast.expr | None:
+    if isinstance(binding, ast.Assign) and len(binding.targets) == 1:
+        target = binding.targets[0]
+        if isinstance(target, ast.Name) and target.id == symbol:
+            return binding.value
+    if isinstance(binding, ast.AnnAssign) and isinstance(binding.target, ast.Name) and binding.target.id == symbol:
+        return binding.value
+    if isinstance(binding, ast.TypeAlias) and binding.name.id == symbol:
+        return binding.value
+    return None
+
+
+def _read_module(path: Path, cache: dict[Path, ast.Module | None]) -> ast.Module | None:
+    if path in cache:
+        return cache[path]
+    try:
+        if path.stat().st_size > _MAX_IMPORTED_MODULE_BYTES:
+            tree = None
+        else:
+            tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"), filename=str(path))
+    except OSError, SyntaxError:
+        tree = None
+    cache[path] = tree
+    return tree

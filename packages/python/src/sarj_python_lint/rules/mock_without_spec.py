@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 _MOCK_MODULE = "unittest.mock"
 
 # Constructors whose default is an attribute-permissive double.
-_UNSPECCED_FACTORIES = frozenset({"Mock", "MagicMock", "AsyncMock"})
+_UNSPECCED_FACTORIES = frozenset({"Mock", "MagicMock", "AsyncMock", "NonCallableMock", "NonCallableMagicMock"})
 
 # `patch`/`patch.object` install a MagicMock unless told otherwise.
 _PATCHERS = frozenset({"patch"})
@@ -41,7 +41,17 @@ _SPEC_KEYWORDS = frozenset({"spec", "spec_set", "autospec", "new", "new_callable
 
 
 # Positional arity reveals when each mock constructor already received its spec or replacement.
-_REPLACEMENT_ARITY = MappingProxyType({"Mock": 1, "MagicMock": 1, "AsyncMock": 1, "patch": 2, "patch.object": 3})
+_REPLACEMENT_ARITY = MappingProxyType(
+    {
+        "Mock": 1,
+        "MagicMock": 1,
+        "AsyncMock": 1,
+        "NonCallableMock": 1,
+        "NonCallableMagicMock": 1,
+        "patch": 2,
+        "patch.object": 3,
+    }
+)
 
 # Attributes every mock answers regardless of what it stands in for.
 _MOCK_API_ATTRS = frozenset(
@@ -456,7 +466,21 @@ def _unspecced_calls(
 def _has_spec_argument(node: ast.Call) -> bool:
     # `**kwargs` forwarding could smuggle a spec in; treat it as specced rather
     # than guess, since the call site no longer states its own contract.
-    return any(kw.arg is None or kw.arg in _SPEC_KEYWORDS for kw in node.keywords)
+    for keyword in node.keywords:
+        if keyword.arg is None:
+            return True
+        if keyword.arg == "new":
+            # `patch(..., new=None)` deliberately installs `None` rather than a mock.
+            return True
+        if keyword.arg == "autospec":
+            if not (isinstance(keyword.value, ast.Constant) and keyword.value.value in {None, False}):
+                return True
+            continue
+        if keyword.arg in _SPEC_KEYWORDS and not (
+            isinstance(keyword.value, ast.Constant) and keyword.value.value is None
+        ):
+            return True
+    return False
 
 
 def _has_positional_replacement(node: ast.Call, label: str) -> bool:

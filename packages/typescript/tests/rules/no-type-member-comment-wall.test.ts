@@ -227,6 +227,20 @@ ruleTester.run("no-type-member-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
+    // Tag-only blocks are documentation-generator directives, not prose that
+    // re-spells a member. Match the declaration-wall rule's ownership.
+    {
+      code: [
+        "interface ReadonlySurface {",
+        "  /** @readonly */",
+        "  host: string;",
+        "  /** @readonly */",
+        "  port: number;",
+        "  /** @readonly */",
+        "  user: string;",
+        "}",
+      ].join("\n"),
+    },
     // A rule of dashes is a banner; `no-comment-cruft` owns that shape. Take
     // the dashes away and each comment is the member's own name.
     {
