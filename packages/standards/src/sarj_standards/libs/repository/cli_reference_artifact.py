@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Literal, TypedDict, TypeGuard
 
-from sarj_standards._meta import CONFIGS_DIR
+from sarj_standards._meta import CONFIGS_DIR, __version__
 
 
 if TYPE_CHECKING:
@@ -54,15 +54,24 @@ class ReferenceCommand(TypedDict):
     commands: list[ReferenceCommand]
 
 
+class ReferenceLauncher(TypedDict):
+    """Source-derived commands for first-time use."""
+
+    install: str
+    runLatest: str
+
+
 class CliReference(TypedDict):
     """Versioned, source-derived command-line reference."""
 
     schemaVersion: int
+    version: str
     program: str
     summary: str
     epilog: str | None
     globalOptions: list[ReferenceArgument]
     commands: list[ReferenceCommand]
+    launcher: ReferenceLauncher
 
 
 def validate(value: object) -> CliReference:
@@ -70,17 +79,22 @@ def validate(value: object) -> CliReference:
     if not _is_object(value) or frozenset(value) != frozenset(
         {
             "schemaVersion",
+            "version",
             "program",
             "summary",
             "epilog",
             "globalOptions",
             "commands",
+            "launcher",
         }
     ):
         msg = "CLI reference has an invalid top-level shape"
         raise ValueError(msg)
     if value["schemaVersion"] != SCHEMA_VERSION:
         msg = f"unsupported CLI reference schemaVersion: {value['schemaVersion']!r}; expected {SCHEMA_VERSION}"
+        raise ValueError(msg)
+    if not isinstance(value["version"], str) or not value["version"]:
+        msg = "CLI reference version must be a non-empty string"
         raise ValueError(msg)
     if not isinstance(value["program"], str) or not value["program"]:
         msg = "CLI reference program must be a non-empty string"
@@ -94,16 +108,19 @@ def validate(value: object) -> CliReference:
         raise TypeError(msg)
     global_options = value["globalOptions"]
     commands = value["commands"]
-    if not _is_argument_list(global_options) or not _is_command_list(commands):
+    launcher = value["launcher"]
+    if not _is_argument_list(global_options) or not _is_command_list(commands) or not _is_launcher(launcher):
         msg = "CLI reference options and commands must have the documented shape"
         raise TypeError(msg)
     return {
         "schemaVersion": SCHEMA_VERSION,
+        "version": value["version"],
         "program": value["program"],
         "summary": value["summary"],
         "epilog": epilog,
         "globalOptions": global_options,
         "commands": commands,
+        "launcher": launcher,
     }
 
 
@@ -156,6 +173,17 @@ def _is_command(value: object) -> TypeGuard[ReferenceCommand]:
     )
 
 
+def _is_launcher(value: object) -> TypeGuard[ReferenceLauncher]:
+    return (
+        _is_object(value)
+        and frozenset(value) == frozenset(ReferenceLauncher.__required_keys__)
+        and isinstance(value["install"], str)
+        and bool(value["install"])
+        and isinstance(value["runLatest"], str)
+        and bool(value["runLatest"])
+    )
+
+
 def load(path: Path = CLI_REFERENCE_PATH) -> CliReference:
     """Load the packaged CLI reference without constructing the parser."""
     try:
@@ -168,6 +196,8 @@ def load(path: Path = CLI_REFERENCE_PATH) -> CliReference:
 
 def build(parser: argparse.ArgumentParser) -> CliReference:
     """Traverse the supplied parser graph; never depend on the CLI presentation layer."""
+    from sarj_standards.libs.adoption import launcher  # ruff: ignore[import-outside-top-level]
+
     root = _command(
         parser,
         name=parser.prog,
@@ -177,11 +207,13 @@ def build(parser: argparse.ArgumentParser) -> CliReference:
     return validate(
         {
             "schemaVersion": SCHEMA_VERSION,
+            "version": __version__,
             "program": parser.prog,
             "summary": parser.description or "",
             "epilog": parser.epilog,
             "globalOptions": root["options"],
             "commands": root["commands"],
+            "launcher": {"install": launcher.install(), "runLatest": launcher.latest()},
         }
     )
 

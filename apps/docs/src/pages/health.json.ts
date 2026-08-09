@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto';
 import type { APIRoute } from 'astro';
 
+import { sourceRevision } from '../lib/build';
 import { catalog } from '../lib/catalog';
+import { cliReference } from '../lib/cli';
 
 const catalogJson = JSON.stringify(catalog);
 const payload = {
@@ -9,7 +11,8 @@ const payload = {
   schemaVersion: catalog.schemaVersion,
   rules: catalog.rules.length,
   catalogSha256: createHash('sha256').update(catalogJson).digest('hex'),
-  commit: process.env.WORKERS_CI_COMMIT_SHA ?? process.env.GITHUB_SHA ?? 'local',
+  commit: sourceRevision,
+  standardsVersion: cliReference.version,
 };
 
 export const GET = (() => new Response(`${JSON.stringify(payload)}\n`, {

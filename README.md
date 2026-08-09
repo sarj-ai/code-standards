@@ -8,7 +8,7 @@ One deterministic quality gate for Sarj Python, TypeScript, SQL, IaC, and reposi
 
 | Package | Version | Registry | Description |
 | --- | --- | --- | --- |
-| [`sarj-standards`](packages/standards/) | `3.0.0` | PyPI | One deterministic quality gate for Sarj Python, TypeScript, SQL, IaC, and repository policy. |
+| [`sarj-standards`](packages/standards/) | `3.0.1` | PyPI | One deterministic quality gate for Sarj Python, TypeScript, SQL, IaC, and repository policy. |
 | [`sarj-python-lint`](packages/python/) | `0.58.0` | PyPI | Custom Python lint rules — AST-based, pre-commit-friendly, hypermodern defaults |
 | [`sarj-sql-lint`](packages/sql/) | `0.10.0` | PyPI | Deterministic PostgreSQL migration rules for safe, repeatable schema changes. |
 | [`sarj-iac-lint`](packages/iac/) | `0.8.0` | PyPI | Custom Terraform / IaC lint rules — stdlib, pre-commit-friendly. |

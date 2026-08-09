@@ -134,6 +134,19 @@ def test_release_ready_is_one_stable_required_gate() -> None:
     assert "make build" in workflow
 
 
+def test_documentation_deploy_is_revision_bound_and_self_verifying() -> None:
+    workflow = (REPO_ROOT / ".github/workflows/docs.yml").read_text(encoding="utf-8")
+
+    assert "branches: [main]" in workflow
+    assert "schedule:" in workflow
+    assert "WORKERS_CI_COMMIT_SHA: ${{ github.sha }}" in workflow
+    assert "Verify production credentials" in workflow
+    assert "actions/upload-artifact@" in workflow
+    assert "actions/download-artifact@" in workflow
+    assert "Verify deployed revision" in workflow
+    assert "h.commit !== process.env.EXPECTED_COMMIT" in workflow
+
+
 @pytest.mark.parametrize(
     ("package", "module", "executable"),
     [

@@ -24,6 +24,7 @@ def test_shipped_reference_matches_parser_graph() -> None:
 
 def test_reference_contains_nested_commands_and_arguments() -> None:
     reference = cli_reference_artifact.load()
+    assert reference["version"]
     commands = reference["commands"]
     assert _is_object_list(commands)
     show = next(command for command in commands if command["name"] == "show")
@@ -33,3 +34,7 @@ def test_reference_contains_nested_commands_and_arguments() -> None:
     options = reference["globalOptions"]
     assert _is_object_list(options)
     assert any(argument["names"] == ["--root"] for argument in options)
+    assert reference["launcher"] == {
+        "install": "uv tool install --python 3.14 sarj-standards",
+        "runLatest": "uvx --isolated --python 3.14 --from sarj-standards sarj-standards",
+    }

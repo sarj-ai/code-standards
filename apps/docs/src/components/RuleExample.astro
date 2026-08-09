@@ -18,7 +18,7 @@ const { example } = Astro.props;
   </header>
   {example.files.map((file) => (
     <figure>
-      <figcaption>{file.path}{file.path === example.focusPath && <span>focus</span>}</figcaption>
+      <figcaption>{file.path}{file.path === example.focusPath && <span> · focus</span>}</figcaption>
       <pre><code>{file.source}</code></pre>
     </figure>
   ))}

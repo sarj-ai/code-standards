@@ -30,3 +30,13 @@ def argv(*, executable: str = "uvx", version: str | None = None, refresh: bool =
 def pinned(version: str) -> str:
     """Render the exact launcher embedded in hooks and CI."""
     return shlex.join(argv(version=version))
+
+
+def latest() -> str:
+    """Render the installation-free launcher for the latest release."""
+    return shlex.join(argv())
+
+
+def install() -> str:
+    """Render the optional persistent tool installation command."""
+    return shlex.join(("uv", "tool", "install", "--python", TOOL_PYTHON, PACKAGE))

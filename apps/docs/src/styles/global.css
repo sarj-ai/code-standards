@@ -7,7 +7,7 @@
   --sl-color-white: #172033;
   --sl-color-gray-1: #29334a;
   --sl-color-gray-2: #46516a;
-  --sl-color-gray-3: #69748d;
+  --sl-color-gray-3: #5f6980;
   --sl-color-gray-4: #aeb6c8;
   --sl-color-gray-5: #dce0e9;
   --sl-color-gray-6: #eceef4;
@@ -126,7 +126,7 @@ body {
 
 .home-hero h1 {
   margin: 0;
-  font-size: clamp(3.4rem, 8vw, 7.4rem);
+  font-size: clamp(3.4rem, 8vw, 6rem);
   line-height: 0.86;
 }
 
@@ -863,10 +863,6 @@ body {
   .home-hero {
     grid-template-columns: 1fr;
     min-height: auto;
-  }
-
-  .home-hero__evidence {
-    order: -1;
   }
 
   .stat-line,

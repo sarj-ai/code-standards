@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+import { sourceRevision } from './build';
+
 export const ENGINES = ['eslint', 'iac', 'python', 'sql', 'text'] as const;
 export type Engine = (typeof ENGINES)[number];
 export type DefaultLevel = 'error' | 'off' | 'warning';
@@ -213,9 +215,5 @@ export function rulesForEngine(engine: Engine): Rule[] {
 }
 
 export function sourceUrl(path: string): string {
-  return `https://github.com/sarj-ai/standards/blob/main/${path.split('/').map(encodeURIComponent).join('/')}`;
-}
-
-export function titleFromId(id: string): string {
-  return id.replaceAll('-', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+  return `https://github.com/sarj-ai/standards/blob/${sourceRevision}/${path.split('/').map(encodeURIComponent).join('/')}`;
 }

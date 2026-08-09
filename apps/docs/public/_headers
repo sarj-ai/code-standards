@@ -11,9 +11,13 @@
 
 /api/v1/catalog.json
   Access-Control-Allow-Origin: *
+  Cache-Control: public, max-age=300, s-maxage=3600, stale-while-revalidate=86400
+  Content-Type: application/json; charset=utf-8
 
 /api/v1/rule-catalog.schema.json
   Access-Control-Allow-Origin: *
+  Cache-Control: public, max-age=300, s-maxage=3600, stale-while-revalidate=86400
+  Content-Type: application/schema+json; charset=utf-8
 
-https://:version.:subdomain.workers.dev/*
-  X-Robots-Tag: noindex, nofollow
+/health.json
+  Cache-Control: no-store

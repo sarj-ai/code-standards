@@ -15,7 +15,7 @@ const languages = [...new Set(rules.flatMap((rule) => rule.languages))].sort();
 
 <section class="rule-directory" data-rule-directory>
   {controls && (
-    <form class="rule-controls" role="search">
+    <form class="rule-controls" role="search" aria-label="Filter rules">
       <label class="search-field">
         <span>Find a rule</span>
         <input
@@ -111,10 +111,12 @@ const languages = [...new Set(rules.flatMap((rule) => rule.languages))].sort();
 
       const apply = () => {
         const term = query instanceof HTMLInputElement ? query.value.trim().toLowerCase() : '';
+        const terms = term.split(/\s+/).filter(Boolean);
         let visible = 0;
         for (const row of rows) {
           if (!(row instanceof HTMLTableRowElement)) continue;
-          const matchesTerm = !term || (row.dataset.search ?? '').includes(term);
+          const searchable = row.dataset.search ?? '';
+          const matchesTerm = terms.every((token) => searchable.includes(token));
           const matchesFilters = filters.every((filter) => {
             if (!(filter instanceof HTMLSelectElement) || !filter.value) return true;
             return (row.dataset[filter.dataset.ruleFilter ?? ''] ?? '').split(' ').includes(filter.value);
