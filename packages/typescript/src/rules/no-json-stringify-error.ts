@@ -17,17 +17,12 @@ export const noJsonStringifyErrorDocumentation = {
   rationale: "Native Error details are non-enumerable, so generic JSON serialization discards diagnostic information.",
   remediation: "Serialize explicit error fields or use an error-aware serializer.",
   category: "correctness",
-  limitations: ["The rule uses local syntax and naming evidence rather than type information."],
+  limitations: ["The rule uses local catch-binding and constructor provenance rather than type information."],
   examples: [
     { id: "explicit-error-message", title: "Serialize an enumerable error field", outcome: "no-match", files: [{ path: "src/report.ts", source: "try { f(); } catch (err) { JSON.stringify({ error: err.message }); }" }], focusPath: "src/report.ts", expectedCount: 0, public: true },
     { id: "stringified-error", title: "Do not stringify an Error object", outcome: "match", files: [{ path: "src/report.ts", source: "try { f(); } catch (err) { JSON.stringify({ error: err }); }" }], focusPath: "src/report.ts", expectedCount: 1, public: true },
   ],
 } as const satisfies RuleDocumentation;
-
-const ERROR_NAME_PATTERN = /^(e|err|error|ex|exc)$/i;
-
-/** Property names whose value is itself an error object (unsafe to stringify). */
-const ERROR_PROP_PATTERN = /^(cause|lastError|error|err|exception|originalError|innerError)$/i;
 
 /** Property names whose value is a plain string — the recommended escape hatch. */
 const SAFE_STRING_PROPS: ReadonlySet<string> = new Set(["message", "stack", "name"]);
@@ -60,6 +55,31 @@ const BUILTIN_ERROR_CONSTRUCTORS: ReadonlySet<string> = new Set([
   "URIError",
 ]);
 
+/** Whether a stable local binding is constructively proven to hold an Error. */
+function identifierIsProvenError(
+  identifier: TSESTree.Identifier,
+  scope: Scope.Scope,
+): boolean {
+  if (isCatchBinding(scope, identifier.name)) return true;
+  let current: Scope.Scope | null = scope;
+  while (current !== null && !current.set.has(identifier.name)) {
+    current = current.upper;
+  }
+  const variable = current?.set.get(identifier.name);
+  if (variable === undefined || variable.defs.length !== 1) return false;
+  const definition = variable.defs[0];
+  if (definition?.type !== "Variable") return false;
+  const initializer = definition.node.init;
+  return (
+    initializer?.type === "NewExpression" &&
+    initializer.callee.type === "Identifier" &&
+    BUILTIN_ERROR_CONSTRUCTORS.has(initializer.callee.name) &&
+    variable.references.every(
+      (reference) => !reference.isWrite() || reference.init === true,
+    )
+  );
+}
+
 function isCatchBinding(scope: Scope.Scope, name: string): boolean {
   let current: Scope.Scope | null = scope;
   while (current) {
@@ -73,37 +93,6 @@ function isCatchBinding(scope: Scope.Scope, name: string): boolean {
     }
     current = current.upper;
   }
-  return false;
-}
-
-/**
- * True if a member-expression argument (`err.cause`, `this.lastError`) denotes an
- * Error value: an error-suggesting property name, or an error-suggesting base whose
- * property is not a known string accessor (`.message` / `.stack` / `.name`).
- */
-function memberSuggestsError(
-  member: TSESTree.MemberExpression,
-  scope: Scope.Scope,
-): boolean {
-  const propName =
-    !member.computed && member.property.type === "Identifier" ? member.property.name : null;
-
-  if (propName !== null && ERROR_PROP_PATTERN.test(propName)) {
-    return true;
-  }
-
-  const base = member.object;
-  const baseSuggestsError =
-    base.type === "Identifier" &&
-    (ERROR_NAME_PATTERN.test(base.name) || isCatchBinding(scope, base.name));
-  if (baseSuggestsError) {
-    if (propName === null) {
-      return true;
-    }
-    const lowered = propName.toLowerCase();
-    return !SAFE_STRING_PROPS.has(lowered) && !PAYLOAD_PROPS.has(lowered);
-  }
-
   return false;
 }
 
@@ -289,10 +278,13 @@ function expressionSuggestsError(
   scope: Scope.Scope,
 ): boolean {
   if (expression.type === "Identifier") {
-    return (
-      ERROR_NAME_PATTERN.test(expression.name) ||
-      isCatchBinding(scope, expression.name)
-    );
+    return identifierIsProvenError(expression, scope);
+  }
+  if (
+    expression.type === "NewExpression" &&
+    expression.callee.type === "Identifier"
+  ) {
+    return BUILTIN_ERROR_CONSTRUCTORS.has(expression.callee.name);
   }
   return (
     expression.type === "MemberExpression" &&
@@ -300,35 +292,30 @@ function expressionSuggestsError(
   );
 }
 
-/** Stronger provenance required when an identifier is nested in a payload literal. */
-function nestedExpressionSuggestsError(
-  expression: TSESTree.Expression,
+/**
+ * True if a member-expression argument denotes a property of a value proven
+ * locally to be an Error, excluding the ordinary string/payload escape hatches.
+ */
+function memberSuggestsError(
+  member: TSESTree.MemberExpression,
   scope: Scope.Scope,
 ): boolean {
-  if (expression.type === "Identifier") {
-    if (isCatchBinding(scope, expression.name)) return true;
-    let current: Scope.Scope | null = scope;
-    while (current !== null && !current.set.has(expression.name)) {
-      current = current.upper;
+  const propName =
+    !member.computed && member.property.type === "Identifier" ? member.property.name : null;
+
+  const base = member.object;
+  const baseSuggestsError =
+    base.type === "Identifier" &&
+    identifierIsProvenError(base, scope);
+  if (baseSuggestsError) {
+    if (propName === null) {
+      return true;
     }
-    const variable = current?.set.get(expression.name);
-    if (variable === undefined || variable.defs.length !== 1) return false;
-    const definition = variable.defs[0];
-    if (definition?.type !== "Variable") return false;
-    const initializer = definition.node.init;
-    return (
-      initializer?.type === "NewExpression" &&
-      initializer.callee.type === "Identifier" &&
-      BUILTIN_ERROR_CONSTRUCTORS.has(initializer.callee.name) &&
-      variable.references.every(
-        (reference) => !reference.isWrite() || reference.init === true,
-      )
-    );
+    const lowered = propName.toLowerCase();
+    return !SAFE_STRING_PROPS.has(lowered) && !PAYLOAD_PROPS.has(lowered);
   }
-  return (
-    expression.type === "MemberExpression" &&
-    memberSuggestsError(expression, scope)
-  );
+
+  return false;
 }
 
 export default createRule<Options, MessageIds>({
@@ -360,14 +347,9 @@ export default createRule<Options, MessageIds>({
         }
 
         const scope = context.sourceCode.getScope(firstArg);
-        const isNestedLiteral =
-          firstArg.type === "ObjectExpression" ||
-          firstArg.type === "ArrayExpression";
         const unsafeValue = directLiteralValues(firstArg).find(
           (value) =>
-            (isNestedLiteral
-              ? nestedExpressionSuggestsError(value, scope)
-              : expressionSuggestsError(value, scope)) &&
+            expressionSuggestsError(value, scope) &&
             !isGuardedByInstanceofError(node, value, context.sourceCode) &&
             !isNarrowedByEarlyReturn(node, value, context.sourceCode),
         );

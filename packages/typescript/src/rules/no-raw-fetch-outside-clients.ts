@@ -83,6 +83,8 @@ const SERVER_ACTION_SKIP_FILE_RE =
 const NON_REACT_FRAMEWORK_RE =
   /^(?:@angular\/|@nestjs\/|vue$|vue\/|svelte$|svelte\/|solid-js$|solid-js\/|@ember\/|rxjs$|rxjs\/)/;
 
+const NEXT_MODULE_PATH_RE = /(?:^|[/\\])(?:app|pages)[/\\]/u;
+
 function isGlobalFetchCall(
   node: TSESTree.CallExpression,
   resolvesToGlobal: (identifier: TSESTree.Identifier) => boolean,
@@ -281,6 +283,22 @@ export default createRule<Options, MessageIds>({
         typeof statement.source.value === "string" &&
         NON_REACT_FRAMEWORK_RE.test(statement.source.value),
     );
+    const hasUseClientDirective = context.sourceCode.ast.body.some(
+      (statement) =>
+        statement.type === AST_NODE_TYPES.ExpressionStatement &&
+        statement.expression.type === AST_NODE_TYPES.Literal &&
+        statement.expression.value === "use client",
+    );
+    const hasNextImport = context.sourceCode.ast.body.some(
+        (statement) =>
+          statement.type === AST_NODE_TYPES.ImportDeclaration &&
+          typeof statement.source.value === "string" &&
+          (statement.source.value === "next" ||
+            statement.source.value.startsWith("next/")),
+      );
+    const hasNextEvidence =
+      hasNextImport ||
+      (hasUseClientDirective && NEXT_MODULE_PATH_RE.test(filename));
 
     function resolvesToGlobal(identifier: TSESTree.Identifier): boolean {
       const variable = ASTUtils.findVariable(
@@ -389,6 +407,7 @@ export default createRule<Options, MessageIds>({
     function serverActionOwns(node: TSESTree.CallExpression): boolean {
       if (
         node.callee.type !== AST_NODE_TYPES.Identifier ||
+        !hasNextEvidence ||
         SERVER_ACTION_SKIP_FILE_RE.test(filename) ||
         nonReactFramework
       ) {

@@ -36,6 +36,7 @@ _UNION_NAMES = frozenset({"Union"})
 _COROUTINE_NAMES = frozenset({"Coroutine"})
 
 _MIN_ELEMENTS = 2
+_DOCUMENTATION_DIR_NAMES = frozenset({"docs", "docs_src"})
 
 #: How many classes in one module must declare a same-named method before the
 #: shape counts as a shared contract rather than one class's own design.
@@ -81,7 +82,7 @@ class PreferNamedtupleOverTupleReturn(Rule):
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Generated files, tests, private functions, nested functions, and declared overrides are excluded.",
+            "Generated files, tests, documentation examples, private functions, nested functions, and declared overrides are excluded.",
             "Only fixed multi-item tuple annotations or inferred tuple-literal returns are reported.",
         ),
         examples=(
@@ -119,7 +120,7 @@ class PreferNamedtupleOverTupleReturn(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated(path, source):
+        if is_generated(path, source) or _is_documentation_path(path):
             return []
         if is_test_path(path):
             return []
@@ -154,6 +155,11 @@ class PreferNamedtupleOverTupleReturn(Rule):
             )
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
+
+
+def _is_documentation_path(path: Path) -> bool:
+    """Report whether `path` is executable source embedded in documentation."""
+    return any(part.lower() in _DOCUMENTATION_DIR_NAMES for part in path.parts)
 
 
 @dataclass(frozen=True, slots=True)

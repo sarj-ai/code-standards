@@ -151,8 +151,8 @@ class _KwargHeavyVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def reportable_hits(self, tree: ast.Module) -> list[tuple[ast.Call, int]]:
-        """Keep repeated calls unless their callee is a helper defined here."""
-        counts = Counter(name for n in nodes(tree, ast.Call) if (name := _callee_name(n.func)) is not None)
+        """Keep repeated wide test calls unless their callee is a helper defined here."""
+        counts = Counter(name for node, _ in self.hits if (name := _callee_name(node.func)) is not None)
         local_defs = _locally_defined_names(tree)
         return [
             (node, count)

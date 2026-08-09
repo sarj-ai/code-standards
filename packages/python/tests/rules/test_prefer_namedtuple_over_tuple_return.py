@@ -204,6 +204,15 @@ def test_test_file_is_exempt():
     assert _check(src, path="src/trio/_tests/test_windows_pipes.py") == []
 
 
+@pytest.mark.parametrize("path", ["docs_src/tutorial.py", "docs/examples/tutorial.py"])
+def test_documentation_examples_are_exempt(path: str) -> None:
+    assert not _check("def pair() -> tuple[int, str]: ...", path)
+
+
+def test_documentation_directory_name_does_not_hide_production_source() -> None:
+    assert _check("def pair() -> tuple[int, str]: ...", "src/documentation/pair.py")
+
+
 def test_not_implemented_stub_still_bans_a_new_tuple_contract():
     # Minimized from trio's SocketType.accept: the tuple shape mirrors stdlib
     # socket.accept and is not this module's to change.

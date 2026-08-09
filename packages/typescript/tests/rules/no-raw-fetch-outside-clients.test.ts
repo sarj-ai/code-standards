@@ -152,13 +152,13 @@ ruleTester.run("no-raw-fetch-outside-clients", rule, {
     },
     {
       name: "defers an internal API mutation to prefer-server-actions",
-      code: "export const M = (id) => { fetch(`/api/links/sync?workspaceId=${id}`, { method: 'POST' }); };",
-      filename: "/repo/apps/web/ui/modals/modal-provider.tsx",
+      code: "'use client'; export const M = (id) => { fetch(`/api/links/sync?workspaceId=${id}`, { method: 'POST' }); };",
+      filename: "/repo/app/ui/modals/modal-provider.tsx",
     },
     {
       name: "defers resolved internal API mutation arguments to prefer-server-actions",
-      code: "const url = '/api/items'; const init = { method: 'POST' }; fetch(url, init);",
-      filename: "/repo/apps/web/ui/items.tsx",
+      code: "'use client'; const url = '/api/items'; const init = { method: 'POST' }; fetch(url, init);",
+      filename: "/repo/app/ui/items.tsx",
     },
     {
       name: "defers a GET inside an effect to no-client-side-data-fetching",
@@ -197,13 +197,13 @@ ruleTester.run("no-raw-fetch-outside-clients", rule, {
     },
     {
       name: "allows a same-origin mutation behind the conventional base-path helper",
-      code: "await fetch(withBase('/api/items'), { method: 'POST' });",
-      filename: "/repo/src/actions/items.ts",
+      code: "'use client'; await fetch(withBase('/api/items'), { method: 'POST' });",
+      filename: "/repo/app/ui/actions.tsx",
     },
     {
       name: "allows a base-prefixed same-origin mutation",
-      code: "await fetch('/demo/api/items', { method: 'DELETE' });",
-      filename: "/repo/src/actions/items.ts",
+      code: "'use client'; await fetch('/demo/api/items', { method: 'DELETE' });",
+      filename: "/repo/app/ui/actions.tsx",
     },
     {
       name: "allows dotted test basenames",
@@ -303,6 +303,18 @@ ruleTester.run("no-raw-fetch-outside-clients", rule, {
       name: "keeps internal mutations in non-React framework modules",
       code: "import { ref } from 'vue'; fetch('/api/items', { method: 'POST' });",
       filename: "/repo/src/items.ts",
+      errors: [{ messageId: "rawFetch" }],
+    },
+    {
+      name: "keeps internal mutations in React Vite modules",
+      code: "import React from 'react'; fetch('/api/items', { method: 'POST' });",
+      filename: "/repo/src/components/actions.tsx",
+      errors: [{ messageId: "rawFetch" }],
+    },
+    {
+      name: "keeps Vite pages-path mutations without a use-client directive",
+      code: "import React from 'react'; fetch('/api/items', { method: 'POST' });",
+      filename: "/repo/src/pages/actions.tsx",
       errors: [{ messageId: "rawFetch" }],
     },
     {

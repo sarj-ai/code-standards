@@ -143,6 +143,50 @@ def test_flags_keyword_echo():
     assert len(_check(_ECHO_TEST)) == 1
 
 
+def test_imported_model_constructor_is_not_assumed_to_echo_keywords():
+    src = """
+    from app.models import User
+
+    def test_valid_name_is_preserved():
+        user = User(name="Ada")
+        assert user.name == "Ada"
+    """
+    assert _check(src) == []
+
+
+def test_constructor_reached_through_imported_module_is_not_assumed_transparent():
+    src = """
+    import app.models as models
+
+    def test_valid_name_is_preserved():
+        user = models.User(name="Ada")
+        assert user.name == "Ada"
+    """
+    assert _check(src) == []
+
+
+def test_unrelated_import_does_not_hide_an_unresolved_fixture_record():
+    src = """
+    import pytest
+
+    def test_name():
+        user = User(name="Ada")
+        assert user.name == "Ada"
+    """
+    assert len(_check(src)) == 1
+
+
+def test_imported_constructor_still_allows_a_provable_isinstance_finding():
+    src = """
+    from app.models import User
+
+    def test_user_type():
+        user = User(name="Ada")
+        assert isinstance(user, User)
+    """
+    assert len(_check(src)) == 1
+
+
 def test_flags_keyword_echo_written_the_other_way_round():
     src = """
     def test_thing():

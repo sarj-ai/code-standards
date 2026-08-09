@@ -256,6 +256,28 @@ ruleTester.run("no-sentinel-return-on-catch", rule, {
       `,
     },
     {
+      name: "allows pure array validation after JSON parsing",
+      code: `
+        function parseMessages(text) {
+          try {
+            const parsed = JSON.parse(text);
+            return Array.isArray(parsed) ? parsed : [];
+          } catch { return []; }
+        }
+      `,
+    },
+    {
+      name: "allows optional browser-storage reads around JSON parsing",
+      code: `
+        function readRecent() {
+          try {
+            const parsed = JSON.parse(window.localStorage.getItem('recent') ?? '[]');
+            return Array.isArray(parsed) ? parsed : [];
+          } catch { return []; }
+        }
+      `,
+    },
+    {
       name: "allows a deliberate Error throw used only to capture and inspect its stack",
       code: `
         function inferMarker() {
@@ -431,6 +453,11 @@ ruleTester.run("no-sentinel-return-on-catch", rule, {
     {
       name: "does not hide an earlier operational failure behind a later parse",
       code: "function readConfig(path) { try { const text = read(path); return JSON.parse(text); } catch { return null; } }",
+      errors: [{ messageId: "noSentinelReturn" }],
+    },
+    {
+      name: "does not treat an arbitrary getItem call as browser-storage parsing",
+      code: "function readConfig(db) { try { return JSON.parse(db.getItem('config')); } catch { return null; } }",
       errors: [{ messageId: "noSentinelReturn" }],
     },
     {

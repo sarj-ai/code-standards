@@ -47,6 +47,49 @@ def test_every_assignment_spelling_silences_the_rule(assignment: str) -> None:
     assert _check(f"{assignment}\nALTER TABLE users ADD COLUMN note TEXT;\n") == []
 
 
+@pytest.mark.parametrize("boundary", ["-- migrate:down", "-- migrate:down transaction:false", "-- +goose Down"])
+def test_up_timeout_does_not_leak_into_separately_executed_down_section(boundary: str) -> None:
+    source = f"""
+    -- migrate:up
+    SET lock_timeout = '3s';
+    ALTER TABLE users ADD COLUMN note TEXT;
+    {boundary}
+    ALTER TABLE users DROP COLUMN note;
+    """
+
+    (finding,) = _check(source)
+
+    assert finding.line == 6
+
+
+def test_each_migration_section_can_set_its_own_timeout() -> None:
+    source = """
+    -- migrate:up
+    SET lock_timeout = '3s';
+    ALTER TABLE users ADD COLUMN note TEXT;
+    -- migrate:down
+    SET lock_timeout = '3s';
+    ALTER TABLE users DROP COLUMN note;
+    """
+
+    assert _check(source) == []
+
+
+def test_down_like_text_inside_a_function_body_is_not_a_section_boundary() -> None:
+    source = """
+    SET lock_timeout = '3s';
+    DO $body$
+    -- migrate:down
+    BEGIN
+      NULL;
+    END
+    $body$;
+    ALTER TABLE users ADD COLUMN note TEXT;
+    """
+
+    assert _check(source) == []
+
+
 def test_zero_timeout_is_not_protection() -> None:
     """The boundary: the spelling parses, but `0` means "wait forever"."""
     assert len(_check("SET lock_timeout = 0;\nALTER TABLE users ADD COLUMN note TEXT;\n")) == 1

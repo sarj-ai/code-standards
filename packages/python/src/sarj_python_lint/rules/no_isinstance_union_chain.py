@@ -21,6 +21,7 @@ from sarj_python_lint.rule_base import (
     parse_or_none,
 )
 from sarj_python_lint.rules._ast_index import nodes
+from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
@@ -85,7 +86,7 @@ class NoIsinstanceUnionChain(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "The rule requires at least two locally defined class arms over the same stable name and an unreachable terminal fallback.",
-            "Builtin, imported, abstract collection, and open-ended dispatch types are excluded.",
+            "Builtin, imported, abstract collection, open-ended dispatch types, and generated files are excluded.",
         ),
         examples=(
             RuleExample(
@@ -122,6 +123,8 @@ class NoIsinstanceUnionChain(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        if is_generated(path, source):
+            return []
         tree = parse_or_none(path, source)
         if tree is None:
             return []
@@ -130,7 +133,8 @@ class NoIsinstanceUnionChain(Rule):
             # builtin's type-test semantics. Prefer a whole-file false negative
             # to recommending an invalid class-pattern rewrite.
             return []
-        local_classes = frozenset(node.name for node in nodes(tree, ast.ClassDef))
+        parent = _parent_index(tree)
+        classes_by_scope = _class_bindings_by_scope(tree, parent)
         elif_nodes: set[int] = set()
         diags: list[Diagnostic] = []
         for node in nodes(tree, ast.If):
@@ -138,6 +142,7 @@ class NoIsinstanceUnionChain(Rule):
                 elif_nodes.add(id(node.orelse[0]))
             if id(node) in elif_nodes:
                 continue
+            local_classes = _visible_local_classes(node, tree, parent, classes_by_scope)
             count = _qualifying_chain_length(node, local_classes)
             if count >= _MIN_CHAIN_LENGTH:
                 diags.append(
@@ -153,6 +158,55 @@ class NoIsinstanceUnionChain(Rule):
                     )
                 )
         return diags
+
+
+def _parent_index(tree: ast.Module) -> dict[ast.AST, ast.AST]:
+    """Index parents so local class evidence can respect Python lexical scopes."""
+    return {child: owner for owner in ast.walk(tree) for child in ast.iter_child_nodes(owner)}
+
+
+def _class_bindings_by_scope(tree: ast.Module, parent: dict[ast.AST, ast.AST]) -> dict[ast.AST, frozenset[str]]:
+    """Collect class names by the namespace that actually owns each binding."""
+    mutable: dict[ast.AST, set[str]] = {}
+    for class_node in nodes(tree, ast.ClassDef):
+        owner = _binding_scope(class_node, tree, parent)
+        mutable.setdefault(owner, set()).add(class_node.name)
+    return {owner: frozenset(names) for owner, names in mutable.items()}
+
+
+def _binding_scope(node: ast.AST, tree: ast.Module, parent: dict[ast.AST, ast.AST]) -> ast.AST:
+    """Return the namespace in which a class statement binds its name."""
+    current = parent.get(node)
+    while current is not None:
+        if isinstance(current, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            return current
+        current = parent.get(current)
+    return tree
+
+
+def _visible_local_classes(
+    node: ast.If,
+    tree: ast.Module,
+    parent: dict[ast.AST, ast.AST],
+    classes_by_scope: dict[ast.AST, frozenset[str]],
+) -> frozenset[str]:
+    """Return class bindings visible as bare names at one dispatch site.
+
+    Function scopes close over enclosing function scopes but skip intervening
+    class namespaces. A class namespace is visible only while its body itself
+    is executing, before a method/function scope is entered.
+    """
+    visible_scopes: list[ast.AST] = [tree]
+    current = parent.get(node)
+    entered_function = False
+    while current is not None and current is not tree:
+        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            entered_function = True
+            visible_scopes.append(current)
+        elif isinstance(current, ast.ClassDef) and not entered_function:
+            visible_scopes.append(current)
+        current = parent.get(current)
+    return frozenset(name for scope in visible_scopes for name in classes_by_scope.get(scope, frozenset()))
 
 
 def _qualifying_chain_length(head: ast.If, local_classes: frozenset[str]) -> int:

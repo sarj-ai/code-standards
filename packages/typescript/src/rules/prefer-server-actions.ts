@@ -16,10 +16,10 @@ export const preferServerActionsDocumentation = {
   rationale: "Server Actions preserve typed application calls and avoid an internal JSON request-response boundary.",
   remediation: "Move the mutation into a Server Action and invoke that action from the React client.",
   category: "architecture",
-  limitations: ["Only statically recognizable /api/ mutations in applicable React modules are reported."],
+  limitations: ["Only statically recognizable /api/ mutations in modules with positive Next.js evidence are reported: an explicit next import, or an app/pages path with a top-level use-client directive."],
   examples: [
     { id: "server-action-call", title: "Call a Server Action", outcome: "no-match", files: [{ path: "app/tasks/page.tsx", source: "import { createTask } from './actions'; await createTask(input);" }], focusPath: "app/tasks/page.tsx", expectedCount: 0, public: true },
-    { id: "api-mutation", title: "Do not mutate through an API route", outcome: "match", files: [{ path: "app/tasks/page.tsx", source: "await fetch('/api/tasks', { method: 'POST', body });" }], focusPath: "app/tasks/page.tsx", expectedCount: 1, public: true },
+    { id: "api-mutation", title: "Do not mutate through an API route", outcome: "match", files: [{ path: "app/tasks/page.tsx", source: "'use client'; await fetch('/api/tasks', { method: 'POST', body });" }], focusPath: "app/tasks/page.tsx", expectedCount: 1, public: true },
   ],
 } as const satisfies RuleDocumentation;
 type Options = readonly [];
@@ -32,6 +32,8 @@ const SKIP_FILE_REGEX =
 
 const NON_REACT_FRAMEWORK_RE =
   /^(?:@angular\/|@nestjs\/|vue$|vue\/|svelte$|svelte\/|solid-js$|solid-js\/|@ember\/|rxjs$|rxjs\/)/;
+
+const NEXT_MODULE_PATH_RE = /(?:^|[/\\])(?:app|pages)[/\\]/u;
 
 type Ctx = Readonly<RuleContext<MessageIds, Options>>;
 
@@ -210,6 +212,25 @@ export default createRule<Options, MessageIds>({
         typeof node.source.value === "string" &&
         NON_REACT_FRAMEWORK_RE.test(node.source.value),
     );
+    const hasUseClientDirective = context.sourceCode.ast.body.some(
+      (node) =>
+        node.type === "ExpressionStatement" &&
+        node.expression.type === "Literal" &&
+        node.expression.value === "use client",
+    );
+    const hasNextImport = context.sourceCode.ast.body.some(
+        (node) =>
+          node.type === "ImportDeclaration" &&
+          typeof node.source.value === "string" &&
+          (node.source.value === "next" || node.source.value.startsWith("next/")),
+      );
+    const hasNextEvidence =
+      hasNextImport ||
+      (hasUseClientDirective && NEXT_MODULE_PATH_RE.test(filename));
+
+    if (!hasNextEvidence) {
+      return {};
+    }
 
     return {
       CallExpression(node) {

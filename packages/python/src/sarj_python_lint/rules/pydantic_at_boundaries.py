@@ -41,6 +41,7 @@ _LIST_NAMES = frozenset({"list", "List"})
 _ANY_VALUE_NAMES = frozenset({"Any", "object"})
 # `dict[K, V]` subscript carries exactly two type arguments.
 _DICT_ARG_COUNT = 2
+_DOCUMENTATION_DIR_NAMES = frozenset({"docs", "docs_src"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,7 +60,7 @@ class PydanticAtBoundaries(Rule):
         remediation="Return a pydantic model, frozen dataclass, or `TypedDict` for the fixed record shape.",
         category=RuleCategory.ARCHITECTURE,
         limitations=(
-            "Private functions, closures, tests, fixtures, validators, and dictionary conversion methods are excluded.",
+            "Private functions, closures, tests, documentation examples, fixtures, validators, and dictionary conversion methods are excluded.",
             "Only returned record literals and locally built fixed-shape dictionaries are recognized.",
         ),
         examples=(
@@ -97,7 +98,7 @@ class PydanticAtBoundaries(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_test_path(path) or is_test_support_path(path):
+        if is_test_path(path) or is_test_support_path(path) or _is_documentation_path(path):
             return []
         tree = parse_or_none(path, source)
         if tree is None:
@@ -225,6 +226,15 @@ def _builds_record_literal(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool
             and isinstance(current.func.value, ast.Name)
         ):
             invalidated_names.add(current.func.value.id)
+        elif isinstance(current, ast.Call):
+            # Once a locally built mapping crosses an opaque call boundary, the
+            # callee may add or remove keys. Prefer a false negative over
+            # claiming that the returned shape is fixed.
+            invalidated_names.update(
+                argument.id
+                for argument in (*current.args, *(keyword.value for keyword in current.keywords))
+                if isinstance(argument, ast.Name)
+            )
         stack.extend(children(current))
     intact_record_names = record_names - invalidated_names
     # A returned, mutated record has an open shape even when another branch returns a fixed fallback.
@@ -244,7 +254,12 @@ def _is_record_literal(node: ast.expr) -> bool:
         return _is_record_literal(node.elt)
     if not isinstance(node, ast.Dict):
         return False
-    return any(isinstance(key, ast.Constant) and isinstance(key.value, str) for key in node.keys)
+    return bool(node.keys) and all(isinstance(key, ast.Constant) and isinstance(key.value, str) for key in node.keys)
+
+
+def _is_documentation_path(path: Path) -> bool:
+    """Report whether `path` is executable source embedded in documentation."""
+    return any(part.lower() in _DOCUMENTATION_DIR_NAMES for part in path.parts)
 
 
 def _mutated_record_roots(target: ast.AST) -> set[str]:

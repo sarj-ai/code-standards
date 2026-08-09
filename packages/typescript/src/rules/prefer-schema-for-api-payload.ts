@@ -321,8 +321,169 @@ const bindingValidationPolarity = (
     : null;
 };
 
+type PlainMemberAccess = {
+  readonly object: string;
+  readonly property: string;
+};
+
+const plainMemberAccess = (
+  node: TSESTree.Node,
+): PlainMemberAccess | null =>
+  node.type === AST_NODE_TYPES.MemberExpression &&
+  !node.computed &&
+  node.object.type === AST_NODE_TYPES.Identifier &&
+  node.property.type === AST_NODE_TYPES.Identifier
+    ? { object: node.object.name, property: node.property.name }
+    : null;
+
+const isSamePlainMember = (
+  node: TSESTree.Node,
+  access: PlainMemberAccess,
+): boolean => {
+  const candidate = plainMemberAccess(node);
+  return (
+    candidate !== null &&
+    candidate.object === access.object &&
+    candidate.property === access.property
+  );
+};
+
 const nodeWithin = (node: TSESTree.Node, container: TSESTree.Node): boolean =>
   node.range[0] >= container.range[0] && node.range[1] <= container.range[1];
+
+/** Whether this use is dominated by a branch that validates the whole binding. */
+const isUseWithinValidatedBranch = (
+  node: TSESTree.Node,
+  bindingName: string,
+): boolean => {
+  for (
+    let current: TSESTree.Node | undefined | null = node.parent;
+    current !== undefined && current !== null;
+    current = current.parent
+  ) {
+    if (current.type === AST_NODE_TYPES.ConditionalExpression) {
+      const polarity = bindingValidationPolarity(current.test, bindingName);
+      if (
+        (polarity === "valid-when-true" && nodeWithin(node, current.consequent)) ||
+        (polarity === "valid-when-false" && nodeWithin(node, current.alternate))
+      ) {
+        return true;
+      }
+    }
+    if (current.type === AST_NODE_TYPES.IfStatement) {
+      const polarity = bindingValidationPolarity(current.test, bindingName);
+      if (
+        (polarity === "valid-when-true" && nodeWithin(node, current.consequent)) ||
+        (polarity === "valid-when-false" &&
+          current.alternate !== null &&
+          nodeWithin(node, current.alternate))
+      ) {
+        return true;
+      }
+    }
+    if (
+      current.type === AST_NODE_TYPES.FunctionDeclaration ||
+      current.type === AST_NODE_TYPES.FunctionExpression ||
+      current.type === AST_NODE_TYPES.ArrowFunctionExpression
+    ) {
+      return false;
+    }
+  }
+  return false;
+};
+
+/** Whether this field use is dominated by validation of the identical field. */
+const isMemberUseWithinValidatedBranch = (
+  node: TSESTree.MemberExpression,
+  access: PlainMemberAccess,
+): boolean => {
+  for (
+    let current: TSESTree.Node | undefined | null = node.parent;
+    current !== undefined && current !== null;
+    current = current.parent
+  ) {
+    if (current.type === AST_NODE_TYPES.ConditionalExpression) {
+      const polarity = memberValidationPolarity(current.test, access);
+      if (
+        (polarity === "valid-when-true" && nodeWithin(node, current.consequent)) ||
+        (polarity === "valid-when-false" && nodeWithin(node, current.alternate))
+      ) {
+        return true;
+      }
+    }
+    if (current.type === AST_NODE_TYPES.IfStatement) {
+      const polarity = memberValidationPolarity(current.test, access);
+      if (
+        (polarity === "valid-when-true" && nodeWithin(node, current.consequent)) ||
+        (polarity === "valid-when-false" &&
+          current.alternate !== null &&
+          nodeWithin(node, current.alternate))
+      ) {
+        return true;
+      }
+    }
+    if (
+      current.type === AST_NODE_TYPES.FunctionDeclaration ||
+      current.type === AST_NODE_TYPES.FunctionExpression ||
+      current.type === AST_NODE_TYPES.ArrowFunctionExpression
+    ) {
+      return false;
+    }
+  }
+  return false;
+};
+
+/** Whether a branch test validates one plain member access. */
+const memberValidationPolarity = (
+  test: TSESTree.Expression,
+  access: PlainMemberAccess,
+): ValidationPolarity | null => {
+  if (test.type === AST_NODE_TYPES.UnaryExpression && test.operator === "!") {
+    const inner = memberValidationPolarity(test.argument, access);
+    return inner === "valid-when-true"
+      ? "valid-when-false"
+      : inner === "valid-when-false"
+        ? "valid-when-true"
+        : null;
+  }
+  if (test.type === AST_NODE_TYPES.BinaryExpression) {
+    const isMatchingTypeof = (node: TSESTree.Node): boolean =>
+      node.type === AST_NODE_TYPES.UnaryExpression &&
+      node.operator === "typeof" &&
+      isSamePlainMember(node.argument, access);
+    const isPrimitiveType = (node: TSESTree.Node): boolean =>
+      node.type === AST_NODE_TYPES.Literal &&
+      typeof node.value === "string" &&
+      PRIMITIVE_TYPEOF_RESULTS.has(node.value);
+    if (
+      !(
+        (isMatchingTypeof(test.left) && isPrimitiveType(test.right)) ||
+        (isMatchingTypeof(test.right) && isPrimitiveType(test.left))
+      )
+    ) {
+      return null;
+    }
+    if (test.operator === "===" || test.operator === "==") {
+      return "valid-when-true";
+    }
+    return test.operator === "!==" || test.operator === "!="
+      ? "valid-when-false"
+      : null;
+  }
+  return test.type === AST_NODE_TYPES.CallExpression &&
+    test.arguments.length === 1 &&
+    test.arguments[0] !== undefined &&
+    test.arguments[0].type !== AST_NODE_TYPES.SpreadElement &&
+    isSamePlainMember(test.arguments[0], access) &&
+    test.callee.type === AST_NODE_TYPES.MemberExpression &&
+    !test.callee.computed &&
+    test.callee.object.type === AST_NODE_TYPES.Identifier &&
+    test.callee.object.name === "Array" &&
+    test.callee.property.type === AST_NODE_TYPES.Identifier &&
+    test.callee.property.name === "isArray"
+    ? "valid-when-true"
+    : null;
+};
 
 /**
  * A field extracted into a same-scope `const` is safe only when every later use
@@ -717,7 +878,17 @@ export default createRule<Options, MessageIds>({
           obj?.type === AST_NODE_TYPES.Identifier
             ? unvalidatedVariableRef(obj, scope, unvalidatedVariables)
             : null;
-        if (variable !== null) {
+        if (variable !== null && obj?.type === AST_NODE_TYPES.Identifier) {
+          if (isUseWithinValidatedBranch(node, obj.name)) {
+            return;
+          }
+          const access = plainMemberAccess(node);
+          if (
+            access !== null &&
+            isMemberUseWithinValidatedBranch(node, access)
+          ) {
+            return;
+          }
           if (isFullyValidatedExtractedBinding(node, variable, context)) {
             return;
           }
