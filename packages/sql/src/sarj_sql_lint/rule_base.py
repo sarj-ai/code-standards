@@ -340,6 +340,17 @@ def is_postgres(source: str) -> bool:
     return _NON_POSTGRES_RE.search(mask_sql(source)) is None
 
 
+def is_postgres_source(path: Path, source: str) -> bool:
+    """Require positive PostgreSQL evidence before offering dialect-specific advice."""
+    parts = tuple(part.lower() for part in path.parts)
+    if any(part in _NON_POSTGRES_SQL_PARTS for part in parts):
+        return False
+    dialect = declared_dialect(source)
+    if dialect is not None:
+        return dialect == "postgresql"
+    return is_postgres(source) and ("supabase" in parts or _POSTGRES_MIGRATION_EVIDENCE_RE.search(source) is not None)
+
+
 def is_mysql(source: str) -> bool:
     """Report whether `source` carries a MySQL/MariaDB-exclusive token."""
     dialect = declared_dialect(source)
@@ -372,13 +383,10 @@ def is_postgres_migration(path: Path, source: str) -> bool:
     dialect = declared_dialect(source)
     if dialect is not None:
         return dialect == "postgresql"
-    if not is_postgres(source):
-        return False
-
     # Dbmate/Goose/Liquibase directives establish migration intent even when a
     # small PostgreSQL seed uses no dialect-exclusive syntax. Supabase is a
     # PostgreSQL migration root by contract. Ambiguous plain SQL stays silent.
-    return source_directive or "supabase" in parts or _POSTGRES_MIGRATION_EVIDENCE_RE.search(source) is not None
+    return source_directive or is_postgres_source(path, source)
 
 
 def is_migration_source(path: Path, source: str) -> bool:

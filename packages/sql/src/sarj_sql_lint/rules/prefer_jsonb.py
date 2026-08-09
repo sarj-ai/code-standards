@@ -1,4 +1,4 @@
-"""SARJ106: forbid the non-B `JSON` type and `::json` casts — use JSONB."""
+"""SARJ106: prefer JSONB for PostgreSQL table storage."""
 
 from __future__ import annotations
 
@@ -17,8 +17,11 @@ from sarj_sql_lint.rule_base import (
     RuleExample,
     is_dump_file,
     is_generated_migration,
+    is_postgres_source,
+    locate,
     mask_sql,
     redirect_to_model,
+    split_statements,
 )
 
 
@@ -26,20 +29,27 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# \b...\b does not match JSONB (B is a word char) nor json_* identifiers
-# (underscore is a word char), but catches both `JSON` column types and
-# `::json` casts such as `DEFAULT '{}'::json`.
-PATTERN = re.compile(r"\bJSON\b", re.IGNORECASE)
+_IDENT = r'(?:[A-Za-z_][\w$]*|"(?:""|[^"])+")'
+_TYPE_FOLLOW = r"(?=\s*(?:,|\)|;|$|NOT\b|NULL\b|DEFAULT\b|CHECK\b|COLLATE\b|CONSTRAINT\b|GENERATED\b|REFERENCES\b|PRIMARY\b|UNIQUE\b))"
+_CREATE_TABLE_RE = re.compile(r"\bCREATE\s+(?:TEMP(?:ORARY)?\s+|UNLOGGED\s+)?TABLE\b", re.IGNORECASE)
+_ALTER_TABLE_RE = re.compile(r"\bALTER\s+TABLE\b", re.IGNORECASE)
+_TABLE_JSON_RE = re.compile(rf"(?:\(|,)\s*{_IDENT}\s+(?P<json>JSON)\b{_TYPE_FOLLOW}", re.IGNORECASE)
+_ALTER_JSON_RE = re.compile(
+    rf"\b(?:ADD\s+COLUMN(?:\s+IF\s+NOT\s+EXISTS)?\s+{_IDENT}|ALTER\s+COLUMN\s+{_IDENT}\s+TYPE)\s+"
+    rf"(?P<json>JSON)\b{_TYPE_FOLLOW}",
+    re.IGNORECASE,
+)
+_JSON_CAST_RE = re.compile(r"::\s*(?P<json>JSON)\b", re.IGNORECASE)
 
 
 @final
 class PreferJsonb(Rule):
-    """JSON column type or ::json cast — use JSONB."""
+    """JSON column type or table-DDL cast — use JSONB."""
 
     id = "prefer-jsonb"
     code = "SARJ106"
     documentation = RuleDocumentation(
-        summary="JSON column type or ::json cast — use JSONB.",
+        summary="JSON column type or table-DDL cast — use JSONB.",
         rationale=(
             "JSONB supports indexing and containment operators and avoids reparsing the stored document on every read."
         ),
@@ -49,6 +59,7 @@ class PreferJsonb(Rule):
         limitations=(
             "PostgreSQL dump files are excluded.",
             "JSON tokens inside comments, string literals, and longer identifiers are ignored.",
+            "Query and data-migration casts are excluded because an external or legacy JSON column may require them.",
         ),
         examples=(
             RuleExample(
@@ -57,11 +68,11 @@ class PreferJsonb(Rule):
                 outcome=ExampleOutcome.MATCH,
                 files=(
                     ExampleFile.sql(
-                        "migrations/001_documents.sql",
+                        "supabase/migrations/001_documents.sql",
                         "CREATE TABLE document (metadata JSON NOT NULL);\n",
                     ),
                 ),
-                focus_path=PurePosixPath("migrations/001_documents.sql"),
+                focus_path=PurePosixPath("supabase/migrations/001_documents.sql"),
                 expected_count=1,
                 public=True,
             ),
@@ -71,11 +82,11 @@ class PreferJsonb(Rule):
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
                     ExampleFile.sql(
-                        "migrations/001_documents.sql",
+                        "supabase/migrations/001_documents.sql",
                         "CREATE TABLE document (metadata JSONB NOT NULL DEFAULT '{}'::jsonb);\n",
                     ),
                 ),
-                focus_path=PurePosixPath("migrations/001_documents.sql"),
+                focus_path=PurePosixPath("supabase/migrations/001_documents.sql"),
                 expected_count=0,
                 public=True,
             ),
@@ -85,22 +96,37 @@ class PreferJsonb(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_dump_file(source, path):
+        if is_dump_file(source, path) or not is_postgres_source(path, source):
             return []
         model_owned = is_generated_migration(path, source)
 
         diags: list[Diagnostic] = []
-        for lineno, line in enumerate(mask_sql(source).splitlines(), start=1):
-            diags.extend(
-                Diagnostic(
-                    path=path,
-                    line=lineno,
-                    col=match.start() + 1,
-                    code=self.code,
-                    message=(
-                        "Use JSONB — plain JSON has no indexing or containment operators and re-parses on every read."
-                    ),
-                )
-                for match in PATTERN.finditer(line)
-            )
+        for statement in split_statements(mask_sql(source)):
+            text = "\n".join(fragment for _, fragment in statement)
+            create_table = _CREATE_TABLE_RE.search(text) is not None
+            alter_table = _ALTER_TABLE_RE.search(text) is not None
+            patterns = [_ALTER_JSON_RE]
+            if create_table:
+                patterns.append(_TABLE_JSON_RE)
+            if create_table or alter_table:
+                patterns.append(_JSON_CAST_RE)
+            seen: set[int] = set()
+            for pattern in patterns:
+                for match in pattern.finditer(text):
+                    position = match.start("json")
+                    if position in seen:
+                        continue
+                    seen.add(position)
+                    line, col = locate(statement, position)
+                    diags.append(
+                        Diagnostic(
+                            path=path,
+                            line=line,
+                            col=col,
+                            code=self.code,
+                            message=(
+                                "Use JSONB — plain JSON has no indexing or containment operators and re-parses on every read."
+                            ),
+                        )
+                    )
         return redirect_to_model(diags, model_owned=model_owned)

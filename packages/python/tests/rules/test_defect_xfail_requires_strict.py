@@ -102,6 +102,44 @@ def test_thing():
 
 
 @pytest.mark.parametrize(
+    "reason",
+    [
+        "See https://github.com/pydantic/pydantic-ai/issues/3393",
+        "https://github.com/pydantic/pydantic-ai/issues/3638",
+    ],
+    ids=["prose-plus-issue", "issue-only"],
+)
+def test_flags_static_github_issue_reasons(reason: str):
+    src = f"""\
+import pytest
+
+@pytest.mark.xfail(reason="{reason}")
+def test_thing():
+    assert correct()
+"""
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "See https://github.com/pydantic/pydantic-ai/discussions/3393",
+        "See https://example.com/issues/3393",
+    ],
+    ids=["github-non-issue", "non-github-issue"],
+)
+def test_arbitrary_urls_do_not_imply_a_defect_pin(reason: str):
+    src = f"""\
+import pytest
+
+@pytest.mark.xfail(reason="{reason}")
+def test_thing():
+    assert correct()
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
     "import_and_marker",
     [
         ("import pytest as pt", "pt.mark.xfail"),

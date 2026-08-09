@@ -310,6 +310,50 @@ def f(items, chunk, s):
     assert _check(src) == []
 
 
+@pytest.mark.parametrize("annotation", ["str", "builtins.str", "Annotated[str, 'text']"])
+def test_flags_annotated_string_parameter_with_unknown_fragment(annotation: str) -> None:
+    src = f"""
+def render(seed: {annotation}, parts):
+    for part in parts:
+        seed += part
+    return seed
+"""
+    assert _count(src) == 1
+
+
+def test_flags_stably_annotated_string_local_with_unknown_fragment() -> None:
+    src = """
+def render(parts):
+    output: str = make_prefix()
+    for part in parts:
+        output += part
+    return output
+"""
+    assert _count(src) == 1
+
+
+@pytest.mark.parametrize("annotation", ["bytes", "object", "Any"])
+def test_allows_non_string_annotated_parameter_with_unknown_fragment(annotation: str) -> None:
+    src = f"""
+def render(seed: {annotation}, parts):
+    for part in parts:
+        seed += part
+    return seed
+"""
+    assert _check(src) == []
+
+
+def test_allows_string_parameter_rebound_before_loop() -> None:
+    src = """
+def render(seed: str, parts):
+    seed = make_accumulator()
+    for part in parts:
+        seed += part
+    return seed
+"""
+    assert _check(src) == []
+
+
 # Real-world false-positive regressions (Flask / requests / Django sweep).     #
 
 

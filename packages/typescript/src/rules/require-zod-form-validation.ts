@@ -40,6 +40,7 @@ const ZOD_PARSE_METHODS: ReadonlySet<string> = new Set([
   "parseAsync",
   "safeParseAsync",
 ]);
+const FORM_VALUE_METHODS: ReadonlySet<string> = new Set(["get", "getAll"]);
 
 /** Recognize the supported Zod receiver naming conventions. */
 const zodReceiverRoot = (node: TSESTree.Node): TSESTree.Identifier | null => {
@@ -154,7 +155,7 @@ export default createRule<Options, MessageIds>({
     // Recognize conventional names and bindings initialized by `.formData()`.
     const isFormSourceIdentifier = (node: TSESTree.Node): boolean => {
       if (node.type !== AST_NODE_TYPES.Identifier) return false;
-      if (/formdata/i.test(node.name)) return true;
+      const conventionalName = /formdata/i.test(node.name);
 
       let scope: Scope.Scope | null = context.sourceCode.getScope(node);
       while (scope !== null) {
@@ -169,11 +170,11 @@ export default createRule<Options, MessageIds>({
           ) {
             return isFormDataMethodCall(def.node.init);
           }
-          return false;
+          return def?.type === "Parameter" && conventionalName;
         }
         scope = scope.upper;
       }
-      return false;
+      return conventionalName;
     };
 
     const isFormDataGetCall = (node: TSESTree.CallExpression): boolean => {
@@ -181,7 +182,7 @@ export default createRule<Options, MessageIds>({
       if (callee.type !== AST_NODE_TYPES.MemberExpression) return false;
       if (
         callee.property.type !== AST_NODE_TYPES.Identifier ||
-        callee.property.name !== "get"
+        !FORM_VALUE_METHODS.has(callee.property.name)
       ) {
         return false;
       }
@@ -364,6 +365,65 @@ export default createRule<Options, MessageIds>({
       );
     };
 
+    const isDescendantOf = (node: TSESTree.Node, ancestor: TSESTree.Node): boolean => {
+      let current: TSESTree.Node | null | undefined = node;
+      while (current !== undefined && current !== null) {
+        if (current === ancestor) return true;
+        current = current.parent;
+      }
+      return false;
+    };
+
+    const blockTerminates = (node: TSESTree.Statement): boolean => {
+      if (node.type === AST_NODE_TYPES.ReturnStatement || node.type === AST_NODE_TYPES.ThrowStatement) {
+        return true;
+      }
+      if (node.type !== AST_NODE_TYPES.BlockStatement || node.body.length === 0) return false;
+      const last = node.body.at(-1);
+      return last !== undefined && blockTerminates(last);
+    };
+
+    const narrowingIf = (
+      identifier: TSESTree.Identifier,
+    ): { readonly branch: TSESTree.IfStatement; readonly positive: boolean } | null => {
+      const comparison = identifier.parent;
+      if (
+        comparison?.type !== AST_NODE_TYPES.BinaryExpression ||
+        comparison.operator !== "instanceof" ||
+        comparison.left !== identifier ||
+        comparison.right.type !== AST_NODE_TYPES.Identifier ||
+        (comparison.right.name !== "File" && comparison.right.name !== "Blob")
+      ) {
+        return null;
+      }
+      const maybeNegation = comparison.parent;
+      const negated =
+        maybeNegation?.type === AST_NODE_TYPES.UnaryExpression &&
+        maybeNegation.operator === "!";
+      const test = negated ? maybeNegation : comparison;
+      const branch = test.parent;
+      return branch?.type === AST_NODE_TYPES.IfStatement && branch.test === test
+        ? { branch, positive: !negated }
+        : null;
+    };
+
+    const useDominatedByNarrowing = (
+      use: TSESTree.Identifier,
+      narrowings: readonly { readonly branch: TSESTree.IfStatement; readonly positive: boolean }[],
+    ): boolean =>
+      narrowings.some(({ branch, positive }) => {
+        if (positive) return isDescendantOf(use, branch.consequent);
+        if (!blockTerminates(branch.consequent)) return false;
+        const branchStatement = containingStatement(branch);
+        const useStatement = containingStatement(use);
+        return (
+          branchStatement !== null &&
+          useStatement !== null &&
+          branchStatement.parent === useStatement.parent &&
+          branchStatement.range[1] < useStatement.range[0]
+        );
+      });
+
     /** Find the statement directly owned by `block` that contains `node`. */
     const statementWithinBlock = (
       node: TSESTree.Node,
@@ -390,7 +450,12 @@ export default createRule<Options, MessageIds>({
             identifier.type === AST_NODE_TYPES.Identifier,
         );
       if (references.length === 0) return false;
-      if (references.some(isInstanceofNarrowing)) return true;
+      const narrowings = references
+        .map(narrowingIf)
+        .filter(
+          (value): value is { readonly branch: TSESTree.IfStatement; readonly positive: boolean } =>
+            value !== null,
+        );
       const validationStatements = references
         .map((reference) => guaranteedValidationStatement(declarator, reference))
         .filter(
@@ -401,7 +466,8 @@ export default createRule<Options, MessageIds>({
       return references.every((reference) => {
         if (
           zodParseAncestor(reference) !== null ||
-          isSafePrevalidationInspection(reference)
+          isSafePrevalidationInspection(reference) ||
+          useDominatedByNarrowing(reference, narrowings)
         ) {
           return true;
         }

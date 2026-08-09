@@ -107,6 +107,12 @@ ruleTester.run("no-zod-native-enum", rule, {
   ],
   invalid: [
     {
+      name: "reports a string-literal computed nativeEnum member",
+      code: 'import { z } from "zod"; const ZFruit = z["nativeEnum"](Fruits);',
+      filename: "schemas/fruit.ts",
+      errors: [{ messageId: "nativeEnum" }],
+    },
+    {
       name: "reports nativeEnum in production schemas",
       code: 'import { z } from "zod"; const ZFruit = z.nativeEnum(Fruits);',
       filename: "schemas/fruit.ts",

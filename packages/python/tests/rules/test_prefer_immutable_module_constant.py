@@ -75,6 +75,7 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
         "VALUES = [1]\nVALUES += [2]",
         "VALUES = [1]\nVALUES = [2]",
         "LABELS = {}\nLABELS['a'] = 'A'",
+        "VALUES = [1]\ndef reset():\n    global VALUES\n    VALUES = []",
         "LABELS = {'a': []}\nLABELS['a'].append('A')",
         "LABELS = {'a': {'b': 'B'}}\nLABELS['a']['b'] = 'C'",
         "BG_TASKS = set()\nservice = Service(bg_tasks=BG_TASKS)",
@@ -130,6 +131,25 @@ def test_ignores_constants_nested_in_literal_containers_passed_to_unknown_calls(
 
 def test_local_shadow_inside_escaping_container_does_not_hide_module_finding() -> None:
     source = "OPTIONS = {'module': True}\ndef build():\n    OPTIONS = {'local': True}\n    consume({'x': OPTIONS})"
+
+    findings = PreferImmutableModuleConstant().check(Path("service.py"), source)
+
+    assert len(findings) == 1
+    assert findings[0].line == 1
+
+
+@pytest.mark.parametrize(
+    "compound",
+    [
+        "if enabled:\n        VALUES = []",
+        "for _ in items:\n        VALUES = []",
+        "try:\n        VALUES = []\n    except RuntimeError:\n        pass",
+        "match value:\n        case 1:\n            VALUES = []",
+        "with manager():\n        VALUES = []",
+    ],
+)
+def test_nested_local_shadow_does_not_hide_module_finding(compound: str) -> None:
+    source = f"VALUES = [1]\ndef mutate(enabled, items, value):\n    {compound}\n    VALUES.append(2)"
 
     findings = PreferImmutableModuleConstant().check(Path("service.py"), source)
 

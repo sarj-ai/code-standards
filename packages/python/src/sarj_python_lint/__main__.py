@@ -113,6 +113,7 @@ _DIAGNOSTIC_PRECEDENCE = MappingProxyType(
         "SARJ084": frozenset({"SARJ050", "SARJ091"}),
         "SARJ088": frozenset({"SARJ050", "SARJ085", "SARJ091"}),
         "SARJ092": frozenset({"SARJ086", "SARJ087"}),
+        "SARJ093": frozenset({"SARJ034"}),
     }
 )
 
@@ -122,9 +123,19 @@ def deduplicate_diagnostics(diags: list[Diagnostic], *, source: str | None = Non
     codes = frozenset(diagnostic.code for diagnostic in diags)
     needs_docstring_owners = "SARJ092" in codes and not codes.isdisjoint(_DIAGNOSTIC_PRECEDENCE["SARJ092"])
     docstring_owners = _docstring_owner_locations(source) if source is not None and needs_docstring_owners else {}
+    needs_signature_owners = "SARJ093" in codes and "SARJ034" in codes
+    signature_owners = (
+        _function_signature_owner_locations(source) if source is not None and needs_signature_owners else {}
+    )
+
+    def owner_location(diagnostic: Diagnostic) -> tuple[int, int]:
+        if diagnostic.code in {"SARJ034", "SARJ093"}:
+            return signature_owners.get(diagnostic.line, (diagnostic.line, diagnostic.col))
+        return docstring_owners.get(diagnostic.line, (diagnostic.line, diagnostic.col))
+
     present: dict[tuple[Path, int, int], dict[str, set[Severity]]] = {}
     for diagnostic in diags:
-        line, col = docstring_owners.get(diagnostic.line, (diagnostic.line, diagnostic.col))
+        line, col = owner_location(diagnostic)
         by_code = present.setdefault((diagnostic.path, line, col), {})
         by_code.setdefault(diagnostic.code, set()).add(diagnostic.severity)
     suppressed = {
@@ -143,7 +154,7 @@ def deduplicate_diagnostics(diags: list[Diagnostic], *, source: str | None = Non
             (
                 (
                     diagnostic.path,
-                    *docstring_owners.get(diagnostic.line, (diagnostic.line, diagnostic.col)),
+                    *owner_location(diagnostic),
                 ),
                 diagnostic.code,
                 diagnostic.severity,
@@ -151,6 +162,22 @@ def deduplicate_diagnostics(diags: list[Diagnostic], *, source: str | None = Non
             not in suppressed
         )
     ]
+
+
+def _function_signature_owner_locations(source: str) -> dict[int, tuple[int, int]]:
+    """Map signature lines to their function opening for cross-rule precedence."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return {}
+    owners: dict[int, tuple[int, int]] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        body_line = node.body[0].lineno if node.body else node.lineno + 1
+        end_line = max(node.lineno, body_line - 1)
+        owners.update(dict.fromkeys(range(node.lineno, end_line + 1), (node.lineno, node.col_offset + 1)))
+    return owners
 
 
 def _docstring_owner_locations(source: str) -> dict[int, tuple[int, int]]:

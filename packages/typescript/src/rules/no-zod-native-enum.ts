@@ -199,16 +199,16 @@ export default createRule<Options, MessageIds>({
       const callee = node.callee;
       if (
         callee.type === AST_NODE_TYPES.MemberExpression &&
-        !callee.computed &&
         callee.object.type === AST_NODE_TYPES.Identifier &&
-        callee.property.type === AST_NODE_TYPES.Identifier
+        ((callee.property.type === AST_NODE_TYPES.Identifier &&
+          !callee.computed &&
+          callee.property.name === api) ||
+          (callee.computed &&
+            callee.property.type === AST_NODE_TYPES.Literal &&
+            callee.property.value === api))
       ) {
         const binding = resolvedBinding(callee.object);
-        return (
-          binding !== null &&
-          zodNamespaceBindings.has(binding) &&
-          callee.property.name === api
-        );
+        return binding !== null && zodNamespaceBindings.has(binding);
       }
       if (callee.type === AST_NODE_TYPES.Identifier) {
         const binding = resolvedBinding(callee);

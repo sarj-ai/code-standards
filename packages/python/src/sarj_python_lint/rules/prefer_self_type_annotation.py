@@ -30,6 +30,8 @@ if TYPE_CHECKING:
 
 def _is_return_self_or_cls(outer_func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     """Return whether every return preserves the concrete receiver type."""
+    if _block_can_fall_through(outer_func.body):
+        return False
     target_name = "cls" if _is_classmethod(outer_func) else "self"
 
     class ReturnVisitor(ast.NodeVisitor):
@@ -72,6 +74,19 @@ def _is_return_self_or_cls(outer_func: ast.FunctionDef | ast.AsyncFunctionDef) -
         )
 
     return all(preserves_type(value) for value in visitor.returns)
+
+
+def _block_can_fall_through(statements: list[ast.stmt]) -> bool:
+    """Conservatively report whether execution can reach the end of a block."""
+    if not statements:
+        return True
+    match statements[-1]:
+        case ast.Return() | ast.Raise():
+            return False
+        case ast.If(body=body, orelse=orelse):
+            return _block_can_fall_through(body) or _block_can_fall_through(orelse)
+        case _:
+            return True
 
 
 def _is_classmethod(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
@@ -162,6 +177,8 @@ class PreferSelfTypeAnnotation(Rule):
                 if _ruff_owns_self_annotation(node.name):
                     return
                 current_class = self.class_stack[-1]
+                if _is_metaclass(current_class):
+                    return
                 accepted_names = {current_class.name} | {
                     name for base in current_class.bases if (name := _trailing_annotation_name(base)) is not None
                 }
@@ -201,6 +218,11 @@ class PreferSelfTypeAnnotation(Rule):
         visitor.visit(tree)
 
         return sorted(diags, key=lambda d: (d.line, d.col))
+
+
+def _is_metaclass(node: ast.ClassDef) -> bool:
+    """Report direct metaclass definitions, where `Self` is not valid for class objects."""
+    return any(_trailing_annotation_name(base) in {"type", "ABCMeta"} for base in node.bases)
 
 
 def _trailing_annotation_name(node: ast.expr) -> str | None:

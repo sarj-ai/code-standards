@@ -92,6 +92,18 @@ def test_closed_local_union_finding_suppresses_generic_type_dispatch() -> None:
     assert [finding.code for finding in deduplicate_diagnostics(diagnostics)] == ["SARJ003"]
 
 
+def test_nominal_id_boundary_suppresses_generic_swap_prone_signature(tmp_path: Path) -> None:
+    source = tmp_path / "service.py"
+    source.write_text(
+        "def transfer(\n    source_account_id: str,\n    destination_account_id: str,\n) -> None: ...\n",
+        encoding="utf-8",
+    )
+
+    diagnostics = analyze(["require-keyword-only-swap-prone-params", "prefer-nominal-id-types"], [source])
+
+    assert [finding.code for finding in diagnostics] == ["SARJ093"]
+
+
 def test_specific_redundant_docstring_suppresses_generic_length_finding() -> None:
     diagnostics = [_diagnostic("SARJ091"), _diagnostic("SARJ084")]
 

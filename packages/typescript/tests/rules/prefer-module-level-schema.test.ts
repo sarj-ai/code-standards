@@ -85,6 +85,11 @@ ruleTester.run("prefer-module-level-schema", rule, {
       name: "allows schemas that read a mutable module binding",
       code: `${IMPORT}let required = true;\nexport function setRequired(value: boolean) { required = value; }\nexport function build() { return z.object({ a: z.string(), b: z.string() }).refine(() => required); }`,
     },
+    {
+      name: "allows schemas whose imported factory may be dynamic or effectful",
+      code: `${IMPORT}import { allowedNow } from "./policy.js";
+             export function build() { return z.object({ role: z.enum(allowedNow()), name: z.string() }); }`,
+    },
 
     // NOT FLAGGED — already memoized, so the construction cost is paid once.
     {

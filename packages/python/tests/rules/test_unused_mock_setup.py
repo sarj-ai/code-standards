@@ -82,6 +82,63 @@ def test_set():
     assert len(_check(src)) == 1
 
 
+def test_flags_immediately_overwritten_pytest_mock_patch_keyword():
+    src = """
+def test_cli(mocker, session):
+    prompt_session = mocker.patch("app.cli.PromptSession", return_value=session)
+    prompt_session.return_value = session
+    run_cli()
+"""
+    [diag] = _check(src)
+    assert (diag.line, diag.col) == (3, 5)
+    assert "`prompt_session.return_value`" in diag.message
+
+
+def test_flags_immediately_overwritten_imported_mock_constructor_keyword():
+    src = """
+from unittest.mock import Mock
+
+def test_charge():
+    gateway = Mock(return_value=first)
+    gateway.return_value = second
+    assert charge(gateway) == second
+"""
+    assert len(_check(src)) == 1
+
+
+def test_tracks_independent_constructor_configurations_until_a_use():
+    src = """
+from unittest.mock import Mock
+
+def test_charge():
+    gateway = Mock(return_value=first)
+    logger = Mock(return_value=message)
+    gateway.return_value = second
+    assert charge(gateway, logger) == second
+"""
+    assert len(_check(src)) == 1
+
+
+def test_effectful_call_after_mock_construction_can_observe_initial_configuration():
+    src = """
+def test_cli(mocker, session):
+    prompt_session = mocker.patch("app.cli.PromptSession", return_value=session)
+    run_cli()
+    prompt_session.return_value = replacement
+"""
+    assert _check(src) == []
+
+
+def test_unproven_mock_like_constructor_is_not_assumed_to_be_a_mock():
+    src = """
+def test_charge():
+    gateway = Mock(return_value=first)
+    gateway.return_value = second
+    assert charge(gateway) == second
+"""
+    assert _check(src) == []
+
+
 def test_flags_three_writes_as_two_findings():
     src = """
 def test_charge():

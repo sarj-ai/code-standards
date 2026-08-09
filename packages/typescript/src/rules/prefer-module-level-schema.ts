@@ -398,6 +398,14 @@ export default createRule<Options, MessageIds>({
         }
         for (const definition of resolved.defs) {
           if (definition.type === "ImportBinding") {
+            const parent = reference.identifier.parent;
+            if (
+              parent?.type === AST_NODE_TYPES.CallExpression &&
+              parent.callee === reference.identifier &&
+              !zodNamespaces.has(reference.identifier.name)
+            ) {
+              return false;
+            }
             continue;
           }
           if (

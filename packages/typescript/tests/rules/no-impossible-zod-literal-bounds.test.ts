@@ -26,6 +26,8 @@ ruleTester.run("no-impossible-zod-literal-bounds", rule, {
     { code: withZod("const S = z.number().min(3).max(3);"), filename: production },
     { code: withZod("const S = z.number().gt(3).lt(4);"), filename: production },
     { code: withZod("const S = z.number().gte(-2).lt(+2);"), filename: production },
+    { code: withZod("const S = z.number().positive().max(1);"), filename: production },
+    { code: withZod("const S = z.number().nonnegative().max(0);"), filename: production },
     { code: withZod("const S = z.string().min(3).max(3);"), filename: production },
     { code: withZod("const S = z.string().min(2).length(3).max(4);"), filename: production },
     { code: withZod("const S = z.array(z.string()).length(2).length(2);"), filename: production },
@@ -96,6 +98,18 @@ ruleTester.run("no-impossible-zod-literal-bounds", rule, {
     },
   ],
   invalid: [
+    {
+      name: "reports positive constrained to at most zero",
+      code: withZod("const S = z.number().positive().max(0);"),
+      filename: production,
+      errors: [{ messageId: "impossibleBounds" }],
+    },
+    {
+      name: "reports negative constrained to at least zero",
+      code: withZod("const S = z.number().negative().min(0);"),
+      filename: production,
+      errors: [{ messageId: "impossibleBounds" }],
+    },
     {
       code: withZod("const S = z.number().min(5).max(4);"),
       filename: production,

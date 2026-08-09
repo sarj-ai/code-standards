@@ -43,9 +43,6 @@ const SHAPE_PRESERVING_METHODS: ReadonlySet<string> = new Set([
 const OPTIONAL_MODIFIERS: ReadonlySet<string> = new Set([
   "optional",
   "nullish",
-  "default",
-  "prefault",
-  "catch",
 ]);
 
 /** Modifiers that admit `null`. */

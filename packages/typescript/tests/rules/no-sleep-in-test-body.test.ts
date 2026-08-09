@@ -44,6 +44,16 @@ ruleTester.run("no-sleep-in-test-body", rule, {
       ].join("\n"),
     },
     {
+      name: "allows a timed Promise used as deferred test input",
+      filename: TEST_FILE,
+      code: "it('renders suspense', async () => { const deferred = new Promise((resolve) => setTimeout(() => resolve('done'), 10)); expect(await render(deferred)).toBe('done'); });",
+    },
+    {
+      name: "allows a helper delay captured as test input",
+      filename: TEST_FILE,
+      code: "it('races work', async () => { const delayed = sleep(10); expect(await race(delayed, work())).toBe('work'); });",
+    },
+    {
       name: "allows a zero-delay Promise used to flush the event loop",
       filename: TEST_FILE,
       code: "it('flushes', async () => { await new Promise((r) => setTimeout(r, 0)); });",
@@ -159,6 +169,12 @@ ruleTester.run("no-sleep-in-test-body", rule, {
       name: "reports a Promise sleep with a function executor",
       filename: TEST_FILE,
       code: "test('settles', async () => { await new Promise(function (resolve) { setTimeout(resolve, 10); }); });",
+      errors: [{ messageId: "noSleepInTestBody" }],
+    },
+    {
+      name: "reports a Promise sleep returned directly by a test",
+      filename: TEST_FILE,
+      code: "test('settles', () => new Promise((resolve) => setTimeout(resolve, 10)));",
       errors: [{ messageId: "noSleepInTestBody" }],
     },
     {

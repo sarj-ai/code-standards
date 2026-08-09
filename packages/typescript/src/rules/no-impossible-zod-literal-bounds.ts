@@ -82,6 +82,10 @@ const NUMBER_METHODS: ReadonlySet<string> = new Set([
   "lte",
   "max",
   "min",
+  "negative",
+  "nonnegative",
+  "nonpositive",
+  "positive",
 ]);
 const LENGTH_METHODS: ReadonlySet<string> = new Set(["length", "max", "min"]);
 const RESHAPING_METHODS: ReadonlySet<string> = new Set([
@@ -290,13 +294,38 @@ export default createRule<Options, MessageIds>({
 
       for (const { method, node } of chain.calls) {
         if (!allowed.has(method)) return null;
-        const value = finiteNumber(node.arguments[0]);
+        const semantic =
+          method === "positive"
+            ? { exclusive: true, lower: true, value: 0 }
+            : method === "nonnegative"
+              ? { exclusive: false, lower: true, value: 0 }
+              : method === "negative"
+                ? { exclusive: true, lower: false, value: 0 }
+                : method === "nonpositive"
+                  ? { exclusive: false, lower: false, value: 0 }
+                  : null;
+        const value = semantic?.value ?? finiteNumber(node.arguments[0]);
         if (value === null) return null;
         if (chain.kind !== "number" && (!Number.isInteger(value) || value < 0)) {
           return null;
         }
         const label = `${method}(${String(value)})`;
-        if (method === "length") {
+        if (semantic !== null) {
+          if (node.arguments.length !== 0) return null;
+          if (semantic.lower) {
+            lower = strongerLower(lower, {
+              exclusive: semantic.exclusive,
+              label: `${method}()`,
+              value,
+            });
+          } else {
+            upper = strongerUpper(upper, {
+              exclusive: semantic.exclusive,
+              label: `${method}()`,
+              value,
+            });
+          }
+        } else if (method === "length") {
           lower = strongerLower(lower, { exclusive: false, label, value });
           upper = strongerUpper(upper, { exclusive: false, label, value });
         } else if (method === "gt" || method === "gte" || method === "min") {

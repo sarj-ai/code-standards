@@ -16,7 +16,7 @@ _PUBLIC_EXAMPLES = PreferJsonb.public_examples()
 
 
 def _check(source: str) -> list[Diagnostic]:
-    return PreferJsonb().check(Path("migration.sql"), source)
+    return PreferJsonb().check(Path("supabase/migrations/001.sql"), source)
 
 
 @pytest.mark.parametrize(
@@ -45,7 +45,7 @@ def test_flags_non_b_json_cast_default():
 
 
 def test_is_case_insensitive():
-    src = "metadata Json not null"
+    src = "CREATE TABLE document (metadata Json not null);"
     assert len(_check(src)) == 1
 
 
@@ -79,3 +79,35 @@ def test_skips_json_word_inside_string_literal():
 def test_skips_json_word_in_string_comment_clause():
     src = "COMMENT ON COLUMN t.meta IS 'stored as JSON text';"
     assert _check(src) == []
+
+
+def test_sqlite_json_function_is_not_mistaken_for_a_postgres_type() -> None:
+    source = "UPDATE schema SET json_schema = json(json_schema);"
+    assert _check(source) == []
+
+
+def test_sqlite_json_column_does_not_receive_jsonb_advice() -> None:
+    source = "-- dialect: sqlite\nCREATE TABLE document (metadata JSON NOT NULL);"
+    assert _check(source) == []
+
+
+def test_ambiguous_json_column_without_postgres_evidence_stays_silent() -> None:
+    source = "CREATE TABLE document (metadata JSON NOT NULL);"
+    assert PreferJsonb().check(Path("db/init.sql"), source) == []
+
+
+def test_flags_alter_column_json_type() -> None:
+    source = "ALTER TABLE document ALTER COLUMN metadata TYPE JSON;"
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "UPDATE external_config SET data = jsonb_set(data::jsonb, '{host}', '\"x\"')::json;",
+        "INSERT INTO external_config (data) VALUES ('{}'::json);",
+        "SELECT payload::json FROM external_config;",
+    ],
+)
+def test_query_casts_may_target_external_or_legacy_json_columns(source: str) -> None:
+    assert _check(source) == []

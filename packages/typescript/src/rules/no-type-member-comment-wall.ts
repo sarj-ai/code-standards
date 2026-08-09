@@ -4,7 +4,7 @@
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-type-member-comment-wall.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, AST_TOKEN_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 
@@ -111,7 +111,19 @@ export default createRule<Options, MessageIds>({
       const lead = ownsItsLine ? endingOn.get(member.loc.start.line - 1) : undefined;
       if (lead !== undefined) {
         const before = sourceCode.getTokenBefore(lead, { includeComments: false });
-        if (before === null || before.loc.end.line < lead.loc.start.line) return lead;
+        if (before === null || before.loc.end.line < lead.loc.start.line) {
+          const previousLine = endingOn.get(lead.loc.start.line - 1);
+          if (
+            lead.type === AST_TOKEN_TYPES.Line &&
+            previousLine?.type === AST_TOKEN_TYPES.Line &&
+            previousLine.loc.start.column === lead.loc.start.column
+          ) {
+            // The final row alone can omit rationale carried above it, so leave
+            // a multi-line block unjudged instead of scoring a partial comment.
+            return undefined;
+          }
+          return lead;
+        }
       }
       const trail = startingOn.get(member.loc.end.line);
       return trail !== undefined && trail.range[0] > member.range[0] ? trail : undefined;

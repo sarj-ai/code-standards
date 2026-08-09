@@ -253,6 +253,7 @@ def test_private_constant_message_stays_direct() -> None:
         "(401, 403)",
         "frozenset({401, 403})",
         "builtins.frozenset((401, 403))",
+        "{401: 'Unauthorized', 403: 'Forbidden'}",
     ],
 )
 def test_warns_for_bare_integers_in_status_code_collections(value: str) -> None:

@@ -67,6 +67,14 @@ ruleTester.run("zod-naming-convention", rule, {
              const fn = z.function().implement(handler);`,
     },
     {
+      name: "ignores Zod diagnostic formatting and schema inspection values",
+      code: `const pretty = z.prettifyError(error);
+             const tree = z.treeifyError(error);
+             const flat = z.flattenError(error);
+             const optional = z.string().isOptional();
+             const nullable = z.string().isNullable();`,
+    },
+    {
       name: "accepts names containing schema under the default convention",
       code: `const schema = z.object({ a: z.string() });
              const schema1 = z.string().min(5);

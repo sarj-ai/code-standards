@@ -18,6 +18,7 @@ from sarj_sql_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     is_dump_file,
+    is_mysql,
 )
 
 
@@ -224,6 +225,8 @@ class RequireFkIndex(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        if is_mysql(source):
+            return []
         diags: list[Diagnostic] = []
         masked = _mask_literals_and_comments(source)
         indexed_cols_by_table = _collect_indexes(masked)

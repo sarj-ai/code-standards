@@ -88,9 +88,17 @@ class PreferNonNullableCollection(Rule):
             return []
 
         diags: list[Diagnostic] = []
+        constructor_owners = {
+            member: statement
+            for statement in tree.body
+            if isinstance(statement, ast.ClassDef)
+            for member in statement.body
+            if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)) and member.name == "__init__"
+        }
         for function in _eligible_functions(tree):
             if _is_override(function):
                 continue
+            owner = constructor_owners.get(function)
             diags.extend(
                 Diagnostic(
                     path=path,
@@ -105,6 +113,7 @@ class PreferNonNullableCollection(Rule):
                     severity=Severity.WARNING,
                 )
                 for argument in _equivalent_empty_parameters(function)
+                if owner is None or not _forwards_inherited_constructor_parameter(owner, function, argument.arg)
             )
         diags.sort(key=lambda diagnostic: (diagnostic.line, diagnostic.col))
         return diags
@@ -308,6 +317,29 @@ def _is_override(function: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
             return True
         if isinstance(target, ast.Attribute) and target.attr == "override":
             return True
+    return False
+
+
+def _forwards_inherited_constructor_parameter(
+    owner: ast.ClassDef,
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    name: str,
+) -> bool:
+    """Preserve a nullable constructor parameter inherited from an external base."""
+    if not any(_qualified_name(base).split(".")[-1] != "object" for base in owner.bases):
+        return False
+    for call in (node for node in ast.walk(function) if isinstance(node, ast.Call)):
+        match call.func:
+            case ast.Attribute(value=ast.Call(func=ast.Name(id="super")), attr="__init__"):
+                values = [*call.args, *(keyword.value for keyword in call.keywords)]
+                if any(
+                    isinstance(descendant, ast.Name) and isinstance(descendant.ctx, ast.Load) and descendant.id == name
+                    for value in values
+                    for descendant in ast.walk(value)
+                ):
+                    return True
+            case _:
+                continue
     return False
 
 

@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 
 def _check(source: str) -> list[Diagnostic]:
-    return EnforceTimestamptz().check(Path("migration.sql"), source)
+    return EnforceTimestamptz().check(Path("supabase/migrations/001.sql"), source)
 
 
 _PUBLIC_EXAMPLES = EnforceTimestamptz.public_examples()
@@ -122,3 +122,14 @@ def test_flags_timestamp_as_the_first_column_definition():
 
 def test_flags_alter_column_type_change_to_naive_timestamp():
     assert len(_check("ALTER TABLE t ALTER COLUMN created_at TYPE TIMESTAMP;")) == 1
+
+
+@pytest.mark.parametrize("dialect", ["mysql", "sqlite"])
+def test_non_postgres_timestamp_types_do_not_receive_postgres_advice(dialect: str) -> None:
+    source = f"-- dialect: {dialect}\nCREATE TABLE event (created_at TIMESTAMP);"
+    assert _check(source) == []
+
+
+def test_ambiguous_timestamp_without_postgres_evidence_stays_silent() -> None:
+    source = "CREATE TABLE event (created_at TIMESTAMP);"
+    assert EnforceTimestamptz().check(Path("db/init.sql"), source) == []

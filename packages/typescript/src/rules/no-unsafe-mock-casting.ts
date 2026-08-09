@@ -18,6 +18,10 @@ type MessageIds = "unsafeMockCast";
 
 const MOCK_TYPE_NAMES: ReadonlySet<string> = new Set([
   "Mock",
+  "Mocked",
+  "MockedClass",
+  "MockedFunction",
+  "MockedObject",
   "MockInstance",
   "SpyInstance",
 ]);

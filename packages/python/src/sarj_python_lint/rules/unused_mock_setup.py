@@ -21,6 +21,7 @@ from sarj_python_lint.rule_base import (
     parse_or_none,
 )
 from sarj_python_lint.rules._ast_index import children, nodes, walk
+from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._paths import is_test_path
 
 
@@ -31,6 +32,23 @@ if TYPE_CHECKING:
 
 # The two attributes that *configure* what a mock does when called.
 _CONFIG_ATTRS = frozenset({"return_value", "side_effect"})
+
+# Callables whose constructor keywords configure the returned double.  Import
+# resolution is required for bare/module-qualified spellings; the pytest-mock
+# spelling is accepted only when ``mocker`` is a parameter of the test.
+_MOCK_CONSTRUCTORS = frozenset(
+    {
+        "AsyncMock",
+        "MagicMock",
+        "Mock",
+        "NonCallableMagicMock",
+        "NonCallableMock",
+        "create_autospec",
+    }
+)
+_MOCKER_CONFIGURATORS = _MOCK_CONSTRUCTORS | {"patch"}
+_UNITTEST_MOCK = frozenset({"unittest.mock"})
+_MOCKER = "mocker"
 
 # Assertions that the mock was never reached.
 _NOT_CALLED_ASSERTIONS = frozenset({"assert_not_called", "assert_not_awaited"})
@@ -134,10 +152,11 @@ class UnusedMockSetup(Rule):
         if tree is None:
             return []
 
+        imports = ImportIndex.from_tree(tree)
         seen: set[tuple[int, int]] = set()
         diags: list[Diagnostic] = []
         for fn in nodes(tree, *_FUNC_NODES):
-            for finding in _dead_setups(fn):
+            for finding in _dead_setups(fn, imports):
                 position = (finding.node.lineno, finding.node.col_offset + 1)
                 if position in seen:
                     continue
@@ -155,18 +174,29 @@ class UnusedMockSetup(Rule):
         return diags
 
 
-def _dead_setups(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[_Finding]:
-    yield from _overwritten_before_use(fn)
+def _dead_setups(fn: ast.FunctionDef | ast.AsyncFunctionDef, imports: ImportIndex) -> Iterator[_Finding]:
+    yield from _overwritten_before_use(fn, imports)
     yield from _asserted_never_called(fn)
 
 
-def _overwritten_before_use(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[_Finding]:
+def _overwritten_before_use(fn: ast.FunctionDef | ast.AsyncFunctionDef, imports: ImportIndex) -> Iterator[_Finding]:
     """Find configurations reassigned before anything could read them."""
+    has_mocker_fixture = _has_parameter(fn, _MOCKER)
     for block in _blocks(fn):
         pending: dict[str, ast.stmt] = {}
         for stmt in block:
             target = _config_target(stmt)
             if target is None:
+                initial = _initial_mock_configs(stmt, imports, has_mocker_fixture=has_mocker_fixture)
+                if initial:
+                    configured_name = initial[0].partition(".")[0]
+                    pending = {
+                        target: setup
+                        for target, setup in pending.items()
+                        if not target.startswith(f"{configured_name}.")
+                    }
+                    pending.update((configured, stmt) for configured in initial)
+                    continue
                 if not _is_inert(stmt):
                     pending.clear()
                 continue
@@ -181,6 +211,41 @@ def _overwritten_before_use(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> Itera
                     ),
                 )
             pending[target] = stmt
+
+
+def _has_parameter(fn: ast.FunctionDef | ast.AsyncFunctionDef, name: str) -> bool:
+    args = fn.args
+    return any(arg.arg == name for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs))
+
+
+def _initial_mock_configs(stmt: ast.stmt, imports: ImportIndex, *, has_mocker_fixture: bool) -> tuple[str, ...]:
+    """Read configuration keywords supplied while binding a proven mock call."""
+    match stmt:
+        case ast.Assign(targets=[ast.Name(id=name)], value=ast.Call() as call):
+            pass
+        case ast.AnnAssign(target=ast.Name(id=name), value=ast.Call() as call):
+            pass
+        case _:
+            return ()
+    if not _is_mock_configurator(call.func, imports, has_mocker_fixture=has_mocker_fixture):
+        return ()
+    return tuple(f"{name}.{keyword.arg}" for keyword in call.keywords if keyword.arg in _CONFIG_ATTRS)
+
+
+def _is_mock_configurator(func: ast.expr, imports: ImportIndex, *, has_mocker_fixture: bool) -> bool:
+    """Resolve a constructor/patch call whose keywords configure its result."""
+    if has_mocker_fixture and isinstance(func, ast.Attribute):
+        if isinstance(func.value, ast.Name) and func.value.id == _MOCKER:
+            return func.attr in _MOCKER_CONFIGURATORS
+        if (
+            func.attr == "object"
+            and isinstance(func.value, ast.Attribute)
+            and func.value.attr == "patch"
+            and isinstance(func.value.value, ast.Name)
+            and func.value.value.id == _MOCKER
+        ):
+            return True
+    return any(imports.resolves(func, sources=_UNITTEST_MOCK, symbol=symbol) for symbol in _MOCK_CONSTRUCTORS)
 
 
 def _asserted_never_called(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[_Finding]:

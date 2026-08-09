@@ -415,6 +415,8 @@ def _bare_http_statuses(value: ast.expr) -> frozenset[int]:
             if not _is_frozenset_constructor(func):
                 return frozenset()
             elements = items
+        case ast.Dict(keys=keys):
+            elements = [key for key in keys if key is not None]
         case _:
             return frozenset()
     if not all(
