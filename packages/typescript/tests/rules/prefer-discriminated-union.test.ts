@@ -63,6 +63,10 @@ ruleTester.run("prefer-discriminated-union", rule, {
       code: "interface TeamResponse { ok: boolean; teamId?: string; url?: string; }",
     },
     {
+      name: "allows a failure field when the record also carries independent metadata",
+      code: "interface OperationState { success: boolean; errors?: Error[]; requestId: string; }",
+    },
+    {
       name: "allows aggregate response metadata despite an optional error",
       code: "interface Page { ok: boolean; items?: Item[]; page?: number; error?: string; }",
     },
@@ -194,6 +198,21 @@ ruleTester.run("prefer-discriminated-union", rule, {
     {
       name: "rejects a success flag with booking and failure branches",
       code: "interface BookingResult { success: boolean; result?: Booking; reason?: string; }",
+      errors: [{ messageId: "preferDiscriminatedUnion" }],
+    },
+    {
+      name: "rejects an exact success-or-errors interface",
+      code: "interface ValidationResult { success: boolean; errors?: ZodIssue[]; }",
+      errors: [{ messageId: "preferDiscriminatedUnion" }],
+    },
+    {
+      name: "rejects an exact ok-or-error type alias",
+      code: "type ParseResult = { ok: boolean; error?: string };",
+      errors: [{ messageId: "preferDiscriminatedUnion" }],
+    },
+    {
+      name: "rejects an exact success-or-reason inline return",
+      code: "declare function validate(): { success: boolean; reason?: string };",
       errors: [{ messageId: "preferDiscriminatedUnion" }],
     },
   ],

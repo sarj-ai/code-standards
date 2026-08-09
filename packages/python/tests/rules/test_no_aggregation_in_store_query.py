@@ -33,9 +33,9 @@ def _labels(diags: list[Diagnostic]) -> list[str]:
 @pytest.mark.parametrize(
     ("source", "expected_label"),
     [
-        ('q = "SELECT COUNT(*) FROM call"\n', "COUNT("),
-        ('q = "SELECT COUNT(id) FROM call"\n', "COUNT("),
-        ('q = "SELECT COUNT (*) FROM call"\n', "COUNT("),
+        ('q = "SELECT SUM(amount) FROM call"\n', "SUM("),
+        ('q = "SELECT SUM(value) FROM call"\n', "SUM("),
+        ('q = "SELECT SUM (amount) FROM call"\n', "SUM("),
         ('q = "SELECT status, x FROM call GROUP BY status"\n', "GROUP BY"),
         ('q = "SELECT DISTINCT org_id FROM call"\n', "DISTINCT"),
     ],
@@ -49,9 +49,9 @@ def test_flags_single_aggregation(source: str, expected_label: str) -> None:
 @pytest.mark.parametrize(
     "source",
     [
-        pytest.param('q = "select count(*) from call"\n', id="all-lower"),
-        pytest.param('q = "SELECT COUNT(*) FROM CALL"\n', id="all-upper"),
-        pytest.param('q = "sElEcT CoUnT(*) fRoM call"\n', id="mixed-case"),
+        pytest.param('q = "select sum(amount) from call"\n', id="all-lower"),
+        pytest.param('q = "SELECT SUM(amount) FROM CALL"\n', id="all-upper"),
+        pytest.param('q = "sElEcT SuM(amount) fRoM call"\n', id="mixed-case"),
         pytest.param('q = "select distinct org_id from call"\n', id="distinct-lower"),
         pytest.param('q = "SELECT s FROM call GROUP    BY s"\n', id="group-many-spaces"),
         pytest.param('q = "SELECT s FROM call\\nGROUP\\nBY s"\n', id="group-newline-split"),
@@ -67,13 +67,13 @@ def test_case_and_whitespace_insensitive(source: str) -> None:
 @pytest.mark.parametrize(
     "source",
     [
-        pytest.param('q = "UPDATE call SET n = (SELECT COUNT(*) FROM x)"\n', id="update-set"),
+        pytest.param('q = "UPDATE call SET n = (SELECT SUM(amount) FROM x)"\n', id="update-set"),
         pytest.param(
             'q = "DELETE FROM call WHERE id IN (SELECT DISTINCT id FROM x)"\n',
             id="delete-from",
         ),
         pytest.param(
-            'q = "SELECT s FROM call GROUP BY s HAVING COUNT(*) > 1"\n',
+            'q = "SELECT s FROM call GROUP BY s HAVING SUM(amount) > 1"\n',
             id="count-in-having",
         ),
     ],
@@ -88,12 +88,12 @@ def test_flags_various_query_shapes(source: str) -> None:
 @pytest.mark.parametrize(
     "source",
     [
-        pytest.param('q = (\n  "SELECT COUNT(*) "\n  "FROM call"\n)\n', id="adjacent-literals"),
-        pytest.param('q = "SELECT COUNT(*) " + "FROM call"\n', id="plus-concatenation"),
-        pytest.param('q = f"SELECT COUNT(*) FROM call"\n', id="fstring-no-interp"),
-        pytest.param('q = f"SELECT COUNT(*) FROM {table} WHERE id = 1"\n', id="fstring-interp"),
-        pytest.param('q = "SELECT COUNT(*) FROM call".format()\n', id="dot-format"),
-        pytest.param('cur.execute("SELECT COUNT(*) FROM call")\n', id="execute-arg"),
+        pytest.param('q = (\n  "SELECT SUM(amount) "\n  "FROM call"\n)\n', id="adjacent-literals"),
+        pytest.param('q = "SELECT SUM(amount) " + "FROM call"\n', id="plus-concatenation"),
+        pytest.param('q = f"SELECT SUM(amount) FROM call"\n', id="fstring-no-interp"),
+        pytest.param('q = f"SELECT SUM(amount) FROM {table} WHERE id = 1"\n', id="fstring-interp"),
+        pytest.param('q = "SELECT SUM(amount) FROM call".format()\n', id="dot-format"),
+        pytest.param('cur.execute("SELECT SUM(amount) FROM call")\n', id="execute-arg"),
         pytest.param('await conn.fetch("SELECT DISTINCT id FROM call")\n', id="fetch-arg"),
     ],
 )
@@ -105,9 +105,9 @@ def test_flags_regardless_of_string_spelling(source: str) -> None:
 
 
 def test_multiple_labels_in_one_query_listed_in_rule_order() -> None:
-    diags = _check('q = "SELECT DISTINCT s, COUNT(*) FROM call GROUP BY s"\n')
+    diags = _check('q = "SELECT DISTINCT s, SUM(amount) FROM call GROUP BY s"\n')
     assert len(diags) == 1
-    assert _labels(diags) == ["Store query uses COUNT(, GROUP BY, DISTINCT"]
+    assert _labels(diags) == ["Store query uses SUM(, GROUP BY, DISTINCT"]
 
 
 def test_count_distinct_lists_both() -> None:
@@ -118,7 +118,7 @@ def test_count_distinct_lists_both() -> None:
 
 
 def test_multiple_violations_sorted_by_line_then_col() -> None:
-    src = 'a = "SELECT DISTINCT x FROM y"\nb = "SELECT COUNT(*) FROM call"\nc = "SELECT s FROM call GROUP BY s"\n'
+    src = 'a = "SELECT DISTINCT x FROM y"\nb = "SELECT SUM(amount) FROM call"\nc = "SELECT s FROM call GROUP BY s"\n'
     diags = _check(src)
     assert [(d.line, d.col) for d in diags] == [(1, 5), (2, 5), (3, 5)]
     assert [d.code for d in diags] == ["SARJ020"] * 3
@@ -130,11 +130,11 @@ def test_multiple_violations_sorted_by_line_then_col() -> None:
 @pytest.mark.parametrize(
     ("source", "line", "col"),
     [
-        pytest.param('q = "SELECT COUNT(*) FROM call"\n', 1, 5, id="simple-assign"),
-        pytest.param('x = 1\ny = 2\nq = "SELECT COUNT(*) FROM call"\n', 3, 5, id="third-line"),
-        pytest.param('cur.execute("SELECT COUNT(*) FROM call")\n', 1, 13, id="execute-arg-col"),
+        pytest.param('q = "SELECT SUM(amount) FROM call"\n', 1, 5, id="simple-assign"),
+        pytest.param('x = 1\ny = 2\nq = "SELECT SUM(amount) FROM call"\n', 3, 5, id="third-line"),
+        pytest.param('cur.execute("SELECT SUM(amount) FROM call")\n', 1, 13, id="execute-arg-col"),
         pytest.param(
-            'q = (\n  "SELECT COUNT(*) "\n  "FROM call"\n)\n',
+            'q = (\n  "SELECT SUM(amount) "\n  "FROM call"\n)\n',
             2,
             3,
             id="adjacent-literal-col",
@@ -165,6 +165,41 @@ def test_line_and_col(source: str, line: int, col: int) -> None:
 )
 def test_allows_non_aggregating_or_non_query(source: str) -> None:
     assert _check(source) == []
+
+
+def test_allows_count_that_only_supplies_total_for_a_bounded_page() -> None:
+    src = """
+async def list_calls(cursor, page_size: int, offset: int):
+    await cursor.execute("SELECT COUNT(*) FROM call WHERE org_id = %s")
+    await cursor.execute(
+        "SELECT id FROM call WHERE org_id = %s ORDER BY created_at LIMIT %s OFFSET %s"
+    )
+"""
+    assert _check(src) == []
+
+
+def test_keeps_count_when_bounded_query_reads_a_different_table() -> None:
+    src = """
+async def report(cursor, page_size: int, offset: int):
+    await cursor.execute("SELECT COUNT(*) FROM call")
+    await cursor.execute("SELECT id FROM agent ORDER BY id LIMIT %s OFFSET %s")
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'q = "SELECT COUNT(*) FROM account WHERE user_id = %s"\n',
+        'q = "SELECT COUNT(id) FROM account"\n',
+    ],
+)
+def test_allows_scalar_transactional_counts(source: str) -> None:
+    assert _check(source) == []
+
+
+def test_flags_count_with_a_window_signal() -> None:
+    assert len(_check('q = "SELECT COUNT(*) OVER () FROM account"\n')) == 1
 
 
 # Positive: standard Postgres aggregate surfaces.
@@ -229,7 +264,7 @@ Wait 3 min
 
 def test_docstring_containing_actual_query_is_flagged() -> None:
     # A docstring that literally embeds SELECT ...
-    src = '"""Run SELECT COUNT(*) FROM call to get the total."""\n'
+    src = '"""Run SELECT SUM(amount) FROM call to get the total."""\n'
     diags = _check(src)
     assert len(diags) == 1
     assert (diags[0].line, diags[0].col) == (1, 1)
@@ -246,7 +281,7 @@ def test_docstring_containing_actual_query_is_flagged() -> None:
             id="line-comment",
         ),
         pytest.param(
-            'q = "SELECT id FROM call /* COUNT(*) */ WHERE id = %s"\n',
+            'q = "SELECT id FROM call /* SUM(amount) */ WHERE id = %s"\n',
             id="block-comment",
         ),
         pytest.param(
@@ -263,7 +298,7 @@ def test_aggregation_only_in_sql_comment_ignored(source: str) -> None:
     "source",
     [
         pytest.param(
-            "q = \"SELECT id FROM call WHERE note = 'COUNT(*)'\"\n",
+            "q = \"SELECT id FROM call WHERE note = 'SUM(amount)'\"\n",
             id="count",
         ),
         pytest.param(
@@ -281,7 +316,7 @@ def test_aggregation_only_in_sql_string_value_is_ignored(source: str) -> None:
 
 
 def test_comment_stripped_but_real_aggregation_still_flagged() -> None:
-    src = 'q = "SELECT COUNT(*) FROM call -- point read note"\n'
+    src = 'q = "SELECT SUM(amount) FROM call -- point read note"\n'
     assert len(_check(src)) == 1
 
 
@@ -294,15 +329,15 @@ def test_comment_stripped_but_real_aggregation_still_flagged() -> None:
     [
         pytest.param(
             "from clickhouse_connect.driver import AsyncClient\n"
-            'q = "SELECT status, COUNT(*) FROM call GROUP BY status"\n',
+            'q = "SELECT status, SUM(amount) FROM call GROUP BY status"\n',
             id="connect",
         ),
         pytest.param(
-            'import clickhouse_driver\nq = "SELECT status, COUNT(*) FROM call GROUP BY status"\n',
+            'import clickhouse_driver\nq = "SELECT status, SUM(amount) FROM call GROUP BY status"\n',
             id="driver",
         ),
         pytest.param(
-            'import clickhouse\nq = "SELECT status, COUNT(*) FROM call GROUP BY status"\n',
+            'import clickhouse\nq = "SELECT status, SUM(amount) FROM call GROUP BY status"\n',
             id="bare-import",
         ),
     ],
@@ -315,15 +350,15 @@ def test_clickhouse_file_is_exempt(source: str) -> None:
     "source",
     [
         pytest.param(
-            'q = "SELECT argMax(status, _peerdb_version), COUNT(*) FROM call GROUP BY org"\n',
+            'q = "SELECT argMax(status, _peerdb_version), SUM(amount) FROM call GROUP BY org"\n',
             id="argMax-peerdb",
         ),
-        pytest.param('q = "SELECT argMin(x, v), COUNT(*) FROM call"\n', id="argMin"),
-        pytest.param('q = "SELECT uniqExact(id), COUNT(*) FROM call GROUP BY x"\n', id="uniqExact"),
-        pytest.param('q = "SELECT groupArray(x), COUNT(*) FROM call"\n', id="groupArray"),
-        pytest.param('q = "SELECT arrayJoin(x), COUNT(*) FROM call"\n', id="arrayJoin"),
-        pytest.param("q = \"SELECT JSONExtract(x, 'a'), COUNT(*) FROM call\"\n", id="JSONExtract"),
-        pytest.param('q = "SELECT quantile(0.5)(x), COUNT(*) FROM call"\n', id="quantile"),
+        pytest.param('q = "SELECT argMin(x, v), SUM(amount) FROM call"\n', id="argMin"),
+        pytest.param('q = "SELECT uniqExact(id), SUM(amount) FROM call GROUP BY x"\n', id="uniqExact"),
+        pytest.param('q = "SELECT groupArray(x), SUM(amount) FROM call"\n', id="groupArray"),
+        pytest.param('q = "SELECT arrayJoin(x), SUM(amount) FROM call"\n', id="arrayJoin"),
+        pytest.param("q = \"SELECT JSONExtract(x, 'a'), SUM(amount) FROM call\"\n", id="JSONExtract"),
+        pytest.param('q = "SELECT quantile(0.5)(x), SUM(amount) FROM call"\n', id="quantile"),
     ],
 )
 def test_clickhouse_flavored_query_is_exempt(source: str) -> None:
@@ -337,11 +372,11 @@ def test_clickhouse_flavored_query_is_exempt(source: str) -> None:
     "source",
     [
         pytest.param(
-            'from google.cloud import bigquery\nq = "SELECT status, COUNT(*) FROM call GROUP BY status"\n',
+            'from google.cloud import bigquery\nq = "SELECT status, SUM(amount) FROM call GROUP BY status"\n',
             id="from-import",
         ),
         pytest.param(
-            'from google.cloud.bigquery import Client\nq = "SELECT status, COUNT(*) FROM call GROUP BY status"\n',
+            'from google.cloud.bigquery import Client\nq = "SELECT status, SUM(amount) FROM call GROUP BY status"\n',
             id="from-submodule",
         ),
         pytest.param(
@@ -358,11 +393,11 @@ def test_bigquery_file_is_exempt(source: str) -> None:
     "source",
     [
         pytest.param(
-            'q = f"SELECT id AS session_id, COUNT(*) FROM `{source_table}` GROUP BY id"\n',
+            'q = f"SELECT id AS session_id, SUM(amount) FROM `{source_table}` GROUP BY id"\n',
             id="backtick-braced-table",
         ),
         pytest.param(
-            'q = "SELECT status, COUNT(*) FROM `proj.ds.call` GROUP BY status"\n',
+            'q = "SELECT status, SUM(amount) FROM `proj.ds.call` GROUP BY status"\n',
             id="backtick-qualified-table",
         ),
         pytest.param(
@@ -370,23 +405,23 @@ def test_bigquery_file_is_exempt(source: str) -> None:
             id="backtick-join",
         ),
         pytest.param(
-            'q = "SELECT APPROX_COUNT_DISTINCT(id), COUNT(*) FROM call GROUP BY org"\n',
+            'q = "SELECT APPROX_COUNT_DISTINCT(id), SUM(amount) FROM call GROUP BY org"\n',
             id="approx-count-distinct",
         ),
         pytest.param(
-            'q = "SELECT COUNTIF(ok), COUNT(*) FROM call GROUP BY org"\n',
+            'q = "SELECT COUNTIF(ok), SUM(amount) FROM call GROUP BY org"\n',
             id="countif",
         ),
         pytest.param(
-            'q = "SELECT SAFE_CAST(x AS INT64), COUNT(*) FROM call GROUP BY x"\n',
+            'q = "SELECT SAFE_CAST(x AS INT64), SUM(amount) FROM call GROUP BY x"\n',
             id="safe-cast",
         ),
         pytest.param(
-            "q = \"SELECT PARSE_TIMESTAMP('%Y', y), COUNT(*) FROM call GROUP BY y\"\n",
+            "q = \"SELECT PARSE_TIMESTAMP('%Y', y), SUM(amount) FROM call GROUP BY y\"\n",
             id="parse-timestamp",
         ),
         pytest.param(
-            'q = "SELECT STRUCT(a, b), COUNT(*) FROM call GROUP BY a"\n',
+            'q = "SELECT STRUCT(a, b), SUM(amount) FROM call GROUP BY a"\n',
             id="struct-constructor",
         ),
     ],
@@ -399,17 +434,17 @@ def test_bigquery_flavored_query_is_exempt(source: str) -> None:
     "source",
     [
         pytest.param(
-            'q = "SELECT COUNT(*) FROM users WHERE org_id = %s GROUP BY status"\n',
+            'q = "SELECT SUM(amount) FROM users WHERE org_id = %s GROUP BY status"\n',
             id="plain-postgres-count-group-by",
         ),
         pytest.param('q = "SELECT DISTINCT org_id FROM account"\n', id="plain-distinct"),
         pytest.param('q = "SELECT s FROM account GROUP BY s"\n', id="plain-group-by"),
         pytest.param(
-            'q = "SELECT ARRAY_AGG(id), COUNT(*) FROM account GROUP BY org"\n',
+            'q = "SELECT ARRAY_AGG(id), SUM(amount) FROM account GROUP BY org"\n',
             id="array-agg-is-postgres-too",
         ),
         pytest.param(
-            'q = "SELECT UNNEST(ids), COUNT(*) FROM account GROUP BY org"\n',
+            'q = "SELECT UNNEST(ids), SUM(amount) FROM account GROUP BY org"\n',
             id="unnest-is-postgres-too",
         ),
     ],
@@ -418,17 +453,18 @@ def test_plain_postgres_aggregation_still_fires(source: str) -> None:
     assert len(_check(source)) == 1
 
 
-# Path gate: the rule fires only on store-layer modules (`*_store.py` basename or a file under a `stores/` directory).
+# Path gate: the rule fires only on store-layer modules (`store.py`,
+# `*_store.py`, or a file under a `stores/` directory).
 
 
-@pytest.mark.parametrize("filename", ["call_store.py", "stores/call.py"])
+@pytest.mark.parametrize("filename", ["call_store.py", "accounts/store.py", "stores/call.py"])
 def test_store_file_flagged(filename: str) -> None:
-    assert len(_check('q = "SELECT COUNT(*) FROM call"\n', filename=filename)) == 1
+    assert len(_check('q = "SELECT SUM(amount) FROM call"\n', filename=filename)) == 1
 
 
 @pytest.mark.parametrize("filename", ["service.py", "routes.py", "app/views.py", "random_module.py"])
 def test_nonstore_file_not_flagged(filename: str) -> None:
-    assert _check('q = "SELECT COUNT(*) FROM call"\n', filename=filename) == []
+    assert _check('q = "SELECT SUM(amount) FROM call"\n', filename=filename) == []
 
 
 # Suppression.
@@ -437,10 +473,10 @@ def test_nonstore_file_not_flagged(filename: str) -> None:
 @pytest.mark.parametrize(
     "source",
     [
-        'q = "SELECT COUNT(*) FROM call"  # sarj-noqa: SARJ020\n',
-        'q = "SELECT COUNT(*) FROM call"  # sarj-noqa: SARJ020 — bounded admin count\n',
-        'q = "SELECT COUNT(*) FROM call"  # sarj-noqa\n',
-        'q = "SELECT COUNT(*) FROM call"  # sarj-noqa: SARJ019, SARJ020\n',
+        'q = "SELECT SUM(amount) FROM call"  # sarj-noqa: SARJ020\n',
+        'q = "SELECT SUM(amount) FROM call"  # sarj-noqa: SARJ020 — bounded admin count\n',
+        'q = "SELECT SUM(amount) FROM call"  # sarj-noqa\n',
+        'q = "SELECT SUM(amount) FROM call"  # sarj-noqa: SARJ019, SARJ020\n',
     ],
 )
 def test_respects_noqa(source: str) -> None:
@@ -451,7 +487,7 @@ def test_respects_noqa(source: str) -> None:
 
 
 def test_noqa_for_other_code_does_not_suppress() -> None:
-    src = 'q = "SELECT COUNT(*) FROM call"  # sarj-noqa: SARJ019\n'
+    src = 'q = "SELECT SUM(amount) FROM call"  # sarj-noqa: SARJ019\n'
     diags = _check(src)
     lines = src.splitlines()
     kept = [d for d in diags if not is_suppressed(lines, d.line, d.code)]
@@ -468,7 +504,7 @@ def test_noqa_for_other_code_does_not_suppress() -> None:
         pytest.param("\n\n\n", id="blank-lines"),
         pytest.param("# just a comment\n", id="comment-only"),
         pytest.param("def (:\n", id="syntax-error"),
-        pytest.param('q = "SELECT COUNT(*) FROM call"\ndef (:\n', id="syntax-error-with-query"),
+        pytest.param('q = "SELECT SUM(amount) FROM call"\ndef (:\n', id="syntax-error-with-query"),
         pytest.param("x = 1\n", id="no-strings"),
     ],
 )
@@ -480,7 +516,7 @@ def test_edge_sources_return_no_diagnostics(source: str) -> None:
 
 
 def test_diagnostic_metadata() -> None:
-    diags = _check('q = "SELECT COUNT(*) FROM call"\n')
+    diags = _check('q = "SELECT SUM(amount) FROM call"\n')
     assert len(diags) == 1
     d = diags[0]
     assert d.code == "SARJ020"
@@ -498,7 +534,7 @@ def test_diagnostic_metadata() -> None:
     "source",
     [
         pytest.param(
-            "q = \"SELECT DATE_TRUNC('day', ts), COUNT(*) FROM call GROUP BY 1\"\n",
+            "q = \"SELECT DATE_TRUNC('day', ts), SUM(amount) FROM call GROUP BY 1\"\n",
             id="date-trunc-excluded-from-bq-signals",
         ),
         pytest.param(
@@ -517,7 +553,7 @@ def test_postgres_overlapping_vocab_still_fires(source: str) -> None:
 @pytest.mark.parametrize(
     "source",
     [
-        pytest.param('q = "SELECT COUNT" + "(*) FROM call"\n', id="count-split-across-concat"),
+        pytest.param('q = "SELECT SUM" + "(amount) FROM call"\n', id="sum-split-across-concat"),
         pytest.param('q = "SELECT s FROM call GROUP" + " BY s"\n', id="group-by-split-across-concat"),
         pytest.param('q = "SELECT s FROM call GROUP\\tBY s"\n', id="group-by-tab-separated"),
     ],
@@ -533,11 +569,11 @@ def test_keyword_split_or_tabbed_still_fires(source: str) -> None:
     "source",
     [
         pytest.param(
-            'q = "SELECT COUNT(*) FROM call /* APPROX_COUNT_DISTINCT(x) */ WHERE org = 1"\n',
+            'q = "SELECT SUM(amount) FROM call /* APPROX_COUNT_DISTINCT(x) */ WHERE org = 1"\n',
             id="bq-func-only-in-block-comment",
         ),
         pytest.param(
-            'q = "SELECT COUNT(*) FROM call /* join `proj.ds` here */ WHERE org = 1"\n',
+            'q = "SELECT SUM(amount) FROM call /* join `proj.ds` here */ WHERE org = 1"\n',
             id="backtick-only-in-block-comment",
         ),
     ],
@@ -552,7 +588,7 @@ def test_bq_signal_only_in_comment_does_not_exempt(source: str) -> None:
 
 
 def test_backtick_inside_string_value_does_not_exempt_postgres_query() -> None:
-    src = "q = \"SELECT COUNT(*) FROM call WHERE note = 'imported from `legacy`'\"\n"
+    src = "q = \"SELECT SUM(amount) FROM call WHERE note = 'imported from `legacy`'\"\n"
     assert len(_check(src)) == 1
 
 
@@ -560,12 +596,12 @@ def test_backtick_inside_string_value_does_not_exempt_postgres_query() -> None:
     "source",
     [
         pytest.param(
-            'from google.cloud import bigquery\nq = "SELECT COUNT(*) FROM call WHERE org_id = %s GROUP BY status"\n',
+            'from google.cloud import bigquery\nq = "SELECT SUM(amount) FROM call WHERE org_id = %s GROUP BY status"\n',
             id="positional",
         ),
         pytest.param(
             "from google.cloud import bigquery\n"
-            'q = "SELECT COUNT(*) FROM call WHERE org_id = %(org_id)s GROUP BY status"\n',
+            'q = "SELECT SUM(amount) FROM call WHERE org_id = %(org_id)s GROUP BY status"\n',
             id="named",
         ),
     ],
@@ -622,19 +658,19 @@ def test_real_distinct_still_fires_alongside_a_null_safe_comparison() -> None:
     assert _labels(diags) == ["Store query uses DISTINCT"]
 
 
-def test_count_still_fires_alongside_a_null_safe_comparison() -> None:
-    src = 'q = "SELECT COUNT(*) FROM call WHERE org_id IS NOT DISTINCT FROM %s"\n'
-    assert _labels(_check(src)) == ["Store query uses COUNT("]
+def test_sum_still_fires_alongside_a_null_safe_comparison() -> None:
+    src = 'q = "SELECT SUM(amount) FROM call WHERE org_id IS NOT DISTINCT FROM %s"\n'
+    assert _labels(_check(src)) == ["Store query uses SUM("]
 
 
 @pytest.mark.parametrize("delimiter", ["$$", "$message$"])
 def test_aggregate_words_in_postgres_dollar_quoted_value_are_ignored(delimiter: str) -> None:
-    src = f'q = "SELECT id FROM call WHERE note = {delimiter} COUNT(*) GROUP BY x {delimiter}"\n'  # ruff:ignore[hardcoded-sql-expression] — synthetic lint-rule fixture
+    src = f'q = "SELECT id FROM call WHERE note = {delimiter} SUM(amount) GROUP BY x {delimiter}"\n'  # ruff:ignore[hardcoded-sql-expression] — synthetic lint-rule fixture
     assert _check(src) == []
 
 
 def test_real_aggregate_after_dollar_quoted_value_still_fires() -> None:
-    src = 'q = "SELECT COUNT(*) FROM call WHERE note = $$ GROUP BY noise $$"\n'
+    src = 'q = "SELECT SUM(amount) FROM call WHERE note = $$ GROUP BY noise $$"\n'
     assert len(_check(src)) == 1
 
 
@@ -649,7 +685,7 @@ def test_real_aggregate_after_dollar_quoted_value_still_fires() -> None:
     ],
 )
 def test_test_files_are_not_store_modules(filename: str) -> None:
-    src = 'q = "SELECT COUNT(*) FROM batch_call WHERE batch_id = %s::uuid"\n'
+    src = 'q = "SELECT SUM(amount) FROM batch_call WHERE batch_id = %s::uuid"\n'
     assert _check(src, filename=filename) == []
 
 
@@ -661,5 +697,5 @@ def test_test_files_are_not_store_modules(filename: str) -> None:
     ],
 )
 def test_production_store_modules_still_fire(filename: str) -> None:
-    src = 'q = "SELECT COUNT(*) FROM batch_call WHERE batch_id = %s::uuid"\n'
+    src = 'q = "SELECT SUM(amount) FROM batch_call WHERE batch_id = %s::uuid"\n'
     assert len(_check(src, filename=filename)) == 1

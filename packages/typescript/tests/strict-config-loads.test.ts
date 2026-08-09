@@ -45,8 +45,7 @@ import strictConfig, {
  * Paths chosen to exercise every `files:`-scoped block in the config, because a
  * bad option inside an override only surfaces when that override merges in:
  * the base block, the `.tsx` filename-case + better-tailwindcss overrides, the
- * test-file relaxations, the design-system exemption, and the env
- * source-of-truth block that switches `@sarj/no-raw-env` off.
+ * test-file relaxations and the design-system exemption.
  */
 const PROBE_PATHS = [
   "src/index.ts",
@@ -162,8 +161,10 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
   it("applies the files-scoped overrides it declares", async () => {
     // ESLint normalises severities to numbers by the time a config is
     // computed: 0 = off, 2 = error.
+    // Boundary-named modules remain checked. The rule itself recognizes a
+    // validated env parser; the shared config must not hide unvalidated ones.
     const envConfig = await configFor("src/env/server-env.ts");
-    expect(envConfig.rules?.["@sarj/no-raw-env"]).toEqual([0]);
+    expect(envConfig.rules?.["@sarj/no-raw-env"]).toEqual([2]);
 
     // A severity-only override keeps the options the earlier block set, so
     // compare the severity slot rather than the whole entry.

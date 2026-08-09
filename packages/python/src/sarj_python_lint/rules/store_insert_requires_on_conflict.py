@@ -37,7 +37,14 @@ _INSERT_WRITE = re.compile(
 
 # Replay-safe conflict handling supported across the repository's SQL dialects.
 _CONFLICT_HANDLED = re.compile(
-    r"\bON\s+CONFLICT\b|\bON\s+DUPLICATE\s+KEY\b|\bINSERT\s+OR\s+(?:IGNORE|REPLACE)\b",
+    r"\bON\s+CONFLICT\b|\bON\s+DUPLICATE\s+KEY\b|\bINSERT\s+OR\s+(?:IGNORE|REPLACE)\b"
+    r"|\bINSERT\b[\s\S]*?\bSELECT\b[\s\S]*?\bWHERE\s+NOT\s+EXISTS\b",
+    re.IGNORECASE,
+)
+
+_REPLAY_CONTRACT_NAME = re.compile(
+    r"(?:^|_)(?:enqueue|ensure|migrate|record_once|schedule|seed|upsert|"
+    r"get_or_create|create_if_absent|insert_if_absent)(?:_|$)",
     re.IGNORECASE,
 )
 
@@ -47,14 +54,14 @@ class StoreInsertRequiresOnConflict(Rule):
     id: str = "store-insert-requires-on-conflict"
     code: str = "SARJ018"
     documentation = RuleDocumentation(
-        summary="Embedded SQL inserts in store code must handle conflicts explicitly.",
-        rationale="A replayed write without conflict handling can fail or create duplicate state.",
+        summary="Embedded inserts in replay-contract store methods must handle conflicts explicitly.",
+        rationale="A method named as an enqueue, seed, migration, schedule, ensure, or upsert promises replay safety.",
         remediation="Use `ON CONFLICT`, `ON DUPLICATE KEY`, or SQLite `OR IGNORE`/`OR REPLACE` as appropriate.",
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Only SQL string literals in recognized store modules are analyzed.",
-            "A deliberate non-idempotent insert requires a local SARJ018 suppression.",
+            "Named ordinary create methods are excluded because a uniqueness error may be their intended contract.",
         ),
         examples=(
             RuleExample(
@@ -107,6 +114,9 @@ class StoreInsertRequiresOnConflict(Rule):
             sql = strip_sql_noise(text, mask_dollar_quotes=False)
             if _INSERT_WRITE.search(sql) is None or _CONFLICT_HANDLED.search(sql):
                 continue
+            owner = _enclosing_callable(tree, node)
+            if owner is not None and _REPLAY_CONTRACT_NAME.search(owner.name) is None:
+                continue
 
             diags.append(
                 Diagnostic(
@@ -115,7 +125,7 @@ class StoreInsertRequiresOnConflict(Rule):
                     col=node.col_offset + 1,
                     code=self.code,
                     message=(
-                        "Store write must be an idempotent upsert — add "
+                        "Replay-contract store write must be an idempotent upsert — add "
                         "`ON CONFLICT ... DO UPDATE` (or `DO NOTHING`). "
                         "Suppress with `# sarj-noqa: SARJ018` for a deliberate "
                         "non-upsert write (e.g. ClickHouse)."
@@ -124,3 +134,22 @@ class StoreInsertRequiresOnConflict(Rule):
             )
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
+
+
+def _enclosing_callable(
+    tree: ast.AST,
+    node: ast.expr,
+) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
+    """Return the narrowest callable whose source range owns `node`."""
+    owners = [
+        function
+        for function in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef)
+        if function.lineno <= node.lineno <= (function.end_lineno or function.lineno)
+    ]
+    return min(owners, key=_source_span) if owners else None
+
+
+def _source_span(function: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
+    """Return a callable's source span for nearest-owner selection."""
+    end_lineno = function.end_lineno
+    return (end_lineno if end_lineno is not None else function.lineno) - function.lineno

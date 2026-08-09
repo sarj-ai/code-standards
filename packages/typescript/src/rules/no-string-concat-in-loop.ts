@@ -82,7 +82,37 @@ function isStringInitializedVariable(variable: Scope.Variable): boolean {
   if (declarator.type !== "VariableDeclarator") {
     return false;
   }
-  return isStringLiteralInit(declarator.init);
+  if (isStringLiteralInit(declarator.init)) return true;
+  if (
+    declarator.id.type === "Identifier" &&
+    declarator.id.typeAnnotation?.typeAnnotation.type === "TSStringKeyword"
+  ) {
+    return true;
+  }
+  return isTemplateStringsArrayElement(declarator.init, variable.scope);
+}
+
+/** A tagged-template parameter is statically a string at every numeric index. */
+function isTemplateStringsArrayElement(
+  node: TSESTree.Expression | null,
+  scope: Scope.Scope,
+): boolean {
+  if (
+    node?.type !== "MemberExpression" ||
+    !node.computed ||
+    node.object.type !== "Identifier"
+  ) {
+    return false;
+  }
+  const source = findVariable(scope, node.object.name);
+  if (source?.defs.length !== 1) return false;
+  const name = source.defs[0]?.name;
+  return (
+    name?.type === "Identifier" &&
+    name.typeAnnotation?.typeAnnotation.type === "TSTypeReference" &&
+    name.typeAnnotation.typeAnnotation.typeName.type === "Identifier" &&
+    name.typeAnnotation.typeAnnotation.typeName.name === "TemplateStringsArray"
+  );
 }
 
 /** Checks whether an initializer is a string or template literal. */
@@ -135,20 +165,23 @@ function isConcatOperand(
 /** Checks whether the loop creates a fresh accumulator on every iteration. */
 function isDeclaredInsideLoop(
   variable: Scope.Variable,
-  loop: TSESTree.Node,
+  repetition: TSESTree.Node,
 ): boolean {
   const def = variable.defs[0];
   if (def === undefined) {
     return false;
   }
-  const body = (
-    loop as
-      | TSESTree.ForStatement
-      | TSESTree.ForOfStatement
-      | TSESTree.ForInStatement
-      | TSESTree.WhileStatement
-      | TSESTree.DoWhileStatement
-  ).body;
+  const body = repetition.type === "CallExpression"
+    ? repetition.arguments[0]
+    : (
+        repetition as
+          | TSESTree.ForStatement
+          | TSESTree.ForOfStatement
+          | TSESTree.ForInStatement
+          | TSESTree.WhileStatement
+          | TSESTree.DoWhileStatement
+      ).body;
+  if (body === undefined || body.type === "SpreadElement") return false;
   const [declStart, declEnd] = def.node.range;
   const [bodyStart, bodyEnd] = body.range;
   return declStart >= bodyStart && declEnd <= bodyEnd;
@@ -159,6 +192,18 @@ function enclosingLoop(node: TSESTree.Node): TSESTree.Node | null {
   let child: TSESTree.Node = node;
   let parent = node.parent;
   while (parent !== undefined && parent !== null) {
+    if (
+      (parent.type === "ArrowFunctionExpression" ||
+        parent.type === "FunctionExpression") &&
+      parent.parent.type === "CallExpression" &&
+      parent.parent.arguments[0] === parent &&
+      parent.parent.callee.type === "MemberExpression" &&
+      !parent.parent.callee.computed &&
+      parent.parent.callee.property.type === "Identifier" &&
+      parent.parent.callee.property.name === "forEach"
+    ) {
+      return parent.parent;
+    }
     if (LOOP_NODE_TYPES.has(parent.type)) {
       const loop = parent as
         | TSESTree.ForStatement
@@ -174,6 +219,42 @@ function enclosingLoop(node: TSESTree.Node): TSESTree.Node | null {
     parent = parent.parent;
   }
   return null;
+}
+
+/** A small literal loop cannot exhibit unbounded quadratic growth. */
+function isSmallStaticForLoop(node: TSESTree.Node): boolean {
+  if (
+    node.type !== "ForStatement" ||
+    node.init?.type !== "VariableDeclaration" ||
+    node.init.declarations.length !== 1 ||
+    node.test?.type !== "BinaryExpression" ||
+    (node.test.operator !== "<" && node.test.operator !== "<=") ||
+    node.update?.type !== "UpdateExpression" ||
+    node.update.operator !== "++"
+  ) {
+    return false;
+  }
+  const declaration = node.init.declarations[0];
+  if (
+    declaration?.id.type !== "Identifier" ||
+    declaration.init?.type !== "Literal" ||
+    typeof declaration.init.value !== "number" ||
+    !Number.isInteger(declaration.init.value) ||
+    node.test.left.type !== "Identifier" ||
+    node.test.left.name !== declaration.id.name ||
+    node.test.right.type !== "Literal" ||
+    typeof node.test.right.value !== "number" ||
+    !Number.isInteger(node.test.right.value) ||
+    node.update.argument.type !== "Identifier" ||
+    node.update.argument.name !== declaration.id.name
+  ) {
+    return false;
+  }
+  const iterations =
+    node.test.right.value -
+    declaration.init.value +
+    (node.test.operator === "<=" ? 1 : 0);
+  return iterations >= 0 && iterations <= 8;
 }
 
 export default createRule<Options, MessageIds>({
@@ -218,6 +299,9 @@ export default createRule<Options, MessageIds>({
         // Must occur inside a loop body, else it's a one-shot append.
         const loop = enclosingLoop(node);
         if (loop === null) {
+          return;
+        }
+        if (isSmallStaticForLoop(loop)) {
           return;
         }
 

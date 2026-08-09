@@ -34,13 +34,8 @@ if TYPE_CHECKING:
 _REDACTION_TOKENS = frozenset(
     {"prefix", "suffix", "redact", "redacted", "mask", "masked", "hash", "hint", "len", "length", "tag"}
 )
-
-
-def _is_secret_keyword(name: str) -> bool:
-    """Report whether the keyword name names a raw secret (not a redacted derivative)."""
-    if any(token in _REDACTION_TOKENS for token in identifier_tokens(name)):
-        return False
-    return is_secret_name(name)
+_RAW_BLOB_TERMINALS = frozenset({"body", "bodies", "json", "payload", "payloads", "request", "response"})
+_WHOLE_OBJECT_SERIALIZERS = frozenset({"dict", "json", "model_dump"})
 
 
 def _is_raw_secret_reference(value: ast.expr) -> bool:
@@ -50,6 +45,47 @@ def _is_raw_secret_reference(value: ast.expr) -> bool:
             return _is_secret_keyword(name)
         case _:
             return False
+
+
+def _is_secret_keyword(name: str) -> bool:
+    """Report whether the keyword name names a raw secret (not a redacted derivative)."""
+    if any(token in _REDACTION_TOKENS for token in identifier_tokens(name)):
+        return False
+    return is_secret_name(name)
+
+
+def _is_raw_blob_name(name: str) -> bool:
+    """Report whether a name denotes a whole request/response payload."""
+    tokens = identifier_tokens(name)
+    return (
+        bool(tokens) and tokens[-1] in _RAW_BLOB_TERMINALS and not any(token in _REDACTION_TOKENS for token in tokens)
+    )
+
+
+def _is_raw_blob_reference(value: ast.expr) -> bool:
+    """Recognize a whole payload or its zero-argument serialization."""
+    match value:
+        case ast.Name(id=name) | ast.Attribute(attr=name):
+            return _is_raw_blob_name(name)
+        case ast.Call(func=ast.Attribute(value=receiver, attr=method), args=[], keywords=[]):
+            return method in _WHOLE_OBJECT_SERIALIZERS and _is_raw_blob_reference(receiver)
+        case _:
+            return False
+
+
+def _unsafe_interpolation(value: ast.expr) -> ast.expr | None:
+    """Return the first raw secret/blob interpolated into a log message."""
+    if not isinstance(value, ast.JoinedStr):
+        return None
+    return next(
+        (
+            part.value
+            for part in value.values
+            if isinstance(part, ast.FormattedValue)
+            and (_is_raw_secret_reference(part.value) or _is_raw_blob_reference(part.value))
+        ),
+        None,
+    )
 
 
 class NoSecretInLog(Rule):
@@ -96,11 +132,25 @@ class NoSecretInLog(Rule):
         for node in nodes(tree, ast.Call):
             if not _is_logging_call(node):
                 continue
+            for arg in node.args:
+                unsafe = _unsafe_interpolation(arg)
+                if unsafe is not None:
+                    diags.append(
+                        Diagnostic(
+                            path=path,
+                            line=unsafe.lineno,
+                            col=unsafe.col_offset + 1,
+                            code=self.code,
+                            message="Raw secret or request/response payload interpolated into a log message — redact or omit it.",
+                        )
+                    )
             for kw in node.keywords:
                 # `**kwargs` has arg=None — nothing to inspect.
                 if kw.arg is None:
                     continue
-                if _is_secret_keyword(kw.arg) and _is_raw_secret_reference(kw.value):
+                leaks_secret = _is_raw_secret_reference(kw.value)
+                leaks_blob = _is_raw_blob_name(kw.arg) and _is_raw_blob_reference(kw.value)
+                if leaks_secret or leaks_blob:
                     diags.append(
                         Diagnostic(
                             path=path,

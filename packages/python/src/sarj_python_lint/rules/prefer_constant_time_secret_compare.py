@@ -61,6 +61,8 @@ _AUTH_WORDS = frozenset(
     }
 )
 
+_CONFIRMATION_OPERAND_COUNT = 2
+
 
 class PreferConstantTimeSecretCompare(Rule):
     id: str = "prefer-constant-time-secret-compare"
@@ -124,6 +126,7 @@ class PreferConstantTimeSecretCompare(Rule):
         if not compares:
             return []
         crypto_module = _imports_crypto(tree, source)
+        literal_constants = _literal_constant_names(tree)
         dunder_compares = _equality_dunder_compares(tree, source)
         diags: list[Diagnostic] = []
         for node in compares:
@@ -136,11 +139,15 @@ class PreferConstantTimeSecretCompare(Rule):
             if not isinstance(node.ops[0], (ast.Eq, ast.NotEq)):
                 continue
             operands = [node.left, *node.comparators]
+            if _is_password_confirmation_pair(operands):
+                continue
             # Skip presence checks (None/True/False, numbers) and comparisons
             # against a compile-time str/bytes literal sentinel — an attacker
             # can't extract a runtime secret by timing a compare to a fixed
             # literal (ruff S105 covers hardcoded-secret literals separately).
-            if any(_is_excluded_operand(op) for op in operands):
+            if any(_is_excluded_operand(op, literal_constants=literal_constants) for op in operands) and not any(
+                _is_auth_lookup(op, crypto_module=crypto_module) for op in operands
+            ):
                 continue
             if not any(_is_secret_operand(op, crypto_module=crypto_module) for op in operands):
                 continue
@@ -202,6 +209,58 @@ def _is_secret_operand(node: ast.AST, *, crypto_module: bool) -> bool:
                 key,
                 crypto_module=crypto_module,
             )
+        case ast.Call(func=ast.Attribute(value=receiver, attr="get"), args=[ast.Constant(value=str() as key), *_]):
+            return _is_auth_mapping(receiver) and _is_auth_secret_name(
+                key,
+                crypto_module=crypto_module,
+            )
+        case ast.JoinedStr(values=values):
+            return any(
+                isinstance(value, ast.FormattedValue) and _is_secret_operand(value.value, crypto_module=crypto_module)
+                for value in values
+            )
+        case _:
+            return False
+
+
+def _is_password_confirmation_pair(operands: list[ast.expr]) -> bool:
+    """Exclude two user-entered password fields checked for confirmation equality."""
+    if len(operands) != _CONFIRMATION_OPERAND_COUNT:
+        return False
+    names = [_operand_name(operand) for operand in operands]
+    if any(name is None for name in names):
+        return False
+    tokens = [set(identifier_tokens(name or "")) for name in names]
+    return all("password" in operand_tokens for operand_tokens in tokens) and any(
+        "confirmation" in operand_tokens or "confirm" in operand_tokens for operand_tokens in tokens
+    )
+
+
+def _operand_name(node: ast.AST) -> str | None:
+    match node:
+        case ast.Name(id=name) | ast.Attribute(attr=name):
+            return name
+        case _:
+            return None
+
+
+_AUTH_MAPPING_WORDS = frozenset({"authorization", "cookies", "headers", "path_params", "query_params"})
+
+
+def _is_auth_mapping(node: ast.AST) -> bool:
+    """Report whether `.get(...)` reads a request authenticator container."""
+    match node:
+        case ast.Name(id=name) | ast.Attribute(attr=name):
+            return name.lower() in _AUTH_MAPPING_WORDS
+        case _:
+            return False
+
+
+def _is_auth_lookup(node: ast.AST, *, crypto_module: bool) -> bool:
+    """Report whether an operand reads a named authenticator from a request mapping."""
+    match node:
+        case ast.Call(func=ast.Attribute(value=receiver, attr="get"), args=[ast.Constant(value=str() as key), *_]):
+            return _is_auth_mapping(receiver) and _is_auth_secret_name(key, crypto_module=crypto_module)
         case _:
             return False
 
@@ -234,6 +293,14 @@ def _is_auth_secret_name(identifier: str, *, crypto_module: bool) -> bool:
         return False
     if any(tok in _CATEGORY_WORDS for tok in tokens):
         return False
+    # Lexical/content tokens are pieces of text, not authenticators. Requiring
+    # a second auth word avoids timing warnings on parsers and translation code.
+    if (
+        "token" in tokens
+        and tokens[0] in {"clean", "lexical", "parsed", "raw", "word"}
+        and not any(tok in tokens for tok in _AUTH_WORDS - {"token"})
+    ):
+        return False
     auth_tokens = {tok for tok in tokens if tok in _AUTH_WORDS} | {
         f"{a}_{b}" for a, b in pairwise(tokens) if a == "api" and b == "key"
     }
@@ -244,7 +311,7 @@ def _is_auth_secret_name(identifier: str, *, crypto_module: bool) -> bool:
     return True
 
 
-def _is_excluded_operand(node: ast.AST) -> bool:
+def _is_excluded_operand(node: ast.AST, *, literal_constants: frozenset[str]) -> bool:
     """Report whether the operand makes the comparison a non-timing-attack surface."""
     if isinstance(node, ast.Constant):
         value = node.value
@@ -255,10 +322,25 @@ def _is_excluded_operand(node: ast.AST) -> bool:
         if isinstance(value, (str, bytes)):
             return True
     if isinstance(node, ast.Name):
-        return _is_constant_reference(node.id)
+        return _is_constant_reference(node.id) or node.id in literal_constants
     if isinstance(node, ast.Attribute):
         return _is_constant_reference(node.attr)
     return False
+
+
+def _literal_constant_names(tree: ast.AST) -> frozenset[str]:
+    """Collect immutable-looking names bound directly to fixed str/bytes sentinels."""
+    names: set[str] = set()
+    for node in nodes(tree, ast.Assign, ast.AnnAssign):
+        match node:
+            case (
+                ast.Assign(targets=[ast.Name(id=name)], value=ast.Constant(value=str() | bytes()))
+                | ast.AnnAssign(target=ast.Name(id=name), value=ast.Constant(value=str() | bytes()))
+            ):
+                names.add(name)
+            case _:
+                pass
+    return frozenset(names)
 
 
 def _is_constant_reference(identifier: str) -> bool:

@@ -24,11 +24,51 @@ export const noInsecureRandomIdDocumentation = {
   ],
 } as const satisfies RuleDocumentation;
 
-const STRONG_SECURITY_PATTERN =
-  /token|secret|csrf|password|passwd|apikey|api[-_]?key|nonce|salt|uuid|authid/i;
+const STRONG_SECURITY_WORDS: ReadonlySet<string> = new Set([
+  "apikey",
+  "csrf",
+  "nonce",
+  "otp",
+  "password",
+  "passwd",
+  "pin",
+  "salt",
+  "secret",
+  "token",
+  "uuid",
+  "verificationcode",
+]);
 
-const NON_SECURITY_ID_PATTERN =
-  /temp|tmp|cache|correlation|request|req|trace|execution|dev|hmr|mock|test|perf|marker|dialog|select|menu|tab|field|input|form|element|dom|aria|component/i;
+const NON_SECURITY_ID_WORDS: ReadonlySet<string> = new Set([
+  "aria", "cache", "component", "correlation", "dev", "dialog", "dom",
+  "element", "execution", "field", "form", "hmr", "input", "marker",
+  "menu", "mock", "perf", "req", "request", "select", "tab", "temp",
+  "test", "tmp", "trace",
+]);
+
+function nameWords(name: string): string[] {
+  return name
+    .replaceAll(/([a-z0-9])([A-Z])/gu, "$1 $2")
+    .split(/[^A-Za-z0-9]+/u)
+    .filter(Boolean)
+    .map((word) => word.toLowerCase());
+}
+
+function isStrongSecurityName(name: string): boolean {
+  const words = nameWords(name);
+  return (
+    words.some((word) => STRONG_SECURITY_WORDS.has(word)) ||
+    words.some((word, index) =>
+      (word === "api" && words[index + 1] === "key") ||
+      (word === "auth" && words[index + 1] === "id") ||
+      (word === "verification" && words[index + 1] === "code"),
+    )
+  );
+}
+
+function isNonSecurityName(name: string): boolean {
+  return nameWords(name).some((word) => NON_SECURITY_ID_WORDS.has(word));
+}
 
 /** Matches a static string fragment that reads as a path or DOM-id context. */
 const PATH_OR_DOM_MARKER = /[\\/#]|\.[A-Za-z0-9]/;
@@ -53,103 +93,72 @@ function isMathRandomCall(node: TSESTree.Node): node is TSESTree.CallExpression 
   );
 }
 
-/**
- * Returns true if `node` (a `Math.random()` call) is the base of a member
- * chain that calls `.toString(36)` somewhere above it, e.g.
- * `Math.random().toString(36)` or `Math.random().toString(36).slice(2)`.
- */
-function isPartOfToString36Chain(node: TSESTree.Node): boolean {
-  let current: TSESTree.Node = node;
-  let parent = current.parent;
-
-  while (parent) {
-    if (
-      parent.type === "MemberExpression" &&
-      parent.object === current &&
-      !parent.computed &&
-      parent.property.type === "Identifier" &&
-      parent.property.name === "toString"
-    ) {
-      const grandparent = parent.parent;
-      if (
-        grandparent &&
-        grandparent.type === "CallExpression" &&
-        grandparent.callee === parent
-      ) {
-        const firstArg = grandparent.arguments[0];
-        if (firstArg && firstArg.type === "Literal" && firstArg.value === 36) {
-          return true;
-        }
-      }
-    }
-
-    if (parent.type === "MemberExpression" && parent.object === current) {
-      current = parent;
-      parent = current.parent;
-      continue;
-    }
-    if (parent.type === "CallExpression" && parent.callee === current) {
-      current = parent;
-      parent = current.parent;
-      continue;
-    }
-    break;
-  }
-
-  return false;
-}
-
 /** Finds the nearest binding or property name without leaving its value. */
-function findEnclosingName(node: TSESTree.Node): string | undefined {
+function findEnclosingNames(node: TSESTree.Node): string[] {
+  const names: string[] = [];
+  let directBinding = true;
   let current: TSESTree.Node = node;
   let parent = current.parent;
 
   while (parent) {
     if (parent.type === "VariableDeclarator" && parent.init === current) {
-      if (parent.id.type === "Identifier") {
-        return parent.id.name;
+      if (directBinding && parent.id.type === "Identifier") {
+        names.push(parent.id.name);
       }
-      return undefined;
     }
 
     if (parent.type === "Property" && parent.value === current) {
       const key = parent.key;
       if (!parent.computed && key.type === "Identifier") {
-        return key.name;
+        names.push(key.name);
       }
       if (key.type === "Literal" && typeof key.value === "string") {
-        return key.value;
+        names.push(key.value);
       }
-      return undefined;
+      directBinding = false;
     }
 
     if (parent.type === "PropertyDefinition" && parent.value === current) {
       const key = parent.key;
       if (!parent.computed && key.type === "Identifier") {
-        return key.name;
+        names.push(key.name);
       }
       if (key.type === "Literal" && typeof key.value === "string") {
-        return key.value;
+        names.push(key.value);
       }
-      return undefined;
+      directBinding = false;
     }
 
-    if (
-      parent.type === "FunctionDeclaration" ||
-      parent.type === "FunctionExpression" ||
-      parent.type === "ArrowFunctionExpression" ||
-      parent.type === "BlockStatement" ||
-      parent.type === "ReturnStatement" ||
-      parent.type === "ExpressionStatement"
-    ) {
-      return undefined;
+    if (parent.type === "AssignmentExpression" && parent.right === current) {
+      if (directBinding && parent.left.type === "Identifier") names.push(parent.left.name);
+      if (
+        directBinding &&
+        parent.left.type === "MemberExpression" &&
+        !parent.left.computed &&
+        parent.left.property.type === "Identifier"
+      ) {
+        names.push(parent.left.property.name);
+      }
+    }
+
+    if (parent.type === "ObjectExpression" || parent.type === "ArrayExpression") {
+      directBinding = false;
+    }
+
+    if (parent.type === "FunctionDeclaration") {
+      if (directBinding && parent.id !== null) names.push(parent.id.name);
+      return names;
+    }
+
+    if (parent.type === "ExpressionStatement") {
+      return names;
     }
 
     current = parent;
     parent = current.parent;
   }
 
-  return undefined;
+  return names;
 }
 
 /**
@@ -268,16 +277,16 @@ export default createRule<Options, MessageIds>({
           return;
         }
 
-        const name = findEnclosingName(node);
+        const names = findEnclosingNames(node);
 
         // Security signals take precedence over non-security signals.
-        if (name !== undefined && STRONG_SECURITY_PATTERN.test(name)) {
+        if (names.some(isStrongSecurityName)) {
           context.report({ node, messageId: "insecureRandomId" });
           return;
         }
 
         // Ignore ephemeral and correlation identifiers.
-        if (name !== undefined && NON_SECURITY_ID_PATTERN.test(name)) {
+        if (names.some(isNonSecurityName)) {
           return;
         }
 
@@ -286,10 +295,8 @@ export default createRule<Options, MessageIds>({
           return;
         }
 
-        // The classic insecure random-id idiom.
-        if (isPartOfToString36Chain(node)) {
-          context.report({ node, messageId: "insecureRandomId" });
-        }
+        // A radix conversion alone does not prove that the value crosses a
+        // security boundary. Ambiguous temporary/UI IDs intentionally miss.
       },
     };
   },

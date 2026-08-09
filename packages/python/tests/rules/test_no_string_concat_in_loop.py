@@ -27,6 +27,19 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
     assert len(NoStringConcatInLoop().check(Path(focus.path), focus.source)) == example.expected_count
 
 
+def test_reports_one_diagnostic_per_accumulator_per_loop() -> None:
+    source = """
+def render(items):
+    output = ""
+    for item in items:
+        output += "<li>"
+        output += str(item)
+        output += "</li>"
+    return output
+"""
+    assert _count(source) == 1
+
+
 # Positive — obviously-string RHS accumulated with `+=` fires exactly once.    #
 
 
@@ -689,7 +702,7 @@ def f(items):
     assert _count(src) == 1
 
 
-def test_flags_concat_in_match_case_bodies_in_loop():
+def test_reports_accumulator_once_across_match_case_bodies_in_loop():
     src = """
 def f(items):
     s = ""
@@ -701,7 +714,7 @@ def f(items):
                 s += f"{x}"
     return s
 """
-    assert _count(src) == 2
+    assert _count(src) == 1
 
 
 def test_flags_concat_in_inner_while_in_for():

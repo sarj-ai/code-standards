@@ -126,6 +126,7 @@ ruleTester.run("no-secret-in-log", rule, {
     // A narrowed FIELD of a body is the fix, not the defect — the member
     // property decides, never the object it was picked from.
     { code: 'logger.info("resp", { id: body.id });' },
+    { code: 'logger.info("editor", await editor.text());' },
     { code: 'logger.info("resp", { bodyLength: body.length });' },
     { code: 'logger.info("resp", { status: res.status, issueCount: body.issues.length });' },
     { code: 'logger.info("resp", { payloadId: payload.id });' },
@@ -185,6 +186,11 @@ ruleTester.run("no-secret-in-log", rule, {
     },
   ],
   invalid: [
+    {
+      name: "rejects a directly parsed response body",
+      code: 'console.error("request failed", await response.text());',
+      errors: [{ messageId: "noRawBodyInLog" }],
+    },
     { name: "reports the documented secret", code: noSecretInLogDocumentation.examples[1].files[0].source, errors: [{ messageId: "noSecretInLog" }] },
     // Object property: shorthand secret names.
     {

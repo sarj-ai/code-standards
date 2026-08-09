@@ -34,6 +34,18 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
     assert len(findings) == example.expected_count
 
 
+def test_allows_user_facing_failure_report_before_sentinel() -> None:
+    source = """
+def load():
+    try:
+        return risky()
+    except Exception:
+        ui.callout("warn", "Could not load")
+        return None
+"""
+    assert _check(source) == []
+
+
 def test_flags_return_none():
     src = """
 def f():
@@ -1565,6 +1577,17 @@ def f(x) -> list[str] | None:
         y = compute(x)
         return y
     except KeyError:
+        return []
+"""
+    assert _check(src) == []
+
+
+def test_concrete_collection_return_narrow_except_is_exempt() -> None:
+    src = """
+def parse_rows(raw: str) -> list[Row]:
+    try:
+        return decode_rows(raw)
+    except (ValueError, KeyError, TypeError):
         return []
 """
     assert _check(src) == []

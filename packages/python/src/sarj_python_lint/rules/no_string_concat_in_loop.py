@@ -117,6 +117,7 @@ class _ConcatVisitor(ast.NodeVisitor):
         self._string_vars: list[frozenset[str]] = [frozenset()]
         self._loop_reassigns: list[dict[str, list[int]]] = []
         self._loop_reads: list[frozenset[str]] = []
+        self._loop_reported: list[set[str]] = []
         self._while_probe_names: list[frozenset[str]] = []
         self.hits: list[ast.AugAssign | ast.Assign] = []
 
@@ -140,6 +141,7 @@ class _ConcatVisitor(ast.NodeVisitor):
             self._loop_depth += 1
             self._loop_reassigns.append(_loop_local_reassignments(node))
             self._loop_reads.append(_loop_read_names(node))
+            self._loop_reported.append(set())
             if isinstance(node, ast.While):
                 self._while_probe_names.append(frozenset(_test_names(node.test)))
             super().generic_visit(node)
@@ -147,6 +149,7 @@ class _ConcatVisitor(ast.NodeVisitor):
                 self._while_probe_names.pop()
             self._loop_reads.pop()
             self._loop_reassigns.pop()
+            self._loop_reported.pop()
             self._loop_depth -= 1
             return
         if (
@@ -155,7 +158,10 @@ class _ConcatVisitor(ast.NodeVisitor):
             and not self._is_loop_local_target(node)
             and not self._is_probe_target(node)
         ):
-            self.hits.append(node)
+            target = _src(self._accumulation_target(node))
+            if target not in self._loop_reported[-1]:
+                self._loop_reported[-1].add(target)
+                self.hits.append(node)
         super().generic_visit(node)
 
     def _is_probe_target(self, node: ast.AugAssign | ast.Assign) -> bool:

@@ -8,7 +8,7 @@ import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import type { RuleContext, Scope } from "@typescript-eslint/utils/ts-eslint";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isGeneratedFile, isTestFile } from "./_paths.js";
+import { isGeneratedFile, isScriptFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "unparsedJsonAccess";
 
@@ -477,7 +477,11 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context: Ctx) {
     // Fixtures and generated clients own validation at a different boundary.
-    if (isTestFile(context.filename) || isGeneratedFile(context.filename, context.sourceCode.text)) {
+    if (
+      isTestFile(context.filename) ||
+      isScriptFile(context.filename) ||
+      isGeneratedFile(context.filename, context.sourceCode.text)
+    ) {
       return {};
     }
 

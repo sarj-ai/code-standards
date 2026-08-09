@@ -106,6 +106,32 @@ def test_flags_secret_vs_runtime_operand():
     assert _count(src) == 1
 
 
+def test_flags_request_token_lookup_against_runtime_uppercase_secret() -> None:
+    source = (
+        'TOKEN = os.environ["WEBHOOK_TOKEN"]\ndef f(request):\n    return request.path_params.get("token") != TOKEN\n'
+    )
+
+    assert _count(source) == 1
+
+
+def test_flags_bearer_f_string_with_secret_interpolation() -> None:
+    source = 'def f(auth_header, expected_token):\n    return auth_header == f"Bearer {expected_token}"\n'
+
+    assert _count(source) == 1
+
+
+def test_allows_content_token_comparison() -> None:
+    source = "def translated(en, clean_token):\n    return en != clean_token\n"
+
+    assert _check(source) == []
+
+
+def test_allows_fixed_literal_constant_alias() -> None:
+    source = 'TOKEN = "token"\ndef f(value):\n    return value == TOKEN\n'
+
+    assert _check(source) == []
+
+
 def test_flags_comparison_inside_comprehension():
     src = "def f(items, token):\n    return [x for x in items if token == x]\n"
     assert _count(src) == 1
@@ -313,6 +339,20 @@ def test_allows_password_vs_placeholder_sentinel():
     """The real first-party case: `password == "PLACEHOLDER"` is a sentinel check."""
     src = 'def f(password, password_confirmation):\n    return password == "PLACEHOLDER" or password_confirmation == "PLACEHOLDER"\n'
     assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "comparison",
+    [
+        "password == password_confirmation",
+        "pending_password != confirm_password",
+        "self.password == request.password_confirmation",
+    ],
+)
+def test_allows_password_confirmation_equality(comparison: str) -> None:
+    source = f"def validate(password, password_confirmation, pending_password, confirm_password, self, request):\n    return {comparison}\n"
+
+    assert _check(source) == []
 
 
 def test_allows_token_vs_sentinel_literal():
@@ -673,10 +713,10 @@ def test_flags_secret_vs_fstring_rhs():
     assert _count(src) == 1
 
 
-def test_allows_fstring_lhs_not_inspected():
-    """A JoinedStr operand is neither Name nor Attribute — out of scope (no fire)."""
+def test_flags_fstring_secret_interpolation():
+    """Formatting does not make a timing-sensitive secret comparison safe."""
     src = 'def f(token, expected):\n    return f"{token}" == expected\n'
-    assert _check(src) == []
+    assert _count(src) == 1
 
 
 def test_token_fires_but_token_type_stays_exempt():
@@ -701,10 +741,6 @@ def test_flags_valid_token_credential():
     assert _count(src) == 1
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Literal-sentinel exemption doesn't follow a Name bound to a str literal one line up — false positive on equivalent code",
-)
 def test_allows_secret_vs_name_bound_to_literal():
     src = 'def f(token):\n    expected = "PLACEHOLDER"\n    return token == expected\n'
     assert _check(src) == []

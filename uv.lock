@@ -8,5 +8,5 @@ exclude-newer-span = "P7D"
 
 [[package]]
 name = "sarj-python-lint"
-version = "0.61.0"
+version = "0.62.0"
 source = { editable = "." }

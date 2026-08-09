@@ -7,7 +7,7 @@
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isTestFile } from "./_paths.js";
+import { isScriptFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "rawFetch";
 
@@ -43,6 +43,7 @@ const DEFAULT_ALLOW: readonly string[] = [
   "[\\\\/]notifications[\\\\/]",
   "[Ss]ervice\\.[cm]?[jt]sx?$",
   "-(service|connector|adapter|sdk|fetcher)\\.[cm]?[jt]sx?$",
+  "[\\\\/][^\\\\/]*(?:Client|client)\\.[cm]?[jt]sx?$",
 ];
 
 /** Additional non-production trees that may call `fetch` directly. */
@@ -263,7 +264,11 @@ export default createRule<Options, MessageIds>({
   create(context, [options]) {
     const filename = context.filename;
 
-    if (isTestFile(filename) || NON_PRODUCTION_TREE_RE.test(filename)) {
+    if (
+      isTestFile(filename) ||
+      isScriptFile(filename) ||
+      NON_PRODUCTION_TREE_RE.test(filename)
+    ) {
       return {};
     }
 
@@ -326,10 +331,24 @@ export default createRule<Options, MessageIds>({
     function isInternalApiUrl(node: TSESTree.Node | null): boolean {
       const resolved = resolveNode(node ?? undefined);
       if (resolved?.type === AST_NODE_TYPES.Literal) {
-        return typeof resolved.value === "string" && resolved.value.startsWith("/api/");
+        return (
+          typeof resolved.value === "string" &&
+          /^\/(?!\/)(?:[^/]+\/)*api(?:\/|$)/.test(resolved.value)
+        );
       }
       if (resolved?.type === AST_NODE_TYPES.TemplateLiteral) {
-        return resolved.quasis[0]?.value.cooked?.startsWith("/api/") === true;
+        const prefix = resolved.quasis[0]?.value.cooked;
+        return typeof prefix === "string" && /^\/(?!\/)(?:[^/]+\/)*api(?:\/|$)/.test(prefix);
+      }
+      if (
+        resolved?.type === AST_NODE_TYPES.CallExpression &&
+        resolved.callee.type === AST_NODE_TYPES.Identifier &&
+        resolved.callee.name === "withBase"
+      ) {
+        const first = resolved.arguments[0];
+        return first !== undefined && first.type !== AST_NODE_TYPES.SpreadElement
+          ? isInternalApiUrl(first)
+          : false;
       }
       return (
         resolved?.type === AST_NODE_TYPES.BinaryExpression &&

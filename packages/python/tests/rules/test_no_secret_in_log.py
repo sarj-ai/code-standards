@@ -35,6 +35,32 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
     assert len(findings) == example.expected_count
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        "logger.info('order', payload=payload)",
+        "logger.info('order', payload=payload.model_dump())",
+        "logger.info(f'Request failed: {request_json}')",
+        "logger.info(f'Response failed: {response_body}')",
+        "logger.info('auth', value=access_token)",
+    ],
+)
+def test_rejects_whole_payloads_and_direct_secrets(source: str) -> None:
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "logger.info('order', payload_id=payload.id)",
+        "logger.info('order', payload_summary=summarize(payload))",
+        "logger.info(f'Response status: {response_status}')",
+    ],
+)
+def test_allows_payload_metadata_and_summaries(source: str) -> None:
+    assert _check(source) == []
+
+
 def _codes(source: str) -> list[str]:
     return [d.code for d in _check(source)]
 
@@ -244,10 +270,9 @@ def test_allows_unproven_alias_value():
     assert _check('logger.info("m", token=value)\n') == []
 
 
-def test_allows_safe_name_with_secret_attribute_value():
-    """A secret read as a *value* under a safe keyword is out of scope."""
+def test_flags_secret_attribute_even_under_generic_keyword():
     src = 'logger.info("m", data=obj.password)\n'
-    assert _check(src) == []
+    assert _codes(src) == ["SARJ012"]
 
 
 def test_allows_safe_name_with_secret_subscript_value():
@@ -264,10 +289,9 @@ def test_skips_positional_secret_argument():
     assert _check(src) == []
 
 
-def test_skips_fstring_with_secret():
-    """F-strings are explicitly out of scope for this rule."""
+def test_flags_fstring_with_secret():
     src = 'logger.info(f"token={token}")\n'
-    assert _check(src) == []
+    assert _codes(src) == ["SARJ012"]
 
 
 def test_skips_secret_word_in_message_literal():
@@ -514,9 +538,8 @@ def test_allows_secret_name_with_redacting_call_value():
     assert _check('logger.info("m", token=mask(token))\n') == []
 
 
-def test_skips_fstring_secret_with_safe_keyword():
-    """Interpolated secret in an f-string is out of scope; the safe kwarg is clean."""
-    assert _check('logger.info(f"key={api_key}", user_id=u)\n') == []
+def test_flags_fstring_secret_with_safe_keyword():
+    assert _codes('logger.info(f"key={api_key}", user_id=u)\n') == ["SARJ012"]
 
 
 # Family 18: KNOWN DEFECTS (xfail strict)                                       #
@@ -598,7 +621,6 @@ def authenticate(token, password, api_key, jwt, secret):
 def safely(token, api_key):
     logger.info("auth ok", token_prefix=token[:6], api_key_tag=tag(api_key))
     logger.info("usage", token_count=n, has_secret=True, api_key_id=row_id)
-    logger.info(f"token={token}")
     log.info("stdlib", extra={"token": token})
     audit.record("stored", token=token)
 """
@@ -611,6 +633,6 @@ def test_liveness_every_leak_shape_still_fires():
 
 
 def test_liveness_no_safe_shape_fires():
-    """Redaction markers, metadata names, f-strings, `extra=`, and non-loggers stay silent."""
+    """Redaction markers, metadata names, `extra=`, and non-loggers stay silent."""
     safe = _SERVICE_MODULE.split("def safely")[1]
     assert _check(f"def safely{safe}") == []

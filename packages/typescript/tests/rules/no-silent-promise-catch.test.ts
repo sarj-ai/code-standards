@@ -19,6 +19,15 @@ ruleTester.run("no-silent-promise-catch", rule, {
   valid: [
     { name: "accepts the documented reported rejection", code: noSilentPromiseCatchDocumentation.examples[0].files[0].source },
     {
+      name: "allows a cancelled optional web-share action",
+      code: "await navigator.share(data).catch(() => false);",
+    },
+    {
+      name: "allows integration scripts to probe expected failures",
+      filename: "/repo/scripts/probe.mjs",
+      code: "await probe().catch(() => null);",
+    },
+    {
       name: "allows a suppression explained inside the handler",
       code: "thenable.catch(() => {\n  // prevent unhandled rejection errors\n});",
     },
@@ -152,6 +161,11 @@ ruleTester.run("no-silent-promise-catch", rule, {
   ],
   invalid: [
     { name: "reports the documented silent rejection", code: noSilentPromiseCatchDocumentation.examples[1].files[0].source, errors: [{ messageId: "silentCatch" }] },
+    {
+      name: "reports a silent catch followed only by finally",
+      code: "load().catch(() => null).finally(cleanup);",
+      errors: [{ messageId: "silentCatch" }],
+    },
     {
       name: "reports a silent rejection handler in the second then argument",
       code: "fetchUser(id).then(render, () => null);",

@@ -50,6 +50,14 @@ ruleTester.run("no-dynamic-sql", rule, {
       code: 'db.prepare("select " + COLS + " from users");',
     },
     {
+      name: "allows unquoted runtime fragments without claiming they are bindable values",
+      code: "db.prepare(`select * from ${tableName} limit ${limit}`);",
+    },
+    {
+      name: "allows runtime concatenation outside a quoted value",
+      code: "db.prepare(`select id from users where id = ` + userId);",
+    },
+    {
       name: "accepts a parameterizing tagged template",
       code: "const q = sql`select * from users where id = ${userId}`;",
     },
@@ -102,6 +110,11 @@ ruleTester.run("no-dynamic-sql", rule, {
   ],
   invalid: [
     {
+      name: "reports a runtime concatenation inside a quoted value",
+      code: "db.prepare(\"select id from users where role = '\" + userId + \"'\");",
+      errors: [{ messageId: "dynamicSql" }],
+    },
+    {
       name: "reports runtime template interpolation",
       code: noDynamicSqlDocumentation.examples[1].files[0].source,
       errors: [{ messageId: "dynamicSql" }],
@@ -149,7 +162,7 @@ ruleTester.run("no-dynamic-sql", rule, {
     },
     {
       name: "recognizes an update statement",
-      code: "conn.exec(`update accounts set balance = ${amount} where id = 1`);",
+      code: "conn.exec(`update accounts set note = '${note}' where id = 1`);",
       errors: [{ messageId: "dynamicSql" }],
     },
     {
@@ -158,18 +171,8 @@ ruleTester.run("no-dynamic-sql", rule, {
       errors: [{ messageId: "dynamicSql" }],
     },
     {
-      name: "recognizes DDL",
-      code: "db.exec(`drop table ${tableName}`);",
-      errors: [{ messageId: "dynamicSql" }],
-    },
-    {
-      name: "recognizes a pragma statement",
-      code: "db.exec(`pragma table_info(${tableName})`);",
-      errors: [{ messageId: "dynamicSql" }],
-    },
-    {
       name: "recognizes a common-table expression",
-      code: "db.query(`with selected as (select * from users) select * from selected where id = ${id}`);",
+      code: "db.query(`with selected as (select * from users) select * from selected where slug = '${slug}'`);",
       errors: [{ messageId: "dynamicSql" }],
     },
   ],

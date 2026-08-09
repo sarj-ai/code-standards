@@ -54,7 +54,7 @@ def test_message_reports_actual_count(n: int) -> None:
     assert f"Query has {n} JOINs (max 2)" in diags[0].message
 
 
-@pytest.mark.parametrize("path", ["foo_store.py", "app/stores/foo.py"])
+@pytest.mark.parametrize("path", ["foo_store.py", "app/accounts/store.py", "app/stores/foo.py"])
 def test_store_modules_are_checked(path: str) -> None:
     assert len(_check(_sql_with_joins(3), path)) == 1
 

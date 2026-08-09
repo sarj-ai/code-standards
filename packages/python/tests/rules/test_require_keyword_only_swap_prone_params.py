@@ -63,6 +63,14 @@ class Store:
     assert len(_check(src)) == 1
 
 
+def test_allows_method_on_subclass_that_may_implement_an_inherited_contract() -> None:
+    src = """
+class Store(BaseStore):
+    def link(self, parent_id: str, child_id: str) -> None: ...
+"""
+    assert _check(src) == []
+
+
 def test_flags_classmethod_excluding_cls():
     src = """
 class Store:
@@ -154,10 +162,36 @@ def test_allows_non_primitive_annotations(params: str):
 
 @pytest.mark.parametrize(
     "name",
-    ["__init__", "__eq__", "__setitem__", "visit_Call", "visit_node", "test_transfer"],
+    ["__eq__", "__setitem__", "visit_Call", "visit_node", "test_transfer"],
 )
 def test_allows_exempt_names(name: str):
     src = f"def {name}(a: str, b: str) -> None: ...\n"
+    assert _check(src) == []
+
+
+def test_flags_swap_prone_constructor_parameters() -> None:
+    src = """
+class Client:
+    def __init__(self, auth_token: str, base_url: str) -> None: ...
+"""
+    assert len(_check(src)) == 1
+
+
+def test_allows_constructor_that_forwards_the_inherited_signature() -> None:
+    src = """
+class Client(BaseClient):
+    def __init__(self, auth_token: str, base_url: str) -> None:
+        super().__init__(auth_token, base_url)
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize("variadic", ["*args", "**kwargs"])
+def test_allows_variadic_constructor_that_may_forward_an_inherited_signature(variadic: str) -> None:
+    src = f"""
+class Client(BaseClient):
+    def __init__(self, auth_token: str, base_url: str, {variadic}) -> None: ...
+"""
     assert _check(src) == []
 
 
@@ -453,13 +487,13 @@ class Child(Base):
     assert _check(src) == []
 
 
-def test_super_call_to_a_different_method_does_not_exempt():
+def test_subclass_method_is_exempt_even_when_its_super_call_has_another_name():
     src = """
 class Child(Base):
     def register(self, old_key: str, new_key: str) -> None:
         super().__init__()
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
 @pytest.mark.parametrize(

@@ -177,9 +177,10 @@ class RequireKeywordOnlySwapProneParams(Rule):
         value_referenced = _value_referenced_names(tree)
         overload_names = _overload_stub_names(tree)
         method_ids = _method_node_ids(tree)
+        subclass_method_ids = _subclass_method_node_ids(tree)
         diags: list[Diagnostic] = []
         for node, offending in candidates:
-            if node.name in value_referenced or node.name in overload_names:
+            if node.name in value_referenced or node.name in overload_names or id(node) in subclass_method_ids:
                 continue
             # Checked last: `_calls_super_same_name` walks the body, so it runs
             # only for the few signatures that would otherwise be reported.
@@ -212,7 +213,14 @@ def _is_exempt_path(path: Path) -> bool:
 
 def _is_exempt(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     name = node.name
-    if name.startswith("__") and name.endswith("__"):
+    # Locally owned constructors are ordinary call sites and are especially
+    # prone to silent swaps. Other dunders implement fixed Python protocols.
+    if name != "__init__" and name.startswith("__") and name.endswith("__"):
+        return True
+    # A variadic constructor commonly forwards a third-party/base signature;
+    # syntax alone cannot prove that making its named prefix keyword-only is
+    # compatible with the inherited API.
+    if name == "__init__" and (node.args.vararg is not None or node.args.kwarg is not None):
         return True
     if name.startswith(_EXEMPT_NAME_PREFIXES):
         return True
@@ -242,6 +250,17 @@ def _method_node_ids(tree: ast.AST) -> frozenset[int]:
     return frozenset(
         id(child)
         for node in nodes(tree, ast.ClassDef)
+        for child in node.body
+        if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
+    )
+
+
+def _subclass_method_node_ids(tree: ast.AST) -> frozenset[int]:
+    """Identify methods that may implement an inherited positional contract."""
+    return frozenset(
+        id(child)
+        for node in nodes(tree, ast.ClassDef)
+        if node.bases
         for child in node.body
         if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
     )

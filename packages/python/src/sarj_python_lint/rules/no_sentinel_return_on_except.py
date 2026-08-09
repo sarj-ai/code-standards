@@ -172,6 +172,8 @@ def _is_intended_result(handler: ast.ExceptHandler, ret: ast.Return, parents: Pa
         return True
     if func is not None and _returns_none(func) and _is_narrow_handler(exc_names) and ret.value is None:
         return True
+    if func is not None and _is_narrow_handler(exc_names) and _sentinel_matches_concrete_collection(func, ret):
+        return True
     if func is not None and _is_narrow_handler(exc_names) and _sentinel_is_declared_result(func, ret):
         return True
     return _is_lookup_with_default(handler, parents, exc_names)
@@ -208,6 +210,25 @@ def _sentinel_key(value: ast.expr | None) -> str | None:
         if isinstance(func, ast.Name) and func.id == "set" and not value.args and not value.keywords:
             return "empty-set"
     return None
+
+
+def _sentinel_matches_concrete_collection(
+    func: ast.FunctionDef | ast.AsyncFunctionDef,
+    ret: ast.Return,
+) -> bool:
+    """Match an empty value to an explicitly concrete collection contract."""
+    annotation = func.returns
+    if isinstance(annotation, ast.Subscript):
+        annotation = annotation.value
+    if not isinstance(annotation, ast.Name):
+        return False
+    expected = {
+        "dict": "empty-dict",
+        "list": "empty-list",
+        "set": "empty-set",
+        "tuple": "empty-tuple",
+    }.get(annotation.id)
+    return expected is not None and _sentinel_key(ret.value) == expected
 
 
 def _guarded_body_swallows_nothing(handler: ast.ExceptHandler, parents: ParentMap) -> bool:
@@ -512,16 +533,29 @@ def _is_irrefutable_case(case: ast.match_case) -> bool:
 
 
 def _contains_logging_call(node: ast.AST) -> bool:
-    """Walk `node` for a logging call, not crossing nested def/lambda boundaries."""
+    """Walk `node` for failure reporting, not crossing nested boundaries."""
     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
         return False
-    if _is_logging_call(node):
+    if _is_logging_call(node) or _is_user_failure_report(node):
         return True
     return any(_contains_logging_call(child) for child in children(node))
 
 
 _LOGGER_NAME_RE = re.compile(r"(?:^|_)(?:log|logger|logging)$", re.IGNORECASE)
 _GETLOGGER_FUNCS: frozenset[str] = frozenset({"getLogger", "get_logger"})
+_USER_FAILURE_METHODS: frozenset[str] = frozenset({"alert", "callout", "flash", "notify", "toast"})
+_USER_INTERFACE_NAMES: frozenset[str] = frozenset({"ui", "notifier", "notifications"})
+
+
+def _is_user_failure_report(node: ast.AST) -> bool:
+    """Recognize an explicit user-facing report before a sentinel fallback."""
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr in _USER_FAILURE_METHODS
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id in _USER_INTERFACE_NAMES
+    )
 
 
 def _is_logging_call(node: ast.AST) -> bool:

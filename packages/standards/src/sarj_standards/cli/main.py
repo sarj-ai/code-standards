@@ -36,7 +36,7 @@ _NEXT_STEPS = (
     '  extend = ".ruff-strict.toml"\n'
     "\n(or run `sarj-standards setup`, which writes that and the rest of the wiring)\n"
 )
-_BOOTSTRAP_TIMEOUT_SECONDS = 120
+_BOOTSTRAP_TIMEOUT = timedelta(seconds=120)
 _GIT_SAFE_ENV = frozenset(
     {"HOME", "LANG", "LC_ALL", "LC_CTYPE", "PATH", "SYSTEMDRIVE", "SYSTEMROOT", "TMPDIR", "XDG_CONFIG_HOME"}
 )
@@ -406,7 +406,7 @@ def cmd_update(args: _Args) -> int:
                 command,
                 check=False,
                 env=environment,
-                timeout=_BOOTSTRAP_TIMEOUT_SECONDS,
+                timeout=_BOOTSTRAP_TIMEOUT.total_seconds(),
             ).returncode
         except subprocess.TimeoutExpired:
             print(

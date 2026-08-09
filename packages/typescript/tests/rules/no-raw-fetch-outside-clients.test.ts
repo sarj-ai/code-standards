@@ -186,6 +186,26 @@ ruleTester.run("no-raw-fetch-outside-clients", rule, {
       filename: "/repo/src/lib/ashby-client.ts",
     },
     {
+      name: "allows PascalCase client modules",
+      code: "export class ApiClient { get() { return fetch(url); } }",
+      filename: "/repo/src/core/network/ApiClient.ts",
+    },
+    {
+      name: "allows one-off scripts to exercise the real transport boundary",
+      code: "await fetch('/api/seed', { method: 'POST' });",
+      filename: "/repo/scripts/seed-scenario.ts",
+    },
+    {
+      name: "allows a same-origin mutation behind the conventional base-path helper",
+      code: "await fetch(withBase('/api/items'), { method: 'POST' });",
+      filename: "/repo/src/actions/items.ts",
+    },
+    {
+      name: "allows a base-prefixed same-origin mutation",
+      code: "await fetch('/demo/api/items', { method: 'DELETE' });",
+      filename: "/repo/src/actions/items.ts",
+    },
+    {
       name: "allows dotted test basenames",
       code: "it('works', () => fetch(url));",
       filename: "/repo/src/routes/handler.test.ts",
@@ -277,12 +297,6 @@ ruleTester.run("no-raw-fetch-outside-clients", rule, {
       name: "keeps analytics fetches that the client-fetch owner exempts",
       code: "useEffect(() => { fetch('/api/analytics'); }, []);",
       filename: "/repo/src/page.tsx",
-      errors: [{ messageId: "rawFetch" }],
-    },
-    {
-      name: "keeps internal mutations in scripts that prefer-server-actions exempts",
-      code: "fetch('/api/items', { method: 'POST' });",
-      filename: "/repo/scripts/push.ts",
       errors: [{ messageId: "rawFetch" }],
     },
     {

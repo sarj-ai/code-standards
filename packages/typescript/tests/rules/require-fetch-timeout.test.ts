@@ -48,6 +48,10 @@ ruleTester.run("require-fetch-timeout", rule, {
       code: "await fetch(url, init);",
     },
     {
+      name: "assumes an aliased const object may acquire a signal",
+      code: "const init = { method: 'POST' }; const alias = init; await fetch(url, init);",
+    },
+    {
       name: "assumes a call result init may contain a signal",
       code: "await fetch(url, buildInit());",
     },
@@ -162,6 +166,11 @@ ruleTester.run("require-fetch-timeout", rule, {
     {
       name: "rejects an empty object init",
       code: "await fetch(url, {});",
+      errors: [{ messageId: "missingSignal" }],
+    },
+    {
+      name: "rejects a static const init whose only mutation cannot add a signal",
+      code: "const init: RequestInit = { method: 'POST' }; init.body = body; await fetch(url, init);",
       errors: [{ messageId: "missingSignal" }],
     },
     {

@@ -7,7 +7,7 @@
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isTestFile } from "./_paths.js";
+import { isScriptFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "silentCatch";
 type Options = readonly [];
@@ -70,6 +70,19 @@ function isTeardownCall(node: TSESTree.Expression): boolean {
     !node.callee.computed &&
     node.callee.property.type === AST_NODE_TYPES.Identifier &&
     TEARDOWN_METHODS.has(node.callee.property.name)
+  );
+}
+
+/** Web Share rejects on ordinary user cancellation, which callers may ignore. */
+function isCancelledWebShare(node: TSESTree.Expression): boolean {
+  return (
+    node.type === AST_NODE_TYPES.CallExpression &&
+    node.callee.type === AST_NODE_TYPES.MemberExpression &&
+    !node.callee.computed &&
+    node.callee.object.type === AST_NODE_TYPES.Identifier &&
+    node.callee.object.name === "navigator" &&
+    node.callee.property.type === AST_NODE_TYPES.Identifier &&
+    node.callee.property.name === "share"
   );
 }
 
@@ -145,7 +158,7 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isTestFile(context.filename)) {
+    if (isTestFile(context.filename) || isScriptFile(context.filename)) {
       return {};
     }
 
@@ -201,11 +214,18 @@ export default createRule<Options, MessageIds>({
           return;
         }
 
+        if (isCancelledWebShare(node.callee.object)) {
+          return;
+        }
+
         // `p.catch(() => null).then(...)` — the next link consumes the fallback,
         // so it is a recovery step, not a value handed back to an outside caller.
         if (
           node.parent.type === AST_NODE_TYPES.MemberExpression &&
-          node.parent.object === node
+          node.parent.object === node &&
+          !node.parent.computed &&
+          node.parent.property.type === AST_NODE_TYPES.Identifier &&
+          node.parent.property.name === "then"
         ) {
           return;
         }

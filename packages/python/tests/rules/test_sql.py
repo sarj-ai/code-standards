@@ -15,7 +15,7 @@ def _expr(source: str) -> ast.expr:
 
 @pytest.mark.parametrize(
     "path",
-    ["app/stores/widget.py", "app/widget_store.py", "app/stores/nested/thing.py"],
+    ["app/stores/widget.py", "app/widget_store.py", "app/store.py", "app/stores/nested/thing.py"],
 )
 def test_the_store_layer_is_recognised_by_name_and_by_directory(path: str) -> None:
     assert is_store_module(Path(path))
@@ -23,7 +23,7 @@ def test_the_store_layer_is_recognised_by_name_and_by_directory(path: str) -> No
 
 @pytest.mark.parametrize(
     "path",
-    ["app/views/widget.py", "app/storefront.py", "app/store.py"],
+    ["app/views/widget.py", "app/storefront.py"],
 )
 def test_non_store_modules_are_out_of_scope(path: str) -> None:
     assert not is_store_module(Path(path))

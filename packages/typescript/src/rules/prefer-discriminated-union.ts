@@ -69,9 +69,11 @@ function looksLikeMutuallyExclusiveState(
   let statusMemberCount = 0;
   let hasFailurePayload = false;
   let hasSuccessPayload = false;
+  let hasUnrecognizedMember = false;
 
   for (const member of typeLiteral.members) {
     if (member.type !== AST_NODE_TYPES.TSPropertySignature) {
+      hasUnrecognizedMember = true;
       continue;
     }
 
@@ -87,19 +89,22 @@ function looksLikeMutuallyExclusiveState(
     }
 
     if (!member.optional || isBooleanTyped(member) || name === null) {
+      hasUnrecognizedMember = true;
       continue;
     }
     if (FAILURE_MEMBER_NAMES.has(name)) {
       hasFailurePayload = true;
     } else if (SUCCESS_PAYLOAD_MEMBER_NAMES.has(name)) {
       hasSuccessPayload = true;
+    } else {
+      hasUnrecognizedMember = true;
     }
   }
 
   return (
     statusMemberCount === REQUIRED_STATUS_MEMBER_COUNT &&
     hasFailurePayload &&
-    hasSuccessPayload
+    (hasSuccessPayload || !hasUnrecognizedMember)
   );
 }
 

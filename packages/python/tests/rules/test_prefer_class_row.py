@@ -77,6 +77,67 @@ async def get_task(conn):
     assert len(_check(src)) == 1
 
 
+def test_allows_cursor_reused_for_multiple_result_shapes() -> None:
+    src = """
+from psycopg.rows import dict_row
+
+async def update(conn):
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute("SELECT id, status FROM tasks")
+        task = await cur.fetchone()
+        await cur.execute("SELECT id, email FROM users")
+        user = await cur.fetchone()
+        return task, user
+"""
+    assert _check(src) == []
+
+
+def test_allows_single_column_returning_result() -> None:
+    source = """
+from psycopg.rows import dict_row
+
+async def update(conn):
+    query = "UPDATE banks SET active = true RETURNING branding"
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(query)
+        return await cur.fetchone()
+"""
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        """
+from psycopg.rows import dict_row
+async def get(conn):
+    query = "SELECT COUNT(*) AS account_count FROM banks"
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(query)
+        return await cur.fetchone()
+""",
+        """
+from psycopg.rows import dict_row
+async def get(conn):
+    query = "SELECT branding FROM banks"
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(query)
+        return await cur.fetchone()
+""",
+        """
+from psycopg.rows import dict_row
+async def get(conn):
+    query = "SELECT coalesce(branding, '{}'::jsonb) AS branding FROM banks"
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(query)
+        return await cur.fetchone()
+""",
+    ],
+)
+def test_allows_single_column_result_better_served_by_scalar_row(source: str) -> None:
+    assert _check(source) == []
+
+
 def test_fires_sync_with_cursor():
     src = """
 from psycopg.rows import dict_row

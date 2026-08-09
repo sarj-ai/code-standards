@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 from enum import StrEnum
 import json
 import os
@@ -42,14 +43,14 @@ if TYPE_CHECKING:
     from .policy import Policy
 
 
-_TIMEOUT_SECONDS = 120
+_TIMEOUT = timedelta(seconds=120)
 _ESLINT_ERROR = 2
 _MAX_STDOUT_BYTES = 16 * 1024 * 1024
 _MAX_STDERR_BYTES = 64 * 1024
 _READ_BYTES = 64 * 1024
 _MAX_ESLINT_PROJECTS = 32
 _MAX_PYTHON_PROJECTS = 32
-_ANALYSIS_DEADLINE_SECONDS = 300
+_ANALYSIS_DEADLINE = timedelta(seconds=300)
 _SAFE_ENVIRONMENT_KEYS = frozenset(
     {
         "HOME",
@@ -167,7 +168,7 @@ def analyze_external(
         eslint_commands = ()
     analysis_started = time.monotonic()
     for command in eslint_commands:
-        if time.monotonic() - analysis_started >= _ANALYSIS_DEADLINE_SECONDS:
+        if time.monotonic() - analysis_started >= _ANALYSIS_DEADLINE.total_seconds():
             issue = ExecutionIssue("eslint", "aggregate-timeout", "ESLint aggregate analysis exceeded 300 seconds")
             reports.append(ToolReport("eslint", Completion.FAILED, issues=(issue,)))
             break
@@ -411,13 +412,13 @@ def _wait_for_process(
     exceeded: threading.Event,
     argv: Sequence[str],
 ) -> int:
-    deadline = time.monotonic() + _TIMEOUT_SECONDS
+    deadline = time.monotonic() + _TIMEOUT.total_seconds()
     while process.poll() is None and not exceeded.is_set():
         if time.monotonic() >= deadline:
             _terminate_process(process)
             _ = process.wait(timeout=5)
             _join_capture_threads(threads)
-            raise subprocess.TimeoutExpired(argv, _TIMEOUT_SECONDS)
+            raise subprocess.TimeoutExpired(argv, _TIMEOUT.total_seconds())
         time.sleep(0.01)
     if exceeded.is_set():
         _terminate_process(process)
