@@ -1,12 +1,12 @@
 ---
 import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
 
-import { referenceSidebar } from '../lib/navigation';
+import { referenceSidebar, type Sidebar } from '../lib/navigation';
 
 interface Props {
   title: string;
   description: string;
-  sidebar?: typeof referenceSidebar;
+  sidebar?: Sidebar;
   hasSidebar?: boolean;
   template?: 'doc' | 'splash';
   pagefind?: boolean;
@@ -15,7 +15,7 @@ interface Props {
 const {
   title,
   description,
-  sidebar = referenceSidebar,
+  sidebar = [...referenceSidebar],
   hasSidebar = true,
   template = 'doc',
   pagefind = true,

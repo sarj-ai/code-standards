@@ -4,33 +4,8 @@
 
 Custom Terraform / IaC lint rules — stdlib, pre-commit-friendly.
 
-## Package metadata
+```bash
+uv tool install sarj-iac-lint
+```
 
-| Field | Value |
-| --- | --- |
-| Version | `0.8.0` |
-| Registry | PyPI |
-| License | MIT |
-| Runtime | `Python >=3.14` |
-
-## Command-line reference
-
-| Command | Entrypoint | Help |
-| --- | --- | --- |
-| `sarj-iac-lint` | `sarj_iac_lint.__main__:main` | `sarj-iac-lint --help` |
-
-## Rule catalog
-
-| Rule | Summary | Default | Autofix |
-| --- | --- | --- | --- |
-| `iac:no-comment-cruft` | Commented-out Terraform/IaC or a section-banner comment — delete it; code carries the what, comments only the why. | `error` | `none` |
-| `iac:require-deletion-protection` | Stateful resource (Cloud SQL, GKE, BigQuery, RDS, ...) must set deletion_protection = true so a stray apply cannot destroy prod data. | `error` | `none` |
-| `iac:require-prevent-destroy-on-irreplaceable` | Bucket, secret, or artifact registry must use a supported literal provider-side deletion guard or lifecycle { prevent_destroy = true }. | `error` | `none` |
-
-## Project links
-
-- [Homepage](https://code-standards.sarj.ai/rules/iac/)
-- [Issues](https://github.com/sarj-ai/standards/issues)
-- [Repository](https://github.com/sarj-ai/standards)
-
-Package metadata is generated from [`pyproject.toml`](pyproject.toml).
+[Documentation](https://code-standards.sarj.ai/rules/iac/) · [Source](https://github.com/sarj-ai/standards)

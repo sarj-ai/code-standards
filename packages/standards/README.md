@@ -4,34 +4,8 @@
 
 One deterministic quality gate for Sarj Python, TypeScript, SQL, IaC, and repository policy.
 
-## Package metadata
+```bash
+uv tool install --python 3.14 sarj-standards
+```
 
-| Field | Value |
-| --- | --- |
-| Version | `3.0.1` |
-| Registry | PyPI |
-| License | MIT |
-| Runtime | `Python >=3.14` |
-
-## Command-line reference
-
-| Command | Entrypoint | Help |
-| --- | --- | --- |
-| `sarj-standards` | `sarj_standards.__main__:main` | `sarj-standards --help` |
-
-## Rule catalog
-
-| Rule | Summary | Default | Autofix |
-| --- | --- | --- | --- |
-| `text:commented-out-config` | commented-out config syntax | `error` | `none` |
-| `text:config-comment-wall` | four-entry config narration wall with 75% weak restatements | `error` | `none` |
-| `text:ephemeral-execution-artifact` | ephemeral execution brief, audit report, or change diary | `error` | `none` |
-| `text:unpinned-github-action` | remote GitHub Action or container action without an immutable digest | `error` | `none` |
-
-## Project links
-
-- [Homepage](https://code-standards.sarj.ai/)
-- [Issues](https://github.com/sarj-ai/standards/issues)
-- [Repository](https://github.com/sarj-ai/standards)
-
-Package metadata is generated from [`pyproject.toml`](pyproject.toml).
+[Documentation](https://code-standards.sarj.ai/) · [Source](https://github.com/sarj-ai/standards)

@@ -65,21 +65,6 @@ function validateOption(value: unknown, label: string): asserts value is CliOpti
   }
 }
 
-function validateCommand(value: unknown, label: string): asserts value is CliCommand {
-  if (!isRecord(value)) throw new TypeError(`${label} must be an object.`);
-  requireText(value.name, `${label}.name`);
-  requireText(value.usage, `${label}.usage`);
-  requireText(value.summary, `${label}.summary`, true);
-  if (!Array.isArray(value.path) || !value.path.every((part) => typeof part === 'string')) {
-    throw new TypeError(`${label}.path must be a string array.`);
-  }
-  if (!Array.isArray(value.options) || !Array.isArray(value.commands)) {
-    throw new TypeError(`${label} options and commands must be arrays.`);
-  }
-  value.options.forEach((option, index) => validateOption(option, `${label}.options[${index}]`));
-  value.commands.forEach((command, index) => validateCommand(command, `${label}.commands[${index}]`));
-}
-
 function loadReference(): CliReference {
   let source: string;
   try {
@@ -106,12 +91,35 @@ function loadReference(): CliReference {
   if (!Array.isArray(value.globalOptions) || !Array.isArray(value.commands)) {
     throw new TypeError('CLI reference globalOptions and commands must be arrays.');
   }
-  value.globalOptions.forEach((option, index) => validateOption(option, `globalOptions[${index}]`));
-  value.commands.forEach((command, index) => validateCommand(command, `commands[${index}]`));
+  for (const [index, option] of value.globalOptions.entries()) {
+    validateOption(option, `globalOptions[${String(index)}]`);
+  }
+  for (const [index, command] of value.commands.entries()) {
+    validateCommand(command, `commands[${String(index)}]`);
+  }
   if (!isRecord(value.launcher)) throw new TypeError('CLI reference launcher must be an object.');
   requireText(value.launcher.install, 'CLI reference launcher install');
   requireText(value.launcher.runLatest, 'CLI reference launcher runLatest');
   return value as unknown as CliReference;
+}
+
+function validateCommand(value: unknown, label: string): asserts value is CliCommand {
+  if (!isRecord(value)) throw new TypeError(`${label} must be an object.`);
+  requireText(value.name, `${label}.name`);
+  requireText(value.usage, `${label}.usage`);
+  requireText(value.summary, `${label}.summary`, true);
+  if (!Array.isArray(value.path) || !value.path.every((part) => typeof part === 'string')) {
+    throw new TypeError(`${label}.path must be a string array.`);
+  }
+  if (!Array.isArray(value.options) || !Array.isArray(value.commands)) {
+    throw new TypeError(`${label} options and commands must be arrays.`);
+  }
+  for (const [index, option] of value.options.entries()) {
+    validateOption(option, `${label}.options[${String(index)}]`);
+  }
+  for (const [index, command] of value.commands.entries()) {
+    validateCommand(command, `${label}.commands[${String(index)}]`);
+  }
 }
 
 export const cliReference = loadReference();
@@ -129,6 +137,6 @@ export function commandAnchor(command: CliCommand): string {
 }
 
 export function optionLabel(option: CliOption): string {
-  if (option.kind === 'positional') return option.metavar ?? option.names[0] ?? '';
+  if (option.kind === 'positional') return option.metavar ?? option.names.at(0) ?? '';
   return `${option.names.join(', ')}${option.metavar ? ` ${option.metavar}` : ''}`;
 }

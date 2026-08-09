@@ -1,103 +1,58 @@
 ---
-import Diagnostic from '../components/Diagnostic.astro';
 import ReferencePage from '../components/ReferencePage.astro';
-import { cliReference, invocation } from '../lib/cli';
-import { ENGINES, catalog, engineLabel, ruleHref, type Engine } from '../lib/catalog';
+import { cliReference } from '../lib/cli';
+import { ENGINES, catalog, engineLabel, type Engine } from '../lib/catalog';
 
-const firstReported = catalog.rules
-  .flatMap((rule) => rule.examples.filter((example) => example.outcome === 'reject').map((example) => ({ rule, example })))
-  .at(0);
 const activeEngines = ENGINES.filter((engine) => catalog.rules.some((rule) => rule.engine === engine));
-const errorCount = catalog.rules.filter((rule) => rule.defaultLevel === 'error').length;
-const setupCommands = ['setup', 'doctor', 'check']
-  .map((name) => cliReference.commands.find((command) => command.name === name))
-  .filter((command) => command !== undefined);
-const setupSequence = [
-  { invocation: cliReference.launcher.install, summary: 'Install the CLI in an isolated Python 3.14 tool environment.' },
-  ...setupCommands.map((command) => ({ invocation: invocation(command), summary: command.summary })),
-];
+const quickStart = [
+  cliReference.launcher.install,
+  `${cliReference.program} setup`,
+  `${cliReference.program} doctor`,
+  `${cliReference.program} check`,
+].join('\n');
 ---
 
 <ReferencePage
   title="Standards for Python, TypeScript, SQL, IaC, and text"
   description="Deterministic diagnostics and fixes for Python, TypeScript, Markdown, SQL, and infrastructure code."
-  hasSidebar={false}
   template="splash"
 >
-  <div class="home-hero">
-    <div class="home-hero__copy">
-      <p class="eyebrow">SARJ / CODE STANDARDS</p>
-      <h1>Sarj Standards</h1>
-      <p class="lede">
-        Run <strong>{catalog.rules.length} deterministic rules</strong> for Python, TypeScript, SQL, IaC, and text from one CLI.
-      </p>
-      <div class="hero-actions">
-        <a class="primary-action" href="/rules/">Inspect every rule</a>
-        <a class="secondary-action" href="/cli/#quick-start">Set up a repository</a>
+  <div class="home-shell">
+    <section class="home-hero">
+      <div class="home-hero__copy">
+        <h1>Check the whole repository.</h1>
+        <p class="lede">Python, TypeScript, SQL, IaC, and text. {catalog.rules.length} rules, one command.</p>
+        <div class="hero-actions">
+          <a class="primary-action" href="/cli/#quick-start">Get started</a>
+          <a class="secondary-action" href="/rules/">Browse rules</a>
+        </div>
       </div>
-    </div>
-    <div class="home-hero__evidence">
-      {firstReported ? (
-        <Diagnostic
-          code={firstReported.rule.code ?? firstReported.rule.key}
-          path={firstReported.example.focusPath}
-          message={firstReported.rule.summary}
-          source={firstReported.example.files.find((file) => file.path === firstReported.example.focusPath)?.source}
-        />
-      ) : (
-        <p class="empty-state">The catalog has no reported example yet.</p>
-      )}
-    </div>
+      <div class="quick-start" aria-label="Quick start">
+        <div class="quick-start__bar">
+          <span>Quick start</span>
+          <a href="/cli/">CLI reference</a>
+        </div>
+        <pre><code>{quickStart}</code></pre>
+      </div>
+    </section>
+
+    <section class="engine-index">
+      <header class="section-heading">
+        <h2>Rules</h2>
+        <a href="/rules/">View all {catalog.rules.length}</a>
+      </header>
+      <div class="engine-list">
+        {activeEngines.map((engine: Engine) => {
+          const rules = catalog.rules.filter((rule) => rule.engine === engine);
+          return (
+            <a href={`/rules/${engine}/`}>
+              <span class="engine-list__code">{engine}</span>
+              <strong>{engineLabel(engine)}</strong>
+              <span>{rules.length}</span>
+            </a>
+          );
+        })}
+      </div>
+    </section>
   </div>
-
-  <section class="stat-line" aria-label="Catalog summary">
-    <div><strong>{catalog.rules.length}</strong><span>active rules</span></div>
-    <div><strong>{activeEngines.length}</strong><span>analysis engines</span></div>
-    <div><strong>{errorCount}</strong><span>errors by default</span></div>
-    <div><strong>1</strong><span>coherent command</span></div>
-  </section>
-
-  <section class="sequence-section">
-    <header class="section-heading">
-      <p class="eyebrow">SETUP</p>
-      <h2>Set up Standards</h2>
-    </header>
-    <ol class="command-sequence">
-      {setupSequence.map((command, index) => (
-        <li>
-          <span class="sequence-number">{String(index + 1).padStart(2, '0')}</span>
-          <code>{command.invocation}</code>
-          <p>{command.summary}</p>
-        </li>
-      ))}
-    </ol>
-  </section>
-
-  <section class="engine-index">
-    <header class="section-heading">
-      <p class="eyebrow">THE CATALOG</p>
-      <h2>Browse by engine</h2>
-    </header>
-    <div class="engine-list">
-      {activeEngines.map((engine: Engine) => {
-        const rules = catalog.rules.filter((rule) => rule.engine === engine);
-        const example = rules[0];
-        return (
-          <a href={`/rules/${engine}/`}>
-            <span class="engine-list__code">{engine}</span>
-            <strong>{engineLabel(engine)}</strong>
-            <span>{rules.length} rules</span>
-            {example && <small>e.g. {example.id}</small>}
-          </a>
-        );
-      })}
-    </div>
-  </section>
-
-  {firstReported && (
-    <p class="source-note">
-      This site is generated from rule metadata and executable test cases, including
-      <a href={ruleHref(firstReported.rule)}> {firstReported.rule.key}</a>.
-    </p>
-  )}
 </ReferencePage>

@@ -4,45 +4,4 @@
 
 Judgment-layer codebase audits that complement deterministic Sarj lint rules
 
-## Plugin metadata
-
-| Field | Value |
-| --- | --- |
-| Version | `2.0.0` |
-| Author | sarj-ai |
-
-## Commands
-
-| Command | Definition |
-| --- | --- |
-| `authn-and-authz` | [`Authentication and authorization`](commands/authn-and-authz.md) |
-| `client-server-boundary` | [`Client/server boundary`](commands/client-server-boundary.md) |
-| `concurrency-and-performance` | [`Concurrency and performance`](commands/concurrency-and-performance.md) |
-| `data-contracts` | [`Data contracts`](commands/data-contracts.md) |
-| `database-schemas-and-migrations` | [`Database schemas and migrations`](commands/database-schemas-and-migrations.md) |
-| `dead-and-duplicate-code` | [`Dead and duplicate code`](commands/dead-and-duplicate-code.md) |
-| `error-handling` | [`Error handling`](commands/error-handling.md) |
-| `externalize-configuration-and-secrets` | [`Configuration and secrets`](commands/externalize-configuration-and-secrets.md) |
-| `idempotency-and-atomicity` | [`Idempotency and atomicity`](commands/idempotency-and-atomicity.md) |
-| `libraries` | [`Libraries and platform capabilities`](commands/libraries.md) |
-| `magic-values` | [`Magic values`](commands/magic-values.md) |
-| `observability` | [`Observability`](commands/observability.md) |
-| `readability-and-naming` | [`Readability and naming`](commands/readability-and-naming.md) |
-| `service-layer` | [`Service boundaries and dependency injection`](commands/service-layer.md) |
-| `stack-detection` | [`Stack detection`](commands/stack-detection.md) |
-| `strengthen-ci-cd-and-tooling` | [`CI/CD and tooling`](commands/strengthen-ci-cd-and-tooling.md) |
-| `test-quality-and-strategy` | [`Test quality and strategy`](commands/test-quality-and-strategy.md) |
-
-## Skills
-
-| Skill | Definition |
-| --- | --- |
-| `audit-protocol` | [`Audit protocol`](skills/audit-protocol/SKILL.md) |
-| `lint-rule-generator` | [`Lint rule generator`](skills/lint-rule-generator/SKILL.md) |
-| `promote-lint-rules` | [`Promote lint rules`](skills/promote-lint-rules/SKILL.md) |
-| `ratchet-lint` | [`Ratchet lint`](skills/ratchet-lint/SKILL.md) |
-
-## Project links
-
-- [Homepage](https://github.com/sarj-ai/standards)
-- [Repository](https://github.com/sarj-ai/standards)
+[Documentation](https://code-standards.sarj.ai/) · [Source](https://github.com/sarj-ai/standards/tree/main/plugins/sarj-audit)

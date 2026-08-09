@@ -18,7 +18,7 @@ const { rule } = Astro.props;
 <ReferencePage title={`${rule.id} · ${engineLabel(rule.engine)}`} description={rule.summary} sidebar={familySidebar(rule.engine)}>
   <article class="rule-detail" data-pagefind-meta={`rule:${rule.key}`}>
     <header class="rule-detail__header">
-      <p class="eyebrow">{rule.engine.toUpperCase()} / {rule.category.toUpperCase()}</p>
+      <p class="rule-context">{engineLabel(rule.engine)} · {rule.category}</p>
       <h1>{rule.id}</h1>
       <code class="rule-key">{rule.key}</code>
       <p class="lede">{rule.summary}</p>
@@ -33,13 +33,11 @@ const { rule } = Astro.props;
 
     <section class="rule-prose">
       <div>
-        <p class="eyebrow">WHY IT EXISTS</p>
-        <h2>Rationale</h2>
+        <h2>Why</h2>
         <p>{rule.rationale}</p>
       </div>
       <div>
-        <p class="eyebrow">WHAT TO DO</p>
-        <h2>Remediation</h2>
+        <h2>Fix</h2>
         <p>{rule.remediation}</p>
       </div>
     </section>
@@ -47,8 +45,7 @@ const { rule } = Astro.props;
     {rule.examples.length > 0 && (
       <section class="examples-section">
         <header class="section-heading">
-          <p class="eyebrow">EXECUTABLE EXAMPLES</p>
-          <h2>Accepted and reported examples</h2>
+          <h2>Examples</h2>
         </header>
         <div class="examples-grid">{rule.examples.map((example) => <RuleExample example={example} />)}</div>
       </section>
@@ -56,20 +53,17 @@ const { rule } = Astro.props;
 
     {rule.limitations.length > 0 && (
       <section class="limitations">
-        <p class="eyebrow">BOUNDARIES</p>
-        <h2>Known limitations</h2>
+        <h2>Limits</h2>
         <ul>{rule.limitations.map((limitation) => <li>{limitation}</li>)}</ul>
       </section>
     )}
 
     {(rule.filePatterns.length > 0 || rule.messageIds.length > 0) && <section class="rule-contract">
       {rule.filePatterns.length > 0 && <div>
-        <p class="eyebrow">MATCHES</p>
-        <h2>File patterns</h2>
+        <h2>Files</h2>
         <div class="token-list">{rule.filePatterns.map((pattern) => <code>{pattern}</code>)}</div>
       </div>}
       {rule.messageIds.length > 0 && <div>
-        <p class="eyebrow">DIAGNOSTICS</p>
         <h2>Message IDs</h2>
         <div class="token-list">{rule.messageIds.map((messageId) => <code>{messageId}</code>)}</div>
       </div>}
@@ -77,23 +71,22 @@ const { rule } = Astro.props;
 
     {rule.optionsSchema && (
       <section class="options-schema">
-        <p class="eyebrow">CONFIGURATION</p>
-        <h2>Options schema</h2>
+        <h2>Options</h2>
         <pre><code>{JSON.stringify(rule.optionsSchema, null, 2)}</code></pre>
       </section>
     )}
 
     {rule.references.length > 0 && (
       <section class="references" data-pagefind-ignore>
-        <p class="eyebrow">REFERENCES</p>
+        <h2>References</h2>
         <ul>{rule.references.map((reference) => <li><a href={reference}>{reference}</a></li>)}</ul>
       </section>
     )}
 
     <footer class="source-links" data-pagefind-ignore>
-      <a href={sourceUrl(rule.source)}>Rule source <span aria-hidden="true">↗</span></a>
-      <a href={sourceUrl(rule.test)}>Tests <span aria-hidden="true">↗</span></a>
-      <a href="/api/v1/catalog.json">Catalog JSON <span aria-hidden="true">↗</span></a>
+      <a href={sourceUrl(rule.source)}>Rule source</a>
+      <a href={sourceUrl(rule.test)}>Tests</a>
+      <a href="/api/v1/catalog.json">Catalog JSON</a>
     </footer>
 
     {rule.aliases.length > 0 && <p class="aliases" data-pagefind-meta={`aliases:${rule.aliases.join(',')}`}>Formerly: {rule.aliases.join(', ')}</p>}

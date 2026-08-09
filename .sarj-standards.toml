@@ -40,6 +40,12 @@ paths = [
   "packages/standards/README.md",
   "packages/standards/src",
   "packages/standards/tests",
+  "apps/docs/astro.config.mjs",
+  "apps/docs/eslint.config.mjs",
+  "apps/docs/package.json",
+  "apps/docs/src",
+  "apps/docs/tsconfig.json",
+  "apps/docs/wrangler.jsonc",
 ]
 
 [repository]
@@ -198,6 +204,24 @@ path = "packages/typescript/package-lock.json"
 format = "json-pointer"
 version = "typescript"
 selector = "/packages//version"
+
+[[repository.version_references]]
+path = "apps/docs/package.json"
+format = "json-pointer"
+version = "typescript"
+selector = "/devDependencies/@sarj~1eslint-plugin"
+
+[[repository.version_references]]
+path = "apps/docs/package-lock.json"
+format = "json-pointer"
+version = "typescript"
+selector = "/packages//devDependencies/@sarj~1eslint-plugin"
+
+[[repository.version_references]]
+path = "apps/docs/package-lock.json"
+format = "json-pointer"
+version = "typescript"
+selector = "/packages/node_modules~1@sarj~1eslint-plugin/version"
 
 [[repository.version_references]]
 path = "packages/standards/src/sarj_standards/configs/eslint.peers.json"
