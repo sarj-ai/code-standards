@@ -76,7 +76,7 @@ jobs:
               standards_tag="$tag"
             fi
             set +e
-            remote="$(git ls-remote --exit-code --tags origin "refs/tags/$tag" "refs/tags/$tag^{}")"
+            git ls-remote --exit-code --tags origin "refs/tags/$tag" "refs/tags/$tag^{}" >/dev/null
             status=$?
             set -e
             if [[ "$status" == 2 ]]; then
