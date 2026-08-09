@@ -11,6 +11,7 @@ import sys
 from types import MappingProxyType
 
 from sarj_python_lint import __version__
+from sarj_python_lint._filesystem import atomic_write_text
 from sarj_python_lint.rule_base import Diagnostic, Severity, is_suppressed
 from sarj_python_lint.rules import REGISTRY
 from sarj_python_lint.rules._paths import clear_path_caches
@@ -46,7 +47,8 @@ def _expand_paths(paths: list[Path]) -> list[Path]:
     out: list[Path] = []
     for p in paths:
         if not p.exists():
-            continue
+            msg = f"input does not exist: {p}"
+            raise ValueError(msg)
         if p.is_file():
             try:
                 if p.stat().st_size <= _MAX_FILE_BYTES:
@@ -304,7 +306,7 @@ def _apply_baseline(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="sarj-python-lint",
-        description="Custom Python + SQL lint rules.",
+        description="Custom Python lint rules.",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -344,19 +346,31 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "explain":
         return _explain(args.which)
 
-    diags = analyze(args.rule, args.files)
+    try:
+        diags = analyze(args.rule, args.files)
+    except (OSError, ValueError) as exc:
+        sys.stderr.write(f"error: {exc}\n")
+        return 2
     if args.update_baseline is not None:
         counts = _baseline_counts(diags)
         blocking = sum(d.severity is Severity.ERROR for d in diags)
         warnings = len(diags) - blocking
-        args.update_baseline.write_text(json.dumps(counts, indent=2, sort_keys=True) + "\n")
+        try:
+            atomic_write_text(args.update_baseline, json.dumps(counts, indent=2, sort_keys=True) + "\n")
+        except OSError as exc:
+            sys.stderr.write(f"error: cannot write baseline {args.update_baseline}: {exc}\n")
+            return 2
         sys.stdout.write(
             f"baseline written: {args.update_baseline} "
             f"({blocking} blocking diagnostics over {len(counts)} files; {warnings} warnings excluded)\n"
         )
         return 0
     if args.baseline is not None:
-        diags = _apply_baseline(diags, _read_baseline(args.baseline))
+        try:
+            diags = _apply_baseline(diags, _read_baseline(args.baseline))
+        except (OSError, ValueError) as exc:
+            sys.stderr.write(f"error: invalid baseline {args.baseline}: {exc}\n")
+            return 2
     for d in diags:
         sys.stdout.write(d.format() + "\n")
     return 1 if any(d.severity is Severity.ERROR for d in diags) else 0

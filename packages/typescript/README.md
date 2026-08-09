@@ -8,4 +8,6 @@ Custom ESLint rules for hypermodern TypeScript / React / Next.js projects
 npm install --save-dev @sarj/eslint-plugin
 ```
 
+Rules and configuration are documented in the generated rule directory.
+
 [Documentation](https://code-standards.sarj.ai/rules/eslint/) · [Source](https://github.com/sarj-ai/standards)

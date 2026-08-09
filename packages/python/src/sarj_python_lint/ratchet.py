@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import json
 import re
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, TypeGuard
 
 
 if TYPE_CHECKING:
@@ -70,6 +70,7 @@ class Baseline:
     packages: dict[str, int] = field(default_factory=dict[str, int])
     per_file_ceiling: int = DEFAULT_PER_FILE_CEILING
     file_exceptions: dict[str, int] = field(default_factory=dict[str, int])
+    excluded_subtrees: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,12 +119,12 @@ def measure(
     codes: Counter[str] = Counter()
     package_counts: Counter[str] = Counter()
     files: dict[str, int] = {}
-    excluded = tuple(excluded_subtrees)
+    excluded = tuple(_normalized_subtree(value) for value in excluded_subtrees)
     for package in packages:
         package_counts[package] = 0
         for path in _python_files(root / package, excluded_dir_names):
             relative = path.relative_to(root).as_posix()
-            if any(relative.startswith(subtree) for subtree in excluded):
+            if any(_inside_subtree(relative, subtree) for subtree in excluded):
                 continue
             found = count_source(_read(path))
             if not found:
@@ -182,6 +183,7 @@ def seed(measurement: Measurement, baseline: Baseline) -> Baseline:
         packages=dict(sorted(measurement.packages.items())),
         per_file_ceiling=baseline.per_file_ceiling,
         file_exceptions=dict(sorted(exceptions.items())),
+        excluded_subtrees=baseline.excluded_subtrees,
     )
 
 
@@ -199,6 +201,7 @@ def load_baseline(path: Path) -> Baseline:
         if isinstance(ceiling, int) and not isinstance(ceiling, bool)
         else DEFAULT_PER_FILE_CEILING,
         file_exceptions=_int_map(_get(files, "exceptions")),
+        excluded_subtrees=_string_tuple(_get(raw, "excluded_subtrees")),
     )
 
 
@@ -222,6 +225,7 @@ def dump_baseline(baseline: Baseline, packages: Iterable[str]) -> str:
         "packages_scanned": sorted(packages),
         "codes": baseline.codes,
         "packages": baseline.packages,
+        "excluded_subtrees": list(baseline.excluded_subtrees),
         "files": {
             "per_file_ceiling": baseline.per_file_ceiling,
             "exceptions": baseline.file_exceptions,
@@ -251,6 +255,29 @@ def _int_map(value: object) -> dict[str, int]:
         for key, count in value.items()  # pyright: ignore[reportUnknownVariableType] — json leaves are Any; narrowed in the guard
         if isinstance(key, str) and isinstance(count, int) and not isinstance(count, bool)
     }
+
+
+def _string_tuple(value: object) -> tuple[str, ...]:
+    if not _is_object_list(value):
+        return ()
+    items: list[str] = []
+    for index in range(len(value)):
+        item: object = value[index]
+        if isinstance(item, str) and item:
+            items.append(item)
+    return tuple(sorted(items))
+
+
+def _is_object_list(value: object) -> TypeGuard[list[object]]:
+    return isinstance(value, list)
+
+
+def _normalized_subtree(value: str) -> str:
+    return value.strip("/")
+
+
+def _inside_subtree(relative: str, subtree: str) -> bool:
+    return relative == subtree or relative.startswith(f"{subtree}/")
 
 
 def _python_files(root: Path, excluded_dir_names: frozenset[str]) -> Iterator[Path]:

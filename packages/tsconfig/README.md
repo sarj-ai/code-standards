@@ -8,4 +8,6 @@ Ultra-strict TypeScript configs for sarj-ai projects — strict.json + base.json
 npm install --save-dev @sarj/tsconfig
 ```
 
+Rules and configuration are documented in the generated rule directory.
+
 [Documentation](https://code-standards.sarj.ai/cli/) · [Source](https://github.com/sarj-ai/standards)

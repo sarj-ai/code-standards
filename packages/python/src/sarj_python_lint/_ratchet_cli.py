@@ -7,7 +7,8 @@ from pathlib import Path
 import sys
 from typing import TYPE_CHECKING
 
-from sarj_python_lint import __version__
+from sarj_python_lint._filesystem import atomic_write_text
+from sarj_python_lint._version import __version__
 from sarj_python_lint.ratchet import (
     DEFAULT_PER_FILE_CEILING,
     Baseline,
@@ -54,21 +55,48 @@ def main(argv: list[str] | None = None) -> int:
     root = args.root.resolve()
     baseline_path = args.baseline if args.baseline is not None else root / _DEFAULT_BASELINE_NAME
 
-    baseline = load_baseline(baseline_path) if baseline_path.exists() else Baseline()
+    if args.allow_increase and not args.update:
+        sys.stderr.write("sarj-ratchet: --allow-increase requires --update\n")
+        return 2
+    if args.baseline is not None and not baseline_path.exists() and not args.update:
+        sys.stderr.write(f"sarj-ratchet: baseline does not exist: {baseline_path}\n")
+        return 2
+    try:
+        baseline = load_baseline(baseline_path) if baseline_path.exists() else Baseline()
+    except (OSError, ValueError) as exc:
+        sys.stderr.write(f"sarj-ratchet: invalid baseline {baseline_path}: {exc}\n")
+        return 2
     if args.per_file_ceiling is not None:
         baseline = Baseline(
             codes=baseline.codes,
             packages=baseline.packages,
             per_file_ceiling=args.per_file_ceiling,
             file_exceptions=baseline.file_exceptions,
+            excluded_subtrees=baseline.excluded_subtrees,
         )
 
     packages = args.package or sorted(baseline.packages) or discover_packages(root)
+    invalid_packages = [
+        package
+        for package in args.package
+        if not (root / package).is_dir() or not next((root / package).rglob("*.py"), None)
+    ]
+    if invalid_packages:
+        sys.stderr.write(f"sarj-ratchet: package has no Python sources: {', '.join(invalid_packages)}\n")
+        return 2
     if not packages:
         sys.stderr.write(f"sarj-ratchet: no Python packages found under {root}\n")
         return 1
 
-    measurement = measure(root, packages, excluded_subtrees=args.exclude_subtree)
+    excluded_subtrees = tuple(args.exclude_subtree) or baseline.excluded_subtrees
+    baseline = Baseline(
+        codes=baseline.codes,
+        packages=baseline.packages,
+        per_file_ceiling=baseline.per_file_ceiling,
+        file_exceptions=baseline.file_exceptions,
+        excluded_subtrees=excluded_subtrees,
+    )
+    measurement = measure(root, packages, excluded_subtrees=excluded_subtrees)
 
     if args.update:
         # A first seed has nothing to raise: every ceiling is 0 only because no
@@ -159,7 +187,11 @@ def _update(
         for failure in would_raise:
             sys.stderr.write(f"  [{failure.dimension}] {failure.key}: {failure.ceiling} -> {failure.actual}\n")
         return 1
-    baseline_path.write_text(dump_baseline(seed(measurement, baseline), packages), encoding="utf-8")
+    try:
+        atomic_write_text(baseline_path, dump_baseline(seed(measurement, baseline), packages))
+    except OSError as exc:
+        sys.stderr.write(f"sarj-ratchet: cannot write baseline {baseline_path}: {exc}\n")
+        return 2
     sys.stdout.write(
         f"Baseline updated: {measurement.total} suppressions across {len(measurement.codes)} codes -> {baseline_path}\n"
     )

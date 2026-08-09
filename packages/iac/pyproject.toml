@@ -1,6 +1,6 @@
 [project]
 name = "sarj-iac-lint"
-version = "0.9.0"
+version = "0.9.1"
 description = "Custom Terraform / IaC lint rules — stdlib, pre-commit-friendly."
 readme = "README.md"
 authors = [{ name = "sarj-ai" }]
@@ -22,6 +22,8 @@ sarj-iac-lint = "sarj_iac_lint.__main__:main"
 
 [project.urls]
 Homepage = "https://code-standards.sarj.ai/rules/iac/"
+Documentation = "https://code-standards.sarj.ai/rules/iac/"
+Changelog = "https://github.com/sarj-ai/standards/releases"
 Repository = "https://github.com/sarj-ai/standards"
 Issues = "https://github.com/sarj-ai/standards/issues"
 

@@ -598,6 +598,51 @@ def test_python_external_tools_run_once_per_nearest_project(tmp_path: Path) -> N
     ]
 
 
+def test_basedpyright_uses_the_project_environment_for_import_resolution(tmp_path: Path) -> None:
+    project = tmp_path / "python"
+    analyzer = project / ".venv" / "bin" / "basedpyright"
+    analyzer.parent.mkdir(parents=True)
+    analyzer.write_text("#!/bin/sh\n", encoding="utf-8")
+    (project / "pyproject.toml").write_text("[project]\nname='fixture'\nversion='0'\n", encoding="utf-8")
+    source = project / "app.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    seen: list[tuple[str, ...]] = []
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        _ = cwd
+        seen.append(tuple(argv))
+        payload = "[]" if argv[0] == "ruff" else '{"generalDiagnostics":[]}'
+        return ProcessOutput(0, payload, "")
+
+    reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=runner)
+
+    assert all(report.completion is Completion.COMPLETE for report in reports)
+    assert seen[1][0] == str(analyzer)
+
+
+def test_basedpyright_prefers_a_parent_environment_over_a_nested_package_manifest(tmp_path: Path) -> None:
+    project = tmp_path / "python"
+    analyzer = project / ".venv" / "bin" / "basedpyright"
+    analyzer.parent.mkdir(parents=True)
+    analyzer.write_text("#!/bin/sh\n", encoding="utf-8")
+    package = project / "service"
+    package.mkdir()
+    (package / "pyproject.toml").write_text("[project]\nname='service'\nversion='0'\n", encoding="utf-8")
+    source = package / "app.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    seen: list[tuple[tuple[str, ...], Path]] = []
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        seen.append((tuple(argv), cwd))
+        payload = "[]" if argv[0] == "ruff" else '{"generalDiagnostics":[]}'
+        return ProcessOutput(0, payload, "")
+
+    reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=runner)
+
+    assert all(report.completion is Completion.COMPLETE for report in reports)
+    assert seen[1] == ((str(analyzer), "--outputjson", str(source)), project)
+
+
 def test_external_analyzer_cannot_leak_a_path_outside_repository(tmp_path: Path) -> None:
     source = tmp_path / "example.py"
     source.write_text("value = 1\n", encoding="utf-8")

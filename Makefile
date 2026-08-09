@@ -40,10 +40,10 @@ format-check:
 build:
 	cd packages/typescript     && npm run build
 	cd apps/docs               && npm run build
-	cd packages/python         && uv build --wheel
-	cd packages/sql            && uv build --wheel
-	cd packages/iac            && uv build --wheel
-	cd packages/standards   && uv build --wheel
+	cd packages/python         && uv build
+	cd packages/sql            && uv build
+	cd packages/iac            && uv build
+	cd packages/standards   && uv build
 
 test: check-versions-synced
 	cd packages/typescript     && npm test

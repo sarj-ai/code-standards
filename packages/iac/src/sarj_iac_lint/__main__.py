@@ -36,7 +36,8 @@ def _expand_paths(paths: list[Path]) -> list[Path]:
     out: list[Path] = []
     for p in paths:
         if not p.exists():
-            continue
+            msg = f"input does not exist: {p}"
+            raise ValueError(msg)
         if p.is_file():
             try:
                 if p.stat().st_size <= _MAX_FILE_BYTES:

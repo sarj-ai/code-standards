@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
+from datetime import timedelta
 from importlib.metadata import version as distribution_version
 import json
 import os
@@ -30,6 +31,7 @@ if TYPE_CHECKING:
 
 _PROJECT_SKIP_DIRS = frozenset({".git", ".venv", "build", "dist", "node_modules", "target", "vendor"})
 _ESLINT_SUFFIXES = frozenset({".cjs", ".cts", ".js", ".jsx", ".mjs", ".mts", ".ts", ".tsx"})
+_COMMAND_TIMEOUT = timedelta(minutes=10)
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,7 +135,13 @@ def selected_eslint_commands(root: Path, paths: Iterable[str], *, label: str = "
     return list(select_eslint_commands(root, paths, label=label).commands)
 
 
-def select_eslint_commands(root: Path, paths: Iterable[str], *, label: str = "selected") -> EslintSelection:
+def select_eslint_commands(
+    root: Path,
+    paths: Iterable[str],
+    *,
+    label: str = "selected",
+    fix: bool = False,
+) -> EslintSelection:
     """Return runnable project commands plus paths with no ESLint owner."""
     repository = root.resolve()
     candidates = _selected_eslint_candidates(repository, paths)
@@ -154,7 +162,7 @@ def select_eslint_commands(root: Path, paths: Iterable[str], *, label: str = "se
         commands.append(
             Command(
                 f"ESLint ({label}: {project.relative_to(repository).as_posix() or '.'})",
-                packagemanager.exec_argv(client, "eslint", "--", *sorted(scoped)),
+                packagemanager.exec_argv(client, "eslint", *(("--fix",) if fix else ()), "--", *sorted(scoped)),
                 project,
             )
         )
@@ -230,12 +238,12 @@ def format_commands(ecosystems: scaffold.Ecosystems) -> list[Command]:
                 (
                     Command(
                         "Ruff format",
-                        ("uv", "run", "--project", str(project), "--frozen", "ruff", "format", "."),
+                        (_environment_binary("ruff"), "format", "."),
                         project,
                     ),
                     Command(
                         "Ruff fixes",
-                        ("uv", "run", "--project", str(project), "--frozen", "ruff", "check", "--fix", "."),
+                        (_environment_binary("ruff"), "check", "--fix", "."),
                         project,
                     ),
                 )
@@ -251,18 +259,44 @@ def format_commands(ecosystems: scaffold.Ecosystems) -> list[Command]:
     return commands
 
 
+def selected_format_commands(root: Path, paths: Iterable[str]) -> list[Command]:
+    """Build fix commands only for selected, repository-owned source files."""
+    repository = root.resolve()
+    selected = tuple(sorted(set(paths)))
+    python_paths = tuple(
+        source_path.resolve().relative_to(repository).as_posix()
+        for path in selected
+        if (source_path := Path(path)).is_file() and source_path.suffix.lower() in {".py", ".pyi"}
+    )
+    commands: list[Command] = []
+    if python_paths:
+        commands.extend(
+            (
+                Command("Ruff format", (_environment_binary("ruff"), "format", *python_paths), repository),
+                Command("Ruff fixes", (_environment_binary("ruff"), "check", "--fix", *python_paths), repository),
+            )
+        )
+    commands.extend(select_eslint_commands(repository, selected, label="selected", fix=True).commands)
+    return commands
+
+
 def execute(commands: Iterable[Command]) -> int:
     for command in commands:
         executable = shutil.which(command.argv[0])
         if executable is None:
             sys.stderr.write(f"error: {command.argv[0]} is required for {command.label}\n")
             return 2
-        completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-            [executable, *command.argv[1:]],
-            cwd=command.cwd,
-            check=False,
-            env=_command_environment(command),
-        )
+        try:
+            completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+                [executable, *command.argv[1:]],
+                cwd=command.cwd,
+                check=False,
+                env=_command_environment(command),
+                timeout=_COMMAND_TIMEOUT.total_seconds(),
+            )
+        except subprocess.TimeoutExpired:
+            sys.stderr.write(f"error: {command.label} exceeded {_COMMAND_TIMEOUT.total_seconds():g}s and was stopped\n")
+            return 2
         if completed.returncode:
             return completed.returncode
     return 0

@@ -37,7 +37,8 @@ def _expand_paths(paths: list[Path]) -> list[Path]:
     out: list[Path] = []
     for p in paths:
         if not p.exists():
-            continue
+            msg = f"input does not exist: {p}"
+            raise ValueError(msg)
         if p.is_file():
             try:
                 if p.stat().st_size <= MAX_FILE_BYTES:
@@ -116,7 +117,11 @@ def main(argv: list[str] | None = None) -> int:
             sys.stdout.write(f"{inst.code:8}  {rid:40}  {inst.description}\n")
         return 0
 
-    diags = analyze(args.rule, args.files)
+    try:
+        diags = analyze(args.rule, args.files)
+    except (OSError, ValueError) as exc:
+        sys.stderr.write(f"error: {exc}\n")
+        return 2
     for d in diags:
         sys.stdout.write(d.format() + "\n")
     return 1 if diags else 0

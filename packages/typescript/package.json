@@ -1,6 +1,6 @@
 {
   "name": "@sarj/eslint-plugin",
-  "version": "15.6.0",
+  "version": "15.6.1",
   "packageManager": "npm@11.19.0",
   "description": "Custom ESLint rules for hypermodern TypeScript / React / Next.js projects",
   "type": "module",
@@ -36,7 +36,7 @@
     "build": "tsup",
     "dogfood": "npm run build && eslint --config eslint.dogfood.config.mjs src tests eslint.config.mjs eslint.dogfood.config.mjs tsup.config.ts vitest.config.ts --max-warnings 0 && node -e \"import('./dist/index.js').then(({default:p}) => console.log('dogfood: '+Object.keys(p.rules).length+' TypeScript rules, 0 diagnostics'))\"",
     "lint": "eslint . --max-warnings 0",
-    "prepack": "npm run verify-package",
+    "prepack": "npm run build && npm run verify-package",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "verify-package": "node -e \"const fs=require('node:fs'),p=require('./package.json'),walk=x=>typeof x==='string'?[x]:x&&typeof x==='object'?Object.values(x).flatMap(walk):[];for(const file of new Set([p.main,p.module,p.types,...walk(p.exports)].filter(Boolean).map(x=>x.startsWith('./')?x.slice(2):x))){if(!file.startsWith('dist/'))throw new Error('export must live under dist: '+file);const stat=fs.statSync(file);if(!stat.isFile()||stat.size===0)throw new Error('missing or empty export: '+file)}\""

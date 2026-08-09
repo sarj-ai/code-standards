@@ -1,6 +1,6 @@
 [project]
 name = "sarj-python-lint"
-version = "0.67.0"
+version = "0.67.1"
 description = "Custom Python lint rules — AST-based, pre-commit-friendly, hypermodern defaults"
 readme = "README.md"
 authors = [{ name = "sarj-ai" }]
@@ -23,6 +23,8 @@ sarj-ratchet = "sarj_python_lint._ratchet_cli:main"
 
 [project.urls]
 Homepage = "https://code-standards.sarj.ai/rules/python/"
+Documentation = "https://code-standards.sarj.ai/rules/python/"
+Changelog = "https://github.com/sarj-ai/standards/releases"
 Repository = "https://github.com/sarj-ai/standards"
 Issues = "https://github.com/sarj-ai/standards/issues"
 

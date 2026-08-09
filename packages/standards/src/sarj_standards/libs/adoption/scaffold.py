@@ -1280,7 +1280,12 @@ def github_ci_workflow(root: Path, *, version: str) -> str:
         if (python_root / "uv.lock").is_file():
             project = "" if python_dest == "." else f" --project {shlex.quote(python_dest)}"
             lines.extend(("      - name: Install Python dependencies", f"        run: uv sync --locked{project}"))
-    lines.extend(("      - name: Run standards", f"        run: {runner} check --trust-repository-code"))
+    lines.extend(
+        (
+            "      - name: Run standards",
+            f"        run: {runner} check --trust-repository-code --format github",
+        )
+    )
     return "\n".join(lines) + "\n"
 
 

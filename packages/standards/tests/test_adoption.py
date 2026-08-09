@@ -282,6 +282,34 @@ def test_doctor_repair_uses_the_same_one_way_manifest_migration(tmp_path: Path) 
     assert adopted.version == manifest.adopted_version()
 
 
+def test_fix_rejects_an_unadopted_repository_with_setup_guidance(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+
+    proc = _cli("--root", str(tmp_path), "fix")
+
+    assert proc.returncode == 2
+    assert not proc.stdout
+    assert "sarj-standards setup" in proc.stderr
+
+
+def test_check_preserves_invalid_configuration_exit_status(tmp_path: Path) -> None:
+    _ = (tmp_path / manifest.MANIFEST_NAME).write_text("schema = [", encoding="utf-8")
+
+    proc = _cli("--root", str(tmp_path), "check")
+
+    assert proc.returncode == 2
+    assert "doctor.manifest.invalid" in proc.stdout
+
+
+def test_doctor_repair_does_not_repeat_the_same_manifest_parse_error(tmp_path: Path) -> None:
+    _ = (tmp_path / manifest.MANIFEST_NAME).write_text("schema = [", encoding="utf-8")
+
+    proc = _cli("--root", str(tmp_path), "doctor", "--repair", "--no-install")
+
+    assert proc.returncode == 2
+    assert proc.stderr.count("Invalid value") == 1
+
+
 def test_setup_does_not_reinterpret_a_versioned_obsolete_schema(tmp_path: Path) -> None:
     _ = _python_repo(tmp_path)
     original = 'schema = 1\nversion = "0.42.0"\nconfigs = ["ruff"]\n'

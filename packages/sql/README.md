@@ -8,4 +8,8 @@ Deterministic PostgreSQL migration rules for safe, repeatable schema changes.
 uv tool install sarj-sql-lint
 ```
 
+```bash
+sarj-sql-lint --help
+```
+
 [Documentation](https://code-standards.sarj.ai/rules/sql/) · [Source](https://github.com/sarj-ai/standards)

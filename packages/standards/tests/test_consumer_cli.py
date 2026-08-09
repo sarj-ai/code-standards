@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from typing import TYPE_CHECKING
@@ -18,8 +19,17 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-PUBLIC_COMMANDS = ("setup", "check", "fix", "doctor", "update", "exclude", "show", "maintain")
+PUBLIC_COMMANDS = ("setup", "check", "fix", "doctor", "update", "ratchet", "exclude", "show", "maintain")
 REMOVED_ALIASES = ("init", "sync", "analyze", "verify", "format", "inspect", "upgrade", "repo", "list", "path", "peers")
+
+
+def _git_environment() -> dict[str, str]:
+    """Keep hook-owned Git index variables out of nested repository fixtures."""
+    return {
+        key: value
+        for key, value in os.environ.items()  # ruff: ignore[banned-api] — fixture must remove hook-owned Git variables.
+        if not key.startswith("GIT_")
+    }
 
 
 def _help(*parts: str) -> subprocess.CompletedProcess[str]:
@@ -35,7 +45,7 @@ def test_top_level_help_exposes_only_the_clean_public_verbs() -> None:
     result = _help()
     assert result.returncode == 0
     assert all(command in result.stdout for command in PUBLIC_COMMANDS)
-    assert "{setup,check,fix,doctor,update,exclude,show,maintain}" in result.stdout
+    assert "{setup,check,fix,doctor,update,ratchet,exclude,show,maintain}" in result.stdout
 
 
 @pytest.mark.parametrize("alias", REMOVED_ALIASES)
@@ -67,6 +77,24 @@ def test_global_root_is_equally_valid_after_the_command(tmp_path: Path) -> None:
     assert cli.main(["exclude", "list", "--root", str(tmp_path)]) == 0
 
 
+def test_global_root_equals_form_is_valid_after_the_command(tmp_path: Path) -> None:
+    (tmp_path / "package.json").write_text('{"name":"fixture"}\n', encoding="utf-8")
+
+    assert cli.main(["setup", f"--root={tmp_path}", "--no-install"]) == 0
+    assert cli.main(["doctor", f"--root={tmp_path}"]) == 0
+    assert cli.main(["exclude", "list", f"--root={tmp_path}"]) == 0
+
+
+def test_unified_ratchet_initializes_and_checks_a_suppression_budget(tmp_path: Path) -> None:
+    package = tmp_path / "service"
+    package.mkdir()
+    (package / "app.py").write_text("value = 1  # noqa: E501\n", encoding="utf-8")
+
+    assert cli.main(["--root", str(tmp_path), "ratchet", "init"]) == 0
+    assert (tmp_path / "suppression-baseline.json").is_file()
+    assert cli.main(["--root", str(tmp_path), "ratchet", "check"]) == 0
+
+
 def test_show_config_and_state_are_first_class(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert cli.main(["show", "config", "ruff"]) == 0
     assert capsys.readouterr().out.strip().endswith("ruff.strict.toml")
@@ -82,11 +110,86 @@ def test_check_rejects_paths_outside_the_repository(tmp_path: Path, capsys: pyte
     assert "escapes repository root" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("output_format", ["json", "sarif"])
+def test_machine_check_serializes_invalid_explicit_paths(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    output_format: str,
+) -> None:
+    status = cli.main(["--root", str(tmp_path), "check", "--format", output_format, "missing.py"])
+
+    output = capsys.readouterr()
+    assert status == 2
+    assert output.out
+    assert not output.err
+    assert "invalid-input" in output.out
+
+
+def test_machine_check_tells_an_unadopted_repository_to_run_setup(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    status = cli.main(["--root", str(tmp_path), "check", "--format", "json"])
+
+    output = capsys.readouterr()
+    assert status == 1
+    assert "doctor.manifest.absent" in output.out
+    assert "sarj-standards setup" in output.out
+    assert "sarj-standards update" not in output.out
+
+
+@pytest.mark.parametrize("output_format", ["json", "sarif", "github"])
+def test_staged_adoption_drift_uses_the_requested_machine_format(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    output_format: str,
+) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname="fixture"\nversion="0"\nrequires-python=">=3.14"\n',
+        encoding="utf-8",
+    )
+    git_environment = _git_environment()
+    _ = subprocess.run(("git", "init"), cwd=tmp_path, check=True, capture_output=True, env=git_environment)
+    assert cli.main(["--root", str(tmp_path), "setup", "--no-install"]) == 0
+    _ = capsys.readouterr()
+    config = tmp_path / ".ruff-strict.toml"
+    config.write_text("# stale\n", encoding="utf-8")
+    _ = subprocess.run(
+        ("git", "add", ".ruff-strict.toml"),
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        env=git_environment,
+    )
+
+    status = cli.main(["--root", str(tmp_path), "check", "--staged", "--format", output_format])
+
+    output = capsys.readouterr()
+    assert status == 1
+    assert not output.err
+    if output_format == "github":
+        assert output.out.startswith("::error")
+    else:
+        assert json.loads(output.out)
+
+
 def test_machine_check_output_is_written_atomically(tmp_path: Path) -> None:
     source = tmp_path / "source.py"
     source.write_text("value = 1\n", encoding="utf-8")
     assert cli.main(["--root", str(tmp_path), "check", "--format", "json", "--output", "report.json", "source.py"]) == 0
     assert json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))["schemaVersion"] == 1
+
+
+def test_machine_check_creates_a_safe_nested_report_directory(tmp_path: Path) -> None:
+    source = tmp_path / "source.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+
+    status = cli.main(
+        ["--root", str(tmp_path), "check", "--format", "sarif", "--output", "reports/standards.sarif", "source.py"]
+    )
+
+    assert status == 0
+    assert json.loads((tmp_path / "reports" / "standards.sarif").read_text(encoding="utf-8"))["version"] == "2.1.0"
 
 
 def test_full_machine_check_runs_doctor_and_config_sync_gates(

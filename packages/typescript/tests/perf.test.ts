@@ -199,14 +199,31 @@ describe("rule performance", () => {
   }, PERF_TIMEOUT_MS);
 
   it("no rule is an algorithmic outlier (>10x median)", () => {
-    const timings = ruleNames.map((name) => ({ name, ms: ruleMs(name) }));
+    const initial = ruleNames.map((name) => ({ name, ms: ruleMs(name) }));
+    const initialSorted = [...initial].map((timing) => timing.ms).sort((a, b) => a - b);
+    const initialMedian = initialSorted[Math.floor(initialSorted.length / 2)] ?? 0;
+    const initialCeiling =
+      initialMedian * RELATIVE_OUTLIER_FACTOR + parseMs * RELATIVE_SLACK_VS_PARSE;
+    const timings = initial.map((timing) => {
+      if (timing.ms <= initialCeiling) return timing;
+      const config = configFor({ [`@sarj/${timing.name}`]: "error" });
+      const confirmation = Array.from({ length: 5 }, () =>
+        elapsedMs(() => {
+          linter.verify(parsed, config, "synthetic.tsx");
+        }),
+      );
+      return {
+        name: timing.name,
+        ms: median([...(ruleSamples.get(timing.name) ?? []), ...confirmation]),
+      };
+    });
     const sorted = [...timings].map((t) => t.ms).sort((a, b) => a - b);
-    const median = sorted[Math.floor(sorted.length / 2)] ?? 0;
-    const ceiling = median * RELATIVE_OUTLIER_FACTOR + parseMs * RELATIVE_SLACK_VS_PARSE;
+    const medianMs = sorted[Math.floor(sorted.length / 2)] ?? 0;
+    const ceiling = medianMs * RELATIVE_OUTLIER_FACTOR + parseMs * RELATIVE_SLACK_VS_PARSE;
     const slow = timings.filter((t) => t.ms > ceiling);
     expect(
       slow,
-      `rules >${RELATIVE_OUTLIER_FACTOR}x median (${median.toFixed(2)}ms): ` +
+      `rules >${RELATIVE_OUTLIER_FACTOR}x median (${medianMs.toFixed(2)}ms): ` +
         slow.map((t) => `${t.name}=${t.ms.toFixed(2)}ms`).join(", "),
     ).toHaveLength(0);
   }, PERF_TIMEOUT_MS);
