@@ -392,9 +392,68 @@ jobs:
         with:
           packages-dir: publish-dist/
 
+  portability-standards:
+    needs: detect
+    if: needs.detect.outputs.standards == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: packages/standards
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: '0.11.32'
+          enable-cache: true
+          cache-dependency-glob: 'packages/**/uv.lock'
+      - run: uv python install 3.14
+      - run: uv sync --locked --dev
+      - name: CLI, adoption, paths, and package-manager smoke
+        run: uv run pytest -q tests/test_cli_startup.py tests/test_lifecycle.py tests/test_package_managers.py tests/test_consumer_cli.py
+      - name: Revision-local pre-commit bundle installs and reuses its environment
+        shell: bash
+        timeout-minutes: 6
+        env:
+          PRE_COMMIT_HOME: ${{ runner.temp }}/sarj-pre-commit
+        run: |
+          set -euo pipefail
+          consumer="$RUNNER_TEMP/sarj-pre-commit-consumer"
+          mkdir -p "$consumer"
+          git -C "$consumer" init -q
+          git -C "$consumer" config user.name "Standards Release"
+          git -C "$consumer" config user.email "standards-release@example.invalid"
+          printf 'VALUE: int = 1\n' > "$consumer/smoke.py"
+          printf 'SELECT 1;\n' > "$consumer/smoke.sql"
+          : > "$consumer/smoke.tf"
+          python -c 'import json,os,pathlib,sys; pathlib.Path(sys.argv[1]).write_text(json.dumps({"repos":[{"repo":pathlib.Path(os.environ["GITHUB_WORKSPACE"]).resolve().as_uri(),"rev":os.environ["GITHUB_SHA"],"hooks":[{"id":"sarj-standards"}]}]}),encoding="utf-8")' "$consumer/.pre-commit-config.yaml"
+          git -C "$consumer" add .
+          git -C "$consumer" commit -qm fixture
+          pc=(uv run --project "$GITHUB_WORKSPACE/packages/standards" --frozen pre-commit)
+          (cd "$consumer" && "${pc[@]}" run sarj-standards --color never --files smoke.py smoke.sql smoke.tf)
+          (cd "$consumer" && "${pc[@]}" run sarj-standards --color never --files smoke.py smoke.sql smoke.tf) 2>&1 | tee "$RUNNER_TEMP/pre-commit-warm.log"
+          if grep -q 'Installing environment' "$RUNNER_TEMP/pre-commit-warm.log"; then
+            echo "warm pre-commit execution rebuilt its environment" >&2
+            exit 1
+          fi
+
   build-standards:
     needs:
       - detect
+      - portability-standards
       - publish-typescript
       - publish-python
       - publish-sql
@@ -405,6 +464,7 @@ jobs:
       (needs.publish-python.result == 'success' || needs.publish-python.result == 'skipped') &&
       (needs.publish-sql.result == 'success' || needs.publish-sql.result == 'skipped') &&
       (needs.publish-iac.result == 'success' || needs.publish-iac.result == 'skipped') &&
+      needs.portability-standards.result == 'success' &&
       needs.detect.outputs.standards == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
