@@ -1,9 +1,3 @@
 ---
-import ReferencePage from '../../components/ReferencePage.astro';
-import RuleTable from '../../components/RuleTable.astro';
-import { catalog } from '../../lib/catalog';
+return Astro.redirect('/', 301);
 ---
-
-<ReferencePage title="Rules" description={`${catalog.rules.length} rules.`} pagefind={false}>
-  <RuleTable rules={catalog.rules} />
-</ReferencePage>

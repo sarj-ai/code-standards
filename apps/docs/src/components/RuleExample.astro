@@ -1,11 +1,17 @@
 ---
-import type { RuleExample } from '../lib/catalog';
+import { Code } from '@astrojs/starlight/components';
+
+import type { Language, RuleExample } from '../lib/catalog';
+import { languageForPath } from '../lib/code';
 
 interface Props {
   example: RuleExample;
+  languages: readonly Language[];
 }
 
-const { example } = Astro.props;
+const { example, languages } = Astro.props;
+const visibleFiles = example.files.filter((file) => file.source.trim().length > 0);
+const visibleFixedFiles = example.fixedFiles.filter((file) => file.source.trim().length > 0);
 ---
 
 <section class:list={['example', `example--${example.outcome}`]}>
@@ -15,20 +21,14 @@ const { example } = Astro.props;
       <h3>{example.title}</h3>
     </div>
   </header>
-  {example.files.map((file) => (
-    <figure>
-      <figcaption>{file.path}</figcaption>
-      <pre><code>{file.source}</code></pre>
-    </figure>
+  {visibleFiles.map((file) => (
+    <Code code={file.source} lang={languageForPath(file.path, languages)} title={file.path} frame="code" wrap />
   ))}
-  {example.fixedFiles.length > 0 && (
+  {visibleFixedFiles.length > 0 && (
     <details>
       <summary>Autofix output</summary>
-      {example.fixedFiles.map((file) => (
-        <figure>
-          <figcaption>{file.path}</figcaption>
-          <pre><code>{file.source}</code></pre>
-        </figure>
+      {visibleFixedFiles.map((file) => (
+        <Code code={file.source} lang={languageForPath(file.path, languages)} title={file.path} frame="code" wrap />
       ))}
     </details>
   )}

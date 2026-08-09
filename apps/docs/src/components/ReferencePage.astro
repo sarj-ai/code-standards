@@ -30,6 +30,8 @@ const {
     description,
     template,
     pagefind,
+    prev: false,
+    next: false,
     head: noindex ? [{ tag: 'meta', attrs: { name: 'robots', content: 'noindex, nofollow' } }] : [],
   }}
   sidebar={sidebar}

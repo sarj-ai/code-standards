@@ -1,6 +1,8 @@
 ---
 import ReferencePage from '../../../components/ReferencePage.astro';
 import RuleExample from '../../../components/RuleExample.astro';
+import EngineMark from '../../../components/EngineMark.astro';
+import { Code } from '@astrojs/starlight/components';
 import { catalog, engineLabel, sourceUrl, type Rule } from '../../../lib/catalog';
 import { referenceSidebar } from '../../../lib/navigation';
 
@@ -20,25 +22,28 @@ const afterExamples = rule.examples.filter((example) => example.outcome === 'acc
 <ReferencePage title={`${rule.id} · ${engineLabel(rule.engine)}`} description={rule.summary} sidebar={[...referenceSidebar]}>
   <article class="rule-detail" data-pagefind-meta={`rule:${rule.key}`}>
     <header class="rule-detail__header">
-      <p class="rule-context">{engineLabel(rule.engine)} · {rule.category}</p>
+      <nav class="rule-breadcrumb" aria-label="Breadcrumb">
+        <a href={`/rules/${rule.engine}/`}><EngineMark engine={rule.engine} /></a>
+        <span aria-hidden="true">·</span>
+        <a href={`/?category=${rule.category}`}>{rule.category}</a>
+      </nav>
       <h1>{rule.id}</h1>
-      <code class="rule-key">{rule.key}</code>
       <p class="lede">{rule.summary}</p>
-      <dl class="rule-facts">
-        {rule.code && <div><dt>Code</dt><dd>{rule.code}</dd></div>}
-        <div><dt>Default</dt><dd><span class:list={['level', `level--${rule.defaultLevel}`]}>{rule.defaultLevel}</span></dd></div>
-        <div><dt>Autofix</dt><dd>{rule.autofix}</dd></div>
-        <div><dt>Languages</dt><dd>{rule.languages.join(', ')}</dd></div>
-        {rule.since && <div><dt>Since</dt><dd>{rule.since}</dd></div>}
-      </dl>
+      <div class="rule-header-links" data-pagefind-ignore>
+        {rule.code && <code>{rule.code}</code>}
+        {rule.messageIds.map((messageId) => <code>{messageId}</code>)}
+        <a href={sourceUrl(rule.source)}>Rule source</a>
+        <a href={sourceUrl(rule.test)}>Tests</a>
+        <a href="/api/v1/catalog.json">Catalog JSON</a>
+      </div>
     </header>
 
     {rule.examples.length > 0 && (
       <section class="examples-section">
         <h2>Examples</h2>
         <div class="examples-grid">
-          {beforeExamples.map((example) => <RuleExample example={example} />)}
-          {afterExamples.map((example) => <RuleExample example={example} />)}
+          {beforeExamples.map((example) => <RuleExample example={example} languages={rule.languages} />)}
+          {afterExamples.map((example) => <RuleExample example={example} languages={rule.languages} />)}
         </div>
       </section>
     )}
@@ -54,28 +59,17 @@ const afterExamples = rule.examples.filter((example) => example.outcome === 'acc
       </div>
     </section>
 
-    {rule.limitations.length > 0 && (
-      <section class="limitations">
-        <h2>Limits</h2>
-        <ul>{rule.limitations.map((limitation) => <li>{limitation}</li>)}</ul>
-      </section>
-    )}
-
-    {(rule.filePatterns.length > 0 || rule.messageIds.length > 0) && <section class="rule-contract">
+    {rule.filePatterns.length > 0 && <section class="rule-contract">
       {rule.filePatterns.length > 0 && <div>
         <h2>Files</h2>
         <div class="token-list">{rule.filePatterns.map((pattern) => <code>{pattern}</code>)}</div>
-      </div>}
-      {rule.messageIds.length > 0 && <div>
-        <h2>Message IDs</h2>
-        <div class="token-list">{rule.messageIds.map((messageId) => <code>{messageId}</code>)}</div>
       </div>}
     </section>}
 
     {rule.optionsSchema && (
       <section class="options-schema">
         <h2>Options</h2>
-        <pre><code>{JSON.stringify(rule.optionsSchema, null, 2)}</code></pre>
+        <Code code={JSON.stringify(rule.optionsSchema, null, 2)} lang="json" frame="code" wrap />
       </section>
     )}
 
@@ -85,12 +79,6 @@ const afterExamples = rule.examples.filter((example) => example.outcome === 'acc
         <ul>{rule.references.map((reference) => <li><a href={reference}>{reference}</a></li>)}</ul>
       </section>
     )}
-
-    <footer class="source-links" data-pagefind-ignore>
-      <a href={sourceUrl(rule.source)}>Rule source</a>
-      <a href={sourceUrl(rule.test)}>Tests</a>
-      <a href="/api/v1/catalog.json">Catalog JSON</a>
-    </footer>
 
     {rule.aliases.length > 0 && <p class="aliases" data-pagefind-meta={`aliases:${rule.aliases.join(',')}`}>Formerly: {rule.aliases.join(', ')}</p>}
   </article>
