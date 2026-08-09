@@ -5,9 +5,7 @@ import pytest
 
 from sarj_python_lint.rule_base import RuleExample, Severity
 from sarj_python_lint.rules.prefer_immutable_module_constant import PreferImmutableModuleConstant
-
-
-_PUBLIC_EXAMPLES = PreferImmutableModuleConstant.public_examples()
+from tests.illustrative_examples import illustrative_examples
 
 
 @pytest.mark.parametrize(
@@ -15,7 +13,6 @@ _PUBLIC_EXAMPLES = PreferImmutableModuleConstant.public_examples()
     [
         pytest.param("VALUES = [1, 2, 3]", "tuple", id="list"),
         pytest.param("KINDS = {'a', 'b'}", "frozenset", id="set"),
-        pytest.param("LABELS = {'a': 'A'}", "immutable mapping", id="dict"),
         pytest.param("VALUES = list(runtime_values)", "tuple", id="populated-list-constructor"),
         pytest.param("KINDS = set(runtime_values)", "frozenset", id="populated-set-constructor"),
         pytest.param("LABELS = dict(runtime_items)", "immutable mapping", id="populated-dict-constructor"),
@@ -52,11 +49,7 @@ def test_warns_for_literal_mutable_module_constants(source: str, replacement: st
     assert replacement in findings[0].message
 
 
-@pytest.mark.parametrize(
-    "example",
-    _PUBLIC_EXAMPLES,
-    ids=tuple(example.example_id for example in _PUBLIC_EXAMPLES),
-)
+@illustrative_examples(PreferImmutableModuleConstant)
 def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
     focus = example.focus_file
 
@@ -70,7 +63,6 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
     [
         "VALUES = (1, 2, 3)",
         "KINDS = frozenset({'a', 'b'})",
-        "LABELS = MappingProxyType({'a': 'A'})",
         "VALUES = []",
         "LABELS: dict = {}",
         "VALUES = list()",

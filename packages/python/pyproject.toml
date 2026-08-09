@@ -1,6 +1,6 @@
 [project]
 name = "sarj-python-lint"
-version = "0.64.0"
+version = "0.65.0"
 description = "Custom Python lint rules — AST-based, pre-commit-friendly, hypermodern defaults"
 readme = "README.md"
 authors = [{ name = "sarj-ai" }]
@@ -55,6 +55,9 @@ exclude = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+  "illustrative: executes reviewed examples published in the generated rule catalog",
+]
 
 # Dogfooding: linted/formatted by this repo's own published config (root-synced).
 [tool.ruff]

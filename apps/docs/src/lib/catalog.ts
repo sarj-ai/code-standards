@@ -24,6 +24,7 @@ export interface ExampleFile {
 
 export interface RuleExample {
   id: string;
+  scenarioId: string;
   title: string;
   outcome: 'accept' | 'reject';
   focusPath: string;
@@ -150,9 +151,13 @@ function validateRule(value: unknown, index: number): asserts value is Rule {
   for (const [exampleIndex, example] of value.examples.entries()) {
     validateExample(example, `${context}.examples[${String(exampleIndex)}]`);
   }
-  const exampleOutcomes = new Set(value.examples.map((example) => (example as RuleExample).outcome));
-  if (!exampleOutcomes.has('reject') || !exampleOutcomes.has('accept')) {
-    throw new TypeError(`${context}.examples must include tested before and after source.`);
+  const scenarios = new Set(value.examples.map((example) => (example as RuleExample).scenarioId));
+  for (const scenario of scenarios) {
+    const pair = value.examples.filter((example) => (example as RuleExample).scenarioId === scenario) as RuleExample[];
+    const outcomes = new Set(pair.map((example) => example.outcome));
+    if (pair.length !== 2 || !outcomes.has('reject') || !outcomes.has('accept')) {
+      throw new TypeError(`${context}.examples scenario ${scenario} must contain tested before and after source.`);
+    }
   }
   if (value.code !== null && typeof value.code !== 'string') throw new TypeError(`${context}.code must be a string or null.`);
   if (value.optionsSchema !== null && !isRecord(value.optionsSchema)) {
@@ -175,7 +180,7 @@ function validateRule(value: unknown, index: number): asserts value is Rule {
 
 function validateExample(value: unknown, context: string): asserts value is RuleExample {
   if (!isRecord(value)) throw new TypeError(`${context} must be an object.`);
-  for (const field of ['id', 'title', 'focusPath']) requireString(value, field, context);
+  for (const field of ['id', 'scenarioId', 'title', 'focusPath']) requireString(value, field, context);
   if (value.outcome !== 'accept' && value.outcome !== 'reject') {
     throw new TypeError(`${context}.outcome must be accept or reject.`);
   }

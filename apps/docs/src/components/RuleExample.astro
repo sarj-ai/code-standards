@@ -21,9 +21,11 @@ const visibleFixedFiles = example.fixedFiles.filter((file) => file.source.trim()
       <h3>{example.title}</h3>
     </div>
   </header>
-  {visibleFiles.map((file) => (
-    <Code code={file.source} lang={languageForPath(file.path, languages)} title={file.path} frame="code" wrap />
-  ))}
+  <div class="example__code">
+    {visibleFiles.map((file) => (
+      <Code code={file.source} lang={languageForPath(file.path, languages)} title={file.path} frame="code" wrap />
+    ))}
+  </div>
   {visibleFixedFiles.length > 0 && (
     <details>
       <summary>Autofix output</summary>

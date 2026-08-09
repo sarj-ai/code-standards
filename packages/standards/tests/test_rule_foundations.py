@@ -161,6 +161,7 @@ def test_documented_catalog_is_deterministic_and_excludes_private_examples() -> 
 
     assert exported["schemaVersion"] == 1
     assert '"key": "python:no-placeholder-pass"' in rendered
+    assert '"scenarioId": "primary"' in rendered
     assert rendered.index('"id": "implemented"') < rendered.index('"id": "placeholder"')
     assert "private_token" not in rendered
 
@@ -185,6 +186,22 @@ def test_public_examples_must_include_accepted_and_rejected_source() -> None:
                 ),
             ),
         )
+
+
+def test_each_public_example_pair_must_be_complete() -> None:
+    accepted = RuleExample(
+        "accepted",
+        ExpectedOutcome.NO_MATCH,
+        (ExampleFile(PurePosixPath("case.py"), "return None\n"),),
+        PurePosixPath("case.py"),
+        0,
+        "Accepted source",
+        public=True,
+        scenario="alternative",
+    )
+
+    with pytest.raises(ValueError, match=r"scenario 'alternative'.*both matching and non-matching"):
+        _documented_spec(examples=(*_documented_spec().examples, accepted))
 
 
 def test_non_fixing_rule_cannot_publish_fixed_source() -> None:
