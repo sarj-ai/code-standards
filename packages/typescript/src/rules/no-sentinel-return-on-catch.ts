@@ -305,18 +305,6 @@ const BODY_DECODE_METHODS: ReadonlySet<string> = new Set([
   "arrayBuffer",
 ]);
 
-/** Whether a return value contains a match outside nested function scopes. */
-function returnsMatching(
-  stmt: TSESTree.Node,
-  predicate: (node: TSESTree.Node) => boolean,
-): boolean {
-  return (
-    stmt.type === AST_NODE_TYPES.ReturnStatement &&
-    stmt.argument !== null &&
-    walkWithinScope(stmt.argument, predicate)
-  );
-}
-
 /** Whether an enclosing predicate-named function returns `false` from its catch. */
 function isNamedBooleanPredicate(
   catchNode: TSESTree.CatchClause,
@@ -394,18 +382,42 @@ function enclosingReturnTypeNode(
   return null;
 }
 
-/** Does the try body return a safe-parse-style expression? */
+/** Does the try body contain only deliberate parse/decode operations that may throw? */
 function tryReturnsSafeParse(catchNode: TSESTree.CatchClause): boolean {
   const tryBlock = tryBlockOf(catchNode);
-  if (
-    walkWithinScope(tryBlock, (current) =>
-      returnsMatching(current, isParseShapedNode),
-    )
-  ) {
-    return true;
-  }
-  const only = tryBlock.body.length === 1 ? tryBlock.body[0] : undefined;
-  return only !== undefined && returnsMatching(only, isBodyDecodeNode);
+  let sawSafeParse = false;
+  let sawUnsafeOperation = false;
+
+  const recurse = (current: TSESTree.Node): void => {
+    if (sawUnsafeOperation || (current !== tryBlock && isFunctionNode(current))) return;
+    if (current.type === AST_NODE_TYPES.AwaitExpression) {
+      if (current.argument.type === AST_NODE_TYPES.CallExpression && isBodyDecodeNode(current.argument)) {
+        recurse(current.argument);
+      } else {
+        sawUnsafeOperation = true;
+      }
+      return;
+    }
+    if (current.type === AST_NODE_TYPES.CallExpression || current.type === AST_NODE_TYPES.NewExpression) {
+      if (isParseShapedNode(current) || isBodyDecodeNode(current)) {
+        sawSafeParse = true;
+      } else {
+        sawUnsafeOperation = true;
+        return;
+      }
+    }
+    for (const key of Object.keys(current)) {
+      if (key === "parent") continue;
+      const value = (current as unknown as Record<string, unknown>)[key];
+      const children = Array.isArray(value) ? value : [value];
+      for (const child of children) {
+        if (isNode(child)) recurse(child);
+      }
+    }
+  };
+
+  recurse(tryBlock);
+  return sawSafeParse && !sawUnsafeOperation;
 }
 
 /**
@@ -444,6 +456,9 @@ function functionReturnsSameSentinelKindElsewhere(
   catchNode: TSESTree.CatchClause,
   kind: SentinelKind,
 ): boolean {
+  // Empty collections and objects are common successful results but say
+  // nothing about whether operational failure may be converted into one.
+  if (kind !== "nullish" && kind !== "boolean") return false;
   const functionBody = enclosingFunctionBody(catchNode);
   if (functionBody === null) {
     return false;
@@ -504,6 +519,9 @@ function returnedSentinelKinds(
     for (const nested of returnedSentinelKinds(arg.right)) {
       kinds.add(nested);
     }
+  } else if (arg.type === AST_NODE_TYPES.ChainExpression) {
+    // Optional chaining explicitly models ordinary-path absence as undefined.
+    kinds.add("nullish");
   }
   return kinds;
 }

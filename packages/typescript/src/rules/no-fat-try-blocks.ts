@@ -10,7 +10,10 @@ import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
 
 type MessageIds = "fatTryBlock";
-type Options = readonly [];
+export interface RuleOptions {
+  readonly max?: number;
+}
+type Options = readonly [RuleOptions?];
 
 export const noFatTryBlocksDocumentation = {
   summary: "Disallow `try` blocks containing more than three top-level operations that can throw.",
@@ -449,14 +452,22 @@ export default createRule<Options, MessageIds>({
     docs: {
       description: "Disallow `try` blocks containing more than three top-level operations that can throw.",
     },
-    schema: [],
+    schema: [
+      {
+        type: "object",
+        properties: {
+          max: { type: "integer", minimum: 1 },
+        },
+        additionalProperties: false,
+      },
+    ],
     messages: {
       fatTryBlock:
         "This `try` block has {{count}} statements that can throw (max {{max}}). Isolate the throwing statement(s); move non-throwing work outside the `try`.",
     },
   },
-  defaultOptions: [],
-  create(context) {
+  defaultOptions: [{ max: MAX_TRY_BODY_STATEMENTS }],
+  create(context, [options]) {
     if (isGeneratedFile(context.filename, context.sourceCode.text)) {
       return {};
     }
@@ -476,7 +487,8 @@ export default createRule<Options, MessageIds>({
         }
 
         const count = node.block.body.filter(canThrow).length;
-        if (count <= MAX_TRY_BODY_STATEMENTS) {
+        const max = options?.max ?? MAX_TRY_BODY_STATEMENTS;
+        if (count <= max) {
           return;
         }
 
@@ -484,7 +496,7 @@ export default createRule<Options, MessageIds>({
         context.report({
           node: tryKeyword ?? node,
           messageId: "fatTryBlock",
-          data: { count, max: MAX_TRY_BODY_STATEMENTS },
+          data: { count, max },
         });
       },
     };

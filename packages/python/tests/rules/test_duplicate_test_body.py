@@ -138,6 +138,54 @@ def test_two():
     assert "never got its edit" in diag.message
 
 
+def test_preserves_mapping_lookup_keys_as_distinct_contracts():
+    src = """
+def test_database_health():
+    response = client.get("/health")
+    payload = response.json()
+    assert payload["database"] == "healthy"
+
+
+def test_voice_health():
+    response = client.get("/health")
+    payload = response.json()
+    assert payload["voice"] == "healthy"
+"""
+    assert _check(src) == []
+
+
+def test_preserves_mapping_literal_keys_as_distinct_contracts():
+    src = """
+def test_database_health():
+    response = client.get("/health")
+    expected = {"database": "healthy"}
+    assert response.json() == expected
+
+
+def test_voice_health():
+    response = client.get("/health")
+    expected = {"voice": "healthy"}
+    assert response.json() == expected
+"""
+    assert _check(src) == []
+
+
+def test_preserves_pytest_raises_match_as_a_distinct_contract():
+    src = """
+def test_invalid_port():
+    value = "invalid"
+    with pytest.raises(ValueError, match="invalid port"):
+        parse_port(value)
+
+
+def test_unknown_environment():
+    value = "unknown"
+    with pytest.raises(ValueError, match="unknown environment"):
+        parse_port(value)
+"""
+    assert _check(src) == []
+
+
 def test_flags_methods_of_a_pytest_style_class():
     src = """
 class TestDeletion:

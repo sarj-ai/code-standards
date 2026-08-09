@@ -16,16 +16,20 @@ export const preferInputGroupSearchDocumentation = {
   rationale: "The shared compound control provides consistent spacing, focus behavior, and accessible composition.",
   remediation: "Compose the search icon and field with InputGroup, InputGroupAddon, and InputGroupInput.",
   category: "style",
-  limitations: ["Only Search and Input bindings imported from the recognized shared modules are paired."],
+  limitations: [
+    "Only Search and Input bindings imported from the recognized shared modules are paired.",
+    "The file must import InputGroup, proving that the repository has adopted that optional primitive.",
+  ],
   examples: [
     { id: "grouped-search", title: "Use the shared input group", outcome: "no-match", files: [{ path: "src/search.tsx", source: "import { Search } from 'lucide-react'; import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group'; const field = <InputGroup><InputGroupAddon><Search /></InputGroupAddon><InputGroupInput /></InputGroup>;" }], focusPath: "src/search.tsx", expectedCount: 0, public: true },
-    { id: "loose-search-input", title: "Do not pair loose search controls", outcome: "match", files: [{ path: "src/search.tsx", source: "import { Search } from 'lucide-react'; import { Input } from '@/components/ui/input'; const field = <div><Search /><Input /></div>;" }], focusPath: "src/search.tsx", expectedCount: 1, public: true },
+    { id: "loose-search-input", title: "Do not pair loose search controls", outcome: "match", files: [{ path: "src/search.tsx", source: "import { Search } from 'lucide-react'; import { Input } from '@/components/ui/input'; import { InputGroup } from '@/components/ui/input-group'; const field = <div><Search /><Input /></div>;" }], focusPath: "src/search.tsx", expectedCount: 1, public: true },
   ],
 } as const satisfies RuleDocumentation;
 
 const INPUT_MODULE = /(?:^|\/)components\/ui\/input$/u;
 const INPUT_GROUP_MODULE = /(?:^|\/)components\/ui\/input-group$/u;
 const MAX_JSX_DISTANCE = 2;
+const SEARCH_EXPORTS = ["Search", "SearchIcon", "LucideSearch"] as const;
 
 interface Occurrence {
   ancestors: readonly TSESTree.Node[];
@@ -98,6 +102,17 @@ function nearestEligibleCommonAncestor(
   return null;
 }
 
+function isActionIcon(
+  search: Occurrence,
+  wrapper: TSESTree.JSXElement,
+): boolean {
+  return jsxAncestors(search).some((ancestor) => {
+    if (ancestor === wrapper) return false;
+    const name = elementName(ancestor.openingElement);
+    return name === "a" || name === "button";
+  });
+}
+
 export default createRule<Options, MessageIds>({
   name: "prefer-input-group-search",
   documentation: preferInputGroupSearchDocumentation,
@@ -125,9 +140,11 @@ export default createRule<Options, MessageIds>({
       ImportDeclaration(node): void {
         const source = String(node.source.value);
         if (source === "lucide-react") {
-          localNamedImports(node, "Search").forEach((name) =>
-            searchNames.add(name),
-          );
+          for (const exported of SEARCH_EXPORTS) {
+            localNamedImports(node, exported).forEach((name) =>
+              searchNames.add(name),
+            );
+          }
         } else if (INPUT_MODULE.test(source)) {
           localNamedImports(node, "Input").forEach((name) =>
             inputNames.add(name),
@@ -149,6 +166,7 @@ export default createRule<Options, MessageIds>({
         if (inputNames.has(name)) inputs.push(occurrence);
       },
       "Program:exit"(): void {
+        if (inputGroupNames.size === 0) return;
         const reported = new Set<TSESTree.JSXElement>();
         for (const search of searches) {
           if (isWithinInputGroup(search, inputGroupNames)) continue;
@@ -159,12 +177,19 @@ export default createRule<Options, MessageIds>({
               input,
               inputGroupNames,
             );
-            if (wrapper === null || reported.has(wrapper)) continue;
+            if (
+              wrapper === null ||
+              reported.has(wrapper) ||
+              isActionIcon(search, wrapper)
+            ) {
+              continue;
+            }
             reported.add(wrapper);
             context.report({
               node: wrapper.openingElement,
               messageId: "preferInputGroup",
             });
+            break;
           }
         }
       },

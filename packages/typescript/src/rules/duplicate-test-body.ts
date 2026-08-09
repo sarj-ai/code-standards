@@ -60,7 +60,7 @@ export const duplicateTestBodyDocumentation = {
       outcome: "match",
       files: [{
         path: "src/user.test.ts",
-        source: "test('accepts a', () => { const result = parse('a'); expect(result.ok).toBe(true); expect(result.value).toBe('a'); });\ntest('accepts b', () => { const result = parse('b'); expect(result.ok).toBe(true); expect(result.value).toBe('b'); });",
+        source: "test('accepts a', () => { const result = parse('a'); expect(result.ok).toBe(true); expect(result.value).toBeDefined(); });\ntest('accepts b', () => { const result = parse('b'); expect(result.ok).toBe(true); expect(result.value).toBeDefined(); });",
       }],
       focusPath: "src/user.test.ts",
       expectedCount: 1,
@@ -166,7 +166,7 @@ function containsInlineSnapshot(node: TSESTree.Node): boolean {
 
 function normalizedAst(value: unknown, preserveLiteral = false): unknown {
   if (Array.isArray(value)) {
-    return value.map((item) => normalizedAst(item));
+    return value.map((item) => normalizedAst(item, preserveLiteral));
   }
   if (typeof value !== "object" || value === null) {
     return typeof value === "bigint" ? value.toString() : value;
@@ -176,6 +176,8 @@ function normalizedAst(value: unknown, preserveLiteral = false): unknown {
     return normalizedLiteral(value as TSESTree.Literal);
   }
   const normalized: Record<string, unknown> = {};
+  const preservesAssertionContract =
+    record["type"] === AST_NODE_TYPES.CallExpression && isAssertionCall(value as TSESTree.CallExpression);
   for (const key of Object.keys(record).sort()) {
     if (OMITTED_AST_KEYS.has(key)) {
       continue;
@@ -188,9 +190,23 @@ function normalizedAst(value: unknown, preserveLiteral = false): unknown {
     const isComputedMemberName =
       key === "property" &&
       record["type"] === AST_NODE_TYPES.MemberExpression;
-    normalized[key] = normalizedAst(record[key], isPropertyName || isComputedMemberName);
+    normalized[key] = normalizedAst(
+      record[key],
+      preserveLiteral || preservesAssertionContract || isPropertyName || isComputedMemberName,
+    );
   }
   return normalized;
+}
+
+function isAssertionCall(node: TSESTree.CallExpression): boolean {
+  const root = rootIdentifier(node.callee);
+  return root !== null && ["assert", "expect"].includes(root.name);
+}
+
+function isAssertionStatement(statement: TSESTree.Statement): boolean {
+  if (statement.type !== AST_NODE_TYPES.ExpressionStatement) return false;
+  const expression = statement.expression;
+  return expression.type === AST_NODE_TYPES.CallExpression && isAssertionCall(expression);
 }
 
 function normalizedLiteral(node: TSESTree.Literal): unknown {
@@ -261,7 +277,8 @@ export default createRule<Options, MessageIds>({
         const body = candidate.body;
         if (
           body.body.type !== AST_NODE_TYPES.BlockStatement ||
-          body.body.body.length < MIN_STATEMENTS
+          body.body.body.length < MIN_STATEMENTS ||
+          body.body.body.every(isAssertionStatement)
         ) {
           return;
         }

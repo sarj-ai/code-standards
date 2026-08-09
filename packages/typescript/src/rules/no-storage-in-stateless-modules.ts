@@ -7,6 +7,7 @@
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { isTestFile } from "./_paths.js";
 
 type MessageIds = "storageInStatelessModule";
 
@@ -108,6 +109,9 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [{}],
   create(context, [options]) {
+    if (isTestFile(context.filename)) {
+      return {};
+    }
     const modules = options?.modules ?? [];
     if (modules.length === 0) {
       return {};

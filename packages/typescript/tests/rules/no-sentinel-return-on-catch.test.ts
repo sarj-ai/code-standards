@@ -52,6 +52,10 @@ ruleTester.run("no-sentinel-return-on-catch", rule, {
       code: "function enabled(config) { try { return config.enabled || false; } catch { return false; } }",
     },
     {
+      name: "allows undefined when optional chaining models ordinary absence",
+      code: "function readTitle(config) { try { return config.current?.title; } catch { return undefined; } }",
+    },
+    {
       name: "leaves promise catch handlers to no-silent-promise-catch",
       code: "async function load() { return request().catch(() => []); }",
     },
@@ -242,10 +246,11 @@ ruleTester.run("no-sentinel-return-on-catch", rule, {
     {
       name: "allows a safe parse after earlier work in the try body",
       code: `
-        function readConfig(path) {
+        function readConfig(text) {
           try {
-            const text = read(path);
-            return JSON.parse(text);
+            let parsed;
+            parsed = JSON.parse(text);
+            return parsed;
           } catch { return null; }
         }
       `,
@@ -421,6 +426,16 @@ ruleTester.run("no-sentinel-return-on-catch", rule, {
     {
       name: "does not mistake another object's property for the caught error",
       code: "function c() { try { return risky(); } catch (err) { reportStatus(response.err); return null; } }",
+      errors: [{ messageId: "noSentinelReturn" }],
+    },
+    {
+      name: "does not hide an earlier operational failure behind a later parse",
+      code: "function readConfig(path) { try { const text = read(path); return JSON.parse(text); } catch { return null; } }",
+      errors: [{ messageId: "noSentinelReturn" }],
+    },
+    {
+      name: "does not treat an ordinary empty result as permission to hide failure",
+      code: "async function readAll() { if (!configured()) return []; try { return await storage.getAll(); } catch { return []; } }",
       errors: [{ messageId: "noSentinelReturn" }],
     },
     {

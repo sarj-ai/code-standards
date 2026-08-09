@@ -22,6 +22,12 @@ const STATELESS_MODULE_OPTIONS = [
 
 ruleTester.run("no-storage-in-stateless-modules", rule, {
   valid: [
+    {
+      name: "ignores storage doubles in test files",
+      filename: "/repo/src/engineer-digest/post.test.ts",
+      options: [{ modules: ["engineer-digest"] }],
+      code: `await mockKv.put("digest:last", timestamp);`,
+    },
     { name: "accepts the documented system-of-record read", filename: noStorageInStatelessModulesDocumentation.examples[0].focusPath, code: noStorageInStatelessModulesDocumentation.examples[0].files[0].source, options: STATELESS_MODULE_OPTIONS },
     {
       name: "allows prepare until a stateless module is configured",

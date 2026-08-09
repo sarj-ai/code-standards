@@ -27,6 +27,18 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
     assert len(PreferLibraryFake().check(Path(focus.path), focus.source)) == example.expected_count
 
 
+@pytest.mark.parametrize("name", ["FakeRedistributor", "FakeRobotoFontLoader"])
+def test_ignores_service_name_substrings_inside_domain_words(name: str) -> None:
+    source = f"""
+class {name}:
+    def first(self): return 1
+    def second(self): return 2
+    def third(self): return 3
+"""
+
+    assert _check(source) == []
+
+
 # A three-method dict-backed S3 client: the canonical shape this rule exists for.
 _FAKE_S3 = """
 class FakeS3Client:

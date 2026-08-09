@@ -377,13 +377,10 @@ const expandWorkspaceGlob = (root: string, glob: string): string[] => {
 
   const prefix = glob.slice(0, star).replace(/\/$/u, "");
   const parent = prefix === "" ? root : join(root, prefix);
-  try {
-    return readdirSync(parent, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
-      .map((entry) => join(parent, entry.name));
-  } catch {
-    return [];
-  }
+  if (!existsSync(parent)) return [];
+  return readdirSync(parent, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+    .map((entry) => join(parent, entry.name));
 };
 
 const propName = (key: TSESTree.Property["key"]): string | null => {

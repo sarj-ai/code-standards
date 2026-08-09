@@ -198,6 +198,31 @@ _BIGQUERY_WIRE_KEY_SETS = (
 # Words / infixes that mark a class as a test double.
 _MARKER_INFIXES = ("mock", "fake", "stub", "dummy", "inmemory", "scripted", "recording")
 _MARKER_WORDS = frozenset({"spy"})
+_SERVICE_SUFFIXES = (
+    "adapter",
+    "api",
+    "backend",
+    "bucket",
+    "cache",
+    "client",
+    "clock",
+    "collection",
+    "connection",
+    "emulator",
+    "gateway",
+    "mailer",
+    "pool",
+    "producer",
+    "publisher",
+    "queue",
+    "server",
+    "service",
+    "session",
+    "store",
+    "stream",
+    "table",
+    "transport",
+)
 
 # pytest's own collection prefix, in both spellings the corpora use
 # (`TestGeminiNullResults` in a first-party repo, `test_MongoBackend_no_mock` in celery).
@@ -406,8 +431,13 @@ def _match_service(name: str) -> _Service | None:
     """Find the external service named by `name`."""
     flat = _flatten(name)
     words = _words(name)
+    payloads = tuple(flat.removeprefix(marker) for marker in _MARKER_INFIXES if flat.startswith(marker))
     for service in _SERVICES:
-        if words & service.words or any(infix in flat for infix in service.infixes):
+        if words & service.words or any(
+            payload == infix or any(payload == infix + suffix for suffix in _SERVICE_SUFFIXES)
+            for payload in payloads
+            for infix in service.infixes
+        ):
             return service
     return None
 

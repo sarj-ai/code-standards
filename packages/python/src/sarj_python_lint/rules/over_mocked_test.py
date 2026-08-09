@@ -472,7 +472,11 @@ def _body_substitutions(func: ast.AST, names: _MockNames) -> _BodyScan:
 
 def _record_facets(targets: list[ast.expr], value: ast.expr, names: _MockNames, facets: dict[str, str]) -> None:
     """Note that a name assigned into another object's attribute is part of that object."""
-    roots = {root for target in targets if isinstance(target, ast.Attribute) and (root := _object_of(target, names))}
+    roots = list(
+        dict.fromkeys(
+            root for target in targets if isinstance(target, ast.Attribute) and (root := _object_of(target, names))
+        )
+    )
     if roots:
         sources = [*_assigned_names(value), *(t.id for t in targets if isinstance(t, ast.Name))]
         for root in roots:

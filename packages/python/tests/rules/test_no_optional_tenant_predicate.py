@@ -303,6 +303,30 @@ def test_ignores_empty_source():
     assert _count("") == 0
 
 
+def test_recognises_uppercase_tenant_column() -> None:
+    src = """
+def build(args):
+    conditions = []
+    if args.organization_id:
+        conditions.append(SQL("ORGANIZATION_ID = %s"))
+    return conditions
+"""
+    assert _count(src) == 1
+
+
+@pytest.mark.parametrize(
+    "fragment",
+    [
+        'errors.append("account_id is required")',
+        'updates.append("organization_id = replacement")',
+        'notes.append("tenant_id in request metadata")',
+    ],
+)
+def test_ignores_tenant_words_that_are_not_sql_predicates(fragment: str) -> None:
+    src = f"def build(args):\n    if args.scope:\n        {fragment}\n"
+    assert _count(src) == 0
+
+
 def test_ignores_conditional_tenant_clause_when_else_raises():
     src = """
 def build(tenant_id):

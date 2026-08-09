@@ -24,7 +24,6 @@
   ],
   "rules": {
     "python": [
-      "conditional-assertion-in-test",
       "defect-xfail-requires-strict",
       "docstring-args-restate-signature",
       "docstring-returns-restate-signature",
@@ -32,7 +31,6 @@
       "duplicated-override-docstring",
       "fastapi-openapi-contract",
       "fixture-returns-bare-tuple",
-      "interaction-only-test",
       "invalid-pydantic-field-default",
       "kwarg-heavy-construction-in-test",
       "mock-without-spec",
@@ -95,8 +93,7 @@
       "test-phase-label-comment",
       "trailing-value-narration",
       "trivially-true-assertion",
-      "unused-mock-setup",
-      "zero-assertion-test"
+      "unused-mock-setup"
     ],
     "sql": [
       "add-constraint-requires-not-valid",
@@ -122,7 +119,6 @@
       "enforce-file-structure",
       "no-client-side-data-fetching",
       "no-comment-cruft",
-      "no-conditional-in-test",
       "no-cors-wildcard-with-credentials",
       "no-declaration-comment-wall",
       "no-dynamic-sql",
@@ -219,7 +215,6 @@
       "SARJ039",
       "SARJ040",
       "SARJ042",
-      "SARJ043",
       "SARJ044",
       "SARJ045",
       "SARJ046",
@@ -234,9 +229,7 @@
       "SARJ057",
       "SARJ059",
       "SARJ062",
-      "SARJ063",
       "SARJ064",
-      "SARJ065",
       "SARJ066",
       "SARJ067",
       "SARJ068",
@@ -320,6 +313,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Delete the stale alias; its former replacement was also retired because Testing Library supports async waitFor callbacks."
+    },
+    {
+      "id": "@sarj/no-conditional-in-test",
+      "kind": "eslint",
+      "status": "removed",
+      "replacement": null,
+      "note": "Removed in @sarj/eslint-plugin 15.0.0. Delete the entry and suppressions; syntax cannot distinguish weak conditional expectations from valid filtering, discriminant invariants, or implication checks."
     },
     {
       "id": "@sarj/no-implicit-attribute-access",
@@ -483,6 +483,13 @@
       "note": "Delete SARJ041 suppressions and baseline keys; a literal test loop may encode one shared scenario, completeness contract, or state evolution that parametrization would change."
     },
     {
+      "id": "SARJ043",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ043 suppressions and baseline keys; a bare production call can intentionally assert that an operation does not raise, which syntax alone cannot distinguish from a weak test. Removed in sarj-python-lint 0.61.0."
+    },
+    {
       "id": "SARJ047",
       "kind": "code",
       "status": "removed",
@@ -518,6 +525,20 @@
       "note": "Removed in sarj-python-lint 0.34.0. Delete every `# sarj-noqa: SARJ061` comment and SARJ061 baseline key; there is no replacement."
     },
     {
+      "id": "SARJ063",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Removed in sarj-python-lint 0.61.0. Delete every `# sarj-noqa: SARJ063` comment and SARJ063 baseline key; interaction assertions can be the externally observable contract."
+    },
+    {
+      "id": "SARJ065",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Removed in sarj-python-lint 0.61.0. Delete every `# sarj-noqa: SARJ065` comment and SARJ065 baseline key; syntax cannot prove whether a branch or universal implication is vacuous."
+    },
+    {
       "id": "SARJ069",
       "kind": "code",
       "status": "removed",
@@ -546,6 +567,13 @@
       "note": "Replace sarj-add-constraint-not-valid with sarj-add-constraint-requires-not-valid before upgrading."
     },
     {
+      "id": "conditional-assertion-in-test",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Removed in sarj-python-lint 0.61.0. Delete the hook and suppressions; syntax cannot prove whether a conditional assertion is vacuous or a valid universal invariant."
+    },
+    {
       "id": "ephemeral-ai-artifact",
       "kind": "text",
       "status": "renamed",
@@ -558,6 +586,13 @@
       "status": "renamed",
       "replacement": "no-string-concat-in-loop",
       "note": "Replace sarj-inefficient-string-concat-in-loop with sarj-no-string-concat-in-loop before upgrading."
+    },
+    {
+      "id": "interaction-only-test",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Removed in sarj-python-lint 0.61.0. Delete the hook and suppressions; interaction assertions can be the public contract and syntax cannot distinguish those tests reliably."
     },
     {
       "id": "kwonly-same-type-params",
@@ -691,6 +726,13 @@
       "status": "renamed",
       "replacement": "defect-xfail-requires-strict",
       "note": "Replace sarj-xfail-requires-strict with sarj-defect-xfail-requires-strict before upgrading."
+    },
+    {
+      "id": "zero-assertion-test",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete zero-assertion-test suppressions and baseline keys; a bare production call can intentionally assert that an operation does not raise, which syntax alone cannot distinguish from a weak test. Removed in sarj-python-lint 0.61.0."
     }
   ]
 }

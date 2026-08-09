@@ -150,14 +150,15 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    let services: ParserServicesWithTypeInformation;
+    let services: ParserServicesWithTypeInformation | null;
     try {
       services = ESLintUtils.getParserServices(context);
     } catch {
       // Exhaustiveness cannot be proven from syntax alone. The typed strict
       // preset supplies services; standalone syntax-only use stays silent.
-      return {};
+      services = null;
     }
+    if (services === null) return {};
 
     return {
       SwitchStatement(node: TSESTree.SwitchStatement): void {

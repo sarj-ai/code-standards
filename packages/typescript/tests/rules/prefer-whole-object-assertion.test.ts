@@ -336,6 +336,13 @@ ruleTester.run("prefer-whole-object-assertion", rule, {
     },
   ],
   invalid: [
+    {
+      name: "combines undefined property assertions",
+      filename: "/repo/src/user.test.ts",
+      code: `expect(user.name).toBe("Ada");\nexpect(user.deletedAt).toBeUndefined();`,
+      output: `expect(user).toMatchObject({ name: "Ada", deletedAt: undefined });\n`,
+      errors: [{ messageId: "combineAssertions" }],
+    },
     { name: "fixes the documented member assertion run", filename, code: preferWholeObjectAssertionDocumentation.examples[1].files[0].source, output: preferWholeObjectAssertionDocumentation.examples[1].fixedFiles[0].source, errors: [{ messageId: "combineAssertions" }] },
     // The surviving true positive: the exact shape the fixer can rewrite
     // without changing what the test asserts.

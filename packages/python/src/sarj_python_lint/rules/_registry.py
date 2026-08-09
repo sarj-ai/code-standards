@@ -3,7 +3,6 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
-from sarj_python_lint.rules.conditional_assertion_in_test import ConditionalAssertionInTest
 from sarj_python_lint.rules.defect_xfail_requires_strict import DefectXfailRequiresStrict
 from sarj_python_lint.rules.docstring_args_restate_signature import (
     DocstringArgsRestateSignature,
@@ -17,7 +16,6 @@ from sarj_python_lint.rules.duplicated_override_docstring import (
 )
 from sarj_python_lint.rules.fastapi_openapi_contract import FastapiOpenapiContract
 from sarj_python_lint.rules.fixture_returns_bare_tuple import FixtureReturnsBareTuple
-from sarj_python_lint.rules.interaction_only_test import InteractionOnlyTest
 from sarj_python_lint.rules.invalid_pydantic_field_default import (
     InvalidPydanticFieldDefault,
 )
@@ -117,7 +115,6 @@ from sarj_python_lint.rules.store_insert_requires_on_conflict import (
 from sarj_python_lint.rules.trailing_value_narration import TrailingValueNarration
 from sarj_python_lint.rules.trivially_true_assertion import TriviallyTrueAssertion
 from sarj_python_lint.rules.unused_mock_setup import UnusedMockSetup
-from sarj_python_lint.rules.zero_assertion_test import ZeroAssertionTest
 
 
 if TYPE_CHECKING:
@@ -159,7 +156,6 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         FixtureReturnsBareTuple.id: FixtureReturnsBareTuple,
         KwargHeavyConstructionInTest.id: KwargHeavyConstructionInTest,
         DefectXfailRequiresStrict.id: DefectXfailRequiresStrict,
-        ZeroAssertionTest.id: ZeroAssertionTest,
         NoFirstPartyPrivateImport.id: NoFirstPartyPrivateImport,
         NoRestatedComment.id: NoRestatedComment,
         RedundantDocstring.id: RedundantDocstring,
@@ -172,11 +168,9 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoTautologicalExpect.id: NoTautologicalExpect,
         PreferLibraryFake.id: PreferLibraryFake,
         OverMockedTest.id: OverMockedTest,
-        InteractionOnlyTest.id: InteractionOnlyTest,
         InvalidPydanticFieldDefault.id: InvalidPydanticFieldDefault,
         NoFrozenAfterValidatorFieldWrite.id: NoFrozenAfterValidatorFieldWrite,
         TriviallyTrueAssertion.id: TriviallyTrueAssertion,
-        ConditionalAssertionInTest.id: ConditionalAssertionInTest,
         DuplicateTestBody.id: DuplicateTestBody,
         UnusedMockSetup.id: UnusedMockSetup,
         PreferFstringOverConcat.id: PreferFstringOverConcat,

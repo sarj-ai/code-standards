@@ -220,7 +220,7 @@ def _invalid_default_message(
         )
 
     domain = _literal_domain(annotation, imports)
-    if domain is not None and _literal_key(literal) not in domain.values:
+    if domain is not None and not isinstance(literal, float) and _literal_key(literal) not in domain.values:
         allowed = ", ".join(sorted(repr(value) for _, value in domain.values))
         return (
             f"`{field_name}` defaults to {literal!r}, outside its direct `Literal` domain ({allowed}); "
@@ -328,7 +328,7 @@ def _bound_violation(default: object, call: ast.Call) -> tuple[str, object] | No
             if _numeric_bound_is_violated(name, default, bound):
                 return name, bound
         return None
-    if isinstance(default, str):
+    if isinstance(default, (str, bytes)):
         for name in ("min_length", "max_length"):
             bound = bounds.get(name, _MISSING)
             if not isinstance(bound, int) or isinstance(bound, bool) or bound < 0:
