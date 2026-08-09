@@ -1096,7 +1096,6 @@ export function createConfig(options = {}) {
       "@sarj/no-conditional-in-test": "error",
       "@sarj/no-unsafe-mock-casting": "error",
       "@sarj/prefer-whole-object-assertion": "error",
-      "@sarj/no-async-callback-in-wait-for": "error",
       "@sarj/duplicate-test-body": "error",
       "@sarj/test-loops-over-literal-cases": "error",
       // Both architectural rules stay enabled in the shared baseline. The

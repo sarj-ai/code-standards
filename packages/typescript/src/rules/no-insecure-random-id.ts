@@ -28,7 +28,7 @@ const STRONG_SECURITY_PATTERN =
   /token|secret|csrf|password|passwd|apikey|api[-_]?key|nonce|salt|uuid|authid/i;
 
 const NON_SECURITY_ID_PATTERN =
-  /temp|tmp|cache|correlation|request|req|trace|execution|dev|hmr|mock|test|perf|marker/i;
+  /temp|tmp|cache|correlation|request|req|trace|execution|dev|hmr|mock|test|perf|marker|dialog|select|menu|tab|field|input|form|element|dom|aria|component/i;
 
 /** Matches a static string fragment that reads as a path or DOM-id context. */
 const PATH_OR_DOM_MARKER = /[\\/#]|\.[A-Za-z0-9]/;

@@ -466,6 +466,37 @@ def test_paths():
     assert _check(src) == []
 
 
+@pytest.mark.parametrize(
+    "condition",
+    [
+        'condition=sys.platform == "win32"',
+        "condition=\"sys.platform == 'win32'\"",
+        "\"sys.platform == 'win32'\"",
+    ],
+)
+def test_allows_keyword_and_string_environment_conditions(condition: str) -> None:
+    src = f"""\
+import pytest
+import sys
+
+@pytest.mark.xfail({condition}, reason="BUG: broken on Windows only")
+def test_windows_behavior():
+    pass
+"""
+    assert _check(src) == []
+
+
+def test_keyword_non_environment_condition_still_requires_strict() -> None:
+    src = """\
+import pytest
+
+@pytest.mark.xfail(condition=FEATURE_ROLLED_OUT, reason="BUG: wrong envelope")
+def test_feature():
+    pass
+"""
+    assert len(_check(src)) == 1
+
+
 def test_flags_unconditional_bug_pin_in_same_file_as_gated_one():
     src = """
 @pytest.mark.xfail(sys.platform == "win32", reason="broken on Windows only")

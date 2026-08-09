@@ -24,7 +24,16 @@ export const noSilentPromiseCatchDocumentation = {
   ],
 } as const satisfies RuleDocumentation;
 
-/** True for `x.json()` / `x.text()` — the receiver of a body-parse-fallback catch. */
+const BODY_PARSE_METHODS: ReadonlySet<string> = new Set([
+  "arrayBuffer",
+  "blob",
+  "bytes",
+  "formData",
+  "json",
+  "text",
+]);
+
+/** True for a standard Fetch body parser — the receiver of a parse-fallback catch. */
 function isBodyParseCall(node: TSESTree.Expression): boolean {
   return (
     node.type === AST_NODE_TYPES.CallExpression &&
@@ -32,8 +41,7 @@ function isBodyParseCall(node: TSESTree.Expression): boolean {
     node.callee.type === AST_NODE_TYPES.MemberExpression &&
     !node.callee.computed &&
     node.callee.property.type === AST_NODE_TYPES.Identifier &&
-    (node.callee.property.name === "json" ||
-      node.callee.property.name === "text")
+    BODY_PARSE_METHODS.has(node.callee.property.name)
   );
 }
 

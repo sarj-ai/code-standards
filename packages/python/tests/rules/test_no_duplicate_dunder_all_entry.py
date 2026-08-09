@@ -40,6 +40,18 @@ def test_reports_the_later_exact_duplicate_in_static_export_literals(declaration
     assert "line 1" in findings[0].message
 
 
+def test_reports_duplicate_in_regular_module() -> None:
+    findings = _check('__all__ = ["parse", "parse"]\n', "src/parsing.py")
+
+    assert len(findings) == 1
+
+
+def test_later_extension_does_not_erase_literal_duplicate() -> None:
+    findings = _check('__all__ = ["A", "A"]\n__all__.append("B")\n')
+
+    assert len(findings) == 1
+
+
 @pytest.mark.parametrize(
     "example",
     _PUBLIC_EXAMPLES,
@@ -113,7 +125,6 @@ def test_pr304_unique_imports_mirrored_in_dunder_all_are_clean() -> None:
         '__all__ = ["A"]\n__all__ += ["A"]',
         '__all__ = ["A"]\n__all__.append("A")',
         'if enabled:\n    __all__ = ["A", "A"]',
-        '__all__ = ["A", "A"]\nif enabled:\n    __all__.append("B")',
         'def exports():\n    __all__ = ["A", "A"]',
         'class Facade:\n    __all__ = ["A", "A"]',
     ],
@@ -149,10 +160,10 @@ def test_unrelated_module_members_do_not_hide_a_static_duplicate() -> None:
     assert len(_check(source)) == 1
 
 
-def test_only_package_initializers_are_checked() -> None:
+def test_regular_modules_are_checked() -> None:
     source = '__all__ = ["A", "A"]'
 
-    assert _check(source, "diagnostics/exports.py") == []
+    assert len(_check(source, "diagnostics/exports.py")) == 1
 
 
 def test_generated_and_malformed_sources_are_ignored() -> None:

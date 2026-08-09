@@ -69,7 +69,7 @@ SECRET_KEYWORDS = [
 
 @pytest.mark.parametrize("kw", SECRET_KEYWORDS)
 def test_flags_secret_keyword(kw: str):
-    src = f'logger.info("msg", {kw}=v)\n'
+    src = f'logger.info("msg", {kw}={kw})\n'
     diags = _check(src)
     assert len(diags) == 1
     assert diags[0].code == "SARJ012"
@@ -83,7 +83,7 @@ LOG_METHODS = ["debug", "info", "warning", "warn", "error", "exception", "critic
 
 @pytest.mark.parametrize("method", LOG_METHODS)
 def test_flags_on_each_log_method(method: str):
-    src = f'logger.{method}("m", token=t)\n'
+    src = f'logger.{method}("m", token=token)\n'
     assert _codes(src) == ["SARJ012"]
 
 
@@ -94,7 +94,7 @@ NON_LOG_METHODS = ["send", "write", "emit", "handle", "flush", "notice"]
 @pytest.mark.parametrize("method", NON_LOG_METHODS)
 def test_skips_non_log_method(method: str):
     """`log`/`trace`/`send`/..."""
-    src = f'logger.{method}("m", token=t)\n'
+    src = f'logger.{method}("m", token=token)\n'
     assert _check(src) == []
 
 
@@ -130,7 +130,7 @@ LOGGER_RECEIVERS = [
 
 @pytest.mark.parametrize("recv", LOGGER_RECEIVERS)
 def test_flags_across_logger_receivers(recv: str):
-    src = f'{recv}.error("m", secret=s)\n'
+    src = f'{recv}.error("m", secret=secret)\n'
     assert _codes(src) == ["SARJ012"]
 
 
@@ -153,7 +153,7 @@ NON_LOGGER_RECEIVERS = [
 
 @pytest.mark.parametrize("recv", NON_LOGGER_RECEIVERS)
 def test_skips_non_logger_receiver(recv: str):
-    src = f'{recv}.info("m", token=t)\n'
+    src = f'{recv}.info("m", token=token)\n'
     assert _check(src) == []
 
 
@@ -162,7 +162,7 @@ def test_skips_non_logger_receiver(recv: str):
 
 @pytest.mark.parametrize("kw", ["TOKEN", "Token", "ToKeN", "PASSWORD", "Secret", "Api_Key", "JWT", "Jwt"])
 def test_flags_case_insensitive_secret(kw: str):
-    src = f'logger.info("m", {kw}=v)\n'
+    src = f'logger.info("m", {kw}={kw})\n'
     assert _codes(src) == ["SARJ012"]
 
 
@@ -203,18 +203,45 @@ def test_redaction_wins_when_both_present():
     assert _check(src) == []
 
 
-# Family 6: only the NAME matters — the value is never inspected               #
+# Family 6: both keyword and value must prove raw secret material               #
 
 
-def test_flags_secret_name_even_with_redacted_value():
-    """`token=token[:6]` is still flagged — the keyword name is the raw secret."""
+def test_allows_secret_keyword_with_sliced_value():
+    """A subscript is derived data; the rule declines to guess whether it is raw."""
     src = 'logger.info("m", token=token[:6])\n'
-    assert _codes(src) == ["SARJ012"]
+    assert _check(src) == []
 
 
-def test_flags_secret_name_with_attribute_value():
+def test_allows_secret_keyword_with_non_secret_attribute_value():
     src = 'logger.info("m", secret=obj.value)\n'
+    assert _check(src) == []
+
+
+def test_flags_secret_keyword_with_secret_attribute_value():
+    src = 'logger.info("m", secret=obj.secret)\n'
     assert _codes(src) == ["SARJ012"]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'logger.info("state", token_valid=token_valid)\n',
+        'logger.info("state", token=token_valid)\n',
+        'logger.info("state", password_present=password_present)\n',
+        'logger.info("state", api_key_configured=api_key_configured)\n',
+        'logger.info("state", secret=secret_enabled)\n',
+    ],
+)
+def test_allows_derived_secret_state_references(source: str):
+    assert _check(source) == []
+
+
+def test_flags_valid_token_because_the_secret_word_is_terminal():
+    assert _codes('logger.info("m", token=valid_token)\n') == ["SARJ012"]
+
+
+def test_allows_unproven_alias_value():
+    assert _check('logger.info("m", token=value)\n') == []
 
 
 def test_allows_safe_name_with_secret_attribute_value():
@@ -254,7 +281,7 @@ def test_skips_double_star_kwargs():
 
 
 def test_skips_double_star_alongside_flagged_keyword():
-    src = 'logger.info("m", **extra, token=t)\n'
+    src = 'logger.info("m", **extra, token=token)\n'
     assert _codes(src) == ["SARJ012"]
 
 
@@ -290,7 +317,7 @@ def test_comment_mentioning_secret_is_ignored():
 
 
 def test_two_secret_keywords_in_one_call():
-    src = 'logger.warning("auth", token=token, password=pw)\n'
+    src = 'logger.warning("auth", token=token, password=password)\n'
     assert _codes(src) == ["SARJ012", "SARJ012"]
 
 
@@ -300,13 +327,13 @@ def test_mixed_secret_and_redacted_keywords():
 
 
 def test_multiple_calls_each_flagged():
-    src = 'logger.info("a", token=t)\nlog.error("b", secret=s)\nlogger.debug("c", api_key=k)\n'
+    src = 'logger.info("a", token=token)\nlog.error("b", secret=secret)\nlogger.debug("c", api_key=api_key)\n'
     assert _codes(src) == ["SARJ012", "SARJ012", "SARJ012"]
 
 
 def test_nested_logging_call_is_flagged():
     """`ast.walk` reaches a logging call nested inside another call's args."""
-    src = 'logger.info("outer", data=log.error("inner", token=t))\n'
+    src = 'logger.info("outer", data=log.error("inner", token=token))\n'
     assert _codes(src) == ["SARJ012"]
 
 
@@ -316,9 +343,9 @@ def test_nested_non_logger_keyword_not_flagged():
     assert _check(src) == []
 
 
-def test_secret_keyword_on_outer_with_nested_non_logger():
+def test_secret_keyword_on_outer_with_nested_non_logger_is_unproven():
     src = 'logger.info("m", token=other.build(secret=s))\n'
-    assert _codes(src) == ["SARJ012"]
+    assert _check(src) == []
 
 
 # Family 9: diagnostic location points at the value                           #
@@ -331,13 +358,13 @@ def test_diagnostic_line_col_single_line():
 
 
 def test_diagnostic_line_col_multiline_call():
-    src = 'logger.info(\n    "auth",\n    password=pw,\n)\n'
+    src = 'logger.info(\n    "auth",\n    password=password,\n)\n'
     diag = _check(src)[0]
     assert (diag.line, diag.col) == (3, 14)
 
 
 def test_diagnostics_ordered_by_source_position():
-    src = 'logger.info("a", token=t)\nlog.error("b", secret=s)\n'
+    src = 'logger.info("a", token=token)\nlog.error("b", secret=secret)\n'
     diags = _check(src)
     assert [(d.line, d.col) for d in diags] == [(1, 24), (2, 23)]
 
@@ -421,7 +448,7 @@ def test_sarj_noqa_for_other_code_does_not_suppress():
 
 
 def test_sarj_noqa_only_affects_its_own_line():
-    src = 'logger.info("a", token=t)  # sarj-noqa: SARJ012\nlogger.info("b", secret=s)\n'
+    src = 'logger.info("a", token=token)  # sarj-noqa: SARJ012\nlogger.info("b", secret=secret)\n'
     kept = _unsuppressed(src)
     assert len(kept) == 1
     assert kept[0].line == 2
@@ -432,7 +459,7 @@ def test_sarj_noqa_only_affects_its_own_line():
 
 @pytest.mark.parametrize("kw", ["signature", "hmac", "digest", "api_secret"])
 def test_flags_additional_secret_words(kw: str):
-    assert _codes(f'logger.info("m", {kw}=v)\n') == ["SARJ012"]
+    assert _codes(f'logger.info("m", {kw}={kw})\n') == ["SARJ012"]
 
 
 def test_hash_keyword_is_exempted_by_redaction_marker():
@@ -445,7 +472,7 @@ def test_hash_keyword_is_exempted_by_redaction_marker():
 
 def test_flags_camelcase_apikey():
     """`apiKey` splits to api/key -> whole-token `apikey`, still a secret."""
-    assert _codes('logger.info("m", apiKey=k)\n') == ["SARJ012"]
+    assert _codes('logger.info("m", apiKey=apiKey)\n') == ["SARJ012"]
 
 
 @pytest.mark.parametrize("kw", ["tokenCount", "apiKeyId", "tokenPresent", "promptTokens"])
@@ -459,7 +486,7 @@ def test_allows_camelcase_innocuous(kw: str):
 
 def test_flags_reset_token_whole_token_matching():
     """`reset` embeds `set` only as a substring, not a whole token, so `reset_token` flags."""
-    assert _codes('logger.info("m", reset_token=t)\n') == ["SARJ012"]
+    assert _codes('logger.info("m", reset_token=reset_token)\n') == ["SARJ012"]
 
 
 def test_allows_plural_tokens_counter():
@@ -471,20 +498,20 @@ def test_allows_plural_tokens_counter():
 
 
 def test_flags_bind_chain_on_self_logger():
-    assert _codes('self.logger.bind(request_id=rid).info("m", secret=s)\n') == ["SARJ012"]
+    assert _codes('self.logger.bind(request_id=rid).info("m", secret=secret)\n') == ["SARJ012"]
 
 
 def test_flags_logger_log_with_positional_level():
     """`.log(level, ...)` writes to the same sinks; the level argument is not a shield."""
-    assert _codes('logger.log(logging.INFO, "m", token=t)\n') == ["SARJ012"]
+    assert _codes('logger.log(logging.INFO, "m", token=token)\n') == ["SARJ012"]
 
 
-# Family 17: value never inspected — even a redacting-call value               #
+# Family 17: call results are not proven raw secret references                  #
 
 
-def test_flags_secret_name_with_redacting_call_value():
-    """The name is the raw secret word; a `mask(...)` value does not exempt it."""
-    assert _codes('logger.info("m", token=mask(token))\n') == ["SARJ012"]
+def test_allows_secret_name_with_redacting_call_value():
+    """A call result is not a proven raw secret reference."""
+    assert _check('logger.info("m", token=mask(token))\n') == []
 
 
 def test_skips_fstring_secret_with_safe_keyword():
@@ -498,13 +525,13 @@ def test_skips_fstring_secret_with_safe_keyword():
 @pytest.mark.parametrize("kw", ["staging_secret", "staging_token"])
 def test_staging_secret_should_be_flagged(kw: str):
     """`tag` is a whole-token redaction marker, so `staging_*` raw env secrets still fire."""
-    assert _codes(f'logger.info("boot", {kw}=v)\n') == ["SARJ012"]
+    assert _codes(f'logger.info("boot", {kw}={kw})\n') == ["SARJ012"]
 
 
 @pytest.mark.parametrize("kw", ["secrets", "passwords"])
 def test_plural_secret_bundle_should_be_flagged(kw: str):
     """A logged bundle like `secrets=all_secrets` is a genuine leak."""
-    assert _codes(f'logger.info("loaded", {kw}=v)\n') == ["SARJ012"]
+    assert _codes(f'logger.info("loaded", {kw}={kw})\n') == ["SARJ012"]
 
 
 # Family 19: LEADING boolean-flag prefixes (`has_secret`, `isToken`)           # The mirror image of the trailing flag markers in Family 11: a name whose leading WORD is a boolean predicate answers "does a secret exist?" and carries no credential, so logging it leaks nothing.
@@ -539,13 +566,13 @@ def test_trailing_flag_markers_still_exempt(kw: str):
 )
 def test_genuine_secret_still_flagged_alongside_flag_exemption(kw: str):
     """Real credentials keep firing — the exemption is on the leading word, nothing else."""
-    assert _codes(f'logger.info("boot", {kw}=v)\n') == ["SARJ012"]
+    assert _codes(f'logger.info("boot", {kw}={kw})\n') == ["SARJ012"]
 
 
 @pytest.mark.parametrize("kw", ["issuer_token", "canary_token", "issuerToken"])
 def test_flags_credential_whose_leading_word_only_looks_like_a_flag(kw: str):
     """`issuer`/`canary` merely start with the letters of `is`/`can` — still credentials."""
-    assert _codes(f'logger.info("boot", {kw}=v)\n') == ["SARJ012"]
+    assert _codes(f'logger.info("boot", {kw}={kw})\n') == ["SARJ012"]
 
 
 # Family 20: LIVENESS CANARY                                                   # This rule reports ZERO hits across 2,657 files of popular third-party Python (fastapi, pydantic, black, sqlmodel, rich, flask, httpx, requests, anyio).

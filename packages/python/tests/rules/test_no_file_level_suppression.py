@@ -28,10 +28,10 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
 
 
 def test_unparsable_source_yields_no_diagnostics() -> None:
-    assert _check("# ruff: noqa\ndef (:\n") == []
+    assert _check("# type: ignore\ndef (:\n") == []
 
 
-# Positive: bare Ruff file-wide noqa anywhere in the file.                      #
+# Ruff ownership: PGH004 owns bare Ruff file-wide noqa.                         #
 
 
 @pytest.mark.parametrize(
@@ -52,12 +52,8 @@ def test_unparsable_source_yields_no_diagnostics() -> None:
         "x = 1  # ruff: noqa\n",
     ],
 )
-def test_flags_bare_ruff_noqa(source: str):
-    diags = _check(source)
-    assert len(diags) == 1
-    assert diags[0].code == "SARJ038"
-    assert "ruff: noqa" in diags[0].message
-    assert "scope it" in diags[0].message
+def test_defers_bare_ruff_noqa_to_pgh004(source: str):
+    assert _check(source) == []
 
 
 # Positive: standalone `# type: ignore` / `# pyright: ignore` above line 1.    #
@@ -214,20 +210,19 @@ def test_allows_directive_text_inside_strings(source: str):
 def test_multiple_blankets_each_reported_sorted_by_line():
     src = "# type: ignore\n# pyright: ignore\nimport os\n\nx = 1  # ruff: noqa\n"
     diags = _check(src)
-    assert len(diags) == 3
-    assert [d.line for d in diags] == [1, 2, 5]
+    assert len(diags) == 2
+    assert [d.line for d in diags] == [1, 2]
     assert [(d.line, d.col) for d in diags] == sorted((d.line, d.col) for d in diags)
 
 
 def test_line_and_col_are_one_based():
-    src = "import os\n\n\ndef f():\n    # ruff: noqa\n    return os\n"
+    src = "# type: ignore\nimport os\n"
     diags = _check(src)
-    assert (diags[0].line, diags[0].col) == (5, 5)
+    assert (diags[0].line, diags[0].col) == (1, 1)
 
 
 def test_trailing_ruff_noqa_col_points_at_the_comment():
-    diags = _check("x = 1  # ruff: noqa\n")
-    assert (diags[0].line, diags[0].col) == (1, 8)
+    assert _check("x = 1  # ruff: noqa\n") == []
 
 
 def test_scoped_and_bare_in_the_same_file_reports_only_the_bare_one():
@@ -238,13 +233,13 @@ def test_scoped_and_bare_in_the_same_file_reports_only_the_bare_one():
 
 
 def test_reasoned_sarj_noqa_suppresses_a_justified_blanket():
-    src = "# ruff: noqa  # sarj-noqa: SARJ038 — generated module\nimport os\n"
+    src = "# type: ignore  # sarj-noqa: SARJ038 — generated module\nimport os\n"
     diagnostic = _check(src)[0]
     assert is_suppressed(src.splitlines(), diagnostic.line, diagnostic.code)
 
 
 def test_sarj_noqa_for_another_rule_does_not_suppress_the_blanket():
-    src = "# ruff: noqa  # sarj-noqa: SARJ054 — generated module\nimport os\n"
+    src = "# type: ignore  # sarj-noqa: SARJ054 — generated module\nimport os\n"
     diagnostic = _check(src)[0]
     assert not is_suppressed(src.splitlines(), diagnostic.line, diagnostic.code)
 

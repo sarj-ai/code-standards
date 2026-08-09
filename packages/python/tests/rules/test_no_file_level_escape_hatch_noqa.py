@@ -68,10 +68,11 @@ def test_message_points_at_the_inline_form():
     "source",
     [
         pytest.param("from unittest import mock  # noqa: TID251 — vendor SDK\n", id="inline-per-line-form"),
+        pytest.param("import os  # ruff: noqa: TID251\n", id="ruff-prefixed-inline-is-not-file-level"),
         pytest.param("# ruff: noqa: E501\nimport os\n", id="mechanical-code"),
         pytest.param("# ruff: noqa: F401, F403\nfrom x import *\n", id="mechanical-code-list"),
         pytest.param("# ruff: noqa: UP035\nimport os\n", id="another-mechanical-code"),
-        pytest.param("# ruff: noqa\nimport os\n", id="unscoped-blanket-is-sarj038"),
+        pytest.param("# ruff: noqa\nimport os\n", id="unscoped-blanket-is-pgh004"),
         pytest.param("# ruff: noqa:\nimport os\n", id="trailing-colon-names-nothing"),
         pytest.param("# ruff: noqa — legacy module\nimport os\n", id="prose-only-reason"),
         pytest.param("# noqa: TID251\nimport os\n", id="no-ruff-prefix"),
@@ -115,8 +116,8 @@ def test_escape_hatch_set_is_exactly_the_banned_api_code():
     assert frozenset({"TID251"}) == ESCAPE_HATCH_CODES
 
 
-def test_complements_rather_than_duplicates_sarj038():
+def test_owns_scoped_ruff_hatch_while_pgh004_owns_the_bare_blanket():
     src = "# ruff: noqa\n# ruff: noqa: TID251\nimport os\n"
     path = Path("svc/app/thing.py")
-    assert [d.line for d in NoFileLevelSuppression().check(path, src)] == [1]
+    assert NoFileLevelSuppression().check(path, src) == []
     assert [d.line for d in NoFileLevelEscapeHatchNoqa().check(path, src)] == [2]

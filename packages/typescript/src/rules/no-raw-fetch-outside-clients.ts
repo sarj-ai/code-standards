@@ -4,7 +4,7 @@
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-raw-fetch-outside-clients.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
@@ -58,11 +58,38 @@ const GLOBAL_RECEIVERS: ReadonlySet<string> = new Set([
 
 const PRESIGNED_URL_NAME_RE = /(?:pre-?signed|signed|upload|download)Url$/i;
 
-function isGlobalFetchCall(node: TSESTree.CallExpression): boolean {
+const INTERNAL_MUTATION_METHODS: ReadonlySet<string> = new Set([
+  "POST",
+  "PUT",
+  "DELETE",
+  "PATCH",
+]);
+
+const ANALYTICS_SEGMENTS: ReadonlySet<string> = new Set([
+  "analytics",
+  "telemetry",
+  "track",
+  "log",
+  "ping",
+  "beacon",
+  "metrics",
+  "event",
+]);
+
+const SERVER_ACTION_SKIP_FILE_RE =
+  /(?:\.test\.[jt]sx?$|\.spec\.[jt]sx?$|-(?:test|spec)\.[jt]sx?$|\/tests?\/|\/__tests__\/|\/__testfixtures__\/|\/scripts?\/|\/app\/api\/.*\/route\.[jt]sx?$|\/pages\/api\/)/;
+
+const NON_REACT_FRAMEWORK_RE =
+  /^(?:@angular\/|@nestjs\/|vue$|vue\/|svelte$|svelte\/|solid-js$|solid-js\/|@ember\/|rxjs$|rxjs\/)/;
+
+function isGlobalFetchCall(
+  node: TSESTree.CallExpression,
+  resolvesToGlobal: (identifier: TSESTree.Identifier) => boolean,
+): boolean {
   const callee = node.callee;
 
   if (callee.type === "Identifier") {
-    return callee.name === "fetch";
+    return callee.name === "fetch" && resolvesToGlobal(callee);
   }
 
   if (
@@ -72,20 +99,100 @@ function isGlobalFetchCall(node: TSESTree.CallExpression): boolean {
     callee.property.name === "fetch" &&
     callee.object.type === "Identifier"
   ) {
-    return GLOBAL_RECEIVERS.has(callee.object.name);
+    return (
+      GLOBAL_RECEIVERS.has(callee.object.name) &&
+      resolvesToGlobal(callee.object)
+    );
   }
 
   return false;
 }
 
 /** True for a lone `fetch(new URL(...))` / `fetch(new Request(...))`. */
-function isConstructedArgumentHandoff(node: TSESTree.CallExpression): boolean {
+function isConstructedArgumentHandoff(
+  node: TSESTree.CallExpression,
+  resolvesToGlobal: (identifier: TSESTree.Identifier) => boolean,
+): boolean {
   const [first] = node.arguments;
   return (
     node.arguments.length === 1 &&
     first !== undefined &&
-    first.type === AST_NODE_TYPES.NewExpression
+    first.type === AST_NODE_TYPES.NewExpression &&
+    first.callee.type === AST_NODE_TYPES.Identifier &&
+    (first.callee.name === "URL" || first.callee.name === "Request") &&
+    resolvesToGlobal(first.callee)
   );
+}
+
+function effectOwns(node: TSESTree.CallExpression): boolean {
+  if (node.callee.type !== AST_NODE_TYPES.Identifier) return false;
+  const method = readDirectMethod(node);
+  if (method !== null && method !== "GET") return false;
+
+  const first = node.arguments[0];
+  let url = "";
+  if (first?.type === AST_NODE_TYPES.Literal && typeof first.value === "string") {
+    url = first.value;
+  } else if (first?.type === AST_NODE_TYPES.TemplateLiteral) {
+    url = first.quasis.map((quasi) => quasi.value.cooked).join("");
+  } else if (first?.type === AST_NODE_TYPES.Identifier) {
+    url = first.name;
+  }
+  if (
+    url !== "" &&
+    url
+      .toLowerCase()
+      .split(/[/.]/)
+      .some((segment) => ANALYTICS_SEGMENTS.has(segment))
+  ) {
+    return false;
+  }
+
+  for (
+    let current: TSESTree.Node | null | undefined = node.parent;
+    current != null;
+    current = current.parent
+  ) {
+    if (current.type !== AST_NODE_TYPES.CallExpression) continue;
+    const callee = current.callee;
+    const isEffect =
+      (callee.type === AST_NODE_TYPES.Identifier &&
+        (callee.name === "useEffect" || callee.name === "useLayoutEffect")) ||
+      (callee.type === AST_NODE_TYPES.MemberExpression &&
+        !callee.computed &&
+        callee.object.type === AST_NODE_TYPES.Identifier &&
+        callee.object.name === "React" &&
+        callee.property.type === AST_NODE_TYPES.Identifier &&
+        (callee.property.name === "useEffect" ||
+          callee.property.name === "useLayoutEffect"));
+    if (!isEffect) continue;
+    const callback = current.arguments[0];
+    return (
+      callback !== undefined &&
+      callback.type !== AST_NODE_TYPES.SpreadElement &&
+      node.range[0] >= callback.range[0] &&
+      node.range[1] <= callback.range[1]
+    );
+  }
+  return false;
+}
+
+function readDirectMethod(node: TSESTree.CallExpression): string | null {
+  const init = node.arguments[1];
+  if (init?.type !== AST_NODE_TYPES.ObjectExpression) return null;
+  for (const property of init.properties) {
+    if (property.type !== AST_NODE_TYPES.Property || property.computed) continue;
+    const key = property.key;
+    const isMethod =
+      (key.type === AST_NODE_TYPES.Identifier && key.name === "method") ||
+      (key.type === AST_NODE_TYPES.Literal && key.value === "method");
+    if (!isMethod) continue;
+    return property.value.type === AST_NODE_TYPES.Literal &&
+      typeof property.value.value === "string"
+      ? property.value.value.toUpperCase()
+      : null;
+  }
+  return null;
 }
 
 function isPresignedUrlTransfer(node: TSESTree.CallExpression): boolean {
@@ -163,18 +270,143 @@ export default createRule<Options, MessageIds>({
     const patterns = options?.allow ?? DEFAULT_ALLOW;
     const allowed = compile(patterns);
 
+    const nonReactFramework = context.sourceCode.ast.body.some(
+      (statement) =>
+        statement.type === AST_NODE_TYPES.ImportDeclaration &&
+        typeof statement.source.value === "string" &&
+        NON_REACT_FRAMEWORK_RE.test(statement.source.value),
+    );
+
+    function resolvesToGlobal(identifier: TSESTree.Identifier): boolean {
+      const variable = ASTUtils.findVariable(
+        context.sourceCode.getScope(identifier),
+        identifier.name,
+      );
+      return variable === null || variable.defs.length === 0;
+    }
+
+    function resolveNode(node: TSESTree.Node | undefined): TSESTree.Node | null {
+      if (node === undefined) return null;
+      if (node.type !== AST_NODE_TYPES.Identifier) return node;
+      const variable = ASTUtils.findVariable(
+        context.sourceCode.getScope(node),
+        node.name,
+      );
+      if (variable?.defs.length !== 1) return node;
+      const definition = variable.defs[0];
+      return definition?.type === "Variable" && definition.node.init !== null
+        ? definition.node.init
+        : node;
+    }
+
+    function propertyValue(
+      node: TSESTree.Node | null,
+      name: string,
+    ): TSESTree.Node | null {
+      if (node?.type !== AST_NODE_TYPES.ObjectExpression) return null;
+      for (const property of node.properties) {
+        if (property.type !== AST_NODE_TYPES.Property || property.computed) continue;
+        const key = property.key;
+        const keyName =
+          key.type === AST_NODE_TYPES.Identifier
+            ? key.name
+            : key.type === AST_NODE_TYPES.Literal && typeof key.value === "string"
+              ? key.value
+              : null;
+        if (keyName !== name) continue;
+        return property.value.type === AST_NODE_TYPES.AssignmentPattern ||
+          property.value.type === AST_NODE_TYPES.ArrayPattern ||
+          property.value.type === AST_NODE_TYPES.ObjectPattern
+          ? null
+          : property.value;
+      }
+      return null;
+    }
+
+    function isInternalApiUrl(node: TSESTree.Node | null): boolean {
+      const resolved = resolveNode(node ?? undefined);
+      if (resolved?.type === AST_NODE_TYPES.Literal) {
+        return typeof resolved.value === "string" && resolved.value.startsWith("/api/");
+      }
+      if (resolved?.type === AST_NODE_TYPES.TemplateLiteral) {
+        return resolved.quasis[0]?.value.cooked?.startsWith("/api/") === true;
+      }
+      return (
+        resolved?.type === AST_NODE_TYPES.BinaryExpression &&
+        resolved.operator === "+" &&
+        isInternalApiUrl(resolved.left)
+      );
+    }
+
+    function isMutationMethod(node: TSESTree.Node | null): boolean {
+      const resolved = resolveNode(node ?? undefined);
+      if (resolved?.type === AST_NODE_TYPES.Literal) {
+        return (
+          typeof resolved.value === "string" &&
+          INTERNAL_MUTATION_METHODS.has(resolved.value.toUpperCase())
+        );
+      }
+      if (
+        resolved?.type === AST_NODE_TYPES.TemplateLiteral &&
+        resolved.expressions.length === 0
+      ) {
+        return INTERNAL_MUTATION_METHODS.has(
+          resolved.quasis.map((quasi) => quasi.value.cooked).join("").toUpperCase(),
+        );
+      }
+      if (resolved?.type === AST_NODE_TYPES.ConditionalExpression) {
+        return (
+          isMutationMethod(resolved.consequent) ||
+          isMutationMethod(resolved.alternate)
+        );
+      }
+      return (
+        resolved?.type === AST_NODE_TYPES.LogicalExpression &&
+        resolved.operator === "||" &&
+        (isMutationMethod(resolved.left) || isMutationMethod(resolved.right))
+      );
+    }
+
+    function serverActionOwns(node: TSESTree.CallExpression): boolean {
+      if (
+        node.callee.type !== AST_NODE_TYPES.Identifier ||
+        SERVER_ACTION_SKIP_FILE_RE.test(filename) ||
+        nonReactFramework
+      ) {
+        return false;
+      }
+      const url = node.arguments[0];
+      const init = node.arguments[1];
+      if (
+        url === undefined ||
+        url.type === AST_NODE_TYPES.SpreadElement ||
+        init === undefined ||
+        init.type === AST_NODE_TYPES.SpreadElement ||
+        !isInternalApiUrl(url)
+      ) {
+        return false;
+      }
+      return isMutationMethod(propertyValue(resolveNode(init), "method"));
+    }
+
     if (allowed.some((re) => re.test(filename))) {
       return {};
     }
 
     return {
       CallExpression(node: TSESTree.CallExpression): void {
-        if (isPresignedUrlTransfer(node) || isConstructedArgumentHandoff(node)) {
+        if (!isGlobalFetchCall(node, resolvesToGlobal)) {
           return;
         }
-        if (isGlobalFetchCall(node)) {
-          context.report({ node, messageId: "rawFetch" });
+        if (
+          isPresignedUrlTransfer(node) ||
+          isConstructedArgumentHandoff(node, resolvesToGlobal) ||
+          effectOwns(node) ||
+          serverActionOwns(node)
+        ) {
+          return;
         }
+        context.report({ node, messageId: "rawFetch" });
       },
     };
   },

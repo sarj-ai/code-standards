@@ -4,7 +4,12 @@
  * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-cors-wildcard-with-credentials.test.ts
  */
 
-import { type TSESTree } from "@typescript-eslint/utils";
+import {
+  AST_NODE_TYPES,
+  ASTUtils,
+  type TSESLint,
+  type TSESTree,
+} from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 
@@ -252,6 +257,8 @@ interface ScopeHeaderSets {
   credentialsNodes: TSESTree.CallExpression[];
 }
 
+type ReceiverHeaderSets = Map<string, ScopeHeaderSets>;
+
 export default createRule<Options, MessageIds>({
   name: "no-cors-wildcard-with-credentials",
   documentation: noCorsWildcardWithCredentialsDocumentation,
@@ -268,17 +275,57 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    const scopeHeaderSets = new Map<TSESTree.Node | "module", ScopeHeaderSets>();
+    const scopeHeaderSets = new Map<TSESTree.Node | "module", ReceiverHeaderSets>();
+    const variableIds = new WeakMap<TSESLint.Scope.Variable, number>();
+    let nextVariableId = 0;
+
+    function variableId(variable: TSESLint.Scope.Variable): number {
+      const existing = variableIds.get(variable);
+      if (existing !== undefined) return existing;
+      const value = nextVariableId++;
+      variableIds.set(variable, value);
+      return value;
+    }
+
+    function receiverIdentity(node: TSESTree.Node): string | null {
+      if (node.type === AST_NODE_TYPES.Identifier) {
+        const variable = ASTUtils.findVariable(
+          context.sourceCode.getScope(node),
+          node.name,
+        );
+        return variable === null
+          ? `global:${node.name}`
+          : `variable:${variableId(variable)}`;
+      }
+      if (node.type === AST_NODE_TYPES.ThisExpression) return "this";
+      if (
+        node.type === AST_NODE_TYPES.MemberExpression &&
+        !node.computed &&
+        node.property.type === AST_NODE_TYPES.Identifier
+      ) {
+        const owner = receiverIdentity(node.object);
+        return owner === null ? null : `${owner}.${node.property.name}`;
+      }
+      return null;
+    }
 
     function recordHeaderSet(
       node: TSESTree.CallExpression,
       kind: HeaderSetKind,
     ): void {
+      if (node.callee.type !== AST_NODE_TYPES.MemberExpression) return;
+      const receiver = receiverIdentity(node.callee.object);
+      if (receiver === null) return;
       const key = enclosingScope(node) ?? "module";
-      let entry = scopeHeaderSets.get(key);
+      let receivers = scopeHeaderSets.get(key);
+      if (receivers === undefined) {
+        receivers = new Map();
+        scopeHeaderSets.set(key, receivers);
+      }
+      let entry = receivers.get(receiver);
       if (entry === undefined) {
         entry = { originNodes: [], credentialsNodes: [] };
-        scopeHeaderSets.set(key, entry);
+        receivers.set(receiver, entry);
       }
       if (kind === "origin") {
         entry.originNodes.push(node);
@@ -309,13 +356,15 @@ export default createRule<Options, MessageIds>({
         }
       },
       "Program:exit"(): void {
-        for (const { originNodes, credentialsNodes } of scopeHeaderSets.values()) {
-          if (originNodes.length > 0 && credentialsNodes.length > 0) {
-            for (const node of originNodes) {
-              context.report({
-                node,
-                messageId: "corsWildcardWithCredentials",
-              });
+        for (const receivers of scopeHeaderSets.values()) {
+          for (const { originNodes, credentialsNodes } of receivers.values()) {
+            if (originNodes.length > 0 && credentialsNodes.length > 0) {
+              for (const node of originNodes) {
+                context.report({
+                  node,
+                  messageId: "corsWildcardWithCredentials",
+                });
+              }
             }
           }
         }

@@ -9,7 +9,7 @@
   "SARJ004": null,
   "SARJ005": null,
   "SARJ006": "prefer-str-enum",
-  "SARJ007": "no-fat-try-blocks",
+  "SARJ007": null,
   "SARJ008": "pydantic-at-boundaries",
   "SARJ009": "no-sentinel-return-on-except",
   "SARJ010": "no-unreachable-after-terminal",
@@ -36,7 +36,7 @@
   "SARJ028": "no-cors-wildcard-with-credentials",
   "SARJ029": "no-manual-log-prefix",
   "SARJ030": "json-response-not-parsed",
-  "SARJ031": "no-sleep-in-test-body",
+  "SARJ031": null,
   "SARJ032": "prefer-match-assert-never",
   "SARJ033": null,
   "SARJ034": [
@@ -44,12 +44,12 @@
     "require-keyword-only-swap-prone-params"
   ],
   "SARJ035": null,
-  "SARJ036": "no-raw-sql-in-tests",
+  "SARJ036": null,
   "SARJ037": null,
   "SARJ038": "no-file-level-suppression",
   "SARJ039": "prefer-module-level-constant",
   "SARJ040": "mock-without-spec",
-  "SARJ041": "test-loops-over-literal-cases",
+  "SARJ041": null,
   "SARJ042": [
     "parametrize-case-needs-id",
     "opaque-parametrize-case-needs-id"
@@ -61,7 +61,7 @@
     "xfail-requires-strict",
     "defect-xfail-requires-strict"
   ],
-  "SARJ047": "sleep-with-computed-arg-in-test",
+  "SARJ047": null,
   "SARJ048": "no-first-party-private-import",
   "SARJ049": "no-restated-comment",
   "SARJ050": "redundant-docstring",
@@ -72,7 +72,7 @@
   "SARJ055": null,
   "SARJ056": "no-optional-tenant-predicate",
   "SARJ057": "no-tautological-expect",
-  "SARJ058": "prefer-real-store-in-tests",
+  "SARJ058": null,
   "SARJ059": "prefer-library-fake",
   "SARJ060": "tautological-mock-assertion",
   "SARJ061": "no-patching-system-under-test",

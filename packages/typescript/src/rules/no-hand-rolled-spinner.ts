@@ -25,7 +25,7 @@ export const noHandRolledSpinnerDocumentation = {
 
 const DESIGN_SYSTEM_PATH = /(?:^|[/\\])components[/\\]ui[/\\]/u;
 const BORDER_WIDTH = /^border(?:-[0-9]+)?$/u;
-const TRANSPARENT_EDGE = /^border-[trbl]-transparent$/u;
+const CONTRASTING_EDGE = /^border-[trbl]-(?!0$|[0-9]+$).+/u;
 
 function staticClassName(attribute: TSESTree.JSXAttribute): string | null {
   const value = attribute.value;
@@ -38,6 +38,13 @@ function staticClassName(attribute: TSESTree.JSXAttribute): string | null {
     typeof value.expression.value === "string"
   ) {
     return value.expression.value;
+  }
+  if (
+    value?.type === AST_NODE_TYPES.JSXExpressionContainer &&
+    value.expression.type === AST_NODE_TYPES.TemplateLiteral &&
+    value.expression.expressions.length === 0
+  ) {
+    return value.expression.quasis[0]?.value.cooked ?? null;
   }
   return null;
 }
@@ -85,7 +92,7 @@ export default createRule<Options, MessageIds>({
           classes.includes("animate-spin") &&
           classes.includes("rounded-full") &&
           classes.some((token) => BORDER_WIDTH.test(token)) &&
-          classes.some((token) => TRANSPARENT_EDGE.test(token))
+          classes.some((token) => CONTRASTING_EDGE.test(token))
         ) {
           context.report({ node, messageId: "handRolledSpinner" });
         }

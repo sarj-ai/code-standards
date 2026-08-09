@@ -180,6 +180,21 @@ _SERVICES: tuple[_Service, ...] = (
     ),
 )
 
+# Names alone are especially weak evidence for provider clients: projects often
+# expose their own typed LLM port, while analytics tests commonly record a
+# single BigQuery query seam. Require a distinctive raw provider envelope before
+# claiming that either class re-implements the external wire protocol.
+_WIRE_GATED_SUBJECTS = frozenset({"Google BigQuery", "an LLM provider's HTTP API"})
+_LLM_WIRE_KEY_SETS = (
+    frozenset({"choices", "usage"}),
+    frozenset({"content", "stop_reason"}),
+    frozenset({"candidates", "usageMetadata"}),
+)
+_BIGQUERY_WIRE_KEY_SETS = (
+    frozenset({"jobReference", "jobComplete"}),
+    frozenset({"schema", "rows", "totalRows"}),
+)
+
 # Words / infixes that mark a class as a test double.
 _MARKER_INFIXES = ("mock", "fake", "stub", "dummy", "inmemory", "scripted", "recording")
 _MARKER_WORDS = frozenset({"spy"})
@@ -247,6 +262,7 @@ class PreferLibraryFake(Rule):
         limitations=(
             "Only test and shared-double paths are analyzed.",
             "Only recognized external services and substantial hand-rolled doubles are reported.",
+            "LLM and BigQuery doubles require a distinctive raw provider response envelope.",
         ),
         examples=(
             RuleExample(
@@ -346,9 +362,29 @@ def _hand_rolled_service(node: ast.ClassDef, imported: frozenset[str]) -> _Servi
     service = _match_service(node.name)
     if service is None:
         service = next((matched for base in _base_names(node) if (matched := _match_service(base))), None)
-    if service is None or imported & service.imports or _implements_clock_port(node, service):
+    if (
+        service is None
+        or imported & service.imports
+        or _implements_clock_port(node, service)
+        or not _has_wire_protocol_evidence(node, service)
+    ):
         return None
     return service
+
+
+def _has_wire_protocol_evidence(node: ast.ClassDef, service: _Service) -> bool:
+    """Require raw provider envelopes for easily misidentified LLM/BigQuery ports."""
+    if service.subject not in _WIRE_GATED_SUBJECTS:
+        return True
+    keys = {
+        key.value
+        for mapping in walk(node)
+        if isinstance(mapping, ast.Dict)
+        for key in mapping.keys
+        if isinstance(key, ast.Constant) and isinstance(key.value, str)
+    }
+    expected = _LLM_WIRE_KEY_SETS if service.subject == "an LLM provider's HTTP API" else _BIGQUERY_WIRE_KEY_SETS
+    return any(group <= keys for group in expected)
 
 
 def _implements_clock_port(node: ast.ClassDef, service: _Service) -> bool:

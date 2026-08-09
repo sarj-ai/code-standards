@@ -108,18 +108,8 @@ def test_skips_production_paths(path: str):
         ("FakeKinesisStream", "moto"),
         ("FakeSesMailer", "moto"),
         ("FakeGcsBucket", "fake-gcs-server"),
-        ("FakeBigQueryClient", "bigquery-emulator"),
         ("FakePubSubPublisher", "emulator"),
         ("StubKafkaProducer", "testcontainers"),
-        ("FakeOpenAIClient", "respx"),
-        ("StubAnthropicClient", "respx"),
-        ("_StubGeminiClient", "respx"),
-        ("FakeGroqClient", "respx"),
-        ("FakeBedrockClient", "respx"),
-        ("FakeCohereClient", "respx"),
-        ("FakeMistralClient", "respx"),
-        ("FakeVertexAIClient", "respx"),
-        ("FakeChatCompletion", "respx"),
         ("FakeRedisCache", "fakeredis"),
         ("FakeValkeyCache", "fakeredis"),
         ("FakeMongoCollection", "mongomock"),
@@ -224,7 +214,7 @@ class _FakeRedisCache:
 
 
 def test_service_token_may_come_from_a_base_class():
-    # One first-party site declares `FakeLLMClient(OpenAILLMClient)`.
+    # A first-party typed LLM port is not evidence of a provider wire fake.
     src = """
 class FakeLLMClient(OpenAILLMClient):
     def generate(self):
@@ -236,8 +226,7 @@ class FakeLLMClient(OpenAILLMClient):
     def script(self, *responses):
         pass
 """
-    [diag] = _check(src)
-    assert "respx" in diag.message
+    assert _check(src) == []
 
 
 def test_dotted_base_class_is_resolved_to_its_attribute():
@@ -252,7 +241,91 @@ class FakeThing(openai_sdk.OpenAIClient):
     def c(self):
         return 3
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "FakeBigQueryClient",
+        "FakeOpenAIClient",
+        "StubAnthropicClient",
+        "_StubGeminiClient",
+        "FakeGroqClient",
+        "FakeBedrockClient",
+        "FakeCohereClient",
+        "FakeMistralClient",
+        "FakeVertexAIClient",
+        "FakeChatCompletion",
+    ],
+)
+def test_provider_name_without_a_raw_wire_envelope_is_not_enough(name: str):
+    src = f"""
+class {name}:
+    def a(self):
+        return 1
+
+    def b(self):
+        return 2
+
+    def c(self):
+        return 3
+"""
+    assert _check(src) == []
+
+
+def test_llm_raw_wire_envelope_still_fires():
+    src = """
+class FakeOpenAIClient:
+    def create(self):
+        return {"choices": [], "usage": {"total_tokens": 0}}
+
+    def stream(self):
+        return {"choices": [{"delta": {"content": "hello"}}], "usage": {}}
+
+    def close(self):
+        return None
+"""
+    [diag] = _check(src)
+    assert "respx" in diag.message
+
+
+def test_bigquery_raw_wire_envelope_still_fires():
+    src = """
+class FakeBigQueryClient:
+    def query(self):
+        return {"jobReference": {"jobId": "1"}, "jobComplete": True}
+
+    def get_query_results(self):
+        return {"schema": {}, "rows": [], "totalRows": "0"}
+
+    def close(self):
+        return None
+"""
+    [diag] = _check(src)
+    assert "bigquery-emulator" in diag.message
+
+
+def test_single_bigquery_query_recording_seam_without_wire_envelopes_is_exempt():
+    src = """
+class FakeBigQueryClient:
+    def __init__(self):
+        self.queued = []
+        self.queries = []
+        self.job_configs = []
+
+    def enqueue(self, rows):
+        self.queued.append(rows)
+
+    def query(self, query, job_config=None):
+        self.queries.append(query)
+        self.job_configs.append(job_config)
+        return FakeQueryJob(self.queued.pop(0))
+
+    def as_client(self):
+        return cast("bigquery.Client", self)
+"""
+    assert _check(src) == []
 
 
 @pytest.mark.parametrize(
@@ -292,7 +365,7 @@ class {name}:
     assert _check(src) == []
 
 
-def test_the_same_body_under_a_double_name_still_fires():
+def test_llm_double_name_without_wire_evidence_stays_silent():
     src = """
 class MockGeminiClient:
     def test_a(self):
@@ -304,7 +377,7 @@ class MockGeminiClient:
     def test_c(self):
         assert 3
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
 # FP guard: doubles of the project's own domain ports. ~60 of these exist in   #
@@ -396,7 +469,7 @@ class FakeChatOpenAI({base}):
     assert _check(src) == []
 
 
-def test_the_same_double_over_a_concrete_base_still_fires():
+def test_concrete_llm_base_without_wire_evidence_stays_silent():
     src = """
 class FakeChatOpenAI(ChatOpenAI):
     def _generate(self, messages):
@@ -408,7 +481,7 @@ class FakeChatOpenAI(ChatOpenAI):
     def _llm_type(self):
         return "fake"
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
 # FP guard: recording decorators around the real client.

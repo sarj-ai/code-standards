@@ -196,6 +196,9 @@ ruleTester.run("no-insecure-random-id non-security-name exceptions", rule, {
     { code: "const mockId = Math.random().toString(36);" },
     { code: "const testId = Math.random().toString(36);" },
     { code: "const perfMarker = Math.random().toString(36);" },
+    { code: "const dialogId = Math.random().toString(36);" },
+    { code: "const ariaId = Math.random().toString(36);" },
+    { code: "const menuItemId = Math.random().toString(36);" },
     { code: "const key = Math.random();" },
   ],
   invalid: [
