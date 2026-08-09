@@ -305,15 +305,15 @@ def _ellipsis(node: ast.expr) -> bool:
 
 def _contains_none(node: ast.expr, index: FastapiIndex) -> bool:
     resolved = index.resolve_annotation(node)
-    if isinstance(resolved, ast.Constant):
-        return resolved.value is None
-    if isinstance(resolved, ast.Name):
-        return resolved.id in {"None", "NoneType"}
-    if isinstance(resolved, ast.BinOp) and isinstance(resolved.op, ast.BitOr):
-        return _contains_none(resolved.left, index) or _contains_none(resolved.right, index)
-    if isinstance(resolved, ast.Subscript) and flat_name(resolved.value) in {"Optional", "Union"}:
-        return any(_contains_none(item, index) for item in _slice_items(resolved.slice))
-    return False
+    match resolved:
+        case ast.Constant(value=None) | ast.Name(id="None" | "NoneType"):
+            return True
+        case ast.BinOp(left=left, op=ast.BitOr(), right=right):
+            return _contains_none(left, index) or _contains_none(right, index)
+        case ast.Subscript(value=value, slice=annotation) if flat_name(value) in {"Optional", "Union"}:
+            return any(_contains_none(item, index) for item in _slice_items(annotation))
+        case _:
+            return False
 
 
 def _schema_erasing(node: ast.expr, index: FastapiIndex) -> bool:

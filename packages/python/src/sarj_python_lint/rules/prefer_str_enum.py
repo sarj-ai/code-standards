@@ -175,6 +175,8 @@ _FOREIGN_CHAIN_DEPTH = 2
 _BUILDER_PREFIXES = ("build_", "make_")
 _MIN_COPIED_LITERAL_DOMAINS = 2
 _MIN_LITERAL_DOMAIN_VALUES = 3
+_ENUM_BASE_NAMES = frozenset({"Enum", "Flag", "IntEnum", "IntFlag", "ReprEnum", "StrEnum"})
+_ENUM_BASE_SUFFIXES = ("Enum", "Flag")
 
 
 @final
@@ -226,6 +228,8 @@ class PreferStrEnum(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:  # ruff: ignore[too-many-locals] -- traversal state.
+        if path.suffix != ".py":
+            return []
         if is_generated(path, source):
             return []
         if not _has_str_enum_signal(source):
@@ -243,6 +247,7 @@ class PreferStrEnum(Rule):
         )
         method_owned_attributes = _class_method_owned_attributes(tree)
         method_closed_attributes = _class_method_closed_attributes(tree, alias_names, raw_string_aliases)
+        enum_like_classes = _enum_like_class_ids(tree)
         class_nodes: list[ast.ClassDef] = []
         all_clusters: list[tuple[dict[str, _ClusterEntry], frozenset[str], frozenset[str] | None]] = []
         cluster_opacity: dict[int, frozenset[str]] = {}
@@ -339,7 +344,11 @@ class PreferStrEnum(Rule):
             else:
                 stack.extend((child, child_active) for child in children(node))
 
-        class_diags = [diag for cls in class_nodes for diag in self._class_field_diags(path, cls, raw_string_aliases)]
+        class_diags = [
+            diag
+            for cls in class_nodes
+            for diag in self._class_field_diags(path, cls, raw_string_aliases, enum_like_classes)
+        ]
         choice_field_names = {
             diag.message.split("`", maxsplit=2)[1].split(":", maxsplit=1)[0]
             for diag in class_diags
@@ -382,9 +391,10 @@ class PreferStrEnum(Rule):
         path: Path,
         cls: ast.ClassDef,
         raw_string_aliases: frozenset[str],
+        enum_like_classes: frozenset[int],
     ) -> list[Diagnostic]:
         diags: list[Diagnostic] = []
-        if any(_trailing_name(b) in {"Enum", "StrEnum", "IntEnum"} for b in cls.bases):
+        if id(cls) in enum_like_classes or any(_trailing_name(base) in _ENUM_BASE_NAMES for base in cls.bases):
             return diags
         choice_groups: list[tuple[str, set[str]]] = []
         for stmt in cls.body:
@@ -451,6 +461,61 @@ def _has_str_enum_signal(source: str) -> bool:
     if "str" in source and any(name in source.lower() for name in CHOICES_ATTR_NAMES):
         return True
     return has_string_literal and ("==" in source or "!=" in source or "case " in source or "match " in source)
+
+
+def _enum_like_class_ids(tree: ast.Module) -> frozenset[int]:
+    """Resolve imported, aliased, and local Enum lineages for conservative suppression."""
+    enum_names = set(_ENUM_BASE_NAMES)
+    enum_modules = {"enum"}
+    assignments: list[tuple[str, ast.expr]] = []
+    for node in ast.walk(tree):
+        match node:
+            case ast.Import(names=aliases):
+                enum_modules.update(alias.asname or alias.name for alias in aliases if alias.name == "enum")
+            case ast.ImportFrom(names=aliases):
+                enum_names.update(
+                    alias.asname or alias.name for alias in aliases if _looks_like_enum_base_name(alias.name)
+                )
+            case (
+                ast.Assign(targets=[ast.Name(id=name)], value=value)
+                | ast.AnnAssign(target=ast.Name(id=name), value=ast.expr() as value)
+            ):
+                assignments.append((name, value))
+            case _:
+                pass
+
+    classes = [node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
+    enum_class_ids: set[int] = set()
+    changed = True
+    while changed:
+        changed = False
+        for name, value in assignments:
+            if name not in enum_names and _is_enum_reference(value, enum_names, enum_modules):
+                enum_names.add(name)
+                changed = True
+        for cls in classes:
+            if id(cls) in enum_class_ids:
+                continue
+            if any(_is_enum_reference(base, enum_names, enum_modules) for base in cls.bases):
+                enum_class_ids.add(id(cls))
+                enum_names.add(cls.name)
+                changed = True
+    return frozenset(enum_class_ids)
+
+
+def _is_enum_reference(node: ast.expr, enum_names: set[str], enum_modules: set[str]) -> bool:
+    match node:
+        case ast.Name(id=name):
+            return name in enum_names or _looks_like_enum_base_name(name)
+        case ast.Attribute(value=ast.Name(id=module), attr=name):
+            return _looks_like_enum_base_name(name) or (module in enum_modules and name in enum_names)
+        case _:
+            return False
+
+
+def _looks_like_enum_base_name(name: str) -> bool:
+    """Conservatively recognize conventional imported Enum/Flag base names."""
+    return name in _ENUM_BASE_NAMES or name.endswith(_ENUM_BASE_SUFFIXES)
 
 
 def _named_literal_builder_diags(path: Path, tree: ast.Module, code: str) -> list[Diagnostic]:
@@ -1099,30 +1164,36 @@ def _trailing_name(node: ast.AST) -> str | None:
 
 
 def _is_literal_annotation(annotation: ast.expr | None, alias_names: frozenset[str]) -> bool:
-    if annotation is None:
-        return False
-    if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
-        parsed = _parse_string_annotation(annotation.value)
-        return parsed is not None and _is_literal_annotation(parsed, alias_names)
+    match annotation:
+        case None:
+            return False
+        case ast.Constant(value=str() as value):
+            parsed = _parse_string_annotation(value)
+            return parsed is not None and _is_literal_annotation(parsed, alias_names)
+        case _:
+            pass
     if _literal_string_values(annotation) is not None:
         return True
     stripped = _strip_optional(annotation)
     if stripped is not annotation:
         return _is_literal_annotation(stripped, alias_names)
-    if isinstance(annotation, ast.Subscript) and _trailing_name(annotation.value) == "Annotated":
-        first = annotation.slice.elts[0] if isinstance(annotation.slice, ast.Tuple) and annotation.slice.elts else None
-        return first is not None and _is_literal_annotation(first, alias_names)
-    if isinstance(annotation, ast.Subscript) and _trailing_name(annotation.value) == "Union":
-        members = annotation.slice.elts if isinstance(annotation.slice, ast.Tuple) else [annotation.slice]
-        relevant = [member for member in members if not _is_none_annotation(member)]
-        return bool(relevant) and all(_is_literal_annotation(member, alias_names) for member in relevant)
-    if isinstance(annotation, ast.Name):
-        return annotation.id in alias_names
-    if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
-        members = _flatten_annotation_union(annotation)
-        relevant = [member for member in members if not _is_none_annotation(member)]
-        return bool(relevant) and all(_is_literal_annotation(member, alias_names) for member in relevant)
-    return False
+    match annotation:
+        case ast.Subscript(value=value, slice=ast.Tuple(elts=elements)) if (
+            _trailing_name(value) == "Annotated" and elements
+        ):
+            return _is_literal_annotation(elements[0], alias_names)
+        case ast.Subscript(value=value, slice=annotation_slice) if _trailing_name(value) == "Annotated":
+            return _is_literal_annotation(annotation_slice, alias_names)
+        case ast.Subscript(value=value, slice=annotation_slice) if _trailing_name(value) == "Union":
+            members = annotation_slice.elts if isinstance(annotation_slice, ast.Tuple) else [annotation_slice]
+        case ast.Name(id=name):
+            return name in alias_names
+        case ast.BinOp(op=ast.BitOr()):
+            members = _flatten_annotation_union(annotation)
+        case _:
+            return False
+    relevant = [member for member in members if not _is_none_annotation(member)]
+    return bool(relevant) and all(_is_literal_annotation(member, alias_names) for member in relevant)
 
 
 def _is_none_annotation(node: ast.expr) -> bool:
@@ -1274,17 +1345,19 @@ def _merge_cluster(
 
 def _match_pattern_literals(pattern: ast.pattern) -> list[str]:
     """Collect string literals from value, OR, and non-wildcard capture patterns."""
-    if isinstance(pattern, ast.MatchValue):
-        value = _str_const(pattern.value)
-        return [value] if value is not None else []
-    if isinstance(pattern, ast.MatchAs) and pattern.pattern is not None:
-        return _match_pattern_literals(pattern.pattern)
-    if isinstance(pattern, ast.MatchOr):
-        literals: list[str] = []
-        for sub in pattern.patterns:
-            literals.extend(_match_pattern_literals(sub))
-        return literals
-    return []
+    match pattern:
+        case ast.MatchValue(value=value_node):
+            value = _str_const(value_node)
+            return [value] if value is not None else []
+        case ast.MatchAs(pattern=inner) if inner is not None:
+            return _match_pattern_literals(inner)
+        case ast.MatchOr(patterns=patterns):
+            literals: list[str] = []
+            for subpattern in patterns:
+                literals.extend(_match_pattern_literals(subpattern))
+            return literals
+        case _:
+            return []
 
 
 def _choice_binding_field(binding: str) -> str | None:

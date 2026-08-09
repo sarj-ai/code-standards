@@ -254,15 +254,17 @@ def _reason_text(dec: ast.Call) -> str | None:
 
 
 def _literal_text(value: ast.expr) -> str | None:
-    if isinstance(value, ast.Constant) and isinstance(value.value, str):
-        return value.value
-    # Reasons are routinely wrapped across lines as implicit concatenation or a
-    # parenthesised join; read the literal fragments so the match still works.
-    if isinstance(value, ast.JoinedStr):
-        return "".join(
-            val for part in value.values if isinstance(part, ast.Constant) and isinstance(val := part.value, str)
-        )
-    if isinstance(value, ast.BinOp) and isinstance(value.op, ast.Add):
-        left, right = _literal_text(value.left), _literal_text(value.right)
-        return f"{left or ''}{right or ''}" or None
-    return None
+    match value:
+        case ast.Constant(value=str() as text):
+            return text
+        # Reasons are routinely wrapped across lines as implicit concatenation
+        # or a parenthesised join; read the literal fragments so the match works.
+        case ast.JoinedStr(values=parts):
+            return "".join(
+                text for part in parts if isinstance(part, ast.Constant) and isinstance(text := part.value, str)
+            )
+        case ast.BinOp(left=left_node, op=ast.Add(), right=right_node):
+            left, right = _literal_text(left_node), _literal_text(right_node)
+            return f"{left or ''}{right or ''}" or None
+        case _:
+            return None

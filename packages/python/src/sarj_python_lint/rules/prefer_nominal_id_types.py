@@ -382,20 +382,23 @@ def _is_raw_primitive_id(
 ) -> bool:
     if (parsed := _stringized_annotation(annotation)) is not None:
         return _is_raw_primitive_id(parsed, raw_aliases, nominal_aliases)
-    if isinstance(annotation, ast.Name):
-        return annotation.id in {"UUID", "int", "str"} or annotation.id in raw_aliases
-    if isinstance(annotation, ast.Attribute):
-        return annotation.attr == "UUID"
-    if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
-        members = _flatten_union(annotation)
-        return any(_is_raw_primitive_id(member, raw_aliases, nominal_aliases) for member in members) and all(
-            _is_raw_primitive_id(member, raw_aliases, nominal_aliases)
-            or _is_nominal_id(member, raw_aliases, nominal_aliases)
-            or _is_none(member)
-            for member in members
-        )
-    if not isinstance(annotation, ast.Subscript):
-        return False
+    match annotation:
+        case ast.Name(id=name):
+            return name in {"UUID", "int", "str"} or name in raw_aliases
+        case ast.Attribute(attr=attribute):
+            return attribute == "UUID"
+        case ast.BinOp(op=ast.BitOr()):
+            members = _flatten_union(annotation)
+            return any(_is_raw_primitive_id(member, raw_aliases, nominal_aliases) for member in members) and all(
+                _is_raw_primitive_id(member, raw_aliases, nominal_aliases)
+                or _is_nominal_id(member, raw_aliases, nominal_aliases)
+                or _is_none(member)
+                for member in members
+            )
+        case ast.Subscript():
+            pass
+        case _:
+            return False
     wrapper = _qualified_tail(annotation.value)
     if wrapper == "Annotated":
         return (
@@ -443,16 +446,23 @@ def _is_nominal_id(
 ) -> bool:
     if (parsed := _stringized_annotation(annotation)) is not None:
         return _is_nominal_id(parsed, raw_aliases, nominal_aliases)
-    if isinstance(annotation, (ast.Name, ast.Attribute)):
-        tail = _qualified_tail(annotation)
-        return (tail.endswith(("Id", "ID")) or tail in nominal_aliases) and tail not in raw_aliases
-    if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
-        members = _flatten_union(annotation)
-        return any(_is_nominal_id(member, raw_aliases, nominal_aliases) for member in members) and all(
-            _is_nominal_id(member, raw_aliases, nominal_aliases) or _is_none(member) for member in members
-        )
-    if isinstance(annotation, ast.Subscript) and _qualified_tail(annotation.value) in _TRANSPARENT_WRAPPERS:
-        if _qualified_tail(annotation.value) in {"Tuple", "tuple"} and isinstance(annotation.slice, ast.Tuple):
+    match annotation:
+        case ast.Name() | ast.Attribute():
+            tail = _qualified_tail(annotation)
+            return (tail.endswith(("Id", "ID")) or tail in nominal_aliases) and tail not in raw_aliases
+        case ast.BinOp(op=ast.BitOr()):
+            members = _flatten_union(annotation)
+            return any(_is_nominal_id(member, raw_aliases, nominal_aliases) for member in members) and all(
+                _is_nominal_id(member, raw_aliases, nominal_aliases) or _is_none(member) for member in members
+            )
+        case ast.Subscript():
+            pass
+        case _:
+            return False
+
+    wrapper = _qualified_tail(annotation.value)
+    if wrapper in _TRANSPARENT_WRAPPERS:
+        if wrapper in {"Tuple", "tuple"} and isinstance(annotation.slice, ast.Tuple):
             elements = annotation.slice.elts
             return (
                 len(elements) == _VARIADIC_TUPLE_ARITY
@@ -461,13 +471,9 @@ def _is_nominal_id(
                 and _is_nominal_id(elements[0], raw_aliases, nominal_aliases)
             )
         return _is_nominal_id(annotation.slice, raw_aliases, nominal_aliases)
-    if (
-        isinstance(annotation, ast.Subscript)
-        and _qualified_tail(annotation.value) == "Annotated"
-        and isinstance(annotation.slice, ast.Tuple)
-    ):
+    if wrapper == "Annotated" and isinstance(annotation.slice, ast.Tuple):
         return bool(annotation.slice.elts) and _is_nominal_id(annotation.slice.elts[0], raw_aliases, nominal_aliases)
-    if isinstance(annotation, ast.Subscript) and _qualified_tail(annotation.value) in _UNION_WRAPPERS:
+    if wrapper in _UNION_WRAPPERS:
         members = list(annotation.slice.elts) if isinstance(annotation.slice, ast.Tuple) else [annotation.slice]
         return any(_is_nominal_id(member, raw_aliases, nominal_aliases) for member in members) and all(
             _is_nominal_id(member, raw_aliases, nominal_aliases) or _is_none(member) for member in members

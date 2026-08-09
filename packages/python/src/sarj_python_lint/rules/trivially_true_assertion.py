@@ -430,16 +430,18 @@ def _called_name(func: ast.expr) -> str | None:
 
 def _is_pure_literal(node: ast.expr) -> bool:
     """Report whether `node` is a literal built entirely out of source text."""
-    if isinstance(node, ast.Constant):
-        return True
-    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
-        return _is_pure_literal(node.operand)
-    if isinstance(node, (ast.List, ast.Set, ast.Tuple)):
-        return all(_is_pure_literal(elt) for elt in node.elts)
-    if isinstance(node, ast.Dict):
-        keys_ok = all(key is not None and _is_pure_literal(key) for key in node.keys)
-        return keys_ok and all(_is_pure_literal(value) for value in node.values)
-    return False
+    match node:
+        case ast.Constant():
+            return True
+        case ast.UnaryOp(op=ast.USub() | ast.UAdd(), operand=operand):
+            return _is_pure_literal(operand)
+        case ast.List() | ast.Set() | ast.Tuple():
+            return all(_is_pure_literal(elt) for elt in node.elts)
+        case ast.Dict(keys=keys, values=values):
+            keys_ok = all(key is not None and _is_pure_literal(key) for key in keys)
+            return keys_ok and all(_is_pure_literal(value) for value in values)
+        case _:
+            return False
 
 
 def _is_isinstance_echo(node: _Assertion, constructed: dict[str, ast.Call], asserts: list[_Assertion]) -> bool:

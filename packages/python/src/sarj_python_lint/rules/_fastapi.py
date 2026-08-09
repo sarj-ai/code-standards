@@ -355,15 +355,17 @@ class FastapiIndex:
         return tuple(sorted(methods)) or ("*",)
 
     def canonical(self, node: ast.expr) -> str:
-        if isinstance(node, ast.Name):
-            if node.id in self.modules:
-                return self.module_symbols[node.id]
-            return self.symbols.get(node.id, "")
-        if isinstance(node, ast.Attribute) and self._root_name(node) in self.modules:
-            return node.attr
-        if isinstance(node, ast.Attribute) and self._root_name(node) in self.http_modules:
-            return node.attr
-        return ""
+        match node:
+            case ast.Name(id=name) if name in self.modules:
+                return self.module_symbols[name]
+            case ast.Name(id=name):
+                return self.symbols.get(name, "")
+            case ast.Attribute(attr=attribute) if (
+                self._root_name(node) in self.modules or self._root_name(node) in self.http_modules
+            ):
+                return attribute
+            case _:
+                return ""
 
     @staticmethod
     def _root_name(node: ast.Attribute) -> str:

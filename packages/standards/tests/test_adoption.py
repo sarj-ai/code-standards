@@ -537,6 +537,42 @@ def test_application_ruff_config_rejects_preferred_stack_import(tmp_path: Path) 
     assert "LIB001" in proc.stdout
 
 
+@pytest.mark.parametrize("profile", ["standard", "application"])
+@pytest.mark.parametrize(("python_floor", "expected_count"), [("3.10", 0), ("3.11", 1)])
+def test_adopted_ruff_uses_the_consumer_target_for_str_enum_modernization(
+    tmp_path: Path,
+    profile: str,
+    python_floor: str,
+    expected_count: int,
+) -> None:
+    """UP042 belongs to Ruff and must follow the consumer target, not the tool runtime."""
+    pytest.importorskip("ruff", reason="ruff not installed in this env")
+    _ = _python_repo(tmp_path)
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        pyproject.read_text(encoding="utf-8").replace(">=3.14", f">={python_floor}"),
+        encoding="utf-8",
+    )
+    assert _cli("--root", str(tmp_path), "setup", "--profile", profile, "--no-install").returncode == 0
+    package = tmp_path / "src" / "app"
+    package.mkdir()
+    (package / "__init__.py").touch()
+    (package / "status.py").write_text(
+        'from enum import Enum\n\n\nclass Status(str, Enum):\n    ACTIVE = "active"\n    INACTIVE = "inactive"\n',
+        encoding="utf-8",
+    )
+
+    proc = subprocess.run(
+        [sys.executable, "-m", "ruff", "check", "--no-cache", "--output-format", "json", "."],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        check=False,
+    )
+    assert proc.stdout.count('"code": "UP042"') == expected_count
+    assert proc.returncode == (1 if expected_count else 0)
+
+
 def test_init_keeps_standards_out_of_the_consumer_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _ = _python_repo(tmp_path)
     commands: list[lifecycle.Command] = []
