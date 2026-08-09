@@ -66,6 +66,22 @@ RELEASE_TARGETS: Final[Mapping[str, ReleaseTarget]] = MappingProxyType(
         "tsconfig": ReleaseTarget(Path("packages/tsconfig/package.json"), "json"),
     }
 )
+RELEASE_ARTIFACT_PREFIXES: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType(
+    {
+        "python": ("packages/python/src/",),
+        "sql": ("packages/sql/src/",),
+        "iac": ("packages/iac/src/",),
+        "standards": ("packages/standards/src/",),
+        "typescript": ("packages/typescript/src/",),
+        "tsconfig": ("packages/tsconfig/base.json", "packages/tsconfig/strict.json"),
+    }
+)
+RELEASE_ARTIFACT_FILES: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType(
+    {
+        name: (target.manifest.as_posix(), str(target.manifest.parent / "LICENSE"))
+        for name, target in RELEASE_TARGETS.items()
+    }
+)
 _TAG_PATTERN: Final = re.compile(r"^(?P<target>[a-z][a-z0-9-]*)-v(?P<version>[^\s/]+)$")
 
 
@@ -262,10 +278,10 @@ def _require_remote_tag_commit(
     actual = references.get(f"refs/tags/{tag}^{{}}", references.get(f"refs/tags/{tag}"))
     if actual == commit:
         return
-    target_path = RELEASE_TARGETS[target_name].manifest.parent.as_posix()
+    target_paths = (*RELEASE_ARTIFACT_FILES[target_name], *RELEASE_ARTIFACT_PREFIXES[target_name])
     try:
         runner(
-            ("git", "diff", "--quiet", actual or tag, commit, "--", target_path),
+            ("git", "diff", "--quiet", actual or tag, commit, "--", *target_paths),
             cwd=root,
             capture_output=True,
         )

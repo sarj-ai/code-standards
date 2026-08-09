@@ -210,6 +210,7 @@ const rawCatalog = readGeneratedJson(catalogPath, 'Generated rule catalog');
 validateCatalog(rawCatalog);
 
 export const catalog: Catalog = rawCatalog;
+export const catalogJson = `${JSON.stringify(catalog)}\n`;
 export const catalogSchema = readGeneratedJson(schemaPath, 'Rule catalog schema');
 
 export function engineLabel(engine: Engine): string {
