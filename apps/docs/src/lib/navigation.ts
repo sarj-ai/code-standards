@@ -5,6 +5,7 @@ import { ENGINES, catalog, engineLabel } from './catalog';
 export type Sidebar = NonNullable<StarlightUserConfig['sidebar']>;
 
 export const referenceSidebar = Object.freeze([
+  { label: 'About', link: '/' },
   {
     label: `Rules · ${String(catalog.rules.length)}`,
     items: [
@@ -15,5 +16,4 @@ export const referenceSidebar = Object.freeze([
     ],
   },
   { label: 'CLI', link: '/cli/' },
-  { label: 'About', link: '/about/' },
 ] satisfies Sidebar);

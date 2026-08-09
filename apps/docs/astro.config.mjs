@@ -41,9 +41,9 @@ export default defineConfig({
       disable404Route: true,
       customCss: ['./src/styles/global.css'],
       sidebar: [
-        { label: 'Rules', link: '/' },
+        { label: 'About', link: '/' },
+        { label: 'Rules', link: '/rules/' },
         { label: 'CLI', link: '/cli/' },
-        { label: 'About', link: '/about/' },
       ],
       social: [
         { icon: 'github', label: 'GitHub', href: 'https://github.com/sarj-ai/standards' },

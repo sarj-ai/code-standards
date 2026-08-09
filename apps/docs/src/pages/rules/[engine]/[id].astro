@@ -3,18 +3,26 @@ import ReferencePage from '../../../components/ReferencePage.astro';
 import RuleExample from '../../../components/RuleExample.astro';
 import EngineMark from '../../../components/EngineMark.astro';
 import { Code } from '@astrojs/starlight/components';
-import { catalog, engineLabel, sourceUrl, type Rule } from '../../../lib/catalog';
+import { catalog, engineLabel, ruleHref, sourceUrl, type Rule } from '../../../lib/catalog';
 import { referenceSidebar } from '../../../lib/navigation';
 
 export function getStaticPaths() {
-  return catalog.rules.map((rule) => ({
+  return catalog.rules.map((rule, index) => ({
     params: { engine: rule.engine, id: rule.id },
-    props: { rule },
+    props: {
+      rule,
+      previousRule: catalog.rules[index - 1] ?? null,
+      nextRule: catalog.rules[index + 1] ?? null,
+    },
   }));
 }
 
-interface Props { rule: Rule }
-const { rule } = Astro.props;
+interface Props {
+  rule: Rule;
+  previousRule: Rule | null;
+  nextRule: Rule | null;
+}
+const { rule, previousRule, nextRule } = Astro.props;
 const exampleScenarios = [...new Set(rule.examples.map((example) => example.scenarioId))].map((scenarioId) => ({
   scenarioId,
   before: rule.examples.find((example) => example.scenarioId === scenarioId && example.outcome === 'reject')!,
@@ -28,7 +36,7 @@ const exampleScenarios = [...new Set(rule.examples.map((example) => example.scen
       <nav class="rule-breadcrumb" aria-label="Breadcrumb">
         <a href={`/rules/${rule.engine}/`}><EngineMark engine={rule.engine} /></a>
         <span aria-hidden="true">·</span>
-        <a href={`/?category=${rule.category}`}>{rule.category}</a>
+        <a href={`/rules/?category=${rule.category}`}>{rule.category}</a>
       </nav>
       <h1>{rule.id}</h1>
       <p class="lede">{rule.summary}</p>
@@ -88,5 +96,32 @@ const exampleScenarios = [...new Set(rule.examples.map((example) => example.scen
     )}
 
     {rule.aliases.length > 0 && <p class="aliases" data-pagefind-meta={`aliases:${rule.aliases.join(',')}`}>Formerly: {rule.aliases.join(', ')}</p>}
+
+    <nav class="rule-pagination" aria-label="Rule navigation" data-pagefind-ignore>
+      {previousRule ? (
+        <a href={ruleHref(previousRule)} rel="prev" data-rule-previous aria-keyshortcuts="[">
+          <span><kbd>[</kbd> Previous</span>
+          <strong>{previousRule.id}</strong>
+        </a>
+      ) : <span></span>}
+      {nextRule ? (
+        <a href={ruleHref(nextRule)} rel="next" data-rule-next aria-keyshortcuts="]">
+          <span>Next <kbd>]</kbd></span>
+          <strong>{nextRule.id}</strong>
+        </a>
+      ) : <span></span>}
+    </nav>
   </article>
 </ReferencePage>
+
+<script>
+  document.addEventListener('keydown', (event) => {
+    if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    const target = event.target;
+    if (target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|SELECT|TEXTAREA)$/.test(target.tagName))) return;
+    const selector = event.key === '[' ? '[data-rule-previous]' : event.key === ']' ? '[data-rule-next]' : null;
+    if (!selector) return;
+    const link = document.querySelector(selector);
+    if (link instanceof HTMLAnchorElement) location.assign(link.href);
+  });
+</script>

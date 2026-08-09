@@ -201,9 +201,9 @@ def test_a_test_that_echoes_several_fields_is_reported_once_at_the_first():
     # that was already flagged; the defect and its repair are one decision.
     src = """
     def test_thing():
-        payload = EncryptedPayload(operation_key_id="key-123", jws_signature="sig-456")
-        assert payload.operation_key_id == "key-123"
-        assert payload.jws_signature == "sig-456"
+        payload = Record(account_id="account-123", status="active")
+        assert payload.account_id == "account-123"
+        assert payload.status == "active"
     """
     [diag] = _check(src)
     assert diag.line == 4
