@@ -13,6 +13,7 @@ from typing import Final, NewType
 _DEFAULT_CASE_PATH = PurePosixPath("case.txt")
 _KEBAB_CASE: Final = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _MAX_SUMMARY_LENGTH: Final = 160
+_PUBLIC_PAIR_SIZE: Final = 2
 
 RuleId = NewType("RuleId", str)
 MessageId = NewType("MessageId", str)
@@ -117,10 +118,14 @@ class RuleExample:
     title: str
     public: bool = False
     fixed_files: tuple[ExampleFile, ...] = ()
+    scenario: str = "primary"
 
     def __post_init__(self) -> None:
         if not _KEBAB_CASE.fullmatch(self.example_id):
             msg = "example ID must be non-empty lowercase kebab-case"
+            raise ValueError(msg)
+        if not _KEBAB_CASE.fullmatch(self.scenario):
+            msg = "example scenario must be non-empty lowercase kebab-case"
             raise ValueError(msg)
         if not self.title.strip():
             msg = "example title must not be empty"
@@ -228,10 +233,15 @@ class RuleSpec:
             if not isinstance(parsed_schema, dict):
                 msg = "rule options schema must be a JSON object"
                 raise ValueError(msg)
-        public_outcomes = {example.outcome for example in self.examples if example.public}
-        if public_outcomes and public_outcomes != {ExpectedOutcome.MATCH, ExpectedOutcome.NO_MATCH}:
-            msg = "published rules must expose both matching and non-matching examples"
-            raise ValueError(msg)
+        public_scenarios = {example.scenario for example in self.examples if example.public}
+        for scenario in public_scenarios:
+            pair = tuple(example for example in self.examples if example.public and example.scenario == scenario)
+            if len(pair) != _PUBLIC_PAIR_SIZE or {example.outcome for example in pair} != {
+                ExpectedOutcome.MATCH,
+                ExpectedOutcome.NO_MATCH,
+            }:
+                msg = f"published example scenario {scenario!r} must contain both matching and non-matching cases exactly once"
+                raise ValueError(msg)
 
     @property
     def key(self) -> str:

@@ -15,8 +15,11 @@ export function getStaticPaths() {
 
 interface Props { rule: Rule }
 const { rule } = Astro.props;
-const beforeExamples = rule.examples.filter((example) => example.outcome === 'reject');
-const afterExamples = rule.examples.filter((example) => example.outcome === 'accept');
+const exampleScenarios = [...new Set(rule.examples.map((example) => example.scenarioId))].map((scenarioId) => ({
+  scenarioId,
+  before: rule.examples.find((example) => example.scenarioId === scenarioId && example.outcome === 'reject')!,
+  after: rule.examples.find((example) => example.scenarioId === scenarioId && example.outcome === 'accept')!,
+}));
 ---
 
 <ReferencePage title={`${rule.id} · ${engineLabel(rule.engine)}`} description={rule.summary} sidebar={[...referenceSidebar]}>
@@ -38,16 +41,6 @@ const afterExamples = rule.examples.filter((example) => example.outcome === 'acc
       </div>
     </header>
 
-    {rule.examples.length > 0 && (
-      <section class="examples-section">
-        <h2>Examples</h2>
-        <div class="examples-grid">
-          {beforeExamples.map((example) => <RuleExample example={example} languages={rule.languages} />)}
-          {afterExamples.map((example) => <RuleExample example={example} languages={rule.languages} />)}
-        </div>
-      </section>
-    )}
-
     <section class="rule-prose">
       <div>
         <h2>Why</h2>
@@ -58,6 +51,20 @@ const afterExamples = rule.examples.filter((example) => example.outcome === 'acc
         <p>{rule.remediation}</p>
       </div>
     </section>
+
+    {rule.examples.length > 0 && (
+      <section class="examples-section">
+        <h2>Examples</h2>
+        <div class="examples-list">
+          {exampleScenarios.map(({ scenarioId, before, after }) => (
+            <div class="examples-grid" data-example-scenario={scenarioId}>
+              <RuleExample example={before} languages={rule.languages} />
+              <RuleExample example={after} languages={rule.languages} />
+            </div>
+          ))}
+        </div>
+      </section>
+    )}
 
     {rule.filePatterns.length > 0 && <section class="rule-contract">
       {rule.filePatterns.length > 0 && <div>

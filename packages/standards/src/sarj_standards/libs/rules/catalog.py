@@ -137,6 +137,7 @@ class RuleCatalogDocument:
             "examples": [
                 {
                     "id": example.example_id,
+                    "scenarioId": example.scenario,
                     "title": example.title,
                     "outcome": "reject" if example.outcome is ExpectedOutcome.MATCH else "accept",
                     "focusPath": example.focus_path.as_posix(),

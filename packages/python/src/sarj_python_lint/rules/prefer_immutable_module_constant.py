@@ -91,6 +91,31 @@ class PreferImmutableModuleConstant(Rule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="mutable-module-mapping",
+                scenario="keyed-values",
+                title="Dictionary exposed as a module constant",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.python("settings.py", 'ROLE_LABELS = {"admin": "Administrator"}\n'),),
+                focus_path=PurePosixPath("settings.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="immutable-module-mapping",
+                scenario="keyed-values",
+                title="Read-only mapping used for keyed values",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "settings.py",
+                        'from types import MappingProxyType\n\nROLE_LABELS = MappingProxyType({"admin": "Administrator"})\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("settings.py"),
+                expected_count=0,
+                public=True,
+            ),
         ),
     )
     description: str = documentation.summary

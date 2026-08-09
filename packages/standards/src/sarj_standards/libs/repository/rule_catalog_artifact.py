@@ -56,7 +56,7 @@ _TYPESCRIPT_FIELDS: Final = frozenset(
     }
 )
 _TYPESCRIPT_EXAMPLE_FIELDS: Final = frozenset(
-    {"expectedCount", "files", "fixedFiles", "focusPath", "id", "outcome", "title"}
+    {"expectedCount", "files", "fixedFiles", "focusPath", "id", "outcome", "scenarioId", "title"}
 )
 _TYPESCRIPT_FILE_FIELDS: Final = frozenset({"path", "source"})
 _PROCESS_TIMEOUT_SECONDS: Final = 120
@@ -120,6 +120,9 @@ class _NativeExample(Protocol):
 
     @property
     def public(self) -> bool: ...
+
+    @property
+    def scenario(self) -> str: ...
 
 
 class _NativeSpec(Protocol):
@@ -192,6 +195,7 @@ def _example(native: _NativeExample) -> RuleExample:
         focus_path=native.focus_path,
         expected_count=native.expected_count,
         public=native.public,
+        scenario=native.scenario,
     )
 
 
@@ -292,6 +296,7 @@ def _typescript_example(value: object) -> RuleExample:
         focus_path=PurePosixPath(focus_path),
         expected_count=expected_count,
         public=True,
+        scenario=_value_from_dict(value, "scenarioId"),
     )
 
 

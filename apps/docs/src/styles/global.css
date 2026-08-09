@@ -3,7 +3,7 @@
 :root {
   --sl-font: 'Nunito Variable', Nunito, ui-sans-serif, system-ui, sans-serif;
   --sl-font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  --sl-content-width: 62rem;
+  --sl-content-width: 72rem;
   --sl-color-accent-low: #e9ebff;
   --sl-color-accent: #465be8;
   --sl-color-accent-high: #17205f;
@@ -183,6 +183,29 @@ starlight-menu-button button {
 
 .examples-section {
   margin-top: 2.5rem;
+}
+
+.about-page {
+  max-width: 48rem;
+  padding-block: 1.25rem;
+}
+
+.about-page h1 {
+  margin-block: 0 0.75rem;
+}
+
+.about-page > p {
+  margin-block: 0.25rem;
+  color: var(--sl-color-gray-2);
+  font-size: 1.05rem;
+}
+
+.about-page section {
+  margin-top: 2rem;
+}
+
+.about-page section h2 {
+  margin-top: 0;
 }
 
 .reference-hero {
@@ -546,17 +569,41 @@ starlight-menu-button button {
   margin-top: 1rem;
 }
 
+.examples-list {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.examples-list .examples-grid {
+  margin-top: 0;
+}
+
 .examples-grid > .example {
   margin-top: 0;
 }
 
 .example {
+  display: flex;
+  flex-direction: column;
   min-inline-size: 0;
   max-inline-size: 100%;
   overflow: hidden;
   border: 1px solid var(--rule);
   border-radius: 0.55rem;
   background: var(--sl-color-black);
+}
+
+.example__code {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+.example__code > .expressive-code:last-child,
+.example__code > .expressive-code:last-child figure {
+  flex: 1;
 }
 
 .example > header {
@@ -800,6 +847,12 @@ starlight-menu-button button {
   .example h3 {
     font-size: 1rem;
     line-height: 1.35;
+  }
+
+  .example__code,
+  .example__code > .expressive-code:last-child,
+  .example__code > .expressive-code:last-child figure {
+    flex: initial;
   }
 
 }

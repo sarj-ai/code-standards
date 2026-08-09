@@ -1,0 +1,31 @@
+---
+import { Code } from '@astrojs/starlight/components';
+
+import ReferencePage from '../../components/ReferencePage.astro';
+import { cliReference } from '../../lib/cli';
+
+const quickSetup = [
+  cliReference.launcher.install,
+  `${cliReference.program} setup`,
+  `${cliReference.program} doctor`,
+  `${cliReference.program} check`,
+].join('\n');
+---
+
+<ReferencePage
+  title="About Sarj Standards"
+  description="Repository-wide code standards with tested examples and one CLI."
+  pagefind={false}
+>
+  <article class="about-page">
+    <h1>About</h1>
+    <p>Sarj Standards applies one versioned quality gate to Python, TypeScript, SQL, IaC, and text.</p>
+    <p>Rules, configuration, diagnostics, and this reference ship together.</p>
+
+    <section>
+      <h2>Quick setup</h2>
+      <Code code={quickSetup} lang="bash" frame="terminal" wrap />
+      <p><a href="/cli/">CLI reference</a></p>
+    </section>
+  </article>
+</ReferencePage>

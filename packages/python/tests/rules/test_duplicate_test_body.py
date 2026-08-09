@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from sarj_python_lint.rules.duplicate_test_body import DuplicateTestBody
+from tests.illustrative_examples import illustrative_examples
 
 
 if TYPE_CHECKING:
@@ -17,10 +18,7 @@ def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
     return DuplicateTestBody().check(Path(path), source)
 
 
-_PUBLIC_EXAMPLES = DuplicateTestBody.public_examples()
-
-
-@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+@illustrative_examples(DuplicateTestBody)
 def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
     focus = example.focus_file
     assert len(DuplicateTestBody().check(Path(focus.path), focus.source)) == example.expected_count
@@ -120,18 +118,9 @@ def test_three():
 
 
 def test_flags_byte_for_byte_duplicates():
-    src = """
-def test_one():
-    thing = build()
-    thing.run()
-    assert thing.done
-
-
-def test_two():
-    thing = build()
-    thing.run()
-    assert thing.done
-"""
+    src = next(
+        example for example in DuplicateTestBody.public_examples() if example.example_id == "verbatim-copy"
+    ).focus_file.source
     # A verbatim copy cannot be collapsed into a `parametrize` — there is no varying argument to lift — so the advice has to differ from the ordinary case.
     [diag] = _check(src)
     assert "is a verbatim copy of" in diag.message
@@ -166,22 +155,6 @@ def test_voice_health():
     response = client.get("/health")
     expected = {"voice": "healthy"}
     assert response.json() == expected
-"""
-    assert _check(src) == []
-
-
-def test_preserves_api_paths_as_distinct_contracts():
-    src = """
-def test_delete_environment():
-    response = client.delete("/api/environments/3/")
-    result = response.json()
-    assert result["ok"]
-
-
-def test_delete_schedule():
-    response = client.delete("/api/schedules/3/")
-    result = response.json()
-    assert result["ok"]
 """
     assert _check(src) == []
 

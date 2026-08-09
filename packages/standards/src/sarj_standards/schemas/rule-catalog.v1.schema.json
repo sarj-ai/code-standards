@@ -30,9 +30,10 @@
     "example": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "title", "outcome", "focusPath", "expectedCount", "files", "fixedFiles"],
+      "required": ["id", "scenarioId", "title", "outcome", "focusPath", "expectedCount", "files", "fixedFiles"],
       "properties": {
         "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+        "scenarioId": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
         "title": { "type": "string", "minLength": 1 },
         "outcome": { "enum": ["accept", "reject"] },
         "focusPath": { "$ref": "#/$defs/relativePath" },

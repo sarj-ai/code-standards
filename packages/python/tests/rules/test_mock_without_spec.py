@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from sarj_python_lint.rules.mock_without_spec import MockWithoutSpec
+from tests.illustrative_examples import illustrative_examples
 
 
 if TYPE_CHECKING:
@@ -17,10 +18,7 @@ def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
     return MockWithoutSpec().check(Path(path), source)
 
 
-_PUBLIC_EXAMPLES = MockWithoutSpec.public_examples()
-
-
-@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+@illustrative_examples(MockWithoutSpec)
 def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
     focus = example.focus_file
     assert len(_check(focus.source, str(focus.path))) == example.expected_count

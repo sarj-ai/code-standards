@@ -28,6 +28,7 @@ def _typescript_rule() -> dict[str, object]:
         "examples": [
             {
                 "id": "rejected",
+                "scenarioId": "primary",
                 "title": "Rejected source",
                 "outcome": "match",
                 "files": [{"path": "src/input.ts", "source": "let value = 1;\n"}],
@@ -37,6 +38,7 @@ def _typescript_rule() -> dict[str, object]:
             },
             {
                 "id": "accepted",
+                "scenarioId": "primary",
                 "title": "Accepted source",
                 "outcome": "no-match",
                 "files": [{"path": "src/input.ts", "source": "const value = 1;\n"}],

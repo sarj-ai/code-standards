@@ -126,6 +126,36 @@ class DuplicateTestBody(Rule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="verbatim-copy",
+                scenario="distinct-behavior",
+                title="A copied test never received its intended edit",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_jobs.py",
+                        "def test_starts_job():\n    job = build_job()\n    job.run()\n    assert job.done\n\ndef test_stops_job():\n    job = build_job()\n    job.run()\n    assert job.done\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_jobs.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="distinct-behaviors",
+                scenario="distinct-behavior",
+                title="Sibling tests preserve distinct API contracts",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_api.py",
+                        'def test_delete_environment():\n    response = client.delete("/api/environments/3/")\n    result = response.json()\n    assert result["ok"]\n\ndef test_delete_schedule():\n    response = client.delete("/api/schedules/3/")\n    result = response.json()\n    assert result["ok"]\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_api.py"),
+                expected_count=0,
+                public=True,
+            ),
         ),
     )
     description: str = documentation.summary

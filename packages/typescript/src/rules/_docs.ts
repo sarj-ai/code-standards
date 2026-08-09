@@ -34,6 +34,7 @@ export interface ExampleFile {
 /** A reviewed example. It remains private unless `public: true` is explicit. */
 export interface RuleExample {
   readonly id: string;
+  readonly scenarioId?: string;
   readonly title: string;
   readonly outcome: ExampleOutcome;
   readonly files: readonly ExampleFile[];
@@ -185,6 +186,7 @@ export function publicDocumentation(
 function publicExample(example: RuleExample): RuleExample {
   return {
     id: example.id,
+    scenarioId: example.scenarioId ?? "primary",
     title: example.title,
     outcome: example.outcome,
     files: example.files.map(publicFile),
@@ -234,9 +236,14 @@ function nativeSpec<Options extends readonly unknown[], MessageIds extends strin
   const examples = [...(documentation.examples ?? [])];
   examples.forEach(validateExample);
   assertUnique(examples.map((example) => example.id), "rule example IDs");
-  const publicOutcomes = new Set(examples.filter((example) => example.public === true).map((example) => example.outcome));
-  if (publicOutcomes.size > 0 && !(publicOutcomes.has("match") && publicOutcomes.has("no-match"))) {
-    throw new TypeError("published rule examples must include matching and non-matching cases");
+  const publicExamples = examples.filter((example) => example.public === true);
+  const scenarios = new Set(publicExamples.map((example) => example.scenarioId ?? "primary"));
+  for (const scenario of scenarios) {
+    const pair = publicExamples.filter((example) => (example.scenarioId ?? "primary") === scenario);
+    const outcomes = new Set(pair.map((example) => example.outcome));
+    if (pair.length !== 2 || !outcomes.has("match") || !outcomes.has("no-match")) {
+      throw new TypeError(`published example scenario ${scenario} must contain both matching and non-matching cases exactly once`);
+    }
   }
   const messageIds = Object.keys(meta.messages).sort();
   const schema = optionsSchema(meta.schema);
@@ -257,7 +264,7 @@ function nativeSpec<Options extends readonly unknown[], MessageIds extends strin
     references,
     since: documentation.since ?? null,
     examples,
-    publicExamples: examples.filter((example) => example.public === true),
+    publicExamples,
     messageIds,
     optionsSchema: schema,
   };
@@ -281,6 +288,9 @@ function isObject(value: unknown): value is object {
 function validateExample(example: RuleExample): void {
   if (!KEBAB_CASE.test(example.id)) {
     throw new TypeError("example ID must be lowercase kebab-case");
+  }
+  if (!KEBAB_CASE.test(example.scenarioId ?? "primary")) {
+    throw new TypeError("example scenario must be lowercase kebab-case");
   }
   if (example.title.trim().length === 0) {
     throw new TypeError("example title must not be empty");
