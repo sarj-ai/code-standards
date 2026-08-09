@@ -1,58 +1,12 @@
 ---
 import ReferencePage from '../components/ReferencePage.astro';
-import { cliReference } from '../lib/cli';
-import { ENGINES, catalog, engineLabel, type Engine } from '../lib/catalog';
-
-const activeEngines = ENGINES.filter((engine) => catalog.rules.some((rule) => rule.engine === engine));
-const quickStart = [
-  cliReference.launcher.install,
-  `${cliReference.program} setup`,
-  `${cliReference.program} doctor`,
-  `${cliReference.program} check`,
-].join('\n');
+import RuleTable from '../components/RuleTable.astro';
+import { catalog } from '../lib/catalog';
 ---
 
 <ReferencePage
-  title="Standards for Python, TypeScript, SQL, IaC, and text"
-  description="Deterministic diagnostics and fixes for Python, TypeScript, Markdown, SQL, and infrastructure code."
-  template="splash"
+  title="Sarj Standards"
+  description={`${catalog.rules.length} code standards with tested examples.`}
 >
-  <div class="home-shell">
-    <section class="home-hero">
-      <div class="home-hero__copy">
-        <h1>Check the whole repository.</h1>
-        <p class="lede">Python, TypeScript, SQL, IaC, and text. {catalog.rules.length} rules, one command.</p>
-        <div class="hero-actions">
-          <a class="primary-action" href="/cli/#quick-start">Get started</a>
-          <a class="secondary-action" href="/rules/">Browse rules</a>
-        </div>
-      </div>
-      <div class="quick-start" aria-label="Quick start">
-        <div class="quick-start__bar">
-          <span>Quick start</span>
-          <a href="/cli/">CLI reference</a>
-        </div>
-        <pre><code>{quickStart}</code></pre>
-      </div>
-    </section>
-
-    <section class="engine-index">
-      <header class="section-heading">
-        <h2>Rules</h2>
-        <a href="/rules/">View all {catalog.rules.length}</a>
-      </header>
-      <div class="engine-list">
-        {activeEngines.map((engine: Engine) => {
-          const rules = catalog.rules.filter((rule) => rule.engine === engine);
-          return (
-            <a href={`/rules/${engine}/`}>
-              <span class="engine-list__code">{engine}</span>
-              <strong>{engineLabel(engine)}</strong>
-              <span>{rules.length}</span>
-            </a>
-          );
-        })}
-      </div>
-    </section>
-  </div>
+  <RuleTable rules={catalog.rules} />
 </ReferencePage>
