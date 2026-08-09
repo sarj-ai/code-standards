@@ -19,6 +19,7 @@ jobs:
       contents: read
     outputs:
       recovery: ${{ steps.recovery.outputs.recovery }}
+      standards_tag: ${{ steps.recovery.outputs.standards_tag }}
     steps:
       - name: Harden the runner
         uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
@@ -33,7 +34,6 @@ jobs:
         name: Detect tag or GitHub Release recovery
         env:
           GH_TOKEN: ${{ github.token }}
-          TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -70,7 +70,11 @@ jobs:
           PY
 
           recovery=false
+          standards_tag=''
           while IFS='|' read -r target tag; do
+            if [[ "$target" == standards ]]; then
+              standards_tag="$tag"
+            fi
             set +e
             remote="$(git ls-remote --exit-code --tags origin "refs/tags/$tag" "refs/tags/$tag^{}")"
             status=$?
@@ -84,15 +88,28 @@ jobs:
               echo "::error::failed to inspect immutable release tag $tag"
               exit "$status"
             fi
-            if [[ "$target" == standards ]]; then
-              tag_commit="$(awk '$2 ~ /\^\{\}$/ { print $1; found=1; exit } NR == 1 { first=$1 } END { if (!found) print first }' <<< "$remote")"
-              if [[ "$tag_commit" == "$TARGET_SHA" ]] && ! gh release view "$tag" >/dev/null 2>&1; then
-                recovery=true
-                echo "missing GitHub Release for $tag at $TARGET_SHA"
-              fi
-            fi
           done < "$tags"
+          test -n "$standards_tag"
+          encoded_tag="$(jq -rn --arg value "$standards_tag" '$value | @uri')"
+          release_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+            --retry 2 --retry-all-errors --connect-timeout 5 --max-time 20 \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/releases/tags/$encoded_tag")"
+          case "$release_status" in
+            200) ;;
+            404)
+              recovery=true
+              echo "missing GitHub Release for $standards_tag"
+              ;;
+            *)
+              echo "::error::GitHub Release lookup returned HTTP $release_status for $standards_tag"
+              exit 1
+              ;;
+          esac
           echo "recovery=$recovery" >> "$GITHUB_OUTPUT"
+          echo "standards_tag=$standards_tag" >> "$GITHUB_OUTPUT"
 
   release-safety:
     needs: preflight
@@ -179,9 +196,24 @@ jobs:
       - name: Publish the Standards GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          PUBLISHED_SHA: ${{ github.event.workflow_run.head_sha }}
+          STANDARDS_TAG: ${{ needs.preflight.outputs.standards_tag }}
         run: |
-          tag="$(git tag --points-at "$PUBLISHED_SHA" --list 'standards-v*' | head -n 1)"
-          if [ -n "$tag" ] && ! gh release view "$tag" >/dev/null 2>&1; then
-            gh release create "$tag" --verify-tag --generate-notes --title "Standards ${tag#standards-v}"
-          fi
+          set -euo pipefail
+          encoded_tag="$(jq -rn --arg value "$STANDARDS_TAG" '$value | @uri')"
+          release_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+            --retry 2 --retry-all-errors --connect-timeout 5 --max-time 20 \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/releases/tags/$encoded_tag")"
+          case "$release_status" in
+            200) ;;
+            404)
+              gh release create "$STANDARDS_TAG" --verify-tag --generate-notes \
+                --title "Standards ${STANDARDS_TAG#standards-v}"
+              ;;
+            *)
+              echo "::error::GitHub Release lookup returned HTTP $release_status for $STANDARDS_TAG"
+              exit 1
+              ;;
+          esac

@@ -119,7 +119,10 @@ def test_release_has_no_tag_writer_or_write_capable_token() -> None:
 def test_release_tags_publish_a_github_release_for_new_standards_versions() -> None:
     workflow = (REPO_ROOT / ".github/workflows/release-tags.yml").read_text(encoding="utf-8")
 
-    assert "git tag --points-at" in workflow
+    assert "standards_tag: ${{ steps.recovery.outputs.standards_tag }}" in workflow
+    assert "STANDARDS_TAG: ${{ needs.preflight.outputs.standards_tag }}" in workflow
+    assert 'case "$release_status" in' in workflow
+    assert "404)" in workflow
     assert "gh release create" in workflow
     assert "--verify-tag --generate-notes" in workflow
 
