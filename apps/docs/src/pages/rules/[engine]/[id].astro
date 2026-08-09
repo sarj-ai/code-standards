@@ -33,6 +33,16 @@ const afterExamples = rule.examples.filter((example) => example.outcome === 'acc
       </dl>
     </header>
 
+    {rule.examples.length > 0 && (
+      <section class="examples-section">
+        <h2>Examples</h2>
+        <div class="examples-grid">
+          {beforeExamples.map((example) => <RuleExample example={example} />)}
+          {afterExamples.map((example) => <RuleExample example={example} />)}
+        </div>
+      </section>
+    )}
+
     <section class="rule-prose">
       <div>
         <h2>Why</h2>
@@ -43,19 +53,6 @@ const afterExamples = rule.examples.filter((example) => example.outcome === 'acc
         <p>{rule.remediation}</p>
       </div>
     </section>
-
-    {rule.examples.length > 0 && (
-      <section class="examples-section">
-        <header class="section-heading">
-          <h2>Before / after</h2>
-          <p>Executed by this rule&rsquo;s unit tests.</p>
-        </header>
-        <div class="examples-grid">
-          {beforeExamples.map((example) => <RuleExample example={example} />)}
-          {afterExamples.map((example) => <RuleExample example={example} />)}
-        </div>
-      </section>
-    )}
 
     {rule.limitations.length > 0 && (
       <section class="limitations">

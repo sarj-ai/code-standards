@@ -21,8 +21,5 @@ const rules = rulesForEngine(engine);
   description={`${rules.length} active ${engineLabel(engine)} rules in Sarj Standards.`}
   sidebar={familySidebar(engine)}
 >
-  <header class="reference-hero reference-hero--compact">
-    <h1>{engineLabel(engine)} rules</h1>
-  </header>
   <RuleTable rules={rules} controls={rules.length > 12} />
 </ReferencePage>
