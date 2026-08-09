@@ -38,7 +38,7 @@ const showFilters = categories.length > 1 || languages.length > 1;
           <tr data-category={rule.category} data-languages={rule.languages.join(' ')}>
             <th scope="row">
               <a href={ruleHref(rule)}><EngineMark engine={rule.engine} /><code>{rule.id}</code></a>
-              <span>{rule.summary}</span>
+              <span class="rule-summary">{rule.summary}</span>
             </th>
             {showCategory && <td data-label="Category"><span class="tag">{rule.category}</span></td>}
           </tr>
