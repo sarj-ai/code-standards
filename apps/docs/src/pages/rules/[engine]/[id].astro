@@ -99,14 +99,14 @@ const exampleScenarios = [...new Set(rule.examples.map((example) => example.scen
 
     <nav class="rule-pagination" aria-label="Rule navigation" data-pagefind-ignore>
       {previousRule ? (
-        <a href={ruleHref(previousRule)} rel="prev" data-rule-previous aria-keyshortcuts="[">
-          <span><kbd>[</kbd> Previous</span>
+        <a href={ruleHref(previousRule)} rel="prev" data-rule-previous aria-keyshortcuts="ArrowLeft">
+          <span><kbd>←</kbd> Previous</span>
           <strong>{previousRule.id}</strong>
         </a>
       ) : <span></span>}
       {nextRule ? (
-        <a href={ruleHref(nextRule)} rel="next" data-rule-next aria-keyshortcuts="]">
-          <span>Next <kbd>]</kbd></span>
+        <a href={ruleHref(nextRule)} rel="next" data-rule-next aria-keyshortcuts="ArrowRight">
+          <span>Next <kbd>→</kbd></span>
           <strong>{nextRule.id}</strong>
         </a>
       ) : <span></span>}
@@ -118,10 +118,13 @@ const exampleScenarios = [...new Set(rule.examples.map((example) => example.scen
   document.addEventListener('keydown', (event) => {
     if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
     const target = event.target;
-    if (target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|SELECT|TEXTAREA)$/.test(target.tagName))) return;
-    const selector = event.key === '[' ? '[data-rule-previous]' : event.key === ']' ? '[data-rule-next]' : null;
+    if (target instanceof Element && target.closest('a, button, input, select, textarea, summary, [contenteditable]')) return;
+    const selector = event.key === 'ArrowLeft' ? '[data-rule-previous]' : event.key === 'ArrowRight' ? '[data-rule-next]' : null;
     if (!selector) return;
     const link = document.querySelector(selector);
-    if (link instanceof HTMLAnchorElement) location.assign(link.href);
+    if (link instanceof HTMLAnchorElement) {
+      event.preventDefault();
+      location.assign(link.href);
+    }
   });
 </script>
