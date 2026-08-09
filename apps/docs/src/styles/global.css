@@ -102,6 +102,11 @@ body {
   align-items: center;
 }
 
+.sidebar-content a.sidebar-engine-link {
+  padding-inline-start: 1.5rem;
+  color: var(--sl-color-gray-2);
+}
+
 .sidebar-content a[aria-current='page'],
 .sidebar-content a[aria-current='page']:hover,
 .sidebar-content a[aria-current='page']:focus {
@@ -129,6 +134,16 @@ body {
 starlight-menu-button button {
   min-width: 44px;
   min-height: 44px;
+}
+
+starlight-menu-button {
+  display: flex;
+  align-self: center;
+  align-items: center;
+}
+
+starlight-menu-button button {
+  top: calc((var(--sl-nav-height) - 2.75rem) / 2);
 }
 
 .sl-markdown-content h1,
@@ -394,7 +409,7 @@ starlight-menu-button button {
 .rule-table {
   display: table;
   width: 100%;
-  min-width: 46rem;
+  min-width: 0;
   border-collapse: collapse;
   background: var(--sl-color-black);
 }
@@ -470,6 +485,28 @@ starlight-menu-button button {
   background: linear-gradient(135deg, #3776ab 0 50%, #ffd343 50% 100%);
   color: #fff;
   text-shadow: 0 1px 1px #17202a;
+}
+
+.engine-mark--sql {
+  border-color: #336791;
+  background: #336791;
+  color: #fff;
+}
+
+.engine-mark--text {
+  border-color: var(--sl-color-gray-3);
+  background: var(--sl-color-gray-6);
+  color: var(--sl-color-gray-1);
+}
+
+.engine-mark svg {
+  width: 1.05rem;
+  height: 1.05rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
 }
 
 .rule-table tbody th .rule-summary {
@@ -843,7 +880,7 @@ starlight-menu-button button {
     min-inline-size: 0;
     max-inline-size: 100%;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    padding-block: 0.5rem;
+    padding: 0.5rem 0.75rem;
     border-bottom: 1px solid var(--rule);
   }
 
@@ -912,7 +949,17 @@ starlight-menu-button button {
   }
 
   .rule-pagination {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+
+  .rule-pagination a {
+    min-height: 56px;
+    padding-inline: 0.6rem;
+  }
+
+  .rule-pagination strong {
+    font-size: 0.7rem;
   }
 
 }
