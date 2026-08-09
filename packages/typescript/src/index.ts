@@ -52,6 +52,7 @@ import preferModuleLevelConstant from "./rules/prefer-module-level-constant.js";
 import preferModuleLevelSchema from "./rules/prefer-module-level-schema.js";
 import preferNativeRandomUuid from "./rules/prefer-native-random-uuid.js";
 import preferNonNullableCollection from "./rules/prefer-non-nullable-collection.js";
+import preferAwaitInAsyncReturn from "./rules/prefer-await-in-async-return.js";
 import preferSchemaForApiPayload from "./rules/prefer-schema-for-api-payload.js";
 import preferSemanticColors from "./rules/prefer-semantic-colors.js";
 import preferServerActions from "./rules/prefer-server-actions.js";
@@ -119,6 +120,7 @@ const rules = {
   "prefer-module-level-schema": preferModuleLevelSchema,
   "prefer-native-random-uuid": preferNativeRandomUuid,
   "prefer-non-nullable-collection": preferNonNullableCollection,
+  "prefer-await-in-async-return": preferAwaitInAsyncReturn,
   "prefer-schema-for-api-payload": preferSchemaForApiPayload,
   "prefer-semantic-colors": preferSemanticColors,
   "prefer-server-actions": preferServerActions,
@@ -136,7 +138,7 @@ const rules = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.6.2",
+  version: "15.6.3",
 } as const;
 
 /** Rules registered for application-profile configs but intentionally absent from general presets. */
@@ -190,6 +192,7 @@ const recommendedRules = {
   "@sarj/prefer-module-level-constant": "error",
   "@sarj/prefer-module-level-schema": "error",
   "@sarj/prefer-non-nullable-collection": "error",
+  "@sarj/prefer-await-in-async-return": "error",
   "@sarj/prefer-schema-for-api-payload": "error",
   "@sarj/prefer-semantic-colors": ["error", { requireSemanticTokens: true }],
   "@sarj/prefer-server-actions": "error",
@@ -253,6 +256,7 @@ const strictRules = {
   "@sarj/prefer-module-level-constant": "error",
   "@sarj/prefer-module-level-schema": "error",
   "@sarj/prefer-non-nullable-collection": "error",
+  "@sarj/prefer-await-in-async-return": "error",
   "@sarj/prefer-schema-for-api-payload": "error",
   "@sarj/prefer-semantic-colors": ["error", { requireSemanticTokens: true }],
   "@sarj/prefer-server-actions": "error",

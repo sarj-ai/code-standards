@@ -278,16 +278,22 @@ def cmd_doctor(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
             print("error: repository is not adopted; run `sarj-standards setup`", file=sys.stderr)
             return 2
         plan = upgrade.build_plan(root)
-        blockers = upgrade.unsafe_retired_findings(plan) if upgrade.changes_bundle_version(plan) else []
+        blockers = upgrade.unsafe_retired_findings(plan)
         if blockers:
-            repair_status = 2
-            print("error: automatic repair is blocked by retired rule references:", file=sys.stderr)
+            print("warning: automatic repair cannot migrate these retired rule references:", file=sys.stderr)
             for finding in blockers:
-                print(f"error: {finding.where} -- {finding.detail}", file=sys.stderr)
-        else:
-            current_drift = [finding for finding in doctor.diagnose(root) if finding.level is doctor.Level.DRIFT]
-            repair_status = 0 if not plan.changes and not current_drift else upgrade.apply(plan, install=not no_install)
-        if repair_status and not blockers:
+                print(f"warning: {finding.where} -- {finding.detail}", file=sys.stderr)
+        current_drift = [finding for finding in doctor.diagnose(root) if finding.level is doctor.Level.DRIFT]
+        repair_status = (
+            0
+            if not plan.changes and not current_drift
+            else upgrade.apply(
+                plan,
+                install=not no_install,
+                allow_retired_debt=bool(blockers),
+            )
+        )
+        if repair_status > 1:
             print(
                 "error: automatic repair did not converge; tracked configuration changes were restored",
                 file=sys.stderr,
@@ -466,7 +472,7 @@ def cmd_update(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
             if finding.remediation:
                 print(f"fix: {finding.remediation}", file=sys.stderr)
         return 2
-    blockers = upgrade.unsafe_retired_findings(plan) if upgrade.changes_bundle_version(plan) else []
+    blockers = upgrade.unsafe_retired_findings(plan)
     if blockers:
         for finding in blockers:
             print(f"error: {finding.where} -- {finding.detail}", file=sys.stderr)
@@ -1462,6 +1468,11 @@ def build_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-locals] 
         help="the directory that owns the npm lockfile (default: detected)",
     )
     setup.add_argument("--dry-run", action="store_true", help="print the complete plan without writing")
+    setup.add_argument(
+        "--force",
+        action="store_true",
+        help="replace conflicting generated lint configuration after review",
+    )
     setup.add_argument(
         "--profile",
         choices=manifest.PROFILES,

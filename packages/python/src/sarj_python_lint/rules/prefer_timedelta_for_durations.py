@@ -143,6 +143,7 @@ class PreferTimedeltaForDurations(Rule):
         exempt_fields = (
             _settings_field_ids(tree) | _pydantic_model_field_ids(tree, imports) | _typed_dict_field_ids(tree, imports)
         )
+        serialized_constants = _exclusively_serialized_duration_constants(tree, imports)
         diags: list[Diagnostic] = []
         for node in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef, ast.AnnAssign):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -163,7 +164,7 @@ class PreferTimedeltaForDurations(Rule):
         for statement in tree.body:
             match statement:
                 case ast.Assign(targets=[ast.Name(id=name)], value=value) if _is_numeric_expression(value):
-                    if _is_constant_reference(name):
+                    if _is_constant_reference(name) and name not in serialized_constants:
                         numeric = "float" if _contains_float(value) else "int"
                         self._consider(name, ast.Name(id=numeric), statement, diags, path)
                 case _:
@@ -236,6 +237,148 @@ def _is_numeric_expression(node: ast.expr) -> bool:
 
 def _contains_float(node: ast.AST) -> bool:
     return any(isinstance(child, ast.Constant) and isinstance(child.value, float) for child in ast.walk(node))
+
+
+def _exclusively_serialized_duration_constants(tree: ast.Module, imports: ImportIndex) -> frozenset[str]:
+    """Find numeric constants whose reads are proven wire-model construction only."""
+    definitions = {
+        statement.targets[0].id: statement.targets[0]
+        for statement in tree.body
+        if isinstance(statement, ast.Assign)
+        and len(statement.targets) == 1
+        and isinstance(statement.targets[0], ast.Name)
+        and _is_numeric_expression(statement.value)
+        and _is_constant_reference(statement.targets[0].id)
+    }
+    if not definitions:
+        return frozenset()
+    wire_models = _wire_model_class_names(tree, imports)
+    if not wire_models:
+        return frozenset()
+    parent = {id(child): owner for owner in ast.walk(tree) for child in ast.iter_child_nodes(owner)}
+    serialized: set[str] = set()
+    for name, target in definitions.items():
+        if _has_competing_binding(tree, name, target):
+            continue
+        loads = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id == name
+        ]
+        if loads and all(_is_wire_model_value(load, parent, wire_models) for load in loads):
+            serialized.add(name)
+    return frozenset(serialized)
+
+
+def _has_competing_binding(tree: ast.Module, name: str, definition: ast.Name) -> bool:
+    """Reject lexical ambiguity rather than attributing shadowed reads to a constant."""
+    for node in ast.walk(tree):
+        match node:
+            case ast.Name(id=identifier, ctx=ast.Store()) if identifier == name and node is not definition:
+                return True
+            case ast.arg(arg=identifier) if identifier == name:
+                return True
+            case (
+                ast.FunctionDef(name=identifier) | ast.AsyncFunctionDef(name=identifier) | ast.ClassDef(name=identifier)
+            ) if identifier == name:
+                return True
+            case ast.alias(name=imported, asname=alias) if (alias or imported.split(".")[0]) == name:
+                return True
+            case ast.ExceptHandler(name=identifier) if identifier == name:
+                return True
+            case ast.MatchAs(name=identifier) | ast.MatchStar(name=identifier) if identifier == name:
+                return True
+            case ast.MatchMapping(rest=identifier) if identifier == name:
+                return True
+            case _:
+                pass
+    return False
+
+
+def _is_wire_model_value(
+    load: ast.Name,
+    parents: dict[int, ast.AST],
+    wire_models: frozenset[str],
+) -> bool:
+    parent = parents.get(id(load))
+    if isinstance(parent, ast.keyword) and parent.value is load:
+        call = parents.get(id(parent))
+        return isinstance(call, ast.Call) and _trailing_name(call.func) in wire_models
+    if not (isinstance(parent, ast.Dict) and any(value is load for value in parent.values)):
+        return False
+    returned = parents.get(id(parent))
+    if not (isinstance(returned, ast.Return) and returned.value is parent):
+        return False
+    owner = parents.get(id(returned))
+    while owner is not None and not isinstance(owner, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        owner = parents.get(id(owner))
+    return owner is not None and bool(_annotation_names(owner.returns) & wire_models)
+
+
+def _annotation_names(node: ast.expr | None) -> frozenset[str]:
+    if node is None:
+        return frozenset()
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        try:
+            node = ast.parse(node.value.strip(), mode="eval").body
+        except SyntaxError:
+            return frozenset()
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        return _annotation_names(node.left) | _annotation_names(node.right)
+    if isinstance(node, ast.Subscript) and _trailing_name(node.value) in {"Annotated", "Optional"}:
+        inner = node.slice.elts[0] if isinstance(node.slice, ast.Tuple) and node.slice.elts else node.slice
+        return _annotation_names(inner)
+    name = _trailing_name(node)
+    return frozenset({name}) if name is not None else frozenset()
+
+
+def _wire_model_class_names(tree: ast.Module, imports: ImportIndex) -> frozenset[str]:
+    """Resolve locally declared Pydantic and TypedDict wire models."""
+    classes = nodes(tree, ast.ClassDef)
+    by_name: dict[str, list[ast.ClassDef]] = {}
+    for node in classes:
+        by_name.setdefault(node.name, []).append(node)
+    resolved: dict[int, bool] = {}
+
+    def is_wire_model(node: ast.ClassDef, seen: frozenset[int]) -> bool:
+        cached = resolved.get(id(node))
+        if cached is not None:
+            return cached
+        if id(node) in seen:
+            return False
+        result = any(
+            imports.resolves(
+                base,
+                sources=frozenset(
+                    {
+                        "pydantic",
+                        "pydantic.main",
+                        "pydantic.v1",
+                        "pydantic.v1.main",
+                    }
+                ),
+                symbol="BaseModel",
+            )
+            or imports.resolves(
+                base,
+                sources=frozenset({"typing", "typing_extensions"}),
+                symbol="TypedDict",
+            )
+            or (
+                (base_name := _trailing_name(base)) is not None
+                and len(parents := by_name.get(base_name, ())) == 1
+                and is_wire_model(parents[0], seen | {id(node)})
+            )
+            for base in node.bases
+        )
+        resolved[id(node)] = result
+        return result
+
+    return frozenset(
+        name
+        for name, definitions in by_name.items()
+        if len(definitions) == 1 and is_wire_model(definitions[0], frozenset())
+    )
 
 
 def _has_cli_decorator(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:

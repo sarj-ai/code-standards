@@ -227,6 +227,57 @@ async def me(user: Actor) -> UserResponse:
     assert _check(source, str(package / "api.py")) == []
 
 
+@pytest.mark.parametrize("style", ["relative", "absolute", "module-root"])
+def test_imported_dependency_alias_is_resolved_without_a_git_ancestor(tmp_path: Path, style: str):
+    isolated = tmp_path / "isolated"
+    isolated.mkdir()
+    package = isolated / "app" if style != "module-root" else isolated
+    if package != isolated:
+        package.mkdir()
+        (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "dependencies.py").write_text(
+        "from typing import Annotated\nfrom fastapi import Depends\n"
+        "CurrentUser = Annotated[User, Depends(current_user)]\n",
+        encoding="utf-8",
+    )
+    imported = {
+        "relative": "from .dependencies import CurrentUser",
+        "absolute": "from app.dependencies import CurrentUser",
+        "module-root": "from dependencies import CurrentUser",
+    }[style]
+    source = _source(f"""
+{imported}
+
+@router.get("/me", summary="Read me", description="Returns the caller.", status_code=200)
+async def me(user: CurrentUser) -> UserResponse:
+    return UserResponse.model_validate(user)
+""")
+
+    assert _check(source, str(package / "api.py")) == []
+
+
+def test_detached_relative_import_cannot_escape_its_package(tmp_path: Path):
+    package = tmp_path / "isolated" / "app"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package.parent / "dependencies.py").write_text(
+        "from typing import Annotated\nfrom fastapi import Depends\n"
+        "CurrentUser = Annotated[User, Depends(current_user)]\n",
+        encoding="utf-8",
+    )
+    source = _source("""
+from ..dependencies import CurrentUser
+
+@router.get("/me", summary="Read me", description="Returns the caller.", status_code=200)
+async def me(user: CurrentUser) -> UserResponse:
+    return UserResponse.model_validate(user)
+""")
+
+    diagnostics = _check(source, str(package / "api.py"))
+
+    assert any("explicit Annotated metadata" in diagnostic.message for diagnostic in diagnostics)
+
+
 @pytest.mark.parametrize(
     "dependency_source",
     [

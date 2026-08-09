@@ -59,6 +59,26 @@ ruleTester.run("no-fat-try-blocks", rule, {
         }
       `,
     },
+    // A binding-free one-call catch plus one-call finally is state
+    // orchestration around one operation, not unrelated error recovery.
+    {
+      name: "allows simple catch-finally orchestration",
+      code: `
+        async function render() {
+          try {
+            const source = await loadSource();
+            const parsed = await parseSource(source);
+            const image = await renderImage(parsed);
+            const saved = await saveImage(image);
+          } catch {
+            markFailed();
+          } finally {
+            markIdle();
+          }
+          finish();
+        }
+      `,
+    },
     // Four statements but only three throw — pure member access is free.
     {
       code: `
@@ -492,6 +512,136 @@ ruleTester.run("no-fat-try-blocks", rule, {
     },
   ],
   invalid: [
+    // --- Upper bounds on the simple catch/finally orchestration exemption ---
+    {
+      name: "keeps simple catch without finally",
+      code: `
+        async function render() {
+          try {
+            const a = await one();
+            const b = await two();
+            const c = await three();
+            const d = await four();
+          } catch { markFailed(); }
+          finish();
+        }
+      `,
+      errors: [{ messageId: "fatTryBlock" }],
+    },
+    {
+      name: "keeps catch with a binding",
+      code: `
+        async function render() {
+          try {
+            const a = await one();
+            const b = await two();
+            const c = await three();
+            const d = await four();
+          } catch (error) { markFailed(error); }
+          finally { markIdle(); }
+          finish();
+        }
+      `,
+      errors: [{ messageId: "fatTryBlock" }],
+    },
+    {
+      name: "keeps catch with multiple statements",
+      code: `
+        async function render() {
+          try {
+            const a = await one();
+            const b = await two();
+            const c = await three();
+            const d = await four();
+          } catch { logFailure(); markFailed(); }
+          finally { markIdle(); }
+          finish();
+        }
+      `,
+      errors: [{ messageId: "fatTryBlock" }],
+    },
+    {
+      name: "keeps finally with multiple statements",
+      code: `
+        async function render() {
+          try {
+            const a = await one();
+            const b = await two();
+            const c = await three();
+            const d = await four();
+          } catch { markFailed(); }
+          finally { markIdle(); reportDuration(); }
+          finish();
+        }
+      `,
+      errors: [{ messageId: "fatTryBlock" }],
+    },
+    {
+      name: "keeps inline callback in catch call",
+      code: `
+        async function render() {
+          try {
+            const a = await one();
+            const b = await two();
+            const c = await three();
+            const d = await four();
+          } catch { recover(() => markFailed()); }
+          finally { markIdle(); }
+          finish();
+        }
+      `,
+      errors: [{ messageId: "fatTryBlock" }],
+    },
+    {
+      name: "keeps assignment in catch call",
+      code: `
+        async function render() {
+          let failed = false;
+          try {
+            const a = await one();
+            const b = await two();
+            const c = await three();
+            const d = await four();
+          } catch { markFailed(failed = true); }
+          finally { markIdle(); }
+          finish();
+        }
+      `,
+      errors: [{ messageId: "fatTryBlock" }],
+    },
+    {
+      name: "keeps update in finally call",
+      code: `
+        async function render() {
+          let attempts = 0;
+          try {
+            const a = await one();
+            const b = await two();
+            const c = await three();
+            const d = await four();
+          } catch { markFailed(); }
+          finally { recordAttempts(attempts++); }
+          finish();
+        }
+      `,
+      errors: [{ messageId: "fatTryBlock" }],
+    },
+    {
+      name: "keeps awaited catch call",
+      code: `
+        async function render() {
+          try {
+            const a = await one();
+            const b = await two();
+            const c = await three();
+            const d = await four();
+          } catch { await recover(); }
+          finally { markIdle(); }
+          finish();
+        }
+      `,
+      errors: [{ messageId: "fatTryBlock" }],
+    },
     {
       name: "does not let a finalizer exempt a catch boundary",
       code: `

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 from importlib import import_module
+from itertools import pairwise
 import os
 from pathlib import Path
 import stat
@@ -118,6 +119,7 @@ _IGNORED_DIRS = frozenset(
 _MAX_SOURCE_FILE_BYTES = 2 * 1024 * 1024
 _MAX_MARKDOWN_FILE_BYTES = 16 * 1024 * 1024
 _IGNORED_DISCOVERED_FILES = frozenset({".env", ".env.mcp"})
+_SKILL_ARTIFACT_ROOTS = frozenset({".agents", ".claude"})
 _PYTHON_NOISE_RULES = frozenset(
     {
         "docstring-args-restate-signature",
@@ -236,6 +238,8 @@ def group_paths(files: Sequence[str], *, policy: Policy | None = None) -> Groupe
         if not path.exists():
             msg = f"input does not exist: {raw_path}"
             raise ValueError(msg)
+        if _is_skill_artifact(path):
+            continue
         if path.is_file() and _owns_path(path):
             if _is_conventionally_generated(path) or _has_generated_header(path):
                 continue
@@ -260,7 +264,12 @@ def group_paths(files: Sequence[str], *, policy: Policy | None = None) -> Groupe
 
 def accepts_hook_path(path: Path) -> bool:
     """Return whether staged source analysis should receive this path."""
-    return _owns_path(path) and not _is_conventionally_generated(path) and not _has_generated_header(path)
+    return (
+        _owns_path(path)
+        and not _is_skill_artifact(path)
+        and not _is_conventionally_generated(path)
+        and not _has_generated_header(path)
+    )
 
 
 def _minimal_roots(paths: Iterable[Path]) -> frozenset[Path]:
@@ -277,7 +286,12 @@ def _minimal_roots(paths: Iterable[Path]) -> frozenset[Path]:
 def _route_directory(grouped: GroupedPaths, path: Path, seen: set[Path], *, policy: Policy | None = None) -> None:
     """Walk one directory without entering dependency, cache, or build trees."""
     for root, dir_names, file_names in os.walk(path, topdown=True, followlinks=False):
-        dir_names[:] = sorted(name for name in dir_names if name not in _IGNORED_DIRS)
+        base = Path(root)
+        dir_names[:] = sorted(
+            name
+            for name in dir_names
+            if name not in _IGNORED_DIRS and not (base.name in _SKILL_ARTIFACT_ROOTS and name == "skills")
+        )
         for file_name in sorted(file_names):
             if file_name in _IGNORED_DISCOVERED_FILES:
                 continue
@@ -333,6 +347,12 @@ def _is_conventionally_generated(path: Path) -> bool:
         "next-env.d.ts",
         "worker-configuration.d.ts",
     }
+
+
+def _is_skill_artifact(path: Path) -> bool:
+    """Keep installed agent skill payloads out of repository source analysis."""
+    parts = path.parts
+    return any(root in _SKILL_ARTIFACT_ROOTS and child == "skills" for root, child in pairwise(parts))
 
 
 def _has_generated_header(path: Path) -> bool:

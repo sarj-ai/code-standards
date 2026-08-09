@@ -368,7 +368,7 @@ def test_init_writes_bun_override_without_npm_nested_syntax(tmp_path: Path) -> N
     assert overrides == {"eslint": manifest.eslint_peers()["eslint"]}
 
 
-def test_npm_preserves_a_scalar_parent_override_under_dot(tmp_path: Path) -> None:
+def test_npm_repairs_a_scalar_direct_peer_override_and_preserves_child_overrides(tmp_path: Path) -> None:
     _ = _project(
         tmp_path,
         "package-lock.json",
@@ -381,8 +381,33 @@ def test_npm_preserves_a_scalar_parent_override_under_dot(tmp_path: Path) -> Non
     parsed: object = json.loads((tmp_path / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
     overrides = manifest.table_field(manifest.as_table(parsed), "overrides")
     react = manifest.table_field(overrides, "eslint-plugin-react")
-    assert react["."] == "7.37.4"
+    assert react["."] == "$eslint-plugin-react"
     assert react["eslint"] == manifest.eslint_peers()["eslint"]
+
+
+def test_npm_direct_peer_override_tracks_the_exact_pin_without_escaping_unicode(tmp_path: Path) -> None:
+    _ = _project(
+        tmp_path,
+        "package-lock.json",
+        {
+            "name": "web",
+            "description": "Customer dashboard — browser client",
+            "devDependencies": {"typescript": "6.0.3"},
+            "overrides": {"typescript": "^6.0.3"},
+        },
+    )
+
+    proc = _cli("init", "--dest", str(tmp_path))
+
+    assert proc.returncode == 0, proc.stderr
+    package_text = (tmp_path / "package.json").read_text(encoding="utf-8")
+    parsed: object = json.loads(package_text)  # pyright: ignore[reportAny]
+    package = manifest.as_table(parsed)
+    assert manifest.table_field(package, "devDependencies")["typescript"] == "6.0.3"
+    assert manifest.table_field(package, "overrides")["typescript"] == "$typescript"
+    assert package["description"] == "Customer dashboard — browser client"
+    assert "—" in package_text
+    assert r"\u2014" not in package_text
 
 
 def test_pnpm_workspace_policy_keeps_unrelated_package_json_pnpm_settings(tmp_path: Path) -> None:
@@ -435,6 +460,18 @@ def test_the_project_root_is_the_lockfiles_directory_not_the_topmost_package_jso
     found = scaffold.detect(tmp_path)
     assert found.typescript_root == tmp_path / "typescript"
     assert found.client == PackageManager.YARN
+
+
+def test_ecosystem_detection_ignores_package_metadata_inside_tool_caches(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "service"\nversion = "0.1.0"\n')
+    cached = tmp_path / ".uv-cache" / "archive-v0" / "basedpyright"
+    cached.mkdir(parents=True)
+    (cached / "package.json").write_text('{"name":"cached-tool"}\n', encoding="utf-8")
+
+    found = scaffold.detect(tmp_path)
+
+    assert found.python_root == tmp_path
+    assert found.typescript_root is None
 
 
 def test_an_explicit_dest_overrides_detection(tmp_path: Path) -> None:

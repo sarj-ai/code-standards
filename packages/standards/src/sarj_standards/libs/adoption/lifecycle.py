@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from datetime import timedelta
 from importlib.metadata import version as distribution_version
+from itertools import pairwise
 import json
 import os
 from pathlib import Path
@@ -30,6 +31,7 @@ if TYPE_CHECKING:
 
 
 _PROJECT_SKIP_DIRS = frozenset({".git", ".venv", "build", "dist", "node_modules", "target", "vendor"})
+_SKILL_ARTIFACT_ROOTS = frozenset({".agents", ".claude"})
 _ESLINT_SUFFIXES = frozenset({".cjs", ".cts", ".js", ".jsx", ".mjs", ".mts", ".ts", ".tsx"})
 _COMMAND_TIMEOUT = timedelta(minutes=10)
 
@@ -198,11 +200,18 @@ def _selected_eslint_candidates(root: Path, paths: Iterable[str]) -> set[Path]:
         candidate = unresolved.resolve()
         if not candidate.is_relative_to(root):
             continue
+        if _is_skill_artifact(candidate, root):
+            continue
         if candidate.is_dir() and candidate.name not in _PROJECT_SKIP_DIRS:
             sources = _eslint_sources(candidate)
             owners = {_owning_typescript_project(source, root) for source in sources}
             candidate_owner = _owning_typescript_project(candidate, root)
-            if sources and owners == {candidate_owner} and candidate_owner is not None:
+            if (
+                sources
+                and owners == {candidate_owner}
+                and candidate_owner is not None
+                and not _contains_skill_artifacts(candidate)
+            ):
                 candidates.add(candidate)
             else:
                 candidates.update(sources)
@@ -220,7 +229,11 @@ def _eslint_sources(directory: Path) -> set[Path]:
     for parent, directories, names in os.walk(directory):
         base = Path(parent)
         directories[:] = [
-            name for name in directories if name not in _PROJECT_SKIP_DIRS and not is_link_like(base / name)
+            name
+            for name in directories
+            if name not in _PROJECT_SKIP_DIRS
+            and not (base.name in _SKILL_ARTIFACT_ROOTS and name == "skills")
+            and not is_link_like(base / name)
         ]
         sources.update(
             base / name
@@ -228,6 +241,24 @@ def _eslint_sources(directory: Path) -> set[Path]:
             if Path(name).suffix.lower() in _ESLINT_SUFFIXES and not is_link_like(base / name)
         )
     return sources
+
+
+def _is_skill_artifact(path: Path, repository: Path) -> bool:
+    """Return whether a path belongs to an installed agent skill payload."""
+    parts = path.relative_to(repository).parts
+    return any(root in _SKILL_ARTIFACT_ROOTS and child == "skills" for root, child in pairwise(parts))
+
+
+def _contains_skill_artifacts(directory: Path) -> bool:
+    """Keep directory compression from letting ESLint rediscover excluded skills."""
+    for parent, directories, _names in os.walk(directory):
+        base = Path(parent)
+        if base.name in _SKILL_ARTIFACT_ROOTS and "skills" in directories:
+            return True
+        directories[:] = [
+            name for name in directories if name not in _PROJECT_SKIP_DIRS and not is_link_like(base / name)
+        ]
+    return False
 
 
 def format_commands(ecosystems: scaffold.Ecosystems) -> list[Command]:

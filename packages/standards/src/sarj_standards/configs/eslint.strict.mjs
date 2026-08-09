@@ -75,6 +75,7 @@ const UNTYPED_RULE_OVERRIDES = Object.fromEntries(
     .filter(([, rule]) => rule.meta?.docs?.requiresTypeChecking === true)
     .map(([name]) => [`@typescript-eslint/${name}`, "off"]),
 );
+const DEFAULT_SYNTAX_ONLY_CONFIG_FILES = ["**/vite.config.ts"];
 
 // unicorn ships 341 rules; this config used to run 12 of them. The set below
 // was chosen by RUNNING every non-deprecated unicorn 72 rule over 4,356 deduped
@@ -522,7 +523,7 @@ const BUILD_OUTPUT_IGNORES = [
  * Build the config at call time, so an import cached from another working
  * directory cannot freeze type-aware linting off for the real project.
  *
- * @param {{ tsconfigRootDir?: string | URL, projectService?: boolean | object }} [options]
+ * @param {{ tsconfigRootDir?: string | URL, projectService?: boolean | object, syntaxOnlyConfigFiles?: string[] }} [options]
  * @returns {import("eslint").Linter.Config[]}
  */
 export function createConfig(options = {}) {
@@ -536,6 +537,7 @@ export function createConfig(options = {}) {
   const TYPE_PROJECT_ROOT = detectedRoot ?? candidates[0];
   const PROJECT_SERVICE = options.projectService ?? detectedRoot !== undefined;
   const HAS_TYPE_PROJECT = PROJECT_SERVICE !== false;
+  const SYNTAX_ONLY_CONFIG_FILES = options.syntaxOnlyConfigFiles ?? DEFAULT_SYNTAX_ONLY_CONFIG_FILES;
 
   return [
   // A config entry carrying ONLY `ignores` is a global ignore — it must stay
@@ -602,9 +604,10 @@ export function createConfig(options = {}) {
       "@typescript-eslint/no-floating-promises": "error",
       "@typescript-eslint/await-thenable": "error",
       "@typescript-eslint/no-misused-promises": "error",
-      // Unlike unicorn/prefer-await, this is scoped to `.then()` inside an
-      // already-async function, where `await` also satisfies `require-await`.
-      "promise/prefer-await-to-then": "warn",
+      // The upstream rule flags every nested then/catch/finally call, including
+      // deliberate fire-and-forget work and synchronous framework callbacks.
+      // The typed @sarj rule below owns only semantics-preserving async returns.
+      "promise/prefer-await-to-then": "off",
       "@typescript-eslint/require-await": "error",
       // `isolatedDeclarations` requires annotations on exported values that
       // cannot be declaration-emitted in isolation, even when the initializer
@@ -670,8 +673,11 @@ export function createConfig(options = {}) {
       // buried below implementation-private methods. `@sarj/stepdown` then
       // orders sole-caller private helpers within the private band.
       "@typescript-eslint/member-ordering": [
-        "warn",
+        "error",
         {
+          default: "never",
+          interfaces: "never",
+          typeLiterals: "never",
           classes: {
             memberTypes: [
               ["public-constructor", "public-accessor", "public-get", "public-set", "public-method", "public-static-method", "public-instance-method", "public-decorated-method"],
@@ -723,7 +729,7 @@ export function createConfig(options = {}) {
       "@typescript-eslint/no-invalid-void-type": "error",
       "@typescript-eslint/no-unnecessary-template-expression": "error",
       "@typescript-eslint/no-import-type-side-effects": "error",
-      "@typescript-eslint/consistent-type-exports": "warn",
+      "@typescript-eslint/consistent-type-exports": "error",
       "@typescript-eslint/array-type": "error",
       // `no-else-return` used to sit here. It is gone because
       // `unicorn/no-useless-else` (enabled below) is a strict superset: it flags
@@ -818,7 +824,7 @@ export function createConfig(options = {}) {
           ],
         },
       ],
-      "unicorn/prefer-switch": "warn",
+      "unicorn/prefer-switch": "error",
       // Its `() => undefined` fix produces `() => {}`, which no-empty-function
       // rejects. Explicit undefined is the single authority for no-op arrows.
       "unicorn/no-useless-undefined": "off",
@@ -902,7 +908,7 @@ export function createConfig(options = {}) {
         { allowWholeFile: false },
       ],
       "@eslint-community/eslint-comments/no-restricted-disable": [
-        "warn",
+        "error",
         "no-console",
         "react-hooks/exhaustive-deps",
       ],
@@ -1008,6 +1014,7 @@ export function createConfig(options = {}) {
       "@sarj/prefer-module-level-constant": "error",
       "@sarj/prefer-module-level-schema": "error",
       "@sarj/prefer-non-nullable-collection": "error",
+      "@sarj/prefer-await-in-async-return": "error",
       "@sarj/no-sleep-in-test-body": "error",
       "@sarj/no-positional-tuple-return": "error",
       "@sarj/no-restated-comment": "error",
@@ -1035,6 +1042,25 @@ export function createConfig(options = {}) {
       ...(HAS_TYPE_PROJECT ? {} : UNTYPED_RULE_OVERRIDES),
     },
   },
+
+  ...(SYNTAX_ONLY_CONFIG_FILES.length === 0
+    ? []
+    : [{
+      // Project service rejects a file that no discovered tsconfig owns. Vite
+      // configs are commonly kept outside an application's `src`-only
+      // tsconfig. Consumers whose tsconfig owns them can pass
+      // `syntaxOnlyConfigFiles: []`; other unowned files must be named
+      // explicitly rather than losing typed lint through a broad config glob.
+      files: SYNTAX_ONLY_CONFIG_FILES,
+      languageOptions: {
+        parserOptions: {
+          program: null,
+          project: false,
+          projectService: false,
+        },
+      },
+      rules: UNTYPED_RULE_OVERRIDES,
+    }]),
 
   {
     files: [
@@ -1085,7 +1111,7 @@ export function createConfig(options = {}) {
       "better-tailwindcss/no-duplicate-classes": "error",
       "better-tailwindcss/no-deprecated-classes": "error",
       "better-tailwindcss/no-unnecessary-whitespace": "error",
-      "better-tailwindcss/enforce-shorthand-classes": "warn",
+      "better-tailwindcss/enforce-shorthand-classes": "error",
     },
   },
   // React component IDENTIFIERS must be PascalCase for JSX to distinguish them

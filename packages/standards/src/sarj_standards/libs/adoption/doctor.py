@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 from fnmatch import fnmatch
+from itertools import pairwise
 import json
 import os
 from pathlib import Path
@@ -19,7 +20,7 @@ from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.filesystem import is_link_like
 from sarj_standards.libs.repository import ledger
 
-from . import hooks, manifest, packagemanager, scaffold
+from . import hooks, manifest, packagemanager, retired_suppressions, scaffold
 
 
 if TYPE_CHECKING:
@@ -131,6 +132,7 @@ _REFERENCE_SUFFIXES: Final = (
     ".mjs",
     ".mts",
     ".py",
+    ".pyi",
     ".toml",
     ".ts",
     ".tsx",
@@ -143,8 +145,6 @@ _IGNORE_RETIRED_RULE_REFERENCES = "sarj-doctor-ignore-retired-rules"
 
 _SKIP_DIRS: Final = frozenset(
     {
-        ".agents",
-        ".claude",
         ".git",
         ".mypy_cache",
         ".playwright-mcp",
@@ -167,6 +167,7 @@ _SKIP_DIRS: Final = frozenset(
         "vendor",
     }
 )
+_SKILL_ARTIFACT_ROOTS: Final = frozenset({".agents", ".claude"})
 _GIT_SAFE_ENV: Final = frozenset(
     {"HOME", "LANG", "LC_ALL", "LC_CTYPE", "PATH", "SYSTEMDRIVE", "SYSTEMROOT", "TMPDIR", "XDG_CONFIG_HOME"}
 )
@@ -185,12 +186,7 @@ def _git_environment() -> dict[str, str]:
 def diagnose(root: Path) -> list[Finding]:
     """Check version pins and required policy settings under a repo root."""
     installed = manifest.installed_versions()
-    exclusions = _doctor_exclusions(root)
-    files = tuple(
-        path
-        for path in _walk(root)
-        if not any(fnmatch(path.relative_to(root).as_posix(), pattern) for pattern in exclusions)
-    )
+    files = authored_files(root)
     findings = [*_check_manifest(root)]
     findings.extend(_check_hook_manager(root))
     findings.extend(_check_pin_files(root, files, installed))
@@ -204,6 +200,16 @@ def diagnose(root: Path) -> list[Finding]:
     findings.extend(_check_ci_gate(root))
     unique = dict.fromkeys(findings)
     return sorted(unique, key=lambda finding: (finding.where, finding.id, finding.detail))
+
+
+def authored_files(root: Path) -> tuple[Path, ...]:
+    """List authored files after the same default and manifest exclusions doctor uses."""
+    exclusions = _doctor_exclusions(root)
+    return tuple(
+        path
+        for path in _walk(root)
+        if not any(fnmatch(path.relative_to(root).as_posix(), pattern) for pattern in exclusions)
+    )
 
 
 def diagnose_adoption_health(root: Path, selected: Sequence[Path] = ()) -> list[Finding]:
@@ -381,11 +387,9 @@ def check_retired_rules(root: Path, files: Sequence[Path] | None = None) -> Iter
     for path in _candidate_files(files if files is not None else _walk(root), _REFERENCE_SUFFIXES):
         if path.name in {"rule-ledger.json", "code_ledger.json"}:
             continue
-        text = _reference_text(path, _read(path))
-        if "sarj" not in text.lower():
-            continue
+        counts = retired_rule_counts(path, _read(path))
         for entry in retired:
-            hits = len(entry.pattern.findall(text))
+            hits = counts.get(entry.id, 0)
             if hits:
                 where = f"{path.relative_to(root)}: {entry.id} x{hits}"
                 yield Finding(
@@ -395,6 +399,21 @@ def check_retired_rules(root: Path, files: Sequence[Path] | None = None) -> Iter
                     "doctor.rule.retired",
                     entry.advice,
                 )
+
+
+def retired_rule_references(path: Path, text: str) -> frozenset[str]:
+    """Return retired identifiers used at syntactic rule-reference sites."""
+    return frozenset(retired_rule_counts(path, text))
+
+
+def retired_rule_counts(path: Path, text: str) -> dict[str, int]:
+    """Count retired rule references with source-aware suppression parsing."""
+    if retired_suppressions.supports(path):
+        return retired_suppressions.reference_counts(path, text)
+    references = _reference_text(path, text)
+    if "sarj" not in references.lower():
+        return {}
+    return {entry.id: hits for entry in ledger.load().retired if (hits := len(entry.pattern.findall(references)))}
 
 
 def _reference_text(path: Path, text: str) -> str:
@@ -1123,16 +1142,30 @@ def _walk(root: Path) -> tuple[Path, ...]:
                 continue
             path = root / raw.decode("utf-8", errors="surrogateescape")
             relative = path.relative_to(root)
-            if not any(part in _SKIP_DIRS for part in relative.parts) and not path.is_symlink() and path.is_file():
+            if (
+                not any(part in _SKIP_DIRS for part in relative.parts)
+                and not _is_skill_artifact(relative)
+                and not path.is_symlink()
+                and path.is_file()
+            ):
                 found.append(path)
         return tuple(sorted(found))
 
     found: list[Path] = []
     for parent, directories, names in os.walk(root):
-        directories[:] = sorted(name for name in directories if name not in _SKIP_DIRS)
         here = Path(parent)
+        directories[:] = sorted(
+            name
+            for name in directories
+            if name not in _SKIP_DIRS and not (here.name in _SKILL_ARTIFACT_ROOTS and name == "skills")
+        )
         found.extend(path for name in sorted(names) if not (path := here / name).is_symlink() and path.is_file())
     return tuple(found)
+
+
+def _is_skill_artifact(path: Path) -> bool:
+    """Keep installed agent skill payloads out of authored-source discovery."""
+    return any(root in _SKILL_ARTIFACT_ROOTS and child == "skills" for root, child in pairwise(path.parts))
 
 
 def _read(path: Path) -> str:

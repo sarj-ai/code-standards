@@ -269,6 +269,18 @@ def test_ignores_parameter_shadowing():
     assert _check(src) == []
 
 
+def test_ignores_list_used_as_a_subscript_selector() -> None:
+    source = _fn('columns = ["name", "status", "score"]\nreturn frame[columns]')
+
+    assert _check(source) == []
+
+
+def test_ignores_collection_nested_as_a_dict_keyword_value() -> None:
+    source = _fn('labels = {"a": "A", "b": "B", "c": "C"}\nreturn dict(labels=labels)')
+
+    assert _check(source) == []
+
+
 def test_ignores_import_as_rebind():
     src = _fn('allowed = ["a", "b", "c"]\nimport json as allowed\nreturn allowed')
     assert _check(src) == []
@@ -392,8 +404,6 @@ def test_ignores_capture_by_inner_scope(closure: str):
         "return allowed == other",
         "return allowed[0]",
         "return allowed[payload]",
-        "return registry[allowed]",
-        "registry[allowed] = 1",
         'return f"{allowed}"',
         "for item in allowed:\n    emit(item)",
         "return [item for item in allowed]",

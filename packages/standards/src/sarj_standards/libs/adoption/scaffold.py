@@ -94,12 +94,17 @@ _SKIP_DIRS: Final = frozenset(
     {
         ".git",
         ".agents",
+        ".cache",
         ".claude",
         ".next",
         ".open-next",
         ".turbo",
+        ".uv-cache",
         ".wrangler",
         ".yarn",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
         "build",
         "coverage",
         ".tox",
@@ -774,7 +779,7 @@ def _plan_npm_overrides(root: Path, plan: Plan, client: PackageManager) -> None:
         )
         return
     try:
-        merged = _merged_npm_overrides(package_json.read_text(encoding="utf-8"), package_overrides)
+        merged = _merged_npm_overrides(package_json.read_text(encoding="utf-8"), package_overrides, client=client)
     except (TypeError, ValueError) as exc:
         plan.errors.append(f"cannot safely merge tested ESLint peers into {package_json}: {exc}")
         return
@@ -815,7 +820,7 @@ def _merged_pnpm_workspace(text: str, entries: Mapping[str, object]) -> str:
 
 
 def _merged_npm_overrides(  # ruff: ignore[too-many-locals] -- explicit JSON merge state preserves consumer fields.
-    text: str, overrides: Overrides | None
+    text: str, overrides: Overrides | None, *, client: PackageManager
 ) -> str | None:
     """Merge exact ESLint peers and optional overrides into package.json text."""
     parsed: object = json.loads(text)  # pyright: ignore[reportAny] -- untyped stdlib boundary
@@ -867,13 +872,36 @@ def _merged_npm_overrides(  # ruff: ignore[too-many-locals] -- explicit JSON mer
             if new_entry and current_value is not None and not isinstance(current_value, dict):
                 current_entry = {".": current_value}
             updated[name] = {**current_entry, **new_entry} if new_entry else value
+        if client is PackageManager.NPM:
+            _align_npm_direct_dependency_overrides(updated)
         if updated != existing or not _has_path(data, overrides.key_path):
             _set_path(data, overrides.key_path, updated)
             changed = True
     if not changed:
         return None
-    rendered = json.dumps(data, indent=_indent_of(text))
+    rendered = json.dumps(data, indent=_indent_of(text), ensure_ascii=False)
     return rendered + "\n" if text.endswith("\n") else rendered
+
+
+def _align_npm_direct_dependency_overrides(overrides: dict[str, object]) -> None:
+    """Keep consumer overrides valid after setup pins npm's direct ESLint peers.
+
+    npm rejects a direct dependency override whose spec differs from the direct
+    dependency with EOVERRIDE. Its ``$name`` reference expresses the same
+    override without duplicating the version. Preserve nested child overrides
+    and exact existing specs; only repair entries that setup's own peer pinning
+    would otherwise make invalid.
+    """
+    for name, pinned in manifest.eslint_peers().items():
+        current = overrides.get(name)
+        if isinstance(current, str):
+            if current not in {pinned, f"${name}"}:
+                overrides[name] = f"${name}"
+            continue
+        current_table = manifest.as_table(current)
+        root_spec = current_table.get(".")
+        if root_spec is not None and root_spec not in {pinned, f"${name}"}:
+            overrides[name] = {**current_table, ".": f"${name}"}
 
 
 def _semver_major(value: object) -> int | None:
