@@ -151,6 +151,23 @@ def test_pyright_config_is_valid_jsonc() -> None:
     assert re.search(r'"reportExplicitAny"\s*:\s*"error"', raw)
 
 
+def test_python_visibility_contract_is_explicitly_strict() -> None:
+    ruff = tomllib.loads(RUFF_STRICT.read_text())
+    lint = manifest.table_field(manifest.as_table(ruff), "lint")
+    ignored = set(manifest.list_field(lint, "ignore"))
+    assert {"SLF001", "N801", "N802", "N806", "N999", "F401", "F822", "RUF022", "RUF068"}.isdisjoint(ignored)
+    assert "PLC2701" in ignored
+
+    raw = PYRIGHT_STRICT.read_text()
+    for setting in (
+        "reportPrivateUsage",
+        "reportPrivateImportUsage",
+        "reportPrivateLocalImportUsage",
+        "reportUnsupportedDunderAll",
+    ):
+        assert re.search(rf'"{setting}"\s*:\s*"error"', raw)
+
+
 def test_eslint_config_is_esm() -> None:
     text = ESLINT_STRICT.read_text()
     assert "export default" in text

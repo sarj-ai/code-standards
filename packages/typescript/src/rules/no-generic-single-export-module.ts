@@ -15,7 +15,7 @@ type Options = [];
 export const noGenericSingleExportModuleDocumentation = {
   summary: "Disallow generic module stems when one runtime export already names the responsibility.",
   rationale: "A generic filename hides the sole exported responsibility and makes navigation less descriptive.",
-  remediation: "Rename the module after its single runtime export.",
+  remediation: "Choose a responsibility-bearing module name or colocate the export with its domain.",
   category: "maintainability",
   limitations: ["Only configured generic stems with exactly one public runtime export are reported."],
   examples: [
@@ -25,17 +25,11 @@ export const noGenericSingleExportModuleDocumentation = {
 } as const satisfies RuleDocumentation;
 
 const GENERIC_STEMS: ReadonlySet<string> = new Set([
-  "base", "common", "constant", "constants", "core", "enum", "enums", "helper", "helpers",
-  "misc", "model", "models", "shared", "stuff", "type", "types", "util", "utils",
+  "common", "helper", "helpers", "misc", "shared", "stuff", "util", "utils",
 ]);
-
-// Frameworks and common inheritance layouts own these filenames; a rename can
-// break discovery or erase the conventional "base implementation" signal.
-const CONVENTIONAL_STEMS: ReadonlySet<string> = new Set(["base", "models"]);
 const CJS_OBJECT_EXPORT_METHODS: ReadonlySet<string> = new Set(["assign", "defineProperties", "defineProperty"]);
 
 interface FileParts {
-  readonly extension: string;
   readonly stem: string;
   readonly suffixes: string[];
 }
@@ -43,12 +37,8 @@ interface FileParts {
 function fileParts(filename: string): FileParts {
   const base = filename.replaceAll("\\", "/").split("/").at(-1) ?? "";
   const extension = base.match(/(\.[cm]?[jt]sx?)$/u)?.[1] ?? ".ts";
-  const segments = base.slice(0, -extension.length).split(".");
-  return {
-    extension,
-    stem: segments[0]?.toLowerCase() ?? "",
-    suffixes: segments.slice(1),
-  };
+  const [stem = "", ...suffixes] = base.slice(0, -extension.length).split(".");
+  return { stem, suffixes: suffixes.map((suffix) => suffix.toLowerCase()) };
 }
 
 function declaredNames(declaration: TSESTree.NamedExportDeclarations): string[] {
@@ -73,6 +63,53 @@ function declaredNames(declaration: TSESTree.NamedExportDeclarations): string[] 
 interface RuntimeExports {
   readonly exports: Array<{ readonly key: string; readonly name: string; readonly node: TSESTree.Node }>;
   readonly ambiguous: boolean;
+}
+
+function runtimeExports(program: TSESTree.Program): RuntimeExports {
+  const exports: Array<{ key: string; name: string; node: TSESTree.Node }> = [];
+  const typeBindings = typeOnlyBindings(program);
+  let ambiguous = false;
+  for (const statement of program.body) {
+    if (statement.type === AST_NODE_TYPES.ExportAllDeclaration) {
+      if (statement.exportKind !== "type") ambiguous = true;
+      continue;
+    }
+    if (statement.type === AST_NODE_TYPES.ExportDefaultDeclaration) {
+      const declaration = statement.declaration;
+      if (declaration.type === AST_NODE_TYPES.Identifier) {
+        if (!typeBindings.has(declaration.name)) {
+          exports.push({ key: "default", name: declaration.name, node: statement });
+        }
+      }
+      else if (
+        (declaration.type === AST_NODE_TYPES.FunctionDeclaration || declaration.type === AST_NODE_TYPES.ClassDeclaration) &&
+        declaration.id !== null &&
+        declaration.declare !== true
+      ) exports.push({ key: "default", name: declaration.id.name, node: declaration });
+      else if (
+        declaration.type !== AST_NODE_TYPES.TSInterfaceDeclaration &&
+        declaration.type !== AST_NODE_TYPES.TSTypeAliasDeclaration
+      ) ambiguous = true;
+      continue;
+    }
+    if (statement.type !== AST_NODE_TYPES.ExportNamedDeclaration || statement.exportKind === "type") continue;
+    if (statement.source !== null) {
+      if (statement.specifiers.some((specifier) => specifier.exportKind !== "type")) ambiguous = true;
+      continue;
+    }
+    if (statement.declaration !== null) {
+      const declaration = statement.declaration;
+      exports.push(...declaredNames(declaration).map((name) => ({ key: name, name, node: declaration })));
+    }
+    for (const specifier of statement.specifiers) {
+      if (specifier.exportKind === "type" || typeBindings.has(specifier.local.name)) continue;
+      const exported = specifier.exported.type === AST_NODE_TYPES.Identifier ? specifier.exported.name : specifier.exported.value;
+      const local = specifier.local.name;
+      exports.push({ key: exported, name: exported === "default" ? local : exported, node: specifier });
+    }
+  }
+  const unique = new Map(exports.map((entry) => [entry.key, entry]));
+  return { exports: [...unique.values()], ambiguous };
 }
 
 /** Local bindings which exist only in TypeScript's type namespace. */
@@ -136,88 +173,6 @@ function typeOnlyBindings(program: TSESTree.Program): ReadonlySet<string> {
   return new Set([...names].filter((name) => !runtimeNames.has(name)));
 }
 
-function runtimeExports(program: TSESTree.Program): RuntimeExports {
-  const exports: Array<{ key: string; name: string; node: TSESTree.Node }> = [];
-  const typeBindings = typeOnlyBindings(program);
-  let ambiguous = false;
-  for (const statement of program.body) {
-    if (statement.type === AST_NODE_TYPES.ExportAllDeclaration) {
-      if (statement.exportKind !== "type") ambiguous = true;
-      continue;
-    }
-    if (statement.type === AST_NODE_TYPES.ExportDefaultDeclaration) {
-      const declaration = statement.declaration;
-      if (declaration.type === AST_NODE_TYPES.Identifier) {
-        if (!typeBindings.has(declaration.name)) {
-          exports.push({ key: "default", name: declaration.name, node: statement });
-        }
-      }
-      else if (
-        (declaration.type === AST_NODE_TYPES.FunctionDeclaration || declaration.type === AST_NODE_TYPES.ClassDeclaration) &&
-        declaration.id !== null &&
-        declaration.declare !== true
-      ) exports.push({ key: "default", name: declaration.id.name, node: declaration });
-      else if (
-        declaration.type !== AST_NODE_TYPES.TSInterfaceDeclaration &&
-        declaration.type !== AST_NODE_TYPES.TSTypeAliasDeclaration
-      ) ambiguous = true;
-      continue;
-    }
-    if (statement.type !== AST_NODE_TYPES.ExportNamedDeclaration || statement.exportKind === "type") continue;
-    if (statement.source !== null) {
-      if (statement.specifiers.some((specifier) => specifier.exportKind !== "type")) ambiguous = true;
-      continue;
-    }
-    if (statement.declaration !== null) {
-      const declaration = statement.declaration;
-      exports.push(...declaredNames(declaration).map((name) => ({ key: name, name, node: declaration })));
-    }
-    for (const specifier of statement.specifiers) {
-      if (specifier.exportKind === "type" || typeBindings.has(specifier.local.name)) continue;
-      const exported = specifier.exported.type === AST_NODE_TYPES.Identifier ? specifier.exported.name : specifier.exported.value;
-      const local = specifier.local.name;
-      exports.push({ key: exported, name: exported === "default" ? local : exported, node: specifier });
-    }
-  }
-  const unique = new Map(exports.map((entry) => [entry.key, entry]));
-  return { exports: [...unique.values()], ambiguous };
-}
-
-/** Public type contracts that make a `type(s).ts` module accurately named. */
-function publicTypeExportCount(program: TSESTree.Program): number {
-  const names = new Set<string>();
-  const typeBindings = typeOnlyBindings(program);
-  for (const statement of program.body) {
-    if (statement.type !== AST_NODE_TYPES.ExportNamedDeclaration) continue;
-    const declaration = statement.declaration;
-    if (
-      declaration?.type === AST_NODE_TYPES.TSInterfaceDeclaration ||
-      declaration?.type === AST_NODE_TYPES.TSTypeAliasDeclaration
-    ) names.add(declaration.id.name);
-    for (const specifier of statement.specifiers) {
-      const local = specifier.local.type === AST_NODE_TYPES.Identifier ? specifier.local.name : specifier.local.value;
-      if (statement.exportKind !== "type" && specifier.exportKind !== "type" && !typeBindings.has(local)) {
-        continue;
-      }
-      names.add(specifier.exported.type === AST_NODE_TYPES.Identifier ? specifier.exported.name : specifier.exported.value);
-    }
-  }
-  return names.size;
-}
-
-function kebabCase(name: string): string {
-  return name
-    .replaceAll(/oauth/giu, "Oauth")
-    .replaceAll(/graphql/giu, "Graphql")
-    .replaceAll(/grpc/giu, "Grpc")
-    .replaceAll(/([a-z\d])([A-Z])/gu, "$1-$2")
-    .replaceAll(/([A-Z]+)([A-Z][a-z])/gu, "$1-$2")
-    .replaceAll(/[_\s]+/gu, "-")
-    .replaceAll(/-+/gu, "-")
-    .replaceAll(/^-|-$/gu, "")
-    .toLowerCase();
-}
-
 function isGlobalIdentifier(
   context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
   node: TSESTree.Identifier,
@@ -247,7 +202,7 @@ export default createRule<Options, MessageIds>({
     schema: [],
     messages: {
       genericSingleExport:
-        "Module stem `{{stem}}` is generic and its only runtime export is `{{exported}}`; rename the file to `{{expected}}`.",
+        "Module stem `{{stem}}` is generic and its only runtime export is `{{exported}}`; choose a responsibility-bearing module name or colocate the export with its domain.",
     },
   },
   defaultOptions: [],
@@ -256,7 +211,6 @@ export default createRule<Options, MessageIds>({
     const { stem } = file;
     if (
       !GENERIC_STEMS.has(stem) ||
-      CONVENTIONAL_STEMS.has(stem) ||
       isTestFile(context.filename) ||
       isGeneratedFile(context.filename, context.sourceCode.text)
     ) return {};
@@ -291,31 +245,19 @@ export default createRule<Options, MessageIds>({
       },
       "Program:exit"(program): void {
         if (hasCommonJsExport) return;
-        if ((stem === "type" || stem === "types") && publicTypeExportCount(program) >= 2) return;
         const exports = runtimeExports(program);
         if (exports.ambiguous || exports.exports.length !== 1) return;
         const onlyExport = exports.exports[0];
         if (onlyExport === undefined) return;
         const { name: exported, node } = onlyExport;
         if (isConventionalFrameworkUtility(context.filename, exported)) return;
-        const expectedStem = kebabCase(exported);
-        const suffixStem = file.suffixes.map(kebabCase).join("-");
-        const currentResponsibility = [stem, suffixStem].filter(Boolean).join("-");
-        if (
-          expectedStem === currentResponsibility ||
-          GENERIC_STEMS.has(expectedStem) ||
-          !/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(expectedStem)
-        ) return;
-        const suffixTail = suffixStem === "" ? "" : `-${suffixStem}`;
-        const renameStem = suffixTail !== "" && expectedStem.endsWith(suffixTail)
-          ? expectedStem.slice(0, -suffixTail.length)
-          : expectedStem;
-        if (renameStem === "" || GENERIC_STEMS.has(renameStem)) return;
-        const suffix = file.suffixes.map((part) => `.${kebabCase(part)}`).join("");
+        const exportedRole = exported.replaceAll(/[^a-z0-9]/giu, "").toLowerCase();
+        const pathRole = [stem, ...file.suffixes].join("").replaceAll(/[^a-z0-9]/giu, "");
+        if (exportedRole === pathRole && file.suffixes.length > 0) return;
         context.report({
           node,
           messageId: "genericSingleExport",
-          data: { stem, exported, expected: `${renameStem}${suffix}${file.extension}` },
+          data: { stem, exported },
         });
       },
     };

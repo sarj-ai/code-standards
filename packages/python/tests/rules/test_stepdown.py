@@ -705,7 +705,7 @@ def other() -> int:
     assert "other" in diags[0].message
 
 
-def test_module_lambda_reference_over_pins_helper():
+def test_module_lambda_reference_pins_helper():
     src = """
 def _h() -> int:
     return 1
@@ -715,10 +715,110 @@ handler = lambda: _h()
 def caller() -> int:
     return _h()
 """
+    assert _check(src) == []
+
+
+def test_lambda_parameter_shadow_does_not_pin_module_helper():
+    src = """
+def _h() -> int:
+    return 1
+
+handler = lambda _h: _h()
+
+def caller() -> int:
+    return _h()
+"""
     diags = _check(src)
     assert len(diags) == 1
     assert "_h" in diags[0].message
+
+
+def test_comprehension_target_only_does_not_create_a_helper_reference():
+    src = """
+def _h() -> int:
+    return 1
+
+def caller(functions) -> list[int]:
+    return [_h() for _h in functions]
+"""
+    assert _check(src) == []
+
+
+def test_nested_binding_does_not_hide_an_outer_helper_call():
+    src = """
+def _h() -> int:
+    return 1
+
+def caller() -> int:
+    def nested() -> int:
+        _h = 2
+        return _h
+    return _h() + nested()
+"""
+    diags = _check(src)
+    assert len(diags) == 1
     assert "caller" in diags[0].message
+
+
+def test_decorated_helper_and_caller_are_definition_order_barriers():
+    decorated_helper = """
+@register
+def _h() -> int:
+    return 1
+
+def caller() -> int:
+    return _h()
+"""
+    decorated_caller = """
+def _h() -> int:
+    return 1
+
+@register
+def caller() -> int:
+    return _h()
+"""
+    assert _check(decorated_helper) == []
+    assert _check(decorated_caller) == []
+
+
+@pytest.mark.parametrize("path", ["service_test.py", "pkg/test/helpers.py"])
+def test_shared_test_path_conventions_are_skipped(path: str):
+    assert _check("def _h(): ...\n\ndef caller():\n    return _h()\n", path=path) == []
+
+
+def test_extra_whitespace_before_a_private_name_does_not_disable_the_rule():
+    diags = _check("def  _h(): ...\n\ndef caller():\n    return _h()\n")
+    assert len(diags) == 1
+
+
+def test_global_declaration_pins_a_mutable_helper_binding():
+    src = """
+def _h() -> int:
+    return 1
+
+def install() -> None:
+    global _h
+    _h = make_helper()
+
+def caller() -> int:
+    return _h()
+"""
+    assert _check(src) == []
+
+
+def test_dynamic_attribute_reference_pins_a_method():
+    src = """
+class Service:
+    def _load(self) -> int:
+        return 1
+
+    def run(self) -> int:
+        return self._load()
+
+    def dynamic(self) -> int:
+        return getattr(self, "_load")()
+"""
+    assert _check(src) == []
 
 
 def test_same_class_call_via_class_name_missed():

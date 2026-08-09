@@ -35,7 +35,7 @@ def test_reports_the_later_exact_duplicate_in_static_export_literals(declaration
 
     assert len(findings) == 1
     assert findings[0].code == "SARJ098"
-    assert findings[0].severity is Severity.WARNING
+    assert findings[0].severity is Severity.ERROR
     assert findings[0].col > 1
     assert "line 1" in findings[0].message
 
@@ -50,6 +50,30 @@ def test_later_extension_does_not_erase_literal_duplicate() -> None:
     findings = _check('__all__ = ["A", "A"]\n__all__.append("B")\n')
 
     assert len(findings) == 1
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        '__all__.remove("A")',
+        "__all__.clear()",
+        "__all__.pop()",
+        '__all__[1] = "B"',
+        "del __all__[1]",
+        "dedupe(__all__)",
+        "alias = __all__",
+        "for __all__ in values:\n    pass",
+        "import exports as __all__",
+    ],
+)
+def test_skips_when_later_code_can_erase_or_obscure_the_duplicate(mutation: str) -> None:
+    assert _check(f'__all__ = ["A", "A"]\n{mutation}\n') == []
+
+
+@pytest.mark.parametrize("method", ["append", "extend", "insert"])
+def test_cardinality_non_decreasing_mutations_preserve_the_finding(method: str) -> None:
+    arguments = '"B"' if method == "append" else ('["B"]' if method == "extend" else '0, "B"')
+    assert len(_check(f'__all__ = ["A", "A"]\n__all__.{method}({arguments})\n')) == 1
 
 
 @pytest.mark.parametrize(
@@ -207,3 +231,11 @@ def test_cli_honors_exact_code_suppression_on_the_duplicate_literal(
     )
     assert cli.main(["check", "--rule", NoDuplicateDunderAllEntry.id, str(target)]) == 0
     assert not capsys.readouterr().out
+
+
+def test_cli_treats_an_unsuppressed_duplicate_as_an_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    target = tmp_path / "__init__.py"
+    target.write_text('__all__ = ["Diagnostic", "Diagnostic"]\n', encoding="utf-8")
+
+    assert cli.main(["check", "--rule", NoDuplicateDunderAllEntry.id, str(target)]) == 1
+    assert "SARJ098" in capsys.readouterr().out

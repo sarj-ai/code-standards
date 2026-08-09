@@ -61,6 +61,10 @@
   // another instance of itself. Its false positives here are per-line and
   // documented; its true positives are the ones nothing else can see.
   "reportPrivateUsage": "error",
+  // Pin strict-mode defaults that define module API visibility. Explicit keys
+  // keep upgrades from silently weakening private imports or dynamic exports.
+  "reportPrivateImportUsage": "error",
+  "reportUnsupportedDunderAll": "error",
   // Off: low value — forcing `@override` on every `ast.NodeVisitor.visit_*` hook
   // (and similar framework dispatch methods) is noise, not safety.
   "reportImplicitOverride": false,

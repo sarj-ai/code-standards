@@ -22,7 +22,7 @@ from sarj_python_lint.rule_base import (
     parse_or_none,
 )
 from sarj_python_lint.rules._ast_index import children
-from sarj_python_lint.rules._paths import is_generated
+from sarj_python_lint.rules._paths import is_generated, is_test_path
 
 
 if TYPE_CHECKING:
@@ -35,11 +35,11 @@ _SCOPE_NODES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 
 type _Def = ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef
 
-#: Decorator names that exempt a method from being flagged: property-like
-#: methods read as attributes, and abstract methods are interface declarations.
-_EXEMPT_METHOD_DECORATORS = frozenset({"property", "cached_property", "abstractmethod", "setter", "getter", "deleter"})
-
 _SELF_NAMES = frozenset({"self", "cls"})
+
+# These decorators preserve an ordinary callable definition and do not register
+# it through user code at definition time. Unknown decorators are movement barriers.
+_ORDER_TRANSPARENT_DECORATORS = frozenset({"classmethod", "staticmethod", "final", "override"})
 
 #: A repeated singledispatch implementation name cannot identify one movable target.
 _DISCARD_NAME = "_"
@@ -68,8 +68,8 @@ class Stepdown(Rule):
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Generated files, tests, `__main__.py`, recursive helpers, and helpers with multiple callers are excluded.",
-            "Dynamic references that cannot identify a sole caller are not reported.",
+            "Generated files, tests, `__main__.py`, mutual recursion, and helpers with multiple callers are excluded.",
+            "Decorated definitions and dynamic references that cannot prove a sole caller are not reported.",
         ),
         examples=(
             RuleExample(
@@ -108,9 +108,7 @@ class Stepdown(Rule):
     def check(self, path: Path, source: str) -> list[Diagnostic]:
         if path.name == "__main__.py" or is_generated(path, source):
             return []
-        if _is_test_path(path):
-            return []
-        if "def _" not in source and "async def _" not in source:
+        if is_test_path(path):
             return []
         tree = parse_or_none(path, source)
         if tree is None:
@@ -124,30 +122,35 @@ class Stepdown(Rule):
         return diags
 
 
-def _first_by_name[DefT: _Def](defs: Sequence[DefT]) -> dict[str, DefT]:
-    """Index defs by name, keeping the FIRST definition of a repeated name."""
-    first: dict[str, DefT] = {}
+def _last_by_name[DefT: _Def](defs: Sequence[DefT]) -> dict[str, DefT]:
+    """Index defs by name, keeping the runtime implementation of an overload group."""
+    last: dict[str, DefT] = {}
     for d in defs:
-        first.setdefault(d.name, d)
-    return first
+        last[d.name] = d
+    return last
 
 
 def _check_module_scope(path: Path, tree: ast.Module, code: str) -> list[Diagnostic]:
     defs = [n for n in tree.body if isinstance(n, _SCOPE_NODES)]
     counts = Counter(d.name for d in defs)
     unique_defs = {name: d for d in defs if counts[name := d.name] == 1}
-    all_defs = _first_by_name(defs)
+    all_defs = _last_by_name(defs)
 
-    pinned = _module_pinned_names(tree)
+    pinned = _module_pinned_names(tree, frozenset(all_defs))
     shadowed = _module_assigned_names(tree)
 
     graph: dict[str, set[str]] = {}
     ref_lines: dict[tuple[str, str], int] = {}
     for d in defs:
         name = d.name
-        local = _locally_bound_names(d)
         callees = graph.setdefault(name, set())
-        for n in _runtime_nodes(_deferred_body(d)):
+        nodes = (
+            _resolved_function_loads(d, frozenset(all_defs))
+            if isinstance(d, _DEF_NODES)
+            else _runtime_nodes(_deferred_body(d))
+        )
+        local: set[str] = set() if isinstance(d, _DEF_NODES) else _locally_bound_names(d)
+        for n in nodes:
             if (
                 isinstance(n, ast.Name)
                 and isinstance(n.ctx, ast.Load)
@@ -162,7 +165,7 @@ def _check_module_scope(path: Path, tree: ast.Module, code: str) -> list[Diagnos
     for name, d in unique_defs.items():
         if not isinstance(d, _DEF_NODES) or not _is_private_helper_name(name):
             continue
-        if name in pinned or name in shadowed:
+        if name in pinned or name in shadowed or _has_order_sensitive_decorator(d):
             continue
         diags.extend(
             _flag_if_above_single_caller(path, code, name, node=d, graph=graph, defs=all_defs, ref_lines=ref_lines)
@@ -174,7 +177,7 @@ def _check_class_scope(path: Path, cls: ast.ClassDef, code: str, external_caller
     methods = [n for n in cls.body if isinstance(n, _DEF_NODES)]
     counts = Counter(m.name for m in methods)
     unique = {name: m for m in methods if counts[name := m.name] == 1}
-    all_methods = _first_by_name(methods)
+    all_methods = _last_by_name(methods)
 
     pinned = _class_pinned_names(cls)
     shadowed = _class_attr_names(cls)
@@ -203,7 +206,7 @@ def _check_class_scope(path: Path, cls: ast.ClassDef, code: str, external_caller
     for name, m in unique.items():
         if not _is_private_helper_name(name):
             continue
-        if name in pinned or name in shadowed or name in external_callers or _has_exempt_decorator(m):
+        if name in pinned or name in shadowed or name in external_callers or _has_order_sensitive_decorator(m):
             continue
         diags.extend(
             _flag_if_above_single_caller(path, code, name, node=m, graph=graph, defs=all_methods, ref_lines=ref_lines)
@@ -229,6 +232,9 @@ def _flag_if_above_single_caller(
         return []
     if isinstance(defs[caller], ast.ClassDef):
         return []
+    caller_node = defs[caller]
+    if isinstance(caller_node, (ast.FunctionDef, ast.AsyncFunctionDef)) and _has_order_sensitive_decorator(caller_node):
+        return []
     if _reaches(graph, name, caller):
         return []
     if node.lineno >= defs[caller].lineno:
@@ -243,7 +249,7 @@ def _flag_if_above_single_caller(
             message=(
                 f"private helper `{name}` is defined above its only caller "
                 f"`{caller}` (referenced at line {ref_line}) — "
-                "move it directly below the code that calls it (stepdown rule)."
+                "move it below the code that calls it (stepdown rule)."
             ),
         )
     ]
@@ -343,16 +349,14 @@ def _is_private_helper_name(name: str) -> bool:
     return not (name.startswith("__") and name.endswith("__"))
 
 
-def _has_exempt_decorator(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    for dec in node.decorator_list:
-        target = dec.func if isinstance(dec, ast.Call) else dec
+def _has_order_sensitive_decorator(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    for decorator in node.decorator_list:
+        target = decorator.func if isinstance(decorator, ast.Call) else decorator
         match target:
-            case ast.Name(id=name) if name in _EXEMPT_METHOD_DECORATORS:
-                return True
-            case ast.Attribute(attr=attr) if attr in _EXEMPT_METHOD_DECORATORS:
-                return True
+            case ast.Name(id=name) | ast.Attribute(attr=name) if name in _ORDER_TRANSPARENT_DECORATORS:
+                continue
             case _:
-                pass
+                return True
     return False
 
 
@@ -381,8 +385,9 @@ def _runtime_nodes(stmts: list[ast.stmt]) -> Iterator[ast.expr]:
                 stack.extend(node.decorator_list)
                 stack.extend(node.args.defaults)
                 stack.extend(d for d in node.args.kw_defaults if d is not None)
-            case ast.ClassDef(body=body, decorator_list=decorators, bases=bases, keywords=keywords):
-                stack.extend(body)
+            case ast.ClassDef(decorator_list=decorators, bases=bases, keywords=keywords):
+                # A nested class owns a separate receiver namespace. Its method
+                # bodies are not calls made by the enclosing function/method.
                 stack.extend(decorators)
                 stack.extend(bases)
                 stack.extend(keyword.value for keyword in keywords)
@@ -398,8 +403,8 @@ def _runtime_nodes(stmts: list[ast.stmt]) -> Iterator[ast.expr]:
                 stack.extend(_child_nodes(node))
 
 
-def _module_pinned_names(tree: ast.Module) -> set[str]:
-    pinned: set[str] = set()
+def _module_pinned_names(tree: ast.Module, definition_names: frozenset[str]) -> set[str]:
+    pinned = _global_declaration_names(tree)
     for stmt in tree.body:
         if isinstance(stmt, _DEF_NODES):
             pinned |= _immediate_def_refs(stmt)
@@ -407,7 +412,15 @@ def _module_pinned_names(tree: ast.Module) -> set[str]:
             pinned |= _class_pinned_names(stmt) | _immediate_class_header_refs(stmt)
         else:
             pinned |= _name_loads(stmt)
+            for node in _walk(stmt):
+                if isinstance(node, ast.Lambda):
+                    pinned.update(load.id for load in _resolved_lambda_loads(node, definition_names))
     return pinned
+
+
+def _global_declaration_names(tree: ast.Module) -> set[str]:
+    """Pin names explicitly routed to mutable module state from any nested scope."""
+    return {name for node in _walk(tree) if isinstance(node, ast.Global) for name in node.names}
 
 
 def _class_pinned_names(cls: ast.ClassDef) -> set[str]:
@@ -420,6 +433,15 @@ def _class_pinned_names(cls: ast.ClassDef) -> set[str]:
             pinned |= _class_pinned_names(stmt) | _immediate_class_header_refs(stmt)
         else:
             pinned |= _name_loads(stmt)
+    for node in _walk(cls):
+        match node:
+            case ast.Call(
+                func=ast.Name(id="getattr" | "setattr" | "hasattr" | "delattr"),
+                args=[_, ast.Constant(value=str() as name), *_],
+            ):
+                pinned.add(name)
+            case _:
+                pass
     return pinned
 
 
@@ -527,6 +549,127 @@ def _locally_bound_names(node: ast.stmt) -> set[str]:
     return bound
 
 
+def _resolved_function_loads(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    candidates: frozenset[str],
+) -> Iterator[ast.Name]:
+    """Yield loads that resolve past the function's lexical scopes to a module definition."""
+    blocked = _direct_scope_bindings(node) & candidates
+    yield from _resolved_loads(node.body, candidates, blocked)
+
+
+def _resolved_lambda_loads(node: ast.Lambda, candidates: frozenset[str]) -> Iterator[ast.Name]:
+    blocked = _lambda_bindings(node) & candidates
+    yield from _resolved_loads((node.body,), candidates, blocked)
+
+
+def _resolved_loads(
+    nodes: Sequence[ast.AST],
+    candidates: frozenset[str],
+    blocked: set[str],
+) -> Iterator[ast.Name]:
+    for node in nodes:
+        match node:
+            case ast.Name(id=name, ctx=ast.Load()) if name in candidates and name not in blocked:
+                yield node
+            case ast.FunctionDef() | ast.AsyncFunctionDef():
+                immediate = (*node.decorator_list, *node.args.defaults, *(d for d in node.args.kw_defaults if d))
+                yield from _resolved_loads(immediate, candidates, blocked)
+                child_blocked = (blocked | (_direct_scope_bindings(node) & candidates)) - _global_names(node)
+                yield from _resolved_loads(node.body, candidates, child_blocked)
+            case ast.Lambda():
+                immediate = (*node.args.defaults, *(d for d in node.args.kw_defaults if d))
+                yield from _resolved_loads(immediate, candidates, blocked)
+                child_blocked = blocked | (_lambda_bindings(node) & candidates)
+                yield from _resolved_loads((node.body,), candidates, child_blocked)
+            case ast.ListComp() | ast.SetComp() | ast.GeneratorExp() | ast.DictComp():
+                yield from _resolved_comprehension_loads(node, candidates, blocked)
+            case ast.If(test=test, orelse=orelse) if _is_type_checking_test(test):
+                yield from _resolved_loads(orelse, candidates, blocked)
+            case ast.AnnAssign(value=value):
+                if value is not None:
+                    yield from _resolved_loads((value,), candidates, blocked)
+            case ast.ClassDef():
+                # Class namespaces and method closures have different lookup rules.
+                # Abstain instead of flattening them into the enclosing function.
+                yield from _resolved_loads(
+                    (*node.decorator_list, *node.bases, *(keyword.value for keyword in node.keywords)),
+                    candidates,
+                    blocked,
+                )
+            case _:
+                yield from _resolved_loads(tuple(_child_nodes(node)), candidates, blocked)
+
+
+def _resolved_comprehension_loads(
+    node: ast.ListComp | ast.SetComp | ast.GeneratorExp | ast.DictComp,
+    candidates: frozenset[str],
+    blocked: set[str],
+) -> Iterator[ast.Name]:
+    comp_blocked = set(blocked)
+    for generator in node.generators:
+        yield from _resolved_loads((generator.iter,), candidates, comp_blocked)
+        comp_blocked.update(_target_names(generator.target) & candidates)
+        yield from _resolved_loads(generator.ifs, candidates, comp_blocked)
+    values = (node.key, node.value) if isinstance(node, ast.DictComp) else (node.elt,)
+    yield from _resolved_loads(values, candidates, comp_blocked)
+
+
+def _direct_scope_bindings(node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
+    bound = _argument_names(node.args)
+    stack: list[ast.AST] = list(node.body)
+    while stack:
+        current = stack.pop()
+        match current:
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
+                bound.add(current.name)
+            case ast.Lambda() | ast.ListComp() | ast.SetComp() | ast.DictComp() | ast.GeneratorExp():
+                continue
+            case ast.Name(id=name, ctx=ast.Store() | ast.Del()):
+                bound.add(name)
+            case ast.alias(name=name, asname=asname):
+                bound.add((asname or name).split(".")[0])
+            case (
+                ast.MatchAs(name=str() as name)
+                | ast.MatchStar(name=str() as name)
+                | ast.MatchMapping(rest=str() as name)
+            ):
+                bound.add(name)
+            case ast.ExceptHandler(name=str() as name):
+                bound.add(name)
+                stack.extend(_child_nodes(current))
+            case _:
+                stack.extend(_child_nodes(current))
+    return bound - _global_names(node)
+
+
+def _lambda_bindings(node: ast.Lambda) -> set[str]:
+    return _argument_names(node.args)
+
+
+def _argument_names(args: ast.arguments) -> set[str]:
+    return {
+        arg.arg for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs, args.vararg, args.kwarg) if arg is not None
+    }
+
+
+def _global_names(node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
+    names: set[str] = set()
+    stack: list[ast.AST] = list(node.body)
+    while stack:
+        current = stack.pop()
+        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+            continue
+        if isinstance(current, ast.Global):
+            names.update(current.names)
+        stack.extend(_child_nodes(current))
+    return names
+
+
+def _target_names(node: ast.AST) -> set[str]:
+    return {child.id for child in _walk(node) if isinstance(child, ast.Name)}
+
+
 def _is_type_checking_test(test: ast.expr) -> bool:
     match test:
         case ast.Name(id="TYPE_CHECKING") | ast.Attribute(attr="TYPE_CHECKING"):
@@ -547,11 +690,3 @@ def _reaches(graph: dict[str, set[str]], start: str, target: str) -> bool:
                 seen.add(nxt)
                 stack.append(nxt)
     return False
-
-
-def _is_test_path(path: Path) -> bool:
-    if path.name == "conftest.py":
-        return True
-    if path.name.startswith("test_"):
-        return True
-    return "tests" in path.parts

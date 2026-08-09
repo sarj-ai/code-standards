@@ -1,4 +1,4 @@
-"""SARJ022 — Rename a junk-drawer module stem with a single public export.
+"""SARJ022 — Reject a junk-drawer module stem with a single public definition.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_generic_single_export_module.py
 """
@@ -7,8 +7,6 @@ from __future__ import annotations
 
 import ast
 from pathlib import PurePosixPath
-import re
-from types import MappingProxyType
 from typing import TYPE_CHECKING, final, override
 
 from sarj_python_lint.rule_base import (
@@ -29,61 +27,19 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-_SKIPPED_FILENAMES = frozenset({"__init__.py", "conftest.py"})
-
-# Framework-owned filenames cannot take the rename this rule would otherwise require.
-_FRAMEWORK_CONVENTION_FILENAMES = frozenset(
-    {
-        "models.py",
-        "admin.py",
-        "apps.py",
-        "views.py",
-        "urls.py",
-        "forms.py",
-        "serializers.py",
-        "base.py",
-        "settings.py",
-        "conftest.py",
-        "__main__.py",
-        "__init__.py",
-        "middleware.py",
-        "tasks.py",
-        "signals.py",
-        "routing.py",
-    }
-)
-
 # Generic module stems that describe no responsibility.
 _JUNK_DRAWER_STEMS = frozenset(
     {
-        "base",
         "common",
-        "constant",
-        "constants",
-        "core",
-        "enum",
-        "enums",
         "helper",
         "helpers",
         "misc",
-        "model",
-        "models",
         "shared",
         "stuff",
-        "type",
-        "types",
         "util",
         "utils",
     }
 )
-
-# Multi-word acronyms whose community-accepted snake_case is a single token
-# rather than the letter-by-letter split (`OAuth` -> `oauth`, not `o_auth`).
-_ACRONYM_OVERRIDES = MappingProxyType({"OAuth": "Oauth", "GraphQL": "Graphql", "gRPC": "Grpc"})
-
-# Split on camelCase boundaries while keeping runs of capitals (acronyms)
-# together: `HTTPServer` -> `HTTP` + `Server`, `JWTHandler` -> `JWT` + `Handler`.
-_CAMEL_BOUNDARY_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
 
 
 @final
@@ -91,15 +47,16 @@ class NoGenericSingleExportModule(Rule):
     id: str = "no-generic-single-export-module"
     code: str = "SARJ022"
     documentation = RuleDocumentation(
-        summary="A generic module with one public definition should be named after that definition.",
+        summary="A generic module name should not conceal a single-definition responsibility.",
         rationale="Names such as `utils` and `helpers` hide a module's responsibility and encourage unrelated additions.",
-        remediation="Rename the module to the snake_case name of its sole public class or function.",
+        remediation="Choose a responsibility-bearing module name or colocate the definition with its domain.",
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         aliases=("single-public-export",),
         limitations=(
-            "Only known generic module stems with exactly one public definition are reported.",
-            "Framework-owned, generated, test, and package initializer paths are excluded.",
+            "Only known junk-drawer stems with exactly one top-level public class or function are reported.",
+            "An absent `__all__`, or one static entry matching that definition, must prove the public surface.",
+            "Generated and test paths are excluded; semantic role and framework filenames are outside the stem set.",
         ),
         examples=(
             RuleExample(
@@ -126,11 +83,13 @@ class NoGenericSingleExportModule(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        if path.suffix != ".py":
+            return []
         if is_generated(path, source):
             return []
         if _is_skipped_path(path):
             return []
-        if path.stem.lower() not in _JUNK_DRAWER_STEMS:
+        if path.stem not in _JUNK_DRAWER_STEMS:
             return []
         tree = parse_or_none(path, source)
         if tree is None:
@@ -141,12 +100,11 @@ class NoGenericSingleExportModule(Rule):
             for node in tree.body
             if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and not node.name.startswith("_")
         ]
-        if len(public_defs) != 1 or _has_additional_public_export(tree):
+        if len(public_defs) != 1:
             return []
 
         primary = public_defs[0]
-        expected_stem = _snake_case(primary.name)
-        if path.stem == expected_stem:
+        if _has_additional_public_export(tree, primary.name):
             return []
 
         return [
@@ -156,17 +114,17 @@ class NoGenericSingleExportModule(Rule):
                 col=primary.col_offset + 1,
                 code=self.code,
                 message=(
-                    f"module stem `{path.stem}` is a generic junk-drawer name; its sole public "
-                    f"export is `{primary.name}` — rename the file to `{expected_stem}.py` to "
-                    f"describe its responsibility."
+                    f"module stem `{path.stem}` is a generic junk-drawer name while its only "
+                    f"top-level public definition is `{primary.name}`; choose a responsibility-bearing "
+                    "module name or colocate the definition with its domain."
                 ),
             )
         ]
 
 
-def _has_additional_public_export(tree: ast.Module) -> bool:
+def _has_additional_public_export(tree: ast.Module, primary_name: str) -> bool:
     """Report whether a definition is not the module's only public export."""
-    if _has_multiple_static_all_names(tree):
+    if not _dunder_all_matches_primary(tree, primary_name):
         return True
     targets: list[ast.expr] = []
     for stmt in tree.body:
@@ -192,23 +150,45 @@ def _has_additional_public_export(tree: ast.Module) -> bool:
     )
 
 
-def _has_multiple_static_all_names(tree: ast.Module) -> bool:
-    """Report a literal ``__all__`` that exposes more than one name."""
-    for stmt in tree.body:
-        value: ast.expr | None = None
-        match stmt:
-            case ast.Assign(targets=targets, value=assigned) if any(
-                isinstance(target, ast.Name) and target.id == "__all__" for target in targets
-            ):
-                value = assigned
-            case ast.AnnAssign(target=ast.Name(id="__all__"), value=assigned):
-                value = assigned
-            case _:
-                continue
-        if isinstance(value, (ast.List, ast.Tuple, ast.Set)):
-            names = [elt.value for elt in value.elts if isinstance(elt, ast.Constant) and isinstance(elt.value, str)]
-            if len(names) == len(value.elts) and len(names) > 1:
-                return True
+def _dunder_all_matches_primary(tree: ast.Module, primary_name: str) -> bool:
+    """Accept no declared surface, or one fully static surface naming only the definition."""
+    owners = [statement for statement in tree.body if _mentions_dunder_all(statement)]
+    if not owners:
+        return True
+    if len(owners) != 1:
+        return False
+    declaration = owners[0]
+    value: ast.expr | None
+    match declaration:
+        case ast.Assign(targets=[ast.Name(id="__all__")]) | ast.AnnAssign(target=ast.Name(id="__all__"), simple=1):
+            value = declaration.value
+        case _:
+            return False
+    if not isinstance(value, (ast.List, ast.Tuple)) or len(value.elts) != 1:
+        return False
+    (entry,) = value.elts
+    return isinstance(entry, ast.Constant) and entry.value == primary_name
+
+
+def _mentions_dunder_all(node: ast.AST) -> bool:
+    """Conservatively detect explicit, dynamic, or string-stored export surfaces."""
+    for child in ast.walk(node):
+        if isinstance(child, ast.Name) and child.id == "__all__":
+            return True
+        if isinstance(child, ast.alias) and (child.asname or child.name).split(".")[0] == "__all__":
+            return True
+        if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and child.name == "__all__":
+            return True
+        if isinstance(child, ast.arg) and child.arg == "__all__":
+            return True
+        if isinstance(child, ast.ExceptHandler) and child.name == "__all__":
+            return True
+        if isinstance(child, (ast.MatchAs, ast.MatchStar)) and child.name == "__all__":
+            return True
+        if isinstance(child, ast.MatchMapping) and child.rest == "__all__":
+            return True
+        if isinstance(child, (ast.Global, ast.Nonlocal)) and "__all__" in child.names:
+            return True
     return False
 
 
@@ -221,17 +201,5 @@ def _annotation_name(node: ast.expr) -> str:
             return ""
 
 
-def _snake_case(name: str) -> str:
-    for camel, replacement in _ACRONYM_OVERRIDES.items():
-        name = name.replace(camel, replacement)
-    return _CAMEL_BOUNDARY_RE.sub("_", name).lower()
-
-
 def _is_skipped_path(path: Path) -> bool:
-    if path.name in _SKIPPED_FILENAMES:
-        return True
-    if path.name.lower() in _FRAMEWORK_CONVENTION_FILENAMES:
-        return True
-    if path.name.startswith("test_"):
-        return True
     return "tests" in path.parts
