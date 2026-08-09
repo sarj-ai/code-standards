@@ -2,7 +2,13 @@
 import ReferencePage from '../components/ReferencePage.astro';
 ---
 
-<ReferencePage title="Rule not found" description="The requested Standards reference does not exist." hasSidebar={false} pagefind={false}>
+<ReferencePage
+  title="Page not found"
+  description="The requested Standards reference does not exist."
+  hasSidebar={false}
+  pagefind={false}
+  noindex
+>
   <div class="not-found">
     <h1>Page not found</h1>
     <p>The URL may be outdated or incorrect.</p>

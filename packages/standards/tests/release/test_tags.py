@@ -304,7 +304,9 @@ def test_create_release_tags_accepts_unchanged_target_tagged_on_older_commit(tmp
             "older-commit",
             "published-commit",
             "--",
-            "packages/python",
+            "packages/python/pyproject.toml",
+            "packages/python/LICENSE",
+            "packages/python/src/",
         ):
             return ProcessResult(0)
         raise AssertionError(argv)

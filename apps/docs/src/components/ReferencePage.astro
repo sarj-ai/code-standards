@@ -10,6 +10,7 @@ interface Props {
   hasSidebar?: boolean;
   template?: 'doc' | 'splash';
   pagefind?: boolean;
+  noindex?: boolean;
 }
 
 const {
@@ -19,11 +20,18 @@ const {
   hasSidebar = true,
   template = 'doc',
   pagefind = true,
+  noindex = false,
 } = Astro.props;
 ---
 
 <StarlightPage
-  frontmatter={{ title, description, template, pagefind }}
+  frontmatter={{
+    title,
+    description,
+    template,
+    pagefind,
+    head: noindex ? [{ tag: 'meta', attrs: { name: 'robots', content: 'noindex, nofollow' } }] : [],
+  }}
   sidebar={sidebar}
   hasSidebar={hasSidebar}
 >

@@ -111,11 +111,17 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: npm run deploy
-      - name: Verify deployed revision
+      - name: Verify deployed revision and catalog
         env:
           EXPECTED_COMMIT: ${{ github.sha }}
         run: >-
-          node -e "fetch('https://code-standards.sarj.ai/health.json?commit=' + process.env.EXPECTED_COMMIT,
-          {cache:'no-store'}).then(r => { if (!r.ok) throw new Error('health returned ' + r.status); return r.json();
-          }).then(h => { if (h.commit !== process.env.EXPECTED_COMMIT) throw new Error('live commit ' + h.commit +
-          ' does not match ' + process.env.EXPECTED_COMMIT); console.log('verified live commit ' + h.commit); })"
+          node -e "const crypto = require('node:crypto'); const base = 'https://code-standards.sarj.ai/';
+          Promise.all([fetch(base + 'health.json?commit=' + process.env.EXPECTED_COMMIT, {cache:'no-store'}),
+          fetch(base + 'api/v1/catalog.json?commit=' + process.env.EXPECTED_COMMIT, {cache:'no-store'})])
+          .then(async ([healthResponse, catalogResponse]) => { if (!healthResponse.ok) throw new Error('health returned ' +
+          healthResponse.status); if (!catalogResponse.ok) throw new Error('catalog returned ' + catalogResponse.status);
+          const health = await healthResponse.json(); const catalog = await catalogResponse.text();
+          if (health.commit !== process.env.EXPECTED_COMMIT) throw new Error('live commit ' + health.commit +
+          ' does not match ' + process.env.EXPECTED_COMMIT); const digest = crypto.createHash('sha256').update(catalog).digest('hex');
+          if (health.catalogSha256 !== digest) throw new Error('catalog digest ' + digest + ' does not match health ' +
+          health.catalogSha256); console.log('verified live commit and catalog ' + health.commit); })"

@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 
-import { catalog } from '../../../lib/catalog';
+import { catalogJson } from '../../../lib/catalog';
 
-export const GET = (() => new Response(`${JSON.stringify(catalog)}\n`, {
+export const GET = (() => new Response(catalogJson, {
   headers: { 'Content-Type': 'application/json; charset=utf-8' },
 })) satisfies APIRoute;

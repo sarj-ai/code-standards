@@ -137,8 +137,8 @@ starlight-menu-button button {
 
 .home-hero {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(24rem, 0.82fr);
-  gap: clamp(3rem, 8vw, 8rem);
+  grid-template-columns: minmax(0, 1.15fr) minmax(20rem, 0.85fr);
+  gap: clamp(2rem, 4vw, 4rem);
   align-items: center;
   min-height: min(54vh, 540px);
   padding-block: clamp(3.5rem, 8vw, 6rem);
@@ -147,7 +147,8 @@ starlight-menu-button button {
 .home-hero h1 {
   margin: 0;
   max-width: 12ch;
-  font-size: clamp(3rem, 6.5vw, 5.4rem);
+  overflow-wrap: normal;
+  font-size: clamp(3rem, 5.5vw, 4.6rem);
   line-height: 0.92;
 }
 
@@ -177,7 +178,8 @@ starlight-menu-button button {
 }
 
 .primary-action {
-  background: var(--sl-color-accent);
+  border-color: #674ea7;
+  background: #674ea7;
   color: #fff;
 }
 
@@ -413,7 +415,7 @@ body:has(.home-shell) .pagination-links {
 
 .rule-controls {
   display: grid;
-  grid-template-columns: minmax(16rem, 2fr) minmax(32rem, 3fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.6rem;
   align-items: end;
   margin-block: 2rem 1rem;
@@ -428,7 +430,7 @@ body:has(.home-shell) .pagination-links {
 
 .rule-filter-fields {
   display: grid;
-  grid-template-columns: repeat(4, minmax(7rem, 1fr)) auto;
+  grid-template-columns: repeat(4, minmax(8rem, 1fr)) auto;
   gap: 0.6rem;
   align-items: end;
 }
@@ -640,12 +642,16 @@ body:has(.home-shell) .pagination-links {
 }
 
 .example {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  overflow: hidden;
   border: 1px solid var(--rule);
   background: var(--sl-color-black);
 }
 
 .example > header {
   display: flex;
+  min-inline-size: 0;
   gap: 1rem;
   align-items: center;
   padding: 1rem 1.2rem;
@@ -677,12 +683,17 @@ body:has(.home-shell) .pagination-links {
 }
 
 .example figure {
+  min-inline-size: 0;
+  max-inline-size: 100%;
   margin: 0;
   padding: 1rem;
 }
 
 .example figcaption {
   display: flex;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  flex-wrap: wrap;
   justify-content: space-between;
   margin-bottom: 0.4rem;
   color: var(--sl-color-gray-2);
@@ -699,6 +710,29 @@ body:has(.home-shell) .pagination-links {
   margin: 0 1rem 1rem;
   padding-top: 0.75rem;
   border-top: 1px solid var(--rule);
+}
+
+.example pre,
+.example code,
+.token-list,
+.endpoint-block,
+.endpoint-block > div,
+.curl-example {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+.token-list,
+.endpoint-block h2,
+.endpoint-block code {
+  overflow-wrap: anywhere;
+}
+
+.rule-detail,
+.rule-detail > *,
+.rule-contract > * {
+  min-inline-size: 0;
+  max-inline-size: 100%;
 }
 
 .limitations {

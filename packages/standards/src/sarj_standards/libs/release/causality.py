@@ -4,41 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from types import MappingProxyType
-from typing import TYPE_CHECKING, Final
 
 from .changes import changed_release_targets
 from .process import ProcessRunner, run_process
-from .tags import RELEASE_TARGETS
+from .tags import RELEASE_ARTIFACT_FILES, RELEASE_ARTIFACT_PREFIXES, RELEASE_TARGETS
 
 
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-
-_ARTIFACT_PREFIXES: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType(
-    {
-        "python": ("packages/python/src/",),
-        "sql": ("packages/sql/src/",),
-        "iac": ("packages/iac/src/",),
-        "standards": ("packages/standards/src/",),
-        "typescript": ("packages/typescript/src/",),
-        "tsconfig": ("packages/tsconfig/base.json", "packages/tsconfig/strict.json"),
-    }
-)
-_ARTIFACT_FILES: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType(
-    {
-        name: tuple(
-            path
-            for path in (
-                target.manifest.as_posix(),
-                str(target.manifest.parent / "LICENSE"),
-            )
-        )
-        for name, target in RELEASE_TARGETS.items()
-    }
-)
-_DISPLAY_PATH_LIMIT: Final = 3
+_DISPLAY_PATH_LIMIT = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,4 +76,4 @@ def check_release_causality(
 
 
 def _belongs_to_artifact(target: str, *, path: str) -> bool:
-    return path in _ARTIFACT_FILES[target] or path.startswith(_ARTIFACT_PREFIXES[target])
+    return path in RELEASE_ARTIFACT_FILES[target] or path.startswith(RELEASE_ARTIFACT_PREFIXES[target])
