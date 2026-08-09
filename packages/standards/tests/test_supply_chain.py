@@ -101,6 +101,16 @@ def test_publishers_have_distinct_identities_and_digest_binding() -> None:
     assert "test \"$actual_name\" = '@sarj/tsconfig'" in release
 
 
+def test_pypi_publishers_exclude_checksum_manifests() -> None:
+    release = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    assert release.count("path: verified-dist") == 4
+    assert release.count("verified-dist/SHA256SUMS") == 4
+    assert release.count("Stage verified distributions for publication") == 4
+    assert release.count("cp verified-dist/*.whl verified-dist/*.tar.gz publish-dist/") == 4
+    assert release.count("packages-dir: publish-dist/") == 4
+
+
 def test_npm_release_disables_install_scripts_and_keeps_publishers_dependency_free() -> None:
     release = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
     typescript_ci = (REPO_ROOT / ".github/workflows/typescript-ci.yml").read_text(encoding="utf-8")

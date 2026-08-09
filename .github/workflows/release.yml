@@ -216,13 +216,17 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: pypi-python
-          path: publish-dist
+          path: verified-dist
       - name: Verify build-bound artifact digest
         env:
           EXPECTED_SHA256: ${{ needs.build-python.outputs.artifact_sha256 }}
         run: |
-          echo "$EXPECTED_SHA256  publish-dist/SHA256SUMS" | sha256sum --check --strict
-          (cd publish-dist && sha256sum --check --strict SHA256SUMS)
+          echo "$EXPECTED_SHA256  verified-dist/SHA256SUMS" | sha256sum --check --strict
+          (cd verified-dist && sha256sum --check --strict SHA256SUMS)
+      - name: Stage verified distributions for publication
+        run: |
+          mkdir publish-dist
+          cp verified-dist/*.whl verified-dist/*.tar.gz publish-dist/
       - name: Publish wheel and sdist with PyPI trusted publishing and attestations
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
@@ -307,13 +311,17 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: pypi-sql
-          path: publish-dist
+          path: verified-dist
       - name: Verify build-bound artifact digest
         env:
           EXPECTED_SHA256: ${{ needs.build-sql.outputs.artifact_sha256 }}
         run: |
-          echo "$EXPECTED_SHA256  publish-dist/SHA256SUMS" | sha256sum --check --strict
-          (cd publish-dist && sha256sum --check --strict SHA256SUMS)
+          echo "$EXPECTED_SHA256  verified-dist/SHA256SUMS" | sha256sum --check --strict
+          (cd verified-dist && sha256sum --check --strict SHA256SUMS)
+      - name: Stage verified distributions for publication
+        run: |
+          mkdir publish-dist
+          cp verified-dist/*.whl verified-dist/*.tar.gz publish-dist/
       - name: Publish wheel and sdist with PyPI trusted publishing and attestations
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
@@ -398,13 +406,17 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: pypi-iac
-          path: publish-dist
+          path: verified-dist
       - name: Verify build-bound artifact digest
         env:
           EXPECTED_SHA256: ${{ needs.build-iac.outputs.artifact_sha256 }}
         run: |
-          echo "$EXPECTED_SHA256  publish-dist/SHA256SUMS" | sha256sum --check --strict
-          (cd publish-dist && sha256sum --check --strict SHA256SUMS)
+          echo "$EXPECTED_SHA256  verified-dist/SHA256SUMS" | sha256sum --check --strict
+          (cd verified-dist && sha256sum --check --strict SHA256SUMS)
+      - name: Stage verified distributions for publication
+        run: |
+          mkdir publish-dist
+          cp verified-dist/*.whl verified-dist/*.tar.gz publish-dist/
       - name: Publish wheel and sdist with PyPI trusted publishing and attestations
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
@@ -565,13 +577,17 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: pypi-standards
-          path: publish-dist
+          path: verified-dist
       - name: Verify build-bound artifact digest
         env:
           EXPECTED_SHA256: ${{ needs.build-standards.outputs.artifact_sha256 }}
         run: |
-          echo "$EXPECTED_SHA256  publish-dist/SHA256SUMS" | sha256sum --check --strict
-          (cd publish-dist && sha256sum --check --strict SHA256SUMS)
+          echo "$EXPECTED_SHA256  verified-dist/SHA256SUMS" | sha256sum --check --strict
+          (cd verified-dist && sha256sum --check --strict SHA256SUMS)
+      - name: Stage verified distributions for publication
+        run: |
+          mkdir publish-dist
+          cp verified-dist/*.whl verified-dist/*.tar.gz publish-dist/
       - name: Publish wheel and sdist with PyPI trusted publishing and attestations
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
