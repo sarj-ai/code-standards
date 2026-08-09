@@ -46,6 +46,13 @@ def _source(suffix: str) -> str:
     return f"{_PRELUDE}{suffix}"
 
 
+def _temporary_package(tmp_path: Path) -> Path:
+    (tmp_path / ".git").mkdir(exist_ok=True)
+    package = tmp_path / "app"
+    package.mkdir()
+    return package
+
+
 def test_complete_operation_is_clean():
     source = (
         _PRELUDE
@@ -123,6 +130,248 @@ async def me(user: Annotated[User, Depends(current_user)]) -> UserResponse:
     return UserResponse.model_validate(user)
 """)
     assert _check(source) == []
+
+
+def test_same_file_dependency_alias_is_resolved():
+    source = _source("""
+CurrentUser = Annotated[User, Depends(current_user)]
+Actor = CurrentUser
+
+@router.get("/me", summary="Read me", description="Returns the caller.", status_code=200)
+async def me(user: Actor) -> UserResponse:
+    return UserResponse.model_validate(user)
+""")
+    assert _check(source) == []
+
+
+def test_imported_relative_dependency_alias_is_resolved_from_source(tmp_path: Path):
+    package = _temporary_package(tmp_path)
+    (package / "dependencies.py").write_text(
+        "from typing import Annotated\nfrom fastapi import Depends\n"
+        "CurrentUser = Annotated[User, Depends(current_user)]\n",
+        encoding="utf-8",
+    )
+    source = _source("""
+from .dependencies import CurrentUser as Actor
+
+@router.get("/me", summary="Read me", description="Returns the caller.", status_code=200)
+async def me(user: Actor) -> UserResponse:
+    return UserResponse.model_validate(user)
+""")
+    assert _check(source, str(package / "api.py")) == []
+
+
+def test_imported_absolute_same_package_dependency_alias_is_resolved(tmp_path: Path):
+    package = _temporary_package(tmp_path)
+    (package / "dependencies.py").write_text(
+        "from typing_extensions import Annotated\nimport fastapi as fa\n"
+        "CurrentUser = Annotated[User, fa.Security(current_user)]\n",
+        encoding="utf-8",
+    )
+    source = _source("""
+import app.dependencies as dependencies
+
+@router.get("/me", summary="Read me", description="Returns the caller.", status_code=200)
+async def me(user: dependencies.CurrentUser) -> UserResponse:
+    return UserResponse.model_validate(user)
+""")
+    assert _check(source, str(package / "api.py")) == []
+
+
+def test_imported_dependency_reexport_is_resolved(tmp_path: Path):
+    package = _temporary_package(tmp_path)
+    (package / "dependencies.py").write_text(
+        "from typing import Annotated\nfrom fastapi import Depends\n"
+        "CurrentUser = Annotated[User, Depends(current_user)]\n",
+        encoding="utf-8",
+    )
+    (package / "contracts.py").write_text(
+        "from .dependencies import CurrentUser as Actor\n",
+        encoding="utf-8",
+    )
+    source = _source("""
+from .contracts import Actor
+
+@router.get("/me", summary="Read me", description="Returns the caller.", status_code=200)
+async def me(user: Actor) -> UserResponse:
+    return UserResponse.model_validate(user)
+""")
+    assert _check(source, str(package / "api.py")) == []
+
+
+@pytest.mark.parametrize(
+    "dependency_source",
+    [
+        "UserId = str\n",
+        "class User: ...\n",
+        (
+            "from typing import Annotated\nfrom fastapi import Depends\n"
+            "CurrentUser = Annotated[User, Depends(first), Depends(second)]\n"
+        ),
+        "CurrentUser =\n",
+        "CurrentUser = Other\nOther = CurrentUser\n",
+    ],
+    ids=("scalar-alias", "model", "multiple-markers", "malformed-module", "alias-cycle"),
+)
+def test_unproven_imported_annotations_remain_diagnostic(tmp_path: Path, dependency_source: str):
+    package = _temporary_package(tmp_path)
+    (package / "dependencies.py").write_text(dependency_source, encoding="utf-8")
+    imported = "UserId" if dependency_source.startswith("UserId") else "User"
+    if dependency_source.startswith(("from typing", "CurrentUser")):
+        imported = "CurrentUser"
+    source = _source(f"""
+from .dependencies import {imported}
+
+@router.get("/items", summary="Read items", description="Returns items.", status_code=200)
+async def items(value: {imported}) -> ItemResponse:
+    return ItemResponse()
+""")
+    diagnostics = _check(source, str(package / "api.py"))
+    assert any("explicit Annotated metadata" in diagnostic.message for diagnostic in diagnostics)
+
+
+@pytest.mark.parametrize("rebind_target", ["consumer", "dependency"])
+def test_rebound_imported_dependency_alias_remains_diagnostic(tmp_path: Path, rebind_target: str):
+    package = _temporary_package(tmp_path)
+    dependency_source = (
+        "from typing import Annotated\nfrom fastapi import Depends\n"
+        "CurrentUser = Annotated[User, Depends(current_user)]\n"
+    )
+    if rebind_target == "dependency":
+        dependency_source += "CurrentUser = User\n"
+    (package / "dependencies.py").write_text(dependency_source, encoding="utf-8")
+    consumer_rebind = "CurrentUser = User\n" if rebind_target == "consumer" else ""
+    source = _source(f"""
+from .dependencies import CurrentUser
+{consumer_rebind}
+@router.get("/me", summary="Read me", description="Returns the caller.", status_code=200)
+async def me(user: CurrentUser) -> UserResponse:
+    return UserResponse.model_validate(user)
+""")
+    diagnostics = _check(source, str(package / "api.py"))
+    assert any("explicit Annotated metadata" in diagnostic.message for diagnostic in diagnostics)
+
+
+def test_unresolved_third_party_alias_remains_diagnostic():
+    source = _source("""
+from external_package.dependencies import CurrentUser
+
+@router.get("/me", summary="Read me", description="Returns the caller.", status_code=200)
+async def me(user: CurrentUser) -> UserResponse:
+    return UserResponse.model_validate(user)
+""")
+    diagnostics = _check(source)
+    assert any("explicit Annotated metadata" in diagnostic.message for diagnostic in diagnostics)
+
+
+def test_quoted_imported_alias_remains_diagnostic_without_scope_guessing(tmp_path: Path):
+    package = _temporary_package(tmp_path)
+    (package / "dependencies.py").write_text(
+        "from typing import Annotated\nfrom fastapi import Depends\n"
+        "CurrentUser = Annotated[User, Depends(current_user)]\n",
+        encoding="utf-8",
+    )
+    source = _source("""
+from .dependencies import CurrentUser
+
+@router.get("/me", summary="Read me", description="Returns the caller.", status_code=200)
+async def me(user: "CurrentUser") -> UserResponse:
+    return UserResponse.model_validate(user)
+""")
+    diagnostics = _check(source, str(package / "api.py"))
+    assert any("explicit Annotated metadata" in diagnostic.message for diagnostic in diagnostics)
+
+
+def test_symlinked_dependency_module_remains_diagnostic(tmp_path: Path):
+    package = _temporary_package(tmp_path)
+    target = tmp_path / "real_dependencies.py"
+    target.write_text(
+        "from typing import Annotated\nfrom fastapi import Depends\n"
+        "CurrentUser = Annotated[User, Depends(current_user)]\n",
+        encoding="utf-8",
+    )
+    (package / "dependencies.py").symlink_to(target)
+    source = _source("""
+from .dependencies import CurrentUser
+
+@router.get("/me", summary="Read me", description="Returns the caller.", status_code=200)
+async def me(user: CurrentUser) -> UserResponse:
+    return UserResponse.model_validate(user)
+""")
+    diagnostics = _check(source, str(package / "api.py"))
+    assert any("explicit Annotated metadata" in diagnostic.message for diagnostic in diagnostics)
+
+
+def test_relative_import_cannot_escape_checkout(tmp_path: Path):
+    package = _temporary_package(tmp_path)
+    routes = package / "routes"
+    routes.mkdir()
+    outside = tmp_path.parent / "outside_dependencies.py"
+    outside.write_text(
+        "from typing import Annotated\nfrom fastapi import Depends\n"
+        "CurrentUser = Annotated[User, Depends(current_user)]\n",
+        encoding="utf-8",
+    )
+    source = _source("""
+from ....outside_dependencies import CurrentUser
+
+@router.get("/me", summary="Read me", description="Returns the caller.", status_code=200)
+async def me(user: CurrentUser) -> UserResponse:
+    return UserResponse.model_validate(user)
+""")
+    diagnostics = _check(source, str(routes / "api.py"))
+    assert any("explicit Annotated metadata" in diagnostic.message for diagnostic in diagnostics)
+
+
+def test_dependency_reexport_depth_is_bounded(tmp_path: Path):
+    package = _temporary_package(tmp_path)
+    for index in range(8):
+        (package / f"dependency_{index}.py").write_text(
+            f"from .dependency_{index + 1} import CurrentUser\n",
+            encoding="utf-8",
+        )
+    (package / "dependency_8.py").write_text(
+        "from typing import Annotated\nfrom fastapi import Depends\n"
+        "CurrentUser = Annotated[User, Depends(current_user)]\n",
+        encoding="utf-8",
+    )
+    source = _source("""
+from .dependency_0 import CurrentUser
+
+@router.get("/me", summary="Read me", description="Returns the caller.", status_code=200)
+async def me(user: CurrentUser) -> UserResponse:
+    return UserResponse.model_validate(user)
+""")
+    diagnostics = _check(source, str(package / "api.py"))
+    assert any("explicit Annotated metadata" in diagnostic.message for diagnostic in diagnostics)
+
+
+def test_imported_module_is_parsed_once_per_source_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    package = _temporary_package(tmp_path)
+    dependency = package / "dependencies.py"
+    dependency.write_text(
+        "from typing import Annotated\nfrom fastapi import Depends\n"
+        "CurrentUser = Annotated[User, Depends(current_user)]\n",
+        encoding="utf-8",
+    )
+    original_read_text = Path.read_text
+    reads: list[Path] = []
+
+    def counted_read_text(path: Path, *, encoding: str | None = None, errors: str | None = None) -> str:
+        if path == dependency:
+            reads.append(path)
+        return original_read_text(path, encoding=encoding, errors=errors)
+
+    monkeypatch.setattr(Path, "read_text", counted_read_text)
+    source = _source("""
+from .dependencies import CurrentUser
+
+@router.get("/me", summary="Read me", description="Returns the caller.", status_code=200)
+async def me(actor: CurrentUser, auditor: CurrentUser) -> UserResponse:
+    return UserResponse.model_validate(actor)
+""")
+    assert _check(source, str(package / "api.py")) == []
+    assert reads == [dependency]
 
 
 def test_ruff_owned_annotation_defects_do_not_duplicate():

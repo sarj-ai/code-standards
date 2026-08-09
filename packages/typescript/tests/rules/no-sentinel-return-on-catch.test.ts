@@ -318,6 +318,15 @@ ruleTester.run("no-sentinel-return-on-catch", rule, {
       options: [{ loggerNames: ["obs"] }],
     },
     {
+      name: "allows an explicit failure log when a bare catch has no binding",
+      code: `
+        function load() {
+          try { return read(); }
+          catch { logger.warn("load failed"); return null; }
+        }
+      `,
+    },
+    {
       name: "allows a safe constructor nested in a returned comparison",
       code: `
         function isHttpsUrl(s: string): boolean {
@@ -515,6 +524,19 @@ ruleTester.run("no-sentinel-return-on-catch", rule, {
         }
       `,
       options: [{ logFunctions: ["emit"] }],
+      errors: [{ messageId: "noSentinelReturn" }],
+    },
+    {
+      name: "requires a bound caught error to reach the logging call",
+      code: `
+        function load() {
+          try { return read(); }
+          catch (error) {
+            logger.warn("load failed");
+            return null;
+          }
+        }
+      `,
       errors: [{ messageId: "noSentinelReturn" }],
     },
     {

@@ -16,6 +16,7 @@ import {
   carriesValue,
   commentBody,
   isWall,
+  isTagsOnly,
   knownTokens,
   labelStems,
   novelWords,
@@ -149,7 +150,7 @@ export default createRule<Options, MessageIds>({
         claimed.add(comment);
         commented += 1;
         const body = commentBody(comment);
-        if (body.length === 0 || carriesValue(body)) continue;
+        if (body.length === 0 || carriesValue(body) || isTagsOnly(body)) continue;
         if (novelWords(body, knownTokens(sourceCode.getText(member))) <= options.maxNovelWords) {
           restated += 1;
         }

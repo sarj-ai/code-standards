@@ -558,13 +558,13 @@ export default createRule<Options, MessageIds>({
           return false;
         }
         if (matcher.isLoggingCall(current)) {
-          return true;
+          return caughtName === null || argsIncludeBinding(current.arguments, caughtName);
         }
         const name = calleeName(current.callee);
         return (
           name !== null &&
           REPORT_NAME_RE.test(name) &&
-          argsIncludeBinding(current.arguments, caughtName)
+          (caughtName === null || argsIncludeBinding(current.arguments, caughtName))
         );
       });
     }

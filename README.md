@@ -8,11 +8,11 @@ One deterministic quality gate for Sarj Python, TypeScript, SQL, IaC, and reposi
 
 | Package | Version | Registry | Description |
 | --- | --- | --- | --- |
-| [`sarj-standards`](packages/standards/) | `3.0.1` | PyPI | One deterministic quality gate for Sarj Python, TypeScript, SQL, IaC, and repository policy. |
-| [`sarj-python-lint`](packages/python/) | `0.58.0` | PyPI | Custom Python lint rules — AST-based, pre-commit-friendly, hypermodern defaults |
+| [`sarj-standards`](packages/standards/) | `3.1.0` | PyPI | One deterministic quality gate for Sarj Python, TypeScript, SQL, IaC, and repository policy. |
+| [`sarj-python-lint`](packages/python/) | `0.59.0` | PyPI | Custom Python lint rules — AST-based, pre-commit-friendly, hypermodern defaults |
 | [`sarj-sql-lint`](packages/sql/) | `0.10.0` | PyPI | Deterministic PostgreSQL migration rules for safe, repeatable schema changes. |
 | [`sarj-iac-lint`](packages/iac/) | `0.8.0` | PyPI | Custom Terraform / IaC lint rules — stdlib, pre-commit-friendly. |
-| [`@sarj/eslint-plugin`](packages/typescript/) | `13.0.0` | npm | Custom ESLint rules for hypermodern TypeScript / React / Next.js projects |
+| [`@sarj/eslint-plugin`](packages/typescript/) | `13.1.0` | npm | Custom ESLint rules for hypermodern TypeScript / React / Next.js projects |
 | [`@sarj/tsconfig`](packages/tsconfig/) | `0.1.5` | npm | Ultra-strict TypeScript configs for sarj-ai projects — strict.json + base.json |
 
 ## Command-line reference
@@ -43,7 +43,7 @@ One deterministic quality gate for Sarj Python, TypeScript, SQL, IaC, and reposi
 | `eslint:no-insecure-random-id` | Disallow using `Math.random()` to generate identifiers, tokens, or secrets; use `crypto.randomUUID()` or `crypto.getRandomValues(...)` instead. | `error` | `none` |
 | `eslint:no-json-stringify-error` | Disallow `JSON.stringify` on an Error value; it yields `{}` because `message`/`stack` are non-enumerable. | `error` | `none` |
 | `eslint:no-log-only-catch` | Disallow `catch` clauses that only log (or silently do nothing) and then swallow the error; rethrow or handle it instead. | `error` | `none` |
-| `eslint:no-long-comment` | Flag unusually large unstructured prose blocks in implementation code. | `error` | `none` |
+| `eslint:no-long-comment` | Flag unusually large unstructured JSDoc blocks in implementation code. | `error` | `none` |
 | `eslint:no-offset-pagination` | Disallow OFFSET pagination in embedded SQL; it is O(N) per page and drops or repeats rows under concurrent writes. Use a keyset cursor. | `error` | `none` |
 | `eslint:no-positional-tuple-return` | Disallow returning a multi-field tuple from an exported function; return a named object so call sites cannot mismatch slots. | `error` | `none` |
 | `eslint:no-raw-env` | Disallow direct `process.env` and `import.meta.env` reads outside validated boundaries. | `error` | `none` |

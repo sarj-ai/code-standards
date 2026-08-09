@@ -29,6 +29,18 @@ ruleTester.run("no-restated-jsdoc", rule, {
       name: "allows a return description with information absent from the signature",
       code: "/**\n * Formats the amount.\n * @returns The amount in minor units.\n */\nexport function formatAmount(amount: number) { return amount; }",
     },
+    {
+      name: "keeps novel information carried by an at-description tag",
+      code: "/**\n * Get the user by id.\n * @description Bypasses the read replica.\n */\nexport function getUserById(id: string) { return id; }",
+    },
+    {
+      name: "keeps an unknown parameter tag instead of treating it as signature repetition",
+      code: "/**\n * Get the user by id.\n * @param account Account.\n */\nexport function getUserById(id: string) { return id; }",
+    },
+    {
+      name: "defers fully typed param and return sections to no-typed-doc-sections",
+      code: "/** @param id The id. @returns The id. */\nexport function getUserById(id: string): string { return id; }",
+    },
     // The protected class is an exemption floor.
     { code: "/** Retries the request, because the gateway 502s under load. */\nexport function retryRequest(times: number) { return times; }" },
     { code: "/** Formats the amount (PLT-812). */\nexport function formatAmount(amount: number) { return amount; }" },
@@ -55,6 +67,22 @@ ruleTester.run("no-restated-jsdoc", rule, {
     {
       name: "offers deletion as a suggestion without applying an autofix",
       code: "/** Get the user by id. */\nexport function getUserById(id: string) { return id; }",
+      output: null,
+      errors: [
+        {
+          messageId: "restatesSignature",
+          suggestions: [
+            {
+              messageId: "deleteBlock",
+              output: "export function getUserById(id: string) { return id; }",
+            },
+          ],
+        },
+      ],
+    },
+    {
+      name: "counts a restated at-description tag as documentation text",
+      code: "/** @description Get the user by id. */\nexport function getUserById(id: string) { return id; }",
       output: null,
       errors: [
         {

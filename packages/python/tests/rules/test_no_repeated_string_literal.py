@@ -326,6 +326,50 @@ def c():
     assert len(_check(src)) == 2
 
 
+def test_flags_long_route_template_across_functions():
+    route = "/api/v2/organizations/{organization_id}/memberships"
+    assert len(route) >= 40
+    src = f"""\
+def get_memberships():
+    return "{route}"
+
+def replace_memberships():
+    return "{route}"
+"""
+    assert len(_check(src)) == 1
+
+
+def test_route_like_prose_with_whitespace_is_not_structured():
+    text = "/api routes are intentionally described here for callers"
+    assert len(text) >= 40
+    src = f"""\
+def first():
+    return "{text}"
+
+def second():
+    return "{text}"
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param("/" * 45, id="punctuation-divider"),
+        pytest.param("a" * 39, id="identifier-below-length-floor"),
+    ],
+)
+def test_unstructured_or_short_value_is_not_flagged(value: str):
+    src = f"""\
+def first():
+    return "{value}"
+
+def second():
+    return "{value}"
+"""
+    assert _check(src) == []
+
+
 def test_flags_lambda_bodies_in_two_functions():
     """Lambda does not push a scope; each lambda inherits its enclosing function, so two distinct enclosers still flag."""
     src = f'''
@@ -395,17 +439,6 @@ def a():
     return "{unstructured}"
 def b():
     return "{unstructured}"
-"""
-    assert _check(src) == []
-
-
-def test_identifier_below_length_floor_not_flagged():
-    ident39 = "a" * 39
-    src = f"""
-def a():
-    return "{ident39}"
-def b():
-    return "{ident39}"
 """
     assert _check(src) == []
 

@@ -86,6 +86,7 @@ ruleTester.run("no-comment-cruft", rule, {
     { code: "// returns true => proceed\nconst ok = true;" },
     // Prose `word = phrase` with no code-tail is not commented-out code.
     { code: "// count = number of items in the cart\nconst total = 1;" },
+    { code: "// const count = number of items in the cart\nconst total = 1;" },
     { code: "// delta = new value minus old value\nconst d = 1;" },
     {
       name: "preserves prose assignments with explanatory parentheticals",
@@ -227,6 +228,10 @@ ruleTester.run("no-comment-cruft", rule, {
     {
       name: "preserves protected JSDoc warnings",
       code: "class C {\n  /** DEPRECATED PUBLIC API */\n  a() { return 1; }\n}",
+    },
+    {
+      name: "preserves a JSDoc todo linked to an issue",
+      code: "/** @todo Replace this after PLT-812. */\nfunction charge() {}",
     },
     {
       name: "preserves numbered standards in JSDoc",
@@ -385,6 +390,21 @@ ruleTester.run("no-comment-cruft", rule, {
     {
       code: "const x = 1;\n\n// const a = 1;\nconst y = 2;",
       errors: [{ messageId: "commentedOutCode" }],
+    },
+    {
+      name: "flags a semicolonless commented-out declaration",
+      code: "const x = 1;\n// const stale = cachedValue\nconst y = 2;",
+      errors: [{ messageId: "commentedOutCode" }],
+    },
+    {
+      name: "flags an untracked JSDoc todo tag",
+      code: "/** @todo Replace this later. */\nfunction charge() {}",
+      errors: [{ messageId: "untrackedTodo" }],
+    },
+    {
+      name: "flags an untracked JSDoc fixme line",
+      code: "/**\n * Charge the account.\n * @fixme Replace this later.\n */\nfunction charge() {}",
+      errors: [{ messageId: "untrackedTodo" }],
     },
     // A restatement is corroborated against the code, so it fires even inside a
     // comment block — only the phrase-matching shapes need a standalone comment.

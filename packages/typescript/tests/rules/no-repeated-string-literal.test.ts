@@ -44,6 +44,20 @@ ruleTester.run("no-repeated-string-literal", rule, {
         "function c() { return 'the requested candidate could not be found here'; }",
       ].join("\n"),
     },
+    // A leading slash does not make prose into a route template.
+    {
+      code: [
+        "function a() { return '/api routes are intentionally described here for callers'; }",
+        "function b() { return '/api routes are intentionally described here for callers'; }",
+      ].join("\n"),
+    },
+    {
+      name: "punctuation dividers are not route templates",
+      code: [
+        `function a() { return "${"/".repeat(45)}"; }`,
+        `function b() { return "${"/".repeat(45)}"; }`,
+      ].join("\n"),
+    },
     // Lowercase SQL words in prose are not structured strings.
     {
       code: [
@@ -135,6 +149,22 @@ ruleTester.run("no-repeated-string-literal", rule, {
         'function Two() { return <div data-query="SELECT id, status, created_at FROM candidates" />; }',
       ].join("\n"),
     },
+    // Quoted property keys describe an object/class shape; replacing them with
+    // computed constants changes both readability and inferred types.
+    {
+      code: [
+        "function one() { return { 'company.internal.payment_gateway.constraint': 1 }; }",
+        "function two() { return { 'company.internal.payment_gateway.constraint': 2 }; }",
+        "class Three { 'company.internal.payment_gateway.constraint' = 3; }",
+      ].join("\n"),
+    },
+    {
+      filename: "/repo/src/generated/queries.ts",
+      code: [
+        `function one() { return \`SELECT ${COLUMNS} FROM candidates\`; }`,
+        `function two() { return \`SELECT ${COLUMNS} FROM candidates\`; }`,
+      ].join("\n"),
+    },
   ],
   invalid: [
     { name: "reports the documented repeated query", code: noRepeatedStringLiteralDocumentation.examples[1].files[0].source, errors: [{ messageId: "noRepeatedStringLiteral" }] },
@@ -187,6 +217,22 @@ ruleTester.run("no-repeated-string-literal", rule, {
       code: [
         "function a() { return 'company.internal.payment_gateway.constraint'; }",
         "function b() { return 'company.internal.payment_gateway.constraint'; }",
+      ].join("\n"),
+      errors: [{ messageId: "noRepeatedStringLiteral" }],
+    },
+    // Route templates are structured runtime values, not prose.
+    {
+      code: [
+        "function memberships() { return '/api/v2/organizations/:organizationId/memberships'; }",
+        "function replaceMemberships() { return '/api/v2/organizations/:organizationId/memberships'; }",
+      ].join("\n"),
+      errors: [{ messageId: "noRepeatedStringLiteral" }],
+    },
+    {
+      name: "recognizes Next.js bracket route templates",
+      code: [
+        "function one() { return '/api/v2/organizations/[organizationId]/memberships'; }",
+        "function two() { return '/api/v2/organizations/[organizationId]/memberships'; }",
       ].join("\n"),
       errors: [{ messageId: "noRepeatedStringLiteral" }],
     },

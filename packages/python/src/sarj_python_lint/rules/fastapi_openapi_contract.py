@@ -72,6 +72,7 @@ class FastapiOpenapiContract(Rule):
         limitations=(
             "Hidden routes, WebSocket handlers, tests, generated files, and unrelated decorators are excluded.",
             "Dynamic response mappings are accepted when their contents cannot be resolved statically.",
+            "Imported dependency aliases are followed only through unique, nonsymlinked relative or same-package modules inside the detected checkout; traversal is bounded and ambiguity remains diagnostic.",
         ),
         examples=(
             RuleExample(
@@ -113,7 +114,7 @@ class FastapiOpenapiContract(Rule):
         tree = parse_or_none(path, source)
         if tree is None:
             return []
-        index = FastapiIndex(tree)
+        index = FastapiIndex(tree, path=path)
         scopes = _function_scopes(tree)
         findings: list[_Finding] = []
         declared: list[tuple[int, Route]] = []
@@ -201,7 +202,7 @@ def _check_parameters(
     for parameter, default in _function_parameters(function):
         if parameter.arg in {"self", "cls"} or parameter.annotation is None:
             continue
-        if index.is_injection(parameter.annotation):
+        if index.is_injection(parameter.annotation) or index.is_imported_dependency_alias(parameter.annotation):
             continue
         parts = index.annotated_parts(parameter.annotation)
         if parts is None:
