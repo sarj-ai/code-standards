@@ -266,15 +266,13 @@ def _returns_tuple_literal(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool
     pending: list[ast.AST] = [*node.body]
     while pending:
         current = pending.pop()
-        if (
-            isinstance(current, ast.Return)
-            and isinstance(current.value, ast.Tuple)
-            and len(current.value.elts) >= _MIN_ELEMENTS
-        ):
-            return True
-        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
-            continue
-        pending.extend(children(current))
+        match current:
+            case ast.Return(value=ast.Tuple(elts=elements)) if len(elements) >= _MIN_ELEMENTS:
+                return True
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef() | ast.Lambda():
+                continue
+            case _:
+                pending.extend(children(current))
     return False
 
 
@@ -284,21 +282,24 @@ def _is_bare_positional_tuple(
     resolving: frozenset[str] = frozenset(),
 ) -> bool:
     """Report whether an annotation contains a fixed positional tuple with at least two elements."""
-    if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
-        try:
-            parsed = ast.parse(annotation.value, mode="eval").body
-        except SyntaxError:
+    match annotation:
+        case ast.Constant(value=str() as value):
+            try:
+                parsed = ast.parse(value, mode="eval").body
+            except SyntaxError:
+                return False
+            return _is_bare_positional_tuple(parsed, aliases, resolving)
+        case ast.Name(id=name) if aliases is not None and name not in resolving:
+            target = aliases.get(name)
+            return target is not None and _is_bare_positional_tuple(target, aliases, resolving | {name})
+        case ast.BinOp(left=left, op=ast.BitOr(), right=right):
+            return _is_bare_positional_tuple(left, aliases, resolving) or _is_bare_positional_tuple(
+                right, aliases, resolving
+            )
+        case ast.Subscript():
+            pass
+        case _:
             return False
-        return _is_bare_positional_tuple(parsed, aliases, resolving)
-    if isinstance(annotation, ast.Name) and aliases is not None and annotation.id not in resolving:
-        target = aliases.get(annotation.id)
-        return target is not None and _is_bare_positional_tuple(target, aliases, resolving | {annotation.id})
-    if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
-        return _is_bare_positional_tuple(annotation.left, aliases, resolving) or _is_bare_positional_tuple(
-            annotation.right, aliases, resolving
-        )
-    if not isinstance(annotation, ast.Subscript):
-        return False
     wrapper = _name_of(annotation.value)
     if wrapper in _SINGLE_RETURN_WRAPPERS:
         inner = (

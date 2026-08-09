@@ -6,9 +6,11 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from collections import Counter
 import copy
 from pathlib import PurePosixPath
 import re
+import textwrap
 import tokenize
 from typing import TYPE_CHECKING, ClassVar, override
 
@@ -45,6 +47,11 @@ _MIN_STATEMENTS = 3
 
 # Members of a normalized-body group before it counts as copy-paste.
 _MIN_GROUP = 2
+
+# Small source-checker pairs often read better as individually named contracts.
+# A longer uninterrupted run is a case table whose repeated shell obscures the cases.
+_MIN_EMBEDDED_SOURCE_GROUP = 5
+_MIN_REPEATED_SOURCE_OPERATION = 3
 
 # Pytest cannot parametrize unittest-style classes, including project-specific TestCase bases.
 _UNITTEST_BASE_RE = re.compile(r"Test(Case|s)?$")
@@ -94,6 +101,7 @@ class DuplicateTestBody(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Only substantial sibling test bodies in one non-generated module are compared.",
+            "A run of at least five two-statement embedded-source checker cases is compared because the source documents are natural parameter values.",
             "Meaningful docstring or comment differences keep tests distinct.",
             "Two-test groups with varying literals require corroborating behavior names; long scenario prose and distinct API resources remain separate contracts.",
         ),
@@ -204,6 +212,7 @@ class _Outline:
                 types.append(type(child).__name__)
                 statements += isinstance(child, ast.stmt)
         self.statements: int = statements
+        self.embedded_source_checker: bool = _is_embedded_source_checker(node)
         # Container, async-ness, signature and decorators are identity, not
         # body: each of them can make two identical bodies different tests.
         self.key: tuple[str, bool, tuple[str, ...], str, str] = (
@@ -225,6 +234,8 @@ class _Shape:
         canonical = _Canonicalizer(_bound_names(body))
         self.body: str = "".join(canonical.render(stmt) for stmt in body)
         self.literals: tuple[object, ...] = tuple(canonical.literals)
+        self.embedded_source_checker: bool = _is_embedded_source_checker(node)
+        self.embedded_source_signals: frozenset[str] = _embedded_source_signals(node)
         # Prose is identity, not shape: merging two tests forces one of the two
         # explanations to be deleted, and `ids=` cannot carry a paragraph.
         self.key: tuple[str, tuple[str, ...]] = (self.body, _documentation(node, comments))
@@ -328,12 +339,17 @@ def _is_pytest_raises(node: ast.expr) -> bool:
 
 def _duplicate_groups(tree: ast.Module, source: str) -> list[list[_Shape]]:
     """Group the module's tests by body shape, discarding the groups that are not copies."""
+    test_functions = _test_functions(tree)
+    positions = {
+        id(node): position
+        for position, (_, _, node) in enumerate(sorted(test_functions, key=lambda item: item[2].lineno))
+    }
     outlines: dict[tuple[str, bool, tuple[str, ...], str, str], list[_Outline]] = {}
-    for container, in_test_case, node in _test_functions(tree):
+    for container, in_test_case, node in test_functions:
         if in_test_case or _uses_unittest_api(node):
             continue
         outline = _Outline(node, container)
-        if outline.statements < _MIN_STATEMENTS:
+        if outline.statements < _MIN_STATEMENTS and not outline.embedded_source_checker:
             continue
         outlines.setdefault(outline.key, []).append(outline)
 
@@ -349,15 +365,40 @@ def _duplicate_groups(tree: ast.Module, source: str) -> list[list[_Shape]]:
         for outline in bucket:
             shape = _Shape(outline.node, comments)
             groups.setdefault(shape.key, []).append(shape)
-        found.extend(
-            members
-            for members in groups.values()
-            if len(members) >= _MIN_GROUP
-            and not _erases_a_fixture_document(members)
-            and not _erases_contract_identity(members)
-            and _has_enough_duplicate_evidence(members)
-        )
+        for members in groups.values():
+            candidates = (
+                _consecutive_embedded_source_groups(members, positions)
+                if all(member.embedded_source_checker for member in members)
+                else [members]
+            )
+            found.extend(
+                candidate
+                for candidate in candidates
+                if len(candidate) >= _MIN_GROUP
+                and not _erases_a_fixture_document(candidate)
+                and not _erases_contract_identity(candidate)
+                and _has_enough_duplicate_evidence(candidate)
+            )
     return found
+
+
+def _consecutive_embedded_source_groups(members: list[_Shape], positions: dict[int, int]) -> list[list[_Shape]]:
+    """Keep only long uninterrupted runs of embedded-source checker tests."""
+    ordered = sorted(members, key=lambda member: positions[id(member.node)])
+    runs: list[list[_Shape]] = []
+    for member in ordered:
+        if not runs or positions[id(member.node)] != positions[id(runs[-1][-1].node)] + 1:
+            runs.append([])
+        runs[-1].append(member)
+    return [run for run in runs if len(run) >= _MIN_EMBEDDED_SOURCE_GROUP and _shares_embedded_source_signal(run)]
+
+
+def _shares_embedded_source_signal(members: list[_Shape]) -> bool:
+    """Require every case to repeatedly exercise at least one common operation."""
+    common = members[0].embedded_source_signals
+    for member in members[1:]:
+        common = common.intersection(member.embedded_source_signals)
+    return bool(common)
 
 
 def _comment_lines(source: str) -> dict[int, str]:
@@ -375,6 +416,8 @@ def _documentation(node: ast.FunctionDef | ast.AsyncFunctionDef, comments: dict[
 
 def _erases_a_fixture_document(members: list[_Shape]) -> bool:
     """Report whether the group is held together by erasing a multi-line fixture."""
+    if all(member.embedded_source_checker for member in members):
+        return False
     # `zip(*...)` loses the element type through the star-unpack, so the columns
     # are materialised with an explicit annotation rather than inlined.
     columns: list[tuple[object, ...]] = list(zip(*(member.literals for member in members), strict=True))
@@ -518,6 +561,63 @@ def _body_without_docstring(node: ast.FunctionDef | ast.AsyncFunctionDef) -> lis
     if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
         return body[1:]
     return body
+
+
+def _is_embedded_source_checker(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Recognize a source fixture assigned only to one checker assertion."""
+    match _body_without_docstring(node):
+        case [
+            ast.Assign(
+                targets=[ast.Name(id=name)],
+                value=ast.Constant(value=str() as source),
+            ),
+            ast.Assert(test=assertion),
+        ] if "\n" in source:
+            loads = [
+                child
+                for child in _walk(assertion)
+                if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load) and child.id == name
+            ]
+            return len(loads) == 1 and any(
+                any(load is descendant for descendant in _walk(call))
+                for call in _walk(assertion)
+                if isinstance(call, ast.Call) and _is_checker_call(call)
+                for load in loads
+            )
+        case _:
+            return False
+
+
+def _is_checker_call(node: ast.Call) -> bool:
+    match node.func:
+        case ast.Name(id=name) | ast.Attribute(attr=name):
+            return name.lstrip("_").startswith(("check", "lint"))
+        case _:
+            return False
+
+
+def _embedded_source_signals(node: ast.FunctionDef | ast.AsyncFunctionDef) -> frozenset[str]:
+    """Find operations repeated enough inside an embedded Python fixture to tie cases together."""
+    match _body_without_docstring(node):
+        case [ast.Assign(value=ast.Constant(value=str() as source)), ast.Assert()]:
+            try:
+                tree = ast.parse(textwrap.dedent(source))
+            except SyntaxError:
+                return frozenset()
+            names = [
+                name for child in _walk(tree) if isinstance(child, ast.Call) for name in [_call_name(child)] if name
+            ]
+            return frozenset(name for name, count in Counter(names).items() if count >= _MIN_REPEATED_SOURCE_OPERATION)
+        case _:
+            return frozenset()
+
+
+def _call_name(node: ast.Call) -> str:
+    match node.func:
+        case ast.Name(id=name) | ast.Attribute(attr=name):
+            return name
+        case _:
+            return ""
 
 
 def _bound_names(body: list[ast.stmt]) -> frozenset[str]:

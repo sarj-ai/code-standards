@@ -341,6 +341,51 @@ class Status({base}):
     assert _check(src) == []
 
 
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "from enum import Enum as E\nclass Status(str, E):",
+        "from enum import Flag as E\nclass Status(str, E):",
+        "from enum import IntFlag as E\nclass Status(str, E):",
+        "from enum import ReprEnum as E\nclass Status(str, E):",
+        "import enum as e\nclass Status(str, e.Enum):",
+        "from enum import Enum\nE = Enum\nclass Status(str, E):",
+        "from enum import Enum\nE = Enum\nE2 = E\nclass Status(str, E2):",
+        "from enum import Enum\nclass Base(str, Enum):\n    pass\nclass Status(Base):",
+        "from company import StringEnum\nclass Status(StringEnum):",
+        "from company import StringEnum as ChoicesBase\nclass Status(ChoicesBase):",
+        "import company as shared\nclass Status(shared.BaseEnum):",
+    ],
+)
+def test_imported_aliased_and_inherited_enum_bases_are_skipped(declaration: str):
+    src = f"""{declaration}
+    choices = ["a", "b"]
+    state: str = "a"
+"""
+    assert _check(src) == []
+
+
+def test_nested_stdlib_enum_alias_is_skipped():
+    src = """
+def build():
+    from enum import Enum as E
+
+    class Status(str, E):
+        choices = ["a", "b"]
+        state: str = "a"
+"""
+    assert _check(src) == []
+
+
+def test_explicit_stub_file_is_skipped():
+    src = """
+class Record:
+    choices = ["a", "b"]
+    state: str = "a"
+"""
+    assert _check(src, "models.pyi") == []
+
+
 def test_field_corroborated_by_cluster_on_same_name():
     src = """
 from pydantic import BaseModel

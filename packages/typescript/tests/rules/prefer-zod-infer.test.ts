@@ -79,6 +79,47 @@ ruleTester.run("prefer-zod-infer", rule, {
     },
     `${IMPORT}const UserSchema = z.object({ id: z.string(), age: z.number() });
      interface User { id: string; age: string }`,
+    {
+      name: "does not equate different literal values",
+      code: `${IMPORT}const EventSchema = z.object({ kind: z.literal("click"), at: z.number() });
+             interface Event { kind: "hover"; at: number }`,
+    },
+    {
+      name: "does not equate different enum domains",
+      code: `${IMPORT}const JobSchema = z.object({ state: z.enum(["queued", "running"]), id: z.string() });
+             interface Job { state: "queued" | "failed"; id: string }`,
+    },
+    {
+      name: "does not trust dynamic enum domains",
+      code: `${IMPORT}const states = ["queued", "running"] as const;
+             const JobSchema = z.object({ state: z.enum(states), id: z.string() });
+             interface Job { state: "queued" | "running"; id: string }`,
+    },
+    {
+      name: "does not trust domains changed by outer Zod methods",
+      code: `${IMPORT}
+             const ArraySchema = z.object({ state: z.enum(["a", "b"]).array(), id: z.string() });
+             interface Array { state: "a" | "b"; id: string }
+             const UnionSchema = z.object({ state: z.enum(["a", "b"]).or(z.literal("c")), id: z.string() });
+             interface Union { state: "a" | "b"; id: string }
+             const PromiseSchema = z.object({ state: z.enum(["a", "b"]).promise(), id: z.string() });
+             interface Promise { state: "a" | "b"; id: string }
+             const ExcludedSchema = z.object({ state: z.enum(["a", "b"]).exclude(["b"]), id: z.string() });
+             interface Excluded { state: "a" | "b"; id: string }`,
+    },
+    {
+      name: "does not report repeated unions without an existing inferred alias",
+      code: `${IMPORT}const ZOpenAIServiceTier = z.enum(["default", "fast"]);
+             interface GlobalConfig { service_tier: "default" | "fast" }
+             interface SpeechConfig { service_tier: "default" | "fast" }`,
+    },
+    {
+      name: "does not erase nullability while looking for repeated domains",
+      code: `${IMPORT}const ZOpenAIServiceTier = z.enum(["default", "fast"]);
+             type OpenAIServiceTier = z.infer<typeof ZOpenAIServiceTier>;
+             interface GlobalConfig { service_tier: "default" | "fast" | null }
+             interface SpeechConfig { service_tier: "default" | "fast" | null }`,
+    },
     `${IMPORT}const UserSchema = z.object({ id: z.string() });
      interface User { readonly id: string }`,
     `${IMPORT}const EventSchema = z.object({ createdAt: z.date() });
@@ -201,6 +242,29 @@ ruleTester.run("prefer-zod-infer", rule, {
       code: `${IMPORT}const UserSchema = z.strictObject({ id: z.string(), active: z.boolean() });
              type User = { id: string; active: boolean };`,
       errors: [{ messageId: "handWrittenTwin" }],
+    },
+    {
+      name: "compares exact enum values independent of order",
+      code: `${IMPORT}const JobSchema = z.object({ state: z.enum(["queued", "running"]), id: z.string() });
+             interface Job { state: "running" | "queued"; id: string }`,
+      errors: [{ messageId: "handWrittenTwin" }],
+    },
+    {
+      name: "reuses an existing inferred enum type across repeated object fields",
+      code: `${IMPORT}export const ZOpenAIServiceTier = z.enum(["default", "fast"]);
+             export type OpenAIServiceTier = z.infer<typeof ZOpenAIServiceTier>;
+             export interface GlobalConfig { service_tier: "default" | "fast" }
+             export type SpeechConfig = { service_tier: "fast" | "default" };`,
+      errors: [
+        {
+          messageId: "repeatedEnumUnion",
+          data: {
+            propertyName: "service_tier",
+            schemaName: "ZOpenAIServiceTier",
+            typeName: "OpenAIServiceTier",
+          },
+        },
+      ],
     },
     {
       name: "reports a required output property supplied by a schema default",

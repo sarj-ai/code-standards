@@ -605,31 +605,32 @@ def _called_self_field(func: ast.expr) -> str | None:
 
 def _annotation_tail(annotation: ast.expr | None) -> str | None:
     """Reduce an annotation to the identifier that names its type."""
-    if annotation is None:
-        return None
-    if isinstance(annotation, ast.Constant):
-        if not isinstance(annotation.value, str):
+    match annotation:
+        case None:
             return None
-        try:
-            parsed = ast.parse(annotation.value, mode="eval")
-        except SyntaxError, ValueError:
+        case ast.Constant(value=str() as value):
+            try:
+                parsed = ast.parse(value, mode="eval")
+            except SyntaxError, ValueError:
+                return None
+            return _annotation_tail(parsed.body)
+        case ast.Constant():
             return None
-        return _annotation_tail(parsed.body)
-    if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
-        for side in (annotation.left, annotation.right):
-            tail = _annotation_tail(side)
-            if tail is not None and tail != "None":
-                return tail
-        return None
-    if isinstance(annotation, ast.Subscript):
-        outer = _dotted_tail(annotation.value)
-        if outer not in _TRANSPARENT_GENERICS:
-            return outer
-        inner = annotation.slice
-        if isinstance(inner, ast.Tuple):
-            inner = inner.elts[0] if inner.elts else inner
-        return _annotation_tail(inner)
-    return _dotted_tail(annotation)
+        case ast.BinOp(left=left, op=ast.BitOr(), right=right):
+            for side in (left, right):
+                tail = _annotation_tail(side)
+                if tail is not None and tail != "None":
+                    return tail
+            return None
+        case ast.Subscript(value=value, slice=inner):
+            outer = _dotted_tail(value)
+            if outer not in _TRANSPARENT_GENERICS:
+                return outer
+            if isinstance(inner, ast.Tuple):
+                inner = inner.elts[0] if inner.elts else inner
+            return _annotation_tail(inner)
+        case _:
+            return _dotted_tail(annotation)
 
 
 def _dotted_tail(node: ast.expr) -> str | None:

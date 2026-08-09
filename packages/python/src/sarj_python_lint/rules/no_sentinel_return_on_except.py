@@ -189,27 +189,23 @@ def _sentinel_is_declared_result(func: ast.FunctionDef | ast.AsyncFunctionDef, r
 
 def _sentinel_key(value: ast.expr | None) -> str | None:
     """Classify a return value as one of the recognized sentinel shapes."""
-    if value is None:
-        return "none"
-    if isinstance(value, ast.Constant):
-        if value.value is None:
+    match value:
+        case None | ast.Constant(value=None):
             return "none"
-        if value.value is False:
+        case ast.Constant(value=False):
             return "false"
-        return "empty-str" if isinstance(value.value, str) and not value.value else None
-    if isinstance(value, ast.List) and not value.elts:
-        return "empty-list"
-    if isinstance(value, ast.Tuple) and not value.elts:
-        return "empty-tuple"
-    if isinstance(value, ast.Dict) and not value.keys:
-        return "empty-dict"
-    if isinstance(value, ast.Set) and not value.elts:
-        return "empty-set"
-    if isinstance(value, ast.Call):
-        func = value.func
-        if isinstance(func, ast.Name) and func.id == "set" and not value.args and not value.keywords:
+        case ast.Constant(value=str() as text) if not text:
+            return "empty-str"
+        case ast.List(elts=[]):
+            return "empty-list"
+        case ast.Tuple(elts=[]):
+            return "empty-tuple"
+        case ast.Dict(keys=[]):
+            return "empty-dict"
+        case ast.Set(elts=[]) | ast.Call(func=ast.Name(id="set"), args=[], keywords=[]):
             return "empty-set"
-    return None
+        case _:
+            return None
 
 
 def _sentinel_matches_concrete_collection(

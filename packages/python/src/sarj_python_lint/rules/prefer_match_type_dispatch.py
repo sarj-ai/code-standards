@@ -55,6 +55,34 @@ _MATCHABLE_BUILTIN_TYPES = frozenset(
     }
 )
 
+# ``ast`` exposes a small set of real node classes with lowercase names. They
+# remain valid class-pattern heads even though arbitrary lowercase attributes
+# are conservatively excluded because they may hold runtime type tuples.
+_MATCHABLE_LOWERCASE_AST_TYPES = frozenset(
+    {
+        "alias",
+        "arg",
+        "arguments",
+        "boolop",
+        "cmpop",
+        "comprehension",
+        "excepthandler",
+        "expr",
+        "expr_context",
+        "keyword",
+        "match_case",
+        "mod",
+        "operator",
+        "pattern",
+        "slice",
+        "stmt",
+        "type_ignore",
+        "type_param",
+        "unaryop",
+        "withitem",
+    }
+)
+
 # A try body longer than this is a fault barrier, not a dispatch.
 _MAX_TRY_BODY_LINES = 20
 
@@ -138,25 +166,31 @@ def _is_bare_raise_body(try_node: ast.Try | ast.TryStar) -> bool:
 def _shadows_isinstance(tree: ast.Module) -> bool:
     """Take a whole-file false negative if the builtin cannot be proven."""
     for node in ast.walk(tree):
-        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store) and node.id == "isinstance":
-            return True
-        if isinstance(node, ast.arg) and node.arg == "isinstance":
-            return True
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name == "isinstance":
-            return True
-        if isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)) and node.name == "isinstance":
-            return True
-        if isinstance(node, (ast.Import, ast.ImportFrom)):
-            for alias in node.names:
-                bound_name = alias.asname or (
-                    alias.name if isinstance(node, ast.ImportFrom) else alias.name.split(".", 1)[0]
-                )
-                if bound_name == "isinstance":
-                    return True
+        match node:
+            case ast.Name(id="isinstance", ctx=ast.Store()) | ast.arg(arg="isinstance"):
+                return True
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef() if node.name == "isinstance":
+                return True
+            case ast.ExceptHandler() | ast.MatchAs() | ast.MatchStar() if node.name == "isinstance":
+                return True
+            case ast.ImportFrom(names=aliases):
+                bound_names = (alias.asname or alias.name for alias in aliases)
+            case ast.Import(names=aliases):
+                bound_names = (alias.asname or alias.name.split(".", 1)[0] for alias in aliases)
+            case _:
+                continue
+        for bound_name in bound_names:
+            if bound_name == "isinstance":
+                return True
     return False
 
 
-def _matchable_isinstance_test(test: ast.expr, runtime_tuple_aliases: frozenset[str]) -> str | None:
+def _matchable_isinstance_test(
+    test: ast.expr,
+    runtime_tuple_aliases: frozenset[str],
+    *,
+    ast_module_names: frozenset[str] = frozenset(),
+) -> str | None:
     """Extract the simple subject of an isinstance test convertible to patterns."""
     if not isinstance(test, ast.Call) or not isinstance(test.func, ast.Name) or test.func.id != "isinstance":
         return None
@@ -166,28 +200,59 @@ def _matchable_isinstance_test(test: ast.expr, runtime_tuple_aliases: frozenset[
     checked_types = test.args[1]
     if isinstance(checked_types, ast.Tuple):
         if not checked_types.elts or not all(
-            _matchable_class_reference(item, runtime_tuple_aliases) for item in checked_types.elts
+            _matchable_class_reference(
+                item,
+                runtime_tuple_aliases,
+                ast_module_names=ast_module_names,
+            )
+            for item in checked_types.elts
         ):
             return None
-    elif not _matchable_class_reference(checked_types, runtime_tuple_aliases):
+    elif not _matchable_class_reference(
+        checked_types,
+        runtime_tuple_aliases,
+        ast_module_names=ast_module_names,
+    ):
         return None
     return test.args[0].id
 
 
-def _matchable_class_reference(node: ast.expr, runtime_tuple_aliases: frozenset[str]) -> bool:
+def _matchable_class_reference(
+    node: ast.expr,
+    runtime_tuple_aliases: frozenset[str],
+    *,
+    ast_module_names: frozenset[str],
+) -> bool:
     """Report whether `node` can safely head a class pattern."""
-    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
-        return _matchable_class_reference(node.left, runtime_tuple_aliases) and _matchable_class_reference(
-            node.right, runtime_tuple_aliases
-        )
-    if isinstance(node, ast.Name):
-        if node.id in runtime_tuple_aliases:
+    match node:
+        case ast.BinOp(left=left, op=ast.BitOr(), right=right):
+            return _matchable_class_reference(
+                left,
+                runtime_tuple_aliases,
+                ast_module_names=ast_module_names,
+            ) and _matchable_class_reference(
+                right,
+                runtime_tuple_aliases,
+                ast_module_names=ast_module_names,
+            )
+        case ast.Name(id=name):
+            if name in runtime_tuple_aliases:
+                return False
+            return name in _MATCHABLE_BUILTIN_TYPES or (name[:1].isupper() and not name.isupper())
+        case ast.Attribute(value=value, attr=attribute):
+            lowercase_ast_type = (
+                isinstance(value, ast.Name)
+                and value.id in ast_module_names
+                and attribute in _MATCHABLE_LOWERCASE_AST_TYPES
+            )
+            matchable_leaf = (
+                attribute in _MATCHABLE_BUILTIN_TYPES
+                or (attribute[:1].isupper() and not attribute.isupper())
+                or lowercase_ast_type
+            )
+            return matchable_leaf and _is_dotted_name(value)
+        case _:
             return False
-        return node.id in _MATCHABLE_BUILTIN_TYPES or (node.id[:1].isupper() and not node.id.isupper())
-    if isinstance(node, ast.Attribute):
-        matchable_leaf = node.attr in _MATCHABLE_BUILTIN_TYPES or (node.attr[:1].isupper() and not node.attr.isupper())
-        return matchable_leaf and _is_dotted_name(node.value)
-    return False
 
 
 def _is_dotted_name(node: ast.expr) -> bool:
@@ -243,6 +308,7 @@ def _sequential_isinstance_dispatches(
 ) -> list[Diagnostic]:
     """Find exclusive type dispatch spelled as terminating sibling if statements."""
     findings: list[Diagnostic] = []
+    ast_module_names = _stdlib_ast_module_names(tree)
     for owner in ast.walk(tree):
         for statements in _statement_blocks(owner):
             if not statements:
@@ -253,7 +319,7 @@ def _sequential_isinstance_dispatches(
                 if not isinstance(first, ast.If) or first.orelse or not _body_terminates(first.body):
                     index += 1
                     continue
-                subject = _matchable_isinstance_test(first.test, runtime_tuple_aliases)
+                subject = _matchable_isinstance_dispatch(first.test, runtime_tuple_aliases, ast_module_names)
                 if subject is None:
                     index += 1
                     continue
@@ -263,7 +329,8 @@ def _sequential_isinstance_dispatches(
                     if (
                         not isinstance(candidate, ast.If)
                         or candidate.orelse
-                        or _matchable_isinstance_test(candidate.test, runtime_tuple_aliases) != subject
+                        or _matchable_isinstance_dispatch(candidate.test, runtime_tuple_aliases, ast_module_names)
+                        != subject
                         or not _body_terminates(candidate.body)
                     ):
                         break
@@ -286,6 +353,57 @@ def _sequential_isinstance_dispatches(
                     )
                 index = max(end, index + 1)
     return findings
+
+
+def _stdlib_ast_module_names(tree: ast.Module) -> frozenset[str]:
+    """Return unshadowed module-level bindings proven to refer to stdlib ``ast``."""
+    imported = {
+        alias.asname or "ast"
+        for statement in tree.body
+        if isinstance(statement, ast.Import)
+        for alias in statement.names
+        if alias.name == "ast"
+    }
+    if not imported:
+        return frozenset()
+
+    shadowed: set[str] = set()
+    for node in ast.walk(tree):
+        match node:
+            case ast.Name(ctx=ast.Store()):
+                shadowed.add(node.id)
+            case ast.arg():
+                shadowed.add(node.arg)
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
+                shadowed.add(node.name)
+            case ast.ExceptHandler() | ast.MatchAs() | ast.MatchStar() if node.name is not None:
+                shadowed.add(node.name)
+            case ast.ImportFrom(names=aliases):
+                shadowed.update(alias.asname or alias.name for alias in aliases)
+            case ast.Import(names=aliases):
+                shadowed.update(
+                    alias.asname or alias.name.split(".", maxsplit=1)[0] for alias in aliases if alias.name != "ast"
+                )
+            case _:
+                pass
+    return frozenset(imported - shadowed)
+
+
+def _matchable_isinstance_dispatch(
+    test: ast.expr,
+    runtime_tuple_aliases: frozenset[str],
+    ast_module_names: frozenset[str],
+) -> str | None:
+    """Extract a type-dispatch subject, preserving any trailing ``and`` terms as a case guard."""
+    match test:
+        case ast.BoolOp(op=ast.And(), values=[leading_isinstance, *_guard_terms]):
+            return _matchable_isinstance_test(
+                leading_isinstance,
+                runtime_tuple_aliases,
+                ast_module_names=ast_module_names,
+            )
+        case _:
+            return _matchable_isinstance_test(test, runtime_tuple_aliases)
 
 
 def _body_terminates(body: list[ast.stmt]) -> bool:

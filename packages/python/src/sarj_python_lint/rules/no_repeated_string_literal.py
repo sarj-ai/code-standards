@@ -210,15 +210,17 @@ def _canonical_constants(tree: ast.Module) -> dict[str, tuple[str, ...]]:
 
 def _annotation_exprs(node: ast.AST) -> list[ast.expr]:
     """Find the sub-expressions of `node` that are type annotations, not runtime values."""
-    if isinstance(node, ast.arg):
-        return [node.annotation] if node.annotation is not None else []
-    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-        return [node.returns] if node.returns is not None else []
-    if isinstance(node, ast.AnnAssign):
-        return [node.annotation]
-    if isinstance(node, ast.Subscript) and _is_annotated(node.value):
-        return [node.slice]
-    return []
+    match node:
+        case ast.arg(annotation=annotation) if annotation is not None:
+            return [annotation]
+        case ast.FunctionDef(returns=returns) | ast.AsyncFunctionDef(returns=returns) if returns is not None:
+            return [returns]
+        case ast.AnnAssign(annotation=annotation):
+            return [annotation]
+        case ast.Subscript(value=value, slice=annotation) if _is_annotated(value):
+            return [annotation]
+        case _:
+            return []
 
 
 def _is_annotated(expr: ast.expr) -> bool:

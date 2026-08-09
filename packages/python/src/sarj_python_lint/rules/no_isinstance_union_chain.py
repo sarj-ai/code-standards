@@ -267,21 +267,22 @@ def _stmt_terminates(stmt: ast.stmt) -> bool:
 def _shadows_isinstance(tree: ast.Module) -> bool:
     """Report whether this module can no longer prove the builtin binding."""
     for node in ast.walk(tree):
-        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store) and node.id == "isinstance":
-            return True
-        if isinstance(node, ast.arg) and node.arg == "isinstance":
-            return True
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name == "isinstance":
-            return True
-        if isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)) and node.name == "isinstance":
-            return True
-        if isinstance(node, (ast.Import, ast.ImportFrom)):
-            for alias in node.names:
-                bound = alias.asname or (
-                    alias.name if isinstance(node, ast.ImportFrom) else alias.name.split(".", 1)[0]
-                )
-                if bound == "isinstance":
-                    return True
+        match node:
+            case ast.Name(id="isinstance", ctx=ast.Store()) | ast.arg(arg="isinstance"):
+                return True
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef() if node.name == "isinstance":
+                return True
+            case ast.ExceptHandler() | ast.MatchAs() | ast.MatchStar() if node.name == "isinstance":
+                return True
+            case ast.ImportFrom(names=aliases):
+                bound_names = (alias.asname or alias.name for alias in aliases)
+            case ast.Import(names=aliases):
+                bound_names = (alias.asname or alias.name.split(".", 1)[0] for alias in aliases)
+            case _:
+                continue
+        for bound in bound_names:
+            if bound == "isinstance":
+                return True
     return False
 
 

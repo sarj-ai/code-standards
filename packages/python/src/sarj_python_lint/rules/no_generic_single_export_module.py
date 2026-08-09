@@ -173,22 +173,23 @@ def _dunder_all_matches_primary(tree: ast.Module, primary_name: str) -> bool:
 def _mentions_dunder_all(node: ast.AST) -> bool:
     """Conservatively detect explicit, dynamic, or string-stored export surfaces."""
     for child in ast.walk(node):
-        if isinstance(child, ast.Name) and child.id == "__all__":
-            return True
-        if isinstance(child, ast.alias) and (child.asname or child.name).split(".")[0] == "__all__":
-            return True
-        if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and child.name == "__all__":
-            return True
-        if isinstance(child, ast.arg) and child.arg == "__all__":
-            return True
-        if isinstance(child, ast.ExceptHandler) and child.name == "__all__":
-            return True
-        if isinstance(child, (ast.MatchAs, ast.MatchStar)) and child.name == "__all__":
-            return True
-        if isinstance(child, ast.MatchMapping) and child.rest == "__all__":
-            return True
-        if isinstance(child, (ast.Global, ast.Nonlocal)) and "__all__" in child.names:
-            return True
+        match child:
+            case ast.Name(id="__all__"):
+                return True
+            case ast.alias() if (child.asname or child.name).split(".")[0] == "__all__":
+                return True
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef() if child.name == "__all__":
+                return True
+            case ast.arg(arg="__all__") | ast.ExceptHandler(name="__all__"):
+                return True
+            case ast.MatchAs() | ast.MatchStar() if child.name == "__all__":
+                return True
+            case ast.MatchMapping(rest="__all__"):
+                return True
+            case ast.Global() | ast.Nonlocal() if "__all__" in child.names:
+                return True
+            case _:
+                pass
     return False
 
 
