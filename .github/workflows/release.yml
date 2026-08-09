@@ -20,6 +20,56 @@ permissions:
   contents: read
 
 jobs:
+  release-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
+      - name: Require successful checks for this exact revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          deadline=$((SECONDS + 2700))
+          for specification in 'repo-ci.yml|release-ready' 'private-refs.yml|private references'; do
+            IFS='|' read -r workflow expected_name <<< "$specification"
+            while (( SECONDS < deadline )); do
+              response="$(gh api --method GET \
+                "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow/runs" \
+                -f head_sha="$TARGET_SHA" -f event=push -f per_page=10)"
+              run="$(jq -c --arg sha "$TARGET_SHA" --arg repo "$GITHUB_REPOSITORY" \
+                '[.workflow_runs[] | select(.head_sha == $sha and .event == "push" and .head_repository.full_name == $repo)] | first // empty' \
+                <<< "$response")"
+              if [[ -z "$run" ]]; then
+                echo "waiting for $expected_name push run at $TARGET_SHA"
+                sleep 15
+                continue
+              fi
+              conclusion="$(jq -r '.conclusion // empty' <<< "$run")"
+              if [[ "$conclusion" == success ]]; then
+                echo "$expected_name succeeded for $TARGET_SHA"
+                break
+              fi
+              if [[ -n "$conclusion" ]]; then
+                echo "::error::$expected_name concluded $conclusion for $TARGET_SHA"
+                exit 1
+              fi
+              echo "waiting for $expected_name to complete at $TARGET_SHA"
+              sleep 15
+            done
+            if (( SECONDS >= deadline )); then
+              echo "::error::timed out waiting for $expected_name at $TARGET_SHA"
+              exit 1
+            fi
+          done
+
   # Detects changed versions and unpublished current versions. Existing `needs`
   # edges publish siblings before the Standards bundle that pins them.
   detect:
@@ -40,6 +90,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           version: '0.11.32'
@@ -50,7 +101,7 @@ jobs:
         run: uv run --project packages/standards --frozen sarj-standards --root . maintain release changes --before "$BEFORE" --after "$AFTER" --github-output "$GITHUB_OUTPUT"
 
   build-typescript:
-    needs: detect
+    needs: [detect, release-safety]
     if: needs.detect.outputs.typescript == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -138,7 +189,7 @@ jobs:
         run: npm publish "$RUNNER_TEMP/npm-artifacts/package.tgz" --access public --ignore-scripts
 
   build-python:
-    needs: detect
+    needs: [detect, release-safety]
     if: needs.detect.outputs.python == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -233,7 +284,7 @@ jobs:
           packages-dir: publish-dist/
 
   build-sql:
-    needs: detect
+    needs: [detect, release-safety]
     if: needs.detect.outputs.sql == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -328,7 +379,7 @@ jobs:
           packages-dir: publish-dist/
 
   build-iac:
-    needs: detect
+    needs: [detect, release-safety]
     if: needs.detect.outputs.iac == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -423,7 +474,7 @@ jobs:
           packages-dir: publish-dist/
 
   portability-standards:
-    needs: detect
+    needs: [detect, release-safety]
     if: needs.detect.outputs.standards == 'true'
     strategy:
       fail-fast: false
@@ -483,6 +534,7 @@ jobs:
   build-standards:
     needs:
       - detect
+      - release-safety
       - portability-standards
       - publish-typescript
       - publish-python
@@ -490,6 +542,7 @@ jobs:
       - publish-iac
     if: >-
       always() &&
+      needs.release-safety.result == 'success' &&
       (needs.publish-typescript.result == 'success' || needs.publish-typescript.result == 'skipped') &&
       (needs.publish-python.result == 'success' || needs.publish-python.result == 'skipped') &&
       (needs.publish-sql.result == 'success' || needs.publish-sql.result == 'skipped') &&
@@ -594,7 +647,7 @@ jobs:
           packages-dir: publish-dist/
 
   build-tsconfig:
-    needs: detect
+    needs: [detect, release-safety]
     if: needs.detect.outputs.tsconfig == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15

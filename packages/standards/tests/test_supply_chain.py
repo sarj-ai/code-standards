@@ -38,6 +38,20 @@ def test_every_setup_uv_step_pins_the_uv_binary() -> None:
     assert violations == []
 
 
+def test_read_only_workflows_do_not_persist_checkout_credentials() -> None:
+    workflows = sorted((REPO_ROOT / ".github/workflows").glob("*.yml"))
+    violations: list[str] = []
+    for workflow in workflows:
+        if workflow.name == "release-tags.yml":
+            continue
+        text = workflow.read_text(encoding="utf-8")
+        for match in re.finditer(r"(?m)^\s*- (?:name: [^\n]+\n\s+)?uses: actions/checkout@[^\n]+$", text):
+            following = text[match.end() :].split("\n      - ", 1)[0]
+            if "persist-credentials: false" not in following:
+                violations.append(f"checkout persists credentials in {workflow}: {match[0]}")
+    assert violations == []
+
+
 def test_every_job_starts_with_harden_runner() -> None:
     workflows = sorted((REPO_ROOT / ".github/workflows").glob("*.yml"))
     violations: list[str] = []
@@ -64,6 +78,21 @@ def test_release_has_no_manual_or_tag_publish_bypass() -> None:
     assert release.count("*.tar.gz") >= 8
     assert re.search(r"(?m)^\s+path: .*dist/\*\s*$", release) is None
     assert "pypa/gh-action-pypi-publish@" in release
+
+
+def test_release_waits_for_exact_revision_safety_checks() -> None:
+    release = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    assert "\n  release-safety:\n" in release
+    assert "actions: read" in release
+    assert "repo-ci.yml|release-ready" in release
+    assert "private-refs.yml|private references" in release
+    assert "head_sha == $sha" in release
+    assert "head_repository.full_name == $repo" in release
+    assert '.event == "push"' in release
+    assert "timed out waiting for $expected_name" in release
+    assert release.count("needs: [detect, release-safety]") == 6
+    assert "needs.release-safety.result == 'success'" in release
 
 
 def test_typescript_release_does_not_emit_source_maps() -> None:
@@ -146,17 +175,24 @@ def test_every_workflow_job_has_a_timeout() -> None:
 
 def test_release_ready_is_one_stable_required_gate() -> None:
     workflow = (REPO_ROOT / ".github/workflows/repo-ci.yml").read_text(encoding="utf-8")
+    tsconfig_workflow = (REPO_ROOT / ".github/workflows/tsconfig-ci.yml").read_text(encoding="utf-8")
+
     assert workflow.startswith("name: release-ready\n")
     assert "\n  release-ready:\n" in workflow
     assert "make verify" in workflow
     assert "make build" in workflow
+    assert "typescript@6.0.3" in workflow
+    assert '"extends": "@sarj/tsconfig/strict.json"' in workflow
+    assert "npm pack --dry-run ./packages/tsconfig" in workflow
+    assert "typescript@6.0.3" in tsconfig_workflow
+    assert "typescript@latest" not in tsconfig_workflow
 
 
 def test_documentation_deploy_is_revision_bound_and_self_verifying() -> None:
     workflow = (REPO_ROOT / ".github/workflows/docs.yml").read_text(encoding="utf-8")
 
     assert "branches: [main]" in workflow
-    assert "schedule:" in workflow
+    assert "schedule:" not in workflow
     assert "WORKERS_CI_COMMIT_SHA: ${{ github.sha }}" in workflow
     assert "Verify production credentials" in workflow
     assert "actions/upload-artifact@" in workflow
