@@ -4,6 +4,6 @@ import RuleTable from '../../components/RuleTable.astro';
 import { catalog } from '../../lib/catalog';
 ---
 
-<ReferencePage title="Rules" description={`${catalog.rules.length} rules.`}>
+<ReferencePage title="Rules" description={`${catalog.rules.length} rules.`} pagefind={false}>
   <RuleTable rules={catalog.rules} />
 </ReferencePage>
