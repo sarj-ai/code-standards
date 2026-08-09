@@ -41,6 +41,10 @@
   --ink: #f4f5f8;
 }
 
+.main-pane {
+  --sl-content-width: 100%;
+}
+
 html {
   scroll-behavior: smooth;
 }
@@ -265,7 +269,7 @@ starlight-menu-button button {
   border-bottom: 1px solid var(--rule);
 }
 
-.cli-setup h2 {
+.cli-setup h1 {
   margin-top: 0;
 }
 
@@ -388,6 +392,7 @@ starlight-menu-button button {
 }
 
 .rule-table {
+  display: table;
   width: 100%;
   min-width: 46rem;
   border-collapse: collapse;
@@ -703,6 +708,57 @@ starlight-menu-button button {
   font-size: 0.7rem;
 }
 
+.rule-pagination {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 3rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rule);
+}
+
+.rule-pagination a {
+  display: grid;
+  min-width: 0;
+  min-height: 64px;
+  align-content: center;
+  gap: 0.2rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--rule);
+  border-radius: 0.45rem;
+  color: var(--sl-color-white);
+  text-decoration: none;
+}
+
+.rule-pagination a:last-child {
+  text-align: right;
+}
+
+.rule-pagination a:hover,
+.rule-pagination a:focus-visible {
+  border-color: var(--sl-color-accent);
+}
+
+.rule-pagination span {
+  color: var(--sl-color-gray-2);
+  font-size: 0.75rem;
+}
+
+.rule-pagination strong {
+  overflow-wrap: anywhere;
+  font-family: var(--sl-font-mono);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.rule-pagination kbd {
+  padding: 0.05rem 0.28rem;
+  border: 1px solid var(--rule);
+  border-radius: 0.2rem;
+  background: var(--sl-color-gray-6);
+  font-family: var(--sl-font-mono);
+}
+
 .not-found {
   display: grid;
   min-height: 65vh;
@@ -853,6 +909,10 @@ starlight-menu-button button {
   .example__code > .expressive-code:last-child,
   .example__code > .expressive-code:last-child figure {
     flex: initial;
+  }
+
+  .rule-pagination {
+    grid-template-columns: 1fr;
   }
 
 }

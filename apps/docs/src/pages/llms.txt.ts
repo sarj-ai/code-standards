@@ -9,6 +9,7 @@ const lines = [
   '',
   '## Reference',
   '',
+  '- [About](https://code-standards.sarj.ai/)',
   '- [CLI](https://code-standards.sarj.ai/cli/)',
   '- [All rules](https://code-standards.sarj.ai/rules/)',
   '- [Catalog JSON](https://code-standards.sarj.ai/api/v1/catalog.json)',

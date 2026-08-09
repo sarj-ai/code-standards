@@ -1,13 +1,32 @@
 ---
+import { Code } from '@astrojs/starlight/components';
+
 import ReferencePage from '../components/ReferencePage.astro';
-import RuleTable from '../components/RuleTable.astro';
-import { catalog } from '../lib/catalog';
+import { cliReference } from '../lib/cli';
+
+const quickSetup = [
+  cliReference.launcher.install,
+  `${cliReference.program} setup`,
+  `${cliReference.program} doctor`,
+  `${cliReference.program} check`,
+].join('\n');
 ---
 
 <ReferencePage
-  title="Sarj Standards"
-  description={`${catalog.rules.length} code standards with tested examples.`}
+  title="About Sarj Standards"
+  description="Opinionated lint rules for concise, correct code."
   pagefind={false}
 >
-  <RuleTable rules={catalog.rules} />
+  <article class="about-page">
+    <h1>About</h1>
+    <p>Writing code is now much easier than reading and reviewing code.</p>
+    <p>This linter provides 100+ opinionated rules that automatically flag violations.</p>
+    <p>Developers spend less time in code review and write well-structured, correct code faster.</p>
+
+    <section>
+      <h2>Quick setup</h2>
+      <Code code={quickSetup} lang="bash" frame="terminal" wrap />
+      <p><a href="/cli/">CLI reference</a></p>
+    </section>
+  </article>
 </ReferencePage>
