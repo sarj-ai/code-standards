@@ -93,10 +93,10 @@ export const noTypedDocSectionsDocumentation = {
       public: true,
     },
     {
-      id: "repeated-typed-sections",
-      title: "Do not restate typed parameters and returns",
+      id: "restated-parameter",
+      title: "Do not expand a typed parameter's name",
       outcome: "match",
-      files: [{ path: "src/client.ts", source: "/** @param id external identifier\n * @returns the value\n */\nexport function fetchValue(id: string): number { return 1; }" }],
+      files: [{ path: "src/client.ts", source: "/** @param userId the user identifier */\nexport function fetchValue(userId: string): number { return 1; }" }],
       focusPath: "src/client.ts",
       expectedCount: 1,
       public: true,

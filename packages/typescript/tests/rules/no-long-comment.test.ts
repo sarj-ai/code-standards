@@ -12,7 +12,7 @@ const UNPUNCTUATED_COMMENT_WALL = `/** ${Array.from({ length: 120 }, () => "cont
 
 new RuleTester().run("no-long-comment", rule, {
   valid: [
-    noLongCommentDocumentation.examples[0].files[0].source,
+    "// The cache is process local.\nconst cache = new Map();",
     "// First fact. Second fact.\nconst value = 1;",
     "/** One. Two. Three. Four. Five. Six. Seven. */\nconst value = 1;",
     "// First fact. Second fact. Third fact.\nconst value = 1;",
@@ -47,18 +47,7 @@ new RuleTester().run("no-long-comment", rule, {
     "// The cache is process local. Parallel clients need separate keys. This avoids a cross-request race.\nconst key = path;",
     "// First fact.\n// - One supported mode.\n// - Another supported mode.\nconst modes = [];",
     "/* One. Two. Three. Four. Five. Six. Seven. Eight. */\nrun();",
-    [
-      "/**",
-      " * Shared composer.",
-      " *",
-      " * It serves the room. It serves task comments. It stays visually calm. It accepts attachments.",
-      " *",
-      " * The `tone` prop supplies task styling. The `leadingTools` prop supplies controls.",
-      " * The parent owns uploads. The component owns focus.",
-      " */",
-      "",
-      "export const Composer = forwardRef(function Composer() { return null; });",
-    ].join("\n"),
+    noLongCommentDocumentation.examples[0].files[0].source,
     "/** One. Two. Three. Four. Five. Six. Seven. The `traceparent` value is forwarded. */\nconst value = 1;",
     "/** One. Two. Three. Four. Five. Six. Seven. The deadline is 10 ms. */\nconst value = 1;",
     [
@@ -71,24 +60,14 @@ new RuleTester().run("no-long-comment", rule, {
     },
   ],
   invalid: [
-    { name: "reports the documented prose wall", code: noLongCommentDocumentation.examples[1].files[0].source, errors: [{ messageId: "tooLong" }] },
+    { name: "reports the synthetic eight-sentence boundary", code: "/** One. Two. Three. Four. Five. Six. Seven. Eight. */\nconst chart = createChart();", errors: [{ messageId: "tooLong" }] },
     {
       name: "unstructured JSDoc cannot evade the budget by omitting punctuation",
       code: UNPUNCTUATED_COMMENT_WALL,
       errors: [{ messageId: "tooLong" }],
     },
     {
-      code: `/**
- * The ports chart shows arrivals and departures across the network.
- * It was originally a line chart, but the lines crossed too often.
- * Bars make adjacent ports easier to compare at a glance.
- * The axis starts at zero so visual differences stay proportional.
- * A single series uses the site navy for brand consistency.
- * Empty ports use a neutral ink so missing traffic remains visible.
- * Tooltip values repeat the units shown on the vertical axis.
- * The chart intentionally keeps labels horizontal on wide screens.
- */
-export function PortBars() { return null; }`,
+      code: noLongCommentDocumentation.examples[1].files[0].source,
       errors: [{ messageId: "tooLong" }],
     },
     {

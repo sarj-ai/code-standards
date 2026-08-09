@@ -420,6 +420,18 @@ def test_workflow_action_rule_has_exact_local_suppression(tmp_path: Path) -> Non
     assert [(finding.code, finding.line) for finding in findings] == [("SARJ303", 4)]
 
 
+def test_workflow_action_rule_reports_each_mutable_use(tmp_path: Path) -> None:
+    workflow = tmp_path / ".github/workflows/ci.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text(
+        "steps:\n  - uses: owner/first@main\n  - uses: owner/second@v2\n",
+        encoding="utf-8",
+    )
+
+    findings = textlint.check_paths([str(workflow)], root=tmp_path)
+    assert [(finding.code, finding.line) for finding in findings] == [("SARJ303", 2), ("SARJ303", 3)]
+
+
 def test_new_workflow_action_rule_warns_without_blocking(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:

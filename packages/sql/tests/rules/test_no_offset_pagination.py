@@ -96,3 +96,9 @@ NON_PAGINATION = {
 def test_offset_without_a_value_token_is_not_pagination(source: str):
     """A migration adding an `offset` column used to be told to use cursor pagination."""
     assert _check(source) == []
+
+
+def test_reports_each_offset_clause() -> None:
+    source = "SELECT id FROM a LIMIT 10 OFFSET 20;\nSELECT id FROM b LIMIT 10 OFFSET 30;"
+
+    assert [finding.line for finding in _check(source)] == [1, 2]
