@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 
 import { sourceRevision } from './build';
 
-export const ENGINES = ['eslint', 'iac', 'python', 'sql', 'text'] as const;
+export const ENGINES = ['python', 'eslint', 'iac', 'sql', 'text'] as const;
 export type Engine = (typeof ENGINES)[number];
 export type DefaultLevel = 'error' | 'off' | 'warning';
 export type Autofix = 'none' | 'safe' | 'suggestion';
