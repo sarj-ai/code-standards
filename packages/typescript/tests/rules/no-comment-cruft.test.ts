@@ -55,7 +55,7 @@ ruleTester.run("no-comment-cruft", rule, {
       filename: "wizard.tsx",
     },
     // Prose "why" comment is the legitimate use.
-    { code: noCommentCruftDocumentation.examples[0].files[0].source },
+    { code: "// retry because the upstream API is flaky\nconst x = retry();" },
     // Trailing explanatory comment.
     { code: "const x = compute(); // cached when warm" },
     { code: "const placeholder = 'implementation omitted';" },
@@ -147,7 +147,7 @@ ruleTester.run("no-comment-cruft", rule, {
     },
     // --- "restates the next line": the guards that keep it conservative. ---
     // One unmatched word means the comment carries something the code does not.
-    { code: "// increment the counter for PLT-812\ncounter += 1;" },
+    { code: noCommentCruftDocumentation.examples[0].files[0].source },
     { code: "// guard the race described in PLT-812\nlocked = true;" },
     // A why-comment is longer than narration and does not corroborate anyway.
     {
@@ -304,7 +304,7 @@ ruleTester.run("no-comment-cruft", rule, {
     },
     // --- region marker shapes still fire ---
     {
-      code: noCommentCruftDocumentation.examples[1].files[0].source,
+      code: "const x = 1;\n// region helpers\nconst y = 2;",
       errors: [{ messageId: "sectionBanner" }],
     },
     {
@@ -534,7 +534,7 @@ ruleTester.run("no-comment-cruft", rule, {
     },
     // --- "restates the next line" — the canonical redundant comment. ---
     {
-      code: "// increment the counter\ncounter += 1;",
+      code: noCommentCruftDocumentation.examples[1].files[0].source,
       errors: [{ messageId: "redundantNarration" }],
     },
     {

@@ -90,3 +90,9 @@ def test_skips_enum_word_inside_string_literal():
 def test_non_postgres_enum_syntax_does_not_receive_postgres_advice(dialect: str) -> None:
     source = f"-- dialect: {dialect}\nCREATE TYPE status AS ENUM ('open', 'closed');"
     assert _check(source) == []
+
+
+def test_reports_each_postgres_enum_operation() -> None:
+    source = "CREATE TYPE status AS ENUM ('open');\nALTER TYPE status ADD VALUE 'closed';"
+
+    assert [finding.line for finding in _check(source)] == [1, 2]

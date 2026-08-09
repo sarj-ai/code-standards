@@ -111,3 +111,9 @@ def test_flags_alter_column_json_type() -> None:
 )
 def test_query_casts_may_target_external_or_legacy_json_columns(source: str) -> None:
     assert _check(source) == []
+
+
+def test_reports_each_json_column_type() -> None:
+    source = "CREATE TABLE document (metadata JSON, settings JSON);"
+
+    assert [finding.col for finding in _check(source)] == [33, 48]

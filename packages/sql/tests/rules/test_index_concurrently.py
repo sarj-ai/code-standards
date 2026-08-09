@@ -171,3 +171,9 @@ def test_flags_plain_create_index_with_no_dialect_marker():
     """The boundary: the dialect guard must not widen to unmarked Postgres SQL."""
     src = 'CREATE INDEX idx_users_email ON "users" (email);'
     assert len(_check(src)) == 1
+
+
+def test_reports_each_blocking_index_build() -> None:
+    source = 'CREATE INDEX idx_users_email ON "users" (email);\nCREATE INDEX idx_users_name ON "users" (name);\n'
+
+    assert [finding.line for finding in _check(source)] == [1, 2]

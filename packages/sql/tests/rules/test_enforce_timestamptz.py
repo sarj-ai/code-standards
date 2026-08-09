@@ -124,6 +124,12 @@ def test_flags_alter_column_type_change_to_naive_timestamp():
     assert len(_check("ALTER TABLE t ALTER COLUMN created_at TYPE TIMESTAMP;")) == 1
 
 
+def test_reports_each_naive_timestamp_column() -> None:
+    source = "CREATE TABLE event (created_at TIMESTAMP, updated_at TIMESTAMP);"
+
+    assert [finding.col for finding in _check(source)] == [32, 54]
+
+
 @pytest.mark.parametrize("dialect", ["mysql", "sqlite"])
 def test_non_postgres_timestamp_types_do_not_receive_postgres_advice(dialect: str) -> None:
     source = f"-- dialect: {dialect}\nCREATE TABLE event (created_at TIMESTAMP);"

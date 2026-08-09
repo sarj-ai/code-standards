@@ -24,8 +24,51 @@ export const noLongCommentDocumentation = {
   category: "maintainability",
   limitations: ["Only JSDoc blocks are inspected; structured API docs, tests, scripts, generated files, and versioned dependencies are excluded."],
   examples: [
-    { id: "local-fact", title: "Keep a concise local fact", outcome: "no-match", files: [{ path: "src/cache.ts", source: "// The cache is process local.\nconst cache = new Map();" }], focusPath: "src/cache.ts", expectedCount: 0, public: true },
-    { id: "prose-wall", title: "Avoid an unstructured prose wall", outcome: "match", files: [{ path: "src/chart.ts", source: "/** One. Two. Three. Four. Five. Six. Seven. Eight. */\nconst chart = createChart();" }], focusPath: "src/chart.ts", expectedCount: 1, public: true },
+    {
+      id: "structured-jsdoc",
+      title: "Paragraphs separate a component's durable constraints",
+      outcome: "no-match",
+      files: [{
+        path: "src/composer.ts",
+        source: [
+          "/**",
+          " * Shared composer.",
+          " *",
+          " * It serves the room. It serves task comments. It stays visually calm. It accepts attachments.",
+          " *",
+          " * The `tone` prop supplies task styling. The `leadingTools` prop supplies controls.",
+          " * The parent owns uploads. The component owns focus.",
+          " */",
+          "",
+          "export const Composer = forwardRef(function Composer() { return null; });",
+        ].join("\n"),
+      }],
+      focusPath: "src/composer.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "prose-wall",
+      title: "One paragraph narrates a chart's design history",
+      outcome: "match",
+      files: [{
+        path: "src/chart.ts",
+        source: `/**
+ * The ports chart shows arrivals and departures across the network.
+ * It was originally a line chart, but the lines crossed too often.
+ * Bars make adjacent ports easier to compare at a glance.
+ * The axis starts at zero so visual differences stay proportional.
+ * A single series uses the site navy for brand consistency.
+ * Empty ports use a neutral ink so missing traffic remains visible.
+ * Tooltip values repeat the units shown on the vertical axis.
+ * The chart intentionally keeps labels horizontal on wide screens.
+ */
+export function PortBars() { return null; }`,
+      }],
+      focusPath: "src/chart.ts",
+      expectedCount: 1,
+      public: true,
+    },
   ],
 } as const satisfies RuleDocumentation;
 

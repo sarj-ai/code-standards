@@ -81,7 +81,7 @@ new RuleTester().run("no-typed-doc-sections", rule, {
     },
     {
       name: "flags a parameter description that only expands its name",
-      code: "/** @param userId the user identifier */\nexport function fetchValue(userId: string): number { return 1; }",
+      code: noTypedDocSectionsDocumentation.examples[1].files[0].source,
       errors: [{ messageId: "typedSection" }],
     },
     {
@@ -95,7 +95,7 @@ new RuleTester().run("no-typed-doc-sections", rule, {
       errors: [{ messageId: "typedSection" }],
     },
     {
-      code: noTypedDocSectionsDocumentation.examples[1].files[0].source,
+      code: "/** @param id external identifier\n * @returns the value\n */\nexport function fetchValue(id: string): number { return 1; }",
       errors: [{ messageId: "typedSection" }],
     },
     {
