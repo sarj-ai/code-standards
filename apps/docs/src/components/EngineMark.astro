@@ -1,0 +1,14 @@
+---
+import { engineLabel, type Engine } from '../lib/catalog';
+
+interface Props {
+  engine: Engine;
+}
+
+const { engine } = Astro.props;
+const shortLabel = { eslint: 'TS', iac: 'IaC', python: 'Py', sql: 'SQL', text: 'TXT' }[engine];
+---
+
+<span class:list={['engine-mark', `engine-mark--${engine}`]} role="img" aria-label={engineLabel(engine)} title={engineLabel(engine)}>
+  {shortLabel}
+</span>

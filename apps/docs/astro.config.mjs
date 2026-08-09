@@ -43,8 +43,7 @@ export default defineConfig({
       sidebar: [
         { label: 'Overview', link: '/' },
         { label: 'CLI', link: '/cli/' },
-        { label: 'Rules', link: '/rules/' },
-        { label: 'Catalog API', link: '/api/' },
+        { label: 'Rules', link: '/' },
       ],
       social: [
         { icon: 'github', label: 'GitHub', href: 'https://github.com/sarj-ai/standards' },

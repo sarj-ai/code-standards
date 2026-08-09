@@ -1,48 +1,92 @@
 ---
-import { engineLabel, ruleHref, type Rule } from '../lib/catalog';
+import EngineMark from './EngineMark.astro';
+import { ruleHref, type Rule } from '../lib/catalog';
 
 interface Props {
   rules: Rule[];
 }
 
 const { rules } = Astro.props;
-const engines = [...new Set(rules.map((rule) => rule.engine))];
 const categories = [...new Set(rules.map((rule) => rule.category))].sort();
-const levels = [...new Set(rules.map((rule) => rule.defaultLevel))].sort();
-const showEngine = engines.length > 1;
+const languages = [...new Set(rules.flatMap((rule) => rule.languages))].sort();
 const showCategory = categories.length > 1;
-const showLevel = levels.length > 1;
+const showFilters = categories.length > 1 || languages.length > 1;
 ---
 
 <section class="rule-directory">
-  <p class="directory-status">
-    <strong>{rules.length}</strong> {rules.length === 1 ? 'rule' : 'rules'}
-  </p>
+  <div class="directory-toolbar">
+    <p class="directory-status" aria-live="polite">
+      <strong data-rule-count>{rules.length}</strong> <span data-rule-noun>{rules.length === 1 ? 'rule' : 'rules'}</span>
+    </p>
+    {showFilters && <div class="directory-filters" aria-label="Filter rules">
+      {categories.length > 1 && <label>Category<select data-filter-category><option value="">All</option>{categories.map((category) => <option value={category}>{category}</option>)}</select></label>}
+      {languages.length > 1 && <label>Language<select data-filter-language><option value="">All</option>{languages.map((language) => <option value={language}>{language}</option>)}</select></label>}
+      <button type="button" data-filter-clear hidden>Clear</button>
+    </div>}
+  </div>
 
   <div class="rule-table-wrap">
     <table class="rule-table">
       <thead>
         <tr>
           <th scope="col">Rule</th>
-          {showEngine && <th scope="col">Engine</th>}
           {showCategory && <th scope="col">Category</th>}
-          {showLevel && <th scope="col">Default</th>}
         </tr>
       </thead>
       <tbody>
         {rules.map((rule) => (
-          <tr
-          >
+          <tr data-category={rule.category} data-languages={rule.languages.join(' ')}>
             <th scope="row">
-              <a href={ruleHref(rule)}><code>{rule.id}</code></a>
+              <a href={ruleHref(rule)}><EngineMark engine={rule.engine} /><code>{rule.id}</code></a>
               <span>{rule.summary}</span>
             </th>
-            {showEngine && <td data-label="Engine">{engineLabel(rule.engine)}</td>}
             {showCategory && <td data-label="Category"><span class="tag">{rule.category}</span></td>}
-            {showLevel && <td data-label="Default"><span class:list={['level', `level--${rule.defaultLevel}`]}>{rule.defaultLevel}</span></td>}
           </tr>
         ))}
       </tbody>
     </table>
   </div>
 </section>
+
+{showFilters && <script>
+  for (const directory of document.querySelectorAll('.rule-directory')) {
+    if (!(directory instanceof HTMLElement) || directory.dataset.filtersReady === 'true') continue;
+    directory.dataset.filtersReady = 'true';
+    const category = directory.querySelector('[data-filter-category]');
+    const language = directory.querySelector('[data-filter-language]');
+    const clear = directory.querySelector('[data-filter-clear]');
+    const rows = [...directory.querySelectorAll('tbody tr')];
+    const count = directory.querySelector('[data-rule-count]');
+    const noun = directory.querySelector('[data-rule-noun]');
+    const params = new URLSearchParams(location.search);
+    if (category instanceof HTMLSelectElement) category.value = params.get('category') ?? '';
+    if (language instanceof HTMLSelectElement) language.value = params.get('language') ?? '';
+    const apply = () => {
+      const selectedCategory = category instanceof HTMLSelectElement ? category.value : '';
+      const selectedLanguage = language instanceof HTMLSelectElement ? language.value : '';
+      let visible = 0;
+      for (const row of rows) {
+        if (!(row instanceof HTMLTableRowElement)) continue;
+        const matchesCategory = !selectedCategory || row.dataset.category === selectedCategory;
+        const matchesLanguage = !selectedLanguage || (row.dataset.languages?.split(' ').includes(selectedLanguage) ?? false);
+        row.hidden = !(matchesCategory && matchesLanguage);
+        if (!row.hidden) visible += 1;
+      }
+      if (count) count.textContent = String(visible);
+      if (noun) noun.textContent = visible === 1 ? 'rule' : 'rules';
+      if (clear instanceof HTMLButtonElement) clear.hidden = !(selectedCategory || selectedLanguage);
+      const next = new URL(location.href);
+      selectedCategory ? next.searchParams.set('category', selectedCategory) : next.searchParams.delete('category');
+      selectedLanguage ? next.searchParams.set('language', selectedLanguage) : next.searchParams.delete('language');
+      history.replaceState(null, '', next);
+    };
+    category?.addEventListener('change', apply);
+    language?.addEventListener('change', apply);
+    clear?.addEventListener('click', () => {
+      if (category instanceof HTMLSelectElement) category.value = '';
+      if (language instanceof HTMLSelectElement) language.value = '';
+      apply();
+    });
+    apply();
+  }
+</script>}

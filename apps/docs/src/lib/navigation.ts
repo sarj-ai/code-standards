@@ -6,7 +6,7 @@ export type Sidebar = NonNullable<StarlightUserConfig['sidebar']>;
 
 export const referenceSidebar = Object.freeze([
   { label: 'Rules', link: '/' },
-  { label: 'Use Standards', link: '/cli/' },
+  { label: 'CLI', link: '/cli/' },
   {
     label: `Languages · ${String(catalog.rules.length)}`,
     items: [
@@ -16,5 +16,4 @@ export const referenceSidebar = Object.freeze([
       })),
     ],
   },
-  { label: 'Catalog API', link: '/api/' },
 ] satisfies Sidebar);
