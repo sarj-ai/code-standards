@@ -392,7 +392,7 @@ starlight-menu-button button {
   font-weight: 400;
 }
 
-.rule-table tbody th span {
+.rule-table tbody th .rule-summary {
   display: block;
 }
 
@@ -444,7 +444,7 @@ starlight-menu-button button {
   text-shadow: 0 1px 1px #17202a;
 }
 
-.rule-table tbody th span {
+.rule-table tbody th .rule-summary {
   margin-top: 0.35rem;
   color: var(--sl-color-gray-2);
   font-size: 0.84rem;
@@ -765,7 +765,7 @@ starlight-menu-button button {
     overflow: hidden;
   }
 
-  .rule-table tbody th span {
+  .rule-table tbody th .rule-summary {
     white-space: normal;
     overflow-wrap: anywhere;
   }
