@@ -767,6 +767,7 @@ starlight-menu-button button {
   display: flex;
   flex: 0 0 auto;
   gap: 0.35rem;
+  margin: 0;
 }
 
 .rule-stepper a {
