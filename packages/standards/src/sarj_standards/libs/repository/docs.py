@@ -121,16 +121,43 @@ def _package_readme(
     engine: str | None,
     metadata: dict[str, object],
 ) -> str:
-    del root, manifest_path, engine
+    del root, manifest_path
     name = _string(metadata, "name")
     sections = [
         _GENERATED_SENTINEL,
         f"# {name}",
         _string(metadata, "description"),
         f"```bash\n{_install_command(name, registry)}\n```",
+        _package_usage(name, engine),
         f"[Documentation]({_homepage(metadata)}) · [Source]({_source_url(metadata)})",
     ]
     return "\n\n".join(sections) + "\n"
+
+
+def _package_usage(name: str, engine: str | None) -> str:
+    if name == "sarj-standards":
+        return (
+            "Use it from pre-commit with a coding agent so violations are flagged and fixed before commit.\n\n"
+            "```bash\n"
+            "sarj-standards setup\n"
+            "sarj-standards check\n"
+            "sarj-standards fix\n"
+            "sarj-standards doctor\n"
+            "sarj-standards update\n"
+            "```"
+        )
+    executable = (
+        None
+        if engine is None
+        else {
+            "python": "sarj-python-lint",
+            "sql": "sarj-sql-lint",
+            "iac": "sarj-iac-lint",
+        }.get(engine)
+    )
+    if executable is None:
+        return "Rules and configuration are documented in the generated rule directory."
+    return f"```bash\n{executable} --help\n```"
 
 
 def _plugin_readme(root: Path) -> str:

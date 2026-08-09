@@ -110,6 +110,11 @@ class _Args(argparse.Namespace):
     analysis_mode: str = "policy"
     attempts: int = 6
     delay_seconds: timedelta = timedelta(seconds=10)
+    ratchet_cmd: str = ""
+    baseline: Path | None = None
+    package: list[str]
+    exclude_subtree: list[str]
+    allow_increase: bool = False
 
     def __init__(self) -> None:
         super().__init__()
@@ -125,6 +130,8 @@ class _Args(argparse.Namespace):
         self.release_exclude_file = []
         self.release_targets = []
         self.wheels = []
+        self.package = []
+        self.exclude_subtree = []
 
 
 def cmd_sync(args: _Args, *, next_steps: bool = True) -> int:
@@ -246,7 +253,7 @@ def cmd_peers(args: _Args) -> int:
     return 0
 
 
-def cmd_doctor(args: _Args) -> int:
+def cmd_doctor(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one command renders repair and diagnosis state.
     """Report every version pin site in a repo and whether it agrees with the rest."""
     from sarj_standards.libs.adoption import doctor, upgrade  # ruff: ignore[import-outside-top-level]
 
@@ -261,7 +268,11 @@ def cmd_doctor(args: _Args) -> int:
             try:
                 adopted = _repair_legacy_manifest(root, install=not no_install)
             except (OSError, TypeError, ValueError) as migration_error:
-                print(f"error: cannot repair invalid adoption manifest: {exc}; {migration_error}", file=sys.stderr)
+                details = str(exc)
+                migration_details = str(migration_error)
+                if migration_details != details:
+                    details = f"{details}; {migration_details}"
+                print(f"error: cannot repair invalid adoption manifest: {details}", file=sys.stderr)
                 return 2
         if adopted is None:
             print("error: repository is not adopted; run `sarj-standards setup`", file=sys.stderr)
@@ -274,7 +285,8 @@ def cmd_doctor(args: _Args) -> int:
             for finding in blockers:
                 print(f"error: {finding.where} -- {finding.detail}", file=sys.stderr)
         else:
-            repair_status = upgrade.apply(plan, install=not no_install)
+            current_drift = [finding for finding in doctor.diagnose(root) if finding.level is doctor.Level.DRIFT]
+            repair_status = 0 if not plan.changes and not current_drift else upgrade.apply(plan, install=not no_install)
         if repair_status and not blockers:
             print(
                 "error: automatic repair did not converge; tracked configuration changes were restored",
@@ -368,7 +380,7 @@ def _repair_legacy_manifest(root: Path, *, install: bool) -> manifest.Manifest:
     return adopted
 
 
-def cmd_update(args: _Args) -> int:
+def cmd_update(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one command preserves preview/apply state.
     """Preview or apply the latest coherent bundle."""
     from sarj_standards.libs.adoption import doctor, lifecycle, upgrade  # ruff: ignore[import-outside-top-level]
 
@@ -415,11 +427,44 @@ def cmd_update(args: _Args) -> int:
             )
             return 2
 
+    if args.offline:
+        args.no_install = True
     root = _resolve_dest(args.dest)
+    try:
+        _ = manifest.load(root)
+    except (OSError, TypeError, ValueError) as exc:
+        try:
+            legacy = manifest.load_for_setup(root)
+        except OSError, TypeError, ValueError:
+            legacy = None
+        if legacy is None:
+            print(f"error: cannot plan upgrade: {exc}", file=sys.stderr)
+            return 2
+        if args.check:
+            print(
+                "error: the adoption manifest needs a one-way migration; run "
+                "`sarj-standards doctor --repair --no-install`, then retry update",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            _ = _repair_legacy_manifest(root, install=not args.no_install)
+        except (OSError, TypeError, ValueError) as migration_error:
+            print(f"error: cannot migrate legacy adoption before update: {migration_error}", file=sys.stderr)
+            return 2
+        print("migrated: legacy adoption manifest")
     try:
         plan = upgrade.build_plan(root)
     except (OSError, TypeError, ValueError) as exc:
         print(f"error: cannot plan upgrade: {exc}", file=sys.stderr)
+        return 2
+    preflight_findings = doctor.diagnose(root)
+    invalid = [finding for finding in preflight_findings if finding.id in _INVALID_DOCTOR_IDS]
+    if invalid:
+        for finding in invalid:
+            print(f"error: {finding.id} {finding.where} -- {finding.detail}", file=sys.stderr)
+            if finding.remediation:
+                print(f"fix: {finding.remediation}", file=sys.stderr)
         return 2
     blockers = upgrade.unsafe_retired_findings(plan) if upgrade.changes_bundle_version(plan) else []
     if blockers:
@@ -428,7 +473,7 @@ def cmd_update(args: _Args) -> int:
         return 2
     preview = upgrade.render(plan.changes)
     if args.check:
-        drifted = [finding for finding in doctor.diagnose(root) if finding.level is doctor.Level.DRIFT]
+        drifted = [finding for finding in preflight_findings if finding.level is doctor.Level.DRIFT]
         if preview:
             print(preview)
         elif drifted:
@@ -444,6 +489,15 @@ def cmd_update(args: _Args) -> int:
         for remediation in remediations:
             print(f"fix: {remediation}")
         return 1 if plan.changes or drifted else 0
+    current_drift = [finding for finding in preflight_findings if finding.level is doctor.Level.DRIFT]
+    skipped_commands = (
+        lifecycle.install_commands(root, plan.ecosystems, hook_manager=plan.adopted.hook_manager)
+        if args.no_install
+        else []
+    )
+    if not preview and not current_drift and not skipped_commands:
+        print(f"current: {root} already matches standards {__version__}")
+        return 0
     print(preview or f"current: {root} already matches standards {__version__}")
     status = upgrade.apply(plan, install=not args.no_install)
     if status:
@@ -454,9 +508,18 @@ def cmd_update(args: _Args) -> int:
         for remediation in dict.fromkeys(finding.remediation for finding in remaining if finding.remediation):
             print(f"fix: {remediation}", file=sys.stderr)
         return status
-    pending = upgrade.pending_install_findings(root) if args.no_install else []
-    skipped_commands = (
-        lifecycle.install_commands(root, plan.ecosystems, hook_manager=plan.adopted.hook_manager)
+    postflight_findings = doctor.diagnose(root)
+    invalid = [finding for finding in postflight_findings if finding.id in _INVALID_DOCTOR_IDS]
+    if invalid:
+        for finding in invalid:
+            print(f"error: {finding.id} {finding.where} -- {finding.detail}", file=sys.stderr)
+        return 2
+    pending = (
+        [
+            finding
+            for finding in postflight_findings
+            if finding.level is doctor.Level.DRIFT and upgrade.is_install_remediable(finding)
+        ]
         if args.no_install
         else []
     )
@@ -570,13 +633,15 @@ def cmd_setup(args: _Args) -> int:
 
 def cmd_verify(args: _Args) -> int:
     root = _resolve_dest(args.dest)
-    if cmd_doctor(args):
-        return 1
+    doctor_status = cmd_doctor(args)
+    if doctor_status:
+        return doctor_status
     sync_args = _Args()
     sync_args.dest = str(root)
     sync_args.check = True
-    if cmd_sync(sync_args, next_steps=False):
-        return 1
+    sync_status = cmd_sync(sync_args, next_steps=False)
+    if sync_status:
+        return sync_status
     adopted = _declared_manifest(args)
     return _run_canonical_check(
         root,
@@ -653,6 +718,8 @@ def cmd_check(args: _Args) -> int:
         try:
             staged = _staged_files(root)
         except (OSError, subprocess.SubprocessError) as exc:
+            if args.output_format != "text":
+                return _emit_analysis_report(args, root, _machine_input_error(root, f"cannot read staged files: {exc}"))
             print(f"error: cannot read staged files: {exc}", file=sys.stderr)
             return 2
         if args.files:
@@ -662,22 +729,26 @@ def cmd_check(args: _Args) -> int:
             args.files = staged
         drifted = _unstaged_versions(root, args.files)
         if drifted:
-            print(
-                "error: --staged found files with unstaged content; run through pre-commit "
-                "(which safely stashes it) or stage the intended versions: " + ", ".join(drifted),
-                file=sys.stderr,
+            message = (
+                "--staged found files with unstaged content; run through pre-commit "
+                "(which safely stashes it) or stage the intended versions: " + ", ".join(drifted)
             )
+            if args.output_format != "text":
+                return _emit_analysis_report(args, root, _machine_input_error(root, message))
+            print(f"error: {message}", file=sys.stderr)
             return 2
     elif args.files:
         try:
             args.files = _selected_paths(root, args.files)
         except ValueError as exc:
+            if args.output_format != "text":
+                return _emit_analysis_report(args, root, _machine_input_error(root, str(exc)))
             print(f"error: {exc}", file=sys.stderr)
             return 2
     if len(args.files) == 1 and Path(args.files[0]).resolve() == root:
         args.files = []
     if args.staged:
-        health_status = _check_staged_adoption_health(root, args.files, output_format=args.output_format)
+        health_status = _check_staged_adoption_health(root, args.files, args=args)
         if health_status:
             return health_status
         args.files = [path for path in args.files if runner.accepts_hook_path(Path(path))]
@@ -753,6 +824,7 @@ def _emit_analysis_report(args: _Args, root: Path, report: object) -> int:
         return 2
     if args.output is not None and str(args.output) != "-":
         try:
+            _prepare_report_parent(root, args.output)
             _report_destination(root, args.output, output_format=args.output_format)
         except OSError as exc:
             print(f"error: {exc}", file=sys.stderr)
@@ -778,6 +850,7 @@ def _validate_analysis_output(args: _Args, root: Path) -> bool:
         print("error: --output is supported only with --format json or sarif", file=sys.stderr)
         return True
     try:
+        _prepare_report_parent(root, args.output)
         _report_destination(root, args.output, output_format=args.output_format)
     except OSError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -799,6 +872,21 @@ def _machine_adoption_gate(root: Path) -> object | None:
     from sarj_standards.libs.linting.analysis import report_from_tools  # ruff: ignore[import-outside-top-level]
 
     diagnosed = doctor.diagnose(root)
+    absent = next((finding for finding in diagnosed if finding.id == "doctor.manifest.absent"), None)
+    if absent is not None:
+        diagnostic = Diagnostic(
+            absent.id,
+            absent.detail,
+            Severity.ERROR,
+            "sarj-standards-doctor",
+            Location(manifest.MANIFEST_NAME),
+            rule_id=absent.id,
+            help=absent.remediation or "run `sarj-standards setup`",
+        )
+        return report_from_tools(
+            root,
+            (ToolReport("sarj-standards-adoption", Completion.COMPLETE, diagnostics=(diagnostic,)),),
+        )
     drifted = [finding for finding in diagnosed if finding.level is doctor.Level.DRIFT]
     invalid_ids = _INVALID_DOCTOR_IDS
     issues = tuple(
@@ -860,6 +948,21 @@ def _machine_adoption_gate(root: Path) -> object | None:
     return report_from_tools(root, (tool,))
 
 
+def _machine_input_error(root: Path, message: str) -> object:
+    """Represent invalid CLI input through the selected machine-output protocol."""
+    from sarj_standards.libs.diagnostics import (  # ruff: ignore[import-outside-top-level] -- machine formats stay lazy
+        Completion,
+        ExecutionIssue,
+        ToolReport,
+    )
+    from sarj_standards.libs.linting.analysis import (  # ruff: ignore[import-outside-top-level] -- machine formats stay lazy
+        report_from_tools,
+    )
+
+    issue = ExecutionIssue("sarj-standards", "invalid-input", message, exit_code=2)
+    return report_from_tools(root, (ToolReport("sarj-standards-input", Completion.FAILED, issues=(issue,)),))
+
+
 def _doctor_location(root: Path, where: str) -> str:
     """Turn a human doctor site into a safe repository-relative location."""
     rendered = where.split(":", 1)[0]
@@ -908,6 +1011,27 @@ def _report_destination(root: Path, output: Path, *, output_format: str) -> Path
     return destination
 
 
+def _prepare_report_parent(root: Path, output: Path) -> None:
+    """Create a requested in-repository report directory without traversing links."""
+    candidate = output if output.is_absolute() else root / output
+    lexical = Path(os.path.abspath(candidate))  # ruff: ignore[os-path-abspath] -- inspect lexical parent components.
+    try:
+        relative = lexical.relative_to(root)
+    except ValueError as exc:
+        msg = f"report output must stay inside repository root: {output}"
+        raise OSError(msg) from exc
+    current = root
+    for part in relative.parent.parts:
+        current /= part
+        if is_link_like(current):
+            msg = f"report output parent must not traverse a symlink: {current}"
+            raise OSError(msg)
+        if current.exists() and not current.is_dir():
+            msg = f"report output parent must be a directory: {current}"
+            raise OSError(msg)
+        current.mkdir(exist_ok=True)
+
+
 def _write_report(root: Path, output: Path, payload: str, *, output_format: str) -> None:
     # Revalidate immediately before the write as a defense against a parent path
     # being replaced after the pre-analysis check.
@@ -930,7 +1054,7 @@ def _check_staged_adoption_health(
     root: Path,
     staged_paths: Iterable[str] = (),
     *,
-    output_format: str = "text",
+    args: _Args,
 ) -> int:
     """Keep the staged fast path from bypassing generated config and pin drift."""
     from sarj_standards.libs.adoption import doctor  # ruff: ignore[import-outside-top-level]
@@ -941,21 +1065,43 @@ def _check_staged_adoption_health(
     ]
     invalid = any(finding.id in {"doctor.manifest.invalid", "doctor.package-json.invalid"} for finding in drifted)
     status = 2 if invalid else 1 if drifted else 0
-    if output_format == "json" and status:
-        print(
-            json.dumps(
-                {
-                    "schema": 1,
-                    "command": "check",
-                    "phase": "adoption-health",
-                    "status": status,
-                    "root": str(root),
-                    "findings": [finding.as_dict() for finding in drifted],
-                },
-                indent=2,
-            )
+    if args.output_format != "text" and status:
+        from sarj_standards.libs.diagnostics import (  # ruff: ignore[import-outside-top-level]
+            Completion,
+            Diagnostic,
+            ExecutionIssue,
+            Location,
+            Severity,
+            ToolReport,
         )
-        return status
+        from sarj_standards.libs.linting.analysis import (  # ruff: ignore[import-outside-top-level]
+            report_from_tools,
+        )
+
+        issues = tuple(
+            ExecutionIssue("sarj-standards-doctor", finding.id, finding.detail, exit_code=2)
+            for finding in drifted
+            if finding.id in _INVALID_DOCTOR_IDS
+        )
+        diagnostics = tuple(
+            Diagnostic(
+                finding.id,
+                finding.detail,
+                Severity.ERROR,
+                "sarj-standards-doctor",
+                Location(_doctor_location(root, finding.where)),
+                rule_id=finding.id,
+                help=finding.remediation,
+            )
+            for finding in drifted
+            if finding.id not in _INVALID_DOCTOR_IDS
+        )
+        completion = Completion.FAILED if issues else Completion.COMPLETE
+        report = report_from_tools(
+            root,
+            (ToolReport("sarj-standards-adoption", completion, diagnostics=diagnostics, issues=issues),),
+        )
+        return _emit_analysis_report(args, root, report)
     for finding in drifted:
         print(f"drift: {finding.id} {finding.where} -- {finding.detail}")
     remediations = list(dict.fromkeys(finding.remediation for finding in drifted if finding.remediation))
@@ -1075,10 +1221,37 @@ def _selected_paths(root: Path, paths: Iterable[str]) -> list[str]:
 
 
 def cmd_format(args: _Args) -> int:
-    from sarj_standards.libs.adoption import lifecycle, scaffold  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.adoption import doctor, lifecycle, scaffold  # ruff: ignore[import-outside-top-level]
 
     root = _resolve_dest(args.dest)
-    return lifecycle.execute(lifecycle.format_commands(scaffold.detect(root)))
+    diagnosed = doctor.diagnose(root)
+    if any(finding.id == "doctor.manifest.absent" for finding in diagnosed):
+        print("error: repository is not adopted; run `sarj-standards setup`", file=sys.stderr)
+        return 2
+    drifted = [finding for finding in diagnosed if finding.level is doctor.Level.DRIFT]
+    if drifted:
+        for finding in drifted:
+            print(f"error: {finding.id} {finding.where} -- {finding.detail}", file=sys.stderr)
+        print("fix: run `sarj-standards doctor --repair`, then retry", file=sys.stderr)
+        return 2 if any(finding.id in _INVALID_DOCTOR_IDS for finding in drifted) else 1
+    if args.staged:
+        try:
+            args.files = _staged_files(root)
+        except (OSError, subprocess.SubprocessError) as exc:
+            print(f"error: cannot read staged files: {exc}", file=sys.stderr)
+            return 2
+    elif args.files:
+        try:
+            args.files = _selected_paths(root, args.files)
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+    commands = (
+        lifecycle.selected_format_commands(root, args.files)
+        if args.files
+        else lifecycle.format_commands(scaffold.detect(root))
+    )
+    return lifecycle.execute(commands)
 
 
 def cmd_inspect(args: _Args) -> int:
@@ -1151,6 +1324,30 @@ def cmd_exclude(args: _Args) -> int:
     return 0
 
 
+def cmd_ratchet(args: _Args) -> int:
+    """Manage the Python suppression budget through the unified CLI."""
+    from sarj_python_lint import run_ratchet  # ruff: ignore[import-outside-top-level]
+
+    root = _resolve_dest(args.dest)
+    baseline = args.baseline if args.baseline is not None else root / "suppression-baseline.json"
+    if args.ratchet_cmd == "init" and baseline.exists():
+        print(
+            f"error: suppression budget already exists: {baseline}; use `sarj-standards ratchet update`",
+            file=sys.stderr,
+        )
+        return 2
+    argv = [str(root), "--baseline", str(baseline)]
+    for package in args.package:
+        argv.extend(("--package", package))
+    for subtree in args.exclude_subtree:
+        argv.extend(("--exclude-subtree", subtree))
+    if args.ratchet_cmd in {"init", "update"}:
+        argv.append("--update")
+    if args.allow_increase:
+        argv.append("--allow-increase")
+    return run_ratchet(argv)
+
+
 def main(argv: list[str] | None = None) -> int:
     raw_argv = _root_option_first(sys.argv[1:] if argv is None else argv)
     args = build_parser().parse_args(raw_argv, namespace=_Args())
@@ -1166,6 +1363,13 @@ def main(argv: list[str] | None = None) -> int:
 
 def _root_option_first(argv: list[str]) -> list[str]:
     """Let the one global repository option appear before or after the verb."""
+    equals_positions = [index for index, value in enumerate(argv) if value.startswith("--root=")]
+    if equals_positions:
+        if len(equals_positions) != 1:
+            return argv
+        index = equals_positions[0]
+        value = argv[index].partition("=")[2]
+        return ["--root", value, *argv[:index], *argv[index + 1 :]]
     positions = [index for index, value in enumerate(argv) if value == "--root"]
     if not positions or positions == [0] or len(positions) != 1:
         return argv
@@ -1192,13 +1396,15 @@ def _dispatch(args: _Args) -> int:
             return cmd_show(args)
         case "exclude":
             return cmd_exclude(args)
+        case "ratchet":
+            return cmd_ratchet(args)
         case "maintain":
             return _cmd_repo(args)
         case _:  # argparse enforces `required=True`, so this is unreachable
             return 2
 
 
-def build_parser() -> argparse.ArgumentParser:
+def build_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-locals] -- parser sections mirror public verbs.
     """Build the public parser graph used by the CLI and derived references."""
     parser = argparse.ArgumentParser(
         prog="sarj-standards",
@@ -1215,7 +1421,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(
         dest="cmd",
         required=True,
-        metavar="{setup,check,fix,doctor,update,exclude,show,maintain}",
+        metavar="{setup,check,fix,doctor,update,ratchet,exclude,show,maintain}",
         title="commands",
     )
 
@@ -1307,12 +1513,42 @@ def build_parser() -> argparse.ArgumentParser:
         help="selected paths; when omitted, check the complete repository",
     )
 
-    sub.add_parser("fix", help="apply safe formatting and lint fixes")
+    fix = sub.add_parser("fix", help="apply safe formatting and lint fixes")
+    fix.add_argument("--staged", action="store_true", help="fix only files staged in Git")
+    fix.add_argument("files", nargs="*", help="selected paths; when omitted, fix the complete repository")
 
     update = sub.add_parser("update", help="upgrade the complete coherent Standards bundle")
     update.add_argument("--check", action="store_true", help="preview without writing; exit 1 when changes exist")
-    update.add_argument("--offline", action="store_true", help="use the executing bundle without resolving latest")
+    update.add_argument(
+        "--offline",
+        action="store_true",
+        help="use the executing bundle and skip every network-dependent install",
+    )
     update.add_argument("--no-install", action="store_true", help="do not install dependencies or hooks")
+
+    ratchet = sub.add_parser("ratchet", help="keep the Python suppression budget from growing")
+    ratchet_commands = ratchet.add_subparsers(dest="ratchet_cmd", required=True)
+    for name, help_text in (
+        ("init", "create the first suppression budget"),
+        ("check", "fail when suppression debt grows"),
+        ("status", "show current suppression debt and available reductions"),
+        ("update", "lock in reviewed suppression-budget changes"),
+    ):
+        command = ratchet_commands.add_parser(name, help=help_text)
+        command.add_argument("--baseline", type=Path, help="budget JSON (default: suppression-baseline.json)")
+        command.add_argument("--package", action="append", default=[], help="Python package root (repeatable)")
+        command.add_argument(
+            "--exclude-subtree",
+            action="append",
+            default=[],
+            help="generated or vendored subtree to persistently exclude (repeatable)",
+        )
+        if name == "update":
+            command.add_argument(
+                "--allow-increase",
+                action="store_true",
+                help="permit a reviewed increase in suppression debt",
+            )
 
     exclude = sub.add_parser("exclude", help="inspect or change explicit path and rule exclusions")
     exclude_commands = exclude.add_subparsers(dest="exclude_cmd", required=True)

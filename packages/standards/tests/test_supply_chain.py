@@ -60,7 +60,8 @@ def test_release_has_no_manual_or_tag_publish_bypass() -> None:
     assert "workflow_dispatch" not in trigger
     assert "tags:" not in trigger
     assert "branches: [main]" in trigger
-    assert "--sdist" not in release
+    assert release.count("uv build\n") == 4
+    assert release.count("*.tar.gz") >= 8
     assert re.search(r"(?m)^\s+path: .*dist/\*\s*$", release) is None
     assert "pypa/gh-action-pypi-publish@" in release
 
@@ -70,10 +71,9 @@ def test_typescript_release_does_not_emit_source_maps() -> None:
     assert "sourcemap: false" in config
 
 
-def test_typescript_prepack_verifies_without_rebuilding_tested_output() -> None:
+def test_typescript_prepack_builds_clean_source_before_verifying_exports() -> None:
     manifest = (REPO_ROOT / "packages/typescript/package.json").read_text(encoding="utf-8")
-    assert '"prepack": "npm run verify-package"' in manifest
-    assert '"prepack": "npm run build' not in manifest
+    assert '"prepack": "npm run build && npm run verify-package"' in manifest
 
 
 def test_release_has_no_tag_writer_or_write_capable_token() -> None:
@@ -81,6 +81,14 @@ def test_release_has_no_tag_writer_or_write_capable_token() -> None:
     assert "\n  tag:\n" not in release
     assert "contents: write" not in release
     assert "git push" not in release
+
+
+def test_release_tags_publish_a_github_release_for_new_standards_versions() -> None:
+    workflow = (REPO_ROOT / ".github/workflows/release-tags.yml").read_text(encoding="utf-8")
+
+    assert "git tag --points-at" in workflow
+    assert "gh release create" in workflow
+    assert "--verify-tag --generate-notes" in workflow
 
 
 def test_publishers_have_distinct_identities_and_digest_binding() -> None:
@@ -155,14 +163,15 @@ def test_documentation_deploy_is_revision_bound_and_self_verifying() -> None:
         ("iac", "sarj_iac_lint", "sarj-iac-lint"),
     ],
 )
-def test_python_publishers_smoke_and_bind_the_exact_wheels(
+def test_python_publishers_smoke_and_bind_wheels_and_sdists(
     package: str,
     module: str,
     executable: str,
 ) -> None:
     release = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
     assert f'uv pip install --python "$RUNNER_TEMP/{package}-wheel/bin/python" dist/*.whl' in release
+    assert f'uv pip install --python "$RUNNER_TEMP/{package}-sdist/bin/python"' in release
     assert f"import {module}" in release
     assert f'bin/{executable}" --help' in release
-    assert release.count("wheels=(publish-dist/*.whl)") == 4
+    assert release.count("sha256sum --check --strict SHA256SUMS") == 4
     assert "sarj_standards-*.whl pytest==9.1.1 ruff" in release

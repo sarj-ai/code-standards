@@ -72,3 +72,37 @@ def test_baseline_written_from_absolute_repo_path_is_portable(tmp_path: Path, mo
     assert main([*command, "--update-baseline", str(baseline), str(target.resolve())]) == 0
     assert json.loads(baseline.read_text()) == {"src/example.py": {"SARJ016": 1}}
     assert main([*command, "--baseline", str(baseline), "src/example.py"]) == 0
+
+
+def test_explicit_missing_input_is_an_operator_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    missing = tmp_path / "missing.py"
+
+    assert main(["check", "--rule", "no-comment-cruft", str(missing)]) == 2
+    assert f"input does not exist: {missing}" in capsys.readouterr().err
+
+
+def test_invalid_baseline_is_a_concise_operator_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    source = tmp_path / "example.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    baseline = tmp_path / "baseline.json"
+    baseline.write_text("not json", encoding="utf-8")
+
+    status = main(["check", "--rule", "no-comment-cruft", "--baseline", str(baseline), str(source)])
+
+    output = capsys.readouterr()
+    assert status == 2
+    assert "invalid baseline" in output.err
+    assert "Traceback" not in output.err
+
+
+def test_baseline_update_requires_an_existing_parent(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    source = tmp_path / "example.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    baseline = tmp_path / "missing" / "baseline.json"
+
+    status = main(["check", "--rule", "no-comment-cruft", "--update-baseline", str(baseline), str(source)])
+
+    output = capsys.readouterr()
+    assert status == 2
+    assert "baseline parent does not exist" in output.err
+    assert "Traceback" not in output.err

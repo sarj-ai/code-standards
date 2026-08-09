@@ -12,7 +12,7 @@ import pytest
 import yaml
 
 import sarj_standards.cli.main as cli
-from sarj_standards.libs.adoption import doctor, manifest, transaction, upgrade
+from sarj_standards.libs.adoption import doctor, lifecycle, manifest, transaction, upgrade
 
 
 def _main(arguments: list[str]) -> int:
@@ -239,6 +239,76 @@ def test_upgrade_no_install_keeps_valid_config_with_pending_dependency_drift(tmp
     assert {finding.id for finding in pending} == {"doctor.python.legacy-in-project-tool"}
 
 
+def test_update_migrates_a_legacy_manifest_before_applying(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "fixture"\nversion = "0.0.0"\n',
+        encoding="utf-8",
+    )
+    (tmp_path / manifest.MANIFEST_NAME).write_text(
+        'version = "0.42.0"\nconfigs = ["ruff"]\n\n[dest]\npython = "."\ntypescript = "."\n',
+        encoding="utf-8",
+    )
+
+    status = _main(["update", "--offline", "--no-install", str(tmp_path)])
+
+    output = capsys.readouterr().out
+    assert status == 0
+    assert "migrated: legacy adoption manifest" in output
+    assert manifest.load(tmp_path) is not None
+
+
+def test_update_check_explains_the_safe_legacy_migration(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "fixture"\nversion = "0.0.0"\n',
+        encoding="utf-8",
+    )
+    (tmp_path / manifest.MANIFEST_NAME).write_text(
+        'version = "0.42.0"\nconfigs = ["ruff"]\n\n[dest]\npython = "."\ntypescript = "."\n',
+        encoding="utf-8",
+    )
+
+    status = _main(["update", "--offline", "--check", "--no-install", str(tmp_path)])
+
+    error = capsys.readouterr().err
+    assert status == 2
+    assert "sarj-standards doctor --repair --no-install" in error
+
+
+@pytest.mark.parametrize("check", [False, True])
+def test_update_rejects_invalid_repository_configuration(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    check: bool,
+) -> None:
+    _outdated_python_repo(tmp_path)
+    (tmp_path / "package.json").write_text("", encoding="utf-8")
+    arguments = ["update", "--offline", "--no-install", str(tmp_path)]
+    if check:
+        arguments.insert(2, "--check")
+
+    status = _main(arguments)
+
+    error = capsys.readouterr().err
+    assert status == 2
+    assert "doctor.package-json.invalid" in error
+
+
+def test_current_no_install_update_does_not_recommend_unneeded_install_work(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _outdated_python_repo(tmp_path)
+    assert upgrade.apply(upgrade.build_plan(tmp_path), install=False) == 0
+    _ = capsys.readouterr()
+
+    status = _main(["update", "--offline", "--no-install", str(tmp_path)])
+
+    output = capsys.readouterr().out
+    assert status == 0
+    assert output.startswith("current:")
+    assert "setup is incomplete" not in output
+
+
 def test_upgrade_no_install_explains_incomplete_setup_and_next_command(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -270,6 +340,24 @@ def test_update_no_install_prints_a_clean_typescript_lock_command(
     assert status == 0
     assert "setup is incomplete (1 setup command(s) skipped; 0 finding(s) pending)" in output
     assert "npm install --ignore-scripts --no-audit --no-fund" in output
+
+
+def test_offline_update_never_executes_install_commands(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    (tmp_path / "package.json").write_text('{"name":"web"}\n', encoding="utf-8")
+    assert _main(["setup", "--dest", str(tmp_path), "--no-install"]) == 0
+    _ = capsys.readouterr()
+
+    def forbidden(_commands: object) -> int:
+        pytest.fail("offline update attempted to execute an installer")
+
+    monkeypatch.setattr(lifecycle, "execute", forbidden)
+
+    assert _main(["update", "--offline", str(tmp_path)]) == 0
+    assert "npm install --ignore-scripts --no-audit --no-fund" in capsys.readouterr().out
 
 
 def test_upgrade_with_install_still_rolls_back_dependency_drift(

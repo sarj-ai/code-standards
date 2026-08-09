@@ -36,3 +36,12 @@ jobs:
           uv run --project packages/standards --frozen sarj-standards --root .
           maintain release create-tags typescript python sql iac standards tsconfig
           --commit "$PUBLISHED_SHA"
+      - name: Publish the Standards GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLISHED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          tag="$(git tag --points-at "$PUBLISHED_SHA" --list 'standards-v*' | head -n 1)"
+          if [ -n "$tag" ] && ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --verify-tag --generate-notes --title "Standards ${tag#standards-v}"
+          fi

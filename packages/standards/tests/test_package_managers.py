@@ -249,6 +249,12 @@ def test_ci_only_runs_locked_uv_sync_for_a_uv_project(tmp_path: Path) -> None:
     assert "run: uv sync --locked" in locked
 
 
+def test_ci_emits_first_class_github_annotations(tmp_path: Path) -> None:
+    workflow = scaffold.github_ci_workflow(tmp_path, version="0.0.0")
+
+    assert "check --trust-repository-code --format github" in workflow
+
+
 def test_init_speaks_classic_yarn_when_only_the_lockfile_names_it(tmp_path: Path) -> None:
     _ = _project(tmp_path, "yarn.lock")
 

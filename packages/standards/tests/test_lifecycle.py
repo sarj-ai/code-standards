@@ -42,6 +42,37 @@ def test_scoped_root_pyright_config_keeps_the_root_project(tmp_path: Path) -> No
     assert tmp_path in {command.cwd for command in commands}
 
 
+def test_fix_uses_the_isolated_ruff_without_requiring_a_consumer_lockfile(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "fixture"\nversion = "0.0.0"\n',
+        encoding="utf-8",
+    )
+    ecosystems = scaffold.Ecosystems(True, False, python_root=tmp_path)
+
+    commands = lifecycle.format_commands(ecosystems)
+
+    assert [command.label for command in commands] == ["Ruff format", "Ruff fixes"]
+    assert {Path(command.argv[0]).stem for command in commands} == {"ruff"}
+    assert commands[0].argv[1:] == ("format", ".")
+    assert commands[1].argv[1:] == ("check", "--fix", ".")
+    assert all("--frozen" not in command.argv for command in commands)
+
+
+def test_selected_fix_routes_only_the_requested_python_and_typescript_files(tmp_path: Path) -> None:
+    python_file = tmp_path / "service.py"
+    python_file.write_text("value=1\n", encoding="utf-8")
+    (tmp_path / "package.json").write_text('{"name":"web"}\n', encoding="utf-8")
+    typescript_file = tmp_path / "view.ts"
+    typescript_file.write_text("export const value = 1;\n", encoding="utf-8")
+
+    commands = lifecycle.selected_format_commands(tmp_path, (str(python_file), str(typescript_file)))
+
+    assert [command.label for command in commands[:2]] == ["Ruff format", "Ruff fixes"]
+    assert commands[0].argv[-1] == "service.py"
+    assert commands[1].argv[-1] == "service.py"
+    assert commands[2].argv[-3:] == ("--fix", "--", "view.ts")
+
+
 def test_setup_never_mutates_the_consumer_dependency_environment(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text(
         '[project]\nname = "old-python-app"\nrequires-python = ">=3.10"\n'

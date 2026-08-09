@@ -8,4 +8,8 @@ Custom Python lint rules — AST-based, pre-commit-friendly, hypermodern default
 uv tool install sarj-python-lint
 ```
 
+```bash
+sarj-python-lint --help
+```
+
 [Documentation](https://code-standards.sarj.ai/rules/python/) · [Source](https://github.com/sarj-ai/standards)

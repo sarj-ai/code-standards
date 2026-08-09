@@ -291,7 +291,7 @@ def _invoke_python_projects(
         return (ToolReport(name, Completion.FAILED, issues=(issue,), analyzer_id=AnalyzerId(name)),)
     reports: list[ToolReport] = []
     for project, scoped_files in projects:
-        argv = ("basedpyright", "--outputjson", *scoped_files)
+        argv = (_project_analyzer(project, "basedpyright"), "--outputjson", *scoped_files)
         project_id = project.relative_to(root).as_posix() or "."
         reports.append(
             _invoke(
@@ -308,17 +308,44 @@ def _invoke_python_projects(
     return tuple(reports)
 
 
+def _project_analyzer(project: Path, name: str) -> str:
+    """Prefer a project's analyzer so its dependency environment resolves correctly."""
+    candidates = (
+        project / ".venv" / "bin" / name,
+        project / ".venv" / "Scripts" / f"{name}.exe",
+    )
+    return str(next((candidate for candidate in candidates if candidate.is_file()), name))
+
+
 def _group_python_projects(files: Sequence[str], root: Path) -> tuple[tuple[Path, tuple[str, ...]], ...]:
     markers = ("pyrightconfig.json", "pyproject.toml")
     grouped: dict[Path, list[str]] = {}
     for raw_file in files:
         path = Path(raw_file).resolve()
-        project = _nearest_project(path.parent, root, markers)
+        project = _nearest_analyzer_project(path.parent, root, markers)
         grouped.setdefault(project, []).append(str(path))
     return tuple(
         (project, tuple(sorted(scoped_files)))
         for project, scoped_files in sorted(grouped.items(), key=lambda item: str(item[0]))
     )
+
+
+def _nearest_analyzer_project(start: Path, root: Path, markers: Sequence[str]) -> Path:
+    """Prefer the owning virtual environment over a nested package manifest."""
+    current = start
+    while current.is_relative_to(root):
+        if any(
+            candidate.is_file()
+            for candidate in (
+                current / ".venv" / "bin" / "basedpyright",
+                current / ".venv" / "Scripts" / "basedpyright.exe",
+            )
+        ):
+            return current
+        if current == root:
+            break
+        current = current.parent
+    return _nearest_project(start, root, markers)
 
 
 def _nearest_project(start: Path, root: Path, markers: Sequence[str]) -> Path:

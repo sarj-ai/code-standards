@@ -170,7 +170,7 @@ jobs:
       - run: uv sync --locked --dev
       - run: uv audit --locked
       - run: uv run pytest -q
-      - run: uv build --wheel
+      - run: uv build
       - name: Verify wheel license
         run: uv run --project ../standards --frozen sarj-standards maintain release verify-wheel dist/*.whl
       - name: Smoke test the exact wheel
@@ -179,17 +179,24 @@ jobs:
           uv pip install --python "$RUNNER_TEMP/python-wheel/bin/python" dist/*.whl
           "$RUNNER_TEMP/python-wheel/bin/python" -c "import sarj_python_lint"
           "$RUNNER_TEMP/python-wheel/bin/sarj-python-lint" --help
+      - name: Smoke test the source distribution
+        run: |
+          uv venv --python 3.14 "$RUNNER_TEMP/python-sdist"
+          uv pip install --python "$RUNNER_TEMP/python-sdist/bin/python" dist/*.tar.gz
+          "$RUNNER_TEMP/python-sdist/bin/sarj-python-lint" --help
       - name: Bind artifact digest to the build job
         id: artifact_identity
         run: |
-          wheels=(dist/*.whl)
-          test "${#wheels[@]}" -eq 1
-          echo "sha256=$(sha256sum "${wheels[0]}" | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+          (cd dist && sha256sum ./*.whl ./*.tar.gz > SHA256SUMS)
+          echo "sha256=$(sha256sum dist/SHA256SUMS | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
       - name: Upload publishable artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: pypi-python
-          path: packages/python/dist/*.whl
+          path: |
+            packages/python/dist/*.whl
+            packages/python/dist/*.tar.gz
+            packages/python/dist/SHA256SUMS
           if-no-files-found: error
 
   publish-python:
@@ -214,10 +221,9 @@ jobs:
         env:
           EXPECTED_SHA256: ${{ needs.build-python.outputs.artifact_sha256 }}
         run: |
-          wheels=(publish-dist/*.whl)
-          test "${#wheels[@]}" -eq 1
-          echo "$EXPECTED_SHA256  ${wheels[0]}" | sha256sum --check --strict
-      - name: Publish wheel with PyPI trusted publishing and attestations
+          echo "$EXPECTED_SHA256  publish-dist/SHA256SUMS" | sha256sum --check --strict
+          (cd publish-dist && sha256sum --check --strict SHA256SUMS)
+      - name: Publish wheel and sdist with PyPI trusted publishing and attestations
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           packages-dir: publish-dist/
@@ -255,7 +261,7 @@ jobs:
       - run: uv sync --locked --dev
       - run: uv audit --locked
       - run: uv run pytest -q
-      - run: uv build --wheel
+      - run: uv build
       - name: Verify wheel license
         run: uv run --project ../standards --frozen sarj-standards maintain release verify-wheel dist/*.whl
       - name: Smoke test the exact wheel
@@ -264,17 +270,24 @@ jobs:
           uv pip install --python "$RUNNER_TEMP/sql-wheel/bin/python" dist/*.whl
           "$RUNNER_TEMP/sql-wheel/bin/python" -c "import sarj_sql_lint"
           "$RUNNER_TEMP/sql-wheel/bin/sarj-sql-lint" --help
+      - name: Smoke test the source distribution
+        run: |
+          uv venv --python 3.14 "$RUNNER_TEMP/sql-sdist"
+          uv pip install --python "$RUNNER_TEMP/sql-sdist/bin/python" dist/*.tar.gz
+          "$RUNNER_TEMP/sql-sdist/bin/sarj-sql-lint" --help
       - name: Bind artifact digest to the build job
         id: artifact_identity
         run: |
-          wheels=(dist/*.whl)
-          test "${#wheels[@]}" -eq 1
-          echo "sha256=$(sha256sum "${wheels[0]}" | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+          (cd dist && sha256sum ./*.whl ./*.tar.gz > SHA256SUMS)
+          echo "sha256=$(sha256sum dist/SHA256SUMS | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
       - name: Upload publishable artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: pypi-sql
-          path: packages/sql/dist/*.whl
+          path: |
+            packages/sql/dist/*.whl
+            packages/sql/dist/*.tar.gz
+            packages/sql/dist/SHA256SUMS
           if-no-files-found: error
 
   publish-sql:
@@ -299,10 +312,9 @@ jobs:
         env:
           EXPECTED_SHA256: ${{ needs.build-sql.outputs.artifact_sha256 }}
         run: |
-          wheels=(publish-dist/*.whl)
-          test "${#wheels[@]}" -eq 1
-          echo "$EXPECTED_SHA256  ${wheels[0]}" | sha256sum --check --strict
-      - name: Publish wheel with PyPI trusted publishing and attestations
+          echo "$EXPECTED_SHA256  publish-dist/SHA256SUMS" | sha256sum --check --strict
+          (cd publish-dist && sha256sum --check --strict SHA256SUMS)
+      - name: Publish wheel and sdist with PyPI trusted publishing and attestations
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           packages-dir: publish-dist/
@@ -340,7 +352,7 @@ jobs:
       - run: uv sync --locked --dev
       - run: uv audit --locked
       - run: uv run pytest -q
-      - run: uv build --wheel
+      - run: uv build
       - name: Verify wheel license
         run: uv run --project ../standards --frozen sarj-standards maintain release verify-wheel dist/*.whl
       - name: Smoke test the exact wheel
@@ -349,17 +361,24 @@ jobs:
           uv pip install --python "$RUNNER_TEMP/iac-wheel/bin/python" dist/*.whl
           "$RUNNER_TEMP/iac-wheel/bin/python" -c "import sarj_iac_lint"
           "$RUNNER_TEMP/iac-wheel/bin/sarj-iac-lint" --help
+      - name: Smoke test the source distribution
+        run: |
+          uv venv --python 3.14 "$RUNNER_TEMP/iac-sdist"
+          uv pip install --python "$RUNNER_TEMP/iac-sdist/bin/python" dist/*.tar.gz
+          "$RUNNER_TEMP/iac-sdist/bin/sarj-iac-lint" --help
       - name: Bind artifact digest to the build job
         id: artifact_identity
         run: |
-          wheels=(dist/*.whl)
-          test "${#wheels[@]}" -eq 1
-          echo "sha256=$(sha256sum "${wheels[0]}" | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+          (cd dist && sha256sum ./*.whl ./*.tar.gz > SHA256SUMS)
+          echo "sha256=$(sha256sum dist/SHA256SUMS | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
       - name: Upload publishable artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: pypi-iac
-          path: packages/iac/dist/*.whl
+          path: |
+            packages/iac/dist/*.whl
+            packages/iac/dist/*.tar.gz
+            packages/iac/dist/SHA256SUMS
           if-no-files-found: error
 
   publish-iac:
@@ -384,10 +403,9 @@ jobs:
         env:
           EXPECTED_SHA256: ${{ needs.build-iac.outputs.artifact_sha256 }}
         run: |
-          wheels=(publish-dist/*.whl)
-          test "${#wheels[@]}" -eq 1
-          echo "$EXPECTED_SHA256  ${wheels[0]}" | sha256sum --check --strict
-      - name: Publish wheel with PyPI trusted publishing and attestations
+          echo "$EXPECTED_SHA256  publish-dist/SHA256SUMS" | sha256sum --check --strict
+          (cd publish-dist && sha256sum --check --strict SHA256SUMS)
+      - name: Publish wheel and sdist with PyPI trusted publishing and attestations
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           packages-dir: publish-dist/
@@ -498,7 +516,7 @@ jobs:
       - run: uv audit --locked
       - name: Build package and exact local dependency wheels
         run: |
-          uv build --wheel
+          uv build
           uv build --wheel --project ../python --out-dir dist/deps
           uv build --wheel --project ../sql --out-dir dist/deps
           uv build --wheel --project ../iac --out-dir dist/deps
@@ -509,17 +527,24 @@ jobs:
           uv venv --clear --python 3.14 --seed
           uv pip install ./dist/deps/*.whl ./dist/sarj_standards-*.whl pytest==9.1.1 ruff
           uv run --no-project pytest -q tests/
+      - name: Smoke test the source distribution
+        run: |
+          uv venv --python 3.14 "$RUNNER_TEMP/standards-sdist"
+          uv pip install --python "$RUNNER_TEMP/standards-sdist/bin/python" --find-links dist/deps dist/*.tar.gz
+          "$RUNNER_TEMP/standards-sdist/bin/sarj-standards" --help
       - name: Bind artifact digest to the build job
         id: artifact_identity
         run: |
-          wheels=(dist/*.whl)
-          test "${#wheels[@]}" -eq 1
-          echo "sha256=$(sha256sum "${wheels[0]}" | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+          (cd dist && sha256sum ./*.whl ./*.tar.gz > SHA256SUMS)
+          echo "sha256=$(sha256sum dist/SHA256SUMS | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
       - name: Upload publishable artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: pypi-standards
-          path: packages/standards/dist/*.whl
+          path: |
+            packages/standards/dist/*.whl
+            packages/standards/dist/*.tar.gz
+            packages/standards/dist/SHA256SUMS
           if-no-files-found: error
 
   publish-standards:
@@ -545,10 +570,9 @@ jobs:
         env:
           EXPECTED_SHA256: ${{ needs.build-standards.outputs.artifact_sha256 }}
         run: |
-          wheels=(publish-dist/*.whl)
-          test "${#wheels[@]}" -eq 1
-          echo "$EXPECTED_SHA256  ${wheels[0]}" | sha256sum --check --strict
-      - name: Publish wheel with PyPI trusted publishing and attestations
+          echo "$EXPECTED_SHA256  publish-dist/SHA256SUMS" | sha256sum --check --strict
+          (cd publish-dist && sha256sum --check --strict SHA256SUMS)
+      - name: Publish wheel and sdist with PyPI trusted publishing and attestations
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           packages-dir: publish-dist/

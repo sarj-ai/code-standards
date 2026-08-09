@@ -8,4 +8,14 @@ One deterministic quality gate for Sarj Python, TypeScript, SQL, IaC, and reposi
 uv tool install --python 3.14 sarj-standards
 ```
 
+Use it from pre-commit with a coding agent so violations are flagged and fixed before commit.
+
+```bash
+sarj-standards setup
+sarj-standards check
+sarj-standards fix
+sarj-standards doctor
+sarj-standards update
+```
+
 [Documentation](https://code-standards.sarj.ai/) · [Source](https://github.com/sarj-ai/standards)

@@ -280,6 +280,22 @@ def test_cli_seeds_a_first_baseline_without_allow_increase(tmp_path: Path):
     assert written.packages == {"svc": 1}
 
 
+def test_cli_persists_excluded_subtrees_for_future_checks(tmp_path: Path):
+    _tree(
+        tmp_path,
+        {
+            "svc/app.py": "x = 1  # noqa: E501\n",
+            "generated/client.py": "y = 2  # type: ignore\n",
+        },
+    )
+
+    assert main([str(tmp_path), "--exclude-subtree", "generated", "--update"]) == 0
+    written = load_baseline(tmp_path / "suppression-baseline.json")
+
+    assert written.excluded_subtrees == ("generated",)
+    assert main([str(tmp_path)]) == 0
+
+
 def test_cli_passes_when_counts_hold(tmp_path: Path):
     _tree(tmp_path, {"svc/app.py": "x = 1  # noqa: E501\n"})
     assert main([str(tmp_path), "--update"]) == 0

@@ -1,6 +1,6 @@
 [project]
 name = "sarj-sql-lint"
-version = "0.13.0"
+version = "0.13.1"
 description = "Deterministic PostgreSQL migration rules for safe, repeatable schema changes."
 readme = "README.md"
 authors = [{ name = "sarj-ai" }]
@@ -24,6 +24,8 @@ sarj-sql-lint = "sarj_sql_lint.__main__:main"
 
 [project.urls]
 Homepage = "https://code-standards.sarj.ai/rules/sql/"
+Documentation = "https://code-standards.sarj.ai/rules/sql/"
+Changelog = "https://github.com/sarj-ai/standards/releases"
 Repository = "https://github.com/sarj-ai/standards"
 Issues = "https://github.com/sarj-ai/standards/issues"
 
