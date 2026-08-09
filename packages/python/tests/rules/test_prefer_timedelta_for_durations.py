@@ -519,6 +519,22 @@ def test_plain_assignment_not_flagged():
     assert _check(src) == []
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        "HTTP_408_REQUEST_TIMEOUT = 408\n",
+        "HTTP_504_GATEWAY_TIMEOUT: int = 504\n",
+    ],
+)
+def test_http_status_constants_with_timeout_reason_phrase_not_flagged(source: str):
+    assert _check(source) == []
+
+
+def test_http_timeout_quantity_without_status_code_still_flagged():
+    src = "HTTP_REQUEST_TIMEOUT_SECONDS = 30\n"
+    assert len(_check(src)) == 1
+
+
 def test_module_level_annassign_flagged():
     src = "poll_interval_seconds: int = 5\n"
     assert len(_check(src)) == 1

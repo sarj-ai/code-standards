@@ -46,6 +46,11 @@ _EXCLUDE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Standard HTTP status symbols describe integer protocol codes, even when the
+# reason phrase contains a duration-shaped word (for example, 408 Request
+# Timeout).  Requiring ``timedelta`` here would change the public wire value.
+_HTTP_STATUS_CONSTANT_RE = re.compile(r"^HTTP_[1-5]\d{2}(?:_|$)", re.IGNORECASE)
+
 _NUMERIC_NAMES = frozenset({"int", "float"})
 _BARE_UNIT_NAMES = frozenset(
     {
@@ -180,6 +185,8 @@ class PreferTimedeltaForDurations(Rule):
         path: Path,
     ) -> None:
         if annotation is None:
+            return
+        if _HTTP_STATUS_CONSTANT_RE.search(name):
             return
         if name.lower() in _BARE_UNIT_NAMES or name.lower().endswith(("_worked", "_elapsed")):
             return
