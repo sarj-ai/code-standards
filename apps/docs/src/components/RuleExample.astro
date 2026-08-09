@@ -12,7 +12,7 @@ const { example } = Astro.props;
   <header>
     <span class="example__mark" aria-hidden="true">{example.outcome === 'reject' ? '×' : '✓'}</span>
     <div>
-      <p class="eyebrow">{example.outcome === 'reject' ? 'Reported' : 'Accepted'}</p>
+      <p class="eyebrow">{example.outcome === 'reject' ? 'Before' : 'After'}</p>
       <h3>{example.title}</h3>
     </div>
   </header>
@@ -24,7 +24,7 @@ const { example } = Astro.props;
   ))}
   {example.fixedFiles.length > 0 && (
     <details>
-      <summary>Safe fix</summary>
+      <summary>Autofix output</summary>
       {example.fixedFiles.map((file) => (
         <figure>
           <figcaption>{file.path}</figcaption>

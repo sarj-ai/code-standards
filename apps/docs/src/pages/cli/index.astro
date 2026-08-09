@@ -1,8 +1,8 @@
 ---
 import ReferencePage from '../../components/ReferencePage.astro';
-import { cliReference, commandAnchor, invocation, optionLabel } from '../../lib/cli';
+import { cliReference, commandAnchor, flattenCommands, invocation, optionLabel } from '../../lib/cli';
 
-const commands = cliReference.commands;
+const commands = flattenCommands().filter((command) => command.path[0] !== 'maintain' || command.path.length === 1);
 const quickStart = [
   cliReference.launcher.install,
   `${cliReference.program} setup`,
@@ -16,34 +16,21 @@ const runOnce = `${cliReference.launcher.runLatest} setup`;
   title="CLI reference"
   description={cliReference.summary}
 >
-  <header class="reference-hero">
-    <p class="eyebrow">COMMAND LINE</p>
-    <h1>Use Standards</h1>
-    <p class="lede">{cliReference.summary}</p>
+  <header class="reference-hero reference-hero--compact">
+    <h1>CLI</h1>
   </header>
 
-  <section class="command-block" id="quick-start">
-    <div class="command-block__gutter" aria-hidden="true">01</div>
+  <section class="cli-setup" id="quick-start">
     <div>
-      <p class="eyebrow">QUICK START</p>
-      <h2>Set up a repository</h2>
-      <p>Install the tool, configure the repository, then verify it:</p>
+      <h2>Setup</h2>
       <pre><code>{quickStart}</code></pre>
-      <button type="button" class="copy-button" data-copy={quickStart}>Copy command</button>
+      <button type="button" class="copy-button" data-copy={quickStart} aria-live="polite">Copy</button>
       <details>
-        <summary>Run setup without installing the CLI</summary>
+        <summary>Run once</summary>
         <pre><code>{runOnce}</code></pre>
       </details>
     </div>
   </section>
-
-  <div class="install-strip">
-    <div>
-      <span>Command</span>
-      <code>{cliReference.program} --help</code>
-    </div>
-    <button type="button" class="copy-button" data-copy={`${cliReference.program} --help`}>Copy</button>
-  </div>
 
   <nav class="command-index" aria-label="CLI commands">
     {cliReference.commands.map((command) => <a href={`#${commandAnchor(command)}`}><code>{command.name}</code></a>)}
@@ -51,9 +38,7 @@ const runOnce = `${cliReference.launcher.runLatest} setup`;
 
   {cliReference.globalOptions.length > 0 && (
     <section class="command-block" aria-labelledby="global-options">
-      <div class="command-block__gutter" aria-hidden="true">00</div>
       <div>
-        <p class="eyebrow">EVERY COMMAND</p>
         <h2 id="global-options">Global options</h2>
         <dl class="option-list">
           {cliReference.globalOptions.map((option) => (
@@ -71,11 +56,9 @@ const runOnce = `${cliReference.launcher.runLatest} setup`;
   )}
 
   <div class="command-reference">
-    {commands.map((command, index) => (
+    {commands.map((command) => (
       <section id={commandAnchor(command)} class="command-block">
-        <div class="command-block__gutter" aria-hidden="true">{String(index + 1).padStart(2, '0')}</div>
         <div>
-          <p class="eyebrow">{(command.path.join(' / ') || 'GLOBAL').toUpperCase()}</p>
           <h2><code>{invocation(command)}</code></h2>
           {command.summary && <p>{command.summary}</p>}
           <pre><code>{command.usage}</code></pre>
@@ -92,26 +75,29 @@ const runOnce = `${cliReference.launcher.runLatest} setup`;
               ))}
             </dl>
           )}
-          <button type="button" class="copy-button" data-copy={invocation(command)}>Copy command</button>
+          <button type="button" class="copy-button" data-copy={invocation(command)} aria-live="polite">Copy command</button>
         </div>
       </section>
     ))}
   </div>
 
-  {cliReference.epilog && <p class="cli-epilog">{cliReference.epilog}</p>}
-
   <script>
+    const copyTimers = new WeakMap<HTMLButtonElement, number>();
     for (const button of document.querySelectorAll('[data-copy]')) {
       button.addEventListener('click', async () => {
         if (!(button instanceof HTMLButtonElement)) return;
+        const original = button.textContent;
         try {
           await navigator.clipboard.writeText(button.dataset.copy ?? '');
         } catch {
+          button.textContent = 'Copy failed';
+          window.clearTimeout(copyTimers.get(button));
+          copyTimers.set(button, window.setTimeout(() => { button.textContent = original; }, 1400));
           return;
         }
-        const original = button.textContent;
+        window.clearTimeout(copyTimers.get(button));
         button.textContent = 'Copied';
-        setTimeout(() => { button.textContent = original; }, 1400);
+        copyTimers.set(button, window.setTimeout(() => { button.textContent = original; }, 1400));
       });
     }
   </script>

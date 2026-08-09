@@ -28,7 +28,7 @@ docs-artifacts-check:
 	@$(STANDARDS) --root . maintain docs check
 
 docs-check: docs-artifacts-check
-	cd apps/docs && npm run check && npm run build
+	cd apps/docs && npm run lint && npm run check && npm run build
 
 format-check:
 	uv run --project packages/standards --frozen ruff format --check \

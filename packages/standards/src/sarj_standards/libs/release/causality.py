@@ -32,7 +32,6 @@ _ARTIFACT_FILES: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType(
             path
             for path in (
                 target.manifest.as_posix(),
-                str(target.manifest.parent / "README.md"),
                 str(target.manifest.parent / "LICENSE"),
             )
         )

@@ -43,7 +43,7 @@ _PACKAGE_DEFINITIONS: Final = (
     ("packages/typescript/package.json", "npm", "eslint"),
     ("packages/tsconfig/package.json", "npm", None),
 )
-_CATALOG_PATH: Final = Path("packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json")
+_DOCUMENTATION_URL: Final = "https://code-standards.sarj.ai/"
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,28 +101,15 @@ def _root_readme(
     root: Path,
     packages: list[tuple[Path, str, str | None, dict[str, object]]],
 ) -> str:
+    del root
     standards = packages[0][3]
     title = _title(_string(standards, "name"))
-    description = _string(standards, "description")
-    rows = ["| Package | Version | Registry | Description |", "| --- | --- | --- | --- |"]
-    for path, registry, _engine, metadata in packages:
-        name = _string(metadata, "name")
-        relative = path.parent.relative_to(root).as_posix()
-        rows.append(
-            f"| [`{name}`]({relative}/) | `{_string(metadata, 'version')}` | {registry} | {_cell(_string(metadata, 'description'))} |"
-        )
     sections = [
         _GENERATED_SENTINEL,
         f"# {title}",
-        description,
-        "## Packages",
-        "\n".join(rows),
-        "## Command-line reference",
-        _cli_reference(packages[0][3], registry="PyPI"),
-        "## Rule catalog",
-        _catalog(root, engine=None),
-        "## Project links",
-        _links(standards),
+        _string(standards, "description"),
+        "```bash\nuv tool install --python 3.14 sarj-standards\n```",
+        f"[Documentation]({_DOCUMENTATION_URL}) · [Source]({_source_url(standards)})",
     ]
     return "\n\n".join(sections) + "\n"
 
@@ -134,210 +121,51 @@ def _package_readme(
     engine: str | None,
     metadata: dict[str, object],
 ) -> str:
+    del root, manifest_path, engine
     name = _string(metadata, "name")
-    details = [
-        "| Field | Value |",
-        "| --- | --- |",
-        f"| Version | `{_string(metadata, 'version')}` |",
-        f"| Registry | {registry} |",
-        f"| License | {_license(metadata)} |",
-    ]
-    runtime = _runtime(metadata)
-    if runtime:
-        details.append(f"| Runtime | `{runtime}` |")
     sections = [
         _GENERATED_SENTINEL,
         f"# {name}",
         _string(metadata, "description"),
-        "## Package metadata",
-        "\n".join(details),
+        f"```bash\n{_install_command(name, registry)}\n```",
+        f"[Documentation]({_homepage(metadata)}) · [Source]({_source_url(metadata)})",
     ]
-    scripts = _scripts(metadata)
-    if scripts:
-        sections.extend(("## Command-line reference", _cli_reference(metadata, registry=registry)))
-    if engine is not None:
-        sections.extend(("## Rule catalog", _catalog(root, engine=engine)))
-    links = _links(metadata)
-    if links:
-        sections.extend(("## Project links", links))
-    relative_manifest = manifest_path.relative_to(manifest_path.parent).as_posix()
-    sections.append(f"Package metadata is generated from [`{relative_manifest}`]({relative_manifest}).")
     return "\n\n".join(sections) + "\n"
 
 
 def _plugin_readme(root: Path) -> str:
     manifest_path = root / "plugins/sarj-audit/.claude-plugin/plugin.json"
     metadata = _manifest(manifest_path)
-    plugin = manifest_path.parent.parent
-    commands = sorted((plugin / "commands").glob("*.md"))
-    skills = sorted((plugin / "skills").glob("*/SKILL.md"))
-    command_rows = ["| Command | Definition |", "| --- | --- |"]
-    command_rows.extend(f"| `{path.stem}` | [`{_markdown_title(path)}`](commands/{path.name}) |" for path in commands)
-    skill_rows = ["| Skill | Definition |", "| --- | --- |"]
-    skill_rows.extend(
-        f"| `{path.parent.name}` | [`{_markdown_title(path)}`](skills/{path.parent.name}/SKILL.md) |" for path in skills
-    )
     sections = [
         _GENERATED_SENTINEL,
         f"# {_title(_string(metadata, 'name'))}",
         _string(metadata, "description"),
-        "## Plugin metadata",
-        "\n".join(
-            (
-                "| Field | Value |",
-                "| --- | --- |",
-                f"| Version | `{_string(metadata, 'version')}` |",
-                f"| Author | {_author(metadata)} |",
-            )
-        ),
-        "## Commands",
-        "\n".join(command_rows),
-        "## Skills",
-        "\n".join(skill_rows),
-        "## Project links",
-        _links(metadata),
+        f"[Documentation]({_DOCUMENTATION_URL}) · [Source](https://github.com/sarj-ai/standards/tree/main/plugins/sarj-audit)",
     ]
     return "\n\n".join(sections) + "\n"
 
 
-def _catalog(root: Path, *, engine: str | None) -> str:
-    catalog_path = root / _CATALOG_PATH
-    if catalog_path.is_file():
-        raw: object = json.loads(catalog_path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
-        if not _is_object_table(raw):
-            msg = f"{catalog_path} is not an object"
-            raise TypeError(msg)
-        raw_rules = raw.get("rules")
-        if not _is_object_list(raw_rules):
-            msg = f"{catalog_path} has no rules array"
-            raise ValueError(msg)
-        rules = [
-            rule for rule in raw_rules if _is_object_table(rule) and (engine is None or rule.get("engine") == engine)
-        ]
-        rows = ["| Rule | Summary | Default | Autofix |", "| --- | --- | --- | --- |"]
-        rows.extend(
-            "| `{}` | {} | `{}` | `{}` |".format(
-                _string(rule, "key"),
-                _cell(_string(rule, "summary")),
-                _string(rule, "defaultLevel"),
-                _string(rule, "autofix"),
-            )
-            for rule in sorted(rules, key=lambda item: str(item.get("key", "")))
-        )
-        return "\n".join(rows) if rules else "This package does not publish lint rules."
-    return _ledger_catalog(root, engine=engine)
-
-
-def _ledger_catalog(root: Path, *, engine: str | None) -> str:
-    ledger_path = root / "packages/standards/src/sarj_standards/configs/rule-ledger.json"
-    raw: object = json.loads(ledger_path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
-    if not _is_object_table(raw):
-        msg = f"{ledger_path} is not an object"
-        raise TypeError(msg)
-    groups = raw.get("rules")
-    if not _is_object_table(groups):
-        msg = f"{ledger_path} has no rules object"
-        raise ValueError(msg)
-    if engine is not None:
-        entries = groups.get(engine)
-        if not _is_object_list(entries):
-            msg = f"{ledger_path} has an invalid {engine!r} rule list"
-            raise TypeError(msg)
-        return (
-            f"{len(entries)} active rules. Run `sarj-standards show rules` for the generated machine-readable catalog."
-        )
-    rows = ["| Family | Active rules |", "| --- | ---: |"]
-    for key, label in (
-        ("eslint", "TypeScript"),
-        ("python", "Python"),
-        ("sql", "SQL"),
-        ("iac", "IaC"),
-        ("text", "Text"),
-    ):
-        entries = groups.get(key)
-        if not _is_object_list(entries):
-            msg = f"{ledger_path} has an invalid {key!r} rule list"
-            raise ValueError(msg)
-        rows.append(f"| {label} | {len(entries)} |")
-    return "\n".join(rows) + "\n\nRun `sarj-standards show rules` for the generated machine-readable catalog."
-
-
-def _cli_reference(metadata: dict[str, object], *, registry: str) -> str:
-    scripts = _scripts(metadata)
+def _install_command(name: str, registry: str) -> str:
     if registry == "npm":
-        rows = ["| Command |", "| --- |"]
-        rows.extend(f"| `npm run {command}` |" for command in sorted(scripts))
-        return "\n".join(rows)
-    rows = ["| Command | Entrypoint | Help |", "| --- | --- | --- |"]
-    for command, entrypoint in sorted(scripts.items()):
-        rows.append(f"| `{command}` | `{entrypoint}` | `{command} --help` |")
-    return "\n".join(rows)
+        return f"npm install --save-dev {name}"
+    python = " --python 3.14" if name == "sarj-standards" else ""
+    return f"uv tool install{python} {name}"
 
 
-def _scripts(metadata: dict[str, object]) -> dict[str, str]:
-    value = metadata.get("scripts")
-    if not _is_object_table(value):
-        return {}
-    scripts: dict[str, str] = {}
-    for name, entrypoint in value.items():
-        if not isinstance(entrypoint, str):
-            msg = "manifest scripts must map command names to entrypoints"
-            raise TypeError(msg)
-        scripts[name] = entrypoint
-    return scripts
+def _homepage(metadata: dict[str, object]) -> str:
+    urls = metadata.get("urls")
+    value = urls.get("Homepage") if _is_object_table(urls) else metadata.get("homepage")
+    return value if isinstance(value, str) and value else _DOCUMENTATION_URL
 
 
-def _links(metadata: dict[str, object]) -> str:
-    raw = metadata.get("urls")
-    if _is_object_table(raw):
-        links = {label: value for label, value in raw.items() if isinstance(value, str)}
-    else:
-        links = {
-            label: value
-            for label, value in (("Homepage", metadata.get("homepage")), ("Repository", metadata.get("repository")))
-            if isinstance(value, str)
-        }
-    return "\n".join(f"- [{label}]({url})" for label, url in sorted(links.items()))
-
-
-def _license(metadata: dict[str, object]) -> str:
-    value = metadata.get("license")
-    if isinstance(value, str):
-        return value
+def _source_url(metadata: dict[str, object]) -> str:
+    urls = metadata.get("urls")
+    value: object = urls.get("Repository") if _is_object_table(urls) else metadata.get("repository")
     if _is_object_table(value):
-        text = value.get("text")
-        if isinstance(text, str):
-            return text
-    return "Not declared"
-
-
-def _runtime(metadata: dict[str, object]) -> str:
-    python = metadata.get("requires-python")
-    if isinstance(python, str):
-        return f"Python {python}"
-    engines = metadata.get("engines")
-    if _is_object_table(engines):
-        return ", ".join(f"{name} {version}" for name, version in sorted(engines.items()) if isinstance(version, str))
-    return ""
-
-
-def _author(metadata: dict[str, object]) -> str:
-    author = metadata.get("author")
-    if isinstance(author, str):
-        return author
-    if _is_object_table(author):
-        name = author.get("name")
-        if isinstance(name, str):
-            return name
-    return "Not declared"
-
-
-def _markdown_title(path: Path) -> str:
-    match = _HEADING.search(path.read_text(encoding="utf-8"))
-    if match is None:
-        msg = f"{path} has no Markdown title"
-        raise ValueError(msg)
-    return match.group(1)
+        value = value.get("url")
+    if not isinstance(value, str) or not value:
+        return "https://github.com/sarj-ai/standards"
+    return value.removeprefix("git+").removesuffix(".git")
 
 
 def _validate_markdown_allowlist(root: Path) -> None:
@@ -454,13 +282,5 @@ def _title(name: str) -> str:
     return " ".join(part.capitalize() for part in name.replace("@", "").replace("/", " ").replace("-", " ").split())
 
 
-def _cell(value: str) -> str:
-    return value.replace("|", "\\|").replace("\n", " ")
-
-
 def _is_object_table(value: object) -> TypeGuard[dict[str, object]]:
     return isinstance(value, dict)
-
-
-def _is_object_list(value: object) -> TypeGuard[list[object]]:
-    return isinstance(value, list)

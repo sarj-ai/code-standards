@@ -22,9 +22,7 @@ const rules = rulesForEngine(engine);
   sidebar={familySidebar(engine)}
 >
   <header class="reference-hero reference-hero--compact">
-    <p class="eyebrow">ENGINE / {engine.toUpperCase()}</p>
     <h1>{engineLabel(engine)} rules</h1>
-    <p class="lede">{rules.length} deterministic checks, ordered by canonical rule ID.</p>
   </header>
   <RuleTable rules={rules} controls={rules.length > 12} />
 </ReferencePage>

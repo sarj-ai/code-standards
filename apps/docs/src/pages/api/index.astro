@@ -18,17 +18,16 @@ const fields = requiredRuleFields(catalogSchema);
 
 <ReferencePage title="Catalog API" description="The versioned, machine-readable contract behind the rule directory.">
   <header class="reference-hero">
-    <p class="eyebrow">API / VERSION 1</p>
-    <h1>The catalog is<br />the contract.</h1>
-    <p class="lede">The website and machine endpoint are projections of the same {catalog.rules.length}-rule snapshot.</p>
+    <h1>Catalog API</h1>
+    <p class="lede">The same {catalog.rules.length} rules shown on this site, as versioned JSON.</p>
   </header>
 
   <section class="endpoint-block">
     <div class="endpoint-block__method">GET</div>
     <div>
       <h2><code>/api/v1/catalog.json</code></h2>
-      <p>Every active rule with stable identity, remediation, provenance, and executable examples.</p>
-      <a href="/api/v1/catalog.json">Open JSON <span aria-hidden="true">↗</span></a>
+      <p>Rules, remediation, source links, and tested examples.</p>
+      <a href="/api/v1/catalog.json">Open JSON</a>
     </div>
   </section>
 
@@ -37,18 +36,17 @@ const fields = requiredRuleFields(catalogSchema);
     <div>
       <h2><code>/api/v1/rule-catalog.schema.json</code></h2>
       <p>JSON Schema 2020-12 for validating catalog consumers.</p>
-      <a href="/api/v1/rule-catalog.schema.json">Open schema <span aria-hidden="true">↗</span></a>
+      <a href="/api/v1/rule-catalog.schema.json">Open schema</a>
     </div>
   </section>
 
   <section class="schema-fields">
-    <p class="eyebrow">REQUIRED RULE FIELDS / {fields.length}</p>
-    <h2>Stable shape</h2>
+    <h2>Required fields ({fields.length})</h2>
     <div>{fields.map((field) => <code>{field}</code>)}</div>
   </section>
 
   <section class="curl-example">
-    <p class="eyebrow">REQUEST</p>
+    <h2>Request</h2>
     <pre><code>curl --fail https://code-standards.sarj.ai/api/v1/catalog.json</code></pre>
   </section>
 </ReferencePage>
