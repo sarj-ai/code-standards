@@ -381,7 +381,7 @@ wheels = [
 
 [[package]]
 name = "sarj-iac-lint"
-version = "0.9.1"
+version = "0.9.2"
 source = { editable = "../iac" }
 
 [package.metadata]
@@ -395,7 +395,7 @@ dev = [
 
 [[package]]
 name = "sarj-python-lint"
-version = "0.67.2"
+version = "0.67.3"
 source = { editable = "../python" }
 
 [package.metadata]
@@ -409,7 +409,7 @@ dev = [
 
 [[package]]
 name = "sarj-sql-lint"
-version = "0.13.1"
+version = "0.13.2"
 source = { editable = "../sql" }
 dependencies = [
     { name = "sqlfluff" },
@@ -428,7 +428,7 @@ dev = [
 
 [[package]]
 name = "sarj-standards"
-version = "5.6.2"
+version = "5.6.3"
 source = { editable = "." }
 dependencies = [
     { name = "basedpyright" },
