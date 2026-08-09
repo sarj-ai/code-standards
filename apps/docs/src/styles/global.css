@@ -548,11 +548,21 @@ starlight-menu-button button {
   border-bottom: 1px solid var(--rule);
 }
 
+.rule-detail__toolbar {
+  display: flex;
+  min-inline-size: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.65rem;
+}
+
 .rule-breadcrumb {
   display: flex;
+  min-inline-size: 0;
   align-items: center;
   gap: 0.5rem;
-  margin: 0 0 0.65rem;
+  margin: 0;
   color: var(--sl-color-gray-2);
   font-family: var(--sl-font-mono);
   font-size: 0.75rem;
@@ -753,50 +763,31 @@ starlight-menu-button button {
   font-size: 0.7rem;
 }
 
-.rule-pagination {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
-  margin-top: 3rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--rule);
+.rule-stepper {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.35rem;
 }
 
-.rule-pagination a {
-  display: grid;
-  min-width: 0;
-  min-height: 64px;
-  align-content: center;
-  gap: 0.2rem;
-  padding: 0.7rem 0.8rem;
+.rule-stepper a {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.35rem 0.55rem;
   border: 1px solid var(--rule);
-  border-radius: 0.45rem;
+  border-radius: 0.4rem;
   color: var(--sl-color-white);
+  font-size: 0.75rem;
   text-decoration: none;
 }
 
-.rule-pagination a:last-child {
-  text-align: right;
-}
-
-.rule-pagination a:hover,
-.rule-pagination a:focus-visible {
+.rule-stepper a:hover,
+.rule-stepper a:focus-visible {
   border-color: var(--sl-color-accent);
 }
 
-.rule-pagination span {
-  color: var(--sl-color-gray-2);
-  font-size: 0.75rem;
-}
-
-.rule-pagination strong {
-  overflow-wrap: anywhere;
-  font-family: var(--sl-font-mono);
-  font-size: 0.78rem;
-  font-weight: 500;
-}
-
-.rule-pagination kbd {
+.rule-stepper kbd {
   padding: 0.05rem 0.28rem;
   border: 1px solid var(--rule);
   border-radius: 0.2rem;
@@ -956,20 +947,32 @@ starlight-menu-button button {
     flex: initial;
   }
 
-  .rule-pagination {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .rule-stepper a {
+    min-height: 44px;
+  }
+
+}
+
+@media (max-width: 22rem) {
+  .rule-detail__toolbar {
     gap: 0.5rem;
   }
 
-  .rule-pagination a {
-    min-height: 56px;
-    padding-inline: 0.6rem;
+  .rule-stepper a {
+    width: 44px;
+    justify-content: center;
+    padding-inline: 0;
   }
 
-  .rule-pagination strong {
-    font-size: 0.7rem;
+  .rule-stepper__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    clip-path: inset(50%);
   }
-
 }
 
 @media (min-width: 50rem) and (max-width: 56rem) {

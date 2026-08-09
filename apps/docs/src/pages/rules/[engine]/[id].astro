@@ -33,11 +33,39 @@ const exampleScenarios = [...new Set(rule.examples.map((example) => example.scen
 <ReferencePage title={`${rule.id} · ${engineLabel(rule.engine)}`} description={rule.summary} sidebar={[...referenceSidebar]}>
   <article class="rule-detail" data-pagefind-meta={`rule:${rule.key}`}>
     <header class="rule-detail__header">
-      <nav class="rule-breadcrumb" aria-label="Breadcrumb">
-        <a href={`/rules/${rule.engine}/`}><EngineMark engine={rule.engine} /></a>
-        <span aria-hidden="true">·</span>
-        <a href={`/rules/?category=${rule.category}`}>{rule.category}</a>
-      </nav>
+      <div class="rule-detail__toolbar">
+        <nav class="rule-breadcrumb" aria-label="Breadcrumb">
+          <a href={`/rules/${rule.engine}/`}><EngineMark engine={rule.engine} /></a>
+          <span aria-hidden="true">·</span>
+          <a href={`/rules/?category=${rule.category}`}>{rule.category}</a>
+        </nav>
+        <nav class="rule-stepper" aria-label="Rule navigation" data-pagefind-ignore>
+          {previousRule && (
+            <a
+              href={ruleHref(previousRule)}
+              rel="prev"
+              data-rule-previous
+              aria-keyshortcuts="ArrowLeft"
+              aria-label={`Previous rule: ${previousRule.id}`}
+              title={previousRule.id}
+            >
+              <kbd aria-hidden="true">←</kbd><span class="rule-stepper__label">Previous</span>
+            </a>
+          )}
+          {nextRule && (
+            <a
+              href={ruleHref(nextRule)}
+              rel="next"
+              data-rule-next
+              aria-keyshortcuts="ArrowRight"
+              aria-label={`Next rule: ${nextRule.id}`}
+              title={nextRule.id}
+            >
+              <span class="rule-stepper__label">Next</span><kbd aria-hidden="true">→</kbd>
+            </a>
+          )}
+        </nav>
+      </div>
       <h1>{rule.id}</h1>
       <p class="lede">{rule.summary}</p>
       <div class="rule-header-links" data-pagefind-ignore>
@@ -97,20 +125,6 @@ const exampleScenarios = [...new Set(rule.examples.map((example) => example.scen
 
     {rule.aliases.length > 0 && <p class="aliases" data-pagefind-meta={`aliases:${rule.aliases.join(',')}`}>Formerly: {rule.aliases.join(', ')}</p>}
 
-    <nav class="rule-pagination" aria-label="Rule navigation" data-pagefind-ignore>
-      {previousRule ? (
-        <a href={ruleHref(previousRule)} rel="prev" data-rule-previous aria-keyshortcuts="ArrowLeft">
-          <span><kbd>←</kbd> Previous</span>
-          <strong>{previousRule.id}</strong>
-        </a>
-      ) : <span></span>}
-      {nextRule ? (
-        <a href={ruleHref(nextRule)} rel="next" data-rule-next aria-keyshortcuts="ArrowRight">
-          <span>Next <kbd>→</kbd></span>
-          <strong>{nextRule.id}</strong>
-        </a>
-      ) : <span></span>}
-    </nav>
   </article>
 </ReferencePage>
 
