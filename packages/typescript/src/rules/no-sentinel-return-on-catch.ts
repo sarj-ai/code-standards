@@ -298,6 +298,43 @@ function isBodyDecodeNode(node: TSESTree.Node): boolean {
   );
 }
 
+/** Pure validation and optional browser-storage reads around JSON parsing. */
+function isSafeParseSupportCall(node: TSESTree.CallExpression): boolean {
+  const callee = node.callee;
+  if (
+    callee.type !== AST_NODE_TYPES.MemberExpression ||
+    callee.computed ||
+    callee.property.type !== AST_NODE_TYPES.Identifier
+  ) {
+    return false;
+  }
+  if (
+    callee.property.name === "isArray" &&
+    callee.object.type === AST_NODE_TYPES.Identifier &&
+    callee.object.name === "Array"
+  ) {
+    return true;
+  }
+  if (callee.property.name !== "getItem") return false;
+  if (
+    callee.object.type === AST_NODE_TYPES.Identifier &&
+    (callee.object.name === "localStorage" ||
+      callee.object.name === "sessionStorage")
+  ) {
+    return true;
+  }
+  return (
+    callee.object.type === AST_NODE_TYPES.MemberExpression &&
+    !callee.object.computed &&
+    callee.object.object.type === AST_NODE_TYPES.Identifier &&
+    (callee.object.object.name === "window" ||
+      callee.object.object.name === "globalThis") &&
+    callee.object.property.type === AST_NODE_TYPES.Identifier &&
+    (callee.object.property.name === "localStorage" ||
+      callee.object.property.name === "sessionStorage")
+  );
+}
+
 /** Body-decoding methods of a `Request` / `Response` — they throw on bad input. */
 const BODY_DECODE_METHODS: ReadonlySet<string> = new Set([
   "json",
@@ -401,6 +438,11 @@ function tryReturnsSafeParse(catchNode: TSESTree.CatchClause): boolean {
     if (current.type === AST_NODE_TYPES.CallExpression || current.type === AST_NODE_TYPES.NewExpression) {
       if (isParseShapedNode(current) || isBodyDecodeNode(current)) {
         sawSafeParse = true;
+      } else if (
+        current.type === AST_NODE_TYPES.CallExpression &&
+        isSafeParseSupportCall(current)
+      ) {
+        // Pure support work does not broaden the failure boundary.
       } else {
         sawUnsafeOperation = true;
         return;

@@ -210,7 +210,12 @@ def _is_overload(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
 
 def _is_observability_boundary(path: Path, node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     """Keep raw numeric units at logging/metrics serialization boundaries."""
-    return "logger" in path.stem.lower() or node.name.lstrip("_").startswith(("log_", "record_", "emit_"))
+    name = node.name.lstrip("_")
+    return (
+        "logger" in path.stem.lower()
+        or name.startswith(("log_", "record_", "emit_"))
+        or name.endswith(("_metric", "_metrics"))
+    )
 
 
 def _is_constant_reference(identifier: str) -> bool:

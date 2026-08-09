@@ -105,6 +105,17 @@ def test_allows_private_observability_compatibility_hook() -> None:
     assert _check("def _log_completed(duration_ms: float) -> None: ...\n") == []
 
 
+@pytest.mark.parametrize("name", ["update_performance_metric", "_update_performance_metrics"])
+def test_allows_metrics_accumulator_boundary(name: str) -> None:
+    source = f"""
+def {name}(processing_time_ms: float) -> None:
+    total_processing_time_ms += processing_time_ms
+    emit(processing_time_ms=round(processing_time_ms, 2))
+"""
+
+    assert _check(source) == []
+
+
 @pytest.mark.parametrize(
     "assignment",
     [

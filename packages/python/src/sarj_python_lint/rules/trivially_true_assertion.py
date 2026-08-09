@@ -123,6 +123,7 @@ class _Index:
     parents: dict[int, ast.AST]
     scopes: list[_Scope]
     owners: dict[int, _Scope]
+    imported_names: frozenset[str]
 
 
 class TriviallyTrueAssertion(Rule):
@@ -137,6 +138,7 @@ class TriviallyTrueAssertion(Rule):
         limitations=(
             "Literal-only assertions owned by Ruff or SARJ057 are excluded.",
             "Constructor echoes with evidence of field coercion are excluded.",
+            "Imported constructors are excluded because their assignment, validation, and normalization behavior is not visible.",
         ),
         examples=(
             RuleExample(
@@ -244,7 +246,23 @@ def _index_module(tree: ast.Module) -> _Index:
         for child in ast.iter_child_nodes(node):
             parents[id(child)] = node
             stack.append((child, scope))
-    return _Index(parents=parents, scopes=scopes, owners=owners)
+    return _Index(
+        parents=parents,
+        scopes=scopes,
+        owners=owners,
+        imported_names=_imported_names(tree),
+    )
+
+
+def _imported_names(tree: ast.Module) -> frozenset[str]:
+    """Collect bindings whose constructor behavior lives outside this module."""
+    bindings: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            bindings.update(alias.asname or alias.name.split(".", maxsplit=1)[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            bindings.update(alias.asname or alias.name for alias in node.names if alias.name != "*")
+    return frozenset(bindings)
 
 
 def _record_local(node: ast.AST, scope: _Scope) -> None:
@@ -277,7 +295,7 @@ def _construction_findings(index: _Index) -> list[tuple[_Assertion, str]]:
         if not constructed:
             continue
         for node in scope.asserts:
-            echo = _kwarg_echo(node, constructed)
+            echo = _kwarg_echo(node, constructed, index.imported_names)
             if echo is not None:
                 echoes.append(echo)
             elif _is_isinstance_echo(node, constructed, scope.asserts):
@@ -342,7 +360,11 @@ def _is_unittest_assertion(node: ast.AST) -> bool:
     )
 
 
-def _kwarg_echo(node: _Assertion, constructed: dict[str, ast.Call]) -> _KwargEcho | None:
+def _kwarg_echo(
+    node: _Assertion,
+    constructed: dict[str, ast.Call],
+    imported_names: frozenset[str],
+) -> _KwargEcho | None:
     """Pair `x = C(field=<literal>)` with a later `assert x.field == <literal>`."""
     operands = _echo_operands(node)
     if operands is None:
@@ -356,6 +378,8 @@ def _kwarg_echo(node: _Assertion, constructed: dict[str, ast.Call]) -> _KwargEch
         call = constructed.get(attribute.value.id)
         if call is None or node.lineno <= call.lineno:
             continue
+        if _uses_imported_binding(call.func, imported_names):
+            continue
         name = _constructor_name(call)
         if name is None or not _is_pure_literal(literal):
             continue
@@ -364,6 +388,14 @@ def _kwarg_echo(node: _Assertion, constructed: dict[str, ast.Call]) -> _KwargEch
                 echoes = ast.dump(keyword.value) == ast.dump(literal)
                 return _KwargEcho(node=node, field=(name, attribute.attr), echoes=echoes)
     return None
+
+
+def _uses_imported_binding(func: ast.expr, imported_names: frozenset[str]) -> bool:
+    """Return whether a callee resolves through a binding imported by this module."""
+    current = func
+    while isinstance(current, ast.Attribute):
+        current = current.value
+    return isinstance(current, ast.Name) and current.id in imported_names
 
 
 def _echo_operands(node: _Assertion) -> tuple[ast.expr, ast.expr] | None:

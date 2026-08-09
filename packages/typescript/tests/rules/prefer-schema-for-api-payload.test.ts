@@ -176,6 +176,14 @@ ruleTester.run("prefer-schema-for-api-payload", rule, {
       name: "allows an extracted array used only in its validated conditional branch",
       code: "const payload = JSON.parse(text); const items = payload.items; return Array.isArray(items) ? items : [];",
     },
+    {
+      name: "allows a parsed root used inside its proven array branch",
+      code: "const parsed = JSON.parse(text); if (Array.isArray(parsed)) return parsed.map(String); return [];",
+    },
+    {
+      name: "allows a field used inside its proven primitive branch",
+      code: "async function f(r) { const body = await r.json(); return typeof body.id === 'string' ? body.id.trim() : null; }",
+    },
   ],
   invalid: [
     { name: "public match example", filename: preferSchemaForApiPayloadDocumentation.examples[1].focusPath, code: preferSchemaForApiPayloadDocumentation.examples[1].files[0].source, errors: [{ messageId: "unparsedJsonAccess" }] },
@@ -291,6 +299,22 @@ ruleTester.run("prefer-schema-for-api-payload", rule, {
       name: "mixed guarded and unguarded uses remain unsafe",
       code: "const payload = JSON.parse(text); const exp = payload.exp; log(exp); return typeof exp === 'number' ? exp : null;",
       errors: [{ messageId: "unparsedJsonAccess" }],
+    },
+    {
+      name: "an array guard does not validate a parsed root after the guarded branch",
+      code: "const parsed = JSON.parse(text); if (Array.isArray(parsed)) consume(parsed); return parsed.id;",
+      errors: [{ messageId: "unparsedJsonAccess" }],
+    },
+    {
+      name: "a field guard does not validate that field after the guarded branch",
+      code: `async function f(r) {
+        const body = await r.json();
+        if (typeof body.id === "string") {
+          consume(body.id);
+        }
+        return body.id;
+      }`,
+      errors: [{ messageId: "unparsedJsonAccess", line: 6 }],
     },
     {
       name: "validating one extracted field does not clear a sibling field",

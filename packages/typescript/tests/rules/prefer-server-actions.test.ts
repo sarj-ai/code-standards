@@ -9,6 +9,8 @@ RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
 const ruleTester = new RuleTester();
+const NEXT_CLIENT_MODULE = "/repo/app/ui/actions.tsx";
+const USE_CLIENT = '"use client"; ';
 
 ruleTester.run("prefer-server-actions", rule, {
   valid: [
@@ -50,6 +52,26 @@ ruleTester.run("prefer-server-actions", rule, {
     {
       name: "ignores non-React modules regardless of import position",
       code: 'api.post("/api/tasks"); import { ref } from "vue";',
+    },
+    {
+      name: "ignores React Vite modules without positive Next.js evidence",
+      code: 'import React from "react"; api.post("/api/tasks");',
+      filename: "/repo/src/components/actions.tsx",
+    },
+    {
+      name: "ignores Vite pages paths without a use-client directive",
+      code: 'import React from "react"; api.post("/api/tasks");',
+      filename: "/repo/src/pages/actions.tsx",
+    },
+    {
+      name: "still allows GET requests in a Next.js module",
+      code: `${USE_CLIENT}fetch('/api/users');`,
+      filename: NEXT_CLIENT_MODULE,
+    },
+    {
+      name: "still allows external mutations in a Next.js module",
+      code: `${USE_CLIENT}fetch('https://api.example.com/users', { method: 'POST' });`,
+      filename: NEXT_CLIENT_MODULE,
     },
     {
       name: "ignores codemod fixtures because they are not running code",
@@ -122,63 +144,81 @@ ruleTester.run("prefer-server-actions", rule, {
     { name: "public match example", filename: preferServerActionsDocumentation.examples[1].focusPath, code: preferServerActionsDocumentation.examples[1].files[0].source, errors: [{ messageId: "preferServerAction" }] },
     // A React page still fires.
     {
-      code: "const r = await fetch('/api/data', { method: 'POST', body });",
+      code: `${USE_CLIENT}const r = await fetch('/api/data', { method: 'POST', body });`,
       filename: "/repo/src/pages/index.tsx",
       errors: [{ messageId: "preferServerAction" }],
     },
     {
-      code: "fetch('/api/users', { method: 'POST' });",
+      code: `${USE_CLIENT}fetch('/api/users', { method: 'POST' });`,
+      filename: NEXT_CLIENT_MODULE,
       errors: [{ messageId: "preferServerAction" }],
     },
     {
-      code: "fetch('/api/users/1', { method: 'DELETE' });",
+      code: `${USE_CLIENT}fetch('/api/users/1', { method: 'DELETE' });`,
+      filename: NEXT_CLIENT_MODULE,
       errors: [{ messageId: "preferServerAction" }],
     },
     {
       // Method casing is normalized.
-      code: "fetch('/api/users/1', { method: 'put' });",
+      code: `${USE_CLIENT}fetch('/api/users/1', { method: 'put' });`,
+      filename: NEXT_CLIENT_MODULE,
       errors: [{ messageId: "preferServerAction" }],
     },
     {
-      code: "fetch(`/api/literal`, { method: 'PATCH' });",
+      code: `${USE_CLIENT}fetch(\`/api/literal\`, { method: 'PATCH' });`,
+      filename: NEXT_CLIENT_MODULE,
       errors: [{ messageId: "preferServerAction" }],
     },
     {
       // Dynamic template literal with `/api/` prefix.
-      code: "fetch(`/api/${id}`, { method: 'POST' });",
+      code: `${USE_CLIENT}fetch(\`/api/\${id}\`, { method: 'POST' });`,
+      filename: NEXT_CLIENT_MODULE,
       errors: [{ messageId: "preferServerAction" }],
     },
     // Branch 2: axios/custom-wrapper member call (no handler arg).
     {
-      code: "api.post('/api/orders', { total: 1 });",
+      code: `${USE_CLIENT}api.post('/api/orders', { total: 1 });`,
+      filename: NEXT_CLIENT_MODULE,
       errors: [{ messageId: "preferServerAction" }],
     },
     {
       name: "flags member mutations whose payload is an identifier",
-      code: "api.post('/api/orders', order);",
+      code: `${USE_CLIENT}api.post('/api/orders', order);`,
+      filename: NEXT_CLIENT_MODULE,
       errors: [{ messageId: "preferServerAction" }],
     },
     {
-      code: "axios.put('/api/orders/1');",
+      code: `${USE_CLIENT}axios.put('/api/orders/1');`,
+      filename: NEXT_CLIENT_MODULE,
       errors: [{ messageId: "preferServerAction" }],
     },
     // Branch 3: direct axios config object.
     {
-      code: "axios({ method: 'post', url: '/api/orders' });",
+      code: `${USE_CLIENT}axios({ method: 'post', url: '/api/orders' });`,
+      filename: NEXT_CLIENT_MODULE,
       errors: [{ messageId: "preferServerAction" }],
     },
     {
       // request({ method, url }) direct-config form.
-      code: "request({ method: 'DELETE', url: '/api/orders/1' });",
+      code: `${USE_CLIENT}request({ method: 'DELETE', url: '/api/orders/1' });`,
+      filename: NEXT_CLIENT_MODULE,
       errors: [{ messageId: "preferServerAction" }],
     },
     // resolveNode: url and method resolved through variables.
     {
-      code: "const url = '/api/orders'; fetch(url, { method: 'POST' });",
+      code: `${USE_CLIENT}const url = '/api/orders'; fetch(url, { method: 'POST' });`,
+      filename: NEXT_CLIENT_MODULE,
       errors: [{ messageId: "preferServerAction" }],
     },
     {
-      code: "const cfg = { method: 'post', url: '/api/orders' }; axios(cfg);",
+      code: `${USE_CLIENT}const cfg = { method: 'post', url: '/api/orders' }; axios(cfg);`,
+      filename: NEXT_CLIENT_MODULE,
+      errors: [{ messageId: "preferServerAction" }],
+    },
+    {
+      name: "reports with an explicit Next import outside app and pages trees",
+      code: 'import { useRouter } from "next/navigation"; fetch("/api/items", { method: "POST" });',
+      filename: "/repo/src/components/actions.tsx",
       errors: [{ messageId: "preferServerAction" }],
     },
   ],

@@ -287,7 +287,7 @@ def test_two():
     assert len(_check(src)) == 2
 
 
-def test_a_narrow_sibling_construction_still_counts_as_repetition():
+def test_a_narrow_sibling_does_not_prove_boilerplate_repetition():
     src = f"""
 def test_one():
     assert Batch({_NINE_KWARGS})
@@ -295,10 +295,10 @@ def test_one():
 def test_two():
     assert Batch(id="b2")
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
-def test_construction_repeated_only_outside_a_test_still_counts():
+def test_construction_repeated_only_outside_a_test_does_not_arm_the_rule():
     src = f"""
 def _seed():
     return Batch(id="seed")
@@ -306,7 +306,7 @@ def _seed():
 def test_one():
     assert Batch({_NINE_KWARGS})
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
 def test_distinct_callees_do_not_count_toward_each_other():

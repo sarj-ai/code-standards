@@ -17,6 +17,7 @@ from sarj_sql_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    dollar_quoted_lines,
     has_dbmate_directive,
     is_dump_file,
     is_postgres_migration,
@@ -33,6 +34,10 @@ DDL_PATTERN = re.compile(
     re.IGNORECASE,
 )
 TX_END_PATTERN = re.compile(r"\b(COMMIT|ROLLBACK)\b", re.IGNORECASE)
+SECTION_BOUNDARY_PATTERN = re.compile(
+    r"^\s*--\s*(?:migrate:down(?:\s+transaction:false)?|\+goose\s+down)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
 
 # Match SET/RESET/set_config assignments for lock_timeout or statement_timeout.
 ASSIGNMENT_PATTERN = re.compile(
@@ -46,6 +51,16 @@ def _positive_timeout(value: str) -> bool:
     """Accept the deliberately small timeout grammar only when its number is positive."""
     match = POSITIVE_VAL_PATTERN.fullmatch(value)
     return match is not None and Decimal(match.group("number")) > 0
+
+
+def _section_boundary_events(source: str) -> list[tuple[int, str, re.Match[str]]]:
+    """Return live migration-runner section boundaries as state-machine events."""
+    dollar_lines = dollar_quoted_lines(source)
+    return [
+        (boundary_offset, "SECTION_BOUNDARY", match)
+        for match in SECTION_BOUNDARY_PATTERN.finditer(source)
+        if source.count("\n", 0, (boundary_offset := match.start())) + 1 not in dollar_lines
+    ]
 
 
 @final
@@ -107,6 +122,7 @@ class RequireLockTimeout(Rule):
             if masked[start_pos : start_pos + 3].strip():
                 events.append((start_pos, "ASSIGNMENT", match))
         events.extend((match.start(), "TX_END", match) for match in TX_END_PATTERN.finditer(masked))
+        events.extend(_section_boundary_events(source))
         events.extend((match.start(), "DDL", match) for match in DDL_PATTERN.finditer(masked))
 
         events.sort(key=operator.itemgetter(0))
@@ -132,6 +148,11 @@ class RequireLockTimeout(Rule):
                 else:
                     active_global_timeouts[target_var] = is_active
             elif event_type == "TX_END":
+                active_local_timeouts = {"lock_timeout": False, "statement_timeout": False}
+            elif event_type == "SECTION_BOUNDARY":
+                # Up/down sections are separate migration-runner invocations.
+                # Neither session nor transaction-local settings cross the boundary.
+                active_global_timeouts = {"lock_timeout": False, "statement_timeout": False}
                 active_local_timeouts = {"lock_timeout": False, "statement_timeout": False}
             elif event_type == "DDL":
                 has_timeout = any(active_global_timeouts.values()) or any(active_local_timeouts.values())

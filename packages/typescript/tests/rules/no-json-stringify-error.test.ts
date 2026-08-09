@@ -19,6 +19,18 @@ ruleTester.run("no-json-stringify-error", rule, {
   valid: [
     { name: "allows the documented explicit error field", code: noJsonStringifyErrorDocumentation.examples[0].files[0].source },
     { name: "allows non-error objects", code: "JSON.stringify(user);" },
+    {
+      name: "allows a conventional short name without Error provenance",
+      code: "items.map((e) => JSON.stringify(e));",
+    },
+    {
+      name: "allows a plain API error payload",
+      code: "const data = await response.json(); throw new Error(JSON.stringify(data.error));",
+    },
+    {
+      name: "allows an unproven error-named member",
+      code: "JSON.stringify(this.lastError);",
+    },
     { name: "allows object literals", code: "JSON.stringify({ a: 1 });" },
     {
       name: "allows an error message nested in an object literal",
@@ -175,32 +187,6 @@ ruleTester.run("no-json-stringify-error", rule, {
       code: "try { f(); } catch (problem) { JSON.stringify(problem); }",
       errors: [{ messageId: "noJsonStringifyError" }],
     },
-    // Conventional error names by pattern.
-    {
-      code: "JSON.stringify(err);",
-      errors: [{ messageId: "noJsonStringifyError" }],
-    },
-    {
-      code: "JSON.stringify(error);",
-      errors: [{ messageId: "noJsonStringifyError" }],
-    },
-    {
-      code: "JSON.stringify(e);",
-      errors: [{ messageId: "noJsonStringifyError" }],
-    },
-    {
-      code: "JSON.stringify(ex);",
-      errors: [{ messageId: "noJsonStringifyError" }],
-    },
-    {
-      code: "JSON.stringify(exc);",
-      errors: [{ messageId: "noJsonStringifyError" }],
-    },
-    // Case-insensitive name match.
-    {
-      code: "JSON.stringify(Error);",
-      errors: [{ messageId: "noJsonStringifyError" }],
-    },
     // catch binding inside a nested scope, conventional name.
     {
       code: "try { f(); } catch (err) { const wrap = () => JSON.stringify(err); }",
@@ -211,34 +197,35 @@ ruleTester.run("no-json-stringify-error", rule, {
       code: "try { f(); } catch (boom) { const wrap = () => JSON.stringify(boom); }",
       errors: [{ messageId: "noJsonStringifyError" }],
     },
-    // Member expressions denoting an error value: error-suggesting property.
+    // Member expressions rooted in a caught Error retain provenance.
     {
-      code: "JSON.stringify(err.cause);",
+      code: "try { f(); } catch (err) { JSON.stringify(err.cause); }",
       errors: [{ messageId: "noJsonStringifyError" }],
     },
+    // A caught Error's non-string member still carries Error provenance.
     {
-      code: "JSON.stringify(this.lastError);",
-      errors: [{ messageId: "noJsonStringifyError" }],
-    },
-    // Error-named base with a non-string-accessor property.
-    {
-      code: "JSON.stringify(err.inner);",
+      code: "try { f(); } catch (err) { JSON.stringify(err.inner); }",
       errors: [{ messageId: "noJsonStringifyError" }],
     },
     // An unrelated ternary (not an instanceof guard) does not suppress the report.
     {
-      code: "const s = ready ? other : JSON.stringify(err);",
+      code: "try { f(); } catch (err) { const s = ready ? other : JSON.stringify(err); }",
       errors: [{ messageId: "noJsonStringifyError" }],
     },
 
     {
       name: "rejects nested cause while allowing payload properties",
-      code: "JSON.stringify(error.cause);",
+      code: "try { f(); } catch (error) { JSON.stringify(error.cause); }",
       errors: [{ messageId: "noJsonStringifyError" }],
     },
     {
       name: "rejects originalError while allowing payload properties",
-      code: "JSON.stringify(err.originalError);",
+      code: "try { f(); } catch (err) { JSON.stringify(err.originalError); }",
+      errors: [{ messageId: "noJsonStringifyError" }],
+    },
+    {
+      name: "reports a directly constructed Error",
+      code: "JSON.stringify(new TypeError('invalid'));",
       errors: [{ messageId: "noJsonStringifyError" }],
     },
   ],

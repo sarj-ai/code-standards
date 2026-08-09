@@ -749,6 +749,8 @@ _OPAQUE_MAPPING_BODIES = [
     "return {}",
     # A merge of mappings the function did not author.
     "return {**base, **overrides}",
+    # A dynamic key means the returned mapping is not fixed-shape.
+    "return {'id': ident, key: value}",
 ]
 
 
@@ -767,8 +769,6 @@ _RECORD_BODIES = [
     "return [{'id': row.id} for row in rows]",
     # One opaque branch does not excuse the record branch.
     "if x:\n        return other.copy()\n    return {'id': 1}",
-    # A single literal string key is enough evidence.
-    "return {'id': ident, key: value}",
 ]
 
 
@@ -927,3 +927,35 @@ def test_payload_builder_under_test_support_directory_is_exempt() -> None:
 
     assert _check(source, path="python/common/testing/payloads.py") == []
     assert len(_check(source, path="python/common/payloads.py")) == 1
+
+
+@pytest.mark.parametrize("path", ["docs_src/tutorial.py", "docs/examples/tutorial.py"])
+def test_documentation_examples_are_exempt(path: str) -> None:
+    source = "def payload() -> dict[str, object]:\n    return {'id': 1}\n"
+
+    assert not _check(source, path)
+
+
+def test_documentation_directory_name_does_not_hide_production_source() -> None:
+    source = "def payload() -> dict[str, object]:\n    return {'id': 1}\n"
+
+    assert _check(source, "src/documentation/payload.py")
+
+
+def test_mapping_unpack_is_not_a_fixed_shape() -> None:
+    source = "def payload(context) -> dict[str, object]:\n    return {**context, 'request': object()}\n"
+
+    assert not _check(source)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "enrich(payload)",
+        "enrich(value=payload)",
+    ],
+)
+def test_mapping_crossing_opaque_call_is_not_a_fixed_shape(body: str) -> None:
+    source = f"def payload() -> dict[str, object]:\n    payload = {{'id': 1}}\n    {body}\n    return payload\n"
+
+    assert not _check(source)
