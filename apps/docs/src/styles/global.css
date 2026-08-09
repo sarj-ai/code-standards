@@ -607,6 +607,7 @@ starlight-menu-button button {
 .examples-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
   gap: 1rem;
   margin-top: 1rem;
 }
@@ -622,6 +623,7 @@ starlight-menu-button button {
 }
 
 .examples-grid > .example {
+  height: 100%;
   margin-top: 0;
 }
 
@@ -645,6 +647,12 @@ starlight-menu-button button {
 
 .example__code > .expressive-code:last-child,
 .example__code > .expressive-code:last-child figure {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+.example__code > .expressive-code:last-child figure > pre {
   flex: 1;
 }
 
