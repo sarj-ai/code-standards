@@ -20,6 +20,7 @@ const rules = rulesForEngine(engine);
   title={`${engineLabel(engine)} rules`}
   description={`${rules.length} active ${engineLabel(engine)} rules in Sarj Standards.`}
   sidebar={[...referenceSidebar]}
+  pagefind={false}
 >
   <RuleTable rules={rules} />
 </ReferencePage>
