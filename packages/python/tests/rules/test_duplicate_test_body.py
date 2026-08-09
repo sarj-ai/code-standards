@@ -1025,6 +1025,107 @@ def test_two():
     assert _check(src) == []
 
 
+def test_five_consecutive_embedded_source_checker_cases_are_parameterization_evidence():
+    src = '''
+def test_skips_first_ast_binding():
+    source = """
+    ast = FakeAst()
+    def render(value):
+        return (
+            isinstance(value, ast.alias)
+            or isinstance(value, ast.arg)
+            or isinstance(value, ast.keyword)
+        )
+    """
+    assert _check(source) == []
+
+
+def test_skips_second_ast_binding():
+    source = """
+    import ast
+    def render(ast, value):
+        return (
+            isinstance(value, ast.alias)
+            or isinstance(value, ast.arg)
+            or isinstance(value, ast.keyword)
+        )
+    """
+    assert _check(source) == []
+
+
+def test_skips_third_ast_binding():
+    source = """
+    import ast
+    def render(ast, value):
+        return (
+            isinstance(value, ast.alias)
+            or isinstance(value, ast.arg)
+            or isinstance(value, ast.keyword)
+        )
+    """
+    assert _check(source) == []
+
+
+def test_skips_fourth_ast_binding():
+    source = """
+    import ast
+    def render(ast, value):
+        return (
+            isinstance(value, ast.alias)
+            or isinstance(value, ast.arg)
+            or isinstance(value, ast.keyword)
+        )
+    """
+    assert _check(source) == []
+
+
+def test_skips_fifth_ast_binding():
+    source = """
+    import ast
+    def render(ast, value):
+        return (
+            isinstance(value, ast.alias)
+            or isinstance(value, ast.arg)
+            or isinstance(value, ast.keyword)
+        )
+    """
+    assert _check(source) == []
+'''
+    [diag] = _check(src)
+    assert "one `@pytest.mark.parametrize(...)`" in diag.message
+
+
+def test_four_embedded_source_checker_cases_may_keep_individual_contract_names():
+    tests = "\n\n".join(
+        f'''def test_skips_ast_binding_{index}():
+    source = """
+    def render(value):
+        return isinstance(value, ast.alias_{index})
+    """
+    assert _check(source) == []'''
+        for index in range(4)
+    )
+    assert _check(tests) == []
+
+
+def test_two_statement_scenario_documents_remain_distinct_without_a_checker_assertion():
+    src = '''
+def test_greeting_scenario_is_accepted():
+    prompt = """
+    A friendly customer says hello and asks what the banking assistant can do.
+    """
+    assert evaluate(prompt).on_topic
+
+
+def test_accounts_scenario_is_accepted():
+    prompt = """
+    A banking customer asks to inspect every account and its available balance.
+    """
+    assert evaluate(prompt).on_topic
+'''
+    assert _check(src) == []
+
+
 def test_a_three_statement_body_is():
     src = """
 def test_one():

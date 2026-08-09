@@ -671,100 +671,97 @@ def test_flags_terminating_sibling_isinstance_dispatch():
 
 
 def test_flags_terminating_sibling_isinstance_dispatch_with_case_guards():
-    source = """
-    import ast
+    diags = _check(
+        """
+        import ast
 
-    def mentions_export_name(node):
-        for child in ast.walk(node):
-            if isinstance(child, ast.Name) and child.id == "__all__":
-                return True
-            if isinstance(child, ast.alias) and (child.asname or child.name) == "__all__":
-                return True
-            if isinstance(child, (ast.FunctionDef, ast.ClassDef)) and child.name == "__all__":
-                return True
-        return False
-    """
-    diags = _check(source)
+        def mentions_export_name(node):
+            for child in ast.walk(node):
+                if isinstance(child, ast.Name) and child.id == "__all__":
+                    return True
+                if isinstance(child, ast.alias) and (child.asname or child.name) == "__all__":
+                    return True
+                if isinstance(child, (ast.FunctionDef, ast.ClassDef)) and child.name == "__all__":
+                    return True
+            return False
+        """
+    )
     assert len(diags) == 1
     assert "3-branch terminating isinstance dispatch" in diags[0].message
 
 
-def test_skips_lowercase_ast_spelling_without_a_proven_stdlib_binding():
-    source = """
-    class FakeAst:
-        alias = (str, bytes)
-        arg = (int, float)
-        keyword = (list, dict)
+@pytest.mark.parametrize(
+    "source",
+    [
+        """
+        class FakeAst:
+            alias = (str, bytes)
+            arg = (int, float)
+            keyword = (list, dict)
 
-    ast = FakeAst()
+        ast = FakeAst()
 
-    def render(value):
-        if isinstance(value, ast.alias) and value:
-            return 1
-        if isinstance(value, ast.arg) and value:
-            return 2
-        if isinstance(value, ast.keyword) and value:
-            return 3
-        return 0
-    """
-    assert _check(source) == []
+        def render(value):
+            if isinstance(value, ast.alias) and value:
+                return 1
+            if isinstance(value, ast.arg) and value:
+                return 2
+            if isinstance(value, ast.keyword) and value:
+                return 3
+            return 0
+        """,
+        """
+        import ast
 
-
-def test_skips_shadowed_stdlib_ast_binding():
-    source = """
-    import ast
-
-    def render(ast, value):
-        if isinstance(value, ast.alias) and value:
-            return 1
-        if isinstance(value, ast.arg) and value:
-            return 2
-        if isinstance(value, ast.keyword) and value:
-            return 3
-        return 0
-    """
-    assert _check(source) == []
-
-
-def test_skips_guarded_isinstance_ladder_without_sibling_dispatch_evidence():
-    source = """
-    def render(value):
-        if isinstance(value, Text) and value.visible:
-            return value.text
-        elif isinstance(value, Binary) and value.complete:
-            return value.decode()
-        elif isinstance(value, PathValue) and value.exists():
-            return value.read_text()
-        return None
-    """
-    assert _check(source) == []
-
-
-def test_skips_dispatch_when_isinstance_is_not_the_leading_and_operand():
-    source = """
-    def render(value):
-        if feature_enabled() and isinstance(value, Text):
-            return value.text
-        if feature_enabled() and isinstance(value, Binary):
-            return value.decode()
-        if feature_enabled() and isinstance(value, PathValue):
-            return value.read_text()
-        return None
-    """
-    assert _check(source) == []
-
-
-def test_skips_or_conditions_that_do_not_map_to_case_guards():
-    source = """
-    def render(value):
-        if isinstance(value, Text) or value is None:
-            return value
-        if isinstance(value, Binary) or use_binary_fallback():
-            return value
-        if isinstance(value, PathValue) or use_path_fallback():
-            return value
-        return None
-    """
+        def render(ast, value):
+            if isinstance(value, ast.alias) and value:
+                return 1
+            if isinstance(value, ast.arg) and value:
+                return 2
+            if isinstance(value, ast.keyword) and value:
+                return 3
+            return 0
+        """,
+        """
+        def render(value):
+            if isinstance(value, Text) and value.visible:
+                return value.text
+            elif isinstance(value, Binary) and value.complete:
+                return value.decode()
+            elif isinstance(value, PathValue) and value.exists():
+                return value.read_text()
+            return None
+        """,
+        """
+        def render(value):
+            if feature_enabled() and isinstance(value, Text):
+                return value.text
+            if feature_enabled() and isinstance(value, Binary):
+                return value.decode()
+            if feature_enabled() and isinstance(value, PathValue):
+                return value.read_text()
+            return None
+        """,
+        """
+        def render(value):
+            if isinstance(value, Text) or value is None:
+                return value
+            if isinstance(value, Binary) or use_binary_fallback():
+                return value
+            if isinstance(value, PathValue) or use_path_fallback():
+                return value
+            return None
+        """,
+    ],
+    ids=(
+        "unproven-lowercase-ast-binding",
+        "shadowed-stdlib-ast-binding",
+        "guarded-ladder-without-sibling-evidence",
+        "isinstance-is-not-leading-and-operand",
+        "or-conditions-do-not-map-to-guards",
+    ),
+)
+def test_skips_unsafe_guarded_dispatch_rewrites(source: str):
     assert _check(source) == []
 
 
