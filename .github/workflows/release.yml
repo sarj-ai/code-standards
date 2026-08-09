@@ -28,8 +28,7 @@ jobs:
       needs.detect.outputs.sql == 'true' ||
       needs.detect.outputs.iac == 'true' ||
       needs.detect.outputs.standards == 'true' ||
-      needs.detect.outputs.tsconfig == 'true' ||
-      needs.detect.outputs.tag_recovery == 'true'
+      needs.detect.outputs.tsconfig == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 50
     permissions:
@@ -91,7 +90,6 @@ jobs:
       iac: ${{ steps.c.outputs.iac }}
       standards: ${{ steps.c.outputs.standards }}
       tsconfig: ${{ steps.c.outputs.tsconfig }}
-      tag_recovery: ${{ steps.tags.outputs.tag_recovery }}
     steps:
       - name: Harden the runner
         uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
@@ -109,22 +107,6 @@ jobs:
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.sha }}
         run: uv run --project packages/standards --frozen sarj-standards --root . maintain release changes --before "$BEFORE" --after "$AFTER" --github-output "$GITHUB_OUTPUT"
-      - id: tags
-        name: Detect missing immutable release tags
-        shell: bash
-        run: |
-          uv run --project packages/standards --frozen python - "$GITHUB_OUTPUT" <<'PY'
-          import sys
-          from pathlib import Path
-
-          from sarj_standards.libs.release import missing_remote_release_tags
-
-          missing = missing_remote_release_tags(Path.cwd())
-          with Path(sys.argv[1]).open("a", encoding="utf-8") as output:
-              output.write(f"tag_recovery={'true' if missing else 'false'}\n")
-          for tag in missing:
-              print(f"missing release tag: {tag}")
-          PY
 
   build-typescript:
     needs: [detect, release-safety]

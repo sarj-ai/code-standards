@@ -26,5 +26,13 @@ def test_release_tags_registry_visible_packages_at_the_published_commit() -> Non
     assert "github.event.workflow_run.head_branch == 'main'" in workflow
     assert "github.event.workflow_run.head_repository.full_name == github.repository" in workflow
     assert "contents: write" in workflow
+    assert "\n  preflight:\n" in workflow
+    assert "\n  release-safety:\n    needs: preflight\n" in workflow
+    assert "\n  tag:\n    needs: [preflight, release-safety]\n" in workflow
+    assert "needs.preflight.outputs.recovery == 'true'" in workflow
+    assert "needs.release-safety.result == 'success'" in workflow
+    assert "repo-ci.yml|release-ready" in workflow
+    assert "private-refs.yml|private references" in workflow
+    assert "head_repository.full_name == $repo" in workflow
     assert "maintain release create-tags typescript python sql iac standards tsconfig" in workflow
     assert '--commit "$PUBLISHED_SHA"' in workflow

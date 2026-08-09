@@ -8,11 +8,151 @@ on:
 permissions: {}
 
 jobs:
-  tag:
+  preflight:
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_branch == 'main' &&
       github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      recovery: ${{ steps.recovery.outputs.recovery }}
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - id: recovery
+        name: Detect tag or GitHub Release recovery
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tags="$RUNNER_TEMP/release-tags.txt"
+          python3 - "$tags" <<'PY'
+          import json
+          from pathlib import Path
+          import re
+          import sys
+          import tomllib
+
+          targets = {
+              "typescript": ("packages/typescript/package.json", "json"),
+              "python": ("packages/python/pyproject.toml", "toml"),
+              "sql": ("packages/sql/pyproject.toml", "toml"),
+              "iac": ("packages/iac/pyproject.toml", "toml"),
+              "standards": ("packages/standards/pyproject.toml", "toml"),
+              "tsconfig": ("packages/tsconfig/package.json", "json"),
+          }
+          lines = []
+          for target, (filename, kind) in targets.items():
+              path = Path(filename)
+              if kind == "json":
+                  data = json.loads(path.read_text(encoding="utf-8"))
+              else:
+                  with path.open("rb") as manifest:
+                      data = tomllib.load(manifest)
+                  data = data.get("project", data)
+              version = data.get("version")
+              if not isinstance(version, str) or re.fullmatch(r"[^\s/]+", version) is None:
+                  raise ValueError(f"invalid version in {filename}")
+              lines.append(f"{target}|{target}-v{version}")
+          Path(sys.argv[1]).write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+
+          recovery=false
+          while IFS='|' read -r target tag; do
+            set +e
+            remote="$(git ls-remote --exit-code --tags origin "refs/tags/$tag" "refs/tags/$tag^{}")"
+            status=$?
+            set -e
+            if [[ "$status" == 2 ]]; then
+              recovery=true
+              echo "missing immutable release tag: $tag"
+              continue
+            fi
+            if [[ "$status" != 0 ]]; then
+              echo "::error::failed to inspect immutable release tag $tag"
+              exit "$status"
+            fi
+            if [[ "$target" == standards ]]; then
+              tag_commit="$(awk '$2 ~ /\^\{\}$/ { print $1; found=1; exit } NR == 1 { first=$1 } END { if (!found) print first }' <<< "$remote")"
+              if [[ "$tag_commit" == "$TARGET_SHA" ]] && ! gh release view "$tag" >/dev/null 2>&1; then
+                recovery=true
+                echo "missing GitHub Release for $tag at $TARGET_SHA"
+              fi
+            fi
+          done < "$tags"
+          echo "recovery=$recovery" >> "$GITHUB_OUTPUT"
+
+  release-safety:
+    needs: preflight
+    if: needs.preflight.outputs.recovery == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
+      - name: Require successful checks for this exact revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          deadline=$((SECONDS + 2700))
+          for specification in 'repo-ci.yml|release-ready' 'private-refs.yml|private references'; do
+            IFS='|' read -r workflow expected_name <<< "$specification"
+            while (( SECONDS < deadline )); do
+              response="$(gh api --method GET \
+                "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow/runs" \
+                -f head_sha="$TARGET_SHA" -f event=push -f per_page=10)"
+              run="$(jq -c --arg sha "$TARGET_SHA" --arg repo "$GITHUB_REPOSITORY" \
+                '[.workflow_runs[] | select(.head_sha == $sha and .event == "push" and .head_repository.full_name == $repo)] | first // empty' \
+                <<< "$response")"
+              if [[ -z "$run" ]]; then
+                echo "waiting for $expected_name push run at $TARGET_SHA"
+                sleep 15
+                continue
+              fi
+              conclusion="$(jq -r '.conclusion // empty' <<< "$run")"
+              if [[ "$conclusion" == success ]]; then
+                echo "$expected_name succeeded for $TARGET_SHA"
+                break
+              fi
+              if [[ -n "$conclusion" ]]; then
+                echo "::error::$expected_name concluded $conclusion for $TARGET_SHA"
+                exit 1
+              fi
+              echo "waiting for $expected_name to complete at $TARGET_SHA"
+              sleep 15
+            done
+            if (( SECONDS >= deadline )); then
+              echo "::error::timed out waiting for $expected_name at $TARGET_SHA"
+              exit 1
+            fi
+          done
+
+  tag:
+    needs: [preflight, release-safety]
+    if: >-
+      always() &&
+      needs.preflight.result == 'success' &&
+      needs.preflight.outputs.recovery == 'true' &&
+      needs.release-safety.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
