@@ -1,5 +1,3 @@
-import { env } from 'node:process';
-
 import starlight from '@astrojs/starlight';
 import { defineConfig } from 'astro/config';
 
@@ -24,10 +22,7 @@ export default defineConfig({
         "object-src 'none'",
       ],
       scriptDirective: {
-        resources: [{
-          resource: env.NODE_ENV === 'development' ? "'self'" : 'https://code-standards.sarj.ai/_astro/',
-          kind: 'element',
-        }],
+        resources: [{ resource: "'self'", kind: 'element' }],
       },
       styleDirective: {
         resources: [{ resource: "'unsafe-inline'", kind: 'attribute' }],
