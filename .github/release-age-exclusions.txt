@@ -1,7 +1,18 @@
 # Exact, temporary exceptions for the 2026-08-05 dependency refresh.
 # A lockfile upgrade cannot inherit these exceptions because every entry pins a version.
 @eslint-zod/utils@2.5.0
+@eslint-zod/utils@3.0.0
 @eslint/css-tree@4.0.5
+@typescript-eslint/eslint-plugin@8.67.0
+@typescript-eslint/parser@8.67.0
+@typescript-eslint/project-service@8.67.0
+@typescript-eslint/scope-manager@8.67.0
+@typescript-eslint/tsconfig-utils@8.67.0
+@typescript-eslint/type-utils@8.67.0
+@typescript-eslint/types@8.67.0
+@typescript-eslint/typescript-estree@8.67.0
+@typescript-eslint/utils@8.67.0
+@typescript-eslint/visitor-keys@8.67.0
 @rollup/rollup-android-arm-eabi@4.62.3
 @rollup/rollup-android-arm64@4.62.3
 @rollup/rollup-darwin-arm64@4.62.3
