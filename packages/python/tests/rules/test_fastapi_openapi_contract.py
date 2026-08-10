@@ -77,7 +77,7 @@ async def read_user(
     assert _check(source) == []
 
 
-def test_metadata_is_required_per_visible_operation():
+def test_success_status_is_required_per_visible_operation():
     source = _source("""
 @router.get("/users")
 async def users() -> list[UserResponse]:
@@ -86,18 +86,24 @@ async def users() -> list[UserResponse]:
     diagnostics = _check(source)
     assert len(diagnostics) == 1
     assert "[metadata]" in diagnostics[0].message
-    assert "summary" in diagnostics[0].message
-    assert "description" in diagnostics[0].message
     assert "status_code" in diagnostics[0].message
 
 
-def test_docstring_satisfies_operation_description():
-    source = _source('''
-@router.get("/users", summary="Read users", status_code=200)
-async def users() -> list[UserResponse]:
-    """Return the visible users."""
+def test_descriptive_handler_name_does_not_require_redundant_prose():
+    source = _source("""
+@router.get("/users", status_code=200)
+async def read_visible_users() -> list[UserResponse]:
     return []
-''')
+""")
+    assert _check(source) == []
+
+
+def test_typed_parameter_does_not_require_redundant_description():
+    source = _source("""
+@router.get("/users", status_code=200)
+async def read_users(limit: Annotated[int, Query()] = 100) -> list[UserResponse]:
+    return []
+""")
     assert _check(source) == []
 
 
@@ -133,7 +139,6 @@ async def users() -> list[UserResponse]:
     ("parameter", "fragment"),
     [
         ("term: str", "explicit Annotated"),
-        ("term: Annotated[str, Query()]", "non-empty description"),
         ("payload: Annotated[dict[str, str], Body(description='Payload')]", "schema-erasing"),
         ("other: Annotated[str, Path(description='Other')]", "not present in route path"),
     ],
