@@ -190,7 +190,7 @@ class DuplicateTestBody(Rule):
                 line=group[1].node.lineno,
                 col=group[1].node.col_offset + 1,
                 code=self.code,
-                message=_message(group, path),
+                message=_message(group),
             )
             for group in groups
         ]
@@ -685,12 +685,12 @@ def _walk(node: ast.AST) -> Iterator[ast.AST]:
         yield from _walk(child)
 
 
-def _message(group: list[_Shape], path: Path) -> str:
+def _message(group: list[_Shape]) -> str:
     """Describe the duplication and point back at the original."""
     original, duplicate = group[0], group[1]
     others = len(group) - _MIN_GROUP
     also = f" (and {others} more in this module)" if others > 0 else ""
-    origin = f"`{original.node.name}` ({path}:{original.node.lineno})"
+    origin = f"`{original.node.name}` (line {original.node.lineno})"
     differences = _differing_literals(original.literals, duplicate.literals)
     if not differences:
         return (

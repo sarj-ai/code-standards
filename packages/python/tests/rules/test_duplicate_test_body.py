@@ -71,6 +71,17 @@ def test_flags_the_copy_and_not_the_original():
     assert diag.code == "SARJ066"
 
 
+def test_message_is_checkout_root_independent():
+    [developer] = _check(_COPY_PASTED_PAIR, "/Users/developer/repo/tests/test_permissions.py")
+    [continuous_integration] = _check(
+        _COPY_PASTED_PAIR,
+        "/home/runner/work/repo/tests/test_permissions.py",
+    )
+
+    assert developer.message == continuous_integration.message
+    assert "`test_admin_can_delete` (line 2)" in developer.message
+
+
 def test_flags_a_group_once_on_its_first_copy():
     # One diagnostic per group, not per copy.
     src = """
@@ -299,23 +310,21 @@ def test_two():
 # The message: it must name the original and the literals that differ.         #
 
 
-def test_message_names_both_tests_and_the_originals_line():
+@pytest.mark.parametrize(
+    "expected",
+    [
+        "`test_editor_can_delete`",
+        "`test_admin_can_delete`",
+        "(line 2)",
+        "'admin' -> 'editor'",
+        "parametrize",
+        "ids=",
+        "SARJ042",
+    ],
+)
+def test_message_describes_the_duplicate_and_remediation(expected: str):
     [diag] = _check(_COPY_PASTED_PAIR)
-    assert "`test_editor_can_delete`" in diag.message
-    assert "`test_admin_can_delete`" in diag.message
-    assert f"{TEST_PATH}:2" in diag.message
-
-
-def test_message_names_the_differing_literal():
-    [diag] = _check(_COPY_PASTED_PAIR)
-    assert "'admin' -> 'editor'" in diag.message
-
-
-def test_message_offers_parametrize_with_ids_and_cross_references_sarj042():
-    [diag] = _check(_COPY_PASTED_PAIR)
-    assert "parametrize" in diag.message
-    assert "ids=" in diag.message
-    assert "SARJ042" in diag.message
+    assert expected in diag.message
 
 
 def test_message_summarizes_when_many_literals_differ():
