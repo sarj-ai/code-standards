@@ -92,12 +92,13 @@ class KwargHeavyConstructionInTest(Rule):
                         "tests/test_call.py",
                         "def build_style(**overrides):\n"
                         "    defaults = dict(\n"
+                        '        color="red", bgcolor="black", bold=True,\n'
                         "        dim=True, italic=True, underline=True,\n"
                         "        blink=True, blink2=True, reverse=True,\n"
                         "    )\n"
                         "    return Style(**(defaults | overrides))\n\n"
                         "def test_style():\n"
-                        '    style = build_style(color="red", bgcolor="black", bold=True)\n'
+                        "    style = build_style()\n"
                         "    assert str(style)\n\n"
                         "def test_style_again():\n"
                         '    other = build_style(color="blue", bgcolor="white", bold=False)\n'

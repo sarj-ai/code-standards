@@ -101,6 +101,11 @@ def test_flags_alter_column_json_type() -> None:
     assert len(_check(source)) == 1
 
 
+def test_flags_add_column_json_type() -> None:
+    source = "ALTER TABLE document ADD COLUMN metadata JSON;"
+    assert len(_check(source)) == 1
+
+
 @pytest.mark.parametrize(
     "source",
     [

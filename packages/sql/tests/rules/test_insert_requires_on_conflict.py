@@ -87,6 +87,11 @@ def test_on_conflict_in_trailing_comment_does_not_count():
     assert len(_check(src)) == 1
 
 
+def test_on_conflict_inside_string_does_not_excuse_insert():
+    source = "INSERT INTO plan(name) VALUES ('ON CONFLICT');"
+    assert len(_check(source)) == 1
+
+
 def test_insert_select_guarded_against_its_target_is_idempotent() -> None:
     source = """
     INSERT INTO plan (name)

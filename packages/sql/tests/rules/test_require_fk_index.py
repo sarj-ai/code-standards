@@ -199,6 +199,28 @@ def test_inline_unique_column_covers_a_table_level_fk() -> None:
     assert _check(src) == []
 
 
+def test_table_level_unique_covers_the_fk() -> None:
+    source = """
+    CREATE TABLE child (
+        parent_id BIGINT,
+        UNIQUE (parent_id),
+        FOREIGN KEY (parent_id) REFERENCES parent(id)
+    );
+    """
+    assert _check(source) == []
+
+
+def test_nonleading_index_does_not_cover_the_fk() -> None:
+    source = """
+    CREATE TABLE child (
+        id BIGINT,
+        parent_id BIGINT REFERENCES parent(id)
+    );
+    CREATE INDEX child_idx ON child(id, parent_id);
+    """
+    assert len(_check(source)) == 1
+
+
 def test_named_inline_constraint_reference_is_checked() -> None:
     src = """
     CREATE TABLE child (

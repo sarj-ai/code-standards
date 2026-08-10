@@ -130,6 +130,19 @@ def test_reset_undoes_a_timeout() -> None:
     assert len(_check(src)) == 1
 
 
+@pytest.mark.parametrize(
+    "prologue",
+    [
+        "SET statement_timeout = '3s';\nRESET statement_timeout;",
+        "SET statement_timeout = 0;",
+        "SET statement_timeout = DEFAULT;",
+    ],
+    ids=["reset", "zero", "default"],
+)
+def test_statement_timeout_can_be_deactivated(prologue: str) -> None:
+    assert len(_check(f"{prologue}\nALTER TABLE t ADD c INT;")) == 1
+
+
 def test_similarly_named_setting_is_not_lock_timeout() -> None:
     r"""`\b` after the name: `lock_timeout_ms` is a different GUC."""
     assert len(_check("SET lock_timeout_ms = '3s';\nALTER TABLE t ADD COLUMN c INT;\n")) == 1

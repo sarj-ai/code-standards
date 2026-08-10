@@ -80,6 +80,12 @@ def test_flags_commented_out_yaml(tmp_path: Path) -> None:
     assert _codes(path) == ["SARJ301"]
 
 
+def test_flags_indented_commented_out_yaml(tmp_path: Path) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text("jobs:\n  # timeout-minutes: 30\n  build: {}")
+    assert _codes(path) == ["SARJ301"]
+
+
 @pytest.mark.parametrize(
     ("filename", "comment"),
     [
@@ -362,12 +368,22 @@ def test_established_text_rules_remain_blocking(tmp_path: Path) -> None:
     "uses",
     [
         "actions/checkout@v4",
+        "actions/checkout@a1b2c3d",
+        '"actions/checkout@v4"',
         "owner/action@main",
         "owner/repo/path@release-1",
         "docker://alpine:3.22",
         "${{ matrix.action }}",
     ],
-    ids=["tag", "branch", "reusable-workflow-tag", "container-tag", "expression"],
+    ids=[
+        "tag",
+        "short-sha",
+        "quoted-tag",
+        "branch",
+        "reusable-workflow-tag",
+        "container-tag",
+        "expression",
+    ],
 )
 def test_warns_for_mutable_remote_workflow_actions(tmp_path: Path, uses: str) -> None:
     workflow = tmp_path / ".github/workflows/ci.yml"
@@ -547,6 +563,16 @@ def test_markdown_fences_do_not_create_artifact_headings(tmp_path: Path) -> None
     readme = tmp_path / "README.md"
     readme.write_text(
         "# CLI\n\n```markdown\n## Fixes + learnings\n## Verification passes\n```\n",
+        encoding="utf-8",
+    )
+
+    assert _codes(readme, root=tmp_path) == []
+
+
+def test_tilde_markdown_fences_do_not_create_artifact_headings(tmp_path: Path) -> None:
+    readme = tmp_path / "README.md"
+    readme.write_text(
+        "# CLI\n\n~~~markdown\n## Fixes + learnings\n## Verification passes\n~~~\n",
         encoding="utf-8",
     )
 

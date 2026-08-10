@@ -68,7 +68,7 @@ class NoFileLevelEscapeHatchNoqa(Rule):
                 files=(
                     ExampleFile.python(
                         "app/service.py",
-                        "from unittest import mock  # noqa: TID251 — vendor SDK boundary\n",
+                        "import os  # noqa: TID251 — vendor SDK boundary\n",
                     ),
                 ),
                 focus_path=PurePosixPath("app/service.py"),

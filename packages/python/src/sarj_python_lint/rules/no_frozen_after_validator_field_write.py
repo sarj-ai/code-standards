@@ -86,20 +86,19 @@ class NoFrozenAfterValidatorFieldWrite(Rule):
             ),
             RuleExample(
                 example_id="after-validator-only-validates-frozen-field",
-                title="After-validator checks without mutating the model",
+                title="Before-validator normalizes the input value",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
                     ExampleFile.python(
                         "app/models.py",
-                        "from pydantic import BaseModel, ConfigDict, model_validator\n\n"
+                        "from pydantic import BaseModel, ConfigDict, field_validator\n\n"
                         "class Counter(BaseModel):\n"
                         "    model_config = ConfigDict(frozen=True)\n"
                         "    value: int\n\n"
-                        '    @model_validator(mode="after")\n'
-                        "    def require_non_negative(self):\n"
-                        "        if self.value < 0:\n"
-                        '            raise ValueError("value must be non-negative")\n'
-                        "        return self\n",
+                        '    @field_validator("value", mode="before")\n'
+                        "    @classmethod\n"
+                        "    def normalize(cls, value: int) -> int:\n"
+                        "        return abs(value)\n",
                     ),
                 ),
                 focus_path=PurePosixPath("app/models.py"),

@@ -135,7 +135,7 @@ class DocstringReturnsRestateSignature(Rule):
                 files=(
                     ExampleFile.python(
                         "app/lines.py",
-                        'def get_line_length(line: list[str]) -> int:\n    """Measure a rendered line.\n\n    Returns:\n        The width in terminal cells, which is not the character count.\n    """\n    return len(line)\n',
+                        'def get_line_length(line: list[str]) -> int:\n    """Measure a rendered line.\n\n    Returns:\n        The number of render fragments queued for output.\n    """\n    return len(line)\n',
                     ),
                 ),
                 focus_path=PurePosixPath("app/lines.py"),

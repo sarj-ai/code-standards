@@ -32,6 +32,11 @@ def test_flags_create_index_without_concurrently():
     assert "CONCURRENTLY" in diags[0].message
 
 
+def test_flags_unnamed_index_on_existing_table():
+    source = "-- dialect: postgres\nCREATE INDEX ON users(email);"
+    assert len(_check(source)) == 1
+
+
 def test_dbmate_transactional_migration_gets_compatible_paired_guidance() -> None:
     source = "-- migrate:up\nSET LOCAL lock_timeout = '2s';\nCREATE INDEX idx ON users(email);\n"
 

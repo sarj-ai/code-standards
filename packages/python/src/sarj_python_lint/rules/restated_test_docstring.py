@@ -158,15 +158,15 @@ class RestatedTestDocstring(Rule):
             ),
             RuleExample(
                 example_id="test-regression-context",
-                title="Docstring explains the regression",
+                title="Redundant docstring removed",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
                     ExampleFile.python(
-                        "tests/test_scheduler.py",
-                        'def test_keeps_the_lock():\n    """The scheduler would spin forever without this."""\n    assert acquire()\n',
+                        "tests/test_widget.py",
+                        "def test_widget_renders():\n    assert render(widget)\n",
                     ),
                 ),
-                focus_path=PurePosixPath("tests/test_scheduler.py"),
+                focus_path=PurePosixPath("tests/test_widget.py"),
                 expected_count=0,
                 public=True,
             ),

@@ -32,6 +32,11 @@ def test_flags_offset():
     assert "cursor" in diags[0].message
 
 
+def test_flags_standard_offset_rows_syntax():
+    source = "SELECT * FROM event OFFSET 10 ROWS FETCH NEXT 5 ROWS ONLY;"
+    assert len(_check(source)) == 1
+
+
 def test_is_case_insensitive():
     src = "select * from call order by id limit 50 offset 100;"
     assert len(_check(src)) == 1

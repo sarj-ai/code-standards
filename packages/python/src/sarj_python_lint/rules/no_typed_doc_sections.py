@@ -60,11 +60,11 @@ class NoTypedDocSections(Rule):
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
                     ExampleFile.python(
-                        "publisher.py",
-                        'def publish(message: str, *, retry: bool) -> None:\n    """Publish one message.\n\n    Args:\n        message: Wire payload retained for the audit record.\n        retry: Whether a prior partial write may be attempted again.\n    """\n',
+                        "app.py",
+                        'def decode(value: str) -> dict[str, object]:\n    """Decode the value.\n\n    Args:\n        value: Text to decode.\n    """\n    return {}\n',
                     ),
                 ),
-                focus_path=PurePosixPath("publisher.py"),
+                focus_path=PurePosixPath("app.py"),
                 expected_count=0,
                 public=True,
             ),

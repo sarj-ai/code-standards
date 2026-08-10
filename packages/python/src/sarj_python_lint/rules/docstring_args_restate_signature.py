@@ -69,12 +69,12 @@ class DocstringArgsRestateSignature(Rule):
             ),
             RuleExample(
                 example_id="argument-documents-unit",
-                title="Argument description records a unit",
+                title="Redundant argument section removed",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
                     ExampleFile.python(
                         "app/widgets.py",
-                        'def set_timeout_ms(timeout_ms: int) -> None:\n    """Configure the request deadline.\n\n    Args:\n        timeout_ms: Timeout in ms\n    """\n',
+                        'def count_widgets(tenant_id: str) -> int:\n    """Count active widgets."""\n    return 0\n',
                     ),
                 ),
                 focus_path=PurePosixPath("app/widgets.py"),
