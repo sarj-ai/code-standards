@@ -22,7 +22,7 @@ dependencies = [
   "packaging==26.2",
   "pre-commit==4.6.1",
   "PyYAML==6.0.3",
-  "ruff==0.16.0",
+  "ruff==0.16.1",
   "sarj-iac-lint==0.9.3",
   "sarj-python-lint==0.67.6",
   "sarj-sql-lint==0.13.2",

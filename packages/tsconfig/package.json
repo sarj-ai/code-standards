@@ -1,7 +1,7 @@
 {
   "name": "@sarj/tsconfig",
   "version": "0.1.5",
-  "packageManager": "npm@11.19.0",
+  "packageManager": "npm@12.0.2",
   "description": "Ultra-strict TypeScript configs for sarj-ai projects — strict.json + base.json",
   "type": "module",
   "files": [

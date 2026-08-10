@@ -33,7 +33,7 @@ Issues = "https://github.com/sarj-ai/standards/issues"
 dev = [
   "pytest>=9.0",
   "pytest-benchmark>=5.2",
-  "ruff>=0.15",
+  "ruff>=0.16.1",
   "basedpyright>=1.39",
 ]
 
