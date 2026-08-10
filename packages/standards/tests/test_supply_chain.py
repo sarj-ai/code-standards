@@ -84,6 +84,10 @@ def test_release_waits_for_exact_revision_safety_checks() -> None:
     release = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
 
     assert "\n  release-safety:\n" in release
+    assert "release-safety:\n    needs: detect\n" in release
+    release_safety = release.partition("\n  release-safety:\n")[2].partition("\n  detect:\n")[0]
+    for package in ("typescript", "python", "sql", "iac", "standards", "tsconfig"):
+        assert f"needs.detect.outputs.{package} == 'true'" in release_safety
     assert "actions: read" in release
     assert "repo-ci.yml|release-ready" in release
     assert "private-refs.yml|private references" in release
@@ -115,7 +119,10 @@ def test_release_has_no_tag_writer_or_write_capable_token() -> None:
 def test_release_tags_publish_a_github_release_for_new_standards_versions() -> None:
     workflow = (REPO_ROOT / ".github/workflows/release-tags.yml").read_text(encoding="utf-8")
 
-    assert "git tag --points-at" in workflow
+    assert "standards_tag: ${{ steps.recovery.outputs.standards_tag }}" in workflow
+    assert "STANDARDS_TAG: ${{ needs.preflight.outputs.standards_tag }}" in workflow
+    assert 'case "$release_status" in' in workflow
+    assert "404)" in workflow
     assert "gh release create" in workflow
     assert "--verify-tag --generate-notes" in workflow
 
