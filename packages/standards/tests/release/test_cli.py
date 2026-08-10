@@ -106,3 +106,40 @@ def test_release_process_failure_is_a_clean_cli_error(
 
     assert status == 2
     assert capsys.readouterr().err == "error: uv publish failed with exit code 1\n"
+
+
+def test_verify_tags_without_commit_preserves_missing_tag_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    calls: list[Path] = []
+
+    def missing(root: Path) -> tuple[str, ...]:
+        calls.append(root)
+        return ()
+
+    monkeypatch.setattr(release, "missing_remote_release_tags", missing)
+
+    status = cli.main(["--root", str(tmp_path), "maintain", "release", "verify-tags"])
+
+    assert status == 0
+    assert calls == [tmp_path.resolve()]
+
+
+def test_verify_tags_process_failure_is_not_reported_as_recovery(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fail(_root: Path, *, commit: str) -> tuple[str, ...]:
+        assert commit == "publish-sha"
+        raise release.ProcessFailureError(("git", "ls-remote"), 128)
+
+    monkeypatch.setattr(release, "verify_remote_release_tags", fail)
+
+    status = cli.main(
+        ["--root", str(tmp_path), "maintain", "release", "verify-tags", "--commit", "publish-sha"]
+    )
+
+    assert status == 2
+    assert capsys.readouterr().err == "error: git ls-remote failed with exit code 128\n"

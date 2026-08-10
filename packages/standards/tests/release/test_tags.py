@@ -103,7 +103,9 @@ def test_verify_remote_release_tags_accepts_exact_and_unchanged_existing_tags(tm
     def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
         _ = cwd, capture_output
         if argv[:3] == ("git", "rev-parse", "--verify"):
-            return ProcessResult(0, stdout=f"{exact}\n")
+            revision = argv[-1]
+            resolved = older if revision == f"{older}^{{commit}}" else exact
+            return ProcessResult(0, stdout=f"{resolved}\n")
         if argv[:2] == ("git", "ls-remote") and len(argv) == 7:
             tag = argv[-2].removesuffix("^{}")
             target = tag.removeprefix("refs/tags/").split("-v", 1)[0]
@@ -129,7 +131,9 @@ def test_verify_remote_release_tags_rejects_wrong_existing_tag_tree(tmp_path: Pa
     def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
         _ = cwd, capture_output
         if argv[:3] == ("git", "rev-parse", "--verify"):
-            return ProcessResult(0, stdout=f"{exact}\n")
+            revision = argv[-1]
+            resolved = wrong if revision == f"{wrong}^{{commit}}" else exact
+            return ProcessResult(0, stdout=f"{resolved}\n")
         if argv[:2] == ("git", "ls-remote") and len(argv) == 7:
             tag = argv[-2].removesuffix("^{}")
             return ProcessResult(0, stdout=f"{wrong}\t{tag}^{{}}\n")
@@ -140,6 +144,28 @@ def test_verify_remote_release_tags_rejects_wrong_existing_tag_tree(tmp_path: Pa
         raise AssertionError(argv)
 
     with pytest.raises(ValueError, match=r"existing remote tag typescript-v1\.2\.3 points to"):
+        verify_remote_release_tags(tmp_path, commit="publish-sha", runner=runner)
+
+
+def test_verify_remote_release_tags_rejects_tag_that_does_not_peel_to_a_commit(tmp_path: Path) -> None:
+    _write_release_manifests(tmp_path)
+    exact = "a" * 40
+    tree = "b" * 40
+
+    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
+        _ = cwd, capture_output
+        if argv[:3] == ("git", "rev-parse", "--verify"):
+            if argv[-1] == f"{tree}^{{commit}}":
+                raise ProcessFailureError(argv, 128)
+            return ProcessResult(0, stdout=f"{exact}\n")
+        if argv[:2] == ("git", "ls-remote") and len(argv) == 7:
+            tag = argv[-2]
+            return ProcessResult(0, stdout=f"{tree}\t{tag}^{{}}\n")
+        if argv[:2] == ("git", "ls-remote"):
+            return ProcessResult(0)
+        raise AssertionError(argv)
+
+    with pytest.raises(ValueError, match="does not resolve to a commit"):
         verify_remote_release_tags(tmp_path, commit="publish-sha", runner=runner)
 
 
@@ -310,7 +336,8 @@ def test_create_release_tags_rejects_an_existing_tag_on_another_commit(tmp_path:
     def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
         _ = cwd, capture_output
         if argv[:3] == ("git", "rev-parse", "--verify"):
-            return ProcessResult(0, "published-commit\n")
+            resolved = "different-commit" if argv[-1] == "different-commit^{commit}" else "published-commit"
+            return ProcessResult(0, f"{resolved}\n")
         if argv[-1] == "refs/tags/python-v1.2.3":
             return ProcessResult(0)
         if argv[-1] == "refs/tags/python-v1.2.3^{}":
@@ -338,7 +365,8 @@ def test_create_release_tags_accepts_unchanged_target_tagged_on_older_commit(tmp
     def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
         _ = cwd, capture_output
         if argv[:3] == ("git", "rev-parse", "--verify"):
-            return ProcessResult(0, "published-commit\n")
+            resolved = "older-commit" if argv[-1] == "older-commit^{commit}" else "published-commit"
+            return ProcessResult(0, f"{resolved}\n")
         if argv[-1] == "refs/tags/python-v1.2.3":
             return ProcessResult(0)
         if argv[-1] == "refs/tags/python-v1.2.3^{}":

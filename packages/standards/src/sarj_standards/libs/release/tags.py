@@ -305,6 +305,22 @@ def _require_remote_tag_commit(
     )
     references = dict(line.split("\t", 1)[::-1] for line in result.stdout.splitlines() if "\t" in line)
     actual = references.get(f"refs/tags/{tag}^{{}}", references.get(f"refs/tags/{tag}"))
+    if actual is None:
+        msg = f"existing remote tag {tag} has no resolvable object"
+        raise ValueError(msg)
+    try:
+        actual_commit = runner(
+            ("git", "rev-parse", "--verify", f"{actual}^{{commit}}"),
+            cwd=root,
+            capture_output=True,
+        ).stdout.strip()
+    except ProcessFailureError as exc:
+        msg = f"existing remote tag {tag} does not resolve to a commit"
+        raise ValueError(msg) from exc
+    if not actual_commit:
+        msg = f"existing remote tag {tag} does not resolve to a commit"
+        raise ValueError(msg)
+    actual = actual_commit
     if actual == commit:
         return
     target_paths = (*RELEASE_ARTIFACT_FILES[target_name], *RELEASE_ARTIFACT_PREFIXES[target_name])

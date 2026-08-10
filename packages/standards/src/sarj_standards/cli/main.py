@@ -1616,9 +1616,9 @@ def _run_repo(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one lazy 
             return 0
         if args.release_cmd == "verify-tags":
             missing = (
-                release.missing_remote_release_tags(root)
-                if args.release_commit is None
-                else release.verify_remote_release_tags(root, commit=args.release_commit)
+                release.verify_remote_release_tags(root, commit=args.release_commit)
+                if args.release_commit
+                else release.missing_remote_release_tags(root)
             )
             if missing:
                 for tag_name in missing:
