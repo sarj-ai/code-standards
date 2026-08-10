@@ -66,9 +66,9 @@ class FastapiOpenapiContract(Rule):
     id: str = "fastapi-openapi-contract"
     code: str = "SARJ094"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="FastAPI operations must publish explicit request, response, and OpenAPI contracts.",
-        rationale="Complete route metadata keeps generated OpenAPI accurate for clients, validation, and review.",
-        remediation="Declare route metadata, typed parameters, response schemas, and documented alternate responses.",
+        summary="FastAPI operations must publish accurate request, response, and status contracts.",
+        rationale="Typed routes and explicit response behavior keep generated OpenAPI accurate without duplicating self-documenting names in prose.",
+        remediation="Declare status codes, typed parameters, response schemas, and alternate responses raised directly by the handler.",
         category=RuleCategory.CORRECTNESS,
         limitations=(
             "Hidden routes, WebSocket handlers, tests, generated files, documentation-source examples, and unrelated decorators are excluded.",
@@ -78,7 +78,7 @@ class FastapiOpenapiContract(Rule):
         examples=(
             RuleExample(
                 example_id="missing-operation-metadata",
-                title="Visible operation without required metadata",
+                title="Visible operation without an explicit success status",
                 outcome=ExampleOutcome.MATCH,
                 files=(
                     ExampleFile.python(
@@ -97,7 +97,7 @@ class FastapiOpenapiContract(Rule):
                 files=(
                     ExampleFile.python(
                         "api.py",
-                        "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n@router.get('/users', summary='Read users', description='Returns visible users.', status_code=200)\nasync def users() -> list[UserResponse]:\n    return []\n",
+                        "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n@router.get('/users', status_code=200)\nasync def read_users() -> list[UserResponse]:\n    return []\n",
                     ),
                 ),
                 focus_path=PurePosixPath("api.py"),
@@ -134,7 +134,7 @@ class FastapiOpenapiContract(Rule):
             findings.extend(_check_raw_request(function, routes, index))
             findings.extend(_check_direct_responses(function, routes, index))
             for route in _operations(routes):
-                findings.extend(_check_metadata(function, route))
+                findings.extend(_check_metadata(route))
                 findings.extend(_check_projection(route))
         findings.extend(_check_route_conflicts(declared))
         return [
@@ -155,29 +155,13 @@ def _operations(routes: tuple[Route, ...]) -> tuple[Route, ...]:
     return tuple({id(route.decorator): route for route in routes}.values())
 
 
-def _check_metadata(function: ast.FunctionDef | ast.AsyncFunctionDef, route: Route) -> list[_Finding]:
+def _check_metadata(route: Route) -> list[_Finding]:
     if route.has_unpack:
         return []
     keywords = route.keywords
-    missing: list[str] = []
-    if not _nonblank(keywords.get("summary")):
-        missing.append("summary")
-    docstring = ast.get_docstring(function, clean=False)
-    if not (_nonblank(keywords.get("description")) or bool(docstring and docstring.strip())):
-        missing.append("description or handler docstring")
-    if "status_code" not in keywords or _literal_none(keywords["status_code"]):
-        missing.append("status_code")
-    if not missing:
+    if "status_code" in keywords and not _literal_none(keywords["status_code"]):
         return []
-    return [_Finding(route.decorator, f"[metadata] operation requires explicit {', '.join(missing)}.")]
-
-
-def _nonblank(node: ast.expr | None) -> bool:
-    if node is None:
-        return False
-    if isinstance(node, ast.Constant):
-        return isinstance(node.value, str) and bool(node.value.strip())
-    return True
+    return [_Finding(route.decorator, "[metadata] operation requires explicit status_code.")]
 
 
 def _literal_none(node: ast.expr) -> bool:
@@ -237,10 +221,6 @@ def _check_parameters(
         if isinstance(default, ast.Call) and index.marker(default) is not None:
             findings.append(
                 _Finding(parameter, f"[parameter] `{parameter.arg}` must not duplicate FastAPI marker metadata.")
-            )
-        if marker_name in SCHEMA_MARKERS and not _nonblank(_keyword(marker_call, "description")):
-            findings.append(
-                _Finding(parameter, f"[parameter] `{parameter.arg}` marker requires a non-empty description.")
             )
         if marker_name in SCHEMA_MARKERS and _schema_erasing(value_type, index):
             findings.append(
