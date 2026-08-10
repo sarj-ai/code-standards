@@ -88,4 +88,4 @@ def test_column_is_one_based():
 
 
 def test_flags_schema_qualified_gen_random_uuid():
-    assert len(_check("SELECT public.gen_random_uuid();")) == 1
+    assert len(_check(f"SELECT public.{_LEGACY_UUID_CALL};")) == 1
