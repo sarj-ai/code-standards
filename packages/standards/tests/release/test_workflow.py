@@ -57,13 +57,13 @@ def _run_release_tag_preflight(
     fake_bin.mkdir()
     (fake_bin / "python3").symlink_to(sys.executable)
     _write_executable(
-        fake_bin / "git",
+        fake_bin / "uv",
         """
         #!/bin/sh
         case "$FAKE_GIT_MODE" in
-          existing) printf '%s\\n' '0123456789abcdef refs/tags/example' ;;
-          missing) exit 2 ;;
-          error) exit 128 ;;
+          existing) exit 0 ;;
+          missing) exit 1 ;;
+          error) exit 2 ;;
           *) exit 64 ;;
         esac
         """,
@@ -104,6 +104,7 @@ def _run_release_tag_preflight(
         "RUNNER_TEMP": str(runner_temp),
         "GITHUB_OUTPUT": str(output),
         "GH_TOKEN": "test-token",
+        "TARGET_SHA": "a" * 40,
         "GITHUB_API_URL": "https://api.github.invalid",
         "GITHUB_REPOSITORY": "sarj-ai/standards",
     }
@@ -147,6 +148,7 @@ def test_release_tags_registry_visible_packages_at_the_published_commit() -> Non
     assert "head_repository.full_name == $repo" in workflow
     assert "maintain release create-tags typescript python sql iac standards tsconfig" in workflow
     assert '--commit "$PUBLISHED_SHA"' in workflow
+    assert 'maintain release verify-tags --commit "$TARGET_SHA"' in workflow
 
 
 @pytest.mark.parametrize(

@@ -30,66 +30,41 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ github.event.workflow_run.head_sha }}
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: '0.11.32'
       - id: recovery
         name: Detect tag or GitHub Release recovery
         env:
           GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
         shell: bash
         run: |
           set -euo pipefail
-          tags="$RUNNER_TEMP/release-tags.txt"
-          python3 - "$tags" <<'PY'
-          import json
-          from pathlib import Path
-          import re
-          import sys
+          standards_tag="$(python3 <<'PY'
           import tomllib
 
-          targets = {
-              "typescript": ("packages/typescript/package.json", "json"),
-              "python": ("packages/python/pyproject.toml", "toml"),
-              "sql": ("packages/sql/pyproject.toml", "toml"),
-              "iac": ("packages/iac/pyproject.toml", "toml"),
-              "standards": ("packages/standards/pyproject.toml", "toml"),
-              "tsconfig": ("packages/tsconfig/package.json", "json"),
-          }
-          lines = []
-          for target, (filename, kind) in targets.items():
-              path = Path(filename)
-              if kind == "json":
-                  data = json.loads(path.read_text(encoding="utf-8"))
-              else:
-                  with path.open("rb") as manifest:
-                      data = tomllib.load(manifest)
-                  data = data.get("project", data)
-              version = data.get("version")
-              if not isinstance(version, str) or re.fullmatch(r"[^\s/]+", version) is None:
-                  raise ValueError(f"invalid version in {filename}")
-              lines.append(f"{target}|{target}-v{version}")
-          Path(sys.argv[1]).write_text("\n".join(lines) + "\n", encoding="utf-8")
+          with open("packages/standards/pyproject.toml", "rb") as manifest:
+              version = tomllib.load(manifest)["project"]["version"]
+          if not isinstance(version, str) or not version or any(character.isspace() for character in version):
+              raise ValueError("invalid Standards package version")
+          print(f"standards-v{version}")
           PY
+          )"
 
-          recovery=false
-          standards_tag=''
-          while IFS='|' read -r target tag; do
-            if [[ "$target" == standards ]]; then
-              standards_tag="$tag"
-            fi
-            set +e
-            git ls-remote --exit-code --tags origin "refs/tags/$tag" "refs/tags/$tag^{}" >/dev/null
-            status=$?
-            set -e
-            if [[ "$status" == 2 ]]; then
-              recovery=true
-              echo "missing immutable release tag: $tag"
-              continue
-            fi
-            if [[ "$status" != 0 ]]; then
-              echo "::error::failed to inspect immutable release tag $tag"
-              exit "$status"
-            fi
-          done < "$tags"
-          test -n "$standards_tag"
+          set +e
+          uv run --project packages/standards --frozen sarj-standards --root . \
+            maintain release verify-tags --commit "$TARGET_SHA"
+          tag_status=$?
+          set -e
+          case "$tag_status" in
+            0) recovery=false ;;
+            1) recovery=true ;;
+            *)
+              echo "::error::failed to validate immutable release tags"
+              exit "$tag_status"
+              ;;
+          esac
           encoded_tag="$(jq -rn --arg value "$standards_tag" '$value | @uri')"
           release_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
             --retry 2 --retry-all-errors --connect-timeout 5 --max-time 20 \

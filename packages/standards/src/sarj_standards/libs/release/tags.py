@@ -174,6 +174,35 @@ def missing_remote_release_tags(
     return tuple(tag for tag in tags if not _remote_tag_exists(resolved, tag, runner=runner))
 
 
+def verify_remote_release_tags(
+    root: Path,
+    *,
+    commit: str,
+    runner: ProcessRunner = run_process,
+) -> tuple[str, ...]:
+    """Return missing manifest tags and reject existing tags bound to the wrong tree."""
+    resolved = root.resolve()
+    if not commit or commit.startswith("-"):
+        msg = "release tag verification requires an explicit publishing commit"
+        raise ValueError(msg)
+    resolved_commit = (
+        runner(
+            ("git", "rev-parse", "--verify", f"{commit}^{{commit}}"),
+            cwd=resolved,
+            capture_output=True,
+        ).stdout.strip()
+        or commit
+    )
+    missing: list[str] = []
+    for target_name in RELEASE_TARGETS:
+        tag = _current_tag(target_name, resolved)
+        if not _remote_tag_exists(resolved, tag, runner=runner):
+            missing.append(tag)
+            continue
+        _require_remote_tag_commit(resolved, tag, target_name, resolved_commit, runner=runner)
+    return tuple(missing)
+
+
 def create_release_tags(
     root: Path,
     targets: tuple[str, ...],

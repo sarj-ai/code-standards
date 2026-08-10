@@ -14,6 +14,7 @@ from sarj_standards.libs.release import (
     create_release_tags,
     missing_remote_release_tags,
     validate_release_tag,
+    verify_remote_release_tags,
 )
 
 
@@ -92,6 +93,54 @@ def test_missing_remote_release_tags_derives_names_from_manifests(tmp_path: Path
     assert "python-v1.2.3" not in missing
     assert "typescript-v1.2.3" in missing
     assert len(missing) == 5
+
+
+def test_verify_remote_release_tags_accepts_exact_and_unchanged_existing_tags(tmp_path: Path) -> None:
+    _write_release_manifests(tmp_path)
+    exact = "a" * 40
+    older = "b" * 40
+
+    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
+        _ = cwd, capture_output
+        if argv[:3] == ("git", "rev-parse", "--verify"):
+            return ProcessResult(0, stdout=f"{exact}\n")
+        if argv[:2] == ("git", "ls-remote") and len(argv) == 7:
+            tag = argv[-2].removesuffix("^{}")
+            target = tag.removeprefix("refs/tags/").split("-v", 1)[0]
+            actual = older if target == "python" else exact
+            return ProcessResult(
+                0,
+                stdout=f"{actual}\t{tag}\n{actual}\t{tag}^{{}}\n",
+            )
+        if argv[:2] == ("git", "ls-remote"):
+            return ProcessResult(0)
+        if argv[:3] == ("git", "diff", "--quiet"):
+            return ProcessResult(0)
+        raise AssertionError(argv)
+
+    assert verify_remote_release_tags(tmp_path, commit="publish-sha", runner=runner) == ()
+
+
+def test_verify_remote_release_tags_rejects_wrong_existing_tag_tree(tmp_path: Path) -> None:
+    _write_release_manifests(tmp_path)
+    exact = "a" * 40
+    wrong = "b" * 40
+
+    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
+        _ = cwd, capture_output
+        if argv[:3] == ("git", "rev-parse", "--verify"):
+            return ProcessResult(0, stdout=f"{exact}\n")
+        if argv[:2] == ("git", "ls-remote") and len(argv) == 7:
+            tag = argv[-2].removesuffix("^{}")
+            return ProcessResult(0, stdout=f"{wrong}\t{tag}^{{}}\n")
+        if argv[:2] == ("git", "ls-remote"):
+            return ProcessResult(0)
+        if argv[:3] == ("git", "diff", "--quiet"):
+            raise ProcessFailureError(argv, 1)
+        raise AssertionError(argv)
+
+    with pytest.raises(ValueError, match="existing remote tag typescript-v1.2.3 points to"):
+        verify_remote_release_tags(tmp_path, commit="publish-sha", runner=runner)
 
 
 def test_create_release_tags_is_idempotent_and_pushes_exact_ref(tmp_path: Path) -> None:
