@@ -511,7 +511,8 @@ def test_setup_preserves_every_supported_manifest_policy_section(tmp_path: Path)
         '[artifacts]\ndurable = ["evidence/**"]',
     )
     path.write_text(
-        f'{current}\n[text]\nexclude = ["templates/**"]\n\n[doctor]\nexclude = ["tests/fixtures/**"]\n',
+        f'{current}\n[text]\nexclude = ["templates/**"]\n\n[doctor]\nexclude = ["tests/fixtures/**"]\n'
+        '\n[baseline]\ndiagnostics = "quality/diagnostics.json"\n',
         encoding="utf-8",
     )
 
@@ -523,6 +524,7 @@ def test_setup_preserves_every_supported_manifest_policy_section(tmp_path: Path)
     assert adopted.durable_artifacts == ("evidence/**",)
     assert adopted.text_excluded_paths == ("templates/**",)
     assert adopted.doctor_excluded_paths == ("tests/fixtures/**",)
+    assert adopted.diagnostic_baseline == "quality/diagnostics.json"
 
 
 def test_sync_uses_profile_recorded_in_manifest(tmp_path: Path) -> None:

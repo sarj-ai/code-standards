@@ -57,6 +57,7 @@ from .libs.diagnostics import (
     to_sarif,
     to_text,
 )
+from .libs.diagnostics import baseline as diagnostic_baseline
 from .libs.filesystem import is_link_like
 from .libs.linting.analysis import analyze as analyze_paths
 from .libs.linting.analysis import report_from_tools
@@ -262,6 +263,15 @@ class Standards:
         except (OSError, TypeError, ValueError) as exc:
             return _failed_analysis(self.root, "invalid-input", str(exc))
         try:
+            baseline_counts: dict[str, int]
+            baseline_counts = (
+                diagnostic_baseline.load(self.root / adopted.diagnostic_baseline)
+                if adopted is not None and adopted.diagnostic_baseline is not None
+                else {}
+            )
+        except (OSError, TypeError, ValueError) as exc:
+            return _failed_analysis(self.root, "baseline-failure", str(exc))
+        try:
             active_selected = list(selection_policy.filter_paths(selected))
             selected_groups = group_paths(active_selected, policy=selection_policy)
         except (OSError, TypeError, ValueError) as exc:
@@ -327,7 +337,7 @@ class Standards:
                         CoverageDisposition.FAILED if eslint_enabled else CoverageDisposition.NOT_REQUESTED,
                     )
                 )
-            return _with_coverage(native, coverage)
+            return _with_coverage(_without_baselined_diagnostics(native, baseline_counts), coverage)
         if selected_groups.typescript and adopted is not None and "eslint" not in adopted.configs:
             coverage.append(
                 CoverageNotice(
@@ -364,7 +374,7 @@ class Standards:
             )
             external_reports = (*external_reports, ToolReport("eslint", Completion.FAILED, issues=(issue,)))
         combined = report_from_tools(self.root, (*native.tools, *external_reports))
-        return _with_coverage(combined, coverage)
+        return _with_coverage(_without_baselined_diagnostics(combined, baseline_counts), coverage)
 
     def run(
         self,
@@ -535,6 +545,37 @@ def _failed_analysis(root: Path, kind: str, message: str) -> AnalysisReport:
     issue = ExecutionIssue("sarj-standards", kind, message)
     tool = ToolReport("sarj-standards", Completion.FAILED, issues=(issue,))
     return AnalysisReport(root, Completion.FAILED, Conclusion.INCONCLUSIVE, (tool,))
+
+
+def _without_baselined_diagnostics(report: AnalysisReport, counts: dict[str, int]) -> AnalysisReport:
+    if not counts:
+        return report
+    remaining = counts.copy()
+
+    def active(diagnostic: Diagnostic) -> bool:
+        fingerprint = diagnostic.fingerprint
+        budget = 0 if fingerprint is None else remaining.get(fingerprint, 0)
+        if budget < 1 or fingerprint is None:
+            return True
+        remaining[fingerprint] = budget - 1
+        return False
+
+    tools = tuple(
+        ToolReport(
+            item.name,
+            item.completion,
+            diagnostics=tuple(diagnostic for diagnostic in item.diagnostics if active(diagnostic)),
+            issues=item.issues,
+            analyzer_id=item.analyzer_id,
+            invocation_id=item.invocation_id,
+            version=item.version,
+            duration_ms=item.duration_ms,
+            file_count=item.file_count,
+            cache_status=item.cache_status,
+        )
+        for item in report.tools
+    )
+    return report_from_tools(report.root, tools)
 
 
 def _with_coverage(report: AnalysisReport, coverage: Sequence[CoverageNotice]) -> AnalysisReport:
