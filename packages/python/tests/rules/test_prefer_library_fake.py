@@ -39,22 +39,8 @@ class {name}:
     assert _check(source) == []
 
 
-# A three-method dict-backed S3 client: the canonical shape this rule exists for.
-_FAKE_S3 = """
-class FakeS3Client:
-    def __init__(self):
-        self.objects = {}
-
-    def put_object(self, Bucket, Key, Body):
-        self.objects[(Bucket, Key)] = Body
-        return {"ResponseMetadata": {"HTTPStatusCode": 200}}
-
-    def get_object(self, Bucket, Key):
-        return {"Body": self.objects[(Bucket, Key)]}
-
-    def delete_object(self, Bucket, Key):
-        self.objects.pop((Bucket, Key), None)
-"""
+# The public Before example is the canonical shape this rule exists for.
+_FAKE_S3 = _PUBLIC_EXAMPLES[0].focus_file.source
 
 
 # File-scope gating.                                                          #
@@ -1225,7 +1211,7 @@ def test_syntax_error_returns_no_diagnostics():
 
 def test_reports_line_and_column_of_the_class():
     [diag] = _check(_FAKE_S3)
-    assert (diag.line, diag.col) == (2, 1)
+    assert (diag.line, diag.col) == (1, 1)
     assert diag.code == "SARJ059"
 
 

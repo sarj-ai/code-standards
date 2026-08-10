@@ -249,21 +249,7 @@ def test_placement_table_box_elements():
 
 
 def test_wide_construction_next_to_an_update_still_fires():
-    src = """
-def test_style():
-    style = Style(
-        color="red", bgcolor="black", bold=True, dim=True, italic=True,
-        underline=True, blink=True, blink2=True, reverse=True,
-    )
-    assert str(style)
-
-def test_style_again():
-    other = Style(
-        color="blue", bgcolor="white", bold=False, dim=True, italic=True,
-        underline=True, blink=True, blink2=True, reverse=True,
-    )
-    assert str(other)
-"""
+    src = _PUBLIC_EXAMPLES[0].focus_file.source
     assert len(_check(src)) == 2
 
 

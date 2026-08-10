@@ -85,11 +85,16 @@ class NoCommentCruft(Rule):
                 files=(
                     ExampleFile.iac(
                         "main.tf",
-                        '# resource "google_storage_bucket" "old" {\nresource "google_storage_bucket" "current" {}\n',
+                        '# resource "google_storage_bucket" "old" {\n'
+                        '#   name          = "legacy-artifacts"\n'
+                        '#   location      = "US"\n'
+                        "#   force_destroy = true\n"
+                        "# }\n"
+                        'resource "google_storage_bucket" "new" {}\n',
                     ),
                 ),
                 focus_path=PurePosixPath("main.tf"),
-                expected_count=1,
+                expected_count=5,
                 public=True,
             ),
             RuleExample(
