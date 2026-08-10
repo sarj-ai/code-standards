@@ -431,6 +431,7 @@ def _plan_manifest(root: Path, plan: Plan, *, force: bool, update_existing: bool
         durable_artifacts=manifest.DEFAULT_DURABLE_ARTIFACTS if current is None else current.durable_artifacts,
         text_excluded_paths=() if current is None else current.text_excluded_paths,
         doctor_excluded_paths=() if current is None else current.doctor_excluded_paths,
+        diagnostic_baseline=None if current is None else current.diagnostic_baseline,
     )
     contents = desired.render()
     if current is not None:

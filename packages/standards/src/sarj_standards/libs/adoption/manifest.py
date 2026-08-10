@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from importlib.metadata import PackageNotFoundError, version
 import json
+from pathlib import Path
 import re
 import tomllib
 from typing import TYPE_CHECKING, Final, Literal
@@ -17,7 +18,6 @@ from sarj_standards._meta import CONFIGS_DIR, __version__
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
-    from pathlib import Path
 
 
 MANIFEST_NAME: Final = ".sarj-standards.toml"
@@ -99,6 +99,7 @@ class Manifest:
     durable_artifacts: tuple[str, ...] = DEFAULT_DURABLE_ARTIFACTS
     text_excluded_paths: tuple[str, ...] = ()
     doctor_excluded_paths: tuple[str, ...] = ()
+    diagnostic_baseline: str | None = None
 
     def render(self) -> str:
         """Serialise to the TOML text written at the repo root."""
@@ -146,6 +147,8 @@ class Manifest:
         if self.doctor_excluded_paths:
             paths = ", ".join(json.dumps(value) for value in self.doctor_excluded_paths)
             sections.append(f"\n[doctor]\nexclude = [{paths}]\n")
+        if self.diagnostic_baseline is not None:
+            sections.append(f"\n[baseline]\ndiagnostics = {json.dumps(self.diagnostic_baseline)}\n")
         return "".join(sections)
 
 
@@ -246,6 +249,7 @@ def load(root: Path) -> Manifest | None:  # ruff: ignore[too-many-locals] - one 
     artifacts_table = table_field(data, "artifacts")
     text_table = table_field(data, "text")
     doctor_table = table_field(data, "doctor")
+    baseline_table = table_field(data, "baseline")
     raw_hook_manager = hooks_table.get("manager", "pre-commit")
     if not isinstance(raw_hook_manager, str) or raw_hook_manager not in HOOK_MANAGERS:
         msg = f"manifest [hooks].manager must be one of: {', '.join(HOOK_MANAGERS)}"
@@ -271,6 +275,7 @@ def load(root: Path) -> Manifest | None:  # ruff: ignore[too-many-locals] - one 
         ),
         text_excluded_paths=_string_list(text_table, "exclude", label="manifest [text].exclude"),
         doctor_excluded_paths=_string_list(doctor_table, "exclude", label="manifest [doctor].exclude"),
+        diagnostic_baseline=_relative_file(root, baseline_table, "diagnostics"),
     )
 
 
@@ -466,6 +471,26 @@ def _verify_paths(root: Path, table: dict[str, object]) -> tuple[str, ...]:
             msg = f"manifest [verify].paths entry escapes repository root: {value}"
             raise ValueError(msg) from exc
     return paths
+
+
+def _relative_file(root: Path, table: Mapping[str, object], key: str) -> str | None:
+    if key not in table:
+        return None
+    value = text_field(table, key)
+    if value is None or not value.strip():
+        msg = f"manifest [baseline].{key} must be a non-empty repository-relative path"
+        raise TypeError(msg)
+    normalized = value.replace("\\", "/")
+    path = Path(normalized)
+    if path.is_absolute() or ".." in path.parts or path.suffix != ".json":
+        msg = f"manifest [baseline].{key} must be a repository-relative JSON path: {value}"
+        raise ValueError(msg)
+    try:
+        (root / path).resolve().relative_to(root.resolve())
+    except ValueError as exc:
+        msg = f"manifest [baseline].{key} escapes repository root: {value}"
+        raise ValueError(msg) from exc
+    return path.as_posix()
 
 
 def installed_versions() -> dict[str, str]:
