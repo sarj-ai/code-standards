@@ -91,8 +91,8 @@ __all__ = (
     "run_process_environment",
     "run_typescript_release",
     "validate_release_tag",
-    "verify_remote_release_tags",
     "verify_built_package",
     "verify_package_tarball",
     "verify_python_wheel_license",
+    "verify_remote_release_tags",
 )

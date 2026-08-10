@@ -139,7 +139,7 @@ def test_verify_remote_release_tags_rejects_wrong_existing_tag_tree(tmp_path: Pa
             raise ProcessFailureError(argv, 1)
         raise AssertionError(argv)
 
-    with pytest.raises(ValueError, match="existing remote tag typescript-v1.2.3 points to"):
+    with pytest.raises(ValueError, match=r"existing remote tag typescript-v1\.2\.3 points to"):
         verify_remote_release_tags(tmp_path, commit="publish-sha", runner=runner)
 
 
