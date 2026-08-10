@@ -39,6 +39,11 @@ def test_flags_create_type_as_enum():
     assert "TEXT + CHECK" in diags[0].message
 
 
+def test_flags_schema_qualified_enum_type():
+    source = "CREATE TYPE public.status AS ENUM ('open');"
+    assert len(_check(source)) == 1
+
+
 def test_flags_multiline_create_type_as_enum():
     src = """
 CREATE TYPE call_status

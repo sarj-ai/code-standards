@@ -75,7 +75,7 @@ class NoStringConcatInLoop(Rule):
                 files=(
                     ExampleFile.python(
                         "app/render.py",
-                        'def render(items):\n    lines = []\n    for item in items:\n        lines.append(str(item))\n    return "\\n".join(lines)\n',
+                        'def render(items):\n    lines = []\n    for item in items:\n        lines.append(f"{item}\\n")\n    return "".join(lines)\n',
                     ),
                 ),
                 focus_path=PurePosixPath("app/render.py"),

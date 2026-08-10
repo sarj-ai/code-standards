@@ -84,7 +84,7 @@ class DuplicatedOverrideDocstring(Rule):
             ),
             RuleExample(
                 example_id="override-specific-docstring",
-                title="Override documents its distinct behavior",
+                title="Override relies on the base contract",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
                     ExampleFile.python(
@@ -93,9 +93,8 @@ class DuplicatedOverrideDocstring(Rule):
                         "    def get(self, key: str) -> str:\n"
                         '        """Get a value by key."""\n'
                         "        return key\n\n"
-                        "class ReplicaStore(Store):\n"
+                        "class MemoryStore(Store):\n"
                         "    def get(self, key: str) -> str:\n"
-                        '        """Get a value from the read replica."""\n'
                         "        return key\n",
                     ),
                 ),

@@ -40,6 +40,11 @@ def test_not_valid_silences_the_check_constraint() -> None:
     assert _check("ALTER TABLE users ADD CONSTRAINT check_age CHECK (age >= 18) NOT VALID;") == []
 
 
+def test_not_valid_silences_foreign_key_constraint() -> None:
+    source = "ALTER TABLE child ADD FOREIGN KEY (parent_id) REFERENCES parent(id) NOT VALID;"
+    assert _check(source) == []
+
+
 def test_sqlite_migration_is_not_given_postgres_advice() -> None:
     source = "-- dialect: sqlite\nALTER TABLE users ADD CONSTRAINT check_age CHECK (age >= 18);"
     assert _check(source, Path("db/migrations/001.sql")) == []

@@ -114,7 +114,12 @@ class NoSecretInLog(Rule):
                 example_id="redacted-logging-keyword",
                 title="Token prefix logged under a redacted name",
                 outcome=ExampleOutcome.NO_MATCH,
-                files=(ExampleFile.python("service.py", "logger.info('request', token_prefix=token[:6])\n"),),
+                files=(
+                    ExampleFile.python(
+                        "service.py",
+                        "token_prefix = token[:6]\nlogger.info('request', token_prefix=token_prefix)\n",
+                    ),
+                ),
                 focus_path=PurePosixPath("service.py"),
                 expected_count=0,
                 public=True,

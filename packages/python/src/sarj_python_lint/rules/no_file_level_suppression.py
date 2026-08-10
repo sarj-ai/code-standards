@@ -76,7 +76,7 @@ class NoFileLevelSuppression(Rule):
                 example_id="scoped-type-checker-suppression",
                 title="Mypy suppression names its code",
                 outcome=ExampleOutcome.NO_MATCH,
-                files=(ExampleFile.python("service.py", "# type: ignore[attr-defined]\nimport os\n"),),
+                files=(ExampleFile.python("service.py", "# type: ignore[import-not-found]\nimport os\n"),),
                 focus_path=PurePosixPath("service.py"),
                 expected_count=0,
                 public=True,

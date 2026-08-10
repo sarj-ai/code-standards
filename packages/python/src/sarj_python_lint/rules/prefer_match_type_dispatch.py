@@ -855,12 +855,14 @@ class PreferMatchTypeDispatch(Rule):
                         "app/parser.py",
                         "def parse(value: object):\n"
                         "    match value:\n"
-                        "        case None | Unset():\n"
+                        "        case Text():\n"
                         "            return value\n"
-                        "        case int():\n"
-                        "            return str(value)\n"
+                        "        case Binary():\n"
+                        "            return value\n"
+                        "        case PathValue():\n"
+                        "            return value\n"
                         "        case _:\n"
-                        "            return None\n",
+                        "            return coerce(value)\n",
                     ),
                 ),
                 focus_path=PurePosixPath("app/parser.py"),

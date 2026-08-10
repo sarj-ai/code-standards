@@ -151,5 +151,13 @@ it('three', async () => { const x = await load(3); expect(x.ok).toBe(true); expe
 test('two', () => { const x = parse(input); expect(x.ok).toBe(true); expect(x.value).toBe(input); });`,
       errors: [{ messageId: "duplicateTestBody", line: 2 }],
     },
+    {
+      name: "reports non-adjacent duplicate siblings",
+      filename: TEST_FILE,
+      code: `test('first parse', () => { const x = parse('a'); expect(x.ok).toBe(true); expect(x.value).toBeDefined(); });
+test('unrelated behavior', () => { const record = createRecord(); save(record); expect(record.id).toBeDefined(); });
+test('second parse', () => { const x = parse('b'); expect(x.ok).toBe(true); expect(x.value).toBeDefined(); });`,
+      errors: [{ messageId: "duplicateTestBody", line: 3 }],
+    },
   ],
 });

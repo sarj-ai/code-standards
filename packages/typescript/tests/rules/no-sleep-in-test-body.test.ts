@@ -195,5 +195,11 @@ ruleTester.run("no-sleep-in-test-body", rule, {
       code: "afterEach(async () => { await sleep(10); });",
       errors: [{ messageId: "noSleepInTestBody" }],
     },
+    {
+      name: "reports a helper sleep in a traditional function test callback",
+      filename: TEST_FILE,
+      code: "test('settles', async function () { await sleep(10); });",
+      errors: [{ messageId: "noSleepInTestBody" }],
+    },
   ],
 });

@@ -35,6 +35,11 @@ CREATE TABLE orders (
     assert len(_check(src)) == 1
 
 
+def test_flags_explicit_timestamp_without_time_zone():
+    source = "CREATE TABLE event (created_at TIMESTAMP WITHOUT TIME ZONE);"
+    assert len(_check(source)) == 1
+
+
 def test_allows_timestamp_with_time_zone():
     src = """
 CREATE TABLE orders (

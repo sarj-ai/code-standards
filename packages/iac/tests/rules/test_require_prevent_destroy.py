@@ -175,6 +175,15 @@ resource "google_storage_bucket" "scratch" {
     assert _check(src) == []
 
 
+def test_force_destroy_true_exempts_aws_s3_bucket():
+    src = """
+resource "aws_s3_bucket" "scratch" {
+  force_destroy = true
+}
+"""
+    assert _check(src) == []
+
+
 def test_force_destroy_expression_does_not_exempt():
     src = """
 resource "google_storage_bucket" "recordings" {

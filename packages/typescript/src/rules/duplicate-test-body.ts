@@ -48,7 +48,7 @@ export const duplicateTestBodyDocumentation = {
       outcome: "no-match",
       files: [{
         path: "src/user.test.ts",
-        source: "test.each(['a', 'b'])('parses %s', (value) => { const x = parse(value); expect(x.ok).toBe(true); expect(x.value).toBe(value); });",
+        source: "test.each(['a', 'b'])('accepts %s', (value) => { const result = parse(value); expect(result.ok).toBe(true); expect(result.value).toBe(value); });",
       }],
       focusPath: "src/user.test.ts",
       expectedCount: 0,
@@ -60,7 +60,7 @@ export const duplicateTestBodyDocumentation = {
       outcome: "match",
       files: [{
         path: "src/user.test.ts",
-        source: "test('accepts a', () => { const result = parse('a'); expect(result.ok).toBe(true); expect(result.value).toBeDefined(); });\ntest('accepts b', () => { const result = parse('b'); expect(result.ok).toBe(true); expect(result.value).toBeDefined(); });",
+        source: "test('accepts a', () => { const value = 'a'; const result = parse(value); expect(result.ok).toBe(true); expect(result.value).toBe(value); });\ntest('accepts b', () => { const value = 'b'; const result = parse(value); expect(result.ok).toBe(true); expect(result.value).toBe(value); });",
       }],
       focusPath: "src/user.test.ts",
       expectedCount: 1,

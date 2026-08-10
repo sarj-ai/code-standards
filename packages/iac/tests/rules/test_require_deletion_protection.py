@@ -226,6 +226,15 @@ resource "google_filestore_instance" "files" {
     assert _check(src) == []
 
 
+def test_dynamodb_deletion_protection_enabled_is_accepted():
+    src = """
+resource "aws_dynamodb_table" "data" {
+  deletion_protection_enabled = true
+}
+"""
+    assert _check(src) == []
+
+
 @pytest.mark.parametrize("value", ["false", "var.guard"])
 def test_literal_prevent_destroy_overrides_an_unproven_provider_guard(value: str):
     src = f"""resource "google_container_cluster" "data" {{
