@@ -323,6 +323,15 @@ def _require_remote_tag_commit(
     actual = actual_commit
     if actual == commit:
         return
+    try:
+        runner(
+            ("git", "merge-base", "--is-ancestor", actual, commit),
+            cwd=root,
+            capture_output=True,
+        )
+    except ProcessFailureError as exc:
+        msg = f"existing remote tag {tag} points to {actual}, which is not an ancestor of publishing commit {commit}"
+        raise ValueError(msg) from exc
     target_paths = (*RELEASE_ARTIFACT_FILES[target_name], *RELEASE_ARTIFACT_PREFIXES[target_name])
     try:
         runner(
