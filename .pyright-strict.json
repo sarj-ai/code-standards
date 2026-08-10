@@ -34,7 +34,9 @@
   "reportUnusedCallResult": false,
 
   "reportUnnecessaryIsInstance": "error",
-  "reportUnnecessaryComparison": "error",
+  // Exhaustive match fallbacks are required by SARJ032 and remain useful to
+  // runtime checkers when a type grows, so they are not unnecessary branches.
+  "reportUnnecessaryComparison": "none",
   "reportUnnecessaryCast": "error",
   "reportUnnecessaryContains": "error",
   "reportConstantRedefinition": "error",

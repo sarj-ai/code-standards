@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_standards.libs.adoption import manifest
 from sarj_standards.libs.diagnostics import Completion, Severity, TrustMode
 from sarj_standards.libs.linting import external as external_module
 from sarj_standards.libs.linting.external import (
@@ -641,6 +642,53 @@ def test_basedpyright_prefers_a_parent_environment_over_a_nested_package_manifes
 
     assert all(report.completion is Completion.COMPLETE for report in reports)
     assert seen[1] == ((str(analyzer), "--outputjson", str(source)), project)
+
+
+def test_python_tools_use_the_adopted_config_for_files_outside_its_directory(tmp_path: Path) -> None:
+    project = tmp_path / "python"
+    project.mkdir()
+    (project / "pyproject.toml").write_text(
+        "[project]\nname='fixture'\nversion='0'\n[tool.ruff]\nextend='.ruff-strict.toml'\n"
+        "[tool.pyright]\nextends='.pyright-strict.json'\n",
+        encoding="utf-8",
+    )
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    source = scripts / "release.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    adopted = manifest.Manifest(
+        "5.6.8",
+        ("ruff", "pyright", "markdownlint", "taplo", "yamllint"),
+        "python",
+        ".",
+    )
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+    seen: list[tuple[tuple[str, ...], Path]] = []
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        seen.append((tuple(argv), cwd))
+        payload = "[]" if argv[0] == "ruff" else '{"generalDiagnostics":[]}'
+        return ProcessOutput(0, payload, "")
+
+    reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=runner)
+
+    assert all(report.completion is Completion.COMPLETE for report in reports)
+    assert seen == [
+        (
+            (
+                "ruff",
+                "check",
+                "--output-format",
+                "json",
+                "--config",
+                str(project / "pyproject.toml"),
+                "--",
+                str(source),
+            ),
+            project,
+        ),
+        (("basedpyright", "--outputjson", str(source)), project),
+    ]
 
 
 def test_external_analyzer_cannot_leak_a_path_outside_repository(tmp_path: Path) -> None:

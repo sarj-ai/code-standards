@@ -146,43 +146,76 @@ def select_eslint_commands(
 ) -> EslintSelection:
     """Return runnable project commands plus paths with no ESLint owner."""
     repository = root.resolve()
-    candidates = _selected_eslint_candidates(repository, paths)
+    fallback_project = _adopted_typescript_project(repository)
+    candidates = _selected_eslint_candidates(repository, paths, fallback_project=fallback_project)
     if not candidates:
         return EslintSelection((), 0)
     grouped: dict[Path, set[str]] = {}
     unowned: list[Path] = []
     for candidate in candidates:
-        project = _owning_typescript_project(candidate, repository)
+        project = _owning_typescript_project(candidate, repository, fallback_project=fallback_project)
         if project is None:
             unowned.append(candidate)
             continue
-        grouped.setdefault(project, set()).add(candidate.relative_to(project).as_posix())
+        grouped.setdefault(project, set()).add(Path(os.path.relpath(candidate, project)).as_posix())
     commands: list[Command] = []
     for project, scoped in sorted(grouped.items(), key=lambda item: str(item[0])):
         install_root = packagemanager.workspace_root(project, repository)
         client = packagemanager.detect(install_root)
+        config = _eslint_config(project)
+        config_args = () if config is None else ("--config", config.name)
         commands.append(
             Command(
                 f"ESLint ({label}: {project.relative_to(repository).as_posix() or '.'})",
-                packagemanager.exec_argv(client, "eslint", *(("--fix",) if fix else ()), "--", *sorted(scoped)),
+                packagemanager.exec_argv(
+                    client,
+                    "eslint",
+                    *config_args,
+                    *(("--fix",) if fix else ()),
+                    "--",
+                    *sorted(scoped),
+                ),
                 project,
             )
         )
     return EslintSelection(tuple(commands), len(unowned))
 
 
-def _owning_typescript_project(candidate: Path, repository: Path) -> Path | None:
+def _owning_typescript_project(
+    candidate: Path,
+    repository: Path,
+    *,
+    fallback_project: Path | None = None,
+) -> Path | None:
     start = candidate if candidate.is_dir() else candidate.parent
     bounded = (start, *(parent for parent in start.parents if parent == repository or repository in parent.parents))
-    config_names = ("eslint.config.js", "eslint.config.cjs", "eslint.config.mjs", "eslint.config.ts")
-    configured = next((path for path in bounded if any((path / name).is_file() for name in config_names)), None)
+    configured = next((path for path in bounded if _eslint_config(path) is not None), None)
     if configured is not None:
         return configured
     lock_names = tuple(name for name, _client in packagemanager.LOCKFILES)
     locked = next((path for path in bounded if any((path / name).is_file() for name in lock_names)), None)
     if locked is not None:
-        return locked
-    return next((path for path in bounded if (path / "package.json").is_file()), None)
+        return fallback_project if fallback_project is not None and locked == repository else locked
+    packaged = next((path for path in bounded if (path / "package.json").is_file()), None)
+    if fallback_project is not None and (packaged is None or packaged == repository):
+        return fallback_project
+    return packaged
+
+
+def _eslint_config(project: Path) -> Path | None:
+    names = ("eslint.config.js", "eslint.config.cjs", "eslint.config.mjs", "eslint.config.ts")
+    return next((project / name for name in names if (project / name).is_file()), None)
+
+
+def _adopted_typescript_project(repository: Path) -> Path | None:
+    try:
+        adopted = manifest.load(repository)
+    except OSError, TypeError, ValueError:
+        return None
+    if adopted is None:
+        return None
+    project = (repository / adopted.typescript_dest).resolve()
+    return project if project.is_dir() and _eslint_config(project) is not None else None
 
 
 def staged_eslint_commands(root: Path, paths: Iterable[str]) -> list[Command]:
@@ -190,7 +223,12 @@ def staged_eslint_commands(root: Path, paths: Iterable[str]) -> list[Command]:
     return selected_eslint_commands(root, paths, label="staged")
 
 
-def _selected_eslint_candidates(root: Path, paths: Iterable[str]) -> set[Path]:
+def _selected_eslint_candidates(
+    root: Path,
+    paths: Iterable[str],
+    *,
+    fallback_project: Path | None = None,
+) -> set[Path]:
     candidates: set[Path] = set()
     for raw_path in paths:
         path = Path(raw_path)
@@ -204,8 +242,8 @@ def _selected_eslint_candidates(root: Path, paths: Iterable[str]) -> set[Path]:
             continue
         if candidate.is_dir() and candidate.name not in _PROJECT_SKIP_DIRS:
             sources = _eslint_sources(candidate)
-            owners = {_owning_typescript_project(source, root) for source in sources}
-            candidate_owner = _owning_typescript_project(candidate, root)
+            owners = {_owning_typescript_project(source, root, fallback_project=fallback_project) for source in sources}
+            candidate_owner = _owning_typescript_project(candidate, root, fallback_project=fallback_project)
             if (
                 sources
                 and owners == {candidate_owner}

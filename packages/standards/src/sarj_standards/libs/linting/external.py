@@ -15,8 +15,10 @@ import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed argv, n
 import sys
 import threading
 import time
+import tomllib
 from typing import TYPE_CHECKING, Protocol
 
+from sarj_standards.libs.adoption import manifest
 from sarj_standards.libs.adoption.lifecycle import select_eslint_commands
 from sarj_standards.libs.diagnostics import (
     AnalyzerId,
@@ -110,15 +112,11 @@ def analyze_external(
     reports: list[ToolReport] = []
     if routed.python:
         if capabilities is None or "ruff" in capabilities:
-            reports.append(
-                _invoke(
-                    "ruff",
-                    _ruff_argv(routed.python),
-                    cwd=root,
+            reports.extend(
+                _invoke_ruff_projects(
+                    routed.python,
                     root=root,
                     runner=execute,
-                    parser=parse_ruff,
-                    file_count=len(routed.python),
                 )
             )
         if capabilities is None or "pyright" in capabilities:
@@ -292,7 +290,7 @@ def _invoke_python_projects(
     reports: list[ToolReport] = []
     for project, scoped_files in projects:
         argv = (_project_analyzer(project, "basedpyright"), "--outputjson", *scoped_files)
-        project_id = project.relative_to(root).as_posix() or "."
+        project_id = project.relative_to(root).as_posix() or None
         reports.append(
             _invoke(
                 name,
@@ -301,6 +299,30 @@ def _invoke_python_projects(
                 root=root,
                 runner=runner,
                 parser=parser,
+                invocation_id=project_id,
+                file_count=len(scoped_files),
+            )
+        )
+    return tuple(reports)
+
+
+def _invoke_ruff_projects(
+    files: Sequence[str],
+    *,
+    root: Path,
+    runner: ProcessRunner,
+) -> tuple[ToolReport, ...]:
+    reports: list[ToolReport] = []
+    for project, config, scoped_files in _group_ruff_projects(files, root):
+        project_id = None if project == root else project.relative_to(root).as_posix()
+        reports.append(
+            _invoke(
+                "ruff",
+                _ruff_argv(scoped_files, config=config),
+                cwd=project,
+                root=root,
+                runner=runner,
+                parser=parse_ruff,
                 invocation_id=project_id,
                 file_count=len(scoped_files),
             )
@@ -318,11 +340,11 @@ def _project_analyzer(project: Path, name: str) -> str:
 
 
 def _group_python_projects(files: Sequence[str], root: Path) -> tuple[tuple[Path, tuple[str, ...]], ...]:
-    markers = ("pyrightconfig.json", "pyproject.toml")
+    fallback = _adopted_python_project(root)
     grouped: dict[Path, list[str]] = {}
     for raw_file in files:
         path = Path(raw_file).resolve()
-        project = _nearest_analyzer_project(path.parent, root, markers)
+        project = _nearest_analyzer_project(path.parent, root, fallback=fallback)
         grouped.setdefault(project, []).append(str(path))
     return tuple(
         (project, tuple(sorted(scoped_files)))
@@ -330,8 +352,11 @@ def _group_python_projects(files: Sequence[str], root: Path) -> tuple[tuple[Path
     )
 
 
-def _nearest_analyzer_project(start: Path, root: Path, markers: Sequence[str]) -> Path:
-    """Prefer the owning virtual environment over a nested package manifest."""
+def _nearest_analyzer_project(start: Path, root: Path, *, fallback: Path | None = None) -> Path:
+    """Use an explicit checker config before environment or package markers."""
+    configured = _nearest_configured_python_project(start, root, names=("pyright", "basedpyright"))
+    if configured is not None:
+        return configured
     current = start
     while current.is_relative_to(root):
         if any(
@@ -345,7 +370,77 @@ def _nearest_analyzer_project(start: Path, root: Path, markers: Sequence[str]) -
         if current == root:
             break
         current = current.parent
-    return _nearest_project(start, root, markers)
+    return fallback or _nearest_project(start, root, ("pyproject.toml",))
+
+
+def _group_ruff_projects(files: Sequence[str], root: Path) -> tuple[tuple[Path, Path | None, tuple[str, ...]], ...]:
+    fallback = _adopted_python_config(root)
+    grouped: dict[tuple[Path, Path | None], list[str]] = {}
+    for raw_file in files:
+        path = Path(raw_file).resolve()
+        config = _nearest_ruff_config(path.parent, root) or fallback
+        project = root if config is None else config.parent
+        grouped.setdefault((project, config), []).append(str(path))
+    return tuple(
+        (project, config, tuple(sorted(scoped_files)))
+        for (project, config), scoped_files in sorted(grouped.items(), key=lambda item: str(item[0][0]))
+    )
+
+
+def _nearest_ruff_config(start: Path, root: Path) -> Path | None:
+    current = start
+    while current.is_relative_to(root):
+        for name in (".ruff.toml", "ruff.toml"):
+            candidate = current / name
+            if candidate.is_file():
+                return candidate
+        pyproject = current / "pyproject.toml"
+        if pyproject.is_file() and _pyproject_has_tool(pyproject, ("ruff",)):
+            return pyproject
+        if current == root:
+            break
+        current = current.parent
+    return None
+
+
+def _adopted_python_config(root: Path) -> Path | None:
+    project = _adopted_python_project(root)
+    return None if project is None else _nearest_ruff_config(project, root)
+
+
+def _adopted_python_project(root: Path) -> Path | None:
+    try:
+        adopted = manifest.load(root)
+    except OSError, TypeError, ValueError:
+        return None
+    if adopted is None:
+        return None
+    project = (root / adopted.python_dest).resolve()
+    return project if project.is_dir() else None
+
+
+def _nearest_configured_python_project(start: Path, root: Path, *, names: Sequence[str]) -> Path | None:
+    current = start
+    while current.is_relative_to(root):
+        if (current / "pyrightconfig.json").is_file() or (current / "pyrightconfig.jsonc").is_file():
+            return current
+        pyproject = current / "pyproject.toml"
+        if pyproject.is_file() and _pyproject_has_tool(pyproject, names):
+            return current
+        if current == root:
+            break
+        current = current.parent
+    return None
+
+
+def _pyproject_has_tool(path: Path, names: Sequence[str]) -> bool:
+    try:
+        parsed: object = tomllib.loads(path.read_text(encoding="utf-8"))
+    except OSError, tomllib.TOMLDecodeError:
+        return False
+    document = manifest.as_table(parsed)
+    tool = manifest.as_table(document.get("tool"))
+    return any(isinstance(tool.get(name), dict) for name in names)
 
 
 def _nearest_project(start: Path, root: Path, markers: Sequence[str]) -> Path:
@@ -688,8 +783,9 @@ def parse_eslint(  # ruff: ignore[too-many-locals] -- protocol normalization kee
     return tuple(diagnostics)
 
 
-def _ruff_argv(files: Sequence[str]) -> tuple[str, ...]:
-    return ("ruff", "check", "--output-format", "json", "--", *files)
+def _ruff_argv(files: Sequence[str], *, config: Path | None = None) -> tuple[str, ...]:
+    config_args = () if config is None else ("--config", str(config))
+    return ("ruff", "check", "--output-format", "json", *config_args, "--", *files)
 
 
 def _eslint_json_argv(argv: Sequence[str]) -> tuple[str, ...]:
